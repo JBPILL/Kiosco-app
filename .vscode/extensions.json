@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "bradlc.vscode-tailwindcss",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "dsznajder.es7-react-js-snippets",
+    "usernamehw.errorlens",
+    "rangav.vscode-thunder-client",
+    "ms-vscode.vscode-typescript-next"
+  ]
+}

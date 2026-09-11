@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+/* Variables del tema */
+:root {
+  --color-primary: #6366f1;
+  --color-primary-hover: #4f46e5;
+  --color-success: #10b981;
+  --color-danger: #ef4444;
+  --color-warning: #f59e0b;
+}
+
+/* Reset base */
+body {
+  @apply bg-gray-50 text-gray-900 font-sans;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Optimizaciones para PWA mobile */
+html, body, #root {
+  @apply h-full;
+}
+
+input, button {
+  @apply outline-none;
+}
