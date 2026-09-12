@@ -130,10 +130,11 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             {MEDIOS_PAGO.map((mp) => (
               <button
                 key={mp.valor}
+                type="button"
                 onClick={() => setMedioPago(mp.valor)}
-                className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border-2 text-sm font-medium transition-colors ${
+                className={`flex items-center justify-center p-3 rounded-xl border-2 text-sm font-semibold min-h-[46px] active:scale-95 transition-all ${
                   medioPago === mp.valor
-                    ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'
+                    ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 shadow-xs'
                     : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
                 }`}
               >
@@ -154,7 +155,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
               value={pagaCon}
               onChange={(e) => setPagaCon(e.target.value)}
               placeholder="Ingresá el monto"
-              autoFocus
+              autoFocus={typeof window !== 'undefined' && window.innerWidth >= 1024}
             />
 
             {/* Billetes rápidos */}
@@ -162,11 +163,12 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
               {billetesRapidos.map((billete) => (
                 <button
                   key={billete}
+                  type="button"
                   onClick={() => setPagaCon(billete.toString())}
-                  className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
+                  className={`px-3.5 py-2 min-h-[38px] rounded-xl border text-sm font-semibold active:scale-95 transition-all ${
                     pagaConNum === billete
                       ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'
-                      : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+                      : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'
                   }`}
                 >
                   {formatPrecio(billete)}
@@ -174,8 +176,9 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
               ))}
               {/* Monto exacto */}
               <button
+                type="button"
                 onClick={() => setPagaCon(total.toString())}
-                className="px-3 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 text-sm font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
+                className="px-4 py-2 min-h-[38px] rounded-xl border border-emerald-300 dark:border-emerald-700 text-sm font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 active:scale-95 transition-all"
               >
                 Exacto
               </button>

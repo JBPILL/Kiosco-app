@@ -14,11 +14,11 @@ export function LoginScreen() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
+    <div className="min-h-dvh flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4 py-8 pt-[max(24px,env(safe-area-inset-top))] pb-[max(24px,env(safe-area-inset-bottom))]">
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-indigo-600 dark:text-indigo-400 mb-2">🏪 KioskoPOS</h1>
+          <h1 className="text-3xl font-bold text-indigo-600 dark:text-indigo-400 mb-2 tracking-tight">KioskoPOS</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">Sistema de Ventas</p>
         </div>
 

@@ -45,32 +45,35 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                   </p>
                 </div>
 
-                {/* Controles de cantidad */}
-                <div className="flex items-center gap-1">
+                {/* Controles de cantidad táctiles */}
+                <div className="flex items-center gap-1.5 flex-shrink-0">
                   <button
                     onClick={() => actualizarCantidad(item.producto.id, item.cantidad - 1)}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-bold text-sm"
+                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-300 font-bold text-base transition-transform"
+                    aria-label="Restar uno"
                   >
                     −
                   </button>
-                  <span className="w-8 text-center text-sm font-medium dark:text-gray-100">{item.cantidad}</span>
+                  <span className="w-7 text-center text-sm font-bold dark:text-gray-100">{item.cantidad}</span>
                   <button
                     onClick={() => actualizarCantidad(item.producto.id, item.cantidad + 1)}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-bold text-sm"
+                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-300 font-bold text-base transition-transform"
+                    aria-label="Sumar uno"
                   >
                     +
                   </button>
                 </div>
 
                 {/* Subtotal */}
-                <span className="text-sm font-bold text-gray-900 dark:text-gray-100 w-20 text-right">
+                <span className="text-sm font-bold text-gray-900 dark:text-gray-100 w-16 sm:w-20 text-right flex-shrink-0">
                   {formatPrecio(item.subtotal)}
                 </span>
 
                 {/* Eliminar */}
                 <button
                   onClick={() => quitarProducto(item.producto.id)}
-                  className="text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 text-sm"
+                  className="w-8 h-8 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 active:scale-90 text-base flex-shrink-0 transition-transform"
+                  aria-label="Eliminar producto"
                 >
                   ✕
                 </button>

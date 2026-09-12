@@ -11,22 +11,39 @@
   --color-warning: #f59e0b;
 }
 
-/* Reset base */
+/* Reset base y optimizaciones mobile */
 body {
   @apply bg-gray-50 text-gray-900 font-sans dark:bg-gray-900 dark:text-gray-100;
   -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
 }
 
-/* Optimizaciones para PWA mobile */
+/* 100dvh para adaptarse a la pantalla exacta en iPhone y celulares modernos */
 html, body, #root {
-  @apply h-full;
+  height: 100%;
+  height: 100dvh;
+}
+
+/* En iOS Safari, fuentes menores a 16px provocan zoom automático al hacer foco en un input */
+input, select, textarea {
+  font-size: 16px;
 }
 
 input, button {
   @apply outline-none;
 }
 
+/* Clases de utilidad para Safe Area (Dynamic Island, notch y barra inferior de iOS) */
+.pt-safe {
+  padding-top: max(12px, env(safe-area-inset-top));
+}
+
+.pb-safe {
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+
 /* Transición suave al cambiar de tema */
 * {
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
