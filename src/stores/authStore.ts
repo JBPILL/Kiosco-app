@@ -1,10 +1,11 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
-import type { Usuario } from '../types/database'
+import type { Usuario, Kiosco } from '../types/database'
 
 interface AuthState {
   // Estado
   usuario: Usuario | null
+  kiosco: Kiosco | null
   cargando: boolean
   error: string | null
 
@@ -16,6 +17,7 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set) => ({
   usuario: null,
+  kiosco: null,
   cargando: true,
   error: null,
 
@@ -40,10 +42,10 @@ export const useAuthStore = create<AuthState>((set) => ({
 
       if (userError) throw new Error('No se encontró el usuario en el sistema')
 
-      // 3. Verificar que el kiosco tenga suscripción activa
+      // 3. Verificar que el kiosco tenga suscripción activa y traer sus datos
       const { data: kiosco } = await supabase
         .from('kioscos')
-        .select('estado_suscripcion')
+        .select('*')
         .eq('id', usuario.kiosco_id)
         .single()
 
@@ -52,7 +54,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         throw new Error('La suscripción del kiosco está suspendida. Contactá al soporte.')
       }
 
-      set({ usuario, cargando: false })
+      set({ usuario, kiosco: (kiosco as Kiosco) || null, cargando: false })
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : 'Error desconocido',
@@ -63,7 +65,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: async () => {
     await supabase.auth.signOut()
-    set({ usuario: null, error: null })
+    set({ usuario: null, kiosco: null, error: null })
   },
 
   cargarSesion: async () => {
@@ -82,7 +84,17 @@ export const useAuthStore = create<AuthState>((set) => ({
         .eq('activo', true)
         .single()
 
-      set({ usuario: usuario || null, cargando: false })
+      if (usuario?.kiosco_id) {
+        const { data: kiosco } = await supabase
+          .from('kioscos')
+          .select('*')
+          .eq('id', usuario.kiosco_id)
+          .single()
+
+        set({ usuario: usuario || null, kiosco: (kiosco as Kiosco) || null, cargando: false })
+      } else {
+        set({ usuario: usuario || null, kiosco: null, cargando: false })
+      }
     } catch {
       set({ cargando: false })
     }

@@ -8,6 +8,7 @@ import { ProductSearch } from '../components/pos/ProductSearch'
 import { FavoritesGrid } from '../components/pos/FavoritesGrid'
 import { CartPanel } from '../components/pos/CartPanel'
 import { PaymentModal } from '../components/pos/PaymentModal'
+import { TicketReceiptModal, type TicketData } from '../components/pos/TicketReceiptModal'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import type { Producto, Categoria } from '../types/database'
@@ -23,6 +24,8 @@ export function POSPage() {
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [cartModalOpen, setCartModalOpen] = useState(false)
   const [modalEsperaOpen, setModalEsperaOpen] = useState(false)
+  const [ticketReciente, setTicketReciente] = useState<TicketData | null>(null)
+  const [ticketModalOpen, setTicketModalOpen] = useState(false)
 
   const {
     agregarProducto,
@@ -83,10 +86,14 @@ export function POSPage() {
     agregarProducto(producto)
   }
 
-  const handleVentaCompletada = () => {
+  const handleVentaCompletada = (ticket?: TicketData) => {
     cargarFavoritos() // Refrescar stock
     verificarSesionActiva()
     setCartModalOpen(false)
+    if (ticket) {
+      setTicketReciente(ticket)
+      setTicketModalOpen(true)
+    }
   }
 
   const handleRecuperar = (id: string) => {
@@ -313,6 +320,13 @@ export function POSPage() {
         isOpen={paymentOpen}
         onClose={() => setPaymentOpen(false)}
         onVentaCompletada={handleVentaCompletada}
+      />
+
+      {/* Modal de comprobante térmico / WhatsApp */}
+      <TicketReceiptModal
+        isOpen={ticketModalOpen}
+        onClose={() => setTicketModalOpen(false)}
+        ticket={ticketReciente}
       />
     </div>
   )

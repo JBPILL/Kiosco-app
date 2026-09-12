@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuthStore } from '../stores/authStore'
 import { formatPrecio, formatFecha, labelMedioPago } from '../lib/utils'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
+import { TicketReceiptModal, type TicketData } from '../components/pos/TicketReceiptModal'
 import toast from 'react-hot-toast'
 
 interface ResumenDiario {
@@ -17,8 +19,15 @@ interface VentaResumen {
   fecha_hora: string
   total: number
   estado: string
+  notas: string | null
+  usuario?: { nombre: string }
   pagos: { medio_pago: string; monto: number }[]
-  detalles: { cantidad: number; producto: { descripcion: string }; subtotal: number }[]
+  detalles: {
+    cantidad: number
+    precio_unitario?: number
+    producto: { descripcion: string }
+    subtotal: number
+  }[]
 }
 
 export function ReportesPage() {
@@ -29,6 +38,7 @@ export function ReportesPage() {
   const [ventaExpandida, setVentaExpandida] = useState<string | null>(null)
   const [ventaParaAnular, setVentaParaAnular] = useState<VentaResumen | null>(null)
   const [anulando, setAnulando] = useState(false)
+  const [ticketParaImprimir, setTicketParaImprimir] = useState<TicketData | null>(null)
 
   const cargarDatos = useCallback(async () => {
     setCargando(true)
@@ -39,9 +49,10 @@ export function ReportesPage() {
     const { data, error } = await supabase
       .from('ventas')
       .select(`
-        id, fecha_hora, total, estado,
+        id, fecha_hora, total, estado, notas,
+        usuario:usuarios(nombre),
         pagos:pagos_venta(medio_pago, monto),
-        detalles:detalles_venta(cantidad, subtotal, producto:productos(descripcion))
+        detalles:detalles_venta(cantidad, precio_unitario, subtotal, producto:productos(descripcion))
       `)
       .gte('fecha_hora', inicioDelDia)
       .lte('fecha_hora', finDelDia)
@@ -116,6 +127,39 @@ export function ReportesPage() {
     } finally {
       setAnulando(false)
     }
+  }
+
+  const handleVerTicket = (v: VentaResumen) => {
+    const kiosco = useAuthStore.getState().kiosco
+    const medio = v.pagos[0]?.medio_pago ? labelMedioPago(v.pagos[0].medio_pago) : 'Efectivo'
+    const subtotalCalculado = v.detalles.reduce((acc, d) => acc + d.subtotal, 0)
+    const ajusteMonto = v.total - subtotalCalculado
+
+    const ticketData: TicketData = {
+      ventaId: v.id,
+      fecha: v.fecha_hora,
+      items: v.detalles.map((d) => ({
+        descripcion: d.producto?.descripcion || 'Artículo',
+        cantidad: d.cantidad,
+        precioUnitario: d.precio_unitario || (d.cantidad > 0 ? d.subtotal / d.cantidad : 0),
+        subtotal: d.subtotal,
+      })),
+      subtotal: subtotalCalculado,
+      ajuste: Math.abs(ajusteMonto) > 0.01 ? {
+        descripcion: ajusteMonto < 0 ? 'Descuento' : 'Recargo',
+        monto: Math.abs(ajusteMonto),
+        esDescuento: ajusteMonto < 0,
+      } : null,
+      total: v.total,
+      medioPago: medio,
+      kioscoNombre: kiosco?.nombre,
+      kioscoDireccion: kiosco?.direccion,
+      kioscoTelefono: kiosco?.telefono,
+      cajeroNombre: v.usuario?.nombre,
+      notas: v.notas,
+    }
+
+    setTicketParaImprimir(ticketData)
   }
 
   return (
@@ -273,15 +317,24 @@ export function ReportesPage() {
                               ))}
                             </div>
 
-                            {!esAnulada && (
+                            <div className="flex items-center gap-2 self-end sm:self-auto">
                               <Button
                                 size="sm"
-                                variant="danger"
-                                onClick={() => setVentaParaAnular(venta)}
+                                variant="secondary"
+                                onClick={() => handleVerTicket(venta)}
                               >
-                                Anular venta
+                                Ver Ticket
                               </Button>
-                            )}
+                              {!esAnulada && (
+                                <Button
+                                  size="sm"
+                                  variant="danger"
+                                  onClick={() => setVentaParaAnular(venta)}
+                                >
+                                  Anular venta
+                                </Button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       )}
@@ -331,6 +384,13 @@ export function ReportesPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Modal de Ticket Térmico / WhatsApp */}
+      <TicketReceiptModal
+        isOpen={!!ticketParaImprimir}
+        onClose={() => setTicketParaImprimir(null)}
+        ticket={ticketParaImprimir}
+      />
     </div>
   )
 }

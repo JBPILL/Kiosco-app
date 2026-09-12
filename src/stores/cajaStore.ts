@@ -1,23 +1,59 @@
 import { create } from 'zustand'
+import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from './authStore'
-import type { SesionCaja, ResumenCaja, Usuario } from '../types/database'
+import type {
+  SesionCaja,
+  ResumenCaja,
+  Usuario,
+  MovimientoCaja,
+  TipoMovimientoCaja,
+  MotivoMovimientoCaja,
+} from '../types/database'
 import toast from 'react-hot-toast'
 
 interface CajaState {
   sesionActiva: (SesionCaja & { usuario?: Usuario }) | null
   resumenActivo: ResumenCaja | null
+  movimientosCaja: MovimientoCaja[]
   cargando: boolean
 
   verificarSesionActiva: () => Promise<void>
   abrirCaja: (montoInicial: number) => Promise<boolean>
   cargarResumenSesion: (sesionId?: string) => Promise<ResumenCaja | null>
+  cargarMovimientosSesion: (sesionId: string) => Promise<MovimientoCaja[]>
+  registrarMovimientoCaja: (
+    tipo: TipoMovimientoCaja,
+    motivo: MotivoMovimientoCaja,
+    monto: number,
+    descripcion: string
+  ) => Promise<boolean>
   cerrarCaja: (montoDeclarado: number) => Promise<boolean>
+}
+
+function getLocalMovimientos(sesionId: string): MovimientoCaja[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(`kioskopos_movimientos_${sesionId}`)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function saveLocalMovimientos(sesionId: string, movimientos: MovimientoCaja[]) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(`kioskopos_movimientos_${sesionId}`, JSON.stringify(movimientos))
+  } catch (e) {
+    console.error('Error guardando movimientos locales:', e)
+  }
 }
 
 export const useCajaStore = create<CajaState>((set, get) => ({
   sesionActiva: null,
   resumenActivo: null,
+  movimientosCaja: [],
   cargando: false,
 
   verificarSesionActiva: async () => {
@@ -39,12 +75,13 @@ export const useCajaStore = create<CajaState>((set, get) => ({
         console.error('Error al verificar sesión de caja:', error)
       }
 
-      set({ sesionActiva: data as (SesionCaja & { usuario?: Usuario }) || null })
+      set({ sesionActiva: (data as (SesionCaja & { usuario?: Usuario })) || null })
 
       if (data?.id) {
+        await get().cargarMovimientosSesion(data.id)
         await get().cargarResumenSesion(data.id)
       } else {
-        set({ resumenActivo: null })
+        set({ resumenActivo: null, movimientosCaja: [] })
       }
     } catch (err) {
       console.error('Error verificando sesión de caja:', err)
@@ -77,6 +114,7 @@ export const useCajaStore = create<CajaState>((set, get) => ({
 
       set({
         sesionActiva: data as (SesionCaja & { usuario?: Usuario }),
+        movimientosCaja: [],
         resumenActivo: {
           sesion_caja_id: data.id,
           kiosco_id: data.kiosco_id,
@@ -91,6 +129,8 @@ export const useCajaStore = create<CajaState>((set, get) => ({
           total_mercadopago: 0,
           total_transferencia: 0,
           total_tarjeta: 0,
+          total_ingresos_extra: 0,
+          total_egresos: 0,
           efectivo_esperado_en_caja: data.monto_inicial,
         },
       })
@@ -106,11 +146,87 @@ export const useCajaStore = create<CajaState>((set, get) => ({
     }
   },
 
+  cargarMovimientosSesion: async (sesionId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('movimientos_caja')
+        .select('*, usuario:usuarios(id, nombre)')
+        .eq('sesion_caja_id', sesionId)
+        .order('fecha_hora', { ascending: false })
+
+      if (!error && data) {
+        set({ movimientosCaja: data as MovimientoCaja[] })
+        return data as MovimientoCaja[]
+      }
+    } catch {
+      // Fallback a almacenamiento local
+    }
+
+    const locales = getLocalMovimientos(sesionId)
+    set({ movimientosCaja: locales })
+    return locales
+  },
+
+  registrarMovimientoCaja: async (tipo, motivo, monto, descripcion) => {
+    const sesion = get().sesionActiva
+    const usuario = useAuthStore.getState().usuario
+    if (!sesion?.id || !usuario?.kiosco_id) {
+      toast.error('No hay una sesión de caja abierta')
+      return false
+    }
+
+    const nuevoMovimiento: MovimientoCaja = {
+      id: uuidv4(),
+      kiosco_id: usuario.kiosco_id,
+      sesion_caja_id: sesion.id,
+      usuario_id: usuario.id,
+      tipo,
+      motivo,
+      monto: Math.max(0, monto),
+      descripcion: descripcion.trim(),
+      fecha_hora: new Date().toISOString(),
+      usuario: { id: usuario.id, nombre: usuario.nombre } as Usuario,
+    }
+
+    const actuales = getLocalMovimientos(sesion.id)
+    const actualizados = [nuevoMovimiento, ...actuales]
+    saveLocalMovimientos(sesion.id, actualizados)
+
+    try {
+      await supabase.from('movimientos_caja').insert({
+        id: nuevoMovimiento.id,
+        kiosco_id: nuevoMovimiento.kiosco_id,
+        sesion_caja_id: nuevoMovimiento.sesion_caja_id,
+        usuario_id: nuevoMovimiento.usuario_id,
+        tipo: nuevoMovimiento.tipo,
+        motivo: nuevoMovimiento.motivo,
+        monto: nuevoMovimiento.monto,
+        descripcion: nuevoMovimiento.descripcion,
+        fecha_hora: nuevoMovimiento.fecha_hora,
+      })
+    } catch (err) {
+      console.warn('Supabase movimientos_caja no accesible, resguardado local:', err)
+    }
+
+    set({ movimientosCaja: actualizados })
+    await get().cargarResumenSesion(sesion.id)
+    toast.success(tipo === 'INGRESO' ? 'Ingreso registrado en caja' : 'Gasto registrado en caja')
+    return true
+  },
+
   cargarResumenSesion: async (sesionId?: string) => {
     const targetId = sesionId || get().sesionActiva?.id
     if (!targetId) return null
 
     try {
+      const movimientos = await get().cargarMovimientosSesion(targetId)
+      let totalIngresosExtra = 0
+      let totalEgresos = 0
+      for (const m of movimientos) {
+        if (m.tipo === 'INGRESO') totalIngresosExtra += m.monto
+        else if (m.tipo === 'EGRESO') totalEgresos += m.monto
+      }
+
       // Intentar cargar desde la vista v_resumen_caja
       const { data: resumenView, error: viewError } = await supabase
         .from('v_resumen_caja')
@@ -119,12 +235,18 @@ export const useCajaStore = create<CajaState>((set, get) => ({
         .maybeSingle()
 
       if (!viewError && resumenView) {
-        const resumen = resumenView as ResumenCaja
+        const baseEsperado = resumenView.monto_inicial + (resumenView.total_efectivo || 0)
+        const resumen: ResumenCaja = {
+          ...(resumenView as ResumenCaja),
+          total_ingresos_extra: totalIngresosExtra,
+          total_egresos: totalEgresos,
+          efectivo_esperado_en_caja: baseEsperado + totalIngresosExtra - totalEgresos,
+        }
         set({ resumenActivo: resumen })
         return resumen
       }
 
-      // Fallback manual calculando desde ventas y pagos en caso de vista sin permisos directos
+      // Fallback manual calculando desde ventas y pagos
       const { data: sesionData } = await supabase
         .from('sesiones_caja')
         .select('*, usuario:usuarios(nombre)')
@@ -174,7 +296,10 @@ export const useCajaStore = create<CajaState>((set, get) => ({
         total_mercadopago: totalMP,
         total_transferencia: totalTransf,
         total_tarjeta: totalTarjeta,
-        efectivo_esperado_en_caja: sesionData.monto_inicial + totalEfectivo,
+        total_ingresos_extra: totalIngresosExtra,
+        total_egresos: totalEgresos,
+        efectivo_esperado_en_caja:
+          sesionData.monto_inicial + totalEfectivo + totalIngresosExtra - totalEgresos,
       }
 
       set({ resumenActivo: resumen })
@@ -211,7 +336,7 @@ export const useCajaStore = create<CajaState>((set, get) => ({
 
       if (error) throw error
 
-      set({ sesionActiva: null, resumenActivo: null })
+      set({ sesionActiva: null, resumenActivo: null, movimientosCaja: [] })
       toast.success('Caja cerrada y arqueo completado')
       return true
     } catch (err) {

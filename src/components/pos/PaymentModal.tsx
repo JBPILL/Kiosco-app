@@ -9,12 +9,13 @@ import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Modal } from '../ui/Modal'
 import type { MedioPago } from '../../types/database'
+import type { TicketData } from './TicketReceiptModal'
 import toast from 'react-hot-toast'
 
 interface PaymentModalProps {
   isOpen: boolean
   onClose: () => void
-  onVentaCompletada: () => void
+  onVentaCompletada: (ticket?: TicketData) => void
 }
 
 const MEDIOS_PAGO: { valor: MedioPago; label: string }[] = [
@@ -104,7 +105,36 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       })
       if (pagoError) throw pagoError
 
-      // 4. Éxito
+      // 4. Armar datos de ticket para comprobante térmico / digital
+      const kiosco = useAuthStore.getState().kiosco
+      const ticketGenerado: TicketData = {
+        ventaId,
+        fecha: ahora,
+        items: items.map((it) => ({
+          descripcion: it.producto.descripcion,
+          cantidad: it.cantidad,
+          precioUnitario: it.producto.precio_venta,
+          subtotal: it.subtotal,
+        })),
+        subtotal,
+        ajuste: tieneAjuste
+          ? {
+              descripcion: descripcionAjuste() || 'Ajuste',
+              monto: ajuste,
+              esDescuento: tipoAjuste.startsWith('DESCUENTO'),
+            }
+          : null,
+        total,
+        medioPago,
+        pagaCon: medioPago === 'EFECTIVO' ? pagaConNum : undefined,
+        vuelto: medioPago === 'EFECTIVO' ? vuelto : undefined,
+        kioscoNombre: kiosco?.nombre,
+        kioscoDireccion: kiosco?.direccion,
+        kioscoTelefono: kiosco?.telefono,
+        cajeroNombre: usuario?.nombre,
+        notas: notasFinal,
+      }
+
       toast.success(`Venta registrada — ${formatPrecio(total)}`)
       if (medioPago === 'EFECTIVO' && vuelto > 0) {
         toast(`Vuelto: ${formatPrecio(vuelto)}`, { duration: 5000 })
@@ -112,7 +142,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
 
       vaciarCarrito()
       resetForm()
-      onVentaCompletada()
+      onVentaCompletada(ticketGenerado)
       onClose()
     } catch (error) {
       console.error('Error al registrar venta:', error)

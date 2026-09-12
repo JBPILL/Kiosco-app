@@ -6,7 +6,28 @@ import { formatPrecio, formatFecha } from '../lib/utils'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
-import type { SesionCaja, Usuario } from '../types/database'
+import type {
+  SesionCaja,
+  Usuario,
+  TipoMovimientoCaja,
+  MotivoMovimientoCaja,
+} from '../types/database'
+
+function formatMotivoMovimiento(motivo: MotivoMovimientoCaja): string {
+  switch (motivo) {
+    case 'PROVEEDOR':
+      return 'Pago Proveedor'
+    case 'GASTO_GENERAL':
+      return 'Gasto General'
+    case 'RETIRO_DUENO':
+      return 'Retiro Dueño'
+    case 'REPOSICION_CAMBIO':
+      return 'Reposición Cambio'
+    case 'OTRO':
+    default:
+      return 'Movimiento'
+  }
+}
 
 interface SesionHistorial extends SesionCaja {
   usuario?: Usuario
@@ -17,16 +38,26 @@ export function CajaPage() {
   const {
     sesionActiva,
     resumenActivo,
+    movimientosCaja,
     cargando,
     verificarSesionActiva,
     abrirCaja,
     cargarResumenSesion,
+    registrarMovimientoCaja,
     cerrarCaja,
   } = useCajaStore()
 
   // Estados para apertura
   const [montoInicial, setMontoInicial] = useState('0')
   const [abriendo, setAbriendo] = useState(false)
+
+  // Estados para movimientos de caja (gastos/ingresos)
+  const [modalMovimientoOpen, setModalMovimientoOpen] = useState(false)
+  const [tipoMovimiento, setTipoMovimiento] = useState<TipoMovimientoCaja>('EGRESO')
+  const [motivoMovimiento, setMotivoMovimiento] = useState<MotivoMovimientoCaja>('PROVEEDOR')
+  const [montoMovimiento, setMontoMovimiento] = useState('')
+  const [descripcionMovimiento, setDescripcionMovimiento] = useState('')
+  const [guardandoMovimiento, setGuardandoMovimiento] = useState(false)
 
   // Estados para cierre / arqueo
   const [modalArqueoOpen, setModalArqueoOpen] = useState(false)
@@ -95,6 +126,32 @@ export function CajaPage() {
     if (ok) {
       setModalArqueoOpen(false)
       cargarHistorial()
+    }
+  }
+
+  const handleAbrirModalMovimiento = (tipo: TipoMovimientoCaja) => {
+    setTipoMovimiento(tipo)
+    setMotivoMovimiento(tipo === 'INGRESO' ? 'REPOSICION_CAMBIO' : 'PROVEEDOR')
+    setMontoMovimiento('')
+    setDescripcionMovimiento('')
+    setModalMovimientoOpen(true)
+  }
+
+  const handleGuardarMovimiento = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const monto = parseFloat(montoMovimiento) || 0
+    if (monto <= 0) return
+
+    setGuardandoMovimiento(true)
+    const ok = await registrarMovimientoCaja(
+      tipoMovimiento,
+      motivoMovimiento,
+      monto,
+      descripcionMovimiento
+    )
+    setGuardandoMovimiento(false)
+    if (ok) {
+      setModalMovimientoOpen(false)
     }
   }
 
@@ -206,26 +263,40 @@ export function CajaPage() {
             </div>
 
             {/* Cuadrícula financiera del turno */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
-              <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-4">
+              <div className="p-3.5 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700">
                 <p className="text-xs text-gray-500 dark:text-gray-400">Fondo inicial</p>
-                <p className="text-xl font-bold text-gray-900 dark:text-gray-100 mt-1">
+                <p className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">
                   {formatPrecio(sesionActiva.monto_inicial)}
                 </p>
               </div>
 
-              <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Ventas en efectivo</p>
-                <p className="text-xl font-bold text-gray-900 dark:text-gray-100 mt-1">
+              <div className="p-3.5 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700">
+                <p className="text-xs text-gray-500 dark:text-gray-400">(+) Ventas efectivo</p>
+                <p className="text-base sm:text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-1">
                   {formatPrecio(resumenActivo?.total_efectivo || 0)}
                 </p>
               </div>
 
-              <div className="p-4 rounded-lg bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40">
-                <p className="text-xs text-indigo-700 dark:text-indigo-400 font-medium">
-                  Efectivo total esperado en cajón
+              <div className="p-3.5 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700">
+                <p className="text-xs text-gray-500 dark:text-gray-400">(+) Ingresos extra</p>
+                <p className="text-base sm:text-lg font-bold text-blue-600 dark:text-blue-400 mt-1">
+                  +{formatPrecio(resumenActivo?.total_ingresos_extra || 0)}
                 </p>
-                <p className="text-2xl font-bold text-indigo-700 dark:text-indigo-300 mt-1">
+              </div>
+
+              <div className="p-3.5 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700">
+                <p className="text-xs text-gray-500 dark:text-gray-400">(-) Gastos / Egresos</p>
+                <p className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400 mt-1">
+                  -{formatPrecio(resumenActivo?.total_egresos || 0)}
+                </p>
+              </div>
+
+              <div className="col-span-2 sm:col-span-1 p-3.5 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50">
+                <p className="text-xs text-indigo-700 dark:text-indigo-400 font-semibold">
+                  (=) Esperado en cajón
+                </p>
+                <p className="text-lg sm:text-xl font-bold text-indigo-700 dark:text-indigo-300 mt-1">
                   {formatPrecio(efectivoEsperado)}
                 </p>
               </div>
@@ -258,6 +329,85 @@ export function CajaPage() {
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* Tarjeta de Movimientos de Caja (Gastos y Entradas directas) */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-gray-100 dark:border-gray-700">
+              <div>
+                <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">
+                  Gastos y Movimientos de Caja
+                </h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Registrá pagos a proveedores, gastos menores, retiros o reposición de cambio
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => handleAbrirModalMovimiento('INGRESO')}
+                  className="text-xs text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                >
+                  + Registrar Ingreso
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => handleAbrirModalMovimiento('EGRESO')}
+                  className="text-xs text-red-700 dark:text-red-400 border-red-300 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-950/30"
+                >
+                  - Registrar Gasto / Egreso
+                </Button>
+              </div>
+            </div>
+
+            {/* Lista de movimientos de la sesión */}
+            {movimientosCaja.length === 0 ? (
+              <div className="py-6 text-center text-xs text-gray-400 dark:text-gray-500">
+                No se registraron gastos ni ingresos directos en este turno.
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-100 dark:divide-gray-700 max-h-60 overflow-y-auto">
+                {movimientosCaja.map((mov) => (
+                  <div key={mov.id} className="py-2.5 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        className={`px-2 py-0.5 rounded font-semibold text-[11px] ${
+                          mov.tipo === 'INGRESO'
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400'
+                            : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
+                        }`}
+                      >
+                        {mov.tipo === 'INGRESO' ? 'Ingreso' : 'Egreso'}
+                      </span>
+                      <div>
+                        <span className="font-semibold text-gray-800 dark:text-gray-200">
+                          {formatMotivoMovimiento(mov.motivo)}
+                        </span>
+                        {mov.descripcion && (
+                          <span className="text-gray-500 dark:text-gray-400 ml-1.5">
+                            — {mov.descripcion}
+                          </span>
+                        )}
+                        <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+                          {formatFecha(mov.fecha_hora)}
+                        </p>
+                      </div>
+                    </div>
+                    <div
+                      className={`font-bold text-sm ${
+                        mov.tipo === 'INGRESO'
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-red-600 dark:text-red-400'
+                      }`}
+                    >
+                      {mov.tipo === 'INGRESO' ? '+' : '-'}{formatPrecio(mov.monto)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -355,11 +505,27 @@ export function CajaPage() {
               </span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500 dark:text-gray-400">Efectivo por ventas cobradas:</span>
-              <span className="font-semibold text-gray-900 dark:text-gray-100">
-                {formatPrecio(resumenActivo?.total_efectivo || 0)}
+              <span className="text-gray-500 dark:text-gray-400">(+) Efectivo ventas:</span>
+              <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                +{formatPrecio(resumenActivo?.total_efectivo || 0)}
               </span>
             </div>
+            {(resumenActivo?.total_ingresos_extra || 0) > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-blue-600 dark:text-blue-400">(+) Ingresos extra de caja:</span>
+                <span className="font-semibold text-blue-600 dark:text-blue-400">
+                  +{formatPrecio(resumenActivo?.total_ingresos_extra || 0)}
+                </span>
+              </div>
+            )}
+            {(resumenActivo?.total_egresos || 0) > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-red-600 dark:text-red-400">(-) Gastos / Egresos de caja:</span>
+                <span className="font-semibold text-red-600 dark:text-red-400">
+                  -{formatPrecio(resumenActivo?.total_egresos || 0)}
+                </span>
+              </div>
+            )}
             <div className="border-t border-gray-200 dark:border-gray-700 pt-2 flex justify-between text-base font-bold">
               <span className="text-gray-800 dark:text-gray-200">Total en cajón esperado:</span>
               <span className="text-indigo-600 dark:text-indigo-400">
@@ -431,6 +597,132 @@ export function CajaPage() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* ── MODAL REGISTRAR MOVIMIENTO DE CAJA (INGRESO / GASTO) ── */}
+      <Modal
+        isOpen={modalMovimientoOpen}
+        onClose={() => setModalMovimientoOpen(false)}
+        title={tipoMovimiento === 'INGRESO' ? 'Registrar Ingreso de Caja' : 'Registrar Gasto / Egreso de Caja'}
+        size="md"
+      >
+        <form onSubmit={handleGuardarMovimiento} className="space-y-4">
+          {/* Selector de Tipo */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setTipoMovimiento('EGRESO')
+                setMotivoMovimiento('PROVEEDOR')
+              }}
+              className={`py-2 rounded-lg text-xs font-bold border transition-colors ${
+                tipoMovimiento === 'EGRESO'
+                  ? 'bg-red-50 dark:bg-red-950/40 border-red-500 text-red-700 dark:text-red-400'
+                  : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+              }`}
+            >
+              Gasto / Egreso
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setTipoMovimiento('INGRESO')
+                setMotivoMovimiento('REPOSICION_CAMBIO')
+              }}
+              className={`py-2 rounded-lg text-xs font-bold border transition-colors ${
+                tipoMovimiento === 'INGRESO'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-700 dark:text-emerald-400'
+                  : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+              }`}
+            >
+              Ingreso Extra
+            </button>
+          </div>
+
+          {/* Motivo */}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Concepto / Motivo
+            </label>
+            <select
+              value={motivoMovimiento}
+              onChange={(e) => setMotivoMovimiento(e.target.value as MotivoMovimientoCaja)}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500"
+            >
+              {tipoMovimiento === 'EGRESO' ? (
+                <>
+                  <option value="PROVEEDOR">Pago a Proveedor (Panadería, lácteos, etc.)</option>
+                  <option value="GASTO_GENERAL">Gasto General / Insumos (Bolsas, limpieza)</option>
+                  <option value="RETIRO_DUENO">Retiro de Ganancia / Retiro del Dueño</option>
+                  <option value="OTRO">Otro Egreso</option>
+                </>
+              ) : (
+                <>
+                  <option value="REPOSICION_CAMBIO">Reposición de Cambio / Billetes</option>
+                  <option value="OTRO">Otro Ingreso</option>
+                </>
+              )}
+            </select>
+          </div>
+
+          {/* Monto */}
+          <div>
+            <Input
+              label="Monto en efectivo ($) *"
+              type="number"
+              min="1"
+              step="50"
+              placeholder="Ej: 5000"
+              value={montoMovimiento}
+              onChange={(e) => setMontoMovimiento(e.target.value)}
+              required
+              autoFocus
+            />
+            {/* Atajos de billetes */}
+            <div className="flex gap-2 mt-2">
+              {[1000, 2000, 5000, 10000, 20000].map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMontoMovimiento(m.toString())}
+                  className="flex-1 py-1 text-[11px] font-medium rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                >
+                  +{formatPrecio(m)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Descripción */}
+          <Input
+            label="Detalle o descripción (opcional)"
+            type="text"
+            placeholder="Ej: 3 barras de hielo, panadería Don Juan..."
+            value={descripcionMovimiento}
+            onChange={(e) => setDescripcionMovimiento(e.target.value)}
+          />
+
+          <div className="flex gap-2 pt-2">
+            <Button
+              type="submit"
+              variant={tipoMovimiento === 'INGRESO' ? 'primary' : 'danger'}
+              fullWidth
+              loading={guardandoMovimiento}
+              disabled={!montoMovimiento || parseFloat(montoMovimiento) <= 0}
+            >
+              {tipoMovimiento === 'INGRESO' ? 'Confirmar Ingreso' : 'Confirmar Gasto'}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              fullWidth
+              disabled={guardandoMovimiento}
+              onClick={() => setModalMovimientoOpen(false)}
+            >
+              Cancelar
+            </Button>
+          </div>
+        </form>
       </Modal>
 
       {/* ── MODAL DE DETALLE DE ARQUEO HISTÓRICO ── */}

@@ -130,7 +130,31 @@ export interface ResumenCaja {
   total_mercadopago: number
   total_transferencia: number
   total_tarjeta: number
+  total_ingresos_extra?: number
+  total_egresos?: number
   efectivo_esperado_en_caja: number
+}
+
+export type TipoMovimientoCaja = 'INGRESO' | 'EGRESO'
+
+export type MotivoMovimientoCaja =
+  | 'PROVEEDOR'
+  | 'GASTO_GENERAL'
+  | 'RETIRO_DUENO'
+  | 'REPOSICION_CAMBIO'
+  | 'OTRO'
+
+export interface MovimientoCaja {
+  id: string
+  kiosco_id: string
+  sesion_caja_id: string
+  usuario_id: string | null
+  tipo: TipoMovimientoCaja
+  motivo: MotivoMovimientoCaja
+  monto: number
+  descripcion: string
+  fecha_hora: string
+  usuario?: Usuario
 }
 
 // --- Tipos para el carrito (solo frontend) ---
