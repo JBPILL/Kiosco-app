@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '../../lib/supabase'
 import { useCartStore } from '../../stores/cartStore'
 import { useCajaStore } from '../../stores/cajaStore'
 import { useAuthStore } from '../../stores/authStore'
+import { useClienteStore } from '../../stores/clienteStore'
 import { formatPrecio, calcularVuelto } from '../../lib/utils'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
@@ -23,6 +24,7 @@ const MEDIOS_PAGO: { valor: MedioPago; label: string }[] = [
   { valor: 'MERCADOPAGO', label: 'Mercado Pago' },
   { valor: 'TRANSFERENCIA', label: 'Transferencia' },
   { valor: 'TARJETA', label: 'Tarjeta' },
+  { valor: 'CUENTA_CORRIENTE', label: 'Cuenta Corriente' },
 ]
 
 export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModalProps) {
@@ -36,6 +38,10 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
     vaciarCarrito,
   } = useCartStore()
 
+  const { clientes, cargarClientes, imputarCargoVenta } = useClienteStore()
+  const [clienteSeleccionadoId, setClienteSeleccionadoId] = useState<string>('')
+  const [busquedaCliente, setBusquedaCliente] = useState<string>('')
+
   const total = totalMonto()
   const subtotal = subtotalMonto()
   const ajuste = montoAjuste()
@@ -46,14 +52,32 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   const [referencia, setReferencia] = useState('')
   const [procesando, setProcesando] = useState(false)
 
+  useEffect(() => {
+    if (isOpen) {
+      cargarClientes()
+    }
+  }, [isOpen, cargarClientes])
+
+  const clientesFiltrados = clientes.filter(
+    (c) =>
+      c.activo &&
+      (c.nombre.toLowerCase().includes(busquedaCliente.toLowerCase()) ||
+        (c.dni_cuit && c.dni_cuit.includes(busquedaCliente)))
+  )
+
+  const clienteSeleccionado = clientes.find((c) => c.id === clienteSeleccionadoId)
+
   const vuelto = medioPago === 'EFECTIVO' && pagaCon
     ? calcularVuelto(total, parseFloat(pagaCon) || 0)
     : 0
 
   const pagaConNum = parseFloat(pagaCon) || 0
-  const puedeConfirmar = medioPago === 'EFECTIVO'
-    ? pagaConNum >= total
-    : true
+  const puedeConfirmar =
+    medioPago === 'EFECTIVO'
+      ? pagaConNum >= total
+      : medioPago === 'CUENTA_CORRIENTE'
+      ? !!clienteSeleccionadoId
+      : true
 
   const confirmarVenta = async () => {
     if (!puedeConfirmar) return
@@ -65,9 +89,18 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       const sesionActiva = useCajaStore.getState().sesionActiva
       const usuario = useAuthStore.getState().usuario
       const descAjuste = descripcionAjuste()
-      const notasFinal = descAjuste
+      const clienteInfo =
+        medioPago === 'CUENTA_CORRIENTE' && clienteSeleccionado
+          ? `Cliente: ${clienteSeleccionado.nombre}`
+          : null
+
+      const notasBase = descAjuste
         ? (referencia ? `${descAjuste} · ${referencia}` : descAjuste)
         : (referencia || null)
+
+      const notasFinal = clienteInfo
+        ? (notasBase ? `${clienteInfo} · ${notasBase}` : clienteInfo)
+        : notasBase
 
       // 1. Insertar la venta
       const { error: ventaError } = await supabase.from('ventas').insert({
@@ -105,7 +138,17 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       })
       if (pagoError) throw pagoError
 
-      // 4. Armar datos de ticket para comprobante térmico / digital
+      // 4. Si es Cuenta Corriente, imputar cargo a la ficha del cliente
+      if (medioPago === 'CUENTA_CORRIENTE') {
+        if (!clienteSeleccionadoId) {
+          toast.error('Debes seleccionar un cliente para cuenta corriente')
+          setProcesando(false)
+          return
+        }
+        await imputarCargoVenta(clienteSeleccionadoId, ventaId, total, notasFinal || undefined)
+      }
+
+      // 5. Armar datos de ticket para comprobante térmico / digital
       const kiosco = useAuthStore.getState().kiosco
       const ticketGenerado: TicketData = {
         ventaId,
@@ -125,17 +168,22 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             }
           : null,
         total,
-        medioPago,
+        medioPago: medioPago === 'CUENTA_CORRIENTE' ? 'Cuenta Corriente' : medioPago,
         pagaCon: medioPago === 'EFECTIVO' ? pagaConNum : undefined,
         vuelto: medioPago === 'EFECTIVO' ? vuelto : undefined,
         kioscoNombre: kiosco?.nombre,
         kioscoDireccion: kiosco?.direccion,
         kioscoTelefono: kiosco?.telefono,
         cajeroNombre: usuario?.nombre,
+        clienteNombre: clienteSeleccionado?.nombre || null,
         notas: notasFinal,
       }
 
-      toast.success(`Venta registrada — ${formatPrecio(total)}`)
+      toast.success(
+        medioPago === 'CUENTA_CORRIENTE'
+          ? `Venta a cuenta corriente registrada — ${formatPrecio(total)}`
+          : `Venta registrada — ${formatPrecio(total)}`
+      )
       if (medioPago === 'EFECTIVO' && vuelto > 0) {
         toast(`Vuelto: ${formatPrecio(vuelto)}`, { duration: 5000 })
       }
@@ -156,6 +204,8 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
     setMedioPago('EFECTIVO')
     setPagaCon('')
     setReferencia('')
+    setClienteSeleccionadoId('')
+    setBusquedaCliente('')
   }
 
   // Billetes rápidos para efectivo
@@ -183,13 +233,15 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         {/* Medio de pago */}
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Medio de pago</label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {MEDIOS_PAGO.map((mp) => (
               <button
                 key={mp.valor}
                 type="button"
                 onClick={() => setMedioPago(mp.valor)}
                 className={`flex items-center justify-center p-3 rounded-xl border-2 text-sm font-semibold min-h-[46px] active:scale-95 transition-all ${
+                  mp.valor === 'CUENTA_CORRIENTE' ? 'col-span-2 sm:col-span-1' : ''
+                } ${
                   medioPago === mp.valor
                     ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 shadow-xs'
                     : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
@@ -200,6 +252,99 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             ))}
           </div>
         </div>
+
+        {/* Cuenta Corriente: Selección de cliente */}
+        {medioPago === 'CUENTA_CORRIENTE' && (
+          <div className="space-y-3 p-3.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl">
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                Seleccionar Cliente para fiar / imputar deuda *
+              </label>
+              <input
+                type="text"
+                placeholder="Buscar cliente por nombre o DNI..."
+                value={busquedaCliente}
+                onChange={(e) => setBusquedaCliente(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+              />
+            </div>
+
+            {clientesFiltrados.length === 0 ? (
+              <div className="text-center py-4 text-xs text-gray-400 dark:text-gray-500">
+                {clientes.length === 0
+                  ? 'Aún no hay clientes registrados. Podés dar de alta clientes en la sección Clientes.'
+                  : 'No se encontraron clientes coincidentes con la búsqueda.'}
+              </div>
+            ) : (
+              <div className="max-h-40 overflow-y-auto space-y-1.5 pr-0.5">
+                {clientesFiltrados.map((cli) => {
+                  const isSelected = cli.id === clienteSeleccionadoId
+                  return (
+                    <button
+                      key={cli.id}
+                      type="button"
+                      onClick={() => setClienteSeleccionadoId(cli.id)}
+                      className={`w-full text-left p-2.5 rounded-lg border text-xs transition-all flex items-center justify-between ${
+                        isSelected
+                          ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-900 dark:text-indigo-200 font-semibold shadow-xs'
+                          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      <div>
+                        <p className="font-semibold text-gray-900 dark:text-gray-100">{cli.nombre}</p>
+                        {cli.dni_cuit && <p className="text-[10px] text-gray-400">DNI/CUIT: {cli.dni_cuit}</p>}
+                        {cli.telefono && <p className="text-[10px] text-gray-400">Tel: {cli.telefono}</p>}
+                      </div>
+                      <div className="text-right flex-shrink-0 ml-2">
+                        <p
+                          className={`font-bold ${
+                            cli.saldo_deudor > 0
+                              ? 'text-amber-600 dark:text-amber-400'
+                              : 'text-emerald-600 dark:text-emerald-400'
+                          }`}
+                        >
+                          Debe: {formatPrecio(cli.saldo_deudor)}
+                        </p>
+                        {cli.limite_credito > 0 ? (
+                          <p className="text-[10px] text-gray-400">Límite: {formatPrecio(cli.limite_credito)}</p>
+                        ) : (
+                          <p className="text-[10px] text-gray-400">Sin límite</p>
+                        )}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            {clienteSeleccionado && (
+              <div className="pt-2 border-t border-gray-200 dark:border-gray-700 text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Cliente elegido:</span>
+                  <span className="font-bold text-gray-900 dark:text-gray-100">{clienteSeleccionado.nombre}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Saldo deudor actual:</span>
+                  <span className="font-medium text-gray-800 dark:text-gray-200">
+                    {formatPrecio(clienteSeleccionado.saldo_deudor)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Nuevo saldo estimado:</span>
+                  <span className="font-bold text-indigo-600 dark:text-indigo-400">
+                    {formatPrecio(clienteSeleccionado.saldo_deudor + total)}
+                  </span>
+                </div>
+                {clienteSeleccionado.limite_credito > 0 &&
+                  clienteSeleccionado.saldo_deudor + total > clienteSeleccionado.limite_credito && (
+                    <div className="p-2 rounded bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-300 font-medium">
+                      Atención: El nuevo saldo superará el límite de crédito ({formatPrecio(clienteSeleccionado.limite_credito)}).
+                    </div>
+                  )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Efectivo: calculadora de vuelto */}
         {medioPago === 'EFECTIVO' && (

@@ -46,7 +46,7 @@ export interface Usuario {
   fecha_creacion: string
 }
 
-export type MedioPago = 'EFECTIVO' | 'MERCADOPAGO' | 'TRANSFERENCIA' | 'TARJETA'
+export type MedioPago = 'EFECTIVO' | 'MERCADOPAGO' | 'TRANSFERENCIA' | 'TARJETA' | 'CUENTA_CORRIENTE'
 
 export interface Venta {
   id: string
@@ -163,4 +163,38 @@ export interface ItemCarrito {
   producto: Producto
   cantidad: number
   subtotal: number
+}
+
+// --- Clientes y Cuenta Corriente ("Fiado") ---
+
+export interface Cliente {
+  id: string
+  kiosco_id: string
+  nombre: string
+  telefono: string | null
+  dni_cuit: string | null
+  direccion: string | null
+  email: string | null
+  limite_credito: number
+  saldo_deudor: number
+  activo: boolean
+  notas: string | null
+  fecha_creacion: string
+}
+
+export type TipoMovimientoCuentaCorriente = 'CARGO_VENTA' | 'ABONO_PAGO'
+
+export interface MovimientoCuentaCorriente {
+  id: string
+  cliente_id: string
+  kiosco_id: string
+  venta_id?: string | null
+  tipo: TipoMovimientoCuentaCorriente
+  monto: number
+  medio_pago?: MedioPago | null
+  saldo_resultante: number
+  notas: string | null
+  fecha_hora: string
+  usuario_id: string | null
+  usuario?: Usuario
 }

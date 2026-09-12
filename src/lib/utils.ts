@@ -55,6 +55,7 @@ export function labelMedioPago(medio: string): string {
     MERCADOPAGO: 'Mercado Pago',
     TRANSFERENCIA: 'Transferencia',
     TARJETA: 'Tarjeta',
+    CUENTA_CORRIENTE: 'Cuenta Corriente',
   }
   return labels[medio] || medio
 }

@@ -28,6 +28,7 @@ export interface TicketData {
   kioscoDireccion?: string | null
   kioscoTelefono?: string | null
   cajeroNombre?: string | null
+  clienteNombre?: string | null
   notas?: string | null
 }
 
@@ -66,6 +67,9 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
     }
     msg += `*TOTAL: $${ticket.total.toLocaleString('es-AR')}*\n`
     msg += `Pago: ${ticket.medioPago}\n`
+    if (ticket.clienteNombre) {
+      msg += `Cliente: ${ticket.clienteNombre}\n`
+    }
     if (ticket.pagaCon !== undefined && ticket.pagaCon > 0) {
       msg += `Abonó: $${ticket.pagaCon.toLocaleString('es-AR')} | Vuelto: $${(ticket.vuelto || 0).toLocaleString('es-AR')}\n`
     }
@@ -226,6 +230,12 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
                 <span>Medio de pago:</span>
                 <span className="font-medium uppercase">{ticket.medioPago}</span>
               </div>
+              {ticket.clienteNombre && (
+                <div className="flex justify-between font-semibold text-gray-800">
+                  <span>Cliente:</span>
+                  <span>{ticket.clienteNombre}</span>
+                </div>
+              )}
               {ticket.pagaCon !== undefined && ticket.pagaCon > 0 && (
                 <>
                   <div className="flex justify-between text-gray-600">

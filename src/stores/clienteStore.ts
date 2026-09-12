@@ -1,0 +1,359 @@
+import { create } from 'zustand'
+import { v4 as uuidv4 } from 'uuid'
+import { supabase } from '../lib/supabase'
+import { useAuthStore } from './authStore'
+import type {
+  Cliente,
+  MovimientoCuentaCorriente,
+  MedioPago,
+} from '../types/database'
+import toast from 'react-hot-toast'
+
+interface ClienteState {
+  clientes: Cliente[]
+  cargando: boolean
+
+  cargarClientes: () => Promise<Cliente[]>
+  crearCliente: (datos: {
+    nombre: string
+    telefono?: string | null
+    dni_cuit?: string | null
+    direccion?: string | null
+    email?: string | null
+    limite_credito?: number
+    notas?: string | null
+  }) => Promise<Cliente | null>
+  actualizarCliente: (id: string, datos: Partial<Cliente>) => Promise<boolean>
+  eliminarCliente: (id: string) => Promise<boolean>
+
+  imputarCargoVenta: (
+    clienteId: string,
+    ventaId: string,
+    monto: number,
+    notas?: string
+  ) => Promise<boolean>
+
+  registrarAbono: (
+    clienteId: string,
+    monto: number,
+    medioPago: MedioPago,
+    notas?: string
+  ) => Promise<boolean>
+
+  cargarMovimientosCliente: (clienteId: string) => Promise<MovimientoCuentaCorriente[]>
+}
+
+function getLocalClientes(kioscoId: string): Cliente[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(`kioskopos_clientes_${kioscoId}`)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function saveLocalClientes(kioscoId: string, clientes: Cliente[]) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(`kioskopos_clientes_${kioscoId}`, JSON.stringify(clientes))
+  } catch (e) {
+    console.error('Error guardando clientes en local:', e)
+  }
+}
+
+function getLocalMovimientosCC(clienteId: string): MovimientoCuentaCorriente[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(`kioskopos_cc_movimientos_${clienteId}`)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function saveLocalMovimientosCC(clienteId: string, movs: MovimientoCuentaCorriente[]) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(`kioskopos_cc_movimientos_${clienteId}`, JSON.stringify(movs))
+  } catch (e) {
+    console.error('Error guardando movimientos de cuenta corriente:', e)
+  }
+}
+
+export const useClienteStore = create<ClienteState>((set, get) => ({
+  clientes: [],
+  cargando: false,
+
+  cargarClientes: async () => {
+    const usuario = useAuthStore.getState().usuario
+    if (!usuario?.kiosco_id) return []
+
+    set({ cargando: true })
+    try {
+      const { data, error } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('kiosco_id', usuario.kiosco_id)
+        .order('nombre')
+
+      if (!error && data) {
+        set({ clientes: data as Cliente[], cargando: false })
+        saveLocalClientes(usuario.kiosco_id, data as Cliente[])
+        return data as Cliente[]
+      }
+    } catch {
+      // Fallback a localStorage si Supabase no tiene la tabla aún
+    }
+
+    const locales = getLocalClientes(usuario.kiosco_id)
+    set({ clientes: locales, cargando: false })
+    return locales
+  },
+
+  crearCliente: async (datos) => {
+    const usuario = useAuthStore.getState().usuario
+    if (!usuario?.kiosco_id) {
+      toast.error('No se pudo identificar el kiosco')
+      return null
+    }
+
+    const nuevoCliente: Cliente = {
+      id: uuidv4(),
+      kiosco_id: usuario.kiosco_id,
+      nombre: datos.nombre.trim(),
+      telefono: datos.telefono?.trim() || null,
+      dni_cuit: datos.dni_cuit?.trim() || null,
+      direccion: datos.direccion?.trim() || null,
+      email: datos.email?.trim() || null,
+      limite_credito: Math.max(0, datos.limite_credito || 0),
+      saldo_deudor: 0,
+      activo: true,
+      notas: datos.notas?.trim() || null,
+      fecha_creacion: new Date().toISOString(),
+    }
+
+    const actualizados = [...get().clientes, nuevoCliente].sort((a, b) =>
+      a.nombre.localeCompare(b.nombre)
+    )
+    saveLocalClientes(usuario.kiosco_id, actualizados)
+    set({ clientes: actualizados })
+
+    try {
+      await supabase.from('clientes').insert({
+        id: nuevoCliente.id,
+        kiosco_id: nuevoCliente.kiosco_id,
+        nombre: nuevoCliente.nombre,
+        telefono: nuevoCliente.telefono,
+        dni_cuit: nuevoCliente.dni_cuit,
+        direccion: nuevoCliente.direccion,
+        email: nuevoCliente.email,
+        limite_credito: nuevoCliente.limite_credito,
+        saldo_deudor: 0,
+        activo: true,
+        notas: nuevoCliente.notas,
+        fecha_creacion: nuevoCliente.fecha_creacion,
+      })
+    } catch (err) {
+      console.warn('Supabase clientes no disponible, guardado en local:', err)
+    }
+
+    toast.success('Cliente registrado correctamente')
+    return nuevoCliente
+  },
+
+  actualizarCliente: async (id, datos) => {
+    const usuario = useAuthStore.getState().usuario
+    if (!usuario?.kiosco_id) return false
+
+    const actualizados = get().clientes.map((c) =>
+      c.id === id ? { ...c, ...datos } : c
+    )
+    saveLocalClientes(usuario.kiosco_id, actualizados)
+    set({ clientes: actualizados })
+
+    try {
+      await supabase
+        .from('clientes')
+        .update(datos)
+        .eq('id', id)
+    } catch (err) {
+      console.warn('Supabase clientes update no disponible, actualizado local:', err)
+    }
+
+    toast.success('Cliente actualizado')
+    return true
+  },
+
+  eliminarCliente: async (id) => {
+    const usuario = useAuthStore.getState().usuario
+    if (!usuario?.kiosco_id) return false
+
+    const cliente = get().clientes.find((c) => c.id === id)
+    if (cliente && cliente.saldo_deudor > 0) {
+      toast.error('No se puede dar de baja un cliente con saldo deudor pendiente')
+      return false
+    }
+
+    const actualizados = get().clientes.filter((c) => c.id !== id)
+    saveLocalClientes(usuario.kiosco_id, actualizados)
+    set({ clientes: actualizados })
+
+    try {
+      await supabase.from('clientes').update({ activo: false }).eq('id', id)
+    } catch (err) {
+      console.warn('Supabase clientes desactivar no disponible:', err)
+    }
+
+    toast.success('Cliente eliminado')
+    return true
+  },
+
+  imputarCargoVenta: async (clienteId, ventaId, monto, notas) => {
+    const usuario = useAuthStore.getState().usuario
+    if (!usuario?.kiosco_id) return false
+
+    const cliente = get().clientes.find((c) => c.id === clienteId)
+    if (!cliente) {
+      toast.error('Cliente no encontrado')
+      return false
+    }
+
+    const nuevoSaldo = (cliente.saldo_deudor || 0) + monto
+
+    // Actualizar cliente en estado y local
+    const actualizados = get().clientes.map((c) =>
+      c.id === clienteId ? { ...c, saldo_deudor: nuevoSaldo } : c
+    )
+    saveLocalClientes(usuario.kiosco_id, actualizados)
+    set({ clientes: actualizados })
+
+    // Registrar movimiento de cuenta corriente
+    const nuevoMovimiento: MovimientoCuentaCorriente = {
+      id: uuidv4(),
+      cliente_id: clienteId,
+      kiosco_id: usuario.kiosco_id,
+      venta_id: ventaId,
+      tipo: 'CARGO_VENTA',
+      monto,
+      medio_pago: 'CUENTA_CORRIENTE',
+      saldo_resultante: nuevoSaldo,
+      notas: notas || 'Venta a cuenta corriente',
+      fecha_hora: new Date().toISOString(),
+      usuario_id: usuario.id,
+    }
+
+    const movsActuales = getLocalMovimientosCC(clienteId)
+    saveLocalMovimientosCC(clienteId, [nuevoMovimiento, ...movsActuales])
+
+    // Sincronizar con Supabase si está disponible
+    try {
+      await supabase
+        .from('clientes')
+        .update({ saldo_deudor: nuevoSaldo })
+        .eq('id', clienteId)
+
+      await supabase.from('movimientos_cuenta_corriente').insert({
+        id: nuevoMovimiento.id,
+        cliente_id: nuevoMovimiento.cliente_id,
+        kiosco_id: nuevoMovimiento.kiosco_id,
+        venta_id: nuevoMovimiento.venta_id,
+        tipo: nuevoMovimiento.tipo,
+        monto: nuevoMovimiento.monto,
+        medio_pago: nuevoMovimiento.medio_pago,
+        saldo_resultante: nuevoMovimiento.saldo_resultante,
+        notas: nuevoMovimiento.notas,
+        fecha_hora: nuevoMovimiento.fecha_hora,
+        usuario_id: nuevoMovimiento.usuario_id,
+      })
+    } catch (err) {
+      console.warn('Supabase cuenta corriente no disponible, resguardado local:', err)
+    }
+
+    return true
+  },
+
+  registrarAbono: async (clienteId, monto, medioPago, notas) => {
+    const usuario = useAuthStore.getState().usuario
+    if (!usuario?.kiosco_id) return false
+
+    const cliente = get().clientes.find((c) => c.id === clienteId)
+    if (!cliente) {
+      toast.error('Cliente no encontrado')
+      return false
+    }
+
+    const nuevoSaldo = Math.max(0, (cliente.saldo_deudor || 0) - monto)
+
+    // Actualizar cliente
+    const actualizados = get().clientes.map((c) =>
+      c.id === clienteId ? { ...c, saldo_deudor: nuevoSaldo } : c
+    )
+    saveLocalClientes(usuario.kiosco_id, actualizados)
+    set({ clientes: actualizados })
+
+    // Registrar movimiento de cuenta corriente
+    const nuevoMovimiento: MovimientoCuentaCorriente = {
+      id: uuidv4(),
+      cliente_id: clienteId,
+      kiosco_id: usuario.kiosco_id,
+      venta_id: null,
+      tipo: 'ABONO_PAGO',
+      monto,
+      medio_pago: medioPago,
+      saldo_resultante: nuevoSaldo,
+      notas: notas?.trim() || `Abono recibido (${medioPago})`,
+      fecha_hora: new Date().toISOString(),
+      usuario_id: usuario.id,
+    }
+
+    const movsActuales = getLocalMovimientosCC(clienteId)
+    saveLocalMovimientosCC(clienteId, [nuevoMovimiento, ...movsActuales])
+
+    // Sincronizar con Supabase
+    try {
+      await supabase
+        .from('clientes')
+        .update({ saldo_deudor: nuevoSaldo })
+        .eq('id', clienteId)
+
+      await supabase.from('movimientos_cuenta_corriente').insert({
+        id: nuevoMovimiento.id,
+        cliente_id: nuevoMovimiento.cliente_id,
+        kiosco_id: nuevoMovimiento.kiosco_id,
+        venta_id: null,
+        tipo: nuevoMovimiento.tipo,
+        monto: nuevoMovimiento.monto,
+        medio_pago: nuevoMovimiento.medio_pago,
+        saldo_resultante: nuevoMovimiento.saldo_resultante,
+        notas: nuevoMovimiento.notas,
+        fecha_hora: nuevoMovimiento.fecha_hora,
+        usuario_id: nuevoMovimiento.usuario_id,
+      })
+    } catch (err) {
+      console.warn('Supabase registro abono no disponible, resguardado local:', err)
+    }
+
+    toast.success(`Abono de $${monto.toLocaleString('es-AR')} registrado con éxito`)
+    return true
+  },
+
+  cargarMovimientosCliente: async (clienteId) => {
+    try {
+      const { data, error } = await supabase
+        .from('movimientos_cuenta_corriente')
+        .select('*, usuario:usuarios(id, nombre)')
+        .eq('cliente_id', clienteId)
+        .order('fecha_hora', { ascending: false })
+
+      if (!error && data) {
+        saveLocalMovimientosCC(clienteId, data as MovimientoCuentaCorriente[])
+        return data as MovimientoCuentaCorriente[]
+      }
+    } catch {
+      // Fallback
+    }
+
+    return getLocalMovimientosCC(clienteId)
+  },
+}))

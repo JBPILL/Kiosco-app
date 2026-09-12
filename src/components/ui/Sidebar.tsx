@@ -10,6 +10,7 @@ interface SidebarProps {
 const menuItems = [
   { path: '/',          label: 'Punto de Venta', roles: ['DUEÑO', 'CAJERO'] },
   { path: '/caja',      label: 'Caja y Arqueo',  roles: ['DUEÑO', 'CAJERO'] },
+  { path: '/clientes',  label: 'Clientes',       roles: ['DUEÑO', 'CAJERO'] },
   { path: '/catalogo',  label: 'Catálogo',       roles: ['DUEÑO'] },
   { path: '/stock',     label: 'Stock',          roles: ['DUEÑO'] },
   { path: '/reportes',  label: 'Reportes',       roles: ['DUEÑO', 'VISOR'] },
