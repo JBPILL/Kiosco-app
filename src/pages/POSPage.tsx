@@ -201,10 +201,10 @@ export function POSPage() {
               onClick={() => setCartModalOpen(true)}
               className="flex flex-col text-left py-0.5"
             >
-              <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
+              <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-300">
                 Ticket ({cantItems} {cantItems === 1 ? 'item' : 'items'}) ↗
               </span>
-              <span className="text-lg font-bold text-gray-900 dark:text-gray-100">
+              <span className="text-lg font-black text-gray-900 dark:text-white">
                 {formatPrecio(total)}
               </span>
             </button>

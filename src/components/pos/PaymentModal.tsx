@@ -225,8 +225,8 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             </div>
           )}
           <div className="text-center pt-0.5">
-            <p className="text-sm text-indigo-600 dark:text-indigo-400 font-medium">Total a cobrar</p>
-            <p className="text-3xl font-bold text-indigo-700 dark:text-indigo-400">{formatPrecio(total)}</p>
+            <p className="text-xs uppercase tracking-wider text-indigo-700 dark:text-indigo-300 font-bold">Total a cobrar</p>
+            <p className="text-3xl font-black text-indigo-950 dark:text-white tracking-tight">{formatPrecio(total)}</p>
           </div>
         </div>
 

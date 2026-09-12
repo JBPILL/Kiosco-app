@@ -168,42 +168,48 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
       </div>
 
       {/* Footer con subtotal, ajuste y botón cobrar */}
-      <div className="border-t border-gray-200 dark:border-gray-700 px-4 py-3 space-y-2.5 flex-shrink-0 bg-gray-50/50 dark:bg-gray-850/50 rounded-b-xl">
+      <div className="border-t border-gray-200 dark:border-gray-700 px-4 py-3.5 space-y-3 flex-shrink-0 bg-gray-50 dark:bg-gray-900 rounded-b-xl">
         {/* Desglose si hay productos */}
         {items.length > 0 && (
-          <div className="space-y-1 text-xs">
-            {tieneAjuste && (
-              <div className="flex justify-between text-gray-500 dark:text-gray-400">
-                <span>Subtotal</span>
-                <span>{formatPrecio(subtotal)}</span>
-              </div>
-            )}
-
-            {/* Fila de ajuste (descuento o recargo) */}
+          <div>
             {tieneAjuste ? (
-              <div className="flex justify-between items-center text-xs font-semibold">
-                <span className={tipoAjuste.startsWith('DESCUENTO') ? 'text-emerald-600 dark:text-emerald-400' : 'text-blue-600 dark:text-blue-400'}>
-                  {descripcionAjuste()}
-                </span>
-                <div className="flex items-center gap-2">
-                  <span className={tipoAjuste.startsWith('DESCUENTO') ? 'text-emerald-600 dark:text-emerald-400' : 'text-blue-600 dark:text-blue-400'}>
-                    {tipoAjuste.startsWith('DESCUENTO') ? `-${formatPrecio(ajuste)}` : `+${formatPrecio(ajuste)}`}
-                  </span>
-                  <button
-                    onClick={quitarAjuste}
-                    className="text-gray-400 hover:text-red-500 dark:hover:text-red-400 font-bold"
-                    title="Quitar ajuste"
-                  >
-                    ✕
-                  </button>
+              <div className="space-y-1.5 text-xs">
+                <div className="flex justify-between text-gray-500 dark:text-gray-400 font-medium">
+                  <span>Subtotal</span>
+                  <span className="font-semibold text-gray-800 dark:text-gray-200">{formatPrecio(subtotal)}</span>
+                </div>
+                <div
+                  className={`flex justify-between items-center px-2.5 py-1.5 rounded-lg border text-xs font-semibold ${
+                    tipoAjuste.startsWith('DESCUENTO')
+                      ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300'
+                      : 'bg-blue-50 dark:bg-blue-950/50 border-blue-200 dark:border-blue-800/60 text-blue-700 dark:text-blue-300'
+                  }`}
+                >
+                  <span>{descripcionAjuste()}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold">
+                      {tipoAjuste.startsWith('DESCUENTO') ? `-${formatPrecio(ajuste)}` : `+${formatPrecio(ajuste)}`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={quitarAjuste}
+                      className="text-gray-400 hover:text-red-500 dark:hover:text-red-400 font-bold px-1"
+                      title="Quitar ajuste"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (
-              <div className="text-right">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-500 dark:text-gray-400 font-medium">
+                  {items.reduce((acc, it) => acc + it.cantidad, 0)} {items.reduce((acc, it) => acc + it.cantidad, 0) === 1 ? 'artículo' : 'artículos'}
+                </span>
                 <button
                   type="button"
                   onClick={handleAbrirAjuste}
-                  className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/60 transition-colors"
                 >
                   + Descuento / Recargo
                 </button>
@@ -212,9 +218,11 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
           </div>
         )}
 
-        <div className="flex justify-between items-center pt-1 border-t border-gray-200/60 dark:border-gray-700/60">
-          <span className="text-base font-bold text-gray-900 dark:text-gray-100">TOTAL</span>
-          <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400">{formatPrecio(total)}</span>
+        <div className="flex justify-between items-baseline pt-1 border-t border-gray-200 dark:border-gray-700/80">
+          <span className="text-xs uppercase tracking-wider font-bold text-gray-500 dark:text-gray-400">TOTAL</span>
+          <span className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">
+            {formatPrecio(total)}
+          </span>
         </div>
 
         <Button
@@ -223,7 +231,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
           variant="success"
           onClick={onCobrar}
           disabled={items.length === 0}
-          className="min-h-[48px] text-base font-bold shadow-sm active:scale-98"
+          className="min-h-[50px] text-base font-bold shadow-md bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white active:scale-98 transition-all"
         >
           COBRAR {total > 0 ? formatPrecio(total) : ''}
         </Button>
