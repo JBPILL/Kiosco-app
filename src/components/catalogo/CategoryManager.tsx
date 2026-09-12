@@ -56,35 +56,40 @@ export function CategoryManager({ categorias, onCrear, onActualizar, onEliminar 
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Categorías</h3>
-        <Button size="sm" onClick={abrirNuevo}>+ Nueva</Button>
+      <div className="flex items-center justify-between mb-2.5">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Categorías ({categorias.length})</h3>
+        <button
+          onClick={abrirNuevo}
+          className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline px-2 py-1"
+        >
+          + Nueva categoría
+        </button>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1.5">
         {categorias.map((cat) => (
           <div
             key={cat.id}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs shadow-2xs"
           >
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color }} />
-            <span className="text-sm font-medium dark:text-gray-200">{cat.nombre}</span>
+            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
+            <span className="font-medium text-gray-800 dark:text-gray-200">{cat.nombre}</span>
             <button
               onClick={() => abrirEditar(cat)}
-              className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs ml-1"
+              className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-[11px] ml-1"
             >
               Editar
             </button>
             <button
               onClick={() => setConfirmDelete(cat.id)}
-              className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 text-xs"
+              className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 text-[11px]"
             >
-              Eliminar
+              ✕
             </button>
           </div>
         ))}
         {categorias.length === 0 && (
-          <p className="text-gray-500 dark:text-gray-400 text-sm">No hay categorías. Creá la primera.</p>
+          <p className="text-gray-500 dark:text-gray-400 text-xs">No hay categorías creadas.</p>
         )}
       </div>
 

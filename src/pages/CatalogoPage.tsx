@@ -45,11 +45,14 @@ export function CatalogoPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Catálogo de Productos</h1>
+    <div className="max-w-4xl mx-auto space-y-3.5">
+      <div>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">Catálogo de Productos</h1>
+        <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Administrá tus productos, precios y categorías</p>
+      </div>
 
-      {/* Gestión de categorías */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+      {/* Gestión de categorías compacta */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 sm:p-4">
         <CategoryManager
           categorias={categorias}
           onCrear={crearCategoria}
@@ -58,8 +61,8 @@ export function CatalogoPage() {
         />
       </div>
 
-      {/* Tabla de productos */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+      {/* Tabla y lista de productos */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 sm:p-4">
         <ProductTable
           productos={productos}
           categorias={categorias}
