@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatPrecio, formatFecha, labelMedioPago } from '../lib/utils'
+import { Button } from '../components/ui/Button'
+import { Modal } from '../components/ui/Modal'
+import toast from 'react-hot-toast'
 
 interface ResumenDiario {
   totalVentas: number
@@ -24,6 +27,8 @@ export function ReportesPage() {
   const [resumen, setResumen] = useState<ResumenDiario | null>(null)
   const [cargando, setCargando] = useState(true)
   const [ventaExpandida, setVentaExpandida] = useState<string | null>(null)
+  const [ventaParaAnular, setVentaParaAnular] = useState<VentaResumen | null>(null)
+  const [anulando, setAnulando] = useState(false)
 
   const cargarDatos = useCallback(async () => {
     setCargando(true)
@@ -40,11 +45,11 @@ export function ReportesPage() {
       `)
       .gte('fecha_hora', inicioDelDia)
       .lte('fecha_hora', finDelDia)
-      .eq('estado', 'COMPLETADA')
       .order('fecha_hora', { ascending: false })
 
     if (error) {
       console.error('Error cargando ventas:', error)
+      toast.error('Error al cargar ventas')
       setCargando(false)
       return
     }
@@ -52,14 +57,15 @@ export function ReportesPage() {
     const ventasData = (data || []) as unknown as VentaResumen[]
     setVentas(ventasData)
 
-    // Calcular resumen
-    const totalVentas = ventasData.reduce((sum, v) => sum + v.total, 0)
-    const cantidadVentas = ventasData.length
+    // Solo ventas COMPLETADAS para el resumen financiero
+    const ventasValidas = ventasData.filter((v) => v.estado === 'COMPLETADA')
+    const totalVentas = ventasValidas.reduce((sum, v) => sum + v.total, 0)
+    const cantidadVentas = ventasValidas.length
     const ventaPromedio = cantidadVentas > 0 ? totalVentas / cantidadVentas : 0
 
     // Agrupar por medio de pago
     const mediosMap = new Map<string, { total: number; cantidad: number }>()
-    for (const venta of ventasData) {
+    for (const venta of ventasValidas) {
       for (const pago of venta.pagos) {
         const actual = mediosMap.get(pago.medio_pago) || { total: 0, cantidad: 0 }
         mediosMap.set(pago.medio_pago, {
@@ -81,59 +87,95 @@ export function ReportesPage() {
     cargarDatos()
   }, [cargarDatos])
 
-  const cambiarDia = (dias: number) => {
-    const nuevaFecha = new Date(fecha)
-    nuevaFecha.setDate(nuevaFecha.getDate() + dias)
-    setFecha(nuevaFecha.toISOString().split('T')[0])
+  const cambiarFecha = (dias: number) => {
+    const d = new Date(fecha + 'T12:00:00')
+    d.setDate(d.getDate() + dias)
+    setFecha(d.toISOString().split('T')[0])
   }
 
   const esHoy = fecha === new Date().toISOString().split('T')[0]
 
+  const handleAnularVenta = async () => {
+    if (!ventaParaAnular) return
+    setAnulando(true)
+
+    try {
+      const { error } = await supabase
+        .from('ventas')
+        .update({ estado: 'ANULADA' })
+        .eq('id', ventaParaAnular.id)
+
+      if (error) throw error
+
+      toast.success('Venta anulada. El stock se reincorporó automáticamente.')
+      setVentaParaAnular(null)
+      await cargarDatos()
+    } catch (err) {
+      console.error('Error al anular venta:', err)
+      toast.error('No se pudo anular la venta')
+    } finally {
+      setAnulando(false)
+    }
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Reportes</h1>
+      {/* Header con selector de fecha */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Reportes de Ventas</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Resumen y detalle de operaciones por día</p>
+        </div>
 
-      {/* Selector de fecha */}
-      <div className="flex items-center gap-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3">
-        <button onClick={() => cambiarDia(-1)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-lg dark:text-gray-200">&lt;</button>
-        <input
-          type="date"
-          value={fecha}
-          onChange={(e) => setFecha(e.target.value)}
-          className="flex-1 text-center text-lg font-medium border-none focus:ring-0 bg-transparent dark:text-gray-100"
-        />
-        <button
-          onClick={() => cambiarDia(1)}
-          disabled={esHoy}
-          className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-lg disabled:opacity-30 dark:text-gray-200"
-        >
-          &gt;
-        </button>
-        {!esHoy && (
-          <button
-            onClick={() => setFecha(new Date().toISOString().split('T')[0])}
-            className="px-3 py-1.5 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 text-sm font-medium hover:bg-indigo-200 dark:hover:bg-indigo-900/50"
+        {/* Navegación por fecha */}
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="secondary" onClick={() => cambiarFecha(-1)}>
+            &lt; Anterior
+          </Button>
+          <input
+            type="date"
+            value={fecha}
+            onChange={(e) => setFecha(e.target.value)}
+            className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm font-medium text-gray-900 dark:text-gray-100"
+          />
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => cambiarFecha(1)}
+            disabled={esHoy}
           >
-            Hoy
-          </button>
-        )}
+            Siguiente &gt;
+          </Button>
+          {!esHoy && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setFecha(new Date().toISOString().split('T')[0])}
+            >
+              Hoy
+            </Button>
+          )}
+        </div>
       </div>
 
       {cargando ? (
         <div className="text-center py-12">
-          <div className="animate-spin h-8 w-8 border-4 border-indigo-600 dark:border-indigo-400 border-t-transparent rounded-full mx-auto" />
+          <div className="animate-spin h-8 w-8 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto" />
+          <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">Cargando reporte...</p>
         </div>
       ) : (
         <>
-          {/* Tarjetas de resumen */}
+          {/* Tarjetas resumen */}
           {resumen && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
                 <p className="text-sm text-gray-500 dark:text-gray-400">Total facturado</p>
-                <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{formatPrecio(resumen.totalVentas)}</p>
+                <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
+                  {formatPrecio(resumen.totalVentas)}
+                </p>
               </div>
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                <p className="text-sm text-gray-500 dark:text-gray-400">Cantidad de ventas</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Ventas completadas</p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{resumen.cantidadVentas}</p>
               </div>
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
@@ -165,49 +207,130 @@ export function ReportesPage() {
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">Ventas del día</h3>
             {ventas.length === 0 ? (
-              <p className="text-center text-gray-400 dark:text-gray-500 py-8">No hay ventas este día</p>
+              <p className="text-center text-gray-400 dark:text-gray-500 py-8">No hay ventas registradas en esta fecha</p>
             ) : (
               <div className="space-y-2">
-                {ventas.map((venta) => (
-                  <div key={venta.id} className="border border-gray-100 dark:border-gray-700 rounded-lg overflow-hidden">
-                    <button
-                      onClick={() => setVentaExpandida(ventaExpandida === venta.id ? null : venta.id)}
-                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-left"
+                {ventas.map((venta) => {
+                  const esAnulada = venta.estado === 'ANULADA'
+                  return (
+                    <div
+                      key={venta.id}
+                      className={`border rounded-lg overflow-hidden transition-colors ${
+                        esAnulada
+                          ? 'border-red-200 bg-red-50/40 dark:border-red-900/30 dark:bg-red-950/10 opacity-75'
+                          : 'border-gray-200 dark:border-gray-700'
+                      }`}
                     >
-                      <div>
-                        <span className="text-sm text-gray-500 dark:text-gray-400">{formatFecha(venta.fecha_hora)}</span>
-                        <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">
-                          {venta.detalles.length} item{venta.detalles.length !== 1 ? 's' : ''}
-                        </span>
-                      </div>
-                      <span className="font-bold text-gray-900 dark:text-gray-100">{formatPrecio(venta.total)}</span>
-                    </button>
-                    {ventaExpandida === venta.id && (
-                      <div className="px-4 pb-3 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-                        {venta.detalles.map((det, i) => (
-                          <div key={i} className="flex justify-between text-sm py-1">
-                            <span className="text-gray-600 dark:text-gray-300">
-                              {det.cantidad}x {det.producto.descripcion}
-                            </span>
-                            <span className="text-gray-900 dark:text-gray-100">{formatPrecio(det.subtotal)}</span>
-                          </div>
-                        ))}
-                        <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                          {venta.pagos.map((p, i) => (
-                            <span key={i} className="text-xs text-gray-500 dark:text-gray-400">
-                              {labelMedioPago(p.medio_pago)}: {formatPrecio(p.monto)}
-                            </span>
-                          ))}
+                      <button
+                        onClick={() => setVentaExpandida(ventaExpandida === venta.id ? null : venta.id)}
+                        className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-left"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            esAnulada
+                              ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
+                              : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                          }`}>
+                            {esAnulada ? 'Anulada' : 'Completada'}
+                          </span>
+                          <span className="text-sm text-gray-500 dark:text-gray-400">
+                            {formatFecha(venta.fecha_hora)}
+                          </span>
+                          <span className="text-xs text-gray-400 dark:text-gray-500">
+                            {venta.detalles.length} item{venta.detalles.length !== 1 ? 's' : ''}
+                          </span>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                        <span className={`font-bold ${
+                          esAnulada
+                            ? 'line-through text-gray-400 dark:text-gray-500'
+                            : 'text-gray-900 dark:text-gray-100'
+                        }`}>
+                          {formatPrecio(venta.total)}
+                        </span>
+                      </button>
+
+                      {ventaExpandida === venta.id && (
+                        <div className="px-4 pb-3 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                          <div className="py-2 space-y-1">
+                            {venta.detalles.map((det, i) => (
+                              <div key={i} className="flex justify-between text-sm py-1">
+                                <span className="text-gray-600 dark:text-gray-300">
+                                  {det.cantidad}x {det.producto?.descripcion || 'Producto'}
+                                </span>
+                                <span className="text-gray-900 dark:text-gray-100 font-medium">
+                                  {formatPrecio(det.subtotal)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                            <div className="flex flex-wrap gap-3">
+                              {venta.pagos.map((p, i) => (
+                                <span key={i} className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                                  {labelMedioPago(p.medio_pago)}: {formatPrecio(p.monto)}
+                                </span>
+                              ))}
+                            </div>
+
+                            {!esAnulada && (
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                onClick={() => setVentaParaAnular(venta)}
+                              >
+                                Anular venta
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
         </>
       )}
+
+      {/* Modal de confirmación para anular venta */}
+      <Modal
+        isOpen={!!ventaParaAnular}
+        onClose={() => setVentaParaAnular(null)}
+        title="Confirmar anulación de venta"
+        size="md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            ¿Estás seguro de anular esta venta por un total de{' '}
+            <strong className="text-gray-900 dark:text-gray-100">
+              {ventaParaAnular ? formatPrecio(ventaParaAnular.total) : ''}
+            </strong>?
+          </p>
+          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-300">
+            Esta acción devolverá automáticamente los productos vendidos al inventario de stock y restará la venta del total facturado del día.
+          </div>
+          <div className="flex gap-2 pt-2">
+            <Button
+              variant="danger"
+              fullWidth
+              loading={anulando}
+              onClick={handleAnularVenta}
+            >
+              Sí, anular venta
+            </Button>
+            <Button
+              variant="secondary"
+              fullWidth
+              disabled={anulando}
+              onClick={() => setVentaParaAnular(null)}
+            >
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

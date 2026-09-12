@@ -8,16 +8,7 @@ import { POSPage } from './pages/POSPage'
 import { CatalogoPage } from './pages/CatalogoPage'
 import { ReportesPage } from './pages/ReportesPage'
 import { StockPage } from './pages/StockPage'
-
-// Páginas placeholder (se implementan después)
-function ConfigPage() {
-  return (
-    <div className="text-center py-20">
-      <h2 className="text-3xl font-bold text-gray-900 mb-2">Configuración</h2>
-      <p className="text-gray-500">Módulo en desarrollo...</p>
-    </div>
-  )
-}
+import { ConfigPage } from './pages/ConfigPage'
 
 function App() {
   const { usuario, cargando, cargarSesion } = useAuthStore()
