@@ -6,9 +6,10 @@ import { SearchInput } from '../ui/SearchInput'
 
 interface ProductSearchProps {
   onSelect: (producto: Producto) => void
+  onOpenScanner?: () => void
 }
 
-export function ProductSearch({ onSelect }: ProductSearchProps) {
+export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
   const [query, setQuery] = useState('')
   const [resultados, setResultados] = useState<Producto[]>([])
   const [mostrarResultados, setMostrarResultados] = useState(false)
@@ -16,18 +17,37 @@ export function ProductSearch({ onSelect }: ProductSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Buscar productos mientras se escribe
+  // Escuchar evento global de foco para el atajo F2
+  useEffect(() => {
+    const handleFocus = () => {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    }
+    window.addEventListener('pos-focus-search', handleFocus)
+    return () => window.removeEventListener('pos-focus-search', handleFocus)
+  }, [])
+
+  // Buscar productos mientras se escribe o escanea
   const buscar = useCallback(async (texto: string) => {
-    if (texto.length < 2) {
+    const queryTrim = texto.trim()
+    if (queryTrim.length < 2) {
       setResultados([])
       return
     }
 
-    const { data } = await supabase
+    let queryBuilder = supabase
       .from('productos')
       .select('*, categoria:categorias(nombre, color)')
       .eq('activo', true)
-      .ilike('descripcion', `%${texto}%`)
+
+    // Si contiene números, buscar también por coincidencia en código de barras
+    if (/^\d+$/.test(queryTrim)) {
+      queryBuilder = queryBuilder.or(`codigo_barras.ilike.%${queryTrim}%,descripcion.ilike.%${queryTrim}%`)
+    } else {
+      queryBuilder = queryBuilder.ilike('descripcion', `%${queryTrim}%`)
+    }
+
+    const { data } = await queryBuilder
       .order('es_favorito', { ascending: false })
       .limit(8)
 
@@ -60,7 +80,9 @@ export function ProductSearch({ onSelect }: ProductSearchProps) {
       setSelectedIndex((prev) => Math.max(prev - 1, 0))
     } else if (e.key === 'Enter' && resultados.length > 0) {
       e.preventDefault()
-      seleccionar(resultados[selectedIndex])
+      // Si hay un producto con coincidencia exacta de código de barras, seleccionarlo
+      const exactMatch = resultados.find((r) => r.codigo_barras === query.trim())
+      seleccionar(exactMatch || resultados[selectedIndex])
     } else if (e.key === 'Escape') {
       setMostrarResultados(false)
     }
@@ -78,20 +100,37 @@ export function ProductSearch({ onSelect }: ProductSearchProps) {
   }, [])
 
   return (
-    <div ref={containerRef} className="relative">
-      <SearchInput
-        ref={inputRef}
-        placeholder="Buscar producto..."
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value)
-          setMostrarResultados(true)
-        }}
-        onFocus={() => query.length >= 2 && setMostrarResultados(true)}
-        onKeyDown={handleKeyDown}
-        onClear={() => { setQuery(''); setResultados([]) }}
-        autoFocus
-      />
+    <div ref={containerRef} className="relative flex items-center gap-2">
+      <div className="flex-1 min-w-0 relative">
+        <SearchInput
+          ref={inputRef}
+          placeholder="Buscar producto o escanear [F2]..."
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setMostrarResultados(true)
+          }}
+          onFocus={() => query.length >= 2 && setMostrarResultados(true)}
+          onKeyDown={handleKeyDown}
+          onClear={() => { setQuery(''); setResultados([]) }}
+          autoFocus
+        />
+      </div>
+
+      {onOpenScanner && (
+        <button
+          type="button"
+          onClick={onOpenScanner}
+          className="h-10 px-3.5 flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 text-xs font-semibold flex-shrink-0 active:scale-95 transition-all shadow-xs"
+          title="Escanear con cámara (Alt+S)"
+        >
+          <svg className="w-4 h-4 text-indigo-600 dark:text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+          <span className="hidden sm:inline">Cámara</span>
+        </button>
+      )}
 
       {/* Dropdown de resultados */}
       {mostrarResultados && resultados.length > 0 && (

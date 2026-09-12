@@ -9,6 +9,11 @@ import { FavoritesGrid } from '../components/pos/FavoritesGrid'
 import { CartPanel } from '../components/pos/CartPanel'
 import { PaymentModal } from '../components/pos/PaymentModal'
 import { TicketReceiptModal, type TicketData } from '../components/pos/TicketReceiptModal'
+import { BarcodeScannerModal } from '../components/pos/BarcodeScannerModal'
+import { KeyboardShortcutsModal } from '../components/pos/KeyboardShortcutsModal'
+import { useBarcodeGun } from '../hooks/useBarcodeGun'
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
+import { playScanSound } from '../lib/sound'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import type { Producto, Categoria } from '../types/database'
@@ -24,6 +29,8 @@ export function POSPage() {
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [cartModalOpen, setCartModalOpen] = useState(false)
   const [modalEsperaOpen, setModalEsperaOpen] = useState(false)
+  const [modalScannerOpen, setModalScannerOpen] = useState(false)
+  const [modalShortcutsOpen, setModalShortcutsOpen] = useState(false)
   const [ticketReciente, setTicketReciente] = useState<TicketData | null>(null)
   const [ticketModalOpen, setTicketModalOpen] = useState(false)
 
@@ -102,6 +109,72 @@ export function POSPage() {
     toast.success('Venta recuperada en el ticket')
   }
 
+  // Detección de escaneo desde pistola de código de barras USB / Bluetooth
+  const handleBarcodeGunScan = useCallback(
+    async (code: string) => {
+      try {
+        const { data, error } = await supabase
+          .from('productos')
+          .select('*, categoria:categorias(nombre, color)')
+          .eq('activo', true)
+          .eq('codigo_barras', code)
+          .maybeSingle()
+
+        if (error) throw error
+
+        if (data) {
+          playScanSound('success')
+          agregarProducto(data)
+          toast.success(`${data.descripcion} agregado`)
+        } else {
+          playScanSound('warning')
+          toast.error(`Código no encontrado: ${code}`)
+        }
+      } catch (err) {
+        console.error('Error procesando código de pistola:', err)
+        playScanSound('error')
+      }
+    },
+    [agregarProducto]
+  )
+
+  useBarcodeGun({
+    onScan: handleBarcodeGunScan,
+    enabled: !paymentOpen && !cartModalOpen && !modalScannerOpen && !modalEsperaOpen && !ticketModalOpen,
+  })
+
+  // Atajos de teclado para PC de escritorio
+  useKeyboardShortcuts(
+    {
+      onFocusSearch: () => {
+        window.dispatchEvent(new CustomEvent('pos-focus-search'))
+      },
+      onCobrar: () => {
+        if (cantItems > 0 && !paymentOpen) {
+          setPaymentOpen(true)
+        }
+      },
+      onVentasEnEspera: () => {
+        setModalEsperaOpen((prev) => !prev)
+      },
+      onOpenScanner: () => {
+        setModalScannerOpen((prev) => !prev)
+      },
+      onOpenHelp: () => {
+        setModalShortcutsOpen((prev) => !prev)
+      },
+      onEscape: () => {
+        if (modalScannerOpen) setModalScannerOpen(false)
+        else if (modalShortcutsOpen) setModalShortcutsOpen(false)
+        else if (modalEsperaOpen) setModalEsperaOpen(false)
+        else if (paymentOpen) setPaymentOpen(false)
+        else if (cartModalOpen) setCartModalOpen(false)
+        else if (ticketModalOpen) setTicketModalOpen(false)
+      },
+    },
+    true
+  )
+
   return (
     <div className="h-full flex flex-col gap-2.5 max-w-6xl mx-auto pb-16 lg:pb-0">
       {/* Banner compacto de estado de caja */}
@@ -137,7 +210,10 @@ export function POSPage() {
         <div className="flex-1 flex flex-col min-h-0">
           {/* Buscador compacto */}
           <div className="mb-2">
-            <ProductSearch onSelect={handleSeleccion} />
+            <ProductSearch
+              onSelect={handleSeleccion}
+              onOpenScanner={() => setModalScannerOpen(true)}
+            />
           </div>
 
           {/* Categorías deslizables + Botón Ventas en Espera */}
@@ -175,6 +251,15 @@ export function POSPage() {
                 {cat.nombre}
               </button>
             ))}
+
+            {/* Botón de ayuda de atajos para escritorio */}
+            <button
+              onClick={() => setModalShortcutsOpen(true)}
+              className="px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[32px] bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 flex-shrink-0 active:scale-95 transition-all ml-auto hidden sm:block"
+              title="Ver atajos de teclado [F1]"
+            >
+              Atajos [F1]
+            </button>
           </div>
 
           {/* Grilla compacta de productos */}
@@ -328,6 +413,21 @@ export function POSPage() {
         isOpen={ticketModalOpen}
         onClose={() => setTicketModalOpen(false)}
         ticket={ticketReciente}
+      />
+
+      {/* Modal de escaneo por cámara */}
+      <BarcodeScannerModal
+        isOpen={modalScannerOpen}
+        onClose={() => setModalScannerOpen(false)}
+        onProductScanned={(producto) => {
+          agregarProducto(producto)
+        }}
+      />
+
+      {/* Modal de ayuda con atajos de teclado */}
+      <KeyboardShortcutsModal
+        isOpen={modalShortcutsOpen}
+        onClose={() => setModalShortcutsOpen(false)}
       />
     </div>
   )
