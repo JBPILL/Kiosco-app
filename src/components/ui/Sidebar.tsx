@@ -8,11 +8,12 @@ interface SidebarProps {
 }
 
 const menuItems = [
-  { path: '/',          label: 'Punto de Venta', icon: '🛒', roles: ['DUEÑO', 'CAJERO'] },
-  { path: '/catalogo',  label: 'Catálogo',       icon: '📦', roles: ['DUEÑO'] },
-  { path: '/stock',     label: 'Stock',          icon: '📊', roles: ['DUEÑO'] },
-  { path: '/reportes',  label: 'Reportes',       icon: '📈', roles: ['DUEÑO', 'VISOR'] },
-  { path: '/config',    label: 'Configuración',  icon: '⚙️', roles: ['DUEÑO'] },
+  { path: '/',          label: 'Punto de Venta', roles: ['DUEÑO', 'CAJERO'] },
+  { path: '/caja',      label: 'Caja y Arqueo',  roles: ['DUEÑO', 'CAJERO'] },
+  { path: '/catalogo',  label: 'Catálogo',       roles: ['DUEÑO'] },
+  { path: '/stock',     label: 'Stock',          roles: ['DUEÑO'] },
+  { path: '/reportes',  label: 'Reportes',       roles: ['DUEÑO', 'VISOR'] },
+  { path: '/config',    label: 'Configuración',  roles: ['DUEÑO'] },
 ]
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
@@ -68,7 +69,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 }
               `}
             >
-              <span className="text-xl">{item.icon}</span>
               {item.label}
             </NavLink>
           ))}

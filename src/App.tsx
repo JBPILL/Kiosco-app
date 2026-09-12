@@ -9,6 +9,7 @@ import { CatalogoPage } from './pages/CatalogoPage'
 import { ReportesPage } from './pages/ReportesPage'
 import { StockPage } from './pages/StockPage'
 import { ConfigPage } from './pages/ConfigPage'
+import { CajaPage } from './pages/CajaPage'
 
 function App() {
   const { usuario, cargando, cargarSesion } = useAuthStore()
@@ -41,6 +42,7 @@ function App() {
         <Routes>
           <Route element={<MainLayout />}>
             <Route path="/" element={<POSPage />} />
+            <Route path="/caja" element={<CajaPage />} />
             <Route path="/catalogo" element={<CatalogoPage />} />
             <Route path="/stock" element={<StockPage />} />
             <Route path="/reportes" element={<ReportesPage />} />

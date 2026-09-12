@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '../../lib/supabase'
 import { useCartStore } from '../../stores/cartStore'
+import { useCajaStore } from '../../stores/cajaStore'
+import { useAuthStore } from '../../stores/authStore'
 import { formatPrecio, calcularVuelto } from '../../lib/utils'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
@@ -47,10 +49,14 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
     try {
       const ventaId = uuidv4()
       const ahora = new Date().toISOString()
+      const sesionActiva = useCajaStore.getState().sesionActiva
+      const usuario = useAuthStore.getState().usuario
 
       // 1. Insertar la venta
       const { error: ventaError } = await supabase.from('ventas').insert({
         id: ventaId,
+        usuario_id: usuario?.id || null,
+        sesion_caja_id: sesionActiva?.id || null,
         fecha_hora: ahora,
         total,
         estado: 'COMPLETADA',

@@ -116,6 +116,23 @@ export interface SesionCaja {
   usuario?: Usuario
 }
 
+export interface ResumenCaja {
+  sesion_caja_id: string
+  kiosco_id: string
+  usuario_id: string
+  nombre_cajero?: string
+  fecha_apertura: string
+  fecha_cierre: string | null
+  monto_inicial: number
+  total_ventas: number
+  total_facturado: number
+  total_efectivo: number
+  total_mercadopago: number
+  total_transferencia: number
+  total_tarjeta: number
+  efectivo_esperado_en_caja: number
+}
+
 // --- Tipos para el carrito (solo frontend) ---
 
 export interface ItemCarrito {
