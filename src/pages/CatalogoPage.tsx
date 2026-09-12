@@ -46,10 +46,10 @@ export function CatalogoPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">📦 Catálogo de Productos</h1>
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Catálogo de Productos</h1>
 
       {/* Gestión de categorías */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
         <CategoryManager
           categorias={categorias}
           onCrear={crearCategoria}
@@ -59,7 +59,7 @@ export function CatalogoPage() {
       </div>
 
       {/* Tabla de productos */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
         <ProductTable
           productos={productos}
           categorias={categorias}

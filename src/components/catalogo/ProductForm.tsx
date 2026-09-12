@@ -103,7 +103,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
 
         {/* Indicador de margen */}
         {form.precio_costo > 0 && (
-          <div className={`text-sm px-3 py-2 rounded-lg ${margen >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+          <div className={`text-sm px-3 py-2 rounded-lg ${margen >= 0 ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
             Margen: ${margen.toFixed(2)} ({margenPct}%)
           </div>
         )}
@@ -126,9 +126,9 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Categoría</label>
           <select
-            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+            className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2.5 text-base focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-900 transition-colors duration-150"
             value={form.categoria_id || ''}
             onChange={(e) => setForm({ ...form, categoria_id: e.target.value || null })}
           >

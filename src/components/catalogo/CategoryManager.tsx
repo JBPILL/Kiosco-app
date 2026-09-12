@@ -57,7 +57,7 @@ export function CategoryManager({ categorias, onCrear, onActualizar, onEliminar 
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">Categorías</h3>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Categorías</h3>
         <Button size="sm" onClick={abrirNuevo}>+ Nueva</Button>
       </div>
 
@@ -65,26 +65,26 @@ export function CategoryManager({ categorias, onCrear, onActualizar, onEliminar 
         {categorias.map((cat) => (
           <div
             key={cat.id}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-white"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
           >
             <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color }} />
-            <span className="text-sm font-medium">{cat.nombre}</span>
+            <span className="text-sm font-medium dark:text-gray-200">{cat.nombre}</span>
             <button
               onClick={() => abrirEditar(cat)}
-              className="text-gray-400 hover:text-indigo-600 text-xs ml-1"
+              className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs ml-1"
             >
-              ✏️
+              Editar
             </button>
             <button
               onClick={() => setConfirmDelete(cat.id)}
-              className="text-gray-400 hover:text-red-600 text-xs"
+              className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 text-xs"
             >
-              🗑️
+              Eliminar
             </button>
           </div>
         ))}
         {categorias.length === 0 && (
-          <p className="text-gray-500 text-sm">No hay categorías. Creá la primera.</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm">No hay categorías. Creá la primera.</p>
         )}
       </div>
 
@@ -104,14 +104,14 @@ export function CategoryManager({ categorias, onCrear, onActualizar, onEliminar 
             autoFocus
           />
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Color</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Color</label>
             <div className="flex flex-wrap gap-2">
               {COLORES_PRESET.map((c) => (
                 <button
                   key={c}
                   onClick={() => setColor(c)}
                   className={`w-8 h-8 rounded-full border-2 transition-transform ${
-                    color === c ? 'border-gray-900 scale-110' : 'border-transparent'
+                    color === c ? 'border-gray-900 dark:border-white scale-110' : 'border-transparent'
                   }`}
                   style={{ backgroundColor: c }}
                 />
@@ -132,7 +132,7 @@ export function CategoryManager({ categorias, onCrear, onActualizar, onEliminar 
         title="¿Eliminar categoría?"
         size="sm"
       >
-        <p className="text-gray-600 mb-4">
+        <p className="text-gray-600 dark:text-gray-400 mb-4">
           Los productos de esta categoría quedarán sin categoría asignada.
         </p>
         <div className="flex gap-2">

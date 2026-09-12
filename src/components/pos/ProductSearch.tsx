@@ -81,7 +81,7 @@ export function ProductSearch({ onSelect }: ProductSearchProps) {
     <div ref={containerRef} className="relative">
       <SearchInput
         ref={inputRef}
-        placeholder="🔍 Buscar producto..."
+        placeholder="Buscar producto..."
         value={query}
         onChange={(e) => {
           setQuery(e.target.value)
@@ -95,25 +95,25 @@ export function ProductSearch({ onSelect }: ProductSearchProps) {
 
       {/* Dropdown de resultados */}
       {mostrarResultados && resultados.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-gray-200 shadow-lg z-30 max-h-80 overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg z-30 max-h-80 overflow-y-auto">
           {resultados.map((prod, idx) => (
             <button
               key={prod.id}
               onClick={() => seleccionar(prod)}
-              className={`w-full flex items-center justify-between px-4 py-3 text-left hover:bg-indigo-50 transition-colors ${
-                idx === selectedIndex ? 'bg-indigo-50' : ''
-              } ${idx < resultados.length - 1 ? 'border-b border-gray-100' : ''}`}
+              className={`w-full flex items-center justify-between px-4 py-3 text-left hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors ${
+                idx === selectedIndex ? 'bg-indigo-50 dark:bg-indigo-900/30' : ''
+              } ${idx < resultados.length - 1 ? 'border-b border-gray-100 dark:border-gray-700' : ''}`}
             >
               <div>
-                <span className="font-medium text-gray-900">{prod.descripcion}</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">{prod.descripcion}</span>
                 {prod.categoria && (
-                  <span className="ml-2 text-xs text-gray-400">{prod.categoria.nombre}</span>
+                  <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">{prod.categoria.nombre}</span>
                 )}
-                <span className="block text-xs text-gray-400 mt-0.5">
+                <span className="block text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                   Stock: {prod.stock_actual}
                 </span>
               </div>
-              <span className="font-bold text-indigo-600 whitespace-nowrap ml-3">
+              <span className="font-bold text-indigo-600 dark:text-indigo-400 whitespace-nowrap ml-3">
                 {formatPrecio(prod.precio_venta)}
               </span>
             </button>
@@ -122,7 +122,7 @@ export function ProductSearch({ onSelect }: ProductSearchProps) {
       )}
 
       {mostrarResultados && query.length >= 2 && resultados.length === 0 && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-gray-200 shadow-lg z-30 p-4 text-center text-gray-500 text-sm">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg z-30 p-4 text-center text-gray-500 dark:text-gray-400 text-sm">
           No se encontró "{query}"
         </div>
       )}

@@ -14,17 +14,16 @@ export function LoginScreen() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-indigo-600 mb-2">🏪</h1>
-          <h2 className="text-2xl font-bold text-gray-900">KioskoPOS</h2>
-          <p className="text-gray-500 mt-1">Sistema de Ventas</p>
+          <h1 className="text-3xl font-bold text-indigo-600 dark:text-indigo-400 mb-2">🏪 KioskoPOS</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">Sistema de Ventas</p>
         </div>
 
         {/* Formulario */}
-        <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <div className="space-y-4">
             <Input
               label="Email"
@@ -47,8 +46,8 @@ export function LoginScreen() {
           </div>
 
           {error && (
-            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-700">{error}</p>
+            <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg">
+              <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
             </div>
           )}
 
@@ -63,7 +62,7 @@ export function LoginScreen() {
           </Button>
         </form>
 
-        <p className="text-center text-xs text-gray-400 mt-6">
+        <p className="text-center text-xs text-gray-400 dark:text-gray-500 mt-6">
           KioskoPOS v1.0 · Sistema de gestión de kioscos
         </p>
       </div>

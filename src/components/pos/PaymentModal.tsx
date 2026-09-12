@@ -15,11 +15,11 @@ interface PaymentModalProps {
   onVentaCompletada: () => void
 }
 
-const MEDIOS_PAGO: { valor: MedioPago; label: string; icon: string }[] = [
-  { valor: 'EFECTIVO', label: 'Efectivo', icon: '💵' },
-  { valor: 'MERCADOPAGO', label: 'Mercado Pago', icon: '📱' },
-  { valor: 'TRANSFERENCIA', label: 'Transferencia', icon: '🏦' },
-  { valor: 'TARJETA', label: 'Tarjeta', icon: '💳' },
+const MEDIOS_PAGO: { valor: MedioPago; label: string }[] = [
+  { valor: 'EFECTIVO', label: 'Efectivo' },
+  { valor: 'MERCADOPAGO', label: 'Mercado Pago' },
+  { valor: 'TRANSFERENCIA', label: 'Transferencia' },
+  { valor: 'TARJETA', label: 'Tarjeta' },
 ]
 
 export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModalProps) {
@@ -82,9 +82,9 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       if (pagoError) throw pagoError
 
       // 4. Éxito
-      toast.success(`✅ Venta registrada — ${formatPrecio(total)}`)
+      toast.success(`Venta registrada — ${formatPrecio(total)}`)
       if (medioPago === 'EFECTIVO' && vuelto > 0) {
-        toast(`💰 Vuelto: ${formatPrecio(vuelto)}`, { duration: 5000, icon: '🔔' })
+        toast(`Vuelto: ${formatPrecio(vuelto)}`, { duration: 5000 })
       }
 
       vaciarCarrito()
@@ -109,17 +109,17 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   const billetesRapidos = [1000, 2000, 5000, 10000, 20000]
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="💰 Cobrar" size="md">
+    <Modal isOpen={isOpen} onClose={onClose} title="Cobrar" size="md">
       <div className="space-y-5">
         {/* Total */}
-        <div className="text-center py-3 bg-indigo-50 rounded-xl">
-          <p className="text-sm text-indigo-600 font-medium">Total a cobrar</p>
-          <p className="text-3xl font-bold text-indigo-700">{formatPrecio(total)}</p>
+        <div className="text-center py-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl">
+          <p className="text-sm text-indigo-600 dark:text-indigo-400 font-medium">Total a cobrar</p>
+          <p className="text-3xl font-bold text-indigo-700 dark:text-indigo-400">{formatPrecio(total)}</p>
         </div>
 
         {/* Medio de pago */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Medio de pago</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Medio de pago</label>
           <div className="grid grid-cols-2 gap-2">
             {MEDIOS_PAGO.map((mp) => (
               <button
@@ -127,11 +127,10 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
                 onClick={() => setMedioPago(mp.valor)}
                 className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border-2 text-sm font-medium transition-colors ${
                   medioPago === mp.valor
-                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                    : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                    ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'
+                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
                 }`}
               >
-                <span>{mp.icon}</span>
                 {mp.label}
               </button>
             ))}
@@ -160,8 +159,8 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
                   onClick={() => setPagaCon(billete.toString())}
                   className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
                     pagaConNum === billete
-                      ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                      : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'
+                      : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
                   }`}
                 >
                   {formatPrecio(billete)}
@@ -170,7 +169,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
               {/* Monto exacto */}
               <button
                 onClick={() => setPagaCon(total.toString())}
-                className="px-3 py-1.5 rounded-lg border border-emerald-300 text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
+                className="px-3 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 text-sm font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
               >
                 Exacto
               </button>
@@ -180,16 +179,16 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             {pagaConNum > 0 && (
               <div className={`text-center py-3 rounded-xl ${
                 pagaConNum >= total
-                  ? 'bg-emerald-50'
-                  : 'bg-red-50'
+                  ? 'bg-emerald-50 dark:bg-emerald-900/30'
+                  : 'bg-red-50 dark:bg-red-900/30'
               }`}>
                 {pagaConNum >= total ? (
                   <>
-                    <p className="text-sm text-emerald-600 font-medium">Vuelto</p>
-                    <p className="text-2xl font-bold text-emerald-700">{formatPrecio(vuelto)}</p>
+                    <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">Vuelto</p>
+                    <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{formatPrecio(vuelto)}</p>
                   </>
                 ) : (
-                  <p className="text-sm text-red-600 font-medium">
+                  <p className="text-sm text-red-600 dark:text-red-400 font-medium">
                     Faltan {formatPrecio(total - pagaConNum)}
                   </p>
                 )}
@@ -217,7 +216,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           disabled={!puedeConfirmar}
           loading={procesando}
         >
-          ✅ Confirmar Venta
+          Confirmar Venta
         </Button>
       </div>
     </Modal>

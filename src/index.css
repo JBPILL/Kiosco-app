@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Variables del tema */
 :root {
   --color-primary: #6366f1;
@@ -11,7 +13,7 @@
 
 /* Reset base */
 body {
-  @apply bg-gray-50 text-gray-900 font-sans;
+  @apply bg-gray-50 text-gray-900 font-sans dark:bg-gray-900 dark:text-gray-100;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -22,4 +24,9 @@ html, body, #root {
 
 input, button {
   @apply outline-none;
+}
+
+/* Transición suave al cambiar de tema */
+* {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }

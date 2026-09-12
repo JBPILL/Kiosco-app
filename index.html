@@ -16,13 +16,28 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      // Registrar Service Worker para PWA
+      // Manejo de Service Worker: solo en producción
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then(() => console.log('✅ Service Worker registrado'))
-            .catch((err) => console.log('❌ Service Worker error:', err))
-        })
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+          // En localhost limpiamos cualquier SW o caché para que no congele el código en desarrollo
+          navigator.serviceWorker.getRegistrations().then((registrations) => {
+            for (const reg of registrations) {
+              reg.unregister()
+            }
+          })
+          if ('caches' in window) {
+            caches.keys().then((names) => {
+              for (const name of names) caches.delete(name)
+            })
+          }
+        } else {
+          // En producción (ej. Vercel o HTTPS), habilitamos PWA
+          window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js')
+              .then(() => console.log('✅ Service Worker registrado para PWA'))
+              .catch((err) => console.log('❌ Service Worker error:', err))
+          })
+        }
       }
     </script>
   </body>

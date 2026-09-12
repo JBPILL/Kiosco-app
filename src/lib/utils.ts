@@ -51,10 +51,10 @@ export function calcularVuelto(total: number, pagaCon: number): number {
  */
 export function labelMedioPago(medio: string): string {
   const labels: Record<string, string> = {
-    EFECTIVO: '💵 Efectivo',
-    MERCADOPAGO: '📱 Mercado Pago',
-    TRANSFERENCIA: '🏦 Transferencia',
-    TARJETA: '💳 Tarjeta',
+    EFECTIVO: 'Efectivo',
+    MERCADOPAGO: 'Mercado Pago',
+    TRANSFERENCIA: 'Transferencia',
+    TARJETA: 'Tarjeta',
   }
   return labels[medio] || medio
 }
