@@ -261,21 +261,21 @@ export function POSPage() {
               {ventasEnEspera.map((v) => (
                 <div
                   key={v.id}
-                  className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-750 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5"
+                  className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-xs"
                 >
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-sm text-gray-900 dark:text-gray-100">
-                        {v.nota}
+                      <span className="font-bold text-sm text-gray-900 dark:text-white">
+                        {v.nota || 'Venta sin referencia'}
                       </span>
-                      <span className="text-xs text-gray-400 dark:text-gray-500">
+                      <span className="text-[11px] text-gray-500 dark:text-gray-400">
                         {formatFecha(v.fecha)}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                    <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 line-clamp-2">
                       {v.items.map((i) => `${i.cantidad}x ${i.producto.descripcion}`).join(', ')}
                     </p>
-                    <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mt-1">
+                    <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-1.5">
                       Total: {formatPrecio(v.total)} ({v.items.reduce((s, i) => s + i.cantidad, 0)} items)
                     </p>
                   </div>
@@ -285,13 +285,14 @@ export function POSPage() {
                       size="sm"
                       variant="primary"
                       onClick={() => handleRecuperar(v.id)}
+                      className="font-semibold shadow-xs"
                     >
                       Recuperar
                     </Button>
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="text-red-500 hover:text-red-700 text-xs"
+                      className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40 text-xs font-semibold"
                       onClick={() => eliminarVentaEnEspera(v.id)}
                     >
                       Descartar

@@ -323,7 +323,7 @@ export function ClientesPage() {
                   {clientesFiltrados.map((cli) => {
                     const debe = (cli.saldo_deudor || 0) > 0
                     return (
-                      <tr key={cli.id} className="hover:bg-gray-50 dark:hover:bg-gray-750">
+                      <tr key={cli.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                         <td className="px-4 py-3">
                           <p className="font-bold text-gray-900 dark:text-gray-100">{cli.nombre}</p>
                           {cli.direccion && (
@@ -668,7 +668,7 @@ export function ClientesPage() {
                       key={v}
                       type="button"
                       onClick={() => setMontoAbono(v.toString())}
-                      className="px-2.5 py-1 text-xs font-medium rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750 text-gray-700 dark:text-gray-300"
+                      className="px-2.5 py-1 text-xs font-medium rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
                     >
                       +{formatPrecio(v)}
                     </button>
