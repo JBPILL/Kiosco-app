@@ -1,20 +1,62 @@
-// Auto-destrucción del Service Worker en desarrollo local para limpiar cachés obsoletos
+// Service Worker para KioskoPOS PWA
+// Estrategia Network-First: Siempre intenta obtener la versión más reciente de la red.
+// Si no hay conexión a internet, usa la copia local guardada en caché.
+
+const CACHE_NAME = 'kioskopos-v2'
+const STATIC_ASSETS = [
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/favicon.svg',
+]
+
 self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
+  )
   self.skipWaiting()
 })
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(keys.map((key) => caches.delete(key)))
-    }).then(() => {
-      return self.registration.unregister()
-    })
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+    )
   )
   self.clients.claim()
 })
 
-// Pasar todo directamente a la red sin interceptar
-self.addEventListener('fetch', () => {
-  return
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url)
+
+  // Ignorar métodos no GET y esquemas que no sean HTTP/HTTPS (extensiones, etc.)
+  if (event.request.method !== 'GET' || !url.protocol.startsWith('http')) {
+    return
+  }
+
+  // Peticiones a Supabase: ir siempre directamente a la red
+  if (url.hostname.includes('supabase')) {
+    return
+  }
+
+  // Network-First para assets y navegación
+  event.respondWith(
+    fetch(event.request)
+      .then((response) => {
+        if (response.status === 200) {
+          const clone = response.clone()
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone))
+        }
+        return response
+      })
+      .catch(() => {
+        return caches.match(event.request).then((cached) => {
+          if (cached) return cached
+          if (event.request.mode === 'navigate') {
+            return caches.match('/index.html')
+          }
+          return new Response('Sin conexión', { status: 503 })
+        })
+      })
+  )
 })
