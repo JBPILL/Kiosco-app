@@ -25,8 +25,20 @@ const MEDIOS_PAGO: { valor: MedioPago; label: string }[] = [
 ]
 
 export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModalProps) {
-  const { items, totalMonto, vaciarCarrito } = useCartStore()
+  const {
+    items,
+    totalMonto,
+    subtotalMonto,
+    montoAjuste,
+    tipoAjuste,
+    descripcionAjuste,
+    vaciarCarrito,
+  } = useCartStore()
+
   const total = totalMonto()
+  const subtotal = subtotalMonto()
+  const ajuste = montoAjuste()
+  const tieneAjuste = tipoAjuste !== 'NINGUNO'
 
   const [medioPago, setMedioPago] = useState<MedioPago>('EFECTIVO')
   const [pagaCon, setPagaCon] = useState<string>('')
@@ -51,6 +63,10 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       const ahora = new Date().toISOString()
       const sesionActiva = useCajaStore.getState().sesionActiva
       const usuario = useAuthStore.getState().usuario
+      const descAjuste = descripcionAjuste()
+      const notasFinal = descAjuste
+        ? (referencia ? `${descAjuste} · ${referencia}` : descAjuste)
+        : (referencia || null)
 
       // 1. Insertar la venta
       const { error: ventaError } = await supabase.from('ventas').insert({
@@ -60,6 +76,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         fecha_hora: ahora,
         total,
         estado: 'COMPLETADA',
+        notas: notasFinal,
         sincronizado: true,
       })
 
@@ -117,10 +134,20 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Cobrar" size="md">
       <div className="space-y-5">
-        {/* Total */}
-        <div className="text-center py-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl">
-          <p className="text-sm text-indigo-600 dark:text-indigo-400 font-medium">Total a cobrar</p>
-          <p className="text-3xl font-bold text-indigo-700 dark:text-indigo-400">{formatPrecio(total)}</p>
+        {/* Total y Desglose */}
+        <div className="py-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl space-y-1">
+          {tieneAjuste && (
+            <div className="flex justify-between items-center px-4 text-xs text-gray-600 dark:text-gray-300 pb-1 border-b border-indigo-100 dark:border-indigo-800/40">
+              <span>Subtotal: {formatPrecio(subtotal)}</span>
+              <span className={tipoAjuste.startsWith('DESCUENTO') ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-blue-600 dark:text-blue-400 font-semibold'}>
+                {descripcionAjuste()} ({tipoAjuste.startsWith('DESCUENTO') ? '-' : '+'}{formatPrecio(Math.abs(ajuste))})
+              </span>
+            </div>
+          )}
+          <div className="text-center pt-0.5">
+            <p className="text-sm text-indigo-600 dark:text-indigo-400 font-medium">Total a cobrar</p>
+            <p className="text-3xl font-bold text-indigo-700 dark:text-indigo-400">{formatPrecio(total)}</p>
+          </div>
         </div>
 
         {/* Medio de pago */}

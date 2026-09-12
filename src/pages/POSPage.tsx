@@ -3,13 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useCartStore } from '../stores/cartStore'
 import { useCajaStore } from '../stores/cajaStore'
-import { formatPrecio } from '../lib/utils'
+import { formatPrecio, formatFecha } from '../lib/utils'
 import { ProductSearch } from '../components/pos/ProductSearch'
 import { FavoritesGrid } from '../components/pos/FavoritesGrid'
 import { CartPanel } from '../components/pos/CartPanel'
 import { PaymentModal } from '../components/pos/PaymentModal'
 import { Modal } from '../components/ui/Modal'
+import { Button } from '../components/ui/Button'
 import type { Producto, Categoria } from '../types/database'
+import toast from 'react-hot-toast'
 
 export function POSPage() {
   const navigate = useNavigate()
@@ -20,8 +22,17 @@ export function POSPage() {
   const [productosCategoria, setProductosCategoria] = useState<Producto[]>([])
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [cartModalOpen, setCartModalOpen] = useState(false)
+  const [modalEsperaOpen, setModalEsperaOpen] = useState(false)
 
-  const { agregarProducto, totalItems, totalMonto } = useCartStore()
+  const {
+    agregarProducto,
+    totalItems,
+    totalMonto,
+    ventasEnEspera,
+    recuperarVenta,
+    eliminarVentaEnEspera,
+  } = useCartStore()
+
   const cantItems = totalItems()
   const total = totalMonto()
 
@@ -78,6 +89,12 @@ export function POSPage() {
     setCartModalOpen(false)
   }
 
+  const handleRecuperar = (id: string) => {
+    recuperarVenta(id)
+    setModalEsperaOpen(false)
+    toast.success('Venta recuperada en el ticket')
+  }
+
   return (
     <div className="h-full flex flex-col gap-2.5 max-w-6xl mx-auto pb-16 lg:pb-0">
       {/* Banner compacto de estado de caja */}
@@ -116,8 +133,18 @@ export function POSPage() {
             <ProductSearch onSelect={handleSeleccion} />
           </div>
 
-          {/* Categorías deslizables */}
-          <div className="flex gap-1.5 mb-2.5 overflow-x-auto pb-1 scrollbar-hide">
+          {/* Categorías deslizables + Botón Ventas en Espera */}
+          <div className="flex items-center gap-1.5 mb-2.5 overflow-x-auto pb-1 scrollbar-hide">
+            {/* Botón de ventas en espera si existen */}
+            {ventasEnEspera.length > 0 && (
+              <button
+                onClick={() => setModalEsperaOpen(true)}
+                className="px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap min-h-[32px] bg-amber-500 hover:bg-amber-600 text-white shadow-xs flex-shrink-0 animate-pulse active:scale-95 transition-all"
+              >
+                En espera ({ventasEnEspera.length})
+              </button>
+            )}
+
             <button
               onClick={() => setCategoriaActiva(null)}
               className={`px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap min-h-[32px] transition-colors ${
@@ -200,13 +227,84 @@ export function POSPage() {
         title="Ticket de Venta"
         size="md"
       >
-        <div className="h-[60dvh] -mx-2">
+        <div className="h-[65dvh] -mx-2">
           <CartPanel
             onCobrar={() => {
               setCartModalOpen(false)
               setPaymentOpen(true)
             }}
           />
+        </div>
+      </Modal>
+
+      {/* Modal Ventas en Espera */}
+      <Modal
+        isOpen={modalEsperaOpen}
+        onClose={() => setModalEsperaOpen(false)}
+        title={`Ventas en Espera (${ventasEnEspera.length})`}
+        size="md"
+      >
+        <div className="space-y-3">
+          {ventasEnEspera.length === 0 ? (
+            <p className="text-center py-6 text-gray-400 dark:text-gray-500 text-sm">
+              No hay ventas en espera actualmente.
+            </p>
+          ) : (
+            <div className="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1">
+              {ventasEnEspera.map((v) => (
+                <div
+                  key={v.id}
+                  className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-750 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm text-gray-900 dark:text-gray-100">
+                        {v.nota}
+                      </span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500">
+                        {formatFecha(v.fecha)}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                      {v.items.map((i) => `${i.cantidad}x ${i.producto.descripcion}`).join(', ')}
+                    </p>
+                    <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mt-1">
+                      Total: {formatPrecio(v.total)} ({v.items.reduce((s, i) => s + i.cantidad, 0)} items)
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-auto flex-shrink-0">
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      onClick={() => handleRecuperar(v.id)}
+                    >
+                      Recuperar
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-red-500 hover:text-red-700 text-xs"
+                      onClick={() => eliminarVentaEnEspera(v.id)}
+                    >
+                      Descartar
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="pt-2">
+            <Button
+              variant="secondary"
+              fullWidth
+              size="sm"
+              onClick={() => setModalEsperaOpen(false)}
+            >
+              Cerrar
+            </Button>
+          </div>
         </div>
       </Modal>
 

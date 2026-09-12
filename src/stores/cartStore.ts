@@ -1,29 +1,86 @@
 import { create } from 'zustand'
+import { v4 as uuidv4 } from 'uuid'
 import type { Producto, ItemCarrito } from '../types/database'
 
-interface CartState {
-  // Estado
+export type TipoAjuste =
+  | 'NINGUNO'
+  | 'DESCUENTO_PORCENTAJE'
+  | 'DESCUENTO_FIJO'
+  | 'RECARGO_PORCENTAJE'
+  | 'RECARGO_FIJO'
+
+export interface VentaEnEspera {
+  id: string
+  fecha: string
+  nota: string
   items: ItemCarrito[]
-  
-  // Acciones
+  tipoAjuste: TipoAjuste
+  valorAjuste: number
+  total: number
+}
+
+interface CartState {
+  // Estado del carrito activo
+  items: ItemCarrito[]
+  tipoAjuste: TipoAjuste
+  valorAjuste: number
+
+  // Ventas en espera
+  ventasEnEspera: VentaEnEspera[]
+
+  // Acciones de productos
   agregarProducto: (producto: Producto) => void
   quitarProducto: (productoId: string) => void
   actualizarCantidad: (productoId: string, cantidad: number) => void
   vaciarCarrito: () => void
-  
+
+  // Acciones de descuentos y recargos
+  aplicarAjuste: (tipo: TipoAjuste, valor: number) => void
+  quitarAjuste: () => void
+
+  // Acciones de ventas en espera
+  suspenderVentaActual: (nota?: string) => boolean
+  recuperarVenta: (id: string) => void
+  eliminarVentaEnEspera: (id: string) => void
+
   // Computed
   totalItems: () => number
+  subtotalMonto: () => number
+  montoAjuste: () => number
   totalMonto: () => number
+  descripcionAjuste: () => string | null
+}
+
+const STORAGE_KEY_ESPERA = 'kioskopos_ventas_espera'
+
+function cargarVentasEnEspera(): VentaEnEspera[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_ESPERA)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function guardarVentasEnEspera(ventas: VentaEnEspera[]) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(STORAGE_KEY_ESPERA, JSON.stringify(ventas))
+  } catch (e) {
+    console.error('Error guardando ventas en espera:', e)
+  }
 }
 
 export const useCartStore = create<CartState>((set, get) => ({
   items: [],
+  tipoAjuste: 'NINGUNO',
+  valorAjuste: 0,
+  ventasEnEspera: cargarVentasEnEspera(),
 
   agregarProducto: (producto: Producto) => {
     set((state) => {
-      // Si el producto ya está en el carrito, sumar 1
       const existente = state.items.find((item) => item.producto.id === producto.id)
-      
       if (existente) {
         return {
           items: state.items.map((item) =>
@@ -38,7 +95,6 @@ export const useCartStore = create<CartState>((set, get) => ({
         }
       }
 
-      // Si no está, agregarlo con cantidad 1
       return {
         items: [
           ...state.items,
@@ -77,9 +133,118 @@ export const useCartStore = create<CartState>((set, get) => ({
     }))
   },
 
-  vaciarCarrito: () => set({ items: [] }),
+  vaciarCarrito: () =>
+    set({
+      items: [],
+      tipoAjuste: 'NINGUNO',
+      valorAjuste: 0,
+    }),
+
+  aplicarAjuste: (tipo: TipoAjuste, valor: number) => {
+    set({
+      tipoAjuste: tipo,
+      valorAjuste: Math.max(0, valor),
+    })
+  },
+
+  quitarAjuste: () =>
+    set({
+      tipoAjuste: 'NINGUNO',
+      valorAjuste: 0,
+    }),
+
+  suspenderVentaActual: (nota?: string) => {
+    const { items, tipoAjuste, valorAjuste, totalMonto } = get()
+    if (items.length === 0) return false
+
+    const nuevaVentaEspera: VentaEnEspera = {
+      id: uuidv4(),
+      fecha: new Date().toISOString(),
+      nota: nota?.trim() || `Venta #${get().ventasEnEspera.length + 1}`,
+      items: [...items],
+      tipoAjuste,
+      valorAjuste,
+      total: totalMonto(),
+    }
+
+    const actualizadas = [nuevaVentaEspera, ...get().ventasEnEspera]
+    guardarVentasEnEspera(actualizadas)
+
+    set({
+      items: [],
+      tipoAjuste: 'NINGUNO',
+      valorAjuste: 0,
+      ventasEnEspera: actualizadas,
+    })
+
+    return true
+  },
+
+  recuperarVenta: (id: string) => {
+    const venta = get().ventasEnEspera.find((v) => v.id === id)
+    if (!venta) return
+
+    const restantes = get().ventasEnEspera.filter((v) => v.id !== id)
+    guardarVentasEnEspera(restantes)
+
+    set({
+      items: venta.items,
+      tipoAjuste: venta.tipoAjuste,
+      valorAjuste: venta.valorAjuste,
+      ventasEnEspera: restantes,
+    })
+  },
+
+  eliminarVentaEnEspera: (id: string) => {
+    const restantes = get().ventasEnEspera.filter((v) => v.id !== id)
+    guardarVentasEnEspera(restantes)
+    set({ ventasEnEspera: restantes })
+  },
 
   totalItems: () => get().items.reduce((sum, item) => sum + item.cantidad, 0),
 
-  totalMonto: () => get().items.reduce((sum, item) => sum + item.subtotal, 0),
+  subtotalMonto: () => get().items.reduce((sum, item) => sum + item.subtotal, 0),
+
+  montoAjuste: () => {
+    const { tipoAjuste, valorAjuste } = get()
+    const subtotal = get().subtotalMonto()
+
+    if (tipoAjuste === 'DESCUENTO_PORCENTAJE') {
+      return (subtotal * valorAjuste) / 100
+    }
+    if (tipoAjuste === 'DESCUENTO_FIJO') {
+      return Math.min(valorAjuste, subtotal)
+    }
+    if (tipoAjuste === 'RECARGO_PORCENTAJE') {
+      return (subtotal * valorAjuste) / 100
+    }
+    if (tipoAjuste === 'RECARGO_FIJO') {
+      return valorAjuste
+    }
+    return 0
+  },
+
+  totalMonto: () => {
+    const subtotal = get().subtotalMonto()
+    const ajuste = get().montoAjuste()
+    const { tipoAjuste } = get()
+
+    if (tipoAjuste.startsWith('DESCUENTO')) {
+      return Math.max(0, subtotal - ajuste)
+    }
+    if (tipoAjuste.startsWith('RECARGO')) {
+      return subtotal + ajuste
+    }
+    return subtotal
+  },
+
+  descripcionAjuste: () => {
+    const { tipoAjuste, valorAjuste } = get()
+    const monto = get().montoAjuste()
+    if (tipoAjuste === 'DESCUENTO_PORCENTAJE') return `Descuento ${valorAjuste}% (-$${monto.toLocaleString('es-AR')})`
+    if (tipoAjuste === 'DESCUENTO_FIJO') return `Descuento -$${monto.toLocaleString('es-AR')}`
+    if (tipoAjuste === 'RECARGO_PORCENTAJE') return `Recargo ${valorAjuste}% (+$${monto.toLocaleString('es-AR')})`
+    if (tipoAjuste === 'RECARGO_FIJO') return `Recargo +$${monto.toLocaleString('es-AR')}`
+    return null
+  },
 }))
