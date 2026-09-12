@@ -1,0 +1,171 @@
+import { useState, useEffect, useCallback } from 'react'
+import { supabase } from '../lib/supabase'
+import type { Producto, Categoria } from '../types/database'
+import toast from 'react-hot-toast'
+
+export function useProducts() {
+  const [productos, setProductos] = useState<Producto[]>([])
+  const [categorias, setCategorias] = useState<Categoria[]>([])
+  const [cargando, setCargando] = useState(true)
+  const [busqueda, setBusqueda] = useState('')
+  const [categoriaFiltro, setCategoriaFiltro] = useState<string | null>(null)
+
+  // Cargar productos con join a categoría
+  const cargarProductos = useCallback(async () => {
+    setCargando(true)
+    let query = supabase
+      .from('productos')
+      .select('*, categoria:categorias(id, nombre, color)')
+      .eq('activo', true)
+      .order('descripcion')
+
+    if (busqueda) {
+      query = query.ilike('descripcion', `%${busqueda}%`)
+    }
+    if (categoriaFiltro) {
+      query = query.eq('categoria_id', categoriaFiltro)
+    }
+
+    const { data, error } = await query
+
+    if (error) {
+      toast.error('Error al cargar productos')
+      console.error(error)
+    } else {
+      setProductos(data || [])
+    }
+    setCargando(false)
+  }, [busqueda, categoriaFiltro])
+
+  // Cargar categorías
+  const cargarCategorias = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('categorias')
+      .select('*')
+      .order('orden')
+
+    if (error) {
+      toast.error('Error al cargar categorías')
+    } else {
+      setCategorias(data || [])
+    }
+  }, [])
+
+  useEffect(() => {
+    cargarProductos()
+  }, [cargarProductos])
+
+  useEffect(() => {
+    cargarCategorias()
+  }, [cargarCategorias])
+
+  // Crear producto
+  const crearProducto = async (producto: Omit<Producto, 'id' | 'kiosco_id' | 'fecha_creacion' | 'fecha_actualizacion' | 'activo'>) => {
+    const { error } = await supabase.from('productos').insert(producto)
+    if (error) {
+      toast.error('Error al crear producto: ' + error.message)
+      return false
+    }
+    toast.success('Producto creado')
+    await cargarProductos()
+    return true
+  }
+
+  // Actualizar producto
+  const actualizarProducto = async (id: string, cambios: Partial<Producto>) => {
+    const { error } = await supabase
+      .from('productos')
+      .update({ ...cambios, fecha_actualizacion: new Date().toISOString() })
+      .eq('id', id)
+    if (error) {
+      toast.error('Error al actualizar producto')
+      return false
+    }
+    toast.success('Producto actualizado')
+    await cargarProductos()
+    return true
+  }
+
+  // Eliminar producto (soft delete)
+  const eliminarProducto = async (id: string) => {
+    const { error } = await supabase
+      .from('productos')
+      .update({ activo: false })
+      .eq('id', id)
+    if (error) {
+      toast.error('Error al eliminar producto')
+      return false
+    }
+    toast.success('Producto eliminado')
+    await cargarProductos()
+    return true
+  }
+
+  // Toggle favorito
+  const toggleFavorito = async (id: string, esFavorito: boolean) => {
+    const { error } = await supabase
+      .from('productos')
+      .update({ es_favorito: !esFavorito })
+      .eq('id', id)
+    if (error) {
+      toast.error('Error al actualizar favorito')
+      return
+    }
+    await cargarProductos()
+  }
+
+  // CRUD Categorías
+  const crearCategoria = async (nombre: string, color: string = '#6366f1') => {
+    const { error } = await supabase.from('categorias').insert({ nombre, color })
+    if (error) {
+      toast.error('Error al crear categoría: ' + error.message)
+      return false
+    }
+    toast.success('Categoría creada')
+    await cargarCategorias()
+    return true
+  }
+
+  const actualizarCategoria = async (id: string, nombre: string, color: string) => {
+    const { error } = await supabase
+      .from('categorias')
+      .update({ nombre, color })
+      .eq('id', id)
+    if (error) {
+      toast.error('Error al actualizar categoría')
+      return false
+    }
+    toast.success('Categoría actualizada')
+    await cargarCategorias()
+    return true
+  }
+
+  const eliminarCategoria = async (id: string) => {
+    const { error } = await supabase.from('categorias').delete().eq('id', id)
+    if (error) {
+      toast.error('Error al eliminar categoría')
+      return false
+    }
+    toast.success('Categoría eliminada')
+    await cargarCategorias()
+    return true
+  }
+
+  return {
+    productos,
+    categorias,
+    cargando,
+    busqueda,
+    setBusqueda,
+    categoriaFiltro,
+    setCategoriaFiltro,
+    cargarProductos,
+    crearProducto,
+    actualizarProducto,
+    eliminarProducto,
+    toggleFavorito,
+    crearCategoria,
+    actualizarCategoria,
+    eliminarCategoria,
+  }
+}

@@ -4,44 +4,12 @@ import { useAuthStore } from './stores/authStore'
 import { LoginScreen } from './components/auth/LoginScreen'
 import { MainLayout } from './components/layout/MainLayout'
 import { AppToaster } from './components/ui/Toast'
+import { POSPage } from './pages/POSPage'
+import { CatalogoPage } from './pages/CatalogoPage'
+import { ReportesPage } from './pages/ReportesPage'
+import { StockPage } from './pages/StockPage'
 
 // Páginas placeholder (se implementan después)
-function POSPage() {
-  return (
-    <div className="text-center py-20">
-      <h2 className="text-3xl font-bold text-gray-900 mb-2">🛒 Punto de Venta</h2>
-      <p className="text-gray-500">Módulo en desarrollo...</p>
-    </div>
-  )
-}
-
-function CatalogoPage() {
-  return (
-    <div className="text-center py-20">
-      <h2 className="text-3xl font-bold text-gray-900 mb-2">📦 Catálogo</h2>
-      <p className="text-gray-500">Módulo en desarrollo...</p>
-    </div>
-  )
-}
-
-function StockPage() {
-  return (
-    <div className="text-center py-20">
-      <h2 className="text-3xl font-bold text-gray-900 mb-2">📊 Stock</h2>
-      <p className="text-gray-500">Módulo en desarrollo...</p>
-    </div>
-  )
-}
-
-function ReportesPage() {
-  return (
-    <div className="text-center py-20">
-      <h2 className="text-3xl font-bold text-gray-900 mb-2">📈 Reportes</h2>
-      <p className="text-gray-500">Módulo en desarrollo...</p>
-    </div>
-  )
-}
-
 function ConfigPage() {
   return (
     <div className="text-center py-20">
@@ -75,12 +43,10 @@ function App() {
     <BrowserRouter>
       <AppToaster />
       {!usuario ? (
-        // No autenticado → Login
         <Routes>
           <Route path="*" element={<LoginScreen />} />
         </Routes>
       ) : (
-        // Autenticado → App principal
         <Routes>
           <Route element={<MainLayout />}>
             <Route path="/" element={<POSPage />} />
