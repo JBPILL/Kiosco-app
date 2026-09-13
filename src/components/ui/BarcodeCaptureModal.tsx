@@ -29,6 +29,12 @@ export function BarcodeCaptureModal({
   const scannerRef = useRef<Html5Qrcode | null>(null)
   const elementId = 'barcode-capture-viewport'
   const isCapturingRef = useRef<boolean>(false)
+  const isStoppingRef = useRef<boolean>(false)
+  const isOpenRef = useRef<boolean>(isOpen)
+
+  useEffect(() => {
+    isOpenRef.current = isOpen
+  }, [isOpen])
 
   // Procesar código detectado
   const procesarCodigo = useCallback(
@@ -60,58 +66,110 @@ export function BarcodeCaptureModal({
     isCapturingRef.current = false
 
     try {
-      if (scannerRef.current?.isScanning) {
-        await scannerRef.current.stop()
+      // Limpiar escáner previo si existía
+      if (scannerRef.current) {
+        try {
+          if (scannerRef.current.isScanning) {
+            await scannerRef.current.stop()
+          }
+          scannerRef.current.clear()
+        } catch {
+          // Ignorar error al limpiar
+        }
+        scannerRef.current = null
       }
 
-      const devices = await Html5Qrcode.getCameras()
-      if (!devices || devices.length === 0) {
-        setErrorCamara('No se detectaron cámaras en este dispositivo.')
+      const element = document.getElementById(elementId)
+      if (!element) {
         setIniciando(false)
         return
       }
 
-      setCamaras(devices.map((d) => ({ id: d.id, label: d.label || `Cámara ${d.id}` })))
-
-      const scanner =
-        scannerRef.current ||
-        new Html5Qrcode(elementId, {
-          formatsToSupport: [
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.EAN_8,
-            Html5QrcodeSupportedFormats.UPC_A,
-            Html5QrcodeSupportedFormats.UPC_E,
-            Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.CODE_39,
-            Html5QrcodeSupportedFormats.CODE_93,
-            Html5QrcodeSupportedFormats.ITF,
-            Html5QrcodeSupportedFormats.QR_CODE,
-          ],
-          verbose: false,
-        })
+      const scanner = new Html5Qrcode(elementId, {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.CODE_93,
+          Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.QR_CODE,
+        ],
+        verbose: false,
+      })
       scannerRef.current = scanner
+
+      const scanConfig = {
+        fps: 15,
+        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+          const width = Math.max(60, Math.floor(Math.min(viewfinderWidth * 0.85, 280)))
+          const height = Math.max(60, Math.floor(Math.min(viewfinderHeight * 0.6, 150)))
+          return {
+            width: Math.min(width, viewfinderWidth),
+            height: Math.min(height, viewfinderHeight),
+          }
+        },
+        aspectRatio: 1.2,
+      }
 
       const targetCamera = cameraId || { facingMode: 'environment' }
 
-      await scanner.start(
-        targetCamera,
-        {
-          fps: 15,
-          qrbox: { width: 280, height: 160 },
-          aspectRatio: 1.2,
-        },
-        (decodedText) => {
-          procesarCodigo(decodedText)
-        },
-        () => {
-          // Ignorar cuadros sin detección
+      try {
+        await scanner.start(
+          targetCamera,
+          scanConfig,
+          (decodedText) => {
+            procesarCodigo(decodedText)
+          },
+          () => {
+            // Ignorar cuadros sin detección
+          }
+        )
+      } catch (firstErr) {
+        console.warn('Fallo al iniciar cámara con facingMode environment, reintentando con user/default:', firstErr)
+        if (!cameraId) {
+          await scanner.start(
+            { facingMode: 'user' },
+            scanConfig,
+            (decodedText) => {
+              procesarCodigo(decodedText)
+            },
+            () => {}
+          )
+        } else {
+          throw firstErr
         }
-      )
+      }
+
+      // Si el modal se cerró mientras la cámara inicializaba, detener de inmediato
+      if (!isOpenRef.current) {
+        try {
+          if (scanner.isScanning) {
+            await scanner.stop()
+          }
+          scanner.clear()
+        } catch {}
+        scannerRef.current = null
+        return
+      }
 
       if (typeof targetCamera === 'string') {
         setCamaraActualId(targetCamera)
-      } else if (devices.length > 0) {
-        setCamaraActualId(devices[0].id)
+      }
+
+      // Enumerar cámaras ahora que ya se concedieron permisos
+      try {
+        const devices = await Html5Qrcode.getCameras()
+        if (devices && devices.length > 0) {
+          setCamaras(devices.map((d) => ({ id: d.id, label: d.label || `Cámara ${d.id}` })))
+          if (!cameraId) {
+            setCamaraActualId(devices[0].id)
+          }
+        }
+      } catch {
+        // Ignorar si falla la enumeración
       }
 
       try {
@@ -127,8 +185,14 @@ export function BarcodeCaptureModal({
     } catch (err: unknown) {
       console.error('Error al inicializar cámara para captura:', err)
       const msg = err instanceof Error ? err.message : String(err)
-      if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
-        setErrorCamara('Permiso de cámara denegado. Habilitá la cámara en la configuración de tu navegador.')
+      if (
+        msg.includes('NotAllowedError') ||
+        msg.includes('Permission') ||
+        msg.includes('denied')
+      ) {
+        setErrorCamara('Permiso de cámara denegado. Habilitá la cámara en los permisos de tu navegador.')
+      } else if (msg.includes('NotFoundError') || msg.includes('DevicesNotFoundError')) {
+        setErrorCamara('No se detectó ninguna cámara disponible en este dispositivo.')
       } else {
         setErrorCamara('No se pudo acceder a la cámara. Verificá que no esté en uso por otra aplicación.')
       }
@@ -138,17 +202,23 @@ export function BarcodeCaptureModal({
 
   // Detener escáner
   const detenerEscaner = useCallback(async () => {
-    if (scannerRef.current) {
+    if (isStoppingRef.current) return
+    isStoppingRef.current = true
+    const scanner = scannerRef.current
+    scannerRef.current = null
+    if (scanner) {
       try {
-        if (scannerRef.current.isScanning) {
-          await scannerRef.current.stop()
+        if (scanner.isScanning) {
+          await scanner.stop()
         }
-        scannerRef.current.clear()
+        scanner.clear()
       } catch (err) {
         console.error('Error al detener cámara:', err)
       }
-      scannerRef.current = null
     }
+    setAntorchaEncendida(false)
+    setSoportaAntorcha(false)
+    isStoppingRef.current = false
   }, [])
 
   // Linterna
