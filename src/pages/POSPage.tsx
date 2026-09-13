@@ -274,10 +274,10 @@ export function POSPage() {
               ref={(el) => { categoryRefs.current[0] = el }}
               onClick={() => setCategoriaActiva(null)}
               onKeyDown={(e) => handleCategoryKeyDown(e, 0, null)}
-              className={`px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap min-h-[32px] transition-colors focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:outline-hidden ${
+              className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[32px] transition-all focus:outline-hidden ${
                 !categoriaActiva
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  ? 'bg-indigo-600 text-white shadow-xs focus:bg-indigo-700'
+                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-indigo-50/80 dark:focus:bg-gray-700 focus:text-indigo-900 dark:focus:text-white'
               }`}
             >
               Favoritos
@@ -288,10 +288,10 @@ export function POSPage() {
                 ref={(el) => { categoryRefs.current[idx + 1] = el }}
                 onClick={() => setCategoriaActiva(cat.id)}
                 onKeyDown={(e) => handleCategoryKeyDown(e, idx + 1, cat.id)}
-                className={`px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap min-h-[32px] transition-colors border focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:outline-hidden ${
+                className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[32px] transition-all border focus:outline-hidden ${
                   categoriaActiva === cat.id
-                    ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-semibold'
-                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-bold focus:border-indigo-600'
+                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-indigo-50/80 dark:focus:bg-gray-700 focus:text-indigo-900 dark:focus:text-white'
                 }`}
               >
                 {cat.nombre}

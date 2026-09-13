@@ -29,7 +29,32 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     (item) => usuario && item.roles.includes(usuario.rol)
   )
 
-  // Manejo de flechitas dentro del menú de navegación
+  // Enfocar el elemento principal de la pantalla activa (ej: buscador de POS)
+  const focusMainScreen = () => {
+    // 1. Buscar input de búsqueda principal
+    const input = document.querySelector<HTMLInputElement>(
+      'main input[type="text"], main input[type="search"], main input:not([type="hidden"])'
+    )
+    if (input) {
+      input.focus()
+      input.select?.()
+      return
+    }
+
+    // 2. Si no hay input, buscar el primer botón o enlace interactivo
+    const btn = document.querySelector<HTMLElement>(
+      'main button:not([disabled]), main a:not([disabled])'
+    )
+    if (btn) {
+      btn.focus()
+      return
+    }
+
+    // 3. Fallback: evento global para el buscador del POS
+    window.dispatchEvent(new CustomEvent('pos-focus-search'))
+  }
+
+  // Manejo de flechitas y Tab dentro del menú de navegación
   const handleItemKeyDown = (e: React.KeyboardEvent, index: number) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
@@ -39,6 +64,16 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       e.preventDefault()
       const prevIndex = (index - 1 + itemsVisibles.length) % itemsVisibles.length
       itemRefs.current[prevIndex]?.focus()
+    } else if (e.key === 'ArrowRight') {
+      // Flecha derecha: pasar directamente a la pantalla principal
+      e.preventDefault()
+      focusMainScreen()
+    } else if (e.key === 'Tab' && !e.shiftKey) {
+      // Si estamos en la última opción del menú y presiona Tab, pasar a la pantalla principal
+      if (index === itemsVisibles.length - 1) {
+        e.preventDefault()
+        focusMainScreen()
+      }
     } else if (e.key === 'Home') {
       e.preventDefault()
       itemRefs.current[0]?.focus()
@@ -124,8 +159,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               onKeyDown={(e) => handleItemKeyDown(e, index)}
               className={({ isActive }) => `
                 flex items-center justify-between px-4 py-3 rounded-xl min-h-[44px]
-                text-base font-medium transition-colors
-                focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:outline-hidden
+                text-base font-medium transition-all
+                focus:outline-hidden focus:bg-indigo-100/80 dark:focus:bg-gray-700 focus:text-indigo-900 dark:focus:text-white
                 ${isActive
                   ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-semibold'
                   : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100'
@@ -145,7 +180,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           <button
             onClick={toggleTema}
             className="flex items-center justify-between px-4 py-3 rounded-xl w-full min-h-[44px]
-              text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-hidden focus:bg-gray-100 dark:focus:bg-gray-700 transition-colors"
           >
             <span>Apariencia</span>
             <span className="text-xs px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold">
@@ -158,8 +193,14 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div className="px-3 pt-2 pb-[max(16px,env(safe-area-inset-bottom))] border-t border-gray-100 dark:border-gray-700/50">
           <button
             onClick={logout}
+            onKeyDown={(e) => {
+              if (e.key === 'Tab' && !e.shiftKey) {
+                e.preventDefault()
+                focusMainScreen()
+              }
+            }}
             className="flex items-center px-4 py-3 rounded-xl w-full min-h-[44px]
-              text-sm font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+              text-sm font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 focus:outline-hidden focus:bg-red-100/70 dark:focus:bg-red-950/40 transition-colors"
           >
             Cerrar Sesión
           </button>

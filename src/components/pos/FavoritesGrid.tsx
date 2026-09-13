@@ -79,25 +79,32 @@ export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
           ref={(el) => { buttonRefs.current[index] = el }}
           onClick={() => onSelect(prod)}
           onKeyDown={(e) => handleKeyDown(e, index, prod)}
-          className="flex flex-col items-center justify-center p-2 rounded-xl
-            border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-indigo-500 dark:hover:border-indigo-400
-            hover:bg-indigo-50/40 dark:hover:bg-indigo-900/20 active:scale-95 transition-all
-            focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:outline-hidden
-            min-h-[66px] sm:min-h-[72px] text-center"
+          className="group relative flex flex-col items-center justify-center p-2.5 rounded-xl text-center
+            border border-gray-200 dark:border-gray-700
+            bg-white dark:bg-gray-800
+            hover:border-indigo-400 dark:hover:border-indigo-500
+            hover:bg-indigo-50/30 dark:hover:bg-gray-700/60
+            focus:border-indigo-500 dark:focus:border-indigo-400
+            focus:bg-indigo-50/90 dark:focus:bg-gray-700
+            focus:shadow-lg focus:shadow-indigo-500/20
+            focus:scale-[1.03]
+            focus:outline-hidden
+            active:scale-95 transition-all duration-150
+            min-h-[68px] sm:min-h-[74px] cursor-pointer select-none"
         >
-          <span className="text-xs font-medium text-gray-900 dark:text-gray-100 line-clamp-2 leading-tight">
+          <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 group-focus:text-indigo-950 dark:group-focus:text-white line-clamp-2 leading-tight">
             {prod.descripcion}
           </span>
-          <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
+          <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 group-focus:text-emerald-700 dark:group-focus:text-emerald-300 mt-1">
             {formatPrecio(prod.precio_venta)}
           </span>
           {prod.stock_actual <= prod.stock_minimo && prod.stock_actual > 0 && (
-            <span className="text-[9px] px-1 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-medium mt-0.5">
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-bold mt-1">
               Bajo ({prod.stock_actual})
             </span>
           )}
           {prod.stock_actual <= 0 && (
-            <span className="text-[9px] px-1 rounded bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 font-bold mt-0.5">
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 font-bold mt-1">
               Sin stock
             </span>
           )}
