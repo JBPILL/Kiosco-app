@@ -19,6 +19,8 @@ export function SuperAdminPage() {
     eliminarKiosco,
     crearKioscoCliente,
     obtenerHistorialPagos,
+    actualizarPrecioPlan,
+    crearPlan,
   } = useAdminStore()
 
   // Filtros y búsqueda
@@ -54,6 +56,14 @@ export function SuperAdminPage() {
   const [modalEliminarOpen, setModalEliminarOpen] = useState(false)
   const [kioscoParaEliminar, setKioscoParaEliminar] = useState<KioscoAdminView | null>(null)
   const [textoConfirmacion, setTextoConfirmacion] = useState('')
+
+  // Modal Planes y Precios (Ajuste por Inflación)
+  const [modalPlanesOpen, setModalPlanesOpen] = useState(false)
+  const [preciosEditados, setPreciosEditados] = useState<Record<string, number>>({})
+  const [creandoNuevoPlan, setCreandoNuevoPlan] = useState(false)
+  const [nuevoPlanNombre, setNuevoPlanNombre] = useState('')
+  const [nuevoPlanPrecio, setNuevoPlanPrecio] = useState(35000)
+  const [nuevoPlanDesc, setNuevoPlanDesc] = useState('')
 
   // Modal Renovar
   const [modalRenovarOpen, setModalRenovarOpen] = useState(false)
@@ -274,6 +284,42 @@ export function SuperAdminPage() {
     }
   }
 
+  const abrirModalPlanes = () => {
+    const map: Record<string, number> = {}
+    planes.forEach((p) => {
+      map[p.id] = p.precio_mensual
+    })
+    setPreciosEditados(map)
+    setCreandoNuevoPlan(false)
+    setNuevoPlanNombre('')
+    setNuevoPlanPrecio(35000)
+    setNuevoPlanDesc('')
+    setModalPlanesOpen(true)
+  }
+
+  const handleGuardarPrecioPlan = async (planId: string) => {
+    const precio = preciosEditados[planId]
+    if (precio === undefined || precio < 0) return
+    await actualizarPrecioPlan(planId, precio)
+  }
+
+  const handleCrearNuevoPlan = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!nuevoPlanNombre.trim() || nuevoPlanPrecio <= 0) return
+    const ok = await crearPlan(
+      nuevoPlanNombre.trim(),
+      nuevoPlanPrecio,
+      10,
+      nuevoPlanDesc.trim() || undefined
+    )
+    if (ok) {
+      setCreandoNuevoPlan(false)
+      setNuevoPlanNombre('')
+      setNuevoPlanPrecio(35000)
+      setNuevoPlanDesc('')
+    }
+  }
+
   const handleVerPagos = async (kiosco: KioscoAdminView) => {
     if (!kiosco.suscripcion_id) return
     setKioscoHistorial(kiosco)
@@ -338,6 +384,13 @@ export function SuperAdminPage() {
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
+          <Button
+            variant="secondary"
+            onClick={abrirModalPlanes}
+            className="text-sm"
+          >
+            Planes y Precios
+          </Button>
           <Button
             variant="secondary"
             onClick={() => cargarDatosAdmin()}
@@ -1101,6 +1154,192 @@ export function SuperAdminPage() {
             </div>
           </form>
         )}
+      </Modal>
+
+      {/* MODAL PLANES Y PRECIOS (AJUSTE POR INFLACIÓN) */}
+      <Modal
+        isOpen={modalPlanesOpen}
+        onClose={() => setModalPlanesOpen(false)}
+        title="Planes de Alquiler y Precios (Ajuste por Inflación)"
+      >
+        <div className="space-y-5">
+          <div className="p-4 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 text-xs text-indigo-900 dark:text-indigo-200 space-y-1">
+            <p className="font-bold text-sm">Ajuste de Precios del Alquiler</p>
+            <p>
+              Modificá el valor mensual de alquiler en caso de aumentos por inflación.
+            </p>
+            <p className="text-gray-600 dark:text-gray-400">
+              Al guardar el nuevo monto, se actualizarán en tiempo real la facturación proyectada (MRR), los mensajes de cobro por WhatsApp y las renovaciones de todos los clientes vinculados a ese plan.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              Planes Existentes
+            </h3>
+
+            {planes.length === 0 ? (
+              <p className="text-sm text-gray-500 py-2">No hay planes configurados.</p>
+            ) : (
+              <div className="space-y-3">
+                {planes.map((p) => {
+                  const kioscosEnPlan = kioscos.filter((k) => k.plan_id === p.id).length
+                  const precioActual =
+                    preciosEditados[p.id] !== undefined ? preciosEditados[p.id] : p.precio_mensual
+                  const tieneCambios = precioActual !== p.precio_mensual && precioActual >= 0
+
+                  return (
+                    <div
+                      key={p.id}
+                      className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-gray-900 dark:text-gray-100 text-sm">
+                            {p.nombre}
+                          </span>
+                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium">
+                            {kioscosEnPlan} {kioscosEnPlan === 1 ? 'kiosco activo' : 'kioscos activos'}
+                          </span>
+                        </div>
+                        {p.descripcion && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            {p.descripcion}
+                          </p>
+                        )}
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          Precio actual registrado:{' '}
+                          <strong className="text-gray-700 dark:text-gray-300">
+                            {formatPrecio(p.precio_mensual)}
+                          </strong>{' '}
+                          / mes
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-center">
+                        <div className="flex items-center gap-1">
+                          <span className="text-sm font-semibold text-gray-500">$</span>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="500"
+                            value={precioActual}
+                            onChange={(e) =>
+                              setPreciosEditados((prev) => ({
+                                ...prev,
+                                [p.id]: Number(e.target.value),
+                              }))
+                            }
+                            className="w-32 text-sm font-bold"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant={tieneCambios ? 'primary' : 'secondary'}
+                          onClick={() => handleGuardarPrecioPlan(p.id)}
+                          disabled={cargandoAccion || !tieneCambios}
+                          className="text-xs whitespace-nowrap"
+                        >
+                          {cargandoAccion ? 'Guardando...' : tieneCambios ? 'Guardar Precio' : 'Sin cambios'}
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Sección para crear nuevo plan */}
+          <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
+            {!creandoNuevoPlan ? (
+              <button
+                type="button"
+                onClick={() => setCreandoNuevoPlan(true)}
+                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+              >
+                + Crear un nuevo plan o categoría de alquiler
+              </button>
+            ) : (
+              <form
+                onSubmit={handleCrearNuevoPlan}
+                className="space-y-3 p-4 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/30 dark:bg-indigo-950/20"
+              >
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-indigo-900 dark:text-indigo-200 uppercase tracking-wide">
+                    Nuevo Plan
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setCreandoNuevoPlan(false)}
+                    className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                      Nombre del Plan *
+                    </label>
+                    <Input
+                      placeholder="Ej: Kiosco Mini o Supermercado"
+                      value={nuevoPlanNombre}
+                      onChange={(e) => setNuevoPlanNombre(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                      Precio Mensual ($) *
+                    </label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="500"
+                      value={nuevoPlanPrecio}
+                      onChange={(e) => setNuevoPlanPrecio(Number(e.target.value))}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Descripción (opcional)
+                  </label>
+                  <Input
+                    placeholder="Ej: Plan para sucursales con hasta 5 cajas"
+                    value={nuevoPlanDesc}
+                    onChange={(e) => setNuevoPlanDesc(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    disabled={cargandoAccion || !nuevoPlanNombre.trim() || nuevoPlanPrecio <= 0}
+                    className="text-xs"
+                  >
+                    {cargandoAccion ? 'Creando...' : 'Crear Plan'}
+                  </Button>
+                </div>
+              </form>
+            )}
+          </div>
+
+          <div className="flex justify-end pt-3 border-t border-gray-200 dark:border-gray-700">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setModalPlanesOpen(false)}
+            >
+              Cerrar
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   )

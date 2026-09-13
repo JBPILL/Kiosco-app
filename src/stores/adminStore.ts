@@ -51,6 +51,8 @@ interface AdminState {
   eliminarKiosco: (kioscoId: string) => Promise<boolean>
   crearKioscoCliente: (payload: NuevoKioscoPayload) => Promise<boolean>
   obtenerHistorialPagos: (suscripcionId: string) => Promise<PagoSuscripcion[]>
+  actualizarPrecioPlan: (planId: string, nuevoPrecio: number, nuevoNombre?: string) => Promise<boolean>
+  crearPlan: (nombre: string, precioMensual: number, maxUsuarios?: number, descripcion?: string) => Promise<boolean>
 }
 
 export const useAdminStore = create<AdminState>((set, get) => ({
@@ -477,6 +479,56 @@ export const useAdminStore = create<AdminState>((set, get) => ({
     } catch (err) {
       console.error('Error al obtener historial de pagos:', err)
       return []
+    }
+  },
+
+  actualizarPrecioPlan: async (planId: string, nuevoPrecio: number, nuevoNombre?: string) => {
+    set({ cargandoAccion: true })
+    try {
+      const updates: Record<string, any> = { precio_mensual: nuevoPrecio }
+      if (nuevoNombre) updates.nombre = nuevoNombre.trim()
+
+      const { error } = await supabase
+        .from('planes')
+        .update(updates)
+        .eq('id', planId)
+
+      if (error) throw error
+
+      toast.success('Precio del plan actualizado correctamente')
+      await get().cargarDatosAdmin()
+      set({ cargandoAccion: false })
+      return true
+    } catch (err) {
+      console.error('Error actualizando plan:', err)
+      toast.error('Error al actualizar el precio del plan')
+      set({ cargandoAccion: false })
+      return false
+    }
+  },
+
+  crearPlan: async (nombre: string, precioMensual: number, maxUsuarios: number = 3, descripcion?: string) => {
+    set({ cargandoAccion: true })
+    try {
+      const { error } = await supabase.from('planes').insert({
+        nombre: nombre.trim(),
+        precio_mensual: precioMensual,
+        max_usuarios: maxUsuarios,
+        descripcion: descripcion?.trim() || null,
+        activo: true,
+      })
+
+      if (error) throw error
+
+      toast.success(`Plan "${nombre}" creado con éxito`)
+      await get().cargarDatosAdmin()
+      set({ cargandoAccion: false })
+      return true
+    } catch (err) {
+      console.error('Error creando plan:', err)
+      toast.error('Error al crear el nuevo plan')
+      set({ cargandoAccion: false })
+      return false
     }
   },
 }))
