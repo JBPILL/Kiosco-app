@@ -143,6 +143,15 @@ export function BarcodeCaptureModal({
         }
       }
 
+      // Asegurar que en iOS Safari el video tenga playsinline y continue reproduciendo
+      const videoEl = element.querySelector('video')
+      if (videoEl) {
+        videoEl.setAttribute('playsinline', 'true')
+        videoEl.setAttribute('webkit-playsinline', 'true')
+        videoEl.muted = true
+        videoEl.play().catch(() => {})
+      }
+
       // Si el modal se cerró mientras la cámara inicializaba, detener de inmediato
       if (!isOpenRef.current) {
         try {
@@ -296,52 +305,39 @@ export function BarcodeCaptureModal({
             </div>
           )}
 
-          {/* Elemento de video */}
+          {/* Elemento de video donde html5-qrcode renderiza la cámara */}
           <div id={elementId} className="w-full h-full object-cover" />
 
-          {/* Guía visual de escaneo */}
+          {/* Controles flotantes en la cámara */}
           {!iniciando && !errorCamara && (
-            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className="w-64 h-36 border-2 border-indigo-400/80 rounded-xl relative shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]">
-                {/* Esquinas destacadas */}
-                <div className="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-white" />
-                <div className="absolute -top-1 -right-1 w-4 h-4 border-t-2 border-r-2 border-white" />
-                <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-2 border-l-2 border-white" />
-                <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-2 border-r-2 border-white" />
-                {/* Línea roja láser animada */}
-                <div className="absolute left-0 right-0 h-0.5 bg-red-500/80 shadow-[0_0_8px_#ef4444] animate-bounce top-1/2" />
-              </div>
+            <div className="absolute top-3 right-3 flex items-center gap-1.5 z-20">
+              {soportaAntorcha && (
+                <button
+                  type="button"
+                  onClick={toggleAntorcha}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors backdrop-blur-md ${
+                    antorchaEncendida
+                      ? 'bg-amber-400 text-gray-950 shadow-md'
+                      : 'bg-black/50 text-white hover:bg-black/70'
+                  }`}
+                  title="Linterna"
+                >
+                  {antorchaEncendida ? 'Luz: ON' : 'Luz'}
+                </button>
+              )}
+
+              {camaras.length > 1 && (
+                <button
+                  type="button"
+                  onClick={cambiarCamara}
+                  className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-black/50 hover:bg-black/70 text-white backdrop-blur-md transition-colors"
+                  title="Cambiar cámara"
+                >
+                  Girar
+                </button>
+              )}
             </div>
           )}
-
-          {/* Controles sobre el video (linterna y cambiar cámara) */}
-          <div className="absolute top-3 right-3 flex items-center gap-2 z-20">
-            {soportaAntorcha && (
-              <button
-                type="button"
-                onClick={toggleAntorcha}
-                className={`p-2 rounded-full backdrop-blur-md transition-all text-xs font-semibold ${
-                  antorchaEncendida
-                    ? 'bg-amber-400 text-gray-900 shadow-lg'
-                    : 'bg-black/50 text-white hover:bg-black/70'
-                }`}
-                title={antorchaEncendida ? 'Apagar linterna' : 'Encender linterna'}
-              >
-                Flash {antorchaEncendida ? 'ON' : 'OFF'}
-              </button>
-            )}
-
-            {camaras.length > 1 && (
-              <button
-                type="button"
-                onClick={cambiarCamara}
-                className="p-2 rounded-full bg-black/50 hover:bg-black/70 text-white backdrop-blur-md transition-all text-xs font-semibold"
-                title="Cambiar entre cámaras"
-              >
-                Girar
-              </button>
-            )}
-          </div>
         </div>
 
         {/* Instrucción rápida */}
