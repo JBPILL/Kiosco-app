@@ -3,6 +3,8 @@ import { useProveedorStore } from '../stores/proveedorStore'
 import { useProducts } from '../hooks/useProducts'
 import { useCajaStore } from '../stores/cajaStore'
 import { useAuthStore } from '../stores/authStore'
+import { useBarcodeGun } from '../hooks/useBarcodeGun'
+import { playScanSound } from '../lib/sound'
 import { formatPrecio, formatFecha, labelMedioPago } from '../lib/utils'
 import { exportarDetalleCompraCSV } from '../lib/exportUtils'
 import { Button } from '../components/ui/Button'
@@ -50,7 +52,14 @@ export function ProveedoresPage() {
     anularCompra,
   } = useProveedorStore()
 
-  const { productos, cargarProductos } = useProducts()
+  const {
+    productos,
+    categorias,
+    cargarProductos,
+    crearProducto,
+    actualizarProducto,
+  } = useProducts()
+
   const { sesionActiva, verificarSesionActiva } = useCajaStore()
 
   // Pestaña activa: directorio | nueva_compra | historial | pagos
@@ -110,6 +119,21 @@ export function ProveedoresPage() {
   const [cantidadIngresar, setCantidadIngresar] = useState('1')
   const [costoIngresar, setCostoIngresar] = useState('')
 
+  // Edición / asignación rápida de código a producto existente
+  const [editandoCodigoExistente, setEditandoCodigoExistente] = useState(false)
+  const [codigoExistenteInput, setCodigoExistenteInput] = useState('')
+  const [guardandoCodigoExistente, setGuardandoCodigoExistente] = useState(false)
+
+  // --- Modal Creación Rápida de Producto al Vuelo ---
+  const [modalCrearProductoRapidoOpen, setModalCrearProductoRapidoOpen] = useState(false)
+  const [nuevoProdCodigo, setNuevoProdCodigo] = useState('')
+  const [nuevoProdDescripcion, setNuevoProdDescripcion] = useState('')
+  const [nuevoProdCategoriaId, setNuevoProdCategoriaId] = useState('')
+  const [nuevoProdCosto, setNuevoProdCosto] = useState('')
+  const [nuevoProdVenta, setNuevoProdVenta] = useState('')
+  const [nuevoProdCantidad, setNuevoProdCantidad] = useState('1')
+  const [guardandoNuevoProd, setGuardandoNuevoProd] = useState(false)
+
   // --- Historial y Detalles de Compra ---
   const [busquedaHistorial, setBusquedaHistorial] = useState('')
   const [modalDetalleOpen, setModalDetalleOpen] = useState(false)
@@ -128,6 +152,47 @@ export function ProveedoresPage() {
     cargarProductos()
     verificarSesionActiva()
   }, [cargarProveedores, cargarCompras, cargarPagos, cargarProductos, verificarSesionActiva])
+
+  // Lector de código de barras físico (USB / Bluetooth) en la pestaña de Recepción
+  useBarcodeGun({
+    enabled:
+      tabActiva === 'nueva_compra' &&
+      !modalCrearProductoRapidoOpen &&
+      !modalProveedorOpen &&
+      !modalAbonarOpen &&
+      !modalAjusteOpen &&
+      !modalDetalleOpen &&
+      !modalComprobantePagoOpen,
+    onScan: (codigoEscaneado) => {
+      handleEscanearCodigo(codigoEscaneado)
+    },
+  })
+
+  const handleEscanearCodigo = (code: string) => {
+    const codigoLimpio = code.trim()
+    const encontrado = productos.find(
+      (p) =>
+        p.codigo_barras === codigoLimpio ||
+        (p.codigo_barras && p.codigo_barras.trim() === codigoLimpio)
+    )
+
+    if (encontrado) {
+      playScanSound('success')
+      handleSeleccionarProducto(encontrado)
+      toast.success(`Producto escaneado: ${encontrado.descripcion}`)
+    } else {
+      playScanSound('warning')
+      // Abrir modal de creación rápida con el código pre-cargado
+      setNuevoProdCodigo(codigoLimpio)
+      setNuevoProdDescripcion('')
+      setNuevoProdCosto(costoIngresar || '')
+      setNuevoProdVenta('')
+      setNuevoProdCantidad(cantidadIngresar || '1')
+      setNuevoProdCategoriaId(categorias[0]?.id || '')
+      setModalCrearProductoRapidoOpen(true)
+      toast(`Código ${codigoLimpio} no encontrado en catálogo. Crealo al vuelo.`, { icon: '✨' })
+    }
+  }
 
   // Métricas
   const totalProveedores = proveedores.length
@@ -268,7 +333,6 @@ export function ProveedoresPage() {
     setModalAbonarOpen(true)
   }
 
-  // Atajos para modificar el monto a pagar
   const handleFijarMontoPreset = (porcentaje: number) => {
     if (!proveedorAbonar) return
     const deuda = proveedorAbonar.saldo_pendiente || 0
@@ -297,7 +361,6 @@ export function ProveedoresPage() {
       )
       if (comprobanteGenerado) {
         setModalAbonarOpen(false)
-        // Abrir comprobante para exportar/imprimir inmediatamente
         setPagoSeleccionado(comprobanteGenerado)
         setModalComprobantePagoOpen(true)
       }
@@ -346,6 +409,141 @@ export function ProveedoresPage() {
     setBusquedaProducto(prod.descripcion)
     setCostoIngresar(String(prod.precio_costo || ''))
     setCantidadIngresar('1')
+    setEditandoCodigoExistente(false)
+    setCodigoExistenteInput(prod.codigo_barras || '')
+  }
+
+  const handleBusquedaKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      const query = busquedaProducto.trim()
+      if (!query) return
+
+      // Buscar coincidencia exacta por código o descripción
+      const matchExacto = productos.find(
+        (p) =>
+          p.codigo_barras?.toLowerCase() === query.toLowerCase() ||
+          p.descripcion.toLowerCase() === query.toLowerCase()
+      )
+
+      if (matchExacto) {
+        handleSeleccionarProducto(matchExacto)
+        playScanSound('success')
+        return
+      }
+
+      // Si hay 1 sola coincidencia parcial en sugerencias, seleccionarla
+      if (sugerenciasProductos.length === 1) {
+        handleSeleccionarProducto(sugerenciasProductos[0])
+        playScanSound('success')
+        return
+      }
+
+      // Si no existe, abrir modal de creación rápida
+      abrirModalCrearProductoRapido(query)
+    }
+  }
+
+  const abrirModalCrearProductoRapido = (terminoInicial?: string) => {
+    const texto = (terminoInicial || busquedaProducto).trim()
+    const esCodigo = /^\d{6,}$/.test(texto)
+
+    setNuevoProdCodigo(esCodigo ? texto : '')
+    setNuevoProdDescripcion(esCodigo ? '' : texto)
+    setNuevoProdCosto(costoIngresar || '')
+    setNuevoProdVenta('')
+    setNuevoProdCantidad(cantidadIngresar || '1')
+    setNuevoProdCategoriaId(categorias[0]?.id || '')
+    setModalCrearProductoRapidoOpen(true)
+  }
+
+  const handleGuardarNuevoProductoRapido = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!nuevoProdDescripcion.trim()) {
+      toast.error('El nombre del producto es obligatorio')
+      return
+    }
+    const costo = parseFloat(nuevoProdCosto) || 0
+    const venta = parseFloat(nuevoProdVenta)
+    if (isNaN(venta) || venta <= 0) {
+      toast.error('Ingresá un precio de venta válido mayor a 0')
+      return
+    }
+    const cant = parseInt(nuevoProdCantidad, 10) || 1
+
+    setGuardandoNuevoProd(true)
+    try {
+      const productoCreado = await crearProducto({
+        descripcion: nuevoProdDescripcion.trim(),
+        codigo_barras: nuevoProdCodigo.trim() || null,
+        categoria_id: nuevoProdCategoriaId || null,
+        precio_costo: costo,
+        precio_venta: venta,
+        stock_actual: 0,
+        stock_minimo: 5,
+        es_favorito: false,
+      })
+
+      if (productoCreado) {
+        const renglonNuevo: RenglonCompra = {
+          producto_id: productoCreado.id,
+          producto: productoCreado,
+          cantidad: cant,
+          precio_costo_unitario: costo,
+          subtotal: cant * costo,
+        }
+        setRenglones([...renglones, renglonNuevo])
+        setModalCrearProductoRapidoOpen(false)
+        playScanSound('success')
+        toast.success(`"${productoCreado.descripcion}" creado y agregado al remito`)
+        setBusquedaProducto('')
+      }
+    } finally {
+      setGuardandoNuevoProd(false)
+    }
+  }
+
+  // Asignar / Cambiar código de barras a producto existente seleccionado
+  const handleGuardarCodigoExistente = async () => {
+    if (!productoSeleccionado) return
+    const nuevoCodigo = codigoExistenteInput.trim() || null
+
+    setGuardandoCodigoExistente(true)
+    try {
+      const ok = await actualizarProducto(productoSeleccionado.id, {
+        codigo_barras: nuevoCodigo,
+      })
+      if (ok) {
+        setProductoSeleccionado({
+          ...productoSeleccionado,
+          codigo_barras: nuevoCodigo,
+        })
+        setEditandoCodigoExistente(false)
+        toast.success(nuevoCodigo ? `Código de barras ${nuevoCodigo} asignado` : 'Código eliminado')
+      }
+    } finally {
+      setGuardandoCodigoExistente(false)
+    }
+  }
+
+  // Calculadora de margen en creación rápida
+  const margenNuevoProd = useMemo(() => {
+    const c = parseFloat(nuevoProdCosto) || 0
+    const v = parseFloat(nuevoProdVenta) || 0
+    if (c <= 0 || v <= 0) return null
+    const ganancia = v - c
+    const pct = Math.round((ganancia / c) * 100)
+    return { ganancia, pct }
+  }, [nuevoProdCosto, nuevoProdVenta])
+
+  const aplicarMargenVenta = (porcentaje: number) => {
+    const c = parseFloat(nuevoProdCosto) || 0
+    if (c <= 0) {
+      toast.error('Ingresá primero el precio de costo')
+      return
+    }
+    const precioCalculado = Math.round(c * (1 + porcentaje / 100))
+    setNuevoProdVenta(String(precioCalculado))
   }
 
   const handleAgregarRenglon = () => {
@@ -476,7 +674,6 @@ export function ProveedoresPage() {
     }
   }
 
-  // Exportar e imprimir remito de compra
   const handleImprimirRemito = () => {
     window.print()
   }
@@ -544,7 +741,6 @@ export function ProveedoresPage() {
     })
   }, [pagos, busquedaPagos])
 
-  // Saldo resultante en vivo para el modal de abonar
   const calculoSaldoAbono = useMemo(() => {
     if (!proveedorAbonar) return { restante: 0, esTotal: true, aFavor: 0 }
     const deuda = proveedorAbonar.saldo_pendiente || 0
@@ -566,7 +762,7 @@ export function ProveedoresPage() {
             Proveedores y Compras
           </h1>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-            Recepción de mercadería, pagos a cuenta, comprobantes y control de deudas
+            Recepción de mercadería, pistola lectora, alta al vuelo y control de remitos
           </p>
         </div>
 
@@ -652,7 +848,6 @@ export function ProveedoresPage() {
           ───────────────────────────────────────────────────────────── */}
       {tabActiva === 'directorio' && (
         <div className="space-y-3">
-          {/* Barra de filtros y botón nuevo */}
           <div className="flex flex-col sm:flex-row gap-2 justify-between items-stretch sm:items-center bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700">
             <div className="flex flex-1 gap-2 items-center">
               <div className="relative flex-1 max-w-md">
@@ -681,7 +876,6 @@ export function ProveedoresPage() {
             </Button>
           </div>
 
-          {/* Grilla de proveedores */}
           {cargando ? (
             <div className="p-8 text-center text-sm text-gray-500 dark:text-gray-400">
               Cargando directorio de proveedores...
@@ -708,7 +902,6 @@ export function ProveedoresPage() {
                     className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex flex-col justify-between hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors"
                   >
                     <div>
-                      {/* Cabecera de tarjeta */}
                       <div className="flex justify-between items-start">
                         <div>
                           <h2 className="font-bold text-gray-900 dark:text-gray-100 text-base leading-tight">
@@ -728,7 +921,6 @@ export function ProveedoresPage() {
                         )}
                       </div>
 
-                      {/* Detalles: días, CUIT, teléfono */}
                       <div className="mt-3 space-y-1.5 text-xs text-gray-600 dark:text-gray-400">
                         {p.dias_visita && (
                           <div className="flex items-center gap-1.5">
@@ -784,7 +976,6 @@ export function ProveedoresPage() {
                       </div>
                     </div>
 
-                    {/* Botones de acción */}
                     <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700/60 flex items-center justify-between gap-1 text-xs">
                       <div className="flex gap-1.5">
                         <button
@@ -942,19 +1133,26 @@ export function ProveedoresPage() {
               </div>
             </div>
 
+            {/* Panel de Búsqueda y Escáner de Productos */}
             <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3">
-              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700 pb-2">
-                Agregar Productos a la Recepción
-              </h2>
+              <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 pb-2">
+                <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                  Buscar o Escanear Producto
+                </h2>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-semibold">
+                  Pistola Activa
+                </span>
+              </div>
 
               <div className="relative">
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Buscar producto (código o nombre)
+                  Código de barras o Nombre (Enter para buscar)
                 </label>
                 <input
                   type="text"
-                  placeholder="Escribí para buscar..."
+                  placeholder="Escanear con pistola o escribir..."
                   value={busquedaProducto}
+                  onKeyDown={handleBusquedaKeyDown}
                   onChange={(e) => {
                     setBusquedaProducto(e.target.value)
                     setProductoSeleccionado(null)
@@ -962,8 +1160,9 @@ export function ProveedoresPage() {
                   className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                 />
 
-                {sugerenciasProductos.length > 0 && !productoSeleccionado && (
-                  <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20 max-h-48 overflow-y-auto">
+                {/* Lista de sugerencias o botón de creación al vuelo */}
+                {busquedaProducto.trim().length > 0 && !productoSeleccionado && (
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20 max-h-56 overflow-y-auto">
                     {sugerenciasProductos.map((p) => (
                       <button
                         key={p.id}
@@ -973,24 +1172,101 @@ export function ProveedoresPage() {
                       >
                         <div className="font-semibold text-gray-900 dark:text-gray-100">{p.descripcion}</div>
                         <div className="text-gray-500 dark:text-gray-400 flex justify-between mt-0.5">
-                          <span>Stock act: {p.stock_actual}</span>
+                          <span>
+                            {p.codigo_barras ? `Código: ${p.codigo_barras}` : 'Sin código de barras'}
+                          </span>
                           <span>Costo act: {formatPrecio(p.precio_costo)}</span>
                         </div>
                       </button>
                     ))}
+
+                    {/* Botón destacado para crear producto nuevo si no existe */}
+                    <button
+                      type="button"
+                      onClick={() => abrirModalCrearProductoRapido()}
+                      className="w-full text-left px-3 py-2.5 text-xs bg-indigo-50/70 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 font-bold text-indigo-700 dark:text-indigo-300 flex items-center justify-between border-t border-indigo-200 dark:border-indigo-800"
+                    >
+                      <span>+ Crear nuevo producto: "{busquedaProducto}"</span>
+                      <span className="text-[10px] bg-indigo-200 dark:bg-indigo-800 px-1.5 py-0.5 rounded">
+                        Al vuelo
+                      </span>
+                    </button>
                   </div>
                 )}
               </div>
 
+              {/* Ficha del producto seleccionado para ingresar cantidades y código */}
               {productoSeleccionado && (
-                <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 rounded-lg border border-indigo-100 dark:border-indigo-800/50 space-y-2">
-                  <div className="text-xs font-bold text-indigo-900 dark:text-indigo-200">
-                    {productoSeleccionado.descripcion}
-                  </div>
-                  <div className="text-[11px] text-gray-600 dark:text-gray-400">
-                    Stock actual en depósito: <strong>{productoSeleccionado.stock_actual}</strong>
+                <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 rounded-lg border border-indigo-100 dark:border-indigo-800/50 space-y-2.5">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="text-xs font-bold text-indigo-900 dark:text-indigo-200">
+                        {productoSeleccionado.descripcion}
+                      </div>
+                      <div className="text-[11px] text-gray-600 dark:text-gray-400 mt-0.5">
+                        Stock actual: <strong>{productoSeleccionado.stock_actual} unidades</strong>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setProductoSeleccionado(null)}
+                      className="text-gray-400 hover:text-gray-600 text-xs"
+                    >
+                      ✕
+                    </button>
                   </div>
 
+                  {/* Asignar o actualizar código de barras al producto existente */}
+                  <div className="pt-1 border-t border-indigo-100 dark:border-indigo-800/60 text-[11px]">
+                    {!editandoCodigoExistente ? (
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600 dark:text-gray-400">
+                          Código de barras:
+                          <strong className="ml-1 font-mono text-gray-800 dark:text-gray-200">
+                            {productoSeleccionado.codigo_barras || 'Sin asignar'}
+                          </strong>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCodigoExistenteInput(productoSeleccionado.codigo_barras || '')
+                            setEditandoCodigoExistente(true)
+                          }}
+                          className="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold text-[10px]"
+                        >
+                          {productoSeleccionado.codigo_barras ? 'Modificar' : '+ Asignar código'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-1.5 items-center">
+                        <input
+                          type="text"
+                          placeholder="Escanear o tipear código..."
+                          value={codigoExistenteInput}
+                          onChange={(e) => setCodigoExistenteInput(e.target.value)}
+                          className="flex-1 py-1 px-2 text-xs rounded border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-800 font-mono text-gray-900 dark:text-gray-100"
+                        />
+                        <button
+                          type="button"
+                          disabled={guardandoCodigoExistente}
+                          onClick={handleGuardarCodigoExistente}
+                          className="px-2 py-1 rounded bg-indigo-600 text-white text-[10px] font-bold"
+                        >
+                          Guardar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditandoCodigoExistente(false)}
+                          className="px-1.5 py-1 text-gray-500 text-[10px]"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Inputs de cantidad y costo */}
                   <div className="grid grid-cols-2 gap-2 pt-1">
                     <div>
                       <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-0.5">
@@ -1001,12 +1277,12 @@ export function ProveedoresPage() {
                         min="1"
                         value={cantidadIngresar}
                         onChange={(e) => setCantidadIngresar(e.target.value)}
-                        className="w-full py-1 px-2 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                        className="w-full py-1 px-2 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-bold"
                       />
                     </div>
                     <div>
                       <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-0.5">
-                        Nuevo Costo Unit. ($)
+                        Nuevo Costo ($)
                       </label>
                       <input
                         type="number"
@@ -1014,7 +1290,7 @@ export function ProveedoresPage() {
                         min="0"
                         value={costoIngresar}
                         onChange={(e) => setCostoIngresar(e.target.value)}
-                        className="w-full py-1 px-2 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                        className="w-full py-1 px-2 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-bold"
                       />
                     </div>
                   </div>
@@ -1027,6 +1303,7 @@ export function ProveedoresPage() {
             </div>
           </div>
 
+          {/* Columna Derecha: Tabla de Renglones Recibidos */}
           <div className="lg:col-span-2 space-y-4">
             <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col justify-between min-h-[420px]">
               <div>
@@ -1048,7 +1325,7 @@ export function ProveedoresPage() {
                   <div className="py-16 text-center text-gray-400 dark:text-gray-500">
                     <p className="font-medium text-sm">No hay productos agregados a la recepción</p>
                     <p className="text-xs mt-1">
-                      Buscá un producto en el panel lateral para ingresarlo con su costo y cantidad.
+                      Escanéalos con la pistola lectora o buscalos en el panel lateral. Si un producto es nuevo, podés crearlo al vuelo.
                     </p>
                   </div>
                 ) : (
@@ -1466,7 +1743,7 @@ export function ProveedoresPage() {
       </Modal>
 
       {/* ─────────────────────────────────────────────────────────────
-          MODAL: ABONAR SALDO / PAGO A PROVEEDOR (CON PRESETS Y MONTO MODIFICABLE)
+          MODAL: ABONAR SALDO / PAGO A PROVEEDOR
           ───────────────────────────────────────────────────────────── */}
       <Modal
         isOpen={modalAbonarOpen}
@@ -1489,7 +1766,6 @@ export function ProveedoresPage() {
               </div>
             </div>
 
-            {/* Atajos para modificar el monto rápidamente */}
             <div>
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                 Atajos de importe rápido:
@@ -1519,7 +1795,6 @@ export function ProveedoresPage() {
               </div>
             </div>
 
-            {/* Input con monto editable libremente */}
             <div>
               <Input
                 label="Monto a pagar ($) *"
@@ -1531,7 +1806,6 @@ export function ProveedoresPage() {
                 required
               />
 
-              {/* Indicador en tiempo real del saldo resultante */}
               <div className="mt-1.5 px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs flex justify-between items-center">
                 <span className="text-gray-500 dark:text-gray-400">Saldo tras este pago:</span>
                 <span
@@ -1626,7 +1900,7 @@ export function ProveedoresPage() {
       </Modal>
 
       {/* ─────────────────────────────────────────────────────────────
-          MODAL: AJUSTE MANUAL DE SALDO (CORRECCIÓN SIN CAJA)
+          MODAL: AJUSTE MANUAL DE SALDO
           ───────────────────────────────────────────────────────────── */}
       <Modal
         isOpen={modalAjusteOpen}
@@ -1650,7 +1924,7 @@ export function ProveedoresPage() {
             </div>
 
             <p className="text-[11px] text-gray-500 dark:text-gray-400">
-              Utilizá esta opción para corregir errores de carga inicial, aplicar notas de crédito o descuentos especiales acordados. No afecta la caja en efectivo.
+              Permite aplicar notas de crédito, descuentos comerciales por pronto pago o corregir errores iniciales sin mover la caja.
             </p>
 
             <Input
@@ -1693,6 +1967,153 @@ export function ProveedoresPage() {
       </Modal>
 
       {/* ─────────────────────────────────────────────────────────────
+          MODAL: CREACIÓN RÁPIDA DE PRODUCTO AL VUELO
+          ───────────────────────────────────────────────────────────── */}
+      <Modal
+        isOpen={modalCrearProductoRapidoOpen}
+        onClose={() => setModalCrearProductoRapidoOpen(false)}
+        title="Crear Producto Nuevo al Vuelo"
+        size="md"
+      >
+        <form onSubmit={handleGuardarNuevoProductoRapido} className="space-y-3 text-xs">
+          <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/40 rounded-lg border border-indigo-200 dark:border-indigo-800 text-indigo-900 dark:text-indigo-200">
+            Completá los datos del nuevo producto recibido. Se guardará en el catálogo y se agregará directamente al remito actual.
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input
+              label="Código de Barras (opcional)"
+              placeholder="Escaneá con la pistola o tipealo"
+              value={nuevoProdCodigo}
+              onChange={(e) => setNuevoProdCodigo(e.target.value)}
+            />
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                Categoría
+              </label>
+              <select
+                value={nuevoProdCategoriaId}
+                onChange={(e) => setNuevoProdCategoriaId(e.target.value)}
+                className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              >
+                <option value="">-- Sin Categoría --</option>
+                {categorias.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <Input
+            label="Descripción / Nombre del Producto *"
+            placeholder="Ej: Alfajor Havanna 70% Cacao"
+            value={nuevoProdDescripcion}
+            onChange={(e) => setNuevoProdDescripcion(e.target.value)}
+            required
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <Input
+                label="Precio de Costo ($) *"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="Costo que te cobra el proveedor"
+                value={nuevoProdCosto}
+                onChange={(e) => setNuevoProdCosto(e.target.value)}
+                required
+              />
+            </div>
+
+            <div>
+              <Input
+                label="Precio de Venta Mostrador ($) *"
+                type="number"
+                step="0.01"
+                min="0.01"
+                placeholder="Precio a cobrar en caja"
+                value={nuevoProdVenta}
+                onChange={(e) => setNuevoProdVenta(e.target.value)}
+                required
+              />
+            </div>
+          </div>
+
+          {/* Atajos de margen rápido */}
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">
+                Atajo para calcular precio de venta según costo:
+              </span>
+              {margenNuevoProd && (
+                <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                  Margen: +{margenNuevoProd.pct}% (Ganancia: {formatPrecio(margenNuevoProd.ganancia)})
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-4 gap-1.5">
+              <button
+                type="button"
+                onClick={() => aplicarMargenVenta(30)}
+                className="py-1 px-1.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-200 text-center"
+              >
+                +30%
+              </button>
+              <button
+                type="button"
+                onClick={() => aplicarMargenVenta(50)}
+                className="py-1 px-1.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-200 text-center"
+              >
+                +50%
+              </button>
+              <button
+                type="button"
+                onClick={() => aplicarMargenVenta(80)}
+                className="py-1 px-1.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-200 text-center"
+              >
+                +80%
+              </button>
+              <button
+                type="button"
+                onClick={() => aplicarMargenVenta(100)}
+                className="py-1 px-1.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-200 text-center"
+              >
+                +100%
+              </button>
+            </div>
+          </div>
+
+          <div className="pt-1">
+            <Input
+              label="Cantidad recibida en este remito"
+              type="number"
+              min="1"
+              value={nuevoProdCantidad}
+              onChange={(e) => setNuevoProdCantidad(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setModalCrearProductoRapidoOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button type="submit" loading={guardandoNuevoProd}>
+              Crear e Ingresar al Remito
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ─────────────────────────────────────────────────────────────
           MODAL: DETALLES DE COMPRA / RENGLONES (CON IMPRESIÓN Y EXPORTACIÓN)
           ───────────────────────────────────────────────────────────── */}
       <Modal
@@ -1703,7 +2124,6 @@ export function ProveedoresPage() {
       >
         {compraDetalle && (
           <div className="space-y-3 text-xs">
-            {/* Cabecera del comprobante */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border border-gray-100 dark:border-gray-700">
               <div>
                 <span className="text-gray-400">Proveedor</span>
@@ -1737,7 +2157,6 @@ export function ProveedoresPage() {
               </div>
             )}
 
-            {/* Tabla de renglones */}
             <div
               id="printable-remito"
               className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-800"
@@ -1801,7 +2220,6 @@ export function ProveedoresPage() {
               </div>
             </div>
 
-            {/* Barra de Acciones de Exportación e Impresión */}
             <div className="flex flex-wrap gap-2 justify-end pt-3 border-t border-gray-200 dark:border-gray-700">
               <Button
                 variant="secondary"

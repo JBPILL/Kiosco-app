@@ -41,7 +41,8 @@ export function CatalogoPage() {
     if (productoEditar) {
       return actualizarProducto(productoEditar.id, data)
     }
-    return crearProducto(data as Omit<Producto, 'id' | 'kiosco_id' | 'fecha_creacion' | 'fecha_actualizacion' | 'activo'>)
+    const res = await crearProducto(data as Omit<Producto, 'id' | 'kiosco_id' | 'fecha_creacion' | 'fecha_actualizacion' | 'activo'>)
+    return Boolean(res)
   }
 
   return (

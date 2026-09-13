@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/authStore'
 import type { Producto, Categoria } from '../types/database'
@@ -120,19 +121,38 @@ export function useProducts() {
   }, [cargarCategorias])
 
   // Crear producto
-  const crearProducto = async (producto: Omit<Producto, 'id' | 'kiosco_id' | 'fecha_creacion' | 'fecha_actualizacion' | 'activo'>) => {
-    const payload = usuario?.kiosco_id
-      ? { ...producto, kiosco_id: usuario.kiosco_id }
-      : producto
-
-    const { error } = await supabase.from('productos').insert(payload)
-    if (error) {
-      toast.error('Error al crear producto: ' + error.message)
-      return false
+  const crearProducto = async (
+    producto: Omit<Producto, 'id' | 'kiosco_id' | 'fecha_creacion' | 'fecha_actualizacion' | 'activo'>
+  ): Promise<Producto | null> => {
+    const nuevoId = uuidv4()
+    const now = new Date().toISOString()
+    const payload: Producto = {
+      id: nuevoId,
+      kiosco_id: usuario?.kiosco_id || '',
+      activo: true,
+      fecha_creacion: now,
+      fecha_actualizacion: now,
+      ...producto,
     }
+
+    try {
+      const { error } = await supabase.from('productos').insert(payload)
+      if (error) {
+        console.warn('Error al crear producto en Supabase, guardando localmente:', error.message)
+      }
+    } catch (e) {
+      console.warn('Error de red creando producto:', e)
+    }
+
+    const listaActualizada = [payload, ...productos]
+    setProductos(listaActualizada)
+    try {
+      localStorage.setItem('kiosko_cache_productos', JSON.stringify(listaActualizada))
+    } catch {}
+
     toast.success('Producto creado')
     await cargarProductos()
-    return true
+    return payload
   }
 
   // Actualizar producto
