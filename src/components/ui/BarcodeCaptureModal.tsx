@@ -1,0 +1,312 @@
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
+import { Modal } from './Modal'
+import { Button } from './Button'
+import { Input } from './Input'
+import { playScanSound } from '../../lib/sound'
+
+interface BarcodeCaptureModalProps {
+  isOpen: boolean
+  onClose: () => void
+  onBarcodeCaptured: (barcode: string) => void
+  title?: string
+}
+
+export function BarcodeCaptureModal({
+  isOpen,
+  onClose,
+  onBarcodeCaptured,
+  title = 'Escanear Código de Barras con Cámara',
+}: BarcodeCaptureModalProps) {
+  const [iniciando, setIniciando] = useState(true)
+  const [errorCamara, setErrorCamara] = useState<string | null>(null)
+  const [camaras, setCamaras] = useState<Array<{ id: string; label: string }>>([])
+  const [camaraActualId, setCamaraActualId] = useState<string | null>(null)
+  const [antorchaEncendida, setAntorchaEncendida] = useState(false)
+  const [soportaAntorcha, setSoportaAntorcha] = useState(false)
+  const [codigoManual, setCodigoManual] = useState('')
+
+  const scannerRef = useRef<Html5Qrcode | null>(null)
+  const elementId = 'barcode-capture-viewport'
+  const isCapturingRef = useRef<boolean>(false)
+
+  // Procesar código detectado
+  const procesarCodigo = useCallback(
+    (rawCode: string) => {
+      const code = rawCode.trim()
+      if (!code || isCapturingRef.current) return
+
+      isCapturingRef.current = true
+      playScanSound('success')
+
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try {
+          navigator.vibrate([40, 30, 40])
+        } catch {
+          // Ignorar si el navegador restringe vibración
+        }
+      }
+
+      onBarcodeCaptured(code)
+      onClose()
+    },
+    [onBarcodeCaptured, onClose]
+  )
+
+  // Iniciar el escáner de cámara
+  const iniciarEscaner = useCallback(async (cameraId?: string) => {
+    setIniciando(true)
+    setErrorCamara(null)
+    isCapturingRef.current = false
+
+    try {
+      if (scannerRef.current?.isScanning) {
+        await scannerRef.current.stop()
+      }
+
+      const devices = await Html5Qrcode.getCameras()
+      if (!devices || devices.length === 0) {
+        setErrorCamara('No se detectaron cámaras en este dispositivo.')
+        setIniciando(false)
+        return
+      }
+
+      setCamaras(devices.map((d) => ({ id: d.id, label: d.label || `Cámara ${d.id}` })))
+
+      const scanner =
+        scannerRef.current ||
+        new Html5Qrcode(elementId, {
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.CODE_93,
+            Html5QrcodeSupportedFormats.ITF,
+            Html5QrcodeSupportedFormats.QR_CODE,
+          ],
+          verbose: false,
+        })
+      scannerRef.current = scanner
+
+      const targetCamera = cameraId || { facingMode: 'environment' }
+
+      await scanner.start(
+        targetCamera,
+        {
+          fps: 15,
+          qrbox: { width: 280, height: 160 },
+          aspectRatio: 1.2,
+        },
+        (decodedText) => {
+          procesarCodigo(decodedText)
+        },
+        () => {
+          // Ignorar cuadros sin detección
+        }
+      )
+
+      if (typeof targetCamera === 'string') {
+        setCamaraActualId(targetCamera)
+      } else if (devices.length > 0) {
+        setCamaraActualId(devices[0].id)
+      }
+
+      try {
+        const caps = scanner.getRunningTrackCapabilities() as MediaTrackCapabilities & {
+          torch?: boolean
+        }
+        setSoportaAntorcha(Boolean(caps && 'torch' in caps && caps.torch))
+      } catch {
+        setSoportaAntorcha(false)
+      }
+
+      setIniciando(false)
+    } catch (err: unknown) {
+      console.error('Error al inicializar cámara para captura:', err)
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
+        setErrorCamara('Permiso de cámara denegado. Habilitá la cámara en la configuración de tu navegador.')
+      } else {
+        setErrorCamara('No se pudo acceder a la cámara. Verificá que no esté en uso por otra aplicación.')
+      }
+      setIniciando(false)
+    }
+  }, [procesarCodigo])
+
+  // Detener escáner
+  const detenerEscaner = useCallback(async () => {
+    if (scannerRef.current) {
+      try {
+        if (scannerRef.current.isScanning) {
+          await scannerRef.current.stop()
+        }
+        scannerRef.current.clear()
+      } catch (err) {
+        console.error('Error al detener cámara:', err)
+      }
+      scannerRef.current = null
+    }
+  }, [])
+
+  // Linterna
+  const toggleAntorcha = async () => {
+    if (!scannerRef.current || !soportaAntorcha) return
+    try {
+      const nuevoEstado = !antorchaEncendida
+      await scannerRef.current.applyVideoConstraints({
+        advanced: [{ torch: nuevoEstado } as unknown as MediaTrackConstraintSet],
+      })
+      setAntorchaEncendida(nuevoEstado)
+    } catch (err) {
+      console.warn('No se pudo activar la linterna:', err)
+    }
+  }
+
+  // Alternar cámara
+  const cambiarCamara = async () => {
+    if (camaras.length <= 1) return
+    const currentIndex = camaras.findIndex((c) => c.id === camaraActualId)
+    const nextIndex = (currentIndex + 1) % camaras.length
+    const nextCamera = camaras[nextIndex]
+    await iniciarEscaner(nextCamera.id)
+  }
+
+  // Entrada manual
+  const handleAceptarManual = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!codigoManual.trim()) return
+    procesarCodigo(codigoManual.trim())
+  }
+
+  useEffect(() => {
+    if (isOpen) {
+      const t = setTimeout(() => {
+        iniciarEscaner()
+      }, 150)
+      return () => clearTimeout(t)
+    } else {
+      detenerEscaner()
+      setCodigoManual('')
+    }
+  }, [isOpen, iniciarEscaner, detenerEscaner])
+
+  useEffect(() => {
+    return () => {
+      detenerEscaner()
+    }
+  }, [detenerEscaner])
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={title}
+      size="md"
+      zIndex="z-[60]"
+    >
+      <div className="space-y-4">
+        {/* Contenedor del visor de la cámara */}
+        <div className="relative rounded-2xl overflow-hidden bg-black aspect-[4/3] flex items-center justify-center border border-gray-700 shadow-inner">
+          {iniciando && !errorCamara && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-gray-900/80 text-white gap-2">
+              <div className="w-8 h-8 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+              <p className="text-xs font-medium">Iniciando cámara...</p>
+            </div>
+          )}
+
+          {errorCamara && (
+            <div className="p-6 text-center text-white z-10 space-y-3 max-w-xs">
+              <p className="text-xs text-red-300 font-semibold">{errorCamara}</p>
+              <Button size="sm" variant="secondary" onClick={() => iniciarEscaner()}>
+                Reintentar
+              </Button>
+            </div>
+          )}
+
+          {/* Elemento de video */}
+          <div id={elementId} className="w-full h-full object-cover" />
+
+          {/* Guía visual de escaneo */}
+          {!iniciando && !errorCamara && (
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+              <div className="w-64 h-36 border-2 border-indigo-400/80 rounded-xl relative shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]">
+                {/* Esquinas destacadas */}
+                <div className="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-white" />
+                <div className="absolute -top-1 -right-1 w-4 h-4 border-t-2 border-r-2 border-white" />
+                <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-2 border-l-2 border-white" />
+                <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-2 border-r-2 border-white" />
+                {/* Línea roja láser animada */}
+                <div className="absolute left-0 right-0 h-0.5 bg-red-500/80 shadow-[0_0_8px_#ef4444] animate-bounce top-1/2" />
+              </div>
+            </div>
+          )}
+
+          {/* Controles sobre el video (linterna y cambiar cámara) */}
+          <div className="absolute top-3 right-3 flex items-center gap-2 z-20">
+            {soportaAntorcha && (
+              <button
+                type="button"
+                onClick={toggleAntorcha}
+                className={`p-2 rounded-full backdrop-blur-md transition-all text-xs font-semibold ${
+                  antorchaEncendida
+                    ? 'bg-amber-400 text-gray-900 shadow-lg'
+                    : 'bg-black/50 text-white hover:bg-black/70'
+                }`}
+                title={antorchaEncendida ? 'Apagar linterna' : 'Encender linterna'}
+              >
+                Flash {antorchaEncendida ? 'ON' : 'OFF'}
+              </button>
+            )}
+
+            {camaras.length > 1 && (
+              <button
+                type="button"
+                onClick={cambiarCamara}
+                className="p-2 rounded-full bg-black/50 hover:bg-black/70 text-white backdrop-blur-md transition-all text-xs font-semibold"
+                title="Cambiar entre cámaras"
+              >
+                Girar
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Instrucción rápida */}
+        <p className="text-center text-xs text-gray-500 dark:text-gray-400">
+          Apuntá la cámara al código de barras del producto. Se capturará de forma automática al enfocarlo.
+        </p>
+
+        {/* Ingreso manual de respaldo */}
+        <form onSubmit={handleAceptarManual} className="pt-2 border-t border-gray-100 dark:border-gray-700">
+          <div className="flex gap-2 items-end">
+            <div className="flex-1">
+              <Input
+                label="¿Código dañado o ilegible? Escribilo acá:"
+                placeholder="Ej: 7791234567890"
+                value={codigoManual}
+                onChange={(e) => setCodigoManual(e.target.value)}
+              />
+            </div>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={!codigoManual.trim()}
+              className="h-[38px]"
+            >
+              Asignar
+            </Button>
+          </div>
+        </form>
+
+        <div className="pt-2">
+          <Button variant="secondary" fullWidth onClick={onClose}>
+            Cancelar
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
