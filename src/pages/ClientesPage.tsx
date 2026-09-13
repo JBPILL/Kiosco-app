@@ -225,23 +225,23 @@ export function ClientesPage() {
       </div>
 
       {/* Tarjetas de Métricas Globales */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-          <p className="text-xs text-gray-500 dark:text-gray-400">Total Clientes</p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-1">{totalClientes}</p>
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+        <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+          <p className="text-[11px] sm:text-xs text-gray-500 dark:text-gray-400">Total Clientes</p>
+          <p className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-gray-100 mt-0.5 sm:mt-1">{totalClientes}</p>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-          <p className="text-xs text-gray-500 dark:text-gray-400">Deuda Total en la Calle</p>
-          <p className="text-2xl font-bold text-red-600 dark:text-red-400 mt-1">
+        <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+          <p className="text-[11px] sm:text-xs text-gray-500 dark:text-gray-400">Deuda en Calle</p>
+          <p className="text-lg sm:text-2xl font-bold text-red-600 dark:text-red-400 mt-0.5 sm:mt-1 truncate">
             {formatPrecio(totalDeudaGlobal)}
           </p>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-          <p className="text-xs text-gray-500 dark:text-gray-400">Clientes con Deuda</p>
-          <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">
-            {clientesConDeuda} {clientesConDeuda === 1 ? 'cliente' : 'clientes'}
+        <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+          <p className="text-[11px] sm:text-xs text-gray-500 dark:text-gray-400">Con Deuda</p>
+          <p className="text-lg sm:text-2xl font-bold text-amber-600 dark:text-amber-400 mt-0.5 sm:mt-1">
+            {clientesConDeuda}
           </p>
         </div>
       </div>
@@ -307,107 +307,213 @@ export function ClientesPage() {
               : 'No se encontraron clientes con el filtro seleccionado.'}
           </div>
         ) : (
-          <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-xs uppercase">
-                  <tr>
-                    <th className="px-4 py-3 font-semibold">Cliente</th>
-                    <th className="px-4 py-3 font-semibold">Contacto / DNI</th>
-                    <th className="px-4 py-3 font-semibold">Límite Crédito</th>
-                    <th className="px-4 py-3 font-semibold">Saldo Deudor</th>
-                    <th className="px-4 py-3 font-semibold text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {clientesFiltrados.map((cli) => {
-                    const debe = (cli.saldo_deudor || 0) > 0
-                    return (
-                      <tr key={cli.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                        <td className="px-4 py-3">
-                          <p className="font-bold text-gray-900 dark:text-gray-100">{cli.nombre}</p>
-                          {cli.direccion && (
-                            <p className="text-xs text-gray-400 dark:text-gray-500">{cli.direccion}</p>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
-                          {cli.telefono && <p>Tel: {cli.telefono}</p>}
-                          {cli.dni_cuit && <p>DNI: {cli.dni_cuit}</p>}
-                          {!cli.telefono && !cli.dni_cuit && <span className="text-gray-400">—</span>}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
-                          {cli.limite_credito > 0 ? formatPrecio(cli.limite_credito) : 'Sin límite'}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={`inline-flex px-2 py-0.5 text-xs font-bold rounded-full ${
-                              debe
-                                ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
-                                : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400'
-                            }`}
-                          >
-                            {debe ? formatPrecio(cli.saldo_deudor) : '$0 (Al día)'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => abrirFichaCliente(cli)}
-                              className="text-xs"
+          <>
+            {/* ── VISTA MÓVIL: Tarjetas individuales táctiles (sm:hidden) ── */}
+            <div className="sm:hidden space-y-3">
+              {clientesFiltrados.map((cli) => {
+                const debe = (cli.saldo_deudor || 0) > 0
+                return (
+                  <div
+                    key={cli.id}
+                    className="p-3.5 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs space-y-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-bold text-gray-900 dark:text-gray-100 text-base leading-tight">
+                          {cli.nombre}
+                        </h3>
+                        {cli.direccion && (
+                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{cli.direccion}</p>
+                        )}
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-600 dark:text-gray-400">
+                          {cli.telefono && <span>Tel: {cli.telefono}</span>}
+                          {cli.dni_cuit && <span>DNI: {cli.dni_cuit}</span>}
+                        </div>
+                      </div>
+
+                      <div className="text-right flex-shrink-0">
+                        <span
+                          className={`inline-flex px-2.5 py-1 text-xs font-bold rounded-full ${
+                            debe
+                              ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
+                              : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400'
+                          }`}
+                        >
+                          {debe ? `Debe: ${formatPrecio(cli.saldo_deudor)}` : '$0 (Al día)'}
+                        </span>
+                        {cli.limite_credito > 0 && (
+                          <p className="text-[10px] text-gray-400 mt-1">Límite: {formatPrecio(cli.limite_credito)}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Botones de acción táctiles en móvil */}
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => abrirFichaCliente(cli)}
+                        className="text-xs justify-center"
+                      >
+                        Ficha / Historial
+                      </Button>
+                      {debe ? (
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={() => handleAbrirAbonar(cli)}
+                          className="text-xs justify-center bg-emerald-600 hover:bg-emerald-700 text-white"
+                        >
+                          Abonar deuda
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleEditarCliente(cli)}
+                          className="text-xs justify-center border border-gray-200 dark:border-gray-700"
+                        >
+                          Editar
+                        </Button>
+                      )}
+                      {debe && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleEditarCliente(cli)}
+                          className="text-xs justify-center border border-gray-200 dark:border-gray-700"
+                        >
+                          Editar
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleEnviarWhatsApp(cli)}
+                        className="text-xs justify-center text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50"
+                      >
+                        WhatsApp
+                      </Button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm(`¿Eliminar al cliente ${cli.nombre}?`)) {
+                            eliminarCliente(cli.id)
+                          }
+                        }}
+                        className={`text-xs text-red-500 hover:text-red-700 py-1.5 transition-colors ${debe ? 'col-span-2' : ''}`}
+                      >
+                        Eliminar cliente
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* ── VISTA ESCRITORIO: Tabla completa (hidden sm:block) ── */}
+            <div className="hidden sm:block border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-xs uppercase">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Cliente</th>
+                      <th className="px-4 py-3 font-semibold">Contacto / DNI</th>
+                      <th className="px-4 py-3 font-semibold">Límite Crédito</th>
+                      <th className="px-4 py-3 font-semibold">Saldo Deudor</th>
+                      <th className="px-4 py-3 font-semibold text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {clientesFiltrados.map((cli) => {
+                      const debe = (cli.saldo_deudor || 0) > 0
+                      return (
+                        <tr key={cli.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                          <td className="px-4 py-3">
+                            <p className="font-bold text-gray-900 dark:text-gray-100">{cli.nombre}</p>
+                            {cli.direccion && (
+                              <p className="text-xs text-gray-400 dark:text-gray-500">{cli.direccion}</p>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
+                            {cli.telefono && <p>Tel: {cli.telefono}</p>}
+                            {cli.dni_cuit && <p>DNI: {cli.dni_cuit}</p>}
+                            {!cli.telefono && !cli.dni_cuit && <span className="text-gray-400">—</span>}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
+                            {cli.limite_credito > 0 ? formatPrecio(cli.limite_credito) : 'Sin límite'}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex px-2 py-0.5 text-xs font-bold rounded-full ${
+                                debe
+                                  ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
+                                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400'
+                              }`}
                             >
-                              Ficha
-                            </Button>
-                            {debe && (
+                              {debe ? formatPrecio(cli.saldo_deudor) : '$0 (Al día)'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
                               <Button
                                 size="sm"
-                                variant="primary"
-                                onClick={() => handleAbrirAbonar(cli)}
-                                className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                                variant="secondary"
+                                onClick={() => abrirFichaCliente(cli)}
+                                className="text-xs"
                               >
-                                Abonar
+                                Ficha
                               </Button>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleEditarCliente(cli)}
-                              className="text-xs"
-                            >
-                              Editar
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleEnviarWhatsApp(cli)}
-                              className="text-xs text-emerald-600 hover:text-emerald-700"
-                              title="Enviar resumen por WhatsApp"
-                            >
-                              WhatsApp
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                if (window.confirm(`¿Eliminar al cliente ${cli.nombre}?`)) {
-                                  eliminarCliente(cli.id)
-                                }
-                              }}
-                              className="text-xs text-red-500 hover:text-red-700"
-                              title="Eliminar cliente"
-                            >
-                              Eliminar
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                              {debe && (
+                                <Button
+                                  size="sm"
+                                  variant="primary"
+                                  onClick={() => handleAbrirAbonar(cli)}
+                                  className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                                >
+                                  Abonar
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleEditarCliente(cli)}
+                                className="text-xs"
+                              >
+                                Editar
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleEnviarWhatsApp(cli)}
+                                className="text-xs text-emerald-600 hover:text-emerald-700"
+                                title="Enviar resumen por WhatsApp"
+                              >
+                                WhatsApp
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  if (window.confirm(`¿Eliminar al cliente ${cli.nombre}?`)) {
+                                    eliminarCliente(cli.id)
+                                  }
+                                }}
+                                className="text-xs text-red-500 hover:text-red-700"
+                                title="Eliminar cliente"
+                              >
+                                Eliminar
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          </>
         )}
       </div>
 
