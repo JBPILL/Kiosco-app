@@ -15,6 +15,19 @@ interface NuevoKioscoPayload {
   diasValidez: number
 }
 
+export interface EditarKioscoPayload {
+  nombreKiosco: string
+  direccion?: string
+  telefono?: string
+  estadoKiosco: 'ACTIVO' | 'SOLO_LECTURA' | 'SUSPENDIDO'
+  duenoUsuarioId?: string | null
+  nombreDueno?: string
+  emailDueno?: string
+  suscripcionId?: string | null
+  planId?: string
+  fechaVencimiento?: string
+}
+
 interface AdminState {
   kioscos: KioscoAdminView[]
   planes: Plan[]
@@ -34,6 +47,8 @@ interface AdminState {
     kioscoId: string,
     nuevoEstado: 'ACTIVO' | 'SOLO_LECTURA' | 'SUSPENDIDO'
   ) => Promise<boolean>
+  editarKiosco: (kioscoId: string, payload: EditarKioscoPayload) => Promise<boolean>
+  eliminarKiosco: (kioscoId: string) => Promise<boolean>
   crearKioscoCliente: (payload: NuevoKioscoPayload) => Promise<boolean>
   obtenerHistorialPagos: (suscripcionId: string) => Promise<PagoSuscripcion[]>
 }
@@ -254,6 +269,117 @@ export const useAdminStore = create<AdminState>((set, get) => ({
     } catch (err) {
       console.error('Error cambiando estado:', err)
       toast.error('Error al modificar el estado del kiosco')
+      set({ cargandoAccion: false })
+      return false
+    }
+  },
+
+  editarKiosco: async (kioscoId, payload) => {
+    set({ cargandoAccion: true })
+    try {
+      // 1. Actualizar datos base del kiosco
+      const { error: kError } = await supabase
+        .from('kioscos')
+        .update({
+          nombre: payload.nombreKiosco.trim(),
+          direccion: payload.direccion?.trim() || null,
+          telefono: payload.telefono?.trim() || null,
+          estado_suscripcion: payload.estadoKiosco,
+        })
+        .eq('id', kioscoId)
+
+      if (kError) throw kError
+
+      // 2. Actualizar datos del dueño si existe
+      if (payload.duenoUsuarioId && payload.nombreDueno) {
+        const { error: uError } = await supabase
+          .from('usuarios')
+          .update({
+            nombre: payload.nombreDueno.trim(),
+            email: payload.emailDueno?.trim() || null,
+          })
+          .eq('id', payload.duenoUsuarioId)
+
+        if (uError) throw uError
+      }
+
+      // 3. Actualizar suscripción si existe
+      if (payload.suscripcionId) {
+        const subUpdates: Record<string, any> = {}
+        if (payload.planId) subUpdates.plan_id = payload.planId
+        if (payload.fechaVencimiento) subUpdates.fecha_vencimiento = payload.fechaVencimiento
+        if (payload.estadoKiosco === 'ACTIVO') subUpdates.estado = 'ACTIVA'
+        else if (payload.estadoKiosco === 'SUSPENDIDO') subUpdates.estado = 'SUSPENDIDA'
+
+        if (Object.keys(subUpdates).length > 0) {
+          const { error: sError } = await supabase
+            .from('suscripciones')
+            .update(subUpdates)
+            .eq('id', payload.suscripcionId)
+
+          if (sError) throw sError
+        }
+      }
+
+      toast.success('Datos del kiosco actualizados correctamente')
+      await get().cargarDatosAdmin()
+      set({ cargandoAccion: false })
+      return true
+    } catch (err) {
+      console.error('Error editando kiosco:', err)
+      toast.error('Error al guardar las modificaciones del kiosco')
+      set({ cargandoAccion: false })
+      return false
+    }
+  },
+
+  eliminarKiosco: async (kioscoId) => {
+    set({ cargandoAccion: true })
+    try {
+      // 1. Intentar RPC segura de eliminación en cascada
+      const { data: rpcData, error: rpcError } = await supabase.rpc('fn_eliminar_kiosco', {
+        p_kiosco_id: kioscoId,
+      })
+
+      if (!rpcError && rpcData) {
+        toast.success('Kiosco eliminado correctamente')
+        await get().cargarDatosAdmin()
+        set({ cargandoAccion: false })
+        return true
+      }
+
+      // Fallback directo en caso de que la función aún no haya sido corrida en Supabase
+      const { data: subs } = await supabase.from('suscripciones').select('id').eq('kiosco_id', kioscoId)
+      if (subs && subs.length > 0) {
+        const subIds = subs.map((s) => s.id)
+        await supabase.from('pagos_suscripcion').delete().in('suscripcion_id', subIds)
+        await supabase.from('suscripciones').delete().eq('kiosco_id', kioscoId)
+      }
+
+      const { data: vts } = await supabase.from('ventas').select('id').eq('kiosco_id', kioscoId)
+      if (vts && vts.length > 0) {
+        const vIds = vts.map((v) => v.id)
+        await supabase.from('detalles_venta').delete().in('venta_id', vIds)
+        await supabase.from('pagos_venta').delete().in('venta_id', vIds)
+        await supabase.from('ventas').delete().eq('kiosco_id', kioscoId)
+      }
+
+      await supabase.from('movimientos_stock').delete().eq('kiosco_id', kioscoId)
+      await supabase.from('sesiones_caja').delete().eq('kiosco_id', kioscoId)
+      await supabase.from('productos').delete().eq('kiosco_id', kioscoId)
+      await supabase.from('categorias').delete().eq('kiosco_id', kioscoId)
+      await supabase.from('usuarios').delete().eq('kiosco_id', kioscoId)
+
+      const { error: kError } = await supabase.from('kioscos').delete().eq('id', kioscoId)
+      if (kError) throw kError
+
+      toast.success('Kiosco eliminado del sistema')
+      await get().cargarDatosAdmin()
+      set({ cargandoAccion: false })
+      return true
+    } catch (err) {
+      console.error('Error al eliminar kiosco:', err)
+      toast.error('Error al eliminar el kiosco')
       set({ cargandoAccion: false })
       return false
     }

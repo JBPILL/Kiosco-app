@@ -15,6 +15,8 @@ export function SuperAdminPage() {
     cargarDatosAdmin,
     renovarSuscripcion,
     cambiarEstadoKiosco,
+    editarKiosco,
+    eliminarKiosco,
     crearKioscoCliente,
     obtenerHistorialPagos,
   } = useAdminStore()
@@ -35,6 +37,23 @@ export function SuperAdminPage() {
   const [nuevoPasswordDueno, setNuevoPasswordDueno] = useState('')
   const [nuevoPlanId, setNuevoPlanId] = useState('')
   const [nuevosDiasValidez, setNuevosDiasValidez] = useState(30)
+
+  // Modal Editar Kiosco
+  const [modalEditarOpen, setModalEditarOpen] = useState(false)
+  const [kioscoParaEditar, setKioscoParaEditar] = useState<KioscoAdminView | null>(null)
+  const [editNombreKiosco, setEditNombreKiosco] = useState('')
+  const [editDireccion, setEditDireccion] = useState('')
+  const [editTelefono, setEditTelefono] = useState('')
+  const [editEstadoKiosco, setEditEstadoKiosco] = useState<'ACTIVO' | 'SOLO_LECTURA' | 'SUSPENDIDO'>('ACTIVO')
+  const [editNombreDueno, setEditNombreDueno] = useState('')
+  const [editEmailDueno, setEditEmailDueno] = useState('')
+  const [editPlanId, setEditPlanId] = useState('')
+  const [editFechaVencimiento, setEditFechaVencimiento] = useState('')
+
+  // Modal Eliminar Kiosco
+  const [modalEliminarOpen, setModalEliminarOpen] = useState(false)
+  const [kioscoParaEliminar, setKioscoParaEliminar] = useState<KioscoAdminView | null>(null)
+  const [textoConfirmacion, setTextoConfirmacion] = useState('')
 
   // Modal Renovar
   const [modalRenovarOpen, setModalRenovarOpen] = useState(false)
@@ -191,6 +210,67 @@ export function SuperAdminPage() {
       setNuevoEmailDueno('')
       setNuevoPasswordDueno('')
       setNuevosDiasValidez(30)
+    }
+  }
+
+  const abrirModalEditar = (k: KioscoAdminView) => {
+    setKioscoParaEditar(k)
+    setEditNombreKiosco(k.nombre_kiosco || '')
+    setEditDireccion(k.direccion || '')
+    setEditTelefono(k.telefono_kiosco || '')
+    setEditEstadoKiosco(k.estado_kiosco)
+    setEditNombreDueno(k.nombre_dueno || '')
+    setEditEmailDueno(k.email_dueno || '')
+    setEditPlanId(k.plan_id || (planes[0]?.id || ''))
+    setEditFechaVencimiento(k.fecha_vencimiento || '')
+    setModalEditarOpen(true)
+  }
+
+  const handleGuardarEdicion = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!kioscoParaEditar || !editNombreKiosco.trim()) return
+
+    const ok = await editarKiosco(kioscoParaEditar.kiosco_id, {
+      nombreKiosco: editNombreKiosco.trim(),
+      direccion: editDireccion.trim() || undefined,
+      telefono: editTelefono.trim() || undefined,
+      estadoKiosco: editEstadoKiosco,
+      duenoUsuarioId: kioscoParaEditar.dueno_usuario_id,
+      nombreDueno: editNombreDueno.trim() || undefined,
+      emailDueno: editEmailDueno.trim() || undefined,
+      suscripcionId: kioscoParaEditar.suscripcion_id,
+      planId: editPlanId || undefined,
+      fechaVencimiento: editFechaVencimiento || undefined,
+    })
+
+    if (ok) {
+      setModalEditarOpen(false)
+      setKioscoParaEditar(null)
+    }
+  }
+
+  const abrirModalEliminar = (k: KioscoAdminView) => {
+    setKioscoParaEliminar(k)
+    setTextoConfirmacion('')
+    setModalEliminarOpen(true)
+  }
+
+  const handleConfirmarEliminacion = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!kioscoParaEliminar) return
+    const esperado = 'ELIMINAR'
+    if (
+      textoConfirmacion.trim().toUpperCase() !== esperado &&
+      textoConfirmacion.trim().toLowerCase() !== kioscoParaEliminar.nombre_kiosco.toLowerCase()
+    ) {
+      return
+    }
+
+    const ok = await eliminarKiosco(kioscoParaEliminar.kiosco_id)
+    if (ok) {
+      setModalEliminarOpen(false)
+      setKioscoParaEliminar(null)
+      setTextoConfirmacion('')
     }
   }
 
@@ -550,6 +630,26 @@ export function SuperAdminPage() {
                         Pagos
                       </button>
                     )}
+
+                    {/* Botón Editar */}
+                    <button
+                      type="button"
+                      onClick={() => abrirModalEditar(k)}
+                      disabled={cargandoAccion}
+                      className="px-2.5 py-2 rounded-xl text-xs font-semibold bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition-colors"
+                    >
+                      Editar
+                    </button>
+
+                    {/* Botón Eliminar */}
+                    <button
+                      type="button"
+                      onClick={() => abrirModalEliminar(k)}
+                      disabled={cargandoAccion}
+                      className="px-2.5 py-2 rounded-xl text-xs font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 transition-colors"
+                    >
+                      Eliminar
+                    </button>
                   </div>
                 </div>
               )
@@ -821,6 +921,186 @@ export function SuperAdminPage() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* MODAL EDITAR KIOSCO */}
+      <Modal
+        isOpen={modalEditarOpen}
+        onClose={() => setModalEditarOpen(false)}
+        title={`Modificar Kiosco: ${kioscoParaEditar?.nombre_kiosco || ''}`}
+      >
+        {kioscoParaEditar && (
+          <form onSubmit={handleGuardarEdicion} className="space-y-4">
+            <div className="bg-indigo-50 dark:bg-indigo-900/30 p-3 rounded-xl text-xs text-indigo-800 dark:text-indigo-300">
+              Podés corregir el nombre, los datos del dueño, el estado operativo o la fecha de vencimiento de la suscripción.
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <Input
+                  label="Nombre del Kiosco *"
+                  value={editNombreKiosco}
+                  onChange={(e) => setEditNombreKiosco(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Estado Operativo
+                </label>
+                <select
+                  value={editEstadoKiosco}
+                  onChange={(e) =>
+                    setEditEstadoKiosco(
+                      e.target.value as 'ACTIVO' | 'SOLO_LECTURA' | 'SUSPENDIDO'
+                    )
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-hidden"
+                >
+                  <option value="ACTIVO">Activo (Operación normal)</option>
+                  <option value="SOLO_LECTURA">Solo Lectura (Ventas pausadas)</option>
+                  <option value="SUSPENDIDO">Suspendido (Bloqueo total)</option>
+                </select>
+              </div>
+
+              <div>
+                <Input
+                  label="Teléfono / WhatsApp"
+                  value={editTelefono}
+                  onChange={(e) => setEditTelefono(e.target.value)}
+                  placeholder="Ej: 1123456789"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <Input
+                  label="Dirección del Local"
+                  value={editDireccion}
+                  onChange={(e) => setEditDireccion(e.target.value)}
+                  placeholder="Ej: Av. San Martín 1234"
+                />
+              </div>
+
+              <div>
+                <Input
+                  label="Nombre del Dueño"
+                  value={editNombreDueno}
+                  onChange={(e) => setEditNombreDueno(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <Input
+                  label="Email del Dueño"
+                  type="email"
+                  value={editEmailDueno}
+                  onChange={(e) => setEditEmailDueno(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Plan Contratado
+                </label>
+                <select
+                  value={editPlanId}
+                  onChange={(e) => setEditPlanId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-hidden"
+                >
+                  {planes.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nombre} ({formatPrecio(p.precio_mensual)}/mes)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <Input
+                  label="Fecha de Vencimiento"
+                  type="date"
+                  value={editFechaVencimiento}
+                  onChange={(e) => setEditFechaVencimiento(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setModalEditarOpen(false)}
+                disabled={cargandoAccion}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" variant="primary" disabled={cargandoAccion}>
+                {cargandoAccion ? 'Guardando...' : 'Guardar Cambios'}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* MODAL ELIMINAR KIOSCO CON CONFIRMACIÓN */}
+      <Modal
+        isOpen={modalEliminarOpen}
+        onClose={() => setModalEliminarOpen(false)}
+        title="Eliminar Kiosco Definitivamente"
+      >
+        {kioscoParaEliminar && (
+          <form onSubmit={handleConfirmarEliminacion} className="space-y-4">
+            <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 text-xs text-red-800 dark:text-red-200 space-y-2">
+              <p className="font-bold text-sm">
+                Atención: Esta acción es irreversible
+              </p>
+              <p>
+                Estás a punto de eliminar de forma permanente al comercio{' '}
+                <strong>"{kioscoParaEliminar.nombre_kiosco}"</strong>.
+              </p>
+              <p>
+                Se borrarán todos sus productos cargados, historial de ventas, movimientos de caja, sesiones, cuentas corrientes de clientes y las credenciales de acceso de sus empleados.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                Para confirmar la eliminación, escribí la palabra <strong className="text-red-600 dark:text-red-400">ELIMINAR</strong> o el nombre exacto del comercio:
+              </label>
+              <Input
+                placeholder='Escribí "ELIMINAR"'
+                value={textoConfirmacion}
+                onChange={(e) => setTextoConfirmacion(e.target.value)}
+                autoFocus
+                required
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setModalEliminarOpen(false)}
+                disabled={cargandoAccion}
+              >
+                Cancelar
+              </Button>
+              <button
+                type="submit"
+                disabled={
+                  cargandoAccion ||
+                  (textoConfirmacion.trim().toUpperCase() !== 'ELIMINAR' &&
+                    textoConfirmacion.trim().toLowerCase() !==
+                      kioscoParaEliminar.nombre_kiosco.toLowerCase())
+                }
+                className="px-4 py-2 rounded-xl text-sm font-bold bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-xs transition-colors"
+              >
+                {cargandoAccion ? 'Eliminando...' : 'Eliminar Kiosco'}
+              </button>
+            </div>
+          </form>
+        )}
       </Modal>
     </div>
   )
