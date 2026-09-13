@@ -1,9 +1,50 @@
 import { useState } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { Sidebar } from '../ui/Sidebar'
+import { useAuthStore } from '../../stores/authStore'
 
 export function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { usuario, kiosco, suscripcion, diasRestantes, logout } = useAuthStore()
+
+  // Bloqueo total de pantalla si el kiosco está suspendido (excepto para superadmin)
+  if (!usuario?.es_superadmin && kiosco?.estado_suscripcion === 'SUSPENDIDO') {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-gray-800 border border-gray-700 rounded-2xl p-8 text-center shadow-xl space-y-5">
+          <div className="w-12 h-12 bg-red-900/40 border border-red-700/60 rounded-2xl mx-auto flex items-center justify-center text-red-400 font-bold text-xl">
+            !
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-white">Servicio Suspendido</h2>
+            <p className="text-sm text-gray-300 mt-2 leading-relaxed">
+              El acceso para <strong>{kiosco.nombre}</strong> se encuentra pausado por período de suscripción vencido.
+            </p>
+            <p className="text-xs text-gray-400 mt-2">
+              Comunicate con el administrador para regularizar el abono mensual y reactivar tu sistema al instante.
+            </p>
+          </div>
+
+          <div className="pt-2 space-y-2.5">
+            <a
+              href="https://wa.me/5491100000000?text=Hola,%20quisiera%20reactivar%20mi%20suscripci%C3%B3n%20en%20KioskoPOS."
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-semibold text-sm transition-colors text-white text-center shadow-md"
+            >
+              Contactar por WhatsApp
+            </a>
+            <button
+              onClick={logout}
+              className="block w-full py-2.5 rounded-xl bg-gray-700 hover:bg-gray-600 font-medium text-xs text-gray-300 transition-colors"
+            >
+              Cerrar Sesión
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="h-full flex overflow-hidden">
@@ -28,6 +69,20 @@ export function MainLayout() {
 
           {/* Accesos rápidos visibles en la barra superior móvil */}
           <div className="flex items-center gap-1.5">
+            {usuario?.es_superadmin && (
+              <NavLink
+                to="/admin"
+                className={({ isActive }) =>
+                  `px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                    isActive
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200'
+                  }`
+                }
+              >
+                Admin
+              </NavLink>
+            )}
             <NavLink
               to="/clientes"
               className={({ isActive }) =>
@@ -54,6 +109,38 @@ export function MainLayout() {
             </NavLink>
           </div>
         </header>
+
+        {/* Banner de Aviso o Alerta de Vencimiento de Suscripción */}
+        {!usuario?.es_superadmin && (
+          <>
+            {kiosco?.estado_suscripcion === 'SOLO_LECTURA' ||
+            (diasRestantes !== null && diasRestantes < 0) ? (
+              <div className="bg-red-600 text-white px-4 py-2.5 text-xs sm:text-sm font-medium flex items-center justify-between shadow-xs z-10">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold uppercase tracking-wider px-1.5 py-0.5 bg-red-800 rounded text-[10px]">
+                    Solo Lectura
+                  </span>
+                  <span>
+                    Tu suscripción está vencida. Podés consultar stock y reportes, pero las ventas están pausadas hasta regularizar el pago.
+                  </span>
+                </div>
+              </div>
+            ) : diasRestantes !== null && diasRestantes >= 0 && diasRestantes <= 5 ? (
+              <div className="bg-amber-500 text-gray-950 px-4 py-2 text-xs sm:text-sm font-medium flex items-center justify-between shadow-xs z-10">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold uppercase tracking-wider px-1.5 py-0.5 bg-amber-700 text-white rounded text-[10px]">
+                    Aviso
+                  </span>
+                  <span>
+                    {diasRestantes === 0
+                      ? 'Tu suscripción mensual vence hoy. Recordá renovar tu abono para no interrumpir las ventas.'
+                      : `Tu suscripción mensual vence en ${diasRestantes} día${diasRestantes > 1 ? 's' : ''} (${suscripcion?.fecha_vencimiento || ''}). Recordá renovar tu abono.`}
+                  </span>
+                </div>
+              </div>
+            ) : null}
+          </>
+        )}
 
         {/* Área de contenido con scroll suave y padding inferior para no tapar la bottom bar */}
         <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 bg-gray-50 dark:bg-gray-900 pb-[max(80px,calc(64px+env(safe-area-inset-bottom)))] lg:pb-[max(16px,env(safe-area-inset-bottom))]">

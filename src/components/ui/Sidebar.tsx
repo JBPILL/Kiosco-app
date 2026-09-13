@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useMemo } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
 import { useThemeStore } from '../../stores/themeStore'
@@ -25,9 +25,17 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { tema, toggleTema } = useThemeStore()
   const itemRefs = useRef<(HTMLAnchorElement | null)[]>([])
 
-  const itemsVisibles = menuItems.filter(
-    (item) => usuario && item.roles.includes(usuario.rol)
-  )
+  const itemsVisibles = useMemo(() => {
+    if (!usuario) return []
+    const items = menuItems.filter((item) => item.roles.includes(usuario.rol))
+    if (usuario.es_superadmin) {
+      return [
+        { path: '/admin', label: 'Panel Super-Admin', roles: ['DUEÑO', 'CAJERO', 'VISOR'], esAdmin: true },
+        ...items,
+      ]
+    }
+    return items
+  }, [usuario])
 
   // Enfocar el elemento principal de la pantalla activa (ej: buscador de POS)
   const focusMainScreen = () => {

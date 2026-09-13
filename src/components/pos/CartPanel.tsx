@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useCartStore } from '../../stores/cartStore'
+import { useAuthStore } from '../../stores/authStore'
 import type { TipoAjuste } from '../../stores/cartStore'
 import { formatPrecio } from '../../lib/utils'
 import { playScanSound } from '../../lib/sound'
@@ -13,6 +14,12 @@ interface CartPanelProps {
 }
 
 export function CartPanel({ onCobrar }: CartPanelProps) {
+  const { usuario, kiosco, diasRestantes } = useAuthStore()
+  const esSoloLectura = !usuario?.es_superadmin && (
+    kiosco?.estado_suscripcion === 'SOLO_LECTURA' ||
+    (diasRestantes !== null && diasRestantes < 0)
+  )
+
   const {
     items,
     actualizarCantidad,
@@ -577,17 +584,23 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
           </span>
         </div>
 
+        {esSoloLectura && (
+          <div className="p-2.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 text-xs text-red-700 dark:text-red-300 text-center font-medium">
+            Suscripción vencida. Ventas deshabilitadas en modo Solo Lectura.
+          </div>
+        )}
+
         <Button
           ref={cobrarBtnRef}
           size="lg"
           fullWidth
-          variant="success"
-          onClick={onCobrar}
-          onKeyDown={handleCobrarKeyDown}
-          disabled={items.length === 0}
-          className="min-h-[50px] text-base font-bold shadow-md bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white active:scale-98 transition-all focus:outline-hidden focus:ring-4 focus:ring-emerald-400 dark:focus:ring-emerald-500"
+          variant={esSoloLectura ? 'secondary' : 'success'}
+          onClick={esSoloLectura ? undefined : onCobrar}
+          onKeyDown={esSoloLectura ? undefined : handleCobrarKeyDown}
+          disabled={items.length === 0 || esSoloLectura}
+          className="min-h-[50px] text-base font-bold shadow-md bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white active:scale-98 transition-all focus:outline-hidden focus:ring-4 focus:ring-emerald-400 dark:focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          COBRAR {total > 0 ? formatPrecio(total) : ''} [F4]
+          {esSoloLectura ? 'SOLO LECTURA (VENTAS PAUSADAS)' : `COBRAR ${total > 0 ? formatPrecio(total) : ''} [F4]`}
         </Button>
 
         {/* Guía rápida de atajos de teclado para Ticket */}

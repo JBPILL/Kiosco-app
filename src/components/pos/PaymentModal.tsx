@@ -89,7 +89,14 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       const sesionActiva = useCajaStore.getState().sesionActiva
       const usuario = useAuthStore.getState().usuario
       const kiosco = useAuthStore.getState().kiosco
+      const diasRestantes = useAuthStore.getState().diasRestantes
       const kioscoId = usuario?.kiosco_id || kiosco?.id
+
+      if (!usuario?.es_superadmin && (kiosco?.estado_suscripcion === 'SOLO_LECTURA' || (diasRestantes !== null && diasRestantes < 0))) {
+        toast.error('El sistema está en modo Solo Lectura por suscripción vencida. No es posible registrar nuevas ventas.')
+        setProcesando(false)
+        return
+      }
 
       if (!kioscoId) {
         throw new Error('No se encontró el identificador del kiosco para registrar la venta')

@@ -44,6 +44,7 @@ export interface Usuario {
   rol: 'DUEÑO' | 'CAJERO' | 'VISOR'
   activo: boolean
   fecha_creacion: string
+  es_superadmin?: boolean
 }
 
 export type MedioPago = 'EFECTIVO' | 'MERCADOPAGO' | 'TRANSFERENCIA' | 'TARJETA' | 'CUENTA_CORRIENTE'
@@ -197,4 +198,58 @@ export interface MovimientoCuentaCorriente {
   fecha_hora: string
   usuario_id: string | null
   usuario?: Usuario
+}
+
+// --- Suscripciones y Panel de Super-Admin ---
+
+export interface Plan {
+  id: string
+  nombre: string
+  precio_mensual: number
+  max_usuarios: number
+  descripcion: string | null
+  activo: boolean
+}
+
+export interface Suscripcion {
+  id: string
+  kiosco_id: string
+  plan_id: string
+  fecha_inicio: string
+  fecha_vencimiento: string
+  estado: 'ACTIVA' | 'VENCIDA' | 'SUSPENDIDA' | 'CANCELADA'
+  plan?: Plan
+}
+
+export interface PagoSuscripcion {
+  id: string
+  suscripcion_id: string
+  monto: number
+  fecha_pago: string
+  medio_pago: string | null
+  comprobante: string | null
+  notas: string | null
+}
+
+export interface KioscoAdminView {
+  kiosco_id: string
+  nombre_kiosco: string
+  direccion: string | null
+  telefono_kiosco: string | null
+  estado_kiosco: 'ACTIVO' | 'SOLO_LECTURA' | 'SUSPENDIDO'
+  fecha_creacion: string
+  dueno_usuario_id: string | null
+  nombre_dueno: string | null
+  email_dueno: string | null
+  suscripcion_id: string | null
+  fecha_inicio: string | null
+  fecha_vencimiento: string | null
+  estado_suscripcion: 'ACTIVA' | 'VENCIDA' | 'SUSPENDIDA' | 'CANCELADA' | null
+  dias_restantes: number | null
+  plan_id: string | null
+  nombre_plan: string | null
+  precio_mensual: number | null
+  fecha_ultimo_pago: string | null
+  monto_ultimo_pago: number | null
+  medio_ultimo_pago: string | null
 }

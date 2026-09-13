@@ -1,11 +1,26 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
-import type { Usuario, Kiosco } from '../types/database'
+import type { Usuario, Kiosco, Suscripcion } from '../types/database'
+
+export function calcularDiasRestantes(fechaVencimientoStr?: string | null): number | null {
+  if (!fechaVencimientoStr) return null
+  const hoy = new Date()
+  hoy.setHours(0, 0, 0, 0)
+  const partes = fechaVencimientoStr.split('-').map(Number)
+  if (partes.length !== 3) return null
+  const [year, month, day] = partes
+  const vencimiento = new Date(year, month - 1, day)
+  vencimiento.setHours(0, 0, 0, 0)
+  const diffMs = vencimiento.getTime() - hoy.getTime()
+  return Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+}
 
 interface AuthState {
   // Estado
   usuario: Usuario | null
   kiosco: Kiosco | null
+  suscripcion: Suscripcion | null
+  diasRestantes: number | null
   cargando: boolean
   error: string | null
 
@@ -13,11 +28,14 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   cargarSesion: () => Promise<void>
+  refrescarKiosco: () => Promise<void>
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   usuario: null,
   kiosco: null,
+  suscripcion: null,
+  diasRestantes: null,
   cargando: true,
   error: null,
 
@@ -33,16 +51,16 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (authError) {
         let msg = authError.message
         if (msg.toLowerCase().includes('invalid login credentials')) {
-          msg = 'Email o contraseña incorrectos. Verificá que el email coincida exactamente (ej: @hotmail.com vs @gmail.com) y que la clave sea la correcta.'
+          msg = 'Email o contraseña incorrectos. Verificá que el email coincida exactamente y que la clave sea la correcta.'
         } else if (msg.toLowerCase().includes('email not confirmed')) {
-          msg = 'El correo aún no fue confirmado. Desactivá "Confirm email" en Supabase (Authentication -> Providers -> Email) para permitir acceso directo.'
+          msg = 'El correo aún no fue confirmado. Desactivá "Confirm email" en Supabase para permitir acceso directo.'
         } else if (msg.toLowerCase().includes('too many requests')) {
           msg = 'Demasiados intentos seguidos. Por seguridad, esperá unos instantes antes de volver a intentar.'
         }
         throw new Error(msg)
       }
 
-      // 2. Obtener datos del usuario (nombre, rol, kiosco)
+      // 2. Obtener datos del usuario (nombre, rol, kiosco, es_superadmin)
       const { data: usuario, error: userError } = await supabase
         .from('usuarios')
         .select('*')
@@ -55,19 +73,40 @@ export const useAuthStore = create<AuthState>((set) => ({
         throw new Error('Este usuario no tiene un perfil activo asociado a ningún kiosco.')
       }
 
-      // 3. Verificar que el kiosco tenga suscripción activa y traer sus datos
-      const { data: kiosco } = await supabase
-        .from('kioscos')
-        .select('*')
-        .eq('id', usuario.kiosco_id)
-        .single()
+      // 3. Traer datos del kiosco
+      let kioscoData: Kiosco | null = null
+      let subData: Suscripcion | null = null
+      let dias: number | null = null
 
-      if (kiosco?.estado_suscripcion === 'SUSPENDIDO') {
-        await supabase.auth.signOut()
-        throw new Error('La suscripción del kiosco está suspendida. Contactá al soporte.')
+      if (usuario.kiosco_id) {
+        const { data: kData } = await supabase
+          .from('kioscos')
+          .select('*')
+          .eq('id', usuario.kiosco_id)
+          .single()
+
+        kioscoData = (kData as Kiosco) || null
+
+        // 4. Traer suscripción más reciente
+        const { data: sData } = await supabase
+          .from('suscripciones')
+          .select('*, plan:planes(*)')
+          .eq('kiosco_id', usuario.kiosco_id)
+          .order('fecha_vencimiento', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        subData = (sData as Suscripcion) || null
+        dias = calcularDiasRestantes(subData?.fecha_vencimiento)
       }
 
-      set({ usuario, kiosco: (kiosco as Kiosco) || null, cargando: false })
+      set({
+        usuario: usuario as Usuario,
+        kiosco: kioscoData,
+        suscripcion: subData,
+        diasRestantes: dias,
+        cargando: false,
+      })
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : 'Error desconocido',
@@ -78,7 +117,13 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: async () => {
     await supabase.auth.signOut()
-    set({ usuario: null, kiosco: null, error: null })
+    set({
+      usuario: null,
+      kiosco: null,
+      suscripcion: null,
+      diasRestantes: null,
+      error: null,
+    })
   },
 
   cargarSesion: async () => {
@@ -97,19 +142,77 @@ export const useAuthStore = create<AuthState>((set) => ({
         .eq('activo', true)
         .single()
 
-      if (usuario?.kiosco_id) {
-        const { data: kiosco } = await supabase
+      if (!usuario) {
+        set({ cargando: false })
+        return
+      }
+
+      let kioscoData: Kiosco | null = null
+      let subData: Suscripcion | null = null
+      let dias: number | null = null
+
+      if (usuario.kiosco_id) {
+        const { data: kData } = await supabase
           .from('kioscos')
           .select('*')
           .eq('id', usuario.kiosco_id)
           .single()
 
-        set({ usuario: usuario || null, kiosco: (kiosco as Kiosco) || null, cargando: false })
-      } else {
-        set({ usuario: usuario || null, kiosco: null, cargando: false })
+        kioscoData = (kData as Kiosco) || null
+
+        const { data: sData } = await supabase
+          .from('suscripciones')
+          .select('*, plan:planes(*)')
+          .eq('kiosco_id', usuario.kiosco_id)
+          .order('fecha_vencimiento', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        subData = (sData as Suscripcion) || null
+        dias = calcularDiasRestantes(subData?.fecha_vencimiento)
       }
+
+      set({
+        usuario: usuario as Usuario,
+        kiosco: kioscoData,
+        suscripcion: subData,
+        diasRestantes: dias,
+        cargando: false,
+      })
     } catch {
       set({ cargando: false })
+    }
+  },
+
+  refrescarKiosco: async () => {
+    const { usuario } = get()
+    if (!usuario?.kiosco_id) return
+
+    try {
+      const { data: kData } = await supabase
+        .from('kioscos')
+        .select('*')
+        .eq('id', usuario.kiosco_id)
+        .single()
+
+      const { data: sData } = await supabase
+        .from('suscripciones')
+        .select('*, plan:planes(*)')
+        .eq('kiosco_id', usuario.kiosco_id)
+        .order('fecha_vencimiento', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      const subData = (sData as Suscripcion) || null
+      const dias = calcularDiasRestantes(subData?.fecha_vencimiento)
+
+      set({
+        kiosco: (kData as Kiosco) || null,
+        suscripcion: subData,
+        diasRestantes: dias,
+      })
+    } catch (err) {
+      console.error('Error refrescando kiosco:', err)
     }
   },
 }))

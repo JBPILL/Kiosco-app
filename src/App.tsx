@@ -11,6 +11,7 @@ import { StockPage } from './pages/StockPage'
 import { ConfigPage } from './pages/ConfigPage'
 import { CajaPage } from './pages/CajaPage'
 import { ClientesPage } from './pages/ClientesPage'
+import { SuperAdminPage } from './pages/SuperAdminPage'
 
 interface RutaProtegidaProps {
   rolesPermitidos: ('DUEÑO' | 'CAJERO' | 'VISOR')[]
@@ -20,6 +21,14 @@ interface RutaProtegidaProps {
 function RutaProtegida({ rolesPermitidos, children }: RutaProtegidaProps) {
   const { usuario } = useAuthStore()
   if (!usuario || !rolesPermitidos.includes(usuario.rol)) {
+    return <Navigate to="/" replace />
+  }
+  return <>{children}</>
+}
+
+function RutaSuperAdmin({ children }: { children: React.ReactNode }) {
+  const { usuario } = useAuthStore()
+  if (!usuario || !usuario.es_superadmin) {
     return <Navigate to="/" replace />
   }
   return <>{children}</>
@@ -93,6 +102,16 @@ function App() {
                 <RutaProtegida rolesPermitidos={['DUEÑO', 'VISOR']}>
                   <ReportesPage />
                 </RutaProtegida>
+              }
+            />
+
+            {/* Ruta exclusiva para Super-Admin */}
+            <Route
+              path="/admin"
+              element={
+                <RutaSuperAdmin>
+                  <SuperAdminPage />
+                </RutaSuperAdmin>
               }
             />
           </Route>
