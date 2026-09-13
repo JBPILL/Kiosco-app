@@ -36,6 +36,12 @@ export function ConfigPage() {
   const [usuarioAEliminar, setUsuarioAEliminar] = useState<Usuario | null>(null)
   const [eliminandoUsuario, setEliminandoUsuario] = useState(false)
 
+  // Modal asignar contraseña a usuario existente
+  const [usuarioParaClave, setUsuarioParaClave] = useState<Usuario | null>(null)
+  const [asignarEmail, setAsignarEmail] = useState('')
+  const [asignarPassword, setAsignarPassword] = useState('')
+  const [guardandoClave, setGuardandoClave] = useState(false)
+
   const cargarDatos = useCallback(async () => {
     if (!usuario?.kiosco_id) return
     setCargando(true)
@@ -114,21 +120,27 @@ export function ConfigPage() {
 
       // Si se proporcionó email y contraseña, intentar crear credencial en Supabase Auth
       if (!authUserId && nuevoEmail.trim() && nuevoPassword.trim()) {
-        try {
-          const tempClient = createUnauthenticatedClient()
-          const { data: authData, error: authError } = await tempClient.auth.signUp({
-            email: nuevoEmail.trim(),
-            password: nuevoPassword.trim(),
-          })
+        const tempClient = createUnauthenticatedClient()
+        const { data: authData, error: authError } = await tempClient.auth.signUp({
+          email: nuevoEmail.trim(),
+          password: nuevoPassword.trim(),
+        })
 
-          if (authError) {
-            console.warn('Error en signUp:', authError)
-            toast.error(`Aviso en credencial: ${authError.message}`, { duration: 4000 })
-          } else if (authData?.user?.id) {
-            authUserId = authData.user.id
+        if (authError) {
+          console.warn('Error en signUp:', authError)
+          let msg = authError.message
+          if (msg.toLowerCase().includes('rate limit')) {
+            msg = 'Límite de correos en Supabase alcanzado. Desactivá "Confirm email" en Supabase Dashboard (Authentication -> Providers -> Email) para crear usuarios ilimitados al instante.'
+          } else if (msg.toLowerCase().includes('already registered')) {
+            msg = 'Ya existe un usuario con este correo electrónico en Supabase Auth.'
           }
-        } catch (authErr) {
-          console.warn('Fallo creación auth:', authErr)
+          throw new Error(msg)
+        }
+
+        if (authData?.user?.id) {
+          authUserId = authData.user.id
+        } else {
+          throw new Error('No se pudo generar la cuenta de acceso. Verificá la configuración de Supabase Auth.')
         }
       }
 
@@ -158,9 +170,58 @@ export function ConfigPage() {
       cargarDatos()
     } catch (err) {
       console.error('Error creando usuario:', err)
-      toast.error(err instanceof Error ? err.message : 'Error al crear usuario')
+      toast.error(err instanceof Error ? err.message : 'Error al crear usuario', { duration: 6000 })
     } finally {
       setCreandoUsuario(false)
+    }
+  }
+
+  const handleAsignarClave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!usuarioParaClave || !asignarEmail.trim() || !asignarPassword.trim()) return
+
+    setGuardandoClave(true)
+    try {
+      const tempClient = createUnauthenticatedClient()
+      const { data: authData, error: authError } = await tempClient.auth.signUp({
+        email: asignarEmail.trim(),
+        password: asignarPassword.trim(),
+      })
+
+      if (authError) {
+        let msg = authError.message
+        if (msg.toLowerCase().includes('rate limit')) {
+          msg = 'Límite de emails en Supabase. Desactivá "Confirm email" en Supabase (Authentication -> Providers -> Email).'
+        } else if (msg.toLowerCase().includes('already registered')) {
+          msg = 'Ya existe este correo en Supabase Auth. Ingresá otro email o vinculá su ID.'
+        }
+        throw new Error(msg)
+      }
+
+      if (!authData?.user?.id) {
+        throw new Error('No se pudo registrar la clave en Supabase Auth.')
+      }
+
+      const { error: updError } = await supabase
+        .from('usuarios')
+        .update({
+          auth_user_id: authData.user.id,
+          email: asignarEmail.trim(),
+        })
+        .eq('id', usuarioParaClave.id)
+
+      if (updError) throw updError
+
+      toast.success(`Clave asignada correctamente a ${usuarioParaClave.nombre}`)
+      setUsuarioParaClave(null)
+      setAsignarEmail('')
+      setAsignarPassword('')
+      cargarDatos()
+    } catch (err) {
+      console.error('Error asignando clave:', err)
+      toast.error(err instanceof Error ? err.message : 'Error al asignar clave', { duration: 6000 })
+    } finally {
+      setGuardandoClave(false)
     }
   }
 
@@ -364,9 +425,23 @@ export function ConfigPage() {
                                 Habilitado
                               </span>
                             ) : (
-                              <span className="text-xs text-amber-600 dark:text-amber-400 font-medium" title="Este usuario fue registrado sin contraseña en Supabase Auth">
-                                Sin clave de acceso
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-amber-600 dark:text-amber-400 font-medium" title="Este usuario aún no tiene contraseña de inicio de sesión">
+                                  Sin clave de acceso
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setUsuarioParaClave(u)
+                                    setAsignarEmail(u.email || '')
+                                    setAsignarPassword('')
+                                  }}
+                                  className="px-2 py-0.5 text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded border border-indigo-200 dark:border-indigo-800 transition-colors"
+                                  title="Crear y asignar contraseña para que pueda iniciar sesión"
+                                >
+                                  Asignar clave
+                                </button>
+                              </div>
                             )}
                           </td>
                           <td className="px-4 py-3">
@@ -544,6 +619,60 @@ export function ConfigPage() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Modal para asignar clave a usuario existente */}
+      <Modal
+        isOpen={!!usuarioParaClave}
+        onClose={() => setUsuarioParaClave(null)}
+        title={`Asignar clave a ${usuarioParaClave?.nombre || ''}`}
+        size="sm"
+      >
+        <form onSubmit={handleAsignarClave} className="space-y-4">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Establecé las credenciales de acceso para que este {usuarioParaClave?.rol.toLowerCase()} pueda iniciar sesión en el punto de venta.
+          </p>
+
+          <Input
+            label="Email de acceso *"
+            type="email"
+            placeholder="cajero@ejemplo.com"
+            value={asignarEmail}
+            onChange={(e) => setAsignarEmail(e.target.value)}
+            required
+            autoComplete="email"
+          />
+
+          <Input
+            label="Nueva contraseña *"
+            type="password"
+            placeholder="Mínimo 6 caracteres"
+            value={asignarPassword}
+            onChange={(e) => setAsignarPassword(e.target.value)}
+            required
+            minLength={6}
+            autoComplete="new-password"
+          />
+
+          <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs text-amber-900 dark:text-amber-300">
+            <strong>Importante:</strong> Para que el cajero entre de inmediato sin confirmación por correo, desactivá <em>Confirm email</em> en Supabase (Authentication → Providers → Email).
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <Button type="submit" fullWidth loading={guardandoClave}>
+              Guardar clave
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              fullWidth
+              disabled={guardandoClave}
+              onClick={() => setUsuarioParaClave(null)}
+            >
+              Cancelar
+            </Button>
+          </div>
+        </form>
       </Modal>
     </div>
   )

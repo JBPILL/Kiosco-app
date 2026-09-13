@@ -30,7 +30,17 @@ export const useAuthStore = create<AuthState>((set) => ({
         password,
       })
 
-      if (authError) throw new Error(authError.message)
+      if (authError) {
+        let msg = authError.message
+        if (msg.toLowerCase().includes('invalid login credentials')) {
+          msg = 'Email o contraseña incorrectos. Verificá que el email coincida exactamente (ej: @hotmail.com vs @gmail.com) y que la clave sea la correcta.'
+        } else if (msg.toLowerCase().includes('email not confirmed')) {
+          msg = 'El correo aún no fue confirmado. Desactivá "Confirm email" en Supabase (Authentication -> Providers -> Email) para permitir acceso directo.'
+        } else if (msg.toLowerCase().includes('too many requests')) {
+          msg = 'Demasiados intentos seguidos. Por seguridad, esperá unos instantes antes de volver a intentar.'
+        }
+        throw new Error(msg)
+      }
 
       // 2. Obtener datos del usuario (nombre, rol, kiosco)
       const { data: usuario, error: userError } = await supabase
@@ -40,7 +50,10 @@ export const useAuthStore = create<AuthState>((set) => ({
         .eq('activo', true)
         .single()
 
-      if (userError) throw new Error('No se encontró el usuario en el sistema')
+      if (userError || !usuario) {
+        await supabase.auth.signOut()
+        throw new Error('Este usuario no tiene un perfil activo asociado a ningún kiosco.')
+      }
 
       // 3. Verificar que el kiosco tenga suscripción activa y traer sus datos
       const { data: kiosco } = await supabase
