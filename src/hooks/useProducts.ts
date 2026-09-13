@@ -4,9 +4,23 @@ import type { Producto, Categoria } from '../types/database'
 import toast from 'react-hot-toast'
 
 export function useProducts() {
-  const [productos, setProductos] = useState<Producto[]>([])
-  const [categorias, setCategorias] = useState<Categoria[]>([])
-  const [cargando, setCargando] = useState(true)
+  const [productos, setProductos] = useState<Producto[]>(() => {
+    try {
+      const cached = localStorage.getItem('kiosko_cache_productos')
+      return cached ? JSON.parse(cached) : []
+    } catch {
+      return []
+    }
+  })
+  const [categorias, setCategorias] = useState<Categoria[]>(() => {
+    try {
+      const cached = localStorage.getItem('kiosko_cache_categorias')
+      return cached ? JSON.parse(cached) : []
+    } catch {
+      return []
+    }
+  })
+  const [cargando, setCargando] = useState(false)
   const [busqueda, setBusqueda] = useState('')
   const [categoriaFiltro, setCategoriaFiltro] = useState<string | null>(null)
 
@@ -29,13 +43,30 @@ export function useProducts() {
     const { data, error } = await query
 
     if (error) {
-      toast.error('Error al cargar productos')
+      const cached = localStorage.getItem('kiosko_cache_productos')
+      if (cached && productos.length === 0) {
+        try {
+          setProductos(JSON.parse(cached))
+          toast('Modo local: Mostrando catálogo guardado en memoria', { icon: '📦' })
+        } catch {
+          toast.error('Error al cargar productos')
+        }
+      } else if (!cached) {
+        toast.error('Error al cargar productos')
+      }
       console.error(error)
     } else {
       setProductos(data || [])
+      if (!busqueda && !categoriaFiltro && data && data.length > 0) {
+        try {
+          localStorage.setItem('kiosko_cache_productos', JSON.stringify(data))
+        } catch (e) {
+          console.warn('No se pudo guardar catálogo en localStorage:', e)
+        }
+      }
     }
     setCargando(false)
-  }, [busqueda, categoriaFiltro])
+  }, [busqueda, categoriaFiltro, productos.length])
 
   // Cargar categorías
   const cargarCategorias = useCallback(async () => {
@@ -45,11 +76,27 @@ export function useProducts() {
       .order('orden')
 
     if (error) {
-      toast.error('Error al cargar categorías')
+      const cached = localStorage.getItem('kiosko_cache_categorias')
+      if (cached && categorias.length === 0) {
+        try {
+          setCategorias(JSON.parse(cached))
+        } catch {
+          toast.error('Error al cargar categorías')
+        }
+      } else if (!cached) {
+        toast.error('Error al cargar categorías')
+      }
     } else {
       setCategorias(data || [])
+      if (data && data.length > 0) {
+        try {
+          localStorage.setItem('kiosko_cache_categorias', JSON.stringify(data))
+        } catch (e) {
+          console.warn('No se pudo guardar categorías en localStorage:', e)
+        }
+      }
     }
-  }, [])
+  }, [categorias.length])
 
   useEffect(() => {
     cargarProductos()

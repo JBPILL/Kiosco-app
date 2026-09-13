@@ -2,9 +2,11 @@ import { useState } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { Sidebar } from '../ui/Sidebar'
 import { useAuthStore } from '../../stores/authStore'
+import { useOnlineStatus } from '../../hooks/useOnlineStatus'
 
 export function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const isOnline = useOnlineStatus()
   const { usuario, kiosco, suscripcion, diasRestantes, logout } = useAuthStore()
 
   // Bloqueo total de pantalla si el kiosco está suspendido (excepto para superadmin)
@@ -117,6 +119,20 @@ export function MainLayout() {
             )}
           </div>
         </header>
+
+        {/* Banner de Estado Offline */}
+        {!isOnline && (
+          <div className="bg-amber-600 text-white px-4 py-2 text-xs sm:text-sm font-semibold flex items-center justify-between shadow-xs z-20">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 bg-amber-800 rounded text-[10px] uppercase font-bold tracking-wider">
+                Sin Conexión
+              </span>
+              <span>
+                No se detecta conexión a Internet. El sistema opera con datos locales en memoria.
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Banner de Aviso o Alerta de Vencimiento de Suscripción */}
         {!usuario?.es_superadmin && (

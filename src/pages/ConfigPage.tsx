@@ -7,6 +7,7 @@ import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import type { Kiosco, Usuario, Suscripcion } from '../types/database'
 import { formatPrecio, formatFechaCorta } from '../lib/utils'
+import { exportarCatalogoCSV, exportarVentasCSV } from '../lib/exportUtils'
 import toast from 'react-hot-toast'
 
 export function ConfigPage() {
@@ -18,6 +19,7 @@ export function ConfigPage() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [cargando, setCargando] = useState(true)
   const [guardandoKiosco, setGuardandoKiosco] = useState(false)
+  const [exportandoBackup, setExportandoBackup] = useState(false)
 
   // Formulario Kiosco
   const [nombreKiosco, setNombreKiosco] = useState('')
@@ -252,6 +254,52 @@ export function ConfigPage() {
     if (diasRestantes !== null && diasRestantes < 0) return 'SOLO_LECTURA'
     return 'ACTIVO'
   }, [kiosco?.estado_suscripcion, diasRestantes])
+
+  const handleExportarCatalogo = async () => {
+    if (!usuario?.kiosco_id) return
+    setExportandoBackup(true)
+    try {
+      const { data: prods, error: pErr } = await supabase
+        .from('productos')
+        .select('*, categoria:categorias(*)')
+        .eq('kiosco_id', usuario.kiosco_id)
+      if (pErr) throw pErr
+
+      const { data: cats } = await supabase
+        .from('categorias')
+        .select('*')
+        .eq('kiosco_id', usuario.kiosco_id)
+
+      exportarCatalogoCSV(prods || [], cats || [], kiosco?.nombre || 'Kiosco')
+      toast.success('Copia del catálogo descargada')
+    } catch (err) {
+      console.error(err)
+      toast.error('Error al exportar catálogo')
+    } finally {
+      setExportandoBackup(false)
+    }
+  }
+
+  const handleExportarVentas = async () => {
+    if (!usuario?.kiosco_id) return
+    setExportandoBackup(true)
+    try {
+      const { data: vtas, error: vErr } = await supabase
+        .from('ventas')
+        .select('*, pagos:pagos_venta(*)')
+        .eq('kiosco_id', usuario.kiosco_id)
+        .order('fecha', { ascending: false })
+      if (vErr) throw vErr
+
+      exportarVentasCSV(vtas || [], kiosco?.nombre || 'Kiosco')
+      toast.success('Copia de ventas descargada')
+    } catch (err) {
+      console.error(err)
+      toast.error('Error al exportar ventas')
+    } finally {
+      setExportandoBackup(false)
+    }
+  }
 
   const handleEliminarUsuario = async () => {
     if (!usuarioAEliminar || !usuario?.kiosco_id) return
@@ -602,6 +650,56 @@ export function ConfigPage() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+
+          {/* Copias de Seguridad y Resguardo de Datos */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                Copias de Seguridad (Backup de Datos)
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Descargá una copia física de la información de tu negocio en formato Excel (.CSV) para tener siempre un resguardo seguro en tu computadora.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 space-y-2">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                  Resguardo de Catálogo y Stock
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Incluye todos tus productos con códigos de barra, categorías, costos, precios de venta y stock actual.
+                </p>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleExportarCatalogo}
+                  disabled={exportandoBackup}
+                  className="w-full text-xs font-semibold"
+                >
+                  {exportandoBackup ? 'Generando...' : 'Descargar Catálogo (.CSV)'}
+                </Button>
+              </div>
+
+              <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 space-y-2">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                  Resguardo Histórico de Ventas
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Descargá el registro histórico de todas las ventas emitidas, totales, fechas y medios de pago cobrados.
+                </p>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleExportarVentas}
+                  disabled={exportandoBackup}
+                  className="w-full text-xs font-semibold"
+                >
+                  {exportandoBackup ? 'Generando...' : 'Descargar Ventas (.CSV)'}
+                </Button>
               </div>
             </div>
           </div>

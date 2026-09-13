@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/authStore'
 import { formatPrecio, formatFecha, labelMedioPago } from '../lib/utils'
+import { exportarVentasCSV } from '../lib/exportUtils'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { TicketReceiptModal, type TicketData } from '../components/pos/TicketReceiptModal'
@@ -163,6 +164,13 @@ export function ReportesPage() {
     setTicketParaImprimir(ticketData)
   }
 
+  const handleExportarVentasDia = () => {
+    if (ventas.length === 0) return
+    const kiosco = useAuthStore.getState().kiosco
+    exportarVentasCSV(ventas, `${kiosco?.nombre || 'Kiosco'}_${fecha}`)
+    toast.success('Reporte diario exportado a CSV')
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header con selector de fecha */}
@@ -172,8 +180,8 @@ export function ReportesPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400">Resumen y detalle de operaciones por día</p>
         </div>
 
-        {/* Navegación por fecha */}
-        <div className="flex items-center gap-2">
+        {/* Navegación por fecha y Exportar */}
+        <div className="flex items-center gap-2 flex-wrap">
           <Button size="sm" variant="secondary" onClick={() => cambiarFecha(-1)}>
             &lt; Anterior
           </Button>
@@ -200,6 +208,16 @@ export function ReportesPage() {
               Hoy
             </Button>
           )}
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={handleExportarVentasDia}
+            disabled={ventas.length === 0}
+            className="text-xs"
+            title="Descargar las ventas de este día en formato CSV / Excel"
+          >
+            Exportar Día (.CSV)
+          </Button>
         </div>
       </div>
 
