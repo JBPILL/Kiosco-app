@@ -1,0 +1,1386 @@
+import { useState, useEffect, useMemo } from 'react'
+import { useProveedorStore } from '../stores/proveedorStore'
+import { useProducts } from '../hooks/useProducts'
+import { useCajaStore } from '../stores/cajaStore'
+import { formatPrecio, formatFecha, labelMedioPago } from '../lib/utils'
+import { Button } from '../components/ui/Button'
+import { Input } from '../components/ui/Input'
+import { Modal } from '../components/ui/Modal'
+import type {
+  Proveedor,
+  CompraProveedor,
+  DetalleCompra,
+  MedioPagoCompra,
+  Producto,
+} from '../types/database'
+import toast from 'react-hot-toast'
+
+interface RenglonCompra {
+  producto_id: string
+  producto: Producto
+  cantidad: number
+  precio_costo_unitario: number
+  subtotal: number
+}
+
+export function ProveedoresPage() {
+  const {
+    proveedores,
+    compras,
+    cargando,
+    cargandoCompras,
+    cargarProveedores,
+    crearProveedor,
+    actualizarProveedor,
+    eliminarProveedor,
+    abonarSaldoProveedor,
+    cargarCompras,
+    cargarDetallesCompra,
+    registrarCompra,
+    anularCompra,
+  } = useProveedorStore()
+
+  const { productos, cargarProductos } = useProducts()
+  const { sesionActiva, verificarSesionActiva } = useCajaStore()
+
+  // Pestaña activa
+  const [tabActiva, setTabActiva] = useState<'directorio' | 'nueva_compra' | 'historial'>('directorio')
+
+  // --- Filtros Directorio ---
+  const [busquedaDir, setBusquedaDir] = useState('')
+  const [filtroDeuda, setFiltroDeuda] = useState<'TODOS' | 'CON_DEUDA'>('TODOS')
+
+  // --- Modal Alta / Edición Proveedor ---
+  const [modalProveedorOpen, setModalProveedorOpen] = useState(false)
+  const [proveedorEditando, setProveedorEditando] = useState<Proveedor | null>(null)
+  const [formNombre, setFormNombre] = useState('')
+  const [formContacto, setFormContacto] = useState('')
+  const [formTelefono, setFormTelefono] = useState('')
+  const [formEmail, setFormEmail] = useState('')
+  const [formCuit, setFormCuit] = useState('')
+  const [formDiasVisita, setFormDiasVisita] = useState('')
+  const [formCbuAlias, setFormCbuAlias] = useState('')
+  const [formSaldoInicial, setFormSaldoInicial] = useState('')
+  const [guardandoProveedor, setGuardandoProveedor] = useState(false)
+
+  // --- Modal Abonar Saldo ---
+  const [modalAbonarOpen, setModalAbonarOpen] = useState(false)
+  const [proveedorAbonar, setProveedorAbonar] = useState<Proveedor | null>(null)
+  const [montoAbono, setMontoAbono] = useState('')
+  const [medioPagoAbono, setMedioPagoAbono] = useState<'EFECTIVO' | 'TRANSFERENCIA'>('EFECTIVO')
+  const [descontarAbonoDeCaja, setDescontarAbonoDeCaja] = useState(true)
+  const [guardandoAbono, setGuardandoAbono] = useState(false)
+
+  // --- Formulario Nueva Compra ---
+  const [compraProveedorId, setCompraProveedorId] = useState('')
+  const [compraComprobante, setCompraComprobante] = useState('')
+  const [compraFecha, setCompraFecha] = useState(() => new Date().toISOString().slice(0, 16))
+  const [compraMedioPago, setCompraMedioPago] = useState<MedioPagoCompra>('EFECTIVO')
+  const [compraDescontarCaja, setCompraDescontarCaja] = useState(true)
+  const [compraNotas, setCompraNotas] = useState('')
+  const [renglones, setRenglones] = useState<RenglonCompra[]>([])
+  const [guardandoCompra, setGuardandoCompra] = useState(false)
+
+  // Buscador de productos para compra
+  const [busquedaProducto, setBusquedaProducto] = useState('')
+  const [productoSeleccionado, setProductoSeleccionado] = useState<Producto | null>(null)
+  const [cantidadIngresar, setCantidadIngresar] = useState('1')
+  const [costoIngresar, setCostoIngresar] = useState('')
+
+  // --- Historial y Detalles ---
+  const [busquedaHistorial, setBusquedaHistorial] = useState('')
+  const [modalDetalleOpen, setModalDetalleOpen] = useState(false)
+  const [compraDetalle, setCompraDetalle] = useState<CompraProveedor | null>(null)
+  const [detallesCargados, setDetallesCargados] = useState<DetalleCompra[]>([])
+  const [cargandoRenglones, setCargandoRenglones] = useState(false)
+
+  // Cargas iniciales
+  useEffect(() => {
+    cargarProveedores()
+    cargarCompras()
+    cargarProductos()
+    verificarSesionActiva()
+  }, [cargarProveedores, cargarCompras, cargarProductos, verificarSesionActiva])
+
+  // Métricas
+  const totalProveedores = proveedores.length
+  const totalDeudaProveedores = useMemo(() => {
+    return proveedores.reduce((sum, p) => sum + (Number(p.saldo_pendiente) || 0), 0)
+  }, [proveedores])
+
+  const totalComprasRecibidas = useMemo(() => {
+    return compras
+      .filter((c) => c.estado === 'RECIBIDA')
+      .reduce((sum, c) => sum + (Number(c.total) || 0), 0)
+  }, [compras])
+
+  // Filtrado de Proveedores
+  const proveedoresFiltrados = useMemo(() => {
+    return proveedores.filter((p) => {
+      const q = busquedaDir.toLowerCase()
+      const match =
+        p.nombre.toLowerCase().includes(q) ||
+        (p.contacto_nombre && p.contacto_nombre.toLowerCase().includes(q)) ||
+        (p.cuit && p.cuit.includes(q)) ||
+        (p.telefono && p.telefono.includes(q)) ||
+        (p.dias_visita && p.dias_visita.toLowerCase().includes(q))
+
+      if (!match) return false
+      if (filtroDeuda === 'CON_DEUDA') return (p.saldo_pendiente || 0) > 0
+      return true
+    })
+  }, [proveedores, busquedaDir, filtroDeuda])
+
+  // Filtrado de Productos para sugerencias en Nueva Compra
+  const sugerenciasProductos = useMemo(() => {
+    if (!busquedaProducto.trim()) return []
+    const q = busquedaProducto.toLowerCase()
+    return productos
+      .filter(
+        (prod) =>
+          prod.descripcion.toLowerCase().includes(q) ||
+          (prod.codigo_barras && prod.codigo_barras.includes(q))
+      )
+      .slice(0, 8)
+  }, [productos, busquedaProducto])
+
+  // Total de la compra en curso
+  const totalCompraCalculado = useMemo(() => {
+    return renglones.reduce((sum, r) => sum + r.subtotal, 0)
+  }, [renglones])
+
+  const totalBultosCalculado = useMemo(() => {
+    return renglones.reduce((sum, r) => sum + r.cantidad, 0)
+  }, [renglones])
+
+  // Handlers Proveedor
+  const handleNuevoProveedor = () => {
+    setProveedorEditando(null)
+    setFormNombre('')
+    setFormContacto('')
+    setFormTelefono('')
+    setFormEmail('')
+    setFormCuit('')
+    setFormDiasVisita('')
+    setFormCbuAlias('')
+    setFormSaldoInicial('')
+    setModalProveedorOpen(true)
+  }
+
+  const handleEditarProveedor = (p: Proveedor) => {
+    setProveedorEditando(p)
+    setFormNombre(p.nombre)
+    setFormContacto(p.contacto_nombre || '')
+    setFormTelefono(p.telefono || '')
+    setFormEmail(p.email || '')
+    setFormCuit(p.cuit || '')
+    setFormDiasVisita(p.dias_visita || '')
+    setFormCbuAlias(p.cbu_alias || '')
+    setFormSaldoInicial(p.saldo_pendiente ? String(p.saldo_pendiente) : '')
+    setModalProveedorOpen(true)
+  }
+
+  const handleGuardarProveedor = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!formNombre.trim()) {
+      toast.error('El nombre del proveedor es obligatorio')
+      return
+    }
+
+    setGuardandoProveedor(true)
+    try {
+      if (proveedorEditando) {
+        await actualizarProveedor(proveedorEditando.id, {
+          nombre: formNombre.trim(),
+          contacto_nombre: formContacto.trim() || null,
+          telefono: formTelefono.trim() || null,
+          email: formEmail.trim() || null,
+          cuit: formCuit.trim() || null,
+          dias_visita: formDiasVisita.trim() || null,
+          cbu_alias: formCbuAlias.trim() || null,
+          saldo_pendiente: Number(formSaldoInicial) || 0,
+        })
+      } else {
+        await crearProveedor({
+          nombre: formNombre.trim(),
+          contacto_nombre: formContacto.trim() || null,
+          telefono: formTelefono.trim() || null,
+          email: formEmail.trim() || null,
+          cuit: formCuit.trim() || null,
+          dias_visita: formDiasVisita.trim() || null,
+          cbu_alias: formCbuAlias.trim() || null,
+          saldo_pendiente: Number(formSaldoInicial) || 0,
+        })
+      }
+      setModalProveedorOpen(false)
+    } finally {
+      setGuardandoProveedor(false)
+    }
+  }
+
+  const handleEliminarProveedor = async (p: Proveedor) => {
+    if (confirm(`¿Estás seguro de eliminar al proveedor "${p.nombre}"?`)) {
+      await eliminarProveedor(p.id)
+    }
+  }
+
+  // Handlers Abonar Deuda
+  const handleAbrirAbonar = (p: Proveedor) => {
+    setProveedorAbonar(p)
+    setMontoAbono(String(p.saldo_pendiente || ''))
+    setMedioPagoAbono('EFECTIVO')
+    setDescontarAbonoDeCaja(Boolean(sesionActiva))
+    setModalAbonarOpen(true)
+  }
+
+  const handleGuardarAbono = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!proveedorAbonar) return
+    const monto = Number(montoAbono)
+    if (isNaN(monto) || monto <= 0) {
+      toast.error('Ingresá un monto válido mayor a cero')
+      return
+    }
+
+    setGuardandoAbono(true)
+    try {
+      const ok = await abonarSaldoProveedor(
+        proveedorAbonar.id,
+        monto,
+        medioPagoAbono,
+        descontarAbonoDeCaja
+      )
+      if (ok) {
+        setModalAbonarOpen(false)
+      }
+    } finally {
+      setGuardandoAbono(false)
+    }
+  }
+
+  // Copiar alias al portapapeles
+  const handleCopiarAlias = (alias: string) => {
+    navigator.clipboard.writeText(alias)
+    toast.success('Alias/CBU copiado al portapapeles')
+  }
+
+  // Handlers Nueva Compra
+  const handleSeleccionarProducto = (prod: Producto) => {
+    setProductoSeleccionado(prod)
+    setBusquedaProducto(prod.descripcion)
+    setCostoIngresar(String(prod.precio_costo || ''))
+    setCantidadIngresar('1')
+  }
+
+  const handleAgregarRenglon = () => {
+    if (!productoSeleccionado) {
+      toast.error('Seleccioná un producto del catálogo')
+      return
+    }
+    const cant = parseInt(cantidadIngresar, 10)
+    if (isNaN(cant) || cant <= 0) {
+      toast.error('Ingresá una cantidad válida mayor a 0')
+      return
+    }
+    const costo = parseFloat(costoIngresar)
+    if (isNaN(costo) || costo < 0) {
+      toast.error('Ingresá un costo unitario válido')
+      return
+    }
+
+    // Si ya existe en la lista de renglones, sumar cantidad o reemplazar
+    const indexExistente = renglones.findIndex((r) => r.producto_id === productoSeleccionado.id)
+    if (indexExistente >= 0) {
+      const actualizados = [...renglones]
+      const actual = actualizados[indexExistente]
+      const nuevaCantidad = actual.cantidad + cant
+      actualizados[indexExistente] = {
+        ...actual,
+        cantidad: nuevaCantidad,
+        precio_costo_unitario: costo,
+        subtotal: nuevaCantidad * costo,
+      }
+      setRenglones(actualizados)
+    } else {
+      setRenglones([
+        ...renglones,
+        {
+          producto_id: productoSeleccionado.id,
+          producto: productoSeleccionado,
+          cantidad: cant,
+          precio_costo_unitario: costo,
+          subtotal: cant * costo,
+        },
+      ])
+    }
+
+    // Reset inputs de agregar producto
+    setProductoSeleccionado(null)
+    setBusquedaProducto('')
+    setCostoIngresar('')
+    setCantidadIngresar('1')
+  }
+
+  const handleModificarCantidadRenglon = (index: number, delta: number) => {
+    const actualizados = [...renglones]
+    const actual = actualizados[index]
+    const nuevaCant = Math.max(1, actual.cantidad + delta)
+    actualizados[index] = {
+      ...actual,
+      cantidad: nuevaCant,
+      subtotal: nuevaCant * actual.precio_costo_unitario,
+    }
+    setRenglones(actualizados)
+  }
+
+  const handleEliminarRenglon = (index: number) => {
+    setRenglones(renglones.filter((_, i) => i !== index))
+  }
+
+  const handleIniciarCompraAProveedor = (p: Proveedor) => {
+    setCompraProveedorId(p.id)
+    setTabActiva('nueva_compra')
+  }
+
+  const handleGuardarCompra = async () => {
+    if (!compraProveedorId) {
+      toast.error('Seleccioná el proveedor emisor')
+      return
+    }
+    if (renglones.length === 0) {
+      toast.error('Agregá al menos un producto a la compra')
+      return
+    }
+
+    setGuardandoCompra(true)
+    try {
+      const resultado = await registrarCompra(
+        {
+          proveedor_id: compraProveedorId,
+          nro_comprobante: compraComprobante.trim() || null,
+          fecha: new Date(compraFecha).toISOString(),
+          total: totalCompraCalculado,
+          medio_pago: compraMedioPago,
+          pagado_en_caja: compraDescontarCaja && compraMedioPago === 'EFECTIVO',
+          notas: compraNotas.trim() || null,
+          detalles: renglones.map((r) => ({
+            producto_id: r.producto_id,
+            cantidad: r.cantidad,
+            precio_costo_unitario: r.precio_costo_unitario,
+            subtotal: r.subtotal,
+            producto: r.producto,
+          })),
+        },
+        compraDescontarCaja
+      )
+
+      if (resultado.success) {
+        // Reset form
+        setCompraComprobante('')
+        setCompraNotas('')
+        setRenglones([])
+        setTabActiva('historial')
+        cargarProductos()
+      }
+    } finally {
+      setGuardandoCompra(false)
+    }
+  }
+
+  // Handlers Historial
+  const handleVerDetalleCompra = async (c: CompraProveedor) => {
+    setCompraDetalle(c)
+    setModalDetalleOpen(true)
+    setCargandoRenglones(true)
+    const items = await cargarDetallesCompra(c.id)
+    setDetallesCargados(items)
+    setCargandoRenglones(false)
+  }
+
+  const handleAnularCompra = async (c: CompraProveedor) => {
+    if (confirm(`¿Estás seguro de ANULAR el comprobante "${c.nro_comprobante || 'S/N'}" por ${formatPrecio(c.total)}?`)) {
+      await anularCompra(c.id)
+    }
+  }
+
+  const comprasFiltradas = useMemo(() => {
+    return compras.filter((c) => {
+      const q = busquedaHistorial.toLowerCase()
+      const matchProv = c.proveedor?.nombre.toLowerCase().includes(q) || false
+      const matchComp = c.nro_comprobante?.toLowerCase().includes(q) || false
+      return matchProv || matchComp
+    })
+  }, [compras, busquedaHistorial])
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-4">
+      {/* Encabezado */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
+            Proveedores y Compras
+          </h1>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+            Recepción de mercadería, actualización de costos e historial de remitos
+          </p>
+        </div>
+
+        {/* Pestañas de navegación */}
+        <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 self-start sm:self-auto">
+          <button
+            onClick={() => setTabActiva('directorio')}
+            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+              tabActiva === 'directorio'
+                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            Directorio ({totalProveedores})
+          </button>
+          <button
+            onClick={() => setTabActiva('nueva_compra')}
+            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+              tabActiva === 'nueva_compra'
+                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            Nueva Compra / Remito
+          </button>
+          <button
+            onClick={() => setTabActiva('historial')}
+            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+              tabActiva === 'historial'
+                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            Historial ({compras.length})
+          </button>
+        </div>
+      </div>
+
+      {/* Tarjetas de métricas rápidas */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Proveedores Registrados</p>
+          <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 mt-0.5">
+            {totalProveedores}
+          </p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Cuentas por Pagar (Saldo Pendiente)</p>
+          <p className={`text-xl sm:text-2xl font-bold mt-0.5 ${totalDeudaProveedores > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-900 dark:text-gray-100'}`}>
+            {formatPrecio(totalDeudaProveedores)}
+          </p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Compras Recibidas (Acumulado)</p>
+          <p className="text-xl sm:text-2xl font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
+            {formatPrecio(totalComprasRecibidas)}
+          </p>
+        </div>
+      </div>
+
+      {/* ─────────────────────────────────────────────────────────────
+          TAB 1: DIRECTORIO DE PROVEEDORES
+          ───────────────────────────────────────────────────────────── */}
+      {tabActiva === 'directorio' && (
+        <div className="space-y-3">
+          {/* Barra de filtros y botón nuevo */}
+          <div className="flex flex-col sm:flex-row gap-2 justify-between items-stretch sm:items-center bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700">
+            <div className="flex flex-1 gap-2 items-center">
+              <div className="relative flex-1 max-w-md">
+                <input
+                  type="text"
+                  placeholder="Buscar proveedor, contacto, CUIT o teléfono..."
+                  value={busquedaDir}
+                  onChange={(e) => setBusquedaDir(e.target.value)}
+                  className="w-full pl-3 pr-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:bg-white dark:focus:bg-gray-800 focus:outline-hidden focus:border-indigo-500"
+                />
+              </div>
+
+              <select
+                value={filtroDeuda}
+                onChange={(e) => setFiltroDeuda(e.target.value as any)}
+                aria-label="Filtrar por deuda de proveedor"
+                className="py-2 px-3 text-xs sm:text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-300"
+              >
+                <option value="TODOS">Todos</option>
+                <option value="CON_DEUDA">Con saldo a pagar</option>
+              </select>
+            </div>
+
+            <Button onClick={handleNuevoProveedor} size="sm">
+              + Nuevo Proveedor
+            </Button>
+          </div>
+
+          {/* Grilla de proveedores */}
+          {cargando ? (
+            <div className="p-8 text-center text-sm text-gray-500 dark:text-gray-400">
+              Cargando directorio de proveedores...
+            </div>
+          ) : proveedoresFiltrados.length === 0 ? (
+            <div className="bg-white dark:bg-gray-800 p-8 rounded-xl border border-gray-200 dark:border-gray-700 text-center">
+              <p className="text-gray-600 dark:text-gray-300 font-medium">No se encontraron proveedores</p>
+              <p className="text-xs text-gray-400 mt-1">
+                {busquedaDir ? 'Probá con otra búsqueda' : 'Registrá a tu primer proveedor para organizar compras y remitos'}
+              </p>
+              <Button onClick={handleNuevoProveedor} size="sm" className="mt-3">
+                Crear Proveedor
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {proveedoresFiltrados.map((p) => {
+                const tieneDeuda = (p.saldo_pendiente || 0) > 0
+                const whatsappNumber = p.telefono?.replace(/\D/g, '')
+
+                return (
+                  <div
+                    key={p.id}
+                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex flex-col justify-between hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors"
+                  >
+                    <div>
+                      {/* Cabecera de tarjeta */}
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h2 className="font-bold text-gray-900 dark:text-gray-100 text-base leading-tight">
+                            {p.nombre}
+                          </h2>
+                          {p.contacto_nombre && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                              Contacto: {p.contacto_nombre}
+                            </p>
+                          )}
+                        </div>
+
+                        {tieneDeuda && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
+                            Deuda: {formatPrecio(p.saldo_pendiente)}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Detalles: días, CUIT, teléfono */}
+                      <div className="mt-3 space-y-1.5 text-xs text-gray-600 dark:text-gray-400">
+                        {p.dias_visita && (
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-gray-700 dark:text-gray-300">Visita:</span>
+                            <span className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 px-1.5 py-0.5 rounded font-medium">
+                              {p.dias_visita}
+                            </span>
+                          </div>
+                        )}
+
+                        {p.cuit && (
+                          <div>
+                            <span className="font-semibold text-gray-700 dark:text-gray-300">CUIT:</span> {p.cuit}
+                          </div>
+                        )}
+
+                        {p.telefono && (
+                          <div className="flex items-center gap-2 pt-0.5">
+                            <span className="font-semibold text-gray-700 dark:text-gray-300">Tel:</span>
+                            <span>{p.telefono}</span>
+                            {whatsappNumber && (
+                              <a
+                                href={`https://wa.me/${whatsappNumber}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
+                              >
+                                [WhatsApp]
+                              </a>
+                            )}
+                            <a
+                              href={`tel:${p.telefono}`}
+                              className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                            >
+                              [Llamar]
+                            </a>
+                          </div>
+                        )}
+
+                        {p.cbu_alias && (
+                          <div className="flex items-center justify-between pt-1 bg-gray-50 dark:bg-gray-900 p-1.5 rounded-lg border border-gray-100 dark:border-gray-700">
+                            <span className="truncate text-[11px]">
+                              <strong className="text-gray-700 dark:text-gray-300">Alias/CBU:</strong> {p.cbu_alias}
+                            </span>
+                            <button
+                              onClick={() => handleCopiarAlias(p.cbu_alias!)}
+                              className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline ml-2 flex-shrink-0"
+                            >
+                              Copiar
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Botones de acción */}
+                    <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700/60 flex items-center justify-between gap-1 text-xs">
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => handleIniciarCompraAProveedor(p)}
+                          className="px-2.5 py-1 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 font-semibold"
+                        >
+                          Comprar
+                        </button>
+                        {tieneDeuda && (
+                          <button
+                            onClick={() => handleAbrirAbonar(p)}
+                            className="px-2.5 py-1 rounded bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50 font-semibold"
+                          >
+                            Abonar
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleEditarProveedor(p)}
+                          className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 font-medium"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => handleEliminarProveedor(p)}
+                          className="text-red-500 hover:text-red-700 dark:hover:text-red-400 font-medium"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          TAB 2: REGISTRAR COMPRA / RECEPCIÓN DE MERCADERÍA
+          ───────────────────────────────────────────────────────────── */}
+      {tabActiva === 'nueva_compra' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Columna Izquierda: Formulario de cabecera y búsqueda */}
+          <div className="lg:col-span-1 space-y-4">
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3">
+              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700 pb-2">
+                Datos del Comprobante
+              </h2>
+
+              {/* Selector de proveedor */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Proveedor *
+                </label>
+                <select
+                  value={compraProveedorId}
+                  onChange={(e) => setCompraProveedorId(e.target.value)}
+                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                >
+                  <option value="">-- Seleccionar Proveedor --</option>
+                  {proveedores.map((prov) => (
+                    <option key={prov.id} value={prov.id}>
+                      {prov.nombre} {prov.saldo_pendiente > 0 ? `(Deuda: ${formatPrecio(prov.saldo_pendiente)})` : ''}
+                    </option>
+                  ))}
+                </select>
+                {proveedores.length === 0 && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                    No hay proveedores. Creá uno en el Directorio primero.
+                  </p>
+                )}
+              </div>
+
+              {/* Nro de Comprobante / Remito */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  N° Factura / Remito
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: REM-0001-000492"
+                  value={compraComprobante}
+                  onChange={(e) => setCompraComprobante(e.target.value)}
+                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                />
+              </div>
+
+              {/* Fecha y hora */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Fecha y Hora
+                </label>
+                <input
+                  type="datetime-local"
+                  value={compraFecha}
+                  onChange={(e) => setCompraFecha(e.target.value)}
+                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                />
+              </div>
+
+              {/* Medio de Pago */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Medio de Pago
+                </label>
+                <select
+                  value={compraMedioPago}
+                  onChange={(e) => setCompraMedioPago(e.target.value as MedioPagoCompra)}
+                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                >
+                  <option value="EFECTIVO">Efectivo</option>
+                  <option value="TRANSFERENCIA">Transferencia Bancaria</option>
+                  <option value="CUENTA_CORRIENTE">Cuenta Corriente (A Pagar)</option>
+                </select>
+              </div>
+
+              {/* Checkbox Descontar de caja activa */}
+              {compraMedioPago === 'EFECTIVO' && (
+                <div className="pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs text-gray-700 dark:text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={compraDescontarCaja && Boolean(sesionActiva)}
+                      disabled={!sesionActiva}
+                      onChange={(e) => setCompraDescontarCaja(e.target.checked)}
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                    />
+                    <span>
+                      Descontar de la caja activa
+                      {!sesionActiva && ' (Caja cerrada)'}
+                    </span>
+                  </label>
+                  {sesionActiva && compraDescontarCaja && (
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 pl-6">
+                      Se registrará un egreso de ${formatPrecio(totalCompraCalculado)} en la sesión actual.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Observaciones */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Notas / Observaciones
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Detalles sobre entrega, lotes o descuentos..."
+                  value={compraNotas}
+                  onChange={(e) => setCompraNotas(e.target.value)}
+                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                />
+              </div>
+            </div>
+
+            {/* Selector y buscador rápido de productos */}
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3">
+              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700 pb-2">
+                Agregar Productos a la Recepción
+              </h2>
+
+              <div className="relative">
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Buscar producto (código o nombre)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Escribí para buscar..."
+                  value={busquedaProducto}
+                  onChange={(e) => {
+                    setBusquedaProducto(e.target.value)
+                    setProductoSeleccionado(null)
+                  }}
+                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                />
+
+                {/* Lista desplegable de sugerencias */}
+                {sugerenciasProductos.length > 0 && !productoSeleccionado && (
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20 max-h-48 overflow-y-auto">
+                    {sugerenciasProductos.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => handleSeleccionarProducto(p)}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-indigo-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 last:border-0"
+                      >
+                        <div className="font-semibold text-gray-900 dark:text-gray-100">{p.descripcion}</div>
+                        <div className="text-gray-500 dark:text-gray-400 flex justify-between mt-0.5">
+                          <span>Stock act: {p.stock_actual}</span>
+                          <span>Costo act: {formatPrecio(p.precio_costo)}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {productoSeleccionado && (
+                <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 rounded-lg border border-indigo-100 dark:border-indigo-800/50 space-y-2">
+                  <div className="text-xs font-bold text-indigo-900 dark:text-indigo-200">
+                    {productoSeleccionado.descripcion}
+                  </div>
+                  <div className="text-[11px] text-gray-600 dark:text-gray-400">
+                    Stock actual en depósito: <strong>{productoSeleccionado.stock_actual}</strong>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-0.5">
+                        Cant. a ingresar
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={cantidadIngresar}
+                        onChange={(e) => setCantidadIngresar(e.target.value)}
+                        className="w-full py-1 px-2 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-0.5">
+                        Nuevo Costo Unit. ($)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={costoIngresar}
+                        onChange={(e) => setCostoIngresar(e.target.value)}
+                        className="w-full py-1 px-2 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                      />
+                    </div>
+                  </div>
+
+                  <Button onClick={handleAgregarRenglon} size="sm" fullWidth className="mt-2">
+                    + Agregar al Comprobante
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Columna Derecha: Tabla de Renglones Recibidos y Confirmación */}
+          <div className="lg:col-span-2 space-y-4">
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col justify-between min-h-[420px]">
+              <div>
+                <div className="flex justify-between items-center border-b border-gray-200 dark:border-gray-700 pb-2 mb-3">
+                  <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                    Artículos en el Remito ({renglones.length})
+                  </h2>
+                  {renglones.length > 0 && (
+                    <button
+                      onClick={() => setRenglones([])}
+                      className="text-xs text-red-600 hover:underline"
+                    >
+                      Vaciar lista
+                    </button>
+                  )}
+                </div>
+
+                {renglones.length === 0 ? (
+                  <div className="py-16 text-center text-gray-400 dark:text-gray-500">
+                    <p className="font-medium text-sm">No hay productos agregados a la recepción</p>
+                    <p className="text-xs mt-1">
+                      Buscá un producto en el panel lateral para ingresarlo con su costo y cantidad.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400">
+                          <th className="py-2 px-1">Producto</th>
+                          <th className="py-2 px-1 text-center">Stock Actual</th>
+                          <th className="py-2 px-1 text-center">Cantidad</th>
+                          <th className="py-2 px-1 text-right">Costo Unit.</th>
+                          <th className="py-2 px-1 text-right">Subtotal</th>
+                          <th className="py-2 px-1 text-center">Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
+                        {renglones.map((r, idx) => (
+                          <tr key={r.producto_id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                            <td className="py-2.5 px-1">
+                              <div className="font-semibold text-gray-900 dark:text-gray-100">
+                                {r.producto.descripcion}
+                              </div>
+                              {r.producto.codigo_barras && (
+                                <div className="text-[10px] text-gray-400 font-mono">
+                                  {r.producto.codigo_barras}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-1 text-center text-gray-500 dark:text-gray-400">
+                              {r.producto.stock_actual}
+                            </td>
+                            <td className="py-2.5 px-1 text-center">
+                              <div className="inline-flex items-center gap-1">
+                                <button
+                                  onClick={() => handleModificarCantidadRenglon(idx, -1)}
+                                  className="w-5 h-5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 font-bold flex items-center justify-center hover:bg-gray-200"
+                                >
+                                  -
+                                </button>
+                                <span className="font-bold px-1.5">{r.cantidad}</span>
+                                <button
+                                  onClick={() => handleModificarCantidadRenglon(idx, 1)}
+                                  className="w-5 h-5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 font-bold flex items-center justify-center hover:bg-gray-200"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-1 text-right font-medium">
+                              {formatPrecio(r.precio_costo_unitario)}
+                              {r.producto.precio_costo !== r.precio_costo_unitario && (
+                                <div className="text-[9px] text-indigo-600 dark:text-indigo-400">
+                                  Ant: {formatPrecio(r.producto.precio_costo)}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-1 text-right font-bold text-gray-900 dark:text-gray-100">
+                              {formatPrecio(r.subtotal)}
+                            </td>
+                            <td className="py-2.5 px-1 text-center">
+                              <button
+                                onClick={() => handleEliminarRenglon(idx)}
+                                className="text-red-500 hover:text-red-700 text-xs font-semibold px-1"
+                              >
+                                Quitar
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Resumen del Comprobante y Botón Confirmar */}
+              <div className="pt-4 border-t border-gray-200 dark:border-gray-700 mt-4">
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+                  <div className="text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
+                    <div>
+                      Unidades a ingresar al inventario: <strong>{totalBultosCalculado}</strong>
+                    </div>
+                    <div>
+                      Impacto de stock: Automático en catálogo y auditoría
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <span className="text-xs text-gray-500 dark:text-gray-400">Total a Pagar</span>
+                      <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400 leading-tight">
+                        {formatPrecio(totalCompraCalculado)}
+                      </div>
+                    </div>
+
+                    <Button
+                      onClick={handleGuardarCompra}
+                      loading={guardandoCompra}
+                      disabled={renglones.length === 0 || !compraProveedorId}
+                      size="lg"
+                    >
+                      Confirmar Ingreso
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          TAB 3: HISTORIAL DE COMPRAS
+          ───────────────────────────────────────────────────────────── */}
+      {tabActiva === 'historial' && (
+        <div className="space-y-3">
+          <div className="flex flex-col sm:flex-row gap-2 justify-between items-stretch sm:items-center bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700">
+            <div className="relative flex-1 max-w-md">
+              <input
+                type="text"
+                placeholder="Buscar por proveedor o nro de comprobante..."
+                value={busquedaHistorial}
+                onChange={(e) => setBusquedaHistorial(e.target.value)}
+                className="w-full pl-3 pr-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:bg-white dark:focus:bg-gray-800 focus:outline-hidden focus:border-indigo-500"
+              />
+            </div>
+          </div>
+
+          {cargandoCompras ? (
+            <div className="p-8 text-center text-sm text-gray-500 dark:text-gray-400">
+              Cargando historial de compras...
+            </div>
+          ) : comprasFiltradas.length === 0 ? (
+            <div className="bg-white dark:bg-gray-800 p-8 rounded-xl border border-gray-200 dark:border-gray-700 text-center">
+              <p className="text-gray-600 dark:text-gray-300 font-medium">No hay compras registradas</p>
+              <p className="text-xs text-gray-400 mt-1">
+                {busquedaHistorial
+                  ? 'No hay comprobantes que coincidan con la búsqueda'
+                  : 'Cargá los remitos y facturas de tus proveedores en la pestaña "Nueva Compra"'}
+              </p>
+            </div>
+          ) : (
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400">
+                    <th className="py-3 px-3">Fecha</th>
+                    <th className="py-3 px-3">Proveedor</th>
+                    <th className="py-3 px-3">Comprobante</th>
+                    <th className="py-3 px-3">Medio Pago</th>
+                    <th className="py-3 px-3 text-right">Total</th>
+                    <th className="py-3 px-3 text-center">Estado</th>
+                    <th className="py-3 px-3 text-center">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
+                  {comprasFiltradas.map((c) => {
+                    const esAnulada = c.estado === 'ANULADA'
+                    return (
+                      <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                        <td className="py-3 px-3 text-gray-600 dark:text-gray-400 font-mono">
+                          {formatFecha(c.fecha)}
+                        </td>
+                        <td className="py-3 px-3 font-semibold text-gray-900 dark:text-gray-100">
+                          {c.proveedor?.nombre || 'Proveedor Desconocido'}
+                        </td>
+                        <td className="py-3 px-3 text-gray-500 dark:text-gray-400 font-mono">
+                          {c.nro_comprobante || 'S/N'}
+                        </td>
+                        <td className="py-3 px-3 text-gray-600 dark:text-gray-400">
+                          {labelMedioPago(c.medio_pago)}
+                          {c.pagado_en_caja && (
+                            <span className="block text-[10px] text-emerald-600 dark:text-emerald-400">
+                              (Descontado de caja)
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-right font-bold text-gray-900 dark:text-gray-100 text-sm">
+                          {formatPrecio(c.total)}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              esAnulada
+                                ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400'
+                                : 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400'
+                            }`}
+                          >
+                            {c.estado}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-center space-x-2">
+                          <button
+                            onClick={() => handleVerDetalleCompra(c)}
+                            className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                          >
+                            Ver Renglones
+                          </button>
+                          {!esAnulada && (
+                            <button
+                              onClick={() => handleAnularCompra(c)}
+                              className="text-xs font-semibold text-red-500 dark:text-red-400 hover:underline"
+                            >
+                              Anular
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          MODAL: ALTA / EDICIÓN PROVEEDOR
+          ───────────────────────────────────────────────────────────── */}
+      <Modal
+        isOpen={modalProveedorOpen}
+        onClose={() => setModalProveedorOpen(false)}
+        title={proveedorEditando ? 'Editar Proveedor' : 'Nuevo Proveedor'}
+        size="md"
+      >
+        <form onSubmit={handleGuardarProveedor} className="space-y-3">
+          <Input
+            label="Nombre de la empresa o proveedor *"
+            placeholder="Ej: Distribuidora Norte"
+            value={formNombre}
+            onChange={(e) => setFormNombre(e.target.value)}
+            required
+          />
+
+          <Input
+            label="Persona de contacto / Vendedor"
+            placeholder="Ej: Marcelo Gómez"
+            value={formContacto}
+            onChange={(e) => setFormContacto(e.target.value)}
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input
+              label="Teléfono / WhatsApp"
+              placeholder="Ej: 1123456789"
+              value={formTelefono}
+              onChange={(e) => setFormTelefono(e.target.value)}
+            />
+            <Input
+              label="CUIT"
+              placeholder="Ej: 30-12345678-9"
+              value={formCuit}
+              onChange={(e) => setFormCuit(e.target.value)}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input
+              label="Días de visita"
+              placeholder="Ej: Martes y Viernes"
+              value={formDiasVisita}
+              onChange={(e) => setFormDiasVisita(e.target.value)}
+            />
+            <Input
+              label="Email comercial"
+              type="email"
+              placeholder="ventas@proveedor.com"
+              value={formEmail}
+              onChange={(e) => setFormEmail(e.target.value)}
+            />
+          </div>
+
+          <Input
+            label="CBU o Alias bancario para pagos"
+            placeholder="Ej: distribuidora.mp"
+            value={formCbuAlias}
+            onChange={(e) => setFormCbuAlias(e.target.value)}
+          />
+
+          <Input
+            label="Saldo pendiente inicial ($)"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="0"
+            value={formSaldoInicial}
+            onChange={(e) => setFormSaldoInicial(e.target.value)}
+          />
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setModalProveedorOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button type="submit" loading={guardandoProveedor}>
+              {proveedorEditando ? 'Guardar Cambios' : 'Crear Proveedor'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ─────────────────────────────────────────────────────────────
+          MODAL: ABONAR SALDO / PAGO A PROVEEDOR
+          ───────────────────────────────────────────────────────────── */}
+      <Modal
+        isOpen={modalAbonarOpen}
+        onClose={() => setModalAbonarOpen(false)}
+        title="Registrar Pago a Proveedor"
+        size="sm"
+      >
+        {proveedorAbonar && (
+          <form onSubmit={handleGuardarAbono} className="space-y-3">
+            <div className="bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border border-gray-100 dark:border-gray-700 text-xs">
+              <div className="text-gray-500 dark:text-gray-400">Proveedor</div>
+              <div className="font-bold text-gray-900 dark:text-gray-100 text-sm mt-0.5">
+                {proveedorAbonar.nombre}
+              </div>
+              <div className="mt-2 text-gray-500 dark:text-gray-400">Saldo pendiente actual</div>
+              <div className="text-xl font-black text-amber-600 dark:text-amber-400">
+                {formatPrecio(proveedorAbonar.saldo_pendiente)}
+              </div>
+            </div>
+
+            <Input
+              label="Monto a pagar ($) *"
+              type="number"
+              step="0.01"
+              min="1"
+              max={proveedorAbonar.saldo_pendiente}
+              value={montoAbono}
+              onChange={(e) => setMontoAbono(e.target.value)}
+              required
+            />
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                Medio de Pago
+              </label>
+              <select
+                value={medioPagoAbono}
+                onChange={(e) => setMedioPagoAbono(e.target.value as any)}
+                className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              >
+                <option value="EFECTIVO">Efectivo</option>
+                <option value="TRANSFERENCIA">Transferencia Bancaria</option>
+              </select>
+            </div>
+
+            {medioPagoAbono === 'EFECTIVO' && (
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={descontarAbonoDeCaja && Boolean(sesionActiva)}
+                    disabled={!sesionActiva}
+                    onChange={(e) => setDescontarAbonoDeCaja(e.target.checked)}
+                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                  />
+                  <span>
+                    Descontar egreso de la caja activa
+                    {!sesionActiva && ' (Caja cerrada)'}
+                  </span>
+                </label>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setModalAbonarOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" loading={guardandoAbono}>
+                Confirmar Pago
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* ─────────────────────────────────────────────────────────────
+          MODAL: DETALLES DE COMPRA / RENGLONES
+          ───────────────────────────────────────────────────────────── */}
+      <Modal
+        isOpen={modalDetalleOpen}
+        onClose={() => setModalDetalleOpen(false)}
+        title="Detalle del Comprobante"
+        size="lg"
+      >
+        {compraDetalle && (
+          <div className="space-y-3 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border border-gray-100 dark:border-gray-700">
+              <div>
+                <span className="text-gray-400">Proveedor</span>
+                <p className="font-bold text-gray-900 dark:text-gray-100 text-sm mt-0.5">
+                  {compraDetalle.proveedor?.nombre || 'S/D'}
+                </p>
+              </div>
+              <div>
+                <span className="text-gray-400">N° Comprobante</span>
+                <p className="font-bold text-gray-900 dark:text-gray-100 text-sm mt-0.5 font-mono">
+                  {compraDetalle.nro_comprobante || 'S/N'}
+                </p>
+              </div>
+              <div>
+                <span className="text-gray-400">Fecha</span>
+                <p className="font-bold text-gray-900 dark:text-gray-100 mt-0.5">
+                  {formatFecha(compraDetalle.fecha)}
+                </p>
+              </div>
+              <div>
+                <span className="text-gray-400">Medio Pago</span>
+                <p className="font-bold text-gray-900 dark:text-gray-100 mt-0.5">
+                  {labelMedioPago(compraDetalle.medio_pago)}
+                </p>
+              </div>
+            </div>
+
+            {compraDetalle.notas && (
+              <div className="p-2 bg-yellow-50 dark:bg-yellow-950/30 rounded border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200">
+                <strong>Notas:</strong> {compraDetalle.notas}
+              </div>
+            )}
+
+            <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400">
+                    <th className="py-2 px-3">Producto</th>
+                    <th className="py-2 px-3 text-center">Cantidad</th>
+                    <th className="py-2 px-3 text-right">Costo Unit.</th>
+                    <th className="py-2 px-3 text-right">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
+                  {cargandoRenglones ? (
+                    <tr>
+                      <td colSpan={4} className="py-6 text-center text-gray-400">
+                        Cargando renglones...
+                      </td>
+                    </tr>
+                  ) : detallesCargados.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="py-6 text-center text-gray-400">
+                        No hay renglones asociados a este comprobante
+                      </td>
+                    </tr>
+                  ) : (
+                    detallesCargados.map((d) => (
+                      <tr key={d.id}>
+                        <td className="py-2.5 px-3">
+                          <span className="font-semibold text-gray-900 dark:text-gray-100">
+                            {d.producto?.descripcion || 'Producto'}
+                          </span>
+                          {d.producto?.codigo_barras && (
+                            <span className="block text-[10px] text-gray-400 font-mono">
+                              {d.producto.codigo_barras}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-center font-bold">{d.cantidad}</td>
+                        <td className="py-2.5 px-3 text-right">{formatPrecio(d.precio_costo_unitario)}</td>
+                        <td className="py-2.5 px-3 text-right font-bold text-gray-900 dark:text-gray-100">
+                          {formatPrecio(d.subtotal)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-between items-center pt-2">
+              <div className="text-gray-500">
+                Estado: <strong className="uppercase">{compraDetalle.estado}</strong>
+              </div>
+              <div className="text-right">
+                <span className="text-gray-400 mr-2">Total Comprobante:</span>
+                <strong className="text-lg font-black text-indigo-600 dark:text-indigo-400">
+                  {formatPrecio(compraDetalle.total)}
+                </strong>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  )
+}

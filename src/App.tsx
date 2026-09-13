@@ -8,6 +8,7 @@ import { POSPage } from './pages/POSPage'
 import { CatalogoPage } from './pages/CatalogoPage'
 import { ReportesPage } from './pages/ReportesPage'
 import { StockPage } from './pages/StockPage'
+import { ProveedoresPage } from './pages/ProveedoresPage'
 import { ConfigPage } from './pages/ConfigPage'
 import { CajaPage } from './pages/CajaPage'
 import { ClientesPage } from './pages/ClientesPage'
@@ -111,6 +112,14 @@ function App() {
               element={
                 <RutaProtegida rolesPermitidos={['DUEÑO']}>
                   <StockPage />
+                </RutaProtegida>
+              }
+            />
+            <Route
+              path="/proveedores"
+              element={
+                <RutaProtegida rolesPermitidos={['DUEÑO']}>
+                  <ProveedoresPage />
                 </RutaProtegida>
               }
             />

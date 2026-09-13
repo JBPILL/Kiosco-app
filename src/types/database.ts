@@ -253,3 +253,52 @@ export interface KioscoAdminView {
   monto_ultimo_pago: number | null
   medio_ultimo_pago: string | null
 }
+
+// --- Proveedores y Recepción de Compras ---
+
+export interface Proveedor {
+  id: string
+  kiosco_id: string
+  nombre: string
+  contacto_nombre: string | null
+  telefono: string | null
+  email: string | null
+  cuit: string | null
+  dias_visita: string | null
+  cbu_alias: string | null
+  saldo_pendiente: number
+  activo: boolean
+  fecha_creacion: string
+}
+
+export type EstadoCompra = 'RECIBIDA' | 'ANULADA'
+export type MedioPagoCompra = 'EFECTIVO' | 'TRANSFERENCIA' | 'CUENTA_CORRIENTE'
+
+export interface CompraProveedor {
+  id: string
+  kiosco_id: string
+  proveedor_id: string
+  usuario_id: string | null
+  nro_comprobante: string | null
+  fecha: string
+  total: number
+  estado: EstadoCompra
+  medio_pago: MedioPagoCompra
+  pagado_en_caja: boolean
+  sesion_caja_id: string | null
+  notas: string | null
+  proveedor?: Proveedor
+  detalles?: DetalleCompra[]
+  usuario?: Usuario
+}
+
+export interface DetalleCompra {
+  id: string
+  compra_id: string
+  producto_id: string
+  cantidad: number
+  precio_costo_unitario: number
+  subtotal: number
+  producto?: Producto
+}
+

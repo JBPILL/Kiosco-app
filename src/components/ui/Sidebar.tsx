@@ -14,6 +14,7 @@ const menuItems = [
   { path: '/clientes',  label: 'Clientes',       roles: ['DUEÑO', 'CAJERO'] },
   { path: '/catalogo',  label: 'Catálogo',       roles: ['DUEÑO'] },
   { path: '/stock',     label: 'Stock',          roles: ['DUEÑO'] },
+  { path: '/proveedores', label: 'Proveedores',  roles: ['DUEÑO'] },
   { path: '/reportes',  label: 'Reportes',       roles: ['DUEÑO', 'VISOR'] },
   { path: '/config',    label: 'Configuración',  roles: ['DUEÑO'] },
 ]
