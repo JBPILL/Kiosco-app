@@ -40,14 +40,49 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
 
   // Referencias para navegación por teclado
   const cartItemRefs = useRef<(HTMLDivElement | null)[]>([])
+  const minusBtnRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const plusBtnRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const deleteBtnRefs = useRef<(HTMLButtonElement | null)[]>([])
   const descuentoBtnRef = useRef<HTMLButtonElement | HTMLDivElement | null>(null)
   const cobrarBtnRef = useRef<HTMLButtonElement | null>(null)
   const pendingFocusIndex = useRef<number | null>(null)
+  const pendingFocusTarget = useRef<'item' | 'minus' | 'plus' | 'delete'>('item')
 
   const subtotal = subtotalMonto()
   const ajuste = montoAjuste()
   const total = totalMonto()
   const tieneAjuste = tipoAjuste !== 'NINGUNO'
+
+  // Acciones de modificación con retención de foco
+  const handleSumarCantidad = (itemId: string, cantidad: number) => {
+    actualizarCantidad(itemId, cantidad + 1)
+    playScanSound('success')
+  }
+
+  const handleRestarCantidad = (
+    itemId: string,
+    cantidad: number,
+    index: number,
+    targetButton: 'minus' | 'plus' | 'item' = 'minus'
+  ) => {
+    if (cantidad > 1) {
+      actualizarCantidad(itemId, cantidad - 1)
+      pendingFocusIndex.current = index
+      pendingFocusTarget.current = targetButton
+    } else {
+      pendingFocusIndex.current = Math.max(0, index - 1)
+      pendingFocusTarget.current = 'item'
+      quitarProducto(itemId)
+      toast('Producto quitado del ticket', { duration: 1500 })
+    }
+  }
+
+  const handleQuitarItem = (itemId: string, index: number) => {
+    pendingFocusIndex.current = Math.min(index, items.length - 2)
+    pendingFocusTarget.current = 'item'
+    quitarProducto(itemId)
+    toast('Producto quitado del ticket', { duration: 1500 })
+  }
 
   // Escuchar atajo F6 / Alt + T para entrar al Ticket
   useEffect(() => {
@@ -62,14 +97,22 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     return () => window.removeEventListener('pos-focus-ticket', handleFocusTicket)
   }, [items.length])
 
-  // Mantener el foco si se elimina un elemento del ticket
+  // Mantener el foco tras sumar, restar o eliminar un elemento del ticket
   useEffect(() => {
     if (pendingFocusIndex.current !== null) {
       const targetIdx = pendingFocusIndex.current
+      const targetType = pendingFocusTarget.current
       pendingFocusIndex.current = null
+      pendingFocusTarget.current = 'item'
       if (items.length > 0) {
         const validIdx = Math.max(0, Math.min(targetIdx, items.length - 1))
-        cartItemRefs.current[validIdx]?.focus()
+        if (targetType === 'minus') {
+          minusBtnRefs.current[validIdx]?.focus()
+        } else if (targetType === 'plus') {
+          plusBtnRefs.current[validIdx]?.focus()
+        } else {
+          cartItemRefs.current[validIdx]?.focus()
+        }
       } else {
         window.dispatchEvent(new CustomEvent('pos-focus-search'))
       }
@@ -101,26 +144,168 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
         // En el primer item, subir el foco al buscador
         window.dispatchEvent(new CustomEvent('pos-focus-search'))
       }
-    } else if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd' || e.key === 'Enter') {
+    } else if (e.key === 'ArrowRight') {
       e.preventDefault()
-      actualizarCantidad(itemId, cantidad + 1)
-      playScanSound('success')
+      minusBtnRefs.current[index]?.focus()
+    } else if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
+      e.preventDefault()
+      handleSumarCantidad(itemId, cantidad)
     } else if (e.key === '-' || e.code === 'NumpadSubtract') {
       e.preventDefault()
-      if (cantidad > 1) {
-        actualizarCantidad(itemId, cantidad - 1)
-      } else {
-        pendingFocusIndex.current = Math.max(0, index - 1)
-        quitarProducto(itemId)
-        toast('Producto quitado del ticket', { duration: 1500 })
-      }
+      handleRestarCantidad(itemId, cantidad, index, 'item')
     } else if (e.key === 'Delete' || e.key === 'Backspace' || e.key.toLowerCase() === 'd') {
       e.preventDefault()
-      pendingFocusIndex.current = Math.min(index, items.length - 2)
-      quitarProducto(itemId)
-      toast('Producto quitado del ticket', { duration: 1500 })
+      handleQuitarItem(itemId, index)
     } else if (e.key === 'ArrowLeft' || e.key === 'Escape') {
       e.preventDefault()
+      window.dispatchEvent(new CustomEvent('pos-focus-grid'))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      plusBtnRefs.current[index]?.focus()
+    }
+  }
+
+  const handleMinusKeyDown = (
+    e: React.KeyboardEvent,
+    index: number,
+    itemId: string,
+    cantidad: number
+  ) => {
+    if (e.key === 'ArrowRight') {
+      e.preventDefault()
+      e.stopPropagation()
+      plusBtnRefs.current[index]?.focus()
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      e.stopPropagation()
+      cartItemRefs.current[index]?.focus()
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      e.stopPropagation()
+      if (index < items.length - 1) {
+        minusBtnRefs.current[index + 1]?.focus()
+      } else {
+        if (descuentoBtnRef.current) descuentoBtnRef.current.focus()
+        else if (cobrarBtnRef.current) cobrarBtnRef.current.focus()
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      e.stopPropagation()
+      if (index > 0) {
+        minusBtnRefs.current[index - 1]?.focus()
+      } else {
+        window.dispatchEvent(new CustomEvent('pos-focus-search'))
+      }
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      e.stopPropagation()
+      handleRestarCantidad(itemId, cantidad, index, 'minus')
+    } else if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
+      e.preventDefault()
+      e.stopPropagation()
+      handleSumarCantidad(itemId, cantidad)
+    } else if (e.key === '-' || e.code === 'NumpadSubtract') {
+      e.preventDefault()
+      e.stopPropagation()
+      handleRestarCantidad(itemId, cantidad, index, 'minus')
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault()
+      e.stopPropagation()
+      handleQuitarItem(itemId, index)
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      window.dispatchEvent(new CustomEvent('pos-focus-grid'))
+    }
+  }
+
+  const handlePlusKeyDown = (
+    e: React.KeyboardEvent,
+    index: number,
+    itemId: string,
+    cantidad: number
+  ) => {
+    if (e.key === 'ArrowRight') {
+      e.preventDefault()
+      e.stopPropagation()
+      deleteBtnRefs.current[index]?.focus()
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      e.stopPropagation()
+      minusBtnRefs.current[index]?.focus()
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      e.stopPropagation()
+      if (index < items.length - 1) {
+        plusBtnRefs.current[index + 1]?.focus()
+      } else {
+        if (descuentoBtnRef.current) descuentoBtnRef.current.focus()
+        else if (cobrarBtnRef.current) cobrarBtnRef.current.focus()
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      e.stopPropagation()
+      if (index > 0) {
+        plusBtnRefs.current[index - 1]?.focus()
+      } else {
+        window.dispatchEvent(new CustomEvent('pos-focus-search'))
+      }
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      e.stopPropagation()
+      handleSumarCantidad(itemId, cantidad)
+    } else if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
+      e.preventDefault()
+      e.stopPropagation()
+      handleSumarCantidad(itemId, cantidad)
+    } else if (e.key === '-' || e.code === 'NumpadSubtract') {
+      e.preventDefault()
+      e.stopPropagation()
+      handleRestarCantidad(itemId, cantidad, index, 'plus')
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault()
+      e.stopPropagation()
+      handleQuitarItem(itemId, index)
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      window.dispatchEvent(new CustomEvent('pos-focus-grid'))
+    }
+  }
+
+  const handleDeleteKeyDown = (
+    e: React.KeyboardEvent,
+    index: number,
+    itemId: string
+  ) => {
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      e.stopPropagation()
+      plusBtnRefs.current[index]?.focus()
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      e.stopPropagation()
+      if (index < items.length - 1) {
+        deleteBtnRefs.current[index + 1]?.focus()
+      } else {
+        if (descuentoBtnRef.current) descuentoBtnRef.current.focus()
+        else if (cobrarBtnRef.current) cobrarBtnRef.current.focus()
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      e.stopPropagation()
+      if (index > 0) {
+        deleteBtnRefs.current[index - 1]?.focus()
+      } else {
+        window.dispatchEvent(new CustomEvent('pos-focus-search'))
+      }
+    } else if (e.key === 'Enter' || e.key === ' ' || e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault()
+      e.stopPropagation()
+      handleQuitarItem(itemId, index)
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
       window.dispatchEvent(new CustomEvent('pos-focus-grid'))
     }
   }
@@ -260,27 +445,36 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                   </div>
                 </div>
 
-                {/* Controles de cantidad táctiles */}
+                {/* Controles de cantidad táctiles y accesibles con teclado */}
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   <button
+                    ref={(el) => { minusBtnRefs.current[idx] = el }}
                     type="button"
-                    tabIndex={-1}
-                    onClick={() => actualizarCantidad(item.producto.id, item.cantidad - 1)}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-300 font-bold text-base transition-transform"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleRestarCantidad(item.producto.id, item.cantidad, idx, 'minus')
+                    }}
+                    onKeyDown={(e) => handleMinusKeyDown(e, idx, item.producto.id, item.cantidad)}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-300 font-bold text-base transition-transform focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-indigo-100 dark:focus:bg-gray-600 cursor-pointer select-none"
                     aria-label="Restar uno"
+                    title="Restar uno [Enter o -]"
                   >
                     −
                   </button>
-                  <span className="w-7 text-center text-sm font-bold dark:text-gray-100">{item.cantidad}</span>
+                  <span className="w-7 text-center text-sm font-bold dark:text-gray-100 select-none">{item.cantidad}</span>
                   <button
+                    ref={(el) => { plusBtnRefs.current[idx] = el }}
                     type="button"
-                    tabIndex={-1}
-                    onClick={() => {
-                      actualizarCantidad(item.producto.id, item.cantidad + 1)
-                      playScanSound('success')
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleSumarCantidad(item.producto.id, item.cantidad)
                     }}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-300 font-bold text-base transition-transform"
+                    onKeyDown={(e) => handlePlusKeyDown(e, idx, item.producto.id, item.cantidad)}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-300 font-bold text-base transition-transform focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-indigo-100 dark:focus:bg-gray-600 cursor-pointer select-none"
                     aria-label="Sumar uno"
+                    title="Sumar uno [Enter o +]"
                   >
                     +
                   </button>
@@ -293,11 +487,17 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
 
                 {/* Eliminar */}
                 <button
+                  ref={(el) => { deleteBtnRefs.current[idx] = el }}
                   type="button"
-                  tabIndex={-1}
-                  onClick={() => quitarProducto(item.producto.id)}
-                  className="w-8 h-8 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 active:scale-90 text-base flex-shrink-0 transition-transform"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleQuitarItem(item.producto.id, idx)
+                  }}
+                  onKeyDown={(e) => handleDeleteKeyDown(e, idx, item.producto.id)}
+                  className="w-8 h-8 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 active:scale-90 text-base flex-shrink-0 transition-transform focus:outline-hidden focus:ring-2 focus:ring-red-500 dark:focus:ring-red-400 focus:bg-red-50 dark:focus:bg-red-950/40 rounded-lg cursor-pointer select-none"
                   aria-label="Eliminar producto"
+                  title="Eliminar producto [Enter o Supr]"
                 >
                   ✕
                 </button>
@@ -392,7 +592,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
 
         {/* Guía rápida de atajos de teclado para Ticket */}
         <div className="text-[11px] text-gray-400 dark:text-gray-500 text-center font-medium hidden sm:block">
-          Atajos: F6 Ticket · ↑/↓ Moverse · +/- Cantidad · Supr Quitar
+          Atajos: F6 Ticket · ↑/↓ Moverse · Enter en botón +/- · Supr Quitar
         </div>
       </div>
 
