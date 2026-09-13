@@ -31,6 +31,17 @@ const SHORTCUT_SECTIONS = [
       { key: 'Lector USB', desc: 'Escanear en cualquier momento para agregar al ticket' },
     ],
   },
+  {
+    title: 'Control del Ticket con el Teclado',
+    items: [
+      { key: 'F6 / Alt + T', desc: 'Enfocar el Ticket de venta' },
+      { key: '↑ / ↓', desc: 'Moverse entre productos, descuento y botón cobrar' },
+      { key: '+ / -', desc: 'Sumar o restar cantidad del producto enfocado' },
+      { key: 'Supr / Delete', desc: 'Quitar producto del ticket' },
+      { key: 'Enter / Espacio', desc: 'Abrir descuento o ejecutar cobro según botón enfocado' },
+      { key: '← / Esc', desc: 'Volver a la grilla de productos o buscador' },
+    ],
+  },
 ]
 
 export function KeyboardShortcutsModal({ isOpen, onClose }: KeyboardShortcutsModalProps) {

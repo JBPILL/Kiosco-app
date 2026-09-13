@@ -191,6 +191,9 @@ export function POSPage() {
       onFocusSearch: () => {
         window.dispatchEvent(new CustomEvent('pos-focus-search'))
       },
+      onFocusTicket: () => {
+        window.dispatchEvent(new CustomEvent('pos-focus-ticket'))
+      },
       onCobrar: () => {
         if (cantItems > 0 && !paymentOpen) {
           setPaymentOpen(true)

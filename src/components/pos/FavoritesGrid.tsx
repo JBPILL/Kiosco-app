@@ -35,6 +35,8 @@ export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
       e.preventDefault()
       if (index < productos.length - 1) {
         buttonRefs.current[index + 1]?.focus()
+      } else {
+        window.dispatchEvent(new CustomEvent('pos-focus-ticket'))
       }
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault()

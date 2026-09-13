@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useCartStore } from '../../stores/cartStore'
 import type { TipoAjuste } from '../../stores/cartStore'
 import { formatPrecio } from '../../lib/utils'
+import { playScanSound } from '../../lib/sound'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Modal } from '../ui/Modal'
@@ -37,10 +38,130 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
   const [esPorcentaje, setEsPorcentaje] = useState(true)
   const [valorInput, setValorInput] = useState('')
 
+  // Referencias para navegación por teclado
+  const cartItemRefs = useRef<(HTMLDivElement | null)[]>([])
+  const descuentoBtnRef = useRef<HTMLButtonElement | HTMLDivElement | null>(null)
+  const cobrarBtnRef = useRef<HTMLButtonElement | null>(null)
+  const pendingFocusIndex = useRef<number | null>(null)
+
   const subtotal = subtotalMonto()
   const ajuste = montoAjuste()
   const total = totalMonto()
   const tieneAjuste = tipoAjuste !== 'NINGUNO'
+
+  // Escuchar atajo F6 / Alt + T para entrar al Ticket
+  useEffect(() => {
+    const handleFocusTicket = () => {
+      if (items.length > 0) {
+        cartItemRefs.current[0]?.focus()
+      } else if (cobrarBtnRef.current) {
+        cobrarBtnRef.current.focus()
+      }
+    }
+    window.addEventListener('pos-focus-ticket', handleFocusTicket)
+    return () => window.removeEventListener('pos-focus-ticket', handleFocusTicket)
+  }, [items.length])
+
+  // Mantener el foco si se elimina un elemento del ticket
+  useEffect(() => {
+    if (pendingFocusIndex.current !== null) {
+      const targetIdx = pendingFocusIndex.current
+      pendingFocusIndex.current = null
+      if (items.length > 0) {
+        const validIdx = Math.max(0, Math.min(targetIdx, items.length - 1))
+        cartItemRefs.current[validIdx]?.focus()
+      } else {
+        window.dispatchEvent(new CustomEvent('pos-focus-search'))
+      }
+    }
+  }, [items])
+
+  const handleItemKeyDown = (
+    e: React.KeyboardEvent,
+    index: number,
+    itemId: string,
+    cantidad: number
+  ) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      if (index < items.length - 1) {
+        cartItemRefs.current[index + 1]?.focus()
+      } else {
+        if (descuentoBtnRef.current) {
+          descuentoBtnRef.current.focus()
+        } else if (cobrarBtnRef.current) {
+          cobrarBtnRef.current.focus()
+        }
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (index > 0) {
+        cartItemRefs.current[index - 1]?.focus()
+      } else {
+        // En el primer item, subir el foco al buscador
+        window.dispatchEvent(new CustomEvent('pos-focus-search'))
+      }
+    } else if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd' || e.key === 'Enter') {
+      e.preventDefault()
+      actualizarCantidad(itemId, cantidad + 1)
+      playScanSound('success')
+    } else if (e.key === '-' || e.code === 'NumpadSubtract') {
+      e.preventDefault()
+      if (cantidad > 1) {
+        actualizarCantidad(itemId, cantidad - 1)
+      } else {
+        pendingFocusIndex.current = Math.max(0, index - 1)
+        quitarProducto(itemId)
+        toast('Producto quitado del ticket', { duration: 1500 })
+      }
+    } else if (e.key === 'Delete' || e.key === 'Backspace' || e.key.toLowerCase() === 'd') {
+      e.preventDefault()
+      pendingFocusIndex.current = Math.min(index, items.length - 2)
+      quitarProducto(itemId)
+      toast('Producto quitado del ticket', { duration: 1500 })
+    } else if (e.key === 'ArrowLeft' || e.key === 'Escape') {
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('pos-focus-grid'))
+    }
+  }
+
+  const handleDescuentoKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (items.length > 0) {
+        cartItemRefs.current[items.length - 1]?.focus()
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      cobrarBtnRef.current?.focus()
+    } else if (e.key === 'ArrowLeft' || e.key === 'Escape') {
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('pos-focus-grid'))
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (tieneAjuste) {
+        e.preventDefault()
+        quitarAjuste()
+        toast.success('Ajuste eliminado')
+      }
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      handleAbrirAjuste()
+    }
+  }
+
+  const handleCobrarKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (descuentoBtnRef.current) {
+        descuentoBtnRef.current.focus()
+      } else if (items.length > 0) {
+        cartItemRefs.current[items.length - 1]?.focus()
+      }
+    } else if (e.key === 'ArrowLeft' || e.key === 'Escape') {
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('pos-focus-grid'))
+    }
+  }
 
   const handleAbrirAjuste = () => {
     if (tieneAjuste) {
@@ -117,21 +238,33 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
             <p className="text-xs mt-1">Seleccioná o buscá productos para comenzar</p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {items.map((item) => (
-              <div key={item.producto.id} className="flex items-center gap-2 py-2 border-b border-gray-50 dark:border-gray-700">
+          <div className="space-y-1">
+            {items.map((item, idx) => (
+              <div
+                key={item.producto.id}
+                ref={(el) => { cartItemRefs.current[idx] = el }}
+                tabIndex={0}
+                role="row"
+                onKeyDown={(e) => handleItemKeyDown(e, idx, item.producto.id, item.cantidad)}
+                className="group flex items-center gap-2 py-2 px-2.5 rounded-xl border border-transparent hover:border-gray-200 dark:hover:border-gray-700 focus:outline-hidden focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-indigo-50/90 dark:focus:bg-gray-700/80 transition-all cursor-pointer select-none"
+              >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate group-focus:font-semibold">
                     {item.producto.descripcion}
                   </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {formatPrecio(item.producto.precio_venta)} c/u
-                  </p>
+                  <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                    <span>{formatPrecio(item.producto.precio_venta)} c/u</span>
+                    <span className="hidden group-focus:inline-flex items-center text-[10px] text-indigo-600 dark:text-indigo-400 font-mono font-bold">
+                      (+/- Cant · Supr)
+                    </span>
+                  </div>
                 </div>
 
                 {/* Controles de cantidad táctiles */}
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   <button
+                    type="button"
+                    tabIndex={-1}
                     onClick={() => actualizarCantidad(item.producto.id, item.cantidad - 1)}
                     className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-300 font-bold text-base transition-transform"
                     aria-label="Restar uno"
@@ -140,7 +273,12 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                   </button>
                   <span className="w-7 text-center text-sm font-bold dark:text-gray-100">{item.cantidad}</span>
                   <button
-                    onClick={() => actualizarCantidad(item.producto.id, item.cantidad + 1)}
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => {
+                      actualizarCantidad(item.producto.id, item.cantidad + 1)
+                      playScanSound('success')
+                    }}
                     className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-300 font-bold text-base transition-transform"
                     aria-label="Sumar uno"
                   >
@@ -149,12 +287,14 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                 </div>
 
                 {/* Subtotal */}
-                <span className="text-sm font-bold text-gray-900 dark:text-gray-100 w-16 sm:w-20 text-right flex-shrink-0">
+                <span className="text-sm font-bold text-gray-900 dark:text-gray-100 w-16 sm:w-20 text-right flex-shrink-0 group-focus:text-indigo-900 dark:group-focus:text-white">
                   {formatPrecio(item.subtotal)}
                 </span>
 
                 {/* Eliminar */}
                 <button
+                  type="button"
+                  tabIndex={-1}
                   onClick={() => quitarProducto(item.producto.id)}
                   className="w-8 h-8 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 active:scale-90 text-base flex-shrink-0 transition-transform"
                   aria-label="Eliminar producto"
@@ -179,11 +319,17 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                   <span className="font-semibold text-gray-800 dark:text-gray-200">{formatPrecio(subtotal)}</span>
                 </div>
                 <div
-                  className={`flex justify-between items-center px-2.5 py-1.5 rounded-lg border text-xs font-semibold ${
+                  ref={descuentoBtnRef as any}
+                  tabIndex={0}
+                  role="button"
+                  onClick={handleAbrirAjuste}
+                  onKeyDown={handleDescuentoKeyDown}
+                  className={`flex justify-between items-center px-2.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:focus:ring-indigo-400 ${
                     tipoAjuste.startsWith('DESCUENTO')
                       ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300'
                       : 'bg-blue-50 dark:bg-blue-950/50 border-blue-200 dark:border-blue-800/60 text-blue-700 dark:text-blue-300'
                   }`}
+                  title="Presioná Enter para modificar, Supr para quitar"
                 >
                   <span>{descripcionAjuste()}</span>
                   <div className="flex items-center gap-2">
@@ -192,7 +338,11 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                     </span>
                     <button
                       type="button"
-                      onClick={quitarAjuste}
+                      tabIndex={-1}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        quitarAjuste()
+                      }}
                       className="text-gray-400 hover:text-red-500 dark:hover:text-red-400 font-bold px-1"
                       title="Quitar ajuste"
                     >
@@ -207,9 +357,11 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                   {items.reduce((acc, it) => acc + it.cantidad, 0)} {items.reduce((acc, it) => acc + it.cantidad, 0) === 1 ? 'artículo' : 'artículos'}
                 </span>
                 <button
+                  ref={descuentoBtnRef as any}
                   type="button"
                   onClick={handleAbrirAjuste}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/60 transition-colors"
+                  onKeyDown={handleDescuentoKeyDown}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/60 focus:outline-hidden focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:focus:ring-indigo-400 transition-colors"
                 >
                   + Descuento / Recargo
                 </button>
@@ -226,15 +378,22 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
         </div>
 
         <Button
+          ref={cobrarBtnRef}
           size="lg"
           fullWidth
           variant="success"
           onClick={onCobrar}
+          onKeyDown={handleCobrarKeyDown}
           disabled={items.length === 0}
-          className="min-h-[50px] text-base font-bold shadow-md bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white active:scale-98 transition-all"
+          className="min-h-[50px] text-base font-bold shadow-md bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white active:scale-98 transition-all focus:outline-hidden focus:ring-4 focus:ring-emerald-400 dark:focus:ring-emerald-500"
         >
-          COBRAR {total > 0 ? formatPrecio(total) : ''}
+          COBRAR {total > 0 ? formatPrecio(total) : ''} [F4]
         </Button>
+
+        {/* Guía rápida de atajos de teclado para Ticket */}
+        <div className="text-[11px] text-gray-400 dark:text-gray-500 text-center font-medium hidden sm:block">
+          Atajos: F6 Ticket · ↑/↓ Moverse · +/- Cantidad · Supr Quitar
+        </div>
       </div>
 
       {/* Modal Descuento / Recargo */}

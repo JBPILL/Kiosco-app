@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 
 interface KeyboardShortcutsHandlers {
   onFocusSearch?: () => void
+  onFocusTicket?: () => void
   onCobrar?: () => void
   onVentasEnEspera?: () => void
   onOpenScanner?: () => void
@@ -31,6 +32,13 @@ export function useKeyboardShortcuts(
       if (e.key === 'F2') {
         e.preventDefault()
         handlers.onFocusSearch?.()
+        return
+      }
+
+      // F6 o Alt + T: Enfocar el Ticket de venta
+      if (e.key === 'F6' || (e.altKey && e.key.toLowerCase() === 't')) {
+        e.preventDefault()
+        handlers.onFocusTicket?.()
         return
       }
 
