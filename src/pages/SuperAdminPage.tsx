@@ -1161,6 +1161,7 @@ export function SuperAdminPage() {
         isOpen={modalPlanesOpen}
         onClose={() => setModalPlanesOpen(false)}
         title="Planes de Alquiler y Precios (Ajuste por Inflación)"
+        size="xl"
       >
         <div className="space-y-5">
           <div className="p-4 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 text-xs text-indigo-900 dark:text-indigo-200 space-y-1">
@@ -1181,7 +1182,7 @@ export function SuperAdminPage() {
             {planes.length === 0 ? (
               <p className="text-sm text-gray-500 py-2">No hay planes configurados.</p>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {planes.map((p) => {
                   const kioscosEnPlan = kioscos.filter((k) => k.plan_id === p.id).length
                   const precioActual =
@@ -1191,57 +1192,90 @@ export function SuperAdminPage() {
                   return (
                     <div
                       key={p.id}
-                      className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      className="p-5 rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-800/60 space-y-4"
                     >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-gray-900 dark:text-gray-100 text-sm">
-                            {p.nombre}
-                          </span>
-                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium">
-                            {kioscosEnPlan} {kioscosEnPlan === 1 ? 'kiosco activo' : 'kioscos activos'}
-                          </span>
+                      {/* Cabecera del plan: Nombre, badge de comercios y tarifa mensual actual bien visible */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-200/80 dark:border-gray-700/80 pb-3.5">
+                        <div>
+                          <div className="flex items-center gap-2.5">
+                            <h4 className="text-base font-bold text-gray-900 dark:text-gray-100">
+                              {p.nombre}
+                            </h4>
+                            <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-semibold">
+                              {kioscosEnPlan} {kioscosEnPlan === 1 ? 'kiosco activo' : 'kioscos activos'}
+                            </span>
+                          </div>
+                          {p.descripcion && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              {p.descripcion}
+                            </p>
+                          )}
                         </div>
-                        {p.descripcion && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                            {p.descripcion}
-                          </p>
-                        )}
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          Precio actual registrado:{' '}
-                          <strong className="text-gray-700 dark:text-gray-300">
-                            {formatPrecio(p.precio_mensual)}
-                          </strong>{' '}
-                          / mes
-                        </p>
+
+                        {/* Tarifa actual destacada */}
+                        <div className="bg-white dark:bg-gray-900 px-3.5 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-left sm:text-right flex-shrink-0">
+                          <span className="block text-[10px] uppercase font-bold text-gray-500 dark:text-gray-400 tracking-wider">
+                            Tarifa mensual actual
+                          </span>
+                          <div className="flex items-baseline gap-1 sm:justify-end">
+                            <span className="text-xl font-extrabold text-indigo-600 dark:text-indigo-400">
+                              {formatPrecio(p.precio_mensual)}
+                            </span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">/ mes</span>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-2 self-end sm:self-center">
-                        <div className="flex items-center gap-1">
-                          <span className="text-sm font-semibold text-gray-500">$</span>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="500"
-                            value={precioActual}
-                            onChange={(e) =>
-                              setPreciosEditados((prev) => ({
-                                ...prev,
-                                [p.id]: Number(e.target.value),
-                              }))
-                            }
-                            className="w-32 text-sm font-bold"
-                          />
+                      {/* Bloque de edición con etiqueta grande, input espacioso y botón visible */}
+                      <div className="bg-white dark:bg-gray-900/90 p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-2">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
+                          Modificar Monto de Alquiler Mensual ($ ARS)
+                        </label>
+
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                          <div className="relative flex-1">
+                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base font-bold text-gray-400 dark:text-gray-500 select-none">
+                              $
+                            </span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="500"
+                              value={precioActual}
+                              onChange={(e) =>
+                                setPreciosEditados((prev) => ({
+                                  ...prev,
+                                  [p.id]: Number(e.target.value),
+                                }))
+                              }
+                              placeholder="Ej: 55000"
+                              className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 pl-8 pr-3 py-2.5 text-base font-bold text-gray-900 dark:text-gray-100 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-900 outline-none transition-colors"
+                            />
+                          </div>
+
+                          <Button
+                            type="button"
+                            variant={tieneCambios ? 'primary' : 'secondary'}
+                            onClick={() => handleGuardarPrecioPlan(p.id)}
+                            disabled={cargandoAccion || !tieneCambios}
+                            className="px-5 py-2.5 font-bold text-sm whitespace-nowrap shadow-xs"
+                          >
+                            {cargandoAccion
+                              ? 'Guardando...'
+                              : tieneCambios
+                              ? 'Guardar Nuevo Precio'
+                              : 'Sin cambios'}
+                          </Button>
                         </div>
-                        <Button
-                          type="button"
-                          variant={tieneCambios ? 'primary' : 'secondary'}
-                          onClick={() => handleGuardarPrecioPlan(p.id)}
-                          disabled={cargandoAccion || !tieneCambios}
-                          className="text-xs whitespace-nowrap"
-                        >
-                          {cargandoAccion ? 'Guardando...' : tieneCambios ? 'Guardar Precio' : 'Sin cambios'}
-                        </Button>
+
+                        {/* Comparación visual cuando el monto cambia */}
+                        {tieneCambios && (
+                          <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400 pt-1">
+                            El valor pasará de {formatPrecio(p.precio_mensual)} a {formatPrecio(precioActual)} (Diferencia:{' '}
+                            {precioActual > p.precio_mensual ? '+' : ''}
+                            {formatPrecio(precioActual - p.precio_mensual)}).
+                          </p>
+                        )}
                       </div>
                     </div>
                   )
