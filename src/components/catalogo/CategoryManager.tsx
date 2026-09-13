@@ -71,26 +71,13 @@ export function CategoryManager({ categorias, onCrear, onActualizar, onEliminar 
         {categorias.map((cat) => (
           <div
             key={cat.id}
-            className="group inline-flex items-center gap-2 pl-2 pr-1.5 py-1 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 transition-all shadow-xs"
+            className="group inline-flex items-center gap-2 pl-2.5 pr-1.5 py-1 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 transition-all shadow-xs"
           >
-            {/* Ícono de categoría destacado y visible */}
-            <div
-              className="w-5 h-5 rounded-lg flex items-center justify-center flex-shrink-0 shadow-2xs"
+            {/* Indicador de color de la categoría */}
+            <span
+              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
               style={{ backgroundColor: cat.color }}
-            >
-              <svg
-                className="w-3 h-3 text-white"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-                <circle cx="7" cy="7" r="1" fill="currentColor" />
-              </svg>
-            </div>
+            />
 
             {/* Nombre de la categoría */}
             <span className="font-semibold text-xs text-gray-800 dark:text-gray-100">
@@ -171,24 +158,11 @@ export function CategoryManager({ categorias, onCrear, onActualizar, onEliminar 
             <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
               Vista previa
             </label>
-            <div className="inline-flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xs">
-              <div
-                className="w-5 h-5 rounded-lg flex items-center justify-center flex-shrink-0 shadow-2xs"
+            <div className="inline-flex items-center gap-2 pl-2.5 pr-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xs">
+              <span
+                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                 style={{ backgroundColor: color }}
-              >
-                <svg
-                  className="w-3 h-3 text-white"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-                  <circle cx="7" cy="7" r="1" fill="currentColor" />
-                </svg>
-              </div>
+              />
               <span className="font-semibold text-xs text-gray-800 dark:text-gray-100">
                 {nombre.trim() || 'Nueva categoría'}
               </span>
