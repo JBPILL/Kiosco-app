@@ -309,7 +309,7 @@ export function POSPage() {
           </div>
 
           {/* Grilla compacta de productos */}
-          <div className="flex-1 overflow-y-auto pr-0.5">
+          <div className="flex-1 overflow-y-auto p-1.5 pr-2">
             {!categoriaActiva ? (
               <FavoritesGrid productos={favoritos} onSelect={handleSeleccion} />
             ) : (

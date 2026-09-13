@@ -72,7 +72,7 @@ export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
   }
 
   return (
-    <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2" role="grid" aria-label="Catálogo de productos">
+    <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2.5 p-1" role="grid" aria-label="Catálogo de productos">
       {productos.map((prod, index) => (
         <button
           key={prod.id}
@@ -83,13 +83,12 @@ export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
             border border-gray-200 dark:border-gray-700
             bg-white dark:bg-gray-800
             hover:border-indigo-400 dark:hover:border-indigo-500
-            hover:bg-indigo-50/30 dark:hover:bg-gray-700/60
+            hover:bg-indigo-50/40 dark:hover:bg-gray-700/60
+            focus:outline-hidden focus:z-10
             focus:border-indigo-500 dark:focus:border-indigo-400
+            focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:focus:ring-indigo-400
             focus:bg-indigo-50/90 dark:focus:bg-gray-700
-            focus:shadow-lg focus:shadow-indigo-500/20
-            focus:scale-[1.03]
-            focus:outline-hidden
-            active:scale-95 transition-all duration-150
+            active:scale-95 transition-colors duration-100
             min-h-[68px] sm:min-h-[74px] cursor-pointer select-none"
         >
           <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 group-focus:text-indigo-950 dark:group-focus:text-white line-clamp-2 leading-tight">
