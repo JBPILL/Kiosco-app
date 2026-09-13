@@ -110,8 +110,9 @@ export function ProductTable({
                         Stock: {prod.stock_actual}
                       </span>
                       {prod.categoria && (
-                        <span className="truncate max-w-[120px]">
-                          {prod.categoria.nombre}
+                        <span className="inline-flex items-center gap-1 truncate max-w-[130px]">
+                          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: prod.categoria.color }} />
+                          <span className="truncate">{prod.categoria.nombre}</span>
                         </span>
                       )}
                     </div>
@@ -184,8 +185,8 @@ export function ProductTable({
                       </td>
                       <td className="px-3 py-2.5">
                         {prod.categoria ? (
-                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100">
-                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: prod.categoria.color }} />
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100">
+                            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 shadow-2xs" style={{ backgroundColor: prod.categoria.color }} />
                             <span>{prod.categoria.nombre}</span>
                           </span>
                         ) : (
