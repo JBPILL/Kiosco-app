@@ -27,121 +27,173 @@ export function BarcodeCaptureModal({
   const [codigoManual, setCodigoManual] = useState('')
 
   const scannerRef = useRef<Html5Qrcode | null>(null)
+  const isStartingRef = useRef(false)
+  const isStoppingRef = useRef(false)
+
+  const onBarcodeCapturedRef = useRef(onBarcodeCaptured)
+  onBarcodeCapturedRef.current = onBarcodeCaptured
+
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
   const elementId = 'barcode-capture-viewport'
 
   // Procesar código leído
-  const procesarCodigo = useCallback(
-    (rawCode: string) => {
-      const code = rawCode.trim()
-      if (!code) return
+  const procesarCodigo = useCallback((rawCode: string) => {
+    const code = rawCode.trim()
+    if (!code) return
 
-      playScanSound('success')
-      onBarcodeCaptured(code)
-      onClose()
-    },
-    [onBarcodeCaptured, onClose]
-  )
-
-  // Iniciar el escáner
-  const iniciarEscaner = useCallback(
-    async (cameraId?: string) => {
-      setIniciando(true)
-      setErrorCamara(null)
-
-      try {
-        // Detener escáner previo si está corriendo
-        if (scannerRef.current?.isScanning) {
-          await scannerRef.current.stop()
-        }
-
-        // Obtener lista de cámaras si aún no se listaron
-        const devices = await Html5Qrcode.getCameras()
-        if (!devices || devices.length === 0) {
-          setErrorCamara('No se detectaron cámaras en este dispositivo.')
-          setIniciando(false)
-          return
-        }
-
-        setCamaras(devices.map((d) => ({ id: d.id, label: d.label || `Cámara ${d.id}` })))
-
-        const scanner =
-          scannerRef.current ||
-          new Html5Qrcode(elementId, {
-            formatsToSupport: [
-              Html5QrcodeSupportedFormats.EAN_13,
-              Html5QrcodeSupportedFormats.EAN_8,
-              Html5QrcodeSupportedFormats.UPC_A,
-              Html5QrcodeSupportedFormats.UPC_E,
-              Html5QrcodeSupportedFormats.CODE_128,
-              Html5QrcodeSupportedFormats.CODE_39,
-              Html5QrcodeSupportedFormats.QR_CODE,
-            ],
-            verbose: false,
-          })
-        scannerRef.current = scanner
-
-        const targetCamera = cameraId || { facingMode: 'environment' }
-
-        await scanner.start(
-          targetCamera,
-          {
-            fps: 15,
-            qrbox: { width: 280, height: 160 },
-            aspectRatio: 1.2,
-          },
-          (decodedText) => {
-            procesarCodigo(decodedText)
-          },
-          () => {
-            // Ignorar cuadros sin código
-          }
-        )
-
-        if (typeof targetCamera === 'string') {
-          setCamaraActualId(targetCamera)
-        } else if (devices.length > 0) {
-          setCamaraActualId(devices[0].id)
-        }
-
-        // Verificar soporte de linterna / flash
-        try {
-          const caps = scanner.getRunningTrackCapabilities() as MediaTrackCapabilities & {
-            torch?: boolean
-          }
-          setSoportaAntorcha(Boolean(caps && 'torch' in caps && caps.torch))
-        } catch {
-          setSoportaAntorcha(false)
-        }
-
-        setIniciando(false)
-      } catch (err: unknown) {
-        console.error('Error al inicializar cámara:', err)
-        const msg = err instanceof Error ? err.message : String(err)
-        if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
-          setErrorCamara('Permiso de cámara denegado. Habilitá la cámara en la configuración de tu navegador.')
-        } else {
-          setErrorCamara('No se pudo acceder a la cámara. Verificá que no esté en uso por otra aplicación.')
-        }
-        setIniciando(false)
-      }
-    },
-    [procesarCodigo]
-  )
+    playScanSound('success')
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try { navigator.vibrate([40, 30, 40]) } catch {}
+    }
+    onBarcodeCapturedRef.current(code)
+    onCloseRef.current()
+  }, [])
 
   // Detener escáner
   const detenerEscaner = useCallback(async () => {
-    if (scannerRef.current) {
+    if (isStoppingRef.current) return
+    isStoppingRef.current = true
+    const scanner = scannerRef.current
+    scannerRef.current = null
+
+    if (scanner) {
       try {
-        if (scannerRef.current.isScanning) {
-          await scannerRef.current.stop()
+        if (scanner.isScanning) {
+          await scanner.stop()
         }
-        scannerRef.current.clear()
+        scanner.clear()
       } catch (err) {
         console.error('Error al detener cámara:', err)
       }
-      scannerRef.current = null
     }
+    setAntorchaEncendida(false)
+    setSoportaAntorcha(false)
+    isStoppingRef.current = false
   }, [])
+
+  // Iniciar el escáner
+  const iniciarEscaner = useCallback(async (cameraId?: string) => {
+    if (isStartingRef.current) return
+    isStartingRef.current = true
+    setIniciando(true)
+    setErrorCamara(null)
+
+    try {
+      if (scannerRef.current?.isScanning) {
+        await scannerRef.current.stop()
+      }
+      if (scannerRef.current) {
+        try { scannerRef.current.clear() } catch {}
+        scannerRef.current = null
+      }
+
+      const el = document.getElementById(elementId)
+      if (!el) {
+        setIniciando(false)
+        isStartingRef.current = false
+        return
+      }
+
+      const scanner = new Html5Qrcode(elementId, {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.QR_CODE,
+        ],
+        useBarCodeDetectorIfSupported: true,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
+        },
+        verbose: false,
+      })
+      scannerRef.current = scanner
+
+      const scanConfig = {
+        fps: 20,
+        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+          const width = Math.floor(Math.min(viewfinderWidth * 0.88, 420))
+          const height = Math.floor(Math.min(viewfinderHeight * 0.65, 260))
+          return {
+            width: Math.max(width, 250),
+            height: Math.max(height, 160),
+          }
+        },
+      }
+
+      const targetCamera = cameraId ? cameraId : { facingMode: 'environment' }
+
+      try {
+        await scanner.start(
+          targetCamera,
+          scanConfig,
+          (decodedText) => {
+            procesarCodigo(decodedText)
+          },
+          () => {}
+        )
+      } catch (firstErr) {
+        console.warn('Fallo al iniciar cámara con targetCamera, intentando user/default:', firstErr)
+        if (!cameraId) {
+          await scanner.start(
+            { facingMode: 'user' },
+            scanConfig,
+            (decodedText) => {
+              procesarCodigo(decodedText)
+            },
+            () => {}
+          )
+        } else {
+          throw firstErr
+        }
+      }
+
+      if (typeof targetCamera === 'string') {
+        setCamaraActualId(targetCamera)
+      }
+
+      // Enumerar cámaras una vez concedidos los permisos
+      try {
+        const devices = await Html5Qrcode.getCameras()
+        if (devices && devices.length > 0) {
+          setCamaras(devices.map((d) => ({ id: d.id, label: d.label || `Cámara ${d.id}` })))
+          if (!cameraId && !camaraActualId) {
+            setCamaraActualId(devices[0].id)
+          }
+        }
+      } catch {
+        // Ignorar si falla la enumeración
+      }
+
+      // Verificar linterna
+      try {
+        const caps = scanner.getRunningTrackCapabilities() as MediaTrackCapabilities & {
+          torch?: boolean
+        }
+        setSoportaAntorcha(Boolean(caps && 'torch' in caps && caps.torch))
+      } catch {
+        setSoportaAntorcha(false)
+      }
+
+      setIniciando(false)
+    } catch (err: unknown) {
+      console.error('Error al inicializar cámara:', err)
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
+        setErrorCamara('Permiso de cámara denegado. Habilitá la cámara en la configuración de tu navegador.')
+      } else {
+        setErrorCamara('No se pudo acceder a la cámara. Verificá que no esté en uso por otra aplicación.')
+      }
+      setIniciando(false)
+    } finally {
+      isStartingRef.current = false
+    }
+  }, [procesarCodigo, camaraActualId])
 
   // Alternar linterna
   const toggleAntorcha = async () => {
@@ -175,7 +227,6 @@ export function BarcodeCaptureModal({
 
   useEffect(() => {
     if (isOpen) {
-      // Pequeño retardo para asegurar que el DOM del modal esté listo
       const t = setTimeout(() => {
         iniciarEscaner()
       }, 150)
@@ -184,7 +235,7 @@ export function BarcodeCaptureModal({
       detenerEscaner()
       setCodigoManual('')
     }
-  }, [isOpen, iniciarEscaner, detenerEscaner])
+  }, [isOpen])
 
   // Limpiar al desmontar
   useEffect(() => {

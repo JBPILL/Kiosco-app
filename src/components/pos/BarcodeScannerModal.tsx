@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabase'
 import { playScanSound } from '../../lib/sound'
 import { formatPrecio } from '../../lib/utils'
 import type { Producto } from '../../types/database'
+import toast from 'react-hot-toast'
 
 interface BarcodeScannerModalProps {
   isOpen: boolean
@@ -36,60 +37,98 @@ export function BarcodeScannerModal({
 
   const scannerRef = useRef<Html5Qrcode | null>(null)
   const cooldownRef = useRef<{ code: string; time: number }>({ code: '', time: 0 })
+  const isStartingRef = useRef(false)
+  const isStoppingRef = useRef(false)
+
+  const onProductScannedRef = useRef(onProductScanned)
+  onProductScannedRef.current = onProductScanned
+
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
+  const modoContinuoRef = useRef(modoContinuo)
+  modoContinuoRef.current = modoContinuo
+
   const elementId = 'barcode-scanner-viewport'
 
   // Procesar código leído
-  const procesarCodigo = useCallback(
-    async (rawCode: string) => {
-      const code = rawCode.trim()
-      if (!code) return
+  const procesarCodigo = useCallback(async (rawCode: string) => {
+    const code = rawCode.trim()
+    if (!code) return
 
-      // Cooldown de 1.8 segundos para el mismo código consecutivo
-      const now = Date.now()
-      if (cooldownRef.current.code === code && now - cooldownRef.current.time < 1800) {
-        return
-      }
-      cooldownRef.current = { code, time: now }
+    // Cooldown de 1.8 segundos para el mismo código consecutivo
+    const now = Date.now()
+    if (cooldownRef.current.code === code && now - cooldownRef.current.time < 1800) {
+      return
+    }
+    cooldownRef.current = { code, time: now }
 
-      try {
-        const { data, error } = await supabase
-          .from('productos')
-          .select('*, categoria:categorias(nombre, color)')
-          .eq('activo', true)
-          .eq('codigo_barras', code)
-          .maybeSingle()
+    try {
+      const { data, error } = await supabase
+        .from('productos')
+        .select('*, categoria:categorias(nombre, color)')
+        .eq('activo', true)
+        .eq('codigo_barras', code)
+        .maybeSingle()
 
-        if (error) throw error
+      if (error) throw error
 
-        if (data) {
-          playScanSound('success')
-          setUltimoEscaneo({
-            producto: data,
-            codigo: code,
-            exito: true,
-          })
-          onProductScanned(data)
-
-          if (!modoContinuo) {
-            onClose()
-          }
-        } else {
-          playScanSound('warning')
-          setUltimoEscaneo({
-            codigo: code,
-            exito: false,
-          })
+      if (data) {
+        playScanSound('success')
+        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+          try { navigator.vibrate([40, 30, 40]) } catch {}
         }
-      } catch (err) {
-        console.error('Error al buscar producto por código de barras:', err)
-        playScanSound('error')
+        setUltimoEscaneo({
+          producto: data,
+          codigo: code,
+          exito: true,
+        })
+        toast.success(`${data.descripcion} agregado al ticket`)
+        onProductScannedRef.current(data)
+
+        if (!modoContinuoRef.current) {
+          onCloseRef.current()
+        }
+      } else {
+        playScanSound('warning')
+        setUltimoEscaneo({
+          codigo: code,
+          exito: false,
+        })
+        toast.error(`Código no encontrado: ${code}`)
       }
-    },
-    [modoContinuo, onClose, onProductScanned]
-  )
+    } catch (err) {
+      console.error('Error al buscar producto por código de barras:', err)
+      playScanSound('error')
+    }
+  }, [])
+
+  // Detener escáner
+  const detenerEscaner = useCallback(async () => {
+    if (isStoppingRef.current) return
+    isStoppingRef.current = true
+    const scanner = scannerRef.current
+    scannerRef.current = null
+
+    if (scanner) {
+      try {
+        if (scanner.isScanning) {
+          await scanner.stop()
+        }
+        scanner.clear()
+      } catch (err) {
+        console.error('Error al detener cámara:', err)
+      }
+    }
+    setAntorchaEncendida(false)
+    setSoportaAntorcha(false)
+    isStoppingRef.current = false
+  }, [])
 
   // Iniciar el escáner
   const iniciarEscaner = useCallback(async (cameraId?: string) => {
+    if (isStartingRef.current) return
+    isStartingRef.current = true
     setIniciando(true)
     setErrorCamara(null)
 
@@ -98,57 +137,93 @@ export function BarcodeScannerModal({
       if (scannerRef.current?.isScanning) {
         await scannerRef.current.stop()
       }
+      if (scannerRef.current) {
+        try { scannerRef.current.clear() } catch {}
+        scannerRef.current = null
+      }
 
-      // Obtener lista de cámaras si aún no se listaron
-      const devices = await Html5Qrcode.getCameras()
-      if (!devices || devices.length === 0) {
-        setErrorCamara('No se detectaron cámaras en este dispositivo.')
+      const el = document.getElementById(elementId)
+      if (!el) {
         setIniciando(false)
+        isStartingRef.current = false
         return
       }
 
-      setCamaras(devices.map((d) => ({ id: d.id, label: d.label || `Cámara ${d.id}` })))
-
-      const scanner =
-        scannerRef.current ||
-        new Html5Qrcode(elementId, {
-          formatsToSupport: [
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.EAN_8,
-            Html5QrcodeSupportedFormats.UPC_A,
-            Html5QrcodeSupportedFormats.UPC_E,
-            Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.CODE_39,
-            Html5QrcodeSupportedFormats.QR_CODE,
-          ],
-          verbose: false,
-        })
+      const scanner = new Html5Qrcode(elementId, {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.QR_CODE,
+        ],
+        useBarCodeDetectorIfSupported: true,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
+        },
+        verbose: false,
+      })
       scannerRef.current = scanner
 
-      const targetCamera = cameraId || { facingMode: 'environment' }
+      const scanConfig = {
+        fps: 20,
+        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+          const width = Math.floor(Math.min(viewfinderWidth * 0.88, 420))
+          const height = Math.floor(Math.min(viewfinderHeight * 0.65, 260))
+          return {
+            width: Math.max(width, 250),
+            height: Math.max(height, 160),
+          }
+        },
+      }
 
-      await scanner.start(
-        targetCamera,
-        {
-          fps: 15,
-          qrbox: { width: 280, height: 160 },
-          aspectRatio: 1.2,
-        },
-        (decodedText) => {
-          procesarCodigo(decodedText)
-        },
-        () => {
-          // Ignorar cuadros sin código
+      const targetCamera = cameraId ? cameraId : { facingMode: 'environment' }
+
+      try {
+        await scanner.start(
+          targetCamera,
+          scanConfig,
+          (decodedText) => {
+            procesarCodigo(decodedText)
+          },
+          () => {}
+        )
+      } catch (firstErr) {
+        console.warn('Fallo al iniciar cámara con targetCamera, intentando user/default:', firstErr)
+        if (!cameraId) {
+          await scanner.start(
+            { facingMode: 'user' },
+            scanConfig,
+            (decodedText) => {
+              procesarCodigo(decodedText)
+            },
+            () => {}
+          )
+        } else {
+          throw firstErr
         }
-      )
+      }
 
       if (typeof targetCamera === 'string') {
         setCamaraActualId(targetCamera)
-      } else if (devices.length > 0) {
-        setCamaraActualId(devices[0].id)
       }
 
-      // Verificar soporte de linterna / flash
+      // Enumerar cámaras una vez concedidos los permisos
+      try {
+        const devices = await Html5Qrcode.getCameras()
+        if (devices && devices.length > 0) {
+          setCamaras(devices.map((d) => ({ id: d.id, label: d.label || `Cámara ${d.id}` })))
+          if (!cameraId && !camaraActualId) {
+            setCamaraActualId(devices[0].id)
+          }
+        }
+      } catch {
+        // Ignorar si falla la enumeración
+      }
+
+      // Verificar linterna
       try {
         const caps = scanner.getRunningTrackCapabilities() as MediaTrackCapabilities & {
           torch?: boolean
@@ -168,23 +243,10 @@ export function BarcodeScannerModal({
         setErrorCamara('No se pudo acceder a la cámara. Verificá que no esté en uso por otra aplicación.')
       }
       setIniciando(false)
+    } finally {
+      isStartingRef.current = false
     }
-  }, [procesarCodigo])
-
-  // Detener escáner
-  const detenerEscaner = useCallback(async () => {
-    if (scannerRef.current) {
-      try {
-        if (scannerRef.current.isScanning) {
-          await scannerRef.current.stop()
-        }
-        scannerRef.current.clear()
-      } catch (err) {
-        console.error('Error al detener cámara:', err)
-      }
-      scannerRef.current = null
-    }
-  }, [])
+  }, [procesarCodigo, camaraActualId])
 
   // Alternar linterna
   const toggleAntorcha = async () => {
@@ -222,7 +284,6 @@ export function BarcodeScannerModal({
 
   useEffect(() => {
     if (isOpen) {
-      // Pequeño retardo para asegurar que el DOM del modal esté listo
       const t = setTimeout(() => {
         iniciarEscaner()
       }, 150)
@@ -231,7 +292,7 @@ export function BarcodeScannerModal({
       detenerEscaner()
       setUltimoEscaneo(null)
     }
-  }, [isOpen, iniciarEscaner, detenerEscaner])
+  }, [isOpen])
 
   // Limpiar al desmontar
   useEffect(() => {
@@ -246,6 +307,7 @@ export function BarcodeScannerModal({
       onClose={onClose}
       title="Escanear Código de Barras"
       size="md"
+      zIndex="z-[60]"
     >
       <div className="space-y-4">
         {/* Contenedor del visor de la cámara */}
@@ -340,7 +402,7 @@ export function BarcodeScannerModal({
           {/* Toggle de Modo Continuo */}
           <div className="flex items-center justify-between">
             <label className="text-xs font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
-              Modo continuo (seguir escaneando)
+              Modo continuo (seguir escaneando productos)
             </label>
             <input
               type="checkbox"
