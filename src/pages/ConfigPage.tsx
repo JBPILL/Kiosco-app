@@ -32,6 +32,10 @@ export function ConfigPage() {
   const [nuevoRol, setNuevoRol] = useState<'CAJERO' | 'VISOR'>('CAJERO')
   const [creandoUsuario, setCreandoUsuario] = useState(false)
 
+  // Modal eliminar usuario
+  const [usuarioAEliminar, setUsuarioAEliminar] = useState<Usuario | null>(null)
+  const [eliminandoUsuario, setEliminandoUsuario] = useState(false)
+
   const cargarDatos = useCallback(async () => {
     if (!usuario?.kiosco_id) return
     setCargando(true)
@@ -160,6 +164,57 @@ export function ConfigPage() {
     }
   }
 
+  const duenosActivos = usuarios.filter((u) => u.rol === 'DUEÑO' && u.activo).length
+
+  const handleEliminarUsuario = async () => {
+    if (!usuarioAEliminar || !usuario?.kiosco_id) return
+
+    // Protección 1: No permitir borrar si es el único dueño activo
+    if (usuarioAEliminar.rol === 'DUEÑO' && duenosActivos <= 1) {
+      toast.error('No podés eliminar el único perfil de administrador del sistema')
+      setUsuarioAEliminar(null)
+      return
+    }
+
+    // Protección 2: No permitir borrar la propia sesión activa
+    if (usuarioAEliminar.id === usuario.id) {
+      toast.error('No podés eliminar tu propia cuenta mientras estás conectado')
+      setUsuarioAEliminar(null)
+      return
+    }
+
+    setEliminandoUsuario(true)
+    try {
+      // 1. Intentar eliminación física
+      const { error: delError } = await supabase
+        .from('usuarios')
+        .delete()
+        .eq('id', usuarioAEliminar.id)
+
+      if (delError) {
+        console.warn('Eliminación física restringida por FK o RLS, aplicando desactivación:', delError)
+        // 2. Si tenía turnos de caja o ventas históricas, desactivar para no violar FK
+        const { error: updError } = await supabase
+          .from('usuarios')
+          .update({ activo: false })
+          .eq('id', usuarioAEliminar.id)
+
+        if (updError) throw updError
+        toast.success('Usuario desactivado del sistema')
+      } else {
+        toast.success('Usuario eliminado correctamente')
+      }
+
+      setUsuarioAEliminar(null)
+      cargarDatos()
+    } catch (err) {
+      console.error('Error al eliminar usuario:', err)
+      toast.error(err instanceof Error ? err.message : 'Error al eliminar usuario')
+    } finally {
+      setEliminandoUsuario(false)
+    }
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
@@ -280,42 +335,74 @@ export function ConfigPage() {
                       <th className="px-4 py-3 font-medium">Rol</th>
                       <th className="px-4 py-3 font-medium">Acceso / Login</th>
                       <th className="px-4 py-3 font-medium">Estado</th>
+                      <th className="px-4 py-3 font-medium text-right">Acción</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                    {usuarios.map((u) => (
-                      <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                        <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{u.nombre}</td>
-                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{u.email || '—'}</td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${
-                            u.rol === 'DUEÑO'
-                              ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400'
-                              : u.rol === 'CAJERO'
-                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
-                              : 'bg-gray-100 text-gray-700 dark:text-gray-700 dark:text-gray-300'
-                          }`}>
-                            {u.rol}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          {u.auth_user_id ? (
-                            <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                              Habilitado
+                    {usuarios.map((u) => {
+                      const esUltimoAdmin = u.rol === 'DUEÑO' && duenosActivos <= 1
+                      const esSesionActual = u.id === usuario?.id
+
+                      return (
+                        <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                          <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{u.nombre}</td>
+                          <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{u.email || '—'}</td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${
+                              u.rol === 'DUEÑO'
+                                ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400'
+                                : u.rol === 'CAJERO'
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                                : 'bg-gray-100 text-gray-700 dark:text-gray-700 dark:text-gray-300'
+                            }`}>
+                              {u.rol}
                             </span>
-                          ) : (
-                            <span className="text-xs text-amber-600 dark:text-amber-400 font-medium" title="Este usuario fue registrado sin contraseña en Supabase Auth">
-                              Sin clave de acceso
+                          </td>
+                          <td className="px-4 py-3">
+                            {u.auth_user_id ? (
+                              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                                Habilitado
+                              </span>
+                            ) : (
+                              <span className="text-xs text-amber-600 dark:text-amber-400 font-medium" title="Este usuario fue registrado sin contraseña en Supabase Auth">
+                                Sin clave de acceso
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="text-emerald-600 dark:text-emerald-400 text-xs font-medium">
+                              {u.activo ? 'Activo' : 'Inactivo'}
                             </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="text-emerald-600 dark:text-emerald-400 text-xs font-medium">
-                            {u.activo ? 'Activo' : 'Inactivo'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {esUltimoAdmin ? (
+                              <span
+                                className="text-xs text-gray-400 dark:text-gray-500 font-medium italic"
+                                title="No se puede eliminar el único administrador del kiosco"
+                              >
+                                Admin principal
+                              </span>
+                            ) : esSesionActual ? (
+                              <span
+                                className="text-xs text-indigo-600 dark:text-indigo-400 font-medium"
+                                title="Sesión activa actualmente"
+                              >
+                                Tu usuario
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setUsuarioAEliminar(u)}
+                                className="px-2.5 py-1 text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40 rounded-lg transition-colors active:scale-95"
+                                title="Eliminar este usuario"
+                              >
+                                Eliminar
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -421,6 +508,42 @@ export function ConfigPage() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Modal de confirmación para eliminar usuario */}
+      <Modal
+        isOpen={!!usuarioAEliminar}
+        onClose={() => setUsuarioAEliminar(null)}
+        title="Eliminar usuario"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700 dark:text-gray-300">
+            ¿Estás seguro de que deseás eliminar al usuario <strong>{usuarioAEliminar?.nombre}</strong> ({usuarioAEliminar?.rol})?
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Esta persona ya no podrá ingresar a la aplicación ni operar la caja del kiosco.
+          </p>
+
+          <div className="flex gap-2 pt-2">
+            <Button
+              variant="danger"
+              fullWidth
+              loading={eliminandoUsuario}
+              onClick={handleEliminarUsuario}
+            >
+              Confirmar eliminación
+            </Button>
+            <Button
+              variant="secondary"
+              fullWidth
+              disabled={eliminandoUsuario}
+              onClick={() => setUsuarioAEliminar(null)}
+            >
+              Cancelar
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   )
