@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase, createUnauthenticatedClient } from '../lib/supabase'
-import { useAuthStore } from '../stores/authStore'
+import { useAuthStore, calcularDiasRestantes } from '../stores/authStore'
 import { useThemeStore } from '../stores/themeStore'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
-import type { Kiosco, Usuario } from '../types/database'
+import type { Kiosco, Usuario, Suscripcion } from '../types/database'
+import { formatPrecio, formatFechaCorta } from '../lib/utils'
 import toast from 'react-hot-toast'
 
 export function ConfigPage() {
@@ -13,6 +14,7 @@ export function ConfigPage() {
   const { tema, toggleTema } = useThemeStore()
 
   const [kiosco, setKiosco] = useState<Kiosco | null>(null)
+  const [suscripcion, setSuscripcion] = useState<Suscripcion | null>(null)
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [cargando, setCargando] = useState(true)
   const [guardandoKiosco, setGuardandoKiosco] = useState(false)
@@ -61,7 +63,20 @@ export function ConfigPage() {
         setTelefono(kioscoData.telefono || '')
       }
 
-      // 2. Cargar usuarios del Kiosco
+      // 2. Cargar suscripción del Kiosco con datos de plan
+      const { data: subData } = await supabase
+        .from('suscripciones')
+        .select('*, plan:planes(*)')
+        .eq('kiosco_id', usuario.kiosco_id)
+        .order('fecha_vencimiento', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (subData) {
+        setSuscripcion(subData as Suscripcion)
+      }
+
+      // 3. Cargar usuarios del Kiosco
       const { data: usuariosData } = await supabase
         .from('usuarios')
         .select('*')
@@ -227,6 +242,17 @@ export function ConfigPage() {
 
   const duenosActivos = usuarios.filter((u) => u.rol === 'DUEÑO' && u.activo).length
 
+  const diasRestantes = useMemo(() => {
+    return calcularDiasRestantes(suscripcion?.fecha_vencimiento)
+  }, [suscripcion?.fecha_vencimiento])
+
+  const estadoEfectivo = useMemo<'ACTIVO' | 'SOLO_LECTURA' | 'SUSPENDIDO'>(() => {
+    if (kiosco?.estado_suscripcion === 'SUSPENDIDO') return 'SUSPENDIDO'
+    if (kiosco?.estado_suscripcion === 'SOLO_LECTURA') return 'SOLO_LECTURA'
+    if (diasRestantes !== null && diasRestantes < 0) return 'SOLO_LECTURA'
+    return 'ACTIVO'
+  }, [kiosco?.estado_suscripcion, diasRestantes])
+
   const handleEliminarUsuario = async () => {
     if (!usuarioAEliminar || !usuario?.kiosco_id) return
 
@@ -349,29 +375,119 @@ export function ConfigPage() {
           </div>
 
           {/* Estado de Suscripción */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Estado de la Suscripción</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Estado de la Suscripción</h2>
+              <span
+                className={`px-3 py-1 text-xs font-bold rounded-full uppercase tracking-wider ${
+                  estadoEfectivo === 'ACTIVO'
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                    : estadoEfectivo === 'SOLO_LECTURA'
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
+                    : 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300 border border-red-300 dark:border-red-800'
+                }`}
+              >
+                {estadoEfectivo === 'ACTIVO'
+                  ? 'Servicio Activo'
+                  : estadoEfectivo === 'SOLO_LECTURA'
+                  ? 'Solo Lectura'
+                  : 'Suspendido'}
+              </span>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Tarjeta 1: Plan */}
               <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700">
                 <p className="text-xs text-gray-500 dark:text-gray-400">Plan contratado</p>
-                <p className="text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">Kiosco Pro</p>
-                <p className="text-xs text-indigo-600 dark:text-indigo-400 font-medium mt-0.5">$30.000 / mes</p>
-              </div>
-
-              <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Estado de servicio</p>
-                <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                  {kiosco?.estado_suscripcion === 'ACTIVO' ? 'Activo' : kiosco?.estado_suscripcion || 'Activo'}
+                <p className="text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">
+                  {suscripcion?.plan?.nombre || 'Kiosco Pro'}
                 </p>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Acceso total al sistema</p>
+                <p className="text-xs text-indigo-600 dark:text-indigo-400 font-medium mt-0.5">
+                  {suscripcion?.plan?.precio_mensual
+                    ? `${formatPrecio(suscripcion.plan.precio_mensual)} / mes`
+                    : '$35.000 / mes'}
+                </p>
               </div>
 
+              {/* Tarjeta 2: Estado del Servicio */}
+              <div
+                className={`p-4 rounded-lg border ${
+                  estadoEfectivo === 'ACTIVO'
+                    ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/50'
+                    : estadoEfectivo === 'SOLO_LECTURA'
+                    ? 'bg-amber-50/50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/60'
+                    : 'bg-red-50/50 dark:bg-red-950/30 border-red-200 dark:border-red-800/60'
+                }`}
+              >
+                <p className="text-xs text-gray-500 dark:text-gray-400">Estado de servicio</p>
+                <p
+                  className={`text-lg font-bold mt-1 ${
+                    estadoEfectivo === 'ACTIVO'
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : estadoEfectivo === 'SOLO_LECTURA'
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : 'text-red-600 dark:text-red-400'
+                  }`}
+                >
+                  {estadoEfectivo === 'ACTIVO'
+                    ? 'Activo'
+                    : estadoEfectivo === 'SOLO_LECTURA'
+                    ? 'Solo Lectura'
+                    : 'Suspendido'}
+                </p>
+                <p
+                  className={`text-xs mt-0.5 ${
+                    estadoEfectivo === 'ACTIVO'
+                      ? 'text-gray-500 dark:text-gray-400'
+                      : estadoEfectivo === 'SOLO_LECTURA'
+                      ? 'text-amber-700 dark:text-amber-300 font-medium'
+                      : 'text-red-700 dark:text-red-300 font-medium'
+                  }`}
+                >
+                  {estadoEfectivo === 'ACTIVO'
+                    ? 'Acceso total habilitado'
+                    : estadoEfectivo === 'SOLO_LECTURA'
+                    ? 'Ventas pausadas (período vencido)'
+                    : 'Servicio pausado temporalmente'}
+                </p>
+              </div>
+
+              {/* Tarjeta 3: Vencimiento */}
               <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Soporte y Mantenimiento</p>
-                <p className="text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">Incluido</p>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Copias y actualizaciones</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Vencimiento del Abono</p>
+                <p className="text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">
+                  {suscripcion?.fecha_vencimiento
+                    ? formatFechaCorta(suscripcion.fecha_vencimiento)
+                    : 'Al día'}
+                </p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                  {diasRestantes !== null
+                    ? diasRestantes > 5
+                      ? `Quedan ${diasRestantes} días de cobertura`
+                      : diasRestantes > 0
+                      ? `Vence en ${diasRestantes} días`
+                      : diasRestantes === 0
+                      ? 'Vence hoy'
+                      : `Vencido hace ${Math.abs(diasRestantes)} días`
+                    : 'Suscripción por tiempo indeterminado'}
+                </p>
               </div>
             </div>
+
+            {/* Aviso informativo condicional */}
+            {estadoEfectivo === 'SOLO_LECTURA' && (
+              <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-900 dark:text-amber-200">
+                <span className="font-bold">Modo Solo Lectura: </span>
+                Las ventas en el punto de venta (POS) están bloqueadas temporalmente por vencimiento del abono. Podés seguir consultando stock, caja y reportes de tu negocio. Para habilitar las ventas, comunicate con el administrador para regularizar tu suscripción.
+              </div>
+            )}
+
+            {estadoEfectivo === 'SUSPENDIDO' && (
+              <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 text-xs text-red-900 dark:text-red-200">
+                <span className="font-bold">Servicio Suspendido: </span>
+                El servicio se encuentra pausado temporalmente. Por favor, regularizá el abono para reactivar el sistema.
+              </div>
+            )}
           </div>
 
           {/* Gestión de Personal / Usuarios */}
@@ -395,7 +511,7 @@ export function ConfigPage() {
                       <th className="px-4 py-3 font-medium">Email</th>
                       <th className="px-4 py-3 font-medium">Rol</th>
                       <th className="px-4 py-3 font-medium">Acceso / Login</th>
-                      <th className="px-4 py-3 font-medium">Estado</th>
+                      <th className="px-4 py-3 font-medium">Cuenta de Usuario</th>
                       <th className="px-4 py-3 font-medium text-right">Acción</th>
                     </tr>
                   </thead>
@@ -445,8 +561,14 @@ export function ConfigPage() {
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            <span className="text-emerald-600 dark:text-emerald-400 text-xs font-medium">
-                              {u.activo ? 'Activo' : 'Inactivo'}
+                            <span
+                              className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
+                                u.activo
+                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
+                                  : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                              }`}
+                            >
+                              {u.activo ? 'Habilitado' : 'Deshabilitado'}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right">
