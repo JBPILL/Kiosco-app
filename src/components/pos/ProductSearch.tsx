@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
 import type { Producto } from '../../types/database'
 import { formatPrecio } from '../../lib/utils'
@@ -64,6 +65,10 @@ export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
   }, [query, buscar])
 
   const seleccionar = (producto: Producto) => {
+    if (producto.stock_actual <= 0) {
+      toast.error(`"${producto.descripcion}" no tiene stock disponible (0 unidades)`)
+      return
+    }
     onSelect(producto)
     setQuery('')
     setResultados([])
@@ -153,8 +158,14 @@ export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
                 {prod.categoria && (
                   <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">{prod.categoria.nombre}</span>
                 )}
-                <span className="block text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                  Stock: {prod.stock_actual}
+                <span className={`block text-xs mt-0.5 ${
+                  prod.stock_actual <= 0
+                    ? 'text-red-600 dark:text-red-400 font-bold'
+                    : prod.stock_actual <= prod.stock_minimo
+                    ? 'text-amber-600 dark:text-amber-400 font-medium'
+                    : 'text-gray-400 dark:text-gray-500'
+                }`}>
+                  {prod.stock_actual <= 0 ? 'Sin stock (0)' : `Stock: ${prod.stock_actual}`}
                 </span>
               </div>
               <span className="font-bold text-indigo-600 dark:text-indigo-400 whitespace-nowrap ml-3">

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
+import toast from 'react-hot-toast'
 import type { Producto, ItemCarrito } from '../types/database'
 
 export type TipoAjuste =
@@ -79,9 +80,21 @@ export const useCartStore = create<CartState>((set, get) => ({
   ventasEnEspera: cargarVentasEnEspera(),
 
   agregarProducto: (producto: Producto) => {
+    // 1. Validar si el producto no tiene stock disponible
+    if (producto.stock_actual <= 0) {
+      toast.error(`"${producto.descripcion}" no tiene stock disponible (0 unidades)`)
+      return
+    }
+
     set((state) => {
       const existente = state.items.find((item) => item.producto.id === producto.id)
       if (existente) {
+        // Validar si ya se alcanzó el stock máximo disponible
+        if (existente.cantidad >= producto.stock_actual) {
+          toast.error(`Stock máximo alcanzado para "${producto.descripcion}" (${producto.stock_actual} disponibles)`)
+          return state
+        }
+
         return {
           items: state.items.map((item) =>
             item.producto.id === producto.id
@@ -120,13 +133,24 @@ export const useCartStore = create<CartState>((set, get) => ({
       return
     }
 
+    const state = get()
+    const itemTarget = state.items.find((it) => it.producto.id === productoId)
+    let cantidadAjustada = cantidad
+
+    if (itemTarget && cantidad > itemTarget.producto.stock_actual) {
+      toast.error(
+        `Stock máximo para "${itemTarget.producto.descripcion}": ${itemTarget.producto.stock_actual} unidades`
+      )
+      cantidadAjustada = itemTarget.producto.stock_actual
+    }
+
     set((state) => ({
       items: state.items.map((item) =>
         item.producto.id === productoId
           ? {
               ...item,
-              cantidad,
-              subtotal: cantidad * item.producto.precio_venta,
+              cantidad: cantidadAjustada,
+              subtotal: cantidadAjustada * item.producto.precio_venta,
             }
           : item
       ),

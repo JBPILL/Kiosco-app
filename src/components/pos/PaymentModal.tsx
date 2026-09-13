@@ -116,6 +116,17 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         ? (notasBase ? `${clienteInfo} · ${notasBase}` : clienteInfo)
         : notasBase
 
+      // 0. Validar que no se venda más de lo disponible en stock
+      for (const item of items) {
+        if (item.cantidad > item.producto.stock_actual) {
+          toast.error(
+            `Stock insuficiente para "${item.producto.descripcion}". Disponibles: ${item.producto.stock_actual}, en ticket: ${item.cantidad}.`
+          )
+          setProcesando(false)
+          return
+        }
+      }
+
       // 1. Insertar la venta
       const { error: ventaError } = await supabase.from('ventas').insert({
         id: ventaId,

@@ -100,8 +100,8 @@ export function ProductTable({
                         {prod.descripcion}
                       </p>
                       {prod.es_favorito && (
-                        <span className="text-[10px] px-1 py-0.2 rounded bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-bold flex-shrink-0">
-                          Fav
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300 font-bold flex-shrink-0 flex items-center gap-0.5">
+                          ★ Fav
                         </span>
                       )}
                     </div>
@@ -123,24 +123,28 @@ export function ProductTable({
                     </span>
                     <div className="flex items-center gap-1.5">
                       <button
+                        type="button"
                         onClick={() => onToggleFavorito(prod.id, prod.es_favorito)}
-                        className={`text-xs px-1.5 py-0.5 rounded border ${
+                        className={`text-xs px-2 py-1 rounded-lg border flex items-center gap-1 transition-all ${
                           prod.es_favorito
-                            ? 'border-indigo-400 text-indigo-600 dark:text-indigo-400'
+                            ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 font-bold'
                             : 'border-gray-200 dark:border-gray-700 text-gray-400'
                         }`}
                       >
-                        {prod.es_favorito ? '★' : '☆'}
+                        <svg className={`w-3.5 h-3.5 ${prod.es_favorito ? 'fill-amber-400 text-amber-500' : 'text-gray-400'}`} viewBox="0 0 24 24" fill={prod.es_favorito ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
+                          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                        </svg>
+                        <span>{prod.es_favorito ? 'Fav' : '+Fav'}</span>
                       </button>
                       <button
                         onClick={() => onEditar(prod)}
-                        className="text-xs text-indigo-600 dark:text-indigo-400 font-medium px-1 py-0.5"
+                        className="text-xs text-indigo-600 dark:text-indigo-400 font-medium px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 rounded-md"
                       >
                         Editar
                       </button>
                       <button
                         onClick={() => setConfirmDelete(prod.id)}
-                        className="text-xs text-red-500 dark:text-red-400 font-medium px-1 py-0.5"
+                        className="text-xs text-red-500 dark:text-red-400 font-medium px-2 py-1 bg-red-50 dark:bg-red-900/30 rounded-md"
                       >
                         ✕
                       </button>
@@ -151,75 +155,105 @@ export function ProductTable({
             })}
           </div>
 
-          {/* VISTA DESKTOP: Tabla completa */}
-          <div className="hidden sm:block overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+          {/* VISTA DESKTOP: Tabla con columnas perfectamente ordenadas y alineadas */}
+          <div className="hidden sm:block overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+            <table className="w-full text-sm table-fixed border-collapse">
+              <colgroup>
+                <col className="w-[28%]" />
+                <col className="w-[18%]" />
+                <col className="w-[13%]" />
+                <col className="w-[13%]" />
+                <col className="w-[12%]" />
+                <col className="w-[14%]" />
+                <col className="w-[120px]" />
+              </colgroup>
+              <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 <tr>
-                  <th className="px-3 py-2.5 text-left font-medium text-gray-600 dark:text-gray-300">Producto</th>
-                  <th className="px-3 py-2.5 text-left font-medium text-gray-600 dark:text-gray-300">Categoría</th>
-                  <th className="px-3 py-2.5 text-right font-medium text-gray-600 dark:text-gray-300">Costo</th>
-                  <th className="px-3 py-2.5 text-right font-medium text-gray-600 dark:text-gray-300">Venta</th>
-                  <th className="px-3 py-2.5 text-center font-medium text-gray-600 dark:text-gray-300">Stock</th>
-                  <th className="px-3 py-2.5 text-center font-medium text-gray-600 dark:text-gray-300">Fav</th>
-                  <th className="px-3 py-2.5 text-center font-medium text-gray-600 dark:text-gray-300">Acciones</th>
+                  <th className="px-3.5 py-3 text-left">Producto</th>
+                  <th className="px-3.5 py-3 text-left">Categoría</th>
+                  <th className="px-3.5 py-3 text-right">Costo</th>
+                  <th className="px-3.5 py-3 text-right">Venta</th>
+                  <th className="px-3.5 py-3 text-center">Stock</th>
+                  <th className="px-3.5 py-3 text-center">Favorito</th>
+                  <th className="px-3.5 py-3 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {productos.map((prod) => {
                   const nivel = nivelStock(prod.stock_actual, prod.stock_minimo)
                   return (
-                    <tr key={prod.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                      <td className="px-3 py-2.5">
-                        <span className="font-medium text-gray-900 dark:text-gray-100">{prod.descripcion}</span>
-                        {prod.codigo_barras && (
-                          <span className="block text-xs text-gray-400 dark:text-gray-500">{prod.codigo_barras}</span>
-                        )}
+                    <tr key={prod.id} className="hover:bg-gray-50/80 dark:hover:bg-gray-700/40 transition-colors">
+                      <td className="px-3.5 py-3 align-middle">
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-semibold text-gray-900 dark:text-gray-100 truncate" title={prod.descripcion}>
+                            {prod.descripcion}
+                          </span>
+                          {prod.codigo_barras && (
+                            <span className="text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5 truncate">
+                              {prod.codigo_barras}
+                            </span>
+                          )}
+                        </div>
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-3.5 py-3 align-middle">
                         {prod.categoria ? (
-                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100">
-                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: prod.categoria.color }} />
-                            {prod.categoria.nombre}
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 max-w-full truncate">
+                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: prod.categoria.color }} />
+                            <span className="truncate">{prod.categoria.nombre}</span>
                           </span>
                         ) : (
-                          <span className="text-gray-400 dark:text-gray-500 text-xs">—</span>
+                          <span className="text-gray-400 dark:text-gray-500 text-xs italic">Sin categoría</span>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-right text-gray-500 dark:text-gray-400">
+                      <td className="px-3.5 py-3 text-right align-middle text-gray-500 dark:text-gray-400 font-mono text-xs sm:text-sm">
                         {formatPrecio(prod.precio_costo)}
                       </td>
-                      <td className="px-3 py-2.5 text-right font-bold text-gray-900 dark:text-gray-100">
+                      <td className="px-3.5 py-3 text-right align-middle font-bold text-gray-900 dark:text-gray-100 font-mono text-sm">
                         {formatPrecio(prod.precio_venta)}
                       </td>
-                      <td className="px-3 py-2.5 text-center">
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${stockColors[nivel]}`}>
+                      <td className="px-3.5 py-3 text-center align-middle">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${stockColors[nivel]}`}>
                           {prod.stock_actual} ({stockLabels[nivel]})
                         </span>
                       </td>
-                      <td className="px-3 py-2.5 text-center">
+                      <td className="px-3.5 py-3 text-center align-middle">
                         <button
+                          type="button"
                           onClick={() => onToggleFavorito(prod.id, prod.es_favorito)}
-                          className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+                          title={prod.es_favorito ? 'Quitar de favoritos del POS' : 'Marcar como favorito para acceso rápido en POS'}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all shadow-2xs cursor-pointer ${
                             prod.es_favorito
-                              ? 'border-indigo-400 text-indigo-600 dark:text-indigo-400 font-semibold'
-                              : 'border-gray-200 dark:border-gray-600 text-gray-400 hover:text-gray-600'
+                              ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
+                              : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700'
                           }`}
                         >
-                          {prod.es_favorito ? 'Fav' : '—'}
+                          <svg
+                            className={`w-3.5 h-3.5 ${prod.es_favorito ? 'fill-amber-400 text-amber-500' : 'text-gray-400'}`}
+                            viewBox="0 0 24 24"
+                            fill={prod.es_favorito ? 'currentColor' : 'none'}
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                          </svg>
+                          <span>{prod.es_favorito ? 'Favorito' : 'Marcar'}</span>
                         </button>
                       </td>
-                      <td className="px-3 py-2.5 text-center">
-                        <div className="flex items-center justify-center gap-2">
+                      <td className="px-3.5 py-3 text-center align-middle">
+                        <div className="flex items-center justify-center gap-1.5">
                           <button
+                            type="button"
                             onClick={() => onEditar(prod)}
-                            className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-medium"
+                            className="px-2.5 py-1 text-xs font-medium rounded-md bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors cursor-pointer"
                           >
                             Editar
                           </button>
                           <button
+                            type="button"
                             onClick={() => setConfirmDelete(prod.id)}
-                            className="text-xs text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 font-medium"
+                            className="px-2.5 py-1 text-xs font-medium rounded-md bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors cursor-pointer"
                           >
                             Eliminar
                           </button>

@@ -62,6 +62,11 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
 
   // Acciones de modificación con retención de foco
   const handleSumarCantidad = (itemId: string, cantidad: number) => {
+    const item = items.find((it) => it.producto.id === itemId)
+    if (item && cantidad >= item.producto.stock_actual) {
+      toast.error(`Stock máximo alcanzado (${item.producto.stock_actual} disponibles)`)
+      return
+    }
     actualizarCantidad(itemId, cantidad + 1)
     playScanSound('success')
   }
@@ -444,8 +449,16 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                   <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate group-focus:font-semibold">
                     {item.producto.descripcion}
                   </p>
-                  <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
                     <span>{formatPrecio(item.producto.precio_venta)} c/u</span>
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                      (Disp: {item.producto.stock_actual})
+                    </span>
+                    {item.cantidad >= item.producto.stock_actual && (
+                      <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.2 rounded">
+                        Máx disponible
+                      </span>
+                    )}
                     <span className="hidden group-focus:inline-flex items-center text-[10px] text-indigo-600 dark:text-indigo-400 font-mono font-bold">
                       (+/- Cant · Supr)
                     </span>
@@ -474,14 +487,23 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                     ref={(el) => { plusBtnRefs.current[idx] = el }}
                     type="button"
                     tabIndex={0}
+                    disabled={item.cantidad >= item.producto.stock_actual}
                     onClick={(e) => {
                       e.stopPropagation()
                       handleSumarCantidad(item.producto.id, item.cantidad)
                     }}
                     onKeyDown={(e) => handlePlusKeyDown(e, idx, item.producto.id, item.cantidad)}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-300 font-bold text-base transition-transform focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-indigo-100 dark:focus:bg-gray-600 cursor-pointer select-none"
+                    className={`w-8 h-8 flex items-center justify-center rounded-lg font-bold text-base transition-transform select-none ${
+                      item.cantidad >= item.producto.stock_actual
+                        ? 'opacity-30 cursor-not-allowed bg-gray-100 dark:bg-gray-800 text-gray-400'
+                        : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-300 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-indigo-100 dark:focus:bg-gray-600'
+                    }`}
                     aria-label="Sumar uno"
-                    title="Sumar uno [Enter o +]"
+                    title={
+                      item.cantidad >= item.producto.stock_actual
+                        ? `Stock máximo alcanzado (${item.producto.stock_actual})`
+                        : 'Sumar uno [Enter o +]'
+                    }
                   >
                     +
                   </button>

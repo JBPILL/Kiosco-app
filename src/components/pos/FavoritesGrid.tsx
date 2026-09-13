@@ -1,4 +1,5 @@
 import { useRef, useEffect } from 'react'
+import toast from 'react-hot-toast'
 import type { Producto } from '../../types/database'
 import { formatPrecio } from '../../lib/utils'
 
@@ -60,6 +61,10 @@ export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
       }
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
+      if (prod.stock_actual <= 0) {
+        toast.error(`"${prod.descripcion}" no tiene stock disponible (0 unidades)`)
+        return
+      }
       onSelect(prod)
     }
   }
@@ -75,42 +80,54 @@ export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
 
   return (
     <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2.5 p-1" role="grid" aria-label="Catálogo de productos">
-      {productos.map((prod, index) => (
-        <button
-          key={prod.id}
-          ref={(el) => { buttonRefs.current[index] = el }}
-          onClick={() => onSelect(prod)}
-          onKeyDown={(e) => handleKeyDown(e, index, prod)}
-          className="group relative flex flex-col items-center justify-center p-2.5 rounded-xl text-center
-            border border-gray-200 dark:border-gray-700
-            bg-white dark:bg-gray-800
-            hover:border-indigo-400 dark:hover:border-indigo-500
-            hover:bg-indigo-50/40 dark:hover:bg-gray-700/60
-            focus:outline-hidden focus:z-10
-            focus:border-indigo-500 dark:focus:border-indigo-400
-            focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:focus:ring-indigo-400
-            focus:bg-indigo-50/90 dark:focus:bg-gray-700
-            active:scale-95 transition-colors duration-100
-            min-h-[68px] sm:min-h-[74px] cursor-pointer select-none"
-        >
-          <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 group-focus:text-indigo-950 dark:group-focus:text-white line-clamp-2 leading-tight">
-            {prod.descripcion}
-          </span>
-          <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 group-focus:text-emerald-700 dark:group-focus:text-emerald-300 mt-1">
-            {formatPrecio(prod.precio_venta)}
-          </span>
-          {prod.stock_actual <= prod.stock_minimo && prod.stock_actual > 0 && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-bold mt-1">
-              Bajo ({prod.stock_actual})
+      {productos.map((prod, index) => {
+        const sinStock = prod.stock_actual <= 0
+        const stockBajo = prod.stock_actual <= prod.stock_minimo && prod.stock_actual > 0
+
+        return (
+          <button
+            key={prod.id}
+            ref={(el) => { buttonRefs.current[index] = el }}
+            onClick={() => {
+              if (sinStock) {
+                toast.error(`"${prod.descripcion}" no tiene stock disponible (0 unidades)`)
+                return
+              }
+              onSelect(prod)
+            }}
+            onKeyDown={(e) => handleKeyDown(e, index, prod)}
+            disabled={sinStock}
+            className={`group relative flex flex-col items-center justify-center p-2.5 rounded-xl text-center
+              border transition-all duration-100 min-h-[70px] sm:min-h-[76px] select-none ${
+                sinStock
+                  ? 'opacity-40 cursor-not-allowed border-dashed border-gray-300 dark:border-gray-700 bg-gray-100/50 dark:bg-gray-800/40'
+                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/40 dark:hover:bg-gray-700/60 active:scale-95 cursor-pointer focus:outline-hidden focus:z-10 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-indigo-50/90 dark:focus:bg-gray-700'
+              }`}
+          >
+            <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 group-focus:text-indigo-950 dark:group-focus:text-white line-clamp-2 leading-tight">
+              {prod.descripcion}
             </span>
-          )}
-          {prod.stock_actual <= 0 && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 font-bold mt-1">
-              Sin stock
+            <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 group-focus:text-emerald-700 dark:group-focus:text-emerald-300 mt-1">
+              {formatPrecio(prod.precio_venta)}
             </span>
-          )}
-        </button>
-      ))}
+
+            {/* Indicador de stock actual */}
+            {sinStock ? (
+              <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 font-bold mt-1">
+                Sin stock
+              </span>
+            ) : stockBajo ? (
+              <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-bold mt-1">
+                Bajo ({prod.stock_actual})
+              </span>
+            ) : (
+              <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 font-medium mt-1">
+                Stock: {prod.stock_actual}
+              </span>
+            )}
+          </button>
+        )
+      })}
     </div>
   )
 }
