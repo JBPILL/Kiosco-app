@@ -74,7 +74,12 @@ export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setSelectedIndex((prev) => Math.min(prev + 1, resultados.length - 1))
+      if (resultados.length > 0 && mostrarResultados) {
+        setSelectedIndex((prev) => Math.min(prev + 1, resultados.length - 1))
+      } else {
+        // Si no hay resultados de búsqueda abiertos, bajar el foco a las categorías
+        window.dispatchEvent(new CustomEvent('pos-focus-category'))
+      }
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setSelectedIndex((prev) => Math.max(prev - 1, 0))

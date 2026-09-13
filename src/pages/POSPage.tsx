@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useCartStore } from '../stores/cartStore'
@@ -107,6 +107,48 @@ export function POSPage() {
     recuperarVenta(id)
     setModalEsperaOpen(false)
     toast.success('Venta recuperada en el ticket')
+  }
+
+  // Navegación por teclado en las pestañas de categorías
+  const categoryRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const totalTabs = 1 + categorias.length
+
+  useEffect(() => {
+    const handleFocusCategory = () => {
+      const activeIdx = categoriaActiva
+        ? categorias.findIndex((c) => c.id === categoriaActiva) + 1
+        : 0
+      categoryRefs.current[activeIdx >= 0 ? activeIdx : 0]?.focus()
+    }
+    window.addEventListener('pos-focus-category', handleFocusCategory)
+    return () => window.removeEventListener('pos-focus-category', handleFocusCategory)
+  }, [categoriaActiva, categorias])
+
+  const handleCategoryKeyDown = (
+    e: React.KeyboardEvent,
+    index: number,
+    catId: string | null
+  ) => {
+    if (e.key === 'ArrowRight') {
+      e.preventDefault()
+      const next = (index + 1) % totalTabs
+      categoryRefs.current[next]?.focus()
+      setCategoriaActiva(next === 0 ? null : categorias[next - 1].id)
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      const prev = (index - 1 + totalTabs) % totalTabs
+      categoryRefs.current[prev]?.focus()
+      setCategoriaActiva(prev === 0 ? null : categorias[prev - 1].id)
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('pos-focus-grid'))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('pos-focus-search'))
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      setCategoriaActiva(catId)
+    }
   }
 
   // Detección de escaneo desde pistola de código de barras USB / Bluetooth
@@ -229,8 +271,10 @@ export function POSPage() {
             )}
 
             <button
+              ref={(el) => { categoryRefs.current[0] = el }}
               onClick={() => setCategoriaActiva(null)}
-              className={`px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap min-h-[32px] transition-colors ${
+              onKeyDown={(e) => handleCategoryKeyDown(e, 0, null)}
+              className={`px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap min-h-[32px] transition-colors focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:outline-hidden ${
                 !categoriaActiva
                   ? 'bg-indigo-600 text-white shadow-xs'
                   : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
@@ -238,11 +282,13 @@ export function POSPage() {
             >
               Favoritos
             </button>
-            {categorias.map((cat) => (
+            {categorias.map((cat, idx) => (
               <button
                 key={cat.id}
+                ref={(el) => { categoryRefs.current[idx + 1] = el }}
                 onClick={() => setCategoriaActiva(cat.id)}
-                className={`px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap min-h-[32px] transition-colors border ${
+                onKeyDown={(e) => handleCategoryKeyDown(e, idx + 1, cat.id)}
+                className={`px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap min-h-[32px] transition-colors border focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:outline-hidden ${
                   categoriaActiva === cat.id
                     ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-semibold'
                     : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'

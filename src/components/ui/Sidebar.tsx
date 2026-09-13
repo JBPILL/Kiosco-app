@@ -1,4 +1,5 @@
-import { NavLink } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
 import { useThemeStore } from '../../stores/themeStore'
 
@@ -18,12 +19,61 @@ const menuItems = [
 ]
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
+  const navigate = useNavigate()
+  const location = useLocation()
   const { usuario, logout } = useAuthStore()
   const { tema, toggleTema } = useThemeStore()
+  const itemRefs = useRef<(HTMLAnchorElement | null)[]>([])
 
   const itemsVisibles = menuItems.filter(
     (item) => usuario && item.roles.includes(usuario.rol)
   )
+
+  // Manejo de flechitas dentro del menú de navegación
+  const handleItemKeyDown = (e: React.KeyboardEvent, index: number) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      const nextIndex = (index + 1) % itemsVisibles.length
+      itemRefs.current[nextIndex]?.focus()
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      const prevIndex = (index - 1 + itemsVisibles.length) % itemsVisibles.length
+      itemRefs.current[prevIndex]?.focus()
+    } else if (e.key === 'Home') {
+      e.preventDefault()
+      itemRefs.current[0]?.focus()
+    } else if (e.key === 'End') {
+      e.preventDefault()
+      itemRefs.current[itemsVisibles.length - 1]?.focus()
+    }
+  }
+
+  // Atajos globales: Alt+M o F10 para enfocar menú, y Alt+1..7 para navegación directa
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Alt + M o F10: Enfocar el menú lateral
+      if ((e.altKey && e.key.toLowerCase() === 'm') || e.key === 'F10') {
+        e.preventDefault()
+        const activeIdx = itemsVisibles.findIndex((item) => item.path === location.pathname)
+        const targetIdx = activeIdx >= 0 ? activeIdx : 0
+        itemRefs.current[targetIdx]?.focus()
+        return
+      }
+
+      // Alt + 1 ... Alt + 7: Navegación rápida directa a pantallas
+      if (e.altKey && !e.ctrlKey && !e.shiftKey) {
+        const num = parseInt(e.key, 10)
+        if (!isNaN(num) && num >= 1 && num <= itemsVisibles.length) {
+          e.preventDefault()
+          navigate(itemsVisibles[num - 1].path)
+          onClose()
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [itemsVisibles, location.pathname, navigate, onClose])
 
   return (
     <>
@@ -63,23 +113,29 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           )}
         </div>
 
-        {/* Navegación */}
-        <nav className="px-3 py-4 flex-1 overflow-y-auto space-y-1">
-          {itemsVisibles.map((item) => (
+        {/* Navegación con soporte para flechitas de teclado */}
+        <nav className="px-3 py-4 flex-1 overflow-y-auto space-y-1" role="menu" aria-label="Menú principal">
+          {itemsVisibles.map((item, index) => (
             <NavLink
               key={item.path}
+              ref={(el) => { itemRefs.current[index] = el }}
               to={item.path}
               onClick={onClose}
+              onKeyDown={(e) => handleItemKeyDown(e, index)}
               className={({ isActive }) => `
-                flex items-center px-4 py-3 rounded-xl min-h-[44px]
+                flex items-center justify-between px-4 py-3 rounded-xl min-h-[44px]
                 text-base font-medium transition-colors
+                focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:outline-hidden
                 ${isActive
                   ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-semibold'
                   : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100'
                 }
               `}
             >
-              {item.label}
+              <span>{item.label}</span>
+              <kbd className="hidden lg:inline-block px-1.5 py-0.5 rounded text-[10px] font-mono text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600">
+                Alt+{index + 1}
+              </kbd>
             </NavLink>
           ))}
         </nav>
