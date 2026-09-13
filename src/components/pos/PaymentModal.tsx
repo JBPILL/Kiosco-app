@@ -88,6 +88,13 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       const ahora = new Date().toISOString()
       const sesionActiva = useCajaStore.getState().sesionActiva
       const usuario = useAuthStore.getState().usuario
+      const kiosco = useAuthStore.getState().kiosco
+      const kioscoId = usuario?.kiosco_id || kiosco?.id
+
+      if (!kioscoId) {
+        throw new Error('No se encontró el identificador del kiosco para registrar la venta')
+      }
+
       const descAjuste = descripcionAjuste()
       const clienteInfo =
         medioPago === 'CUENTA_CORRIENTE' && clienteSeleccionado
@@ -105,6 +112,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       // 1. Insertar la venta
       const { error: ventaError } = await supabase.from('ventas').insert({
         id: ventaId,
+        kiosco_id: kioscoId,
         usuario_id: usuario?.id || null,
         sesion_caja_id: sesionActiva?.id || null,
         fecha_hora: ahora,
@@ -149,7 +157,6 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       }
 
       // 5. Armar datos de ticket para comprobante térmico / digital
-      const kiosco = useAuthStore.getState().kiosco
       const ticketGenerado: TicketData = {
         ventaId,
         fecha: ahora,
@@ -194,7 +201,8 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       onClose()
     } catch (error) {
       console.error('Error al registrar venta:', error)
-      toast.error('Error al registrar la venta. Intentá de nuevo.')
+      const msg = error instanceof Error ? error.message : 'Error al registrar la venta. Intentá de nuevo.'
+      toast.error(msg, { duration: 6000 })
     } finally {
       setProcesando(false)
     }
