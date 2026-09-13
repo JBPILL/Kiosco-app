@@ -155,73 +155,60 @@ export function ProductTable({
             })}
           </div>
 
-          {/* VISTA DESKTOP: Tabla con columnas perfectamente ordenadas y alineadas */}
-          <div className="hidden sm:block overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
-            <table className="w-full text-sm table-fixed border-collapse">
-              <colgroup>
-                <col className="w-[28%]" />
-                <col className="w-[18%]" />
-                <col className="w-[13%]" />
-                <col className="w-[13%]" />
-                <col className="w-[12%]" />
-                <col className="w-[14%]" />
-                <col className="w-[120px]" />
-              </colgroup>
-              <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+          {/* VISTA DESKTOP: Tabla limpia y fluida (sin scrollbar horizontal forzado) */}
+          <div className="hidden sm:block overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
                 <tr>
-                  <th className="px-3.5 py-3 text-left">Producto</th>
-                  <th className="px-3.5 py-3 text-left">Categoría</th>
-                  <th className="px-3.5 py-3 text-right">Costo</th>
-                  <th className="px-3.5 py-3 text-right">Venta</th>
-                  <th className="px-3.5 py-3 text-center">Stock</th>
-                  <th className="px-3.5 py-3 text-center">Favorito</th>
-                  <th className="px-3.5 py-3 text-center">Acciones</th>
+                  <th className="px-3 py-2.5 text-left font-medium text-gray-600 dark:text-gray-300">Producto</th>
+                  <th className="px-3 py-2.5 text-left font-medium text-gray-600 dark:text-gray-300">Categoría</th>
+                  <th className="px-3 py-2.5 text-right font-medium text-gray-600 dark:text-gray-300">Costo</th>
+                  <th className="px-3 py-2.5 text-right font-medium text-gray-600 dark:text-gray-300">Venta</th>
+                  <th className="px-3 py-2.5 text-center font-medium text-gray-600 dark:text-gray-300">Stock</th>
+                  <th className="px-3 py-2.5 text-center font-medium text-gray-600 dark:text-gray-300">Favorito</th>
+                  <th className="px-3 py-2.5 text-center font-medium text-gray-600 dark:text-gray-300">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {productos.map((prod) => {
                   const nivel = nivelStock(prod.stock_actual, prod.stock_minimo)
                   return (
-                    <tr key={prod.id} className="hover:bg-gray-50/80 dark:hover:bg-gray-700/40 transition-colors">
-                      <td className="px-3.5 py-3 align-middle">
-                        <div className="flex flex-col min-w-0">
-                          <span className="font-semibold text-gray-900 dark:text-gray-100 truncate" title={prod.descripcion}>
-                            {prod.descripcion}
+                    <tr key={prod.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                      <td className="px-3 py-2.5">
+                        <span className="font-medium text-gray-900 dark:text-gray-100">{prod.descripcion}</span>
+                        {prod.codigo_barras && (
+                          <span className="block text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5">
+                            {prod.codigo_barras}
                           </span>
-                          {prod.codigo_barras && (
-                            <span className="text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5 truncate">
-                              {prod.codigo_barras}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-3.5 py-3 align-middle">
-                        {prod.categoria ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 max-w-full truncate">
-                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: prod.categoria.color }} />
-                            <span className="truncate">{prod.categoria.nombre}</span>
-                          </span>
-                        ) : (
-                          <span className="text-gray-400 dark:text-gray-500 text-xs italic">Sin categoría</span>
                         )}
                       </td>
-                      <td className="px-3.5 py-3 text-right align-middle text-gray-500 dark:text-gray-400 font-mono text-xs sm:text-sm">
+                      <td className="px-3 py-2.5">
+                        {prod.categoria ? (
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100">
+                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: prod.categoria.color }} />
+                            <span>{prod.categoria.nombre}</span>
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 dark:text-gray-500 text-xs">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-gray-500 dark:text-gray-400 font-mono">
                         {formatPrecio(prod.precio_costo)}
                       </td>
-                      <td className="px-3.5 py-3 text-right align-middle font-bold text-gray-900 dark:text-gray-100 font-mono text-sm">
+                      <td className="px-3 py-2.5 text-right font-bold text-gray-900 dark:text-gray-100 font-mono">
                         {formatPrecio(prod.precio_venta)}
                       </td>
-                      <td className="px-3.5 py-3 text-center align-middle">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${stockColors[nivel]}`}>
+                      <td className="px-3 py-2.5 text-center">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${stockColors[nivel]}`}>
                           {prod.stock_actual} ({stockLabels[nivel]})
                         </span>
                       </td>
-                      <td className="px-3.5 py-3 text-center align-middle">
+                      <td className="px-3 py-2.5 text-center">
                         <button
                           type="button"
                           onClick={() => onToggleFavorito(prod.id, prod.es_favorito)}
                           title={prod.es_favorito ? 'Quitar de favoritos del POS' : 'Marcar como favorito para acceso rápido en POS'}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all shadow-2xs cursor-pointer ${
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                             prod.es_favorito
                               ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
                               : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700'
@@ -241,7 +228,7 @@ export function ProductTable({
                           <span>{prod.es_favorito ? 'Favorito' : 'Marcar'}</span>
                         </button>
                       </td>
-                      <td className="px-3.5 py-3 text-center align-middle">
+                      <td className="px-3 py-2.5 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             type="button"
