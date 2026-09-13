@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuthStore } from '../stores/authStore'
 import type { Producto, Categoria } from '../types/database'
 import toast from 'react-hot-toast'
 
 export function useProducts() {
+  const { usuario } = useAuthStore()
   const [productos, setProductos] = useState<Producto[]>(() => {
     try {
       const cached = localStorage.getItem('kiosko_cache_productos')
@@ -33,6 +35,10 @@ export function useProducts() {
       .eq('activo', true)
       .order('descripcion')
 
+    if (usuario?.kiosco_id) {
+      query = query.eq('kiosco_id', usuario.kiosco_id)
+    }
+
     if (busqueda) {
       query = query.ilike('descripcion', `%${busqueda}%`)
     }
@@ -52,9 +58,9 @@ export function useProducts() {
           toast.error('Error al cargar productos')
         }
       } else if (!cached) {
-        toast.error('Error al cargar productos')
+        toast.error('Error al cargar productos: ' + (error.message || ''))
       }
-      console.error(error)
+      console.error('Error al cargar productos:', error)
     } else {
       setProductos(data || [])
       if (!busqueda && !categoriaFiltro && data && data.length > 0) {
@@ -66,14 +72,20 @@ export function useProducts() {
       }
     }
     setCargando(false)
-  }, [busqueda, categoriaFiltro, productos.length])
+  }, [busqueda, categoriaFiltro, usuario?.kiosco_id])
 
   // Cargar categorías
   const cargarCategorias = useCallback(async () => {
-    const { data, error } = await supabase
+    let query = supabase
       .from('categorias')
       .select('*')
       .order('orden')
+
+    if (usuario?.kiosco_id) {
+      query = query.eq('kiosco_id', usuario.kiosco_id)
+    }
+
+    const { data, error } = await query
 
     if (error) {
       const cached = localStorage.getItem('kiosko_cache_categorias')
@@ -84,8 +96,9 @@ export function useProducts() {
           toast.error('Error al cargar categorías')
         }
       } else if (!cached) {
-        toast.error('Error al cargar categorías')
+        toast.error('Error al cargar categorías: ' + (error.message || ''))
       }
+      console.error('Error al cargar categorías:', error)
     } else {
       setCategorias(data || [])
       if (data && data.length > 0) {
@@ -96,7 +109,7 @@ export function useProducts() {
         }
       }
     }
-  }, [categorias.length])
+  }, [usuario?.kiosco_id])
 
   useEffect(() => {
     cargarProductos()
@@ -108,7 +121,11 @@ export function useProducts() {
 
   // Crear producto
   const crearProducto = async (producto: Omit<Producto, 'id' | 'kiosco_id' | 'fecha_creacion' | 'fecha_actualizacion' | 'activo'>) => {
-    const { error } = await supabase.from('productos').insert(producto)
+    const payload = usuario?.kiosco_id
+      ? { ...producto, kiosco_id: usuario.kiosco_id }
+      : producto
+
+    const { error } = await supabase.from('productos').insert(payload)
     if (error) {
       toast.error('Error al crear producto: ' + error.message)
       return false
@@ -163,7 +180,12 @@ export function useProducts() {
 
   // CRUD Categorías
   const crearCategoria = async (nombre: string, color: string = '#6366f1') => {
-    const { error } = await supabase.from('categorias').insert({ nombre, color })
+    const payload: Record<string, any> = { nombre, color }
+    if (usuario?.kiosco_id) {
+      payload.kiosco_id = usuario.kiosco_id
+    }
+
+    const { error } = await supabase.from('categorias').insert(payload as any)
     if (error) {
       toast.error('Error al crear categoría: ' + error.message)
       return false
