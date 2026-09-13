@@ -48,12 +48,4 @@ input, button {
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
-/* Visores de cámara para lector de código de barras */
-#barcode-capture-viewport video,
-#barcode-scanner-viewport video {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: cover !important;
-  border-radius: 1rem;
-}
 

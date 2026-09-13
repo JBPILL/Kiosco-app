@@ -143,15 +143,6 @@ export function BarcodeCaptureModal({
         }
       }
 
-      // Asegurar que en iOS Safari el video tenga playsinline y continue reproduciendo
-      const videoEl = element.querySelector('video')
-      if (videoEl) {
-        videoEl.setAttribute('playsinline', 'true')
-        videoEl.setAttribute('webkit-playsinline', 'true')
-        videoEl.muted = true
-        videoEl.play().catch(() => {})
-      }
-
       // Si el modal se cerró mientras la cámara inicializaba, detener de inmediato
       if (!isOpenRef.current) {
         try {
