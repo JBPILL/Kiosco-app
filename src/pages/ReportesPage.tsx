@@ -38,6 +38,7 @@ export function ReportesPage() {
   const [ventaExpandida, setVentaExpandida] = useState<string | null>(null)
   const [ventaParaAnular, setVentaParaAnular] = useState<VentaResumen | null>(null)
   const [anulando, setAnulando] = useState(false)
+  const { usuario } = useAuthStore()
   const [ticketParaImprimir, setTicketParaImprimir] = useState<TicketData | null>(null)
 
   const cargarDatos = useCallback(async () => {
@@ -325,7 +326,7 @@ export function ReportesPage() {
                               >
                                 Ver Ticket
                               </Button>
-                              {!esAnulada && (
+                              {!esAnulada && usuario?.rol === 'DUEÑO' && (
                                 <Button
                                   size="sm"
                                   variant="danger"
