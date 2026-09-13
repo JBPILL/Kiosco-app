@@ -302,3 +302,21 @@ export interface DetalleCompra {
   producto?: Producto
 }
 
+export interface PagoProveedor {
+  id: string
+  kiosco_id: string
+  proveedor_id: string
+  fecha: string
+  monto: number
+  medio_pago: 'EFECTIVO' | 'TRANSFERENCIA' | 'OTRO'
+  saldo_anterior: number
+  saldo_nuevo: number
+  pagado_en_caja: boolean
+  sesion_caja_id: string | null
+  comprobante_ref?: string | null
+  notas?: string | null
+  proveedor?: Proveedor
+  estado: 'ACTIVO' | 'ANULADO'
+}
+
+

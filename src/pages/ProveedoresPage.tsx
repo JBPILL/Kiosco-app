@@ -2,15 +2,19 @@ import { useState, useEffect, useMemo } from 'react'
 import { useProveedorStore } from '../stores/proveedorStore'
 import { useProducts } from '../hooks/useProducts'
 import { useCajaStore } from '../stores/cajaStore'
+import { useAuthStore } from '../stores/authStore'
 import { formatPrecio, formatFecha, labelMedioPago } from '../lib/utils'
+import { exportarDetalleCompraCSV } from '../lib/exportUtils'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
+import { ComprobantePagoModal } from '../components/proveedores/ComprobantePagoModal'
 import type {
   Proveedor,
   CompraProveedor,
   DetalleCompra,
   MedioPagoCompra,
+  PagoProveedor,
   Producto,
 } from '../types/database'
 import toast from 'react-hot-toast'
@@ -24,16 +28,22 @@ interface RenglonCompra {
 }
 
 export function ProveedoresPage() {
+  const { usuario } = useAuthStore()
   const {
     proveedores,
     compras,
+    pagos,
     cargando,
     cargandoCompras,
+    cargandoPagos,
     cargarProveedores,
     crearProveedor,
     actualizarProveedor,
     eliminarProveedor,
+    cargarPagos,
     abonarSaldoProveedor,
+    ajustarSaldoProveedor,
+    anularPagoProveedor,
     cargarCompras,
     cargarDetallesCompra,
     registrarCompra,
@@ -43,8 +53,8 @@ export function ProveedoresPage() {
   const { productos, cargarProductos } = useProducts()
   const { sesionActiva, verificarSesionActiva } = useCajaStore()
 
-  // Pestaña activa
-  const [tabActiva, setTabActiva] = useState<'directorio' | 'nueva_compra' | 'historial'>('directorio')
+  // Pestaña activa: directorio | nueva_compra | historial | pagos
+  const [tabActiva, setTabActiva] = useState<'directorio' | 'nueva_compra' | 'historial' | 'pagos'>('directorio')
 
   // --- Filtros Directorio ---
   const [busquedaDir, setBusquedaDir] = useState('')
@@ -67,9 +77,22 @@ export function ProveedoresPage() {
   const [modalAbonarOpen, setModalAbonarOpen] = useState(false)
   const [proveedorAbonar, setProveedorAbonar] = useState<Proveedor | null>(null)
   const [montoAbono, setMontoAbono] = useState('')
-  const [medioPagoAbono, setMedioPagoAbono] = useState<'EFECTIVO' | 'TRANSFERENCIA'>('EFECTIVO')
+  const [medioPagoAbono, setMedioPagoAbono] = useState<'EFECTIVO' | 'TRANSFERENCIA' | 'OTRO'>('EFECTIVO')
+  const [comprobanteRefAbono, setComprobanteRefAbono] = useState('')
+  const [notasAbono, setNotasAbono] = useState('')
   const [descontarAbonoDeCaja, setDescontarAbonoDeCaja] = useState(true)
   const [guardandoAbono, setGuardandoAbono] = useState(false)
+
+  // --- Modal Ajuste Manual de Saldo ---
+  const [modalAjusteOpen, setModalAjusteOpen] = useState(false)
+  const [proveedorAjuste, setProveedorAjuste] = useState<Proveedor | null>(null)
+  const [nuevoSaldoAjuste, setNuevoSaldoAjuste] = useState('')
+  const [motivoAjuste, setMotivoAjuste] = useState('')
+  const [guardandoAjuste, setGuardandoAjuste] = useState(false)
+
+  // --- Modal Comprobante de Pago Generado ---
+  const [modalComprobantePagoOpen, setModalComprobantePagoOpen] = useState(false)
+  const [pagoSeleccionado, setPagoSeleccionado] = useState<PagoProveedor | null>(null)
 
   // --- Formulario Nueva Compra ---
   const [compraProveedorId, setCompraProveedorId] = useState('')
@@ -87,20 +110,24 @@ export function ProveedoresPage() {
   const [cantidadIngresar, setCantidadIngresar] = useState('1')
   const [costoIngresar, setCostoIngresar] = useState('')
 
-  // --- Historial y Detalles ---
+  // --- Historial y Detalles de Compra ---
   const [busquedaHistorial, setBusquedaHistorial] = useState('')
   const [modalDetalleOpen, setModalDetalleOpen] = useState(false)
   const [compraDetalle, setCompraDetalle] = useState<CompraProveedor | null>(null)
   const [detallesCargados, setDetallesCargados] = useState<DetalleCompra[]>([])
   const [cargandoRenglones, setCargandoRenglones] = useState(false)
 
+  // --- Historial de Pagos ---
+  const [busquedaPagos, setBusquedaPagos] = useState('')
+
   // Cargas iniciales
   useEffect(() => {
     cargarProveedores()
     cargarCompras()
+    cargarPagos()
     cargarProductos()
     verificarSesionActiva()
-  }, [cargarProveedores, cargarCompras, cargarProductos, verificarSesionActiva])
+  }, [cargarProveedores, cargarCompras, cargarPagos, cargarProductos, verificarSesionActiva])
 
   // Métricas
   const totalProveedores = proveedores.length
@@ -113,6 +140,12 @@ export function ProveedoresPage() {
       .filter((c) => c.estado === 'RECIBIDA')
       .reduce((sum, c) => sum + (Number(c.total) || 0), 0)
   }, [compras])
+
+  const totalPagosRealizados = useMemo(() => {
+    return pagos
+      .filter((p) => p.estado !== 'ANULADO')
+      .reduce((sum, p) => sum + (Number(p.monto) || 0), 0)
+  }, [pagos])
 
   // Filtrado de Proveedores
   const proveedoresFiltrados = useMemo(() => {
@@ -224,13 +257,23 @@ export function ProveedoresPage() {
     }
   }
 
-  // Handlers Abonar Deuda
+  // Handlers Abonar Saldo / Pago
   const handleAbrirAbonar = (p: Proveedor) => {
     setProveedorAbonar(p)
     setMontoAbono(String(p.saldo_pendiente || ''))
     setMedioPagoAbono('EFECTIVO')
+    setComprobanteRefAbono('')
+    setNotasAbono('')
     setDescontarAbonoDeCaja(Boolean(sesionActiva))
     setModalAbonarOpen(true)
+  }
+
+  // Atajos para modificar el monto a pagar
+  const handleFijarMontoPreset = (porcentaje: number) => {
+    if (!proveedorAbonar) return
+    const deuda = proveedorAbonar.saldo_pendiente || 0
+    const valor = Math.round((deuda * porcentaje) * 100) / 100
+    setMontoAbono(String(valor))
   }
 
   const handleGuardarAbono = async (e: React.FormEvent) => {
@@ -244,17 +287,50 @@ export function ProveedoresPage() {
 
     setGuardandoAbono(true)
     try {
-      const ok = await abonarSaldoProveedor(
+      const comprobanteGenerado = await abonarSaldoProveedor(
         proveedorAbonar.id,
         monto,
         medioPagoAbono,
-        descontarAbonoDeCaja
+        descontarAbonoDeCaja,
+        notasAbono,
+        comprobanteRefAbono
       )
-      if (ok) {
+      if (comprobanteGenerado) {
         setModalAbonarOpen(false)
+        // Abrir comprobante para exportar/imprimir inmediatamente
+        setPagoSeleccionado(comprobanteGenerado)
+        setModalComprobantePagoOpen(true)
       }
     } finally {
       setGuardandoAbono(false)
+    }
+  }
+
+  // Handlers Ajuste Manual de Saldo
+  const handleAbrirAjuste = (p: Proveedor) => {
+    setProveedorAjuste(p)
+    setNuevoSaldoAjuste(String(p.saldo_pendiente || 0))
+    setMotivoAjuste('')
+    setModalAjusteOpen(true)
+  }
+
+  const handleGuardarAjuste = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!proveedorAjuste) return
+    const saldo = parseFloat(nuevoSaldoAjuste)
+    if (isNaN(saldo) || saldo < 0) {
+      toast.error('Ingresá un saldo válido mayor o igual a 0')
+      return
+    }
+
+    setGuardandoAjuste(true)
+    try {
+      const ok = await ajustarSaldoProveedor(proveedorAjuste.id, saldo, motivoAjuste)
+      if (ok) {
+        setModalAjusteOpen(false)
+      }
+    } finally {
+      setGuardandoAjuste(false)
     }
   }
 
@@ -288,7 +364,6 @@ export function ProveedoresPage() {
       return
     }
 
-    // Si ya existe en la lista de renglones, sumar cantidad o reemplazar
     const indexExistente = renglones.findIndex((r) => r.producto_id === productoSeleccionado.id)
     if (indexExistente >= 0) {
       const actualizados = [...renglones]
@@ -314,7 +389,6 @@ export function ProveedoresPage() {
       ])
     }
 
-    // Reset inputs de agregar producto
     setProductoSeleccionado(null)
     setBusquedaProducto('')
     setCostoIngresar('')
@@ -375,7 +449,6 @@ export function ProveedoresPage() {
       )
 
       if (resultado.success) {
-        // Reset form
         setCompraComprobante('')
         setCompraNotas('')
         setRenglones([])
@@ -387,7 +460,7 @@ export function ProveedoresPage() {
     }
   }
 
-  // Handlers Historial
+  // Handlers Historial de Compras
   const handleVerDetalleCompra = async (c: CompraProveedor) => {
     setCompraDetalle(c)
     setModalDetalleOpen(true)
@@ -403,6 +476,56 @@ export function ProveedoresPage() {
     }
   }
 
+  // Exportar e imprimir remito de compra
+  const handleImprimirRemito = () => {
+    window.print()
+  }
+
+  const handleCompartirRemitoWhatsApp = () => {
+    if (!compraDetalle) return
+    let msg = `*CONSTANCIA DE RECEPCIÓN / REMITO*\n`
+    msg += `Proveedor: *${compraDetalle.proveedor?.nombre || 'Proveedor'}*\n`
+    msg += `Comprobante N°: *${compraDetalle.nro_comprobante || 'S/N'}*\n`
+    msg += `Fecha: ${formatFecha(compraDetalle.fecha)}\n`
+    msg += `--------------------------------\n`
+    detallesCargados.forEach((d) => {
+      msg += `${d.cantidad}x ${d.producto?.descripcion || 'Producto'} ($${d.precio_costo_unitario.toLocaleString('es-AR')}) = $${d.subtotal.toLocaleString('es-AR')}\n`
+    })
+    msg += `--------------------------------\n`
+    msg += `*TOTAL COMPRA: ${formatPrecio(compraDetalle.total)}*\n`
+    msg += `Medio de Pago: ${compraDetalle.medio_pago}\n`
+    if (compraDetalle.notas) msg += `Notas: ${compraDetalle.notas}\n`
+    msg += `Recepción confirmada en inventario.`
+
+    const tel = compraDetalle.proveedor?.telefono?.replace(/\D/g, '') || ''
+    const url = tel
+      ? `https://api.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(msg)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`
+    window.open(url, '_blank')
+  }
+
+  const handleExportarExcelRemito = () => {
+    if (!compraDetalle) return
+    exportarDetalleCompraCSV(compraDetalle, detallesCargados)
+    toast.success('Remito exportado a archivo CSV para Excel')
+  }
+
+  // Handlers Historial de Pagos
+  const handleVerComprobantePago = (p: PagoProveedor) => {
+    setPagoSeleccionado(p)
+    setModalComprobantePagoOpen(true)
+  }
+
+  const handleAnularPago = async (p: PagoProveedor) => {
+    if (
+      confirm(
+        `¿Deseas anular el pago de ${formatPrecio(p.monto)} a "${p.proveedor?.nombre || 'Proveedor'}"? Esto restituirá la deuda en la cuenta corriente.`
+      )
+    ) {
+      await anularPagoProveedor(p.id)
+    }
+  }
+
   const comprasFiltradas = useMemo(() => {
     return compras.filter((c) => {
       const q = busquedaHistorial.toLowerCase()
@@ -411,6 +534,28 @@ export function ProveedoresPage() {
       return matchProv || matchComp
     })
   }, [compras, busquedaHistorial])
+
+  const pagosFiltrados = useMemo(() => {
+    return pagos.filter((p) => {
+      const q = busquedaPagos.toLowerCase()
+      const matchProv = p.proveedor?.nombre.toLowerCase().includes(q) || false
+      const matchRef = p.comprobante_ref?.toLowerCase().includes(q) || false
+      return matchProv || matchRef
+    })
+  }, [pagos, busquedaPagos])
+
+  // Saldo resultante en vivo para el modal de abonar
+  const calculoSaldoAbono = useMemo(() => {
+    if (!proveedorAbonar) return { restante: 0, esTotal: true, aFavor: 0 }
+    const deuda = proveedorAbonar.saldo_pendiente || 0
+    const pago = Number(montoAbono) || 0
+    const diff = deuda - pago
+    return {
+      restante: Math.max(0, diff),
+      esTotal: diff <= 0,
+      aFavor: diff < 0 ? Math.abs(diff) : 0,
+    }
+  }, [proveedorAbonar, montoAbono])
 
   return (
     <div className="max-w-6xl mx-auto space-y-4">
@@ -421,12 +566,12 @@ export function ProveedoresPage() {
             Proveedores y Compras
           </h1>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-            Recepción de mercadería, actualización de costos e historial de remitos
+            Recepción de mercadería, pagos a cuenta, comprobantes y control de deudas
           </p>
         </div>
 
         {/* Pestañas de navegación */}
-        <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 self-start sm:self-auto">
+        <div className="flex flex-wrap bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 self-start sm:self-auto gap-1">
           <button
             onClick={() => setTabActiva('directorio')}
             className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
@@ -455,13 +600,23 @@ export function ProveedoresPage() {
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
             }`}
           >
-            Historial ({compras.length})
+            Historial Compras ({compras.length})
+          </button>
+          <button
+            onClick={() => setTabActiva('pagos')}
+            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+              tabActiva === 'pagos'
+                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            Historial de Pagos ({pagos.length})
           </button>
         </div>
       </div>
 
       {/* Tarjetas de métricas rápidas */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
         <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
           <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Proveedores Registrados</p>
           <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 mt-0.5">
@@ -469,15 +624,25 @@ export function ProveedoresPage() {
           </p>
         </div>
         <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Cuentas por Pagar (Saldo Pendiente)</p>
-          <p className={`text-xl sm:text-2xl font-bold mt-0.5 ${totalDeudaProveedores > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-900 dark:text-gray-100'}`}>
+          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Cuentas por Pagar (Deuda)</p>
+          <p
+            className={`text-xl sm:text-2xl font-bold mt-0.5 ${
+              totalDeudaProveedores > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-900 dark:text-gray-100'
+            }`}
+          >
             {formatPrecio(totalDeudaProveedores)}
           </p>
         </div>
         <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Compras Recibidas (Acumulado)</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Compras Recibidas</p>
           <p className="text-xl sm:text-2xl font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
             {formatPrecio(totalComprasRecibidas)}
+          </p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Pagos Emitidos</p>
+          <p className="text-xl sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
+            {formatPrecio(totalPagosRealizados)}
           </p>
         </div>
       </div>
@@ -628,14 +793,19 @@ export function ProveedoresPage() {
                         >
                           Comprar
                         </button>
-                        {tieneDeuda && (
-                          <button
-                            onClick={() => handleAbrirAbonar(p)}
-                            className="px-2.5 py-1 rounded bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50 font-semibold"
-                          >
-                            Abonar
-                          </button>
-                        )}
+                        <button
+                          onClick={() => handleAbrirAbonar(p)}
+                          className="px-2.5 py-1 rounded bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 font-semibold"
+                        >
+                          Pagar / Abonar
+                        </button>
+                        <button
+                          onClick={() => handleAbrirAjuste(p)}
+                          className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 text-[11px]"
+                          title="Ajustar saldo sin mover caja"
+                        >
+                          Ajustar
+                        </button>
                       </div>
 
                       <div className="flex gap-2">
@@ -666,14 +836,12 @@ export function ProveedoresPage() {
           ───────────────────────────────────────────────────────────── */}
       {tabActiva === 'nueva_compra' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Columna Izquierda: Formulario de cabecera y búsqueda */}
           <div className="lg:col-span-1 space-y-4">
             <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3">
               <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700 pb-2">
                 Datos del Comprobante
               </h2>
 
-              {/* Selector de proveedor */}
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                   Proveedor *
@@ -697,7 +865,6 @@ export function ProveedoresPage() {
                 )}
               </div>
 
-              {/* Nro de Comprobante / Remito */}
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                   N° Factura / Remito
@@ -711,7 +878,6 @@ export function ProveedoresPage() {
                 />
               </div>
 
-              {/* Fecha y hora */}
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                   Fecha y Hora
@@ -724,7 +890,6 @@ export function ProveedoresPage() {
                 />
               </div>
 
-              {/* Medio de Pago */}
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                   Medio de Pago
@@ -740,7 +905,6 @@ export function ProveedoresPage() {
                 </select>
               </div>
 
-              {/* Checkbox Descontar de caja activa */}
               {compraMedioPago === 'EFECTIVO' && (
                 <div className="pt-1">
                   <label className="flex items-center gap-2 cursor-pointer text-xs text-gray-700 dark:text-gray-300">
@@ -764,7 +928,6 @@ export function ProveedoresPage() {
                 </div>
               )}
 
-              {/* Observaciones */}
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                   Notas / Observaciones
@@ -779,7 +942,6 @@ export function ProveedoresPage() {
               </div>
             </div>
 
-            {/* Selector y buscador rápido de productos */}
             <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3">
               <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700 pb-2">
                 Agregar Productos a la Recepción
@@ -800,7 +962,6 @@ export function ProveedoresPage() {
                   className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                 />
 
-                {/* Lista desplegable de sugerencias */}
                 {sugerenciasProductos.length > 0 && !productoSeleccionado && (
                   <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20 max-h-48 overflow-y-auto">
                     {sugerenciasProductos.map((p) => (
@@ -866,7 +1027,6 @@ export function ProveedoresPage() {
             </div>
           </div>
 
-          {/* Columna Derecha: Tabla de Renglones Recibidos y Confirmación */}
           <div className="lg:col-span-2 space-y-4">
             <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col justify-between min-h-[420px]">
               <div>
@@ -964,7 +1124,6 @@ export function ProveedoresPage() {
                 )}
               </div>
 
-              {/* Resumen del Comprobante y Botón Confirmar */}
               <div className="pt-4 border-t border-gray-200 dark:border-gray-700 mt-4">
                 <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
                   <div className="text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
@@ -1085,12 +1244,124 @@ export function ProveedoresPage() {
                             onClick={() => handleVerDetalleCompra(c)}
                             className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
                           >
-                            Ver Renglones
+                            Ver Renglones / Exportar
                           </button>
                           {!esAnulada && (
                             <button
                               onClick={() => handleAnularCompra(c)}
                               className="text-xs font-semibold text-red-500 dark:text-red-400 hover:underline"
+                            >
+                              Anular
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          TAB 4: HISTORIAL DE PAGOS A PROVEEDORES
+          ───────────────────────────────────────────────────────────── */}
+      {tabActiva === 'pagos' && (
+        <div className="space-y-3">
+          <div className="flex flex-col sm:flex-row gap-2 justify-between items-stretch sm:items-center bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700">
+            <div className="relative flex-1 max-w-md">
+              <input
+                type="text"
+                placeholder="Buscar por proveedor o referencia..."
+                value={busquedaPagos}
+                onChange={(e) => setBusquedaPagos(e.target.value)}
+                className="w-full pl-3 pr-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:bg-white dark:focus:bg-gray-800 focus:outline-hidden focus:border-indigo-500"
+              />
+            </div>
+          </div>
+
+          {cargandoPagos ? (
+            <div className="p-8 text-center text-sm text-gray-500 dark:text-gray-400">
+              Cargando historial de pagos...
+            </div>
+          ) : pagosFiltrados.length === 0 ? (
+            <div className="bg-white dark:bg-gray-800 p-8 rounded-xl border border-gray-200 dark:border-gray-700 text-center">
+              <p className="text-gray-600 dark:text-gray-300 font-medium">No hay pagos registrados</p>
+              <p className="text-xs text-gray-400 mt-1">
+                {busquedaPagos
+                  ? 'No hay pagos que coincidan con la búsqueda'
+                  : 'Al abonar saldo a tus proveedores se generarán automáticamente las constancias de pago aquí.'}
+              </p>
+            </div>
+          ) : (
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400">
+                    <th className="py-3 px-3">Fecha</th>
+                    <th className="py-3 px-3">Proveedor</th>
+                    <th className="py-3 px-3">Medio Pago</th>
+                    <th className="py-3 px-3 text-right">Monto Abonado</th>
+                    <th className="py-3 px-3 text-right">Saldo Restante</th>
+                    <th className="py-3 px-3 text-center">Estado</th>
+                    <th className="py-3 px-3 text-center">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
+                  {pagosFiltrados.map((p) => {
+                    const esAnulado = p.estado === 'ANULADO'
+                    return (
+                      <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                        <td className="py-3 px-3 text-gray-600 dark:text-gray-400 font-mono">
+                          {formatFecha(p.fecha)}
+                        </td>
+                        <td className="py-3 px-3 font-semibold text-gray-900 dark:text-gray-100">
+                          {p.proveedor?.nombre || 'Proveedor'}
+                          {p.comprobante_ref && (
+                            <span className="block text-[10px] text-gray-400 font-mono">
+                              Ref: {p.comprobante_ref}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-gray-600 dark:text-gray-400">
+                          {p.medio_pago}
+                          {p.pagado_en_caja && (
+                            <span className="block text-[10px] text-emerald-600 dark:text-emerald-400">
+                              (Egreso en caja)
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-right font-bold text-gray-900 dark:text-gray-100 text-sm">
+                          {formatPrecio(p.monto)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-medium text-gray-600 dark:text-gray-400">
+                          {formatPrecio(p.saldo_nuevo)}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              esAnulado
+                                ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400'
+                                : 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400'
+                            }`}
+                          >
+                            {p.estado}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-center space-x-2">
+                          <button
+                            onClick={() => handleVerComprobantePago(p)}
+                            className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                          >
+                            Ver / Imprimir
+                          </button>
+                          {!esAnulado && (
+                            <button
+                              onClick={() => handleAnularPago(p)}
+                              className="text-xs font-semibold text-red-500 dark:text-red-400 hover:underline"
+                              title="Anular pago y restituir deuda"
                             >
                               Anular
                             </button>
@@ -1195,13 +1466,13 @@ export function ProveedoresPage() {
       </Modal>
 
       {/* ─────────────────────────────────────────────────────────────
-          MODAL: ABONAR SALDO / PAGO A PROVEEDOR
+          MODAL: ABONAR SALDO / PAGO A PROVEEDOR (CON PRESETS Y MONTO MODIFICABLE)
           ───────────────────────────────────────────────────────────── */}
       <Modal
         isOpen={modalAbonarOpen}
         onClose={() => setModalAbonarOpen(false)}
         title="Registrar Pago a Proveedor"
-        size="sm"
+        size="md"
       >
         {proveedorAbonar && (
           <form onSubmit={handleGuardarAbono} className="space-y-3">
@@ -1210,35 +1481,101 @@ export function ProveedoresPage() {
               <div className="font-bold text-gray-900 dark:text-gray-100 text-sm mt-0.5">
                 {proveedorAbonar.nombre}
               </div>
-              <div className="mt-2 text-gray-500 dark:text-gray-400">Saldo pendiente actual</div>
-              <div className="text-xl font-black text-amber-600 dark:text-amber-400">
-                {formatPrecio(proveedorAbonar.saldo_pendiente)}
+              <div className="mt-2 flex justify-between items-center">
+                <span className="text-gray-500 dark:text-gray-400">Deuda actual en cuenta:</span>
+                <span className="text-base font-black text-amber-600 dark:text-amber-400">
+                  {formatPrecio(proveedorAbonar.saldo_pendiente)}
+                </span>
               </div>
             </div>
 
-            <Input
-              label="Monto a pagar ($) *"
-              type="number"
-              step="0.01"
-              min="1"
-              max={proveedorAbonar.saldo_pendiente}
-              value={montoAbono}
-              onChange={(e) => setMontoAbono(e.target.value)}
-              required
-            />
-
+            {/* Atajos para modificar el monto rápidamente */}
             <div>
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                Medio de Pago
+                Atajos de importe rápido:
               </label>
-              <select
-                value={medioPagoAbono}
-                onChange={(e) => setMedioPagoAbono(e.target.value as any)}
-                className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-              >
-                <option value="EFECTIVO">Efectivo</option>
-                <option value="TRANSFERENCIA">Transferencia Bancaria</option>
-              </select>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleFijarMontoPreset(1)}
+                  className="py-1.5 px-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-bold text-xs hover:bg-indigo-100 text-center"
+                >
+                  Total (100%)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleFijarMontoPreset(0.5)}
+                  className="py-1.5 px-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold text-xs hover:bg-gray-200 text-center"
+                >
+                  Mitad (50%)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleFijarMontoPreset(0.25)}
+                  className="py-1.5 px-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold text-xs hover:bg-gray-200 text-center"
+                >
+                  Cuarto (25%)
+                </button>
+              </div>
+            </div>
+
+            {/* Input con monto editable libremente */}
+            <div>
+              <Input
+                label="Monto a pagar ($) *"
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={montoAbono}
+                onChange={(e) => setMontoAbono(e.target.value)}
+                required
+              />
+
+              {/* Indicador en tiempo real del saldo resultante */}
+              <div className="mt-1.5 px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs flex justify-between items-center">
+                <span className="text-gray-500 dark:text-gray-400">Saldo tras este pago:</span>
+                <span
+                  className={`font-bold ${
+                    calculoSaldoAbono.esTotal
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-amber-600 dark:text-amber-400'
+                  }`}
+                >
+                  {calculoSaldoAbono.esTotal
+                    ? 'Deuda saldada ($0)'
+                    : formatPrecio(calculoSaldoAbono.restante)}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Medio de Pago
+                </label>
+                <select
+                  value={medioPagoAbono}
+                  onChange={(e) => setMedioPagoAbono(e.target.value as any)}
+                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                >
+                  <option value="EFECTIVO">Efectivo</option>
+                  <option value="TRANSFERENCIA">Transferencia Bancaria</option>
+                  <option value="OTRO">Otro / Cheque</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  N° Referencia / Operación
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Op. 1294821"
+                  value={comprobanteRefAbono}
+                  onChange={(e) => setComprobanteRefAbono(e.target.value)}
+                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                />
+              </div>
             </div>
 
             {medioPagoAbono === 'EFECTIVO' && (
@@ -1259,6 +1596,19 @@ export function ProveedoresPage() {
               </div>
             )}
 
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                Notas / Concepto
+              </label>
+              <input
+                type="text"
+                placeholder="Ej: Pago factura de la semana pasada"
+                value={notasAbono}
+                onChange={(e) => setNotasAbono(e.target.value)}
+                className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              />
+            </div>
+
             <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
               <Button
                 type="button"
@@ -1268,7 +1618,7 @@ export function ProveedoresPage() {
                 Cancelar
               </Button>
               <Button type="submit" loading={guardandoAbono}>
-                Confirmar Pago
+                Confirmar y Emitir Comprobante
               </Button>
             </div>
           </form>
@@ -1276,16 +1626,84 @@ export function ProveedoresPage() {
       </Modal>
 
       {/* ─────────────────────────────────────────────────────────────
-          MODAL: DETALLES DE COMPRA / RENGLONES
+          MODAL: AJUSTE MANUAL DE SALDO (CORRECCIÓN SIN CAJA)
+          ───────────────────────────────────────────────────────────── */}
+      <Modal
+        isOpen={modalAjusteOpen}
+        onClose={() => setModalAjusteOpen(false)}
+        title="Ajustar Saldo de Proveedor"
+        size="sm"
+      >
+        {proveedorAjuste && (
+          <form onSubmit={handleGuardarAjuste} className="space-y-3">
+            <div className="bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border border-gray-100 dark:border-gray-700 text-xs">
+              <span className="text-gray-500 dark:text-gray-400">Proveedor:</span>
+              <p className="font-bold text-gray-900 dark:text-gray-100 text-sm mt-0.5">
+                {proveedorAjuste.nombre}
+              </p>
+              <div className="mt-2 flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">Saldo actual registrado:</span>
+                <span className="font-bold text-gray-900 dark:text-gray-100">
+                  {formatPrecio(proveedorAjuste.saldo_pendiente)}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+              Utilizá esta opción para corregir errores de carga inicial, aplicar notas de crédito o descuentos especiales acordados. No afecta la caja en efectivo.
+            </p>
+
+            <Input
+              label="Nuevo saldo exacto ($) *"
+              type="number"
+              step="0.01"
+              min="0"
+              value={nuevoSaldoAjuste}
+              onChange={(e) => setNuevoSaldoAjuste(e.target.value)}
+              required
+            />
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                Motivo del ajuste
+              </label>
+              <input
+                type="text"
+                placeholder="Ej: Descuento comercial por pronto pago"
+                value={motivoAjuste}
+                onChange={(e) => setMotivoAjuste(e.target.value)}
+                className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setModalAjusteOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" loading={guardandoAjuste}>
+                Guardar Ajuste
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* ─────────────────────────────────────────────────────────────
+          MODAL: DETALLES DE COMPRA / RENGLONES (CON IMPRESIÓN Y EXPORTACIÓN)
           ───────────────────────────────────────────────────────────── */}
       <Modal
         isOpen={modalDetalleOpen}
         onClose={() => setModalDetalleOpen(false)}
-        title="Detalle del Comprobante"
+        title="Detalle del Comprobante / Remito"
         size="lg"
       >
         {compraDetalle && (
           <div className="space-y-3 text-xs">
+            {/* Cabecera del comprobante */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border border-gray-100 dark:border-gray-700">
               <div>
                 <span className="text-gray-400">Proveedor</span>
@@ -1319,7 +1737,11 @@ export function ProveedoresPage() {
               </div>
             )}
 
-            <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+            {/* Tabla de renglones */}
+            <div
+              id="printable-remito"
+              className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-800"
+            >
               <table className="w-full text-left">
                 <thead>
                   <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400">
@@ -1378,9 +1800,55 @@ export function ProveedoresPage() {
                 </strong>
               </div>
             </div>
+
+            {/* Barra de Acciones de Exportación e Impresión */}
+            <div className="flex flex-wrap gap-2 justify-end pt-3 border-t border-gray-200 dark:border-gray-700">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleExportarExcelRemito}
+                disabled={detallesCargados.length === 0}
+              >
+                Exportar Excel / CSV
+              </Button>
+              <Button
+                variant="success"
+                size="sm"
+                onClick={handleCompartirRemitoWhatsApp}
+                disabled={detallesCargados.length === 0}
+              >
+                WhatsApp
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleImprimirRemito}
+                disabled={detallesCargados.length === 0}
+              >
+                Imprimir Remito
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setModalDetalleOpen(false)}
+              >
+                Cerrar
+              </Button>
+            </div>
           </div>
         )}
       </Modal>
+
+      {/* ─────────────────────────────────────────────────────────────
+          MODAL: COMPROBANTE DE PAGO (RECIBO TÉRMICO / EXPORTAR)
+          ───────────────────────────────────────────────────────────── */}
+      <ComprobantePagoModal
+        isOpen={modalComprobantePagoOpen}
+        onClose={() => setModalComprobantePagoOpen(false)}
+        pago={pagoSeleccionado}
+        nombreKiosco="KioskoPOS"
+        telefonoKiosco={usuario?.email || null}
+      />
     </div>
   )
 }

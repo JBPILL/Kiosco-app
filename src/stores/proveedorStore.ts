@@ -8,6 +8,7 @@ import type {
   CompraProveedor,
   DetalleCompra,
   MedioPagoCompra,
+  PagoProveedor,
   Producto,
 } from '../types/database'
 import toast from 'react-hot-toast'
@@ -45,15 +46,30 @@ interface NuevaCompraInput {
 interface ProveedorState {
   proveedores: Proveedor[]
   compras: CompraProveedor[]
+  pagos: PagoProveedor[]
   cargando: boolean
   cargandoCompras: boolean
+  cargandoPagos: boolean
 
   cargarProveedores: () => Promise<Proveedor[]>
   crearProveedor: (datos: NuevoProveedorInput) => Promise<Proveedor | null>
   actualizarProveedor: (id: string, datos: Partial<Proveedor>) => Promise<boolean>
   eliminarProveedor: (id: string) => Promise<boolean>
-  abonarSaldoProveedor: (id: string, monto: number, medioPago: string, descontarDeCaja?: boolean) => Promise<boolean>
 
+  // Pagos y saldos
+  cargarPagos: (proveedorId?: string) => Promise<PagoProveedor[]>
+  abonarSaldoProveedor: (
+    id: string,
+    monto: number,
+    medioPago: 'EFECTIVO' | 'TRANSFERENCIA' | 'OTRO',
+    descontarDeCaja?: boolean,
+    notas?: string,
+    comprobanteRef?: string
+  ) => Promise<PagoProveedor | null>
+  ajustarSaldoProveedor: (id: string, nuevoSaldo: number, motivo?: string) => Promise<boolean>
+  anularPagoProveedor: (pagoId: string) => Promise<boolean>
+
+  // Compras y remitos
   cargarCompras: () => Promise<CompraProveedor[]>
   cargarDetallesCompra: (compraId: string) => Promise<DetalleCompra[]>
   registrarCompra: (
@@ -101,11 +117,32 @@ function saveLocalCompras(kioscoId: string, compras: CompraProveedor[]) {
   }
 }
 
+function getLocalPagos(kioscoId: string): PagoProveedor[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(`kioskopos_pagos_prov_${kioscoId}`)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function saveLocalPagos(kioscoId: string, pagos: PagoProveedor[]) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(`kioskopos_pagos_prov_${kioscoId}`, JSON.stringify(pagos))
+  } catch (e) {
+    console.error('Error guardando pagos en local:', e)
+  }
+}
+
 export const useProveedorStore = create<ProveedorState>((set, get) => ({
   proveedores: [],
   compras: [],
+  pagos: [],
   cargando: false,
   cargandoCompras: false,
+  cargandoPagos: false,
 
   cargarProveedores: async () => {
     const usuario = useAuthStore.getState().usuario
@@ -126,7 +163,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
         return data as Proveedor[]
       }
     } catch {
-      // Fallback a almacenamiento local si la tabla aún no existe o está offline
+      // Fallback a almacenamiento local
     }
 
     const locales = getLocalProveedores(usuario.kiosco_id).filter((p) => p.activo !== false)
@@ -220,7 +257,6 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
     const usuario = useAuthStore.getState().usuario
     if (!usuario?.kiosco_id) return false
 
-    // Soft delete (activo = false) para preservar el historial de compras
     const actualizados = get().proveedores.filter((p) => p.id !== id)
     saveLocalProveedores(usuario.kiosco_id, actualizados)
     set({ proveedores: actualizados })
@@ -243,18 +279,64 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
     return true
   },
 
-  abonarSaldoProveedor: async (id, monto, medioPago, descontarDeCaja = false) => {
+  cargarPagos: async (proveedorId?: string) => {
     const usuario = useAuthStore.getState().usuario
-    if (!usuario?.kiosco_id) return false
+    if (!usuario?.kiosco_id) return []
+
+    set({ cargandoPagos: true })
+    try {
+      let query = supabase
+        .from('pagos_proveedor')
+        .select(`
+          *,
+          proveedor:proveedores(*)
+        `)
+        .eq('kiosco_id', usuario.kiosco_id)
+        .order('fecha', { ascending: false })
+
+      if (proveedorId) {
+        query = query.eq('proveedor_id', proveedorId)
+      }
+
+      const { data, error } = await query
+      if (!error && data) {
+        set({ pagos: data as PagoProveedor[], cargandoPagos: false })
+        saveLocalPagos(usuario.kiosco_id, data as PagoProveedor[])
+        return data as PagoProveedor[]
+      }
+    } catch {
+      // Fallback a localStorage
+    }
+
+    let locales = getLocalPagos(usuario.kiosco_id)
+    if (proveedorId) {
+      locales = locales.filter((p) => p.proveedor_id === proveedorId)
+    }
+    set({ pagos: locales, cargandoPagos: false })
+    return locales
+  },
+
+  abonarSaldoProveedor: async (
+    id,
+    monto,
+    medioPago,
+    descontarDeCaja = false,
+    notas,
+    comprobanteRef
+  ) => {
+    const usuario = useAuthStore.getState().usuario
+    if (!usuario?.kiosco_id) return null
 
     const proveedor = get().proveedores.find((p) => p.id === id)
     if (!proveedor) {
       toast.error('Proveedor no encontrado')
-      return false
+      return null
     }
 
-    const nuevoSaldo = Math.max(0, (proveedor.saldo_pendiente || 0) - monto)
+    const saldoAnterior = Number(proveedor.saldo_pendiente) || 0
+    const nuevoSaldo = Math.max(0, saldoAnterior - monto)
 
+    // 1. Actualizar proveedor
     const actualizados = get().proveedores.map((p) =>
       p.id === id ? { ...p, saldo_pendiente: nuevoSaldo } : p
     )
@@ -271,20 +353,172 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
       console.warn('Error al actualizar saldo en Supabase:', err)
     }
 
-    // Si se optó por descontar de caja y el medio fue efectivo
-    if (descontarDeCaja && medioPago === 'EFECTIVO') {
-      const caja = useCajaStore.getState()
-      if (caja.sesionActiva) {
+    // 2. Si se optó por descontar de caja en efectivo
+    const caja = useCajaStore.getState()
+    const sesionCajaId = (descontarDeCaja && medioPago === 'EFECTIVO' && caja.sesionActiva)
+      ? caja.sesionActiva.id
+      : null
+
+    if (sesionCajaId) {
+      try {
         await caja.registrarMovimientoCaja(
           'EGRESO',
           'PROVEEDOR',
           monto,
-          `Pago de cuenta a proveedor: ${proveedor.nombre}`
+          `Pago de saldo a proveedor: ${proveedor.nombre} ${comprobanteRef ? `(Ref: ${comprobanteRef})` : ''}`
         )
+      } catch (err) {
+        console.warn('Error registrando egreso en caja:', err)
       }
     }
 
-    toast.success(`Pago de $${monto.toLocaleString('es-AR')} registrado`)
+    // 3. Crear comprobante de pago
+    const nuevoPago: PagoProveedor = {
+      id: uuidv4(),
+      kiosco_id: usuario.kiosco_id,
+      proveedor_id: id,
+      fecha: new Date().toISOString(),
+      monto,
+      medio_pago: medioPago,
+      saldo_anterior: saldoAnterior,
+      saldo_nuevo: nuevoSaldo,
+      pagado_en_caja: Boolean(sesionCajaId),
+      sesion_caja_id: sesionCajaId,
+      comprobante_ref: comprobanteRef?.trim() || null,
+      notas: notas?.trim() || null,
+      proveedor: proveedor,
+      estado: 'ACTIVO',
+    }
+
+    const pagosActualizados = [nuevoPago, ...get().pagos]
+    saveLocalPagos(usuario.kiosco_id, pagosActualizados)
+    set({ pagos: pagosActualizados })
+
+    try {
+      await supabase.from('pagos_proveedor').insert({
+        id: nuevoPago.id,
+        kiosco_id: nuevoPago.kiosco_id,
+        proveedor_id: nuevoPago.proveedor_id,
+        fecha: nuevoPago.fecha,
+        monto: nuevoPago.monto,
+        medio_pago: nuevoPago.medio_pago,
+        saldo_anterior: nuevoPago.saldo_anterior,
+        saldo_nuevo: nuevoPago.saldo_nuevo,
+        pagado_en_caja: nuevoPago.pagado_en_caja,
+        sesion_caja_id: nuevoPago.sesion_caja_id,
+        comprobante_ref: nuevoPago.comprobante_ref,
+        notas: nuevoPago.notas,
+        estado: 'ACTIVO',
+      })
+    } catch {
+      // Ignorar si la tabla pagos_proveedor aún no está creada en Postgres
+    }
+
+    toast.success(`Pago de $${monto.toLocaleString('es-AR')} registrado correctamente`)
+    return nuevoPago
+  },
+
+  ajustarSaldoProveedor: async (id, nuevoSaldo, motivo) => {
+    const usuario = useAuthStore.getState().usuario
+    if (!usuario?.kiosco_id) return false
+
+    const proveedor = get().proveedores.find((p) => p.id === id)
+    if (!proveedor) {
+      toast.error('Proveedor no encontrado')
+      return false
+    }
+
+    const saldoNumerico = Math.max(0, Number(nuevoSaldo) || 0)
+    const actualizados = get().proveedores.map((p) =>
+      p.id === id ? { ...p, saldo_pendiente: saldoNumerico } : p
+    )
+    saveLocalProveedores(usuario.kiosco_id, actualizados)
+    set({ proveedores: actualizados })
+
+    try {
+      await supabase
+        .from('proveedores')
+        .update({ saldo_pendiente: saldoNumerico })
+        .eq('id', id)
+        .eq('kiosco_id', usuario.kiosco_id)
+    } catch (err) {
+      console.warn('Error actualizando saldo en Supabase:', err)
+    }
+
+    toast.success(`Saldo ajustado a $${saldoNumerico.toLocaleString('es-AR')} ${motivo ? `(${motivo})` : ''}`)
+    return true
+  },
+
+  anularPagoProveedor: async (pagoId: string) => {
+    const usuario = useAuthStore.getState().usuario
+    if (!usuario?.kiosco_id) return false
+
+    const pago = get().pagos.find((p) => p.id === pagoId)
+    if (!pago) {
+      toast.error('Comprobante de pago no encontrado')
+      return false
+    }
+    if (pago.estado === 'ANULADO') {
+      toast.error('Este comprobante ya se encuentra anulado')
+      return false
+    }
+
+    // 1. Revertir saldo pendiente al proveedor
+    const proveedor = get().proveedores.find((p) => p.id === pago.proveedor_id)
+    if (proveedor) {
+      const saldoRestituido = (proveedor.saldo_pendiente || 0) + pago.monto
+      const actualizados = get().proveedores.map((p) =>
+        p.id === proveedor.id ? { ...p, saldo_pendiente: saldoRestituido } : p
+      )
+      saveLocalProveedores(usuario.kiosco_id, actualizados)
+      set({ proveedores: actualizados })
+
+      try {
+        await supabase
+          .from('proveedores')
+          .update({ saldo_pendiente: saldoRestituido })
+          .eq('id', proveedor.id)
+          .eq('kiosco_id', usuario.kiosco_id)
+      } catch (err) {
+        console.warn('Error revirtiendo saldo:', err)
+      }
+    }
+
+    // 2. Si se había descontado de caja y la caja sigue abierta, ingresar reintegro
+    if (pago.pagado_en_caja) {
+      const caja = useCajaStore.getState()
+      if (caja.sesionActiva) {
+        try {
+          await caja.registrarMovimientoCaja(
+            'INGRESO',
+            'PROVEEDOR',
+            pago.monto,
+            `Reintegro por anulación de pago a proveedor: ${proveedor?.nombre || 'Proveedor'}`
+          )
+        } catch (err) {
+          console.warn('Error reintegrando a caja:', err)
+        }
+      }
+    }
+
+    // 3. Marcar pago como anulado
+    const pagosActualizados = get().pagos.map((p) =>
+      p.id === pagoId ? { ...p, estado: 'ANULADO' as const } : p
+    )
+    saveLocalPagos(usuario.kiosco_id, pagosActualizados)
+    set({ pagos: pagosActualizados })
+
+    try {
+      await supabase
+        .from('pagos_proveedor')
+        .update({ estado: 'ANULADO' })
+        .eq('id', pagoId)
+        .eq('kiosco_id', usuario.kiosco_id)
+    } catch {
+      // Fallback
+    }
+
+    toast.success('Pago anulado y saldo de deuda restituido')
     return true
   },
 
@@ -451,7 +685,6 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
       })
 
       if (!errorCabecera) {
-        // Insertar los renglones (esto disparará el trigger trg_impactar_stock_compra en Postgres)
         const renglones = nuevaCompra.detalles!.map((d) => ({
           id: d.id,
           compra_id: d.compra_id,
@@ -465,8 +698,6 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
         if (errorDetalles) {
           console.warn('Error insertando detalles_compra en Supabase:', errorDetalles)
         }
-      } else {
-        console.warn('Supabase compras_proveedor insert fallback:', errorCabecera)
       }
     } catch (err) {
       console.warn('Error al persistir compra en Supabase (guardada localmente):', err)

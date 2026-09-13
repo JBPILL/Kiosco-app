@@ -121,3 +121,47 @@ export function exportarVentasCSV(
 
   descargarArchivo(csvContent, `backup_ventas_${cleanName}_${fechaStr}.csv`)
 }
+
+/**
+ * Exporta los renglones de una compra/remito de proveedor a CSV para Excel.
+ */
+export function exportarDetalleCompraCSV(
+  compra: { nro_comprobante?: string | null; fecha: string; total: number; proveedor?: { nombre: string } | null },
+  detalles: { producto?: { descripcion: string; codigo_barras?: string | null } | null; cantidad: number; precio_costo_unitario: number; subtotal: number }[]
+) {
+  const encabezados = [
+    'Producto',
+    'Código de Barras',
+    'Cantidad',
+    'Precio Costo Unitario ($)',
+    'Subtotal ($)',
+  ]
+
+  const filas = detalles.map((d) =>
+    [
+      escaparCSV(d.producto?.descripcion || 'Producto'),
+      escaparCSV(d.producto?.codigo_barras || '—'),
+      d.cantidad,
+      d.precio_costo_unitario ?? 0,
+      d.subtotal ?? 0,
+    ].join(';')
+  )
+
+  const compRef = compra.nro_comprobante
+    ? compra.nro_comprobante.replace(/[^a-zA-Z0-9]/g, '_')
+    : 'remito'
+
+  const lineas = [
+    `"COMPROBANTE DE RECEPCIÓN / COMPRA"`,
+    `"Proveedor: ${compra.proveedor?.nombre || 'Proveedor'}"`,
+    `"N° Comprobante: ${compra.nro_comprobante || 'S/N'}"`,
+    `"Fecha: ${formatFecha(compra.fecha)}"`,
+    `"Total: ${compra.total}"`,
+    '',
+    encabezados.join(';'),
+    ...filas,
+  ]
+
+  descargarArchivo(lineas.join('\r\n'), `remito_${compRef}_${new Date().toISOString().split('T')[0]}.csv`)
+}
+
