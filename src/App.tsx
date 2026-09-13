@@ -20,7 +20,14 @@ interface RutaProtegidaProps {
 
 function RutaProtegida({ rolesPermitidos, children }: RutaProtegidaProps) {
   const { usuario } = useAuthStore()
-  if (!usuario || !rolesPermitidos.includes(usuario.rol)) {
+  if (!usuario) {
+    return <Navigate to="/" replace />
+  }
+  // Si es superadmin sin kiosco asignado, su lugar de trabajo es el panel admin
+  if (usuario.es_superadmin && !usuario.kiosco_id) {
+    return <Navigate to="/admin" replace />
+  }
+  if (!rolesPermitidos.includes(usuario.rol)) {
     return <Navigate to="/" replace />
   }
   return <>{children}</>
@@ -65,9 +72,30 @@ function App() {
         <Routes>
           <Route element={<MainLayout />}>
             {/* Rutas compartidas (Dueño y Cajero) */}
-            <Route path="/" element={<POSPage />} />
-            <Route path="/caja" element={<CajaPage />} />
-            <Route path="/clientes" element={<ClientesPage />} />
+            <Route
+              path="/"
+              element={
+                usuario.es_superadmin && !usuario.kiosco_id
+                  ? <Navigate to="/admin" replace />
+                  : <POSPage />
+              }
+            />
+            <Route
+              path="/caja"
+              element={
+                usuario.es_superadmin && !usuario.kiosco_id
+                  ? <Navigate to="/admin" replace />
+                  : <CajaPage />
+              }
+            />
+            <Route
+              path="/clientes"
+              element={
+                usuario.es_superadmin && !usuario.kiosco_id
+                  ? <Navigate to="/admin" replace />
+                  : <ClientesPage />
+              }
+            />
 
             {/* Rutas exclusivas para Dueño */}
             <Route
@@ -115,7 +143,10 @@ function App() {
               }
             />
           </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route
+            path="*"
+            element={<Navigate to={usuario.es_superadmin && !usuario.kiosco_id ? "/admin" : "/"} replace />}
+          />
         </Routes>
       )}
     </BrowserRouter>

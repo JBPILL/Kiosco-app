@@ -38,7 +38,7 @@ export interface Producto {
 export interface Usuario {
   id: string
   auth_user_id: string | null
-  kiosco_id: string
+  kiosco_id: string | null
   nombre: string
   email: string | null
   rol: 'DUEÑO' | 'CAJERO' | 'VISOR'

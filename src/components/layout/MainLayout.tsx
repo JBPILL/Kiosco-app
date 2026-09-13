@@ -69,44 +69,52 @@ export function MainLayout() {
 
           {/* Accesos rápidos visibles en la barra superior móvil */}
           <div className="flex items-center gap-1.5">
-            {usuario?.es_superadmin && (
-              <NavLink
-                to="/admin"
-                className={({ isActive }) =>
-                  `px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                    isActive
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200'
-                  }`
-                }
-              >
-                Admin
-              </NavLink>
+            {usuario?.es_superadmin && !usuario.kiosco_id ? (
+              <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300">
+                SaaS Admin
+              </span>
+            ) : (
+              <>
+                {usuario?.es_superadmin && (
+                  <NavLink
+                    to="/admin"
+                    className={({ isActive }) =>
+                      `px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                        isActive
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200'
+                      }`
+                    }
+                  >
+                    Admin
+                  </NavLink>
+                )}
+                <NavLink
+                  to="/clientes"
+                  className={({ isActive }) =>
+                    `px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                      isActive
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`
+                  }
+                >
+                  Clientes
+                </NavLink>
+                <NavLink
+                  to="/caja"
+                  className={({ isActive }) =>
+                    `px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                      isActive
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`
+                  }
+                >
+                  Caja
+                </NavLink>
+              </>
             )}
-            <NavLink
-              to="/clientes"
-              className={({ isActive }) =>
-                `px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                  isActive
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }`
-              }
-            >
-              Clientes
-            </NavLink>
-            <NavLink
-              to="/caja"
-              className={({ isActive }) =>
-                `px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                  isActive
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }`
-              }
-            >
-              Caja
-            </NavLink>
           </div>
         </header>
 
@@ -142,14 +150,21 @@ export function MainLayout() {
           </>
         )}
 
-        {/* Área de contenido con scroll suave y padding inferior para no tapar la bottom bar */}
-        <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 bg-gray-50 dark:bg-gray-900 pb-[max(80px,calc(64px+env(safe-area-inset-bottom)))] lg:pb-[max(16px,env(safe-area-inset-bottom))]">
+        {/* Área de contenido con scroll suave */}
+        <main
+          className={`flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 bg-gray-50 dark:bg-gray-900 ${
+            usuario?.es_superadmin && !usuario.kiosco_id
+              ? 'pb-[max(16px,env(safe-area-inset-bottom))]'
+              : 'pb-[max(80px,calc(64px+env(safe-area-inset-bottom)))] lg:pb-[max(16px,env(safe-area-inset-bottom))]'
+          }`}
+        >
           <Outlet />
         </main>
 
-        {/* Barra de Navegación Inferior para Celulares (Bottom Nav Bar) */}
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-700 z-20 pb-[env(safe-area-inset-bottom)] shadow-lg">
-          <div className="grid grid-cols-4 h-14 max-w-md mx-auto">
+        {/* Barra de Navegación Inferior para Celulares (solo para locales comerciales) */}
+        {(!usuario?.es_superadmin || !!usuario.kiosco_id) && (
+          <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-700 z-20 pb-[env(safe-area-inset-bottom)] shadow-lg">
+            <div className="grid grid-cols-4 h-14 max-w-md mx-auto">
             <NavLink
               to="/"
               className={({ isActive }) =>
@@ -210,7 +225,8 @@ export function MainLayout() {
             </button>
           </div>
         </nav>
-      </div>
+      )}
+    </div>
     </div>
   )
 }

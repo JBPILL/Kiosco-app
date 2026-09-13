@@ -27,6 +27,12 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const itemsVisibles = useMemo(() => {
     if (!usuario) return []
+    // Si es superadmin sin kiosco, su menú es 100% administrativo
+    if (usuario.es_superadmin && !usuario.kiosco_id) {
+      return [
+        { path: '/admin', label: 'Panel Super-Admin', roles: ['DUEÑO', 'CAJERO', 'VISOR'], esAdmin: true },
+      ]
+    }
     const items = menuItems.filter((item) => item.roles.includes(usuario.rol))
     if (usuario.es_superadmin) {
       return [
@@ -151,7 +157,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           </div>
           {usuario && (
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              {usuario.nombre} · <span className="capitalize">{usuario.rol.toLowerCase()}</span>
+              {usuario.nombre} ·{' '}
+              <span className="capitalize font-semibold text-indigo-600 dark:text-indigo-400">
+                {usuario.es_superadmin && !usuario.kiosco_id ? 'Super-Admin' : usuario.rol.toLowerCase()}
+              </span>
             </p>
           )}
         </div>

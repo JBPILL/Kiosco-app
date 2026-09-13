@@ -70,7 +70,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       if (userError || !usuario) {
         await supabase.auth.signOut()
-        throw new Error('Este usuario no tiene un perfil activo asociado a ningún kiosco.')
+        throw new Error('Este usuario no tiene un perfil activo en la plataforma.')
+      }
+
+      if (!usuario.es_superadmin && !usuario.kiosco_id) {
+        await supabase.auth.signOut()
+        throw new Error('Este usuario no tiene un comercio asignado. Contactá al soporte.')
       }
 
       // 3. Traer datos del kiosco
