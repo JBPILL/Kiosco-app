@@ -12,6 +12,19 @@ import { ConfigPage } from './pages/ConfigPage'
 import { CajaPage } from './pages/CajaPage'
 import { ClientesPage } from './pages/ClientesPage'
 
+interface RutaProtegidaProps {
+  rolesPermitidos: ('DUEÑO' | 'CAJERO' | 'VISOR')[]
+  children: React.ReactNode
+}
+
+function RutaProtegida({ rolesPermitidos, children }: RutaProtegidaProps) {
+  const { usuario } = useAuthStore()
+  if (!usuario || !rolesPermitidos.includes(usuario.rol)) {
+    return <Navigate to="/" replace />
+  }
+  return <>{children}</>
+}
+
 function App() {
   const { usuario, cargando, cargarSesion } = useAuthStore()
 
@@ -42,13 +55,46 @@ function App() {
       ) : (
         <Routes>
           <Route element={<MainLayout />}>
+            {/* Rutas compartidas (Dueño y Cajero) */}
             <Route path="/" element={<POSPage />} />
             <Route path="/caja" element={<CajaPage />} />
             <Route path="/clientes" element={<ClientesPage />} />
-            <Route path="/catalogo" element={<CatalogoPage />} />
-            <Route path="/stock" element={<StockPage />} />
-            <Route path="/reportes" element={<ReportesPage />} />
-            <Route path="/config" element={<ConfigPage />} />
+
+            {/* Rutas exclusivas para Dueño */}
+            <Route
+              path="/catalogo"
+              element={
+                <RutaProtegida rolesPermitidos={['DUEÑO']}>
+                  <CatalogoPage />
+                </RutaProtegida>
+              }
+            />
+            <Route
+              path="/stock"
+              element={
+                <RutaProtegida rolesPermitidos={['DUEÑO']}>
+                  <StockPage />
+                </RutaProtegida>
+              }
+            />
+            <Route
+              path="/config"
+              element={
+                <RutaProtegida rolesPermitidos={['DUEÑO']}>
+                  <ConfigPage />
+                </RutaProtegida>
+              }
+            />
+
+            {/* Rutas para Dueño y Visor */}
+            <Route
+              path="/reportes"
+              element={
+                <RutaProtegida rolesPermitidos={['DUEÑO', 'VISOR']}>
+                  <ReportesPage />
+                </RutaProtegida>
+              }
+            />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

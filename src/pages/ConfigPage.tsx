@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, createUnauthenticatedClient } from '../lib/supabase'
 import { useAuthStore } from '../stores/authStore'
 import { useThemeStore } from '../stores/themeStore'
 import { Button } from '../components/ui/Button'
@@ -26,6 +26,9 @@ export function ConfigPage() {
   const [modalUsuarioOpen, setModalUsuarioOpen] = useState(false)
   const [nuevoNombre, setNuevoNombre] = useState('')
   const [nuevoEmail, setNuevoEmail] = useState('')
+  const [nuevoPassword, setNuevoPassword] = useState('')
+  const [authUserIdManual, setAuthUserIdManual] = useState('')
+  const [mostrarAvanzadoAuth, setMostrarAvanzadoAuth] = useState(false)
   const [nuevoRol, setNuevoRol] = useState<'CAJERO' | 'VISOR'>('CAJERO')
   const [creandoUsuario, setCreandoUsuario] = useState(false)
 
@@ -103,8 +106,31 @@ export function ConfigPage() {
 
     setCreandoUsuario(true)
     try {
+      let authUserId: string | null = authUserIdManual.trim() || null
+
+      // Si se proporcionó email y contraseña, intentar crear credencial en Supabase Auth
+      if (!authUserId && nuevoEmail.trim() && nuevoPassword.trim()) {
+        try {
+          const tempClient = createUnauthenticatedClient()
+          const { data: authData, error: authError } = await tempClient.auth.signUp({
+            email: nuevoEmail.trim(),
+            password: nuevoPassword.trim(),
+          })
+
+          if (authError) {
+            console.warn('Error en signUp:', authError)
+            toast.error(`Aviso en credencial: ${authError.message}`, { duration: 4000 })
+          } else if (authData?.user?.id) {
+            authUserId = authData.user.id
+          }
+        } catch (authErr) {
+          console.warn('Fallo creación auth:', authErr)
+        }
+      }
+
       const { error } = await supabase.from('usuarios').insert({
         kiosco_id: usuario.kiosco_id,
+        auth_user_id: authUserId,
         nombre: nuevoNombre.trim(),
         email: nuevoEmail.trim() || null,
         rol: nuevoRol,
@@ -113,15 +139,22 @@ export function ConfigPage() {
 
       if (error) throw error
 
-      toast.success('Usuario agregado al sistema')
+      toast.success(
+        authUserId
+          ? 'Usuario creado con credenciales de acceso activas'
+          : 'Usuario agregado a la lista del kiosco'
+      )
       setModalUsuarioOpen(false)
       setNuevoNombre('')
       setNuevoEmail('')
+      setNuevoPassword('')
+      setAuthUserIdManual('')
+      setMostrarAvanzadoAuth(false)
       setNuevoRol('CAJERO')
       cargarDatos()
     } catch (err) {
       console.error('Error creando usuario:', err)
-      toast.error('Error al crear usuario')
+      toast.error(err instanceof Error ? err.message : 'Error al crear usuario')
     } finally {
       setCreandoUsuario(false)
     }
@@ -245,6 +278,7 @@ export function ConfigPage() {
                       <th className="px-4 py-3 font-medium">Nombre</th>
                       <th className="px-4 py-3 font-medium">Email</th>
                       <th className="px-4 py-3 font-medium">Rol</th>
+                      <th className="px-4 py-3 font-medium">Acceso / Login</th>
                       <th className="px-4 py-3 font-medium">Estado</th>
                     </tr>
                   </thead>
@@ -259,10 +293,21 @@ export function ConfigPage() {
                               ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400'
                               : u.rol === 'CAJERO'
                               ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
-                              : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                              : 'bg-gray-100 text-gray-700 dark:text-gray-700 dark:text-gray-300'
                           }`}>
                             {u.rol}
                           </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {u.auth_user_id ? (
+                            <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                              Habilitado
+                            </span>
+                          ) : (
+                            <span className="text-xs text-amber-600 dark:text-amber-400 font-medium" title="Este usuario fue registrado sin contraseña en Supabase Auth">
+                              Sin clave de acceso
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-emerald-600 dark:text-emerald-400 text-xs font-medium">
@@ -297,11 +342,22 @@ export function ConfigPage() {
           />
 
           <Input
-            label="Email"
+            label="Email para iniciar sesión *"
             type="email"
-            placeholder="laura@ejemplo.com"
+            placeholder="cajero@mitienda.com"
             value={nuevoEmail}
             onChange={(e) => setNuevoEmail(e.target.value)}
+            required
+          />
+
+          <Input
+            label="Contraseña *"
+            type="password"
+            placeholder="Mínimo 6 caracteres"
+            value={nuevoPassword}
+            onChange={(e) => setNuevoPassword(e.target.value)}
+            required={!authUserIdManual}
+            minLength={6}
           />
 
           <div>
@@ -313,9 +369,42 @@ export function ConfigPage() {
               onChange={(e) => setNuevoRol(e.target.value as 'CAJERO' | 'VISOR')}
               className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5 text-base text-gray-900 dark:text-gray-100"
             >
-              <option value="CAJERO">CAJERO (Puede registrar ventas en el punto de venta)</option>
-              <option value="VISOR">VISOR (Solo puede consultar reportes y ventas)</option>
+              <option value="CAJERO">CAJERO (Solo Punto de Venta, Caja y Clientes)</option>
+              <option value="VISOR">VISOR (Solo consulta de reportes y ventas)</option>
             </select>
+          </div>
+
+          {/* Información de permisos */}
+          <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 rounded-xl text-xs text-indigo-900 dark:text-indigo-300 space-y-1">
+            <p className="font-semibold">Control de permisos del rol CAJERO:</p>
+            <p>
+              El cajero ingresará a la app con este email y contraseña. No tendrá permisos de administrador: las secciones de <strong>Catálogo</strong>, <strong>Stock</strong>, <strong>Reportes</strong> y <strong>Configuración</strong> estarán totalmente bloqueadas y ocultas.
+            </p>
+          </div>
+
+          {/* Opciones avanzadas para vincular Auth UID manualmente */}
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => setMostrarAvanzadoAuth(!mostrarAvanzadoAuth)}
+              className="text-xs text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 underline font-medium"
+            >
+              {mostrarAvanzadoAuth ? 'Ocultar opciones avanzadas' : 'Vincular ID de Supabase Auth manualmente'}
+            </button>
+
+            {mostrarAvanzadoAuth && (
+              <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl space-y-2 text-xs">
+                <p className="text-gray-600 dark:text-gray-400">
+                  Si ya creaste el usuario directamente en el Dashboard de Supabase (Authentication → Users), pegá acá su User UID:
+                </p>
+                <Input
+                  label="Supabase Auth User ID (UUID)"
+                  placeholder="Ej: a1b2c3d4-e5f6-7890-..."
+                  value={authUserIdManual}
+                  onChange={(e) => setAuthUserIdManual(e.target.value)}
+                />
+              </div>
+            )}
           </div>
 
           <div className="flex gap-2 pt-2">
