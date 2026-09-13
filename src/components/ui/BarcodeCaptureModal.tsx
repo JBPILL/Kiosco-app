@@ -111,7 +111,6 @@ export function BarcodeCaptureModal({
             height: Math.min(height, viewfinderHeight),
           }
         },
-        aspectRatio: 1.2,
       }
 
       const targetCamera = cameraId || { facingMode: 'environment' }
@@ -263,6 +262,29 @@ export function BarcodeCaptureModal({
     }
   }, [isOpen, iniciarEscaner, detenerEscaner])
 
+  // Interceptar la creación de elementos <video> para inyectar playsinline y autoplay nativos en iOS WebKit (Safari / Brave)
+  useEffect(() => {
+    if (!isOpen) return
+    const origCreateElement = document.createElement.bind(document)
+    document.createElement = function (tagName: string, options?: ElementCreationOptions) {
+      const el = origCreateElement(tagName, options)
+      if (tagName.toLowerCase() === 'video') {
+        el.setAttribute('playsinline', 'true')
+        el.setAttribute('webkit-playsinline', 'true')
+        el.setAttribute('autoplay', 'true')
+        el.setAttribute('muted', 'true')
+        ;(el as HTMLVideoElement).playsInline = true
+        ;(el as HTMLVideoElement).muted = true
+        ;(el as HTMLVideoElement).autoplay = true
+      }
+      return el
+    }
+    return () => {
+      document.createElement = origCreateElement
+    }
+  }, [isOpen])
+
+  // Limpiar al desmontar
   useEffect(() => {
     return () => {
       detenerEscaner()
@@ -279,7 +301,7 @@ export function BarcodeCaptureModal({
     >
       <div className="space-y-4">
         {/* Contenedor del visor de la cámara */}
-        <div className="relative rounded-2xl overflow-hidden bg-black aspect-[4/3] flex items-center justify-center border border-gray-700 shadow-inner">
+        <div className="relative rounded-2xl overflow-hidden bg-black aspect-[4/3] min-h-[240px] flex items-center justify-center border border-gray-700 shadow-inner">
           {iniciando && !errorCamara && (
             <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-gray-900/80 text-white gap-2">
               <div className="w-8 h-8 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin" />
@@ -297,7 +319,7 @@ export function BarcodeCaptureModal({
           )}
 
           {/* Elemento de video donde html5-qrcode renderiza la cámara */}
-          <div id={elementId} className="w-full h-full object-cover" />
+          <div id={elementId} className="w-full h-full min-h-[240px]" />
 
           {/* Controles flotantes en la cámara */}
           {!iniciando && !errorCamara && (
