@@ -48,4 +48,56 @@ input, button {
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
+/* ==========================================================================
+   Realce de bordes y sombras en Modo Claro
+   Permite distinguir con total claridad los límites de menús, tarjetas y secciones.
+   ========================================================================== */
+
+/* Bordes con mayor definición y contraste en modo claro */
+:root:not(.dark) .border-gray-200 {
+  border-color: #d1d5db; /* gray-300: línea nítida y agradable */
+}
+
+:root:not(.dark) .border-gray-100 {
+  border-color: #e5e7eb; /* gray-200 */
+}
+
+/* Sombreado elegante en todas las secciones, contenedores y tarjetas en modo claro */
+:root:not(.dark) .bg-white.border,
+:root:not(.dark) .rounded-xl.border,
+:root:not(.dark) .rounded-2xl.border {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* Menú lateral (Sidebar) con límite bien definido */
+:root:not(.dark) aside {
+  box-shadow: 2px 0 8px -2px rgba(0, 0, 0, 0.07);
+  border-right-color: #cbd5e1;
+}
+
+/* Barra superior móvil (Header) */
+:root:not(.dark) header {
+  box-shadow: 0 2px 6px -1px rgba(0, 0, 0, 0.06);
+  border-bottom-color: #cbd5e1;
+}
+
+/* Barra inferior móvil (Bottom Navigation) */
+:root:not(.dark) nav.fixed.bottom-0 {
+  box-shadow: 0 -4px 12px -2px rgba(0, 0, 0, 0.08);
+  border-top-color: #cbd5e1;
+}
+
+/* Efecto hover con relieve en botones que son tarjetas/chips */
+:root:not(.dark) button.bg-white.border:hover {
+  box-shadow: 0 3px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+}
+
+/* Inputs y Selects */
+:root:not(.dark) input.bg-white,
+:root:not(.dark) select.bg-white,
+:root:not(.dark) textarea.bg-white {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+}
+
+
 

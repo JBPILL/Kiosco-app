@@ -405,7 +405,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
         <h2 className="font-bold text-gray-900 dark:text-gray-100 text-sm sm:text-base">Ticket</h2>
