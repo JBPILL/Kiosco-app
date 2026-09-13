@@ -16,7 +16,7 @@ export function BarcodeCaptureModal({
   isOpen,
   onClose,
   onBarcodeCaptured,
-  title = 'Escanear Código de Barras con Cámara',
+  title = 'Escanear Código de Barras',
 }: BarcodeCaptureModalProps) {
   const [iniciando, setIniciando] = useState(true)
   const [errorCamara, setErrorCamara] = useState<string | null>(null)
@@ -28,199 +28,122 @@ export function BarcodeCaptureModal({
 
   const scannerRef = useRef<Html5Qrcode | null>(null)
   const elementId = 'barcode-capture-viewport'
-  const isCapturingRef = useRef<boolean>(false)
-  const isStoppingRef = useRef<boolean>(false)
-  const isOpenRef = useRef<boolean>(isOpen)
 
-  useEffect(() => {
-    isOpenRef.current = isOpen
-  }, [isOpen])
-
-  // Procesar código detectado
+  // Procesar código leído
   const procesarCodigo = useCallback(
     (rawCode: string) => {
       const code = rawCode.trim()
-      if (!code || isCapturingRef.current) return
+      if (!code) return
 
-      isCapturingRef.current = true
       playScanSound('success')
-
-      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-        try {
-          navigator.vibrate([40, 30, 40])
-        } catch {
-          // Ignorar si el navegador restringe vibración
-        }
-      }
-
       onBarcodeCaptured(code)
       onClose()
     },
     [onBarcodeCaptured, onClose]
   )
 
-  // Iniciar el escáner de cámara
-  const iniciarEscaner = useCallback(async (cameraId?: string) => {
-    setIniciando(true)
-    setErrorCamara(null)
-    isCapturingRef.current = false
-
-    try {
-      // Limpiar escáner previo si existía
-      if (scannerRef.current) {
-        try {
-          if (scannerRef.current.isScanning) {
-            await scannerRef.current.stop()
-          }
-          scannerRef.current.clear()
-        } catch {
-          // Ignorar error al limpiar
-        }
-        scannerRef.current = null
-      }
-
-      const element = document.getElementById(elementId)
-      if (!element) {
-        setIniciando(false)
-        return
-      }
-
-      const scanner = new Html5Qrcode(elementId, {
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.UPC_E,
-          Html5QrcodeSupportedFormats.CODE_128,
-          Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.CODE_93,
-          Html5QrcodeSupportedFormats.ITF,
-          Html5QrcodeSupportedFormats.QR_CODE,
-        ],
-        verbose: false,
-      })
-      scannerRef.current = scanner
-
-      const scanConfig = {
-        fps: 15,
-        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-          const width = Math.max(60, Math.floor(Math.min(viewfinderWidth * 0.85, 280)))
-          const height = Math.max(60, Math.floor(Math.min(viewfinderHeight * 0.6, 150)))
-          return {
-            width: Math.min(width, viewfinderWidth),
-            height: Math.min(height, viewfinderHeight),
-          }
-        },
-      }
-
-      const targetCamera = cameraId || { facingMode: 'environment' }
+  // Iniciar el escáner
+  const iniciarEscaner = useCallback(
+    async (cameraId?: string) => {
+      setIniciando(true)
+      setErrorCamara(null)
 
       try {
+        // Detener escáner previo si está corriendo
+        if (scannerRef.current?.isScanning) {
+          await scannerRef.current.stop()
+        }
+
+        // Obtener lista de cámaras si aún no se listaron
+        const devices = await Html5Qrcode.getCameras()
+        if (!devices || devices.length === 0) {
+          setErrorCamara('No se detectaron cámaras en este dispositivo.')
+          setIniciando(false)
+          return
+        }
+
+        setCamaras(devices.map((d) => ({ id: d.id, label: d.label || `Cámara ${d.id}` })))
+
+        const scanner =
+          scannerRef.current ||
+          new Html5Qrcode(elementId, {
+            formatsToSupport: [
+              Html5QrcodeSupportedFormats.EAN_13,
+              Html5QrcodeSupportedFormats.EAN_8,
+              Html5QrcodeSupportedFormats.UPC_A,
+              Html5QrcodeSupportedFormats.UPC_E,
+              Html5QrcodeSupportedFormats.CODE_128,
+              Html5QrcodeSupportedFormats.CODE_39,
+              Html5QrcodeSupportedFormats.QR_CODE,
+            ],
+            verbose: false,
+          })
+        scannerRef.current = scanner
+
+        const targetCamera = cameraId || { facingMode: 'environment' }
+
         await scanner.start(
           targetCamera,
-          scanConfig,
+          {
+            fps: 15,
+            qrbox: { width: 280, height: 160 },
+            aspectRatio: 1.2,
+          },
           (decodedText) => {
             procesarCodigo(decodedText)
           },
           () => {
-            // Ignorar cuadros sin detección
+            // Ignorar cuadros sin código
           }
         )
-      } catch (firstErr) {
-        console.warn('Fallo al iniciar cámara con facingMode environment, reintentando con user/default:', firstErr)
-        if (!cameraId) {
-          await scanner.start(
-            { facingMode: 'user' },
-            scanConfig,
-            (decodedText) => {
-              procesarCodigo(decodedText)
-            },
-            () => {}
-          )
-        } else {
-          throw firstErr
-        }
-      }
 
-      // Si el modal se cerró mientras la cámara inicializaba, detener de inmediato
-      if (!isOpenRef.current) {
+        if (typeof targetCamera === 'string') {
+          setCamaraActualId(targetCamera)
+        } else if (devices.length > 0) {
+          setCamaraActualId(devices[0].id)
+        }
+
+        // Verificar soporte de linterna / flash
         try {
-          if (scanner.isScanning) {
-            await scanner.stop()
+          const caps = scanner.getRunningTrackCapabilities() as MediaTrackCapabilities & {
+            torch?: boolean
           }
-          scanner.clear()
-        } catch {}
-        scannerRef.current = null
-        return
-      }
-
-      if (typeof targetCamera === 'string') {
-        setCamaraActualId(targetCamera)
-      }
-
-      // Enumerar cámaras ahora que ya se concedieron permisos
-      try {
-        const devices = await Html5Qrcode.getCameras()
-        if (devices && devices.length > 0) {
-          setCamaras(devices.map((d) => ({ id: d.id, label: d.label || `Cámara ${d.id}` })))
-          if (!cameraId) {
-            setCamaraActualId(devices[0].id)
-          }
+          setSoportaAntorcha(Boolean(caps && 'torch' in caps && caps.torch))
+        } catch {
+          setSoportaAntorcha(false)
         }
-      } catch {
-        // Ignorar si falla la enumeración
-      }
 
-      try {
-        const caps = scanner.getRunningTrackCapabilities() as MediaTrackCapabilities & {
-          torch?: boolean
+        setIniciando(false)
+      } catch (err: unknown) {
+        console.error('Error al inicializar cámara:', err)
+        const msg = err instanceof Error ? err.message : String(err)
+        if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
+          setErrorCamara('Permiso de cámara denegado. Habilitá la cámara en la configuración de tu navegador.')
+        } else {
+          setErrorCamara('No se pudo acceder a la cámara. Verificá que no esté en uso por otra aplicación.')
         }
-        setSoportaAntorcha(Boolean(caps && 'torch' in caps && caps.torch))
-      } catch {
-        setSoportaAntorcha(false)
+        setIniciando(false)
       }
-
-      setIniciando(false)
-    } catch (err: unknown) {
-      console.error('Error al inicializar cámara para captura:', err)
-      const msg = err instanceof Error ? err.message : String(err)
-      if (
-        msg.includes('NotAllowedError') ||
-        msg.includes('Permission') ||
-        msg.includes('denied')
-      ) {
-        setErrorCamara('Permiso de cámara denegado. Habilitá la cámara en los permisos de tu navegador.')
-      } else if (msg.includes('NotFoundError') || msg.includes('DevicesNotFoundError')) {
-        setErrorCamara('No se detectó ninguna cámara disponible en este dispositivo.')
-      } else {
-        setErrorCamara('No se pudo acceder a la cámara. Verificá que no esté en uso por otra aplicación.')
-      }
-      setIniciando(false)
-    }
-  }, [procesarCodigo])
+    },
+    [procesarCodigo]
+  )
 
   // Detener escáner
   const detenerEscaner = useCallback(async () => {
-    if (isStoppingRef.current) return
-    isStoppingRef.current = true
-    const scanner = scannerRef.current
-    scannerRef.current = null
-    if (scanner) {
+    if (scannerRef.current) {
       try {
-        if (scanner.isScanning) {
-          await scanner.stop()
+        if (scannerRef.current.isScanning) {
+          await scannerRef.current.stop()
         }
-        scanner.clear()
+        scannerRef.current.clear()
       } catch (err) {
         console.error('Error al detener cámara:', err)
       }
+      scannerRef.current = null
     }
-    setAntorchaEncendida(false)
-    setSoportaAntorcha(false)
-    isStoppingRef.current = false
   }, [])
 
-  // Linterna
+  // Alternar linterna
   const toggleAntorcha = async () => {
     if (!scannerRef.current || !soportaAntorcha) return
     try {
@@ -234,7 +157,7 @@ export function BarcodeCaptureModal({
     }
   }
 
-  // Alternar cámara
+  // Cambiar de cámara (ej: frontal a trasera)
   const cambiarCamara = async () => {
     if (camaras.length <= 1) return
     const currentIndex = camaras.findIndex((c) => c.id === camaraActualId)
@@ -243,15 +166,16 @@ export function BarcodeCaptureModal({
     await iniciarEscaner(nextCamera.id)
   }
 
-  // Entrada manual
+  // Asignar código manual
   const handleAceptarManual = (e: React.FormEvent) => {
     e.preventDefault()
     if (!codigoManual.trim()) return
-    procesarCodigo(codigoManual.trim())
+    procesarCodigo(codigoManual)
   }
 
   useEffect(() => {
     if (isOpen) {
+      // Pequeño retardo para asegurar que el DOM del modal esté listo
       const t = setTimeout(() => {
         iniciarEscaner()
       }, 150)
@@ -261,28 +185,6 @@ export function BarcodeCaptureModal({
       setCodigoManual('')
     }
   }, [isOpen, iniciarEscaner, detenerEscaner])
-
-  // Interceptar la creación de elementos <video> para inyectar playsinline y autoplay nativos en iOS WebKit (Safari / Brave)
-  useEffect(() => {
-    if (!isOpen) return
-    const origCreateElement = document.createElement.bind(document)
-    document.createElement = function (tagName: string, options?: ElementCreationOptions) {
-      const el = origCreateElement(tagName, options)
-      if (tagName.toLowerCase() === 'video') {
-        el.setAttribute('playsinline', 'true')
-        el.setAttribute('webkit-playsinline', 'true')
-        el.setAttribute('autoplay', 'true')
-        el.setAttribute('muted', 'true')
-        ;(el as HTMLVideoElement).playsInline = true
-        ;(el as HTMLVideoElement).muted = true
-        ;(el as HTMLVideoElement).autoplay = true
-      }
-      return el
-    }
-    return () => {
-      document.createElement = origCreateElement
-    }
-  }, [isOpen])
 
   // Limpiar al desmontar
   useEffect(() => {
@@ -301,7 +203,7 @@ export function BarcodeCaptureModal({
     >
       <div className="space-y-4">
         {/* Contenedor del visor de la cámara */}
-        <div className="relative rounded-2xl overflow-hidden bg-black aspect-[4/3] min-h-[240px] flex items-center justify-center border border-gray-700 shadow-inner">
+        <div className="relative rounded-2xl overflow-hidden bg-black aspect-[4/3] flex items-center justify-center border border-gray-700 shadow-inner">
           {iniciando && !errorCamara && (
             <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-gray-900/80 text-white gap-2">
               <div className="w-8 h-8 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin" />
@@ -318,8 +220,8 @@ export function BarcodeCaptureModal({
             </div>
           )}
 
-          {/* Elemento de video donde html5-qrcode renderiza la cámara */}
-          <div id={elementId} className="w-full h-full min-h-[240px]" />
+          {/* Elemento donde html5-qrcode renderiza el video */}
+          <div id={elementId} className="w-full h-full object-cover" />
 
           {/* Controles flotantes en la cámara */}
           {!iniciando && !errorCamara && (
@@ -358,7 +260,7 @@ export function BarcodeCaptureModal({
           Apuntá la cámara al código de barras del producto. Se capturará de forma automática al enfocarlo.
         </p>
 
-        {/* Ingreso manual de respaldo */}
+        {/* Fallback de entrada manual */}
         <form onSubmit={handleAceptarManual} className="pt-2 border-t border-gray-100 dark:border-gray-700">
           <div className="flex gap-2 items-end">
             <div className="flex-1">
