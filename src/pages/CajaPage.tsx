@@ -47,6 +47,8 @@ export function CajaPage() {
     cerrarCaja,
   } = useCajaStore()
 
+  const esDueno = usuario?.rol === 'DUEÑO'
+
   // Estados para apertura
   const [montoInicial, setMontoInicial] = useState('0')
   const [abriendo, setAbriendo] = useState(false)
@@ -63,6 +65,18 @@ export function CajaPage() {
   const [modalArqueoOpen, setModalArqueoOpen] = useState(false)
   const [efectivoContado, setEfectivoContado] = useState('')
   const [cerrando, setCerrando] = useState(false)
+  const [modoCiego, setModoCiego] = useState(!esDueno)
+  const [mostrarDesgloseBilletes, setMostrarDesgloseBilletes] = useState(false)
+  const [desgloseBilletes, setDesgloseBilletes] = useState<Record<number, number>>({
+    20000: 0,
+    10000: 0,
+    2000: 0,
+    1000: 0,
+    500: 0,
+    200: 0,
+    100: 0,
+    50: 0,
+  })
 
   // Historial de cierres
   const [historial, setHistorial] = useState<SesionHistorial[]>([])
@@ -107,11 +121,37 @@ export function CajaPage() {
     }
   }
 
+  const handleCambioBillete = (denominacion: number, cantidad: number) => {
+    const cantidadValida = Math.max(0, isNaN(cantidad) ? 0 : Math.floor(cantidad))
+    const nuevoDesglose = {
+      ...desgloseBilletes,
+      [denominacion]: cantidadValida,
+    }
+    setDesgloseBilletes(nuevoDesglose)
+    const total = Object.entries(nuevoDesglose).reduce(
+      (acc, [den, cant]) => acc + Number(den) * cant,
+      0
+    )
+    setEfectivoContado(total > 0 ? total.toString() : '')
+  }
+
   const handleAbrirModalArqueo = async () => {
     if (sesionActiva) {
       await cargarResumenSesion(sesionActiva.id)
     }
     setEfectivoContado('')
+    setModoCiego(!esDueno)
+    setMostrarDesgloseBilletes(false)
+    setDesgloseBilletes({
+      20000: 0,
+      10000: 0,
+      2000: 0,
+      1000: 0,
+      500: 0,
+      200: 0,
+      100: 0,
+      50: 0,
+    })
     setModalArqueoOpen(true)
   }
 
@@ -258,7 +298,7 @@ export function CajaPage() {
                 variant="danger"
                 onClick={handleAbrirModalArqueo}
               >
-                Hacer arqueo y cerrar turno
+                {esDueno ? 'Hacer arqueo y cerrar turno' : 'Cerrar turno (Arqueo ciego)'}
               </Button>
             </div>
 
@@ -274,8 +314,11 @@ export function CajaPage() {
               <div className="p-3.5 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700">
                 <p className="text-xs text-gray-500 dark:text-gray-400">(+) Ventas efectivo</p>
                 <p className="text-base sm:text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                  {formatPrecio(resumenActivo?.total_efectivo || 0)}
+                  {esDueno ? formatPrecio(resumenActivo?.total_efectivo || 0) : '••••••'}
                 </p>
+                {!esDueno && (
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500 block">Arqueo ciego</span>
+                )}
               </div>
 
               <div className="p-3.5 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700">
@@ -294,11 +337,16 @@ export function CajaPage() {
 
               <div className="col-span-2 sm:col-span-1 p-3.5 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50">
                 <p className="text-xs text-indigo-700 dark:text-indigo-400 font-semibold">
-                  (=) Esperado en cajón
+                  {esDueno ? '(=) Esperado en cajón' : 'Control de Turno'}
                 </p>
-                <p className="text-lg sm:text-xl font-bold text-indigo-700 dark:text-indigo-300 mt-1">
-                  {formatPrecio(efectivoEsperado)}
+                <p className="text-base sm:text-lg font-bold text-indigo-700 dark:text-indigo-300 mt-1 truncate">
+                  {esDueno ? formatPrecio(efectivoEsperado) : 'Modo Ciego'}
                 </p>
+                {!esDueno && (
+                  <p className="text-[10px] text-indigo-600/70 dark:text-indigo-400/70 mt-0.5">
+                    Conteo físico al cierre
+                  </p>
+                )}
               </div>
             </div>
 
@@ -433,9 +481,10 @@ export function CajaPage() {
                     <th className="px-4 py-3 font-medium">Cierre</th>
                     <th className="px-4 py-3 font-medium">Cajero</th>
                     <th className="px-4 py-3 font-medium">Fondo inicial</th>
-                    <th className="px-4 py-3 font-medium">Esperado</th>
-                    <th className="px-4 py-3 font-medium">Contado</th>
-                    <th className="px-4 py-3 font-medium">Diferencia</th>
+                    {esDueno && <th className="px-4 py-3 font-medium">Esperado</th>}
+                    <th className="px-4 py-3 font-medium">{esDueno ? 'Contado' : 'Monto Declarado'}</th>
+                    {esDueno && <th className="px-4 py-3 font-medium">Diferencia</th>}
+                    {!esDueno && <th className="px-4 py-3 font-medium">Estado</th>}
                     <th className="px-4 py-3 font-medium text-right">Detalle</th>
                   </tr>
                 </thead>
@@ -453,23 +502,33 @@ export function CajaPage() {
                         <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
                           {formatPrecio(item.monto_inicial)}
                         </td>
-                        <td className="px-4 py-3 text-gray-600 dark:text-gray-300 font-medium">
-                          {formatPrecio(item.monto_final_sistema || 0)}
-                        </td>
-                        <td className="px-4 py-3 text-gray-900 dark:text-gray-100 font-medium">
+                        {esDueno && (
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-300 font-medium">
+                            {formatPrecio(item.monto_final_sistema || 0)}
+                          </td>
+                        )}
+                        <td className="px-4 py-3 text-gray-900 dark:text-gray-100 font-semibold">
                           {formatPrecio(item.monto_final_declarado || 0)}
                         </td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${
-                            dif === 0
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400'
-                              : dif > 0
-                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-400'
-                              : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
-                          }`}>
-                            {dif === 0 ? 'Exacto' : dif > 0 ? `+${formatPrecio(dif)}` : formatPrecio(dif)}
-                          </span>
-                        </td>
+                        {esDueno ? (
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${
+                              dif === 0
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400'
+                                : dif > 0
+                                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-400'
+                                : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
+                            }`}>
+                              {dif === 0 ? 'Exacto' : dif > 0 ? `+${formatPrecio(dif)}` : formatPrecio(dif)}
+                            </span>
+                          </td>
+                        ) : (
+                          <td className="px-4 py-3">
+                            <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                              Turno Registrado
+                            </span>
+                          </td>
+                        )}
                         <td className="px-4 py-3 text-right">
                           <Button
                             size="sm"
@@ -489,70 +548,144 @@ export function CajaPage() {
         )}
       </div>
 
-      {/* ── MODAL DE ARQUEO Y CIERRE DE CAJA ── */}
+      {/* ── MODAL DE ARQUEO Y CIERRE DE CAJA (CIEGO / GUIADO) ── */}
       <Modal
         isOpen={modalArqueoOpen}
         onClose={() => setModalArqueoOpen(false)}
-        title="Arqueo y Cierre de Turno"
+        title={modoCiego ? 'Arqueo y Cierre de Turno (Ciego)' : 'Arqueo y Cierre de Turno (Guiado)'}
         size="md"
       >
         <div className="space-y-4">
-          <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500 dark:text-gray-400">Fondo inicial de turno:</span>
-              <span className="font-semibold text-gray-900 dark:text-gray-100">
-                {formatPrecio(sesionActiva?.monto_inicial || 0)}
-              </span>
+          {/* Selector de modo para el Dueño */}
+          {esDueno && (
+            <div className="flex rounded-lg bg-gray-100 dark:bg-gray-800 p-1">
+              <button
+                type="button"
+                onClick={() => setModoCiego(false)}
+                className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                  !modoCiego
+                    ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
+                }`}
+              >
+                Arqueo Guiado
+              </button>
+              <button
+                type="button"
+                onClick={() => setModoCiego(true)}
+                className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                  modoCiego
+                    ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
+                }`}
+              >
+                Arqueo Ciego
+              </button>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500 dark:text-gray-400">(+) Efectivo ventas:</span>
-              <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                +{formatPrecio(resumenActivo?.total_efectivo || 0)}
-              </span>
-            </div>
-            {(resumenActivo?.total_ingresos_extra || 0) > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-blue-600 dark:text-blue-400">(+) Ingresos extra de caja:</span>
-                <span className="font-semibold text-blue-600 dark:text-blue-400">
-                  +{formatPrecio(resumenActivo?.total_ingresos_extra || 0)}
-                </span>
-              </div>
-            )}
-            {(resumenActivo?.total_egresos || 0) > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-red-600 dark:text-red-400">(-) Gastos / Egresos de caja:</span>
-                <span className="font-semibold text-red-600 dark:text-red-400">
-                  -{formatPrecio(resumenActivo?.total_egresos || 0)}
-                </span>
-              </div>
-            )}
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-2 flex justify-between text-base font-bold">
-              <span className="text-gray-800 dark:text-gray-200">Total en cajón esperado:</span>
-              <span className="text-indigo-600 dark:text-indigo-400">
-                {formatPrecio(efectivoEsperado)}
-              </span>
-            </div>
-          </div>
+          )}
 
-          <div className="space-y-1">
+          {modoCiego ? (
+            /* Banner explicativo de Arqueo Ciego */
+            <div className="p-3.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-300">
+              <p className="font-semibold text-sm mb-1">Control de Arqueo Ciego</p>
+              <p className="text-amber-800/90 dark:text-amber-300/80 leading-relaxed">
+                Por seguridad y control interno, contá físicamente todo el dinero en el cajón e ingresá el total. El valor quedará asentado para la auditoría administrativa del Dueño.
+              </p>
+            </div>
+          ) : (
+            /* Resumen guiado visible sólo para el Dueño */
+            <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">Fondo inicial de turno:</span>
+                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                  {formatPrecio(sesionActiva?.monto_inicial || 0)}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">(+) Efectivo ventas:</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                  +{formatPrecio(resumenActivo?.total_efectivo || 0)}
+                </span>
+              </div>
+              {(resumenActivo?.total_ingresos_extra || 0) > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-blue-600 dark:text-blue-400">(+) Ingresos extra de caja:</span>
+                  <span className="font-semibold text-blue-600 dark:text-blue-400">
+                    +{formatPrecio(resumenActivo?.total_ingresos_extra || 0)}
+                  </span>
+                </div>
+              )}
+              {(resumenActivo?.total_egresos || 0) > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-red-600 dark:text-red-400">(-) Gastos / Egresos de caja:</span>
+                  <span className="font-semibold text-red-600 dark:text-red-400">
+                    -{formatPrecio(resumenActivo?.total_egresos || 0)}
+                  </span>
+                </div>
+              )}
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-2 flex justify-between text-base font-bold">
+                <span className="text-gray-800 dark:text-gray-200">Total en cajón esperado:</span>
+                <span className="text-indigo-600 dark:text-indigo-400">
+                  {formatPrecio(efectivoEsperado)}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
+                Efectivo físico contado en el cajón *
+              </label>
+              <button
+                type="button"
+                onClick={() => setMostrarDesgloseBilletes(!mostrarDesgloseBilletes)}
+                className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-medium cursor-pointer"
+              >
+                {mostrarDesgloseBilletes ? 'Ocultar desglosador' : '+ Contar por billetes'}
+              </button>
+            </div>
+
             <Input
-              label="Efectivo físico contado en el cajón *"
               type="number"
               min="0"
               step="100"
-              placeholder="Ingresá el dinero real contado"
+              placeholder="Ingresá el dinero total contado"
               value={efectivoContado}
               onChange={(e) => setEfectivoContado(e.target.value)}
               required
               autoFocus
             />
-            <p className="text-xs text-gray-400 dark:text-gray-500">
-              Contá todos los billetes y monedas que tenés en mano.
-            </p>
+
+            {/* Desglosador interactivo de billetes */}
+            {mostrarDesgloseBilletes && (
+              <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 space-y-2">
+                <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Calculadora de Billetes y Monedas
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[20000, 10000, 2000, 1000, 500, 200, 100, 50].map((den) => (
+                    <div key={den} className="flex flex-col">
+                      <span className="text-[10px] font-medium text-gray-600 dark:text-gray-400">
+                        ${den.toLocaleString('es-AR')}
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        value={desgloseBilletes[den] || ''}
+                        onChange={(e) => handleCambioBillete(den, parseInt(e.target.value) || 0)}
+                        className="w-full px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Cálculo de diferencia */}
-          {efectivoContado !== '' && (
+          {/* Cálculo de diferencia (SÓLO visible en Arqueo Guiado) */}
+          {!modoCiego && efectivoContado !== '' && (
             <div className={`p-4 rounded-lg text-center ${
               diferenciaArqueo === 0
                 ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
@@ -585,7 +718,7 @@ export function CajaPage() {
               disabled={efectivoContado === ''}
               onClick={handleConfirmarCierre}
             >
-              Confirmar cierre de caja
+              {modoCiego ? 'Confirmar y Finalizar Turno' : 'Confirmar Cierre de Caja'}
             </Button>
             <Button
               variant="secondary"
@@ -756,34 +889,42 @@ export function CajaPage() {
                   {formatPrecio(sesionDetalle.monto_inicial)}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">Monto esperado por sistema:</span>
-                <span className="font-semibold text-gray-900 dark:text-gray-100">
-                  {formatPrecio(sesionDetalle.monto_final_sistema || 0)}
-                </span>
-              </div>
+              {esDueno && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Monto esperado por sistema:</span>
+                  <span className="font-semibold text-gray-900 dark:text-gray-100">
+                    {formatPrecio(sesionDetalle.monto_final_sistema || 0)}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-gray-500 dark:text-gray-400">Monto contado en mano:</span>
                 <span className="font-semibold text-gray-900 dark:text-gray-100">
                   {formatPrecio(sesionDetalle.monto_final_declarado || 0)}
                 </span>
               </div>
-              <div className="border-t border-gray-200 dark:border-gray-700 pt-2 flex justify-between font-bold">
-                <span className="text-gray-800 dark:text-gray-200">Diferencia final:</span>
-                <span className={`${
-                  (sesionDetalle.diferencia ?? 0) === 0
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : (sesionDetalle.diferencia ?? 0) > 0
-                    ? 'text-blue-600 dark:text-blue-400'
-                    : 'text-red-600 dark:text-red-400'
-                }`}>
-                  {(sesionDetalle.diferencia ?? 0) === 0
-                    ? 'Exacto ($0)'
-                    : (sesionDetalle.diferencia ?? 0) > 0
-                    ? `+${formatPrecio(sesionDetalle.diferencia ?? 0)} (Sobrante)`
-                    : `${formatPrecio(sesionDetalle.diferencia ?? 0)} (Faltante)`}
-                </span>
-              </div>
+              {esDueno ? (
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-2 flex justify-between font-bold">
+                  <span className="text-gray-800 dark:text-gray-200">Diferencia final:</span>
+                  <span className={`${
+                    (sesionDetalle.diferencia ?? 0) === 0
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : (sesionDetalle.diferencia ?? 0) > 0
+                      ? 'text-blue-600 dark:text-blue-400'
+                      : 'text-red-600 dark:text-red-400'
+                  }`}>
+                    {(sesionDetalle.diferencia ?? 0) === 0
+                      ? 'Exacto ($0)'
+                      : (sesionDetalle.diferencia ?? 0) > 0
+                      ? `+${formatPrecio(sesionDetalle.diferencia ?? 0)} (Sobrante)`
+                      : `${formatPrecio(sesionDetalle.diferencia ?? 0)} (Faltante)`}
+                  </span>
+                </div>
+              ) : (
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-2 text-xs text-gray-500 dark:text-gray-400">
+                  Turno registrado y enviado para auditoría de la administración.
+                </div>
+              )}
             </div>
 
             <Button
