@@ -160,6 +160,12 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
       return false
     }
 
+    // Verificación de seguridad de roles: solo DUEÑO o superadmin
+    if (usuario?.rol !== 'DUEÑO' && !usuario?.es_superadmin) {
+      toast.error('Acceso denegado: Solo el perfil de Dueño puede modificar la configuración fiscal')
+      return false
+    }
+
     const configActual = get().config || {
       habilitado: false,
       cuit: '',
@@ -236,7 +242,26 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
         tipoComprobante || (config.condicion_iva === 'MONOTRIBUTO' ? 11 : 6)
       const letra: 'C' | 'B' | 'A' = tipoCmp === 11 || tipoCmp === 13 ? 'C' : tipoCmp === 1 || tipoCmp === 3 ? 'A' : 'B'
 
-      const nuevoNroComp = (config.ultimo_nro_comprobante || 0) + 1
+      // Obtener el número correlativo seguro verificando tanto la última venta registrada en Supabase como el estado local
+      let ultimoNroBase = config.ultimo_nro_comprobante || 0
+      try {
+        const { data: ultVenta } = await supabase
+          .from('ventas')
+          .select('afip_nro_comprobante')
+          .eq('kiosco_id', kioscoId)
+          .not('afip_nro_comprobante', 'is', null)
+          .order('afip_nro_comprobante', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (ultVenta?.afip_nro_comprobante) {
+          ultimoNroBase = Math.max(ultimoNroBase, ultVenta.afip_nro_comprobante)
+        }
+      } catch (errSync) {
+        console.warn('Verificación remota de correlativo AFIP omitida por fallback local:', errSync)
+      }
+
+      const nuevoNroComp = ultimoNroBase + 1
       const ahora = new Date()
       const fechaHoyStr = ahora.toISOString().split('T')[0]
 

@@ -118,6 +118,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   const confirmarVenta = async () => {
     if (!puedeConfirmar) return
     setProcesando(true)
+    let ventaCreadaId: string | null = null
 
     try {
       const ventaId = uuidv4()
@@ -130,6 +131,18 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
 
       if (!usuario?.es_superadmin && (kiosco?.estado_suscripcion === 'SOLO_LECTURA' || (diasRestantes !== null && diasRestantes < 0))) {
         toast.error('El sistema está en modo Solo Lectura por suscripción vencida. No es posible registrar nuevas ventas.')
+        setProcesando(false)
+        return
+      }
+
+      if (items.length === 0) {
+        toast.error('El carrito no contiene productos')
+        setProcesando(false)
+        return
+      }
+
+      if (total < 0) {
+        toast.error('El total a cobrar no puede ser negativo')
         setProcesando(false)
         return
       }
@@ -163,6 +176,29 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         }
       }
 
+      // Si es Cuenta Corriente, validar límite de crédito
+      if (medioPago === 'CUENTA_CORRIENTE') {
+        if (!clienteSeleccionadoId || !clienteSeleccionado) {
+          toast.error('Debes seleccionar un cliente para cuenta corriente')
+          setProcesando(false)
+          return
+        }
+
+        if (
+          clienteSeleccionado.limite_credito > 0 &&
+          clienteSeleccionado.saldo_deudor + total > clienteSeleccionado.limite_credito
+        ) {
+          const superaPor = formatPrecio(clienteSeleccionado.saldo_deudor + total - clienteSeleccionado.limite_credito)
+          const confirmarExceso = window.confirm(
+            `Atención: Esta venta superará el límite de crédito del cliente (${formatPrecio(clienteSeleccionado.limite_credito)}) por ${superaPor}.\n\n¿Desea autorizar la operación de todas formas?`
+          )
+          if (!confirmarExceso) {
+            setProcesando(false)
+            return
+          }
+        }
+      }
+
       // 1. Insertar la venta
       const { error: ventaError } = await supabase.from('ventas').insert({
         id: ventaId,
@@ -177,6 +213,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       })
 
       if (ventaError) throw ventaError
+      ventaCreadaId = ventaId
 
       // 2. Insertar detalles de venta
       const detalles = items.map((item) => ({
@@ -200,13 +237,35 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       })
       if (pagoError) throw pagoError
 
-      // 4. Si es Cuenta Corriente, imputar cargo a la ficha del cliente
-      if (medioPago === 'CUENTA_CORRIENTE') {
-        if (!clienteSeleccionadoId) {
-          toast.error('Debes seleccionar un cliente para cuenta corriente')
-          setProcesando(false)
-          return
+      // 4. Actualizar stock físico en catálogo y asentar egreso en movimientos_stock
+      for (const it of items) {
+        const nuevoStock = Math.max(0, it.producto.stock_actual - it.cantidad)
+        try {
+          await supabase
+            .from('productos')
+            .update({
+              stock_actual: nuevoStock,
+              fecha_actualizacion: ahora,
+            })
+            .eq('id', it.producto.id)
+
+          await supabase.from('movimientos_stock').insert({
+            kiosco_id: kioscoId,
+            producto_id: it.producto.id,
+            tipo: 'EGRESO',
+            cantidad: -it.cantidad,
+            motivo: 'VENTA',
+            notas: `Venta #${ventaId.slice(0, 8).toUpperCase()}`,
+            usuario_id: usuario?.id || null,
+            fecha: ahora,
+          })
+        } catch (errStock) {
+          console.warn(`Error al actualizar stock para ${it.producto.descripcion}:`, errStock)
         }
+      }
+
+      // 5. Si es Cuenta Corriente, imputar cargo a la ficha del cliente
+      if (medioPago === 'CUENTA_CORRIENTE') {
         await imputarCargoVenta(clienteSeleccionadoId, ventaId, total, notasFinal || undefined)
       }
 
@@ -293,6 +352,16 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       onClose()
     } catch (error) {
       console.error('Error al registrar venta:', error)
+      // Rollback de venta incompleta para evitar datos huérfanos o corruptos
+      if (ventaCreadaId) {
+        try {
+          await supabase.from('detalles_venta').delete().eq('venta_id', ventaCreadaId)
+          await supabase.from('pagos_venta').delete().eq('venta_id', ventaCreadaId)
+          await supabase.from('ventas').delete().eq('id', ventaCreadaId)
+        } catch (cleanupErr) {
+          console.warn('Error en rollback de venta fallida:', cleanupErr)
+        }
+      }
       const msg = error instanceof Error ? error.message : 'Error al registrar la venta. Intentá de nuevo.'
       toast.error(msg, { duration: 6000 })
     } finally {

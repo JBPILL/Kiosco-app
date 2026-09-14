@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAFIPStore, validarCUIT } from '../../stores/afipStore'
+import { useAuthStore } from '../../stores/authStore'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { TicketReceiptModal, type TicketData } from '../pos/TicketReceiptModal'
@@ -7,6 +8,8 @@ import type { ConfiguracionAFIP, CondicionIvaAFIP, EntornoAFIP } from '../../typ
 import toast from 'react-hot-toast'
 
 export function AFIPConfigSection() {
+  const { usuario } = useAuthStore()
+  const esDuenio = usuario?.rol === 'DUEÑO' || usuario?.es_superadmin
   const { config, cargando, guardando, cargarConfiguracion, guardarConfiguracion, emitirComprobantePrueba } =
     useAFIPStore()
 
@@ -54,6 +57,11 @@ export function AFIPConfigSection() {
 
   const handleGuardar = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!esDuenio) {
+      toast.error('Acceso denegado: Solo el Dueño puede modificar la configuración fiscal')
+      return
+    }
 
     if (habilitado) {
       if (!cuitLimpio) {
