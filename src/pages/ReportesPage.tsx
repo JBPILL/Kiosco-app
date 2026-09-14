@@ -6,6 +6,7 @@ import { exportarVentasCSV } from '../lib/exportUtils'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { TicketReceiptModal, type TicketData } from '../components/pos/TicketReceiptModal'
+import { BalanceContableTab } from '../components/reportes/BalanceContableTab'
 import toast from 'react-hot-toast'
 
 interface ResumenDiario {
@@ -32,6 +33,10 @@ interface VentaResumen {
 }
 
 export function ReportesPage() {
+  const { usuario } = useAuthStore()
+  const [tabActiva, setTabActiva] = useState<'ventas' | 'balance'>(() =>
+    usuario?.rol === 'VISOR' ? 'balance' : 'ventas'
+  )
   const [fecha, setFecha] = useState(() => new Date().toISOString().split('T')[0])
   const [ventas, setVentas] = useState<VentaResumen[]>([])
   const [resumen, setResumen] = useState<ResumenDiario | null>(null)
@@ -39,7 +44,6 @@ export function ReportesPage() {
   const [ventaExpandida, setVentaExpandida] = useState<string | null>(null)
   const [ventaParaAnular, setVentaParaAnular] = useState<VentaResumen | null>(null)
   const [anulando, setAnulando] = useState(false)
-  const { usuario } = useAuthStore()
   const [ticketParaImprimir, setTicketParaImprimir] = useState<TicketData | null>(null)
 
   const cargarDatos = useCallback(async () => {
@@ -172,54 +176,98 @@ export function ReportesPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header con selector de fecha */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="max-w-5xl mx-auto space-y-6">
+      {/* Encabezado con selector de pestañas para Dueño y Visor */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Reportes de Ventas</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Resumen y detalle de operaciones por día</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
+            Reportes y Contabilidad
+          </h1>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+            {tabActiva === 'ventas'
+              ? 'Detalle de tickets y facturación diaria por jornada'
+              : 'Balance financiero, compras a proveedores y libro diario contable'}
+          </p>
         </div>
 
-        {/* Navegación por fecha y Exportar */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button size="sm" variant="secondary" onClick={() => cambiarFecha(-1)}>
-            &lt; Anterior
-          </Button>
-          <input
-            type="date"
-            value={fecha}
-            onChange={(e) => setFecha(e.target.value)}
-            className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm font-medium text-gray-900 dark:text-gray-100"
-          />
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => cambiarFecha(1)}
-            disabled={esHoy}
+        {/* Selector de Pestañas */}
+        <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 self-start sm:self-auto gap-1">
+          <button
+            type="button"
+            onClick={() => setTabActiva('ventas')}
+            className={`px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+              tabActiva === 'ventas'
+                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
           >
-            Siguiente &gt;
-          </Button>
-          {!esHoy && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setFecha(new Date().toISOString().split('T')[0])}
-            >
-              Hoy
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={handleExportarVentasDia}
-            disabled={ventas.length === 0}
-            className="text-xs"
-            title="Descargar las ventas de este día en formato CSV / Excel"
+            Ventas Diarias
+          </button>
+          <button
+            type="button"
+            onClick={() => setTabActiva('balance')}
+            className={`px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+              tabActiva === 'balance'
+                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
           >
-            Exportar Día (.CSV)
-          </Button>
+            Balance Contable
+          </button>
         </div>
       </div>
+
+      {tabActiva === 'balance' ? (
+        <BalanceContableTab />
+      ) : (
+        <div className="space-y-6">
+          {/* Header con selector de fecha */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Ventas por Jornada</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Auditoría de tickets y comprobantes del día</p>
+            </div>
+
+            {/* Navegación por fecha y Exportar */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button size="sm" variant="secondary" onClick={() => cambiarFecha(-1)}>
+                &lt; Anterior
+              </Button>
+              <input
+                type="date"
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+                className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm font-medium text-gray-900 dark:text-gray-100"
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => cambiarFecha(1)}
+                disabled={esHoy}
+              >
+                Siguiente &gt;
+              </Button>
+              {!esHoy && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setFecha(new Date().toISOString().split('T')[0])}
+                >
+                  Hoy
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleExportarVentasDia}
+                disabled={ventas.length === 0}
+                className="text-xs"
+                title="Descargar las ventas de este día en formato CSV / Excel"
+              >
+                Exportar Día (.CSV)
+              </Button>
+            </div>
+          </div>
 
       {cargando ? (
         <div className="text-center py-12">
@@ -364,6 +412,8 @@ export function ReportesPage() {
             )}
           </div>
         </>
+      )}
+        </div>
       )}
 
       {/* Modal de confirmación para anular venta */}

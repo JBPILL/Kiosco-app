@@ -78,6 +78,8 @@ function App() {
               element={
                 usuario.es_superadmin && !usuario.kiosco_id
                   ? <Navigate to="/admin" replace />
+                  : usuario.rol === 'VISOR'
+                  ? <Navigate to="/reportes" replace />
                   : <POSPage />
               }
             />
@@ -86,6 +88,8 @@ function App() {
               element={
                 usuario.es_superadmin && !usuario.kiosco_id
                   ? <Navigate to="/admin" replace />
+                  : usuario.rol === 'VISOR'
+                  ? <Navigate to="/reportes" replace />
                   : <CajaPage />
               }
             />
@@ -94,6 +98,8 @@ function App() {
               element={
                 usuario.es_superadmin && !usuario.kiosco_id
                   ? <Navigate to="/admin" replace />
+                  : usuario.rol === 'VISOR'
+                  ? <Navigate to="/reportes" replace />
                   : <ClientesPage />
               }
             />
@@ -154,7 +160,18 @@ function App() {
           </Route>
           <Route
             path="*"
-            element={<Navigate to={usuario.es_superadmin && !usuario.kiosco_id ? "/admin" : "/"} replace />}
+            element={
+              <Navigate
+                to={
+                  usuario.es_superadmin && !usuario.kiosco_id
+                    ? "/admin"
+                    : usuario.rol === 'VISOR'
+                    ? "/reportes"
+                    : "/"
+                }
+                replace
+              />
+            }
           />
         </Routes>
       )}

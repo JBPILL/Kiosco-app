@@ -165,3 +165,67 @@ export function exportarDetalleCompraCSV(
   descargarArchivo(lineas.join('\r\n'), `remito_${compRef}_${new Date().toISOString().split('T')[0]}.csv`)
 }
 
+export interface MovimientoContableCSV {
+  fecha_hora: string
+  tipo: 'VENTA' | 'COMPRA' | 'PAGO_PROVEEDOR' | 'EGRESO_CAJA' | 'INGRESO_CAJA'
+  comprobante: string
+  concepto: string
+  medio_pago: string
+  ingreso: number
+  egreso: number
+  observaciones?: string
+}
+
+/**
+ * Exporta el Libro Diario Contable unificado (ventas, compras, pagos a proveedores y movimientos de caja).
+ */
+export function exportarLibroContableCSV(
+  movimientos: MovimientoContableCSV[],
+  periodoNombre: string = 'Periodo',
+  nombreKiosco: string = 'Kiosco'
+) {
+  const encabezados = [
+    'Fecha y Hora',
+    'Tipo de Operación',
+    'Comprobante / Ref',
+    'Concepto / Proveedor / Cliente',
+    'Medio de Pago',
+    'Ingreso ($)',
+    'Egreso ($)',
+    'Observaciones',
+  ]
+
+  const filas = movimientos.map((m) =>
+    [
+      escaparCSV(formatFecha(m.fecha_hora)),
+      escaparCSV(m.tipo),
+      escaparCSV(m.comprobante),
+      escaparCSV(m.concepto),
+      escaparCSV(m.medio_pago),
+      m.ingreso ?? 0,
+      m.egreso ?? 0,
+      escaparCSV(m.observaciones || ''),
+    ].join(';')
+  )
+
+  const totalIngresos = movimientos.reduce((sum, m) => sum + (m.ingreso || 0), 0)
+  const totalEgresos = movimientos.reduce((sum, m) => sum + (m.egreso || 0), 0)
+  const balanceNeto = totalIngresos - totalEgresos
+
+  const resumenLineas = [
+    `"LIBRO DIARIO CONTABLE"`,
+    `"Comercio: ${nombreKiosco}"`,
+    `"Período: ${periodoNombre}"`,
+    `"Total Ingresos ($): ${totalIngresos}"`,
+    `"Total Egresos ($): ${totalEgresos}"`,
+    `"Balance Neto ($): ${balanceNeto}"`,
+    '',
+  ]
+
+  const csvContent = [...resumenLineas, encabezados.join(';'), ...filas].join('\r\n')
+  const cleanName = nombreKiosco.toLowerCase().replace(/[^a-z0-9]/g, '_')
+  const cleanPeriod = periodoNombre.toLowerCase().replace(/[^a-z0-9]/g, '_')
+
+  descargarArchivo(csvContent, `libro_contable_${cleanName}_${cleanPeriod}.csv`)
+}
+
