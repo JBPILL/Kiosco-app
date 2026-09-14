@@ -11,6 +11,8 @@ import { Input } from '../ui/Input'
 import { Modal } from '../ui/Modal'
 import type { MedioPago } from '../../types/database'
 import type { TicketData } from './TicketReceiptModal'
+import { useAFIPStore } from '../../stores/afipStore'
+import type { TipoDocumentoAFIP } from '../../types/afip'
 import toast from 'react-hot-toast'
 
 interface PaymentModalProps {
@@ -39,8 +41,13 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   } = useCartStore()
 
   const { clientes, cargarClientes, imputarCargoVenta } = useClienteStore()
+  const { config: afipConfig, emitirFacturaVenta, cargarConfiguracion } = useAFIPStore()
   const [clienteSeleccionadoId, setClienteSeleccionadoId] = useState<string>('')
   const [busquedaCliente, setBusquedaCliente] = useState<string>('')
+
+  const [emitirFiscal, setEmitirFiscal] = useState(false)
+  const [tipoDocReceptor, setTipoDocReceptor] = useState<TipoDocumentoAFIP>(99)
+  const [nroDocReceptor, setNroDocReceptor] = useState<string>('')
 
   const total = totalMonto()
   const subtotal = subtotalMonto()
@@ -55,8 +62,21 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   useEffect(() => {
     if (isOpen) {
       cargarClientes()
+      cargarConfiguracion()
     }
-  }, [isOpen, cargarClientes])
+  }, [isOpen, cargarClientes, cargarConfiguracion])
+
+  // Ajustar emisión fiscal por defecto según configuración
+  useEffect(() => {
+    if (isOpen && afipConfig) {
+      if (afipConfig.habilitado) {
+        const auto = afipConfig.facturar_automatico || (afipConfig.monto_minimo_auto > 0 && total >= afipConfig.monto_minimo_auto)
+        setEmitirFiscal(Boolean(auto))
+      } else {
+        setEmitirFiscal(false)
+      }
+    }
+  }, [isOpen, afipConfig, total])
 
   const clientesFiltrados = clientes.filter(
     (c) =>
@@ -66,6 +86,22 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   )
 
   const clienteSeleccionado = clientes.find((c) => c.id === clienteSeleccionadoId)
+
+  // Si el cliente seleccionado tiene DNI o CUIT, precargar en AFIP
+  useEffect(() => {
+    if (clienteSeleccionado?.dni_cuit) {
+      const raw = clienteSeleccionado.dni_cuit.replace(/\D/g, '')
+      if (raw.length === 11) {
+        setTipoDocReceptor(80)
+        setNroDocReceptor(raw)
+      } else if (raw.length >= 7 && raw.length <= 8) {
+        setTipoDocReceptor(96)
+        setNroDocReceptor(raw)
+      } else {
+        setNroDocReceptor(raw)
+      }
+    }
+  }, [clienteSeleccionado])
 
   const vuelto = medioPago === 'EFECTIVO' && pagaCon
     ? calcularVuelto(total, parseFloat(pagaCon) || 0)
@@ -174,7 +210,44 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         await imputarCargoVenta(clienteSeleccionadoId, ventaId, total, notasFinal || undefined)
       }
 
-      // 5. Armar datos de ticket para comprobante térmico / digital
+      // 5. Si AFIP está habilitado y se solicitó factura electrónica, emitirla
+      let afipTicketData: TicketData['afip'] = undefined
+
+      if (emitirFiscal && afipConfig?.habilitado) {
+        try {
+          const resAFIP = await emitirFacturaVenta({
+            ventaId,
+            total,
+            tipoDocCliente: tipoDocReceptor,
+            nroDocCliente: tipoDocReceptor !== 99 && nroDocReceptor ? nroDocReceptor.trim() : '0',
+            nombreCliente: clienteSeleccionado?.nombre || undefined,
+          })
+
+          if (resAFIP) {
+            afipTicketData = {
+              tipoComprobante: resAFIP.tipo_comprobante,
+              tipoComprobanteNombre: `Factura ${resAFIP.letra}`,
+              letra: resAFIP.letra,
+              puntoVenta: resAFIP.punto_venta,
+              nroComprobante: resAFIP.nro_comprobante,
+              cae: resAFIP.cae,
+              vtoCae: resAFIP.vto_cae,
+              qrUrl: resAFIP.qr_url,
+              cuitEmisor: resAFIP.cuit_emisor,
+              condicionIva: resAFIP.condicion_iva,
+              iibb: resAFIP.iibb,
+              inicioActividades: resAFIP.inicio_actividades,
+              tipoDocCliente: resAFIP.tipo_doc_cliente,
+              nroDocCliente: resAFIP.nro_doc_cliente && resAFIP.nro_doc_cliente !== '0' ? resAFIP.nro_doc_cliente : undefined,
+            }
+          }
+        } catch (errAFIP) {
+          console.error('Error emitiendo comprobante AFIP:', errAFIP)
+          toast.error(`Venta guardada, pero ocurrió un problema con AFIP: ${errAFIP instanceof Error ? errAFIP.message : 'Error desconocido'}`)
+        }
+      }
+
+      // 6. Armar datos de ticket para comprobante térmico / digital
       const ticketGenerado: TicketData = {
         ventaId,
         fecha: ahora,
@@ -202,6 +275,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         cajeroNombre: usuario?.nombre,
         clienteNombre: clienteSeleccionado?.nombre || null,
         notas: notasFinal,
+        afip: afipTicketData,
       }
 
       toast.success(
@@ -232,6 +306,9 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
     setReferencia('')
     setClienteSeleccionadoId('')
     setBusquedaCliente('')
+    setEmitirFiscal(false)
+    setTipoDocReceptor(99)
+    setNroDocReceptor('')
   }
 
   // Billetes rápidos para efectivo
@@ -442,6 +519,65 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             value={referencia}
             onChange={(e) => setReferencia(e.target.value)}
           />
+        )}
+
+        {/* Facturación Electrónica AFIP */}
+        {afipConfig?.habilitado && (
+          <div className="p-3.5 rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={emitirFiscal}
+                  onChange={(e) => setEmitirFiscal(e.target.checked)}
+                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+                <span className="text-xs font-bold text-blue-900 dark:text-blue-200">
+                  Emitir Factura AFIP ({afipConfig.condicion_iva === 'MONOTRIBUTO' ? 'Factura C' : 'Factura B'})
+                </span>
+              </label>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                afipConfig.entorno === 'PRODUCCION'
+                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300'
+                  : 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
+              }`}>
+                {afipConfig.entorno === 'PRODUCCION' ? 'Producción' : 'Modo Prueba'}
+              </span>
+            </div>
+
+            {emitirFiscal && (
+              <div className="pt-2 border-t border-blue-200/60 dark:border-blue-800/40 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <div>
+                  <label className="block text-[11px] font-medium text-blue-900 dark:text-blue-300 mb-1">
+                    Tipo de Identificación
+                  </label>
+                  <select
+                    value={tipoDocReceptor}
+                    onChange={(e) => setTipoDocReceptor(Number(e.target.value) as TipoDocumentoAFIP)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs"
+                  >
+                    <option value={99}>Consumidor Final (Sin DNI)</option>
+                    <option value={96}>DNI</option>
+                    <option value={80}>CUIT</option>
+                  </select>
+                </div>
+                {tipoDocReceptor !== 99 && (
+                  <div>
+                    <label className="block text-[11px] font-medium text-blue-900 dark:text-blue-300 mb-1">
+                      Número de {tipoDocReceptor === 96 ? 'DNI' : 'CUIT'}
+                    </label>
+                    <input
+                      type="text"
+                      value={nroDocReceptor}
+                      onChange={(e) => setNroDocReceptor(e.target.value)}
+                      placeholder={tipoDocReceptor === 96 ? 'Ej: 35123456' : 'Ej: 20351234568'}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Botón confirmar */}

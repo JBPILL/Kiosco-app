@@ -8,6 +8,7 @@ import { Modal } from '../components/ui/Modal'
 import type { Kiosco, Usuario, Suscripcion } from '../types/database'
 import { formatPrecio, formatFechaCorta } from '../lib/utils'
 import { exportarCatalogoCSV, exportarVentasCSV } from '../lib/exportUtils'
+import { AFIPConfigSection } from '../components/config/AFIPConfigSection'
 import toast from 'react-hot-toast'
 
 export function ConfigPage() {
@@ -421,6 +422,9 @@ export function ConfigPage() {
               </div>
             </form>
           </div>
+
+          {/* Configuración Fiscal AFIP */}
+          <AFIPConfigSection />
 
           {/* Estado de Suscripción */}
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">

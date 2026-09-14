@@ -7,6 +7,13 @@ export interface Kiosco {
   telefono: string | null
   estado_suscripcion: 'ACTIVO' | 'SOLO_LECTURA' | 'SUSPENDIDO'
   fecha_creacion: string
+  // Datos fiscales AFIP
+  cuit?: string | null
+  iibb?: string | null
+  inicio_actividades?: string | null
+  condicion_iva?: string | null
+  afip_punto_venta?: number | null
+  afip_habilitado?: boolean
 }
 
 export interface Categoria {
@@ -59,10 +66,12 @@ export interface Venta {
   estado: 'COMPLETADA' | 'ANULADA'
   notas: string | null
   sincronizado: boolean
-  // Campos AFIP (futuro)
+  // Campos AFIP
   afip_cae: string | null
   afip_tipo_comprobante: number | null
   afip_nro_comprobante: number | null
+  afip_vto_cae?: string | null
+  afip_qr_url?: string | null
   // Relaciones opcionales (join)
   detalles?: DetalleVenta[]
   pagos?: PagoVenta[]

@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { formatPrecio, formatFecha } from '../../lib/utils'
+import { generarImagenQRAFIP } from '../../lib/afipQR'
 
 export interface TicketItem {
   descripcion: string
@@ -30,6 +31,23 @@ export interface TicketData {
   cajeroNombre?: string | null
   clienteNombre?: string | null
   notas?: string | null
+  // Datos fiscales AFIP (si el comprobante fue emitido electrónicamente)
+  afip?: {
+    cae: string
+    vtoCae: string
+    tipoComprobante: number
+    letra: 'C' | 'B' | 'A'
+    puntoVenta: number
+    nroComprobante: number
+    cuitEmisor?: string
+    iibb?: string | null
+    condicionIva?: string
+    inicioActividades?: string | null
+    qrUrl?: string
+    tipoDocCliente?: number
+    nroDocCliente?: string
+    tipoComprobanteNombre?: string
+  } | null
 }
 
 interface TicketReceiptModalProps {
@@ -42,6 +60,15 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
   const [anchoPapel, setAnchoPapel] = useState<'58mm' | '80mm'>('58mm')
   const [telefonoWhatsApp, setTelefonoWhatsApp] = useState('')
   const [mostrarInputTelefono, setMostrarInputTelefono] = useState(false)
+  const [qrDataUrl, setQrDataUrl] = useState<string>('')
+
+  useEffect(() => {
+    if (ticket?.afip?.qrUrl) {
+      generarImagenQRAFIP(ticket.afip.qrUrl, 160).then(setQrDataUrl)
+    } else {
+      setQrDataUrl('')
+    }
+  }, [ticket?.afip?.qrUrl])
 
   if (!ticket) return null
 
@@ -53,7 +80,11 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
     let msg = `*${ticket.kioscoNombre || 'Kiosko'}*\n`
     if (ticket.kioscoDireccion) msg += `${ticket.kioscoDireccion}\n`
     if (ticket.kioscoTelefono) msg += `Tel: ${ticket.kioscoTelefono}\n`
-    msg += `Ticket #${ticket.ventaId.slice(0, 8).toUpperCase()}\n`
+    if (ticket.afip) {
+      msg += `*FACTURA ${ticket.afip.letra} N° ${String(ticket.afip.puntoVenta).padStart(4, '0')}-${String(ticket.afip.nroComprobante).padStart(8, '0')}*\n`
+    } else {
+      msg += `Ticket #${ticket.ventaId.slice(0, 8).toUpperCase()}\n`
+    }
     msg += `Fecha: ${formatFecha(ticket.fecha)}\n`
     if (ticket.cajeroNombre) msg += `Atendido por: ${ticket.cajeroNombre}\n`
     msg += `--------------------------------\n`
@@ -75,6 +106,13 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
     }
     if (ticket.notas) {
       msg += `Notas: ${ticket.notas}\n`
+    }
+    if (ticket.afip) {
+      msg += `--------------------------------\n`
+      msg += `CAE: ${ticket.afip.cae} | Vto: ${ticket.afip.vtoCae}\n`
+      if (ticket.afip.qrUrl) {
+        msg += `Verificar en AFIP: ${ticket.afip.qrUrl}\n`
+      }
     }
     msg += `--------------------------------\n`
     msg += `¡Muchas gracias por su compra!`
@@ -165,22 +203,72 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
             }`}
           >
             {/* Encabezado */}
-            <div className="text-center space-y-0.5 pb-2 border-b border-dashed border-gray-400">
-              <p className="font-bold text-sm tracking-wide uppercase">
-                {ticket.kioscoNombre || 'KioskoPOS'}
-              </p>
-              {ticket.kioscoDireccion && (
-                <p className="text-[11px] text-gray-600">{ticket.kioscoDireccion}</p>
-              )}
-              {ticket.kioscoTelefono && (
-                <p className="text-[11px] text-gray-600">Tel: {ticket.kioscoTelefono}</p>
-              )}
-              <div className="pt-1 text-[10px] text-gray-500">
-                <p>Ticket #{ticket.ventaId.slice(0, 8).toUpperCase()}</p>
-                <p>{formatFecha(ticket.fecha)}</p>
-                {ticket.cajeroNombre && <p>Atendió: {ticket.cajeroNombre}</p>}
+            {ticket.afip ? (
+              <div className="text-center space-y-1 pb-2 border-b border-dashed border-gray-400">
+                {/* Cuadro de letra comprobante tipo C/B/A */}
+                <div className="flex justify-center items-center gap-2">
+                  <div className="border-2 border-black px-2 py-0.5 font-bold text-base leading-none">
+                    {ticket.afip.letra}
+                  </div>
+                  <div className="text-left text-[9px] leading-tight">
+                    <p className="font-bold">
+                      {(ticket.afip.tipoComprobanteNombre || `Factura ${ticket.afip.letra}`).toUpperCase()}
+                    </p>
+                    <p>COD. {String(ticket.afip.tipoComprobante).padStart(3, '0')}</p>
+                  </div>
+                </div>
+
+                <p className="font-bold text-sm tracking-wide uppercase pt-1">
+                  {ticket.kioscoNombre || 'KioskoPOS'}
+                </p>
+                {ticket.kioscoDireccion && (
+                  <p className="text-[10px] text-gray-600">{ticket.kioscoDireccion}</p>
+                )}
+                {ticket.kioscoTelefono && (
+                  <p className="text-[10px] text-gray-600">Tel: {ticket.kioscoTelefono}</p>
+                )}
+
+                <div className="text-[10px] text-gray-700 pt-1 space-y-0.5 text-left border-t border-dotted border-gray-300">
+                  <div className="flex justify-between">
+                    <span>P.V.: {String(ticket.afip.puntoVenta).padStart(4, '0')}</span>
+                    <span className="font-bold">N°: {String(ticket.afip.nroComprobante).padStart(8, '0')}</span>
+                  </div>
+                  <p>Fecha: {formatFecha(ticket.fecha)}</p>
+                  {ticket.afip.cuitEmisor && <p>CUIT: {ticket.afip.cuitEmisor}</p>}
+                  {ticket.afip.condicionIva && <p>Cond. IVA: {ticket.afip.condicionIva}</p>}
+                  {ticket.afip.iibb && <p>Ing. Brutos: {ticket.afip.iibb}</p>}
+                  {ticket.afip.inicioActividades && <p>Ini. Act.: {ticket.afip.inicioActividades}</p>}
+                </div>
+
+                {/* Datos Receptor */}
+                <div className="text-[10px] text-gray-700 pt-1 border-t border-dotted border-gray-300 text-left">
+                  <p className="font-semibold text-gray-800">A CONSUMIDOR FINAL</p>
+                  {ticket.afip.nroDocCliente && ticket.afip.nroDocCliente !== '0' && (
+                    <p>
+                      Doc: {ticket.afip.tipoDocCliente === 80 ? 'CUIT' : ticket.afip.tipoDocCliente === 96 ? 'DNI' : 'Doc'}: {ticket.afip.nroDocCliente}
+                    </p>
+                  )}
+                  {ticket.clienteNombre && <p>Nombre: {ticket.clienteNombre}</p>}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="text-center space-y-0.5 pb-2 border-b border-dashed border-gray-400">
+                <p className="font-bold text-sm tracking-wide uppercase">
+                  {ticket.kioscoNombre || 'KioskoPOS'}
+                </p>
+                {ticket.kioscoDireccion && (
+                  <p className="text-[11px] text-gray-600">{ticket.kioscoDireccion}</p>
+                )}
+                {ticket.kioscoTelefono && (
+                  <p className="text-[11px] text-gray-600">Tel: {ticket.kioscoTelefono}</p>
+                )}
+                <div className="pt-1 text-[10px] text-gray-500">
+                  <p>Ticket #{ticket.ventaId.slice(0, 8).toUpperCase()}</p>
+                  <p>{formatFecha(ticket.fecha)}</p>
+                  {ticket.cajeroNombre && <p>Atendió: {ticket.cajeroNombre}</p>}
+                </div>
+              </div>
+            )}
 
             {/* Detalle de productos */}
             <div className="py-2 border-b border-dashed border-gray-400 space-y-1">
@@ -256,10 +344,32 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
             </div>
 
             {/* Pie de ticket */}
-            <div className="pt-2 text-center text-[10px] text-gray-500 space-y-0.5">
-              <p className="font-semibold">¡Muchas gracias por su compra!</p>
-              <p>Comprobante no válido como factura</p>
-            </div>
+            {ticket.afip ? (
+              <div className="pt-2 text-center text-[10px] text-gray-700 space-y-1">
+                {qrDataUrl && (
+                  <div className="flex justify-center py-1">
+                    <img
+                      src={qrDataUrl}
+                      alt="Código QR AFIP"
+                      className="w-28 h-28 object-contain"
+                    />
+                  </div>
+                )}
+                <div className="border-t border-dotted border-gray-300 pt-1 space-y-0.5">
+                  <p className="font-bold text-[11px]">CAE: {ticket.afip.cae}</p>
+                  <p>Vto. CAE: {ticket.afip.vtoCae}</p>
+                </div>
+                <p className="text-[9px] text-gray-500 italic pt-1">
+                  Comprobante Autorizado por AFIP (RG 4892)
+                </p>
+                <p className="font-semibold text-[10px] pt-0.5">¡Muchas gracias por su compra!</p>
+              </div>
+            ) : (
+              <div className="pt-2 text-center text-[10px] text-gray-500 space-y-0.5">
+                <p className="font-semibold">¡Muchas gracias por su compra!</p>
+                <p>Comprobante no válido como factura</p>
+              </div>
+            )}
           </div>
         </div>
 
