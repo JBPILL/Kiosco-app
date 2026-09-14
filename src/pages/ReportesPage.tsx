@@ -34,9 +34,7 @@ interface VentaResumen {
 
 export function ReportesPage() {
   const { usuario } = useAuthStore()
-  const [tabActiva, setTabActiva] = useState<'ventas' | 'balance'>(() =>
-    usuario?.rol === 'VISOR' ? 'balance' : 'ventas'
-  )
+  const [tabActiva, setTabActiva] = useState<'ventas' | 'balance'>('balance')
   const [fecha, setFecha] = useState(() => new Date().toISOString().split('T')[0])
   const [ventas, setVentas] = useState<VentaResumen[]>([])
   const [resumen, setResumen] = useState<ResumenDiario | null>(null)
@@ -194,17 +192,6 @@ export function ReportesPage() {
         <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 self-start sm:self-auto gap-1">
           <button
             type="button"
-            onClick={() => setTabActiva('ventas')}
-            className={`px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
-              tabActiva === 'ventas'
-                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-            }`}
-          >
-            Ventas Diarias
-          </button>
-          <button
-            type="button"
             onClick={() => setTabActiva('balance')}
             className={`px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
               tabActiva === 'balance'
@@ -213,6 +200,17 @@ export function ReportesPage() {
             }`}
           >
             Balance Contable
+          </button>
+          <button
+            type="button"
+            onClick={() => setTabActiva('ventas')}
+            className={`px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+              tabActiva === 'ventas'
+                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            Ventas Diarias
           </button>
         </div>
       </div>
