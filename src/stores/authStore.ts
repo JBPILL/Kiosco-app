@@ -21,6 +21,7 @@ interface AuthState {
   kiosco: Kiosco | null
   suscripcion: Suscripcion | null
   diasRestantes: number | null
+  esModoRecuperacion: boolean
   cargando: boolean
   error: string | null
 
@@ -29,6 +30,7 @@ interface AuthState {
   logout: () => Promise<void>
   cargarSesion: () => Promise<void>
   refrescarKiosco: () => Promise<void>
+  setModoRecuperacion: (modo: boolean) => void
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -36,8 +38,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   kiosco: null,
   suscripcion: null,
   diasRestantes: null,
+  esModoRecuperacion: false,
   cargando: true,
   error: null,
+
+  setModoRecuperacion: (modo: boolean) => set({ esModoRecuperacion: modo }),
 
   login: async (email: string, password: string) => {
     set({ cargando: true, error: null })
@@ -133,6 +138,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   cargarSesion: async () => {
     try {
+      // 0. Detectar si el usuario llega con un token de recuperación de contraseña
+      if (
+        typeof window !== 'undefined' &&
+        (window.location.hash.includes('type=recovery') ||
+          window.location.search.includes('type=recovery'))
+      ) {
+        set({ esModoRecuperacion: true, cargando: false })
+        return
+      }
+
+      supabase.auth.onAuthStateChange((event) => {
+        if (event === 'PASSWORD_RECOVERY') {
+          set({ esModoRecuperacion: true, cargando: false })
+        }
+      })
+
       const { data: { session } } = await supabase.auth.getSession()
 
       if (!session) {
