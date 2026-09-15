@@ -4,11 +4,15 @@ import { CategoryManager } from '../components/catalogo/CategoryManager'
 import { ProductTable } from '../components/catalogo/ProductTable'
 import { ProductForm } from '../components/catalogo/ProductForm'
 import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
+import { AumentoPreciosModal } from '../components/catalogo/AumentoPreciosModal'
+import { exportarCatalogoCSV } from '../lib/exportUtils'
+import { useAuthStore } from '../stores/authStore'
 import { Button } from '../components/ui/Button'
 import type { Producto } from '../types/database'
 import type { ProductFormData } from '../components/catalogo/ProductForm'
 
 export function CatalogoPage() {
+  const { kiosco } = useAuthStore()
   const {
     productos,
     categorias,
@@ -30,6 +34,7 @@ export function CatalogoPage() {
 
   const [formOpen, setFormOpen] = useState(false)
   const [importarOpen, setImportarOpen] = useState(false)
+  const [aumentoOpen, setAumentoOpen] = useState(false)
   const [productoEditar, setProductoEditar] = useState<Producto | null>(null)
 
   const handleNuevo = () => {
@@ -57,7 +62,23 @@ export function CatalogoPage() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">Catálogo de Productos</h1>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Administrá tus productos, precios y categorías</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setAumentoOpen(true)}
+            className="flex items-center gap-1.5 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+          >
+            Aumento Masivo %
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => exportarCatalogoCSV(productos, categorias, kiosco?.nombre)}
+            className="flex items-center gap-1.5 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+          >
+            Exportar (.CSV)
+          </Button>
           <Button
             variant="secondary"
             size="sm"
@@ -117,6 +138,17 @@ export function CatalogoPage() {
           await cargarProductos()
         }}
         categorias={categorias}
+      />
+
+      {/* Modal de aumento masivo de precios */}
+      <AumentoPreciosModal
+        isOpen={aumentoOpen}
+        onClose={() => setAumentoOpen(false)}
+        categorias={categorias}
+        productos={productos}
+        onAumentoAplicado={async () => {
+          await cargarProductos()
+        }}
       />
     </div>
   )

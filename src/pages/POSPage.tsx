@@ -11,6 +11,7 @@ import { PaymentModal } from '../components/pos/PaymentModal'
 import { TicketReceiptModal, type TicketData } from '../components/pos/TicketReceiptModal'
 import { BarcodeScannerModal } from '../components/pos/BarcodeScannerModal'
 import { KeyboardShortcutsModal } from '../components/pos/KeyboardShortcutsModal'
+import { ArticuloLibreModal } from '../components/pos/ArticuloLibreModal'
 import { useBarcodeGun } from '../hooks/useBarcodeGun'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { playScanSound } from '../lib/sound'
@@ -31,6 +32,7 @@ export function POSPage() {
   const [modalEsperaOpen, setModalEsperaOpen] = useState(false)
   const [modalScannerOpen, setModalScannerOpen] = useState(false)
   const [modalShortcutsOpen, setModalShortcutsOpen] = useState(false)
+  const [modalLibreOpen, setModalLibreOpen] = useState(false)
   const [ticketReciente, setTicketReciente] = useState<TicketData | null>(null)
   const [ticketModalOpen, setTicketModalOpen] = useState(false)
 
@@ -270,12 +272,23 @@ export function POSPage() {
       <div className="flex-1 flex flex-col lg:flex-row gap-3 min-h-0">
         {/* Columna de productos */}
         <div className="flex-1 flex flex-col min-h-0">
-          {/* Buscador compacto */}
-          <div className="mb-2">
-            <ProductSearch
-              onSelect={handleSeleccion}
-              onOpenScanner={() => setModalScannerOpen(true)}
-            />
+          {/* Buscador compacto y botón de Ítem Libre */}
+          <div className="flex items-center gap-2 mb-2">
+            <div className="flex-1 min-w-0">
+              <ProductSearch
+                onSelect={handleSeleccion}
+                onOpenScanner={() => setModalScannerOpen(true)}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setModalLibreOpen(true)}
+              className="h-10 px-3.5 flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0"
+              title="Cobrar concepto o monto libre sin código (Varios, fotocopias, etc.)"
+            >
+              <span className="text-base font-bold leading-none">+</span>
+              <span>Ítem Libre</span>
+            </button>
           </div>
 
           {/* Categorías deslizables + Botón Ventas en Espera */}
@@ -494,6 +507,12 @@ export function POSPage() {
       <KeyboardShortcutsModal
         isOpen={modalShortcutsOpen}
         onClose={() => setModalShortcutsOpen(false)}
+      />
+
+      {/* Modal de cobro de ítem libre */}
+      <ArticuloLibreModal
+        isOpen={modalLibreOpen}
+        onClose={() => setModalLibreOpen(false)}
       />
     </div>
   )

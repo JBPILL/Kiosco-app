@@ -221,6 +221,26 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       if (ventaError) throw ventaError
       ventaCreadaId = ventaId
 
+      // 1b. Si hay artículos libres ad-hoc, persistirlos en productos con activo: false
+      const itemsLibres = items.filter((it) => it.producto.activo === false)
+      if (itemsLibres.length > 0) {
+        await supabase.from('productos').insert(
+          itemsLibres.map((it) => ({
+            id: it.producto.id,
+            kiosco_id: kioscoId,
+            descripcion: it.producto.descripcion,
+            precio_costo: 0,
+            precio_venta: it.producto.precio_venta,
+            stock_actual: 99999,
+            stock_minimo: 0,
+            es_favorito: false,
+            activo: false,
+            fecha_creacion: ahora,
+            fecha_actualizacion: ahora,
+          }))
+        )
+      }
+
       // 2. Insertar detalles de venta
       const detalles = items.map((item) => ({
         id: uuidv4(),
@@ -245,6 +265,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
 
       // 4. Actualizar stock físico en catálogo y asentar egreso en movimientos_stock
       for (const it of items) {
+        if (it.producto.activo === false) continue
         const nuevoStock = Math.max(0, it.producto.stock_actual - it.cantidad)
         try {
           await supabase

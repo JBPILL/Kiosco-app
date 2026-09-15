@@ -31,6 +31,7 @@ interface CartState {
 
   // Acciones de productos
   agregarProducto: (producto: Producto) => void
+  agregarItemLibre: (descripcion: string, precio: number, cantidad?: number) => void
   quitarProducto: (productoId: string) => void
   actualizarCantidad: (productoId: string, cantidad: number) => void
   vaciarCarrito: () => void
@@ -119,6 +120,41 @@ export const useCartStore = create<CartState>((set, get) => ({
         ],
       }
     })
+  },
+
+  agregarItemLibre: (descripcion: string, precio: number, cantidad = 1) => {
+    const desc = descripcion.trim() || 'Varios'
+    const cant = Math.max(1, Math.round(cantidad))
+    const precioUnitario = Math.max(1, Math.round(precio))
+
+    const productoLibre: Producto = {
+      id: uuidv4(),
+      kiosco_id: '',
+      categoria_id: null,
+      codigo_barras: null,
+      descripcion: desc,
+      precio_costo: 0,
+      precio_venta: precioUnitario,
+      stock_actual: 99999,
+      stock_minimo: 0,
+      es_favorito: false,
+      activo: false,
+      fecha_creacion: new Date().toISOString(),
+      fecha_actualizacion: new Date().toISOString(),
+    }
+
+    set((state) => ({
+      items: [
+        ...state.items,
+        {
+          producto: productoLibre,
+          cantidad: cant,
+          subtotal: precioUnitario * cant,
+        },
+      ],
+    }))
+
+    toast.success(`"${desc}" agregado al ticket`)
   },
 
   quitarProducto: (productoId: string) => {

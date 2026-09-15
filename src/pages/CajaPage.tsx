@@ -6,6 +6,7 @@ import { formatPrecio, formatFecha } from '../lib/utils'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
+import { TicketCierreCajaModal, type DatosCierreCaja } from '../components/pos/TicketCierreCajaModal'
 import type {
   SesionCaja,
   Usuario,
@@ -82,6 +83,8 @@ export function CajaPage() {
   const [historial, setHistorial] = useState<SesionHistorial[]>([])
   const [cargandoHistorial, setCargandoHistorial] = useState(false)
   const [sesionDetalle, setSesionDetalle] = useState<SesionHistorial | null>(null)
+  const [modalTicketCierreOpen, setModalTicketCierreOpen] = useState(false)
+  const [ticketCierre, setTicketCierre] = useState<DatosCierreCaja | null>(null)
 
   const cargarHistorial = useCallback(async () => {
     if (!usuario?.kiosco_id) return
@@ -161,12 +164,81 @@ export function CajaPage() {
 
   const handleConfirmarCierre = async () => {
     setCerrando(true)
+    const kiosco = useAuthStore.getState().kiosco
+    const snapshotCierre: DatosCierreCaja = {
+      kioscoNombre: kiosco?.nombre,
+      cajeroNombre: usuario?.nombre,
+      fechaApertura: sesionActiva?.fecha_apertura || new Date().toISOString(),
+      fechaCierre: new Date().toISOString(),
+      montoInicial: sesionActiva?.monto_inicial || 0,
+      ventasPorMedio: [
+        { medio: 'Efectivo', total: resumenActivo?.total_efectivo || 0 },
+        { medio: 'Mercado Pago', total: resumenActivo?.total_mercadopago || 0 },
+        { medio: 'Transferencia', total: resumenActivo?.total_transferencia || 0 },
+        { medio: 'Tarjeta', total: resumenActivo?.total_tarjeta || 0 },
+        {
+          medio: 'Otros / Cta Cte',
+          total: Math.max(
+            0,
+            (resumenActivo?.total_ventas || 0) -
+              ((resumenActivo?.total_efectivo || 0) +
+                (resumenActivo?.total_mercadopago || 0) +
+                (resumenActivo?.total_transferencia || 0) +
+                (resumenActivo?.total_tarjeta || 0))
+          ),
+        },
+      ].filter((m) => m.total > 0),
+      totalVentas: resumenActivo?.total_ventas || 0,
+      ingresosExtra: resumenActivo?.total_ingresos_extra || 0,
+      egresosExtra: resumenActivo?.total_egresos || 0,
+      efectivoEsperado,
+      efectivoContado: contadoNum,
+      diferencia: diferenciaArqueo,
+    }
+
     const ok = await cerrarCaja(contadoNum)
     setCerrando(false)
     if (ok) {
       setModalArqueoOpen(false)
       cargarHistorial()
+      setTicketCierre(snapshotCierre)
+      setModalTicketCierreOpen(true)
     }
+  }
+
+  const handleImprimirHistorico = async (s: SesionHistorial) => {
+    const resumen = await cargarResumenSesion(s.id)
+    const otrosPagos = Math.max(
+      0,
+      (resumen?.total_ventas || 0) -
+        ((resumen?.total_efectivo || 0) +
+          (resumen?.total_mercadopago || 0) +
+          (resumen?.total_transferencia || 0) +
+          (resumen?.total_tarjeta || 0))
+    )
+
+    const datos: DatosCierreCaja = {
+      kioscoNombre: useAuthStore.getState().kiosco?.nombre,
+      cajeroNombre: s.usuario?.nombre || usuario?.nombre,
+      fechaApertura: s.fecha_apertura,
+      fechaCierre: s.fecha_cierre || s.fecha_apertura,
+      montoInicial: s.monto_inicial,
+      ventasPorMedio: [
+        { medio: 'Efectivo', total: resumen?.total_efectivo || 0 },
+        { medio: 'Mercado Pago', total: resumen?.total_mercadopago || 0 },
+        { medio: 'Transferencia', total: resumen?.total_transferencia || 0 },
+        { medio: 'Tarjeta', total: resumen?.total_tarjeta || 0 },
+        { medio: 'Otros / Cta Cte', total: otrosPagos },
+      ].filter((m) => m.total > 0),
+      totalVentas: resumen?.total_ventas || 0,
+      ingresosExtra: resumen?.total_ingresos_extra || 0,
+      egresosExtra: resumen?.total_egresos || 0,
+      efectivoEsperado: s.monto_final_sistema || (resumen?.efectivo_esperado_en_caja ?? s.monto_inicial),
+      efectivoContado: s.monto_final_declarado || 0,
+      diferencia: s.diferencia || 0,
+    }
+    setTicketCierre(datos)
+    setModalTicketCierreOpen(true)
   }
 
   const handleAbrirModalMovimiento = (tipo: TipoMovimientoCaja) => {
@@ -927,16 +999,35 @@ export function CajaPage() {
               )}
             </div>
 
-            <Button
-              variant="secondary"
-              fullWidth
-              onClick={() => setSesionDetalle(null)}
-            >
-              Cerrar
-            </Button>
+            <div className="flex gap-2 pt-1">
+              <Button
+                variant="primary"
+                fullWidth
+                onClick={() => {
+                  if (sesionDetalle) handleImprimirHistorico(sesionDetalle)
+                }}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
+                Imprimir Arqueo
+              </Button>
+              <Button
+                variant="secondary"
+                fullWidth
+                onClick={() => setSesionDetalle(null)}
+              >
+                Cerrar
+              </Button>
+            </div>
           </div>
         )}
       </Modal>
+
+      {/* ── MODAL TÉRMICO DE CIERRE DE CAJA (ARQUEO Z) ── */}
+      <TicketCierreCajaModal
+        isOpen={modalTicketCierreOpen}
+        onClose={() => setModalTicketCierreOpen(false)}
+        datos={ticketCierre}
+      />
     </div>
   )
 }
