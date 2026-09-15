@@ -1,19 +1,36 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { Sidebar } from '../ui/Sidebar'
 import { useAuthStore } from '../../stores/authStore'
+import { useConfigAdminStore, formatearLinkWhatsApp } from '../../stores/configAdminStore'
 import { useOnlineStatus } from '../../hooks/useOnlineStatus'
+import toast from 'react-hot-toast'
 
 export function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const isOnline = useOnlineStatus()
   const { usuario, kiosco, suscripcion, diasRestantes, logout } = useAuthStore()
+  const { config: configAdmin, cargarConfig: cargarConfigAdmin } = useConfigAdminStore()
+
+  useEffect(() => {
+    cargarConfigAdmin()
+  }, [cargarConfigAdmin])
+
+  const copiarDato = (texto: string, label: string) => {
+    navigator.clipboard.writeText(texto)
+    toast.success(`${label} copiado al portapapeles`)
+  }
 
   // Bloqueo total de pantalla si el kiosco está suspendido (excepto para superadmin)
   if (!usuario?.es_superadmin && kiosco?.estado_suscripcion === 'SUSPENDIDO') {
+    const linkWhatsApp = formatearLinkWhatsApp(
+      configAdmin.whatsapp_soporte,
+      `Hola! Te contacto desde el comercio "${kiosco.nombre}" para regularizar el abono y reactivar el servicio de KioskoPOS.`
+    )
+
     return (
-      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-gray-800 border border-gray-700 rounded-2xl p-8 text-center shadow-xl space-y-5">
+      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center p-4 sm:p-6">
+        <div className="max-w-md w-full bg-gray-800 border border-gray-700 rounded-2xl p-6 sm:p-8 text-center shadow-xl space-y-4">
           <div className="w-12 h-12 bg-red-900/40 border border-red-700/60 rounded-2xl mx-auto flex items-center justify-center text-red-400 font-bold text-xl">
             !
           </div>
@@ -22,20 +39,85 @@ export function MainLayout() {
             <p className="text-sm text-gray-300 mt-2 leading-relaxed">
               El acceso para <strong>{kiosco.nombre}</strong> se encuentra pausado por período de suscripción vencido.
             </p>
-            <p className="text-xs text-gray-400 mt-2">
-              Comunicate con el administrador para regularizar el abono mensual y reactivar tu sistema al instante.
+            <p className="text-xs text-gray-400 mt-1">
+              Transferí el valor del abono mensual y notificá al administrador para reactivar tu sistema al instante.
             </p>
           </div>
 
-          <div className="pt-2 space-y-2.5">
-            <a
-              href="https://wa.me/5491100000000?text=Hola,%20quisiera%20reactivar%20mi%20suscripci%C3%B3n%20en%20KioskoPOS."
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-semibold text-sm transition-colors text-white text-center shadow-md"
-            >
-              Contactar por WhatsApp
-            </a>
+          {/* Datos de transferencia para reactivación */}
+          {(configAdmin.alias_mp || configAdmin.cbu_banco || configAdmin.titular_cuenta) && (
+            <div className="bg-gray-900/90 border border-gray-700/80 rounded-xl p-3.5 text-left space-y-2 text-xs">
+              <span className="font-bold text-gray-300 block border-b border-gray-700/80 pb-1.5 text-center">
+                Datos de Pago / Transferencia
+              </span>
+
+              {configAdmin.titular_cuenta && (
+                <div>
+                  <span className="text-gray-400 block text-[11px]">Titular de la cuenta:</span>
+                  <span className="font-semibold text-white">{configAdmin.titular_cuenta}</span>
+                </div>
+              )}
+
+              {configAdmin.alias_mp && (
+                <div className="flex items-center justify-between gap-2 pt-0.5">
+                  <div className="min-w-0">
+                    <span className="text-gray-400 block text-[11px]">Alias Mercado Pago:</span>
+                    <span className="font-bold text-sky-400 truncate block">{configAdmin.alias_mp}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => copiarDato(configAdmin.alias_mp, 'Alias')}
+                    className="px-2.5 py-1 rounded-lg bg-gray-700 hover:bg-gray-600 text-[11px] font-semibold text-gray-200 transition-colors flex-shrink-0 active:scale-95"
+                  >
+                    Copiar
+                  </button>
+                </div>
+              )}
+
+              {configAdmin.cbu_banco && (
+                <div className="flex items-center justify-between gap-2 pt-0.5">
+                  <div className="min-w-0">
+                    <span className="text-gray-400 block text-[11px]">CBU / CVU Bancario:</span>
+                    <span className="font-mono text-gray-200 text-[11px] truncate block">{configAdmin.cbu_banco}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => copiarDato(configAdmin.cbu_banco, 'CBU')}
+                    className="px-2.5 py-1 rounded-lg bg-gray-700 hover:bg-gray-600 text-[11px] font-semibold text-gray-200 transition-colors flex-shrink-0 active:scale-95"
+                  >
+                    Copiar
+                  </button>
+                </div>
+              )}
+
+              {configAdmin.banco_nombre && (
+                <div>
+                  <span className="text-gray-400 block text-[11px]">Entidad:</span>
+                  <span className="text-gray-300">{configAdmin.banco_nombre}</span>
+                </div>
+              )}
+
+              <p className="text-[11px] text-emerald-400 pt-1 text-center font-medium">
+                Al enviar la transferencia, mandá el comprobante por WhatsApp para reactivación inmediata.
+              </p>
+            </div>
+          )}
+
+          <div className="pt-1 space-y-2.5">
+            {linkWhatsApp ? (
+              <a
+                href={linkWhatsApp}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-semibold text-sm transition-colors text-white text-center shadow-md"
+              >
+                Contactar por WhatsApp
+              </a>
+            ) : (
+              <p className="text-xs text-amber-400 bg-amber-950/40 p-2.5 rounded-xl border border-amber-800/60">
+                Contactá al administrador para reactivar tu cuenta.
+              </p>
+            )}
             <button
               onClick={logout}
               className="block w-full py-2.5 rounded-xl bg-gray-700 hover:bg-gray-600 font-medium text-xs text-gray-300 transition-colors"

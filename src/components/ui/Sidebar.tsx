@@ -2,6 +2,7 @@ import { useEffect, useRef, useMemo } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
 import { useThemeStore } from '../../stores/themeStore'
+import { useConfigAdminStore, formatearLinkWhatsApp } from '../../stores/configAdminStore'
 
 interface SidebarProps {
   isOpen: boolean
@@ -22,8 +23,9 @@ const menuItems = [
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { usuario, logout } = useAuthStore()
+  const { usuario, kiosco, logout } = useAuthStore()
   const { tema, toggleTema } = useThemeStore()
+  const { config: configAdmin } = useConfigAdminStore()
   const itemRefs = useRef<(HTMLAnchorElement | null)[]>([])
 
   const itemsVisibles = useMemo(() => {
@@ -206,6 +208,24 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             </span>
           </button>
         </div>
+
+        {/* Enlace directo a Soporte Técnico WhatsApp */}
+        {configAdmin.whatsapp_soporte && (
+          <div className="px-3 py-1.5 border-t border-gray-100 dark:border-gray-700/50">
+            <a
+              href={formatearLinkWhatsApp(
+                configAdmin.whatsapp_soporte,
+                `Hola! Me comunico desde el comercio "${kiosco?.nombre || 'Mi Kiosco'}" para consultar sobre soporte técnico en KioskoPOS.`
+              )}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between px-4 py-2.5 rounded-xl w-full text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors"
+            >
+              <span>Soporte por WhatsApp</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            </a>
+          </div>
+        )}
 
         {/* Cerrar sesión con safe area bottom para iPhone */}
         <div className="px-3 pt-2 pb-[max(16px,env(safe-area-inset-bottom))] border-t border-gray-100 dark:border-gray-700/50">

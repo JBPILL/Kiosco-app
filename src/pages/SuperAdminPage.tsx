@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useAdminStore } from '../stores/adminStore'
+import { useConfigAdminStore, formatearLinkWhatsApp } from '../stores/configAdminStore'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
@@ -22,6 +23,22 @@ export function SuperAdminPage() {
     actualizarPrecioPlan,
     crearPlan,
   } = useAdminStore()
+
+  // Configuración de cobro y soporte centralizado
+  const {
+    config: configAdmin,
+    cargarConfig: cargarConfigAdmin,
+    guardarConfig: guardarConfigAdmin,
+    guardando: guardandoConfigAdmin,
+  } = useConfigAdminStore()
+
+  // Modal Configuración de Cobro y Soporte
+  const [modalCobroOpen, setModalCobroOpen] = useState(false)
+  const [cfgWhatsApp, setCfgWhatsApp] = useState('')
+  const [cfgAliasMp, setCfgAliasMp] = useState('')
+  const [cfgCbuBanco, setCfgCbuBanco] = useState('')
+  const [cfgTitularCuenta, setCfgTitularCuenta] = useState('')
+  const [cfgBancoNombre, setCfgBancoNombre] = useState('')
 
   // Filtros y búsqueda
   const [busqueda, setBusqueda] = useState('')
@@ -79,17 +96,47 @@ export function SuperAdminPage() {
   const [historialPagos, setHistorialPagos] = useState<PagoSuscripcion[]>([])
   const [cargandoHistorial, setCargandoHistorial] = useState(false)
 
+  // Filtrar planes comerciales (excluye fila interna de configuración de sistema)
+  const planesComerciales = useMemo(
+    () => planes.filter((p) => p.nombre !== '__CONFIG_SISTEMA__'),
+    [planes]
+  )
+
   // Cargar datos al montar
   useEffect(() => {
     cargarDatosAdmin()
-  }, [cargarDatosAdmin])
+    cargarConfigAdmin()
+  }, [cargarDatosAdmin, cargarConfigAdmin])
 
   // Establecer plan por defecto al abrir modal nuevo
   useEffect(() => {
-    if (planes.length > 0 && !nuevoPlanId) {
-      setNuevoPlanId(planes[0].id)
+    if (planesComerciales.length > 0 && !nuevoPlanId) {
+      setNuevoPlanId(planesComerciales[0].id)
     }
-  }, [planes, nuevoPlanId])
+  }, [planesComerciales, nuevoPlanId])
+
+  const abrirModalCobro = () => {
+    setCfgWhatsApp(configAdmin.whatsapp_soporte || '')
+    setCfgAliasMp(configAdmin.alias_mp || '')
+    setCfgCbuBanco(configAdmin.cbu_banco || '')
+    setCfgTitularCuenta(configAdmin.titular_cuenta || '')
+    setCfgBancoNombre(configAdmin.banco_nombre || '')
+    setModalCobroOpen(true)
+  }
+
+  const handleGuardarConfigCobro = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const ok = await guardarConfigAdmin({
+      whatsapp_soporte: cfgWhatsApp.trim(),
+      alias_mp: cfgAliasMp.trim(),
+      cbu_banco: cfgCbuBanco.trim(),
+      titular_cuenta: cfgTitularCuenta.trim(),
+      banco_nombre: cfgBancoNombre.trim(),
+    })
+    if (ok) {
+      setModalCobroOpen(false)
+    }
+  }
 
   // Calcular métricas KPI
   const metricas = useMemo(() => {
@@ -286,7 +333,7 @@ export function SuperAdminPage() {
 
   const abrirModalPlanes = () => {
     const map: Record<string, number> = {}
-    planes.forEach((p) => {
+    planesComerciales.forEach((p) => {
       map[p.id] = p.precio_mensual
     })
     setPreciosEditados(map)
@@ -386,6 +433,13 @@ export function SuperAdminPage() {
         <div className="flex items-center gap-2.5 flex-wrap">
           <Button
             variant="secondary"
+            onClick={abrirModalCobro}
+            className="text-sm border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+          >
+            Datos de Cobro y Soporte
+          </Button>
+          <Button
+            variant="secondary"
             onClick={abrirModalPlanes}
             className="text-sm"
           >
@@ -405,6 +459,70 @@ export function SuperAdminPage() {
             className="text-sm shadow-sm"
           >
             + Nuevo Kiosco Cliente
+          </Button>
+        </div>
+      </div>
+
+      {/* Tarjeta de Cobro y Soporte para Kioscos */}
+      <div className="bg-gradient-to-r from-indigo-50/70 via-purple-50/40 to-white dark:from-indigo-950/30 dark:via-gray-800 dark:to-gray-800 p-4 sm:p-5 rounded-2xl border border-indigo-200/80 dark:border-indigo-800/60 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="space-y-1.5 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-900/50 px-2 py-0.5 rounded-md">
+              Datos de Cobro y Soporte para Kioscos
+            </span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              Visible para los dueños en cuentas vencidas, bloqueo por suscripción y renovación
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1 text-xs">
+            <div className="p-2.5 rounded-xl bg-white/90 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700">
+              <span className="text-gray-500 dark:text-gray-400 block font-medium">WhatsApp Soporte:</span>
+              {configAdmin.whatsapp_soporte ? (
+                <a
+                  href={formatearLinkWhatsApp(configAdmin.whatsapp_soporte, 'Prueba de enlace desde SuperAdmin')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 mt-0.5"
+                >
+                  +{configAdmin.whatsapp_soporte.replace(/\D/g, '')}
+                  <span className="text-[10px] text-gray-400 font-normal">(probar)</span>
+                </a>
+              ) : (
+                <span className="text-amber-600 dark:text-amber-400 font-semibold mt-0.5 block">Sin vincular</span>
+              )}
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-white/90 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700">
+              <span className="text-gray-500 dark:text-gray-400 block font-medium">Alias Mercado Pago:</span>
+              <span className="font-bold text-gray-800 dark:text-gray-200 mt-0.5 block truncate">
+                {configAdmin.alias_mp || <span className="text-amber-600 dark:text-amber-400 font-normal">Sin alias</span>}
+              </span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-white/90 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700">
+              <span className="text-gray-500 dark:text-gray-400 block font-medium">CBU / CVU Bancario:</span>
+              <span className="font-bold text-gray-800 dark:text-gray-200 mt-0.5 block truncate font-mono">
+                {configAdmin.cbu_banco || <span className="text-amber-600 dark:text-amber-400 font-normal">Sin CBU</span>}
+              </span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-white/90 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700">
+              <span className="text-gray-500 dark:text-gray-400 block font-medium">Titular de Cuenta:</span>
+              <span className="font-bold text-gray-800 dark:text-gray-200 mt-0.5 block truncate">
+                {configAdmin.titular_cuenta || <span className="text-amber-600 dark:text-amber-400 font-normal">Sin titular</span>}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-shrink-0 self-end md:self-center">
+          <Button
+            variant="secondary"
+            onClick={abrirModalCobro}
+            className="text-xs font-semibold px-3 py-2"
+          >
+            Modificar Datos
           </Button>
         </div>
       </div>
@@ -716,6 +834,7 @@ export function SuperAdminPage() {
         isOpen={modalNuevoOpen}
         onClose={() => setModalNuevoOpen(false)}
         title="Dar de Alta Nuevo Kiosco Cliente"
+        size="lg"
       >
         <form onSubmit={handleCrearNuevoKiosco} className="space-y-4">
           <div className="bg-indigo-50 dark:bg-indigo-900/30 p-3 rounded-xl text-xs text-indigo-800 dark:text-indigo-300">
@@ -783,18 +902,18 @@ export function SuperAdminPage() {
               />
             </div>
 
-            <div>
+            <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Plan Asignado
               </label>
               <select
                 value={nuevoPlanId}
                 onChange={(e) => setNuevoPlanId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-hidden"
+                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-hidden"
               >
-                {planes.map((p) => (
+                {planesComerciales.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.nombre} ({formatPrecio(p.precio_mensual)}/mes)
+                    {p.nombre} — {formatPrecio(p.precio_mensual)}/mes
                   </option>
                 ))}
               </select>
@@ -981,6 +1100,7 @@ export function SuperAdminPage() {
         isOpen={modalEditarOpen}
         onClose={() => setModalEditarOpen(false)}
         title={`Modificar Kiosco: ${kioscoParaEditar?.nombre_kiosco || ''}`}
+        size="lg"
       >
         {kioscoParaEditar && (
           <form onSubmit={handleGuardarEdicion} className="space-y-4">
@@ -1052,26 +1172,26 @@ export function SuperAdminPage() {
                 />
               </div>
 
-              <div>
+              <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Plan Contratado
                 </label>
                 <select
                   value={editPlanId}
                   onChange={(e) => setEditPlanId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-hidden"
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-hidden"
                 >
-                  {planes.map((p) => (
+                  {planesComerciales.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.nombre} ({formatPrecio(p.precio_mensual)}/mes)
+                      {p.nombre} — {formatPrecio(p.precio_mensual)}/mes
                     </option>
                   ))}
                 </select>
               </div>
 
-              <div>
+              <div className="sm:col-span-2">
                 <Input
-                  label="Fecha de Vencimiento"
+                  label="Fecha de Vencimiento de la Suscripción"
                   type="date"
                   value={editFechaVencimiento}
                   onChange={(e) => setEditFechaVencimiento(e.target.value)}
@@ -1179,11 +1299,11 @@ export function SuperAdminPage() {
               Planes Existentes
             </h3>
 
-            {planes.length === 0 ? (
+            {planesComerciales.length === 0 ? (
               <p className="text-sm text-gray-500 py-2">No hay planes configurados.</p>
             ) : (
               <div className="space-y-4">
-                {planes.map((p) => {
+                {planesComerciales.map((p) => {
                   const kioscosEnPlan = kioscos.filter((k) => k.plan_id === p.id).length
                   const precioActual =
                     preciosEditados[p.id] !== undefined ? preciosEditados[p.id] : p.precio_mensual
@@ -1374,6 +1494,129 @@ export function SuperAdminPage() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* MODAL CONFIGURACIÓN DE COBRO Y WHATSAPP */}
+      <Modal
+        isOpen={modalCobroOpen}
+        onClose={() => setModalCobroOpen(false)}
+        title="Datos de Cobro y Soporte del Administrador"
+        size="lg"
+      >
+        <form onSubmit={handleGuardarConfigCobro} className="space-y-4">
+          <div className="bg-indigo-50 dark:bg-indigo-900/30 p-3.5 rounded-xl text-xs text-indigo-800 dark:text-indigo-300 space-y-1">
+            <p className="font-semibold">Información pública para los clientes</p>
+            <p>
+              Estos datos se mostrarán en tiempo real a los dueños de los kioscos en la pantalla de suspensión, en la sección de renovación de suscripción y en los botones de soporte técnico.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="sm:col-span-2 space-y-1">
+              <Input
+                label="WhatsApp de Soporte y Contacto *"
+                placeholder="Ej: 5491123456789 o 1123456789"
+                value={cfgWhatsApp}
+                onChange={(e) => setCfgWhatsApp(e.target.value)}
+                required
+              />
+              <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 px-0.5">
+                <span>Ingresá el número con o sin 549 / 011. El sistema lo normaliza automáticamente.</span>
+                {cfgWhatsApp.trim() && (
+                  <a
+                    href={formatearLinkWhatsApp(cfgWhatsApp, 'Hola! Mensaje de prueba desde el panel de SuperAdmin.')}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold text-emerald-600 dark:text-emerald-400 hover:underline flex-shrink-0 ml-2"
+                  >
+                    Probar enlace ↗
+                  </a>
+                )}
+              </div>
+            </div>
+
+            <div className="sm:col-span-2">
+              <Input
+                label="Nombre del Titular de la Cuenta *"
+                placeholder="Ej: Jonathan Penayo"
+                value={cfgTitularCuenta}
+                onChange={(e) => setCfgTitularCuenta(e.target.value)}
+                required
+              />
+            </div>
+
+            <div>
+              <Input
+                label="Alias de Mercado Pago"
+                placeholder="Ej: kiosko.pos.mp"
+                value={cfgAliasMp}
+                onChange={(e) => setCfgAliasMp(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <Input
+                label="Banco o Billetera (Opcional)"
+                placeholder="Ej: Mercado Pago / Santander"
+                value={cfgBancoNombre}
+                onChange={(e) => setCfgBancoNombre(e.target.value)}
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <Input
+                label="CBU o CVU Bancario (22 dígitos)"
+                placeholder="Ej: 0000003100012345678901"
+                value={cfgCbuBanco}
+                onChange={(e) => setCfgCbuBanco(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Vista previa de cómo lo verán los clientes */}
+          <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 text-xs space-y-2">
+            <span className="font-semibold text-gray-700 dark:text-gray-300 block">
+              Vista previa para el kiosquero:
+            </span>
+            <div className="p-3 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 space-y-1.5 text-gray-700 dark:text-gray-300">
+              <p>
+                <strong className="text-gray-900 dark:text-gray-100">Titular:</strong> {cfgTitularCuenta || '—'}
+              </p>
+              {cfgAliasMp && (
+                <p>
+                  <strong className="text-gray-900 dark:text-gray-100">Alias MP:</strong> {cfgAliasMp}
+                </p>
+              )}
+              {cfgCbuBanco && (
+                <p className="font-mono">
+                  <strong className="text-gray-900 dark:text-gray-100 font-sans">CBU/CVU:</strong> {cfgCbuBanco}
+                </p>
+              )}
+              {cfgBancoNombre && (
+                <p>
+                  <strong className="text-gray-900 dark:text-gray-100">Entidad:</strong> {cfgBancoNombre}
+                </p>
+              )}
+              <p className="text-emerald-600 dark:text-emerald-400 font-semibold pt-1">
+                WhatsApp: {cfgWhatsApp ? `+${cfgWhatsApp.replace(/\D/g, '')}` : 'Sin número asignado'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setModalCobroOpen(false)}
+              disabled={guardandoConfigAdmin}
+            >
+              Cancelar
+            </Button>
+            <Button type="submit" variant="primary" disabled={guardandoConfigAdmin}>
+              {guardandoConfigAdmin ? 'Guardando...' : 'Guardar Configuración'}
+            </Button>
+          </div>
+        </form>
       </Modal>
     </div>
   )
