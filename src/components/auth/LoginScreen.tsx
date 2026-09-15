@@ -108,8 +108,11 @@ export function LoginScreen() {
 
       if (resetError) {
         let msg = resetError.message
-        if (msg.toLowerCase().includes('rate limit')) {
+        const lower = msg.toLowerCase()
+        if (lower.includes('rate limit')) {
           msg = 'Demasiadas solicitudes seguidas. Por favor esperá unos minutos antes de volver a intentar.'
+        } else if (lower.includes('error sending recovery email') || lower.includes('error sending')) {
+          msg = 'No se pudo enviar el correo de recuperación. Verificá la configuración del servidor de correos (Resend/SMTP).'
         }
         throw new Error(msg)
       }
