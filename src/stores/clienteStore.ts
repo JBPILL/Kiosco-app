@@ -33,6 +33,12 @@ interface ClienteState {
     notas?: string
   ) => Promise<boolean>
 
+  revertirCargoVenta: (
+    ventaId: string,
+    monto: number,
+    notas?: string
+  ) => Promise<boolean>
+
   registrarAbono: (
     clienteId: string,
     monto: number,
@@ -271,6 +277,101 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
     }
 
     return true
+  },
+
+  revertirCargoVenta: async (ventaId, monto, notas) => {
+    const usuario = useAuthStore.getState().usuario
+    if (!usuario?.kiosco_id) return false
+
+    try {
+      // 1. Buscar si existe movimiento de cuenta corriente asociado a esta venta
+      let clienteId: string | null = null
+
+      const { data: movs, error: movErr } = await supabase
+        .from('movimientos_cuenta_corriente')
+        .select('*')
+        .eq('venta_id', ventaId)
+        .order('fecha_hora', { ascending: false })
+        .limit(1)
+
+      if (!movErr && movs && movs.length > 0) {
+        clienteId = movs[0].cliente_id
+      } else {
+        // Buscar en local
+        const todosLosClientes = get().clientes
+        for (const cl of todosLosClientes) {
+          const movsLocales = getLocalMovimientosCC(cl.id)
+          if (movsLocales.some((m) => m.venta_id === ventaId)) {
+            clienteId = cl.id
+            break
+          }
+        }
+      }
+
+      if (!clienteId) {
+        console.warn(`No se encontró cliente asociado a la venta ${ventaId}`)
+        return false
+      }
+
+      const cliente = get().clientes.find((c) => c.id === clienteId)
+      const saldoActual = cliente?.saldo_deudor ?? 0
+      const nuevoSaldo = Math.max(0, saldoActual - monto)
+
+      // Actualizar cliente localmente
+      const actualizados = get().clientes.map((c) =>
+        c.id === clienteId ? { ...c, saldo_deudor: nuevoSaldo } : c
+      )
+      saveLocalClientes(usuario.kiosco_id, actualizados)
+      set({ clientes: actualizados })
+
+      // Crear movimiento de reversión
+      const movReversion: MovimientoCuentaCorriente = {
+        id: uuidv4(),
+        cliente_id: clienteId,
+        kiosco_id: usuario.kiosco_id,
+        venta_id: ventaId,
+        tipo: 'ABONO_PAGO',
+        monto,
+        medio_pago: 'CUENTA_CORRIENTE',
+        saldo_resultante: nuevoSaldo,
+        notas: notas || `Reversión por anulación de Venta #${ventaId.slice(0, 8).toUpperCase()}`,
+        fecha_hora: new Date().toISOString(),
+        usuario_id: usuario.id,
+      }
+
+      const movsActuales = getLocalMovimientosCC(clienteId)
+      saveLocalMovimientosCC(clienteId, [movReversion, ...movsActuales])
+
+      // Actualizar en Supabase
+      try {
+        await supabase
+          .from('clientes')
+          .update({ saldo_deudor: nuevoSaldo })
+          .eq('id', clienteId)
+
+        await supabase.from('movimientos_cuenta_corriente').insert({
+          id: movReversion.id,
+          cliente_id: movReversion.cliente_id,
+          kiosco_id: movReversion.kiosco_id,
+          venta_id: movReversion.venta_id,
+          tipo: movReversion.tipo,
+          monto: movReversion.monto,
+          medio_pago: movReversion.medio_pago,
+          saldo_resultante: movReversion.saldo_resultante,
+          notas: movReversion.notas,
+          fecha_hora: movReversion.fecha_hora,
+          usuario_id: movReversion.usuario_id,
+        })
+      } catch (errSupabase) {
+        console.warn('Supabase reversión cuenta corriente falló, resguardado local:', errSupabase)
+      }
+
+      toast.success('Deuda de cuenta corriente revertida en la ficha del cliente')
+      return true
+    } catch (err) {
+      console.error('Error al revertir cargo de cuenta corriente:', err)
+      return false
+    }
   },
 
   registrarAbono: async (clienteId, monto, medioPago, notas) => {

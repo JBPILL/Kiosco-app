@@ -249,6 +249,7 @@ export function useProducts() {
     categoriaFiltro,
     setCategoriaFiltro,
     cargarProductos,
+    cargarCategorias,
     crearProducto,
     actualizarProducto,
     eliminarProducto,

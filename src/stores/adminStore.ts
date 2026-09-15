@@ -454,6 +454,29 @@ export const useAdminStore = create<AdminState>((set, get) => ({
 
       if (sError) throw sError
 
+      // 5. Inicializar categorías estándar para el kiosco
+      try {
+        const categoriasIniciales = [
+          { nombre: 'Golosinas', color: '#f59e0b', orden: 1 },
+          { nombre: 'Bebidas', color: '#3b82f6', orden: 2 },
+          { nombre: 'Snacks', color: '#ef4444', orden: 3 },
+          { nombre: 'Cigarrillos', color: '#6b7280', orden: 4 },
+          { nombre: 'Almacén', color: '#10b981', orden: 5 },
+          { nombre: 'Lácteos', color: '#8b5cf6', orden: 6 },
+        ]
+
+        await supabase.from('categorias').insert(
+          categoriasIniciales.map((c) => ({
+            kiosco_id: kioscoId,
+            nombre: c.nombre,
+            color: c.color,
+            orden: c.orden,
+          }))
+        )
+      } catch (catErr) {
+        console.warn('Error sembrando categorías iniciales:', catErr)
+      }
+
       toast.success(`Kiosco "${payload.nombreKiosco}" dado de alta con éxito`)
       await get().cargarDatosAdmin()
       set({ cargandoAccion: false })

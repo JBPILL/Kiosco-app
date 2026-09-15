@@ -7,6 +7,7 @@ import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { TicketReceiptModal, type TicketData } from '../components/pos/TicketReceiptModal'
 import { BalanceContableTab } from '../components/reportes/BalanceContableTab'
+import { useClienteStore } from '../stores/clienteStore'
 import toast from 'react-hot-toast'
 
 interface ResumenDiario {
@@ -27,7 +28,8 @@ interface VentaResumen {
   detalles: {
     cantidad: number
     precio_unitario?: number
-    producto: { descripcion: string }
+    producto_id?: string
+    producto: { id?: string; descripcion: string; stock_actual?: number }
     subtotal: number
   }[]
 }
@@ -56,7 +58,7 @@ export function ReportesPage() {
         id, fecha_hora, total, estado, notas,
         usuario:usuarios(nombre),
         pagos:pagos_venta(medio_pago, monto),
-        detalles:detalles_venta(cantidad, precio_unitario, subtotal, producto:productos(descripcion))
+        detalles:detalles_venta(cantidad, precio_unitario, subtotal, producto_id, producto:productos(id, descripcion, stock_actual))
       `)
       .gte('fecha_hora', inicioDelDia)
       .lte('fecha_hora', finDelDia)
@@ -115,6 +117,10 @@ export function ReportesPage() {
     setAnulando(true)
 
     try {
+      const ahora = new Date().toISOString()
+      const kioscoId = usuario?.kiosco_id
+
+      // 1. Cambiar estado de la venta a ANULADA
       const { error } = await supabase
         .from('ventas')
         .update({ estado: 'ANULADA' })
@@ -122,7 +128,54 @@ export function ReportesPage() {
 
       if (error) throw error
 
-      toast.success('Venta anulada. El stock se reincorporó automáticamente.')
+      // 2. Reincorporar stock de cada producto y registrar INGRESO por DEVOLUCION
+      for (const det of ventaParaAnular.detalles) {
+        const prodId = det.producto_id || det.producto?.id
+        if (!prodId) continue
+
+        try {
+          // Consultar el stock actual en base de datos
+          const { data: prodData } = await supabase
+            .from('productos')
+            .select('stock_actual, descripcion')
+            .eq('id', prodId)
+            .maybeSingle()
+
+          const stockActual = prodData?.stock_actual ?? det.producto?.stock_actual ?? 0
+          const nuevoStock = stockActual + det.cantidad
+
+          await supabase
+            .from('productos')
+            .update({
+              stock_actual: nuevoStock,
+              fecha_actualizacion: ahora,
+            })
+            .eq('id', prodId)
+
+          if (kioscoId) {
+            await supabase.from('movimientos_stock').insert({
+              kiosco_id: kioscoId,
+              producto_id: prodId,
+              tipo: 'INGRESO',
+              cantidad: det.cantidad,
+              motivo: 'DEVOLUCION',
+              notas: `Devolución por anulación de Venta #${ventaParaAnular.id.slice(0, 8).toUpperCase()}`,
+              usuario_id: usuario?.id || null,
+              fecha: ahora,
+            })
+          }
+        } catch (errStock) {
+          console.warn(`Error al reponer stock de producto ${prodId}:`, errStock)
+        }
+      }
+
+      // 3. Si la venta tuvo pago en CUENTA_CORRIENTE, revertir la deuda del cliente
+      const pagoCC = ventaParaAnular.pagos.find((p) => p.medio_pago === 'CUENTA_CORRIENTE')
+      if (pagoCC) {
+        await useClienteStore.getState().revertirCargoVenta(ventaParaAnular.id, pagoCC.monto)
+      }
+
+      toast.success('Venta anulada. Stock reincorporado y balance actualizado.')
       setVentaParaAnular(null)
       await cargarDatos()
     } catch (err) {

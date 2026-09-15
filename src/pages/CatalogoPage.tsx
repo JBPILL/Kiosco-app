@@ -3,6 +3,8 @@ import { useProducts } from '../hooks/useProducts'
 import { CategoryManager } from '../components/catalogo/CategoryManager'
 import { ProductTable } from '../components/catalogo/ProductTable'
 import { ProductForm } from '../components/catalogo/ProductForm'
+import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
+import { Button } from '../components/ui/Button'
 import type { Producto } from '../types/database'
 import type { ProductFormData } from '../components/catalogo/ProductForm'
 
@@ -15,6 +17,8 @@ export function CatalogoPage() {
     setBusqueda,
     categoriaFiltro,
     setCategoriaFiltro,
+    cargarProductos,
+    cargarCategorias,
     crearProducto,
     actualizarProducto,
     eliminarProducto,
@@ -25,6 +29,7 @@ export function CatalogoPage() {
   } = useProducts()
 
   const [formOpen, setFormOpen] = useState(false)
+  const [importarOpen, setImportarOpen] = useState(false)
   const [productoEditar, setProductoEditar] = useState<Producto | null>(null)
 
   const handleNuevo = () => {
@@ -47,9 +52,24 @@ export function CatalogoPage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-3.5">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">Catálogo de Productos</h1>
-        <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Administrá tus productos, precios y categorías</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">Catálogo de Productos</h1>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Administrá tus productos, precios y categorías</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setImportarOpen(true)}
+            className="flex items-center gap-1.5 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
+          >
+            Importar (.CSV)
+          </Button>
+          <Button size="sm" onClick={handleNuevo}>
+            + Nuevo Producto
+          </Button>
+        </div>
       </div>
 
       {/* Gestión de categorías compacta */}
@@ -86,6 +106,17 @@ export function CatalogoPage() {
         categorias={categorias}
         producto={productoEditar}
         onGuardar={handleGuardar}
+      />
+
+      {/* Modal de importación masiva CSV */}
+      <ImportarCatalogoModal
+        isOpen={importarOpen}
+        onClose={() => setImportarOpen(false)}
+        onImportCompletado={async () => {
+          await cargarCategorias()
+          await cargarProductos()
+        }}
+        categorias={categorias}
       />
     </div>
   )

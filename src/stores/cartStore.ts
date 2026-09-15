@@ -227,23 +227,23 @@ export const useCartStore = create<CartState>((set, get) => ({
 
   totalItems: () => get().items.reduce((sum, item) => sum + item.cantidad, 0),
 
-  subtotalMonto: () => get().items.reduce((sum, item) => sum + item.subtotal, 0),
+  subtotalMonto: () => Math.round(get().items.reduce((sum, item) => sum + item.subtotal, 0)),
 
   montoAjuste: () => {
     const { tipoAjuste, valorAjuste } = get()
     const subtotal = get().subtotalMonto()
 
     if (tipoAjuste === 'DESCUENTO_PORCENTAJE') {
-      return (subtotal * valorAjuste) / 100
+      return Math.round((subtotal * valorAjuste) / 100)
     }
     if (tipoAjuste === 'DESCUENTO_FIJO') {
-      return Math.min(valorAjuste, subtotal)
+      return Math.round(Math.min(valorAjuste, subtotal))
     }
     if (tipoAjuste === 'RECARGO_PORCENTAJE') {
-      return (subtotal * valorAjuste) / 100
+      return Math.round((subtotal * valorAjuste) / 100)
     }
     if (tipoAjuste === 'RECARGO_FIJO') {
-      return valorAjuste
+      return Math.round(valorAjuste)
     }
     return 0
   },
@@ -254,12 +254,12 @@ export const useCartStore = create<CartState>((set, get) => ({
     const { tipoAjuste } = get()
 
     if (tipoAjuste.startsWith('DESCUENTO')) {
-      return Math.max(0, subtotal - ajuste)
+      return Math.round(Math.max(0, subtotal - ajuste))
     }
     if (tipoAjuste.startsWith('RECARGO')) {
-      return subtotal + ajuste
+      return Math.round(subtotal + ajuste)
     }
-    return subtotal
+    return Math.round(subtotal)
   },
 
   descripcionAjuste: () => {

@@ -57,10 +57,25 @@ interface TicketReceiptModalProps {
 }
 
 export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptModalProps) {
-  const [anchoPapel, setAnchoPapel] = useState<'58mm' | '80mm'>('58mm')
+  const [anchoPapel, setAnchoPapel] = useState<'58mm' | '80mm'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('kioskopos_ancho_ticket')
+      if (saved === '58mm' || saved === '80mm') return saved
+    }
+    return '58mm'
+  })
   const [telefonoWhatsApp, setTelefonoWhatsApp] = useState('')
   const [mostrarInputTelefono, setMostrarInputTelefono] = useState(false)
   const [qrDataUrl, setQrDataUrl] = useState<string>('')
+
+  const cambiarAnchoPapel = (ancho: '58mm' | '80mm') => {
+    setAnchoPapel(ancho)
+    try {
+      localStorage.setItem('kioskopos_ancho_ticket', ancho)
+    } catch (e) {
+      console.warn('Error al guardar preferencia de ticket:', e)
+    }
+  }
 
   useEffect(() => {
     if (ticket?.afip?.qrUrl) {
@@ -193,6 +208,35 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
             </div>
           </div>
         )}
+
+        {/* Selector de ancho térmico */}
+        <div className="flex items-center justify-between px-1 text-xs text-gray-600 dark:text-gray-400">
+          <span className="font-medium">Formato térmico:</span>
+          <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 p-0.5 bg-gray-100 dark:bg-gray-800">
+            <button
+              type="button"
+              onClick={() => cambiarAnchoPapel('58mm')}
+              className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
+                anchoPapel === '58mm'
+                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+              }`}
+            >
+              58 mm (Chico)
+            </button>
+            <button
+              type="button"
+              onClick={() => cambiarAnchoPapel('80mm')}
+              className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
+                anchoPapel === '80mm'
+                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+              }`}
+            >
+              80 mm (Estándar)
+            </button>
+          </div>
+        </div>
 
         {/* Vista previa del ticket estilo papel térmico */}
         <div className="flex justify-center p-3 bg-gray-100 dark:bg-gray-900/60 rounded-xl overflow-x-auto">

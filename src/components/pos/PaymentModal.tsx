@@ -5,7 +5,7 @@ import { useCartStore } from '../../stores/cartStore'
 import { useCajaStore } from '../../stores/cajaStore'
 import { useAuthStore } from '../../stores/authStore'
 import { useClienteStore } from '../../stores/clienteStore'
-import { formatPrecio, calcularVuelto } from '../../lib/utils'
+import { formatPrecio } from '../../lib/utils'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Modal } from '../ui/Modal'
@@ -103,11 +103,17 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
     }
   }, [clienteSeleccionado])
 
+  const pagaConNum = parseInt(pagaCon, 10) || 0
   const vuelto = medioPago === 'EFECTIVO' && pagaCon
-    ? calcularVuelto(total, parseFloat(pagaCon) || 0)
+    ? Math.max(0, pagaConNum - Math.round(total))
     : 0
 
-  const pagaConNum = parseFloat(pagaCon) || 0
+  const handlePagaConChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Solo permitir números enteros (sin centavos flotantes como 0.5, 2000.5)
+    const soloEnteros = e.target.value.replace(/[^0-9]/g, '')
+    setPagaCon(soloEnteros)
+  }
+
   const puedeConfirmar =
     medioPago === 'EFECTIVO'
       ? pagaConNum >= total
@@ -523,12 +529,12 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           <div className="space-y-3">
             <Input
               label="El cliente paga con"
-              type="number"
-              step="100"
-              min={0}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={pagaCon}
-              onChange={(e) => setPagaCon(e.target.value)}
-              placeholder="Ingresá el monto"
+              onChange={handlePagaConChange}
+              placeholder="Ingresá monto entero (ej: 2500)"
               autoFocus={typeof window !== 'undefined' && window.innerWidth >= 1024}
             />
 
@@ -551,7 +557,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
               {/* Monto exacto */}
               <button
                 type="button"
-                onClick={() => setPagaCon(total.toString())}
+                onClick={() => setPagaCon(Math.round(total).toString())}
                 className="px-4 py-2 min-h-[38px] rounded-xl border border-emerald-300 dark:border-emerald-700 text-sm font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 active:scale-95 transition-all"
               >
                 Exacto
