@@ -80,6 +80,7 @@ interface SoporteState {
   crearTicket: (payload: CrearTicketPayload) => Promise<{ ok: boolean; ticket?: TicketSoporte }>
   actualizarEstadoTicket: (id: string, nuevoEstado: EstadoTicket, respuestaAdmin?: string) => Promise<boolean>
   eliminarTicket: (id: string) => Promise<boolean>
+  suscribirRealtimeTickets: () => () => void
 }
 
 export const useSoporteStore = create<SoporteState>((set, get) => ({
@@ -253,6 +254,28 @@ export const useSoporteStore = create<SoporteState>((set, get) => ({
       console.warn('[SoporteStore] Error al eliminar en Supabase:', err)
       toast.success('Ticket eliminado del historial local')
       return true
+    }
+  },
+
+  suscribirRealtimeTickets: () => {
+    try {
+      const canal = supabase
+        .channel('tickets_soporte_realtime')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'tickets_soporte' },
+          () => {
+            get().cargarTicketsAdmin()
+          }
+        )
+        .subscribe()
+
+      return () => {
+        supabase.removeChannel(canal)
+      }
+    } catch (e) {
+      console.warn('[SoporteStore] Error al iniciar suscripción Realtime:', e)
+      return () => {}
     }
   },
 }))

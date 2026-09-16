@@ -56,3 +56,16 @@ DROP POLICY IF EXISTS "Permitir eliminacion de tickets" ON public.tickets_soport
 CREATE POLICY "Permitir eliminacion de tickets"
   ON public.tickets_soporte FOR DELETE
   USING (true);
+
+-- 5. Habilitar sincronización automática en tiempo real (Supabase Realtime)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' 
+    AND schemaname = 'public' 
+    AND tablename = 'tickets_soporte'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.tickets_soporte;
+  END IF;
+END $$;

@@ -157,11 +157,15 @@ export function SuperAdminPage() {
     [planes]
   )
 
-  // Cargar datos al montar
+  // Cargar datos al montar y suscribir a eventos en tiempo real
   useEffect(() => {
     cargarDatosAdmin()
     cargarConfigAdmin()
     cargarTicketsAdmin()
+    const desuscribirRealtime = useSoporteStore.getState().suscribirRealtimeTickets?.()
+    return () => {
+      desuscribirRealtime?.()
+    }
   }, [cargarDatosAdmin, cargarConfigAdmin, cargarTicketsAdmin])
 
   // Establecer plan por defecto al abrir modal nuevo
@@ -546,58 +550,6 @@ export function SuperAdminPage() {
       return `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`
     }
     return `https://web.whatsapp.com/send?text=${encodeURIComponent(texto)}`
-  }
-
-  const copiarSqlSupabase = async () => {
-    const sql = `-- ==============================================================================
--- TABLA DE TICKETS DE SOPORTE Y CONSULTAS (SUPERADMIN & USUARIOS)
--- Ejecutar este script en el SQL Editor de Supabase:
--- https://supabase.com/dashboard/project/wlqujnwxrmksheubfrha/sql
--- ==============================================================================
-
-CREATE TABLE IF NOT EXISTS public.tickets_soporte (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  kiosco_id uuid REFERENCES public.kioscos(id) ON DELETE SET NULL,
-  kiosco_nombre text NOT NULL DEFAULT '',
-  usuario_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
-  usuario_nombre text NOT NULL DEFAULT '',
-  usuario_telefono text DEFAULT '',
-  usuario_email text DEFAULT '',
-  usuario_rol text DEFAULT 'CAJERO',
-  tipo text NOT NULL DEFAULT 'CONSULTA',
-  modulo text NOT NULL DEFAULT 'General',
-  mensaje text NOT NULL,
-  datos_diagnostico jsonb DEFAULT '{}'::jsonb,
-  estado text NOT NULL DEFAULT 'PENDIENTE',
-  respuesta_admin text DEFAULT '',
-  fecha_creacion timestamptz DEFAULT now(),
-  fecha_actualizacion timestamptz DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_tickets_soporte_kiosco ON public.tickets_soporte(kiosco_id);
-CREATE INDEX IF NOT EXISTS idx_tickets_soporte_estado ON public.tickets_soporte(estado);
-CREATE INDEX IF NOT EXISTS idx_tickets_soporte_fecha ON public.tickets_soporte(fecha_creacion DESC);
-
-ALTER TABLE public.tickets_soporte ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Permitir insercion de tickets" ON public.tickets_soporte;
-CREATE POLICY "Permitir insercion de tickets" ON public.tickets_soporte FOR INSERT WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Permitir lectura de tickets" ON public.tickets_soporte;
-CREATE POLICY "Permitir lectura de tickets" ON public.tickets_soporte FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS "Permitir actualizacion de tickets" ON public.tickets_soporte;
-CREATE POLICY "Permitir actualizacion de tickets" ON public.tickets_soporte FOR UPDATE USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Permitir eliminacion de tickets" ON public.tickets_soporte;
-CREATE POLICY "Permitir eliminacion de tickets" ON public.tickets_soporte FOR DELETE USING (true);`
-
-    try {
-      await navigator.clipboard.writeText(sql)
-      toast.success('Script SQL copiado al portapapeles. Pegalo en el SQL Editor de Supabase!')
-    } catch {
-      toast.error('No se pudo copiar automáticamente. Puedes copiar el archivo supabase_tickets_soporte.sql de tu proyecto.')
-    }
   }
 
   return (
@@ -1173,32 +1125,6 @@ CREATE POLICY "Permitir eliminacion de tickets" ON public.tickets_soporte FOR DE
       ) : (
         /* BANDEJA DE SOPORTE */
         <div className="space-y-6">
-          {/* Banner de Sincronización con Supabase si la tabla aún no fue creada */}
-          {!tablaSoporteExiste && (
-            <div className="p-4 rounded-2xl border border-amber-200 dark:border-amber-800/80 bg-amber-50/80 dark:bg-amber-950/40 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold flex items-center justify-center text-base flex-shrink-0">
-                  i
-                </div>
-                <div>
-                  <h4 className="font-bold text-gray-900 dark:text-gray-100 text-sm">
-                    Sincronización de Soporte con Supabase
-                  </h4>
-                  <p className="text-gray-600 dark:text-gray-400 mt-0.5">
-                    Actualmente las consultas se guardan en el caché seguro local. Para sincronizarlas en tiempo real entre múltiples computadoras, ejecutá el script SQL en tu base de datos Supabase.
-                  </p>
-                </div>
-              </div>
-              <Button
-                variant="secondary"
-                onClick={copiarSqlSupabase}
-                className="text-xs font-bold border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50 flex-shrink-0"
-              >
-                Copiar Script SQL para Supabase
-              </Button>
-            </div>
-          )}
-
           {/* Tarjetas KPI de Soporte */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
             <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
