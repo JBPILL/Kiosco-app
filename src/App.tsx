@@ -13,6 +13,7 @@ import { ConfigPage } from './pages/ConfigPage'
 import { CajaPage } from './pages/CajaPage'
 import { ClientesPage } from './pages/ClientesPage'
 import { SuperAdminPage } from './pages/SuperAdminPage'
+import { SoportePage } from './pages/SoportePage'
 
 interface RutaProtegidaProps {
   rolesPermitidos: ('DUEÑO' | 'CAJERO' | 'VISOR')[]
@@ -144,6 +145,16 @@ function App() {
               element={
                 <RutaProtegida rolesPermitidos={['DUEÑO', 'VISOR']}>
                   <ReportesPage />
+                </RutaProtegida>
+              }
+            />
+
+            {/* Ruta de Soporte y Ayuda para todos los usuarios */}
+            <Route
+              path="/soporte"
+              element={
+                <RutaProtegida rolesPermitidos={['DUEÑO', 'CAJERO', 'VISOR']}>
+                  <SoportePage />
                 </RutaProtegida>
               }
             />

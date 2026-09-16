@@ -2,7 +2,6 @@ import { useEffect, useRef, useMemo } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
 import { useThemeStore } from '../../stores/themeStore'
-import { useConfigAdminStore, formatearLinkWhatsApp } from '../../stores/configAdminStore'
 
 interface SidebarProps {
   isOpen: boolean
@@ -18,14 +17,14 @@ const menuItems = [
   { path: '/proveedores', label: 'Proveedores',  roles: ['DUEÑO'] },
   { path: '/reportes',  label: 'Reportes',       roles: ['DUEÑO', 'VISOR'] },
   { path: '/config',    label: 'Configuración',  roles: ['DUEÑO'] },
+  { path: '/soporte',   label: 'Soporte y Ayuda', roles: ['DUEÑO', 'CAJERO', 'VISOR'] },
 ]
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { usuario, kiosco, logout } = useAuthStore()
+  const { usuario, logout } = useAuthStore()
   const { tema, toggleTema } = useThemeStore()
-  const { config: configAdmin } = useConfigAdminStore()
   const itemRefs = useRef<(HTMLAnchorElement | null)[]>([])
 
   const itemsVisibles = useMemo(() => {
@@ -209,23 +208,24 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           </button>
         </div>
 
-        {/* Enlace directo a Soporte Técnico WhatsApp */}
-        {configAdmin.whatsapp_soporte && (
-          <div className="px-3 py-1.5 border-t border-gray-100 dark:border-gray-700/50">
-            <a
-              href={formatearLinkWhatsApp(
-                configAdmin.whatsapp_soporte,
-                `Hola! Me comunico desde el comercio "${kiosco?.nombre || 'Mi Kiosco'}" para consultar sobre soporte técnico en KioskoPOS.`
-              )}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-between px-4 py-2.5 rounded-xl w-full text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors"
-            >
-              <span>Soporte por WhatsApp</span>
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            </a>
-          </div>
-        )}
+        {/* Enlace directo a Soporte y Ayuda */}
+        <div className="px-3 py-1.5 border-t border-gray-100 dark:border-gray-700/50">
+          <NavLink
+            to="/soporte"
+            onClick={onClose}
+            className={({ isActive }) => `
+              flex items-center justify-between px-4 py-2.5 rounded-xl w-full text-xs font-semibold transition-colors
+              ${
+                isActive
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
+                  : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+              }
+            `}
+          >
+            <span>Mesa de Ayuda</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          </NavLink>
+        </div>
 
         {/* Cerrar sesión con safe area bottom para iPhone */}
         <div className="px-3 pt-2 pb-[max(16px,env(safe-area-inset-bottom))] border-t border-gray-100 dark:border-gray-700/50">
