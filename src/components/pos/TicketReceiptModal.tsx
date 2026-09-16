@@ -135,7 +135,6 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
       msg += `Ticket #${ticket.ventaId.slice(0, 8).toUpperCase()}\n`
     }
     msg += `Fecha: ${formatFecha(ticket.fecha)}\n`
-    if (ticket.cajeroNombre) msg += `Atendido por: ${ticket.cajeroNombre}\n`
     msg += `--------------------------------\n`
     ticket.items.forEach((it) => {
       msg += `${it.cantidad}x ${it.descripcion} ($${it.precioUnitario.toLocaleString('es-AR')}) = $${it.subtotal.toLocaleString('es-AR')}\n`
@@ -291,7 +290,6 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
                 <div className="pt-1 text-[10px] text-gray-500">
                   <p>Ticket #{ticket.ventaId.slice(0, 8).toUpperCase()}</p>
                   <p>{formatFecha(ticket.fecha)}</p>
-                  {ticket.cajeroNombre && <p>Atendió: {ticket.cajeroNombre}</p>}
                 </div>
               </div>
             )}
