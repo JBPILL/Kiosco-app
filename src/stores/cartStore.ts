@@ -30,7 +30,7 @@ interface CartState {
   ventasEnEspera: VentaEnEspera[]
 
   // Acciones de productos
-  agregarProducto: (producto: Producto) => void
+  agregarProducto: (producto: Producto, cantidad?: number) => void
   agregarItemLibre: (descripcion: string, precio: number, cantidad?: number) => void
   quitarProducto: (productoId: string) => void
   actualizarCantidad: (productoId: string, cantidad: number) => void
@@ -80,7 +80,8 @@ export const useCartStore = create<CartState>((set, get) => ({
   valorAjuste: 0,
   ventasEnEspera: cargarVentasEnEspera(),
 
-  agregarProducto: (producto: Producto) => {
+  agregarProducto: (producto: Producto, cantidad: number = 1) => {
+    const cantAgregar = cantidad > 0 ? cantidad : 1
     // Si el producto figura con stock 0 en sistema, emitir aviso pero permitir agregarlo
     if (producto.stock_actual <= 0) {
       toast(`Aviso: "${producto.descripcion}" figura con stock 0 (se registrará con stock negativo)`, {
@@ -91,7 +92,8 @@ export const useCartStore = create<CartState>((set, get) => ({
     set((state) => {
       const existente = state.items.find((item) => item.producto.id === producto.id)
       if (existente) {
-        if (producto.stock_actual > 0 && existente.cantidad >= producto.stock_actual) {
+        const nuevaCantidad = Number((existente.cantidad + cantAgregar).toFixed(3))
+        if (producto.stock_actual > 0 && nuevaCantidad > producto.stock_actual) {
           toast(
             `Aviso: Superando stock disponible de "${producto.descripcion}" (${producto.stock_actual} en sistema)`,
             { duration: 3000 }
@@ -103,21 +105,22 @@ export const useCartStore = create<CartState>((set, get) => ({
             item.producto.id === producto.id
               ? {
                   ...item,
-                  cantidad: item.cantidad + 1,
-                  subtotal: (item.cantidad + 1) * item.producto.precio_venta,
+                  cantidad: nuevaCantidad,
+                  subtotal: Math.round(nuevaCantidad * item.producto.precio_venta),
                 }
               : item
           ),
         }
       }
 
+      const cantRedondeada = Number(cantAgregar.toFixed(3))
       return {
         items: [
           ...state.items,
           {
             producto,
-            cantidad: 1,
-            subtotal: producto.precio_venta,
+            cantidad: cantRedondeada,
+            subtotal: Math.round(cantRedondeada * producto.precio_venta),
           },
         ],
       }
@@ -188,7 +191,7 @@ export const useCartStore = create<CartState>((set, get) => ({
           ? {
               ...item,
               cantidad: cantidadAjustada,
-              subtotal: cantidadAjustada * item.producto.precio_venta,
+              subtotal: Math.round(cantidadAjustada * item.producto.precio_venta),
             }
           : item
       ),
@@ -263,7 +266,11 @@ export const useCartStore = create<CartState>((set, get) => ({
     set({ ventasEnEspera: restantes })
   },
 
-  totalItems: () => get().items.reduce((sum, item) => sum + item.cantidad, 0),
+  totalItems: () =>
+    get().items.reduce(
+      (sum, item) => sum + (item.producto.es_pesable ? 1 : Math.round(item.cantidad)),
+      0
+    ),
 
   subtotalMonto: () => Math.round(get().items.reduce((sum, item) => sum + item.subtotal, 0)),
 

@@ -63,11 +63,13 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
   // Acciones de modificación con retención de foco
   const handleSumarCantidad = (itemId: string, cantidad: number) => {
     const item = items.find((it) => it.producto.id === itemId)
-    if (item && cantidad >= item.producto.stock_actual) {
+    if (item && item.producto.stock_actual > 0 && cantidad >= item.producto.stock_actual) {
       toast.error(`Stock máximo alcanzado (${item.producto.stock_actual} disponibles)`)
       return
     }
-    actualizarCantidad(itemId, cantidad + 1)
+    const paso = item?.producto.es_pesable ? 0.1 : 1
+    const nueva = Number((cantidad + paso).toFixed(3))
+    actualizarCantidad(itemId, nueva)
     playScanSound('success')
   }
 
@@ -77,8 +79,11 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     index: number,
     targetButton: 'minus' | 'plus' | 'item' = 'minus'
   ) => {
-    if (cantidad > 1) {
-      actualizarCantidad(itemId, cantidad - 1)
+    const item = items.find((it) => it.producto.id === itemId)
+    const paso = item?.producto.es_pesable ? 0.1 : 1
+    if (cantidad > paso) {
+      const nueva = Number((cantidad - paso).toFixed(3))
+      actualizarCantidad(itemId, nueva)
       pendingFocusIndex.current = index
       pendingFocusTarget.current = targetButton
     } else {
@@ -456,7 +461,10 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                     {item.producto.descripcion}
                   </p>
                   <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
-                    <span>{formatPrecio(item.producto.precio_venta)} c/u</span>
+                    <span>
+                      {formatPrecio(item.producto.precio_venta)}{' '}
+                      {item.producto.es_pesable ? `/${item.producto.unidad_medida || 'KG'}` : 'c/u'}
+                    </span>
                     <span className="text-[10px] text-gray-400 dark:text-gray-500">
                       (Disp: {item.producto.stock_actual})
                     </span>
@@ -484,11 +492,19 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                     onKeyDown={(e) => handleMinusKeyDown(e, idx, item.producto.id, item.cantidad)}
                     className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-300 font-bold text-base transition-transform focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-indigo-100 dark:focus:bg-gray-600 cursor-pointer select-none"
                     aria-label="Restar uno"
-                    title="Restar uno [Enter o -]"
+                    title="Restar [Enter o -]"
                   >
                     −
                   </button>
-                  <span className="w-7 text-center text-sm font-bold dark:text-gray-100 select-none">{item.cantidad}</span>
+                  <span
+                    className={`text-center font-bold dark:text-gray-100 select-none ${
+                      item.cantidad % 1 !== 0 || item.producto.es_pesable
+                        ? 'text-xs px-1 font-mono min-w-[3.5rem]'
+                        : 'w-7 text-sm'
+                    }`}
+                  >
+                    {item.cantidad % 1 === 0 ? item.cantidad : `${item.cantidad} kg`}
+                  </span>
                   <button
                     ref={(el) => { plusBtnRefs.current[idx] = el }}
                     type="button"

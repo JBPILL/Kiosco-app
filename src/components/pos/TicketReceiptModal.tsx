@@ -137,7 +137,8 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
     msg += `Fecha: ${formatFecha(ticket.fecha)}\n`
     msg += `--------------------------------\n`
     ticket.items.forEach((it) => {
-      msg += `${it.cantidad}x ${it.descripcion} ($${it.precioUnitario.toLocaleString('es-AR')}) = $${it.subtotal.toLocaleString('es-AR')}\n`
+      const cantStr = it.cantidad % 1 === 0 ? `${it.cantidad}x` : `${it.cantidad} kg x`
+      msg += `${cantStr} ${it.descripcion} ($${it.precioUnitario.toLocaleString('es-AR')}) = $${it.subtotal.toLocaleString('es-AR')}\n`
     })
     msg += `--------------------------------\n`
     if (ticket.ajuste) {
@@ -303,7 +304,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
               {ticket.items.map((it, idx) => (
                 <div key={idx} className="flex justify-between items-start text-[11px]">
                   <div className="pr-2 truncate">
-                    <span>{it.cantidad}x </span>
+                    <span>{it.cantidad % 1 === 0 ? `${it.cantidad}x ` : `${it.cantidad} kg x `}</span>
                     <span>{it.descripcion}</span>
                   </div>
                   <span className="font-semibold whitespace-nowrap">

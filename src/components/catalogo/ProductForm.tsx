@@ -27,6 +27,9 @@ export interface ProductFormData {
   requiere_vencimiento?: boolean
   dias_alerta_vencimiento?: number
   es_combo?: boolean
+  es_pesable?: boolean
+  unidad_medida?: 'UN' | 'KG' | 'GR' | 'LT'
+  plu_balanza?: string | null
 }
 
 export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }: ProductFormProps) {
@@ -41,6 +44,9 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
     requiere_vencimiento: false,
     dias_alerta_vencimiento: 15,
     es_combo: false,
+    es_pesable: false,
+    unidad_medida: 'UN',
+    plu_balanza: null,
   })
   const [guardando, setGuardando] = useState(false)
   const [scannerCamaraOpen, setScannerCamaraOpen] = useState(false)
@@ -68,6 +74,9 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
         requiere_vencimiento: producto.requiere_vencimiento || false,
         dias_alerta_vencimiento: producto.dias_alerta_vencimiento || 15,
         es_combo: producto.es_combo || false,
+        es_pesable: producto.es_pesable || false,
+        unidad_medida: producto.unidad_medida || 'UN',
+        plu_balanza: producto.plu_balanza || null,
       })
     } else {
       setForm({
@@ -81,6 +90,9 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
         requiere_vencimiento: false,
         dias_alerta_vencimiento: 15,
         es_combo: false,
+        es_pesable: false,
+        unidad_medida: 'UN',
+        plu_balanza: null,
       })
     }
   }, [producto, isOpen])
@@ -270,6 +282,67 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
               <p className="text-[11px] text-indigo-700 dark:text-indigo-400 pl-6">
                 Al vender este pack, el sistema descontará automáticamente los productos individuales que lo componen. El stock se calcula en tiempo real según la disponibilidad de sus ingredientes.
               </p>
+            )}
+          </div>
+
+          {/* Opciones de Balanza y Pesables */}
+          <div className="p-3 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-xl space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.es_pesable || false}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    es_pesable: e.target.checked,
+                    unidad_medida: e.target.checked
+                      ? form.unidad_medida === 'UN'
+                        ? 'KG'
+                        : form.unidad_medida
+                      : 'UN',
+                  })
+                }
+                className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-gray-300 dark:border-gray-600"
+              />
+              <span className="text-xs font-semibold text-amber-950 dark:text-amber-200">
+                Producto fraccionable / por peso (Fiambrería, Verdulería, Balanza)
+              </span>
+            </label>
+
+            {form.es_pesable && (
+              <div className="pt-1 pl-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
+                    Unidad de medida:
+                  </label>
+                  <select
+                    value={form.unidad_medida || 'KG'}
+                    onChange={(e) => setForm({ ...form, unidad_medida: e.target.value as any })}
+                    className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-amber-500 font-bold"
+                  >
+                    <option value="KG">Kilogramos (KG)</option>
+                    <option value="GR">Gramos (GR)</option>
+                    <option value="LT">Litros (LT)</option>
+                    <option value="UN">Unidades (UN)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
+                    Código PLU Balanza (4 dígitos):
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={5}
+                    placeholder="Ej: 0123"
+                    value={form.plu_balanza || ''}
+                    onChange={(e) => setForm({ ...form, plu_balanza: e.target.value.trim() || null })}
+                    className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-amber-500 font-mono font-bold"
+                  />
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    Permite escanear etiquetas de balanzas Systel / Kretz (prefijo 20).
+                  </p>
+                </div>
+              </div>
             )}
           </div>
 

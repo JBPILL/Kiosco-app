@@ -4,9 +4,10 @@ import { supabase } from '../../lib/supabase'
 import type { Producto } from '../../types/database'
 import { formatPrecio } from '../../lib/utils'
 import { SearchInput } from '../ui/SearchInput'
+import { buscarProductoPorCodigoBalanza } from '../../lib/barcodeParser'
 
 interface ProductSearchProps {
-  onSelect: (producto: Producto) => void
+  onSelect: (producto: Producto, cantidad?: number) => void
   onOpenScanner?: () => void
 }
 
@@ -47,7 +48,8 @@ export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
             if (!p.activo) return false
             const matchDesc = p.descripcion?.toLowerCase().includes(queryTrim)
             const matchCod = p.codigo_barras?.toLowerCase().includes(queryTrim)
-            return matchDesc || matchCod
+            const matchPlu = p.plu_balanza?.toLowerCase().includes(queryTrim)
+            return matchDesc || matchCod || matchPlu
           })
           .slice(0, 8)
       }
@@ -118,11 +120,33 @@ export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setSelectedIndex((prev) => Math.max(prev - 1, 0))
-    } else if (e.key === 'Enter' && resultados.length > 0) {
+    } else if (e.key === 'Enter') {
       e.preventDefault()
-      // Si hay un producto con coincidencia exacta de código de barras, seleccionarlo
-      const exactMatch = resultados.find((r) => r.codigo_barras === query.trim())
-      seleccionar(exactMatch || resultados[selectedIndex])
+      const queryTrim = query.trim()
+
+      // 1. Chequear si es código de balanza comercial (EAN-13 con prefijo 20 o 02)
+      let todosLocales: Producto[] = []
+      try {
+        const cached = localStorage.getItem('kiosko_cache_productos')
+        if (cached) todosLocales = JSON.parse(cached)
+      } catch {}
+
+      const matchBalanza = buscarProductoPorCodigoBalanza(queryTrim, todosLocales.length > 0 ? todosLocales : resultados)
+      if (matchBalanza) {
+        onSelect(matchBalanza.producto, matchBalanza.pesoKg)
+        setQuery('')
+        setResultados([])
+        setMostrarResultados(false)
+        return
+      }
+
+      if (resultados.length > 0) {
+        // Si hay un producto con coincidencia exacta de código de barras o PLU, seleccionarlo
+        const exactMatch = resultados.find(
+          (r) => r.codigo_barras === queryTrim || r.plu_balanza === queryTrim
+        )
+        seleccionar(exactMatch || resultados[selectedIndex])
+      }
     } else if (e.key === 'Escape') {
       setMostrarResultados(false)
     }

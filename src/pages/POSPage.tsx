@@ -12,6 +12,8 @@ import { TicketReceiptModal, type TicketData } from '../components/pos/TicketRec
 import { BarcodeScannerModal } from '../components/pos/BarcodeScannerModal'
 import { KeyboardShortcutsModal } from '../components/pos/KeyboardShortcutsModal'
 import { ArticuloLibreModal } from '../components/pos/ArticuloLibreModal'
+import { BalanzaManualModal } from '../components/pos/BalanzaManualModal'
+import { parsearCodigoBalanza, buscarProductoPorCodigoBalanza } from '../lib/barcodeParser'
 import { useBarcodeGun } from '../hooks/useBarcodeGun'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { playScanSound } from '../lib/sound'
@@ -33,6 +35,8 @@ export function POSPage() {
   const [modalScannerOpen, setModalScannerOpen] = useState(false)
   const [modalShortcutsOpen, setModalShortcutsOpen] = useState(false)
   const [modalLibreOpen, setModalLibreOpen] = useState(false)
+  const [modalBalanzaOpen, setModalBalanzaOpen] = useState(false)
+  const [productoPesableModal, setProductoPesableModal] = useState<Producto | null>(null)
   const [ticketReciente, setTicketReciente] = useState<TicketData | null>(null)
   const [ticketModalOpen, setTicketModalOpen] = useState(false)
 
@@ -91,7 +95,16 @@ export function POSPage() {
     }
   }, [categoriaActiva, cargarPorCategoria])
 
-  const handleSeleccion = (producto: Producto) => {
+  const handleSeleccion = (producto: Producto, cantidad?: number) => {
+    if (cantidad && cantidad > 0) {
+      agregarProducto(producto, cantidad)
+      return
+    }
+    if (producto.es_pesable) {
+      setProductoPesableModal(producto)
+      setModalBalanzaOpen(true)
+      return
+    }
     agregarProducto(producto)
   }
 
@@ -159,6 +172,45 @@ export function POSPage() {
       const codeTrim = code.trim()
       if (!codeTrim) return
 
+      // 0. Comprobar si es código de balanza comercial argentina (EAN-13 con prefijo 20 o 02)
+      const parsedBalanza = parsearCodigoBalanza(codeTrim)
+      if (parsedBalanza) {
+        let matchBalanza: { producto: Producto; pesoKg: number } | null = null
+        try {
+          const cachedRaw = localStorage.getItem('kiosko_cache_productos')
+          if (cachedRaw) {
+            const todos: Producto[] = JSON.parse(cachedRaw)
+            matchBalanza = buscarProductoPorCodigoBalanza(codeTrim, todos)
+          }
+        } catch {}
+
+        if (matchBalanza) {
+          playScanSound('success')
+          agregarProducto(matchBalanza.producto, matchBalanza.pesoKg)
+          toast.success(`${matchBalanza.producto.descripcion} (${matchBalanza.pesoKg} kg) agregado`)
+          return
+        }
+
+        // Si no estaba en caché local, buscar en Supabase por plu_balanza o codigo_barras
+        try {
+          const { data } = await supabase
+            .from('productos')
+            .select('*, categoria:categorias(nombre, color)')
+            .eq('activo', true)
+            .or(`plu_balanza.eq.${parsedBalanza.plu4},plu_balanza.eq.${parsedBalanza.pluCorto},plu_balanza.eq.${parsedBalanza.plu5},codigo_barras.eq.${parsedBalanza.plu4},codigo_barras.eq.${parsedBalanza.pluCorto}`)
+            .maybeSingle()
+
+          if (data) {
+            playScanSound('success')
+            agregarProducto(data, parsedBalanza.pesoKg)
+            toast.success(`${data.descripcion} (${parsedBalanza.pesoKg} kg) agregado`)
+            return
+          }
+        } catch (errBalanza) {
+          console.warn('Error buscando producto de balanza en Supabase:', errBalanza)
+        }
+      }
+
       // 1. Buscar de inmediato en la caché local (< 2ms, sin lag de red)
       let productoEncontrado: Producto | null = null
       try {
@@ -172,6 +224,11 @@ export function POSPage() {
       }
 
       if (productoEncontrado) {
+        if (productoEncontrado.es_pesable) {
+          setProductoPesableModal(productoEncontrado)
+          setModalBalanzaOpen(true)
+          return
+        }
         playScanSound('success')
         agregarProducto(productoEncontrado)
         toast.success(`${productoEncontrado.descripcion} agregado`)
@@ -190,6 +247,11 @@ export function POSPage() {
         if (error) throw error
 
         if (data) {
+          if (data.es_pesable) {
+            setProductoPesableModal(data)
+            setModalBalanzaOpen(true)
+            return
+          }
           playScanSound('success')
           agregarProducto(data)
           toast.success(`${data.descripcion} agregado`)
@@ -217,7 +279,7 @@ export function POSPage() {
 
   useBarcodeGun({
     onScan: handleBarcodeGunScan,
-    enabled: !paymentOpen && !cartModalOpen && !modalScannerOpen && !modalEsperaOpen && !ticketModalOpen,
+    enabled: !paymentOpen && !cartModalOpen && !modalScannerOpen && !modalEsperaOpen && !ticketModalOpen && !modalBalanzaOpen,
   })
 
   // Atajos de teclado para PC de escritorio
@@ -244,7 +306,8 @@ export function POSPage() {
         setModalShortcutsOpen((prev) => !prev)
       },
       onEscape: () => {
-        if (modalScannerOpen) setModalScannerOpen(false)
+        if (modalBalanzaOpen) setModalBalanzaOpen(false)
+        else if (modalScannerOpen) setModalScannerOpen(false)
         else if (modalShortcutsOpen) setModalShortcutsOpen(false)
         else if (modalEsperaOpen) setModalEsperaOpen(false)
         else if (paymentOpen) setPaymentOpen(false)
@@ -532,7 +595,24 @@ export function POSPage() {
         isOpen={modalScannerOpen}
         onClose={() => setModalScannerOpen(false)}
         onProductScanned={(producto) => {
-          agregarProducto(producto)
+          handleSeleccion(producto)
+        }}
+      />
+
+      {/* Modal de ingreso de peso para artículos de balanza / fiambrería */}
+      <BalanzaManualModal
+        isOpen={modalBalanzaOpen}
+        onClose={() => {
+          setModalBalanzaOpen(false)
+          setProductoPesableModal(null)
+        }}
+        producto={productoPesableModal}
+        onConfirmar={(pesoKg) => {
+          if (productoPesableModal) {
+            agregarProducto(productoPesableModal, pesoKg)
+            playScanSound('success')
+            toast.success(`${productoPesableModal.descripcion} (${pesoKg} kg) agregado`)
+          }
         }}
       />
 
