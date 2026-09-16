@@ -16,6 +16,7 @@ import { KeyboardShortcutsModal } from '../components/pos/KeyboardShortcutsModal
 import { ArticuloLibreModal } from '../components/pos/ArticuloLibreModal'
 import { BalanzaManualModal } from '../components/pos/BalanzaManualModal'
 import { DevolucionModal } from '../components/pos/DevolucionModal'
+import { RecibirEnvaseModal } from '../components/pos/RecibirEnvaseModal'
 import { parsearCodigoBalanza, buscarProductoPorCodigoBalanza } from '../lib/barcodeParser'
 import { useBarcodeGun } from '../hooks/useBarcodeGun'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
@@ -42,6 +43,7 @@ export function POSPage() {
   const [modalLibreOpen, setModalLibreOpen] = useState(false)
   const [modalBalanzaOpen, setModalBalanzaOpen] = useState(false)
   const [modalDevolucionOpen, setModalDevolucionOpen] = useState(false)
+  const [modalEnvaseOpen, setModalEnvaseOpen] = useState(false)
   const [modalPromosOpen, setModalPromosOpen] = useState(false)
   const [productoPesableModal, setProductoPesableModal] = useState<Producto | null>(null)
   const [ticketReciente, setTicketReciente] = useState<TicketData | null>(null)
@@ -313,7 +315,7 @@ export function POSPage() {
 
   useBarcodeGun({
     onScan: handleBarcodeGunScan,
-    enabled: !paymentOpen && !cartModalOpen && !modalScannerOpen && !modalEsperaOpen && !ticketModalOpen && !modalBalanzaOpen && !modalDevolucionOpen,
+    enabled: !paymentOpen && !cartModalOpen && !modalScannerOpen && !modalEsperaOpen && !ticketModalOpen && !modalBalanzaOpen && !modalDevolucionOpen && !modalEnvaseOpen,
   })
 
   // Atajos de teclado para PC de escritorio
@@ -445,6 +447,14 @@ export function POSPage() {
               title="Registrar devolución de ticket o cambio de producto"
             >
               <span>Devolución</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setModalEnvaseOpen(true)}
+              className="h-10 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-emerald-50/80 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
+              title="Registrar recepción de envases retornables vacíos"
+            >
+              <span>Recibir envase</span>
             </button>
           </div>
 
@@ -823,6 +833,12 @@ export function POSPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Modal para recibir envases retornables vacíos */}
+      <RecibirEnvaseModal
+        isOpen={modalEnvaseOpen}
+        onClose={() => setModalEnvaseOpen(false)}
+      />
     </div>
   )
 }

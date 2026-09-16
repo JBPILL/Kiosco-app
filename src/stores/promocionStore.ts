@@ -38,6 +38,17 @@ function guardarPromocionesLocal(promos: Promocion[]) {
   }
 }
 
+function calcularSubtotalBaseItem(item: ItemCarrito): number {
+  if (item.es_devolucion_envase) {
+    return item.producto.precio_venta * item.cantidad
+  }
+  const base = Math.round(item.cantidad * item.producto.precio_venta)
+  const extraEnvase = item.sin_envase
+    ? Math.round(item.cantidad * (item.precio_envase_unitario || item.producto.precio_envase || 0))
+    : 0
+  return base + extraEnvase
+}
+
 export function evaluarItemPromociones(
   item: ItemCarrito,
   promosActivas: Promocion[]
@@ -254,7 +265,7 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
     const promosActivas = get().promociones.filter((p) => p.activo)
     if (promosActivas.length === 0) {
       return items.map((it) => {
-        const subtotalOrig = Math.round(it.cantidad * it.producto.precio_venta)
+        const subtotalOrig = calcularSubtotalBaseItem(it)
         return {
           ...it,
           subtotal: subtotalOrig,
@@ -269,7 +280,7 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
 
     // 1. Inicializar items con montos originales
     const resItems: ItemCarrito[] = items.map((it) => {
-      const subtotalOrig = Math.round(it.cantidad * it.producto.precio_venta)
+      const subtotalOrig = calcularSubtotalBaseItem(it)
       return {
         ...it,
         subtotal: subtotalOrig,
@@ -341,7 +352,7 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
     const singlePromos = promosActivas.filter((p) => p.tipo !== 'COMBO')
     for (const item of resItems) {
       if (!item.descuento_promo || item.descuento_promo === 0) {
-        const subtotalOrig = Math.round(item.cantidad * item.producto.precio_venta)
+        const subtotalOrig = calcularSubtotalBaseItem(item)
         const { descuento, promoNombre } = evaluarItemPromociones(item, singlePromos)
         if (descuento > 0) {
           item.descuento_promo = descuento

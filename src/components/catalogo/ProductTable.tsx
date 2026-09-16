@@ -208,6 +208,11 @@ export function ProductTable({
                           ★ Fav
                         </span>
                       )}
+                      {prod.es_retornable && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 font-medium whitespace-nowrap">
+                          Retornable (+{formatPrecio(prod.precio_envase || 0)})
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                       <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap ${stockColors[nivel]}`}>
@@ -339,6 +344,11 @@ export function ProductTable({
                       <td className="px-3.5 py-2.5">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-semibold text-gray-900 dark:text-gray-100">{prod.descripcion}</span>
+                          {prod.es_retornable && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 font-medium whitespace-nowrap">
+                              Retornable (+{formatPrecio(prod.precio_envase || 0)})
+                            </span>
+                          )}
                         </div>
                         {prod.codigo_barras && (
                           <span className="block text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5">

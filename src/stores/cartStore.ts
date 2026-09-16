@@ -53,6 +53,8 @@ interface CartState {
   actualizarCantidad: (productoId: string, cantidad: number) => void
   vaciarCarrito: () => void
   completarVentaTabActiva: () => void
+  toggleEnvaseItem: (productoId: string) => void
+  agregarDevolucionEnvase: (nombreEnvase: string, precioUnitario: number, cantidad?: number) => void
 
   // Acciones de descuentos y recargos
   aplicarAjuste: (tipo: TipoAjuste, valor: number) => void
@@ -94,6 +96,18 @@ function guardarVentasEnEspera(ventas: VentaEnEspera[]) {
   } catch (e) {
     console.error('Error guardando ventas en espera:', e)
   }
+}
+
+function calcularSubtotalItem(item: ItemCarrito): number {
+  if (item.es_devolucion_envase) {
+    return item.producto.precio_venta * item.cantidad
+  }
+  const base = Math.round(item.cantidad * item.producto.precio_venta)
+  const extraEnvase = item.sin_envase
+    ? Math.round(item.cantidad * (item.precio_envase_unitario || item.producto.precio_envase || 0))
+    : 0
+  const promo = item.descuento_promo || 0
+  return Math.max(0, base + extraEnvase - promo)
 }
 
 function evaluarConPromociones(items: ItemCarrito[]): ItemCarrito[] {
@@ -188,15 +202,10 @@ export const useCartStore = create<CartState>((set, get) => ({
     const state = get()
     if (state.tabs.length <= 1) {
       get().vaciarCarrito()
-      // Al reiniciar la única pestaña, reiniciar siempre como 'Ticket 1'
-      set((s) => ({
-        tabs: s.tabs.map((t) => (t.id === targetId ? { ...t, nombre: 'Ticket 1', items: [] } : t)),
-      }))
       return
     }
 
     const restantes = state.tabs.filter((t) => t.id !== targetId)
-
     // Renumerar secuencialmente las pestañas con nombre por defecto 'Ticket X' para reiniciar el contador
     let ticketCounter = 1
     const renumbered = restantes.map((tab) => {
@@ -262,24 +271,25 @@ export const useCartStore = create<CartState>((set, get) => ({
           )
         }
 
-        nuevosItems = state.items.map((item) =>
-          item.producto.id === producto.id
-            ? {
-                ...item,
-                cantidad: nuevaCantidad,
-                subtotal: Math.round(nuevaCantidad * item.producto.precio_venta),
-              }
-            : item
-        )
+        nuevosItems = state.items.map((item) => {
+          if (item.producto.id !== producto.id) return item
+          const itemAct = { ...item, cantidad: nuevaCantidad }
+          itemAct.subtotal = calcularSubtotalItem(itemAct)
+          return itemAct
+        })
       } else {
         const cantRedondeada = Number(cantAgregar.toFixed(3))
+        const nuevoItem: ItemCarrito = {
+          producto,
+          cantidad: cantRedondeada,
+          subtotal: Math.round(cantRedondeada * producto.precio_venta),
+          sin_envase: false,
+          precio_envase_unitario: producto.precio_envase || 0,
+        }
+        nuevoItem.subtotal = calcularSubtotalItem(nuevoItem)
         nuevosItems = [
           ...state.items,
-          {
-            producto,
-            cantidad: cantRedondeada,
-            subtotal: Math.round(cantRedondeada * producto.precio_venta),
-          },
+          nuevoItem,
         ]
       }
 
@@ -287,6 +297,65 @@ export const useCartStore = create<CartState>((set, get) => ({
         items: evaluarConPromociones(nuevosItems),
       }
     })
+  },
+
+  toggleEnvaseItem: (productoId: string) => {
+    set((state) => {
+      const nuevos = state.items.map((it) => {
+        if (it.producto.id !== productoId || !it.producto.es_retornable) return it
+        const nuevoSinEnvase = !it.sin_envase
+        const precioEnv = it.producto.precio_envase || it.precio_envase_unitario || 0
+        const itemActualizado: ItemCarrito = {
+          ...it,
+          sin_envase: nuevoSinEnvase,
+          precio_envase_unitario: precioEnv,
+        }
+        itemActualizado.subtotal = calcularSubtotalItem(itemActualizado)
+        return itemActualizado
+      })
+      return { items: evaluarConPromociones(nuevos) }
+    })
+  },
+
+  agregarDevolucionEnvase: (nombreEnvase: string, precioUnitario: number, cantidad = 1) => {
+    const cant = Math.max(1, Math.round(cantidad))
+    const precio = Math.max(1, Math.round(precioUnitario))
+    const desc = `Devolución ${nombreEnvase}`
+
+    const productoDevolucion: Producto = {
+      id: `dev-envase-${uuidv4()}`,
+      kiosco_id: '',
+      categoria_id: null,
+      codigo_barras: null,
+      descripcion: desc,
+      precio_costo: precio,
+      precio_venta: -precio,
+      stock_actual: 99999,
+      stock_minimo: 0,
+      es_favorito: false,
+      activo: false,
+      fecha_creacion: new Date().toISOString(),
+      fecha_actualizacion: new Date().toISOString(),
+      es_retornable: true,
+    }
+
+    set((state) => {
+      const nuevosItems: ItemCarrito[] = [
+        ...state.items,
+        {
+          producto: productoDevolucion,
+          cantidad: cant,
+          subtotal: -(precio * cant),
+          es_devolucion_envase: true,
+          precio_envase_unitario: precio,
+        },
+      ]
+      return {
+        items: evaluarConPromociones(nuevosItems),
+      }
+    })
+
+    toast.success(`${desc} agregada al ticket (-$${(precio * cant).toLocaleString('es-AR')})`)
   },
 
   agregarItemLibre: (descripcion: string, precio: number, cantidad = 1) => {
@@ -353,15 +422,12 @@ export const useCartStore = create<CartState>((set, get) => ({
       )
     }
 
-    const nuevos = state.items.map((item) =>
-      item.producto.id === productoId
-        ? {
-            ...item,
-            cantidad: cantidadAjustada,
-            subtotal: Math.round(cantidadAjustada * item.producto.precio_venta),
-          }
-        : item
-    )
+    const nuevos = state.items.map((item) => {
+      if (item.producto.id !== productoId) return item
+      const itemAct = { ...item, cantidad: cantidadAjustada }
+      itemAct.subtotal = calcularSubtotalItem(itemAct)
+      return itemAct
+    })
 
     set({ items: evaluarConPromociones(nuevos) })
   },

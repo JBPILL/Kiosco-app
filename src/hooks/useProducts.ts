@@ -89,7 +89,17 @@ export function useProducts() {
         const localMap = new Map(prev.map((p) => [p.id, p]))
         const merged = data.map((item) => {
           const local = localMap.get(item.id)
-          return local ? { ...local, ...item } : item
+          if (!local) return item
+          return {
+            ...local,
+            ...item,
+            es_retornable: item.es_retornable ?? local.es_retornable,
+            precio_envase: item.precio_envase ?? local.precio_envase,
+            nombre_envase: item.nombre_envase ?? local.nombre_envase,
+            es_pesable: item.es_pesable ?? local.es_pesable,
+            unidad_medida: item.unidad_medida ?? local.unidad_medida,
+            plu_balanza: item.plu_balanza ?? local.plu_balanza,
+          }
         })
 
         // Preservar productos creados localmente que aún no figuran en Supabase

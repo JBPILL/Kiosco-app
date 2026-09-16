@@ -330,7 +330,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
                       <span>{it.descripcion}</span>
                     </div>
                     <span className="font-semibold whitespace-nowrap">
-                      {formatPrecio(it.subtotal)}
+                      {it.subtotal < 0 ? `-${formatPrecio(Math.abs(it.subtotal))}` : formatPrecio(it.subtotal)}
                     </span>
                   </div>
                   {it.promoNombre && (

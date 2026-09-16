@@ -49,6 +49,10 @@ export interface Producto {
   plu_balanza?: string | null
   // Combos y packs
   es_combo?: boolean
+  // Envases retornables
+  es_retornable?: boolean
+  precio_envase?: number
+  nombre_envase?: string
 }
 
 export interface LoteProducto {
@@ -244,6 +248,10 @@ export interface ItemCarrito {
   subtotal: number
   descuento_promo?: number
   promo_nombre?: string
+  // Envases retornables
+  sin_envase?: boolean
+  precio_envase_unitario?: number
+  es_devolucion_envase?: boolean
 }
 
 // --- Promociones Automáticas (NxM, Volumen, Porcentaje) ---

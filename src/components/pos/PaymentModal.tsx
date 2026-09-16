@@ -251,7 +251,9 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         venta_id: ventaId,
         producto_id: item.producto.id,
         cantidad: item.cantidad,
-        precio_unitario: item.producto.precio_venta,
+        precio_unitario: item.sin_envase
+          ? item.producto.precio_venta + (item.precio_envase_unitario || item.producto.precio_envase || 0)
+          : item.producto.precio_venta,
         subtotal: item.subtotal,
       }))
 
@@ -387,14 +389,23 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       const ticketGenerado: TicketData = {
         ventaId,
         fecha: ahora,
-        items: items.map((it) => ({
-          descripcion: it.producto.descripcion,
-          cantidad: it.cantidad,
-          precioUnitario: it.producto.precio_venta,
-          subtotal: it.subtotal,
-          descuentoPromo: it.descuento_promo,
-          promoNombre: it.promo_nombre,
-        })),
+        items: items.map((it) => {
+          let desc = it.producto.descripcion
+          if (it.sin_envase) {
+            desc = `${it.producto.descripcion} (Sin envase)`
+          }
+          const precioUnit = it.sin_envase
+            ? it.producto.precio_venta + (it.precio_envase_unitario || it.producto.precio_envase || 0)
+            : it.producto.precio_venta
+          return {
+            descripcion: desc,
+            cantidad: it.cantidad,
+            precioUnitario: precioUnit,
+            subtotal: it.subtotal,
+            descuentoPromo: it.descuento_promo,
+            promoNombre: it.promo_nombre,
+          }
+        }),
         subtotal,
         ajuste: tieneAjuste
           ? {

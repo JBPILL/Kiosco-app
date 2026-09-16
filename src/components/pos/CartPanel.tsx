@@ -35,6 +35,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     suspenderVentaActual,
     descripcionAjuste,
     totalAhorroPromociones,
+    toggleEnvaseItem,
     tabs,
     tabActivaId,
     crearNuevaTab,
@@ -527,6 +528,38 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                       </span>
                     </div>
                   )}
+
+                  {/* Tag sobrio para devolución de envase */}
+                  {item.es_devolucion_envase && (
+                    <div className="mt-0.5">
+                      <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60">
+                        Devolución de envase
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Selector sobrio de envase retornable (1 solo clic, sin modales ni iconos) */}
+                  {item.producto.es_retornable && !item.es_devolucion_envase && (
+                    <div className="mt-1 flex items-center">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleEnvaseItem(item.producto.id)
+                        }}
+                        className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border transition-all cursor-pointer select-none ${
+                          item.sin_envase
+                            ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300'
+                            : 'bg-gray-100 dark:bg-gray-700/60 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        }`}
+                        title="Hacé clic para alternar si el cliente trajo o no el envase vacío"
+                      >
+                        {item.sin_envase
+                          ? `Sin envase (+${formatPrecio((item.precio_envase_unitario || item.producto.precio_envase || 0) * item.cantidad)})`
+                          : 'Con envase (mano a mano)'}
+                      </button>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
                     <span>
                       {formatPrecio(item.producto.precio_venta)}{' '}
@@ -600,8 +633,8 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
 
                 {/* Subtotal */}
                 <div className="w-16 sm:w-20 text-right flex-shrink-0 flex flex-col items-end justify-center">
-                  <span className="text-sm font-bold text-gray-900 dark:text-gray-100 group-focus:text-indigo-900 dark:group-focus:text-white">
-                    {formatPrecio(item.subtotal)}
+                  <span className={`text-sm font-bold font-mono ${item.es_devolucion_envase || item.subtotal < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-gray-100 group-focus:text-indigo-900 dark:group-focus:text-white'}`}>
+                    {item.subtotal < 0 ? `-${formatPrecio(Math.abs(item.subtotal))}` : formatPrecio(item.subtotal)}
                   </span>
                   {item.descuento_promo !== undefined && item.descuento_promo > 0 && (
                     <span className="text-[10px] text-gray-400 line-through">

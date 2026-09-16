@@ -29,6 +29,9 @@ export interface ProductFormData {
   es_pesable?: boolean
   unidad_medida?: 'UN' | 'KG' | 'GR' | 'LT'
   plu_balanza?: string | null
+  es_retornable?: boolean
+  precio_envase?: number
+  nombre_envase?: string
 }
 
 export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }: ProductFormProps) {
@@ -45,6 +48,9 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
     es_pesable: false,
     unidad_medida: 'UN',
     plu_balanza: null,
+    es_retornable: false,
+    precio_envase: 0,
+    nombre_envase: '',
   })
   const [guardando, setGuardando] = useState(false)
   const [scannerCamaraOpen, setScannerCamaraOpen] = useState(false)
@@ -74,6 +80,9 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
         es_pesable: producto.es_pesable || false,
         unidad_medida: producto.unidad_medida || 'UN',
         plu_balanza: producto.plu_balanza || null,
+        es_retornable: producto.es_retornable || false,
+        precio_envase: producto.precio_envase || 0,
+        nombre_envase: producto.nombre_envase || '',
       })
     } else {
       setForm({
@@ -89,6 +98,9 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
         es_pesable: false,
         unidad_medida: 'UN',
         plu_balanza: null,
+        es_retornable: false,
+        precio_envase: 0,
+        nombre_envase: '',
       })
     }
   }, [producto, isOpen])
@@ -317,6 +329,61 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
                   <p className="text-[10px] text-gray-400 mt-0.5">
                     Permite escanear etiquetas de balanzas Systel / Kretz (prefijo 20).
                   </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Envases Retornables */}
+          <div className="p-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={form.es_retornable || false}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    es_retornable: e.target.checked,
+                    precio_envase: e.target.checked ? form.precio_envase || 1500 : 0,
+                  })
+                }
+                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 dark:border-gray-600"
+              />
+              <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                Producto con envase retornable (cervezas, gaseosas de vidrio, sifones)
+              </span>
+            </label>
+
+            {form.es_retornable && (
+              <div className="pt-1 pl-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
+                    Precio unitario del envase ($):
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="50"
+                    placeholder="Ej: 1500"
+                    value={form.precio_envase || ''}
+                    onChange={(e) => setForm({ ...form, precio_envase: parseFloat(e.target.value) || 0 })}
+                    className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-indigo-500 font-mono font-bold"
+                  />
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    Monto a sumar si el cliente no trae la botella vacía.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
+                    Nombre o tipo de envase (opcional):
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Cerveza 1L Vidrio"
+                    value={form.nombre_envase || ''}
+                    onChange={(e) => setForm({ ...form, nombre_envase: e.target.value || '' })}
+                    className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-indigo-500 font-medium"
+                  />
                 </div>
               </div>
             )}
