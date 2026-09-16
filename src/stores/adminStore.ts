@@ -339,7 +339,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
   eliminarKiosco: async (kioscoId) => {
     set({ cargandoAccion: true })
     try {
-      // 1. Intentar funciones RPC en Supabase si están instaladas
+      // 1. Intentar funciones RPC en Supabase con privilegios SECURITY DEFINER
       try {
         const { data: rpcData, error: rpcError } = await supabase.rpc('admin_eliminar_kiosco', {
           p_kiosco_id: kioscoId,
@@ -350,7 +350,12 @@ export const useAdminStore = create<AdminState>((set, get) => ({
           set({ cargandoAccion: false })
           return true
         }
-      } catch {}
+        if (rpcError) {
+          console.warn('RPC admin_eliminar_kiosco retornó aviso:', rpcError)
+        }
+      } catch (e) {
+        console.warn('Excepción al llamar admin_eliminar_kiosco:', e)
+      }
 
       try {
         const { data: rpcData2, error: rpcError2 } = await supabase.rpc('fn_eliminar_kiosco', {
@@ -418,11 +423,29 @@ export const useAdminStore = create<AdminState>((set, get) => ({
       try { await supabase.from('sesiones_caja').delete().eq('kiosco_id', kioscoId) } catch {}
       try { await supabase.from('cajas').delete().eq('kiosco_id', kioscoId) } catch {}
 
-      // 2.9 Productos y categorías
+      // 2.9 Limpieza profunda de referencias hijas por producto_id antes de borrar productos
+      try {
+        const { data: prods } = await supabase.from('productos').select('id').eq('kiosco_id', kioscoId)
+        if (prods && prods.length > 0) {
+          const pIds = prods.map((p) => p.id)
+          await supabase.from('detalles_compra').delete().in('producto_id', pIds)
+          await supabase.from('detalles_venta').delete().in('producto_id', pIds)
+          await supabase.from('detalles_devolucion').delete().in('producto_id', pIds)
+          await supabase.from('combo_items').delete().in('combo_producto_id', pIds)
+          await supabase.from('combo_items').delete().in('componente_producto_id', pIds)
+          await supabase.from('movimientos_stock').delete().in('producto_id', pIds)
+          await supabase.from('lotes_producto').delete().in('producto_id', pIds)
+          await supabase.from('promociones').delete().in('producto_id', pIds)
+        }
+      } catch (errDet) {
+        console.warn('Limpieza de detalles por producto:', errDet)
+      }
+
+      // 2.10 Productos y categorías
       try { await supabase.from('productos').delete().eq('kiosco_id', kioscoId) } catch {}
       try { await supabase.from('categorias').delete().eq('kiosco_id', kioscoId) } catch {}
 
-      // 2.10 Suscripciones y pagos de suscripción
+      // 2.11 Suscripciones y pagos de suscripción
       try {
         const { data: subs } = await supabase.from('suscripciones').select('id').eq('kiosco_id', kioscoId)
         if (subs && subs.length > 0) {
@@ -432,16 +455,25 @@ export const useAdminStore = create<AdminState>((set, get) => ({
         }
       } catch {}
 
-      // 2.11 Configuración AFIP si existiese
+      // 2.12 Configuración AFIP si existiese
       try { await supabase.from('configuracion_afip').delete().eq('kiosco_id', kioscoId) } catch {}
 
-      // 2.12 Usuarios asociados a este kiosco
+      // 2.13 Usuarios asociados a este kiosco
       try { await supabase.from('usuarios').delete().eq('kiosco_id', kioscoId) } catch {}
 
-      // 2.13 Finalmente eliminar el kiosco
+      // 2.14 Finalmente eliminar el kiosco
       const { error: kError } = await supabase.from('kioscos').delete().eq('id', kioscoId)
       if (kError) {
         console.error('Error final borrando kiosco:', kError)
+        if (
+          kError.message?.includes('violates foreign key constraint') ||
+          kError.message?.includes('detalles_compra') ||
+          kError.message?.includes('relation')
+        ) {
+          throw new Error(
+            'Falta actualizar la función de borrado en Supabase. Ejecutá el script SQL "supabase_admin_eliminar_kiosco.sql" en el Editor SQL de Supabase para activar la eliminación en cascada.'
+          )
+        }
         throw new Error(kError.message || 'No se pudo eliminar el kiosco de la base de datos')
       }
 
