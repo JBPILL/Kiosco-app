@@ -17,7 +17,6 @@ const menuItems = [
   { path: '/proveedores', label: 'Proveedores',  roles: ['DUEÑO'] },
   { path: '/reportes',  label: 'Reportes',       roles: ['DUEÑO', 'VISOR'] },
   { path: '/config',    label: 'Configuración',  roles: ['DUEÑO'] },
-  { path: '/soporte',   label: 'Soporte y Ayuda', roles: ['DUEÑO', 'CAJERO', 'VISOR'] },
 ]
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
@@ -222,7 +221,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               }
             `}
           >
-            Mesa de Ayuda
+            Soporte y Ayuda
           </NavLink>
         </div>
 

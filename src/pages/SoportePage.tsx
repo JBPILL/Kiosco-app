@@ -201,7 +201,7 @@ export function SoportePage() {
         <div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold tracking-wider uppercase px-2.5 py-1 rounded-md bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300">
-              Mesa de Ayuda
+              Soporte y Ayuda
             </span>
             <span className="text-xs text-gray-500 dark:text-gray-400">Atención personalizada</span>
           </div>
