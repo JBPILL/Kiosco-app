@@ -491,85 +491,97 @@ export function BalanceContableTab() {
           {/* Tarjetas Principales de KPIs Contables */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {/* Total Ingresos (Ventas) */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
-                  Ingresos Totales
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex flex-col justify-between">
+              <div>
+                <div className="flex items-start justify-between gap-2 min-h-[28px]">
+                  <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide leading-snug">
+                    Ingresos Totales
+                  </p>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 font-bold whitespace-nowrap flex-shrink-0">
+                    {ventasValidas.length} {ventasValidas.length === 1 ? 'venta' : 'ventas'}
+                  </span>
+                </div>
+                <p className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white mt-1">
+                  {formatPrecio(totalIngresos)}
                 </p>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 font-bold">
-                  {ventasValidas.length} ventas
-                </span>
               </div>
-              <p className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white mt-1">
-                {formatPrecio(totalIngresos)}
-              </p>
-              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-2">
                 Facturación bruta cobrada en el período
               </p>
             </div>
 
             {/* Total Compras de Mercadería */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
-                  Compras de Mercadería
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex flex-col justify-between">
+              <div>
+                <div className="flex items-start justify-between gap-2 min-h-[28px]">
+                  <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wide leading-snug">
+                    Compras Mercadería
+                  </p>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 font-bold whitespace-nowrap flex-shrink-0">
+                    {comprasPeriodo.length} {comprasPeriodo.length === 1 ? 'remito' : 'remitos'}
+                  </span>
+                </div>
+                <p className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white mt-1">
+                  {formatPrecio(totalComprasMercaderia)}
                 </p>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 font-bold">
-                  {comprasPeriodo.length} remitos
-                </span>
               </div>
-              <p className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white mt-1">
-                {formatPrecio(totalComprasMercaderia)}
-              </p>
-              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-2">
                 Stock y mercadería recibida (costo)
               </p>
             </div>
 
             {/* Total Pagos y Egresos Efectivos */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-red-600 dark:text-red-400 uppercase tracking-wider">
-                  Salidas Financieras
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex flex-col justify-between">
+              <div>
+                <div className="flex items-start justify-between gap-2 min-h-[28px]">
+                  <p className="text-xs font-semibold text-red-600 dark:text-red-400 uppercase tracking-wide leading-snug">
+                    Salidas Financieras
+                  </p>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300 font-bold whitespace-nowrap flex-shrink-0">
+                    {pagosPeriodo.length + egresosCajaPeriodo.length}{' '}
+                    {pagosPeriodo.length + egresosCajaPeriodo.length === 1 ? 'salida' : 'salidas'}
+                  </span>
+                </div>
+                <p className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white mt-1">
+                  {formatPrecio(totalSalidasFinancieras)}
                 </p>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300 font-bold">
-                  {pagosPeriodo.length + egresosCajaPeriodo.length} salidas
-                </span>
               </div>
-              <p className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white mt-1">
-                {formatPrecio(totalSalidasFinancieras)}
-              </p>
-              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+              <p
+                className="text-[11px] text-gray-400 dark:text-gray-500 mt-2 truncate"
+                title={`Pagos a prov. (${formatPrecio(totalPagosAbonados)}) + Gastos caja (${formatPrecio(totalGastosCaja)})`}
+              >
                 Pagos a prov. ({formatPrecio(totalPagosAbonados)}) + Gastos caja ({formatPrecio(totalGastosCaja)})
               </p>
             </div>
 
             {/* Resultado Operativo / Margen */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-                  Margen Bruto Estimado
-                </p>
-                <span
-                  className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex flex-col justify-between">
+              <div>
+                <div className="flex items-start justify-between gap-2 min-h-[28px]">
+                  <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wide leading-snug">
+                    Margen Bruto
+                  </p>
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap flex-shrink-0 ${
+                      resultadoOperativo >= 0
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                        : 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300'
+                    }`}
+                  >
+                    {resultadoOperativo >= 0 ? '+ Rentable' : 'Déficit'}
+                  </span>
+                </div>
+                <p
+                  className={`text-2xl sm:text-3xl font-black mt-1 ${
                     resultadoOperativo >= 0
-                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                      : 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300'
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-red-600 dark:text-red-400'
                   }`}
                 >
-                  {resultadoOperativo >= 0 ? '+ Rentable' : 'Déficit'}
-                </span>
+                  {formatPrecio(resultadoOperativo)}
+                </p>
               </div>
-              <p
-                className={`text-2xl sm:text-3xl font-black mt-1 ${
-                  resultadoOperativo >= 0
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : 'text-red-600 dark:text-red-400'
-                }`}
-              >
-                {formatPrecio(resultadoOperativo)}
-              </p>
-              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-2">
                 Flujo de caja neto: <strong>{formatPrecio(flujoCajaNeto)}</strong>
               </p>
             </div>
