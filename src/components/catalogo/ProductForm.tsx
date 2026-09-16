@@ -207,8 +207,8 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
                 type="button"
                 variant="secondary"
                 onClick={() => setScannerCamaraOpen(true)}
-                className="flex items-center gap-1.5 px-3 sm:px-4 text-xs font-semibold text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 cursor-pointer flex-shrink-0 h-[42px]"
-                title="Escanear código con la cámara del celular o PC"
+                className="sm:hidden flex items-center gap-1.5 px-3 sm:px-4 text-xs font-semibold text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 cursor-pointer flex-shrink-0 h-[42px]"
+                title="Escanear código con la cámara del celular"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
@@ -218,7 +218,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
               </Button>
             </div>
             <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
-              Podés usar la cámara del celular o disparar directamente con un lector de barras físico USB / Bluetooth.
+              Podés disparar directamente con un lector de barras físico USB / Bluetooth o escribir el código.
             </p>
           </div>
 

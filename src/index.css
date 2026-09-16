@@ -137,6 +137,71 @@ input, button {
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
 }
 
+/* ==========================================================================
+   Estilos personalizados de barras de desplazamiento (Scrollbars)
+   Diseño delgado, redondeado y 100% integrado a los modos Claro y Oscuro
+   ========================================================================== */
 
+/* Color scheme nativo del navegador para selects, pickers y controles del sistema */
+html.dark {
+  color-scheme: dark;
+}
 
+html:not(.dark) {
+  color-scheme: light;
+}
 
+/* Regla estándar CSS (Firefox, Chrome 121+, Edge 121+, Safari 17.4+) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+html.dark *,
+.dark * {
+  scrollbar-color: #334155 transparent;
+}
+
+/* Reglas WebKit / Chromium (Chrome, Edge, Opera, Brave, WebView2, PWA Windows) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Thumb en Modo Claro */
+::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
+}
+
+/* Thumb en Modo Oscuro (se integra armónicamente con los tonos oscuros del sistema) */
+html.dark ::-webkit-scrollbar-thumb,
+.dark ::-webkit-scrollbar-thumb,
+html.dark::-webkit-scrollbar-thumb,
+.dark::-webkit-scrollbar-thumb {
+  background-color: #334155; /* slate-700 */
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover,
+.dark ::-webkit-scrollbar-thumb:hover,
+html.dark::-webkit-scrollbar-thumb:hover,
+.dark::-webkit-scrollbar-thumb:hover {
+  background-color: #475569; /* slate-600 */
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
