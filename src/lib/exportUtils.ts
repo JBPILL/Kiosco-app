@@ -1,4 +1,4 @@
-import type { Producto, Categoria } from '../types/database'
+import type { Producto, Categoria, MovimientoStock } from '../types/database'
 import { formatFecha, formatPrecio } from './utils'
 
 /**
@@ -227,5 +227,47 @@ export function exportarLibroContableCSV(
   const cleanPeriod = periodoNombre.toLowerCase().replace(/[^a-z0-9]/g, '_')
 
   descargarArchivo(csvContent, `libro_contable_${cleanName}_${cleanPeriod}.csv`)
+}
+
+/**
+  * Exporta el historial de movimientos de stock a CSV para auditoría y control de inventario.
+  */
+export function exportarMovimientosStockCSV(
+  movimientos: (MovimientoStock & { producto?: Producto })[],
+  nombreKiosco: string = 'Kiosco'
+) {
+  const encabezados = [
+    'Fecha y Hora',
+    'Tipo Operación',
+    'Producto',
+    'Código de Barras',
+    'Cantidad Variación',
+    'Motivo',
+    'Detalle / Notas',
+  ]
+
+  const filas = movimientos.map((m) => [
+    escaparCSV(formatFecha(m.fecha)),
+    escaparCSV(m.tipo),
+    escaparCSV(m.producto?.descripcion || 'Producto eliminado'),
+    escaparCSV(m.producto?.codigo_barras || '—'),
+    m.cantidad,
+    escaparCSV(m.motivo),
+    escaparCSV(m.notas || ''),
+  ].join(';'))
+
+  const resumenLineas = [
+    `"HISTORIAL DE MOVIMIENTOS DE STOCK"`,
+    `"Comercio: ${nombreKiosco}"`,
+    `"Total Registros: ${movimientos.length}"`,
+    `"Fecha de Exportación: ${new Date().toLocaleDateString('es-AR')}"`,
+    '',
+  ]
+
+  const csvContent = [...resumenLineas, encabezados.join(';'), ...filas].join('\r\n')
+  const cleanName = nombreKiosco.toLowerCase().replace(/[^a-z0-9]/g, '_')
+  const fechaStr = new Date().toISOString().split('T')[0]
+
+  descargarArchivo(csvContent, `movimientos_stock_${cleanName}_${fechaStr}.csv`)
 }
 
