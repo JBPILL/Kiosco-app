@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { usePromocionStore } from '../stores/promocionStore'
 import { useCartStore } from '../stores/cartStore'
@@ -8,7 +9,7 @@ import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { SearchInput } from '../components/ui/SearchInput'
 import { formatPrecio } from '../lib/utils'
-import type { Promocion, TipoPromocion } from '../types/database'
+import type { Promocion, TipoPromocion, ItemComboPromo } from '../types/database'
 import toast from 'react-hot-toast'
 
 const DIAS_SEMANA_OPCIONES = [
@@ -22,6 +23,7 @@ const DIAS_SEMANA_OPCIONES = [
 ]
 
 export function PromocionesPage() {
+  const navigate = useNavigate()
   const { usuario } = useAuthStore()
   const { promociones, cargando, cargarPromociones, crearPromocion, actualizarPromocion, eliminarPromocion, toggleActiva } = usePromocionStore()
   const { recalcularPromociones } = useCartStore()
@@ -45,6 +47,10 @@ export function PromocionesPage() {
   const [modoVolumen, setModoVolumen] = useState<'PRECIO' | 'PORCENTAJE'>('PRECIO')
   const [precioUnitarioPromo, setPrecioUnitarioPromo] = useState<string>('')
   const [descuentoPorcentaje, setDescuentoPorcentaje] = useState<string>('15')
+  const [itemsCombo, setItemsCombo] = useState<ItemComboPromo[]>([])
+  const [precioCombo, setPrecioCombo] = useState<string>('')
+  const [productoParaComboId, setProductoParaComboId] = useState<string>('')
+  const [cantidadParaCombo, setCantidadParaCombo] = useState<string>('1')
   const [diasSeleccionados, setDiasSeleccionados] = useState<number[]>([])
   const [fechaInicio, setFechaInicio] = useState<string>('')
   const [fechaFin, setFechaFin] = useState<string>('')
@@ -83,9 +89,18 @@ export function PromocionesPage() {
   // Métricas
   const totalPromos = promociones.length
   const totalActivas = promociones.filter((p) => p.activo).length
+  const totalCombos = promociones.filter((p) => p.tipo === 'COMBO').length
   const totalNxM = promociones.filter((p) => p.tipo === 'NXM').length
   const totalVolumen = promociones.filter((p) => p.tipo === 'VOLUMEN').length
   const totalPorcentaje = promociones.filter((p) => p.tipo === 'PORCENTAJE').length
+
+  // Suma de precios regulares para el combo configurado en el modal
+  const sumaRegularCombo = useMemo(() => {
+    return itemsCombo.reduce((acc, it) => {
+      const prod = productos.find((p) => p.id === it.producto_id)
+      return acc + (prod ? prod.precio_venta * it.cantidad : 0)
+    }, 0)
+  }, [itemsCombo, productos])
 
   // Productos para el selector en el modal
   const productosFiltradosModal = useMemo(() => {
@@ -112,6 +127,10 @@ export function PromocionesPage() {
     setModoVolumen('PRECIO')
     setPrecioUnitarioPromo('')
     setDescuentoPorcentaje('15')
+    setItemsCombo([])
+    setPrecioCombo('')
+    setProductoParaComboId('')
+    setCantidadParaCombo('1')
     setDiasSeleccionados([])
     setFechaInicio('')
     setFechaFin('')
@@ -132,12 +151,37 @@ export function PromocionesPage() {
     setModoVolumen(p.precio_unitario_promo ? 'PRECIO' : 'PORCENTAJE')
     setPrecioUnitarioPromo(p.precio_unitario_promo ? String(p.precio_unitario_promo) : '')
     setDescuentoPorcentaje(p.descuento_porcentaje ? String(p.descuento_porcentaje) : '15')
+    setItemsCombo(p.items_combo ? [...p.items_combo] : [])
+    setPrecioCombo(p.precio_combo ? String(p.precio_combo) : '')
+    setProductoParaComboId('')
+    setCantidadParaCombo('1')
     setDiasSeleccionados(p.dias_semana || [])
     setFechaInicio(p.fecha_inicio || '')
     setFechaFin(p.fecha_fin || '')
     setActiva(p.activo)
     setFiltroProductoModal('')
     setModalFormOpen(true)
+  }
+
+  const handleCargarComboEnCarrito = (promo: Promocion) => {
+    if (!promo.items_combo || promo.items_combo.length === 0) {
+      toast.error('Este combo no tiene productos configurados')
+      return
+    }
+    let agregados = 0
+    for (const ic of promo.items_combo) {
+      const prod = productos.find((p) => p.id === ic.producto_id)
+      if (prod) {
+        useCartStore.getState().agregarProducto(prod, ic.cantidad)
+        agregados++
+      }
+    }
+    if (agregados > 0) {
+      toast.success(`Combo "${promo.nombre}" cargado en el ticket`)
+      navigate('/')
+    } else {
+      toast.error('No se encontraron los productos del combo en el catálogo')
+    }
   }
 
   const handleToggleDia = (dia: number) => {
@@ -155,18 +199,33 @@ export function PromocionesPage() {
       return
     }
 
-    if (ambito === 'PRODUCTO' && !productoId) {
-      toast.error('Seleccioná un producto de destino')
-      return
+    if (tipo !== 'COMBO') {
+      if (ambito === 'PRODUCTO' && !productoId) {
+        toast.error('Seleccioná un producto de destino')
+        return
+      }
+
+      if (ambito === 'CATEGORIA' && !categoriaId) {
+        toast.error('Seleccioná una categoría de destino')
+        return
+      }
     }
 
-    if (ambito === 'CATEGORIA' && !categoriaId) {
-      toast.error('Seleccioná una categoría de destino')
-      return
+    let pComboNum: number | null = null
+    if (tipo === 'COMBO') {
+      if (itemsCombo.length < 2) {
+        toast.error('Un combo debe incluir al menos 2 productos')
+        return
+      }
+      pComboNum = parseFloat(precioCombo)
+      if (isNaN(pComboNum) || pComboNum <= 0) {
+        toast.error('Ingresá un precio especial de venta válido para el combo')
+        return
+      }
     }
 
     const cantMinNum = Number(cantidadMinima)
-    if (isNaN(cantMinNum) || cantMinNum < 1) {
+    if (tipo !== 'COMBO' && (isNaN(cantMinNum) || cantMinNum < 1)) {
       toast.error('La cantidad mínima debe ser al menos 1')
       return
     }
@@ -211,12 +270,14 @@ export function PromocionesPage() {
       kiosco_id: usuario.kiosco_id,
       nombre: nombre.trim(),
       tipo,
-      producto_id: ambito === 'PRODUCTO' ? productoId : null,
-      categoria_id: ambito === 'CATEGORIA' ? categoriaId : null,
-      cantidad_minima: cantMinNum,
+      producto_id: tipo === 'COMBO' ? null : (ambito === 'PRODUCTO' ? productoId : null),
+      categoria_id: tipo === 'COMBO' ? null : (ambito === 'CATEGORIA' ? categoriaId : null),
+      cantidad_minima: tipo === 'COMBO' ? 1 : cantMinNum,
       cantidad_paga: cantPagaNum,
       precio_unitario_promo: precioPromoNum,
       descuento_porcentaje: descPorcNum,
+      precio_combo: pComboNum,
+      items_combo: tipo === 'COMBO' ? itemsCombo : null,
       dias_semana: diasSeleccionados.length > 0 ? diasSeleccionados : null,
       fecha_inicio: fechaInicio || null,
       fecha_fin: fechaFin || null,
@@ -263,7 +324,7 @@ export function PromocionesPage() {
       </div>
 
       {/* Tarjetas de Métricas */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 sm:gap-4">
         <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
           <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
             Total Reglas
@@ -278,6 +339,14 @@ export function PromocionesPage() {
           </p>
           <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
             {totalActivas}
+          </p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
+          <p className="text-xs font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-wider">
+            Combos
+          </p>
+          <p className="text-2xl font-bold text-teal-600 dark:text-teal-400 mt-1">
+            {totalCombos}
           </p>
         </div>
         <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
@@ -296,7 +365,7 @@ export function PromocionesPage() {
             {totalVolumen}
           </p>
         </div>
-        <div className="col-span-2 sm:col-span-1 bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
           <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
             % Descuento
           </p>
@@ -336,6 +405,7 @@ export function PromocionesPage() {
               className="h-10 px-3 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-indigo-500"
             >
               <option value="TODOS">Todos los tipos</option>
+              <option value="COMBO">Combos / Packs</option>
               <option value="NXM">NxM (2x1, 3x2)</option>
               <option value="VOLUMEN">Por Volumen</option>
               <option value="PORCENTAJE">Porcentaje Directo</option>
@@ -362,6 +432,7 @@ export function PromocionesPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {promocionesFiltradas.map((promo) => {
+            const esCombo = promo.tipo === 'COMBO'
             const esNxM = promo.tipo === 'NXM'
             const esVolumen = promo.tipo === 'VOLUMEN'
             const esPorcentaje = promo.tipo === 'PORCENTAJE'
@@ -381,14 +452,16 @@ export function PromocionesPage() {
                     <div className="flex items-center gap-1.5">
                       <span
                         className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                          esNxM
+                          esCombo
+                            ? 'bg-teal-100 text-teal-700 dark:bg-teal-950/70 dark:text-teal-300 border border-teal-200 dark:border-teal-800/60'
+                            : esNxM
                             ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60'
                             : esVolumen
                             ? 'bg-purple-100 text-purple-700 dark:bg-purple-950/70 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60'
                             : 'bg-amber-100 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60'
                         }`}
                       >
-                        {esNxM ? 'NxM' : esVolumen ? 'Por Volumen' : '% Descuento'}
+                        {esCombo ? 'Combo Pack' : esNxM ? 'NxM' : esVolumen ? 'Por Volumen' : '% Descuento'}
                       </span>
                       {promo.activo ? (
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
@@ -420,9 +493,33 @@ export function PromocionesPage() {
                     {promo.nombre}
                   </h3>
 
-                  {/* Destino (Producto o Categoría) */}
+                  {/* Destino (Producto, Categoría o Combo) */}
                   <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">
-                    {promo.producto ? (
+                    {esCombo ? (
+                      <div className="space-y-1">
+                        <span className="font-semibold text-gray-800 dark:text-gray-200 block">
+                          Productos que integran el combo ({promo.items_combo?.length || 0}):
+                        </span>
+                        <div className="space-y-1 max-h-36 overflow-y-auto">
+                          {promo.items_combo?.map((ic, idx) => {
+                            const pObj = productos.find((p) => p.id === ic.producto_id)
+                            return (
+                              <div
+                                key={idx}
+                                className="flex items-center justify-between px-2 py-1 rounded bg-gray-50 dark:bg-gray-900/40 text-[11px] border border-gray-100 dark:border-gray-800"
+                              >
+                                <span className="text-gray-800 dark:text-gray-200 truncate">
+                                  <strong>{ic.cantidad} {pObj?.unidad_medida === 'KG' ? 'kg' : 'u.'}</strong> × {pObj?.descripcion || 'Producto'}
+                                </span>
+                                <span className="text-gray-400 font-mono text-right flex-shrink-0 ml-2">
+                                  {pObj ? formatPrecio(pObj.precio_venta * ic.cantidad) : ''}
+                                </span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ) : promo.producto ? (
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-semibold text-gray-800 dark:text-gray-200">Producto:</span>
                         <span>{promo.producto.descripcion}</span>
@@ -442,6 +539,23 @@ export function PromocionesPage() {
 
                   {/* Regla explicada en texto claro */}
                   <div className="mt-2.5 p-2.5 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-700/60 text-xs">
+                    {esCombo && (
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <span className="text-[11px] text-gray-500 dark:text-gray-400 block">Precio especial combo:</span>
+                          <span className="text-teal-600 dark:text-teal-400 font-bold text-base font-mono">
+                            {formatPrecio(promo.precio_combo || 0)}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCargarComboEnCarrito(promo)}
+                          className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-lg active:scale-95 transition-all shadow-xs"
+                        >
+                          + Cargar al Ticket
+                        </button>
+                      </div>
+                    )}
                     {esNxM && (
                       <p className="text-gray-800 dark:text-gray-200 font-medium">
                         Llevás <strong>{promo.cantidad_minima}</strong>, pagás <strong>{promo.cantidad_paga}</strong>{' '}
@@ -558,7 +672,7 @@ export function PromocionesPage() {
             <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
               Tipo de Promoción
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <button
                 type="button"
                 onClick={() => setTipo('NXM')}
@@ -595,42 +709,56 @@ export function PromocionesPage() {
                 <p className="text-xs font-bold">Descuento Directo</p>
                 <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">% de descuento fijo</p>
               </button>
+              <button
+                type="button"
+                onClick={() => setTipo('COMBO')}
+                className={`p-2.5 rounded-xl border text-left transition-all ${
+                  tipo === 'COMBO'
+                    ? 'border-teal-600 bg-teal-50/80 dark:bg-teal-950/40 text-teal-900 dark:text-teal-200 font-bold ring-2 ring-teal-500'
+                    : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                <p className="text-xs font-bold">Combo / Pack</p>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">Varios productos juntos</p>
+              </button>
             </div>
           </div>
 
-          {/* Ámbito: Producto vs Categoría */}
-          <div>
-            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-              ¿A qué se aplica?
-            </label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setAmbito('PRODUCTO')}
-                className={`flex-1 py-1.5 rounded-lg border text-xs font-semibold ${
-                  ambito === 'PRODUCTO'
-                    ? 'bg-indigo-600 text-white border-indigo-600'
-                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700'
-                }`}
-              >
-                Producto Específico
-              </button>
-              <button
-                type="button"
-                onClick={() => setAmbito('CATEGORIA')}
-                className={`flex-1 py-1.5 rounded-lg border text-xs font-semibold ${
-                  ambito === 'CATEGORIA'
-                    ? 'bg-indigo-600 text-white border-indigo-600'
-                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700'
-                }`}
-              >
-                Categoría Completa
-              </button>
+          {/* Ámbito: Producto vs Categoría (Solo para promociones individuales) */}
+          {tipo !== 'COMBO' && (
+            <div>
+              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                ¿A qué se aplica?
+              </label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAmbito('PRODUCTO')}
+                  className={`flex-1 py-1.5 rounded-lg border text-xs font-semibold ${
+                    ambito === 'PRODUCTO'
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700'
+                  }`}
+                >
+                  Producto Específico
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAmbito('CATEGORIA')}
+                  className={`flex-1 py-1.5 rounded-lg border text-xs font-semibold ${
+                    ambito === 'CATEGORIA'
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700'
+                  }`}
+                >
+                  Categoría Completa
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Selector de Producto */}
-          {ambito === 'PRODUCTO' && (
+          {tipo !== 'COMBO' && ambito === 'PRODUCTO' && (
             <div className="space-y-2 p-3 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700">
               <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
                 Seleccionar Producto
@@ -664,7 +792,7 @@ export function PromocionesPage() {
           )}
 
           {/* Selector de Categoría */}
-          {ambito === 'CATEGORIA' && (
+          {tipo !== 'COMBO' && ambito === 'CATEGORIA' && (
             <div className="space-y-2 p-3 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700">
               <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
                 Seleccionar Categoría
@@ -685,142 +813,312 @@ export function PromocionesPage() {
             </div>
           )}
 
-          {/* Configuración según el tipo seleccionado */}
-          <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700 space-y-3">
-            {tipo === 'NXM' && (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                    Llevás (Unidades) *
-                  </label>
-                  <Input
-                    type="number"
-                    min="2"
-                    step="1"
-                    value={cantidadMinima}
-                    onChange={(e) => setCantidadMinima(e.target.value)}
-                    placeholder="Ej: 2, 3"
-                    required
-                  />
+          {/* Constructor de COMBO / PACK */}
+          {tipo === 'COMBO' && (
+            <div className="space-y-3 p-3.5 rounded-xl bg-teal-50/50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-800">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-gray-800 dark:text-gray-200">
+                  Productos que integran el combo *
+                </label>
+                <span className="text-[11px] text-gray-500">Mínimo 2 productos</span>
+              </div>
+
+              {/* Lista de productos ya agregados al combo */}
+              {itemsCombo.length === 0 ? (
+                <p className="text-xs text-gray-500 italic p-3 bg-white dark:bg-gray-800 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-center">
+                  El combo aún no tiene productos. Agregá al menos 2 productos abajo.
+                </p>
+              ) : (
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {itemsCombo.map((ic, idx) => {
+                    const prod = productos.find((p) => p.id === ic.producto_id)
+                    const subtotalItem = prod ? prod.precio_venta * ic.cantidad : 0
+                    return (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between gap-2 p-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate">
+                            {prod?.descripcion || 'Producto'}
+                          </p>
+                          <p className="text-[10px] text-gray-500">
+                            Unitario: {prod ? formatPrecio(prod.precio_venta) : '$0'}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min="0.001"
+                            step="any"
+                            value={ic.cantidad}
+                            onChange={(e) => {
+                              const nuevaCant = parseFloat(e.target.value) || 0
+                              setItemsCombo((prev) =>
+                                prev.map((item, i) => (i === idx ? { ...item, cantidad: nuevaCant } : item))
+                              )
+                            }}
+                            className="w-20 h-7 text-xs font-semibold text-center border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                            placeholder="Cant"
+                          />
+                          <span className="text-xs text-gray-500 font-mono w-6">
+                            {prod?.unidad_medida === 'KG' ? 'kg' : 'u.'}
+                          </span>
+                          <span className="text-xs font-bold text-gray-700 dark:text-gray-300 w-16 text-right font-mono">
+                            {formatPrecio(subtotalItem)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setItemsCombo((prev) => prev.filter((_, i) => i !== idx))}
+                            className="p-1 text-red-600 hover:text-red-700 text-xs font-bold"
+                            title="Quitar del combo"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
+              )}
+
+              {/* Selector para agregar producto al combo */}
+              <div className="pt-2 border-t border-teal-200 dark:border-teal-800/60 space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                  <div className="sm:col-span-8">
+                    <select
+                      value={productoParaComboId}
+                      onChange={(e) => setProductoParaComboId(e.target.value)}
+                      className="w-full h-8 px-2 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    >
+                      <option value="">-- Seleccionar producto para agregar --</option>
+                      {productos.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.descripcion} ({formatPrecio(p.precio_venta)} {p.unidad_medida === 'KG' ? '/kg' : 'c/u'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <input
+                      type="number"
+                      min="0.001"
+                      step="any"
+                      value={cantidadParaCombo}
+                      onChange={(e) => setCantidadParaCombo(e.target.value)}
+                      placeholder="Cant / kg"
+                      className="w-full h-8 px-2 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium text-center"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="w-full h-8 text-xs font-bold whitespace-nowrap"
+                      onClick={() => {
+                        if (!productoParaComboId) {
+                          toast.error('Seleccioná un producto para agregar al combo')
+                          return
+                        }
+                        const cantNum = parseFloat(cantidadParaCombo)
+                        if (isNaN(cantNum) || cantNum <= 0) {
+                          toast.error('Ingresá una cantidad válida')
+                          return
+                        }
+                        if (itemsCombo.some((it) => it.producto_id === productoParaComboId)) {
+                          toast.error('Este producto ya está en el combo')
+                          return
+                        }
+                        setItemsCombo((prev) => [
+                          ...prev,
+                          { producto_id: productoParaComboId, cantidad: cantNum },
+                        ])
+                        setProductoParaComboId('')
+                        setCantidadParaCombo('1')
+                      }}
+                    >
+                      + Agregar
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Definición del Precio Promocional del Combo */}
+              <div className="p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 space-y-2">
+                <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
+                  <span>Suma regular individual:</span>
+                  <span className="font-bold font-mono text-gray-900 dark:text-gray-100">
+                    {formatPrecio(sumaRegularCombo)}
+                  </span>
+                </div>
+
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                    Pagás (Unidades) *
+                  <label className="block text-xs font-bold text-teal-700 dark:text-teal-300 mb-1">
+                    Precio Especial del Combo Completo ($) *
                   </label>
                   <Input
                     type="number"
                     min="1"
-                    step="1"
-                    value={cantidadPaga}
-                    onChange={(e) => setCantidadPaga(e.target.value)}
-                    placeholder="Ej: 1, 2"
+                    step="any"
+                    value={precioCombo}
+                    onChange={(e) => setPrecioCombo(e.target.value)}
+                    placeholder="Ej: 8500"
                     required
                   />
                 </div>
-                <div className="col-span-2 text-xs text-indigo-700 dark:text-indigo-300 font-medium">
-                  Vista previa: Promoción {cantidadMinima}x{cantidadPaga} — El cliente paga {cantidadPaga} por cada {cantidadMinima} unidades.
-                </div>
-              </div>
-            )}
 
-            {tipo === 'VOLUMEN' && (
-              <div className="space-y-3">
+                {Number(precioCombo) > 0 && sumaRegularCombo > 0 && (
+                  <div className="flex items-center justify-between text-xs p-2 rounded bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 font-semibold">
+                    <span>Ahorro del cliente:</span>
+                    <span>
+                      {formatPrecio(Math.max(0, sumaRegularCombo - Number(precioCombo)))} ({sumaRegularCombo > 0 ? Math.round((Math.max(0, sumaRegularCombo - Number(precioCombo)) / sumaRegularCombo) * 100) : 0}% OFF)
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Configuración según el tipo seleccionado (NxM, Volumen, Porcentaje) */}
+          {tipo !== 'COMBO' && (
+            <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700 space-y-3">
+              {tipo === 'NXM' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                      Llevás (Unidades) *
+                    </label>
+                    <Input
+                      type="number"
+                      min="2"
+                      step="1"
+                      value={cantidadMinima}
+                      onChange={(e) => setCantidadMinima(e.target.value)}
+                      placeholder="Ej: 2, 3"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                      Pagás (Unidades) *
+                    </label>
+                    <Input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={cantidadPaga}
+                      onChange={(e) => setCantidadPaga(e.target.value)}
+                      placeholder="Ej: 1, 2"
+                      required
+                    />
+                  </div>
+                  <div className="col-span-2 text-xs text-indigo-700 dark:text-indigo-300 font-medium">
+                    Vista previa: Promoción {cantidadMinima}x{cantidadPaga} — El cliente paga {cantidadPaga} por cada {cantidadMinima} unidades.
+                  </div>
+                </div>
+              )}
+
+              {tipo === 'VOLUMEN' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                      A partir de cuántas unidades *
+                    </label>
+                    <Input
+                      type="number"
+                      min="2"
+                      step="1"
+                      value={cantidadMinima}
+                      onChange={(e) => setCantidadMinima(e.target.value)}
+                      placeholder="Ej: 3, 6, 12"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                      Beneficio por escala
+                    </label>
+                    <div className="flex gap-2 mb-2">
+                      <button
+                        type="button"
+                        onClick={() => setModoVolumen('PRECIO')}
+                        className={`flex-1 py-1 text-xs font-semibold rounded ${
+                          modoVolumen === 'PRECIO'
+                            ? 'bg-purple-600 text-white'
+                            : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border'
+                        }`}
+                      >
+                        Precio Unitario Especial ($)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setModoVolumen('PORCENTAJE')}
+                        className={`flex-1 py-1 text-xs font-semibold rounded ${
+                          modoVolumen === 'PORCENTAJE'
+                            ? 'bg-purple-600 text-white'
+                            : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border'
+                        }`}
+                      >
+                        Porcentaje OFF (%)
+                      </button>
+                    </div>
+                    {modoVolumen === 'PRECIO' ? (
+                      <div>
+                        <Input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={precioUnitarioPromo}
+                          onChange={(e) => setPrecioUnitarioPromo(e.target.value)}
+                          placeholder="Ej: 800"
+                          required
+                        />
+                        <p className="text-[11px] text-gray-500 mt-1">
+                          Cada unidad costará este importe llevando {cantidadMinima} o más.
+                        </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <Input
+                          type="number"
+                          min="1"
+                          max="100"
+                          step="1"
+                          value={descuentoPorcentaje}
+                          onChange={(e) => setDescuentoPorcentaje(e.target.value)}
+                          placeholder="Ej: 15"
+                          required
+                        />
+                        <p className="text-[11px] text-gray-500 mt-1">
+                          Se descontará este porcentaje en cada unidad llevando {cantidadMinima} o más.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {tipo === 'PORCENTAJE' && (
                 <div>
                   <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                    A partir de cuántas unidades *
+                    Porcentaje de Descuento (%) *
                   </label>
                   <Input
                     type="number"
-                    min="2"
+                    min="1"
+                    max="100"
                     step="1"
-                    value={cantidadMinima}
-                    onChange={(e) => setCantidadMinima(e.target.value)}
-                    placeholder="Ej: 3, 6, 12"
+                    value={descuentoPorcentaje}
+                    onChange={(e) => setDescuentoPorcentaje(e.target.value)}
+                    placeholder="Ej: 10, 15, 20"
                     required
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                    Beneficio por escala
-                  </label>
-                  <div className="flex gap-2 mb-2">
-                    <button
-                      type="button"
-                      onClick={() => setModoVolumen('PRECIO')}
-                      className={`flex-1 py-1 text-xs font-semibold rounded ${
-                        modoVolumen === 'PRECIO'
-                          ? 'bg-purple-600 text-white'
-                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border'
-                      }`}
-                    >
-                      Precio Unitario Especial ($)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setModoVolumen('PORCENTAJE')}
-                      className={`flex-1 py-1 text-xs font-semibold rounded ${
-                        modoVolumen === 'PORCENTAJE'
-                          ? 'bg-purple-600 text-white'
-                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border'
-                      }`}
-                    >
-                      Porcentaje OFF (%)
-                    </button>
-                  </div>
-                  {modoVolumen === 'PRECIO' ? (
-                    <div>
-                      <Input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={precioUnitarioPromo}
-                        onChange={(e) => setPrecioUnitarioPromo(e.target.value)}
-                        placeholder="Ej: 800"
-                        required
-                      />
-                      <p className="text-[11px] text-gray-500 mt-1">
-                        Cada unidad costará este importe llevando {cantidadMinima} o más.
-                      </p>
-                    </div>
-                  ) : (
-                    <div>
-                      <Input
-                        type="number"
-                        min="1"
-                        max="100"
-                        step="1"
-                        value={descuentoPorcentaje}
-                        onChange={(e) => setDescuentoPorcentaje(e.target.value)}
-                        placeholder="Ej: 15"
-                        required
-                      />
-                      <p className="text-[11px] text-gray-500 mt-1">
-                        Se descontará este porcentaje en cada unidad llevando {cantidadMinima} o más.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {tipo === 'PORCENTAJE' && (
-              <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  Porcentaje de Descuento (%) *
-                </label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="100"
-                  step="1"
-                  value={descuentoPorcentaje}
-                  onChange={(e) => setDescuentoPorcentaje(e.target.value)}
-                  placeholder="Ej: 10, 15, 20"
-                  required
-                />
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           {/* Días de la semana */}
           <div>

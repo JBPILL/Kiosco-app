@@ -357,19 +357,32 @@ CREATE TABLE IF NOT EXISTS public.promociones (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   kiosco_id UUID NOT NULL REFERENCES public.kioscos(id) ON DELETE CASCADE,
   nombre TEXT NOT NULL,
-  tipo TEXT NOT NULL CHECK (tipo IN ('NXM', 'VOLUMEN', 'PORCENTAJE')),
+  tipo TEXT NOT NULL CHECK (tipo IN ('NXM', 'VOLUMEN', 'PORCENTAJE', 'COMBO')),
   producto_id UUID REFERENCES public.productos(id) ON DELETE CASCADE,
   categoria_id UUID REFERENCES public.categorias(id) ON DELETE CASCADE,
   cantidad_minima NUMERIC NOT NULL DEFAULT 1,
   cantidad_paga NUMERIC,
   precio_unitario_promo NUMERIC,
   descuento_porcentaje NUMERIC,
+  precio_combo NUMERIC,
+  items_combo JSONB,
   dias_semana INTEGER[],
   fecha_inicio DATE,
   fecha_fin DATE,
   activo BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Actualización retrocompatible para tablas existentes
+DO $$ 
+BEGIN
+  ALTER TABLE public.promociones DROP CONSTRAINT IF EXISTS promociones_tipo_check;
+  ALTER TABLE public.promociones ADD CONSTRAINT promociones_tipo_check CHECK (tipo IN ('NXM', 'VOLUMEN', 'PORCENTAJE', 'COMBO'));
+  ALTER TABLE public.promociones ADD COLUMN IF NOT EXISTS precio_combo NUMERIC;
+  ALTER TABLE public.promociones ADD COLUMN IF NOT EXISTS items_combo JSONB;
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_promociones_kiosco ON public.promociones(kiosco_id);
 CREATE INDEX IF NOT EXISTS idx_promociones_producto ON public.promociones(producto_id);

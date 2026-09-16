@@ -248,7 +248,13 @@ export interface ItemCarrito {
 
 // --- Promociones Automáticas (NxM, Volumen, Porcentaje) ---
 
-export type TipoPromocion = 'NXM' | 'VOLUMEN' | 'PORCENTAJE'
+export type TipoPromocion = 'NXM' | 'VOLUMEN' | 'PORCENTAJE' | 'COMBO'
+
+export interface ItemComboPromo {
+  producto_id: string
+  cantidad: number
+  producto?: Producto
+}
 
 export interface Promocion {
   id: string
@@ -261,6 +267,8 @@ export interface Promocion {
   cantidad_paga: number | null
   precio_unitario_promo: number | null
   descuento_porcentaje: number | null
+  precio_combo?: number | null
+  items_combo?: ItemComboPromo[] | null
   dias_semana: number[] | null
   fecha_inicio: string | null
   fecha_fin: string | null

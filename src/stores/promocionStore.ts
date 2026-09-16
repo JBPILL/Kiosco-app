@@ -172,6 +172,8 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
         cantidad_paga: nuevaPromo.cantidad_paga || null,
         precio_unitario_promo: nuevaPromo.precio_unitario_promo || null,
         descuento_porcentaje: nuevaPromo.descuento_porcentaje || null,
+        precio_combo: nuevaPromo.precio_combo || null,
+        items_combo: nuevaPromo.items_combo || null,
         dias_semana: nuevaPromo.dias_semana || null,
         fecha_inicio: nuevaPromo.fecha_inicio || null,
         fecha_fin: nuevaPromo.fecha_fin || null,
@@ -205,6 +207,8 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
           cantidad_paga: cambios.cantidad_paga,
           precio_unitario_promo: cambios.precio_unitario_promo,
           descuento_porcentaje: cambios.descuento_porcentaje,
+          precio_combo: cambios.precio_combo,
+          items_combo: cambios.items_combo,
           dias_semana: cambios.dias_semana,
           fecha_inicio: cambios.fecha_inicio,
           fecha_fin: cambios.fecha_fin,
@@ -260,16 +264,94 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
       })
     }
 
-    return items.map((item) => {
-      const subtotalOrig = Math.round(item.cantidad * item.producto.precio_venta)
-      const { descuento, promoNombre } = evaluarItemPromociones(item, promosActivas)
+    const hoyStr = new Date().toISOString().split('T')[0]
+    const diaHoy = new Date().getDay()
+
+    // 1. Inicializar items con montos originales
+    const resItems: ItemCarrito[] = items.map((it) => {
+      const subtotalOrig = Math.round(it.cantidad * it.producto.precio_venta)
       return {
-        ...item,
-        descuento_promo: descuento,
-        promo_nombre: promoNombre,
-        subtotal: Math.max(0, subtotalOrig - descuento),
+        ...it,
+        subtotal: subtotalOrig,
+        descuento_promo: 0,
+        promo_nombre: undefined,
       }
     })
+
+    // 2. Evaluar COMBOS vigentes
+    const comboPromos = promosActivas.filter((p) => {
+      if (p.tipo !== 'COMBO') return false
+      if (!p.items_combo || p.items_combo.length === 0) return false
+      if (!p.precio_combo || p.precio_combo <= 0) return false
+      if (p.fecha_inicio && hoyStr < p.fecha_inicio) return false
+      if (p.fecha_fin && hoyStr > p.fecha_fin) return false
+      if (p.dias_semana && p.dias_semana.length > 0 && !p.dias_semana.includes(diaHoy)) return false
+      return true
+    })
+
+    for (const promo of comboPromos) {
+      const itemsReq = promo.items_combo!
+      // Verificar cuántas veces se cumple el combo completo
+      let veces = Infinity
+      for (const ic of itemsReq) {
+        const cartIt = resItems.find((it) => it.producto.id === ic.producto_id)
+        if (!cartIt || ic.cantidad <= 0) {
+          veces = 0
+          break
+        }
+        const disponibles = Math.floor((cartIt.cantidad + 0.0001) / ic.cantidad)
+        if (disponibles < veces) {
+          veces = disponibles
+        }
+      }
+
+      if (veces > 0 && isFinite(veces)) {
+        // Calcular precio regular de 1 combo
+        let regular1Combo = 0
+        for (const ic of itemsReq) {
+          const cartIt = resItems.find((it) => it.producto.id === ic.producto_id)!
+          regular1Combo += ic.cantidad * cartIt.producto.precio_venta
+        }
+
+        const ahorro1Combo = Math.max(0, regular1Combo - (promo.precio_combo || 0))
+        if (ahorro1Combo > 0) {
+          const ahorroTotal = Math.round(ahorro1Combo * veces)
+          let ahorroRestante = ahorroTotal
+
+          itemsReq.forEach((ic, idx) => {
+            const cartIt = resItems.find((it) => it.producto.id === ic.producto_id)!
+            const esUltimo = idx === itemsReq.length - 1
+            const itemSubtotal = ic.cantidad * cartIt.producto.precio_venta * veces
+            const descItem = esUltimo
+              ? ahorroRestante
+              : Math.min(ahorroRestante, Math.round((itemSubtotal / (regular1Combo * veces)) * ahorroTotal))
+
+            ahorroRestante -= descItem
+            cartIt.descuento_promo = (cartIt.descuento_promo || 0) + descItem
+            cartIt.subtotal = Math.max(0, cartIt.subtotal - descItem)
+            cartIt.promo_nombre = cartIt.promo_nombre
+              ? `${cartIt.promo_nombre} + ${promo.nombre}`
+              : `Combo: ${promo.nombre}`
+          })
+        }
+      }
+    }
+
+    // 3. Para productos que NO recibieron descuento de combo, evaluar promociones individuales (NxM, Volumen, Porcentaje)
+    const singlePromos = promosActivas.filter((p) => p.tipo !== 'COMBO')
+    for (const item of resItems) {
+      if (!item.descuento_promo || item.descuento_promo === 0) {
+        const subtotalOrig = Math.round(item.cantidad * item.producto.precio_venta)
+        const { descuento, promoNombre } = evaluarItemPromociones(item, singlePromos)
+        if (descuento > 0) {
+          item.descuento_promo = descuento
+          item.promo_nombre = promoNombre
+          item.subtotal = Math.max(0, subtotalOrig - descuento)
+        }
+      }
+    }
+
+    return resItems
   },
 
   totalAhorroPromociones: (items: ItemCarrito[]) => {

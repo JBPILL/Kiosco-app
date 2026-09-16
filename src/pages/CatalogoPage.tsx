@@ -1,21 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useProducts } from '../hooks/useProducts'
 import { CategoryManager } from '../components/catalogo/CategoryManager'
 import { ProductTable } from '../components/catalogo/ProductTable'
 import { ProductForm } from '../components/catalogo/ProductForm'
-import { ComboBuilderModal } from '../components/catalogo/ComboBuilderModal'
 import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
 import { AumentoPreciosModal } from '../components/catalogo/AumentoPreciosModal'
 import { exportarCatalogoCSV } from '../lib/exportUtils'
 import { useAuthStore } from '../stores/authStore'
-import { useComboStore } from '../stores/comboStore'
 import { Button } from '../components/ui/Button'
 import type { Producto } from '../types/database'
 import type { ProductFormData } from '../components/catalogo/ProductForm'
 
 export function CatalogoPage() {
-  const { kiosco, usuario } = useAuthStore()
-  const { cargarCombos } = useComboStore()
+  const { kiosco } = useAuthStore()
   const {
     productos,
     categorias,
@@ -39,12 +36,6 @@ export function CatalogoPage() {
   const [importarOpen, setImportarOpen] = useState(false)
   const [aumentoOpen, setAumentoOpen] = useState(false)
   const [productoEditar, setProductoEditar] = useState<Producto | null>(null)
-  const [comboBuilderOpen, setComboBuilderOpen] = useState(false)
-  const [comboAEditar, setComboAEditar] = useState<Producto | null>(null)
-
-  useEffect(() => {
-    cargarCombos(usuario?.kiosco_id || kiosco?.id || undefined)
-  }, [cargarCombos, usuario?.kiosco_id, kiosco?.id])
 
   const handleNuevo = () => {
     setProductoEditar(null)
@@ -62,11 +53,6 @@ export function CatalogoPage() {
     }
     const res = await crearProducto(data as Omit<Producto, 'id' | 'kiosco_id' | 'fecha_creacion' | 'fecha_actualizacion' | 'activo'>)
     return Boolean(res)
-  }
-
-  const handleConfigurarCombo = (producto: Producto) => {
-    setComboAEditar(producto)
-    setComboBuilderOpen(true)
   }
 
   return (
@@ -130,7 +116,6 @@ export function CatalogoPage() {
           onEliminar={eliminarProducto}
           onToggleFavorito={toggleFavorito}
           onNuevo={handleNuevo}
-          onConfigurarCombo={handleConfigurarCombo}
           cargando={cargando}
         />
       </div>
@@ -142,21 +127,6 @@ export function CatalogoPage() {
         categorias={categorias}
         producto={productoEditar}
         onGuardar={handleGuardar}
-      />
-
-      {/* Modal para configurar combo y componentes */}
-      <ComboBuilderModal
-        isOpen={comboBuilderOpen}
-        onClose={() => {
-          setComboBuilderOpen(false)
-          setComboAEditar(null)
-        }}
-        comboProducto={comboAEditar}
-        todosLosProductos={productos}
-        onGuardado={async () => {
-          await cargarProductos()
-          await cargarCombos(usuario?.kiosco_id || kiosco?.id || undefined)
-        }}
       />
 
       {/* Modal de importación masiva CSV */}

@@ -42,6 +42,7 @@ export function POSPage() {
   const [modalLibreOpen, setModalLibreOpen] = useState(false)
   const [modalBalanzaOpen, setModalBalanzaOpen] = useState(false)
   const [modalDevolucionOpen, setModalDevolucionOpen] = useState(false)
+  const [modalPromosOpen, setModalPromosOpen] = useState(false)
   const [productoPesableModal, setProductoPesableModal] = useState<Producto | null>(null)
   const [ticketReciente, setTicketReciente] = useState<TicketData | null>(null)
   const [ticketModalOpen, setTicketModalOpen] = useState(false)
@@ -130,6 +131,31 @@ export function POSPage() {
     recuperarVenta(id)
     setModalEsperaOpen(false)
     toast.success('Venta recuperada en el ticket')
+  }
+
+  const handleAgregarComboAlTicket = async (promo: any) => {
+    if (!promo.items_combo || promo.items_combo.length === 0) return
+    const ids = promo.items_combo.map((ic: any) => ic.producto_id)
+    const { data: prods } = await supabase.from('productos').select('*').in('id', ids)
+    if (!prods || prods.length === 0) {
+      toast.error('No se encontraron los productos del combo en el catálogo')
+      return
+    }
+
+    let agregados = 0
+    for (const ic of promo.items_combo) {
+      const p = prods.find((prod) => prod.id === ic.producto_id)
+      if (p) {
+        agregarProducto(p, ic.cantidad)
+        agregados++
+      }
+    }
+
+    if (agregados > 0) {
+      playScanSound('success')
+      toast.success(`Combo "${promo.nombre}" cargado al ticket`)
+      setModalPromosOpen(false)
+    }
   }
 
   // Navegación por teclado en las pestañas de categorías
@@ -314,7 +340,8 @@ export function POSPage() {
         setModalShortcutsOpen((prev) => !prev)
       },
       onEscape: () => {
-        if (modalDevolucionOpen) setModalDevolucionOpen(false)
+        if (modalPromosOpen) setModalPromosOpen(false)
+        else if (modalDevolucionOpen) setModalDevolucionOpen(false)
         else if (modalBalanzaOpen) setModalBalanzaOpen(false)
         else if (modalScannerOpen) setModalScannerOpen(false)
         else if (modalShortcutsOpen) setModalShortcutsOpen(false)
@@ -405,11 +432,11 @@ export function POSPage() {
             {promociones.filter((p) => p.activo).length > 0 && (
               <button
                 type="button"
-                onClick={() => navigate('/promociones')}
-                className="h-10 px-3 flex items-center gap-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/70 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0"
-                title="Ver promociones activas vigentes"
+                onClick={() => setModalPromosOpen(true)}
+                className="h-10 px-3 flex items-center gap-1.5 rounded-xl border border-teal-200 dark:border-teal-800/80 bg-teal-50/70 hover:bg-teal-100 dark:bg-teal-950/40 dark:hover:bg-teal-900/50 text-teal-700 dark:text-teal-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0"
+                title="Ver y cargar combos o promociones vigentes"
               >
-                <span>Promos ({promociones.filter((p) => p.activo).length})</span>
+                <span>Combos / Promos ({promociones.filter((p) => p.activo).length})</span>
               </button>
             )}
           </div>
@@ -664,6 +691,101 @@ export function POSPage() {
           verificarSesionActiva()
         }}
       />
+
+      {/* Modal de Combos y Promociones Activas */}
+      <Modal
+        isOpen={modalPromosOpen}
+        onClose={() => setModalPromosOpen(false)}
+        title="Promociones y Combos Disponibles"
+        size="lg"
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Hacé clic en <strong>+ Cargar al Ticket</strong> para agregar los productos de un combo en sus cantidades exactas, o revisá las promociones que se descuentan automáticamente al cobrar.
+          </p>
+
+          <div className="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1">
+            {promociones.filter((p) => p.activo).length === 0 ? (
+              <p className="text-xs text-gray-400 italic text-center py-6">
+                No hay promociones ni combos activos en este momento.
+              </p>
+            ) : (
+              promociones
+                .filter((p) => p.activo)
+                .map((promo) => {
+                  const esCombo = promo.tipo === 'COMBO'
+                  return (
+                    <div
+                      key={promo.id}
+                      className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                              esCombo
+                                ? 'bg-teal-100 text-teal-700 dark:bg-teal-950/70 dark:text-teal-300'
+                                : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300'
+                            }`}
+                          >
+                            {esCombo ? 'Combo Pack' : promo.tipo}
+                          </span>
+                          <h4 className="text-xs font-bold text-gray-900 dark:text-gray-100 truncate">
+                            {promo.nombre}
+                          </h4>
+                        </div>
+
+                        {esCombo && promo.items_combo && (
+                          <div className="text-[11px] text-gray-600 dark:text-gray-300 space-y-0.5 mt-1">
+                            <p className="text-[10px] text-gray-400 font-semibold uppercase">Incluye:</p>
+                            {promo.items_combo.map((ic, i) => (
+                              <p key={i}>
+                                • {ic.cantidad} {ic.producto?.unidad_medida === 'KG' ? 'kg' : 'u.'} de {ic.producto?.descripcion || 'Producto'}
+                              </p>
+                            ))}
+                          </div>
+                        )}
+
+                        {!esCombo && (
+                          <p className="text-xs text-gray-600 dark:text-gray-300">
+                            {promo.producto?.descripcion ? `Producto: ${promo.producto.descripcion}` : ''}
+                            {promo.tipo === 'NXM' && ` · Llevás ${promo.cantidad_minima}, pagás ${promo.cantidad_paga}`}
+                            {promo.tipo === 'VOLUMEN' && ` · Desde ${promo.cantidad_minima} unidades a ${formatPrecio(promo.precio_unitario_promo || 0)} c/u`}
+                            {promo.tipo === 'PORCENTAJE' && ` · ${promo.descuento_porcentaje}% OFF`}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-3 justify-between sm:justify-end flex-shrink-0">
+                        {esCombo ? (
+                          <>
+                            <div className="text-right">
+                              <span className="text-[10px] text-gray-400 block">Precio combo:</span>
+                              <span className="text-base font-bold text-teal-600 dark:text-teal-400 font-mono">
+                                {formatPrecio(promo.precio_combo || 0)}
+                              </span>
+                            </div>
+                            <Button
+                              size="sm"
+                              onClick={() => handleAgregarComboAlTicket(promo)}
+                              className="bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs whitespace-nowrap"
+                            >
+                              + Cargar al Ticket
+                            </Button>
+                          </>
+                        ) : (
+                          <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                            Descuento automático
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })
+            )}
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
