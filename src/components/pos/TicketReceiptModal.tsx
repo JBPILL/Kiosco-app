@@ -407,7 +407,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
               <button
                 type="button"
                 onClick={() => setMostrarInputTelefono(false)}
-                className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 font-medium"
+                className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 transition-colors shadow-xs"
               >
                 Cancelar
               </button>
@@ -425,6 +425,15 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
                 }}
                 className="flex-1 px-3 py-1.5 text-xs sm:text-sm rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono focus:ring-2 focus:ring-emerald-500"
               />
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setMostrarInputTelefono(false)}
+                className="text-xs font-semibold px-3"
+              >
+                Cancelar
+              </Button>
               <Button
                 variant="success"
                 size="sm"
