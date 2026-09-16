@@ -193,8 +193,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           ))}
         </nav>
 
-        {/* Enlace directo a Configuración */}
-        {(usuario?.rol === 'DUEÑO' || usuario?.es_superadmin) && (
+        {/* Enlace directo a Configuración (solo para comercios, oculto en modo Super-Admin) */}
+        {!usuario?.es_superadmin && usuario?.rol === 'DUEÑO' && (
           <div className="px-3 py-1.5 border-t border-gray-200 dark:border-gray-700">
             <NavLink
               to="/config"
@@ -213,23 +213,25 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           </div>
         )}
 
-        {/* Enlace directo a Soporte y Ayuda */}
-        <div className="px-3 py-1.5 border-t border-gray-100 dark:border-gray-700/50">
-          <NavLink
-            to="/soporte"
-            onClick={onClose}
-            className={({ isActive }) => `
-              flex items-center px-4 py-2.5 rounded-xl w-full text-xs font-semibold transition-colors
-              ${
-                isActive
-                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
-                  : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
-              }
-            `}
-          >
-            Soporte y Ayuda
-          </NavLink>
-        </div>
+        {/* Enlace directo a Soporte y Ayuda / Mesa de ayuda (solo para comercios, oculto en modo Super-Admin) */}
+        {!usuario?.es_superadmin && (
+          <div className="px-3 py-1.5 border-t border-gray-100 dark:border-gray-700/50">
+            <NavLink
+              to="/soporte"
+              onClick={onClose}
+              className={({ isActive }) => `
+                flex items-center px-4 py-2.5 rounded-xl w-full text-xs font-semibold transition-colors
+                ${
+                  isActive
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
+                    : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                }
+              `}
+            >
+              Soporte y Ayuda
+            </NavLink>
+          </div>
+        )}
 
         {/* Botón para instalar PWA de escritorio en la computadora */}
         {puedeInstalar && !estaInstalado && (

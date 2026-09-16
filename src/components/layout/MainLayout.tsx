@@ -4,6 +4,7 @@ import { Sidebar } from '../ui/Sidebar'
 import { useAuthStore } from '../../stores/authStore'
 import { useConfigAdminStore, formatearLinkWhatsApp } from '../../stores/configAdminStore'
 import { useOnlineStatus } from '../../hooks/useOnlineStatus'
+import { formatPrecio } from '../../lib/utils'
 import toast from 'react-hot-toast'
 
 export function MainLayout() {
@@ -21,28 +22,71 @@ export function MainLayout() {
     toast.success(`${label} copiado al portapapeles`)
   }
 
-  // Bloqueo total de pantalla si el kiosco está suspendido (excepto para superadmin)
-  if (!usuario?.es_superadmin && kiosco?.estado_suscripcion === 'SUSPENDIDO') {
+  // Detectar si el comercio se encuentra en una versión de prueba
+  const esPlanPrueba =
+    suscripcion?.plan?.precio_mensual === 0 ||
+    suscripcion?.plan?.nombre?.toLowerCase().includes('prueba')
+
+  // Bloqueo total si venció el período de prueba / cobertura o si fue suspendido manualmente
+  const estaVencido = diasRestantes !== null && diasRestantes < 0
+  const estaSuspendido = kiosco?.estado_suscripcion === 'SUSPENDIDO'
+  const debeBloquearPantalla = !usuario?.es_superadmin && (estaSuspendido || estaVencido)
+
+  if (debeBloquearPantalla && kiosco) {
+    const titulo = esPlanPrueba
+      ? 'Versión de Prueba Finalizada'
+      : estaSuspendido
+      ? 'Servicio Suspendido'
+      : 'Suscripción Mensual Vencida'
+
+    const mensajeWhatsApp = esPlanPrueba
+      ? `Hola! Venció el período de prueba de "${kiosco.nombre}". Quiero abonar la suscripción mensual para seguir utilizando el sistema KioskoPOS.`
+      : `Hola! Te contacto desde el comercio "${kiosco.nombre}" para regularizar el abono mensual y reactivar el servicio de KioskoPOS.`
+
     const linkWhatsApp = formatearLinkWhatsApp(
       configAdmin.whatsapp_soporte,
-      `Hola! Te contacto desde el comercio "${kiosco.nombre}" para regularizar el abono y reactivar el servicio de KioskoPOS.`
+      mensajeWhatsApp
     )
 
     return (
       <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center p-4 sm:p-6">
         <div className="max-w-md w-full bg-gray-800 border border-gray-700 rounded-2xl p-6 sm:p-8 text-center shadow-xl space-y-4">
-          <div className="w-12 h-12 bg-red-900/40 border border-red-700/60 rounded-2xl mx-auto flex items-center justify-center text-red-400 font-bold text-xl">
-            !
+          <div className="w-14 h-14 bg-red-900/40 border border-red-700/60 rounded-2xl mx-auto flex items-center justify-center text-red-400 font-bold text-xl">
+            <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white">Servicio Suspendido</h2>
+            <h2 className="text-xl font-bold text-white">{titulo}</h2>
             <p className="text-sm text-gray-300 mt-2 leading-relaxed">
-              El acceso para <strong>{kiosco.nombre}</strong> se encuentra pausado por período de suscripción vencido.
+              {esPlanPrueba ? (
+                <>
+                  Tu versión de prueba gratuita para <strong>{kiosco.nombre}</strong> ha vencido. Para poder seguir usando el programa y acceder a tu negocio, deberás abonar la suscripción mensual.
+                </>
+              ) : (
+                <>
+                  El acceso para <strong>{kiosco.nombre}</strong> se encuentra pausado por período de suscripción vencido. Para poder seguir usando el programa, deberás abonar el abono mensual.
+                </>
+              )}
             </p>
             <p className="text-xs text-gray-400 mt-1">
-              Transferí el valor del abono mensual y notificá al administrador para reactivar tu sistema al instante.
+              Transferí el valor de la suscripción mensual y enviá el comprobante al administrador para reactivar tu cuenta de inmediato.
             </p>
           </div>
+
+          {/* Tarifa mensual si aplica */}
+          {suscripcion?.plan?.precio_mensual !== undefined && suscripcion.plan.precio_mensual > 0 && (
+            <div className="bg-indigo-950/40 border border-indigo-800/60 rounded-xl p-3 text-center">
+              <span className="text-[11px] uppercase tracking-wider text-indigo-300 font-semibold block">
+                Monto de Suscripción Mensual
+              </span>
+              <span className="text-lg font-extrabold text-indigo-400">
+                {formatPrecio(suscripcion.plan.precio_mensual)}
+                <span className="text-xs font-normal text-gray-400"> / mes</span>
+              </span>
+            </div>
+          )}
 
           {/* Datos de transferencia para reactivación */}
           {(configAdmin.alias_mp || configAdmin.cbu_banco || configAdmin.titular_cuenta) && (
@@ -239,10 +283,14 @@ export function MainLayout() {
               <div className="bg-amber-500 text-gray-950 px-4 py-2 text-xs sm:text-sm font-medium flex items-center justify-between shadow-xs z-10">
                 <div className="flex items-center gap-2">
                   <span className="font-bold uppercase tracking-wider px-1.5 py-0.5 bg-amber-700 text-white rounded text-[10px]">
-                    Aviso
+                    {esPlanPrueba ? 'Prueba por Vencer' : 'Aviso'}
                   </span>
                   <span>
-                    {diasRestantes === 0
+                    {esPlanPrueba
+                      ? diasRestantes === 0
+                        ? 'Tu período de prueba gratuito vence hoy. Recordá abonar la suscripción mensual para poder seguir usando el programa.'
+                        : `Tu período de prueba gratuito vence en ${diasRestantes} día${diasRestantes > 1 ? 's' : ''}. Deberás abonar la suscripción mensual para seguir usando el sistema.`
+                      : diasRestantes === 0
                       ? 'Tu suscripción mensual vence hoy. Recordá renovar tu abono para no interrumpir las ventas.'
                       : `Tu suscripción mensual vence en ${diasRestantes} día${diasRestantes > 1 ? 's' : ''} (${suscripcion?.fecha_vencimiento || ''}). Recordá renovar tu abono.`}
                   </span>
