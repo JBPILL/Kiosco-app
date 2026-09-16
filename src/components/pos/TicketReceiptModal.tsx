@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { formatPrecio, formatFecha } from '../../lib/utils'
@@ -57,6 +57,24 @@ interface TicketReceiptModalProps {
   ticket: TicketData | null
 }
 
+function formatearTelefonoWhatsApp(tel: string): string {
+  let limpio = tel.replace(/\D/g, '')
+  if (!limpio) return ''
+  // Si empieza con 0 (ej: 011...), sacarle el 0 inicial
+  if (limpio.startsWith('0')) limpio = limpio.slice(1)
+  // Si tiene el '15' en celulares de Argentina (ej: 11 15 2345 6789 -> 111523456789)
+  if (limpio.length === 12 && (limpio.startsWith('1115') || limpio.slice(2, 4) === '15')) {
+    limpio = limpio.slice(0, 2) + limpio.slice(4)
+  }
+  // Si tiene 10 dígitos (ej: 1123456789 o 3412345678)
+  if (limpio.length === 10) {
+    limpio = '549' + limpio
+  } else if (limpio.length === 12 && limpio.startsWith('54') && !limpio.startsWith('549')) {
+    limpio = '549' + limpio.slice(2)
+  }
+  return limpio
+}
+
 export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptModalProps) {
   const [anchoPapel, setAnchoPapel] = useState<'58mm' | '80mm'>(() => {
     if (typeof window !== 'undefined') {
@@ -66,7 +84,15 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
     return '58mm'
   })
   const [telefonoWhatsApp, setTelefonoWhatsApp] = useState('')
+  const [mostrarInputTelefono, setMostrarInputTelefono] = useState(false)
   const [qrDataUrl, setQrDataUrl] = useState<string>('')
+  const inputTelefonoRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!isOpen) {
+      setMostrarInputTelefono(false)
+    }
+  }, [isOpen])
 
   useEffect(() => {
     if (ticket?.clienteTelefono) {
@@ -142,9 +168,20 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
     return encodeURIComponent(msg)
   }
 
+  const handleBotonWhatsApp = () => {
+    if (!mostrarInputTelefono) {
+      setMostrarInputTelefono(true)
+      setTimeout(() => {
+        inputTelefonoRef.current?.focus()
+      }, 60)
+    } else {
+      handleCompartirWhatsApp()
+    }
+  }
+
   const handleCompartirWhatsApp = () => {
     const texto = generarTextoWhatsApp()
-    const telLimpio = (telefonoWhatsApp || ticket.clienteTelefono || '').replace(/\D/g, '')
+    const telLimpio = formatearTelefonoWhatsApp(telefonoWhatsApp || ticket.clienteTelefono || '')
     const url = telLimpio
       ? `https://api.whatsapp.com/send?phone=${telLimpio}&text=${texto}`
       : `https://api.whatsapp.com/send?text=${texto}`
@@ -362,6 +399,49 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
           </div>
         </div>
 
+        {/* Panel para discar número de WhatsApp del cliente */}
+        {mostrarInputTelefono && (
+          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                Discar número de celular del cliente
+              </label>
+              <button
+                type="button"
+                onClick={() => setMostrarInputTelefono(false)}
+                className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 font-medium"
+              >
+                Cancelar
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <input
+                ref={inputTelefonoRef}
+                type="tel"
+                placeholder="Ej: 11 2345 6789 (o 54911...)"
+                value={telefonoWhatsApp}
+                onChange={(e) => setTelefonoWhatsApp(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCompartirWhatsApp()
+                  if (e.key === 'Escape') setMostrarInputTelefono(false)
+                }}
+                className="flex-1 px-3 py-1.5 text-xs sm:text-sm rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono focus:ring-2 focus:ring-emerald-500"
+              />
+              <Button
+                variant="success"
+                size="sm"
+                onClick={handleCompartirWhatsApp}
+                className="text-xs font-bold px-4"
+              >
+                Enviar
+              </Button>
+            </div>
+            <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+              Podés ingresar el celular con código de área (ej: 11...). Al presionar Enviar se abrirá el chat con el ticket.
+            </p>
+          </div>
+        )}
+
         {/* Botones de acción */}
         <div className="flex flex-col sm:flex-row gap-2 pt-2">
           <Button
@@ -375,9 +455,9 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
           <Button
             variant="success"
             fullWidth
-            onClick={handleCompartirWhatsApp}
+            onClick={handleBotonWhatsApp}
           >
-            WhatsApp
+            {mostrarInputTelefono ? 'Enviar a WhatsApp' : 'WhatsApp'}
           </Button>
           <Button
             variant="secondary"
