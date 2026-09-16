@@ -412,7 +412,7 @@ export function SuperAdminPage() {
 
   const handleCrearNuevoPlan = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!nuevoPlanNombre.trim() || nuevoPlanPrecio <= 0) return
+    if (!nuevoPlanNombre.trim() || nuevoPlanPrecio < 0) return
     const ok = await crearPlan(
       nuevoPlanNombre.trim(),
       nuevoPlanPrecio,
@@ -1541,8 +1541,36 @@ export function SuperAdminPage() {
             </div>
 
             <div className="sm:col-span-2">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Días de Período Inicial (Prueba / Pago)
+                </label>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setNuevosDiasValidez(15)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors ${
+                      nuevosDiasValidez === 15
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    15 días (Prueba)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNuevosDiasValidez(30)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors ${
+                      nuevosDiasValidez === 30
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    30 días (1 mes)
+                  </button>
+                </div>
+              </div>
               <Input
-                label="Días de Período Inicial (Prueba / Pago)"
                 type="number"
                 min={1}
                 max={365}
@@ -1960,9 +1988,11 @@ export function SuperAdminPage() {
                           </span>
                           <div className="flex items-baseline gap-1 sm:justify-end">
                             <span className="text-xl font-extrabold text-indigo-600 dark:text-indigo-400">
-                              {formatPrecio(p.precio_mensual)}
+                              {p.precio_mensual === 0 ? 'Gratis' : formatPrecio(p.precio_mensual)}
                             </span>
-                            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">/ mes</span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                              {p.precio_mensual === 0 ? '(Prueba)' : '/ mes'}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -2012,7 +2042,7 @@ export function SuperAdminPage() {
                         {/* Comparación visual cuando el monto cambia */}
                         {tieneCambios && (
                           <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400 pt-1">
-                            El valor pasará de {formatPrecio(p.precio_mensual)} a {formatPrecio(precioActual)} (Diferencia:{' '}
+                            El valor pasará de {p.precio_mensual === 0 ? 'Gratis' : formatPrecio(p.precio_mensual)} a {precioActual === 0 ? 'Gratis' : formatPrecio(precioActual)} (Diferencia:{' '}
                             {precioActual > p.precio_mensual ? '+' : ''}
                             {formatPrecio(precioActual - p.precio_mensual)}).
                           </p>
@@ -2028,13 +2058,32 @@ export function SuperAdminPage() {
           {/* Sección para crear nuevo plan */}
           <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
             {!creandoNuevoPlan ? (
-              <button
-                type="button"
-                onClick={() => setCreandoNuevoPlan(true)}
-                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
-              >
-                + Crear un nuevo plan o categoría de alquiler
-              </button>
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreandoNuevoPlan(true)
+                    setNuevoPlanNombre('')
+                    setNuevoPlanPrecio(35000)
+                    setNuevoPlanDesc('')
+                  }}
+                  className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  + Crear un nuevo plan o categoría de alquiler
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreandoNuevoPlan(true)
+                    setNuevoPlanNombre('Plan de Prueba (15 días)')
+                    setNuevoPlanPrecio(0)
+                    setNuevoPlanDesc('Período inicial de prueba gratuito por 15 días sin costo.')
+                  }}
+                  className="text-xs font-bold px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-colors"
+                >
+                  + Agregar Plan de Prueba ($0)
+                </button>
+              </div>
             ) : (
               <form
                 onSubmit={handleCrearNuevoPlan}
@@ -2077,6 +2126,9 @@ export function SuperAdminPage() {
                       onChange={(e) => setNuevoPlanPrecio(Number(e.target.value))}
                       required
                     />
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 block">
+                      Podés ingresar 0 para crear un plan o período de prueba gratuito.
+                    </span>
                   </div>
                 </div>
 
@@ -2095,7 +2147,7 @@ export function SuperAdminPage() {
                   <Button
                     type="submit"
                     variant="primary"
-                    disabled={cargandoAccion || !nuevoPlanNombre.trim() || nuevoPlanPrecio <= 0}
+                    disabled={cargandoAccion || !nuevoPlanNombre.trim() || nuevoPlanPrecio < 0}
                     className="text-xs"
                   >
                     {cargandoAccion ? 'Creando...' : 'Crear Plan'}

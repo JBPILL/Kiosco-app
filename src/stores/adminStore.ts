@@ -338,50 +338,119 @@ export const useAdminStore = create<AdminState>((set, get) => ({
   eliminarKiosco: async (kioscoId) => {
     set({ cargandoAccion: true })
     try {
-      // 1. Intentar RPC segura de eliminación en cascada
-      const { data: rpcData, error: rpcError } = await supabase.rpc('fn_eliminar_kiosco', {
-        p_kiosco_id: kioscoId,
-      })
+      // 1. Intentar funciones RPC en Supabase si están instaladas
+      try {
+        const { data: rpcData, error: rpcError } = await supabase.rpc('admin_eliminar_kiosco', {
+          p_kiosco_id: kioscoId,
+        })
+        if (!rpcError && rpcData) {
+          toast.success('Kiosco eliminado correctamente')
+          await get().cargarDatosAdmin()
+          set({ cargandoAccion: false })
+          return true
+        }
+      } catch {}
 
-      if (!rpcError && rpcData) {
-        toast.success('Kiosco eliminado correctamente')
-        await get().cargarDatosAdmin()
-        set({ cargandoAccion: false })
-        return true
-      }
+      try {
+        const { data: rpcData2, error: rpcError2 } = await supabase.rpc('fn_eliminar_kiosco', {
+          p_kiosco_id: kioscoId,
+        })
+        if (!rpcError2 && rpcData2) {
+          toast.success('Kiosco eliminado correctamente')
+          await get().cargarDatosAdmin()
+          set({ cargandoAccion: false })
+          return true
+        }
+      } catch {}
 
-      // Fallback directo en caso de que la función aún no haya sido corrida en Supabase
-      const { data: subs } = await supabase.from('suscripciones').select('id').eq('kiosco_id', kioscoId)
-      if (subs && subs.length > 0) {
-        const subIds = subs.map((s) => s.id)
-        await supabase.from('pagos_suscripcion').delete().in('suscripcion_id', subIds)
-        await supabase.from('suscripciones').delete().eq('kiosco_id', kioscoId)
-      }
+      // 2. Fallback exhaustivo eliminando tablas dependientes en orden inverso de claves foráneas
+      // 2.1 Cuentas corrientes y clientes
+      try { await supabase.from('movimientos_cuenta_corriente').delete().eq('kiosco_id', kioscoId) } catch {}
+      try { await supabase.from('clientes').delete().eq('kiosco_id', kioscoId) } catch {}
 
-      const { data: vts } = await supabase.from('ventas').select('id').eq('kiosco_id', kioscoId)
-      if (vts && vts.length > 0) {
-        const vIds = vts.map((v) => v.id)
-        await supabase.from('detalles_venta').delete().in('venta_id', vIds)
-        await supabase.from('pagos_venta').delete().in('venta_id', vIds)
-        await supabase.from('ventas').delete().eq('kiosco_id', kioscoId)
-      }
+      // 2.2 Proveedores y compras
+      try { await supabase.from('pagos_proveedor').delete().eq('kiosco_id', kioscoId) } catch {}
+      try {
+        const { data: compras } = await supabase.from('compras_proveedor').select('id').eq('kiosco_id', kioscoId)
+        if (compras && compras.length > 0) {
+          const cIds = compras.map((c) => c.id)
+          await supabase.from('detalles_compra').delete().in('compra_id', cIds)
+        }
+        await supabase.from('compras_proveedor').delete().eq('kiosco_id', kioscoId)
+      } catch {}
+      try { await supabase.from('proveedores').delete().eq('kiosco_id', kioscoId) } catch {}
 
-      await supabase.from('movimientos_stock').delete().eq('kiosco_id', kioscoId)
-      await supabase.from('sesiones_caja').delete().eq('kiosco_id', kioscoId)
-      await supabase.from('productos').delete().eq('kiosco_id', kioscoId)
-      await supabase.from('categorias').delete().eq('kiosco_id', kioscoId)
-      await supabase.from('usuarios').delete().eq('kiosco_id', kioscoId)
+      // 2.3 Devoluciones de venta
+      try {
+        const { data: devs } = await supabase.from('devoluciones_venta').select('id').eq('kiosco_id', kioscoId)
+        if (devs && devs.length > 0) {
+          const dIds = devs.map((d) => d.id)
+          await supabase.from('detalles_devolucion').delete().in('devolucion_id', dIds)
+        }
+        await supabase.from('devoluciones_venta').delete().eq('kiosco_id', kioscoId)
+      } catch {}
 
+      // 2.4 Tickets de soporte
+      try { await supabase.from('tickets_soporte').delete().eq('kiosco_id', kioscoId) } catch {}
+
+      // 2.5 Combos, lotes y promociones
+      try { await supabase.from('combo_items').delete().eq('kiosco_id', kioscoId) } catch {}
+      try { await supabase.from('lotes_producto').delete().eq('kiosco_id', kioscoId) } catch {}
+      try { await supabase.from('promociones').delete().eq('kiosco_id', kioscoId) } catch {}
+
+      // 2.6 Ventas, detalles y pagos
+      try {
+        const { data: vts } = await supabase.from('ventas').select('id').eq('kiosco_id', kioscoId)
+        if (vts && vts.length > 0) {
+          const vIds = vts.map((v) => v.id)
+          await supabase.from('detalles_venta').delete().in('venta_id', vIds)
+          await supabase.from('pagos_venta').delete().in('venta_id', vIds)
+          await supabase.from('ventas').delete().eq('kiosco_id', kioscoId)
+        }
+      } catch {}
+
+      // 2.7 Movimientos de stock
+      try { await supabase.from('movimientos_stock').delete().eq('kiosco_id', kioscoId) } catch {}
+
+      // 2.8 Cajas y sesiones
+      try { await supabase.from('movimientos_caja').delete().eq('kiosco_id', kioscoId) } catch {}
+      try { await supabase.from('sesiones_caja').delete().eq('kiosco_id', kioscoId) } catch {}
+      try { await supabase.from('cajas').delete().eq('kiosco_id', kioscoId) } catch {}
+
+      // 2.9 Productos y categorías
+      try { await supabase.from('productos').delete().eq('kiosco_id', kioscoId) } catch {}
+      try { await supabase.from('categorias').delete().eq('kiosco_id', kioscoId) } catch {}
+
+      // 2.10 Suscripciones y pagos de suscripción
+      try {
+        const { data: subs } = await supabase.from('suscripciones').select('id').eq('kiosco_id', kioscoId)
+        if (subs && subs.length > 0) {
+          const subIds = subs.map((s) => s.id)
+          await supabase.from('pagos_suscripcion').delete().in('suscripcion_id', subIds)
+          await supabase.from('suscripciones').delete().eq('kiosco_id', kioscoId)
+        }
+      } catch {}
+
+      // 2.11 Configuración AFIP si existiese
+      try { await supabase.from('configuracion_afip').delete().eq('kiosco_id', kioscoId) } catch {}
+
+      // 2.12 Usuarios asociados a este kiosco
+      try { await supabase.from('usuarios').delete().eq('kiosco_id', kioscoId) } catch {}
+
+      // 2.13 Finalmente eliminar el kiosco
       const { error: kError } = await supabase.from('kioscos').delete().eq('id', kioscoId)
-      if (kError) throw kError
+      if (kError) {
+        console.error('Error final borrando kiosco:', kError)
+        throw new Error(kError.message || 'No se pudo eliminar el kiosco de la base de datos')
+      }
 
       toast.success('Kiosco eliminado del sistema')
       await get().cargarDatosAdmin()
       set({ cargandoAccion: false })
       return true
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error al eliminar kiosco:', err)
-      toast.error('Error al eliminar el kiosco')
+      toast.error(err?.message ? `Error: ${err.message}` : 'Error al eliminar el kiosco')
       set({ cargandoAccion: false })
       return false
     }
