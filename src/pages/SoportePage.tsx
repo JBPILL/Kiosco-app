@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuthStore } from '../stores/authStore'
 import { useConfigAdminStore, formatearLinkWhatsApp } from '../stores/configAdminStore'
+import { useSoporteStore } from '../stores/soporteStore'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { Button } from '../components/ui/Button'
 import { supabase } from '../lib/supabase'
@@ -67,6 +68,12 @@ const ATAJOS_TECLADO = [
 export function SoportePage() {
   const { usuario, kiosco } = useAuthStore()
   const { config: configAdmin, cargarConfig } = useConfigAdminStore()
+  const {
+    tickets,
+    cargarTicketsKiosco,
+    crearTicket,
+    guardando: guardandoTicket,
+  } = useSoporteStore()
   const isOnline = useOnlineStatus()
 
   // Estado del formulario de consulta
@@ -85,9 +92,10 @@ export function SoportePage() {
 
   useEffect(() => {
     cargarConfig()
+    cargarTicketsKiosco(kiosco?.id)
     const anchoGuardado = localStorage.getItem('kiosko_ticket_width')
     if (anchoGuardado) setAnchoTicket(anchoGuardado)
-  }, [cargarConfig])
+  }, [cargarConfig, cargarTicketsKiosco, kiosco?.id])
 
   // Comprobar conexión a la nube
   const verificarConexionNube = async () => {
@@ -108,14 +116,9 @@ export function SoportePage() {
     }
   }
 
-  // Generar y enviar mensaje estructurado por WhatsApp
-  const handleEnviarWhatsApp = (e: React.FormEvent) => {
+  // Generar ticket central y opcionalmente abrir WhatsApp
+  const handleEnviarConsulta = async (e: React.FormEvent) => {
     e.preventDefault()
-
-    if (!configAdmin.whatsapp_soporte) {
-      toast.error('El administrador aún no ha configurado su número de WhatsApp de soporte.')
-      return
-    }
 
     if (!mensaje.trim()) {
       toast.error('Por favor, ingresá una descripción en el casillero de mensaje.')
@@ -128,29 +131,62 @@ export function SoportePage() {
       timeStyle: 'short',
     })
 
-    let cuerpo = `*REPORTE DE SOPORTE - KIOSKOPOS*\n`
-    cuerpo += `*Tipo:* ${tipoLabel}\n`
-    cuerpo += `*Módulo:* ${moduloSeleccionado}\n`
-    cuerpo += `------------------------------------\n`
-    cuerpo += `*Mensaje:*\n${mensaje.trim()}\n`
-    cuerpo += `------------------------------------\n`
+    const datosDiag = adjuntarDiagnostico
+      ? {
+          conexion: isOnline ? 'Online (Conectado)' : 'Modo Offline',
+          ticketera: anchoTicket,
+          navegador: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 80) : 'Desconocido',
+          pantalla: typeof window !== 'undefined' ? `${window.innerWidth}x${window.innerHeight}` : 'Desconocido',
+          fechaHora: ahora,
+        }
+      : undefined
 
-    if (adjuntarDiagnostico) {
-      cuerpo += `*Datos de Diagnóstico:*\n`
-      cuerpo += `• Comercio: ${kiosco?.nombre || 'No asignado'}\n`
-      cuerpo += `• Usuario: ${usuario?.nombre || 'Anónimo'} (${usuario?.rol || 'Rol'})\n`
-      cuerpo += `• Conexión: ${isOnline ? 'Online (Conectado)' : 'Modo Offline'}\n`
-      cuerpo += `• Ticketera: ${anchoTicket}\n`
-      cuerpo += `• Navegador: ${typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 45) : 'Desconocido'}...\n`
-      cuerpo += `• Fecha/Hora: ${ahora}\n`
+    // 1. Guardar en store / Supabase
+    await crearTicket({
+      kiosco_id: kiosco?.id || null,
+      kiosco_nombre: kiosco?.nombre || 'Mi Kiosco',
+      usuario_id: usuario?.id || null,
+      usuario_nombre: usuario?.nombre || 'Usuario',
+      usuario_telefono: kiosco?.telefono || null,
+      usuario_email: usuario?.email || null,
+      usuario_rol: usuario?.rol || 'CAJERO',
+      tipo: tipoConsulta,
+      modulo: moduloSeleccionado,
+      mensaje: mensaje.trim(),
+      datos_diagnostico: datosDiag,
+    })
+
+    // 2. Si el admin tiene WhatsApp, preparar y abrir el chat estructurado
+    if (configAdmin.whatsapp_soporte) {
+      let cuerpo = `*REPORTE DE SOPORTE - KIOSKOPOS*\n`
+      cuerpo += `*Tipo:* ${tipoLabel}\n`
+      cuerpo += `*Módulo:* ${moduloSeleccionado}\n`
+      cuerpo += `------------------------------------\n`
+      cuerpo += `*Mensaje:*\n${mensaje.trim()}\n`
+      cuerpo += `------------------------------------\n`
+
+      if (adjuntarDiagnostico) {
+        cuerpo += `*Datos de Diagnóstico:*\n`
+        cuerpo += `• Comercio: ${kiosco?.nombre || 'No asignado'}\n`
+        cuerpo += `• Usuario: ${usuario?.nombre || 'Anónimo'} (${usuario?.rol || 'Rol'})\n`
+        cuerpo += `• Conexión: ${isOnline ? 'Online (Conectado)' : 'Modo Offline'}\n`
+        cuerpo += `• Ticketera: ${anchoTicket}\n`
+        cuerpo += `• Navegador: ${typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 45) : 'Desconocido'}...\n`
+        cuerpo += `• Fecha/Hora: ${ahora}\n`
+      }
+
+      const url = formatearLinkWhatsApp(configAdmin.whatsapp_soporte, cuerpo)
+      if (url) {
+        window.open(url, '_blank', 'noopener,noreferrer')
+        toast.success('Consulta enviada y abriendo WhatsApp...')
+      } else {
+        toast.success('Consulta registrada en el sistema de soporte.')
+      }
+    } else {
+      toast.success('Consulta registrada en la bandeja del Administrador.')
     }
 
-    const url = formatearLinkWhatsApp(configAdmin.whatsapp_soporte, cuerpo)
-    if (url) {
-      window.open(url, '_blank', 'noopener,noreferrer')
-      toast.success('Abriendo WhatsApp con tu reporte estructurado...')
-      setMensaje('')
-    }
+    setMensaje('')
   }
 
   const linkChatDirecto = formatearLinkWhatsApp(
@@ -252,7 +288,7 @@ export function SoportePage() {
               </p>
             </div>
 
-            <form onSubmit={handleEnviarWhatsApp} className="space-y-4">
+            <form onSubmit={handleEnviarConsulta} className="space-y-4">
               {/* Selector de Tipo de Consulta */}
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
@@ -343,10 +379,10 @@ export function SoportePage() {
               <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
                 <span className="text-xs text-gray-500 dark:text-gray-400">
                   {configAdmin.whatsapp_soporte ? (
-                    <span>Destino: WhatsApp oficial del administrador</span>
+                    <span>Destino: Notifica directo al WhatsApp del administrador</span>
                   ) : (
                     <span className="text-amber-600 dark:text-amber-400">
-                      Administrador aún no configuró WhatsApp
+                      Quedará registrado en la bandeja del SuperAdmin
                     </span>
                   )}
                 </span>
@@ -354,13 +390,107 @@ export function SoportePage() {
                 <Button
                   type="submit"
                   variant="primary"
-                  disabled={!mensaje.trim() || !configAdmin.whatsapp_soporte}
+                  disabled={!mensaje.trim() || guardandoTicket}
                   className="w-full sm:w-auto px-5 py-2.5 shadow-sm text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white"
                 >
-                  Enviar Reporte por WhatsApp ↗
+                  {guardandoTicket
+                    ? 'Enviando...'
+                    : configAdmin.whatsapp_soporte
+                    ? 'Enviar Reporte por WhatsApp ↗'
+                    : 'Enviar Consulta'}
                 </Button>
               </div>
             </form>
+          </div>
+
+          {/* Historial de Consultas de este Kiosco */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">
+                  Mis Consultas Anteriores
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Seguimiento de mensajes y errores enviados desde tu local
+                </p>
+              </div>
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                {tickets.length} {tickets.length === 1 ? 'ticket' : 'tickets'}
+              </span>
+            </div>
+
+            {tickets.length === 0 ? (
+              <div className="text-center py-6 px-4 text-xs text-gray-400 dark:text-gray-500 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
+                Aún no has enviado consultas ni reportes. Al enviar uno quedará registrado aquí con su estado y respuesta del soporte técnico.
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                {tickets.map((t) => (
+                  <div
+                    key={t.id}
+                    className="p-3.5 rounded-xl border border-gray-200/90 dark:border-gray-700/80 bg-gray-50/70 dark:bg-gray-900/40 space-y-2 text-xs"
+                  >
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                            t.tipo === 'ERROR'
+                              ? 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300'
+                              : t.tipo === 'FACTURACION'
+                              ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
+                              : 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300'
+                          }`}
+                        >
+                          {t.tipo}
+                        </span>
+                        <span className="font-semibold text-gray-700 dark:text-gray-300">
+                          {t.modulo}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                          {new Date(t.fecha_creacion).toLocaleString('es-AR', {
+                            dateStyle: 'short',
+                            timeStyle: 'short',
+                          })}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                            t.estado === 'RESUELTO'
+                              ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                              : t.estado === 'EN_PROCESO'
+                              ? 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300'
+                              : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
+                          }`}
+                        >
+                          {t.estado === 'RESUELTO'
+                            ? 'RESUELTO'
+                            : t.estado === 'EN_PROCESO'
+                            ? 'EN REVISIÓN'
+                            : 'PENDIENTE'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-gray-800 dark:text-gray-200 whitespace-pre-line">
+                      {t.mensaje}
+                    </p>
+
+                    {t.respuesta_admin && (
+                      <div className="mt-2 p-2.5 rounded-lg bg-indigo-50/80 dark:bg-indigo-950/50 border border-indigo-200/80 dark:border-indigo-800/60">
+                        <span className="font-bold text-[11px] text-indigo-700 dark:text-indigo-300 block mb-0.5">
+                          Respuesta del Administrador:
+                        </span>
+                        <p className="text-gray-700 dark:text-gray-300 text-xs">
+                          {t.respuesta_admin}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useAdminStore } from '../stores/adminStore'
 import { useConfigAdminStore, formatearLinkWhatsApp } from '../stores/configAdminStore'
+import { useSoporteStore, type TicketSoporte, type EstadoTicket, type TipoTicket } from '../stores/soporteStore'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import type { KioscoAdminView, PagoSuscripcion } from '../types/database'
 import { formatPrecio } from '../lib/utils'
+import toast from 'react-hot-toast'
 
 export function SuperAdminPage() {
   const {
@@ -96,6 +98,31 @@ export function SuperAdminPage() {
   const [historialPagos, setHistorialPagos] = useState<PagoSuscripcion[]>([])
   const [cargandoHistorial, setCargandoHistorial] = useState(false)
 
+  // Navegación principal de pestañas (Kioscos vs Bandeja de Soporte)
+  const [pestanaActiva, setPestanaActiva] = useState<'KIOSCOS' | 'SOPORTE'>('KIOSCOS')
+
+  // Store de Soporte Centralizado
+  const {
+    tickets,
+    cargando: cargandoTickets,
+    tablaExiste: tablaSoporteExiste,
+    cargarTicketsAdmin,
+    actualizarEstadoTicket,
+    eliminarTicket,
+  } = useSoporteStore()
+
+  // Filtros y modales de Bandeja de Soporte
+  const [busquedaTicket, setBusquedaTicket] = useState('')
+  const [filtroEstadoTicket, setFiltroEstadoTicket] = useState<'TODOS' | EstadoTicket>('TODOS')
+  const [filtroTipoTicket, setFiltroTipoTicket] = useState<'TODOS' | TipoTicket>('TODOS')
+  const [expandedDiagIds, setExpandedDiagIds] = useState<Record<string, boolean>>({})
+
+  // Modal para responder / anotar ticket
+  const [modalRespuestaOpen, setModalRespuestaOpen] = useState(false)
+  const [ticketParaResponder, setTicketParaResponder] = useState<TicketSoporte | null>(null)
+  const [textoRespuesta, setTextoRespuesta] = useState('')
+  const [nuevoEstadoRespuesta, setNuevoEstadoRespuesta] = useState<EstadoTicket>('RESUELTO')
+
   // Filtrar planes comerciales (excluye fila interna de configuración de sistema)
   const planesComerciales = useMemo(
     () => planes.filter((p) => p.nombre !== '__CONFIG_SISTEMA__'),
@@ -106,7 +133,8 @@ export function SuperAdminPage() {
   useEffect(() => {
     cargarDatosAdmin()
     cargarConfigAdmin()
-  }, [cargarDatosAdmin, cargarConfigAdmin])
+    cargarTicketsAdmin()
+  }, [cargarDatosAdmin, cargarConfigAdmin, cargarTicketsAdmin])
 
   // Establecer plan por defecto al abrir modal nuevo
   useEffect(() => {
@@ -411,6 +439,139 @@ export function SuperAdminPage() {
     return `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`
   }
 
+  // Métricas de Bandeja de Soporte
+  const ticketsPendientesCount = useMemo(
+    () => tickets.filter((t) => t.estado === 'PENDIENTE').length,
+    [tickets]
+  )
+
+  const ticketsMetricas = useMemo(() => {
+    return {
+      total: tickets.length,
+      pendientes: tickets.filter((t) => t.estado === 'PENDIENTE').length,
+      enProceso: tickets.filter((t) => t.estado === 'EN_PROCESO').length,
+      resueltos: tickets.filter((t) => t.estado === 'RESUELTO').length,
+      errores: tickets.filter((t) => t.tipo === 'ERROR').length,
+    }
+  }, [tickets])
+
+  const ticketsFiltrados = useMemo(() => {
+    return tickets.filter((t) => {
+      if (filtroEstadoTicket !== 'TODOS' && t.estado !== filtroEstadoTicket) return false
+      if (filtroTipoTicket !== 'TODOS' && t.tipo !== filtroTipoTicket) return false
+      if (busquedaTicket.trim()) {
+        const q = busquedaTicket.toLowerCase()
+        const matchKiosco = (t.kiosco_nombre || '').toLowerCase().includes(q)
+        const matchUsuario = (t.usuario_nombre || '').toLowerCase().includes(q)
+        const matchMensaje = (t.mensaje || '').toLowerCase().includes(q)
+        const matchModulo = (t.modulo || '').toLowerCase().includes(q)
+        if (!matchKiosco && !matchUsuario && !matchMensaje && !matchModulo) return false
+      }
+      return true
+    })
+  }, [tickets, filtroEstadoTicket, filtroTipoTicket, busquedaTicket])
+
+  const toggleDiag = (id: string) => {
+    setExpandedDiagIds((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  const abrirModalRespuesta = (ticket: TicketSoporte) => {
+    setTicketParaResponder(ticket)
+    setTextoRespuesta(ticket.respuesta_admin || '')
+    setNuevoEstadoRespuesta(ticket.estado === 'PENDIENTE' ? 'RESUELTO' : ticket.estado)
+    setModalRespuestaOpen(true)
+  }
+
+  const handleGuardarRespuesta = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!ticketParaResponder) return
+    await actualizarEstadoTicket(ticketParaResponder.id, nuevoEstadoRespuesta, textoRespuesta.trim())
+    setModalRespuestaOpen(false)
+    setTicketParaResponder(null)
+    setTextoRespuesta('')
+  }
+
+  const generarLinkWhatsAppRespuesta = (ticket: TicketSoporte, mensajePersonalizado?: string) => {
+    const rawTel = (ticket.usuario_telefono || '').replace(/[^0-9]/g, '')
+    let tel = rawTel
+    if (!tel && ticket.kiosco_id) {
+      const matchKiosco = kioscos.find((k) => k.kiosco_id === ticket.kiosco_id)
+      if (matchKiosco?.telefono_kiosco) {
+        tel = matchKiosco.telefono_kiosco.replace(/[^0-9]/g, '')
+      }
+    }
+
+    if (tel.length === 10) {
+      tel = `549${tel}`
+    } else if (tel.length === 11 && tel.startsWith('0')) {
+      tel = `549${tel.slice(1)}`
+    }
+
+    let texto = `Hola ${ticket.usuario_nombre || 'Estimado'}! Te escribimos de Soporte KioskoPOS por tu consulta de "${ticket.kiosco_nombre}" sobre ${ticket.modulo}.`
+    if (mensajePersonalizado) {
+      texto += `\n\n${mensajePersonalizado}`
+    } else {
+      texto += `\n\n¿Cómo podemos ayudarte? Ya estamos revisando tu caso.`
+    }
+
+    if (tel) {
+      return `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`
+    }
+    return `https://web.whatsapp.com/send?text=${encodeURIComponent(texto)}`
+  }
+
+  const copiarSqlSupabase = async () => {
+    const sql = `-- ==============================================================================
+-- TABLA DE TICKETS DE SOPORTE Y CONSULTAS (SUPERADMIN & USUARIOS)
+-- Ejecutar este script en el SQL Editor de Supabase:
+-- https://supabase.com/dashboard/project/wlqujnwxrmksheubfrha/sql
+-- ==============================================================================
+
+CREATE TABLE IF NOT EXISTS public.tickets_soporte (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  kiosco_id uuid REFERENCES public.kioscos(id) ON DELETE SET NULL,
+  kiosco_nombre text NOT NULL DEFAULT '',
+  usuario_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  usuario_nombre text NOT NULL DEFAULT '',
+  usuario_telefono text DEFAULT '',
+  usuario_email text DEFAULT '',
+  usuario_rol text DEFAULT 'CAJERO',
+  tipo text NOT NULL DEFAULT 'CONSULTA',
+  modulo text NOT NULL DEFAULT 'General',
+  mensaje text NOT NULL,
+  datos_diagnostico jsonb DEFAULT '{}'::jsonb,
+  estado text NOT NULL DEFAULT 'PENDIENTE',
+  respuesta_admin text DEFAULT '',
+  fecha_creacion timestamptz DEFAULT now(),
+  fecha_actualizacion timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tickets_soporte_kiosco ON public.tickets_soporte(kiosco_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_soporte_estado ON public.tickets_soporte(estado);
+CREATE INDEX IF NOT EXISTS idx_tickets_soporte_fecha ON public.tickets_soporte(fecha_creacion DESC);
+
+ALTER TABLE public.tickets_soporte ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Permitir insercion de tickets" ON public.tickets_soporte;
+CREATE POLICY "Permitir insercion de tickets" ON public.tickets_soporte FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Permitir lectura de tickets" ON public.tickets_soporte;
+CREATE POLICY "Permitir lectura de tickets" ON public.tickets_soporte FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Permitir actualizacion de tickets" ON public.tickets_soporte;
+CREATE POLICY "Permitir actualizacion de tickets" ON public.tickets_soporte FOR UPDATE USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Permitir eliminacion de tickets" ON public.tickets_soporte;
+CREATE POLICY "Permitir eliminacion de tickets" ON public.tickets_soporte FOR DELETE USING (true);`
+
+    try {
+      await navigator.clipboard.writeText(sql)
+      toast.success('Script SQL copiado al portapapeles. Pegalo en el SQL Editor de Supabase!')
+    } catch {
+      toast.error('No se pudo copiar automáticamente. Puedes copiar el archivo supabase_tickets_soporte.sql de tu proyecto.')
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Encabezado Principal */}
@@ -447,11 +608,14 @@ export function SuperAdminPage() {
           </Button>
           <Button
             variant="secondary"
-            onClick={() => cargarDatosAdmin()}
-            disabled={cargando}
+            onClick={() => {
+              cargarDatosAdmin()
+              cargarTicketsAdmin()
+            }}
+            disabled={cargando || cargandoTickets}
             className="text-sm"
           >
-            {cargando ? 'Actualizando...' : 'Actualizar'}
+            {cargando || cargandoTickets ? 'Actualizando...' : 'Actualizar'}
           </Button>
           <Button
             variant="primary"
@@ -463,7 +627,58 @@ export function SuperAdminPage() {
         </div>
       </div>
 
-      {/* Tarjeta de Cobro y Soporte para Kioscos */}
+      {/* Selector de Pestañas Principales (Kioscos vs Bandeja de Soporte) */}
+      <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 pb-2">
+        <button
+          onClick={() => setPestanaActiva('KIOSCOS')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+            pestanaActiva === 'KIOSCOS'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+          }`}
+        >
+          <span>Kioscos y Alquileres</span>
+          <span
+            className={`text-xs px-2 py-0.5 rounded-full ${
+              pestanaActiva === 'KIOSCOS'
+                ? 'bg-white/20 text-white'
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+            }`}
+          >
+            {kioscos.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setPestanaActiva('SOPORTE')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all relative ${
+            pestanaActiva === 'SOPORTE'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+          }`}
+        >
+          <span>Bandeja de Soporte</span>
+          {ticketsPendientesCount > 0 ? (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-red-500 text-white font-black animate-pulse">
+              {ticketsPendientesCount} pendiente{ticketsPendientesCount > 1 ? 's' : ''}
+            </span>
+          ) : (
+            <span
+              className={`text-xs px-2 py-0.5 rounded-full ${
+                pestanaActiva === 'SOPORTE'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+              }`}
+            >
+              {tickets.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {pestanaActiva === 'KIOSCOS' ? (
+        <>
+          {/* Tarjeta de Cobro y Soporte para Kioscos */}
       <div className="bg-gradient-to-r from-indigo-50/70 via-purple-50/40 to-white dark:from-indigo-950/30 dark:via-gray-800 dark:to-gray-800 p-4 sm:p-5 rounded-2xl border border-indigo-200/80 dark:border-indigo-800/60 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="space-y-1.5 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
@@ -828,6 +1043,364 @@ export function SuperAdminPage() {
           </div>
         )}
       </div>
+        </>
+      ) : (
+        /* BANDEJA DE SOPORTE */
+        <div className="space-y-6">
+          {/* Banner de Sincronización con Supabase si la tabla aún no fue creada */}
+          {!tablaSoporteExiste && (
+            <div className="p-4 rounded-2xl border border-amber-200 dark:border-amber-800/80 bg-amber-50/80 dark:bg-amber-950/40 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold flex items-center justify-center text-base flex-shrink-0">
+                  i
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-900 dark:text-gray-100 text-sm">
+                    Sincronización de Soporte con Supabase
+                  </h4>
+                  <p className="text-gray-600 dark:text-gray-400 mt-0.5">
+                    Actualmente las consultas se guardan en el caché seguro local. Para sincronizarlas en tiempo real entre múltiples computadoras, ejecutá el script SQL en tu base de datos Supabase.
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="secondary"
+                onClick={copiarSqlSupabase}
+                className="text-xs font-bold border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50 flex-shrink-0"
+              >
+                Copiar Script SQL para Supabase
+              </Button>
+            </div>
+          )}
+
+          {/* Tarjetas KPI de Soporte */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
+              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                Total Consultas
+              </span>
+              <div className="flex items-baseline justify-between mt-2">
+                <span className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                  {ticketsMetricas.total}
+                </span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">recibidas</span>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
+              <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
+                Pendientes
+              </span>
+              <div className="mt-2 flex items-baseline justify-between">
+                <span className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+                  {ticketsMetricas.pendientes}
+                </span>
+                {ticketsMetricas.pendientes > 0 && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 font-bold text-amber-700 dark:text-amber-300">
+                    Por atender
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
+              <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wide">
+                En Revisión
+              </span>
+              <div className="mt-2">
+                <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                  {ticketsMetricas.enProceso}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
+              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">
+                Resueltos
+              </span>
+              <div className="mt-2">
+                <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                  {ticketsMetricas.resueltos}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs col-span-2 lg:col-span-1">
+              <span className="text-xs font-semibold text-red-600 dark:text-red-400 uppercase tracking-wide">
+                Fallas o Errores
+              </span>
+              <div className="mt-2">
+                <span className="text-2xl font-bold text-red-600 dark:text-red-400">
+                  {ticketsMetricas.errores}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Barra de Filtros y Búsqueda */}
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+            {/* Filtro de Estado */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+              {(['TODOS', 'PENDIENTE', 'EN_PROCESO', 'RESUELTO'] as const).map((est) => (
+                <button
+                  key={est}
+                  onClick={() => setFiltroEstadoTicket(est)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                    filtroEstadoTicket === est
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  {est === 'TODOS' ? 'Todos los Estados' : est === 'EN_PROCESO' ? 'En Revisión' : est}
+                </button>
+              ))}
+            </div>
+
+            {/* Filtro de Tipo y Búsqueda */}
+            <div className="flex items-center gap-2 flex-wrap md:flex-nowrap">
+              <select
+                value={filtroTipoTicket}
+                onChange={(e) => setFiltroTipoTicket(e.target.value as typeof filtroTipoTicket)}
+                className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-xs font-medium focus:outline-hidden"
+              >
+                <option value="TODOS">Todos los tipos</option>
+                <option value="ERROR">Errores técnicos</option>
+                <option value="CONSULTA">Consultas operativas</option>
+                <option value="SUGERENCIA">Sugerencias</option>
+                <option value="FACTURACION">Abono / Facturación</option>
+              </select>
+
+              <input
+                type="text"
+                placeholder="Buscar por local, usuario, mensaje..."
+                value={busquedaTicket}
+                onChange={(e) => setBusquedaTicket(e.target.value)}
+                className="px-3.5 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-xs focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 w-full md:w-64"
+              />
+            </div>
+          </div>
+
+          {/* Listado de Tarjetas de Tickets */}
+          <div className="space-y-4">
+            {ticketsFiltrados.length === 0 ? (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-12 text-center">
+                <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center mx-auto mb-3 text-xl text-gray-400">
+                  ✉️
+                </div>
+                <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">
+                  No se encontraron consultas
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-sm mx-auto">
+                  {busquedaTicket || filtroEstadoTicket !== 'TODOS' || filtroTipoTicket !== 'TODOS'
+                    ? 'No hay registros que coincidan con los filtros y búsqueda aplicados.'
+                    : 'Aún no se han recibido consultas o reportes de errores de ningún kiosco.'}
+                </p>
+              </div>
+            ) : (
+              ticketsFiltrados.map((ticket) => {
+                const diagExpanded = expandedDiagIds[ticket.id]
+                const waLink = generarLinkWhatsAppRespuesta(ticket)
+
+                return (
+                  <div
+                    key={ticket.id}
+                    className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-xs space-y-4 transition-all hover:border-gray-300 dark:hover:border-gray-600"
+                  >
+                    {/* Header del Ticket */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100 dark:border-gray-700/80">
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <span className="font-bold text-base text-gray-900 dark:text-gray-100">
+                          {ticket.kiosco_nombre || 'Kiosco sin nombre'}
+                        </span>
+                        <span className="text-xs px-2 py-0.5 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium">
+                          {ticket.usuario_nombre} ({ticket.usuario_rol || 'Usuario'})
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${
+                            ticket.tipo === 'ERROR'
+                              ? 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300'
+                              : ticket.tipo === 'FACTURACION'
+                              ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
+                              : 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300'
+                          }`}
+                        >
+                          {ticket.tipo}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2.5 flex-wrap self-start sm:self-auto">
+                        <span className="text-xs text-gray-400 dark:text-gray-500">
+                          {new Date(ticket.fecha_creacion).toLocaleString('es-AR', {
+                            dateStyle: 'medium',
+                            timeStyle: 'short',
+                          })}
+                        </span>
+                        <span
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
+                            ticket.estado === 'RESUELTO'
+                              ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                              : ticket.estado === 'EN_PROCESO'
+                              ? 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-800'
+                              : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
+                          }`}
+                        >
+                          {ticket.estado === 'RESUELTO'
+                            ? 'RESUELTO'
+                            : ticket.estado === 'EN_PROCESO'
+                            ? 'EN REVISIÓN'
+                            : 'PENDIENTE'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Cuerpo del Ticket */}
+                    <div className="space-y-3 text-xs sm:text-sm">
+                      <div className="flex items-center gap-2 text-xs flex-wrap">
+                        <span className="text-gray-400 dark:text-gray-500 font-medium">Módulo:</span>
+                        <span className="font-semibold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-800/50">
+                          {ticket.modulo}
+                        </span>
+                        {ticket.usuario_telefono && (
+                          <span className="text-gray-500 dark:text-gray-400 ml-1">
+                            Tel: <strong>{ticket.usuario_telefono}</strong>
+                          </span>
+                        )}
+                        {ticket.usuario_email && (
+                          <span className="text-gray-500 dark:text-gray-400 ml-1">
+                            Email: <strong>{ticket.usuario_email}</strong>
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Mensaje */}
+                      <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-200/80 dark:border-gray-700/80 text-gray-900 dark:text-gray-100 whitespace-pre-line leading-relaxed">
+                        {ticket.mensaje}
+                      </div>
+
+                      {/* Datos de Diagnóstico / Telemetría (si existen) */}
+                      {ticket.datos_diagnostico && (
+                        <div className="pt-1">
+                          <button
+                            type="button"
+                            onClick={() => toggleDiag(ticket.id)}
+                            className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline flex items-center gap-1"
+                          >
+                            <span>{diagExpanded ? '▼ Ocultar' : '▶ Ver'} datos de diagnóstico y dispositivo</span>
+                          </button>
+
+                          {diagExpanded && (
+                            <div className="mt-2 p-3 rounded-xl bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-gray-600 dark:text-gray-400">
+                              <div>
+                                <span className="font-semibold block text-gray-800 dark:text-gray-200">Conexión:</span>
+                                <span>{String(ticket.datos_diagnostico.conexion || 'Desconocida')}</span>
+                              </div>
+                              <div>
+                                <span className="font-semibold block text-gray-800 dark:text-gray-200">Ticketera:</span>
+                                <span>{String(ticket.datos_diagnostico.ticketera || 'Estándar')}</span>
+                              </div>
+                              <div>
+                                <span className="font-semibold block text-gray-800 dark:text-gray-200">Resolución:</span>
+                                <span>{String(ticket.datos_diagnostico.pantalla || 'Desconocida')}</span>
+                              </div>
+                              <div className="sm:col-span-2 lg:col-span-4 truncate">
+                                <span className="font-semibold block text-gray-800 dark:text-gray-200">Navegador:</span>
+                                <span className="font-mono text-[11px]">{String(ticket.datos_diagnostico.navegador || 'Desconocido')}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Respuesta previa del Admin */}
+                      {ticket.respuesta_admin && (
+                        <div className="p-3 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs">
+                          <span className="font-bold text-emerald-800 dark:text-emerald-300 block mb-1">
+                            Respuesta o Nota Interna del Administrador:
+                          </span>
+                          <p className="text-gray-800 dark:text-gray-200 whitespace-pre-line">
+                            {ticket.respuesta_admin}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Acciones del Ticket */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-gray-100 dark:border-gray-700/80">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Botón WhatsApp */}
+                        <a
+                          href={waLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-xs transition-colors active:scale-95"
+                        >
+                          <span>Responder por WhatsApp</span>
+                          <span>↗</span>
+                        </a>
+
+                        {/* Botón Escribir Respuesta / Nota */}
+                        <button
+                          type="button"
+                          onClick={() => abrirModalRespuesta(ticket)}
+                          className="px-3.5 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-semibold text-xs transition-colors"
+                        >
+                          {ticket.respuesta_admin ? 'Editar Respuesta' : '+ Agregar Respuesta'}
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
+                        {/* Cambiar Estado Rápido */}
+                        {ticket.estado === 'PENDIENTE' && (
+                          <button
+                            type="button"
+                            onClick={() => actualizarEstadoTicket(ticket.id, 'EN_PROCESO')}
+                            className="px-3 py-2 rounded-xl text-xs font-semibold bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 transition-colors"
+                          >
+                            Poner en Revisión
+                          </button>
+                        )}
+
+                        {ticket.estado !== 'RESUELTO' && (
+                          <button
+                            type="button"
+                            onClick={() => actualizarEstadoTicket(ticket.id, 'RESUELTO')}
+                            className="px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 transition-colors"
+                          >
+                            Marcar Resuelto
+                          </button>
+                        )}
+
+                        {ticket.estado === 'RESUELTO' && (
+                          <button
+                            type="button"
+                            onClick={() => actualizarEstadoTicket(ticket.id, 'PENDIENTE')}
+                            className="px-3 py-2 rounded-xl text-xs font-semibold bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-700 dark:text-gray-300 transition-colors"
+                          >
+                            Reabrir Ticket
+                          </button>
+                        )}
+
+                        {/* Eliminar Ticket */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`¿Eliminar la consulta de "${ticket.kiosco_nombre}"?`)) {
+                              eliminarTicket(ticket.id)
+                            }
+                          }}
+                          className="px-2.5 py-2 rounded-xl text-xs font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 transition-colors"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
+      )}
 
       {/* MODAL NUEVO KIOSCO CLIENTE */}
       <Modal
@@ -1617,6 +2190,88 @@ export function SuperAdminPage() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* MODAL RESPUESTA DE SOPORTE */}
+      <Modal
+        isOpen={modalRespuestaOpen}
+        onClose={() => setModalRespuestaOpen(false)}
+        title={`Responder Ticket: ${ticketParaResponder?.kiosco_nombre || ''}`}
+        size="lg"
+      >
+        {ticketParaResponder && (
+          <form onSubmit={handleGuardarRespuesta} className="space-y-4">
+            <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 text-xs space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-gray-900 dark:text-gray-100">
+                  {ticketParaResponder.usuario_nombre} ({ticketParaResponder.usuario_rol})
+                </span>
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 uppercase">
+                  {ticketParaResponder.modulo}
+                </span>
+              </div>
+              <p className="text-gray-700 dark:text-gray-300 italic whitespace-pre-line">
+                "{ticketParaResponder.mensaje}"
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                Respuesta o Solución al Cliente *
+              </label>
+              <textarea
+                rows={4}
+                value={textoRespuesta}
+                onChange={(e) => setTextoRespuesta(e.target.value)}
+                placeholder="Escribí aquí la respuesta o solución que verá el dueño del kiosco..."
+                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all resize-y"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                  Nuevo Estado del Ticket
+                </label>
+                <select
+                  value={nuevoEstadoRespuesta}
+                  onChange={(e) => setNuevoEstadoRespuesta(e.target.value as EstadoTicket)}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs sm:text-sm font-medium focus:outline-hidden"
+                >
+                  <option value="RESUELTO">RESUELTO (Cerrado)</option>
+                  <option value="EN_PROCESO">EN REVISIÓN (En proceso)</option>
+                  <option value="PENDIENTE">PENDIENTE</option>
+                </select>
+              </div>
+
+              <div className="flex items-end">
+                <a
+                  href={generarLinkWhatsAppRespuesta(ticketParaResponder, textoRespuesta)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs text-center flex items-center justify-center gap-1.5 shadow-xs transition-colors"
+                >
+                  <span>Enviar también por WhatsApp</span>
+                  <span>↗</span>
+                </a>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setModalRespuestaOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" variant="primary">
+                Guardar Respuesta y Actualizar Estado
+              </Button>
+            </div>
+          </form>
+        )}
       </Modal>
     </div>
   )
