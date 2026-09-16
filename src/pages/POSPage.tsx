@@ -153,15 +153,38 @@ export function POSPage() {
     }
   }
 
-  // Detección de escaneo desde pistola de código de barras USB / Bluetooth
+  // Detección de escaneo desde pistola de código de barras USB / Bluetooth (Cache-First instantáneo)
   const handleBarcodeGunScan = useCallback(
     async (code: string) => {
+      const codeTrim = code.trim()
+      if (!codeTrim) return
+
+      // 1. Buscar de inmediato en la caché local (< 2ms, sin lag de red)
+      let productoEncontrado: Producto | null = null
+      try {
+        const cachedRaw = localStorage.getItem('kiosko_cache_productos')
+        if (cachedRaw) {
+          const todos: Producto[] = JSON.parse(cachedRaw)
+          productoEncontrado = todos.find((p) => p.activo && p.codigo_barras === codeTrim) || null
+        }
+      } catch {
+        // Ignorar error de parsing
+      }
+
+      if (productoEncontrado) {
+        playScanSound('success')
+        agregarProducto(productoEncontrado)
+        toast.success(`${productoEncontrado.descripcion} agregado`)
+        return
+      }
+
+      // 2. Si no estaba en caché, buscar en Supabase
       try {
         const { data, error } = await supabase
           .from('productos')
           .select('*, categoria:categorias(nombre, color)')
           .eq('activo', true)
-          .eq('codigo_barras', code)
+          .eq('codigo_barras', codeTrim)
           .maybeSingle()
 
         if (error) throw error
@@ -170,13 +193,23 @@ export function POSPage() {
           playScanSound('success')
           agregarProducto(data)
           toast.success(`${data.descripcion} agregado`)
+
+          // Actualizar caché local agregando el producto nuevo
+          try {
+            const cachedRaw = localStorage.getItem('kiosko_cache_productos')
+            const list: Producto[] = cachedRaw ? JSON.parse(cachedRaw) : []
+            if (!list.some((p) => p.id === data.id)) {
+              localStorage.setItem('kiosko_cache_productos', JSON.stringify([data, ...list]))
+            }
+          } catch {}
         } else {
           playScanSound('warning')
-          toast.error(`Código no encontrado: ${code}`)
+          toast.error(`Código no encontrado: ${codeTrim}`)
         }
       } catch (err) {
         console.error('Error procesando código de pistola:', err)
         playScanSound('error')
+        toast.error('No se pudo verificar el código de barras en la red')
       }
     },
     [agregarProducto]

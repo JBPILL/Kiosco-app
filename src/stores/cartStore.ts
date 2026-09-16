@@ -81,19 +81,21 @@ export const useCartStore = create<CartState>((set, get) => ({
   ventasEnEspera: cargarVentasEnEspera(),
 
   agregarProducto: (producto: Producto) => {
-    // 1. Validar si el producto no tiene stock disponible
+    // Si el producto figura con stock 0 en sistema, emitir aviso pero permitir agregarlo
     if (producto.stock_actual <= 0) {
-      toast.error(`"${producto.descripcion}" no tiene stock disponible (0 unidades)`)
-      return
+      toast(`Aviso: "${producto.descripcion}" figura con stock 0 (se registrará con stock negativo)`, {
+        duration: 3500,
+      })
     }
 
     set((state) => {
       const existente = state.items.find((item) => item.producto.id === producto.id)
       if (existente) {
-        // Validar si ya se alcanzó el stock máximo disponible
-        if (existente.cantidad >= producto.stock_actual) {
-          toast.error(`Stock máximo alcanzado para "${producto.descripcion}" (${producto.stock_actual} disponibles)`)
-          return state
+        if (producto.stock_actual > 0 && existente.cantidad >= producto.stock_actual) {
+          toast(
+            `Aviso: Superando stock disponible de "${producto.descripcion}" (${producto.stock_actual} en sistema)`,
+            { duration: 3000 }
+          )
         }
 
         return {
@@ -171,13 +173,13 @@ export const useCartStore = create<CartState>((set, get) => ({
 
     const state = get()
     const itemTarget = state.items.find((it) => it.producto.id === productoId)
-    let cantidadAjustada = cantidad
+    const cantidadAjustada = cantidad
 
-    if (itemTarget && cantidad > itemTarget.producto.stock_actual) {
-      toast.error(
-        `Stock máximo para "${itemTarget.producto.descripcion}": ${itemTarget.producto.stock_actual} unidades`
+    if (itemTarget && itemTarget.producto.stock_actual > 0 && cantidad > itemTarget.producto.stock_actual) {
+      toast(
+        `Aviso: Superando stock disponible de "${itemTarget.producto.descripcion}" (${itemTarget.producto.stock_actual} en sistema)`,
+        { duration: 3000 }
       )
-      cantidadAjustada = itemTarget.producto.stock_actual
     }
 
     set((state) => ({

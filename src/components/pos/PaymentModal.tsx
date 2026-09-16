@@ -171,15 +171,12 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         ? (notasBase ? `${clienteInfo} · ${notasBase}` : clienteInfo)
         : notasBase
 
-      // 0. Validar que no se venda más de lo disponible en stock
-      for (const item of items) {
-        if (item.cantidad > item.producto.stock_actual) {
-          toast.error(
-            `Stock insuficiente para "${item.producto.descripcion}". Disponibles: ${item.producto.stock_actual}, en ticket: ${item.cantidad}.`
-          )
-          setProcesando(false)
-          return
-        }
+      // Advertencia en consola/log si algún producto tiene stock insuficiente
+      const productosSinStock = items.filter(
+        (it) => it.producto.activo !== false && it.cantidad > it.producto.stock_actual
+      )
+      if (productosSinStock.length > 0) {
+        console.warn('Venta con stock negativo:', productosSinStock.map((it) => it.producto.descripcion))
       }
 
       // Si es Cuenta Corriente, validar límite de crédito
@@ -266,7 +263,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       // 4. Actualizar stock físico en catálogo y asentar egreso en movimientos_stock
       for (const it of items) {
         if (it.producto.activo === false) continue
-        const nuevoStock = Math.max(0, it.producto.stock_actual - it.cantidad)
+        const nuevoStock = it.producto.stock_actual - it.cantidad
         try {
           await supabase
             .from('productos')
@@ -289,6 +286,25 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         } catch (errStock) {
           console.warn(`Error al actualizar stock para ${it.producto.descripcion}:`, errStock)
         }
+      }
+
+      // Sincronizar de inmediato el stock en la caché local (kiosko_cache_productos)
+      try {
+        const cachedRaw = localStorage.getItem('kiosko_cache_productos')
+        if (cachedRaw) {
+          const cachedProds: any[] = JSON.parse(cachedRaw)
+          const itemsMap = new Map(items.map((i) => [i.producto.id, i.cantidad]))
+          const actualizados = cachedProds.map((p) => {
+            const qty = itemsMap.get(p.id)
+            if (qty !== undefined) {
+              return { ...p, stock_actual: (p.stock_actual || 0) - qty }
+            }
+            return p
+          })
+          localStorage.setItem('kiosko_cache_productos', JSON.stringify(actualizados))
+        }
+      } catch (cacheErr) {
+        console.warn('Error sincronizando stock en memoria local:', cacheErr)
       }
 
       // 5. Si es Cuenta Corriente, imputar cargo a la ficha del cliente
@@ -389,7 +405,15 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           console.warn('Error en rollback de venta fallida:', cleanupErr)
         }
       }
-      const msg = error instanceof Error ? error.message : 'Error al registrar la venta. Intentá de nuevo.'
+      let msg = 'No se pudo registrar la venta. Por favor verificá tu conexión e intentá de nuevo.'
+      if (error instanceof Error) {
+        const lower = error.message.toLowerCase()
+        if (lower.includes('failed to fetch') || lower.includes('network') || lower.includes('conexión') || lower.includes('fetch')) {
+          msg = 'Problema de conexión con el servidor. Verificá internet e intentá nuevamente.'
+        } else {
+          msg = error.message
+        }
+      }
       toast.error(msg, { duration: 6000 })
     } finally {
       setProcesando(false)
@@ -555,7 +579,13 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
               pattern="[0-9]*"
               value={pagaCon}
               onChange={handlePagaConChange}
-              placeholder="Ingresá monto entero (ej: 2500)"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && puedeConfirmar && !procesando) {
+                  e.preventDefault()
+                  confirmarVenta()
+                }
+              }}
+              placeholder="Ingresá monto (ej: 2500) y tocá Enter"
               autoFocus={typeof window !== 'undefined' && window.innerWidth >= 1024}
             />
 

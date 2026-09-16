@@ -418,8 +418,14 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
               En espera
             </button>
             <button
-              onClick={vaciarCarrito}
-              className="text-red-500 dark:text-red-400 hover:underline font-medium"
+              onClick={() => {
+                if (items.length <= 1 || window.confirm(`¿Estás seguro de vaciar el ticket (${items.length} artículos)?`)) {
+                  vaciarCarrito()
+                  toast('Ticket vaciado', { duration: 2000 })
+                }
+              }}
+              className="text-red-500 dark:text-red-400 hover:underline font-medium cursor-pointer"
+              title="Vaciar ticket completo"
             >
               Vaciar
             </button>

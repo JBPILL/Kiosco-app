@@ -28,46 +28,76 @@ export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
     return () => window.removeEventListener('pos-focus-search', handleFocus)
   }, [])
 
-  // Buscar productos mientras se escribe o escanea
+  // Buscar productos mientras se escribe o escanea (Cache-First offline + Supabase)
   const buscar = useCallback(async (texto: string) => {
-    const queryTrim = texto.trim()
+    const queryTrim = texto.trim().toLowerCase()
     if (queryTrim.length < 2) {
       setResultados([])
       return
     }
 
-    let queryBuilder = supabase
-      .from('productos')
-      .select('*, categoria:categorias(nombre, color)')
-      .eq('activo', true)
-
-    // Si contiene números, buscar también por coincidencia en código de barras
-    if (/^\d+$/.test(queryTrim)) {
-      queryBuilder = queryBuilder.or(`codigo_barras.ilike.%${queryTrim}%,descripcion.ilike.%${queryTrim}%`)
-    } else {
-      queryBuilder = queryBuilder.ilike('descripcion', `%${queryTrim}%`)
+    // 1. Búsqueda instantánea en caché local (offline-first, < 2ms)
+    let locales: Producto[] = []
+    try {
+      const cached = localStorage.getItem('kiosko_cache_productos')
+      if (cached) {
+        const todos: Producto[] = JSON.parse(cached)
+        locales = todos
+          .filter((p) => {
+            if (!p.activo) return false
+            const matchDesc = p.descripcion?.toLowerCase().includes(queryTrim)
+            const matchCod = p.codigo_barras?.toLowerCase().includes(queryTrim)
+            return matchDesc || matchCod
+          })
+          .slice(0, 8)
+      }
+    } catch {
+      // Ignorar error de parsing
     }
 
-    const { data } = await queryBuilder
-      .order('es_favorito', { ascending: false })
-      .limit(8)
+    if (locales.length > 0) {
+      setResultados(locales)
+      setSelectedIndex(0)
+    }
 
-    setResultados(data || [])
-    setSelectedIndex(0)
+    // 2. Consulta en red a Supabase para sincronizar datos remotos
+    try {
+      let queryBuilder = supabase
+        .from('productos')
+        .select('*, categoria:categorias(nombre, color)')
+        .eq('activo', true)
+
+      if (/^\d+$/.test(queryTrim)) {
+        queryBuilder = queryBuilder.or(`codigo_barras.ilike.%${queryTrim}%,descripcion.ilike.%${queryTrim}%`)
+      } else {
+        queryBuilder = queryBuilder.ilike('descripcion', `%${queryTrim}%`)
+      }
+
+      const { data, error } = await queryBuilder
+        .order('es_favorito', { ascending: false })
+        .limit(8)
+
+      if (!error && data && data.length > 0) {
+        setResultados(data)
+      } else if (locales.length === 0 && (!data || data.length === 0)) {
+        setResultados([])
+      }
+    } catch {
+      // Si falla la red o está offline, se conservan los resultados locales
+    }
   }, [])
 
   // Debounce de búsqueda
   useEffect(() => {
     const timer = setTimeout(() => {
       buscar(query)
-    }, 200)
+    }, 150)
     return () => clearTimeout(timer)
   }, [query, buscar])
 
   const seleccionar = (producto: Producto) => {
     if (producto.stock_actual <= 0) {
-      toast.error(`"${producto.descripcion}" no tiene stock disponible (0 unidades)`)
-      return
+      toast(`Aviso: "${producto.descripcion}" figura con stock 0 (se registrará con stock negativo)`, { duration: 3500 })
     }
     onSelect(producto)
     setQuery('')
