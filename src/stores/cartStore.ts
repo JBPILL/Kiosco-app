@@ -21,11 +21,27 @@ export interface VentaEnEspera {
   total: number
 }
 
+export interface CarritoTab {
+  id: string
+  nombre: string
+  items: ItemCarrito[]
+  tipoAjuste: TipoAjuste
+  valorAjuste: number
+}
+
 interface CartState {
   // Estado del carrito activo
   items: ItemCarrito[]
   tipoAjuste: TipoAjuste
   valorAjuste: number
+
+  // Pestañas de tickets en simultáneo (estilo Odoo POS)
+  tabs: CarritoTab[]
+  tabActivaId: string
+  crearNuevaTab: (nombre?: string) => string
+  cambiarTab: (id: string) => void
+  cerrarTab: (id: string) => void
+  renombrarTab: (id: string, nombre: string) => void
 
   // Ventas en espera
   ventasEnEspera: VentaEnEspera[]
@@ -87,11 +103,96 @@ function evaluarConPromociones(items: ItemCarrito[]): ItemCarrito[] {
   }
 }
 
+const TAB_INICIAL_ID = uuidv4()
+const TAB_INICIAL: CarritoTab = {
+  id: TAB_INICIAL_ID,
+  nombre: 'Ticket 1',
+  items: [],
+  tipoAjuste: 'NINGUNO',
+  valorAjuste: 0,
+}
+
 export const useCartStore = create<CartState>((set, get) => ({
   items: [],
   tipoAjuste: 'NINGUNO',
   valorAjuste: 0,
+  tabs: [TAB_INICIAL],
+  tabActivaId: TAB_INICIAL_ID,
   ventasEnEspera: cargarVentasEnEspera(),
+
+  crearNuevaTab: (nombre?: string) => {
+    const state = get()
+    const tabsSync = state.tabs.map((t) =>
+      t.id === state.tabActivaId
+        ? { ...t, items: state.items, tipoAjuste: state.tipoAjuste, valorAjuste: state.valorAjuste }
+        : t
+    )
+    const nuevoId = uuidv4()
+    const nuevaTab: CarritoTab = {
+      id: nuevoId,
+      nombre: nombre?.trim() || `Ticket ${state.tabs.length + 1}`,
+      items: [],
+      tipoAjuste: 'NINGUNO',
+      valorAjuste: 0,
+    }
+    set({
+      tabs: [...tabsSync, nuevaTab],
+      tabActivaId: nuevoId,
+      items: [],
+      tipoAjuste: 'NINGUNO',
+      valorAjuste: 0,
+    })
+    return nuevoId
+  },
+
+  cambiarTab: (targetId: string) => {
+    const state = get()
+    if (state.tabActivaId === targetId) return
+    const target = state.tabs.find((t) => t.id === targetId)
+    if (!target) return
+
+    const tabsSync = state.tabs.map((t) =>
+      t.id === state.tabActivaId
+        ? { ...t, items: state.items, tipoAjuste: state.tipoAjuste, valorAjuste: state.valorAjuste }
+        : t
+    )
+
+    set({
+      tabs: tabsSync,
+      tabActivaId: targetId,
+      items: target.items,
+      tipoAjuste: target.tipoAjuste,
+      valorAjuste: target.valorAjuste,
+    })
+  },
+
+  cerrarTab: (targetId: string) => {
+    const state = get()
+    if (state.tabs.length <= 1) {
+      get().vaciarCarrito()
+      return
+    }
+
+    const restantes = state.tabs.filter((t) => t.id !== targetId)
+    if (state.tabActivaId === targetId) {
+      const siguiente = restantes[0]
+      set({
+        tabs: restantes,
+        tabActivaId: siguiente.id,
+        items: siguiente.items,
+        tipoAjuste: siguiente.tipoAjuste,
+        valorAjuste: siguiente.valorAjuste,
+      })
+    } else {
+      set({ tabs: restantes })
+    }
+  },
+
+  renombrarTab: (id: string, nombre: string) => {
+    set((state) => ({
+      tabs: state.tabs.map((t) => (t.id === id ? { ...t, nombre: nombre.trim() || t.nombre } : t)),
+    }))
+  },
 
   agregarProducto: (producto: Producto, cantidad: number = 1) => {
     const cantAgregar = cantidad > 0 ? cantidad : 1

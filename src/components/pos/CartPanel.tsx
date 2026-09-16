@@ -35,6 +35,11 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     suspenderVentaActual,
     descripcionAjuste,
     totalAhorroPromociones,
+    tabs,
+    tabActivaId,
+    crearNuevaTab,
+    cambiarTab,
+    cerrarTab,
   } = useCartStore()
 
   const [modalAjusteOpen, setModalAjusteOpen] = useState(false)
@@ -413,6 +418,59 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+      {/* Pestañas de tickets en paralelo estilo Odoo POS */}
+      <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/60 rounded-t-xl overflow-x-auto scrollbar-hide flex-shrink-0">
+        {tabs.map((tab) => {
+          const esActiva = tab.id === tabActivaId
+          const cant = tab.items.reduce((acc, it) => acc + (it.producto.es_pesable ? 1 : it.cantidad), 0)
+          return (
+            <div
+              key={tab.id}
+              onClick={() => cambiarTab(tab.id)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                esActiva
+                  ? 'bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-xs border border-gray-200 dark:border-gray-700'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200/50'
+              }`}
+            >
+              <span className="truncate max-w-[85px]">{tab.nombre}</span>
+              {cant > 0 && (
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    esActiva
+                      ? 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300'
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                  }`}
+                >
+                  {cant}
+                </span>
+              )}
+              {tabs.length > 1 && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    cerrarTab(tab.id)
+                  }}
+                  className="text-gray-400 hover:text-red-500 dark:hover:text-red-400 text-xs px-0.5 ml-0.5"
+                  title="Cerrar pestaña"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          )
+        })}
+        <button
+          type="button"
+          onClick={() => crearNuevaTab()}
+          className="px-2 py-1 text-xs font-bold rounded-lg text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors cursor-pointer"
+          title="Abrir nueva venta en paralelo [+]"
+        >
+          +
+        </button>
+      </div>
+
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
         <h2 className="font-bold text-gray-900 dark:text-gray-100 text-sm sm:text-base">Ticket</h2>

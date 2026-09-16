@@ -609,6 +609,93 @@ export function ProveedoresPage() {
     setRenglones(renglones.filter((_, i) => i !== index))
   }
 
+  // Odoo ERP: Auto-reordering rules (Punto de pedido automático según stock mínimo)
+  const handleCalcularPuntoPedido = () => {
+    const productosBajoStock = productos.filter(
+      (p) => p.activo && p.stock_minimo > 0 && p.stock_actual <= p.stock_minimo
+    )
+
+    if (productosBajoStock.length === 0) {
+      toast('No hay productos con stock igual o inferior al punto de pedido mínimo', {
+        icon: 'i',
+      })
+      return
+    }
+
+    const nuevosRenglones: RenglonCompra[] = productosBajoStock.map((prod) => {
+      // Reposición sugerida: Llevar stock al doble del mínimo
+      const reposicionSugerida = Math.max(1, prod.stock_minimo * 2 - Math.max(0, prod.stock_actual))
+      const costo = prod.precio_costo || 0
+      return {
+        producto_id: prod.id,
+        producto: prod,
+        cantidad: reposicionSugerida,
+        precio_costo_unitario: costo,
+        subtotal: reposicionSugerida * costo,
+      }
+    })
+
+    // Si ya había productos en el remito, unificamos evitando duplicados
+    const mapaActual = new Map(renglones.map((r) => [r.producto_id, r]))
+    nuevosRenglones.forEach((nr) => {
+      if (mapaActual.has(nr.producto_id)) {
+        const existente = mapaActual.get(nr.producto_id)!
+        mapaActual.set(nr.producto_id, {
+          ...existente,
+          cantidad: Math.max(existente.cantidad, nr.cantidad),
+          subtotal: Math.max(existente.cantidad, nr.cantidad) * existente.precio_costo_unitario,
+        })
+      } else {
+        mapaActual.set(nr.producto_id, nr)
+      }
+    })
+
+    const listaFinal = Array.from(mapaActual.values())
+    setRenglones(listaFinal)
+    toast.success(
+      `Punto de pedido calculado: ${productosBajoStock.length} artículos agregados al remito`
+    )
+  }
+
+  // Odoo ERP: Generador de Orden de Compra por WhatsApp
+  const handleEnviarPedidoWhatsApp = () => {
+    if (renglones.length === 0) {
+      toast.error('Agregá al menos un artículo para generar el pedido')
+      return
+    }
+
+    const prov = proveedores.find((p) => p.id === compraProveedorId)
+    const lineas = renglones.map(
+      (r) => `- ${r.producto.descripcion}: ${r.cantidad} u.`
+    )
+
+    const mensaje =
+      `*PEDIDO DE REPOSICIÓN*\n` +
+      `Proveedor: ${prov?.nombre || 'General'}\n` +
+      `Fecha: ${new Date().toLocaleDateString('es-AR')}\n\n` +
+      `*Artículos solicitados:*\n` +
+      lineas.join('\n') +
+      `\n\n*Total estimado:* ${formatPrecio(totalCompraCalculado)}\n` +
+      `*Solicitado por:* ${usuario?.nombre || 'KioskoPOS'}`
+
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(mensaje)
+    }
+
+    let telefonoLimpio = prov?.telefono ? prov.telefono.replace(/[^0-9]/g, '') : ''
+    if (telefonoLimpio && !telefonoLimpio.startsWith('54') && telefonoLimpio.length <= 11) {
+      // Formato Argentina: 549...
+      telefonoLimpio = `549${telefonoLimpio}`
+    }
+
+    const waUrl = telefonoLimpio
+      ? `https://wa.me/${telefonoLimpio}?text=${encodeURIComponent(mensaje)}`
+      : `https://wa.me/?text=${encodeURIComponent(mensaje)}`
+
+    window.open(waUrl, '_blank')
+    toast.success('Pedido copiado al portapapeles y WhatsApp abierto')
+  }
+
   const handleIniciarCompraAProveedor = (p: Proveedor) => {
     setCompraProveedorId(p.id)
     setTabActiva('nueva_compra')
@@ -1307,18 +1394,39 @@ export function ProveedoresPage() {
           <div className="lg:col-span-2 space-y-4">
             <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col justify-between min-h-[420px]">
               <div>
-                <div className="flex justify-between items-center border-b border-gray-200 dark:border-gray-700 pb-2 mb-3">
+                <div className="flex flex-wrap justify-between items-center gap-2 border-b border-gray-200 dark:border-gray-700 pb-2 mb-3">
                   <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
                     Artículos en el Remito ({renglones.length})
                   </h2>
-                  {renglones.length > 0 && (
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={() => setRenglones([])}
-                      className="text-xs text-red-600 hover:underline"
+                      type="button"
+                      onClick={handleCalcularPuntoPedido}
+                      className="px-2.5 py-1 text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded-lg border border-indigo-200 dark:border-indigo-800 transition-colors cursor-pointer"
+                      title="Calcular automáticamente reposición de productos que llegaron a su stock mínimo"
                     >
-                      Vaciar lista
+                      Punto de Pedido Auto
                     </button>
-                  )}
+                    {renglones.length > 0 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleEnviarPedidoWhatsApp}
+                          className="px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 rounded-lg border border-emerald-200 dark:border-emerald-800 transition-colors cursor-pointer"
+                          title="Enviar orden de compra directa al WhatsApp del proveedor"
+                        >
+                          WhatsApp Pedido
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRenglones([])}
+                          className="text-xs text-red-600 hover:underline cursor-pointer"
+                        >
+                          Vaciar lista
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 {renglones.length === 0 ? (

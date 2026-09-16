@@ -15,6 +15,10 @@ ALTER TABLE public.productos
 
 CREATE INDEX IF NOT EXISTS idx_productos_plu_balanza ON public.productos(kiosco_id, plu_balanza);
 
+-- 1b. ACTUALIZAR TABLA CLIENTES CON PUNTOS DE FIDELIZACIÓN (ODOO ERP)
+ALTER TABLE public.clientes
+  ADD COLUMN IF NOT EXISTS puntos_fidelidad NUMERIC DEFAULT 0;
+
 -- 2. TABLA DE LOTES Y VENCIMIENTOS (FIFO / FEFO)
 CREATE TABLE IF NOT EXISTS public.lotes_producto (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -42,19 +42,34 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
     vaciarCarrito,
   } = useCartStore()
 
-  const { clientes, cargarClientes, imputarCargoVenta } = useClienteStore()
+  const {
+    clientes,
+    cargarClientes,
+    imputarCargoVenta,
+    sumarPuntosCliente,
+    canjearPuntosCliente,
+  } = useClienteStore()
   const { config: afipConfig, emitirFacturaVenta, cargarConfiguracion } = useAFIPStore()
   const [clienteSeleccionadoId, setClienteSeleccionadoId] = useState<string>('')
   const [busquedaCliente, setBusquedaCliente] = useState<string>('')
+  const [mostrarBuscadorCliente, setMostrarBuscadorCliente] = useState<boolean>(false)
+  const [canjearPuntos, setCanjearPuntos] = useState<boolean>(false)
 
   const [emitirFiscal, setEmitirFiscal] = useState(false)
   const [tipoDocReceptor, setTipoDocReceptor] = useState<TipoDocumentoAFIP>(99)
   const [nroDocReceptor, setNroDocReceptor] = useState<string>('')
 
-  const total = totalMonto()
+  const totalBase = totalMonto()
   const subtotal = subtotalMonto()
   const ajuste = montoAjuste()
   const tieneAjuste = tipoAjuste !== 'NINGUNO'
+
+  const clienteSeleccionado = clientes.find((c) => c.id === clienteSeleccionadoId)
+  const puntosDisponibles = clienteSeleccionado?.puntos_fidelidad || 0
+  const descuentoPuntos = canjearPuntos && puntosDisponibles > 0
+    ? Math.min(puntosDisponibles, Math.round(totalBase))
+    : 0
+  const total = Math.max(0, totalBase - descuentoPuntos)
 
   const [medioPago, setMedioPago] = useState<MedioPago>('EFECTIVO')
   const [pagaCon, setPagaCon] = useState<string>('')
@@ -86,8 +101,6 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       (c.nombre.toLowerCase().includes(busquedaCliente.toLowerCase()) ||
         (c.dni_cuit && c.dni_cuit.includes(busquedaCliente)))
   )
-
-  const clienteSeleccionado = clientes.find((c) => c.id === clienteSeleccionadoId)
 
   // Si el cliente seleccionado tiene DNI o CUIT, precargar en AFIP
   useEffect(() => {
@@ -160,18 +173,11 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       }
 
       const descAjuste = descripcionAjuste()
-      const clienteInfo =
-        medioPago === 'CUENTA_CORRIENTE' && clienteSeleccionado
-          ? `Cliente: ${clienteSeleccionado.nombre}`
-          : null
+      const clienteInfo = clienteSeleccionado ? `Cliente: ${clienteSeleccionado.nombre}` : null
+      const notaCanje = descuentoPuntos > 0 ? `Canje fidelidad: -${formatPrecio(descuentoPuntos)} (${descuentoPuntos} pts)` : null
 
-      const notasBase = descAjuste
-        ? (referencia ? `${descAjuste} · ${referencia}` : descAjuste)
-        : (referencia || null)
-
-      const notasFinal = clienteInfo
-        ? (notasBase ? `${clienteInfo} · ${notasBase}` : clienteInfo)
-        : notasBase
+      const notasBase = [descAjuste, referencia, notaCanje].filter(Boolean).join(' · ')
+      const notasFinal = [clienteInfo, notasBase].filter(Boolean).join(' · ') || null
 
       // Advertencia en consola/log si algún producto tiene stock insuficiente
       const productosSinStock = items.filter(
@@ -338,7 +344,26 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         await imputarCargoVenta(clienteSeleccionadoId, ventaId, total, notasFinal || undefined)
       }
 
-      // 5. Si AFIP está habilitado y se solicitó factura electrónica, emitirla
+      // 5b. Manejo de Puntos de Fidelización (Odoo ERP)
+      const puntosGanados = clienteSeleccionado ? Math.floor(total / 100) : 0
+      if (clienteSeleccionado) {
+        if (descuentoPuntos > 0) {
+          try {
+            await canjearPuntosCliente(clienteSeleccionado.id, descuentoPuntos)
+          } catch (errCanje) {
+            console.warn('Error al canjear puntos de fidelidad:', errCanje)
+          }
+        }
+        if (puntosGanados > 0) {
+          try {
+            await sumarPuntosCliente(clienteSeleccionado.id, puntosGanados)
+          } catch (errSuma) {
+            console.warn('Error al sumar puntos de fidelidad:', errSuma)
+          }
+        }
+      }
+
+      // 5c. Si AFIP está habilitado y se solicitó factura electrónica, emitirla
       let afipTicketData: TicketData['afip'] = undefined
 
       if (emitirFiscal && afipConfig?.habilitado) {
@@ -407,12 +432,20 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         clienteTelefono: clienteSeleccionado?.telefono || null,
         notas: notasFinal,
         afip: afipTicketData,
+        puntosFidelidad: clienteSeleccionado
+          ? {
+              ganados: puntosGanados,
+              canjeados: descuentoPuntos > 0 ? descuentoPuntos : undefined,
+              saldoTotal: Math.max(0, puntosDisponibles - descuentoPuntos + puntosGanados),
+            }
+          : undefined,
       }
 
+      const msgPuntos = clienteSeleccionado && puntosGanados > 0 ? ` (+${puntosGanados} pts)` : ''
       toast.success(
         medioPago === 'CUENTA_CORRIENTE'
-          ? `Venta a cuenta corriente registrada — ${formatPrecio(total)}`
-          : `Venta registrada — ${formatPrecio(total)}`
+          ? `Venta a cuenta corriente registrada — ${formatPrecio(total)}${msgPuntos}`
+          : `Venta registrada — ${formatPrecio(total)}${msgPuntos}`
       )
       if (medioPago === 'EFECTIVO' && vuelto > 0) {
         toast(`Vuelto: ${formatPrecio(vuelto)}`, { duration: 5000 })
@@ -455,6 +488,8 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
     setReferencia('')
     setClienteSeleccionadoId('')
     setBusquedaCliente('')
+    setCanjearPuntos(false)
+    setMostrarBuscadorCliente(false)
     setEmitirFiscal(false)
     setTipoDocReceptor(99)
     setNroDocReceptor('')
@@ -474,6 +509,12 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
               <span className={tipoAjuste.startsWith('DESCUENTO') ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-blue-600 dark:text-blue-400 font-semibold'}>
                 {descripcionAjuste()} ({tipoAjuste.startsWith('DESCUENTO') ? '-' : '+'}{formatPrecio(Math.abs(ajuste))})
               </span>
+            </div>
+          )}
+          {descuentoPuntos > 0 && (
+            <div className="flex justify-between items-center px-4 text-xs text-emerald-600 dark:text-emerald-400 pb-1 border-b border-indigo-100 dark:border-indigo-800/40 font-semibold">
+              <span>Canje de puntos fidelidad ({descuentoPuntos} pts):</span>
+              <span>-{formatPrecio(descuentoPuntos)}</span>
             </div>
           )}
           <div className="text-center pt-0.5">
@@ -505,13 +546,40 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           </div>
         </div>
 
-        {/* Cuenta Corriente: Selección de cliente */}
-        {medioPago === 'CUENTA_CORRIENTE' && (
+        {/* Botón rápido para asignar cliente en ventas comunes */}
+        {medioPago !== 'CUENTA_CORRIENTE' && !clienteSeleccionado && (
+          <div className="flex justify-end -mt-2">
+            <button
+              type="button"
+              onClick={() => setMostrarBuscadorCliente(!mostrarBuscadorCliente)}
+              className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+            >
+              {mostrarBuscadorCliente ? 'Ocultar asignación de cliente' : '+ Asignar Cliente / Puntos de Fidelidad'}
+            </button>
+          </div>
+        )}
+
+        {/* Panel de Cliente, Puntos y Cuenta Corriente */}
+        {(medioPago === 'CUENTA_CORRIENTE' || mostrarBuscadorCliente || clienteSeleccionado) && (
           <div className="space-y-3 p-3.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl">
-            <div className="space-y-1">
+            <div className="flex justify-between items-center">
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                Seleccionar Cliente para fiar / imputar deuda *
+                {medioPago === 'CUENTA_CORRIENTE'
+                  ? 'Seleccionar Cliente para fiar / imputar deuda *'
+                  : 'Cliente asignado a la venta (Fidelización / AFIP)'}
               </label>
+              {medioPago !== 'CUENTA_CORRIENTE' && !clienteSeleccionado && (
+                <button
+                  type="button"
+                  onClick={() => setMostrarBuscadorCliente(false)}
+                  className="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              )}
+            </div>
+
+            {!clienteSeleccionado && (
               <input
                 type="text"
                 placeholder="Buscar cliente por nombre o DNI..."
@@ -519,80 +587,140 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
                 onChange={(e) => setBusquedaCliente(e.target.value)}
                 className="w-full px-3 py-2 text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400"
               />
-            </div>
+            )}
 
-            {clientesFiltrados.length === 0 ? (
-              <div className="text-center py-4 text-xs text-gray-400 dark:text-gray-500">
-                {clientes.length === 0
-                  ? 'Aún no hay clientes registrados. Podés dar de alta clientes en la sección Clientes.'
-                  : 'No se encontraron clientes coincidentes con la búsqueda.'}
-              </div>
-            ) : (
-              <div className="max-h-40 overflow-y-auto space-y-1.5 pr-0.5">
-                {clientesFiltrados.map((cli) => {
-                  const isSelected = cli.id === clienteSeleccionadoId
-                  return (
-                    <button
-                      key={cli.id}
-                      type="button"
-                      onClick={() => setClienteSeleccionadoId(cli.id)}
-                      className={`w-full text-left p-2.5 rounded-lg border text-xs transition-all flex items-center justify-between ${
-                        isSelected
-                          ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-900 dark:text-indigo-200 font-semibold shadow-xs'
-                          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                      }`}
-                    >
-                      <div>
-                        <p className="font-semibold text-gray-900 dark:text-gray-100">{cli.nombre}</p>
-                        {cli.dni_cuit && <p className="text-[10px] text-gray-400">DNI/CUIT: {cli.dni_cuit}</p>}
-                        {cli.telefono && <p className="text-[10px] text-gray-400">Tel: {cli.telefono}</p>}
-                      </div>
-                      <div className="text-right flex-shrink-0 ml-2">
-                        <p
-                          className={`font-bold ${
-                            cli.saldo_deudor > 0
-                              ? 'text-amber-600 dark:text-amber-400'
-                              : 'text-emerald-600 dark:text-emerald-400'
+            {!clienteSeleccionado && (
+              <>
+                {clientesFiltrados.length === 0 ? (
+                  <div className="text-center py-4 text-xs text-gray-400 dark:text-gray-500">
+                    {clientes.length === 0
+                      ? 'Aún no hay clientes registrados. Podés dar de alta clientes en la sección Clientes.'
+                      : 'No se encontraron clientes coincidentes con la búsqueda.'}
+                  </div>
+                ) : (
+                  <div className="max-h-40 overflow-y-auto space-y-1.5 pr-0.5">
+                    {clientesFiltrados.map((cli) => {
+                      const isSelected = cli.id === clienteSeleccionadoId
+                      return (
+                        <button
+                          key={cli.id}
+                          type="button"
+                          onClick={() => {
+                            setClienteSeleccionadoId(cli.id)
+                            setCanjearPuntos(false)
+                          }}
+                          className={`w-full text-left p-2.5 rounded-lg border text-xs transition-all flex items-center justify-between cursor-pointer ${
+                            isSelected
+                              ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-900 dark:text-indigo-200 font-semibold shadow-xs'
+                              : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                           }`}
                         >
-                          Debe: {formatPrecio(cli.saldo_deudor)}
-                        </p>
-                        {cli.limite_credito > 0 ? (
-                          <p className="text-[10px] text-gray-400">Límite: {formatPrecio(cli.limite_credito)}</p>
-                        ) : (
-                          <p className="text-[10px] text-gray-400">Sin límite</p>
-                        )}
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
+                          <div>
+                            <p className="font-semibold text-gray-900 dark:text-gray-100">{cli.nombre}</p>
+                            {cli.dni_cuit && <p className="text-[10px] text-gray-400">DNI/CUIT: {cli.dni_cuit}</p>}
+                            {cli.puntos_fidelidad ? (
+                              <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
+                                Puntos: {cli.puntos_fidelidad} pts
+                              </p>
+                            ) : null}
+                          </div>
+                          <div className="text-right flex-shrink-0 ml-2">
+                            <p
+                              className={`font-bold ${
+                                cli.saldo_deudor > 0
+                                  ? 'text-amber-600 dark:text-amber-400'
+                                  : 'text-emerald-600 dark:text-emerald-400'
+                              }`}
+                            >
+                              Debe: {formatPrecio(cli.saldo_deudor)}
+                            </p>
+                            {cli.limite_credito > 0 ? (
+                              <p className="text-[10px] text-gray-400">Límite: {formatPrecio(cli.limite_credito)}</p>
+                            ) : (
+                              <p className="text-[10px] text-gray-400">Sin límite</p>
+                            )}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </>
             )}
 
             {clienteSeleccionado && (
-              <div className="pt-2 border-t border-gray-200 dark:border-gray-700 text-xs space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-gray-500 dark:text-gray-400">Cliente elegido:</span>
-                  <span className="font-bold text-gray-900 dark:text-gray-100">{clienteSeleccionado.nombre}</span>
+              <div className="pt-2 border-t border-gray-200 dark:border-gray-700 text-xs space-y-2">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <span className="text-gray-500 dark:text-gray-400">Cliente: </span>
+                    <span className="font-bold text-gray-900 dark:text-gray-100">{clienteSeleccionado.nombre}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setClienteSeleccionadoId('')
+                      setCanjearPuntos(false)
+                    }}
+                    className="text-[11px] text-red-500 hover:underline cursor-pointer"
+                  >
+                    Cambiar
+                  </button>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500 dark:text-gray-400">Saldo deudor actual:</span>
-                  <span className="font-medium text-gray-800 dark:text-gray-200">
-                    {formatPrecio(clienteSeleccionado.saldo_deudor)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500 dark:text-gray-400">Nuevo saldo estimado:</span>
-                  <span className="font-bold text-indigo-600 dark:text-indigo-400">
-                    {formatPrecio(clienteSeleccionado.saldo_deudor + total)}
-                  </span>
-                </div>
-                {clienteSeleccionado.limite_credito > 0 &&
-                  clienteSeleccionado.saldo_deudor + total > clienteSeleccionado.limite_credito && (
-                    <div className="p-2 rounded bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-300 font-medium">
-                      Atención: El nuevo saldo superará el límite de crédito ({formatPrecio(clienteSeleccionado.limite_credito)}).
-                    </div>
+
+                {/* Programa de Fidelización Odoo ERP */}
+                <div className="p-2.5 bg-indigo-50/80 dark:bg-indigo-950/40 rounded-lg border border-indigo-100 dark:border-indigo-900/60 space-y-1.5">
+                  <div className="flex justify-between items-center text-indigo-950 dark:text-indigo-200">
+                    <span className="font-semibold text-xs">Puntos de fidelidad acumulados:</span>
+                    <span className="font-bold text-xs">
+                      {puntosDisponibles} pts (${puntosDisponibles} de saldo)
+                    </span>
+                  </div>
+
+                  {puntosDisponibles > 0 ? (
+                    <label className="flex items-center gap-2 pt-1 border-t border-indigo-200/50 dark:border-indigo-800/50 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={canjearPuntos}
+                        onChange={(e) => setCanjearPuntos(e.target.checked)}
+                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="text-[11px] text-indigo-900 dark:text-indigo-300 font-medium">
+                        Canjear {Math.min(puntosDisponibles, Math.round(totalBase))} pts por {formatPrecio(Math.min(puntosDisponibles, Math.round(totalBase)))} de descuento
+                      </span>
+                    </label>
+                  ) : (
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                      El cliente no tiene puntos para canjear en esta compra.
+                    </p>
                   )}
+
+                  <p className="text-[10px] text-indigo-700 dark:text-indigo-400 font-medium">
+                    Esta compra acumulará +{Math.floor(total / 100)} pts (1 pt cada $100)
+                  </p>
+                </div>
+
+                {medioPago === 'CUENTA_CORRIENTE' && (
+                  <div className="pt-1 space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">Saldo deudor actual:</span>
+                      <span className="font-medium text-gray-800 dark:text-gray-200">
+                        {formatPrecio(clienteSeleccionado.saldo_deudor)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">Nuevo saldo estimado:</span>
+                      <span className="font-bold text-indigo-600 dark:text-indigo-400">
+                        {formatPrecio(clienteSeleccionado.saldo_deudor + total)}
+                      </span>
+                    </div>
+                    {clienteSeleccionado.limite_credito > 0 &&
+                      clienteSeleccionado.saldo_deudor + total > clienteSeleccionado.limite_credito && (
+                        <div className="p-2 rounded bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-300 font-medium">
+                          Atención: El nuevo saldo superará el límite de crédito ({formatPrecio(clienteSeleccionado.limite_credito)}).
+                        </div>
+                      )}
+                  </div>
+                )}
               </div>
             )}
           </div>

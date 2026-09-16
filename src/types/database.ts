@@ -282,6 +282,7 @@ export interface Cliente {
   email: string | null
   limite_credito: number
   saldo_deudor: number
+  puntos_fidelidad?: number
   activo: boolean
   notas: string | null
   fecha_creacion: string
