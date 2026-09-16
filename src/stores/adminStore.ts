@@ -53,6 +53,7 @@ interface AdminState {
   obtenerHistorialPagos: (suscripcionId: string) => Promise<PagoSuscripcion[]>
   actualizarPrecioPlan: (planId: string, nuevoPrecio: number, nuevoNombre?: string) => Promise<boolean>
   crearPlan: (nombre: string, precioMensual: number, maxUsuarios?: number, descripcion?: string) => Promise<boolean>
+  eliminarPlan: (planId: string) => Promise<boolean>
 }
 
 export const useAdminStore = create<AdminState>((set, get) => ({
@@ -619,6 +620,45 @@ export const useAdminStore = create<AdminState>((set, get) => ({
     } catch (err) {
       console.error('Error creando plan:', err)
       toast.error('Error al crear el nuevo plan')
+      set({ cargandoAccion: false })
+      return false
+    }
+  },
+
+  eliminarPlan: async (planId: string) => {
+    set({ cargandoAccion: true })
+    try {
+      // 1. Verificar si hay kioscos vinculados actualmente a este plan
+      const kioscosVinculados = get().kioscos.filter((k) => k.plan_id === planId)
+      if (kioscosVinculados.length > 0) {
+        toast.error(
+          `No se puede eliminar este plan: tiene ${kioscosVinculados.length} kiosco(s) asignado(s). Reasigna los comercios antes de darlo de baja.`
+        )
+        set({ cargandoAccion: false })
+        return false
+      }
+
+      // 2. Intentar eliminación física de la tabla planes
+      const { error: deleteError } = await supabase.from('planes').delete().eq('id', planId)
+
+      if (deleteError) {
+        // Si no se puede borrar físicamente por historial de suscripciones pasadas, marcar como inactivo (soft-delete)
+        console.warn('No se pudo borrar físicamente el plan (posible historial previo), procediendo a desactivarlo:', deleteError)
+        const { error: updateError } = await supabase
+          .from('planes')
+          .update({ activo: false })
+          .eq('id', planId)
+
+        if (updateError) throw updateError
+      }
+
+      toast.success('Plan eliminado correctamente')
+      await get().cargarDatosAdmin()
+      set({ cargandoAccion: false })
+      return true
+    } catch (err) {
+      console.error('Error al eliminar plan:', err)
+      toast.error('Error al eliminar el plan')
       set({ cargandoAccion: false })
       return false
     }

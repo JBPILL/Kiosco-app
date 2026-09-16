@@ -26,6 +26,7 @@ export function SuperAdminPage() {
     obtenerHistorialPagos,
     actualizarPrecioPlan,
     crearPlan,
+    eliminarPlan,
   } = useAdminStore()
 
   // Configuración de cobro y soporte centralizado
@@ -151,9 +152,9 @@ export function SuperAdminPage() {
     }
   }
 
-  // Filtrar planes comerciales (excluye fila interna de configuración de sistema)
+  // Filtrar planes comerciales (excluye fila interna de configuración de sistema y planes dados de baja)
   const planesComerciales = useMemo(
-    () => planes.filter((p) => p.nombre !== '__CONFIG_SISTEMA__'),
+    () => planes.filter((p) => p.nombre !== '__CONFIG_SISTEMA__' && p.activo !== false),
     [planes]
   )
 
@@ -425,6 +426,22 @@ export function SuperAdminPage() {
       setNuevoPlanPrecio(35000)
       setNuevoPlanDesc('')
     }
+  }
+
+  const handleEliminarPlan = async (plan: (typeof planesComerciales)[0], kioscosEnPlan: number) => {
+    if (kioscosEnPlan > 0) {
+      toast.error(
+        `No se puede eliminar el plan "${plan.nombre}": tiene ${kioscosEnPlan} kiosco(s) asignado(s). Reasigna los comercios a otro plan antes de darlo de baja.`
+      )
+      return
+    }
+
+    const confirmar = window.confirm(
+      `¿Deseás eliminar el plan "${plan.nombre}"? Esta acción lo quitará de la lista de planes disponibles.`
+    )
+    if (!confirmar) return
+
+    await eliminarPlan(plan.id)
   }
 
   const handleVerPagos = async (kiosco: KioscoAdminView) => {
@@ -1973,6 +1990,32 @@ export function SuperAdminPage() {
                             <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-semibold">
                               {kioscosEnPlan} {kioscosEnPlan === 1 ? 'kiosco activo' : 'kioscos activos'}
                             </span>
+                            <button
+                              type="button"
+                              onClick={() => handleEliminarPlan(p, kioscosEnPlan)}
+                              disabled={cargandoAccion}
+                              className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                              title={
+                                kioscosEnPlan > 0
+                                  ? `No se puede eliminar: tiene ${kioscosEnPlan} kiosco(s) asignado(s)`
+                                  : `Eliminar plan "${p.nombre}"`
+                              }
+                            >
+                              <svg
+                                className="w-4 h-4"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                <line x1="10" y1="11" x2="10" y2="17" />
+                                <line x1="14" y1="11" x2="14" y2="17" />
+                              </svg>
+                            </button>
                           </div>
                           {p.descripcion && (
                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
