@@ -101,7 +101,16 @@ export function useProducts() {
 
         // Preservar productos creados localmente que aún no figuran en Supabase
         const remoteIds = new Set(data.map((d) => d.id))
-        const soloLocales = prev.filter((p) => !remoteIds.has(p.id))
+        let soloLocales = prev.filter((p) => !remoteIds.has(p.id))
+
+        if (categoriaFiltro) {
+          soloLocales = soloLocales.filter((p) => p.categoria_id === categoriaFiltro)
+        }
+        if (busqueda) {
+          const q = busqueda.toLowerCase().trim()
+          soloLocales = soloLocales.filter((p) => p.descripcion.toLowerCase().includes(q))
+        }
+
         const total = [...soloLocales, ...merged]
 
         if (!busqueda && !categoriaFiltro) {

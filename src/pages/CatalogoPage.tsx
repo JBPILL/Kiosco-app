@@ -56,7 +56,7 @@ export function CatalogoPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-3.5">
+    <div className="max-w-6xl mx-auto space-y-3.5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">Catálogo de Productos</h1>

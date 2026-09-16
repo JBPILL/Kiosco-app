@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import type { Producto, Categoria } from '../../types/database'
 import { formatPrecio, nivelStock } from '../../lib/utils'
 import { SearchInput } from '../ui/SearchInput'
@@ -32,6 +32,8 @@ interface ProductTableProps {
   cargando: boolean
 }
 
+type SortField = 'descripcion' | 'categoria' | 'stock' | 'precio_venta' | 'precio_costo'
+
 export function ProductTable({
   productos,
   categorias,
@@ -46,6 +48,79 @@ export function ProductTable({
   cargando,
 }: ProductTableProps) {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [sortField, setSortField] = useState<SortField>('categoria')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }
+
+  const renderSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <span className="text-gray-300 dark:text-gray-600 text-xs font-mono select-none">↕</span>
+    }
+    return (
+      <span className="text-indigo-600 dark:text-indigo-400 text-xs font-bold font-mono select-none">
+        {sortDirection === 'asc' ? '↑' : '↓'}
+      </span>
+    )
+  }
+
+  const productosFiltradosYOrdenados = useMemo(() => {
+    // 1. Filtrar por categoría
+    let list = productos
+    if (categoriaFiltro) {
+      list = list.filter(
+        (p) => p.categoria_id === categoriaFiltro || p.categoria?.id === categoriaFiltro
+      )
+    }
+
+    // 2. Filtrar por búsqueda
+    if (busqueda && busqueda.trim()) {
+      const q = busqueda.toLowerCase().trim()
+      list = list.filter((p) => {
+        const desc = (p.descripcion || '').toLowerCase()
+        const cod = (p.codigo_barras || '').toLowerCase()
+        const cat = (p.categoria?.nombre || '').toLowerCase()
+        return desc.includes(q) || cod.includes(q) || cat.includes(q)
+      })
+    }
+
+    // 3. Ordenar
+    return [...list].sort((a, b) => {
+      let valA: any = ''
+      let valB: any = ''
+
+      if (sortField === 'categoria') {
+        valA = a.categoria?.nombre?.toLowerCase() || 'zzz'
+        valB = b.categoria?.nombre?.toLowerCase() || 'zzz'
+        if (valA === valB) {
+          return a.descripcion.localeCompare(b.descripcion)
+        }
+      } else if (sortField === 'descripcion') {
+        valA = a.descripcion.toLowerCase()
+        valB = b.descripcion.toLowerCase()
+      } else if (sortField === 'stock') {
+        valA = a.stock_actual
+        valB = b.stock_actual
+      } else if (sortField === 'precio_venta') {
+        valA = a.precio_venta
+        valB = b.precio_venta
+      } else if (sortField === 'precio_costo') {
+        valA = a.precio_costo
+        valB = b.precio_costo
+      }
+
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [productos, categoriaFiltro, busqueda, sortField, sortDirection])
 
   return (
     <div>
@@ -82,15 +157,31 @@ export function ProductTable({
           <div className="animate-spin h-7 w-7 border-3 border-indigo-600 dark:border-indigo-400 border-t-transparent rounded-full mx-auto mb-2" />
           <span className="text-xs">Cargando productos...</span>
         </div>
-      ) : productos.length === 0 ? (
+      ) : productosFiltradosYOrdenados.length === 0 ? (
         <div className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm">
-          <p>{busqueda ? 'No se encontraron productos coincidentes' : 'No hay productos en el catálogo.'}</p>
+          <p>
+            {busqueda || categoriaFiltro
+              ? 'No se encontraron productos coincidentes con los filtros seleccionados.'
+              : 'No hay productos en el catálogo.'}
+          </p>
+          {(busqueda || categoriaFiltro) && (
+            <button
+              type="button"
+              onClick={() => {
+                onBusquedaChange('')
+                onCategoriaChange(null)
+              }}
+              className="mt-2 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+            >
+              Limpiar filtros
+            </button>
+          )}
         </div>
       ) : (
         <>
           {/* VISTA MOBILE: Lista compacta tipo tarjeta (igual a StockPage) */}
           <div className="divide-y divide-gray-100 dark:divide-gray-700 sm:hidden">
-            {productos.map((prod) => {
+            {productosFiltradosYOrdenados.map((prod) => {
               const nivel = nivelStock(prod.stock_actual, prod.stock_minimo)
               return (
                 <div key={prod.id} className="py-2.5 flex items-center justify-between gap-2">
@@ -106,11 +197,11 @@ export function ProductTable({
                       )}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${stockColors[nivel]}`}>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap ${stockColors[nivel]}`}>
                         Stock: {prod.stock_actual}
                       </span>
                       {prod.categoria && (
-                        <span className="inline-flex items-center gap-1 truncate max-w-[130px]">
+                        <span className="inline-flex items-center gap-1 truncate max-w-[140px] whitespace-nowrap">
                           <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: prod.categoria.color }} />
                           <span className="truncate">{prod.categoria.nombre}</span>
                         </span>
@@ -119,7 +210,7 @@ export function ProductTable({
                   </div>
 
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                    <span className="font-bold text-sm text-indigo-600 dark:text-indigo-400">
+                    <span className="font-bold text-sm text-indigo-600 dark:text-indigo-400 font-mono">
                       {formatPrecio(prod.precio_venta)}
                     </span>
                     <div className="flex items-center gap-1.5 flex-wrap justify-end">
@@ -169,28 +260,72 @@ export function ProductTable({
             })}
           </div>
 
-          {/* VISTA DESKTOP: Tabla limpia y fluida (sin scrollbar horizontal forzado) */}
-          <div className="hidden sm:block overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+          {/* VISTA DESKTOP: Tabla limpia y fluida */}
+          <div className="hidden sm:block overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 shadow-2xs">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
                 <tr>
-                  <th className="px-3 py-2.5 text-left font-medium text-gray-600 dark:text-gray-300">Producto</th>
-                  <th className="px-3 py-2.5 text-left font-medium text-gray-600 dark:text-gray-300">Categoría</th>
-                  <th className="px-3 py-2.5 text-right font-medium text-gray-600 dark:text-gray-300">Costo</th>
-                  <th className="px-3 py-2.5 text-right font-medium text-gray-600 dark:text-gray-300">Venta</th>
-                  <th className="px-3 py-2.5 text-center font-medium text-gray-600 dark:text-gray-300">Stock</th>
-                  <th className="px-3 py-2.5 text-center font-medium text-gray-600 dark:text-gray-300">Favorito</th>
-                  <th className="px-3 py-2.5 text-center font-medium text-gray-600 dark:text-gray-300">Acciones</th>
+                  <th
+                    onClick={() => handleSort('descripcion')}
+                    className="px-3.5 py-2.5 text-left font-semibold text-gray-700 dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none transition-colors"
+                  >
+                    <div className="inline-flex items-center gap-1.5">
+                      <span>Producto</span>
+                      {renderSortIcon('descripcion')}
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => handleSort('categoria')}
+                    className="px-3.5 py-2.5 text-left font-semibold text-gray-700 dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none transition-colors whitespace-nowrap"
+                  >
+                    <div className="inline-flex items-center gap-1.5">
+                      <span>Categoría</span>
+                      {renderSortIcon('categoria')}
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => handleSort('stock')}
+                    className="px-3.5 py-2.5 text-center font-semibold text-gray-700 dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none transition-colors whitespace-nowrap"
+                  >
+                    <div className="inline-flex items-center justify-center gap-1.5">
+                      <span>Stock</span>
+                      {renderSortIcon('stock')}
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => handleSort('precio_venta')}
+                    className="px-3.5 py-2.5 text-right font-semibold text-gray-700 dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none transition-colors whitespace-nowrap"
+                  >
+                    <div className="inline-flex items-center justify-end gap-1.5">
+                      <span>Precio Venta</span>
+                      {renderSortIcon('precio_venta')}
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => handleSort('precio_costo')}
+                    className="px-3.5 py-2.5 text-right font-semibold text-gray-700 dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none transition-colors whitespace-nowrap"
+                  >
+                    <div className="inline-flex items-center justify-end gap-1.5">
+                      <span>Costo</span>
+                      {renderSortIcon('precio_costo')}
+                    </div>
+                  </th>
+                  <th className="px-3.5 py-2.5 text-center font-semibold text-gray-700 dark:text-gray-200 whitespace-nowrap">
+                    Favorito
+                  </th>
+                  <th className="px-3.5 py-2.5 text-center font-semibold text-gray-700 dark:text-gray-200 whitespace-nowrap">
+                    Acciones
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                {productos.map((prod) => {
+                {productosFiltradosYOrdenados.map((prod) => {
                   const nivel = nivelStock(prod.stock_actual, prod.stock_minimo)
                   return (
-                    <tr key={prod.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                      <td className="px-3 py-2.5">
+                    <tr key={prod.id} className="hover:bg-gray-50/80 dark:hover:bg-gray-700/40 transition-colors">
+                      <td className="px-3.5 py-2.5">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-medium text-gray-900 dark:text-gray-100">{prod.descripcion}</span>
+                          <span className="font-semibold text-gray-900 dark:text-gray-100">{prod.descripcion}</span>
                         </div>
                         {prod.codigo_barras && (
                           <span className="block text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5">
@@ -198,33 +333,33 @@ export function ProductTable({
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-3.5 py-2.5 whitespace-nowrap">
                         {prod.categoria ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 dark:bg-gray-700/80 text-gray-800 dark:text-gray-100 border border-gray-200/60 dark:border-gray-600/60 shadow-2xs whitespace-nowrap">
                             <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 shadow-2xs" style={{ backgroundColor: prod.categoria.color }} />
-                            <span>{prod.categoria.nombre}</span>
+                            <span className="whitespace-nowrap">{prod.categoria.nombre}</span>
                           </span>
                         ) : (
                           <span className="text-gray-400 dark:text-gray-500 text-xs">—</span>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-right text-gray-500 dark:text-gray-400 font-mono">
-                        {formatPrecio(prod.precio_costo)}
-                      </td>
-                      <td className="px-3 py-2.5 text-right font-bold text-gray-900 dark:text-gray-100 font-mono">
-                        {formatPrecio(prod.precio_venta)}
-                      </td>
-                      <td className="px-3 py-2.5 text-center">
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${stockColors[nivel]}`}>
+                      <td className="px-3.5 py-2.5 text-center whitespace-nowrap">
+                        <span className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${stockColors[nivel]}`}>
                           {prod.stock_actual} ({stockLabels[nivel]})
                         </span>
                       </td>
-                      <td className="px-3 py-2.5 text-center">
+                      <td className="px-3.5 py-2.5 text-right font-bold text-sm text-gray-900 dark:text-gray-100 font-mono whitespace-nowrap">
+                        {formatPrecio(prod.precio_venta)}
+                      </td>
+                      <td className="px-3.5 py-2.5 text-right text-xs text-gray-500 dark:text-gray-400 font-mono whitespace-nowrap">
+                        {formatPrecio(prod.precio_costo)}
+                      </td>
+                      <td className="px-3.5 py-2.5 text-center whitespace-nowrap">
                         <button
                           type="button"
                           onClick={() => onToggleFavorito(prod.id, prod.es_favorito)}
                           title={prod.es_favorito ? 'Quitar de favoritos del POS' : 'Marcar como favorito para acceso rápido en POS'}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
                             prod.es_favorito
                               ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
                               : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700'
@@ -244,7 +379,7 @@ export function ProductTable({
                           <span>{prod.es_favorito ? 'Favorito' : 'Marcar'}</span>
                         </button>
                       </td>
-                      <td className="px-3 py-2.5 text-center">
+                      <td className="px-3.5 py-2.5 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             type="button"
