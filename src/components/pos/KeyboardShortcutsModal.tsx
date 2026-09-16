@@ -25,7 +25,6 @@ const SHORTCUT_SECTIONS = [
       { key: '↑ / ↓ / ← / →', desc: 'Moverse por la grilla de productos' },
       { key: 'Enter / Espacio', desc: 'Agregar el producto enfocado al ticket' },
       { key: 'F4', desc: 'Abrir ventana de cobro (Cobrar ticket)' },
-      { key: 'F3 / Alt + S', desc: 'Abrir escáner de cámara' },
       { key: 'F8', desc: 'Ver ventas en espera' },
       { key: 'Escape', desc: 'Cerrar ventana emergente o cancelar' },
       { key: 'Lector USB', desc: 'Escanear en cualquier momento para agregar al ticket' },

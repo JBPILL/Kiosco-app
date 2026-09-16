@@ -442,8 +442,8 @@ export function StockPage() {
           <Button
             variant="secondary"
             onClick={() => setModalScannerOpen(true)}
-            className="text-xs sm:text-sm"
-            title="Escanear producto con la cámara del celular o webcam"
+            className="text-xs sm:text-sm sm:hidden"
+            title="Escanear producto con la cámara del celular"
           >
             Escanear Cámara
           </Button>
@@ -1072,7 +1072,7 @@ export function StockPage() {
               <button
                 type="button"
                 onClick={() => setModalScannerOpen(true)}
-                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 sm:hidden"
               >
                 Escanear con Cámara
               </button>

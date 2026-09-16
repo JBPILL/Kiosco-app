@@ -1,7 +1,6 @@
 import { useEffect, useRef, useMemo } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
-import { useThemeStore } from '../../stores/themeStore'
 import { usePwaStore } from '../../stores/pwaStore'
 
 interface SidebarProps {
@@ -18,14 +17,12 @@ const menuItems = [
   { path: '/stock',     label: 'Stock',          roles: ['DUEÑO'] },
   { path: '/proveedores', label: 'Proveedores',  roles: ['DUEÑO'] },
   { path: '/reportes',  label: 'Reportes',       roles: ['DUEÑO', 'VISOR'] },
-  { path: '/config',    label: 'Configuración',  roles: ['DUEÑO'] },
 ]
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const { usuario, logout } = useAuthStore()
-  const { tema, toggleTema } = useThemeStore()
   const { puedeInstalar, estaInstalado, instalarApp } = usePwaStore()
   const itemRefs = useRef<(HTMLAnchorElement | null)[]>([])
 
@@ -196,19 +193,25 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           ))}
         </nav>
 
-        {/* Toggle de tema */}
-        <div className="px-3 py-2 border-t border-gray-200 dark:border-gray-700">
-          <button
-            onClick={toggleTema}
-            className="flex items-center justify-between px-4 py-3 rounded-xl w-full min-h-[44px]
-              text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-hidden focus:bg-gray-100 dark:focus:bg-gray-700 transition-colors"
-          >
-            <span>Apariencia</span>
-            <span className="text-xs px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold">
-              {tema === 'dark' ? 'Modo oscuro' : 'Modo claro'}
-            </span>
-          </button>
-        </div>
+        {/* Enlace directo a Configuración */}
+        {(usuario?.rol === 'DUEÑO' || usuario?.es_superadmin) && (
+          <div className="px-3 py-1.5 border-t border-gray-200 dark:border-gray-700">
+            <NavLink
+              to="/config"
+              onClick={onClose}
+              className={({ isActive }) => `
+                flex items-center justify-between px-4 py-2.5 rounded-xl w-full text-sm font-medium transition-colors
+                ${
+                  isActive
+                    ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-semibold'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100'
+                }
+              `}
+            >
+              <span>Configuración</span>
+            </NavLink>
+          </div>
+        )}
 
         {/* Enlace directo a Soporte y Ayuda */}
         <div className="px-3 py-1.5 border-t border-gray-100 dark:border-gray-700/50">
