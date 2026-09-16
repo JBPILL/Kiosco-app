@@ -54,7 +54,7 @@ export function MainLayout() {
               {configAdmin.titular_cuenta && (
                 <div>
                   <span className="text-gray-400 block text-[11px]">Titular de la cuenta:</span>
-                  <span className="font-semibold text-white">{configAdmin.titular_cuenta}</span>
+                  <span className="font-semibold text-white break-words block text-xs">{configAdmin.titular_cuenta}</span>
                 </div>
               )}
 
@@ -62,7 +62,7 @@ export function MainLayout() {
                 <div className="flex items-center justify-between gap-2 pt-0.5">
                   <div className="min-w-0">
                     <span className="text-gray-400 block text-[11px]">Alias Mercado Pago:</span>
-                    <span className="font-bold text-sky-400 truncate block">{configAdmin.alias_mp}</span>
+                    <span className="font-bold text-sky-400 break-words block text-xs select-all">{configAdmin.alias_mp}</span>
                   </div>
                   <button
                     type="button"
@@ -78,7 +78,7 @@ export function MainLayout() {
                 <div className="flex items-center justify-between gap-2 pt-0.5">
                   <div className="min-w-0">
                     <span className="text-gray-400 block text-[11px]">CBU / CVU Bancario:</span>
-                    <span className="font-mono text-gray-200 text-[11px] truncate block">{configAdmin.cbu_banco}</span>
+                    <span className="font-mono text-gray-200 text-xs break-all select-all block leading-tight">{configAdmin.cbu_banco}</span>
                   </div>
                   <button
                     type="button"

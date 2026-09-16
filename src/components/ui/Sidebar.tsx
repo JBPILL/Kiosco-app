@@ -214,7 +214,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             to="/soporte"
             onClick={onClose}
             className={({ isActive }) => `
-              flex items-center justify-between px-4 py-2.5 rounded-xl w-full text-xs font-semibold transition-colors
+              flex items-center px-4 py-2.5 rounded-xl w-full text-xs font-semibold transition-colors
               ${
                 isActive
                   ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
@@ -222,8 +222,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               }
             `}
           >
-            <span>Mesa de Ayuda</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            Mesa de Ayuda
           </NavLink>
         </div>
 

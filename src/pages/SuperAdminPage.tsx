@@ -836,21 +836,21 @@ CREATE POLICY "Permitir eliminacion de tickets" ON public.tickets_soporte FOR DE
 
             <div className="p-2.5 rounded-xl bg-white/90 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700">
               <span className="text-gray-500 dark:text-gray-400 block font-medium">Alias Mercado Pago:</span>
-              <span className="font-bold text-gray-800 dark:text-gray-200 mt-0.5 block truncate">
+              <span className="font-bold text-gray-800 dark:text-gray-200 mt-0.5 block break-all select-all">
                 {configAdmin.alias_mp || <span className="text-amber-600 dark:text-amber-400 font-normal">Sin alias</span>}
               </span>
             </div>
 
             <div className="p-2.5 rounded-xl bg-white/90 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700">
               <span className="text-gray-500 dark:text-gray-400 block font-medium">CBU / CVU Bancario:</span>
-              <span className="font-bold text-gray-800 dark:text-gray-200 mt-0.5 block truncate font-mono">
+              <span className="font-bold text-gray-800 dark:text-gray-200 mt-0.5 block break-all font-mono select-all">
                 {configAdmin.cbu_banco || <span className="text-amber-600 dark:text-amber-400 font-normal">Sin CBU</span>}
               </span>
             </div>
 
             <div className="p-2.5 rounded-xl bg-white/90 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700">
               <span className="text-gray-500 dark:text-gray-400 block font-medium">Titular de Cuenta:</span>
-              <span className="font-bold text-gray-800 dark:text-gray-200 mt-0.5 block truncate">
+              <span className="font-bold text-gray-800 dark:text-gray-200 mt-0.5 block break-words">
                 {configAdmin.titular_cuenta || <span className="text-amber-600 dark:text-amber-400 font-normal">Sin titular</span>}
               </span>
             </div>

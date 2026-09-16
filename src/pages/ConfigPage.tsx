@@ -572,36 +572,35 @@ export function ConfigPage() {
                       )}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition-colors self-start sm:self-auto"
+                      className="inline-flex items-center px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition-colors self-start sm:self-auto"
                     >
-                      <span>WhatsApp Soporte</span>
-                      <span className="text-[11px]">↗</span>
+                      WhatsApp Soporte
                     </a>
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
                   {configAdmin.titular_cuenta && (
-                    <div className="p-2.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                    <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
                       <span className="text-gray-400 dark:text-gray-500 block font-medium">Titular de la cuenta:</span>
-                      <span className="font-bold text-gray-900 dark:text-gray-100 mt-0.5 block truncate">
+                      <span className="font-bold text-gray-900 dark:text-gray-100 mt-1 block text-sm leading-snug break-words">
                         {configAdmin.titular_cuenta}
                       </span>
                     </div>
                   )}
 
                   {configAdmin.alias_mp && (
-                    <div className="p-2.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-between gap-2">
+                    <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <span className="text-gray-400 dark:text-gray-500 block font-medium">Alias Mercado Pago:</span>
-                        <span className="font-bold text-sky-600 dark:text-sky-400 mt-0.5 block truncate">
+                        <span className="font-bold text-sky-600 dark:text-sky-400 mt-1 block text-sm break-words select-all">
                           {configAdmin.alias_mp}
                         </span>
                       </div>
                       <button
                         type="button"
                         onClick={() => copiarDato(configAdmin.alias_mp, 'Alias')}
-                        className="px-2 py-1 rounded-md bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-[11px] font-semibold text-gray-700 dark:text-gray-200 transition-colors flex-shrink-0 active:scale-95"
+                        className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-xs font-semibold text-gray-700 dark:text-gray-200 transition-colors flex-shrink-0 active:scale-95"
                       >
                         Copiar
                       </button>
@@ -609,17 +608,17 @@ export function ConfigPage() {
                   )}
 
                   {configAdmin.cbu_banco && (
-                    <div className="p-2.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-between gap-2">
+                    <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <span className="text-gray-400 dark:text-gray-500 block font-medium">CBU / CVU Bancario:</span>
-                        <span className="font-bold text-gray-900 dark:text-gray-100 mt-0.5 block font-mono truncate">
+                        <span className="font-bold text-gray-900 dark:text-gray-100 mt-1 block font-mono text-sm tracking-wide break-all select-all">
                           {configAdmin.cbu_banco}
                         </span>
                       </div>
                       <button
                         type="button"
                         onClick={() => copiarDato(configAdmin.cbu_banco, 'CBU')}
-                        className="px-2 py-1 rounded-md bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-[11px] font-semibold text-gray-700 dark:text-gray-200 transition-colors flex-shrink-0 active:scale-95"
+                        className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-xs font-semibold text-gray-700 dark:text-gray-200 transition-colors flex-shrink-0 active:scale-95"
                       >
                         Copiar
                       </button>
@@ -627,9 +626,9 @@ export function ConfigPage() {
                   )}
 
                   {configAdmin.banco_nombre && (
-                    <div className="p-2.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                    <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
                       <span className="text-gray-400 dark:text-gray-500 block font-medium">Banco / Billetera:</span>
-                      <span className="font-bold text-gray-900 dark:text-gray-100 mt-0.5 block truncate">
+                      <span className="font-bold text-gray-900 dark:text-gray-100 mt-1 block text-sm break-words">
                         {configAdmin.banco_nombre}
                       </span>
                     </div>

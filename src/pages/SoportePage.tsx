@@ -218,10 +218,9 @@ export function SoportePage() {
             href={linkChatDirecto}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm shadow-md transition-all self-start sm:self-auto active:scale-95 flex-shrink-0"
+            className="inline-flex items-center px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm shadow-md transition-all self-start sm:self-auto active:scale-95 flex-shrink-0"
           >
-            <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-            <span>Chat Rápido WhatsApp</span>
+            Chat Rápido WhatsApp
           </a>
         )}
       </div>
@@ -233,23 +232,17 @@ export function SoportePage() {
           {/* Tarjeta de Contacto Directo */}
           <div className="p-5 rounded-2xl border border-indigo-200/80 dark:border-indigo-800/60 bg-gradient-to-r from-indigo-50/70 via-purple-50/40 to-white dark:from-indigo-950/30 dark:via-gray-800 dark:to-gray-800 shadow-xs space-y-4">
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-lg border border-emerald-500/20">
-                  WA
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                    Administrador de la Plataforma
-                  </h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {configAdmin.titular_cuenta ? `Titular: ${configAdmin.titular_cuenta}` : 'Soporte KioskoPOS'}
-                  </p>
-                </div>
+              <div>
+                <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">
+                  Administrador de la Plataforma
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 break-words">
+                  {configAdmin.titular_cuenta ? `Titular: ${configAdmin.titular_cuenta}` : 'Soporte KioskoPOS'}
+                </p>
               </div>
 
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                <span>Canal Activo</span>
+              <div className="px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                Canal Activo
               </div>
             </div>
 
