@@ -24,9 +24,12 @@ export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
   const getColsCount = () => {
     if (typeof window === 'undefined') return 3
     const width = window.innerWidth
-    if (width >= 1024) return 5
-    if (width >= 640) return 4
-    return 3
+    if (width >= 1536) return 5
+    if (width >= 1280) return 4
+    if (width >= 1024) return 3
+    if (width >= 768) return 4
+    if (width >= 640) return 3
+    return 2
   }
 
   const handleKeyDown = (e: React.KeyboardEvent, index: number, prod: Producto) => {
@@ -79,7 +82,7 @@ export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
   }
 
   return (
-    <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2.5 p-1" role="grid" aria-label="Catálogo de productos">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2 p-1" role="grid" aria-label="Catálogo de productos">
       {productos.map((prod, index) => {
         const sinStock = prod.stock_actual <= 0
         const stockBajo = prod.stock_actual <= prod.stock_minimo && prod.stock_actual > 0
@@ -97,8 +100,8 @@ export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
             }}
             onKeyDown={(e) => handleKeyDown(e, index, prod)}
             disabled={sinStock}
-            className={`group relative flex flex-col items-center justify-center p-2.5 rounded-xl text-center
-              border transition-all duration-100 min-h-[70px] sm:min-h-[76px] select-none ${
+            className={`group relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-xl text-center
+              border transition-all duration-100 min-h-[66px] sm:min-h-[72px] select-none ${
                 sinStock
                   ? 'opacity-40 cursor-not-allowed border-dashed border-gray-300 dark:border-gray-700 bg-gray-100/50 dark:bg-gray-800/40'
                   : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/40 dark:hover:bg-gray-700/60 active:scale-95 cursor-pointer focus:outline-hidden focus:z-10 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-indigo-50/90 dark:focus:bg-gray-700'

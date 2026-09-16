@@ -355,10 +355,10 @@ export function POSPage() {
   )
 
   return (
-    <div className="h-full flex flex-col gap-2.5 max-w-6xl mx-auto pb-28 lg:pb-0">
+    <div className="w-full h-full min-w-0 flex flex-col gap-2.5 pb-28 lg:pb-0 overflow-hidden">
       {/* Banner compacto de estado de caja */}
       {!sesionActiva ? (
-        <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-lg text-amber-800 dark:text-amber-300 text-xs">
+        <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-lg text-amber-800 dark:text-amber-300 text-xs flex-shrink-0">
           <span className="truncate">
             <strong>Caja cerrada:</strong> No hay turno iniciado.
           </span>
@@ -378,7 +378,7 @@ export function POSPage() {
           </div>
         </div>
       ) : (
-        <div className="flex items-center justify-between px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 rounded-lg text-emerald-800 dark:text-emerald-300 text-xs">
+        <div className="flex items-center justify-between px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 rounded-lg text-emerald-800 dark:text-emerald-300 text-xs flex-shrink-0">
           <span className="truncate">
             <strong>Turno activo</strong> · Fondo: ${sesionActiva.monto_inicial.toLocaleString('es-AR')}
           </span>
@@ -401,11 +401,11 @@ export function POSPage() {
       )}
 
       {/* Contenedor principal */}
-      <div className="flex-1 flex flex-col lg:flex-row gap-3 min-h-0">
+      <div className="flex-1 flex flex-col lg:flex-row gap-3 min-h-0 min-w-0 overflow-hidden">
         {/* Columna de productos */}
-        <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
           {/* Buscador compacto y botón de Ítem Libre */}
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 mb-2 flex-shrink-0 min-w-0">
             <div className="flex-1 min-w-0">
               <ProductSearch
                 onSelect={handleSeleccion}
@@ -415,11 +415,11 @@ export function POSPage() {
             <button
               type="button"
               onClick={() => setModalLibreOpen(true)}
-              className="h-10 px-3.5 flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0"
+              className="h-10 px-2.5 sm:px-3.5 flex items-center gap-1 sm:gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
               title="Cobrar concepto o monto libre sin código (Varios, fotocopias, etc.)"
             >
               <span className="text-base font-bold leading-none">+</span>
-              <span>Ítem Libre</span>
+              <span className="hidden sm:inline">Ítem </span><span>Libre</span>
             </button>
             <button
               type="button"
@@ -428,7 +428,7 @@ export function POSPage() {
                 if (kid) cargarPromociones(kid)
                 setModalPromosOpen(true)
               }}
-              className="h-10 px-3.5 flex items-center gap-1.5 rounded-xl border border-teal-300 dark:border-teal-700 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
+              className="h-10 px-2.5 sm:px-3.5 flex items-center gap-1.5 rounded-xl border border-teal-300 dark:border-teal-700 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
               title="Ver combos armados y promociones vigentes"
             >
               <span>Combos / Promos</span>
@@ -441,7 +441,7 @@ export function POSPage() {
             <button
               type="button"
               onClick={() => setModalDevolucionOpen(true)}
-              className="h-10 px-3 flex items-center gap-1.5 rounded-xl border border-red-200 dark:border-red-800/80 bg-red-50/70 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0"
+              className="h-10 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border border-red-200 dark:border-red-800/80 bg-red-50/70 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
               title="Registrar devolución de ticket o cambio de producto"
             >
               <span>Devolución</span>
@@ -449,12 +449,12 @@ export function POSPage() {
           </div>
 
           {/* Categorías deslizables + Botón Ventas en Espera */}
-          <div className="flex items-center gap-1.5 mb-2.5 overflow-x-auto pb-1 scrollbar-hide">
+          <div className="flex items-center gap-1.5 mb-2.5 overflow-x-auto pb-1 scrollbar-hide flex-shrink-0 min-w-0">
             {/* Botón de ventas en espera si existen */}
             {ventasEnEspera.length > 0 && (
               <button
                 onClick={() => setModalEsperaOpen(true)}
-                className="px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap min-h-[32px] bg-amber-500 hover:bg-amber-600 text-white shadow-xs flex-shrink-0 animate-pulse active:scale-95 transition-all"
+                className="px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap min-h-[32px] bg-amber-500 hover:bg-amber-600 text-white shadow-xs flex-shrink-0 animate-pulse active:scale-95 transition-all cursor-pointer"
               >
                 En espera ({ventasEnEspera.length})
               </button>
@@ -464,7 +464,7 @@ export function POSPage() {
               ref={(el) => { categoryRefs.current[0] = el }}
               onClick={() => setCategoriaActiva(null)}
               onKeyDown={(e) => handleCategoryKeyDown(e, 0, null)}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[32px] transition-all focus:outline-hidden ${
+              className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[32px] transition-all focus:outline-hidden cursor-pointer ${
                 !categoriaActiva
                   ? 'bg-indigo-600 text-white shadow-xs focus:bg-indigo-700'
                   : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-indigo-50/80 dark:focus:bg-gray-700 focus:text-indigo-900 dark:focus:text-white'
@@ -478,7 +478,7 @@ export function POSPage() {
                 ref={(el) => { categoryRefs.current[idx + 1] = el }}
                 onClick={() => setCategoriaActiva(cat.id)}
                 onKeyDown={(e) => handleCategoryKeyDown(e, idx + 1, cat.id)}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[32px] transition-all border focus:outline-hidden ${
+                className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[32px] transition-all border focus:outline-hidden cursor-pointer ${
                   categoriaActiva === cat.id
                     ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-bold focus:border-indigo-600'
                     : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-indigo-50/80 dark:focus:bg-gray-700 focus:text-indigo-900 dark:focus:text-white'
@@ -491,7 +491,7 @@ export function POSPage() {
             {/* Botón de ayuda de atajos para escritorio */}
             <button
               onClick={() => setModalShortcutsOpen(true)}
-              className="px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[32px] bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 flex-shrink-0 active:scale-95 transition-all ml-auto hidden sm:block"
+              className="px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[32px] bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 flex-shrink-0 active:scale-95 transition-all ml-auto hidden sm:block cursor-pointer"
               title="Ver atajos de teclado [F1]"
             >
               Atajos [F1]
@@ -499,7 +499,7 @@ export function POSPage() {
           </div>
 
           {/* Grilla compacta de productos */}
-          <div className="flex-1 overflow-y-auto p-1.5 pr-2">
+          <div className="flex-1 overflow-y-auto p-1.5 pr-2 min-h-0 min-w-0">
             {!categoriaActiva ? (
               <FavoritesGrid productos={favoritos} onSelect={handleSeleccion} />
             ) : (
@@ -509,7 +509,7 @@ export function POSPage() {
         </div>
 
         {/* Columna derecha: Ticket en Desktop / Pantallas grandes */}
-        <div className="hidden lg:block w-80 lg:w-96 flex-shrink-0">
+        <div className="hidden lg:flex flex-col w-80 xl:w-96 flex-shrink-0 min-h-0 h-full">
           <CartPanel onCobrar={() => setPaymentOpen(true)} />
         </div>
       </div>

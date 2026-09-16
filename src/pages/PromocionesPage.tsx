@@ -430,7 +430,7 @@ export function PromocionesPage() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
           {promocionesFiltradas.map((promo) => {
             const esCombo = promo.tipo === 'COMBO'
             const esNxM = promo.tipo === 'NXM'
@@ -440,16 +440,16 @@ export function PromocionesPage() {
             return (
               <div
                 key={promo.id}
-                className={`relative flex flex-col justify-between p-4 rounded-xl border transition-all ${
+                className={`relative flex flex-col justify-between p-3.5 sm:p-4 rounded-xl border transition-all ${
                   promo.activo
                     ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-xs hover:border-indigo-300 dark:hover:border-indigo-700'
-                    : 'bg-gray-50 dark:bg-gray-900/60 border-gray-200 dark:border-gray-800 opacity-70'
+                    : 'bg-gray-50 dark:bg-gray-900/60 border-gray-200 dark:border-gray-800 opacity-75'
                 }`}
               >
                 <div>
-                  {/* Fila superior: Tipo y Estado */}
+                  {/* Fila superior: Badges de Tipo, Estado y Precio Combo */}
                   <div className="flex items-center justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span
                         className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
                           esCombo
@@ -474,112 +474,102 @@ export function PromocionesPage() {
                       )}
                     </div>
 
-                    {/* Switch rápido de activar/pausar */}
-                    <button
-                      type="button"
-                      onClick={() => handleToggle(promo.id)}
-                      className={`text-xs font-semibold px-2.5 py-1 rounded-lg transition-all ${
-                        promo.activo
-                          ? 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60'
-                          : 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60'
-                      }`}
-                    >
-                      {promo.activo ? 'Pausar' : 'Activar'}
-                    </button>
+                    {esCombo && promo.precio_combo ? (
+                      <span className="text-sm font-black text-teal-600 dark:text-teal-400 font-mono flex-shrink-0">
+                        {formatPrecio(promo.precio_combo)}
+                      </span>
+                    ) : null}
                   </div>
 
                   {/* Título de la promo */}
-                  <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">
+                  <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-gray-100 leading-snug">
                     {promo.nombre}
                   </h3>
 
                   {/* Destino (Producto, Categoría o Combo) */}
-                  <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                  <div className="mt-1.5 text-xs text-gray-600 dark:text-gray-300">
                     {esCombo ? (
                       <div className="space-y-1">
-                        <span className="font-semibold text-gray-800 dark:text-gray-200 block">
-                          Productos que integran el combo ({promo.items_combo?.length || 0}):
+                        <span className="font-semibold text-gray-700 dark:text-gray-300 text-[11px] block">
+                          Incluye {promo.items_combo?.length || 0} productos:
                         </span>
-                        <div className="space-y-1 max-h-36 overflow-y-auto">
+                        <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-0.5">
                           {promo.items_combo?.map((ic, idx) => {
                             const pObj = productos.find((p) => p.id === ic.producto_id)
                             return (
-                              <div
+                              <span
                                 key={idx}
-                                className="flex items-center justify-between px-2 py-1 rounded bg-gray-50 dark:bg-gray-900/40 text-[11px] border border-gray-100 dark:border-gray-800"
+                                className="inline-flex items-center px-2 py-0.5 rounded-md bg-gray-100 dark:bg-gray-700/70 text-[11px] text-gray-800 dark:text-gray-200 font-medium"
                               >
-                                <span className="text-gray-800 dark:text-gray-200 truncate">
-                                  <strong>{ic.cantidad} {pObj?.unidad_medida === 'KG' ? 'kg' : 'u.'}</strong> × {pObj?.descripcion || 'Producto'}
-                                </span>
-                                <span className="text-gray-400 font-mono text-right flex-shrink-0 ml-2">
-                                  {pObj ? formatPrecio(pObj.precio_venta * ic.cantidad) : ''}
-                                </span>
-                              </div>
+                                <strong>{ic.cantidad}{pObj?.unidad_medida === 'KG' ? 'kg' : 'u'}</strong>&nbsp;× {pObj?.descripcion || 'Producto'}
+                              </span>
                             )
                           })}
                         </div>
                       </div>
                     ) : promo.producto ? (
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-semibold text-gray-800 dark:text-gray-200">Producto:</span>
+                      <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                        <span className="font-semibold text-gray-700 dark:text-gray-300">Producto:</span>
                         <span>{promo.producto.descripcion}</span>
                         <span className="text-gray-400 font-mono">({formatPrecio(promo.producto.precio_venta)})</span>
                       </div>
                     ) : promo.categoria ? (
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-semibold text-gray-800 dark:text-gray-200">Categoría completa:</span>
+                      <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                        <span className="font-semibold text-gray-700 dark:text-gray-300">Categoría completa:</span>
                         <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 font-medium">
                           {promo.categoria.nombre}
                         </span>
                       </div>
                     ) : (
-                      <span className="text-gray-400 italic">Sin asignación</span>
+                      <span className="text-gray-400 italic text-xs">Sin asignación</span>
                     )}
                   </div>
 
                   {/* Regla explicada en texto claro */}
-                  <div className="mt-2.5 p-2.5 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-700/60 text-xs">
+                  <div className="mt-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-700/60 text-xs">
                     {esCombo && (
                       <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <span className="text-[11px] text-gray-500 dark:text-gray-400 block">Precio especial combo:</span>
-                          <span className="text-teal-600 dark:text-teal-400 font-bold text-base font-mono">
+                        <div className="min-w-0">
+                          <span className="text-[10px] text-gray-500 dark:text-gray-400 block leading-tight">Combo completo:</span>
+                          <span className="text-teal-600 dark:text-teal-400 font-bold text-sm font-mono">
                             {formatPrecio(promo.precio_combo || 0)}
                           </span>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleCargarComboEnCarrito(promo)}
-                          className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-lg active:scale-95 transition-all shadow-xs"
-                        >
-                          + Cargar al Ticket
-                        </button>
+                        {promo.activo && (
+                          <button
+                            type="button"
+                            onClick={() => handleCargarComboEnCarrito(promo)}
+                            className="px-2.5 py-1 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-lg active:scale-95 transition-all shadow-2xs flex-shrink-0 cursor-pointer"
+                          >
+                            + Cargar al Ticket
+                          </button>
+                        )}
                       </div>
                     )}
                     {esNxM && (
-                      <p className="text-gray-800 dark:text-gray-200 font-medium">
+                      <p className="text-gray-800 dark:text-gray-200 font-medium text-xs">
                         Llevás <strong>{promo.cantidad_minima}</strong>, pagás <strong>{promo.cantidad_paga}</strong>{' '}
                         <span className="text-indigo-600 dark:text-indigo-400">
-                          ({Number(promo.cantidad_minima) - Number(promo.cantidad_paga || 1)} unidad/es de regalo por cada {promo.cantidad_minima})
+                          ({Number(promo.cantidad_minima) - Number(promo.cantidad_paga || 1)} unidad/es de regalo)
                         </span>
                       </p>
                     )}
                     {esVolumen && (
-                      <p className="text-gray-800 dark:text-gray-200 font-medium">
-                        Llevando <strong>{promo.cantidad_minima} o más</strong> unidades:{' '}
+                      <p className="text-gray-800 dark:text-gray-200 font-medium text-xs">
+                        Llevando <strong>{promo.cantidad_minima} o más</strong>:{' '}
                         {promo.precio_unitario_promo ? (
                           <span className="text-purple-600 dark:text-purple-400 font-bold">
                             {formatPrecio(promo.precio_unitario_promo)} c/u
                           </span>
                         ) : (
                           <span className="text-purple-600 dark:text-purple-400 font-bold">
-                            {promo.descuento_porcentaje}% de descuento
+                            {promo.descuento_porcentaje}% OFF
                           </span>
                         )}
                       </p>
                     )}
                     {esPorcentaje && (
-                      <p className="text-gray-800 dark:text-gray-200 font-medium">
+                      <p className="text-gray-800 dark:text-gray-200 font-medium text-xs">
                         Descuento directo de{' '}
                         <span className="text-amber-600 dark:text-amber-400 font-bold">
                           {promo.descuento_porcentaje}% OFF
@@ -590,32 +580,34 @@ export function PromocionesPage() {
                   </div>
 
                   {/* Días y Vigencia */}
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
-                    <span className="font-semibold text-gray-700 dark:text-gray-300">Días:</span>
-                    {promo.dias_semana && promo.dias_semana.length > 0 ? (
-                      <div className="flex gap-1">
-                        {DIAS_SEMANA_OPCIONES.map((dia) => {
-                          const seleccionado = promo.dias_semana?.includes(dia.valor)
-                          return (
-                            <span
-                              key={dia.valor}
-                              className={`px-1 rounded text-[10px] font-bold ${
-                                seleccionado
-                                  ? 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300'
-                                  : 'text-gray-300 dark:text-gray-600'
-                              }`}
-                            >
-                              {dia.label}
-                            </span>
-                          )
-                        })}
-                      </div>
-                    ) : (
-                      <span>Todos los días</span>
-                    )}
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5 text-[10px] text-gray-500 dark:text-gray-400">
+                    <div className="flex items-center gap-1">
+                      <span className="font-semibold text-gray-600 dark:text-gray-400">Días:</span>
+                      {promo.dias_semana && promo.dias_semana.length > 0 ? (
+                        <div className="flex gap-0.5">
+                          {DIAS_SEMANA_OPCIONES.map((dia) => {
+                            const seleccionado = promo.dias_semana?.includes(dia.valor)
+                            return (
+                              <span
+                                key={dia.valor}
+                                className={`px-1 rounded text-[9px] font-bold ${
+                                  seleccionado
+                                    ? 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300'
+                                    : 'text-gray-300 dark:text-gray-600'
+                                }`}
+                              >
+                                {dia.label}
+                              </span>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <span>Todos los días</span>
+                      )}
+                    </div>
 
                     {(promo.fecha_inicio || promo.fecha_fin) && (
-                      <span className="ml-auto text-[10px] text-gray-400">
+                      <span className="text-[10px] text-gray-400">
                         {promo.fecha_inicio ? `Desde: ${promo.fecha_inicio}` : ''}{' '}
                         {promo.fecha_fin ? `Hasta: ${promo.fecha_fin}` : ''}
                       </span>
@@ -623,21 +615,65 @@ export function PromocionesPage() {
                   </div>
                 </div>
 
-                {/* Acciones */}
-                <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700/80 flex items-center justify-end gap-2">
+                {/* Acciones: Pausar, Editar y Eliminar agrupados con diseño intuitivo y visible */}
+                <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-700/80 flex items-center justify-end gap-1.5 flex-wrap">
+                  {/* Botón Pausar / Activar */}
+                  <button
+                    type="button"
+                    onClick={() => handleToggle(promo.id)}
+                    title={promo.activo ? 'Pausar promoción temporalmente' : 'Activar promoción'}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all active:scale-95 cursor-pointer shadow-2xs ${
+                      promo.activo
+                        ? 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60'
+                        : 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60'
+                    }`}
+                  >
+                    {promo.activo ? (
+                      <>
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <rect x="6" y="4" width="4" height="16" rx="1" />
+                          <rect x="14" y="4" width="4" height="16" rx="1" />
+                        </svg>
+                        <span>Pausar</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                          <polygon points="5 3 19 12 5 21 5 3" />
+                        </svg>
+                        <span>Activar</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Botón Editar */}
                   <button
                     type="button"
                     onClick={() => abrirEditar(promo)}
-                    className="px-2.5 py-1 text-xs font-medium rounded-lg text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors"
+                    title="Modificar regla o precios de esta promoción"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs"
                   >
-                    Editar
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
+                    <span>Editar</span>
                   </button>
+
+                  {/* Botón Eliminar */}
                   <button
                     type="button"
                     onClick={() => handleEliminar(promo.id, promo.nombre)}
-                    className="px-2.5 py-1 text-xs font-medium rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                    title="Eliminar esta promoción permanentemente"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-600 dark:text-red-300 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/60 border border-red-200 dark:border-red-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs"
                   >
-                    Eliminar
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      <line x1="10" y1="11" x2="10" y2="17" />
+                      <line x1="14" y1="11" x2="14" y2="17" />
+                    </svg>
+                    <span>Eliminar</span>
                   </button>
                 </div>
               </div>

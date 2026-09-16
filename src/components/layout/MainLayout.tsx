@@ -302,7 +302,7 @@ export function MainLayout() {
 
         {/* Área de contenido con scroll suave */}
         <main
-          className={`flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 bg-gray-50 dark:bg-gray-900 ${
+          className={`flex-1 min-w-0 overflow-y-auto p-3 sm:p-4 lg:p-4 xl:p-5 bg-gray-50 dark:bg-gray-900 ${
             (usuario?.es_superadmin && !usuario.kiosco_id) || usuario?.rol === 'VISOR'
               ? 'pb-[max(16px,env(safe-area-inset-bottom))]'
               : 'pb-[max(80px,calc(64px+env(safe-area-inset-bottom)))] lg:pb-[max(16px,env(safe-area-inset-bottom))]'
