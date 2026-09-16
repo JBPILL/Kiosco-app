@@ -9,11 +9,11 @@ import toast from 'react-hot-toast'
 
 type TipoConsulta = 'ERROR' | 'CONSULTA' | 'SUGERENCIA' | 'FACTURACION'
 
-const TIPOS_CONSULTA: { id: TipoConsulta; label: string; icon: string }[] = [
-  { id: 'ERROR', label: 'Error o falla técnica', icon: '⚠️' },
-  { id: 'CONSULTA', label: 'Consulta operativa', icon: '❓' },
-  { id: 'SUGERENCIA', label: 'Sugerencia o mejora', icon: '💡' },
-  { id: 'FACTURACION', label: 'Abono y Suscripción', icon: '💳' },
+const TIPOS_CONSULTA: { id: TipoConsulta; label: string }[] = [
+  { id: 'ERROR', label: 'Error o falla técnica' },
+  { id: 'CONSULTA', label: 'Consulta operativa' },
+  { id: 'SUGERENCIA', label: 'Sugerencia o mejora' },
+  { id: 'FACTURACION', label: 'Abono y Suscripción' },
 ]
 
 const MODULOS = [
@@ -222,7 +222,6 @@ export function SoportePage() {
           >
             <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
             <span>Chat Rápido WhatsApp</span>
-            <span>↗</span>
           </a>
         )}
       </div>
@@ -300,13 +299,12 @@ export function SoportePage() {
                       key={tipo.id}
                       type="button"
                       onClick={() => setTipoConsulta(tipo.id)}
-                      className={`p-2.5 rounded-xl border text-center text-xs font-semibold transition-all active:scale-95 flex flex-col items-center justify-center gap-1 ${
+                      className={`py-3 px-3 rounded-xl border text-center text-xs font-semibold transition-all active:scale-95 flex items-center justify-center min-h-[46px] ${
                         tipoConsulta === tipo.id
-                          ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 shadow-2xs ring-1 ring-indigo-500/20'
-                          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:border-gray-300'
+                          ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 shadow-2xs ring-1 ring-indigo-500/20 font-bold'
+                          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
                       }`}
                     >
-                      <span className="text-base">{tipo.icon}</span>
                       <span>{tipo.label}</span>
                     </button>
                   ))}
@@ -396,7 +394,7 @@ export function SoportePage() {
                   {guardandoTicket
                     ? 'Enviando...'
                     : configAdmin.whatsapp_soporte
-                    ? 'Enviar Reporte por WhatsApp ↗'
+                    ? 'Enviar Reporte por WhatsApp'
                     : 'Enviar Consulta'}
                 </Button>
               </div>

@@ -7,6 +7,8 @@ import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import type { KioscoAdminView, PagoSuscripcion } from '../types/database'
 import { formatPrecio } from '../lib/utils'
+import { useOnlineStatus } from '../hooks/useOnlineStatus'
+import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 
 export function SuperAdminPage() {
@@ -122,6 +124,32 @@ export function SuperAdminPage() {
   const [ticketParaResponder, setTicketParaResponder] = useState<TicketSoporte | null>(null)
   const [textoRespuesta, setTextoRespuesta] = useState('')
   const [nuevoEstadoRespuesta, setNuevoEstadoRespuesta] = useState<EstadoTicket>('RESUELTO')
+
+  // Diagnóstico del Sistema para SuperAdmin
+  const isOnline = useOnlineStatus()
+  const [comprobandoNube, setComprobandoNube] = useState(false)
+  const [estadoNube, setEstadoNube] = useState<'CONECTADO' | 'DESCONECTADO' | 'VERIFICANDO'>('CONECTADO')
+  const [latenciaNube, setLatenciaNube] = useState<number | null>(null)
+
+  const verificarConexionNube = async () => {
+    setComprobandoNube(true)
+    setEstadoNube('VERIFICANDO')
+    try {
+      const inicio = Date.now()
+      const { error } = await supabase.from('planes').select('id').limit(1)
+      const latencia = Date.now() - inicio
+      if (error) throw error
+      setEstadoNube('CONECTADO')
+      setLatenciaNube(latencia)
+      toast.success(`Conexión con Supabase verificada (${latencia} ms)`)
+    } catch {
+      setEstadoNube('DESCONECTADO')
+      setLatenciaNube(null)
+      toast.error('No se pudo conectar con la base de datos en la nube')
+    } finally {
+      setComprobandoNube(false)
+    }
+  }
 
   // Filtrar planes comerciales (excluye fila interna de configuración de sistema)
   const planesComerciales = useMemo(
@@ -624,6 +652,104 @@ CREATE POLICY "Permitir eliminacion de tickets" ON public.tickets_soporte FOR DE
           >
             + Nuevo Kiosco Cliente
           </Button>
+        </div>
+      </div>
+
+      {/* Tarjeta de Diagnóstico del Sistema (Health Check SuperAdmin) */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 shadow-xs space-y-3.5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+              Diagnóstico del Sistema
+            </h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Estado en tiempo real de la infraestructura, base de datos y conectividad
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={verificarConexionNube}
+            disabled={comprobandoNube}
+            className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-semibold transition-colors flex-shrink-0"
+          >
+            {comprobandoNube ? 'Probando...' : 'Comprobar'}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+          {/* 1. Internet */}
+          <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200/80 dark:border-gray-700/80">
+            <div className="flex items-center gap-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-red-500'}`} />
+              <span className="font-semibold text-gray-800 dark:text-gray-200">Conexión a Internet</span>
+            </div>
+            <span
+              className={`font-bold px-2 py-0.5 rounded-md ${
+                isOnline
+                  ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                  : 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300'
+              }`}
+            >
+              {isOnline ? 'En línea' : 'Sin señal'}
+            </span>
+          </div>
+
+          {/* 2. Servidor Supabase */}
+          <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200/80 dark:border-gray-700/80">
+            <div className="flex items-center gap-2">
+              <span
+                className={`w-2.5 h-2.5 rounded-full ${
+                  estadoNube === 'CONECTADO'
+                    ? 'bg-emerald-500'
+                    : estadoNube === 'VERIFICANDO'
+                    ? 'bg-amber-500 animate-ping'
+                    : 'bg-red-500'
+                }`}
+              />
+              <span className="font-semibold text-gray-800 dark:text-gray-200">Servidor Supabase</span>
+            </div>
+            <span className="font-bold text-gray-700 dark:text-gray-300 font-mono text-xs">
+              {estadoNube === 'CONECTADO'
+                ? latenciaNube !== null
+                  ? `Sincronizado (${latenciaNube} ms)`
+                  : 'Sincronizado'
+                : estadoNube === 'VERIFICANDO'
+                ? 'Chequeando...'
+                : 'Error de enlace'}
+            </span>
+          </div>
+
+          {/* 3. Base de Datos / Tickets */}
+          <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200/80 dark:border-gray-700/80">
+            <div className="flex items-center gap-2">
+              <span
+                className={`w-2.5 h-2.5 rounded-full ${
+                  tablaSoporteExiste ? 'bg-emerald-500' : 'bg-amber-500'
+                }`}
+              />
+              <span className="font-semibold text-gray-800 dark:text-gray-200">Tabla de Soporte</span>
+            </div>
+            <span
+              className={`font-bold px-2 py-0.5 rounded-md ${
+                tablaSoporteExiste
+                  ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                  : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
+              }`}
+            >
+              {tablaSoporteExiste ? 'Nube Conectada' : 'Caché Local'}
+            </span>
+          </div>
+
+          {/* 4. Modo Offline / Almacenamiento Local */}
+          <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200/80 dark:border-gray-700/80">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+              <span className="font-semibold text-gray-800 dark:text-gray-200">Modo Offline Local</span>
+            </div>
+            <span className="font-bold text-emerald-600 dark:text-emerald-400">
+              Listo para operar
+            </span>
+          </div>
         </div>
       </div>
 
@@ -1184,9 +1310,6 @@ CREATE POLICY "Permitir eliminacion de tickets" ON public.tickets_soporte FOR DE
           <div className="space-y-4">
             {ticketsFiltrados.length === 0 ? (
               <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-12 text-center">
-                <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center mx-auto mb-3 text-xl text-gray-400">
-                  ✉️
-                </div>
                 <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">
                   No se encontraron consultas
                 </h3>
@@ -1285,7 +1408,7 @@ CREATE POLICY "Permitir eliminacion de tickets" ON public.tickets_soporte FOR DE
                             onClick={() => toggleDiag(ticket.id)}
                             className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline flex items-center gap-1"
                           >
-                            <span>{diagExpanded ? '▼ Ocultar' : '▶ Ver'} datos de diagnóstico y dispositivo</span>
+                            <span>{diagExpanded ? 'Ocultar' : 'Ver'} datos de diagnóstico y dispositivo</span>
                           </button>
 
                           {diagExpanded && (
@@ -1335,7 +1458,6 @@ CREATE POLICY "Permitir eliminacion de tickets" ON public.tickets_soporte FOR DE
                           className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-xs transition-colors active:scale-95"
                         >
                           <span>Responder por WhatsApp</span>
-                          <span>↗</span>
                         </a>
 
                         {/* Botón Escribir Respuesta / Nota */}
@@ -2253,7 +2375,6 @@ CREATE POLICY "Permitir eliminacion de tickets" ON public.tickets_soporte FOR DE
                   className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs text-center flex items-center justify-center gap-1.5 shadow-xs transition-colors"
                 >
                   <span>Enviar también por WhatsApp</span>
-                  <span>↗</span>
                 </a>
               </div>
             </div>
