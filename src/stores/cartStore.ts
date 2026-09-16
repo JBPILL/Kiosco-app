@@ -52,6 +52,7 @@ interface CartState {
   quitarProducto: (productoId: string) => void
   actualizarCantidad: (productoId: string, cantidad: number) => void
   vaciarCarrito: () => void
+  completarVentaTabActiva: () => void
 
   // Acciones de descuentos y recargos
   aplicarAjuste: (tipo: TipoAjuste, valor: number) => void
@@ -127,10 +128,27 @@ export const useCartStore = create<CartState>((set, get) => ({
         ? { ...t, items: state.items, tipoAjuste: state.tipoAjuste, valorAjuste: state.valorAjuste }
         : t
     )
+
+    let autoNombre = nombre?.trim()
+    if (!autoNombre) {
+      // Buscar los números actualmente en uso en nombres estándar 'Ticket X'
+      const usedNumbers = new Set<number>()
+      tabsSync.forEach((t) => {
+        const m = t.nombre.match(/^Ticket\s+(\d+)$/i)
+        if (m) usedNumbers.add(parseInt(m[1], 10))
+      })
+      // Asignar el menor número entero positivo disponible (1, 2, 3...)
+      let nextNum = 1
+      while (usedNumbers.has(nextNum)) {
+        nextNum++
+      }
+      autoNombre = `Ticket ${nextNum}`
+    }
+
     const nuevoId = uuidv4()
     const nuevaTab: CarritoTab = {
       id: nuevoId,
-      nombre: nombre?.trim() || `Ticket ${state.tabs.length + 1}`,
+      nombre: autoNombre,
       items: [],
       tipoAjuste: 'NINGUNO',
       valorAjuste: 0,
@@ -170,21 +188,49 @@ export const useCartStore = create<CartState>((set, get) => ({
     const state = get()
     if (state.tabs.length <= 1) {
       get().vaciarCarrito()
+      // Al reiniciar la única pestaña, reiniciar siempre como 'Ticket 1'
+      set((s) => ({
+        tabs: s.tabs.map((t) => (t.id === targetId ? { ...t, nombre: 'Ticket 1', items: [] } : t)),
+      }))
       return
     }
 
     const restantes = state.tabs.filter((t) => t.id !== targetId)
+
+    // Renumerar secuencialmente las pestañas con nombre por defecto 'Ticket X' para reiniciar el contador
+    let ticketCounter = 1
+    const renumbered = restantes.map((tab) => {
+      if (/^Ticket\s+\d+$/i.test(tab.nombre.trim())) {
+        const nuevo = { ...tab, nombre: `Ticket ${ticketCounter}` }
+        ticketCounter++
+        return nuevo
+      }
+      return tab
+    })
+
     if (state.tabActivaId === targetId) {
-      const siguiente = restantes[0]
+      const siguiente = renumbered[0]
       set({
-        tabs: restantes,
+        tabs: renumbered,
         tabActivaId: siguiente.id,
         items: siguiente.items,
         tipoAjuste: siguiente.tipoAjuste,
         valorAjuste: siguiente.valorAjuste,
       })
     } else {
-      set({ tabs: restantes })
+      set({ tabs: renumbered })
+    }
+  },
+
+  completarVentaTabActiva: () => {
+    const state = get()
+    if (state.tabs.length > 1) {
+      get().cerrarTab(state.tabActivaId)
+    } else {
+      get().vaciarCarrito()
+      set((s) => ({
+        tabs: s.tabs.map((t) => (/^Ticket\s+\d+$/i.test(t.nombre) ? { ...t, nombre: 'Ticket 1' } : t)),
+      }))
     }
   },
 
@@ -320,12 +366,19 @@ export const useCartStore = create<CartState>((set, get) => ({
     set({ items: evaluarConPromociones(nuevos) })
   },
 
-  vaciarCarrito: () =>
+  vaciarCarrito: () => {
+    const state = get()
     set({
       items: [],
       tipoAjuste: 'NINGUNO',
       valorAjuste: 0,
-    }),
+      tabs: state.tabs.map((t) =>
+        t.id === state.tabActivaId
+          ? { ...t, items: [], tipoAjuste: 'NINGUNO', valorAjuste: 0 }
+          : t
+      ),
+    })
+  },
 
   aplicarAjuste: (tipo: TipoAjuste, valor: number) => {
     set({

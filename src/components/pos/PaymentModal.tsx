@@ -38,7 +38,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
     montoAjuste,
     tipoAjuste,
     descripcionAjuste,
-    vaciarCarrito,
+    completarVentaTabActiva,
   } = useCartStore()
 
   const {
@@ -434,7 +434,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         toast(`Vuelto: ${formatPrecio(vuelto)}`, { duration: 5000 })
       }
 
-      vaciarCarrito()
+      completarVentaTabActiva()
       resetForm()
       onVentaCompletada(ticketGenerado)
       onClose()

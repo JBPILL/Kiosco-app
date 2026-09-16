@@ -419,7 +419,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
       {/* Pestañas de tickets en paralelo estilo Odoo POS */}
-      <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/60 rounded-t-xl overflow-x-auto scrollbar-hide flex-shrink-0">
+      <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/60 rounded-t-xl overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden flex-shrink-0">
         {tabs.map((tab) => {
           const esActiva = tab.id === tabActivaId
           const cant = tab.items.reduce((acc, it) => acc + (it.producto.es_pesable ? 1 : it.cantidad), 0)

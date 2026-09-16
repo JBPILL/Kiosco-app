@@ -423,22 +423,29 @@ export function POSPage() {
             </button>
             <button
               type="button"
+              onClick={() => {
+                const kid = usuario?.kiosco_id || kiosco?.id
+                if (kid) cargarPromociones(kid)
+                setModalPromosOpen(true)
+              }}
+              className="h-10 px-3.5 flex items-center gap-1.5 rounded-xl border border-teal-300 dark:border-teal-700 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
+              title="Ver combos armados y promociones vigentes"
+            >
+              <span>Combos / Promos</span>
+              {promociones.filter((p) => p.activo).length > 0 && (
+                <span className="px-1.5 py-0.2 bg-teal-200 dark:bg-teal-800 text-teal-900 dark:text-teal-100 rounded-full text-[10px] font-bold">
+                  {promociones.filter((p) => p.activo).length}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
               onClick={() => setModalDevolucionOpen(true)}
               className="h-10 px-3 flex items-center gap-1.5 rounded-xl border border-red-200 dark:border-red-800/80 bg-red-50/70 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0"
               title="Registrar devolución de ticket o cambio de producto"
             >
               <span>Devolución</span>
             </button>
-            {promociones.filter((p) => p.activo).length > 0 && (
-              <button
-                type="button"
-                onClick={() => setModalPromosOpen(true)}
-                className="h-10 px-3 flex items-center gap-1.5 rounded-xl border border-teal-200 dark:border-teal-800/80 bg-teal-50/70 hover:bg-teal-100 dark:bg-teal-950/40 dark:hover:bg-teal-900/50 text-teal-700 dark:text-teal-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0"
-                title="Ver y cargar combos o promociones vigentes"
-              >
-                <span>Combos / Promos ({promociones.filter((p) => p.activo).length})</span>
-              </button>
-            )}
           </div>
 
           {/* Categorías deslizables + Botón Ventas en Espera */}
@@ -706,9 +713,24 @@ export function POSPage() {
 
           <div className="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1">
             {promociones.filter((p) => p.activo).length === 0 ? (
-              <p className="text-xs text-gray-400 italic text-center py-6">
-                No hay promociones ni combos activos en este momento.
-              </p>
+              <div className="text-center py-10 px-4 space-y-3 bg-gray-50 dark:bg-gray-900/40 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
+                <p className="text-sm font-bold text-gray-800 dark:text-gray-200">
+                  No hay promociones ni combos activos en este momento
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 max-w-sm mx-auto">
+                  Podés configurar combos de productos (ej: Fernet + Coca + Hielo o Sándwiches) o promociones 2x1 en el módulo de Promociones.
+                </p>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setModalPromosOpen(false)
+                    navigate('/promociones')
+                  }}
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs mt-1"
+                >
+                  Ir a Crear Combos / Promociones
+                </Button>
+              </div>
             ) : (
               promociones
                 .filter((p) => p.activo)
@@ -783,6 +805,19 @@ export function POSPage() {
                   )
                 })
             )}
+          </div>
+
+          <div className="pt-2 border-t border-gray-100 dark:border-gray-700/80 flex justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                setModalPromosOpen(false)
+                navigate('/promociones')
+              }}
+              className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+            >
+              Configurar o crear nuevas promociones →
+            </button>
           </div>
         </div>
       </Modal>
