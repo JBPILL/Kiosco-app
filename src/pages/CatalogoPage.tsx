@@ -87,9 +87,6 @@ export function CatalogoPage() {
           >
             Importar (.CSV)
           </Button>
-          <Button size="sm" onClick={handleNuevo}>
-            + Nuevo Producto
-          </Button>
         </div>
       </div>
 

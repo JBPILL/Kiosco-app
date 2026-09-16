@@ -75,9 +75,15 @@ export function ProductTable({
     // 1. Filtrar por categoría
     let list = productos
     if (categoriaFiltro) {
-      list = list.filter(
-        (p) => p.categoria_id === categoriaFiltro || p.categoria?.id === categoriaFiltro
-      )
+      const catObj = categorias.find((c) => c.id === categoriaFiltro)
+      const catNombreNorm = catObj?.nombre?.toLowerCase().trim()
+
+      list = list.filter((p) => {
+        if (p.categoria_id && p.categoria_id === categoriaFiltro) return true
+        if (p.categoria?.id && p.categoria.id === categoriaFiltro) return true
+        if (catNombreNorm && p.categoria?.nombre && p.categoria.nombre.toLowerCase().trim() === catNombreNorm) return true
+        return false
+      })
     }
 
     // 2. Filtrar por búsqueda
@@ -120,7 +126,7 @@ export function ProductTable({
       if (valA > valB) return sortDirection === 'asc' ? 1 : -1
       return 0
     })
-  }, [productos, categoriaFiltro, busqueda, sortField, sortDirection])
+  }, [productos, categoriaFiltro, busqueda, sortField, sortDirection, categorias])
 
   return (
     <div>
@@ -145,8 +151,8 @@ export function ProductTable({
               <option key={cat.id} value={cat.id}>{cat.nombre}</option>
             ))}
           </select>
-          <Button size="sm" onClick={onNuevo}>
-            + Nuevo
+          <Button size="sm" onClick={onNuevo} className="whitespace-nowrap flex items-center gap-1.5 font-semibold">
+            + Nuevo Producto
           </Button>
         </div>
       </div>
@@ -158,23 +164,30 @@ export function ProductTable({
           <span className="text-xs">Cargando productos...</span>
         </div>
       ) : productosFiltradosYOrdenados.length === 0 ? (
-        <div className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm">
-          <p>
-            {busqueda || categoriaFiltro
-              ? 'No se encontraron productos coincidentes con los filtros seleccionados.'
+        <div className="text-center py-10 text-gray-500 dark:text-gray-400 text-sm">
+          <p className="font-medium text-gray-700 dark:text-gray-300">
+            {categoriaFiltro
+              ? `No hay productos cargados en la categoría "${categorias.find((c) => c.id === categoriaFiltro)?.nombre || 'seleccionada'}".`
+              : busqueda
+              ? 'No se encontraron productos coincidentes con la búsqueda.'
               : 'No hay productos en el catálogo.'}
           </p>
           {(busqueda || categoriaFiltro) && (
-            <button
-              type="button"
-              onClick={() => {
-                onBusquedaChange('')
-                onCategoriaChange(null)
-              }}
-              className="mt-2 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-            >
-              Limpiar filtros
-            </button>
+            <div className="flex items-center justify-center gap-2 mt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  onBusquedaChange('')
+                  onCategoriaChange(null)
+                }}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 cursor-pointer"
+              >
+                Ver todas las categorías
+              </button>
+              <Button size="sm" onClick={onNuevo}>
+                + Nuevo Producto
+              </Button>
+            </div>
           )}
         </div>
       ) : (

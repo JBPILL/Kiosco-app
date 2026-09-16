@@ -448,53 +448,55 @@ export function POSPage() {
             </button>
           </div>
 
-          {/* Categorías deslizables + Botón Ventas en Espera */}
-          <div className="flex items-center gap-1.5 mb-2.5 overflow-x-auto pb-1 scrollbar-hide flex-shrink-0 min-w-0">
-            {/* Botón de ventas en espera si existen */}
-            {ventasEnEspera.length > 0 && (
-              <button
-                onClick={() => setModalEsperaOpen(true)}
-                className="px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap min-h-[32px] bg-amber-500 hover:bg-amber-600 text-white shadow-xs flex-shrink-0 animate-pulse active:scale-95 transition-all cursor-pointer"
-              >
-                En espera ({ventasEnEspera.length})
-              </button>
-            )}
+          {/* Categorías deslizables + Atajos [F1] desacoplado */}
+          <div className="flex items-center gap-2 mb-2.5 min-w-0">
+            <div className="flex-1 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide min-w-0">
+              {/* Botón de ventas en espera si existen */}
+              {ventasEnEspera.length > 0 && (
+                <button
+                  onClick={() => setModalEsperaOpen(true)}
+                  className="px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap min-h-[32px] bg-amber-500 hover:bg-amber-600 text-white shadow-xs flex-shrink-0 animate-pulse active:scale-95 transition-all cursor-pointer"
+                >
+                  En espera ({ventasEnEspera.length})
+                </button>
+              )}
 
-            <button
-              ref={(el) => { categoryRefs.current[0] = el }}
-              onClick={() => setCategoriaActiva(null)}
-              onKeyDown={(e) => handleCategoryKeyDown(e, 0, null)}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[32px] transition-all focus:outline-hidden cursor-pointer ${
-                !categoriaActiva
-                  ? 'bg-indigo-600 text-white shadow-xs focus:bg-indigo-700'
-                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-indigo-50/80 dark:focus:bg-gray-700 focus:text-indigo-900 dark:focus:text-white'
-              }`}
-            >
-              Favoritos
-            </button>
-            {categorias.map((cat, idx) => (
               <button
-                key={cat.id}
-                ref={(el) => { categoryRefs.current[idx + 1] = el }}
-                onClick={() => setCategoriaActiva(cat.id)}
-                onKeyDown={(e) => handleCategoryKeyDown(e, idx + 1, cat.id)}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[32px] transition-all border focus:outline-hidden cursor-pointer ${
-                  categoriaActiva === cat.id
-                    ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-bold focus:border-indigo-600'
-                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-indigo-50/80 dark:focus:bg-gray-700 focus:text-indigo-900 dark:focus:text-white'
+                ref={(el) => { categoryRefs.current[0] = el }}
+                onClick={() => setCategoriaActiva(null)}
+                onKeyDown={(e) => handleCategoryKeyDown(e, 0, null)}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[32px] transition-all focus:outline-hidden cursor-pointer flex-shrink-0 ${
+                  !categoriaActiva
+                    ? 'bg-indigo-600 text-white shadow-xs focus:bg-indigo-700'
+                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-indigo-50/80 dark:focus:bg-gray-700 focus:text-indigo-900 dark:focus:text-white'
                 }`}
               >
-                {cat.nombre}
+                Favoritos
               </button>
-            ))}
+              {categorias.map((cat, idx) => (
+                <button
+                  key={cat.id}
+                  ref={(el) => { categoryRefs.current[idx + 1] = el }}
+                  onClick={() => setCategoriaActiva(cat.id)}
+                  onKeyDown={(e) => handleCategoryKeyDown(e, idx + 1, cat.id)}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[32px] transition-all border focus:outline-hidden cursor-pointer flex-shrink-0 ${
+                    categoriaActiva === cat.id
+                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-bold focus:border-indigo-600'
+                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-indigo-50/80 dark:focus:bg-gray-700 focus:text-indigo-900 dark:focus:text-white'
+                  }`}
+                >
+                  {cat.nombre}
+                </button>
+              ))}
+            </div>
 
-            {/* Botón de ayuda de atajos para escritorio */}
+            {/* Botón de ayuda de atajos fijo para escritorio, NO sometido al scroll horizontal de categorías */}
             <button
               onClick={() => setModalShortcutsOpen(true)}
-              className="px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[32px] bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 flex-shrink-0 active:scale-95 transition-all ml-auto hidden sm:block cursor-pointer"
+              className="px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[32px] bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 flex-shrink-0 active:scale-95 transition-all hidden sm:inline-flex items-center gap-1.5 cursor-pointer shadow-2xs mb-1"
               title="Ver atajos de teclado [F1]"
             >
-              Atajos [F1]
+              <span>Atajos [F1]</span>
             </button>
           </div>
 

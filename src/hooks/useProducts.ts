@@ -68,13 +68,6 @@ export function useProducts() {
       query = query.eq('kiosco_id', kioscoId)
     }
 
-    if (busqueda) {
-      query = query.ilike('descripcion', `%${busqueda}%`)
-    }
-    if (categoriaFiltro) {
-      query = query.eq('categoria_id', categoriaFiltro)
-    }
-
     const { data, error } = await query
 
     if (error) {
@@ -101,30 +94,19 @@ export function useProducts() {
 
         // Preservar productos creados localmente que aún no figuran en Supabase
         const remoteIds = new Set(data.map((d) => d.id))
-        let soloLocales = prev.filter((p) => !remoteIds.has(p.id))
-
-        if (categoriaFiltro) {
-          soloLocales = soloLocales.filter((p) => p.categoria_id === categoriaFiltro)
-        }
-        if (busqueda) {
-          const q = busqueda.toLowerCase().trim()
-          soloLocales = soloLocales.filter((p) => p.descripcion.toLowerCase().includes(q))
-        }
-
+        const soloLocales = prev.filter((p) => !remoteIds.has(p.id))
         const total = [...soloLocales, ...merged]
 
-        if (!busqueda && !categoriaFiltro) {
-          try {
-            localStorage.setItem('kiosko_cache_productos', JSON.stringify(total))
-          } catch (e) {
-            console.warn('No se pudo guardar catálogo en localStorage:', e)
-          }
+        try {
+          localStorage.setItem('kiosko_cache_productos', JSON.stringify(total))
+        } catch (e) {
+          console.warn('No se pudo guardar catálogo en localStorage:', e)
         }
         return total
       })
     }
     setCargando(false)
-  }, [busqueda, categoriaFiltro, usuario?.kiosco_id, kiosco?.id, productos.length])
+  }, [usuario?.kiosco_id, kiosco?.id])
 
   // Cargar categorías
   const cargarCategorias = useCallback(async () => {
