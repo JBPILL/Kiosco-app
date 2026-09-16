@@ -13,6 +13,7 @@ import { BarcodeScannerModal } from '../components/pos/BarcodeScannerModal'
 import { KeyboardShortcutsModal } from '../components/pos/KeyboardShortcutsModal'
 import { ArticuloLibreModal } from '../components/pos/ArticuloLibreModal'
 import { BalanzaManualModal } from '../components/pos/BalanzaManualModal'
+import { DevolucionModal } from '../components/pos/DevolucionModal'
 import { parsearCodigoBalanza, buscarProductoPorCodigoBalanza } from '../lib/barcodeParser'
 import { useBarcodeGun } from '../hooks/useBarcodeGun'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
@@ -36,6 +37,7 @@ export function POSPage() {
   const [modalShortcutsOpen, setModalShortcutsOpen] = useState(false)
   const [modalLibreOpen, setModalLibreOpen] = useState(false)
   const [modalBalanzaOpen, setModalBalanzaOpen] = useState(false)
+  const [modalDevolucionOpen, setModalDevolucionOpen] = useState(false)
   const [productoPesableModal, setProductoPesableModal] = useState<Producto | null>(null)
   const [ticketReciente, setTicketReciente] = useState<TicketData | null>(null)
   const [ticketModalOpen, setTicketModalOpen] = useState(false)
@@ -279,7 +281,7 @@ export function POSPage() {
 
   useBarcodeGun({
     onScan: handleBarcodeGunScan,
-    enabled: !paymentOpen && !cartModalOpen && !modalScannerOpen && !modalEsperaOpen && !ticketModalOpen && !modalBalanzaOpen,
+    enabled: !paymentOpen && !cartModalOpen && !modalScannerOpen && !modalEsperaOpen && !ticketModalOpen && !modalBalanzaOpen && !modalDevolucionOpen,
   })
 
   // Atajos de teclado para PC de escritorio
@@ -306,7 +308,8 @@ export function POSPage() {
         setModalShortcutsOpen((prev) => !prev)
       },
       onEscape: () => {
-        if (modalBalanzaOpen) setModalBalanzaOpen(false)
+        if (modalDevolucionOpen) setModalDevolucionOpen(false)
+        else if (modalBalanzaOpen) setModalBalanzaOpen(false)
         else if (modalScannerOpen) setModalScannerOpen(false)
         else if (modalShortcutsOpen) setModalShortcutsOpen(false)
         else if (modalEsperaOpen) setModalEsperaOpen(false)
@@ -384,6 +387,14 @@ export function POSPage() {
             >
               <span className="text-base font-bold leading-none">+</span>
               <span>Ítem Libre</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setModalDevolucionOpen(true)}
+              className="h-10 px-3 flex items-center gap-1.5 rounded-xl border border-red-200 dark:border-red-800/80 bg-red-50/70 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0"
+              title="Registrar devolución de ticket o cambio de producto"
+            >
+              <span>Devolución</span>
             </button>
           </div>
 
@@ -626,6 +637,16 @@ export function POSPage() {
       <ArticuloLibreModal
         isOpen={modalLibreOpen}
         onClose={() => setModalLibreOpen(false)}
+      />
+
+      {/* Modal de devoluciones y cambios de venta */}
+      <DevolucionModal
+        isOpen={modalDevolucionOpen}
+        onClose={() => setModalDevolucionOpen(false)}
+        onDevolucionExitosa={() => {
+          cargarFavoritos()
+          verificarSesionActiva()
+        }}
       />
     </div>
   )

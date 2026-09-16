@@ -186,6 +186,7 @@ export type MotivoMovimientoCaja =
   | 'GASTO_GENERAL'
   | 'RETIRO_DUENO'
   | 'REPOSICION_CAMBIO'
+  | 'DEVOLUCION_VENTA'
   | 'OTRO'
 
 export interface MovimientoCaja {
@@ -199,6 +200,40 @@ export interface MovimientoCaja {
   descripcion: string
   fecha_hora: string
   usuario?: Usuario
+}
+
+// --- Devoluciones Formales de Ventas ---
+
+export type MetodoReintegro = 'EFECTIVO_CAJA' | 'CUENTA_CORRIENTE' | 'OTRO'
+export type MotivoDevolucion = 'CAMBIO_PRODUCTO' | 'FALLA_ROTURA' | 'VENCIDO' | 'ERROR_COBRO' | 'OTRO'
+
+export interface DetalleDevolucion {
+  id: string
+  devolucion_id: string
+  producto_id: string
+  cantidad: number
+  precio_unitario: number
+  subtotal: number
+  reingresa_stock: boolean
+  producto?: Producto
+}
+
+export interface DevolucionVenta {
+  id: string
+  kiosco_id: string
+  venta_id: string
+  usuario_id: string | null
+  sesion_caja_id: string | null
+  cliente_id: string | null
+  fecha_hora: string
+  monto_total: number
+  metodo_reintegro: MetodoReintegro
+  motivo: MotivoDevolucion
+  notas: string | null
+  detalles?: DetalleDevolucion[]
+  venta?: Venta
+  usuario?: Usuario
+  cliente?: Cliente
 }
 
 // --- Tipos para el carrito (solo frontend) ---
