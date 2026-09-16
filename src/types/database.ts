@@ -40,6 +40,29 @@ export interface Producto {
   fecha_actualizacion: string
   // Relación opcional (join)
   categoria?: Categoria
+  // Lotes y vencimientos
+  requiere_vencimiento?: boolean
+  dias_alerta_vencimiento?: number
+  // Balanza y pesables
+  es_pesable?: boolean
+  unidad_medida?: 'UN' | 'KG' | 'GR' | 'LT'
+  plu_balanza?: string | null
+  // Combos y packs
+  es_combo?: boolean
+}
+
+export interface LoteProducto {
+  id: string
+  kiosco_id: string
+  producto_id: string
+  numero_lote: string | null
+  fecha_vencimiento: string // 'YYYY-MM-DD'
+  cantidad_inicial: number
+  cantidad_actual: number
+  fecha_ingreso: string
+  activo: boolean
+  // Relación opcional
+  producto?: Producto
 }
 
 export interface Usuario {

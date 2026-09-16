@@ -24,6 +24,8 @@ export interface ProductFormData {
   stock_minimo: number
   categoria_id: string | null
   codigo_barras: string | null
+  requiere_vencimiento?: boolean
+  dias_alerta_vencimiento?: number
 }
 
 export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }: ProductFormProps) {
@@ -35,6 +37,8 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
     stock_minimo: 5,
     categoria_id: null,
     codigo_barras: null,
+    requiere_vencimiento: false,
+    dias_alerta_vencimiento: 15,
   })
   const [guardando, setGuardando] = useState(false)
   const [scannerCamaraOpen, setScannerCamaraOpen] = useState(false)
@@ -59,6 +63,8 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
         stock_minimo: producto.stock_minimo,
         categoria_id: producto.categoria_id,
         codigo_barras: producto.codigo_barras,
+        requiere_vencimiento: producto.requiere_vencimiento || false,
+        dias_alerta_vencimiento: producto.dias_alerta_vencimiento || 15,
       })
     } else {
       setForm({
@@ -69,6 +75,8 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
         stock_minimo: 5,
         categoria_id: null,
         codigo_barras: null,
+        requiere_vencimiento: false,
+        dias_alerta_vencimiento: 15,
       })
     }
   }, [producto, isOpen])
@@ -200,6 +208,45 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
             <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
               Podés usar la cámara del celular o disparar directamente con un lector de barras físico USB / Bluetooth.
             </p>
+          </div>
+
+          {/* Opciones de Perecedero / Vencimiento */}
+          <div className="p-3 bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-xl space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.requiere_vencimiento || false}
+                onChange={(e) => setForm({ ...form, requiere_vencimiento: e.target.checked })}
+                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 dark:border-gray-600"
+              />
+              <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">
+                Producto perecedero (Controlar fechas de vencimiento y lotes)
+              </span>
+            </label>
+
+            {form.requiere_vencimiento && (
+              <div className="pt-1 pl-6">
+                <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Días de anticipación para alerta preventiva:
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="1"
+                    max="180"
+                    value={form.dias_alerta_vencimiento || 15}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        dias_alerta_vencimiento: parseInt(e.target.value, 10) || 15,
+                      })
+                    }
+                    className="w-24 text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-indigo-500 font-bold"
+                  />
+                  <span className="text-xs text-gray-400">días antes de caducar</span>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex gap-2 pt-2">

@@ -12,6 +12,7 @@ import { Modal } from '../ui/Modal'
 import type { MedioPago } from '../../types/database'
 import type { TicketData } from './TicketReceiptModal'
 import { useAFIPStore } from '../../stores/afipStore'
+import { useLoteStore } from '../../stores/loteStore'
 import type { TipoDocumentoAFIP } from '../../types/afip'
 import toast from 'react-hot-toast'
 
@@ -283,6 +284,13 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             usuario_id: usuario?.id || null,
             fecha: ahora,
           })
+
+          // Descontar por FEFO de los lotes de vencimiento si el producto tiene lotes activos
+          try {
+            await useLoteStore.getState().descontarStockFEFO(it.producto.id, it.cantidad)
+          } catch (errLote) {
+            console.warn(`Aviso: deducción de lote FEFO para ${it.producto.descripcion}:`, errLote)
+          }
         } catch (errStock) {
           console.warn(`Error al actualizar stock para ${it.producto.descripcion}:`, errStock)
         }

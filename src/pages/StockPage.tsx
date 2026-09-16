@@ -9,6 +9,7 @@ import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import { BarcodeScannerModal } from '../components/pos/BarcodeScannerModal'
+import { useLoteStore, calcularDiasHastaVencimiento } from '../stores/loteStore'
 import type { Producto, MovimientoStock } from '../types/database'
 import toast from 'react-hot-toast'
 
@@ -20,6 +21,14 @@ export function StockPage() {
   const [productos, setProductos] = useState<Producto[]>([])
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
+
+  // Lotes y Vencimientos (FIFO / FEFO)
+  const { lotes, cargarLotes, crearLote, darDeBajaLote, obtenerAlertas } = useLoteStore()
+  const [vistaPrincipal, setVistaPrincipal] = useState<'MOVIMIENTOS' | 'VENCIMIENTOS'>('MOVIMIENTOS')
+  const [fechaVencimiento, setFechaVencimiento] = useState('')
+  const [numeroLote, setNumeroLote] = useState('')
+  const [filtroEstadoLote, setFiltroEstadoLote] = useState<'TODOS' | 'VENCIDOS' | 'CRITICOS' | 'PROXIMOS' | 'VIGENTES'>('TODOS')
+  const [busquedaLote, setBusquedaLote] = useState('')
 
   // Modales
   const [modalOpen, setModalOpen] = useState(false)
@@ -83,7 +92,8 @@ export function StockPage() {
   useEffect(() => {
     cargarMovimientos()
     cargarProductos()
-  }, [cargarMovimientos, cargarProductos])
+    cargarLotes(usuario?.kiosco_id || undefined)
+  }, [cargarMovimientos, cargarProductos, cargarLotes, usuario?.kiosco_id])
 
   // Cerrar sugerencias al hacer clic fuera
   useEffect(() => {
@@ -282,6 +292,21 @@ export function StockPage() {
 
       if (prodError) throw prodError
 
+      // 3. Si fue un ingreso y se indicó fecha de vencimiento, crear el lote correspondiente
+      if (tipoMovimiento === 'INGRESO' && fechaVencimiento) {
+        try {
+          await crearLote({
+            kiosco_id: usuario?.kiosco_id || '',
+            producto_id: productoSeleccionado.id,
+            numero_lote: numeroLote.trim() || null,
+            fecha_vencimiento: fechaVencimiento,
+            cantidad: cantNum,
+          })
+        } catch (errLote) {
+          console.warn('Aviso al registrar lote de vencimiento:', errLote)
+        }
+      }
+
       playScanSound('success')
       toast.success(
         `Stock actualizado: "${productoSeleccionado.descripcion}" (${calculoStockResultante.stockActual} → ${calculoStockResultante.nuevoStock})`
@@ -292,8 +317,10 @@ export function StockPage() {
       setBusquedaProductoInput('')
       setCantidad('1')
       setNotas('')
+      setFechaVencimiento('')
+      setNumeroLote('')
 
-      await Promise.all([cargarMovimientos(), cargarProductos()])
+      await Promise.all([cargarMovimientos(), cargarProductos(), cargarLotes(usuario?.kiosco_id || undefined)])
     } catch (err: any) {
       playScanSound('error')
       toast.error(err?.message || 'Error al actualizar stock')
@@ -323,6 +350,72 @@ export function StockPage() {
       return true
     })
   }, [movimientos, filtroTipo, busquedaHistorial])
+
+  // Lotes y Vencimientos calculados
+  const alertasLotes = useMemo(() => obtenerAlertas(30), [obtenerAlertas, lotes])
+
+  const lotesFiltrados = useMemo(() => {
+    return lotes.filter((l) => {
+      if (!l.activo || l.cantidad_actual <= 0) return false
+      const prod = productos.find((p) => p.id === l.producto_id)
+      const desc = prod?.descripcion.toLowerCase() || ''
+      const code = prod?.codigo_barras?.toLowerCase() || ''
+      const loteNum = l.numero_lote?.toLowerCase() || ''
+      const q = busquedaLote.toLowerCase()
+
+      if (q && !desc.includes(q) && !code.includes(q) && !loteNum.includes(q)) {
+        return false
+      }
+
+      const dias = calcularDiasHastaVencimiento(l.fecha_vencimiento)
+      if (filtroEstadoLote === 'VENCIDOS') return dias < 0
+      if (filtroEstadoLote === 'CRITICOS') return dias >= 0 && dias <= 7
+      if (filtroEstadoLote === 'PROXIMOS') return dias > 7 && dias <= 30
+      if (filtroEstadoLote === 'VIGENTES') return dias > 30
+
+      return true
+    })
+  }, [lotes, productos, busquedaLote, filtroEstadoLote])
+
+  const handleDarDeBajaLote = async (loteId: string) => {
+    const lote = lotes.find((l) => l.id === loteId)
+    if (!lote) return
+    const prod = productos.find((p) => p.id === lote.producto_id)
+    const nombreProd = prod?.descripcion || 'este producto'
+
+    const confirmar = window.confirm(
+      `¿Confirmás dar de baja el lote de "${nombreProd}" (${lote.cantidad_actual} unidades)?\n\nSe registrará un egreso de stock con motivo VENCIMIENTO y el lote quedará en 0.`
+    )
+    if (!confirmar) return
+
+    try {
+      await darDeBajaLote(loteId)
+
+      await supabase.from('movimientos_stock').insert({
+        producto_id: lote.producto_id,
+        kiosco_id: usuario?.kiosco_id,
+        tipo: 'EGRESO',
+        cantidad: -lote.cantidad_actual,
+        motivo: 'VENCIMIENTO',
+        notas: `Baja de lote vencido ${lote.numero_lote ? `(${lote.numero_lote})` : ''} - Vto: ${lote.fecha_vencimiento}`,
+        usuario_id: usuario?.id || null,
+        fecha: new Date().toISOString(),
+      })
+
+      if (prod) {
+        const nuevoStock = Math.max(0, prod.stock_actual - lote.cantidad_actual)
+        await supabase
+          .from('productos')
+          .update({ stock_actual: nuevoStock, fecha_actualizacion: new Date().toISOString() })
+          .eq('id', prod.id)
+      }
+
+      toast.success(`Lote de "${nombreProd}" dado de baja correctamente`)
+      await Promise.all([cargarMovimientos(), cargarProductos(), cargarLotes(usuario?.kiosco_id || undefined)])
+    } catch (e: any) {
+      toast.error('Error al dar de baja lote: ' + (e?.message || ''))
+    }
+  }
 
   // Colores de badges de tipo
   const tipoBadges = {
@@ -500,151 +593,411 @@ export function StockPage() {
         </div>
       )}
 
-      {/* Historial de Movimientos de Stock */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs overflow-hidden">
-        {/* Barra superior de control: Pestañas, Buscador y Exportación */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-gray-50/50 dark:bg-gray-900/30">
-          {/* Pestañas de filtrado por Tipo */}
-          <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/80 p-1 rounded-lg border border-gray-200 dark:border-gray-700 self-start md:self-auto flex-wrap">
-            {(['TODOS', 'INGRESO', 'EGRESO', 'AJUSTE'] as const).map((tipo) => (
-              <button
-                key={tipo}
-                type="button"
-                onClick={() => setFiltroTipo(tipo)}
-                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
-                  filtroTipo === tipo
-                    ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-2xs'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                }`}
-              >
-                {tipo === 'TODOS'
-                  ? 'Todos'
-                  : tipo === 'INGRESO'
-                  ? 'Ingresos (+)'
-                  : tipo === 'EGRESO'
-                  ? 'Egresos (-)'
-                  : 'Ajustes (=)'}
-              </button>
-            ))}
-          </div>
+      {/* Selector de Vista Principal: Movimientos vs. Lotes y Vencimientos */}
+      <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-700">
+        <button
+          type="button"
+          onClick={() => setVistaPrincipal('MOVIMIENTOS')}
+          className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all cursor-pointer ${
+            vistaPrincipal === 'MOVIMIENTOS'
+              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+              : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
+          }`}
+        >
+          Historial de Movimientos
+        </button>
+        <button
+          type="button"
+          onClick={() => setVistaPrincipal('VENCIMIENTOS')}
+          className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+            vistaPrincipal === 'VENCIMIENTOS'
+              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+              : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
+          }`}
+        >
+          <span>Lotes y Vencimientos (FIFO)</span>
+          {alertasLotes.vencidos.length + alertasLotes.criticos.length > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300">
+              {alertasLotes.vencidos.length + alertasLotes.criticos.length}
+            </span>
+          )}
+        </button>
+      </div>
 
-          {/* Buscador y Exportar CSV */}
-          <div className="flex items-center gap-2 w-full md:w-auto">
-            <div className="relative flex-1 md:w-64">
-              <input
-                type="text"
-                placeholder="Buscar por producto, código o motivo..."
-                value={busquedaHistorial}
-                onChange={(e) => setBusquedaHistorial(e.target.value)}
-                className="w-full text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 outline-none focus:border-indigo-500 transition-colors"
-              />
-              {busquedaHistorial && (
+      {vistaPrincipal === 'MOVIMIENTOS' ? (
+        /* Historial de Movimientos de Stock */
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs overflow-hidden">
+          {/* Barra superior de control: Pestañas, Buscador y Exportación */}
+          <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-gray-50/50 dark:bg-gray-900/30">
+            {/* Pestañas de filtrado por Tipo */}
+            <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/80 p-1 rounded-lg border border-gray-200 dark:border-gray-700 self-start md:self-auto flex-wrap">
+              {(['TODOS', 'INGRESO', 'EGRESO', 'AJUSTE'] as const).map((tipo) => (
                 <button
+                  key={tipo}
                   type="button"
-                  onClick={() => setBusquedaHistorial('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                  onClick={() => setFiltroTipo(tipo)}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+                    filtroTipo === tipo
+                      ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-2xs'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                  }`}
                 >
-                  ✕
+                  {tipo === 'TODOS'
+                    ? 'Todos'
+                    : tipo === 'INGRESO'
+                    ? 'Ingresos (+)'
+                    : tipo === 'EGRESO'
+                    ? 'Egresos (-)'
+                    : 'Ajustes (=)'}
                 </button>
-              )}
+              ))}
             </div>
 
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => exportarMovimientosStockCSV(movimientosFiltrados, kiosco?.nombre || 'Kiosco')}
-              disabled={movimientosFiltrados.length === 0}
-              className="text-xs whitespace-nowrap"
-              title="Descargar historial filtrado en formato CSV compatible con Excel"
-            >
-              Exportar CSV
-            </Button>
-          </div>
-        </div>
+            {/* Buscador y Exportar CSV */}
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <div className="relative flex-1 md:w-64">
+                <input
+                  type="text"
+                  placeholder="Buscar por producto, código o motivo..."
+                  value={busquedaHistorial}
+                  onChange={(e) => setBusquedaHistorial(e.target.value)}
+                  className="w-full text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 outline-none focus:border-indigo-500 transition-colors"
+                />
+                {busquedaHistorial && (
+                  <button
+                    type="button"
+                    onClick={() => setBusquedaHistorial('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
 
-        {/* Lista / Tabla de Movimientos */}
-        {cargando ? (
-          <div className="text-center py-12">
-            <div className="animate-spin h-8 w-8 border-4 border-indigo-600 dark:border-indigo-400 border-t-transparent rounded-full mx-auto" />
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Cargando movimientos de stock...</p>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => exportarMovimientosStockCSV(movimientosFiltrados, kiosco?.nombre || 'Kiosco')}
+                disabled={movimientosFiltrados.length === 0}
+                className="text-xs whitespace-nowrap"
+                title="Descargar historial filtrado en formato CSV compatible con Excel"
+              >
+                Exportar CSV
+              </Button>
+            </div>
           </div>
-        ) : movimientosFiltrados.length === 0 ? (
-          <div className="text-center py-12 px-4">
-            <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-              No se encontraron movimientos registrados
-            </p>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 max-w-sm mx-auto">
-              {busquedaHistorial || filtroTipo !== 'TODOS'
-                ? 'Probá ajustando el filtro de búsqueda o el tipo de movimiento seleccionado.'
-                : 'Registrá un ingreso o escaneá un producto con código de barras para comenzar.'}
-            </p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-100 dark:divide-gray-700">
-            {movimientosFiltrados.map((mov) => {
-              const esIngreso = mov.tipo === 'INGRESO'
-              const esEgreso = mov.tipo === 'EGRESO'
-              const cantDisplay =
-                mov.cantidad > 0 ? `+${mov.cantidad}` : `${mov.cantidad}`
 
-              return (
-                <div
-                  key={mov.id}
-                  className="p-3.5 sm:px-4 flex items-center justify-between gap-3 hover:bg-gray-50/70 dark:hover:bg-gray-750 transition-colors"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    {/* Badge de tipo */}
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${
-                        tipoBadges[mov.tipo]
-                      }`}
-                    >
-                      {mov.tipo}
-                    </span>
+          {/* Lista de Movimientos */}
+          {cargando ? (
+            <div className="p-12 text-center text-gray-400 dark:text-gray-500">
+              <div className="animate-spin h-6 w-6 border-2 border-indigo-600 border-t-transparent rounded-full mx-auto mb-2" />
+              <p className="text-xs">Cargando movimientos...</p>
+            </div>
+          ) : movimientosFiltrados.length === 0 ? (
+            <div className="p-12 text-center text-gray-400 dark:text-gray-500">
+              <p className="font-semibold text-sm">No se encontraron movimientos registrados</p>
+              <p className="text-xs mt-1">
+                {busquedaHistorial || filtroTipo !== 'TODOS'
+                  ? 'Probá cambiando los filtros o la búsqueda'
+                  : 'Hacé clic en "+ Registrar Movimiento" o utilizá el lector de código de barras para comenzar'}
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100 dark:divide-gray-700/60 max-h-[560px] overflow-y-auto">
+              {movimientosFiltrados.map((mov) => {
+                const esIngreso = mov.tipo === 'INGRESO'
+                const esEgreso = mov.tipo === 'EGRESO'
+                const cantDisplay = esIngreso
+                  ? `+${mov.cantidad}`
+                  : esEgreso
+                  ? `${mov.cantidad}`
+                  : `=${mov.cantidad}`
 
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate">
-                          {mov.producto?.descripcion || 'Producto eliminado'}
+                return (
+                  <div
+                    key={mov.id}
+                    className="p-3 sm:p-4 hover:bg-gray-50/70 dark:hover:bg-gray-750/50 flex items-center justify-between gap-3 transition-colors text-xs"
+                  >
+                    {/* Badge de tipo y datos de producto */}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span
+                        className={`font-black text-[10px] tracking-wider px-2 py-1 rounded-md uppercase flex-shrink-0 ${
+                          tipoBadges[mov.tipo]
+                        }`}
+                      >
+                        {mov.tipo}
+                      </span>
+
+                      <div className="min-w-0">
+                        <p className="font-bold text-gray-900 dark:text-gray-100 truncate text-xs sm:text-sm">
+                          {mov.producto?.descripcion || 'Producto sin descripción'}
                         </p>
-                        {mov.producto?.codigo_barras && (
-                          <span className="hidden sm:inline-block font-mono text-[10px] text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.2 rounded">
-                            {mov.producto.codigo_barras}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2 text-[11px] text-gray-400 mt-0.5 flex-wrap">
+                          {mov.producto?.codigo_barras && (
+                            <span className="font-mono">{mov.producto.codigo_barras}</span>
+                          )}
+                          <span>·</span>
+                          {mov.notas && (
+                            <>
+                              <span>·</span>
+                              <span className="italic truncate max-w-[200px]" title={mov.notas}>
+                                "{mov.notas}"
+                              </span>
+                            </>
+                          )}
+                        </div>
                       </div>
+                    </div>
 
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                        {formatFecha(mov.fecha)} ·{' '}
-                        <span className="font-medium text-gray-600 dark:text-gray-400">
-                          {mov.motivo}
-                        </span>
-                        {mov.notas && ` · ${mov.notas}`}
+                    {/* Fecha del movimiento */}
+                    <div className="hidden sm:block text-right text-[11px] text-gray-400 flex-shrink-0">
+                      <p className="font-medium text-gray-600 dark:text-gray-300">
+                        {formatFecha(mov.fecha)}
                       </p>
                     </div>
-                  </div>
 
-                  {/* Cantidad variada */}
-                  <div className="text-right flex-shrink-0">
-                    <span
-                      className={`font-mono text-base font-black ${
-                        esIngreso
-                          ? 'text-emerald-600 dark:text-emerald-400'
-                          : esEgreso
-                          ? 'text-red-600 dark:text-red-400'
-                          : 'text-indigo-600 dark:text-indigo-400'
-                      }`}
-                    >
-                      {cantDisplay}
-                    </span>
-                    <span className="block text-[10px] text-gray-400">unidades</span>
+                    {/* Cantidad variada */}
+                    <div className="text-right flex-shrink-0">
+                      <span
+                        className={`font-mono text-base font-black ${
+                          esIngreso
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : esEgreso
+                            ? 'text-red-600 dark:text-red-400'
+                            : 'text-indigo-600 dark:text-indigo-400'
+                        }`}
+                      >
+                        {cantDisplay}
+                      </span>
+                      <span className="block text-[10px] text-gray-400">unidades</span>
+                    </div>
                   </div>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Vista de Control de Lotes y Vencimientos (FIFO) */
+        <div className="space-y-4">
+          {/* Tarjetas de Semáforo de Vencimiento */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div
+              onClick={() => setFiltroEstadoLote('VENCIDOS')}
+              className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+                filtroEstadoLote === 'VENCIDOS'
+                  ? 'border-red-500 bg-red-50 dark:bg-red-950/40 ring-2 ring-red-500'
+                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-red-300'
+              }`}
+            >
+              <span className="text-xs font-bold text-red-600 dark:text-red-400 block">
+                🔴 Vencidos
+              </span>
+              <p className="text-2xl font-black text-red-700 dark:text-red-300 mt-1">
+                {alertasLotes.vencidos.length}
+              </p>
+              <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                Dar de baja inmediata
+              </span>
+            </div>
+
+            <div
+              onClick={() => setFiltroEstadoLote('CRITICOS')}
+              className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+                filtroEstadoLote === 'CRITICOS'
+                  ? 'border-orange-500 bg-orange-50 dark:bg-orange-950/40 ring-2 ring-orange-500'
+                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-orange-300'
+              }`}
+            >
+              <span className="text-xs font-bold text-orange-600 dark:text-orange-400 block">
+                🟠 Críticos (≤ 7 días)
+              </span>
+              <p className="text-2xl font-black text-orange-700 dark:text-orange-300 mt-1">
+                {alertasLotes.criticos.length}
+              </p>
+              <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                Poner al frente / Oferta
+              </span>
+            </div>
+
+            <div
+              onClick={() => setFiltroEstadoLote('PROXIMOS')}
+              className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+                filtroEstadoLote === 'PROXIMOS'
+                  ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/40 ring-2 ring-amber-500'
+                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-amber-300'
+              }`}
+            >
+              <span className="text-xs font-bold text-amber-600 dark:text-amber-400 block">
+                🟡 Próximos (8 a 30 días)
+              </span>
+              <p className="text-2xl font-black text-amber-700 dark:text-amber-300 mt-1">
+                {alertasLotes.proximos.length}
+              </p>
+              <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                En seguimiento
+              </span>
+            </div>
+
+            <div
+              onClick={() => setFiltroEstadoLote('VIGENTES')}
+              className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+                filtroEstadoLote === 'VIGENTES'
+                  ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 ring-2 ring-emerald-500'
+                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-emerald-300'
+              }`}
+            >
+              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 block">
+                🟢 Vigentes (&gt; 30 días)
+              </span>
+              <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300 mt-1">
+                {alertasLotes.vigentes.length}
+              </p>
+              <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                Stock saludable
+              </span>
+            </div>
           </div>
-        )}
-      </div>
+
+          {/* Tabla de Lotes */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs overflow-hidden">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-gray-50/50 dark:bg-gray-900/30">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {(['TODOS', 'VENCIDOS', 'CRITICOS', 'PROXIMOS', 'VIGENTES'] as const).map((fil) => (
+                  <button
+                    key={fil}
+                    type="button"
+                    onClick={() => setFiltroEstadoLote(fil)}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                      filtroEstadoLote === fil
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    {fil === 'TODOS'
+                      ? 'Todos'
+                      : fil === 'VENCIDOS'
+                      ? 'Vencidos'
+                      : fil === 'CRITICOS'
+                      ? '≤ 7 días'
+                      : fil === 'PROXIMOS'
+                      ? '8 a 30 días'
+                      : 'Vigentes'}
+                  </button>
+                ))}
+              </div>
+
+              <div className="relative w-full md:w-72">
+                <input
+                  type="text"
+                  placeholder="Buscar por producto, código o lote..."
+                  value={busquedaLote}
+                  onChange={(e) => setBusquedaLote(e.target.value)}
+                  className="w-full text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 outline-none focus:border-indigo-500 transition-colors"
+                />
+                {busquedaLote && (
+                  <button
+                    type="button"
+                    onClick={() => setBusquedaLote('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {lotesFiltrados.length === 0 ? (
+              <div className="p-12 text-center text-gray-400 dark:text-gray-500">
+                <p className="font-semibold text-sm">No hay lotes que coincidan con los filtros</p>
+                <p className="text-xs mt-1">
+                  Al registrar ingresos de stock con fecha de vencimiento, aparecerán listados aquí para control FIFO.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 uppercase font-semibold">
+                    <tr>
+                      <th className="py-3 px-4">Producto</th>
+                      <th className="py-3 px-4">Lote</th>
+                      <th className="py-3 px-4">Vencimiento</th>
+                      <th className="py-3 px-4">Estado / Días</th>
+                      <th className="py-3 px-4 text-center">Cantidad en Lote</th>
+                      <th className="py-3 px-4 text-right">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {lotesFiltrados.map((lote) => {
+                      const prod = productos.find((p) => p.id === lote.producto_id)
+                      const dias = calcularDiasHastaVencimiento(lote.fecha_vencimiento)
+                      const estaVencido = dias < 0
+                      const esCritico = dias >= 0 && dias <= 7
+                      const esProximo = dias > 7 && dias <= 30
+
+                      return (
+                        <tr
+                          key={lote.id}
+                          className="hover:bg-gray-50/60 dark:hover:bg-gray-750/40 transition-colors"
+                        >
+                          <td className="py-3 px-4">
+                            <p className="font-bold text-gray-900 dark:text-gray-100">
+                              {prod?.descripcion || 'Producto sin nombre'}
+                            </p>
+                            {prod?.codigo_barras && (
+                              <p className="font-mono text-[11px] text-gray-400">
+                                {prod.codigo_barras}
+                              </p>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 font-mono font-semibold text-gray-600 dark:text-gray-300">
+                            {lote.numero_lote || '—'}
+                          </td>
+                          <td className="py-3 px-4 font-mono text-gray-900 dark:text-gray-100 font-bold">
+                            {lote.fecha_vencimiento}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-black inline-flex items-center gap-1 ${
+                                estaVencido
+                                  ? 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
+                                  : esCritico
+                                  ? 'bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300'
+                                  : esProximo
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                              }`}
+                            >
+                              {estaVencido
+                                ? `Venció hace ${Math.abs(dias)} días`
+                                : dias === 0
+                                ? 'Vence hoy'
+                                : `Vence en ${dias} días`}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-center font-bold text-sm text-gray-900 dark:text-gray-100">
+                            {lote.cantidad_actual} u.
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleDarDeBajaLote(lote.id)}
+                              className="px-2.5 py-1 text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40 rounded-lg transition-colors active:scale-95 cursor-pointer"
+                              title="Dar de baja por vencimiento (genera egreso de stock)"
+                            >
+                              Dar de baja
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Modal de Registro de Movimiento Renovado */}
       <Modal
@@ -919,6 +1272,48 @@ export function StockPage() {
               ))}
             </select>
           </div>
+
+          {/* Lote y Vencimiento opcional (si es INGRESO) */}
+          {tipoMovimiento === 'INGRESO' && (
+            <div className="p-3 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800/60 rounded-xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-indigo-900 dark:text-indigo-300 uppercase tracking-wide">
+                  Control de Lote y Vencimiento (Opcional)
+                </label>
+                {productoSeleccionado?.requiere_vencimiento && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300">
+                    Perecedero
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
+                    Fecha de Vencimiento
+                  </label>
+                  <input
+                    type="date"
+                    value={fechaVencimiento}
+                    onChange={(e) => setFechaVencimiento(e.target.value)}
+                    className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 outline-none focus:border-indigo-500 font-medium"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
+                    N° de Lote (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: L2026-A"
+                    value={numeroLote}
+                    onChange={(e) => setNumeroLote(e.target.value)}
+                    className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 outline-none focus:border-indigo-500 uppercase font-mono"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Notas Adicionales */}
           <Input
