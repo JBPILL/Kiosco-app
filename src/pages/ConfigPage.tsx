@@ -439,23 +439,8 @@ export function ConfigPage() {
 
           {/* Estado de Suscripción */}
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
-            <div className="flex items-center justify-between">
+            <div>
               <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Estado de la Suscripción</h2>
-              <span
-                className={`px-3 py-1 text-xs font-bold rounded-full uppercase tracking-wider ${
-                  estadoEfectivo === 'ACTIVO'
-                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
-                    : estadoEfectivo === 'SOLO_LECTURA'
-                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
-                    : 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300 border border-red-300 dark:border-red-800'
-                }`}
-              >
-                {estadoEfectivo === 'ACTIVO'
-                  ? 'Servicio Activo'
-                  : estadoEfectivo === 'SOLO_LECTURA'
-                  ? 'Solo Lectura'
-                  : 'Suspendido'}
-              </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -673,13 +658,15 @@ export function ConfigPage() {
                           <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{u.nombre}</td>
                           <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{u.email || '—'}</td>
                           <td className="px-4 py-3">
-                            <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${
-                              u.rol === 'DUEÑO'
-                                ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400'
-                                : u.rol === 'CAJERO'
-                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
-                                : 'bg-gray-100 text-gray-700 dark:text-gray-700 dark:text-gray-300'
-                            }`}>
+                            <span
+                              className={`inline-flex items-center justify-center min-w-[70px] px-2.5 py-0.5 text-xs font-semibold rounded-full tracking-wide ${
+                                u.rol === 'DUEÑO'
+                                  ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400'
+                                  : u.rol === 'CAJERO'
+                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                                  : 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-400'
+                              }`}
+                            >
                               {u.rol}
                             </span>
                           </td>
