@@ -384,6 +384,8 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           cantidad: it.cantidad,
           precioUnitario: it.producto.precio_venta,
           subtotal: it.subtotal,
+          descuentoPromo: it.descuento_promo,
+          promoNombre: it.promo_nombre,
         })),
         subtotal,
         ajuste: tieneAjuste

@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useCartStore } from '../stores/cartStore'
 import { useCajaStore } from '../stores/cajaStore'
+import { useAuthStore } from '../stores/authStore'
+import { usePromocionStore } from '../stores/promocionStore'
 import { formatPrecio, formatFecha } from '../lib/utils'
 import { ProductSearch } from '../components/pos/ProductSearch'
 import { FavoritesGrid } from '../components/pos/FavoritesGrid'
@@ -25,7 +27,9 @@ import toast from 'react-hot-toast'
 
 export function POSPage() {
   const navigate = useNavigate()
+  const { usuario, kiosco } = useAuthStore()
   const { sesionActiva, verificarSesionActiva } = useCajaStore()
+  const { promociones, cargarPromociones } = usePromocionStore()
   const [favoritos, setFavoritos] = useState<Producto[]>([])
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [categoriaActiva, setCategoriaActiva] = useState<string | null>(null)
@@ -89,7 +93,9 @@ export function POSPage() {
     cargarFavoritos()
     cargarCategorias()
     verificarSesionActiva()
-  }, [cargarFavoritos, cargarCategorias, verificarSesionActiva])
+    const kid = usuario?.kiosco_id || kiosco?.id
+    if (kid) cargarPromociones(kid)
+  }, [cargarFavoritos, cargarCategorias, verificarSesionActiva, cargarPromociones, usuario?.kiosco_id, kiosco?.id])
 
   useEffect(() => {
     if (categoriaActiva) {
@@ -396,6 +402,16 @@ export function POSPage() {
             >
               <span>Devolución</span>
             </button>
+            {promociones.filter((p) => p.activo).length > 0 && (
+              <button
+                type="button"
+                onClick={() => navigate('/promociones')}
+                className="h-10 px-3 flex items-center gap-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/70 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0"
+                title="Ver promociones activas vigentes"
+              >
+                <span>Promos ({promociones.filter((p) => p.activo).length})</span>
+              </button>
+            )}
           </div>
 
           {/* Categorías deslizables + Botón Ventas en Espera */}

@@ -9,6 +9,8 @@ export interface TicketItem {
   cantidad: number
   precioUnitario: number
   subtotal: number
+  descuentoPromo?: number
+  promoNombre?: string
 }
 
 export interface TicketData {
@@ -139,6 +141,9 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
     ticket.items.forEach((it) => {
       const cantStr = it.cantidad % 1 === 0 ? `${it.cantidad}x` : `${it.cantidad} kg x`
       msg += `${cantStr} ${it.descripcion} ($${it.precioUnitario.toLocaleString('es-AR')}) = $${it.subtotal.toLocaleString('es-AR')}\n`
+      if (it.promoNombre) {
+        msg += `   [${it.promoNombre}]\n`
+      }
     })
     msg += `--------------------------------\n`
     if (ticket.ajuste) {
@@ -302,14 +307,21 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
                 <span>Subtotal</span>
               </div>
               {ticket.items.map((it, idx) => (
-                <div key={idx} className="flex justify-between items-start text-[11px]">
-                  <div className="pr-2 truncate">
-                    <span>{it.cantidad % 1 === 0 ? `${it.cantidad}x ` : `${it.cantidad} kg x `}</span>
-                    <span>{it.descripcion}</span>
+                <div key={idx} className="space-y-0.5 text-[11px]">
+                  <div className="flex justify-between items-start">
+                    <div className="pr-2 truncate">
+                      <span>{it.cantidad % 1 === 0 ? `${it.cantidad}x ` : `${it.cantidad} kg x `}</span>
+                      <span>{it.descripcion}</span>
+                    </div>
+                    <span className="font-semibold whitespace-nowrap">
+                      {formatPrecio(it.subtotal)}
+                    </span>
                   </div>
-                  <span className="font-semibold whitespace-nowrap">
-                    {formatPrecio(it.subtotal)}
-                  </span>
+                  {it.promoNombre && (
+                    <div className="text-[9px] text-emerald-700 dark:text-emerald-400 font-medium pl-2">
+                      {it.promoNombre}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

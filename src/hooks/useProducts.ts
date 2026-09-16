@@ -5,8 +5,34 @@ import { useAuthStore } from '../stores/authStore'
 import type { Producto, Categoria } from '../types/database'
 import toast from 'react-hot-toast'
 
+const CORE_PRODUCT_KEYS = new Set([
+  'id',
+  'kiosco_id',
+  'categoria_id',
+  'codigo_barras',
+  'descripcion',
+  'precio_costo',
+  'precio_venta',
+  'stock_actual',
+  'stock_minimo',
+  'es_favorito',
+  'activo',
+  'fecha_creacion',
+  'fecha_actualizacion',
+])
+
+function filtrarColumnasBase(obj: Record<string, any>): Record<string, any> {
+  const base: Record<string, any> = {}
+  for (const key of Object.keys(obj)) {
+    if (CORE_PRODUCT_KEYS.has(key)) {
+      base[key] = obj[key]
+    }
+  }
+  return base
+}
+
 export function useProducts() {
-  const { usuario } = useAuthStore()
+  const { usuario, kiosco } = useAuthStore()
   const [productos, setProductos] = useState<Producto[]>(() => {
     try {
       const cached = localStorage.getItem('kiosko_cache_productos')
@@ -30,14 +56,16 @@ export function useProducts() {
   // Cargar productos con join a categoría
   const cargarProductos = useCallback(async () => {
     setCargando(true)
+    const kioscoId = usuario?.kiosco_id || kiosco?.id
+
     let query = supabase
       .from('productos')
       .select('*, categoria:categorias(id, nombre, color)')
       .eq('activo', true)
       .order('descripcion')
 
-    if (usuario?.kiosco_id) {
-      query = query.eq('kiosco_id', usuario.kiosco_id)
+    if (kioscoId) {
+      query = query.eq('kiosco_id', kioscoId)
     }
 
     if (busqueda) {
@@ -62,18 +90,32 @@ export function useProducts() {
         toast.error('Error al cargar productos: ' + (error.message || ''))
       }
       console.error('Error al cargar productos:', error)
-    } else {
-      setProductos(data || [])
-      if (!busqueda && !categoriaFiltro && data && data.length > 0) {
-        try {
-          localStorage.setItem('kiosko_cache_productos', JSON.stringify(data))
-        } catch (e) {
-          console.warn('No se pudo guardar catálogo en localStorage:', e)
+    } else if (data) {
+      setProductos((prev) => {
+        // Enriquecer datos remotos con atributos locales si existen
+        const localMap = new Map(prev.map((p) => [p.id, p]))
+        const merged = data.map((item) => {
+          const local = localMap.get(item.id)
+          return local ? { ...local, ...item } : item
+        })
+
+        // Preservar productos creados localmente que aún no figuran en Supabase
+        const remoteIds = new Set(data.map((d) => d.id))
+        const soloLocales = prev.filter((p) => !remoteIds.has(p.id))
+        const total = [...soloLocales, ...merged]
+
+        if (!busqueda && !categoriaFiltro) {
+          try {
+            localStorage.setItem('kiosko_cache_productos', JSON.stringify(total))
+          } catch (e) {
+            console.warn('No se pudo guardar catálogo en localStorage:', e)
+          }
         }
-      }
+        return total
+      })
     }
     setCargando(false)
-  }, [busqueda, categoriaFiltro, usuario?.kiosco_id])
+  }, [busqueda, categoriaFiltro, usuario?.kiosco_id, kiosco?.id, productos.length])
 
   // Cargar categorías
   const cargarCategorias = useCallback(async () => {
@@ -126,45 +168,103 @@ export function useProducts() {
   ): Promise<Producto | null> => {
     const nuevoId = uuidv4()
     const now = new Date().toISOString()
+    const kioscoId = usuario?.kiosco_id || kiosco?.id || ''
     const payload: Producto = {
       id: nuevoId,
-      kiosco_id: usuario?.kiosco_id || '',
+      kiosco_id: kioscoId,
       activo: true,
       fecha_creacion: now,
       fecha_actualizacion: now,
       ...producto,
     }
 
+    let insertadoEnSupabase = false
+
     try {
-      const { error } = await supabase.from('productos').insert(payload)
-      if (error) {
-        console.warn('Error al crear producto en Supabase, guardando localmente:', error.message)
+      // 1. Intentar insertar con todas las columnas
+      const { error: fullError } = await supabase.from('productos').insert(payload)
+      if (!fullError) {
+        insertadoEnSupabase = true
+      } else {
+        console.warn('Inserción completa rechazada por Supabase:', fullError.message)
+        // 2. Si falló por falta de columnas en la BD, reintentar solo con columnas base
+        if (
+          fullError.code === '42703' ||
+          fullError.code === 'PGRST204' ||
+          fullError.message?.toLowerCase().includes('column')
+        ) {
+          const payloadBase = filtrarColumnasBase(payload)
+          const { error: coreError } = await supabase.from('productos').insert(payloadBase)
+          if (!coreError) {
+            insertadoEnSupabase = true
+            console.info('Producto insertado con éxito en Supabase usando esquema base')
+          } else {
+            console.error('Error insertando esquema base en Supabase:', coreError)
+          }
+        }
       }
     } catch (e) {
-      console.warn('Error de red creando producto:', e)
+      console.warn('Fallo de red al crear producto:', e)
     }
 
-    const listaActualizada = [payload, ...productos]
-    setProductos(listaActualizada)
-    try {
-      localStorage.setItem('kiosko_cache_productos', JSON.stringify(listaActualizada))
-    } catch {}
+    // Actualizar estado local inmediatamente
+    setProductos((prev) => {
+      const listaActualizada = [payload, ...prev.filter((p) => p.id !== payload.id)]
+      try {
+        localStorage.setItem('kiosko_cache_productos', JSON.stringify(listaActualizada))
+      } catch {}
+      return listaActualizada
+    })
 
-    toast.success('Producto creado')
-    await cargarProductos()
+    if (insertadoEnSupabase) {
+      toast.success('Producto creado y sincronizado')
+      await cargarProductos()
+    } else {
+      toast.success('Producto guardado en memoria local')
+    }
+
     return payload
   }
 
   // Actualizar producto
   const actualizarProducto = async (id: string, cambios: Partial<Producto>) => {
-    const { error } = await supabase
-      .from('productos')
-      .update({ ...cambios, fecha_actualizacion: new Date().toISOString() })
-      .eq('id', id)
-    if (error) {
-      toast.error('Error al actualizar producto')
-      return false
+    const cambiosCompletos = { ...cambios, fecha_actualizacion: new Date().toISOString() }
+
+    // Actualizar UI localmente de inmediato
+    setProductos((prev) => {
+      const actualizados = prev.map((p) => (p.id === id ? { ...p, ...cambiosCompletos } : p))
+      try {
+        localStorage.setItem('kiosko_cache_productos', JSON.stringify(actualizados))
+      } catch {}
+      return actualizados
+    })
+
+    try {
+      const { error: fullError } = await supabase
+        .from('productos')
+        .update(cambiosCompletos)
+        .eq('id', id)
+
+      if (fullError) {
+        if (
+          fullError.code === '42703' ||
+          fullError.code === 'PGRST204' ||
+          fullError.message?.toLowerCase().includes('column')
+        ) {
+          const cambiosBase = filtrarColumnasBase(cambiosCompletos)
+          const { error: coreError } = await supabase
+            .from('productos')
+            .update(cambiosBase)
+            .eq('id', id)
+          if (coreError) {
+            console.error('Error al actualizar en Supabase:', coreError)
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Error de red al actualizar producto:', err)
     }
+
     toast.success('Producto actualizado')
     await cargarProductos()
     return true

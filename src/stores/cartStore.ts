@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
 import toast from 'react-hot-toast'
 import type { Producto, ItemCarrito } from '../types/database'
+import { usePromocionStore } from './promocionStore'
 
 export type TipoAjuste =
   | 'NINGUNO'
@@ -40,6 +41,10 @@ interface CartState {
   aplicarAjuste: (tipo: TipoAjuste, valor: number) => void
   quitarAjuste: () => void
 
+  // Promociones automáticas
+  recalcularPromociones: () => void
+  totalAhorroPromociones: () => number
+
   // Acciones de ventas en espera
   suspenderVentaActual: (nota?: string) => boolean
   recuperarVenta: (id: string) => void
@@ -74,6 +79,14 @@ function guardarVentasEnEspera(ventas: VentaEnEspera[]) {
   }
 }
 
+function evaluarConPromociones(items: ItemCarrito[]): ItemCarrito[] {
+  try {
+    return usePromocionStore.getState().evaluarCarrito(items)
+  } catch {
+    return items
+  }
+}
+
 export const useCartStore = create<CartState>((set, get) => ({
   items: [],
   tipoAjuste: 'NINGUNO',
@@ -91,6 +104,8 @@ export const useCartStore = create<CartState>((set, get) => ({
 
     set((state) => {
       const existente = state.items.find((item) => item.producto.id === producto.id)
+      let nuevosItems: ItemCarrito[] = []
+
       if (existente) {
         const nuevaCantidad = Number((existente.cantidad + cantAgregar).toFixed(3))
         if (producto.stock_actual > 0 && nuevaCantidad > producto.stock_actual) {
@@ -100,29 +115,29 @@ export const useCartStore = create<CartState>((set, get) => ({
           )
         }
 
-        return {
-          items: state.items.map((item) =>
-            item.producto.id === producto.id
-              ? {
-                  ...item,
-                  cantidad: nuevaCantidad,
-                  subtotal: Math.round(nuevaCantidad * item.producto.precio_venta),
-                }
-              : item
-          ),
-        }
-      }
-
-      const cantRedondeada = Number(cantAgregar.toFixed(3))
-      return {
-        items: [
+        nuevosItems = state.items.map((item) =>
+          item.producto.id === producto.id
+            ? {
+                ...item,
+                cantidad: nuevaCantidad,
+                subtotal: Math.round(nuevaCantidad * item.producto.precio_venta),
+              }
+            : item
+        )
+      } else {
+        const cantRedondeada = Number(cantAgregar.toFixed(3))
+        nuevosItems = [
           ...state.items,
           {
             producto,
             cantidad: cantRedondeada,
             subtotal: Math.round(cantRedondeada * producto.precio_venta),
           },
-        ],
+        ]
+      }
+
+      return {
+        items: evaluarConPromociones(nuevosItems),
       }
     })
   },
@@ -148,24 +163,30 @@ export const useCartStore = create<CartState>((set, get) => ({
       fecha_actualizacion: new Date().toISOString(),
     }
 
-    set((state) => ({
-      items: [
+    set((state) => {
+      const nuevosItems = [
         ...state.items,
         {
           producto: productoLibre,
           cantidad: cant,
           subtotal: precioUnitario * cant,
         },
-      ],
-    }))
+      ]
+      return {
+        items: evaluarConPromociones(nuevosItems),
+      }
+    })
 
     toast.success(`"${desc}" agregado al ticket`)
   },
 
   quitarProducto: (productoId: string) => {
-    set((state) => ({
-      items: state.items.filter((item) => item.producto.id !== productoId),
-    }))
+    set((state) => {
+      const filtrados = state.items.filter((item) => item.producto.id !== productoId)
+      return {
+        items: evaluarConPromociones(filtrados),
+      }
+    })
   },
 
   actualizarCantidad: (productoId: string, cantidad: number) => {
@@ -185,17 +206,17 @@ export const useCartStore = create<CartState>((set, get) => ({
       )
     }
 
-    set((state) => ({
-      items: state.items.map((item) =>
-        item.producto.id === productoId
-          ? {
-              ...item,
-              cantidad: cantidadAjustada,
-              subtotal: Math.round(cantidadAjustada * item.producto.precio_venta),
-            }
-          : item
-      ),
-    }))
+    const nuevos = state.items.map((item) =>
+      item.producto.id === productoId
+        ? {
+            ...item,
+            cantidad: cantidadAjustada,
+            subtotal: Math.round(cantidadAjustada * item.producto.precio_venta),
+          }
+        : item
+    )
+
+    set({ items: evaluarConPromociones(nuevos) })
   },
 
   vaciarCarrito: () =>
@@ -217,6 +238,14 @@ export const useCartStore = create<CartState>((set, get) => ({
       tipoAjuste: 'NINGUNO',
       valorAjuste: 0,
     }),
+
+  recalcularPromociones: () =>
+    set((state) => ({
+      items: evaluarConPromociones(state.items),
+    })),
+
+  totalAhorroPromociones: () =>
+    get().items.reduce((acc, it) => acc + (it.descuento_promo || 0), 0),
 
   suspenderVentaActual: (nota?: string) => {
     const { items, tipoAjuste, valorAjuste, totalMonto } = get()
@@ -253,7 +282,7 @@ export const useCartStore = create<CartState>((set, get) => ({
     guardarVentasEnEspera(restantes)
 
     set({
-      items: venta.items,
+      items: evaluarConPromociones(venta.items),
       tipoAjuste: venta.tipoAjuste,
       valorAjuste: venta.valorAjuste,
       ventasEnEspera: restantes,

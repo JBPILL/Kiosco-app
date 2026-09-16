@@ -6,6 +6,7 @@ import { MainLayout } from './components/layout/MainLayout'
 import { AppToaster } from './components/ui/Toast'
 import { POSPage } from './pages/POSPage'
 import { CatalogoPage } from './pages/CatalogoPage'
+import { PromocionesPage } from './pages/PromocionesPage'
 import { ReportesPage } from './pages/ReportesPage'
 import { StockPage } from './pages/StockPage'
 import { ProveedoresPage } from './pages/ProveedoresPage'
@@ -114,6 +115,14 @@ function App() {
               element={
                 <RutaProtegida rolesPermitidos={['DUEÑO']}>
                   <CatalogoPage />
+                </RutaProtegida>
+              }
+            />
+            <Route
+              path="/promociones"
+              element={
+                <RutaProtegida rolesPermitidos={['DUEÑO']}>
+                  <PromocionesPage />
                 </RutaProtegida>
               }
             />

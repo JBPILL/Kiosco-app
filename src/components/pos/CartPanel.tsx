@@ -34,6 +34,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     quitarAjuste,
     suspenderVentaActual,
     descripcionAjuste,
+    totalAhorroPromociones,
   } = useCartStore()
 
   const [modalAjusteOpen, setModalAjusteOpen] = useState(false)
@@ -58,6 +59,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
   const subtotal = subtotalMonto()
   const ajuste = montoAjuste()
   const total = totalMonto()
+  const ahorroPromo = totalAhorroPromociones()
   const tieneAjuste = tipoAjuste !== 'NINGUNO'
 
   // Acciones de modificación con retención de foco
@@ -460,6 +462,13 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                   <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate group-focus:font-semibold">
                     {item.producto.descripcion}
                   </p>
+                  {item.promo_nombre && (
+                    <div className="mt-0.5">
+                      <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60">
+                        {item.promo_nombre}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
                     <span>
                       {formatPrecio(item.producto.precio_venta)}{' '}
@@ -532,9 +541,16 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                 </div>
 
                 {/* Subtotal */}
-                <span className="text-sm font-bold text-gray-900 dark:text-gray-100 w-16 sm:w-20 text-right flex-shrink-0 group-focus:text-indigo-900 dark:group-focus:text-white">
-                  {formatPrecio(item.subtotal)}
-                </span>
+                <div className="w-16 sm:w-20 text-right flex-shrink-0 flex flex-col items-end justify-center">
+                  <span className="text-sm font-bold text-gray-900 dark:text-gray-100 group-focus:text-indigo-900 dark:group-focus:text-white">
+                    {formatPrecio(item.subtotal)}
+                  </span>
+                  {item.descuento_promo !== undefined && item.descuento_promo > 0 && (
+                    <span className="text-[10px] text-gray-400 line-through">
+                      {formatPrecio(Math.round(item.cantidad * item.producto.precio_venta))}
+                    </span>
+                  )}
+                </div>
 
                 {/* Eliminar */}
                 <button
@@ -563,6 +579,12 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
         {/* Desglose si hay productos */}
         {items.length > 0 && (
           <div>
+            {ahorroPromo > 0 && (
+              <div className="flex justify-between items-center px-2.5 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/60 text-xs font-semibold text-emerald-700 dark:text-emerald-300 mb-2">
+                <span>Ahorro en Promociones:</span>
+                <span className="font-bold">-{formatPrecio(ahorroPromo)}</span>
+              </div>
+            )}
             {tieneAjuste ? (
               <div className="space-y-1.5 text-xs">
                 <div className="flex justify-between text-gray-500 dark:text-gray-400 font-medium">

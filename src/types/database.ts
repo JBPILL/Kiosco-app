@@ -242,6 +242,32 @@ export interface ItemCarrito {
   producto: Producto
   cantidad: number
   subtotal: number
+  descuento_promo?: number
+  promo_nombre?: string
+}
+
+// --- Promociones Automáticas (NxM, Volumen, Porcentaje) ---
+
+export type TipoPromocion = 'NXM' | 'VOLUMEN' | 'PORCENTAJE'
+
+export interface Promocion {
+  id: string
+  kiosco_id: string
+  nombre: string
+  tipo: TipoPromocion
+  producto_id: string | null
+  categoria_id: string | null
+  cantidad_minima: number
+  cantidad_paga: number | null
+  precio_unitario_promo: number | null
+  descuento_porcentaje: number | null
+  dias_semana: number[] | null
+  fecha_inicio: string | null
+  fecha_fin: string | null
+  activo: boolean
+  created_at?: string
+  producto?: Producto | null
+  categoria?: Categoria | null
 }
 
 // --- Clientes y Cuenta Corriente ("Fiado") ---
