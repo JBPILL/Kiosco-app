@@ -379,7 +379,7 @@ export function BalanceContableTab() {
   return (
     <div className="space-y-6">
       {/* Selector de Período y Botón de Descarga Excel */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
         <div>
           <h2 className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100">
             Período de Balance Contable
@@ -389,8 +389,8 @@ export function BalanceContableTab() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex bg-gray-100 dark:bg-gray-700/60 p-1 rounded-lg text-xs font-semibold">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">
+          <div className="flex bg-gray-100 dark:bg-gray-700/60 p-1 rounded-lg text-xs font-semibold shrink-0">
             <button
               type="button"
               onClick={() => setPeriodo('HOY')}
@@ -453,7 +453,7 @@ export function BalanceContableTab() {
             variant="secondary"
             onClick={handleExportarLibroDiario}
             disabled={libroDiario.length === 0}
-            className="text-xs font-semibold"
+            className="text-xs font-semibold whitespace-nowrap shrink-0"
             title="Descargar libro contable completo con ingresos y egresos en CSV para Excel"
           >
             Descargar Libro Diario (.CSV)
