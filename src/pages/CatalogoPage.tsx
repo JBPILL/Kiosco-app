@@ -5,6 +5,7 @@ import { ProductTable } from '../components/catalogo/ProductTable'
 import { ProductForm } from '../components/catalogo/ProductForm'
 import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
 import { AumentoPreciosModal } from '../components/catalogo/AumentoPreciosModal'
+import { PreciosEnvasesModal } from '../components/catalogo/PreciosEnvasesModal'
 import { exportarCatalogoCSV } from '../lib/exportUtils'
 import { useAuthStore } from '../stores/authStore'
 import { Button } from '../components/ui/Button'
@@ -35,6 +36,7 @@ export function CatalogoPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [importarOpen, setImportarOpen] = useState(false)
   const [aumentoOpen, setAumentoOpen] = useState(false)
+  const [envasesOpen, setEnvasesOpen] = useState(false)
   const [productoEditar, setProductoEditar] = useState<Producto | null>(null)
 
   const handleNuevo = () => {
@@ -86,6 +88,14 @@ export function CatalogoPage() {
             className="flex items-center gap-1.5 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
           >
             Importar (.CSV)
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setEnvasesOpen(true)}
+            className="flex items-center gap-1.5 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+          >
+            Precios de Envases
           </Button>
         </div>
       </div>
@@ -146,6 +156,15 @@ export function CatalogoPage() {
         onAumentoAplicado={async () => {
           await cargarProductos()
         }}
+      />
+
+      {/* Modal de modificación de precios de envases retornables */}
+      <PreciosEnvasesModal
+        isOpen={envasesOpen}
+        onClose={() => setEnvasesOpen(false)}
+        productos={productos}
+        onActualizarProducto={actualizarProducto}
+        onRecargarProductos={cargarProductos}
       />
     </div>
   )
