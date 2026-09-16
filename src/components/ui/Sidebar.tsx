@@ -2,6 +2,7 @@ import { useEffect, useRef, useMemo } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
 import { useThemeStore } from '../../stores/themeStore'
+import { usePwaStore } from '../../stores/pwaStore'
 
 interface SidebarProps {
   isOpen: boolean
@@ -24,6 +25,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const location = useLocation()
   const { usuario, logout } = useAuthStore()
   const { tema, toggleTema } = useThemeStore()
+  const { puedeInstalar, estaInstalado, instalarApp } = usePwaStore()
   const itemRefs = useRef<(HTMLAnchorElement | null)[]>([])
 
   const itemsVisibles = useMemo(() => {
@@ -224,6 +226,22 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             Soporte y Ayuda
           </NavLink>
         </div>
+
+        {/* Botón para instalar PWA de escritorio en la computadora */}
+        {puedeInstalar && !estaInstalado && (
+          <div className="px-3 py-1.5 border-t border-gray-100 dark:border-gray-700/50">
+            <button
+              onClick={() => {
+                instalarApp()
+                onClose()
+              }}
+              className="flex items-center justify-between px-4 py-2.5 rounded-xl w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white shadow-xs transition-all"
+            >
+              <span>Instalar en Escritorio</span>
+              <span className="text-[10px] bg-indigo-800/80 px-1.5 py-0.5 rounded font-mono">APP</span>
+            </button>
+          </div>
+        )}
 
         {/* Cerrar sesión con safe area bottom para iPhone */}
         <div className="px-3 pt-2 pb-[max(16px,env(safe-area-inset-bottom))] border-t border-gray-100 dark:border-gray-700/50">

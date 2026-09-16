@@ -14,6 +14,7 @@ import { CajaPage } from './pages/CajaPage'
 import { ClientesPage } from './pages/ClientesPage'
 import { SuperAdminPage } from './pages/SuperAdminPage'
 import { SoportePage } from './pages/SoportePage'
+import { usePwaStore } from './stores/pwaStore'
 
 interface RutaProtegidaProps {
   rolesPermitidos: ('DUEÑO' | 'CAJERO' | 'VISOR')[]
@@ -45,10 +46,12 @@ function RutaSuperAdmin({ children }: { children: React.ReactNode }) {
 
 function App() {
   const { usuario, cargando, cargarSesion } = useAuthStore()
+  const initPwa = usePwaStore((state) => state.initPwa)
 
   useEffect(() => {
     cargarSesion()
-  }, [cargarSesion])
+    initPwa()
+  }, [cargarSesion, initPwa])
 
   // Pantalla de carga mientras se verifica la sesión
   if (cargando) {

@@ -3,41 +3,44 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#6366f1" />
-    <meta name="description" content="KioskoPOS - Sistema de ventas para kioscos" />
+    <meta name="theme-color" content="#4f46e5" />
+    <meta name="description" content="KioskoPOS - Sistema de ventas y gestión para comercios" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="KioskoPOS" />
+    <meta name="application-name" content="KioskoPOS" />
     <link rel="manifest" href="/manifest.json" />
-    <title>KioskoPOS</title>
+    <title>KioskoPOS - Sistema de Ventas</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      // Manejo de Service Worker: solo en producción
+      // Manejo de Service Worker para PWA y soporte Offline
       if ('serviceWorker' in navigator) {
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-          // En localhost limpiamos cualquier SW o caché para que no congele el código en desarrollo
-          navigator.serviceWorker.getRegistrations().then((registrations) => {
-            for (const reg of registrations) {
-              reg.unregister()
-            }
-          })
-          if ('caches' in window) {
-            caches.keys().then((names) => {
-              for (const name of names) caches.delete(name)
-            })
-          }
-        } else {
-          // En producción (ej. Vercel o HTTPS), habilitamos PWA
-          window.addEventListener('load', () => {
+        window.addEventListener('load', () => {
+          // Solo en desarrollo activo con Vite dev server (puerto 5173) evitamos registrar SW para no interferir con HMR
+          const isViteDev = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && window.location.port === '5173';
+          
+          if (isViteDev) {
+            navigator.serviceWorker.getRegistrations().then((registrations) => {
+              for (const reg of registrations) reg.unregister();
+            });
+          } else {
+            // En producción, preview o despliegue HTTPS: registrar Service Worker para modo offline y PWA
             navigator.serviceWorker.register('/sw.js')
-              .then(() => console.log('✅ Service Worker registrado para PWA'))
-              .catch((err) => console.log('❌ Service Worker error:', err))
-          })
-        }
+              .then((reg) => {
+                console.log('KioskoPOS PWA Service Worker registrado:', reg.scope);
+              })
+              .catch((err) => {
+                console.warn('Error al registrar Service Worker:', err);
+              });
+          }
+        });
       }
     </script>
   </body>

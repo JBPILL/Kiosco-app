@@ -11,12 +11,14 @@ import { exportarCatalogoCSV, exportarVentasCSV } from '../lib/exportUtils'
 import { AFIPConfigSection } from '../components/config/AFIPConfigSection'
 import { useConfigAdminStore, formatearLinkWhatsApp } from '../stores/configAdminStore'
 import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
+import { usePwaStore } from '../stores/pwaStore'
 import toast from 'react-hot-toast'
 
 export function ConfigPage() {
   const { usuario } = useAuthStore()
   const { tema, toggleTema } = useThemeStore()
   const { config: configAdmin, cargarConfig: cargarConfigAdmin } = useConfigAdminStore()
+  const { puedeInstalar, estaInstalado, instalarApp } = usePwaStore()
 
   const [kiosco, setKiosco] = useState<Kiosco | null>(null)
   const [suscripcion, setSuscripcion] = useState<Suscripcion | null>(null)
@@ -829,6 +831,79 @@ export function ConfigPage() {
                 >
                   Importar / Restaurar (.CSV)
                 </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Aplicación de Escritorio e Instalación PWA */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    Aplicación de Escritorio (PWA Offline)
+                  </h2>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      estaInstalado
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                        : puedeInstalar
+                        ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300'
+                        : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                    }`}
+                  >
+                    {estaInstalado
+                      ? 'Instalada en este equipo'
+                      : puedeInstalar
+                      ? 'Disponible para instalar'
+                      : 'Navegador Web'}
+                  </span>
+                </div>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Ejecutá KioskoPOS como un programa nativo de Windows: con acceso directo en el Escritorio, fijado en la Barra de Tareas, sin barra del navegador y listo para vender sin conexión a internet.
+                </p>
+              </div>
+
+              {puedeInstalar && !estaInstalado && (
+                <Button
+                  variant="primary"
+                  onClick={async () => {
+                    const exito = await instalarApp()
+                    if (exito) toast.success('¡KioskoPOS se instaló exitosamente en tu PC!')
+                  }}
+                  className="font-bold shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+                >
+                  Instalar en esta PC
+                </Button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 text-xs">
+              <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 space-y-1">
+                <span className="font-bold text-gray-800 dark:text-gray-200 block">
+                  1. Ventana Independiente
+                </span>
+                <p className="text-gray-500 dark:text-gray-400">
+                  Se abre en su propia ventana maximizada sin distracciones ni barras de navegación para agilizar el cobro en mostrador.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 space-y-1">
+                <span className="font-bold text-gray-800 dark:text-gray-200 block">
+                  2. 100% Operativo Sin Conexión
+                </span>
+                <p className="text-gray-500 dark:text-gray-400">
+                  Gracias al Service Worker local y caché permanente, si se corta internet el sistema abre al instante y permite seguir vendiendo.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 space-y-1">
+                <span className="font-bold text-gray-800 dark:text-gray-200 block">
+                  3. Instalación desde el Navegador
+                </span>
+                <p className="text-gray-500 dark:text-gray-400">
+                  En Google Chrome o Edge también podés hacer clic en el ícono de instalación que aparece a la derecha de la barra de direcciones.
+                </p>
               </div>
             </div>
           </div>
