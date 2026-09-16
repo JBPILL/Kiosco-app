@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
-import { Input } from '../ui/Input'
 import { supabase } from '../../lib/supabase'
 import { formatPrecio } from '../../lib/utils'
 import type { Producto, Categoria } from '../../types/database'
@@ -120,173 +119,275 @@ export function AumentoPreciosModal({
     }
   }
 
-  const porcentajesRapidos = [5, 10, 15, 20, 25, 30]
+  const porcentajesRapidos = [5, 10, 15, 20, 25, 30, 50]
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Aumento Masivo de Precios" size="lg">
-      <div className="space-y-4">
-        <p className="text-xs text-gray-600 dark:text-gray-400">
-          Ajustá los precios de tus productos rápidamente por porcentaje ante subas de distribuidores o inflación.
-        </p>
+      <div className="space-y-5">
+        {/* Cabecera informativa tipo Banner */}
+        <div className="p-3.5 bg-gradient-to-r from-indigo-50/90 via-indigo-50/50 to-purple-50/40 dark:from-indigo-950/40 dark:via-indigo-950/20 dark:to-purple-950/20 border border-indigo-100 dark:border-indigo-900/50 rounded-xl flex items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+              Ajuste masivo por inflación o costos
+            </span>
+            <p className="text-xs text-gray-600 dark:text-gray-300">
+              Calcula y aplica nuevos precios en lote conservando márgenes.
+            </p>
+          </div>
+          <div className="text-right flex-shrink-0 bg-white dark:bg-gray-800 px-3 py-1.5 rounded-lg border border-indigo-100 dark:border-indigo-900/60 shadow-2xs">
+            <span className="text-[10px] text-gray-400 dark:text-gray-400 block font-semibold uppercase">
+              Afectados
+            </span>
+            <span className="text-base font-black text-indigo-600 dark:text-indigo-400">
+              {productosAfectados.length}{' '}
+              <span className="text-xs font-normal text-gray-500 dark:text-gray-400">prod.</span>
+            </span>
+          </div>
+        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Selectores de Alcance: Categoría y Tipo de Precio */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
           {/* Categoría objetivo */}
           <div>
-            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
               Categoría a incrementar
             </label>
-            <select
-              value={categoriaId}
-              onChange={(e) => setCategoriaId(e.target.value)}
-              className="w-full px-3 py-2 text-xs sm:text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-indigo-500"
-            >
-              <option value="TODAS">Todo el catálogo ({productos.length} productos)</option>
-              {categorias.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre} ({productos.filter((p) => p.categoria_id === c.id).length})
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <select
+                value={categoriaId}
+                onChange={(e) => setCategoriaId(e.target.value)}
+                className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all font-medium appearance-none cursor-pointer pr-9"
+              >
+                <option value="TODAS">Todo el catálogo ({productos.length})</option>
+                {categorias.map((c) => {
+                  const cant = productos.filter((p) => p.categoria_id === c.id).length
+                  return (
+                    <option key={c.id} value={c.id}>
+                      {c.nombre} ({cant} prod.)
+                    </option>
+                  )
+                })}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
           </div>
 
           {/* Tipo de precio */}
           <div>
-            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
               Precios a modificar
             </label>
-            <select
-              value={tipoPrecio}
-              onChange={(e) => setTipoPrecio(e.target.value as 'VENTA' | 'COSTO_Y_VENTA')}
-              className="w-full px-3 py-2 text-xs sm:text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-indigo-500"
-            >
-              <option value="VENTA">Solo Precio de Venta al Público</option>
-              <option value="COSTO_Y_VENTA">Precio de Venta y Precio de Costo</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Porcentaje */}
-        <div className="space-y-2">
-          <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-            Porcentaje de aumento (%)
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {porcentajesRapidos.map((pct) => (
-              <button
-                key={pct}
-                type="button"
-                onClick={() => setPorcentaje(pct)}
-                className={`px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
-                  porcentaje === pct
-                    ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 text-gray-600 dark:text-gray-400'
-                }`}
+            <div className="relative">
+              <select
+                value={tipoPrecio}
+                onChange={(e) => setTipoPrecio(e.target.value as 'VENTA' | 'COSTO_Y_VENTA')}
+                className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all font-medium appearance-none cursor-pointer pr-9"
               >
-                +{pct}%
-              </button>
-            ))}
-            <div className="w-24">
-              <Input
-                type="number"
-                min="1"
-                max="300"
-                value={porcentaje}
-                onChange={(e) => setPorcentaje(parseInt(e.target.value, 10) || 0)}
-              />
+                <option value="VENTA">Solo Precio de Venta al Público</option>
+                <option value="COSTO_Y_VENTA">Precio de Venta y Costo (ambos)</option>
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Regla de redondeo */}
-        <div>
-          <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-            Regla de redondeo en pesos
+        {/* Sección de Porcentaje Unificada e Interactiva */}
+        <div className="space-y-2.5 p-4 rounded-xl border border-gray-200 dark:border-gray-700/80 bg-white dark:bg-gray-800/60 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+              Porcentaje de aumento
+            </label>
+            <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
+              +{porcentaje}%
+            </span>
+          </div>
+
+          {/* Selector de Chips Rápidos */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {porcentajesRapidos.map((pct) => {
+              const activo = porcentaje === pct
+              return (
+                <button
+                  key={pct}
+                  type="button"
+                  onClick={() => setPorcentaje(pct)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 ${
+                    activo
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-gray-100 dark:bg-gray-700/70 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600'
+                  }`}
+                >
+                  +{pct}%
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Stepper numérico preciso con botón +/- */}
+          <div className="flex items-center gap-3 pt-1">
+            <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-gray-50 dark:bg-gray-900/60">
+              <button
+                type="button"
+                onClick={() => setPorcentaje((prev) => Math.max(1, prev - 1))}
+                className="w-9 h-9 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 active:scale-90 transition-all font-bold text-lg"
+              >
+                −
+              </button>
+              <div className="relative flex items-center justify-center px-2">
+                <input
+                  type="number"
+                  min="1"
+                  max="500"
+                  value={porcentaje === 0 ? '' : porcentaje}
+                  onChange={(e) => setPorcentaje(parseInt(e.target.value, 10) || 0)}
+                  className="w-16 text-center text-base font-black text-indigo-600 dark:text-indigo-400 bg-transparent focus:outline-hidden py-1"
+                />
+                <span className="text-xs font-bold text-gray-400 -ml-1">%</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPorcentaje((prev) => Math.min(500, prev + 1))}
+                className="w-9 h-9 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 active:scale-90 transition-all font-bold text-lg"
+              >
+                +
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 leading-tight">
+              Podés ingresar cualquier valor numérico o usar los atajos de un clic.
+            </p>
+          </div>
+        </div>
+
+        {/* Regla de redondeo estilizada con tarjetas */}
+        <div className="space-y-2">
+          <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+            Regla de redondeo de precios
           </label>
-          <div className="grid grid-cols-3 gap-2 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            {/* Múltiplos de $100 */}
             <button
               type="button"
               onClick={() => setRedondeo('100')}
-              className={`p-2 rounded-lg border text-center font-medium transition-all ${
+              className={`p-3 rounded-xl border text-left transition-all relative active:scale-98 ${
                 redondeo === '100'
-                  ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-bold'
-                  : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'
+                  ? 'border-indigo-600 dark:border-indigo-500 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-950 dark:text-indigo-100 shadow-xs ring-1 ring-indigo-500/20'
+                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
               }`}
             >
-              Múltiplos de $100
-              <span className="block text-[10px] text-gray-400 font-normal">Recomendado</span>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-bold">Múltiplos de $100</span>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
+                  Recomendado
+                </span>
+              </div>
+              <span className="text-[11px] text-gray-500 dark:text-gray-400 block">
+                Ej: $1.420 → <strong className="text-gray-800 dark:text-gray-200">$1.400</strong>
+              </span>
             </button>
+
+            {/* Múltiplos de $50 */}
             <button
               type="button"
               onClick={() => setRedondeo('50')}
-              className={`p-2 rounded-lg border text-center font-medium transition-all ${
+              className={`p-3 rounded-xl border text-left transition-all relative active:scale-98 ${
                 redondeo === '50'
-                  ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-bold'
-                  : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'
+                  ? 'border-indigo-600 dark:border-indigo-500 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-950 dark:text-indigo-100 shadow-xs ring-1 ring-indigo-500/20'
+                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
               }`}
             >
-              Múltiplos de $50
-              <span className="block text-[10px] text-gray-400 font-normal">Ej: $1.450</span>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-bold">Múltiplos de $50</span>
+              </div>
+              <span className="text-[11px] text-gray-500 dark:text-gray-400 block">
+                Ej: $1.420 → <strong className="text-gray-800 dark:text-gray-200">$1.450</strong>
+              </span>
             </button>
+
+            {/* Sin redondeo */}
             <button
               type="button"
               onClick={() => setRedondeo('NINGUNO')}
-              className={`p-2 rounded-lg border text-center font-medium transition-all ${
+              className={`p-3 rounded-xl border text-left transition-all relative active:scale-98 ${
                 redondeo === 'NINGUNO'
-                  ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-bold'
-                  : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'
+                  ? 'border-indigo-600 dark:border-indigo-500 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-950 dark:text-indigo-100 shadow-xs ring-1 ring-indigo-500/20'
+                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
               }`}
             >
-              Sin redondeo
-              <span className="block text-[10px] text-gray-400 font-normal">Entero exacto</span>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-bold">Sin redondeo</span>
+              </div>
+              <span className="text-[11px] text-gray-500 dark:text-gray-400 block">
+                Valor matemático exacto
+              </span>
             </button>
           </div>
         </div>
 
-        {/* Vista previa */}
-        <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-850 space-y-2">
+        {/* Vista previa con estilo nativo limpio en modo claro y oscuro */}
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700/80 bg-gray-50 dark:bg-gray-900 p-3.5 space-y-2.5">
           <div className="flex justify-between items-center text-xs">
-            <span className="font-semibold text-gray-700 dark:text-gray-300">
-              Vista previa ({productosAfectados.length} productos afectados)
+            <span className="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
+              <span>Vista previa</span>
+              <span className="text-[11px] font-normal text-gray-500 dark:text-gray-400">
+                ({productosAfectados.length} productos afectados)
+              </span>
             </span>
-            <span className="text-indigo-600 dark:text-indigo-400 font-bold">
+            <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 font-black text-xs">
               +{porcentaje}%
             </span>
           </div>
 
           {vistaPrevia.length === 0 ? (
-            <p className="text-xs text-gray-500 py-2 text-center">No hay productos seleccionados.</p>
+            <p className="text-xs text-gray-500 py-3 text-center">No hay productos seleccionados.</p>
           ) : (
             <div className="space-y-1.5 text-xs">
               {vistaPrevia.map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between p-1.5 bg-white dark:bg-gray-800 rounded border border-gray-200/60 dark:border-gray-700/60"
+                  className="flex items-center justify-between px-3 py-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200/70 dark:border-gray-700/70 shadow-2xs"
                 >
-                  <span className="font-medium text-gray-800 dark:text-gray-200 truncate max-w-[180px] sm:max-w-[240px]">
+                  <span className="font-semibold text-gray-800 dark:text-gray-200 truncate max-w-[180px] sm:max-w-[260px]">
                     {item.descripcion}
                   </span>
-                  <div className="flex items-center gap-2 font-mono">
-                    <span className="text-gray-400 line-through">{formatPrecio(item.ventaActual)}</span>
-                    <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                  <div className="flex items-center gap-2 font-mono flex-shrink-0">
+                    <span className="text-gray-400 dark:text-gray-500 line-through text-xs">
+                      {formatPrecio(item.ventaActual)}
+                    </span>
+                    <span className="text-gray-300 dark:text-gray-600">→</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-black text-xs sm:text-sm">
                       {formatPrecio(item.ventaNueva)}
                     </span>
                   </div>
                 </div>
               ))}
+
+              {productosAfectados.length > 5 && (
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 text-center pt-1 italic">
+                  ... y {productosAfectados.length - 5} productos más se actualizarán con este mismo criterio.
+                </p>
+              )}
             </div>
           )}
         </div>
 
         {/* Acciones */}
-        <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
-          <Button variant="secondary" onClick={onClose} disabled={procesando}>
+        <div className="flex justify-end gap-2.5 pt-3 border-t border-gray-200 dark:border-gray-700">
+          <Button variant="secondary" onClick={onClose} disabled={procesando} className="text-xs sm:text-sm">
             Cancelar
           </Button>
           <Button
             variant="primary"
             onClick={handleAplicar}
             disabled={procesando || productosAfectados.length === 0}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white"
+            className="text-xs sm:text-sm shadow-sm"
           >
             {procesando ? 'Actualizando...' : `Aplicar a ${productosAfectados.length} productos`}
           </Button>
