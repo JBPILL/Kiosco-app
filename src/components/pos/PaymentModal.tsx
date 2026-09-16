@@ -376,6 +376,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         kioscoTelefono: kiosco?.telefono,
         cajeroNombre: usuario?.nombre,
         clienteNombre: clienteSeleccionado?.nombre || null,
+        clienteTelefono: clienteSeleccionado?.telefono || null,
         notas: notasFinal,
         afip: afipTicketData,
       }

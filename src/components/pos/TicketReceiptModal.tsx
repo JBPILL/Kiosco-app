@@ -30,6 +30,7 @@ export interface TicketData {
   kioscoTelefono?: string | null
   cajeroNombre?: string | null
   clienteNombre?: string | null
+  clienteTelefono?: string | null
   notas?: string | null
   // Datos fiscales AFIP (si el comprobante fue emitido electrónicamente)
   afip?: {
@@ -65,8 +66,15 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
     return '58mm'
   })
   const [telefonoWhatsApp, setTelefonoWhatsApp] = useState('')
-  const [mostrarInputTelefono, setMostrarInputTelefono] = useState(false)
   const [qrDataUrl, setQrDataUrl] = useState<string>('')
+
+  useEffect(() => {
+    if (ticket?.clienteTelefono) {
+      setTelefonoWhatsApp(ticket.clienteTelefono)
+    } else {
+      setTelefonoWhatsApp('')
+    }
+  }, [ticket?.clienteTelefono])
 
   const cambiarAnchoPapel = (ancho: '58mm' | '80mm') => {
     setAnchoPapel(ancho)
@@ -136,7 +144,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
 
   const handleCompartirWhatsApp = () => {
     const texto = generarTextoWhatsApp()
-    const telLimpio = telefonoWhatsApp.replace(/\D/g, '')
+    const telLimpio = (telefonoWhatsApp || ticket.clienteTelefono || '').replace(/\D/g, '')
     const url = telLimpio
       ? `https://api.whatsapp.com/send?phone=${telLimpio}&text=${texto}`
       : `https://api.whatsapp.com/send?text=${texto}`
@@ -146,69 +154,6 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Comprobante de Venta" size="md">
       <div className="space-y-4">
-        {/* Controles superiores */}
-        <div className="flex items-center justify-between gap-2 pb-2 border-b border-gray-100 dark:border-gray-700">
-          <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-            <span>Ancho:</span>
-            <button
-              type="button"
-              onClick={() => setAnchoPapel('58mm')}
-              className={`px-2 py-0.5 rounded text-xs font-semibold border ${
-                anchoPapel === '58mm'
-                  ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-400 text-indigo-700 dark:text-indigo-400'
-                  : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'
-              }`}
-            >
-              58 mm
-            </button>
-            <button
-              type="button"
-              onClick={() => setAnchoPapel('80mm')}
-              className={`px-2 py-0.5 rounded text-xs font-semibold border ${
-                anchoPapel === '80mm'
-                  ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-400 text-indigo-700 dark:text-indigo-400'
-                  : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'
-              }`}
-            >
-              80 mm
-            </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setMostrarInputTelefono(!mostrarInputTelefono)}
-            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
-          >
-            {mostrarInputTelefono ? 'Ocultar WhatsApp' : 'Enviar por WhatsApp'}
-          </button>
-        </div>
-
-        {/* Input opcional de teléfono cliente */}
-        {mostrarInputTelefono && (
-          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg space-y-2">
-            <label className="block text-xs font-medium text-emerald-800 dark:text-emerald-300">
-              Teléfono de WhatsApp del cliente (opcional con código de área)
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="tel"
-                placeholder="Ej: 5491122334455"
-                value={telefonoWhatsApp}
-                onChange={(e) => setTelefonoWhatsApp(e.target.value)}
-                className="flex-1 px-3 py-1.5 text-xs rounded border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-              />
-              <Button
-                size="sm"
-                variant="primary"
-                onClick={handleCompartirWhatsApp}
-                className="bg-emerald-600 hover:bg-emerald-700 text-xs text-white"
-              >
-                Enviar
-              </Button>
-            </div>
-          </div>
-        )}
-
         {/* Selector de ancho térmico */}
         <div className="flex items-center justify-between px-1 text-xs text-gray-600 dark:text-gray-400">
           <span className="font-medium">Formato térmico:</span>
@@ -427,15 +372,13 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
           >
             Imprimir Ticket
           </Button>
-          {!mostrarInputTelefono && (
-            <Button
-              variant="secondary"
-              fullWidth
-              onClick={handleCompartirWhatsApp}
-            >
-              WhatsApp
-            </Button>
-          )}
+          <Button
+            variant="success"
+            fullWidth
+            onClick={handleCompartirWhatsApp}
+          >
+            WhatsApp
+          </Button>
           <Button
             variant="secondary"
             fullWidth
