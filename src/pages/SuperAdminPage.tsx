@@ -678,7 +678,7 @@ CREATE POLICY "Permitir eliminacion de tickets" ON public.tickets_soporte FOR DE
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
           {/* 1. Internet */}
-          <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200/80 dark:border-gray-700/80">
+          <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700/80 shadow-2xs">
             <div className="flex items-center gap-2">
               <span className={`w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-red-500'}`} />
               <span className="font-semibold text-gray-800 dark:text-gray-200">Conexión a Internet</span>
@@ -695,7 +695,7 @@ CREATE POLICY "Permitir eliminacion de tickets" ON public.tickets_soporte FOR DE
           </div>
 
           {/* 2. Servidor Supabase */}
-          <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200/80 dark:border-gray-700/80">
+          <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700/80 shadow-2xs">
             <div className="flex items-center gap-2">
               <span
                 className={`w-2.5 h-2.5 rounded-full ${
@@ -720,7 +720,7 @@ CREATE POLICY "Permitir eliminacion de tickets" ON public.tickets_soporte FOR DE
           </div>
 
           {/* 3. Base de Datos / Tickets */}
-          <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200/80 dark:border-gray-700/80">
+          <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700/80 shadow-2xs">
             <div className="flex items-center gap-2">
               <span
                 className={`w-2.5 h-2.5 rounded-full ${
@@ -741,7 +741,7 @@ CREATE POLICY "Permitir eliminacion de tickets" ON public.tickets_soporte FOR DE
           </div>
 
           {/* 4. Modo Offline / Almacenamiento Local */}
-          <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200/80 dark:border-gray-700/80">
+          <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700/80 shadow-2xs">
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
               <span className="font-semibold text-gray-800 dark:text-gray-200">Modo Offline Local</span>

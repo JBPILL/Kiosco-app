@@ -376,14 +376,14 @@ export function CajaPage() {
 
             {/* Cuadrícula financiera del turno */}
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-4">
-              <div className="p-3.5 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700">
+              <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
                 <p className="text-xs text-gray-500 dark:text-gray-400">Fondo inicial</p>
                 <p className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">
                   {formatPrecio(sesionActiva.monto_inicial)}
                 </p>
               </div>
 
-              <div className="p-3.5 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700">
+              <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
                 <p className="text-xs text-gray-500 dark:text-gray-400">(+) Ventas efectivo</p>
                 <p className="text-base sm:text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-1">
                   {esDueno ? formatPrecio(resumenActivo?.total_efectivo || 0) : '••••••'}
@@ -393,21 +393,21 @@ export function CajaPage() {
                 )}
               </div>
 
-              <div className="p-3.5 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700">
+              <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
                 <p className="text-xs text-gray-500 dark:text-gray-400">(+) Ingresos extra</p>
                 <p className="text-base sm:text-lg font-bold text-blue-600 dark:text-blue-400 mt-1">
                   +{formatPrecio(resumenActivo?.total_ingresos_extra || 0)}
                 </p>
               </div>
 
-              <div className="p-3.5 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700">
+              <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
                 <p className="text-xs text-gray-500 dark:text-gray-400">(-) Gastos / Egresos</p>
                 <p className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400 mt-1">
                   -{formatPrecio(resumenActivo?.total_egresos || 0)}
                 </p>
               </div>
 
-              <div className="col-span-2 sm:col-span-1 p-3.5 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50">
+              <div className="col-span-2 sm:col-span-1 p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50 shadow-xs">
                 <p className="text-xs text-indigo-700 dark:text-indigo-400 font-semibold">
                   {esDueno ? '(=) Esperado en cajón' : 'Control de Turno'}
                 </p>

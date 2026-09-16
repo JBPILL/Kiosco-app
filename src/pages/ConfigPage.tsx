@@ -445,7 +445,7 @@ export function ConfigPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {/* Tarjeta 1: Plan */}
-              <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700">
+              <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
                 <p className="text-xs text-gray-500 dark:text-gray-400">Plan contratado</p>
                 <p className="text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">
                   {suscripcion?.plan?.nombre || 'Kiosco Pro'}
@@ -459,12 +459,12 @@ export function ConfigPage() {
 
               {/* Tarjeta 2: Estado del Servicio */}
               <div
-                className={`p-4 rounded-lg border ${
+                className={`p-4 rounded-xl border shadow-xs ${
                   estadoEfectivo === 'ACTIVO'
-                    ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/50'
+                    ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/50'
                     : estadoEfectivo === 'SOLO_LECTURA'
-                    ? 'bg-amber-50/50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/60'
-                    : 'bg-red-50/50 dark:bg-red-950/30 border-red-200 dark:border-red-800/60'
+                    ? 'bg-amber-50/50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800/60'
+                    : 'bg-red-50/50 dark:bg-red-950/30 border-red-300 dark:border-red-800/60'
                 }`}
               >
                 <p className="text-xs text-gray-500 dark:text-gray-400">Estado de servicio</p>
@@ -501,7 +501,7 @@ export function ConfigPage() {
               </div>
 
               {/* Tarjeta 3: Vencimiento */}
-              <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700">
+              <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
                 <p className="text-xs text-gray-500 dark:text-gray-400">Vencimiento del Abono</p>
                 <p className="text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">
                   {suscripcion?.fecha_vencimiento
@@ -539,7 +539,7 @@ export function ConfigPage() {
 
             {/* Datos para pago y renovación de suscripción */}
             {(configAdmin.alias_mp || configAdmin.cbu_banco || configAdmin.titular_cuenta || configAdmin.whatsapp_soporte) && (
-              <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 space-y-3 mt-3">
+              <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 space-y-3 mt-3 shadow-xs">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-200 dark:border-gray-700/80 pb-2.5">
                   <div>
                     <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
@@ -566,7 +566,7 @@ export function ConfigPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
                   {configAdmin.titular_cuenta && (
-                    <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                    <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-2xs">
                       <span className="text-gray-400 dark:text-gray-500 block font-medium">Titular de la cuenta:</span>
                       <span className="font-bold text-gray-900 dark:text-gray-100 mt-1 block text-sm leading-snug break-words">
                         {configAdmin.titular_cuenta}
@@ -575,7 +575,7 @@ export function ConfigPage() {
                   )}
 
                   {configAdmin.alias_mp && (
-                    <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
+                    <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3 shadow-2xs">
                       <div className="min-w-0">
                         <span className="text-gray-400 dark:text-gray-500 block font-medium">Alias Mercado Pago:</span>
                         <span className="font-bold text-sky-600 dark:text-sky-400 mt-1 block text-sm break-words select-all">
@@ -593,7 +593,7 @@ export function ConfigPage() {
                   )}
 
                   {configAdmin.cbu_banco && (
-                    <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
+                    <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3 shadow-2xs">
                       <div className="min-w-0">
                         <span className="text-gray-400 dark:text-gray-500 block font-medium">CBU / CVU Bancario:</span>
                         <span className="font-bold text-gray-900 dark:text-gray-100 mt-1 block font-mono text-sm tracking-wide break-all select-all">
@@ -611,7 +611,7 @@ export function ConfigPage() {
                   )}
 
                   {configAdmin.banco_nombre && (
-                    <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                    <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-2xs">
                       <span className="text-gray-400 dark:text-gray-500 block font-medium">Banco / Billetera:</span>
                       <span className="font-bold text-gray-900 dark:text-gray-100 mt-1 block text-sm break-words">
                         {configAdmin.banco_nombre}

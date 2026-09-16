@@ -510,7 +510,7 @@ export function SoportePage() {
 
             <div className="space-y-2.5 text-xs">
               {/* 1. Internet */}
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200/80 dark:border-gray-700/80">
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700/80 shadow-2xs">
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-red-500'}`} />
                   <span className="font-semibold text-gray-800 dark:text-gray-200">Conexión a Internet</span>
@@ -521,7 +521,7 @@ export function SoportePage() {
               </div>
 
               {/* 2. Base de datos nube */}
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200/80 dark:border-gray-700/80">
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700/80 shadow-2xs">
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full ${estadoNube === 'CONECTADO' ? 'bg-emerald-500' : estadoNube === 'VERIFICANDO' ? 'bg-amber-500 animate-ping' : 'bg-red-500'}`} />
                   <span className="font-semibold text-gray-800 dark:text-gray-200">Servidor Supabase</span>
@@ -532,7 +532,7 @@ export function SoportePage() {
               </div>
 
               {/* 3. Ticketera */}
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200/80 dark:border-gray-700/80">
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700/80 shadow-2xs">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-indigo-500" />
                   <span className="font-semibold text-gray-800 dark:text-gray-200">Ticketera Térmica</span>
@@ -543,7 +543,7 @@ export function SoportePage() {
               </div>
 
               {/* 4. LocalStorage Offline */}
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200/80 dark:border-gray-700/80">
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700/80 shadow-2xs">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-500" />
                   <span className="font-semibold text-gray-800 dark:text-gray-200">Modo Offline Local</span>
