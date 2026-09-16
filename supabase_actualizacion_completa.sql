@@ -15,9 +15,220 @@ ALTER TABLE public.productos
 
 CREATE INDEX IF NOT EXISTS idx_productos_plu_balanza ON public.productos(kiosco_id, plu_balanza);
 
--- 1b. ACTUALIZAR TABLA CLIENTES CON PUNTOS DE FIDELIZACIÓN (ODOO ERP)
+-- ------------------------------------------------------------------------------
+-- 1b. TABLA DE CLIENTES Y PROGRAMA DE PUNTOS DE FIDELIZACIÓN (ODOO ERP)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.clientes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  kiosco_id UUID NOT NULL REFERENCES public.kioscos(id) ON DELETE CASCADE,
+  nombre TEXT NOT NULL,
+  telefono TEXT,
+  dni_cuit TEXT,
+  direccion TEXT,
+  email TEXT,
+  limite_credito NUMERIC DEFAULT 0,
+  saldo_deudor NUMERIC DEFAULT 0,
+  puntos_fidelidad NUMERIC DEFAULT 0,
+  activo BOOLEAN DEFAULT true,
+  notas TEXT,
+  fecha_creacion TIMESTAMPTZ DEFAULT now()
+);
+
+-- Si la tabla ya existía previamente, asegurar la columna de puntos:
 ALTER TABLE public.clientes
   ADD COLUMN IF NOT EXISTS puntos_fidelidad NUMERIC DEFAULT 0;
+
+CREATE INDEX IF NOT EXISTS idx_clientes_kiosco ON public.clientes(kiosco_id);
+CREATE INDEX IF NOT EXISTS idx_clientes_dni ON public.clientes(dni_cuit);
+
+ALTER TABLE public.clientes ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acceso a clientes por kiosco" ON public.clientes;
+CREATE POLICY "Acceso a clientes por kiosco" ON public.clientes
+  FOR ALL TO authenticated
+  USING (
+    kiosco_id IN (
+      SELECT kiosco_id FROM public.usuarios WHERE auth_user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    kiosco_id IN (
+      SELECT kiosco_id FROM public.usuarios WHERE auth_user_id = auth.uid()
+    )
+  );
+
+-- ------------------------------------------------------------------------------
+-- 1c. TABLA DE MOVIMIENTOS DE CUENTA CORRIENTE (FIADO Y ABONOS)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.movimientos_cuenta_corriente (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  cliente_id UUID NOT NULL REFERENCES public.clientes(id) ON DELETE CASCADE,
+  kiosco_id UUID NOT NULL REFERENCES public.kioscos(id) ON DELETE CASCADE,
+  venta_id UUID REFERENCES public.ventas(id) ON DELETE SET NULL,
+  tipo TEXT NOT NULL CHECK (tipo IN ('CARGO_VENTA', 'ABONO_PAGO')),
+  monto NUMERIC NOT NULL DEFAULT 0,
+  medio_pago TEXT,
+  saldo_resultante NUMERIC NOT NULL DEFAULT 0,
+  notas TEXT,
+  fecha_hora TIMESTAMPTZ NOT NULL DEFAULT now(),
+  usuario_id UUID REFERENCES public.usuarios(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_mov_cc_cliente ON public.movimientos_cuenta_corriente(cliente_id);
+CREATE INDEX IF NOT EXISTS idx_mov_cc_kiosco ON public.movimientos_cuenta_corriente(kiosco_id);
+
+ALTER TABLE public.movimientos_cuenta_corriente ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acceso a movimientos CC por kiosco" ON public.movimientos_cuenta_corriente;
+CREATE POLICY "Acceso a movimientos CC por kiosco" ON public.movimientos_cuenta_corriente
+  FOR ALL TO authenticated
+  USING (
+    kiosco_id IN (
+      SELECT kiosco_id FROM public.usuarios WHERE auth_user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    kiosco_id IN (
+      SELECT kiosco_id FROM public.usuarios WHERE auth_user_id = auth.uid()
+    )
+  );
+
+-- ------------------------------------------------------------------------------
+-- 1d. TABLAS DE PROVEEDORES, COMPRAS Y PAGOS
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.proveedores (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  kiosco_id UUID NOT NULL REFERENCES public.kioscos(id) ON DELETE CASCADE,
+  nombre TEXT NOT NULL,
+  contacto_nombre TEXT,
+  telefono TEXT,
+  email TEXT,
+  cuit TEXT,
+  dias_visita TEXT,
+  cbu_alias TEXT,
+  saldo_pendiente NUMERIC DEFAULT 0,
+  activo BOOLEAN DEFAULT true,
+  fecha_creacion TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_proveedores_kiosco ON public.proveedores(kiosco_id);
+
+ALTER TABLE public.proveedores ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acceso a proveedores por kiosco" ON public.proveedores;
+CREATE POLICY "Acceso a proveedores por kiosco" ON public.proveedores
+  FOR ALL TO authenticated
+  USING (
+    kiosco_id IN (
+      SELECT kiosco_id FROM public.usuarios WHERE auth_user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    kiosco_id IN (
+      SELECT kiosco_id FROM public.usuarios WHERE auth_user_id = auth.uid()
+    )
+  );
+
+CREATE TABLE IF NOT EXISTS public.compras_proveedor (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  kiosco_id UUID NOT NULL REFERENCES public.kioscos(id) ON DELETE CASCADE,
+  proveedor_id UUID NOT NULL REFERENCES public.proveedores(id) ON DELETE CASCADE,
+  usuario_id UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
+  nro_comprobante TEXT,
+  fecha TIMESTAMPTZ DEFAULT now(),
+  total NUMERIC NOT NULL DEFAULT 0,
+  estado TEXT NOT NULL DEFAULT 'RECIBIDA',
+  medio_pago TEXT NOT NULL DEFAULT 'EFECTIVO',
+  pagado_en_caja BOOLEAN DEFAULT false,
+  sesion_caja_id UUID REFERENCES public.sesiones_caja(id) ON DELETE SET NULL,
+  notas TEXT,
+  fecha_creacion TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_compras_proveedor_kiosco ON public.compras_proveedor(kiosco_id);
+CREATE INDEX IF NOT EXISTS idx_compras_proveedor_prov ON public.compras_proveedor(proveedor_id);
+
+ALTER TABLE public.compras_proveedor ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acceso a compras_proveedor por kiosco" ON public.compras_proveedor;
+CREATE POLICY "Acceso a compras_proveedor por kiosco" ON public.compras_proveedor
+  FOR ALL TO authenticated
+  USING (
+    kiosco_id IN (
+      SELECT kiosco_id FROM public.usuarios WHERE auth_user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    kiosco_id IN (
+      SELECT kiosco_id FROM public.usuarios WHERE auth_user_id = auth.uid()
+    )
+  );
+
+CREATE TABLE IF NOT EXISTS public.detalles_compra (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  compra_id UUID NOT NULL REFERENCES public.compras_proveedor(id) ON DELETE CASCADE,
+  producto_id UUID NOT NULL REFERENCES public.productos(id) ON DELETE CASCADE,
+  cantidad NUMERIC NOT NULL DEFAULT 1,
+  precio_costo_unitario NUMERIC NOT NULL DEFAULT 0,
+  subtotal NUMERIC NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_detalles_compra_compra ON public.detalles_compra(compra_id);
+
+ALTER TABLE public.detalles_compra ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acceso a detalles_compra por kiosco" ON public.detalles_compra;
+CREATE POLICY "Acceso a detalles_compra por kiosco" ON public.detalles_compra
+  FOR ALL TO authenticated
+  USING (
+    compra_id IN (
+      SELECT id FROM public.compras_proveedor WHERE kiosco_id IN (
+        SELECT kiosco_id FROM public.usuarios WHERE auth_user_id = auth.uid()
+      )
+    )
+  )
+  WITH CHECK (
+    compra_id IN (
+      SELECT id FROM public.compras_proveedor WHERE kiosco_id IN (
+        SELECT kiosco_id FROM public.usuarios WHERE auth_user_id = auth.uid()
+      )
+    )
+  );
+
+CREATE TABLE IF NOT EXISTS public.pagos_proveedor (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  kiosco_id UUID NOT NULL REFERENCES public.kioscos(id) ON DELETE CASCADE,
+  proveedor_id UUID NOT NULL REFERENCES public.proveedores(id) ON DELETE CASCADE,
+  fecha TIMESTAMPTZ DEFAULT now(),
+  monto NUMERIC NOT NULL DEFAULT 0,
+  medio_pago TEXT NOT NULL DEFAULT 'EFECTIVO',
+  saldo_anterior NUMERIC DEFAULT 0,
+  saldo_nuevo NUMERIC DEFAULT 0,
+  pagado_en_caja BOOLEAN DEFAULT false,
+  sesion_caja_id UUID REFERENCES public.sesiones_caja(id) ON DELETE SET NULL,
+  comprobante_ref TEXT,
+  notas TEXT,
+  estado TEXT NOT NULL DEFAULT 'ACTIVO'
+);
+
+CREATE INDEX IF NOT EXISTS idx_pagos_proveedor_kiosco ON public.pagos_proveedor(kiosco_id);
+CREATE INDEX IF NOT EXISTS idx_pagos_proveedor_prov ON public.pagos_proveedor(proveedor_id);
+
+ALTER TABLE public.pagos_proveedor ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acceso a pagos_proveedor por kiosco" ON public.pagos_proveedor;
+CREATE POLICY "Acceso a pagos_proveedor por kiosco" ON public.pagos_proveedor
+  FOR ALL TO authenticated
+  USING (
+    kiosco_id IN (
+      SELECT kiosco_id FROM public.usuarios WHERE auth_user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    kiosco_id IN (
+      SELECT kiosco_id FROM public.usuarios WHERE auth_user_id = auth.uid()
+    )
+  );
 
 -- 2. TABLA DE LOTES Y VENCIMIENTOS (FIFO / FEFO)
 CREATE TABLE IF NOT EXISTS public.lotes_producto (
