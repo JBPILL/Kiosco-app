@@ -26,6 +26,7 @@ export interface ProductFormData {
   codigo_barras: string | null
   requiere_vencimiento?: boolean
   dias_alerta_vencimiento?: number
+  es_combo?: boolean
 }
 
 export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }: ProductFormProps) {
@@ -39,6 +40,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
     codigo_barras: null,
     requiere_vencimiento: false,
     dias_alerta_vencimiento: 15,
+    es_combo: false,
   })
   const [guardando, setGuardando] = useState(false)
   const [scannerCamaraOpen, setScannerCamaraOpen] = useState(false)
@@ -65,6 +67,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
         codigo_barras: producto.codigo_barras,
         requiere_vencimiento: producto.requiere_vencimiento || false,
         dias_alerta_vencimiento: producto.dias_alerta_vencimiento || 15,
+        es_combo: producto.es_combo || false,
       })
     } else {
       setForm({
@@ -77,6 +80,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
         codigo_barras: null,
         requiere_vencimiento: false,
         dias_alerta_vencimiento: 15,
+        es_combo: false,
       })
     }
   }, [producto, isOpen])
@@ -246,6 +250,26 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
                   <span className="text-xs text-gray-400">días antes de caducar</span>
                 </div>
               </div>
+            )}
+          </div>
+
+          {/* Opciones de Combo / Pack */}
+          <div className="p-3 bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800/60 rounded-xl space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.es_combo || false}
+                onChange={(e) => setForm({ ...form, es_combo: e.target.checked })}
+                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 dark:border-gray-600"
+              />
+              <span className="text-xs font-semibold text-indigo-950 dark:text-indigo-200">
+                Producto tipo Combo o Pack (compuesto por otros productos)
+              </span>
+            </label>
+            {form.es_combo && (
+              <p className="text-[11px] text-indigo-700 dark:text-indigo-400 pl-6">
+                Al vender este pack, el sistema descontará automáticamente los productos individuales que lo componen. El stock se calcula en tiempo real según la disponibilidad de sus ingredientes.
+              </p>
             )}
           </div>
 

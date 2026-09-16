@@ -3,6 +3,7 @@ import type { Producto, Categoria } from '../../types/database'
 import { formatPrecio, nivelStock } from '../../lib/utils'
 import { SearchInput } from '../ui/SearchInput'
 import { Button } from '../ui/Button'
+import { useComboStore } from '../../stores/comboStore'
 
 const stockColors = {
   ok: 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30',
@@ -29,6 +30,7 @@ interface ProductTableProps {
   onEliminar: (id: string) => void
   onToggleFavorito: (id: string, esFavorito: boolean) => void
   onNuevo: () => void
+  onConfigurarCombo?: (producto: Producto) => void
   cargando: boolean
 }
 
@@ -43,9 +45,11 @@ export function ProductTable({
   onEliminar,
   onToggleFavorito,
   onNuevo,
+  onConfigurarCombo,
   cargando,
 }: ProductTableProps) {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const { calcularStockCombo } = useComboStore()
 
   return (
     <div>
@@ -92,13 +96,19 @@ export function ProductTable({
           <div className="divide-y divide-gray-100 dark:divide-gray-700 sm:hidden">
             {productos.map((prod) => {
               const nivel = nivelStock(prod.stock_actual, prod.stock_minimo)
+              const stockCombo = prod.es_combo ? calcularStockCombo(prod.id, productos) : 0
               return (
                 <div key={prod.id} className="py-2.5 flex items-center justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <p className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">
                         {prod.descripcion}
                       </p>
+                      {prod.es_combo && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-bold flex-shrink-0">
+                          Combo
+                        </span>
+                      )}
                       {prod.es_favorito && (
                         <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300 font-bold flex-shrink-0 flex items-center gap-0.5">
                           ★ Fav
@@ -106,9 +116,15 @@ export function ProductTable({
                       )}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${stockColors[nivel]}`}>
-                        Stock: {prod.stock_actual}
-                      </span>
+                      {prod.es_combo ? (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                          {stockCombo} packs disp.
+                        </span>
+                      ) : (
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${stockColors[nivel]}`}>
+                          Stock: {prod.stock_actual}
+                        </span>
+                      )}
                       {prod.categoria && (
                         <span className="inline-flex items-center gap-1 truncate max-w-[130px]">
                           <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: prod.categoria.color }} />
@@ -122,7 +138,16 @@ export function ProductTable({
                     <span className="font-bold text-sm text-indigo-600 dark:text-indigo-400">
                       {formatPrecio(prod.precio_venta)}
                     </span>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                      {prod.es_combo && (
+                        <button
+                          type="button"
+                          onClick={() => onConfigurarCombo?.(prod)}
+                          className="text-xs text-purple-600 dark:text-purple-400 font-semibold px-2 py-1 bg-purple-50 dark:bg-purple-900/30 rounded-md hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors"
+                        >
+                          Armar
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => onToggleFavorito(prod.id, prod.es_favorito)}
@@ -173,10 +198,18 @@ export function ProductTable({
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {productos.map((prod) => {
                   const nivel = nivelStock(prod.stock_actual, prod.stock_minimo)
+                  const stockCombo = prod.es_combo ? calcularStockCombo(prod.id, productos) : 0
                   return (
                     <tr key={prod.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                       <td className="px-3 py-2.5">
-                        <span className="font-medium text-gray-900 dark:text-gray-100">{prod.descripcion}</span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-medium text-gray-900 dark:text-gray-100">{prod.descripcion}</span>
+                          {prod.es_combo && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300">
+                              Combo
+                            </span>
+                          )}
+                        </div>
                         {prod.codigo_barras && (
                           <span className="block text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5">
                             {prod.codigo_barras}
@@ -200,9 +233,18 @@ export function ProductTable({
                         {formatPrecio(prod.precio_venta)}
                       </td>
                       <td className="px-3 py-2.5 text-center">
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${stockColors[nivel]}`}>
-                          {prod.stock_actual} ({stockLabels[nivel]})
-                        </span>
+                        {prod.es_combo ? (
+                          <span
+                            className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800"
+                            title="Stock calculado automáticamente según el stock de sus componentes"
+                          >
+                            {stockCombo} packs
+                          </span>
+                        ) : (
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${stockColors[nivel]}`}>
+                            {prod.stock_actual} ({stockLabels[nivel]})
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2.5 text-center">
                         <button
@@ -231,6 +273,16 @@ export function ProductTable({
                       </td>
                       <td className="px-3 py-2.5 text-center">
                         <div className="flex items-center justify-center gap-1.5">
+                          {prod.es_combo && (
+                            <button
+                              type="button"
+                              onClick={() => onConfigurarCombo?.(prod)}
+                              className="px-2.5 py-1 text-xs font-semibold rounded-md bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
+                              title="Configurar recetas y componentes del combo"
+                            >
+                              Armar
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => onEditar(prod)}

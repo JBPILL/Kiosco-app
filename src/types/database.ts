@@ -65,6 +65,17 @@ export interface LoteProducto {
   producto?: Producto
 }
 
+export interface ItemCombo {
+  id: string
+  kiosco_id: string
+  combo_producto_id: string
+  componente_producto_id: string
+  cantidad: number
+  // Relaciones opcionales
+  componente?: Producto
+  combo?: Producto
+}
+
 export interface Usuario {
   id: string
   auth_user_id: string | null

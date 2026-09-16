@@ -13,6 +13,7 @@ import type { MedioPago } from '../../types/database'
 import type { TicketData } from './TicketReceiptModal'
 import { useAFIPStore } from '../../stores/afipStore'
 import { useLoteStore } from '../../stores/loteStore'
+import { useComboStore } from '../../stores/comboStore'
 import type { TipoDocumentoAFIP } from '../../types/afip'
 import toast from 'react-hot-toast'
 
@@ -264,6 +265,23 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       // 4. Actualizar stock físico en catálogo y asentar egreso en movimientos_stock
       for (const it of items) {
         if (it.producto.activo === false) continue
+
+        // Si es un COMBO / PACK, descontar los productos que lo integran (con FEFO)
+        if (it.producto.es_combo) {
+          try {
+            await useComboStore.getState().descontarStockComponentesCombo(
+              it.producto.id,
+              it.cantidad,
+              kioscoId,
+              usuario?.id || null,
+              ventaId
+            )
+          } catch (errCombo) {
+            console.warn(`Error al descontar componentes del combo ${it.producto.descripcion}:`, errCombo)
+          }
+          continue
+        }
+
         const nuevoStock = it.producto.stock_actual - it.cantidad
         try {
           await supabase
