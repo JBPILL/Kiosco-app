@@ -5,11 +5,12 @@ import { useThemeStore } from '../stores/themeStore'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
-import type { Kiosco, Usuario, Suscripcion } from '../types/database'
+import type { Kiosco, Usuario, Suscripcion, Categoria } from '../types/database'
 import { formatPrecio, formatFechaCorta } from '../lib/utils'
 import { exportarCatalogoCSV, exportarVentasCSV } from '../lib/exportUtils'
 import { AFIPConfigSection } from '../components/config/AFIPConfigSection'
 import { useConfigAdminStore, formatearLinkWhatsApp } from '../stores/configAdminStore'
+import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
 import toast from 'react-hot-toast'
 
 export function ConfigPage() {
@@ -23,6 +24,8 @@ export function ConfigPage() {
   const [cargando, setCargando] = useState(true)
   const [guardandoKiosco, setGuardandoKiosco] = useState(false)
   const [exportandoBackup, setExportandoBackup] = useState(false)
+  const [categorias, setCategorias] = useState<Categoria[]>([])
+  const [modalImportarOpen, setModalImportarOpen] = useState(false)
 
   useEffect(() => {
     cargarConfigAdmin()
@@ -99,6 +102,17 @@ export function ConfigPage() {
 
       if (usuariosData) {
         setUsuarios(usuariosData)
+      }
+
+      // 4. Cargar categorías del Kiosco
+      const { data: categoriasData } = await supabase
+        .from('categorias')
+        .select('*')
+        .eq('kiosco_id', usuario.kiosco_id)
+        .order('orden')
+
+      if (categoriasData) {
+        setCategorias(categoriasData as Categoria[])
       }
     } catch (err) {
       console.error('Error al cargar configuración:', err)
@@ -752,14 +766,16 @@ export function ConfigPage() {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 space-y-2">
-                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                  Resguardo de Catálogo y Stock
-                </h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Incluye todos tus productos con códigos de barra, categorías, costos, precios de venta y stock actual.
-                </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 space-y-2 flex flex-col justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                    Resguardo de Catálogo y Stock
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Incluye todos tus productos con códigos de barra, categorías, costos, precios de venta y stock actual.
+                  </p>
+                </div>
                 <Button
                   size="sm"
                   variant="secondary"
@@ -771,13 +787,15 @@ export function ConfigPage() {
                 </Button>
               </div>
 
-              <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 space-y-2">
-                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                  Resguardo Histórico de Ventas
-                </h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Descargá el registro histórico de todas las ventas emitidas, totales, fechas y medios de pago cobrados.
-                </p>
+              <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 space-y-2 flex flex-col justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                    Resguardo Histórico de Ventas
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Descargá el registro histórico de todas las ventas emitidas, totales, fechas y medios de pago cobrados.
+                  </p>
+                </div>
                 <Button
                   size="sm"
                   variant="secondary"
@@ -786,6 +804,30 @@ export function ConfigPage() {
                   className="w-full text-xs font-semibold"
                 >
                   {exportandoBackup ? 'Generando...' : 'Descargar Ventas (.CSV)'}
+                </Button>
+              </div>
+
+              <div className="p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 space-y-2 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-indigo-950 dark:text-indigo-200">
+                      Restauración y Rollback
+                    </h3>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                      Recuperación
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                    Importá un backup de Excel (.CSV) previo para revertir o recuperar productos, precios y niveles de stock.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={() => setModalImportarOpen(true)}
+                  className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white"
+                >
+                  Importar / Restaurar (.CSV)
                 </Button>
               </div>
             </div>
@@ -981,6 +1023,19 @@ export function ConfigPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Modal para importar y restaurar backup (Rollback) */}
+      <ImportarCatalogoModal
+        isOpen={modalImportarOpen}
+        onClose={() => setModalImportarOpen(false)}
+        onImportCompletado={async () => {
+          await cargarDatos()
+          toast.success('Catálogo restaurado y sincronizado correctamente')
+        }}
+        categorias={categorias}
+        modoInicial="ROLLBACK"
+        titulo="Restaurar Copia de Seguridad (Rollback de Datos)"
+      />
     </div>
   )
 }

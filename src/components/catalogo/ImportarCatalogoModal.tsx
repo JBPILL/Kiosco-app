@@ -25,6 +25,108 @@ interface ImportarCatalogoModalProps {
   onClose: () => void
   onImportCompletado: () => Promise<void> | void
   categorias: Categoria[]
+  modoInicial?: 'NORMAL' | 'ROLLBACK'
+  titulo?: string
+}
+
+/**
+ * Tokenizador robusto de línea CSV con soporte de comillas dobles y separadores variables
+ */
+function parsearLineaCSV(linea: string, separador: string = ';'): string[] {
+  const columnas: string[] = []
+  let enComillas = false
+  let buffer = ''
+
+  for (let i = 0; i < linea.length; i++) {
+    const c = linea[i]
+    if (c === '"') {
+      if (enComillas && i + 1 < linea.length && linea[i + 1] === '"') {
+        buffer += '"'
+        i++
+      } else {
+        enComillas = !enComillas
+      }
+    } else if (c === separador && !enComillas) {
+      columnas.push(buffer.trim())
+      buffer = ''
+    } else {
+      buffer += c
+    }
+  }
+  columnas.push(buffer.trim())
+  return columnas
+}
+
+function normalizarTexto(txt: string): string {
+  return txt.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+}
+
+/**
+ * Detecta inteligentemente la posición de las columnas según los nombres de encabezado
+ */
+function detectarIndicesColumnas(cabeceras: string[]): Record<string, number> {
+  const indices: Record<string, number> = {
+    descripcion: -1,
+    codigo_barras: -1,
+    categoria: -1,
+    precio_costo: -1,
+    precio_venta: -1,
+    stock_actual: -1,
+    stock_minimo: -1,
+  }
+
+  cabeceras.forEach((col, idx) => {
+    const norm = normalizarTexto(col)
+    if (
+      indices.descripcion === -1 &&
+      (norm.includes('descripcion') || norm === 'producto' || norm === 'nombre' || norm === 'articulo')
+    ) {
+      indices.descripcion = idx
+    } else if (
+      indices.codigo_barras === -1 &&
+      (norm.includes('codigo') || norm.includes('barras') || norm === 'barcode' || norm === 'ean')
+    ) {
+      indices.codigo_barras = idx
+    } else if (
+      indices.categoria === -1 &&
+      (norm.includes('categoria') || norm.includes('rubro') || norm.includes('category'))
+    ) {
+      indices.categoria = idx
+    } else if (
+      indices.precio_costo === -1 &&
+      (norm.includes('costo') || norm === 'precio_costo')
+    ) {
+      indices.precio_costo = idx
+    } else if (
+      indices.precio_venta === -1 &&
+      (norm.includes('venta') || norm === 'precio_venta' || (norm.includes('precio') && !norm.includes('costo')))
+    ) {
+      indices.precio_venta = idx
+    } else if (
+      indices.stock_actual === -1 &&
+      (norm.includes('stock actual') || norm === 'stock_actual' || norm === 'stock' || norm === 'cantidad')
+    ) {
+      indices.stock_actual = idx
+    } else if (
+      indices.stock_minimo === -1 &&
+      (norm.includes('minimo') || norm === 'stock_minimo')
+    ) {
+      indices.stock_minimo = idx
+    }
+  })
+
+  // Fallback a posiciones predeterminadas de la plantilla clásica si no se reconocieron encabezados
+  if (indices.descripcion === -1) {
+    indices.codigo_barras = 0
+    indices.descripcion = 1
+    indices.categoria = 2
+    indices.precio_costo = 3
+    indices.precio_venta = 4
+    indices.stock_actual = 5
+    indices.stock_minimo = 6
+  }
+
+  return indices
 }
 
 export function ImportarCatalogoModal({
@@ -32,19 +134,24 @@ export function ImportarCatalogoModal({
   onClose,
   onImportCompletado,
   categorias,
+  modoInicial = 'NORMAL',
+  titulo,
 }: ImportarCatalogoModalProps) {
   const { usuario } = useAuthStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [archivo, setArchivo] = useState<File | null>(null)
   const [filas, setFilas] = useState<ProductoImportRow[]>([])
   const [actualizarExistentes, setActualizarExistentes] = useState(true)
+  const [modoRollback, setModoRollback] = useState(modoInicial === 'ROLLBACK')
   const [procesando, setProcesando] = useState(false)
+  const [progresoTexto, setProgresoTexto] = useState('')
   const [errorParsing, setErrorParsing] = useState<string | null>(null)
 
   const limpiarEstado = () => {
     setArchivo(null)
     setFilas([])
     setErrorParsing(null)
+    setProgresoTexto('')
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -56,17 +163,17 @@ export function ImportarCatalogoModal({
 
   // Descargar plantilla CSV de muestra
   const descargarPlantilla = () => {
-    const encabezados = 'codigo_barras,descripcion,categoria,precio_costo,precio_venta,stock_actual,stock_minimo'
+    const encabezados = 'Descripción;Código de Barras;Categoría;Precio Costo;Precio Venta;Stock Actual;Stock Mínimo'
     const filasEjemplo = [
-      '7790895000997,Coca Cola 500ml,Bebidas,850,1500,24,6',
-      '7791234567890,Alfajor Jorgito Chocolate,Golosinas,400,800,50,10',
-      '7799876543210,Papas Fritas Lays 85g,Snacks,900,1800,15,5',
-      '7791111222233,Cigarrillos Marlboro Box 20,Cigarrillos,2200,3000,20,5',
-      '7794444555566,Leche La Serenisima 1L,Lácteos,950,1400,12,4',
-      ',Caramelos Sugus x Unidad,Golosinas,15,30,200,50',
+      'Coca Cola 500ml;7790895000997;Bebidas;850;1500;24;6',
+      'Alfajor Jorgito Chocolate;7791234567890;Golosinas;400;800;50;10',
+      'Papas Fritas Lays 85g;7799876543210;Snacks;900;1800;15;5',
+      'Cigarrillos Marlboro Box 20;7791111222233;Cigarrillos;2200;3000;20;5',
+      'Leche La Serenisima 1L;7794444555566;Lácteos;950;1400;12;4',
+      'Caramelos Sugus x Unidad;;Golosinas;15;30;200;50',
     ]
 
-    const contenidoCSV = `\uFEFF${encabezados}\n${filasEjemplo.join('\n')}`
+    const contenidoCSV = `\uFEFF${encabezados}\r\n${filasEjemplo.join('\r\n')}`
     const blob = new Blob([contenidoCSV], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -79,8 +186,8 @@ export function ImportarCatalogoModal({
   }
 
   // Parsear texto numérico tolerando formato argentino (1.500,50 o 1500.50 o 1500)
-  const parsearNumero = (valor: string): number => {
-    if (!valor) return 0
+  const parsearNumero = (valor: any): number => {
+    if (valor === null || valor === undefined) return 0
     let limpio = valor.toString().trim().replace(/[$ ]/g, '')
     if (limpio.includes(',') && limpio.includes('.')) {
       limpio = limpio.replace(/\./g, '').replace(',', '.')
@@ -101,36 +208,46 @@ export function ImportarCatalogoModal({
       try {
         const texto = e.target?.result as string
         if (!texto) {
-          setErrorParsing('El archivo está vacío.')
+          setErrorParsing('El archivo seleccionado está vacío.')
           return
         }
 
-        // Detectar separador (; o ,)
+        // Dividir líneas respetando retornos de carro
         const lineas = texto.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
         if (lineas.length <= 1) {
           setErrorParsing('El archivo no contiene filas de datos.')
           return
         }
 
+        // Detectar separador predominante en la primera línea (; o ,)
         const primeraLinea = lineas[0]
-        const separador = primeraLinea.includes(';') ? ';' : ','
+        const countPuntoComa = (primeraLinea.match(/;/g) || []).length
+        const countComa = (primeraLinea.match(/,/g) || []).length
+        const separador = countPuntoComa >= countComa ? ';' : ','
+
+        const cabeceras = parsearLineaCSV(primeraLinea, separador).map((c) => c.replace(/^["']|["']$/g, ''))
+        const indices = detectarIndicesColumnas(cabeceras)
 
         const filasParseadas: ProductoImportRow[] = []
 
-        // Omitir cabecera (primera línea)
+        // Procesar filas de datos
         for (let i = 1; i < lineas.length; i++) {
           const linea = lineas[i]
           if (!linea) continue
 
-          const columnas = linea.split(separador).map((c) => c.trim().replace(/^["']|["']$/g, ''))
+          const columnas = parsearLineaCSV(linea, separador).map((c) => c.replace(/^["']|["']$/g, ''))
+          if (columnas.length === 0 || columnas.every((c) => !c)) continue
 
-          const codigoBarras = columnas[0] || null
-          const descripcion = columnas[1] || ''
-          const categoriaNombre = columnas[2] || null
-          const precioCosto = parsearNumero(columnas[3])
-          const precioVenta = parsearNumero(columnas[4])
-          const stockActual = Math.max(0, parsearNumero(columnas[5]))
-          const stockMinimo = Math.max(0, parsearNumero(columnas[6]))
+          const rawCodigo = indices.codigo_barras >= 0 ? columnas[indices.codigo_barras] || null : null
+          const codigoBarras =
+            rawCodigo === '—' || rawCodigo === '-' || rawCodigo === 'null' || !rawCodigo ? null : rawCodigo.trim()
+
+          const descripcion = indices.descripcion >= 0 ? (columnas[indices.descripcion] || '').trim() : ''
+          const categoriaNombre = indices.categoria >= 0 ? (columnas[indices.categoria] || '').trim() || null : null
+          const precioCosto = indices.precio_costo >= 0 ? parsearNumero(columnas[indices.precio_costo]) : 0
+          const precioVenta = indices.precio_venta >= 0 ? parsearNumero(columnas[indices.precio_venta]) : 0
+          const stockActual = indices.stock_actual >= 0 ? parsearNumero(columnas[indices.stock_actual]) : 0
+          const stockMinimo = indices.stock_minimo >= 0 ? Math.max(0, parsearNumero(columnas[indices.stock_minimo])) : 0
 
           let esValido = true
           let error: string | undefined
@@ -146,7 +263,7 @@ export function ImportarCatalogoModal({
           filasParseadas.push({
             codigo_barras: codigoBarras,
             descripcion,
-            categoriaNombre,
+            categoriaNombre: categoriaNombre === 'Sin categoría' || categoriaNombre === '—' ? null : categoriaNombre,
             precio_costo: precioCosto,
             precio_venta: precioVenta,
             stock_actual: stockActual,
@@ -163,19 +280,19 @@ export function ImportarCatalogoModal({
 
         setFilas(filasParseadas)
       } catch (err) {
-        console.error('Error parseando CSV:', err)
-        setErrorParsing('Error al leer el formato del archivo CSV.')
+        console.error('Error parseando archivo CSV/Excel:', err)
+        setErrorParsing('Error al leer el formato del archivo CSV. Verificá que sea un archivo válido.')
       }
     }
 
     reader.readAsText(file, 'UTF-8')
   }
 
-  // Confirmar e importar productos a la base de datos
+  // Confirmar e importar productos / ejecutar rollback a la base de datos
   const handleImportar = async () => {
     const kioscoId = usuario?.kiosco_id
     if (!kioscoId) {
-      toast.error('No tenés un kiosco activo')
+      toast.error('No tenés un comercio activo identificado')
       return
     }
 
@@ -185,13 +302,21 @@ export function ImportarCatalogoModal({
       return
     }
 
+    if (modoRollback) {
+      const confirmacion = window.confirm(
+        `Atención: Has activado el Modo Rollback Completo.\n\nSe restaurarán ${validas.length} productos del archivo y cualquier producto actual que NO figure en esta copia de seguridad será dado de baja.\n\n¿Deseas continuar?`
+      )
+      if (!confirmacion) return
+    }
+
     setProcesando(true)
+    setProgresoTexto('Verificando categorías y productos existentes...')
 
     try {
       const ahora = new Date().toISOString()
 
-      // 1. Identificar categorías únicas en el CSV y crear las que no existan
-      const mapaCategorias = new Map<string, string>() // nombreMinuscula -> id
+      // 1. Identificar categorías y asegurar su existencia
+      const mapaCategorias = new Map<string, string>()
       categorias.forEach((c) => mapaCategorias.set(c.nombre.toLowerCase().trim(), c.id))
 
       const categoriasNuevasNombres = new Set<string>()
@@ -205,6 +330,7 @@ export function ImportarCatalogoModal({
       })
 
       if (categoriasNuevasNombres.size > 0) {
+        setProgresoTexto('Sincronizando nuevas categorías...')
         const arrayNuevas = Array.from(categoriasNuevasNombres)
         for (const nombreCat of arrayNuevas) {
           const { data: catCreada, error: catErr } = await supabase
@@ -224,51 +350,79 @@ export function ImportarCatalogoModal({
         }
       }
 
-      // 2. Consultar productos existentes del kiosco para manejar duplicados o actualización
+      // 2. Traer productos existentes para resolver actualizaciones por código o por nombre
+      setProgresoTexto('Consultando catálogo actual...')
       const { data: productosExistentes } = await supabase
         .from('productos')
-        .select('id, codigo_barras, descripcion')
+        .select('id, codigo_barras, descripcion, stock_actual, activo')
         .eq('kiosco_id', kioscoId)
 
-      const mapaExistentesPorBarcode = new Map<string, string>()
+      const mapaExistentesPorBarcode = new Map<string, any>()
+      const mapaExistentesPorNombre = new Map<string, any>()
+
       productosExistentes?.forEach((p) => {
-        if (p.codigo_barras) mapaExistentesPorBarcode.set(p.codigo_barras.trim(), p.id)
+        if (p.codigo_barras) mapaExistentesPorBarcode.set(p.codigo_barras.trim(), p)
+        if (p.descripcion) mapaExistentesPorNombre.set(p.descripcion.toLowerCase().trim(), p)
       })
 
+      const idsAfectados = new Set<string>()
       let insertadosCount = 0
       let actualizadosCount = 0
-
-      // 3. Preparar filas para insert y updates
       const productosParaInsertar: any[] = []
+      const movimientosStockParaInsertar: any[] = []
 
+      // 3. Preparar filas para inserción y actualización
+      setProgresoTexto('Procesando productos...')
       for (const row of validas) {
         const catId = row.categoriaNombre
           ? mapaCategorias.get(row.categoriaNombre.toLowerCase().trim()) || null
           : null
 
         const barcode = row.codigo_barras?.trim() || null
-        const idExistente = barcode ? mapaExistentesPorBarcode.get(barcode) : null
+        const descNorm = row.descripcion.toLowerCase().trim()
 
-        if (idExistente && actualizarExistentes) {
-          // Actualizar producto existente
+        // Buscar coincidencia por código de barras o por nombre idéntico
+        const existente = (barcode ? mapaExistentesPorBarcode.get(barcode) : null) || mapaExistentesPorNombre.get(descNorm)
+
+        if (existente && actualizarExistentes) {
+          idsAfectados.add(existente.id)
+
           await supabase
             .from('productos')
             .update({
+              codigo_barras: barcode || existente.codigo_barras,
               descripcion: row.descripcion,
               categoria_id: catId,
               precio_costo: row.precio_costo,
               precio_venta: row.precio_venta,
               stock_actual: row.stock_actual,
               stock_minimo: row.stock_minimo,
+              activo: true,
               fecha_actualizacion: ahora,
             })
-            .eq('id', idExistente)
+            .eq('id', existente.id)
+
+          // Registrar movimiento de auditoría si varió el stock
+          if (existente.stock_actual !== row.stock_actual) {
+            movimientosStockParaInsertar.push({
+              kiosco_id: kioscoId,
+              producto_id: existente.id,
+              tipo: 'AJUSTE',
+              cantidad: row.stock_actual - (existente.stock_actual || 0),
+              motivo: 'CONTEO',
+              notas: 'Restauración / Rollback desde backup',
+              usuario_id: usuario?.id || null,
+              fecha: ahora,
+            })
+          }
 
           actualizadosCount++
         } else {
-          // Nuevo producto
+          const nuevoId = uuidv4()
+          idsAfectados.add(nuevoId)
+
           productosParaInsertar.push({
-            id: uuidv4(),
+            id: nuevoId,
             kiosco_id: kioscoId,
             codigo_barras: barcode,
             descripcion: row.descripcion,
@@ -285,8 +439,9 @@ export function ImportarCatalogoModal({
         }
       }
 
-      // Inserción en lotes de 100 productos
+      // 4. Inserción en lotes de 100 productos
       if (productosParaInsertar.length > 0) {
+        setProgresoTexto(`Guardando ${productosParaInsertar.length} productos nuevos...`)
         const LOTE_SIZE = 100
         for (let i = 0; i < productosParaInsertar.length; i += LOTE_SIZE) {
           const lote = productosParaInsertar.slice(i, i + LOTE_SIZE)
@@ -296,32 +451,77 @@ export function ImportarCatalogoModal({
         }
       }
 
-      toast.success(
-        `Importación completada: ${insertadosCount} creados, ${actualizadosCount} actualizados`
-      )
+      // 5. Registrar movimientos de stock generados
+      if (movimientosStockParaInsertar.length > 0) {
+        const LOTE_SIZE = 100
+        for (let i = 0; i < movimientosStockParaInsertar.length; i += LOTE_SIZE) {
+          const loteMov = movimientosStockParaInsertar.slice(i, i + LOTE_SIZE)
+          try {
+            await supabase.from('movimientos_stock').insert(loteMov)
+          } catch {
+            // Ignorar error no crítico de registro de stock
+          }
+        }
+      }
+
+      // 6. Si se activó "Rollback Completo", dar de baja productos no presentes en el backup
+      let desactivadosCount = 0
+      if (modoRollback && productosExistentes) {
+        setProgresoTexto('Aplicando rollback estricto...')
+        const huerfanos = productosExistentes.filter((p) => !idsAfectados.has(p.id) && p.activo !== false)
+        for (const p of huerfanos) {
+          await supabase.from('productos').update({ activo: false, fecha_actualizacion: ahora }).eq('id', p.id)
+          desactivadosCount++
+        }
+      }
+
+      // 7. Sincronizar de inmediato el catálogo completo en la memoria local (localStorage)
+      setProgresoTexto('Sincronizando inventario local...')
+      const { data: catalogoCompleto } = await supabase
+        .from('productos')
+        .select('*, categoria:categorias(id, nombre, color)')
+        .eq('kiosco_id', kioscoId)
+        .eq('activo', true)
+
+      if (catalogoCompleto) {
+        try {
+          localStorage.setItem('kiosko_cache_productos', JSON.stringify(catalogoCompleto))
+        } catch {}
+      }
+
+      const mensajeExito = modoRollback && desactivadosCount > 0
+        ? `Rollback exitoso: ${actualizadosCount} actualizados, ${insertadosCount} creados, ${desactivadosCount} dados de baja.`
+        : `Restauración completada: ${insertadosCount} creados, ${actualizadosCount} actualizados.`
+
+      toast.success(mensajeExito, { duration: 6000 })
 
       await onImportCompletado()
       handleCerrar()
     } catch (err) {
-      console.error('Error durante la importación masiva:', err)
+      console.error('Error durante la restauración / importación:', err)
       toast.error('Ocurrió un error al guardar los productos en la base de datos')
     } finally {
       setProcesando(false)
+      setProgresoTexto('')
     }
   }
 
   const filasValidasCount = filas.filter((f) => f.esValido).length
   const filasInvalidasCount = filas.length - filasValidasCount
 
+  const tituloModal = titulo || (modoRollback ? 'Restaurar Copia de Seguridad (Rollback)' : 'Importar Catálogo Masivo (.CSV)')
+
   return (
-    <Modal isOpen={isOpen} onClose={handleCerrar} title="Importar Catálogo Masivo (.CSV)" size="xl">
+    <Modal isOpen={isOpen} onClose={handleCerrar} title={tituloModal} size="xl">
       <div className="space-y-4">
         {/* Banner informativo y descarga de plantilla */}
         <div className="p-3.5 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
           <div>
-            <p className="font-bold text-indigo-900 dark:text-indigo-200">¿No tenés el formato exacto?</p>
-            <p className="text-indigo-700 dark:text-indigo-400">
-              Descargá nuestra plantilla de ejemplo con encabezados y productos de muestra.
+            <p className="font-bold text-indigo-900 dark:text-indigo-200">
+              Compatible con copias de seguridad de KioskoPOS y Excels externos
+            </p>
+            <p className="text-indigo-700 dark:text-indigo-400 mt-0.5">
+              Reconoce automáticamente columnas de Descripción, Código de Barras, Categoría, Precios y Stock.
             </p>
           </div>
           <Button
@@ -335,10 +535,53 @@ export function ImportarCatalogoModal({
           </Button>
         </div>
 
+        {/* Selector de modo: Fusión vs Rollback */}
+        <div className="p-3.5 bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700 rounded-xl space-y-2">
+          <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
+            Modalidad de Restauración
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setModoRollback(false)}
+              className={`p-3 rounded-lg border text-left transition-all ${
+                !modoRollback
+                  ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 shadow-xs'
+                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+              }`}
+            >
+              <p className="text-xs font-bold">Fusionar y Actualizar (Seguro)</p>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                Actualiza los productos coincidentes y agrega los nuevos, sin tocar los productos no mencionados.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setModoRollback(true)}
+              className={`p-3 rounded-lg border text-left transition-all ${
+                modoRollback
+                  ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 shadow-xs'
+                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold text-amber-700 dark:text-amber-400">Rollback Completo (Exacto)</p>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200">
+                  Deshacer
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                Vuelve el catálogo exactamente al estado del backup. Da de baja productos actuales no presentes en el archivo.
+              </p>
+            </button>
+          </div>
+        </div>
+
         {/* Zona de selección de archivo */}
         <div>
           <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-            Seleccionar archivo .CSV
+            Seleccionar archivo .CSV de Backup o Catálogo
           </label>
           <div className="flex items-center gap-3">
             <input
@@ -389,7 +632,7 @@ export function ImportarCatalogoModal({
                   onChange={(e) => setActualizarExistentes(e.target.checked)}
                   className="rounded text-indigo-600 focus:ring-indigo-500"
                 />
-                <span>Actualizar si el código de barras ya existe</span>
+                <span>Actualizar si el código o nombre ya existen</span>
               </label>
             </div>
 
@@ -452,6 +695,16 @@ export function ImportarCatalogoModal({
           </div>
         )}
 
+        {/* Mensaje de progreso durante procesamiento */}
+        {procesando && (
+          <div className="p-3 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 rounded-lg text-center space-y-1">
+            <div className="animate-spin h-5 w-5 border-2 border-indigo-600 border-t-transparent rounded-full mx-auto" />
+            <p className="text-xs text-indigo-700 dark:text-indigo-300 font-semibold">
+              {progresoTexto || 'Procesando datos del catálogo...'}
+            </p>
+          </div>
+        )}
+
         {/* Acciones */}
         <div className="flex justify-end gap-2.5 pt-3 border-t border-gray-200 dark:border-gray-700">
           <Button type="button" variant="secondary" onClick={handleCerrar} disabled={procesando}>
@@ -462,9 +715,17 @@ export function ImportarCatalogoModal({
             variant="primary"
             onClick={handleImportar}
             disabled={procesando || filasValidasCount === 0}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white"
+            className={`text-white font-bold ${
+              modoRollback
+                ? 'bg-amber-600 hover:bg-amber-700'
+                : 'bg-indigo-600 hover:bg-indigo-700'
+            }`}
           >
-            {procesando ? 'Importando...' : `Confirmar Importación (${filasValidasCount})`}
+            {procesando
+              ? 'Procesando...'
+              : modoRollback
+              ? `Ejecutar Rollback (${filasValidasCount})`
+              : `Confirmar Importación (${filasValidasCount})`}
           </Button>
         </div>
       </div>
