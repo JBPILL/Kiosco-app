@@ -1,5 +1,6 @@
 import type { TicketData } from '../components/pos/TicketReceiptModal'
 import { labelMedioPago } from './utils'
+import { construirURLQRAFIP } from './afipQR'
 
 /**
  * Mapea una venta obtenida de Supabase con sus relaciones (detalles, pagos, usuario, cliente)
@@ -15,19 +16,40 @@ export function ventaToTicketData(v: any, kiosco?: any): TicketData {
   const subtotalCalculado = detalles.reduce((acc: number, d: any) => acc + (d.subtotal || 0), 0)
   const ajusteMonto = (v.total || 0) - subtotalCalculado
 
+  const afipPtoVta = kiosco?.afip_punto_venta || 2
+  const afipTipoCmp = v.afip_tipo_comprobante || 11
+  const fechaStr = (v.fecha_hora || new Date().toISOString()).split('T')[0]
+
+  let qrUrl = v.afip_qr_url
+  if (!qrUrl && v.afip_cae) {
+    try {
+      qrUrl = construirURLQRAFIP({
+        fecha: fechaStr,
+        cuit: kiosco?.cuit || '20123456789',
+        puntoVenta: afipPtoVta,
+        tipoComprobante: afipTipoCmp,
+        numeroComprobante: v.afip_nro_comprobante || 1,
+        importe: v.total || 0,
+        codigoAutorizacion: v.afip_cae,
+      })
+    } catch {
+      // Ignorar fallback
+    }
+  }
+
   const afipData = v.afip_cae
     ? {
         cae: v.afip_cae,
         vtoCae: v.afip_vto_cae || '',
-        tipoComprobante: v.afip_tipo_comprobante || 11,
-        letra: (v.afip_tipo_comprobante === 11 ? 'C' : 'B') as 'C' | 'B' | 'A',
-        puntoVenta: 1,
+        tipoComprobante: afipTipoCmp,
+        letra: (afipTipoCmp === 11 ? 'C' : 'B') as 'C' | 'B' | 'A',
+        puntoVenta: afipPtoVta,
         nroComprobante: v.afip_nro_comprobante || 0,
         cuitEmisor: kiosco?.cuit || undefined,
         iibb: kiosco?.iibb || undefined,
         condicionIva: kiosco?.condicion_iva || undefined,
         inicioActividades: kiosco?.inicio_actividades || undefined,
-        qrUrl: v.afip_qr_url || undefined,
+        qrUrl: qrUrl || undefined,
       }
     : null
 

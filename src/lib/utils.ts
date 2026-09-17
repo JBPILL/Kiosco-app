@@ -77,3 +77,41 @@ export function nivelStock(actual: number, minimo: number): 'ok' | 'bajo' | 'cri
   if (actual <= minimo) return 'bajo'
   return 'ok'
 }
+
+/**
+ * Retorna la fecha local en formato YYYY-MM-DD sin desfasaje de zona horaria UTC.
+ */
+export function getFechaLocal(d: Date = new Date()): string {
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+/**
+ * Retorna los límites ISO en UTC para un día local (00:00:00.000 a 23:59:59.999).
+ * Garantiza que las consultas a Supabase traigan exactamente todas las ventas del día local.
+ */
+export function getLimitesISODia(fechaYYYYMMDD: string): { inicioISO: string; finISO: string } {
+  const [año, mes, dia] = fechaYYYYMMDD.split('-').map(Number)
+  const inicio = new Date(año, mes - 1, dia, 0, 0, 0, 0)
+  const fin = new Date(año, mes - 1, dia, 23, 59, 59, 999)
+  return {
+    inicioISO: inicio.toISOString(),
+    finISO: fin.toISOString(),
+  }
+}
+
+/**
+ * Retorna los límites ISO en UTC para un rango de fechas locales (desde 00:00:00 hasta 23:59:59).
+ */
+export function getLimitesISORango(desdeYYYYMMDD: string, hastaYYYYMMDD: string): { inicioISO: string; finISO: string } {
+  const [a1, m1, d1] = desdeYYYYMMDD.split('-').map(Number)
+  const [a2, m2, d2] = hastaYYYYMMDD.split('-').map(Number)
+  const inicio = new Date(a1, m1 - 1, d1, 0, 0, 0, 0)
+  const fin = new Date(a2, m2 - 1, d2, 23, 59, 59, 999)
+  return {
+    inicioISO: inicio.toISOString(),
+    finISO: fin.toISOString(),
+  }
+}

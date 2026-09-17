@@ -11,7 +11,7 @@ import { Input } from '../ui/Input'
 import { Modal } from '../ui/Modal'
 import type { MedioPago } from '../../types/database'
 import type { TicketData } from './TicketReceiptModal'
-import { useAFIPStore } from '../../stores/afipStore'
+import { useAFIPStore, validarCUIT } from '../../stores/afipStore'
 import { useLoteStore } from '../../stores/loteStore'
 import { useComboStore } from '../../stores/comboStore'
 import type { TipoDocumentoAFIP } from '../../types/afip'
@@ -167,6 +167,25 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
 
       if (!kioscoId) {
         throw new Error('No se encontró el identificador del kiosco para registrar la venta')
+      }
+
+      // Validación de consistencia fiscal ante AFIP / ARCA
+      if (emitirFiscal) {
+        if (tipoDocReceptor === 96) {
+          const dniLimpio = nroDocReceptor.replace(/\D/g, '')
+          if (!dniLimpio || dniLimpio.length < 7 || dniLimpio.length > 8) {
+            toast.error('Por favor ingresá un número de DNI válido (7 u 8 dígitos) o seleccioná Consumidor Final')
+            setProcesando(false)
+            return
+          }
+        } else if (tipoDocReceptor === 80) {
+          const cuitLimpio = nroDocReceptor.replace(/\D/g, '')
+          if (!cuitLimpio || !validarCUIT(cuitLimpio)) {
+            toast.error('Por favor ingresá un número de CUIT válido (11 dígitos verificados) o seleccioná Consumidor Final')
+            setProcesando(false)
+            return
+          }
+        }
       }
 
       const descAjuste = descripcionAjuste()
@@ -873,32 +892,64 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           </div>
 
           {emitirFiscal && (
-            <div className="pt-2 border-t border-blue-200/60 dark:border-blue-800/40 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+            <div className="pt-2.5 border-t border-blue-200/60 dark:border-blue-800/40 space-y-2.5 text-xs">
               <div>
-                <label className="block text-[11px] font-medium text-blue-900 dark:text-blue-300 mb-1">
-                  Tipo de Identificación
+                <label className="block text-[11px] font-medium text-blue-900 dark:text-blue-300 mb-1.5">
+                  Identificación del Receptor
                 </label>
-                <select
-                  value={tipoDocReceptor}
-                  onChange={(e) => setTipoDocReceptor(Number(e.target.value) as TipoDocumentoAFIP)}
-                  className="w-full px-2.5 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs"
-                >
-                  <option value={99}>Consumidor Final (Sin DNI)</option>
-                  <option value={96}>DNI</option>
-                  <option value={80}>CUIT</option>
-                </select>
+                <div className="grid grid-cols-3 gap-1.5 p-1 bg-gray-100 dark:bg-gray-900/70 rounded-lg border border-blue-200/70 dark:border-blue-800/50">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTipoDocReceptor(99)
+                      setNroDocReceptor('')
+                    }}
+                    className={`py-1.5 px-2 rounded-md font-medium text-xs transition-all text-center cursor-pointer ${
+                      tipoDocReceptor === 99
+                        ? 'bg-blue-600 text-white shadow-xs font-semibold'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    Consumidor Final
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTipoDocReceptor(96)}
+                    className={`py-1.5 px-2 rounded-md font-medium text-xs transition-all text-center cursor-pointer ${
+                      tipoDocReceptor === 96
+                        ? 'bg-blue-600 text-white shadow-xs font-semibold'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    DNI
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTipoDocReceptor(80)}
+                    className={`py-1.5 px-2 rounded-md font-medium text-xs transition-all text-center cursor-pointer ${
+                      tipoDocReceptor === 80
+                        ? 'bg-blue-600 text-white shadow-xs font-semibold'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    CUIT
+                  </button>
+                </div>
               </div>
+
               {tipoDocReceptor !== 99 && (
                 <div>
                   <label className="block text-[11px] font-medium text-blue-900 dark:text-blue-300 mb-1">
-                    Número de {tipoDocReceptor === 96 ? 'DNI' : 'CUIT'}
+                    Número de {tipoDocReceptor === 96 ? 'DNI (7 u 8 dígitos)' : 'CUIT (11 dígitos)'}
                   </label>
                   <input
                     type="text"
+                    inputMode="numeric"
+                    autoFocus
                     value={nroDocReceptor}
-                    onChange={(e) => setNroDocReceptor(e.target.value)}
-                    placeholder={tipoDocReceptor === 96 ? 'Ej: 35123456' : 'Ej: 20351234568'}
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs"
+                    onChange={(e) => setNroDocReceptor(e.target.value.replace(/[^\d-]/g, ''))}
+                    placeholder={tipoDocReceptor === 96 ? 'Ej: 35123456' : 'Ej: 20-35123456-8'}
+                    className="w-full px-3 py-1.5 rounded-lg border border-blue-300 dark:border-blue-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all placeholder:text-gray-400 dark:placeholder:text-gray-500"
                   />
                 </div>
               )}

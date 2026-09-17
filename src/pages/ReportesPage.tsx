@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/authStore'
-import { formatPrecio, formatFecha, labelMedioPago } from '../lib/utils'
+import { formatPrecio, formatFecha, labelMedioPago, getFechaLocal, getLimitesISODia } from '../lib/utils'
 import { exportarVentasCSV } from '../lib/exportUtils'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
@@ -28,16 +28,16 @@ interface VentaResumen {
   detalles: {
     cantidad: number
     precio_unitario?: number
-    producto_id?: string
-    producto: { id?: string; descripcion: string; stock_actual?: number }
     subtotal: number
+    producto_id: string
+    producto?: { id: string; descripcion: string; stock_actual: number }
   }[]
 }
 
 export function ReportesPage() {
   const { usuario } = useAuthStore()
   const [tabActiva, setTabActiva] = useState<'ventas' | 'balance'>('balance')
-  const [fecha, setFecha] = useState(() => new Date().toISOString().split('T')[0])
+  const [fecha, setFecha] = useState(() => getFechaLocal())
   const [ventas, setVentas] = useState<VentaResumen[]>([])
   const [resumen, setResumen] = useState<ResumenDiario | null>(null)
   const [cargando, setCargando] = useState(true)
@@ -48,8 +48,7 @@ export function ReportesPage() {
 
   const cargarDatos = useCallback(async () => {
     setCargando(true)
-    const inicioDelDia = `${fecha}T00:00:00`
-    const finDelDia = `${fecha}T23:59:59`
+    const { inicioISO, finISO } = getLimitesISODia(fecha)
 
     // Cargar ventas del día con detalles y pagos
     const { data, error } = await supabase
@@ -60,8 +59,8 @@ export function ReportesPage() {
         pagos:pagos_venta(medio_pago, monto),
         detalles:detalles_venta(cantidad, precio_unitario, subtotal, producto_id, producto:productos(id, descripcion, stock_actual))
       `)
-      .gte('fecha_hora', inicioDelDia)
-      .lte('fecha_hora', finDelDia)
+      .gte('fecha_hora', inicioISO)
+      .lte('fecha_hora', finISO)
       .order('fecha_hora', { ascending: false })
 
     if (error) {
@@ -105,12 +104,12 @@ export function ReportesPage() {
   }, [cargarDatos])
 
   const cambiarFecha = (dias: number) => {
-    const d = new Date(fecha + 'T12:00:00')
-    d.setDate(d.getDate() + dias)
-    setFecha(d.toISOString().split('T')[0])
+    const [año, mes, dia] = fecha.split('-').map(Number)
+    const d = new Date(año, mes - 1, dia + dias)
+    setFecha(getFechaLocal(d))
   }
 
-  const esHoy = fecha === new Date().toISOString().split('T')[0]
+  const esHoy = fecha === getFechaLocal()
 
   const handleAnularVenta = async () => {
     if (!ventaParaAnular) return
@@ -302,7 +301,7 @@ export function ReportesPage() {
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => setFecha(new Date().toISOString().split('T')[0])}
+                  onClick={() => setFecha(getFechaLocal())}
                 >
                   Hoy
                 </Button>

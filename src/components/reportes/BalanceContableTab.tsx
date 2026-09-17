@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../stores/authStore'
 import { useProveedorStore } from '../../stores/proveedorStore'
-import { formatPrecio, formatFecha, labelMedioPago } from '../../lib/utils'
+import { formatPrecio, formatFecha, labelMedioPago, getFechaLocal, getLimitesISODia, getLimitesISORango } from '../../lib/utils'
 import { exportarLibroContableCSV, type MovimientoContableCSV } from '../../lib/exportUtils'
 import { Button } from '../ui/Button'
 import { SearchInput } from '../ui/SearchInput'
@@ -44,10 +44,10 @@ export function BalanceContableTab() {
   const [fechaDesdePersonalizada, setFechaDesdePersonalizada] = useState(() => {
     const d = new Date()
     d.setDate(1)
-    return d.toISOString().split('T')[0]
+    return getFechaLocal(d)
   })
   const [fechaHastaPersonalizada, setFechaHastaPersonalizada] = useState(() => {
-    return new Date().toISOString().split('T')[0]
+    return getFechaLocal()
   })
 
   // Modo Dual / Filtro Fiscal
@@ -66,12 +66,13 @@ export function BalanceContableTab() {
   // Calcular rango de fechas ISO según el período seleccionado
   const { rangoInicio, rangoFin, etiquetaPeriodo } = useMemo(() => {
     const ahora = new Date()
+    const hoyStr = getFechaLocal(ahora)
 
     if (periodo === 'HOY') {
-      const hoyStr = ahora.toISOString().split('T')[0]
+      const { inicioISO, finISO } = getLimitesISODia(hoyStr)
       return {
-        rangoInicio: `${hoyStr}T00:00:00`,
-        rangoFin: `${hoyStr}T23:59:59`,
+        rangoInicio: inicioISO,
+        rangoFin: finISO,
         etiquetaPeriodo: `Hoy (${formatFecha(ahora.toISOString())})`,
       }
     }
@@ -81,11 +82,12 @@ export function BalanceContableTab() {
       const day = d.getDay()
       const diff = d.getDate() - day + (day === 0 ? -6 : 1) // Lunes
       d.setDate(diff)
-      const inicioSemana = d.toISOString().split('T')[0]
-      const finSemana = ahora.toISOString().split('T')[0]
+      const inicioSemana = getFechaLocal(d)
+      const finSemana = hoyStr
+      const { inicioISO, finISO } = getLimitesISORango(inicioSemana, finSemana)
       return {
-        rangoInicio: `${inicioSemana}T00:00:00`,
-        rangoFin: `${finSemana}T23:59:59`,
+        rangoInicio: inicioISO,
+        rangoFin: finISO,
         etiquetaPeriodo: `Esta semana (${inicioSemana} al ${finSemana})`,
       }
     }
@@ -93,12 +95,13 @@ export function BalanceContableTab() {
     if (periodo === 'MES') {
       const y = ahora.getFullYear()
       const m = ahora.getMonth()
-      const primerDia = new Date(y, m, 1).toISOString().split('T')[0]
-      const ultimoDia = new Date(y, m + 1, 0).toISOString().split('T')[0]
+      const primerDia = getFechaLocal(new Date(y, m, 1))
+      const ultimoDia = getFechaLocal(new Date(y, m + 1, 0))
       const mesNombre = ahora.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+      const { inicioISO, finISO } = getLimitesISORango(primerDia, ultimoDia)
       return {
-        rangoInicio: `${primerDia}T00:00:00`,
-        rangoFin: `${ultimoDia}T23:59:59`,
+        rangoInicio: inicioISO,
+        rangoFin: finISO,
         etiquetaPeriodo: `Mes actual (${mesNombre})`,
       }
     }
@@ -106,36 +109,37 @@ export function BalanceContableTab() {
     if (periodo === 'MES_ANTERIOR') {
       const añoActual = ahora.getFullYear()
       const mesActual = ahora.getMonth() // 0-11
-      const primerDiaMesAnt = new Date(añoActual, mesActual - 1, 1)
-      const ultimoDiaMesAnt = new Date(añoActual, mesActual, 0)
-      const inicioStr = primerDiaMesAnt.toISOString().split('T')[0]
-      const finStr = ultimoDiaMesAnt.toISOString().split('T')[0]
-      const nombreMes = primerDiaMesAnt.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+      const primerDiaMesAnt = getFechaLocal(new Date(añoActual, mesActual - 1, 1))
+      const ultimoDiaMesAnt = getFechaLocal(new Date(añoActual, mesActual, 0))
+      const nombreMes = new Date(añoActual, mesActual - 1, 1).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+      const { inicioISO, finISO } = getLimitesISORango(primerDiaMesAnt, ultimoDiaMesAnt)
       return {
-        rangoInicio: `${inicioStr}T00:00:00`,
-        rangoFin: `${finStr}T23:59:59`,
+        rangoInicio: inicioISO,
+        rangoFin: finISO,
         etiquetaPeriodo: `Mes anterior (${nombreMes})`,
       }
     }
 
     if (periodo === 'PERSONALIZADO') {
+      const { inicioISO, finISO } = getLimitesISORango(fechaDesdePersonalizada, fechaHastaPersonalizada)
       return {
-        rangoInicio: `${fechaDesdePersonalizada}T00:00:00`,
-        rangoFin: `${fechaHastaPersonalizada}T23:59:59`,
+        rangoInicio: inicioISO,
+        rangoFin: finISO,
         etiquetaPeriodo: `Personalizado (${fechaDesdePersonalizada} al ${fechaHastaPersonalizada})`,
       }
     }
 
     // Por defecto: MES actual
-    const año = ahora.getFullYear()
-    const mes = ahora.getMonth()
-    const primerDia = new Date(año, mes, 1).toISOString().split('T')[0]
-    const hoy = ahora.toISOString().split('T')[0]
-    const nombreMes = ahora.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+    const y = ahora.getFullYear()
+    const m = ahora.getMonth()
+    const primerDia = getFechaLocal(new Date(y, m, 1))
+    const ultimoDia = getFechaLocal(new Date(y, m + 1, 0))
+    const mesNombre = ahora.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+    const { inicioISO, finISO } = getLimitesISORango(primerDia, ultimoDia)
     return {
-      rangoInicio: `${primerDia}T00:00:00`,
-      rangoFin: `${hoy}T23:59:59`,
-      etiquetaPeriodo: `Mes actual (${nombreMes})`,
+      rangoInicio: inicioISO,
+      rangoFin: finISO,
+      etiquetaPeriodo: `Mes actual (${mesNombre})`,
     }
   }, [periodo, fechaDesdePersonalizada, fechaHastaPersonalizada])
 
@@ -160,7 +164,7 @@ export function BalanceContableTab() {
           afip_cae, afip_tipo_comprobante, afip_nro_comprobante,
           usuario:usuarios(nombre),
           pagos:pagos_venta(medio_pago, monto),
-          detalles:detalles_venta(cantidad, precio_unitario, subtotal, sin_envase, es_devolucion_envase, producto:productos(descripcion))
+          detalles:detalles_venta(cantidad, precio_unitario, subtotal, producto:productos(descripcion))
         `)
         .gte('fecha_hora', rangoInicio)
         .lte('fecha_hora', rangoFin)

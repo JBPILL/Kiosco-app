@@ -71,6 +71,12 @@ export function DevolucionModal({
     }
   }
 
+  const reiniciar = () => {
+    setVenta(null)
+    setItems([])
+    setCriterioBusqueda('')
+  }
+
   // Cargar ventas recientes al abrir si no hay venta seleccionada
   useEffect(() => {
     if (isOpen) {
@@ -188,12 +194,6 @@ export function DevolucionModal({
     } else {
       toast.error(res.error || 'No se pudo procesar la devolución')
     }
-  }
-
-  const reiniciar = () => {
-    setVenta(null)
-    setItems([])
-    setCriterioBusqueda('')
   }
 
   return (
