@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { SearchInput } from '../ui/SearchInput'
@@ -37,13 +37,13 @@ export function HistorialTicketsModal({
   const [filtroMedio, setFiltroMedio] = useState<string>('TODOS')
   const [ticketSeleccionado, setTicketSeleccionado] = useState<TicketData | null>(null)
 
-  const cargarVentas = async () => {
+  const cargarVentas = useCallback(async () => {
     setCargando(true)
     const kid = usuario?.kiosco_id || kiosco?.id || undefined
     const data = await obtenerUltimasVentas(kid, 50)
     setVentas(data)
     setCargando(false)
-  }
+  }, [usuario?.kiosco_id, kiosco?.id])
 
   useEffect(() => {
     if (isOpen) {
@@ -51,7 +51,7 @@ export function HistorialTicketsModal({
       setBusqueda('')
       setFiltroMedio('TODOS')
     }
-  }, [isOpen, usuario?.kiosco_id, kiosco?.id])
+  }, [isOpen, cargarVentas])
 
   const ventasFiltradas = useMemo(() => {
     let list = ventas

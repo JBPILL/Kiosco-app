@@ -31,10 +31,12 @@ export function BarcodeCaptureModal({
   const isStoppingRef = useRef(false)
 
   const onBarcodeCapturedRef = useRef(onBarcodeCaptured)
-  onBarcodeCapturedRef.current = onBarcodeCaptured
-
   const onCloseRef = useRef(onClose)
-  onCloseRef.current = onClose
+
+  useEffect(() => {
+    onBarcodeCapturedRef.current = onBarcodeCaptured
+    onCloseRef.current = onClose
+  }, [onBarcodeCaptured, onClose])
 
   const elementId = 'barcode-capture-viewport'
 

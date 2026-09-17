@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { supabase, createUnauthenticatedClient } from '../lib/supabase'
 import type { KioscoAdminView, Plan, PagoSuscripcion } from '../types/database'
 import { calcularDiasRestantes } from './authStore'
+import { getFechaLocal } from '../lib/utils'
 import toast from 'react-hot-toast'
 
 interface NuevoKioscoPayload {
@@ -198,8 +199,8 @@ export const useAdminStore = create<AdminState>((set, get) => ({
 
       const nuevaFecha = new Date(fechaBase)
       nuevaFecha.setDate(nuevaFecha.getDate() + meses * 30)
-      const nuevaFechaStr = nuevaFecha.toISOString().split('T')[0]
-      const hoyStr = new Date().toISOString().split('T')[0]
+      const nuevaFechaStr = getFechaLocal(nuevaFecha)
+      const hoyStr = getFechaLocal()
 
       if (subId) {
         await supabase
@@ -543,8 +544,8 @@ export const useAdminStore = create<AdminState>((set, get) => ({
       const vencimiento = new Date()
       vencimiento.setDate(vencimiento.getDate() + payload.diasValidez)
 
-      const hoyStr = hoy.toISOString().split('T')[0]
-      const vencimientoStr = vencimiento.toISOString().split('T')[0]
+      const hoyStr = getFechaLocal(hoy)
+      const vencimientoStr = getFechaLocal(vencimiento)
 
       const { error: sError } = await supabase.from('suscripciones').insert({
         kiosco_id: kioscoId,

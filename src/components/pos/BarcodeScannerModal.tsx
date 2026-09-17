@@ -41,13 +41,14 @@ export function BarcodeScannerModal({
   const isStoppingRef = useRef(false)
 
   const onProductScannedRef = useRef(onProductScanned)
-  onProductScannedRef.current = onProductScanned
-
   const onCloseRef = useRef(onClose)
-  onCloseRef.current = onClose
-
   const modoContinuoRef = useRef(modoContinuo)
-  modoContinuoRef.current = modoContinuo
+
+  useEffect(() => {
+    onProductScannedRef.current = onProductScanned
+    onCloseRef.current = onClose
+    modoContinuoRef.current = modoContinuo
+  }, [onProductScanned, onClose, modoContinuo])
 
   const elementId = 'barcode-scanner-viewport'
 

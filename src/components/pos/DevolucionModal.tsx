@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { formatPrecio, formatFecha, labelMedioPago } from '../../lib/utils'
@@ -49,7 +49,7 @@ export function DevolucionModal({
   const [guardando, setGuardando] = useState(false)
   const [ticketParaVer, setTicketParaVer] = useState<TicketData | null>(null)
 
-  const seleccionarVenta = (ventaEncontrada: VentaConDetalles) => {
+  const seleccionarVenta = useCallback((ventaEncontrada: VentaConDetalles) => {
     setVenta(ventaEncontrada)
     setItems(
       (ventaEncontrada.detalles || []).map((d) => ({
@@ -69,7 +69,7 @@ export function DevolucionModal({
     } else {
       setMetodoReintegro('EFECTIVO_CAJA')
     }
-  }
+  }, [])
 
   const reiniciar = () => {
     setVenta(null)
@@ -92,7 +92,7 @@ export function DevolucionModal({
     } else {
       reiniciar()
     }
-  }, [isOpen, ventaInicial, usuario?.kiosco_id, kiosco?.id])
+  }, [isOpen, ventaInicial, usuario?.kiosco_id, kiosco?.id, seleccionarVenta])
 
   const handleBuscar = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()

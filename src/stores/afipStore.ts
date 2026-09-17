@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from './authStore'
 import { construirURLQRAFIP } from '../lib/afipQR'
+import { getFechaLocal } from '../lib/utils'
 import type {
   ConfiguracionAFIP,
   ComprobanteAFIPResult,
@@ -272,12 +273,12 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
 
       const nuevoNroComp = ultimoNroBase + 1
       const ahora = new Date()
-      const fechaHoyStr = ahora.toISOString().split('T')[0]
+      const fechaHoyStr = getFechaLocal(ahora)
 
       // Fecha de vencimiento del CAE (10 días corridos según reglamentación AFIP)
       const fechaVto = new Date(ahora)
       fechaVto.setDate(fechaVto.getDate() + 10)
-      const fechaVtoStr = fechaVto.toISOString().split('T')[0]
+      const fechaVtoStr = getFechaLocal(fechaVto)
 
       // CAE (14 dígitos): en entorno de pruebas/sandbox se genera el número con formato legal
       let caeGenerado = ''
@@ -377,10 +378,10 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
 
     const dummyTotal = 1500
     const ahora = new Date()
-    const fechaHoyStr = ahora.toISOString().split('T')[0]
+    const fechaHoyStr = getFechaLocal(ahora)
     const fechaVto = new Date(ahora)
     fechaVto.setDate(fechaVto.getDate() + 10)
-    const fechaVtoStr = fechaVto.toISOString().split('T')[0]
+    const fechaVtoStr = getFechaLocal(fechaVto)
 
     const nuevoNro = (config.ultimo_nro_comprobante || 0) + 1
     const dummyCae = `74${fechaHoyStr.replace(/-/g, '')}998877`

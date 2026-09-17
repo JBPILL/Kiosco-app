@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '../lib/supabase'
+import { getFechaLocal } from '../lib/utils'
 import type { Promocion, ItemCarrito } from '../types/database'
 import toast from 'react-hot-toast'
 
@@ -56,7 +57,7 @@ export function evaluarItemPromociones(
   const subtotalBase = Math.round(item.cantidad * item.producto.precio_venta)
   if (subtotalBase <= 0) return { descuento: 0 }
 
-  const hoyStr = new Date().toISOString().split('T')[0]
+  const hoyStr = getFechaLocal()
   const diaHoy = new Date().getDay() // 0=Domingo, 1=Lunes, ...
 
   // Filtrar promociones vigentes para este producto o categoría
