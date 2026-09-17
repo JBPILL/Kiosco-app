@@ -214,7 +214,7 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
               .single()
 
             if (prodData) {
-              const nuevoStock = (prodData.stock_actual || 0) + it.cantidad
+              const nuevoStock = Number(((prodData.stock_actual || 0) + it.cantidad).toFixed(3))
               await supabase
                 .from('productos')
                 .update({ stock_actual: nuevoStock, fecha_actualizacion: ahora })
@@ -249,7 +249,7 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
           const actualizados = cachedProds.map((p) => {
             const sum = itemsReingresadosMap.get(p.id)
             if (sum !== undefined) {
-              return { ...p, stock_actual: (p.stock_actual || 0) + sum }
+              return { ...p, stock_actual: Number(((p.stock_actual || 0) + sum).toFixed(3)) }
             }
             return p
           })

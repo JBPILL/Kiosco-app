@@ -160,7 +160,7 @@ export const useLoteStore = create<LoteState>((set, get) => ({
       const disponibleEnLote = lote.cantidad_actual
       const aDescontar = Math.min(restante, disponibleEnLote)
 
-      const nuevaCantidad = disponibleEnLote - aDescontar
+      const nuevaCantidad = Number((disponibleEnLote - aDescontar).toFixed(3))
       const loteActualizado: LoteProducto = {
         ...lote,
         cantidad_actual: nuevaCantidad,
@@ -174,7 +174,7 @@ export const useLoteStore = create<LoteState>((set, get) => ({
         fechaVencimiento: lote.fecha_vencimiento,
       })
 
-      restante -= aDescontar
+      restante = Number((restante - aDescontar).toFixed(3))
     }
 
     if (lotesModificados.size > 0) {

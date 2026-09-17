@@ -323,7 +323,7 @@ export const useCartStore = create<CartState>((set, get) => ({
     const desc = `Devolución ${nombreEnvase}`
 
     const productoDevolucion: Producto = {
-      id: `dev-envase-${uuidv4()}`,
+      id: uuidv4(),
       kiosco_id: '',
       categoria_id: null,
       codigo_barras: null,

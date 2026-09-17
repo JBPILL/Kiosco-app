@@ -568,7 +568,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                     <span className="text-[10px] text-gray-400 dark:text-gray-500">
                       (Disp: {item.producto.stock_actual})
                     </span>
-                    {item.cantidad >= item.producto.stock_actual && (
+                    {item.producto.stock_actual > 0 && item.cantidad >= item.producto.stock_actual && (
                       <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.2 rounded">
                         Máx disponible
                       </span>
@@ -609,20 +609,20 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                     ref={(el) => { plusBtnRefs.current[idx] = el }}
                     type="button"
                     tabIndex={0}
-                    disabled={item.cantidad >= item.producto.stock_actual}
+                    disabled={item.producto.stock_actual > 0 && item.cantidad >= item.producto.stock_actual}
                     onClick={(e) => {
                       e.stopPropagation()
                       handleSumarCantidad(item.producto.id, item.cantidad)
                     }}
                     onKeyDown={(e) => handlePlusKeyDown(e, idx, item.producto.id, item.cantidad)}
                     className={`w-8 h-8 flex items-center justify-center rounded-lg font-bold text-base transition-transform select-none ${
-                      item.cantidad >= item.producto.stock_actual
+                      item.producto.stock_actual > 0 && item.cantidad >= item.producto.stock_actual
                         ? 'opacity-30 cursor-not-allowed bg-gray-100 dark:bg-gray-800 text-gray-400'
                         : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-300 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-indigo-100 dark:focus:bg-gray-600'
                     }`}
                     aria-label="Sumar uno"
                     title={
-                      item.cantidad >= item.producto.stock_actual
+                      item.producto.stock_actual > 0 && item.cantidad >= item.producto.stock_actual
                         ? `Stock máximo alcanzado (${item.producto.stock_actual})`
                         : 'Sumar uno [Enter o +]'
                     }

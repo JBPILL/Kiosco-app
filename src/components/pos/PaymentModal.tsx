@@ -235,7 +235,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             kiosco_id: kioscoId,
             descripcion: it.producto.descripcion,
             precio_costo: 0,
-            precio_venta: it.producto.precio_venta,
+            precio_venta: Math.max(0, it.producto.precio_venta),
             stock_actual: 99999,
             stock_minimo: 0,
             es_favorito: false,
@@ -274,7 +274,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       for (const it of items) {
         if (it.producto.activo === false) continue
 
-        const nuevoStock = it.producto.stock_actual - it.cantidad
+        const nuevoStock = Number((it.producto.stock_actual - it.cantidad).toFixed(3))
         try {
           await supabase
             .from('productos')
@@ -332,7 +332,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           const actualizados = cachedProds.map((p) => {
             const qty = itemsMap.get(p.id)
             if (qty !== undefined) {
-              return { ...p, stock_actual: (p.stock_actual || 0) - qty }
+              return { ...p, stock_actual: Number(((p.stock_actual || 0) - qty).toFixed(3)) }
             }
             return p
           })
