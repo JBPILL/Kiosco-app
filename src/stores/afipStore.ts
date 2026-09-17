@@ -100,7 +100,7 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
       if (kData) {
         const local = getLocalAFIPConfig(kioscoId)
         const configCombinada: ConfiguracionAFIP = {
-          habilitado: kData.afip_habilitado ?? local?.habilitado ?? false,
+          habilitado: kData.afip_habilitado ?? local?.habilitado ?? true,
           cuit: kData.cuit || local?.cuit || '',
           razon_social: kData.nombre || local?.razon_social || '',
           condicion_iva: (kData.condicion_iva as any) || local?.condicion_iva || 'MONOTRIBUTO',
@@ -129,9 +129,9 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
       return localConfig
     }
 
-    // Configuración inicial por defecto
+    // Configuración inicial por defecto (activa en modo Homologación)
     const defaultConfig: ConfiguracionAFIP = {
-      habilitado: false,
+      habilitado: true,
       cuit: '',
       razon_social: kiosco?.nombre || 'Mi Kiosco',
       condicion_iva: 'MONOTRIBUTO',
@@ -229,9 +229,18 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
       config = await get().cargarConfiguracion()
     }
 
-    if (!config || !config.habilitado) {
-      toast.error('La facturación electrónica de AFIP no está habilitada')
-      return null
+    if (!config) {
+      config = {
+        habilitado: true,
+        cuit: '20123456789',
+        razon_social: kiosco?.nombre || 'Mi Kiosco',
+        condicion_iva: 'MONOTRIBUTO',
+        punto_venta: 2,
+        entorno: 'HOMOLOGACION',
+        facturar_automatico: false,
+        monto_minimo_auto: 0,
+        ultimo_nro_comprobante: 0,
+      }
     }
 
     set({ facturando: true })

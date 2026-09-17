@@ -819,70 +819,92 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           />
         )}
 
-        {/* Facturación Electrónica AFIP */}
-        {afipConfig?.habilitado && (
-          <div className="p-3.5 rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={emitirFiscal}
-                  onChange={(e) => setEmitirFiscal(e.target.checked)}
-                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                />
-                <span className="text-xs font-bold text-blue-900 dark:text-blue-200">
-                  Emitir Factura AFIP ({afipConfig.condicion_iva === 'MONOTRIBUTO' ? 'Factura C' : 'Factura B'})
-                </span>
-              </label>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
-                afipConfig.entorno === 'PRODUCCION'
-                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300'
-                  : 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
-              }`}>
-                {afipConfig.entorno === 'PRODUCCION' ? 'Producción' : 'Modo Prueba'}
+        {/* Selector de Comprobante: Ticket Interno vs Factura AFIP */}
+        <div className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-800/60 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
+              Tipo de Comprobante
+            </span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+              afipConfig?.entorno === 'PRODUCCION'
+                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+            }`}>
+              {afipConfig?.entorno === 'PRODUCCION' ? 'Producción' : 'Modo Homologación'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setEmitirFiscal(false)}
+              className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-left flex flex-col justify-between cursor-pointer ${
+                !emitirFiscal
+                  ? 'border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-500/40 shadow-xs'
+                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50'
+              }`}
+            >
+              <div className="flex items-center justify-between w-full">
+                <span>Ticket Interno (X)</span>
+                {!emitirFiscal && <span className="w-2 h-2 rounded-full bg-indigo-600"></span>}
+              </div>
+              <span className="text-[10px] font-normal text-gray-500 dark:text-gray-400 mt-1">
+                Control mostrador (sin AFIP)
               </span>
-            </div>
+            </button>
 
-            <p className="text-[11px] text-gray-500 dark:text-gray-400">
-              {emitirFiscal
-                ? 'Se generará CAE oficial y código QR reglamentario ante AFIP/ARCA.'
-                : 'Control manual: desmarcado registra un Ticket X interno (sin impacto tributario).'}
-            </p>
+            <button
+              type="button"
+              onClick={() => setEmitirFiscal(true)}
+              className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-left flex flex-col justify-between cursor-pointer ${
+                emitirFiscal
+                  ? 'border-blue-600 bg-blue-50/80 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 ring-1 ring-blue-500/40 shadow-xs'
+                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50'
+              }`}
+            >
+              <div className="flex items-center justify-between w-full">
+                <span>Factura AFIP</span>
+                {emitirFiscal && <span className="w-2 h-2 rounded-full bg-blue-600"></span>}
+              </div>
+              <span className="text-[10px] font-normal text-gray-500 dark:text-gray-400 mt-1">
+                {afipConfig?.condicion_iva === 'RESPONSABLE_INSCRIPTO' ? 'Factura B con CAE' : 'Factura C con CAE'}
+              </span>
+            </button>
+          </div>
 
-            {emitirFiscal && (
-              <div className="pt-2 border-t border-blue-200/60 dark:border-blue-800/40 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+          {emitirFiscal && (
+            <div className="pt-2 border-t border-blue-200/60 dark:border-blue-800/40 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <div>
+                <label className="block text-[11px] font-medium text-blue-900 dark:text-blue-300 mb-1">
+                  Tipo de Identificación
+                </label>
+                <select
+                  value={tipoDocReceptor}
+                  onChange={(e) => setTipoDocReceptor(Number(e.target.value) as TipoDocumentoAFIP)}
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs"
+                >
+                  <option value={99}>Consumidor Final (Sin DNI)</option>
+                  <option value={96}>DNI</option>
+                  <option value={80}>CUIT</option>
+                </select>
+              </div>
+              {tipoDocReceptor !== 99 && (
                 <div>
                   <label className="block text-[11px] font-medium text-blue-900 dark:text-blue-300 mb-1">
-                    Tipo de Identificación
+                    Número de {tipoDocReceptor === 96 ? 'DNI' : 'CUIT'}
                   </label>
-                  <select
-                    value={tipoDocReceptor}
-                    onChange={(e) => setTipoDocReceptor(Number(e.target.value) as TipoDocumentoAFIP)}
+                  <input
+                    type="text"
+                    value={nroDocReceptor}
+                    onChange={(e) => setNroDocReceptor(e.target.value)}
+                    placeholder={tipoDocReceptor === 96 ? 'Ej: 35123456' : 'Ej: 20351234568'}
                     className="w-full px-2.5 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs"
-                  >
-                    <option value={99}>Consumidor Final (Sin DNI)</option>
-                    <option value={96}>DNI</option>
-                    <option value={80}>CUIT</option>
-                  </select>
+                  />
                 </div>
-                {tipoDocReceptor !== 99 && (
-                  <div>
-                    <label className="block text-[11px] font-medium text-blue-900 dark:text-blue-300 mb-1">
-                      Número de {tipoDocReceptor === 96 ? 'DNI' : 'CUIT'}
-                    </label>
-                    <input
-                      type="text"
-                      value={nroDocReceptor}
-                      onChange={(e) => setNroDocReceptor(e.target.value)}
-                      placeholder={tipoDocReceptor === 96 ? 'Ej: 35123456' : 'Ej: 20351234568'}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs"
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Botón confirmar */}
         <Button
