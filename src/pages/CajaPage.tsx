@@ -277,16 +277,6 @@ export function CajaPage() {
             Apertura de turno, control de efectivo y arqueo al cierre
           </p>
         </div>
-
-        {sesionActiva && (
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => cargarResumenSesion(sesionActiva.id)}
-          >
-            Actualizar valores
-          </Button>
-        )}
       </div>
 
       {cargando ? (
@@ -366,12 +356,21 @@ export function CajaPage() {
                 </div>
               </div>
 
-              <Button
-                variant="danger"
-                onClick={handleAbrirModalArqueo}
-              >
-                {esDueno ? 'Hacer arqueo y cerrar turno' : 'Cerrar turno (Arqueo ciego)'}
-              </Button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => cargarResumenSesion(sesionActiva.id)}
+                >
+                  Actualizar valores
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={handleAbrirModalArqueo}
+                >
+                  {esDueno ? 'Hacer arqueo y cerrar turno' : 'Cerrar turno (Arqueo ciego)'}
+                </Button>
+              </div>
             </div>
 
             {/* Cuadrícula financiera del turno */}

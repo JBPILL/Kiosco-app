@@ -218,10 +218,6 @@ export function ClientesPage() {
             Control de clientes, fiados a crédito y registro de cobranzas
           </p>
         </div>
-
-        <Button variant="primary" onClick={handleNuevoCliente} className="self-start sm:self-auto">
-          + Nuevo Cliente
-        </Button>
       </div>
 
       {/* Tarjetas de Métricas Globales */}
@@ -250,14 +246,21 @@ export function ClientesPage() {
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 sm:p-6 space-y-4">
         {/* Barra superior de filtros */}
         <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-          <div className="flex-1 max-w-md">
+          <div className="flex-1 flex items-center gap-2 max-w-xl">
             <input
               type="text"
               placeholder="Buscar por nombre, DNI o teléfono..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:border-indigo-500 outline-none"
             />
+            <Button
+              variant="primary"
+              onClick={handleNuevoCliente}
+              className="whitespace-nowrap flex-shrink-0 text-xs sm:text-sm font-semibold shadow-xs"
+            >
+              + Nuevo Cliente
+            </Button>
           </div>
 
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">

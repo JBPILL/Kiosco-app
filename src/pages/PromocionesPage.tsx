@@ -318,9 +318,6 @@ export function PromocionesPage() {
             Configurá reglas automáticas (2x1, 3x2, precios por volumen o % OFF) que se descuentan solas en el punto de venta.
           </p>
         </div>
-        <Button onClick={abrirCrear} variant="primary" className="whitespace-nowrap flex-shrink-0">
-          + Nueva Promoción
-        </Button>
       </div>
 
       {/* Tarjetas de Métricas */}
@@ -386,7 +383,7 @@ export function PromocionesPage() {
               placeholder="Buscar por nombre, producto o categoría..."
             />
           </div>
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 flex-wrap sm:flex-nowrap">
             {/* Filtro estado */}
             <select
               value={filtroEstado}
@@ -410,6 +407,14 @@ export function PromocionesPage() {
               <option value="VOLUMEN">Por Volumen</option>
               <option value="PORCENTAJE">Porcentaje Directo</option>
             </select>
+
+            <Button
+              onClick={abrirCrear}
+              variant="primary"
+              className="h-10 px-4 text-xs font-semibold whitespace-nowrap flex-shrink-0 shadow-xs"
+            >
+              + Nueva Promoción
+            </Button>
           </div>
         </div>
       </div>

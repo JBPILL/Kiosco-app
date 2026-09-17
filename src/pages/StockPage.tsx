@@ -442,24 +442,10 @@ export function StockPage() {
           <Button
             variant="secondary"
             onClick={() => setModalScannerOpen(true)}
-            className="text-xs sm:text-sm sm:hidden"
-            title="Escanear producto con la cámara del celular"
+            className="text-xs sm:text-sm"
+            title="Escanear producto con la cámara del celular o webcam"
           >
             Escanear Cámara
-          </Button>
-
-          <Button
-            variant="primary"
-            onClick={() => {
-              setProductoSeleccionado(null)
-              setBusquedaProductoInput('')
-              setTipoMovimiento('INGRESO')
-              setCantidad('1')
-              setModalOpen(true)
-            }}
-            className="text-xs sm:text-sm shadow-xs"
-          >
-            + Registrar Movimiento
           </Button>
         </div>
       </div>
@@ -673,6 +659,22 @@ export function StockPage() {
                   </button>
                 )}
               </div>
+
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  setProductoSeleccionado(null)
+                  setBusquedaProductoInput('')
+                  setTipoMovimiento('INGRESO')
+                  setCantidad('1')
+                  setModalOpen(true)
+                }}
+                className="text-xs whitespace-nowrap shadow-xs font-semibold"
+                title="Cargar un nuevo ingreso, egreso o ajuste de mercadería"
+              >
+                + Registrar Movimiento
+              </Button>
 
               <Button
                 variant="secondary"
