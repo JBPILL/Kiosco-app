@@ -6,6 +6,7 @@ import { Modal } from '../ui/Modal'
 import { BarcodeCaptureModal } from '../ui/BarcodeCaptureModal'
 import { useBarcodeGun } from '../../hooks/useBarcodeGun'
 import { playScanSound } from '../../lib/sound'
+import { useEnvasesStore } from '../../stores/envasesStore'
 import toast from 'react-hot-toast'
 
 interface ProductFormProps {
@@ -54,6 +55,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
   })
   const [guardando, setGuardando] = useState(false)
   const [scannerCamaraOpen, setScannerCamaraOpen] = useState(false)
+  const { tiposEnvases } = useEnvasesStore()
 
   // Soporte para pistolas lectoras físicas USB / Bluetooth en el formulario
   useBarcodeGun({
@@ -335,18 +337,21 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
           </div>
 
           {/* Envases Retornables */}
-          <div className="p-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl space-y-2">
+          <div className="p-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl space-y-2.5">
             <label className="flex items-center gap-2 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={form.es_retornable || false}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const checked = e.target.checked
+                  const primerTipo = tiposEnvases[0]
                   setForm({
                     ...form,
-                    es_retornable: e.target.checked,
-                    precio_envase: e.target.checked ? form.precio_envase || 1500 : 0,
+                    es_retornable: checked,
+                    nombre_envase: checked ? form.nombre_envase || primerTipo?.nombre || '1LT' : '',
+                    precio_envase: checked ? form.precio_envase || primerTipo?.precio || 1500 : 0,
                   })
-                }
+                }}
                 className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 dark:border-gray-600"
               />
               <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
@@ -355,35 +360,69 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
             </label>
 
             {form.es_retornable && (
-              <div className="pt-1 pl-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="pt-1 pl-6 space-y-2.5">
+                {/* Selector rápido de Tipos Oficiales */}
                 <div>
                   <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
-                    Precio unitario del envase ($):
+                    Tipo de envase estándar:
                   </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="50"
-                    placeholder="Ej: 1500"
-                    value={form.precio_envase || ''}
-                    onChange={(e) => setForm({ ...form, precio_envase: parseFloat(e.target.value) || 0 })}
-                    className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-indigo-500 font-mono font-bold"
-                  />
-                  <p className="text-[10px] text-gray-400 mt-0.5">
-                    Monto a sumar si el cliente no trae la botella vacía.
-                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {tiposEnvases.map((tipo) => {
+                      const activo = form.nombre_envase === tipo.nombre
+                      return (
+                        <button
+                          key={tipo.id}
+                          type="button"
+                          onClick={() =>
+                            setForm({
+                              ...form,
+                              nombre_envase: tipo.nombre,
+                              precio_envase: tipo.precio,
+                            })
+                          }
+                          className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all border cursor-pointer ${
+                            activo
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                              : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                          }`}
+                        >
+                          {tipo.nombre} (${tipo.precio.toLocaleString('es-AR')})
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
-                    Nombre o tipo de envase (opcional):
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ej: Cerveza 1L Vidrio"
-                    value={form.nombre_envase || ''}
-                    onChange={(e) => setForm({ ...form, nombre_envase: e.target.value || '' })}
-                    className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-indigo-500 font-medium"
-                  />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
+                      Precio unitario del envase ($):
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="50"
+                      placeholder="Ej: 1500"
+                      value={form.precio_envase || ''}
+                      onChange={(e) => setForm({ ...form, precio_envase: parseFloat(e.target.value) || 0 })}
+                      className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-indigo-500 font-mono font-bold"
+                    />
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      Monto a sumar si el cliente no trae la botella vacía.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
+                      Nombre o tipo asignado:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej: 1LT"
+                      value={form.nombre_envase || ''}
+                      onChange={(e) => setForm({ ...form, nombre_envase: e.target.value || '' })}
+                      className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-indigo-500 font-medium"
+                    />
+                  </div>
                 </div>
               </div>
             )}
