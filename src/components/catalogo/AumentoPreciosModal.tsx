@@ -82,20 +82,55 @@ export function AumentoPreciosModal({
     let exitosos = 0
 
     try {
-      // Procesar en tandas de 20 para no saturar conexiones
+      // 1. Calcular y preparar mapa de actualización
+      const nuevosPreciosMap = new Map<string, { precio_venta: number; precio_costo?: number }>()
+      for (const p of productosAfectados) {
+        const nuevaVenta = calcularNuevo(p.precio_venta, porcentaje, redondeo)
+        const itemUpdate: { precio_venta: number; precio_costo?: number } = { precio_venta: nuevaVenta }
+        if (tipoPrecio === 'COSTO_Y_VENTA' && p.precio_costo > 0) {
+          itemUpdate.precio_costo = calcularNuevo(p.precio_costo, porcentaje, redondeo)
+        }
+        nuevosPreciosMap.set(p.id, itemUpdate)
+      }
+
+      // 2. Sincronizar de inmediato la caché local (kiosko_cache_productos)
+      try {
+        const cachedRaw = localStorage.getItem('kiosko_cache_productos')
+        if (cachedRaw) {
+          const cachedProds: Producto[] = JSON.parse(cachedRaw)
+          const actualizados = cachedProds.map((prod) => {
+            const upd = nuevosPreciosMap.get(prod.id)
+            if (upd) {
+              return {
+                ...prod,
+                precio_venta: upd.precio_venta,
+                precio_costo: upd.precio_costo !== undefined ? upd.precio_costo : prod.precio_costo,
+                fecha_actualizacion: ahora,
+              }
+            }
+            return prod
+          })
+          localStorage.setItem('kiosko_cache_productos', JSON.stringify(actualizados))
+        }
+      } catch (cacheErr) {
+        console.warn('Error sincronizando caché local en aumento masivo:', cacheErr)
+      }
+
+      // 3. Procesar en tandas de 20 para no saturar conexiones remotas
       const TAMAÑO_LOTE = 20
       for (let i = 0; i < productosAfectados.length; i += TAMAÑO_LOTE) {
         const lote = productosAfectados.slice(i, i + TAMAÑO_LOTE)
         await Promise.all(
           lote.map(async (p) => {
-            const nuevaVenta = calcularNuevo(p.precio_venta, porcentaje, redondeo)
+            const upd = nuevosPreciosMap.get(p.id)
+            if (!upd) return
+
             const updates: Record<string, any> = {
-              precio_venta: nuevaVenta,
+              precio_venta: upd.precio_venta,
               fecha_actualizacion: ahora,
             }
-
-            if (tipoPrecio === 'COSTO_Y_VENTA' && p.precio_costo > 0) {
-              updates.precio_costo = calcularNuevo(p.precio_costo, porcentaje, redondeo)
+            if (upd.precio_costo !== undefined) {
+              updates.precio_costo = upd.precio_costo
             }
 
             const { error } = await supabase
@@ -108,7 +143,7 @@ export function AumentoPreciosModal({
         )
       }
 
-      toast.success(`Aumento aplicado exitosamente a ${exitosos} productos`)
+      toast.success(`Aumento aplicado exitosamente a ${productosAfectados.length} productos`)
       await onAumentoAplicado()
       onClose()
     } catch (err) {

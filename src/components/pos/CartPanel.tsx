@@ -747,17 +747,31 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
           </div>
         )}
 
+        {total < 0 && (
+          <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-800 dark:text-amber-300 font-medium text-center">
+            Saldo a favor del cliente ({formatPrecio(Math.abs(total))}). Para devolver dinero en efectivo utilizá &quot;Recibir Envase &gt; Pagar en efectivo de caja&quot; o sumá más productos al ticket.
+          </div>
+        )}
+
         <Button
           ref={cobrarBtnRef}
           size="lg"
           fullWidth
-          variant={esSoloLectura ? 'secondary' : 'success'}
-          onClick={esSoloLectura ? undefined : onCobrar}
-          onKeyDown={esSoloLectura ? undefined : handleCobrarKeyDown}
-          disabled={items.length === 0 || esSoloLectura}
-          className="min-h-[50px] text-base font-bold shadow-md bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white active:scale-98 transition-all focus:outline-hidden focus:ring-4 focus:ring-emerald-400 dark:focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          variant={esSoloLectura || total < 0 ? 'secondary' : 'success'}
+          onClick={esSoloLectura || total < 0 ? undefined : onCobrar}
+          onKeyDown={esSoloLectura || total < 0 ? undefined : handleCobrarKeyDown}
+          disabled={items.length === 0 || esSoloLectura || total < 0}
+          className={`min-h-[50px] text-base font-bold shadow-md active:scale-98 transition-all focus:outline-hidden focus:ring-4 disabled:opacity-50 disabled:cursor-not-allowed ${
+            esSoloLectura || total < 0
+              ? ''
+              : 'bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white focus:ring-emerald-400 dark:focus:ring-emerald-500'
+          }`}
         >
-          {esSoloLectura ? 'SOLO LECTURA (VENTAS PAUSADAS)' : `COBRAR ${total > 0 ? formatPrecio(total) : ''} [F4]`}
+          {esSoloLectura
+            ? 'SOLO LECTURA (VENTAS PAUSADAS)'
+            : total < 0
+            ? `SALDO A FAVOR DEL CLIENTE (-${formatPrecio(Math.abs(total))})`
+            : `COBRAR ${total > 0 ? formatPrecio(total) : ''} [F4]`}
         </Button>
 
         {/* Guía rápida de atajos de teclado para Ticket */}

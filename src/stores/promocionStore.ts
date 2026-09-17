@@ -325,9 +325,10 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
         }
 
         const ahorro1Combo = Math.max(0, regular1Combo - (promo.precio_combo || 0))
-        if (ahorro1Combo > 0) {
+        if (ahorro1Combo > 0 && regular1Combo > 0 && veces > 0) {
           const ahorroTotal = Math.round(ahorro1Combo * veces)
           let ahorroRestante = ahorroTotal
+          const totalRegular = regular1Combo * veces
 
           itemsReq.forEach((ic, idx) => {
             const cartIt = resItems.find((it) => it.producto.id === ic.producto_id)!
@@ -335,7 +336,10 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
             const itemSubtotal = ic.cantidad * cartIt.producto.precio_venta * veces
             const descItem = esUltimo
               ? ahorroRestante
-              : Math.min(ahorroRestante, Math.round((itemSubtotal / (regular1Combo * veces)) * ahorroTotal))
+              : Math.min(
+                  ahorroRestante,
+                  totalRegular > 0 ? Math.round((itemSubtotal / totalRegular) * ahorroTotal) : 0
+                )
 
             ahorroRestante -= descItem
             cartIt.descuento_promo = (cartIt.descuento_promo || 0) + descItem

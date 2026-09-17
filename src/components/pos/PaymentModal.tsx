@@ -13,6 +13,7 @@ import type { MedioPago } from '../../types/database'
 import type { TicketData } from './TicketReceiptModal'
 import { useAFIPStore } from '../../stores/afipStore'
 import { useLoteStore } from '../../stores/loteStore'
+import { useComboStore } from '../../stores/comboStore'
 import type { TipoDocumentoAFIP } from '../../types/afip'
 import toast from 'react-hot-toast'
 
@@ -161,8 +162,8 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         return
       }
 
-      if (total < 0) {
-        toast.error('El total a cobrar no puede ser negativo')
+      if (totalBase < 0 || total < 0) {
+        toast.error('El ticket tiene saldo a favor del cliente. Reintegrá el dinero desde "Recibir Envases > Pagar en efectivo" o agregá más productos.')
         setProcesando(false)
         return
       }
@@ -299,6 +300,23 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             await useLoteStore.getState().descontarStockFEFO(it.producto.id, it.cantidad)
           } catch (errLote) {
             console.warn(`Aviso: deducción de lote FEFO para ${it.producto.descripcion}:`, errLote)
+          }
+
+          // Si el producto es un combo, descontar stock de sus componentes
+          if (it.producto.es_combo) {
+            try {
+              await useComboStore
+                .getState()
+                .descontarStockComponentesCombo(
+                  it.producto.id,
+                  it.cantidad,
+                  kioscoId,
+                  usuario?.id || null,
+                  ventaId
+                )
+            } catch (errCombo) {
+              console.warn(`Error deduciendo componentes del combo ${it.producto.descripcion}:`, errCombo)
+            }
           }
         } catch (errStock) {
           console.warn(`Error al actualizar stock para ${it.producto.descripcion}:`, errStock)

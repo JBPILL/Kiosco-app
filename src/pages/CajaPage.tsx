@@ -165,6 +165,17 @@ export function CajaPage() {
   const handleConfirmarCierre = async () => {
     setCerrando(true)
     const kiosco = useAuthStore.getState().kiosco
+    const facturadoTotal = resumenActivo?.total_facturado || 0
+    const operacionesTotal = resumenActivo?.total_ventas || 0
+    const otrosPagos = Math.max(
+      0,
+      facturadoTotal -
+        ((resumenActivo?.total_efectivo || 0) +
+          (resumenActivo?.total_mercadopago || 0) +
+          (resumenActivo?.total_transferencia || 0) +
+          (resumenActivo?.total_tarjeta || 0))
+    )
+
     const snapshotCierre: DatosCierreCaja = {
       kioscoNombre: kiosco?.nombre,
       cajeroNombre: usuario?.nombre,
@@ -176,19 +187,10 @@ export function CajaPage() {
         { medio: 'Mercado Pago', total: resumenActivo?.total_mercadopago || 0 },
         { medio: 'Transferencia', total: resumenActivo?.total_transferencia || 0 },
         { medio: 'Tarjeta', total: resumenActivo?.total_tarjeta || 0 },
-        {
-          medio: 'Otros / Cta Cte',
-          total: Math.max(
-            0,
-            (resumenActivo?.total_ventas || 0) -
-              ((resumenActivo?.total_efectivo || 0) +
-                (resumenActivo?.total_mercadopago || 0) +
-                (resumenActivo?.total_transferencia || 0) +
-                (resumenActivo?.total_tarjeta || 0))
-          ),
-        },
+        { medio: 'Otros / Cta Cte', total: otrosPagos },
       ].filter((m) => m.total > 0),
-      totalVentas: resumenActivo?.total_ventas || 0,
+      totalVentas: facturadoTotal,
+      cantidadVentas: operacionesTotal,
       ingresosExtra: resumenActivo?.total_ingresos_extra || 0,
       egresosExtra: resumenActivo?.total_egresos || 0,
       efectivoEsperado,
@@ -208,9 +210,11 @@ export function CajaPage() {
 
   const handleImprimirHistorico = async (s: SesionHistorial) => {
     const resumen = await cargarResumenSesion(s.id)
+    const facturadoTotal = resumen?.total_facturado || 0
+    const operacionesTotal = resumen?.total_ventas || 0
     const otrosPagos = Math.max(
       0,
-      (resumen?.total_ventas || 0) -
+      facturadoTotal -
         ((resumen?.total_efectivo || 0) +
           (resumen?.total_mercadopago || 0) +
           (resumen?.total_transferencia || 0) +
@@ -230,7 +234,8 @@ export function CajaPage() {
         { medio: 'Tarjeta', total: resumen?.total_tarjeta || 0 },
         { medio: 'Otros / Cta Cte', total: otrosPagos },
       ].filter((m) => m.total > 0),
-      totalVentas: resumen?.total_ventas || 0,
+      totalVentas: facturadoTotal,
+      cantidadVentas: operacionesTotal,
       ingresosExtra: resumen?.total_ingresos_extra || 0,
       egresosExtra: resumen?.total_egresos || 0,
       efectivoEsperado: s.monto_final_sistema || (resumen?.efectivo_esperado_en_caja ?? s.monto_inicial),

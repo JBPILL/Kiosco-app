@@ -196,6 +196,17 @@ export function BalanceContableTab() {
     })
   }, [movimientosCaja, rangoInicio, rangoFin])
 
+  // Filtrar ingresos directos de caja del período
+  const ingresosCajaPeriodo = useMemo(() => {
+    return movimientosCaja.filter((m) => {
+      return (
+        m.tipo === 'INGRESO' &&
+        m.fecha_hora >= rangoInicio &&
+        m.fecha_hora <= rangoFin
+      )
+    })
+  }, [movimientosCaja, rangoInicio, rangoFin])
+
   // Ventas completadas del período
   const ventasValidas = useMemo(() => {
     return ventas.filter((v) => v.estado === 'COMPLETADA')
@@ -220,13 +231,17 @@ export function BalanceContableTab() {
     return egresosCajaPeriodo.reduce((sum, m) => sum + m.monto, 0)
   }, [egresosCajaPeriodo])
 
+  const totalIngresosCaja = useMemo(() => {
+    return ingresosCajaPeriodo.reduce((sum, m) => sum + m.monto, 0)
+  }, [ingresosCajaPeriodo])
+
   const totalSalidasFinancieras = totalPagosAbonados + totalGastosCaja
 
   // Margen bruto sobre mercadería ingresada
   const resultadoOperativo = totalIngresos - totalComprasMercaderia
 
-  // Flujo neto de dinero real (ingresos menos desembolsos de caja y bancos)
-  const flujoCajaNeto = totalIngresos - totalSalidasFinancieras
+  // Flujo neto de dinero real (ingresos por ventas y caja menos desembolsos de caja y pagos)
+  const flujoCajaNeto = (totalIngresos + totalIngresosCaja) - totalSalidasFinancieras
 
   // Deuda total acumulada con proveedores al día de hoy
   const deudaTotalProveedores = useMemo(() => {
@@ -323,9 +338,24 @@ export function BalanceContableTab() {
       })
     })
 
+    // 5. Ingresos varios de caja (reposición de cambio, aportes varios)
+    ingresosCajaPeriodo.forEach((m) => {
+      asientos.push({
+        id: `m-in-${m.id}`,
+        fecha: m.fecha_hora,
+        tipo: 'INGRESO_CAJA',
+        comprobante: `CAJA-${m.id.slice(0, 6).toUpperCase()}`,
+        concepto: `Ingreso de caja: ${m.motivo.replace('_', ' ')} (${m.descripcion || 'Sin descripción'})`,
+        medio_pago: 'Efectivo',
+        ingreso: m.monto,
+        egreso: 0,
+        notas: m.descripcion,
+      })
+    })
+
     // Ordenar cronológicamente descendente (lo más reciente primero)
     return asientos.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
-  }, [ventasValidas, comprasPeriodo, pagosPeriodo, egresosCajaPeriodo])
+  }, [ventasValidas, comprasPeriodo, pagosPeriodo, egresosCajaPeriodo, ingresosCajaPeriodo])
 
   // Filtrado de asientos para la tabla
   const asientosFiltrados = useMemo(() => {
