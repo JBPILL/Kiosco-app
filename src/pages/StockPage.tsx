@@ -465,18 +465,6 @@ export function StockPage() {
             Control de existencias, lectura con código de barras, ingresos, egresos y ajustes
           </p>
         </div>
-
-        {/* Acciones de Cabecera */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            variant="secondary"
-            onClick={() => setModalScannerOpen(true)}
-            className="text-xs sm:text-sm"
-            title="Escanear producto con la cámara del celular o webcam"
-          >
-            Escanear Cámara
-          </Button>
-        </div>
       </div>
 
       {/* Cuadrícula de Métricas Rápidas (KPIs) */}
