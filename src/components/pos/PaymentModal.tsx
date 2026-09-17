@@ -83,17 +83,14 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
     }
   }, [isOpen, cargarClientes, cargarConfiguracion])
 
-  // Ajustar emisión fiscal por defecto según configuración
+  // Emisión fiscal: siempre inicia en false para control manual total del cajero
   useEffect(() => {
-    if (isOpen && afipConfig) {
-      if (afipConfig.habilitado) {
-        const auto = afipConfig.facturar_automatico || (afipConfig.monto_minimo_auto > 0 && total >= afipConfig.monto_minimo_auto)
-        setEmitirFiscal(Boolean(auto))
-      } else {
-        setEmitirFiscal(false)
-      }
+    if (isOpen) {
+      setEmitirFiscal(false)
+      setTipoDocReceptor(99)
+      setNroDocReceptor('')
     }
-  }, [isOpen, afipConfig, total])
+  }, [isOpen])
 
   const clientesFiltrados = clientes.filter(
     (c) =>
@@ -846,6 +843,12 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
               </span>
             </div>
 
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+              {emitirFiscal
+                ? 'Se generará CAE oficial y código QR reglamentario ante AFIP/ARCA.'
+                : 'Control manual: desmarcado registra un Ticket X interno (sin impacto tributario).'}
+            </p>
+
             {emitirFiscal && (
               <div className="pt-2 border-t border-blue-200/60 dark:border-blue-800/40 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                 <div>
@@ -890,7 +893,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           disabled={!puedeConfirmar}
           loading={procesando}
         >
-          Confirmar Venta
+          {emitirFiscal ? 'Confirmar y Facturar AFIP' : 'Confirmar Venta'}
         </Button>
       </div>
     </Modal>

@@ -324,7 +324,7 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
 
       // Persistir CAE y datos fiscales en la venta de Supabase
       try {
-        await supabase
+        const { error: errVentaFull } = await supabase
           .from('ventas')
           .update({
             afip_cae: caeGenerado,
@@ -334,13 +334,24 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
             afip_qr_url: qrUrl,
           })
           .eq('id', ventaId)
+
+        if (errVentaFull) {
+          // Si las columnas afip_vto_cae o afip_qr_url aún no existen en la BD, guardar columnas base
+          await supabase
+            .from('ventas')
+            .update({
+              afip_cae: caeGenerado,
+              afip_tipo_comprobante: tipoCmp,
+              afip_nro_comprobante: nuevoNroComp,
+            })
+            .eq('id', ventaId)
+        }
       } catch (err) {
         console.warn('Error guardando datos AFIP en venta:', err)
       }
 
       toast.success(
-        `Factura ${letra} N° ${String(config.punto_venta).padStart(4, '0')}-${String(nuevoNroComp).padStart(8, '0')} emitida con éxito`,
-        { icon: '🧾' }
+        `Factura ${letra} N° ${String(config.punto_venta).padStart(4, '0')}-${String(nuevoNroComp).padStart(8, '0')} emitida con éxito`
       )
       return resultado
     } finally {

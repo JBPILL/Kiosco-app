@@ -13,6 +13,7 @@ import type { MovimientoCaja, Venta } from '../../types/database'
 
 type TipoPeriodo = 'HOY' | 'SEMANA' | 'MES' | 'MES_ANTERIOR' | 'PERSONALIZADO'
 type FiltroTipoMovimiento = 'TODOS' | 'VENTAS' | 'COMPRAS' | 'PAGOS' | 'CAJA'
+type FiltroFiscal = 'TODAS' | 'SOLO_FISCALES' | 'SOLO_INTERNAS'
 
 interface AsientoContable {
   id: string
@@ -48,6 +49,9 @@ export function BalanceContableTab() {
   const [fechaHastaPersonalizada, setFechaHastaPersonalizada] = useState(() => {
     return new Date().toISOString().split('T')[0]
   })
+
+  // Modo Dual / Filtro Fiscal
+  const [filtroFiscal, setFiltroFiscal] = useState<FiltroFiscal>('TODAS')
 
   // Datos locales
   const [ventas, setVentas] = useState<Venta[]>([])
@@ -246,10 +250,28 @@ export function BalanceContableTab() {
     })
   }, [movimientosCaja, rangoInicio, rangoFin])
 
-  // Ventas completadas del período
+  // Ventas completadas del período filtradas por circuito (Real vs Fiscal vs Interno)
   const ventasValidas = useMemo(() => {
-    return ventas.filter((v) => v.estado === 'COMPLETADA')
+    return ventas.filter((v) => {
+      if (v.estado !== 'COMPLETADA') return false
+      if (filtroFiscal === 'SOLO_FISCALES') return Boolean(v.afip_cae)
+      if (filtroFiscal === 'SOLO_INTERNAS') return !v.afip_cae
+      return true
+    })
+  }, [ventas, filtroFiscal])
+
+  // Estadísticas globales de facturación fiscal del período
+  const ventasFiscalesPeriodo = useMemo(() => {
+    return ventas.filter((v) => v.estado === 'COMPLETADA' && Boolean(v.afip_cae))
   }, [ventas])
+
+  const ventasInternasPeriodo = useMemo(() => {
+    return ventas.filter((v) => v.estado === 'COMPLETADA' && !v.afip_cae)
+  }, [ventas])
+
+  const totalFacturadoAFIP = useMemo(() => {
+    return ventasFiscalesPeriodo.reduce((sum, v) => sum + v.total, 0)
+  }, [ventasFiscalesPeriodo])
 
   // ==========================================
   // KPIs FINANCIEROS Y CONTABLES
@@ -315,8 +337,9 @@ export function BalanceContableTab() {
           ? v.pagos.map((p: any) => labelMedioPago(p.medio_pago)).join(', ')
           : 'Efectivo'
 
-      const ticketRef = v.afip_nro_comprobante
-        ? `T-${v.afip_nro_comprobante}`
+      const esFiscal = Boolean(v.afip_cae)
+      const ticketRef = esFiscal && v.afip_nro_comprobante
+        ? `FC-${String(v.afip_nro_comprobante).padStart(8, '0')}`
         : `T-${v.id.slice(0, 8).toUpperCase()}`
 
       asientos.push({
@@ -324,7 +347,7 @@ export function BalanceContableTab() {
         fecha: v.fecha_hora,
         tipo: 'VENTA',
         comprobante: ticketRef,
-        concepto: `Venta en mostrador${v.usuario?.nombre ? ` (${v.usuario.nombre})` : ''}`,
+        concepto: `${esFiscal ? 'Factura Electrónica AFIP' : 'Venta en mostrador'}${v.usuario?.nombre ? ` (${v.usuario.nombre})` : ''}`,
         medio_pago: medioStr,
         ingreso: v.total,
         egreso: 0,
@@ -446,6 +469,61 @@ export function BalanceContableTab() {
     toast.success('Libro contable descargado en formato CSV para Excel')
   }
 
+  // Exportar Libro IVA Ventas para AFIP / Contador
+  const handleExportarLibroIvaVentas = () => {
+    if (ventasFiscalesPeriodo.length === 0) {
+      toast.error('No hay ventas con factura electrónica AFIP en este período')
+      return
+    }
+
+    const encabezados = [
+      'Fecha',
+      'Hora',
+      'Tipo Comprobante',
+      'Punto Venta',
+      'Numero Comprobante',
+      'CAE',
+      'Total Facturado',
+      'Medio de Pago',
+      'Cajero',
+    ]
+
+    const filas = ventasFiscalesPeriodo.map((v: any) => {
+      const d = new Date(v.fecha_hora)
+      const fecha = d.toLocaleDateString('es-AR')
+      const hora = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+      const tipoCompStr = v.afip_tipo_comprobante === 11 ? 'Factura C' : v.afip_tipo_comprobante === 6 ? 'Factura B' : 'Factura'
+      const pv = String(kiosco?.afip_punto_venta || 2).padStart(4, '0')
+      const nro = String(v.afip_nro_comprobante || 0).padStart(8, '0')
+      const medioStr = v.pagos && v.pagos.length > 0 ? v.pagos.map((p: any) => labelMedioPago(p.medio_pago)).join(' + ') : 'Efectivo'
+      const cajeroStr = v.usuario?.nombre || 'Cajero'
+
+      return [
+        fecha,
+        hora,
+        `"${tipoCompStr}"`,
+        pv,
+        nro,
+        `"${v.afip_cae || ''}"`,
+        v.total.toFixed(2),
+        `"${medioStr}"`,
+        `"${cajeroStr}"`,
+      ].join(',')
+    })
+
+    const csvContent = '\uFEFF' + [encabezados.join(','), ...filas].join('\r\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `Libro_IVA_Ventas_AFIP_${etiquetaPeriodo.replace(/[^a-zA-Z0-9]/g, '_')}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    toast.success('Libro IVA Ventas exportado en formato CSV para el contador')
+  }
+
   return (
     <div className="space-y-6">
       {/* Selector de Período y Botón de Descarga Excel */}
@@ -530,6 +608,81 @@ export function BalanceContableTab() {
           </Button>
         </div>
       </div>
+
+      {/* Selector de Circuito de Ventas: Control Real vs AFIP Fiscal */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-gray-800 p-3.5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-bold text-gray-700 dark:text-gray-300 mr-1">
+            Circuito:
+          </span>
+          <div className="flex bg-gray-100 dark:bg-gray-700/60 p-1 rounded-lg text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setFiltroFiscal('TODAS')}
+              className={`px-3 py-1 rounded-md transition-all ${
+                filtroFiscal === 'TODAS'
+                  ? 'bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-xs font-bold'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              }`}
+            >
+              Control Real (100%)
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltroFiscal('SOLO_FISCALES')}
+              className={`px-3 py-1 rounded-md transition-all flex items-center gap-1.5 ${
+                filtroFiscal === 'SOLO_FISCALES'
+                  ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-xs font-bold'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              }`}
+            >
+              <span>Facturas AFIP</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 font-bold">
+                {ventasFiscalesPeriodo.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltroFiscal('SOLO_INTERNAS')}
+              className={`px-3 py-1 rounded-md transition-all flex items-center gap-1.5 ${
+                filtroFiscal === 'SOLO_INTERNAS'
+                  ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-xs font-bold'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              }`}
+            >
+              <span>Tickets Internos (X)</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-gray-200 text-gray-700 dark:bg-gray-600 dark:text-gray-300 font-bold">
+                {ventasInternasPeriodo.length}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={handleExportarLibroIvaVentas}
+            disabled={ventasFiscalesPeriodo.length === 0}
+            className="text-xs font-semibold whitespace-nowrap"
+            title="Descargar planilla con todas las ventas que tienen CAE para el contador"
+          >
+            Exportar Libro IVA AFIP (.CSV)
+          </Button>
+        </div>
+      </div>
+
+      {/* Banner informativo de modo fiscal */}
+      {filtroFiscal === 'SOLO_FISCALES' && (
+        <div className="p-3 bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 rounded-xl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="text-blue-900 dark:text-blue-200">
+            <span className="font-bold">Vista Fiscal Oficial:</span> Mostrando exclusivamente las {ventasFiscalesPeriodo.length} ventas con CAE emitidas ante AFIP/ARCA. Total facturado: <strong>{formatPrecio(totalFacturadoAFIP)}</strong>.
+          </div>
+          <span className="text-[11px] text-blue-700 dark:text-blue-400 font-mono">
+            Punto de Venta: {String(kiosco?.afip_punto_venta || 2).padStart(4, '0')}
+          </span>
+        </div>
+      )}
 
       {/* Rango de fechas personalizado si está seleccionado */}
       {periodo === 'PERSONALIZADO' && (
@@ -849,14 +1002,29 @@ export function BalanceContableTab() {
                         </td>
                         <td className="py-2 px-3 whitespace-nowrap font-mono font-semibold text-gray-800 dark:text-gray-200">
                           {asiento.tipo === 'VENTA' && asiento.ventaData ? (
-                            <button
-                              type="button"
-                              onClick={() => setTicketParaVer(ventaToTicketData(asiento.ventaData, kiosco))}
-                              className="font-mono font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 hover:underline cursor-pointer bg-indigo-50/80 dark:bg-indigo-950/50 px-2 py-0.5 rounded transition-colors text-left"
-                              title="Hacé clic para ver o imprimir el comprobante de esta venta"
-                            >
-                              {asiento.comprobante}
-                            </button>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setTicketParaVer(ventaToTicketData(asiento.ventaData, kiosco))}
+                                className={`font-mono font-bold hover:underline cursor-pointer px-2 py-0.5 rounded transition-colors text-left ${
+                                  asiento.ventaData.afip_cae
+                                    ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 hover:text-blue-900'
+                                    : 'bg-indigo-50/80 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800'
+                                }`}
+                                title="Hacé clic para ver o imprimir el comprobante de esta venta"
+                              >
+                                {asiento.comprobante}
+                              </button>
+                              {asiento.ventaData.afip_cae ? (
+                                <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200 uppercase">
+                                  AFIP
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                                  Interno
+                                </span>
+                              )}
+                            </div>
                           ) : (
                             asiento.comprobante
                           )}
