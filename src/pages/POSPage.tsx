@@ -16,6 +16,7 @@ import { KeyboardShortcutsModal } from '../components/pos/KeyboardShortcutsModal
 import { ArticuloLibreModal } from '../components/pos/ArticuloLibreModal'
 import { BalanzaManualModal } from '../components/pos/BalanzaManualModal'
 import { DevolucionModal } from '../components/pos/DevolucionModal'
+import { HistorialTicketsModal } from '../components/pos/HistorialTicketsModal'
 import { RecibirEnvaseModal } from '../components/pos/RecibirEnvaseModal'
 import { parsearCodigoBalanza, buscarProductoPorCodigoBalanza } from '../lib/barcodeParser'
 import { useBarcodeGun } from '../hooks/useBarcodeGun'
@@ -24,6 +25,7 @@ import { playScanSound } from '../lib/sound'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import type { Producto, Categoria } from '../types/database'
+import type { VentaConDetalles } from '../stores/devolucionStore'
 import toast from 'react-hot-toast'
 
 export function POSPage() {
@@ -43,6 +45,8 @@ export function POSPage() {
   const [modalLibreOpen, setModalLibreOpen] = useState(false)
   const [modalBalanzaOpen, setModalBalanzaOpen] = useState(false)
   const [modalDevolucionOpen, setModalDevolucionOpen] = useState(false)
+  const [modalTicketsOpen, setModalTicketsOpen] = useState(false)
+  const [ventaParaDevolver, setVentaParaDevolver] = useState<VentaConDetalles | null>(null)
   const [modalEnvaseOpen, setModalEnvaseOpen] = useState(false)
   const [modalPromosOpen, setModalPromosOpen] = useState(false)
   const [productoPesableModal, setProductoPesableModal] = useState<Producto | null>(null)
@@ -315,7 +319,7 @@ export function POSPage() {
 
   useBarcodeGun({
     onScan: handleBarcodeGunScan,
-    enabled: !paymentOpen && !cartModalOpen && !modalScannerOpen && !modalEsperaOpen && !ticketModalOpen && !modalBalanzaOpen && !modalDevolucionOpen && !modalEnvaseOpen,
+    enabled: !paymentOpen && !cartModalOpen && !modalScannerOpen && !modalEsperaOpen && !ticketModalOpen && !modalBalanzaOpen && !modalDevolucionOpen && !modalTicketsOpen && !modalEnvaseOpen,
   })
 
   // Atajos de teclado para PC de escritorio
@@ -343,6 +347,7 @@ export function POSPage() {
       },
       onEscape: () => {
         if (modalPromosOpen) setModalPromosOpen(false)
+        else if (modalTicketsOpen) setModalTicketsOpen(false)
         else if (modalDevolucionOpen) setModalDevolucionOpen(false)
         else if (modalBalanzaOpen) setModalBalanzaOpen(false)
         else if (modalScannerOpen) setModalScannerOpen(false)
@@ -439,6 +444,14 @@ export function POSPage() {
                   {promociones.filter((p) => p.activo).length}
                 </span>
               )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setModalTicketsOpen(true)}
+              className="h-10 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
+              title="Consultar historial de comprobantes y reimprimir tickets"
+            >
+              <span>Comprobantes</span>
             </button>
             <button
               type="button"
@@ -693,10 +706,24 @@ export function POSPage() {
       {/* Modal de devoluciones y cambios de venta */}
       <DevolucionModal
         isOpen={modalDevolucionOpen}
-        onClose={() => setModalDevolucionOpen(false)}
+        ventaInicial={ventaParaDevolver}
+        onClose={() => {
+          setModalDevolucionOpen(false)
+          setVentaParaDevolver(null)
+        }}
         onDevolucionExitosa={() => {
           cargarFavoritos()
           verificarSesionActiva()
+        }}
+      />
+
+      {/* Modal de historial de comprobantes y reimpresión */}
+      <HistorialTicketsModal
+        isOpen={modalTicketsOpen}
+        onClose={() => setModalTicketsOpen(false)}
+        onIniciarDevolucion={(v) => {
+          setVentaParaDevolver(v)
+          setModalDevolucionOpen(true)
         }}
       />
 

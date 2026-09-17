@@ -6,6 +6,8 @@ import { formatPrecio, formatFecha, labelMedioPago } from '../../lib/utils'
 import { exportarLibroContableCSV, type MovimientoContableCSV } from '../../lib/exportUtils'
 import { Button } from '../ui/Button'
 import { SearchInput } from '../ui/SearchInput'
+import { TicketReceiptModal, type TicketData } from '../pos/TicketReceiptModal'
+import { ventaToTicketData } from '../../lib/ticketUtils'
 import toast from 'react-hot-toast'
 import type { MovimientoCaja, Venta } from '../../types/database'
 
@@ -22,6 +24,7 @@ interface AsientoContable {
   ingreso: number
   egreso: number
   notas?: string | null
+  ventaData?: any
 }
 
 export function BalanceContableTab() {
@@ -50,6 +53,7 @@ export function BalanceContableTab() {
   const [ventas, setVentas] = useState<Venta[]>([])
   const [movimientosCaja, setMovimientosCaja] = useState<MovimientoCaja[]>([])
   const [cargando, setCargando] = useState(true)
+  const [ticketParaVer, setTicketParaVer] = useState<TicketData | null>(null)
 
   // Filtros de tabla
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipoMovimiento>('TODOS')
@@ -78,7 +82,7 @@ export function BalanceContableTab() {
       return {
         rangoInicio: `${inicioSemana}T00:00:00`,
         rangoFin: `${finSemana}T23:59:59`,
-        etiquetaPeriodo: `Esta semana (desde ${formatFecha(inicioSemana)})`,
+        etiquetaPeriodo: `Esta semana (${inicioSemana} al ${finSemana})`,
       }
     }
 
@@ -96,43 +100,59 @@ export function BalanceContableTab() {
     }
 
     if (periodo === 'MES_ANTERIOR') {
-      const y = ahora.getFullYear()
-      const m = ahora.getMonth() - 1
-      const primerDia = new Date(y, m, 1).toISOString().split('T')[0]
-      const ultimoDia = new Date(y, m + 1, 0).toISOString().split('T')[0]
-      const refDate = new Date(y, m, 1)
-      const mesNombre = refDate.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+      const añoActual = ahora.getFullYear()
+      const mesActual = ahora.getMonth() // 0-11
+      const primerDiaMesAnt = new Date(añoActual, mesActual - 1, 1)
+      const ultimoDiaMesAnt = new Date(añoActual, mesActual, 0)
+      const inicioStr = primerDiaMesAnt.toISOString().split('T')[0]
+      const finStr = ultimoDiaMesAnt.toISOString().split('T')[0]
+      const nombreMes = primerDiaMesAnt.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
       return {
-        rangoInicio: `${primerDia}T00:00:00`,
-        rangoFin: `${ultimoDia}T23:59:59`,
-        etiquetaPeriodo: `Mes anterior (${mesNombre})`,
+        rangoInicio: `${inicioStr}T00:00:00`,
+        rangoFin: `${finStr}T23:59:59`,
+        etiquetaPeriodo: `Mes anterior (${nombreMes})`,
       }
     }
 
-    // PERSONALIZADO
+    if (periodo === 'PERSONALIZADO') {
+      return {
+        rangoInicio: `${fechaDesdePersonalizada}T00:00:00`,
+        rangoFin: `${fechaHastaPersonalizada}T23:59:59`,
+        etiquetaPeriodo: `Personalizado (${fechaDesdePersonalizada} al ${fechaHastaPersonalizada})`,
+      }
+    }
+
+    // Por defecto: MES actual
+    const año = ahora.getFullYear()
+    const mes = ahora.getMonth()
+    const primerDia = new Date(año, mes, 1).toISOString().split('T')[0]
+    const hoy = ahora.toISOString().split('T')[0]
+    const nombreMes = ahora.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
     return {
-      rangoInicio: `${fechaDesdePersonalizada}T00:00:00`,
-      rangoFin: `${fechaHastaPersonalizada}T23:59:59`,
-      etiquetaPeriodo: `Desde ${fechaDesdePersonalizada} hasta ${fechaHastaPersonalizada}`,
+      rangoInicio: `${primerDia}T00:00:00`,
+      rangoFin: `${hoy}T23:59:59`,
+      etiquetaPeriodo: `Mes actual (${nombreMes})`,
     }
   }, [periodo, fechaDesdePersonalizada, fechaHastaPersonalizada])
 
-  // Cargar todos los datos contables del período
+  // Carga unificada de datos para el balance
   const cargarDatosContables = useCallback(async () => {
     if (!usuario?.kiosco_id) return
     setCargando(true)
 
     try {
-      // 1. Cargar proveedores, compras y pagos de la tienda
+      // 1. Cargar proveedores, compras y pagos (ya parametrizados por kiosco)
       await Promise.all([cargarProveedores(), cargarCompras(), cargarPagos()])
 
-      // 2. Cargar ventas del período
+      // 2. Cargar ventas del período con detalles para comprobantes
       const { data: ventasData, error: ventasError } = await supabase
         .from('ventas')
         .select(`
           id, fecha_hora, total, estado, notas,
+          afip_cae, afip_vto_cae, afip_tipo_comprobante, afip_nro_comprobante, afip_qr_url,
           usuario:usuarios(nombre),
-          pagos:pagos_venta(medio_pago, monto)
+          pagos:pagos_venta(medio_pago, monto),
+          detalles:detalles_venta(cantidad, precio_unitario, subtotal, sin_envase, es_devolucion_envase, producto:productos(descripcion))
         `)
         .eq('kiosco_id', usuario.kiosco_id)
         .gte('fecha_hora', rangoInicio)
@@ -290,6 +310,7 @@ export function BalanceContableTab() {
         ingreso: v.total,
         egreso: 0,
         notas: v.notas,
+        ventaData: v,
       })
     })
 
@@ -808,7 +829,18 @@ export function BalanceContableTab() {
                           )}
                         </td>
                         <td className="py-2 px-3 whitespace-nowrap font-mono font-semibold text-gray-800 dark:text-gray-200">
-                          {asiento.comprobante}
+                          {asiento.tipo === 'VENTA' && asiento.ventaData ? (
+                            <button
+                              type="button"
+                              onClick={() => setTicketParaVer(ventaToTicketData(asiento.ventaData, kiosco))}
+                              className="font-mono font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 hover:underline cursor-pointer bg-indigo-50/80 dark:bg-indigo-950/50 px-2 py-0.5 rounded transition-colors text-left"
+                              title="Hacé clic para ver o imprimir el comprobante de esta venta"
+                            >
+                              {asiento.comprobante}
+                            </button>
+                          ) : (
+                            asiento.comprobante
+                          )}
                         </td>
                         <td className="py-2 px-3">
                           <p className="font-medium text-gray-900 dark:text-gray-100">
@@ -853,6 +885,13 @@ export function BalanceContableTab() {
           </div>
         </>
       )}
+
+      {/* Modal de visualización / reimpresión de comprobante */}
+      <TicketReceiptModal
+        isOpen={Boolean(ticketParaVer)}
+        onClose={() => setTicketParaVer(null)}
+        ticket={ticketParaVer}
+      />
     </div>
   )
 }

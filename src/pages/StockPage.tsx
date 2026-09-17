@@ -9,18 +9,23 @@ import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import { BarcodeScannerModal } from '../components/pos/BarcodeScannerModal'
+import { TicketReceiptModal, type TicketData } from '../components/pos/TicketReceiptModal'
+import { ventaToTicketData } from '../lib/ticketUtils'
+import { useDevolucionStore } from '../stores/devolucionStore'
 import { useLoteStore, calcularDiasHastaVencimiento } from '../stores/loteStore'
 import type { Producto, MovimientoStock } from '../types/database'
 import toast from 'react-hot-toast'
 
 export function StockPage() {
   const { usuario, kiosco } = useAuthStore()
+  const { buscarVentaParaDevolucion } = useDevolucionStore()
 
   // Estados de datos
   const [movimientos, setMovimientos] = useState<(MovimientoStock & { producto?: Producto })[]>([])
   const [productos, setProductos] = useState<Producto[]>([])
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
+  const [ticketParaVer, setTicketParaVer] = useState<TicketData | null>(null)
 
   // Lotes y Vencimientos (FIFO / FEFO)
   const { lotes, cargarLotes, crearLote, darDeBajaLote, obtenerAlertas } = useLoteStore()
@@ -94,6 +99,17 @@ export function StockPage() {
     cargarProductos()
     cargarLotes(usuario?.kiosco_id || undefined)
   }, [cargarMovimientos, cargarProductos, cargarLotes, usuario?.kiosco_id])
+
+  const handleVerTicketDesdeNota = async (textoNota: string) => {
+    const match = textoNota.match(/venta\s*#?([a-f0-9-]{8,36})/i)
+    if (!match) return
+    const v = await buscarVentaParaDevolucion(match[1], usuario?.kiosco_id || kiosco?.id)
+    if (v) {
+      setTicketParaVer(ventaToTicketData(v, kiosco))
+    } else {
+      toast.error('No se pudo encontrar el comprobante de esta venta')
+    }
+  }
 
   // Cerrar sugerencias al hacer clic fuera
   useEffect(() => {
@@ -759,9 +775,20 @@ export function StockPage() {
                           {mov.notas && (
                             <>
                               <span>·</span>
-                              <span className="italic truncate max-w-[200px]" title={mov.notas}>
-                                "{mov.notas}"
-                              </span>
+                              {/venta\s*#?[a-f0-9]{8}/i.test(mov.notas) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleVerTicketDesdeNota(mov.notas!)}
+                                  className="font-mono font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 hover:underline cursor-pointer bg-indigo-50/70 dark:bg-indigo-950/40 px-1.5 py-0.5 rounded transition-colors text-left"
+                                  title="Hacé clic para ver el comprobante de esta venta"
+                                >
+                                  {mov.notas}
+                                </button>
+                              ) : (
+                                <span className="italic truncate max-w-[200px]" title={mov.notas}>
+                                  "{mov.notas}"
+                                </span>
+                              )}
                             </>
                           )}
                         </div>
@@ -1370,6 +1397,13 @@ export function StockPage() {
         isOpen={modalScannerOpen}
         onClose={() => setModalScannerOpen(false)}
         onProductScanned={handleProductoEscaneadoCamara}
+      />
+
+      {/* Modal de visualización de Comprobante / Ticket */}
+      <TicketReceiptModal
+        isOpen={Boolean(ticketParaVer)}
+        onClose={() => setTicketParaVer(null)}
+        ticket={ticketParaVer}
       />
     </div>
   )

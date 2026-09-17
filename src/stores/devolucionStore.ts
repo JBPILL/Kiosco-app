@@ -20,6 +20,20 @@ export type VentaConDetalles = Venta & {
   detalles: (DetalleVenta & { producto?: Producto })[]
   pagos?: PagoVenta[]
   cliente?: Cliente | null
+  usuario?: { nombre?: string } | null
+}
+
+export function limpiarCodigoTicket(input: string): string {
+  if (!input) return ''
+  return input
+    .trim()
+    .replace(/^venta\s*#?\s*/i, '')
+    .replace(/^ticket\s*#?\s*/i, '')
+    .replace(/^comprobante\s*#?\s*/i, '')
+    .replace(/^t-/i, '')
+    .replace(/^#/i, '')
+    .trim()
+    .toLowerCase()
 }
 
 interface DevolucionState {
@@ -27,6 +41,7 @@ interface DevolucionState {
   cargando: boolean
 
   cargarDevoluciones: (kioscoId?: string) => Promise<void>
+  obtenerUltimasVentas: (kioscoId?: string, limite?: number) => Promise<VentaConDetalles[]>
   buscarVentaParaDevolucion: (
     criterio: string,
     kioscoId?: string
@@ -87,60 +102,136 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
     }
   },
 
-  buscarVentaParaDevolucion: async (
-    criterio: string,
-    kioscoId?: string
-  ): Promise<VentaConDetalles | null> => {
-    const limpio = criterio.trim().toLowerCase()
-    if (!limpio) return null
-
+  obtenerUltimasVentas: async (kioscoId?: string, limite = 30): Promise<VentaConDetalles[]> => {
     try {
-      // 1. Buscar venta por UUID completo o por prefijo (8 caracteres)
       let query = supabase
         .from('ventas')
-        .select('*, detalles:detalles_venta(*, producto:productos(*)), pagos:pagos_venta(*)')
+        .select('*, detalles:detalles_venta(*, producto:productos(*)), pagos:pagos_venta(*), usuario:usuarios(nombre)')
         .order('fecha_hora', { ascending: false })
+        .limit(limite)
 
       if (kioscoId) {
         query = query.eq('kiosco_id', kioscoId)
       }
 
-      // Si tiene formato UUID estándar (36 caracteres)
-      if (limpio.length === 36) {
-        query = query.eq('id', limpio)
-      } else {
-        // Buscar por los primeros caracteres del UUID
-        query = query.ilike('id', `${limpio}%`).limit(1)
-      }
-
       const { data, error } = await query
+      if (error || !data) return []
 
-      if (error) {
-        console.warn('Error buscando venta para devolución en Supabase:', error.message)
-        return null
-      }
+      const ventasList = data as VentaConDetalles[]
 
-      if (!data || data.length === 0) {
-        return null
-      }
-
-      const ventaEncontrada = data[0] as VentaConDetalles
-
-      // Si la venta tiene pagos con cuenta corriente, buscar datos del cliente asociado
-      const pagoCC = ventaEncontrada.pagos?.find((p) => p.medio_pago === 'CUENTA_CORRIENTE')
-      if (pagoCC) {
-        const { data: movCC } = await supabase
+      // Enriquecer clientes de ventas con Cuenta Corriente si corresponde
+      const ventasCC = ventasList.filter((v) =>
+        v.pagos?.some((p) => p.medio_pago === 'CUENTA_CORRIENTE')
+      )
+      if (ventasCC.length > 0) {
+        const ids = ventasCC.map((v) => v.id)
+        const { data: movsCC } = await supabase
           .from('movimientos_cuenta_corriente')
-          .select('*, cliente:clientes(*)')
-          .eq('venta_id', ventaEncontrada.id)
-          .maybeSingle()
+          .select('venta_id, cliente:clientes(*)')
+          .in('venta_id', ids)
 
-        if (movCC?.cliente) {
-          ventaEncontrada.cliente = movCC.cliente as Cliente
+        if (movsCC) {
+          const ccMap = new Map(movsCC.map((m) => [m.venta_id, m.cliente]))
+          for (const v of ventasList) {
+            if (ccMap.has(v.id)) {
+              const cliRaw = ccMap.get(v.id)
+              v.cliente = (Array.isArray(cliRaw) ? cliRaw[0] : cliRaw) as unknown as Cliente
+            }
+          }
         }
       }
 
-      return ventaEncontrada
+      return ventasList
+    } catch (e) {
+      console.warn('Error al obtener últimas ventas:', e)
+      return []
+    }
+  },
+
+  buscarVentaParaDevolucion: async (
+    criterio: string,
+    kioscoId?: string
+  ): Promise<VentaConDetalles | null> => {
+    const limpio = limpiarCodigoTicket(criterio)
+    if (!limpio) return null
+
+    try {
+      // Estrategia 1: Buscar en las últimas 150 ventas en memoria
+      // (Resuelve T-BACFC93B, #BACFC93B, BACFC93B, venta #..., afip_nro_comprobante de manera 100% infalible)
+      let queryRecientes = supabase
+        .from('ventas')
+        .select('*, detalles:detalles_venta(*, producto:productos(*)), pagos:pagos_venta(*), usuario:usuarios(nombre)')
+        .order('fecha_hora', { ascending: false })
+        .limit(150)
+
+      if (kioscoId) {
+        queryRecientes = queryRecientes.eq('kiosco_id', kioscoId)
+      }
+
+      const { data: recientes } = await queryRecientes
+
+      if (recientes && recientes.length > 0) {
+        const ventaCandidata = (recientes as VentaConDetalles[]).find((v) => {
+          const vid = v.id.toLowerCase()
+          const vidSinGuiones = vid.replace(/-/g, '')
+          const afipNro = v.afip_nro_comprobante ? String(v.afip_nro_comprobante) : ''
+          return (
+            vid.startsWith(limpio) ||
+            vidSinGuiones.startsWith(limpio) ||
+            vid.includes(limpio) ||
+            afipNro === limpio
+          )
+        })
+
+        if (ventaCandidata) {
+          // Si tiene cuenta corriente, verificar cliente
+          const pagoCC = ventaCandidata.pagos?.find((p) => p.medio_pago === 'CUENTA_CORRIENTE')
+          if (pagoCC && !ventaCandidata.cliente) {
+            const { data: movCC } = await supabase
+              .from('movimientos_cuenta_corriente')
+              .select('*, cliente:clientes(*)')
+              .eq('venta_id', ventaCandidata.id)
+              .maybeSingle()
+
+            if (movCC?.cliente) {
+              ventaCandidata.cliente = movCC.cliente as Cliente
+            }
+          }
+          return ventaCandidata
+        }
+      }
+
+      // Estrategia 2: Si tiene formato UUID exacto de 36 caracteres y no estaba en las 150 recientes
+      if (limpio.length === 36) {
+        let queryExacta = supabase
+          .from('ventas')
+          .select('*, detalles:detalles_venta(*, producto:productos(*)), pagos:pagos_venta(*), usuario:usuarios(nombre)')
+          .eq('id', limpio)
+          .maybeSingle()
+
+        const { data: vExacta } = await queryExacta
+        if (vExacta) {
+          return vExacta as VentaConDetalles
+        }
+      }
+
+      // Estrategia 3: Si es puramente numérico, buscar por afip_nro_comprobante histórico
+      const numComp = parseInt(limpio, 10)
+      if (!isNaN(numComp) && String(numComp) === limpio) {
+        let queryAfip = supabase
+          .from('ventas')
+          .select('*, detalles:detalles_venta(*, producto:productos(*)), pagos:pagos_venta(*), usuario:usuarios(nombre)')
+          .eq('afip_nro_comprobante', numComp)
+
+        if (kioscoId) queryAfip = queryAfip.eq('kiosco_id', kioscoId)
+
+        const { data: dataAfip } = await queryAfip.limit(1)
+        if (dataAfip && dataAfip.length > 0) {
+          return dataAfip[0] as VentaConDetalles
+        }
+      }
+
+      return null
     } catch (err) {
       console.error('Error buscando venta para devolución:', err)
       return null
