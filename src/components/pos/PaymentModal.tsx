@@ -813,6 +813,12 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             placeholder={medioPago === 'TARJETA' ? 'Últimos 4 dígitos' : 'Nro de operación'}
             value={referencia}
             onChange={(e) => setReferencia(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && puedeConfirmar && !procesando) {
+                e.preventDefault()
+                confirmarVenta()
+              }
+            }}
           />
         )}
 
