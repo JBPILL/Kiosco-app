@@ -137,41 +137,60 @@ export function BalanceContableTab() {
 
   // Carga unificada de datos para el balance
   const cargarDatosContables = useCallback(async () => {
-    if (!usuario?.kiosco_id) return
     setCargando(true)
+    const kid = usuario?.kiosco_id || kiosco?.id
 
     try {
       // 1. Cargar proveedores, compras y pagos (ya parametrizados por kiosco)
-      await Promise.all([cargarProveedores(), cargarCompras(), cargarPagos()])
+      try {
+        await Promise.all([cargarProveedores(), cargarCompras(), cargarPagos()])
+      } catch (eProv) {
+        console.warn('Error cargando datos de proveedores:', eProv)
+      }
 
       // 2. Cargar ventas del período con detalles para comprobantes
-      const { data: ventasData, error: ventasError } = await supabase
+      let queryVentas = supabase
         .from('ventas')
         .select(`
           id, fecha_hora, total, estado, notas,
-          afip_cae, afip_vto_cae, afip_tipo_comprobante, afip_nro_comprobante, afip_qr_url,
+          afip_cae, afip_tipo_comprobante, afip_nro_comprobante,
           usuario:usuarios(nombre),
           pagos:pagos_venta(medio_pago, monto),
           detalles:detalles_venta(cantidad, precio_unitario, subtotal, sin_envase, es_devolucion_envase, producto:productos(descripcion))
         `)
-        .eq('kiosco_id', usuario.kiosco_id)
         .gte('fecha_hora', rangoInicio)
         .lte('fecha_hora', rangoFin)
         .order('fecha_hora', { ascending: false })
 
-      if (!ventasError && ventasData) {
+      if (kid) {
+        queryVentas = queryVentas.eq('kiosco_id', kid)
+      }
+
+      const { data: ventasData, error: ventasError } = await queryVentas
+
+      if (ventasError) {
+        console.error('Error cargando ventas en balance contable:', ventasError.message)
+      } else if (ventasData) {
         setVentas(ventasData as unknown as Venta[])
       }
 
       // 3. Cargar movimientos de caja del período
-      const { data: movsData } = await supabase
+      let queryMovs = supabase
         .from('movimientos_caja')
         .select('*')
         .gte('fecha_hora', rangoInicio)
         .lte('fecha_hora', rangoFin)
         .order('fecha_hora', { ascending: false })
 
-      if (movsData) {
+      if (kid) {
+        queryMovs = queryMovs.eq('kiosco_id', kid)
+      }
+
+      const { data: movsData, error: movsError } = await queryMovs
+
+      if (movsError) {
+        console.warn('Error cargando movimientos de caja:', movsError.message)
+      } else if (movsData) {
         setMovimientosCaja(movsData as MovimientoCaja[])
       }
     } catch (err) {
@@ -180,7 +199,7 @@ export function BalanceContableTab() {
     } finally {
       setCargando(false)
     }
-  }, [usuario?.kiosco_id, rangoInicio, rangoFin, cargarProveedores, cargarCompras, cargarPagos])
+  }, [usuario?.kiosco_id, kiosco?.id, rangoInicio, rangoFin, cargarProveedores, cargarCompras, cargarPagos])
 
   useEffect(() => {
     cargarDatosContables()
