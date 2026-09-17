@@ -66,20 +66,20 @@ export function CatalogoPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
-            variant="secondary"
+            variant="ghost"
             size="sm"
             onClick={() => setAumentoOpen(true)}
-            className="flex items-center gap-1.5 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+            className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-semibold shadow-xs transition-all"
           >
             Aumento Masivo %
           </Button>
           <Button
-            variant="secondary"
+            variant="success"
             size="sm"
-            onClick={() => exportarCatalogoCSV(productos, categorias, kiosco?.nombre)}
-            className="flex items-center gap-1.5 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+            onClick={() => setEnvasesOpen(true)}
+            className="flex items-center gap-1.5 shadow-xs font-semibold"
           >
-            Exportar (.CSV)
+            Precios de Envases
           </Button>
           <Button
             variant="secondary"
@@ -92,10 +92,10 @@ export function CatalogoPage() {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => setEnvasesOpen(true)}
-            className="flex items-center gap-1.5 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+            onClick={() => exportarCatalogoCSV(productos, categorias, kiosco?.nombre)}
+            className="flex items-center gap-1.5 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
           >
-            Precios de Envases
+            Exportar (.CSV)
           </Button>
         </div>
       </div>

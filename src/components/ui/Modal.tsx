@@ -5,7 +5,7 @@ interface ModalProps {
   onClose: () => void
   title: string
   children: React.ReactNode
-  size?: 'sm' | 'md' | 'lg' | 'xl'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl'
   zIndex?: string
 }
 
@@ -14,6 +14,8 @@ const sizeStyles = {
   md: 'max-w-md',
   lg: 'max-w-lg',
   xl: 'max-w-2xl',
+  '2xl': 'max-w-4xl',
+  '3xl': 'max-w-5xl',
 }
 
 export function Modal({ isOpen, onClose, title, children, size = 'md', zIndex = 'z-50' }: ModalProps) {
@@ -56,7 +58,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', zIndex = 
           </button>
         </div>
         {/* Body */}
-        <div className="px-5 sm:px-6 py-4 overflow-y-auto overscroll-contain">
+        <div className="px-5 sm:px-6 py-4 overflow-y-auto overscroll-contain flex-1 min-h-0 flex flex-col">
           {children}
         </div>
       </div>

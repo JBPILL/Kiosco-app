@@ -41,16 +41,19 @@ export function PreciosEnvasesModal({
     actualizarPrecioTipo,
   } = useEnvasesStore()
 
+  // Pestañas: 'TIPOS' para configurar valores oficiales | 'PRODUCTOS' para asignar en catálogo
+  const [pestanaActiva, setPestanaActiva] = useState<'TIPOS' | 'PRODUCTOS'>('TIPOS')
+
   const [busqueda, setBusqueda] = useState('')
   const [soloRetornables, setSoloRetornables] = useState(true)
   const [filas, setFilas] = useState<Record<string, FilaEnvase>>({})
   const [guardando, setGuardando] = useState(false)
 
-  // Estados locales para los tipos de envases (para permitir edición en vivo por uno o conjuntamente)
+  // Precios locales de tipos para edición en vivo
   const [preciosTiposLocal, setPreciosTiposLocal] = useState<Record<string, number>>({})
 
   // Estado para modificación conjunta
-  const [modoConjunto, setModoConjunto] = useState<'FIJO' | 'PORCENTAJE' | 'SUMA'>('PORCENTAJE')
+  const [modoConjunto, setModoConjunto] = useState<'PORCENTAJE' | 'FIJO' | 'SUMA'>('PORCENTAJE')
   const [valorConjunto, setValorConjunto] = useState('')
   const [mostrarPanelConjunto, setMostrarPanelConjunto] = useState(false)
 
@@ -58,6 +61,7 @@ export function PreciosEnvasesModal({
   useEffect(() => {
     if (isOpen) {
       cargarTiposEnvases(usuario?.kiosco_id || undefined)
+      setPestanaActiva('TIPOS')
     }
   }, [isOpen, usuario?.kiosco_id, cargarTiposEnvases])
 
@@ -103,11 +107,11 @@ export function PreciosEnvasesModal({
       tiposEnvases.forEach((t) => {
         if (
           envNom === t.nombre.toLowerCase() ||
-          (t.id === '1lt' && (envNom.includes('1l') || envNom.includes('1 lt') || envNom.includes('1lt'))) ||
-          (t.id === '2lts' && (envNom.includes('2l') || envNom.includes('2 l') || envNom.includes('2lt')) && !envNom.includes('2.25') && !envNom.includes('2,25') && !envNom.includes('20')) ||
+          (t.id === '1lt' && (envNom.includes('1l') || envNom.includes('litro'))) ||
+          (t.id === '2lts' && (envNom.includes('2l') || envNom.includes('2 lt')) && !envNom.includes('2.25') && !envNom.includes('20')) ||
           (t.id === '2.25lts' && (envNom.includes('2.25') || envNom.includes('2,25'))) ||
-          (t.id === 'sifon' && (envNom.includes('sifon') || envNom.includes('sifón') || envNom.includes('soda'))) ||
-          (t.id === 'bidon20l' && (envNom.includes('bidon') || envNom.includes('bidón') || envNom.includes('20')))
+          (t.id === 'sifon' && (envNom.includes('sifon') || envNom.includes('soda'))) ||
+          (t.id === 'bidon20l' && (envNom.includes('bidon') || envNom.includes('20')))
         ) {
           conteo[t.id] = (conteo[t.id] || 0) + 1
         }
@@ -123,7 +127,6 @@ export function PreciosEnvasesModal({
     setPreciosTiposLocal((prev) => ({ ...prev, [tipoId]: p }))
     actualizarPrecioTipo(tipoId, p, usuario?.kiosco_id || undefined)
 
-    // Opcional: sincronizar en vivo los productos que tengan ese tipo asignado
     const tipo = tiposEnvases.find((t) => t.id === tipoId)
     if (tipo) {
       setFilas((prev) => {
@@ -169,14 +172,14 @@ export function PreciosEnvasesModal({
       return next
     })
 
-    toast.success(`Precio de ${tipo.nombre} ($${precio.toLocaleString('es-AR')}) aplicado a ${cant} productos`)
+    toast.success(`Precio de ${tipo.nombre} ($${precio.toLocaleString('es-AR')}) asignado a ${cant} producto(s)`)
   }
 
   // Modificación conjunta ("conjuntamente") de todos los tipos de envases
   const handleAplicarConjunto = () => {
     const val = parseFloat(valorConjunto)
     if (isNaN(val) || val <= 0) {
-      toast.error('Ingresá un valor numérico válido mayor a 0')
+      toast.error('Ingresá un valor válido mayor a 0')
       return
     }
 
@@ -197,7 +200,7 @@ export function PreciosEnvasesModal({
 
     setPreciosTiposLocal(nuevosPrecios)
 
-    // Actualizar también todos los productos retornables con sus respectivos nuevos precios
+    // Actualizar también todos los productos retornables
     setFilas((prev) => {
       const next = { ...prev }
       Object.values(next).forEach((f) => {
@@ -226,7 +229,6 @@ export function PreciosEnvasesModal({
           }
         })
 
-        // Si no coincidió con ninguno específico pero es retornable y se eligió precio fijo
         if (!aplicado && modoConjunto === 'FIJO') {
           next[f.id] = {
             ...f,
@@ -238,7 +240,7 @@ export function PreciosEnvasesModal({
       return next
     })
 
-    toast.success('Todos los tipos de envases y sus productos fueron actualizados conjuntamente')
+    toast.success('Todos los tipos de envases fueron actualizados conjuntamente')
     setValorConjunto('')
     setMostrarPanelConjunto(false)
   }
@@ -344,7 +346,8 @@ export function PreciosEnvasesModal({
   const handleGuardarTodos = async () => {
     const modificados = Object.values(filas).filter((f) => f.modificado)
     if (modificados.length === 0) {
-      toast('No hay cambios pendientes para guardar')
+      toast('No hay cambios pendientes en productos')
+      onClose()
       return
     }
 
@@ -379,293 +382,334 @@ export function PreciosEnvasesModal({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Precios de Envases Retornables" size="xl">
-      <div className="space-y-4">
-        <p className="text-xs text-gray-600 dark:text-gray-400">
-          Configurá los precios de los tipos oficiales de envases retornables (modificación individual o conjunta) y vinculalos a los productos del catálogo.
-        </p>
+    <Modal isOpen={isOpen} onClose={onClose} title="Precios de Envases Retornables" size="2xl">
+      <div className="flex flex-col h-full space-y-3">
+        {/* Pestañas superiores para navegación fija */}
+        <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-700 pb-1">
+          <button
+            type="button"
+            onClick={() => setPestanaActiva('TIPOS')}
+            className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-colors cursor-pointer border-b-2 ${
+              pestanaActiva === 'TIPOS'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
+            }`}
+          >
+            Tipos de Envases Oficiales ({tiposEnvases.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setPestanaActiva('PRODUCTOS')}
+            className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-colors cursor-pointer border-b-2 ${
+              pestanaActiva === 'PRODUCTOS'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
+            }`}
+          >
+            Productos del Catálogo ({filasVisibles.length})
+          </button>
+        </div>
 
-        {/* ── SECCIÓN 1: LISTA DE TIPOS DE ENVASES (1LT, 2.25lts, 2lts, Sifón, Bidón 20lts) ── */}
-        <div className="p-3.5 bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 rounded-xl space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-200 dark:border-gray-700 pb-2">
-            <div>
-              <h3 className="text-xs font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wider">
-                Tipos de Envases Oficiales
-              </h3>
-              <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                Podés modificar el valor de cada tipo por separado o ajustar todos conjuntamente.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setMostrarPanelConjunto(!mostrarPanelConjunto)}
-              className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline self-start sm:self-auto cursor-pointer"
-            >
-              {mostrarPanelConjunto ? 'Ocultar ajuste conjunto' : 'Modificar conjuntamente'}
-            </button>
-          </div>
-
-          {/* Panel desplegable de modificación conjunta */}
-          {mostrarPanelConjunto && (
-            <div className="p-3 bg-white dark:bg-gray-900/60 border border-indigo-200 dark:border-indigo-900/50 rounded-lg space-y-2.5">
-              <span className="text-xs font-bold text-indigo-900 dark:text-indigo-300 block">
-                Ajuste Conjunto para Todos los Tipos:
-              </span>
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setModoConjunto('PORCENTAJE')}
-                    className={`px-3 py-1.5 font-semibold transition-colors ${
-                      modoConjunto === 'PORCENTAJE'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100'
-                    }`}
-                  >
-                    % Aumento
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setModoConjunto('FIJO')}
-                    className={`px-3 py-1.5 font-semibold border-l border-gray-300 dark:border-gray-600 transition-colors ${
-                      modoConjunto === 'FIJO'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100'
-                    }`}
-                  >
-                    Precio Fijo
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setModoConjunto('SUMA')}
-                    className={`px-3 py-1.5 font-semibold border-l border-gray-300 dark:border-gray-600 transition-colors ${
-                      modoConjunto === 'SUMA'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100'
-                    }`}
-                  >
-                    +$ Sumar monto
-                  </button>
-                </div>
-
-                <div className="w-28">
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder={modoConjunto === 'PORCENTAJE' ? 'Ej: 15' : 'Ej: 2000'}
-                    value={valorConjunto}
-                    onChange={(e) => setValorConjunto(e.target.value)}
-                    className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-1.5 outline-none focus:border-indigo-500 font-mono font-bold"
-                  />
-                </div>
-
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  onClick={handleAplicarConjunto}
-                  className="text-xs shadow-xs"
-                >
-                  Aplicar a todos
-                </Button>
+        {/* ── VISTA 1: TIPOS DE ENVASES OFICIALES (Sin desplazamiento, todo a la vista) ── */}
+        {pestanaActiva === 'TIPOS' && (
+          <div className="space-y-3.5 animate-in fade-in duration-150">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-gray-50 dark:bg-gray-800/60 p-3 rounded-xl border border-gray-200 dark:border-gray-700">
+              <div>
+                <p className="text-xs font-bold text-gray-900 dark:text-gray-100">
+                  Precios estándar por tipo de envase
+                </p>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                  Podés modificar cada valor individualmente o ajustar todos conjuntamente.
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={() => setMostrarPanelConjunto(!mostrarPanelConjunto)}
+                className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer self-start sm:self-auto"
+              >
+                {mostrarPanelConjunto ? '✕ Ocultar ajuste conjunto' : 'Modificar conjuntamente'}
+              </button>
             </div>
-          )}
 
-          {/* Grilla con la lista de tipos oficiales (Edición "por uno") */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-            {tiposEnvases.map((tipo) => {
-              const precioActual = preciosTiposLocal[tipo.id] ?? tipo.precio
-              const prodsVinculados = conteoPorTipo[tipo.id] || 0
-              return (
-                <div
-                  key={tipo.id}
-                  className="p-3 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col justify-between gap-2 shadow-2xs"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-bold text-xs text-gray-900 dark:text-gray-100">
-                        {tipo.nombre}
-                      </p>
-                      <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate">
-                        {prodsVinculados} {prodsVinculados === 1 ? 'producto vinculado' : 'productos vinculados'}
-                      </p>
-                    </div>
-
+            {/* Panel desplegable de modificación conjunta */}
+            {mostrarPanelConjunto && (
+              <div className="p-3 bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-xl space-y-2.5">
+                <span className="text-xs font-bold text-indigo-950 dark:text-indigo-200 block">
+                  Ajuste simultáneo para todos los tipos de envases:
+                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden text-xs bg-white dark:bg-gray-800">
                     <button
                       type="button"
-                      onClick={() => handleAplicarTipoAProductos(tipo)}
-                      title="Asignar este precio a los productos que usan este envase"
-                      className="px-2 py-0.5 rounded text-[10px] font-semibold bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 transition-colors"
+                      onClick={() => setModoConjunto('PORCENTAJE')}
+                      className={`px-3 py-1.5 font-semibold transition-colors ${
+                        modoConjunto === 'PORCENTAJE'
+                          ? 'bg-indigo-600 text-white'
+                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      }`}
                     >
-                      Sincronizar
+                      % Aumento
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setModoConjunto('FIJO')}
+                      className={`px-3 py-1.5 font-semibold border-l border-gray-300 dark:border-gray-600 transition-colors ${
+                        modoConjunto === 'FIJO'
+                          ? 'bg-indigo-600 text-white'
+                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      Precio Fijo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setModoConjunto('SUMA')}
+                      className={`px-3 py-1.5 font-semibold border-l border-gray-300 dark:border-gray-600 transition-colors ${
+                        modoConjunto === 'SUMA'
+                          ? 'bg-indigo-600 text-white'
+                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      +$ Sumar monto
                     </button>
                   </div>
 
-                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-100 dark:border-gray-800">
-                    <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
-                      Precio ($):
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <span className="text-gray-400 font-mono text-xs">$</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="50"
-                        value={precioActual || ''}
-                        onChange={(e) => handleCambioPrecioTipo(tipo.id, parseFloat(e.target.value) || 0)}
-                        className="w-24 text-right text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2 py-1 outline-none focus:border-indigo-500 font-mono font-bold"
-                      />
+                  <div className="w-28">
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder={modoConjunto === 'PORCENTAJE' ? 'Ej: 15' : 'Ej: 2000'}
+                      value={valorConjunto}
+                      onChange={(e) => setValorConjunto(e.target.value)}
+                      className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-1.5 outline-none focus:border-indigo-500 font-mono font-bold"
+                    />
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    onClick={handleAplicarConjunto}
+                    className="text-xs shadow-xs"
+                  >
+                    Aplicar a todos los tipos
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Cuadrícula fija de los 5 tipos oficiales */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {tiposEnvases.map((tipo) => {
+                const precioActual = preciosTiposLocal[tipo.id] ?? tipo.precio
+                const prodsVinculados = conteoPorTipo[tipo.id] || 0
+                return (
+                  <div
+                    key={tipo.id}
+                    className="p-3.5 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs flex flex-col justify-between gap-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-bold text-sm text-gray-900 dark:text-gray-100">
+                          {tipo.nombre}
+                        </p>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                          {prodsVinculados} {prodsVinculados === 1 ? 'producto vinculado' : 'productos vinculados'}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAplicarTipoAProductos(tipo)}
+                        className="px-2 py-1 rounded-md text-[11px] font-semibold bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 transition-colors cursor-pointer"
+                        title="Asignar este precio a los productos que usan este envase"
+                      >
+                        Sincronizar
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+                      <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                        Precio ($):
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-gray-400 font-mono text-xs">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="50"
+                          value={precioActual || ''}
+                          onChange={(e) => handleCambioPrecioTipo(tipo.id, parseFloat(e.target.value) || 0)}
+                          className="w-28 text-right text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1 outline-none focus:border-indigo-500 font-mono font-bold"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* ── SECCIÓN 2: PRODUCTOS DEL CATÁLOGO ── */}
-        <div className="space-y-2.5">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
-            <div className="flex-1">
-              <SearchInput
-                placeholder="Buscar por nombre de producto o tipo de envase..."
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                onClear={() => setBusqueda('')}
-              />
+                )
+              })}
             </div>
-            <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer select-none bg-gray-100 dark:bg-gray-700/60 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600">
-              <input
-                type="checkbox"
-                checked={soloRetornables}
-                onChange={(e) => setSoloRetornables(e.target.checked)}
-                className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 dark:border-gray-600"
-              />
-              <span className="font-medium">Solo retornables</span>
-            </label>
+
+            {/* Acceso directo a la tabla de productos */}
+            <div className="p-3 bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-2">
+              <span className="text-xs text-emerald-900 dark:text-emerald-300">
+                ¿Querés ver o cambiar qué producto tiene cada envase asignado?
+              </span>
+              <button
+                type="button"
+                onClick={() => setPestanaActiva('PRODUCTOS')}
+                className="text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer whitespace-nowrap"
+              >
+                Ver productos del catálogo →
+              </button>
+            </div>
           </div>
+        )}
 
-          {/* Tabla de productos y asignación de tipo de envase */}
-          <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden max-h-[380px] overflow-y-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead className="sticky top-0 bg-gray-100 dark:bg-gray-800/95 text-gray-700 dark:text-gray-200 uppercase text-[10px] font-semibold tracking-wider border-b border-gray-200 dark:border-gray-700 z-10">
-                <tr>
-                  <th className="px-3 py-2.5 text-center">Retornable</th>
-                  <th className="px-3 py-2.5">Producto</th>
-                  <th className="px-3 py-2.5">Tipo de envase</th>
-                  <th className="px-3 py-2.5 text-right">Precio envase ($)</th>
-                  <th className="px-3 py-2.5 text-center">Acción</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60 bg-white dark:bg-gray-800">
-                {filasVisibles.length === 0 ? (
+        {/* ── VISTA 2: TABLA DE PRODUCTOS DEL CATÁLOGO (Solo scrollea la tabla, todo lo demás fijo) ── */}
+        {pestanaActiva === 'PRODUCTOS' && (
+          <div className="flex-1 flex flex-col min-h-0 space-y-2.5 animate-in fade-in duration-150">
+            {/* Barra de búsqueda y filtro */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+              <div className="flex-1">
+                <SearchInput
+                  placeholder="Buscar por nombre de producto o tipo de envase..."
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  onClear={() => setBusqueda('')}
+                />
+              </div>
+              <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer select-none bg-gray-100 dark:bg-gray-700/60 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 flex-shrink-0">
+                <input
+                  type="checkbox"
+                  checked={soloRetornables}
+                  onChange={(e) => setSoloRetornables(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 dark:border-gray-600"
+                />
+                <span className="font-medium">Solo retornables</span>
+              </label>
+            </div>
+
+            {/* Tabla de productos con altura fija y scroll interno */}
+            <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden flex-1 min-h-0 max-h-[360px] overflow-y-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="sticky top-0 bg-gray-100 dark:bg-gray-800/95 text-gray-700 dark:text-gray-200 uppercase text-[10px] font-semibold tracking-wider border-b border-gray-200 dark:border-gray-700 z-10">
                   <tr>
-                    <td colSpan={5} className="py-8 text-center text-gray-400 dark:text-gray-500">
-                      No se encontraron productos con los filtros aplicados.
-                    </td>
+                    <th className="px-3 py-2.5 text-center w-16">Retornable</th>
+                    <th className="px-3 py-2.5">Producto</th>
+                    <th className="px-3 py-2.5">Tipo de envase oficial</th>
+                    <th className="px-3 py-2.5 text-right w-36">Precio envase ($)</th>
+                    <th className="px-3 py-2.5 text-center w-24">Acción</th>
                   </tr>
-                ) : (
-                  filasVisibles.map((f) => (
-                    <tr
-                      key={f.id}
-                      className={`hover:bg-gray-50/80 dark:hover:bg-gray-700/40 transition-colors ${
-                        f.modificado ? 'bg-indigo-50/40 dark:bg-indigo-950/20' : ''
-                      }`}
-                    >
-                      {/* Checkbox retornable */}
-                      <td className="px-3 py-2 text-center w-16">
-                        <input
-                          type="checkbox"
-                          checked={f.esRetornable}
-                          onChange={(e) => handleToggleRetornable(f.id, e.target.checked)}
-                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 dark:border-gray-600 cursor-pointer"
-                        />
-                      </td>
-
-                      {/* Descripción y categoría */}
-                      <td className="px-3 py-2 min-w-[180px]">
-                        <div className="font-semibold text-gray-900 dark:text-gray-100">{f.descripcion}</div>
-                        <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
-                          {f.categoriaNombre && <span>{f.categoriaNombre}</span>}
-                          <span>Precio venta: {formatPrecio(f.precioVenta)}</span>
-                        </div>
-                      </td>
-
-                      {/* Selector de tipo de envase oficial */}
-                      <td className="px-3 py-2 min-w-[170px]">
-                        <select
-                          disabled={!f.esRetornable}
-                          value={f.nombreEnvase || ''}
-                          onChange={(e) => handleSeleccionarTipoEnProducto(f.id, e.target.value)}
-                          className={`w-full text-xs rounded-md border px-2 py-1 outline-none transition-colors ${
-                            !f.esRetornable
-                              ? 'bg-gray-100 dark:bg-gray-800/40 border-gray-200 dark:border-gray-700 text-gray-400 cursor-not-allowed'
-                              : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-indigo-500 font-medium'
-                          }`}
-                        >
-                          <option value="">-- Seleccionar tipo --</option>
-                          {tiposEnvases.map((tipo) => (
-                            <option key={tipo.id} value={tipo.nombre}>
-                              {tipo.nombre} ({formatPrecio(preciosTiposLocal[tipo.id] ?? tipo.precio)})
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-
-                      {/* Precio del envase */}
-                      <td className="px-3 py-2 text-right w-36">
-                        <div className="inline-flex items-center justify-end gap-1">
-                          <span className="text-gray-400 font-mono">$</span>
-                          <input
-                            type="number"
-                            min="0"
-                            step="50"
-                            disabled={!f.esRetornable}
-                            value={f.precioEnvase || ''}
-                            onChange={(e) => handleCambioPrecioProducto(f.id, parseFloat(e.target.value) || 0)}
-                            placeholder="0"
-                            className={`w-24 text-right text-xs rounded-md border px-2 py-1 outline-none font-mono font-bold transition-colors ${
-                              !f.esRetornable
-                                ? 'bg-gray-100 dark:bg-gray-800/40 border-gray-200 dark:border-gray-700 text-gray-400 cursor-not-allowed'
-                                : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-indigo-500'
-                            }`}
-                          />
-                        </div>
-                      </td>
-
-                      {/* Acción individual */}
-                      <td className="px-3 py-2 text-center w-24">
-                        {f.modificado ? (
-                          <button
-                            type="button"
-                            onClick={() => handleGuardarFila(f.id)}
-                            disabled={guardando}
-                            className="px-2 py-1 rounded text-[11px] font-semibold bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer transition-all"
-                          >
-                            Guardar
-                          </button>
-                        ) : (
-                          <span className="text-[10px] text-gray-400">—</span>
-                        )}
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60 bg-white dark:bg-gray-800">
+                  {filasVisibles.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-12 text-center text-gray-400 dark:text-gray-500">
+                        No se encontraron productos con los filtros aplicados.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                  ) : (
+                    filasVisibles.map((f) => (
+                      <tr
+                        key={f.id}
+                        className={`hover:bg-gray-50/80 dark:hover:bg-gray-700/40 transition-colors ${
+                          f.modificado ? 'bg-indigo-50/40 dark:bg-indigo-950/20' : ''
+                        }`}
+                      >
+                        {/* Checkbox retornable */}
+                        <td className="px-3 py-2 text-center w-16">
+                          <input
+                            type="checkbox"
+                            checked={f.esRetornable}
+                            onChange={(e) => handleToggleRetornable(f.id, e.target.checked)}
+                            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 dark:border-gray-600 cursor-pointer"
+                          />
+                        </td>
 
-        {/* Footer con resumen y botones */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-2 border-t border-gray-100 dark:border-gray-700">
+                        {/* Descripción y categoría */}
+                        <td className="px-3 py-2 min-w-[180px]">
+                          <div className="font-semibold text-gray-900 dark:text-gray-100">{f.descripcion}</div>
+                          <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+                            {f.categoriaNombre && <span>{f.categoriaNombre}</span>}
+                            <span>Precio venta: {formatPrecio(f.precioVenta)}</span>
+                          </div>
+                        </td>
+
+                        {/* Selector de tipo de envase oficial */}
+                        <td className="px-3 py-2 min-w-[170px]">
+                          <select
+                            disabled={!f.esRetornable}
+                            value={f.nombreEnvase || ''}
+                            onChange={(e) => handleSeleccionarTipoEnProducto(f.id, e.target.value)}
+                            className={`w-full text-xs rounded-md border px-2 py-1 outline-none transition-colors ${
+                              !f.esRetornable
+                                ? 'bg-gray-100 dark:bg-gray-800/40 border-gray-200 dark:border-gray-700 text-gray-400 cursor-not-allowed'
+                                : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-indigo-500 font-medium'
+                            }`}
+                          >
+                            <option value="">-- Seleccionar tipo --</option>
+                            {tiposEnvases.map((tipo) => (
+                              <option key={tipo.id} value={tipo.nombre}>
+                                {tipo.nombre} ({formatPrecio(preciosTiposLocal[tipo.id] ?? tipo.precio)})
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+
+                        {/* Precio del envase */}
+                        <td className="px-3 py-2 text-right w-36">
+                          <div className="inline-flex items-center justify-end gap-1">
+                            <span className="text-gray-400 font-mono">$</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="50"
+                              disabled={!f.esRetornable}
+                              value={f.precioEnvase || ''}
+                              onChange={(e) => handleCambioPrecioProducto(f.id, parseFloat(e.target.value) || 0)}
+                              placeholder="0"
+                              className={`w-24 text-right text-xs rounded-md border px-2 py-1 outline-none font-mono font-bold transition-colors ${
+                                !f.esRetornable
+                                  ? 'bg-gray-100 dark:bg-gray-800/40 border-gray-200 dark:border-gray-700 text-gray-400 cursor-not-allowed'
+                                  : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-indigo-500'
+                              }`}
+                            />
+                          </div>
+                        </td>
+
+                        {/* Acción individual */}
+                        <td className="px-3 py-2 text-center w-24">
+                          {f.modificado ? (
+                            <button
+                              type="button"
+                              onClick={() => handleGuardarFila(f.id)}
+                              disabled={guardando}
+                              className="px-2 py-1 rounded text-[11px] font-semibold bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer transition-all"
+                            >
+                              Guardar
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-gray-400">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ── FOOTER FIJO: SIEMPRE VISIBLE EN EL FONDO ── */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-3 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div className="text-xs text-gray-500 dark:text-gray-400">
             {cantModificados > 0 ? (
               <span className="font-semibold text-indigo-600 dark:text-indigo-400">
                 {cantModificados} {cantModificados === 1 ? 'producto modificado' : 'productos modificados'} sin guardar
               </span>
             ) : (
-              <span>Mostrando {filasVisibles.length} productos</span>
+              <span>Mostrando {filasVisibles.length} productos en catálogo</span>
             )}
           </div>
           <div className="flex items-center gap-2 w-full sm:w-auto">
