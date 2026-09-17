@@ -66,10 +66,10 @@ export function CatalogoPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
-            variant="ghost"
+            variant="success"
             size="sm"
             onClick={() => setAumentoOpen(true)}
-            className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-semibold shadow-xs transition-all"
+            className="flex items-center gap-1.5 shadow-xs font-semibold"
           >
             Aumento Masivo %
           </Button>
