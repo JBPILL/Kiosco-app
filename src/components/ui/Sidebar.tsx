@@ -1,7 +1,8 @@
-import { useEffect, useRef, useMemo } from 'react'
+import { useEffect, useRef, useMemo, useState } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
 import { usePwaStore } from '../../stores/pwaStore'
+import { KeyboardShortcutsModal } from '../pos/KeyboardShortcutsModal'
 
 interface SidebarProps {
   isOpen: boolean
@@ -24,6 +25,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const location = useLocation()
   const { usuario, logout } = useAuthStore()
   const { puedeInstalar, estaInstalado, instalarApp } = usePwaStore()
+  const [modalShortcutsOpen, setModalShortcutsOpen] = useState(false)
   const itemRefs = useRef<(HTMLAnchorElement | null)[]>([])
 
   const itemsVisibles = useMemo(() => {
@@ -101,6 +103,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // Atajos globales: Alt+M o F10 para enfocar menú, y Alt+1..7 para navegación directa
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // F1: Abrir modal de atajos de teclado
+      if (e.key === 'F1') {
+        e.preventDefault()
+        setModalShortcutsOpen(true)
+        return
+      }
+
       // Alt + M o F10: Enfocar el menú lateral
       if ((e.altKey && e.key.toLowerCase() === 'm') || e.key === 'F10') {
         e.preventDefault()
@@ -193,29 +202,41 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           ))}
         </nav>
 
-        {/* Enlace directo a Configuración (solo para comercios, oculto en modo Super-Admin) */}
-        {!usuario?.es_superadmin && usuario?.rol === 'DUEÑO' && (
-          <div className="px-3 py-1.5 border-t border-gray-200 dark:border-gray-700">
-            <NavLink
-              to="/config"
-              onClick={onClose}
-              className={({ isActive }) => `
-                flex items-center justify-between px-4 py-2.5 rounded-xl w-full text-sm font-medium transition-colors
-                ${
-                  isActive
-                    ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-semibold'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100'
-                }
-              `}
-            >
-              <span>Configuración</span>
-            </NavLink>
-          </div>
-        )}
-
-        {/* Enlace directo a Soporte y Ayuda / Mesa de ayuda (solo para comercios, oculto en modo Super-Admin) */}
+        {/* Acciones del Sistema: Configuración, Atajos [F1] y Soporte (solo para comercios, oculto en modo Super-Admin) */}
         {!usuario?.es_superadmin && (
-          <div className="px-3 py-1.5 border-t border-gray-100 dark:border-gray-700/50">
+          <div className="px-3 py-2 border-t border-gray-200 dark:border-gray-700 space-y-1">
+            {usuario?.rol === 'DUEÑO' && (
+              <NavLink
+                to="/config"
+                onClick={onClose}
+                className={({ isActive }) => `
+                  flex items-center justify-between px-4 py-2.5 rounded-xl w-full text-sm font-medium transition-colors
+                  ${
+                    isActive
+                      ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-semibold'
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100'
+                  }
+                `}
+              >
+                <span>Configuración</span>
+              </NavLink>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setModalShortcutsOpen(true)
+                onClose()
+              }}
+              className="flex items-center justify-between px-4 py-2.5 rounded-xl w-full text-xs font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100 transition-colors cursor-pointer"
+              title="Ver atajos de teclado [F1]"
+            >
+              <span>Atajos [F1]</span>
+              <kbd className="px-1.5 py-0.5 rounded text-[10px] font-mono text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600">
+                F1
+              </kbd>
+            </button>
+
             <NavLink
               to="/soporte"
               onClick={onClose}
@@ -266,6 +287,12 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           </button>
         </div>
       </aside>
+
+      {/* Modal global de Atajos de Teclado */}
+      <KeyboardShortcutsModal
+        isOpen={modalShortcutsOpen}
+        onClose={() => setModalShortcutsOpen(false)}
+      />
     </>
   )
 }
