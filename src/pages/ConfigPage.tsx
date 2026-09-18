@@ -314,16 +314,21 @@ export function ConfigPage() {
     try {
       const { data: vtas, error: vErr } = await supabase
         .from('ventas')
-        .select('*, pagos:pagos_venta(*)')
+        .select(`
+          id, fecha_hora, total, estado, notas,
+          afip_cae, afip_tipo_comprobante, afip_nro_comprobante,
+          usuario:usuarios(nombre),
+          pagos:pagos_venta(medio_pago, monto)
+        `)
         .eq('kiosco_id', usuario.kiosco_id)
-        .order('fecha', { ascending: false })
+        .order('fecha_hora', { ascending: false })
       if (vErr) throw vErr
 
-      await exportarVentasExcel(vtas || [], kiosco?.nombre || 'Kiosco')
+      await exportarVentasExcel(vtas || [], kiosco?.nombre || 'Kiosco', 'Histórico Completo')
       toast.success('Copia de ventas descargada en Excel (.xlsx)')
-    } catch (err) {
-      console.error(err)
-      toast.error('Error al exportar ventas')
+    } catch (err: any) {
+      console.error('Error al exportar ventas:', err)
+      toast.error(err?.message ? `Error al exportar ventas: ${err.message}` : 'Error al exportar ventas')
     } finally {
       setExportandoBackup(false)
     }

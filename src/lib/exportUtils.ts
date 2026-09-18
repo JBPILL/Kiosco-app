@@ -380,21 +380,23 @@ export async function exportarCatalogoExcel(
 
 export const exportarCatalogoCSV = exportarCatalogoExcel
 
+export interface VentaParaExportar {
+  id: string
+  fecha_hora: string
+  total: number
+  estado?: string | null
+  notas?: string | null
+  pagos?: { medio_pago: string; monto: number }[]
+  afip_nro_comprobante?: number | null
+  afip_cae?: string | null
+  usuario?: any
+}
+
 // ============================================================================
 // REPORTE EJECUTIVO DE VENTAS
 // ============================================================================
 export async function exportarVentasExcel(
-  ventas: {
-    id: string
-    fecha_hora: string
-    total: number
-    estado: string
-    notas?: string | null
-    pagos?: { medio_pago: string; monto: number }[]
-    afip_nro_comprobante?: number | null
-    afip_cae?: string | null
-    usuario?: { nombre: string } | null
-  }[],
+  ventas: VentaParaExportar[],
   nombreKiosco: string = 'Kiosco',
   fechaOPeriodo?: string
 ) {
@@ -493,25 +495,30 @@ export async function exportarVentasExcel(
     const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
     const ticket = v.afip_nro_comprobante
       ? `FC-${String(v.afip_nro_comprobante).padStart(8, '0')}`
-      : `T-${v.id.slice(0, 8).toUpperCase()}`
+      : v.id
+      ? `T-${v.id.slice(0, 8).toUpperCase()}`
+      : 'T-S/N'
 
     const esFiscal = Boolean(v.afip_cae)
     const circuitoStr = esFiscal ? 'AFIP Oficial' : 'Mostrador Interno'
-    const cajeroStr = v.usuario?.nombre || 'Cajero'
+    const cajeroStr = Array.isArray(v.usuario)
+      ? v.usuario[0]?.nombre || 'Cajero'
+      : v.usuario?.nombre || 'Cajero'
+    const fechaTexto = v.fecha_hora ? formatFecha(v.fecha_hora) : '—'
     const mediosStr =
       v.pagos && v.pagos.length > 0
-        ? v.pagos.map((p) => `${labelMedioPago(p.medio_pago)}: ${formatPrecio(p.monto)}`).join(' | ')
+        ? v.pagos.map((p: any) => `${labelMedioPago(p.medio_pago)}: ${formatPrecio(p.monto)}`).join(' | ')
         : 'Efectivo'
 
     rows.push([
       cText(ticket, bg, 'center', true),
-      cText(formatFecha(v.fecha_hora), bg, 'center'),
+      cText(fechaTexto, bg, 'center'),
       cText(circuitoStr, bg, 'center'),
       cText(v.afip_cae || '—', bg, 'center'),
       cText(cajeroStr, bg, 'left'),
       cText(mediosStr, bg, 'left'),
-      cText(v.estado, bg, 'center', v.estado === 'ANULADA'),
-      cMoney(v.total, bg, true),
+      cText(v.estado || 'COMPLETADA', bg, 'center', v.estado === 'ANULADA'),
+      cMoney(v.total || 0, bg, true),
     ] as Row)
   })
 
