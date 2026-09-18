@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../stores/authStore'
 import { useProveedorStore } from '../../stores/proveedorStore'
 import { formatPrecio, formatFecha, labelMedioPago, getFechaLocal, getLimitesISODia, getLimitesISORango } from '../../lib/utils'
-import { exportarLibroContableCSV, type MovimientoContableCSV } from '../../lib/exportUtils'
+import { exportarLibroContableExcel, exportarLibroIvaVentasExcel, type MovimientoContableCSV } from '../../lib/exportUtils'
 import { Button } from '../ui/Button'
 import { SearchInput } from '../ui/SearchInput'
 import { TicketReceiptModal, type TicketData } from '../pos/TicketReceiptModal'
@@ -447,8 +447,8 @@ export function BalanceContableTab() {
     })
   }, [libroDiario, filtroTipo, busqueda])
 
-  // Exportar libro diario contable a CSV para Excel
-  const handleExportarLibroDiario = () => {
+  // Exportar libro diario contable a Excel (.xlsx) con variables contables
+  const handleExportarLibroDiario = async () => {
     if (libroDiario.length === 0) {
       toast.error('No hay movimientos en este período para exportar')
       return
@@ -465,67 +465,37 @@ export function BalanceContableTab() {
       observaciones: a.notas || undefined,
     }))
 
-    exportarLibroContableCSV(
+    await exportarLibroContableExcel(
       exportRows,
       etiquetaPeriodo.replace(/[^a-zA-Z0-9]/g, '_'),
-      kiosco?.nombre || 'Kiosco'
+      kiosco?.nombre || 'Kiosco',
+      {
+        totalIngresos,
+        totalComprasMercaderia,
+        resultadoOperativo,
+        totalSalidasFinancieras,
+        flujoCajaNeto,
+        totalFacturadoAFIP,
+        totalVentasInternas: totalIngresos - totalFacturadoAFIP,
+        deudaTotalProveedores,
+      }
     )
-    toast.success('Libro contable descargado en formato CSV para Excel')
+    toast.success('Libro contable descargado en formato Excel (.xlsx)')
   }
 
-  // Exportar Libro IVA Ventas para AFIP / Contador
-  const handleExportarLibroIvaVentas = () => {
+  // Exportar Libro IVA Ventas para AFIP / Contador en Excel (.xlsx)
+  const handleExportarLibroIvaVentas = async () => {
     if (ventasFiscalesPeriodo.length === 0) {
       toast.error('No hay ventas con factura electrónica AFIP en este período')
       return
     }
 
-    const encabezados = [
-      'Fecha',
-      'Hora',
-      'Tipo Comprobante',
-      'Punto Venta',
-      'Numero Comprobante',
-      'CAE',
-      'Total Facturado',
-      'Medio de Pago',
-      'Cajero',
-    ]
-
-    const filas = ventasFiscalesPeriodo.map((v: any) => {
-      const d = new Date(v.fecha_hora)
-      const fecha = d.toLocaleDateString('es-AR')
-      const hora = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
-      const tipoCompStr = v.afip_tipo_comprobante === 11 ? 'Factura C' : v.afip_tipo_comprobante === 6 ? 'Factura B' : 'Factura'
-      const pv = String(kiosco?.afip_punto_venta || 2).padStart(4, '0')
-      const nro = String(v.afip_nro_comprobante || 0).padStart(8, '0')
-      const medioStr = v.pagos && v.pagos.length > 0 ? v.pagos.map((p: any) => labelMedioPago(p.medio_pago)).join(' + ') : 'Efectivo'
-      const cajeroStr = v.usuario?.nombre || 'Cajero'
-
-      return [
-        fecha,
-        hora,
-        `"${tipoCompStr}"`,
-        pv,
-        nro,
-        `"${v.afip_cae || ''}"`,
-        v.total.toFixed(2),
-        `"${medioStr}"`,
-        `"${cajeroStr}"`,
-      ].join(',')
-    })
-
-    const csvContent = '\uFEFF' + [encabezados.join(','), ...filas].join('\r\n')
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.setAttribute('download', `Libro_IVA_Ventas_AFIP_${etiquetaPeriodo.replace(/[^a-zA-Z0-9]/g, '_')}.csv`)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-    toast.success('Libro IVA Ventas exportado en formato CSV para el contador')
+    await exportarLibroIvaVentasExcel(
+      ventasFiscalesPeriodo,
+      kiosco,
+      etiquetaPeriodo.replace(/[^a-zA-Z0-9]/g, '_')
+    )
+    toast.success('Libro IVA Ventas exportado en formato Excel (.xlsx) para el contador')
   }
 
   return (
@@ -606,9 +576,9 @@ export function BalanceContableTab() {
             onClick={handleExportarLibroDiario}
             disabled={libroDiario.length === 0}
             className="text-xs font-semibold whitespace-nowrap shrink-0"
-            title="Descargar libro contable completo con ingresos y egresos en CSV para Excel"
+            title="Descargar libro contable completo con ingresos, egresos y cuadros KPI en Excel (.xlsx)"
           >
-            Descargar Libro Diario (.CSV)
+            Descargar Libro Diario (.XLSX)
           </Button>
         </div>
       </div>
@@ -669,9 +639,9 @@ export function BalanceContableTab() {
             onClick={handleExportarLibroIvaVentas}
             disabled={ventasFiscalesPeriodo.length === 0}
             className="text-xs font-semibold whitespace-nowrap"
-            title="Descargar planilla con todas las ventas que tienen CAE para el contador"
+            title="Descargar planilla Excel con todas las ventas que tienen CAE para el contador"
           >
-            Exportar Libro IVA AFIP (.CSV)
+            Exportar Libro IVA AFIP (.XLSX)
           </Button>
         </div>
       </div>

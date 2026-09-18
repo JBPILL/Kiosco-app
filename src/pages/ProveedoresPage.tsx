@@ -6,7 +6,7 @@ import { useAuthStore } from '../stores/authStore'
 import { useBarcodeGun } from '../hooks/useBarcodeGun'
 import { playScanSound } from '../lib/sound'
 import { formatPrecio, formatFecha, labelMedioPago } from '../lib/utils'
-import { exportarDetalleCompraCSV } from '../lib/exportUtils'
+import { exportarDetalleCompraExcel } from '../lib/exportUtils'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
@@ -788,10 +788,11 @@ export function ProveedoresPage() {
     window.open(url, '_blank')
   }
 
-  const handleExportarExcelRemito = () => {
+  const handleExportarExcelRemito = async () => {
     if (!compraDetalle) return
-    exportarDetalleCompraCSV(compraDetalle, detallesCargados)
-    toast.success('Remito exportado a archivo CSV para Excel')
+    const kiosco = useAuthStore.getState().kiosco
+    await exportarDetalleCompraExcel(compraDetalle, detallesCargados, kiosco?.nombre || 'Kiosco')
+    toast.success('Remito exportado en formato Excel (.xlsx)')
   }
 
   // Handlers Historial de Pagos
@@ -2333,9 +2334,9 @@ export function ProveedoresPage() {
                 variant="secondary"
                 size="sm"
                 onClick={handleExportarExcelRemito}
-                disabled={detallesCargados.length === 0}
+                title="Descargar remito de mercadería en formato Excel corporativo (.xlsx)"
               >
-                Exportar Excel / CSV
+                Exportar Excel (.XLSX)
               </Button>
               <Button
                 variant="success"

@@ -7,7 +7,7 @@ import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import type { Kiosco, Usuario, Suscripcion, Categoria } from '../types/database'
 import { formatPrecio, formatFechaCorta } from '../lib/utils'
-import { exportarCatalogoCSV, exportarVentasCSV } from '../lib/exportUtils'
+import { exportarCatalogoExcel, exportarVentasExcel } from '../lib/exportUtils'
 import { AFIPConfigSection } from '../components/config/AFIPConfigSection'
 import { useConfigAdminStore, formatearLinkWhatsApp } from '../stores/configAdminStore'
 import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
@@ -298,8 +298,8 @@ export function ConfigPage() {
         .select('*')
         .eq('kiosco_id', usuario.kiosco_id)
 
-      exportarCatalogoCSV(prods || [], cats || [], kiosco?.nombre || 'Kiosco')
-      toast.success('Copia del catálogo descargada')
+      await exportarCatalogoExcel(prods || [], cats || [], kiosco?.nombre || 'Kiosco')
+      toast.success('Copia del catálogo descargada en Excel (.xlsx)')
     } catch (err) {
       console.error(err)
       toast.error('Error al exportar catálogo')
@@ -319,8 +319,8 @@ export function ConfigPage() {
         .order('fecha', { ascending: false })
       if (vErr) throw vErr
 
-      exportarVentasCSV(vtas || [], kiosco?.nombre || 'Kiosco')
-      toast.success('Copia de ventas descargada')
+      await exportarVentasExcel(vtas || [], kiosco?.nombre || 'Kiosco')
+      toast.success('Copia de ventas descargada en Excel (.xlsx)')
     } catch (err) {
       console.error(err)
       toast.error('Error al exportar ventas')
@@ -764,7 +764,7 @@ export function ConfigPage() {
                 Copias de Seguridad (Backup de Datos)
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Descargá una copia física de la información de tu negocio en formato Excel (.CSV) para tener siempre un resguardo seguro en tu computadora.
+                Descargá una copia física de la información de tu negocio en formato Excel corporativo (.XLSX) para tener siempre un resguardo seguro en tu computadora.
               </p>
             </div>
 
@@ -785,7 +785,7 @@ export function ConfigPage() {
                   disabled={exportandoBackup}
                   className="w-full text-xs font-semibold"
                 >
-                  {exportandoBackup ? 'Generando...' : 'Descargar Catálogo (.CSV)'}
+                  {exportandoBackup ? 'Generando...' : 'Descargar Catálogo (.XLSX)'}
                 </Button>
               </div>
 
@@ -805,7 +805,7 @@ export function ConfigPage() {
                   disabled={exportandoBackup}
                   className="w-full text-xs font-semibold"
                 >
-                  {exportandoBackup ? 'Generando...' : 'Descargar Ventas (.CSV)'}
+                  {exportandoBackup ? 'Generando...' : 'Descargar Ventas (.XLSX)'}
                 </Button>
               </div>
 

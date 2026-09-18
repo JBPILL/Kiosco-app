@@ -6,7 +6,7 @@ import { ProductForm } from '../components/catalogo/ProductForm'
 import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
 import { AumentoPreciosModal } from '../components/catalogo/AumentoPreciosModal'
 import { PreciosEnvasesModal } from '../components/catalogo/PreciosEnvasesModal'
-import { exportarCatalogoCSV } from '../lib/exportUtils'
+import { exportarCatalogoExcel } from '../lib/exportUtils'
 import { useAuthStore } from '../stores/authStore'
 import { Button } from '../components/ui/Button'
 import type { Producto } from '../types/database'
@@ -92,10 +92,11 @@ export function CatalogoPage() {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => exportarCatalogoCSV(productos, categorias, kiosco?.nombre)}
+            onClick={() => exportarCatalogoExcel(productos, categorias, kiosco?.nombre)}
             className="flex items-center gap-1.5 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+            title="Descargar catálogo completo y valuación en formato Excel corporativo (.xlsx)"
           >
-            Exportar (.CSV)
+            Exportar (.XLSX)
           </Button>
         </div>
       </div>

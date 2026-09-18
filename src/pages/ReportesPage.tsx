@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/authStore'
 import { formatPrecio, formatFecha, labelMedioPago, getFechaLocal, getLimitesISODia } from '../lib/utils'
-import { exportarVentasCSV } from '../lib/exportUtils'
+import { exportarVentasExcel } from '../lib/exportUtils'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { TicketReceiptModal, type TicketData } from '../components/pos/TicketReceiptModal'
@@ -218,11 +218,11 @@ export function ReportesPage() {
     setTicketParaImprimir(ticketData)
   }
 
-  const handleExportarVentasDia = () => {
+  const handleExportarVentasDia = async () => {
     if (ventas.length === 0) return
     const kiosco = useAuthStore.getState().kiosco
-    exportarVentasCSV(ventas, `${kiosco?.nombre || 'Kiosco'}_${fecha}`)
-    toast.success('Reporte diario exportado a CSV')
+    await exportarVentasExcel(ventas, kiosco?.nombre || 'Kiosco', fecha)
+    toast.success('Reporte diario exportado en formato Excel (.xlsx)')
   }
 
   return (
@@ -312,9 +312,9 @@ export function ReportesPage() {
                 onClick={handleExportarVentasDia}
                 disabled={ventas.length === 0}
                 className="text-xs"
-                title="Descargar las ventas de este día en formato CSV / Excel"
+                title="Descargar las ventas de este día en formato Excel corporativo (.xlsx)"
               >
-                Exportar Día (.CSV)
+                Exportar Día (.XLSX)
               </Button>
             </div>
           </div>
