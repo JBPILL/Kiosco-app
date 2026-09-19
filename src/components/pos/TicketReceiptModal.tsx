@@ -24,6 +24,7 @@ export interface TicketData {
   } | null
   total: number
   medioPago: string
+  pagos?: { medioPago: string; monto: number }[]
   pagaCon?: number
   vuelto?: number
   kioscoNombre?: string
@@ -371,6 +372,16 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
                 <span>Medio de pago:</span>
                 <span className="font-medium uppercase">{ticket.medioPago}</span>
               </div>
+              {ticket.pagos && ticket.pagos.length > 1 && (
+                <div className="pl-2 space-y-0.5 text-[10px] text-gray-700">
+                  {ticket.pagos.map((p, idx) => (
+                    <div key={idx} className="flex justify-between">
+                      <span>• {p.medioPago}:</span>
+                      <span className="font-semibold">{formatPrecio(p.monto)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {ticket.clienteNombre && (
                 <div className="flex justify-between font-semibold text-gray-800">
                   <span>Cliente:</span>

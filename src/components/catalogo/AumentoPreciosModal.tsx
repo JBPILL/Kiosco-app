@@ -1,9 +1,10 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { supabase } from '../../lib/supabase'
 import { formatPrecio } from '../../lib/utils'
 import type { Producto, Categoria } from '../../types/database'
+import { useProveedorStore } from '../../stores/proveedorStore'
 import toast from 'react-hot-toast'
 
 interface AumentoPreciosModalProps {
@@ -23,11 +24,20 @@ export function AumentoPreciosModal({
   productos,
   onAumentoAplicado,
 }: AumentoPreciosModalProps) {
+  const { proveedores, cargarProveedores } = useProveedorStore()
+  const [criterioFiltro, setCriterioFiltro] = useState<'CATEGORIA' | 'PROVEEDOR' | 'TODOS'>('CATEGORIA')
   const [categoriaId, setCategoriaId] = useState<string>('TODAS')
+  const [proveedorId, setProveedorId] = useState<string>('TODOS')
   const [porcentaje, setPorcentaje] = useState<number>(10)
   const [tipoPrecio, setTipoPrecio] = useState<'VENTA' | 'COSTO_Y_VENTA'>('VENTA')
   const [redondeo, setRedondeo] = useState<TipoRedondeo>('100')
   const [procesando, setProcesando] = useState(false)
+
+  useEffect(() => {
+    if (isOpen) {
+      cargarProveedores()
+    }
+  }, [isOpen, cargarProveedores])
 
   // Función para calcular nuevo precio aplicando incremento y regla de redondeo
   const calcularNuevo = (precio: number, pct: number, reg: TipoRedondeo): number => {
@@ -45,9 +55,16 @@ export function AumentoPreciosModal({
 
   // Filtrar productos afectados
   const productosAfectados = useMemo(() => {
-    if (categoriaId === 'TODAS') return productos.filter((p) => p.activo)
-    return productos.filter((p) => p.activo && p.categoria_id === categoriaId)
-  }, [productos, categoriaId])
+    return productos.filter((p) => {
+      if (!p.activo) return false
+      if (criterioFiltro === 'CATEGORIA') {
+        if (categoriaId !== 'TODAS' && p.categoria_id !== categoriaId) return false
+      } else if (criterioFiltro === 'PROVEEDOR') {
+        if (proveedorId !== 'TODOS' && p.proveedor_id !== proveedorId) return false
+      }
+      return true
+    })
+  }, [productos, criterioFiltro, categoriaId, proveedorId])
 
   // Vista previa de los primeros 5 productos
   const vistaPrevia = useMemo(() => {
@@ -180,35 +197,118 @@ export function AumentoPreciosModal({
           </div>
         </div>
 
-        {/* Selectores de Alcance: Categoría y Tipo de Precio */}
+        {/* Selector de Criterio: Categoría / Proveedor / Todo el Catálogo */}
+        <div className="space-y-1.5">
+          <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+            Criterio de Aplicación
+          </label>
+          <div className="grid grid-cols-3 gap-1.5 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setCriterioFiltro('CATEGORIA')}
+              className={`py-1.5 px-2 rounded-lg transition-all text-center cursor-pointer ${
+                criterioFiltro === 'CATEGORIA'
+                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+              }`}
+            >
+              Por Categoría
+            </button>
+            <button
+              type="button"
+              onClick={() => setCriterioFiltro('PROVEEDOR')}
+              className={`py-1.5 px-2 rounded-lg transition-all text-center cursor-pointer ${
+                criterioFiltro === 'PROVEEDOR'
+                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+              }`}
+            >
+              Por Proveedor
+            </button>
+            <button
+              type="button"
+              onClick={() => setCriterioFiltro('TODOS')}
+              className={`py-1.5 px-2 rounded-lg transition-all text-center cursor-pointer ${
+                criterioFiltro === 'TODOS'
+                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+              }`}
+            >
+              Todo el Catálogo
+            </button>
+          </div>
+        </div>
+
+        {/* Selectores de Alcance: Categoría / Proveedor y Tipo de Precio */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-          {/* Categoría objetivo */}
+          {/* Objetivo según criterio */}
           <div>
-            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-              Categoría a incrementar
-            </label>
-            <div className="relative">
-              <select
-                value={categoriaId}
-                onChange={(e) => setCategoriaId(e.target.value)}
-                className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all font-medium appearance-none cursor-pointer pr-9"
-              >
-                <option value="TODAS">Todo el catálogo ({productos.length})</option>
-                {categorias.map((c) => {
-                  const cant = productos.filter((p) => p.categoria_id === c.id).length
-                  return (
-                    <option key={c.id} value={c.id}>
-                      {c.nombre} ({cant} prod.)
-                    </option>
-                  )
-                })}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
-            </div>
+            {criterioFiltro === 'CATEGORIA' ? (
+              <>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                  Categoría a incrementar
+                </label>
+                <div className="relative">
+                  <select
+                    value={categoriaId}
+                    onChange={(e) => setCategoriaId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all font-medium appearance-none cursor-pointer pr-9"
+                  >
+                    <option value="TODAS">Todas las categorías ({productos.length})</option>
+                    {categorias.map((c) => {
+                      const cant = productos.filter((p) => p.categoria_id === c.id).length
+                      return (
+                        <option key={c.id} value={c.id}>
+                          {c.nombre} ({cant} prod.)
+                        </option>
+                      )
+                    })}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
+              </>
+            ) : criterioFiltro === 'PROVEEDOR' ? (
+              <>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                  Proveedor a incrementar
+                </label>
+                <div className="relative">
+                  <select
+                    value={proveedorId}
+                    onChange={(e) => setProveedorId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all font-medium appearance-none cursor-pointer pr-9"
+                  >
+                    <option value="TODOS">Todos los proveedores</option>
+                    {proveedores.filter((p) => p.activo).map((prov) => {
+                      const cant = productos.filter((p) => p.proveedor_id === prov.id).length
+                      return (
+                        <option key={prov.id} value={prov.id}>
+                          {prov.nombre} ({cant} prod.)
+                        </option>
+                      )
+                    })}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                  Alcance
+                </label>
+                <div className="p-2.5 bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 rounded-xl text-xs text-indigo-700 dark:text-indigo-300 font-medium">
+                  Se actualizará el catálogo completo ({productosAfectados.length} artículos activos)
+                </div>
+              </>
+            )}
           </div>
 
           {/* Tipo de precio */}

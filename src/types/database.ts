@@ -14,6 +14,8 @@ export interface Kiosco {
   condicion_iva?: string | null
   afip_punto_venta?: number | null
   afip_habilitado?: boolean
+  // Políticas de Caja
+  arqueo_ciego_obligatorio?: boolean
 }
 
 export interface Categoria {
@@ -28,6 +30,7 @@ export interface Producto {
   id: string
   kiosco_id: string
   categoria_id: string | null
+  proveedor_id?: string | null
   codigo_barras: string | null
   descripcion: string
   precio_costo: number
@@ -40,6 +43,7 @@ export interface Producto {
   fecha_actualizacion: string
   // Relación opcional (join)
   categoria?: Categoria
+  proveedor?: Proveedor
   // Lotes y vencimientos
   requiere_vencimiento?: boolean
   dias_alerta_vencimiento?: number

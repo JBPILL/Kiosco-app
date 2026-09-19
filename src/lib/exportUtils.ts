@@ -1159,3 +1159,134 @@ export async function exportarLibroIvaVentasExcel(
   await writeXlsxFile(rows, { columns }).toFile(fileName)
 }
 
+// ============================================================================
+// EXPORTACIÓN DE STOCK INMOVILIZADO / STOCK MUERTO (.XLSX)
+// ============================================================================
+
+export interface ItemStockInmovilizado {
+  id: string
+  descripcion: string
+  codigo_barras: string | null
+  categoria_nombre: string
+  proveedor_nombre?: string
+  stock_actual: number
+  precio_costo: number
+  precio_venta: number
+  capital_inmovilizado_costo: number
+  capital_inmovilizado_venta: number
+  dias_sin_ventas: number
+  fecha_ultima_venta: string | null
+}
+
+export async function exportarStockInmovilizadoExcel(
+  items: ItemStockInmovilizado[],
+  kioscoNombre: string = 'KioskoPOS',
+  diasFiltro: number = 30
+) {
+  const totalCols = 9
+  const columns: SheetOptionsColumn[] = [
+    { width: 34 }, // Producto
+    { width: 16 }, // Código de barras
+    { width: 18 }, // Categoría
+    { width: 18 }, // Proveedor
+    { width: 12 }, // Stock Actual
+    { width: 14 }, // Días Sin Venta
+    { width: 16 }, // Última Venta
+    { width: 16 }, // Costo Unitario
+    { width: 18 }, // Capital Parado ($)
+  ]
+
+  const totalCapitalCosto = items.reduce((sum, it) => sum + it.capital_inmovilizado_costo, 0)
+  const totalUnidades = items.reduce((sum, it) => sum + it.stock_actual, 0)
+
+  const fechaGen = new Date().toLocaleDateString('es-AR')
+  const horaGen = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+
+  const rows: (Row | (Cell | null)[])[] = [
+    // Encabezado institucional
+    cSpan({
+      value: `INFORME DE STOCK INMOVILIZADO Y CAPITAL ESTANCADO - ${kioscoNombre.toUpperCase()}`,
+      type: String,
+      fontWeight: 'bold',
+      fontSize: 13,
+      textColor: '#FFFFFF',
+      backgroundColor: '#0F172A',
+      align: 'left',
+    }, totalCols) as Row,
+    cSpan({
+      value: `Filtro de inactividad: Sin rotación en los últimos ${diasFiltro} días | Generado el ${fechaGen} a las ${horaGen}`,
+      type: String,
+      fontSize: 9,
+      textColor: '#94A3B8',
+      backgroundColor: '#0F172A',
+      align: 'left',
+    }, totalCols) as Row,
+    emptyRow(totalCols) as Row,
+
+    // Tarjetas ejecutivas KPI
+    [
+      ...cCardLabel('CAPITAL TOTAL INMOVILIZADO', 4),
+      null,
+      ...cCardLabel('UNIDADES FÍSICAS PARADAS', 4),
+    ] as Row,
+    [
+      ...cCardValue(totalCapitalCosto, true, 4, '#B91C1C'),
+      null,
+      ...cCardValue(`${totalUnidades.toLocaleString('es-AR')} unidades`, false, 4, '#334155'),
+    ] as Row,
+    emptyRow(totalCols) as Row,
+
+    // Cabecera de la tabla
+    cSpan({
+      value: `DETALLE DE PRODUCTOS SIN VENTAS (TOTAL: ${items.length} ARTÍCULOS)`,
+      type: String,
+      fontWeight: 'bold',
+      fontSize: 10,
+      textColor: '#1E293B',
+      backgroundColor: '#E2E8F0',
+      align: 'left',
+      borderColor: '#CBD5E1',
+      borderStyle: 'thin',
+    }, totalCols) as Row,
+    [
+      cHeader('Descripción del Producto', 'left'),
+      cHeader('Código Barras', 'center'),
+      cHeader('Categoría', 'left'),
+      cHeader('Proveedor', 'left'),
+      cHeader('Stock Actual', 'center'),
+      cHeader('Días Inactivo', 'center'),
+      cHeader('Última Venta', 'center'),
+      cHeader('Costo Unitario ($)', 'right'),
+      cHeader('Capital Parado ($)', 'right'),
+    ] as Row,
+  ]
+
+  items.forEach((it, idx) => {
+    const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+    const ultVentaStr = it.fecha_ultima_venta
+      ? new Date(it.fecha_ultima_venta).toLocaleDateString('es-AR')
+      : 'Sin ventas'
+
+    rows.push([
+      cText(it.descripcion, bg, 'left', true),
+      cText(it.codigo_barras || '—', bg, 'center'),
+      cText(it.categoria_nombre, bg, 'left'),
+      cText(it.proveedor_nombre || '—', bg, 'left'),
+      cNum(it.stock_actual, bg, '#,##0', true),
+      cText(`${it.dias_sin_ventas} días`, bg, 'center', true),
+      cText(ultVentaStr, bg, 'center'),
+      cMoney(it.precio_costo, bg),
+      cMoney(it.capital_inmovilizado_costo, bg, true),
+    ] as Row)
+  })
+
+  // Totales
+  rows.push([
+    ...cTotalLabel('TOTAL CAPITAL INMOVILIZADO EN DEPÓSITO', 8),
+    cTotalMoney(totalCapitalCosto),
+  ] as Row)
+
+  const fileName = `stock_inmovilizado_${diasFiltro}dias_${fechaGen.replace(/\//g, '-')}.xlsx`
+  await writeXlsxFile(rows, { columns }).toFile(fileName)
+}
+

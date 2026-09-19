@@ -37,12 +37,16 @@ export function PreciosEnvasesModal({
   const { usuario } = useAuthStore()
   const {
     tiposEnvases,
+    historialMovimientos,
     cargarTiposEnvases,
     actualizarPrecioTipo,
+    actualizarStockVacios,
+    ajustarStockVacios,
+    entregarVaciosADistribuidor,
   } = useEnvasesStore()
 
-  // Pestañas: 'TIPOS' para configurar valores oficiales | 'PRODUCTOS' para asignar en catálogo
-  const [pestanaActiva, setPestanaActiva] = useState<'TIPOS' | 'PRODUCTOS'>('TIPOS')
+  // Pestañas: 'TIPOS' para configurar valores oficiales | 'PRODUCTOS' para asignar en catálogo | 'DEPOSITO' para inventario de vacíos
+  const [pestanaActiva, setPestanaActiva] = useState<'TIPOS' | 'PRODUCTOS' | 'DEPOSITO'>('TIPOS')
 
   const [busqueda, setBusqueda] = useState('')
   const [soloRetornables, setSoloRetornables] = useState(true)
@@ -56,6 +60,19 @@ export function PreciosEnvasesModal({
   const [modoConjunto, setModoConjunto] = useState<'PORCENTAJE' | 'FIJO' | 'SUMA'>('PORCENTAJE')
   const [valorConjunto, setValorConjunto] = useState('')
   const [mostrarPanelConjunto, setMostrarPanelConjunto] = useState(false)
+
+  // Estado para entrega de vacíos a distribuidores
+  const [entregaModalOpen, setEntregaModalOpen] = useState(false)
+  const [tipoParaEntrega, setTipoParaEntrega] = useState<TipoEnvase | null>(null)
+  const [cantidadEntrega, setCantidadEntrega] = useState<number>(1)
+  const [distribuidorEntrega, setDistribuidorEntrega] = useState<string>('Quilmes / Cervecería')
+  const [distribuidorPersonalizado, setDistribuidorPersonalizado] = useState<string>('')
+  const [notasEntrega, setNotasEntrega] = useState<string>('')
+
+  // Estado para ajuste manual directo de stock
+  const [ajusteModalOpen, setAjusteModalOpen] = useState(false)
+  const [tipoParaAjuste, setTipoParaAjuste] = useState<TipoEnvase | null>(null)
+  const [nuevoStockAjuste, setNuevoStockAjuste] = useState<number>(0)
 
   // Cargar tipos al abrir
   useEffect(() => {
@@ -245,6 +262,74 @@ export function PreciosEnvasesModal({
     setMostrarPanelConjunto(false)
   }
 
+  // Handlers para el depósito de envases vacíos
+  const handleAbrirEntrega = (tipo: TipoEnvase) => {
+    setTipoParaEntrega(tipo)
+    setCantidadEntrega(Math.max(1, Math.min(tipo.stock_vacios || 1, 10)))
+    setDistribuidorEntrega('Quilmes / Cervecería')
+    setDistribuidorPersonalizado('')
+    setNotasEntrega('')
+    setEntregaModalOpen(true)
+  }
+
+  const handleConfirmarEntrega = () => {
+    if (!tipoParaEntrega) return
+    const distrib = distribuidorEntrega === 'OTRO' ? distribuidorPersonalizado.trim() : distribuidorEntrega
+    if (!distrib) {
+      toast.error('Especificá el nombre del distribuidor o fletero')
+      return
+    }
+    if (cantidadEntrega <= 0) {
+      toast.error('La cantidad a entregar debe ser mayor a 0')
+      return
+    }
+
+    const ok = entregarVaciosADistribuidor(
+      tipoParaEntrega.id,
+      cantidadEntrega,
+      distrib,
+      notasEntrega.trim() || undefined,
+      usuario?.kiosco_id || undefined,
+      usuario?.nombre || undefined
+    )
+
+    if (ok) {
+      toast.success(`Entrega registrada: ${cantidadEntrega}x ${tipoParaEntrega.nombre} entregados a ${distrib}`)
+      setEntregaModalOpen(false)
+      setTipoParaEntrega(null)
+    }
+  }
+
+  const handleAbrirAjusteManual = (tipo: TipoEnvase) => {
+    setTipoParaAjuste(tipo)
+    setNuevoStockAjuste(tipo.stock_vacios || 0)
+    setAjusteModalOpen(true)
+  }
+
+  const handleConfirmarAjusteManual = () => {
+    if (!tipoParaAjuste) return
+    actualizarStockVacios(
+      tipoParaAjuste.id,
+      nuevoStockAjuste,
+      usuario?.kiosco_id || undefined,
+      usuario?.nombre || undefined
+    )
+    toast.success(`Stock de ${tipoParaAjuste.nombre} actualizado a ${nuevoStockAjuste} unidades`)
+    setAjusteModalOpen(false)
+    setTipoParaAjuste(null)
+  }
+
+  const handleAjusteRapido = (tipoId: string, delta: number) => {
+    ajustarStockVacios(
+      tipoId,
+      delta,
+      'AJUSTE_MANUAL',
+      usuario?.kiosco_id || undefined,
+      usuario?.nombre || undefined,
+      `Ajuste rápido en depósito (${delta > 0 ? '+' : ''}${delta})`
+    )
+  }
+
   // Handlers para la tabla de productos
   const handleCambioPrecioProducto = (id: string, nuevoPrecio: number) => {
     setFilas((prev) => {
@@ -389,24 +474,38 @@ export function PreciosEnvasesModal({
           <button
             type="button"
             onClick={() => setPestanaActiva('TIPOS')}
-            className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-colors cursor-pointer border-b-2 ${
+            className={`px-3 sm:px-4 py-2 text-xs font-bold rounded-t-lg transition-colors cursor-pointer border-b-2 ${
               pestanaActiva === 'TIPOS'
                 ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30'
                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
             }`}
           >
-            Tipos de Envases Oficiales ({tiposEnvases.length})
+            Tipos Oficiales ({tiposEnvases.length})
           </button>
           <button
             type="button"
             onClick={() => setPestanaActiva('PRODUCTOS')}
-            className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-colors cursor-pointer border-b-2 ${
+            className={`px-3 sm:px-4 py-2 text-xs font-bold rounded-t-lg transition-colors cursor-pointer border-b-2 ${
               pestanaActiva === 'PRODUCTOS'
                 ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30'
                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
             }`}
           >
             Productos del Catálogo ({filasVisibles.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setPestanaActiva('DEPOSITO')}
+            className={`px-3 sm:px-4 py-2 text-xs font-bold rounded-t-lg transition-colors cursor-pointer border-b-2 flex items-center gap-1.5 ${
+              pestanaActiva === 'DEPOSITO'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
+            }`}
+          >
+            <span>Depósito de Vacíos</span>
+            <span className="bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 text-[10px] rounded-full font-bold">
+              {tiposEnvases.reduce((acc, t) => acc + (t.stock_vacios || 0), 0)} un.
+            </span>
           </button>
         </div>
 
@@ -701,10 +800,389 @@ export function PreciosEnvasesModal({
           </div>
         )}
 
+        {/* ── VISTA 3: INVENTARIO Y DEPÓSITO DE ENVASES VACÍOS ── */}
+        {pestanaActiva === 'DEPOSITO' && (
+          <div className="space-y-3.5 animate-in fade-in duration-150 overflow-y-auto max-h-[62vh] pr-1">
+            {/* Tarjetas de Resumen y Valuación */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl">
+                <span className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-300 block">
+                  Envases Vacíos Físicos
+                </span>
+                <div className="text-2xl font-black text-emerald-700 dark:text-emerald-300 mt-0.5">
+                  {tiposEnvases.reduce((acc, t) => acc + (t.stock_vacios || 0), 0)}{' '}
+                  <span className="text-xs font-normal">unidades</span>
+                </div>
+                <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1">
+                  En patio / depósito listos para entrega
+                </p>
+              </div>
+
+              <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-xl">
+                <span className="text-[11px] font-semibold text-indigo-800 dark:text-indigo-300 block">
+                  Valuación de Retorno
+                </span>
+                <div className="text-2xl font-black text-indigo-700 dark:text-indigo-300 mt-0.5">
+                  {formatPrecio(
+                    tiposEnvases.reduce((acc, t) => acc + (t.stock_vacios || 0) * (preciosTiposLocal[t.id] ?? t.precio), 0)
+                  )}
+                </div>
+                <p className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-1">
+                  Capital recuperable con distribuidores
+                </p>
+              </div>
+
+              <div className="p-3 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-xl">
+                <span className="text-[11px] font-semibold text-purple-800 dark:text-purple-300 block">
+                  Movimientos Registrados
+                </span>
+                <div className="text-2xl font-black text-purple-700 dark:text-purple-300 mt-0.5">
+                  {historialMovimientos.length}
+                </div>
+                <p className="text-[10px] text-purple-600 dark:text-purple-400 mt-1">
+                  Ingresos, egresos y entregas auditadas
+                </p>
+              </div>
+            </div>
+
+            {/* Tabla de Existencias por Tipo de Envase */}
+            <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-white dark:bg-gray-800 shadow-xs">
+              <div className="p-2.5 bg-gray-50 dark:bg-gray-900/60 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-bold text-gray-900 dark:text-gray-100">
+                    Stock en Depósito por Tipo de Envase
+                  </h3>
+                  <p className="text-[11px] text-gray-500">
+                    Registrá entregas de cajones al distribuidor o ajustá las existencias contadas.
+                  </p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 uppercase text-[10px] tracking-wider">
+                    <tr>
+                      <th className="px-3 py-2">Tipo de Envase</th>
+                      <th className="px-3 py-2 text-right">Valor Unitario</th>
+                      <th className="px-3 py-2 text-center">Stock en Depósito</th>
+                      <th className="px-3 py-2 text-right">Valuación Subtotal</th>
+                      <th className="px-3 py-2 text-center">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {tiposEnvases.map((tipo) => {
+                      const stock = tipo.stock_vacios || 0
+                      const precio = preciosTiposLocal[tipo.id] ?? tipo.precio
+                      const subtotal = stock * precio
+
+                      return (
+                        <tr key={tipo.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors">
+                          <td className="px-3 py-2.5">
+                            <div className="font-bold text-gray-900 dark:text-gray-100">{tipo.nombre}</div>
+                            {tipo.descripcion && (
+                              <div className="text-[10px] text-gray-500 truncate max-w-xs">{tipo.descripcion}</div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-medium text-gray-700 dark:text-gray-300">
+                            {formatPrecio(precio)}
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <div className="inline-flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleAjusteRapido(tipo.id, -1)}
+                                disabled={stock <= 0}
+                                className="w-6 h-6 flex items-center justify-center font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded disabled:opacity-30 cursor-pointer"
+                                title="Restar 1 unidad"
+                              >
+                                -
+                              </button>
+                              <span
+                                onClick={() => handleAbrirAjusteManual(tipo)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-black cursor-pointer border ${
+                                  stock > 0
+                                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                    : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-600'
+                                }`}
+                                title="Clic para ingresar conteo manual exacto"
+                              >
+                                {stock} un.
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleAjusteRapido(tipo.id, 1)}
+                                className="w-6 h-6 flex items-center justify-center font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded cursor-pointer"
+                                title="Sumar 1 unidad"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-bold text-gray-900 dark:text-gray-100">
+                            {formatPrecio(subtotal)}
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleAbrirEntrega(tipo)}
+                              disabled={stock <= 0}
+                              className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:text-gray-400 text-white transition-all cursor-pointer inline-flex items-center gap-1 shadow-xs"
+                              title="Asentar entrega de vacíos al camión del distribuidor"
+                            >
+                              <span>Entregar a Distribuidor</span>
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Registro de Auditoría y Trazabilidad */}
+            <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-white dark:bg-gray-800 shadow-xs">
+              <div className="p-2.5 bg-gray-50 dark:bg-gray-900/60 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <h4 className="text-xs font-bold text-gray-900 dark:text-gray-100">
+                  Trazabilidad de Movimientos y Entregas
+                </h4>
+                <span className="text-[10px] text-gray-500">Últimos movimientos</span>
+              </div>
+
+              <div className="max-h-48 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700 text-[11px]">
+                {historialMovimientos.length === 0 ? (
+                  <div className="p-4 text-center text-gray-400 text-xs">
+                    No se registraron movimientos de envases aún. Al recibir envases en el mostrador o entregarlos a distribuidores aparecerán aquí.
+                  </div>
+                ) : (
+                  historialMovimientos.slice(0, 20).map((mov) => {
+                    const esIngreso = mov.cantidad > 0
+                    const esEntrega = mov.tipo === 'ENTREGA_DISTRIBUIDOR'
+
+                    return (
+                      <div key={mov.id} className="p-2.5 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              esEntrega
+                                ? 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300'
+                                : esIngreso
+                                ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
+                            }`}
+                          >
+                            {esEntrega ? 'Entrega Distribuidor' : esIngreso ? 'Ingreso Mostrador' : 'Ajuste Stock'}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-gray-800 dark:text-gray-200 truncate">
+                              {mov.tipoEnvaseNombre} ({mov.cantidad > 0 ? `+${mov.cantidad}` : mov.cantidad} un.)
+                              {mov.distribuidor && (
+                                <span className="ml-1 text-gray-500 font-normal">→ {mov.distribuidor}</span>
+                              )}
+                            </p>
+                            <p className="text-[10px] text-gray-400">
+                              {new Date(mov.fecha).toLocaleString('es-AR')} • Por {mov.usuarioNombre || 'Usuario'}
+                              {mov.notas && ` • ${mov.notas}`}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <span className="text-[10px] text-gray-500">Saldo depósito:</span>
+                          <div className="font-bold text-gray-900 dark:text-gray-100">
+                            {mov.stockResultante} un.
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Submodal para Entrega a Distribuidor */}
+            {entregaModalOpen && tipoParaEntrega && (
+              <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in duration-100">
+                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 max-w-md w-full p-4 space-y-3">
+                  <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                      Entregar {tipoParaEntrega.nombre} a Distribuidor
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setEntregaModalOpen(false)}
+                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="space-y-3 text-xs">
+                    <div className="bg-gray-50 dark:bg-gray-900/50 p-2.5 rounded-lg">
+                      <span className="text-gray-500">Stock disponible en depósito:</span>
+                      <div className="text-lg font-black text-gray-800 dark:text-gray-200">
+                        {tipoParaEntrega.stock_vacios || 0} unidades
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                        Cantidad de envases a entregar
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setCantidadEntrega((c) => Math.max(1, c - 1))}
+                          className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 font-bold rounded-lg text-sm"
+                        >
+                          -
+                        </button>
+                        <input
+                          type="number"
+                          min="1"
+                          max={tipoParaEntrega.stock_vacios || 999}
+                          value={cantidadEntrega}
+                          onChange={(e) => setCantidadEntrega(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                          className="flex-1 text-center font-bold text-base px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setCantidadEntrega((c) => Math.min(tipoParaEntrega.stock_vacios || 999, c + 1))}
+                          className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 font-bold rounded-lg text-sm"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <div className="flex gap-1.5 mt-1.5">
+                        {[6, 12, 24, tipoParaEntrega.stock_vacios || 0]
+                          .filter((v, i, a) => v > 0 && a.indexOf(v) === i)
+                          .map((val) => (
+                            <button
+                              key={val}
+                              type="button"
+                              onClick={() => setCantidadEntrega(Math.min(tipoParaEntrega.stock_vacios || 999, val))}
+                              className="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-semibold text-[10px] hover:bg-indigo-100"
+                            >
+                              {val === (tipoParaEntrega.stock_vacios || 0) ? `Todos (${val})` : `${val} un.`}
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                        Empresa Distribuidora / Fletero
+                      </label>
+                      <select
+                        value={distribuidorEntrega}
+                        onChange={(e) => setDistribuidorEntrega(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="Quilmes / Cervecería">Quilmes / Cervecería</option>
+                        <option value="Coca-Cola / FEMSA">Coca-Cola / FEMSA</option>
+                        <option value="Heineken / CCU">Heineken / CCU</option>
+                        <option value="Soda / Sifones">Repartidor de Soda</option>
+                        <option value="Distribuidora de Aguas">Distribuidora de Aguas</option>
+                        <option value="OTRO">Otro proveedor / Fletero particular</option>
+                      </select>
+                    </div>
+
+                    {distribuidorEntrega === 'OTRO' && (
+                      <div>
+                        <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                          Nombre del Proveedor / Fletero
+                        </label>
+                        <input
+                          type="text"
+                          value={distribuidorPersonalizado}
+                          onChange={(e) => setDistribuidorPersonalizado(e.target.value)}
+                          placeholder="Ej: Distribuidora Los Andes..."
+                          className="w-full px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                        Observación / N° Remito (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        value={notasEntrega}
+                        onChange={(e) => setNotasEntrega(e.target.value)}
+                        placeholder="Ej: Remito N° 00412 / Chofer Juan..."
+                        className="w-full px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+                    <Button variant="secondary" size="sm" onClick={() => setEntregaModalOpen(false)}>
+                      Cancelar
+                    </Button>
+                    <Button variant="primary" size="sm" onClick={handleConfirmarEntrega}>
+                      Confirmar Entrega
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Submodal para Ajuste Manual Directo */}
+            {ajusteModalOpen && tipoParaAjuste && (
+              <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in duration-100">
+                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 max-w-xs w-full p-4 space-y-3">
+                  <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                      Conteo de {tipoParaAjuste.nombre}
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setAjusteModalOpen(false)}
+                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 text-xs">
+                    <label className="block font-semibold text-gray-700 dark:text-gray-300">
+                      Stock físico real contado en patio:
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={nuevoStockAjuste}
+                      onChange={(e) => setNuevoStockAjuste(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                      className="w-full text-center font-bold text-xl px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <p className="text-[11px] text-gray-500">
+                      Se actualizará el stock inmediatamente en el sistema.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+                    <Button variant="secondary" size="sm" onClick={() => setAjusteModalOpen(false)}>
+                      Cancelar
+                    </Button>
+                    <Button variant="primary" size="sm" onClick={handleConfirmarAjusteManual}>
+                      Guardar Conteo
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── FOOTER FIJO: SIEMPRE VISIBLE EN EL FONDO ── */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-3 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div className="text-xs text-gray-500 dark:text-gray-400">
-            {cantModificados > 0 ? (
+            {pestanaActiva === 'DEPOSITO' ? (
+              <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                Los movimientos de stock y entregas a distribuidores se asientan automáticamente en tiempo real.
+              </span>
+            ) : cantModificados > 0 ? (
               <span className="font-semibold text-indigo-600 dark:text-indigo-400">
                 {cantModificados} {cantModificados === 1 ? 'producto modificado' : 'productos modificados'} sin guardar
               </span>
@@ -721,15 +1199,17 @@ export function PreciosEnvasesModal({
             >
               Cerrar
             </Button>
-            <Button
-              type="button"
-              onClick={handleGuardarTodos}
-              loading={guardando}
-              disabled={cantModificados === 0}
-              className="flex-1 sm:flex-none"
-            >
-              Guardar todos los cambios ({cantModificados})
-            </Button>
+            {pestanaActiva !== 'DEPOSITO' && (
+              <Button
+                type="button"
+                onClick={handleGuardarTodos}
+                loading={guardando}
+                disabled={cantModificados === 0}
+                className="flex-1 sm:flex-none"
+              >
+                Guardar todos los cambios ({cantModificados})
+              </Button>
+            )}
           </div>
         </div>
       </div>

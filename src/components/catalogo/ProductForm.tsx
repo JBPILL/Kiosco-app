@@ -7,6 +7,7 @@ import { BarcodeCaptureModal } from '../ui/BarcodeCaptureModal'
 import { useBarcodeGun } from '../../hooks/useBarcodeGun'
 import { playScanSound } from '../../lib/sound'
 import { useEnvasesStore } from '../../stores/envasesStore'
+import { useProveedorStore } from '../../stores/proveedorStore'
 import toast from 'react-hot-toast'
 
 interface ProductFormProps {
@@ -24,6 +25,7 @@ export interface ProductFormData {
   stock_actual: number
   stock_minimo: number
   categoria_id: string | null
+  proveedor_id?: string | null
   codigo_barras: string | null
   requiere_vencimiento?: boolean
   dias_alerta_vencimiento?: number
@@ -52,10 +54,18 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
     es_retornable: false,
     precio_envase: 0,
     nombre_envase: '',
+    proveedor_id: null,
   })
   const [guardando, setGuardando] = useState(false)
   const [scannerCamaraOpen, setScannerCamaraOpen] = useState(false)
   const { tiposEnvases } = useEnvasesStore()
+  const { proveedores, cargarProveedores } = useProveedorStore()
+
+  useEffect(() => {
+    if (isOpen) {
+      cargarProveedores()
+    }
+  }, [isOpen, cargarProveedores])
 
   // Soporte para pistolas lectoras físicas USB / Bluetooth en el formulario
   useBarcodeGun({
@@ -76,6 +86,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
         stock_actual: producto.stock_actual,
         stock_minimo: producto.stock_minimo,
         categoria_id: producto.categoria_id,
+        proveedor_id: producto.proveedor_id || null,
         codigo_barras: producto.codigo_barras,
         requiere_vencimiento: producto.requiere_vencimiento || false,
         dias_alerta_vencimiento: producto.dias_alerta_vencimiento || 15,
@@ -94,6 +105,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
         stock_actual: 0,
         stock_minimo: 5,
         categoria_id: null,
+        proveedor_id: null,
         codigo_barras: null,
         requiere_vencimiento: false,
         dias_alerta_vencimiento: 15,
@@ -180,18 +192,36 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Categoría</label>
-            <select
-              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2.5 text-base focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-900 transition-colors duration-150"
-              value={form.categoria_id || ''}
-              onChange={(e) => setForm({ ...form, categoria_id: e.target.value || null })}
-            >
-              <option value="">Sin categoría</option>
-              {categorias.map((cat) => (
-                <option key={cat.id} value={cat.id}>{cat.nombre}</option>
-              ))}
-            </select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Categoría</label>
+              <select
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2.5 text-base focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-900 transition-colors duration-150"
+                value={form.categoria_id || ''}
+                onChange={(e) => setForm({ ...form, categoria_id: e.target.value || null })}
+              >
+                <option value="">Sin categoría</option>
+                {categorias.map((cat) => (
+                  <option key={cat.id} value={cat.id}>{cat.nombre}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Proveedor Habitual (Opcional)
+              </label>
+              <select
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2.5 text-base focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-900 transition-colors duration-150"
+                value={form.proveedor_id || ''}
+                onChange={(e) => setForm({ ...form, proveedor_id: e.target.value || null })}
+              >
+                <option value="">Sin proveedor asignado</option>
+                {proveedores.filter((p) => p.activo).map((prov) => (
+                  <option key={prov.id} value={prov.id}>{prov.nombre}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Campo de Código de barras con botón de Escanear con cámara y soporte de lector */}

@@ -46,9 +46,15 @@ export function CajaPage() {
     cargarResumenSesion,
     registrarMovimientoCaja,
     cerrarCaja,
+    arqueoCiegoObligatorio,
+    cargarArqueoCiegoConfig,
   } = useCajaStore()
 
   const esDueno = usuario?.rol === 'DUEÑO'
+
+  useEffect(() => {
+    cargarArqueoCiegoConfig()
+  }, [cargarArqueoCiegoConfig])
 
   // Estados para apertura
   const [montoInicial, setMontoInicial] = useState('0')
@@ -66,7 +72,7 @@ export function CajaPage() {
   const [modalArqueoOpen, setModalArqueoOpen] = useState(false)
   const [efectivoContado, setEfectivoContado] = useState('')
   const [cerrando, setCerrando] = useState(false)
-  const [modoCiego, setModoCiego] = useState(!esDueno)
+  const [modoCiego, setModoCiego] = useState(!esDueno && arqueoCiegoObligatorio)
   const [mostrarDesgloseBilletes, setMostrarDesgloseBilletes] = useState(false)
   const [desgloseBilletes, setDesgloseBilletes] = useState<Record<number, number>>({
     20000: 0,
@@ -78,6 +84,8 @@ export function CajaPage() {
     100: 0,
     50: 0,
   })
+
+  const modoCiegoEfectivo = esDueno ? modoCiego : arqueoCiegoObligatorio
 
   // Historial de cierres
   const [historial, setHistorial] = useState<SesionHistorial[]>([])
@@ -143,7 +151,7 @@ export function CajaPage() {
       await cargarResumenSesion(sesionActiva.id)
     }
     setEfectivoContado('')
-    setModoCiego(!esDueno)
+    setModoCiego(esDueno ? false : arqueoCiegoObligatorio)
     setMostrarDesgloseBilletes(false)
     setDesgloseBilletes({
       20000: 0,
@@ -373,7 +381,7 @@ export function CajaPage() {
                   variant="danger"
                   onClick={handleAbrirModalArqueo}
                 >
-                  {esDueno ? 'Hacer arqueo y cerrar turno' : 'Cerrar turno (Arqueo ciego)'}
+                  {esDueno || !arqueoCiegoObligatorio ? 'Hacer arqueo y cerrar turno' : 'Cerrar turno (Arqueo ciego)'}
                 </Button>
               </div>
             </div>
@@ -390,9 +398,9 @@ export function CajaPage() {
               <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
                 <p className="text-xs text-gray-500 dark:text-gray-400">(+) Ventas efectivo</p>
                 <p className="text-base sm:text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                  {esDueno ? formatPrecio(resumenActivo?.total_efectivo || 0) : '••••••'}
+                  {!modoCiegoEfectivo ? formatPrecio(resumenActivo?.total_efectivo || 0) : '••••••'}
                 </p>
-                {!esDueno && (
+                {modoCiegoEfectivo && (
                   <span className="text-[10px] text-gray-400 dark:text-gray-500 block">Arqueo ciego</span>
                 )}
               </div>
@@ -413,12 +421,12 @@ export function CajaPage() {
 
               <div className="col-span-2 sm:col-span-1 p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50 shadow-xs">
                 <p className="text-xs text-indigo-700 dark:text-indigo-400 font-semibold">
-                  {esDueno ? '(=) Esperado en cajón' : 'Control de Turno'}
+                  {!modoCiegoEfectivo ? '(=) Esperado en cajón' : 'Control de Turno'}
                 </p>
                 <p className="text-base sm:text-lg font-bold text-indigo-700 dark:text-indigo-300 mt-1 truncate">
-                  {esDueno ? formatPrecio(efectivoEsperado) : 'Modo Ciego'}
+                  {!modoCiegoEfectivo ? formatPrecio(efectivoEsperado) : 'Modo Ciego'}
                 </p>
-                {!esDueno && (
+                {modoCiegoEfectivo && (
                   <p className="text-[10px] text-indigo-600/70 dark:text-indigo-400/70 mt-0.5">
                     Conteo físico al cierre
                   </p>
@@ -628,17 +636,17 @@ export function CajaPage() {
       <Modal
         isOpen={modalArqueoOpen}
         onClose={() => setModalArqueoOpen(false)}
-        title={modoCiego ? 'Arqueo y Cierre de Turno (Ciego)' : 'Arqueo y Cierre de Turno (Guiado)'}
+        title={modoCiegoEfectivo ? 'Arqueo y Cierre de Turno (Ciego)' : 'Arqueo y Cierre de Turno (Guiado)'}
         size="md"
       >
         <div className="space-y-4">
-          {/* Selector de modo para el Dueño */}
-          {esDueno && (
+          {/* Selector de modo si es Dueño o si no se exige arqueo ciego obligatorio */}
+          {(esDueno || !arqueoCiegoObligatorio) && (
             <div className="flex rounded-lg bg-gray-100 dark:bg-gray-800 p-1">
               <button
                 type="button"
                 onClick={() => setModoCiego(false)}
-                className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                   !modoCiego
                     ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
@@ -649,7 +657,7 @@ export function CajaPage() {
               <button
                 type="button"
                 onClick={() => setModoCiego(true)}
-                className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                   modoCiego
                     ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
@@ -660,7 +668,7 @@ export function CajaPage() {
             </div>
           )}
 
-          {modoCiego ? (
+          {modoCiegoEfectivo ? (
             /* Banner explicativo de Arqueo Ciego */
             <div className="p-3.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-300">
               <p className="font-semibold text-sm mb-1">Control de Arqueo Ciego</p>

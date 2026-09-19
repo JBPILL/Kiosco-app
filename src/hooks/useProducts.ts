@@ -9,6 +9,7 @@ const CORE_PRODUCT_KEYS = new Set([
   'id',
   'kiosco_id',
   'categoria_id',
+  'proveedor_id',
   'codigo_barras',
   'descripcion',
   'precio_costo',
@@ -99,6 +100,7 @@ export function useProducts() {
             es_pesable: item.es_pesable ?? local.es_pesable,
             unidad_medida: item.unidad_medida ?? local.unidad_medida,
             plu_balanza: item.plu_balanza ?? local.plu_balanza,
+            proveedor_id: item.proveedor_id ?? local.proveedor_id,
           }
         })
 

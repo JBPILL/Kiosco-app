@@ -12,6 +12,7 @@ import { AFIPConfigSection } from '../components/config/AFIPConfigSection'
 import { useConfigAdminStore, formatearLinkWhatsApp } from '../stores/configAdminStore'
 import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
 import { usePwaStore } from '../stores/pwaStore'
+import { useCajaStore } from '../stores/cajaStore'
 import toast from 'react-hot-toast'
 
 export function ConfigPage() {
@@ -19,6 +20,7 @@ export function ConfigPage() {
   const { tema, toggleTema } = useThemeStore()
   const { config: configAdmin, cargarConfig: cargarConfigAdmin } = useConfigAdminStore()
   const { puedeInstalar, estaInstalado, instalarApp } = usePwaStore()
+  const { arqueoCiegoObligatorio, cargarArqueoCiegoConfig, guardarArqueoCiegoConfig } = useCajaStore()
 
   const [kiosco, setKiosco] = useState<Kiosco | null>(null)
   const [suscripcion, setSuscripcion] = useState<Suscripcion | null>(null)
@@ -31,7 +33,8 @@ export function ConfigPage() {
 
   useEffect(() => {
     cargarConfigAdmin()
-  }, [cargarConfigAdmin])
+    cargarArqueoCiegoConfig()
+  }, [cargarConfigAdmin, cargarArqueoCiegoConfig])
 
   const copiarDato = (texto: string, label: string) => {
     navigator.clipboard.writeText(texto)
@@ -458,6 +461,62 @@ export function ConfigPage() {
 
           {/* Configuración Fiscal AFIP */}
           <AFIPConfigSection />
+
+          {/* Políticas de Seguridad y Control de Caja */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Control de Caja y Auditoría</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Reglas institucionales de seguridad para el turno de caja y arqueo de dinero
+              </p>
+            </div>
+
+            <div className="p-4 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                  Exigir Arqueo Ciego Obligatorio a Cajeros
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed max-w-xl">
+                  Al activarse, los empleados con rol Cajero no podrán ver el efectivo esperado por el sistema ni las ventas del turno. Deberán contar el dinero físicamente en el cajón a ciegas al cerrar para prevenir desvíos y manipulaciones.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                  arqueoCiegoObligatorio
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                    : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                }`}>
+                  {arqueoCiegoObligatorio ? 'Obligatorio' : 'Opcional (Guiado)'}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const nuevo = !arqueoCiegoObligatorio
+                    await guardarArqueoCiegoConfig(nuevo)
+                    toast.success(
+                      nuevo
+                        ? 'Arqueo ciego obligatorio activado para cajeros'
+                        : 'Arqueo ciego opcional: cajeros podrán ver efectivo esperado'
+                    )
+                  }}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    arqueoCiegoObligatorio ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'
+                  }`}
+                  role="switch"
+                  aria-checked={arqueoCiegoObligatorio}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      arqueoCiegoObligatorio ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
 
           {/* Estado de Suscripción */}
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">

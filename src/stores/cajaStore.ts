@@ -29,6 +29,9 @@ interface CajaState {
     descripcion: string
   ) => Promise<boolean>
   cerrarCaja: (montoDeclarado: number) => Promise<boolean>
+  arqueoCiegoObligatorio: boolean
+  cargarArqueoCiegoConfig: () => Promise<boolean>
+  guardarArqueoCiegoConfig: (obligatorio: boolean) => Promise<boolean>
 }
 
 function getLocalMovimientos(sesionId: string): MovimientoCaja[] {
@@ -346,5 +349,50 @@ export const useCajaStore = create<CajaState>((set, get) => ({
     } finally {
       set({ cargando: false })
     }
+  },
+
+  arqueoCiegoObligatorio: true,
+
+  cargarArqueoCiegoConfig: async () => {
+    const usuario = useAuthStore.getState().usuario
+    const kiosco = useAuthStore.getState().kiosco
+    const kid = usuario?.kiosco_id || kiosco?.id
+    if (!kid) return true
+
+    // 1. Fallback local rápido
+    const local = localStorage.getItem(`kioskopos_arqueo_ciego_${kid}`)
+    let val = local !== null ? local === 'true' : true
+
+    // 2. Consulta a base de datos
+    try {
+      const { data } = await supabase.from('kioscos').select('arqueo_ciego_obligatorio').eq('id', kid).maybeSingle()
+      if (data && typeof data.arqueo_ciego_obligatorio === 'boolean') {
+        val = data.arqueo_ciego_obligatorio
+        localStorage.setItem(`kioskopos_arqueo_ciego_${kid}`, String(val))
+      }
+    } catch {
+      // Usar fallback local
+    }
+
+    set({ arqueoCiegoObligatorio: val })
+    return val
+  },
+
+  guardarArqueoCiegoConfig: async (obligatorio: boolean) => {
+    const usuario = useAuthStore.getState().usuario
+    const kiosco = useAuthStore.getState().kiosco
+    const kid = usuario?.kiosco_id || kiosco?.id
+    if (!kid) return false
+
+    localStorage.setItem(`kioskopos_arqueo_ciego_${kid}`, String(obligatorio))
+    set({ arqueoCiegoObligatorio: obligatorio })
+
+    try {
+      await supabase.from('kioscos').update({ arqueo_ciego_obligatorio: obligatorio }).eq('id', kid)
+    } catch (e) {
+      console.warn('Persistencia en kioscos.arqueo_ciego_obligatorio con fallback local:', e)
+    }
+
+    return true
   },
 }))

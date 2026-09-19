@@ -17,7 +17,7 @@ export function RecibirEnvaseModal({ isOpen, onClose }: RecibirEnvaseModalProps)
   const { agregarDevolucionEnvase } = useCartStore()
   const { sesionActiva, registrarMovimientoCaja } = useCajaStore()
   const { usuario } = useAuthStore()
-  const { tiposEnvases, cargarTiposEnvases } = useEnvasesStore()
+  const { tiposEnvases, cargarTiposEnvases, ajustarStockVacios } = useEnvasesStore()
 
   const [tipoSeleccionado, setTipoSeleccionado] = useState<TipoEnvase | null>(null)
   const [cantidad, setCantidad] = useState<number>(1)
@@ -57,12 +57,21 @@ export function RecibirEnvaseModal({ isOpen, onClose }: RecibirEnvaseModalProps)
       return
     }
 
+    const cant = Math.max(1, cantidad)
     agregarDevolucionEnvase(
       tipoSeleccionado.nombre,
       precioUnitario,
-      Math.max(1, cantidad)
+      cant
     )
-    toast.success(`Envase ${tipoSeleccionado.nombre} agregado al ticket`)
+    ajustarStockVacios(
+      tipoSeleccionado.id,
+      cant,
+      'INGRESO_MOSTRADOR',
+      usuario?.kiosco_id || undefined,
+      usuario?.nombre || undefined,
+      `Recepción ticket (+${cant} ${tipoSeleccionado.nombre})`
+    )
+    toast.success(`Envase ${tipoSeleccionado.nombre} agregado al ticket (+${cant} al depósito de vacíos)`)
     handleCerrar()
   }
 
@@ -80,15 +89,24 @@ export function RecibirEnvaseModal({ isOpen, onClose }: RecibirEnvaseModalProps)
 
     setProcesando(true)
     try {
+      const cant = Math.max(1, cantidad)
       const ok = await registrarMovimientoCaja(
         'EGRESO',
         'DEVOLUCION_VENTA',
         totalReconocimiento,
-        `Recepción de envases: ${cantidad}x ${tipoSeleccionado.nombre}`
+        `Recepción de envases: ${cant}x ${tipoSeleccionado.nombre}`
       )
 
       if (ok) {
-        toast.success(`Efectivo entregado: ${formatPrecio(totalReconocimiento)}`)
+        ajustarStockVacios(
+          tipoSeleccionado.id,
+          cant,
+          'INGRESO_MOSTRADOR',
+          usuario?.kiosco_id || undefined,
+          usuario?.nombre || undefined,
+          `Recepción en efectivo (+${cant} ${tipoSeleccionado.nombre})`
+        )
+        toast.success(`Efectivo entregado: ${formatPrecio(totalReconocimiento)} (+${cant} al depósito)`)
         handleCerrar()
       }
     } catch {

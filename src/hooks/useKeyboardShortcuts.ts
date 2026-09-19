@@ -7,6 +7,7 @@ interface KeyboardShortcutsHandlers {
   onVentasEnEspera?: () => void
   onOpenScanner?: () => void
   onOpenHelp?: () => void
+  onRetiroCaja?: () => void
   onEscape?: () => void
 }
 
@@ -60,6 +61,13 @@ export function useKeyboardShortcuts(
       if ((e.altKey && e.key.toLowerCase() === 's') || e.key === 'F3') {
         e.preventDefault()
         handlers.onOpenScanner?.()
+        return
+      }
+
+      // Alt + E o F9: Retiro rápido de efectivo / Sangría de caja
+      if ((e.altKey && e.key.toLowerCase() === 'e') || e.key === 'F9') {
+        e.preventDefault()
+        handlers.onRetiroCaja?.()
         return
       }
 

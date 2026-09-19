@@ -17,6 +17,12 @@ import { useComboStore } from '../../stores/comboStore'
 import type { TipoDocumentoAFIP } from '../../types/afip'
 import toast from 'react-hot-toast'
 
+export interface LineaPagoMixto {
+  id: string
+  medio_pago: MedioPago
+  monto: number
+}
+
 interface PaymentModalProps {
   isOpen: boolean
   onClose: () => void
@@ -76,10 +82,68 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   const [referencia, setReferencia] = useState('')
   const [procesando, setProcesando] = useState(false)
 
+  // ── Estados para Pago Mixto / Dividido ─────────────────────────────────────
+  const [esPagoMixto, setEsPagoMixto] = useState<boolean>(false)
+  const [pagosMixtos, setPagosMixtos] = useState<LineaPagoMixto[]>([])
+
+  const totalPagosMixtos = pagosMixtos.reduce((acc, p) => acc + (Number(p.monto) || 0), 0)
+  const saldoRestanteMixto = Math.round(total) - totalPagosMixtos
+  const tieneCuentaCorrienteEnMixto = esPagoMixto && pagosMixtos.some((p) => p.medio_pago === 'CUENTA_CORRIENTE')
+
+  const activarPagoMixto = () => {
+    setEsPagoMixto(true)
+    if (pagosMixtos.length === 0) {
+      const mitad = Math.round(total / 2)
+      setPagosMixtos([
+        { id: uuidv4(), medio_pago: 'EFECTIVO', monto: mitad },
+        { id: uuidv4(), medio_pago: 'MERCADOPAGO', monto: Math.round(total) - mitad },
+      ])
+    }
+  }
+
+  const agregarLineaPagoMixto = () => {
+    if (pagosMixtos.length >= 4) return
+    const faltante = Math.max(0, saldoRestanteMixto)
+    setPagosMixtos((prev) => [
+      ...prev,
+      { id: uuidv4(), medio_pago: 'TRANSFERENCIA', monto: faltante },
+    ])
+  }
+
+  const eliminarLineaPagoMixto = (id: string) => {
+    setPagosMixtos((prev) => prev.filter((l) => l.id !== id))
+  }
+
+  const actualizarLineaPagoMixto = (id: string, campo: 'medio_pago' | 'monto', valor: any) => {
+    setPagosMixtos((prev) =>
+      prev.map((l) => {
+        if (l.id !== id) return l
+        if (campo === 'monto') {
+          const num = Math.max(0, parseInt(valor, 10) || 0)
+          return { ...l, monto: num }
+        }
+        return { ...l, [campo]: valor }
+      })
+    )
+  }
+
+  const llenarSaldoRestanteEnLinea = (id: string) => {
+    setPagosMixtos((prev) => {
+      const sumaOtros = prev.filter((l) => l.id !== id).reduce((acc, l) => acc + (l.monto || 0), 0)
+      const nuevoMonto = Math.max(0, Math.round(total) - sumaOtros)
+      return prev.map((l) => (l.id === id ? { ...l, monto: nuevoMonto } : l))
+    })
+  }
+
   useEffect(() => {
     if (isOpen) {
       cargarClientes()
       cargarConfiguracion()
+      setEsPagoMixto(false)
+      setPagosMixtos([])
+      setMedioPago('EFECTIVO')
+      setPagaCon('')
+      setReferencia('')
     }
   }, [isOpen, cargarClientes, cargarConfiguracion])
 
@@ -116,7 +180,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   }, [clienteSeleccionado])
 
   const pagaConNum = parseInt(pagaCon, 10) || 0
-  const vuelto = medioPago === 'EFECTIVO' && pagaCon
+  const vuelto = !esPagoMixto && medioPago === 'EFECTIVO' && pagaCon
     ? Math.max(0, pagaConNum - Math.round(total))
     : 0
 
@@ -126,12 +190,16 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
     setPagaCon(soloEnteros)
   }
 
-  const puedeConfirmar =
-    medioPago === 'EFECTIVO'
-      ? pagaConNum >= total
-      : medioPago === 'CUENTA_CORRIENTE'
-      ? !!clienteSeleccionadoId
-      : true
+  const puedeConfirmar = esPagoMixto
+    ? totalPagosMixtos === Math.round(total) &&
+      pagosMixtos.length > 0 &&
+      pagosMixtos.every((p) => p.monto > 0) &&
+      (!tieneCuentaCorrienteEnMixto || !!clienteSeleccionadoId)
+    : medioPago === 'EFECTIVO'
+    ? pagaConNum >= total
+    : medioPago === 'CUENTA_CORRIENTE'
+    ? !!clienteSeleccionadoId
+    : true
 
   const confirmarVenta = async () => {
     if (!puedeConfirmar) return
@@ -203,19 +271,23 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         console.warn('Venta con stock negativo:', productosSinStock.map((it) => it.producto.descripcion))
       }
 
-      // Si es Cuenta Corriente, validar límite de crédito
-      if (medioPago === 'CUENTA_CORRIENTE') {
+      // Si hay saldo a Cuenta Corriente, validar límite de crédito
+      const montoCuentaCorriente = esPagoMixto
+        ? pagosMixtos.filter((p) => p.medio_pago === 'CUENTA_CORRIENTE').reduce((acc, p) => acc + p.monto, 0)
+        : (medioPago === 'CUENTA_CORRIENTE' ? total : 0)
+
+      if (montoCuentaCorriente > 0) {
         if (!clienteSeleccionadoId || !clienteSeleccionado) {
-          toast.error('Debes seleccionar un cliente para cuenta corriente')
+          toast.error('Debes seleccionar un cliente para imputar a cuenta corriente')
           setProcesando(false)
           return
         }
 
         if (
           clienteSeleccionado.limite_credito > 0 &&
-          clienteSeleccionado.saldo_deudor + total > clienteSeleccionado.limite_credito
+          clienteSeleccionado.saldo_deudor + montoCuentaCorriente > clienteSeleccionado.limite_credito
         ) {
-          const superaPor = formatPrecio(clienteSeleccionado.saldo_deudor + total - clienteSeleccionado.limite_credito)
+          const superaPor = formatPrecio(clienteSeleccionado.saldo_deudor + montoCuentaCorriente - clienteSeleccionado.limite_credito)
           const confirmarExceso = window.confirm(
             `Atención: Esta venta superará el límite de crédito del cliente (${formatPrecio(clienteSeleccionado.limite_credito)}) por ${superaPor}.\n\n¿Desea autorizar la operación de todas formas?`
           )
@@ -277,14 +349,25 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       const { error: detalleError } = await supabase.from('detalles_venta').insert(detalles)
       if (detalleError) throw detalleError
 
-      // 3. Insertar pago
-      const { error: pagoError } = await supabase.from('pagos_venta').insert({
-        venta_id: ventaId,
-        medio_pago: medioPago,
-        monto: total,
-        referencia: referencia || null,
-      })
-      if (pagoError) throw pagoError
+      // 3. Insertar pago(s)
+      if (esPagoMixto) {
+        const pagosInsertar = pagosMixtos.map((p) => ({
+          venta_id: ventaId,
+          medio_pago: p.medio_pago,
+          monto: p.monto,
+          referencia: referencia || null,
+        }))
+        const { error: pagoError } = await supabase.from('pagos_venta').insert(pagosInsertar)
+        if (pagoError) throw pagoError
+      } else {
+        const { error: pagoError } = await supabase.from('pagos_venta').insert({
+          venta_id: ventaId,
+          medio_pago: medioPago,
+          monto: total,
+          referencia: referencia || null,
+        })
+        if (pagoError) throw pagoError
+      }
 
       // 4. Actualizar stock físico en catálogo y asentar egreso en movimientos_stock
       for (const it of items) {
@@ -358,9 +441,9 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         console.warn('Error sincronizando stock en memoria local:', cacheErr)
       }
 
-      // 5. Si es Cuenta Corriente, imputar cargo a la ficha del cliente
-      if (medioPago === 'CUENTA_CORRIENTE') {
-        await imputarCargoVenta(clienteSeleccionadoId, ventaId, total, notasFinal || undefined)
+      // 5. Si tiene saldo en Cuenta Corriente, imputar cargo a la ficha del cliente
+      if (montoCuentaCorriente > 0 && clienteSeleccionadoId) {
+        await imputarCargoVenta(clienteSeleccionadoId, ventaId, montoCuentaCorriente, notasFinal || undefined)
       }
 
       // 5b. Manejo de Puntos de Fidelización (Odoo ERP)
@@ -420,6 +503,10 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       }
 
       // 6. Armar datos de ticket para comprobante térmico / digital
+      const pagosTicket = esPagoMixto
+        ? pagosMixtos.map((p) => ({ medioPago: p.medio_pago, monto: p.monto }))
+        : [{ medioPago: medioPago === 'CUENTA_CORRIENTE' ? 'Cuenta Corriente' : medioPago, monto: total }]
+
       const ticketGenerado: TicketData = {
         ventaId,
         fecha: ahora,
@@ -449,9 +536,12 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             }
           : null,
         total,
-        medioPago: medioPago === 'CUENTA_CORRIENTE' ? 'Cuenta Corriente' : medioPago,
-        pagaCon: medioPago === 'EFECTIVO' ? pagaConNum : undefined,
-        vuelto: medioPago === 'EFECTIVO' ? vuelto : undefined,
+        medioPago: esPagoMixto
+          ? 'Pago Mixto'
+          : (medioPago === 'CUENTA_CORRIENTE' ? 'Cuenta Corriente' : medioPago),
+        pagos: pagosTicket,
+        pagaCon: !esPagoMixto && medioPago === 'EFECTIVO' ? pagaConNum : undefined,
+        vuelto: !esPagoMixto && medioPago === 'EFECTIVO' ? vuelto : undefined,
         kioscoNombre: kiosco?.nombre,
         kioscoDireccion: kiosco?.direccion,
         kioscoTelefono: kiosco?.telefono,
@@ -471,11 +561,13 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
 
       const msgPuntos = clienteSeleccionado && puntosGanados > 0 ? ` (+${puntosGanados} pts)` : ''
       toast.success(
-        medioPago === 'CUENTA_CORRIENTE'
+        esPagoMixto
+          ? `Venta con Pago Mixto registrada — ${formatPrecio(total)}${msgPuntos}`
+          : medioPago === 'CUENTA_CORRIENTE'
           ? `Venta a cuenta corriente registrada — ${formatPrecio(total)}${msgPuntos}`
           : `Venta registrada — ${formatPrecio(total)}${msgPuntos}`
       )
-      if (medioPago === 'EFECTIVO' && vuelto > 0) {
+      if (!esPagoMixto && medioPago === 'EFECTIVO' && vuelto > 0) {
         toast(`Vuelto: ${formatPrecio(vuelto)}`, { duration: 5000 })
       }
 
@@ -511,6 +603,8 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   }
 
   const resetForm = () => {
+    setEsPagoMixto(false)
+    setPagosMixtos([])
     setMedioPago('EFECTIVO')
     setPagaCon('')
     setReferencia('')
@@ -551,31 +645,151 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           </div>
         </div>
 
-        {/* Medio de pago */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Medio de pago</label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {MEDIOS_PAGO.map((mp) => (
-              <button
-                key={mp.valor}
-                type="button"
-                onClick={() => setMedioPago(mp.valor)}
-                className={`flex items-center justify-center p-3 rounded-xl border-2 text-sm font-semibold min-h-[46px] active:scale-95 transition-all ${
-                  mp.valor === 'CUENTA_CORRIENTE' ? 'col-span-2 sm:col-span-1' : ''
-                } ${
-                  medioPago === mp.valor
-                    ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 shadow-xs'
-                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
-                }`}
-              >
-                {mp.label}
-              </button>
-            ))}
-          </div>
+        {/* Selector Modalidad: Pago Simple vs Pago Mixto */}
+        <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl gap-1">
+          <button
+            type="button"
+            onClick={() => setEsPagoMixto(false)}
+            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              !esPagoMixto
+                ? 'bg-white dark:bg-gray-700 text-indigo-700 dark:text-indigo-300 shadow-xs'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            Pago Simple
+          </button>
+          <button
+            type="button"
+            onClick={activarPagoMixto}
+            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              esPagoMixto
+                ? 'bg-white dark:bg-gray-700 text-indigo-700 dark:text-indigo-300 shadow-xs'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            Pago Mixto / Dividido
+          </button>
         </div>
 
+        {/* Medio de pago - Pago Simple */}
+        {!esPagoMixto && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Medio de pago</label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {MEDIOS_PAGO.map((mp) => (
+                <button
+                  key={mp.valor}
+                  type="button"
+                  onClick={() => setMedioPago(mp.valor)}
+                  className={`flex items-center justify-center p-3 rounded-xl border-2 text-sm font-semibold min-h-[46px] active:scale-95 transition-all cursor-pointer ${
+                    mp.valor === 'CUENTA_CORRIENTE' ? 'col-span-2 sm:col-span-1' : ''
+                  } ${
+                    medioPago === mp.valor
+                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 shadow-xs'
+                      : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+                  }`}
+                >
+                  {mp.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Desglose de Líneas - Pago Mixto */}
+        {esPagoMixto && (
+          <div className="space-y-3 p-3 bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-200 dark:border-gray-700">
+            <div className="flex justify-between items-center">
+              <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                Líneas de Pago ({pagosMixtos.length}/4)
+              </span>
+              <span
+                className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                  saldoRestanteMixto === 0
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                    : saldoRestanteMixto > 0
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                    : 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300'
+                }`}
+              >
+                {saldoRestanteMixto === 0
+                  ? 'Total cubierto'
+                  : saldoRestanteMixto > 0
+                  ? `Faltan ${formatPrecio(saldoRestanteMixto)}`
+                  : `Excede por ${formatPrecio(Math.abs(saldoRestanteMixto))}`}
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              {pagosMixtos.map((linea) => (
+                <div
+                  key={linea.id}
+                  className="flex items-center gap-2 p-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-xs"
+                >
+                  <select
+                    value={linea.medio_pago}
+                    onChange={(e) => actualizarLineaPagoMixto(linea.id, 'medio_pago', e.target.value as MedioPago)}
+                    className="w-1/2 px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-xs font-medium text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-indigo-500"
+                  >
+                    {MEDIOS_PAGO.map((mp) => (
+                      <option key={mp.valor} value={mp.valor}>
+                        {mp.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="relative flex-1">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-bold">$</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={linea.monto || ''}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9]/g, '')
+                        actualizarLineaPagoMixto(linea.id, 'monto', val)
+                      }}
+                      placeholder="0"
+                      className="w-full pl-6 pr-2 py-1.5 text-xs font-bold text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-1 focus:ring-indigo-500 text-right"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => llenarSaldoRestanteEnLinea(linea.id)}
+                    title="Asignar el saldo restante a esta línea"
+                    className="px-2 py-1.5 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-lg whitespace-nowrap cursor-pointer"
+                  >
+                    Resto
+                  </button>
+
+                  {pagosMixtos.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => eliminarLineaPagoMixto(linea.id)}
+                      className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg cursor-pointer transition-colors"
+                      title="Quitar línea"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {pagosMixtos.length < 4 && (
+              <button
+                type="button"
+                onClick={agregarLineaPagoMixto}
+                className="w-full py-1.5 border border-dashed border-gray-300 dark:border-gray-600 hover:border-indigo-500 dark:hover:border-indigo-400 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
+              >
+                + Agregar otro medio de pago
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Botón rápido para asignar cliente en ventas comunes */}
-        {medioPago !== 'CUENTA_CORRIENTE' && !clienteSeleccionado && (
+        {((!esPagoMixto && medioPago !== 'CUENTA_CORRIENTE') || (esPagoMixto && !tieneCuentaCorrienteEnMixto)) && !clienteSeleccionado && (
           <div className="flex justify-end -mt-2">
             <button
               type="button"
@@ -588,15 +802,15 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         )}
 
         {/* Panel de Cliente, Puntos y Cuenta Corriente */}
-        {(medioPago === 'CUENTA_CORRIENTE' || mostrarBuscadorCliente || clienteSeleccionado) && (
+        {((!esPagoMixto && medioPago === 'CUENTA_CORRIENTE') || tieneCuentaCorrienteEnMixto || mostrarBuscadorCliente || clienteSeleccionado) && (
           <div className="space-y-3 p-3.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl">
             <div className="flex justify-between items-center">
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                {medioPago === 'CUENTA_CORRIENTE'
+                {(!esPagoMixto && medioPago === 'CUENTA_CORRIENTE') || tieneCuentaCorrienteEnMixto
                   ? 'Seleccionar Cliente para fiar / imputar deuda *'
                   : 'Cliente asignado a la venta (Fidelización / AFIP)'}
               </label>
-              {medioPago !== 'CUENTA_CORRIENTE' && !clienteSeleccionado && (
+              {!((!esPagoMixto && medioPago === 'CUENTA_CORRIENTE') || tieneCuentaCorrienteEnMixto) && !clienteSeleccionado && (
                 <button
                   type="button"
                   onClick={() => setMostrarBuscadorCliente(false)}
@@ -727,7 +941,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
                   </p>
                 </div>
 
-                {medioPago === 'CUENTA_CORRIENTE' && (
+                {((!esPagoMixto && medioPago === 'CUENTA_CORRIENTE') || tieneCuentaCorrienteEnMixto) && (
                   <div className="pt-1 space-y-1">
                     <div className="flex justify-between">
                       <span className="text-gray-500 dark:text-gray-400">Saldo deudor actual:</span>
@@ -738,11 +952,20 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
                     <div className="flex justify-between">
                       <span className="text-gray-500 dark:text-gray-400">Nuevo saldo estimado:</span>
                       <span className="font-bold text-indigo-600 dark:text-indigo-400">
-                        {formatPrecio(clienteSeleccionado.saldo_deudor + total)}
+                        {formatPrecio(
+                          clienteSeleccionado.saldo_deudor +
+                            (esPagoMixto
+                              ? pagosMixtos.filter((p) => p.medio_pago === 'CUENTA_CORRIENTE').reduce((acc, p) => acc + p.monto, 0)
+                              : total)
+                        )}
                       </span>
                     </div>
                     {clienteSeleccionado.limite_credito > 0 &&
-                      clienteSeleccionado.saldo_deudor + total > clienteSeleccionado.limite_credito && (
+                      clienteSeleccionado.saldo_deudor +
+                        (esPagoMixto
+                          ? pagosMixtos.filter((p) => p.medio_pago === 'CUENTA_CORRIENTE').reduce((acc, p) => acc + p.monto, 0)
+                          : total) >
+                        clienteSeleccionado.limite_credito && (
                         <div className="p-2 rounded bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-300 font-medium">
                           Atención: El nuevo saldo superará el límite de crédito ({formatPrecio(clienteSeleccionado.limite_credito)}).
                         </div>
@@ -754,8 +977,8 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           </div>
         )}
 
-        {/* Efectivo: calculadora de vuelto */}
-        {medioPago === 'EFECTIVO' && (
+        {/* Efectivo: calculadora de vuelto (Solo en Pago Simple con Efectivo) */}
+        {!esPagoMixto && medioPago === 'EFECTIVO' && (
           <div className="space-y-3">
             <Input
               label="El cliente paga con"
@@ -781,7 +1004,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
                   key={billete}
                   type="button"
                   onClick={() => setPagaCon(billete.toString())}
-                  className={`px-3.5 py-2 min-h-[38px] rounded-xl border text-sm font-semibold active:scale-95 transition-all ${
+                  className={`px-3.5 py-2 min-h-[38px] rounded-xl border text-sm font-semibold active:scale-95 transition-all cursor-pointer ${
                     pagaConNum === billete
                       ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'
                       : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'
@@ -794,7 +1017,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
               <button
                 type="button"
                 onClick={() => setPagaCon(Math.round(total).toString())}
-                className="px-4 py-2 min-h-[38px] rounded-xl border border-emerald-300 dark:border-emerald-700 text-sm font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 active:scale-95 transition-all"
+                className="px-4 py-2 min-h-[38px] rounded-xl border border-emerald-300 dark:border-emerald-700 text-sm font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 active:scale-95 transition-all cursor-pointer"
               >
                 Exacto
               </button>
@@ -822,11 +1045,11 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           </div>
         )}
 
-        {/* Otros medios: referencia opcional */}
-        {medioPago !== 'EFECTIVO' && (
+        {/* Otros medios o Pago Mixto: referencia opcional */}
+        {((!esPagoMixto && medioPago !== 'EFECTIVO') || esPagoMixto) && (
           <Input
             label="Referencia (opcional)"
-            placeholder={medioPago === 'TARJETA' ? 'Últimos 4 dígitos' : 'Nro de operación'}
+            placeholder={!esPagoMixto && medioPago === 'TARJETA' ? 'Últimos 4 dígitos' : 'Nro de operación o notas'}
             value={referencia}
             onChange={(e) => setReferencia(e.target.value)}
             onKeyDown={(e) => {

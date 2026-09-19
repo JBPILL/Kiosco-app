@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import type { Producto, Categoria } from '../../types/database'
 import { formatPrecio, nivelStock } from '../../lib/utils'
 import { SearchInput } from '../ui/SearchInput'
 import { Button } from '../ui/Button'
+import { useProveedorStore } from '../../stores/proveedorStore'
 
 const stockColors = {
   ok: 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30',
@@ -47,9 +48,21 @@ export function ProductTable({
   onNuevo,
   cargando,
 }: ProductTableProps) {
+  const { proveedores, cargarProveedores } = useProveedorStore()
+  const [proveedorFiltro, setProveedorFiltro] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [sortField, setSortField] = useState<SortField>('categoria')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+
+  useEffect(() => {
+    cargarProveedores()
+  }, [cargarProveedores])
+
+  const proveedoresMap = useMemo(() => {
+    const map = new Map<string, string>()
+    proveedores.forEach((p) => map.set(p.id, p.nombre))
+    return map
+  }, [proveedores])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -72,8 +85,9 @@ export function ProductTable({
   }
 
   const productosFiltradosYOrdenados = useMemo(() => {
-    // 1. Filtrar por categoría
     let list = productos
+
+    // 1. Filtrar por categoría
     if (categoriaFiltro) {
       const catObj = categorias.find((c) => c.id === categoriaFiltro)
       const catNombreNorm = catObj?.nombre?.toLowerCase().trim()
@@ -84,6 +98,11 @@ export function ProductTable({
         if (catNombreNorm && p.categoria?.nombre && p.categoria.nombre.toLowerCase().trim() === catNombreNorm) return true
         return false
       })
+    }
+
+    // 1b. Filtrar por proveedor
+    if (proveedorFiltro) {
+      list = list.filter((p) => p.proveedor_id === proveedorFiltro)
     }
 
     // 2. Filtrar por búsqueda
@@ -140,7 +159,7 @@ export function ProductTable({
             onClear={() => onBusquedaChange('')}
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <select
             className="flex-1 sm:flex-initial rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-xs sm:text-sm focus:border-indigo-500 min-h-[36px]"
             value={categoriaFiltro || ''}
@@ -151,6 +170,18 @@ export function ProductTable({
               <option key={cat.id} value={cat.id}>{cat.nombre}</option>
             ))}
           </select>
+
+          <select
+            className="flex-1 sm:flex-initial rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-xs sm:text-sm focus:border-indigo-500 min-h-[36px]"
+            value={proveedorFiltro || ''}
+            onChange={(e) => setProveedorFiltro(e.target.value || null)}
+          >
+            <option value="">Todos los proveedores</option>
+            {proveedores.filter((p) => p.activo).map((prov) => (
+              <option key={prov.id} value={prov.id}>{prov.nombre}</option>
+            ))}
+          </select>
+
           <Button size="sm" onClick={onNuevo} className="whitespace-nowrap flex items-center gap-1.5 font-semibold">
             + Nuevo Producto
           </Button>
@@ -168,21 +199,24 @@ export function ProductTable({
           <p className="font-medium text-gray-700 dark:text-gray-300">
             {categoriaFiltro
               ? `No hay productos cargados en la categoría "${categorias.find((c) => c.id === categoriaFiltro)?.nombre || 'seleccionada'}".`
+              : proveedorFiltro
+              ? `No hay productos asociados al proveedor "${proveedores.find((p) => p.id === proveedorFiltro)?.nombre || 'seleccionado'}".`
               : busqueda
               ? 'No se encontraron productos coincidentes con la búsqueda.'
               : 'No hay productos en el catálogo.'}
           </p>
-          {(busqueda || categoriaFiltro) && (
+          {(busqueda || categoriaFiltro || proveedorFiltro) && (
             <div className="flex items-center justify-center gap-2 mt-3">
               <button
                 type="button"
                 onClick={() => {
                   onBusquedaChange('')
                   onCategoriaChange(null)
+                  setProveedorFiltro(null)
                 }}
                 className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 cursor-pointer"
               >
-                Ver todas las categorías
+                Limpiar filtros y ver todos
               </button>
               <Button size="sm" onClick={onNuevo}>
                 + Nuevo Producto
@@ -211,6 +245,11 @@ export function ProductTable({
                       {prod.es_retornable && (
                         <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 font-medium whitespace-nowrap">
                           Retornable (+{formatPrecio(prod.precio_envase || 0)})
+                        </span>
+                      )}
+                      {prod.proveedor_id && proveedoresMap.has(prod.proveedor_id) && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 font-medium whitespace-nowrap">
+                          {proveedoresMap.get(prod.proveedor_id)}
                         </span>
                       )}
                     </div>
@@ -347,6 +386,11 @@ export function ProductTable({
                           {prod.es_retornable && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 font-medium whitespace-nowrap">
                               Retornable (+{formatPrecio(prod.precio_envase || 0)})
+                            </span>
+                          )}
+                          {prod.proveedor_id && proveedoresMap.has(prod.proveedor_id) && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 font-medium whitespace-nowrap">
+                              {proveedoresMap.get(prod.proveedor_id)}
                             </span>
                           )}
                         </div>

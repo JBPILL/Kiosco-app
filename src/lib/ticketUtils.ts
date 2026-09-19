@@ -7,9 +7,12 @@ import { construirURLQRAFIP } from './afipQR'
  * a la estructura requerida por TicketReceiptModal para visualización e impresión.
  */
 export function ventaToTicketData(v: any, kiosco?: any): TicketData {
+  const pagosArr: { medio_pago: string; monto: number }[] = v.pagos || []
   const medio =
-    v.pagos && v.pagos.length > 0 && v.pagos[0]?.medio_pago
-      ? labelMedioPago(v.pagos[0].medio_pago)
+    pagosArr.length > 1
+      ? 'Pago Mixto'
+      : pagosArr.length === 1 && pagosArr[0]?.medio_pago
+      ? labelMedioPago(pagosArr[0].medio_pago)
       : 'Efectivo'
 
   const detalles = v.detalles || []
@@ -81,6 +84,7 @@ export function ventaToTicketData(v: any, kiosco?: any): TicketData {
         : null,
     total: v.total,
     medioPago: medio,
+    pagos: pagosArr.map((p: any) => ({ medioPago: labelMedioPago(p.medio_pago), monto: p.monto })),
     kioscoNombre: kiosco?.nombre,
     kioscoDireccion: kiosco?.direccion,
     kioscoTelefono: kiosco?.telefono,

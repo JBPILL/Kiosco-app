@@ -7,6 +7,7 @@ import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { TicketReceiptModal, type TicketData } from '../components/pos/TicketReceiptModal'
 import { BalanceContableTab } from '../components/reportes/BalanceContableTab'
+import { StockInmovilizadoTab } from '../components/reportes/StockInmovilizadoTab'
 import { useClienteStore } from '../stores/clienteStore'
 import toast from 'react-hot-toast'
 
@@ -36,7 +37,7 @@ interface VentaResumen {
 
 export function ReportesPage() {
   const { usuario } = useAuthStore()
-  const [tabActiva, setTabActiva] = useState<'ventas' | 'balance'>('balance')
+  const [tabActiva, setTabActiva] = useState<'balance' | 'ventas' | 'inmovilizado'>('balance')
   const [fecha, setFecha] = useState(() => getFechaLocal())
   const [ventas, setVentas] = useState<VentaResumen[]>([])
   const [resumen, setResumen] = useState<ResumenDiario | null>(null)
@@ -236,6 +237,8 @@ export function ReportesPage() {
           <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
             {tabActiva === 'ventas'
               ? 'Detalle de tickets y facturación diaria por jornada'
+              : tabActiva === 'inmovilizado'
+              ? 'Detección de artículos sin rotación y capital estancado en depósito'
               : 'Balance financiero, compras a proveedores y libro diario contable'}
           </p>
         </div>
@@ -245,7 +248,7 @@ export function ReportesPage() {
           <button
             type="button"
             onClick={() => setTabActiva('balance')}
-            className={`px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+            className={`px-3 sm:px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
               tabActiva === 'balance'
                 ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
@@ -256,7 +259,7 @@ export function ReportesPage() {
           <button
             type="button"
             onClick={() => setTabActiva('ventas')}
-            className={`px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+            className={`px-3 sm:px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
               tabActiva === 'ventas'
                 ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
@@ -264,11 +267,24 @@ export function ReportesPage() {
           >
             Ventas Diarias
           </button>
+          <button
+            type="button"
+            onClick={() => setTabActiva('inmovilizado')}
+            className={`px-3 sm:px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+              tabActiva === 'inmovilizado'
+                ? 'bg-white dark:bg-gray-700 text-red-600 dark:text-red-400 shadow-xs'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            Stock Inmovilizado
+          </button>
         </div>
       </div>
 
       {tabActiva === 'balance' ? (
         <BalanceContableTab />
+      ) : tabActiva === 'inmovilizado' ? (
+        <StockInmovilizadoTab />
       ) : (
         <div className="space-y-6">
           {/* Header con selector de fecha */}

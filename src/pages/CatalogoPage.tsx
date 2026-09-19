@@ -6,6 +6,7 @@ import { ProductForm } from '../components/catalogo/ProductForm'
 import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
 import { AumentoPreciosModal } from '../components/catalogo/AumentoPreciosModal'
 import { PreciosEnvasesModal } from '../components/catalogo/PreciosEnvasesModal'
+import { EtiquetasGondolaModal } from '../components/catalogo/EtiquetasGondolaModal'
 import { exportarCatalogoExcel } from '../lib/exportUtils'
 import { useAuthStore } from '../stores/authStore'
 import { Button } from '../components/ui/Button'
@@ -37,6 +38,7 @@ export function CatalogoPage() {
   const [importarOpen, setImportarOpen] = useState(false)
   const [aumentoOpen, setAumentoOpen] = useState(false)
   const [envasesOpen, setEnvasesOpen] = useState(false)
+  const [etiquetasOpen, setEtiquetasOpen] = useState(false)
   const [productoEditar, setProductoEditar] = useState<Producto | null>(null)
 
   const handleNuevo = () => {
@@ -80,6 +82,15 @@ export function CatalogoPage() {
             className="flex items-center gap-1.5 shadow-xs font-semibold"
           >
             Precios de Envases
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setEtiquetasOpen(true)}
+            className="flex items-center gap-1.5 border-purple-200 dark:border-purple-800 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/30 font-semibold"
+            title="Imprimir etiquetas de góndola y códigos de barras"
+          >
+            Etiquetas Góndola
           </Button>
           <Button
             variant="secondary"
@@ -166,6 +177,15 @@ export function CatalogoPage() {
         productos={productos}
         onActualizarProducto={actualizarProducto}
         onRecargarProductos={cargarProductos}
+      />
+
+      {/* Modal de impresión de etiquetas de góndola */}
+      <EtiquetasGondolaModal
+        isOpen={etiquetasOpen}
+        onClose={() => setEtiquetasOpen(false)}
+        productos={productos}
+        categorias={categorias}
+        kioscoNombre={kiosco?.nombre}
       />
     </div>
   )

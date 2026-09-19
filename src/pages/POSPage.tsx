@@ -18,6 +18,7 @@ import { BalanzaManualModal } from '../components/pos/BalanzaManualModal'
 import { DevolucionModal } from '../components/pos/DevolucionModal'
 import { HistorialTicketsModal } from '../components/pos/HistorialTicketsModal'
 import { RecibirEnvaseModal } from '../components/pos/RecibirEnvaseModal'
+import { RetiroCajaModal } from '../components/pos/RetiroCajaModal'
 import { parsearCodigoBalanza, buscarProductoPorCodigoBalanza } from '../lib/barcodeParser'
 import { useBarcodeGun } from '../hooks/useBarcodeGun'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
@@ -46,6 +47,7 @@ export function POSPage() {
   const [modalBalanzaOpen, setModalBalanzaOpen] = useState(false)
   const [modalDevolucionOpen, setModalDevolucionOpen] = useState(false)
   const [modalTicketsOpen, setModalTicketsOpen] = useState(false)
+  const [modalRetiroOpen, setModalRetiroOpen] = useState(false)
   const [ventaParaDevolver, setVentaParaDevolver] = useState<VentaConDetalles | null>(null)
   const [modalEnvaseOpen, setModalEnvaseOpen] = useState(false)
   const [modalPromosOpen, setModalPromosOpen] = useState(false)
@@ -319,7 +321,7 @@ export function POSPage() {
 
   useBarcodeGun({
     onScan: handleBarcodeGunScan,
-    enabled: !paymentOpen && !cartModalOpen && !modalScannerOpen && !modalEsperaOpen && !ticketModalOpen && !modalBalanzaOpen && !modalDevolucionOpen && !modalTicketsOpen && !modalEnvaseOpen,
+    enabled: !paymentOpen && !cartModalOpen && !modalScannerOpen && !modalEsperaOpen && !ticketModalOpen && !modalBalanzaOpen && !modalDevolucionOpen && !modalTicketsOpen && !modalEnvaseOpen && !modalRetiroOpen,
   })
 
   // Atajos de teclado para PC de escritorio
@@ -345,8 +347,12 @@ export function POSPage() {
       onOpenHelp: () => {
         setModalShortcutsOpen((prev) => !prev)
       },
+      onRetiroCaja: () => {
+        setModalRetiroOpen((prev) => !prev)
+      },
       onEscape: () => {
-        if (modalPromosOpen) setModalPromosOpen(false)
+        if (modalRetiroOpen) setModalRetiroOpen(false)
+        else if (modalPromosOpen) setModalPromosOpen(false)
         else if (modalTicketsOpen) setModalTicketsOpen(false)
         else if (modalDevolucionOpen) setModalDevolucionOpen(false)
         else if (modalBalanzaOpen) setModalBalanzaOpen(false)
@@ -471,6 +477,14 @@ export function POSPage() {
                 title="Registrar recepción de envases retornables vacíos"
               >
                 <span>Recibir envase</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setModalRetiroOpen(true)}
+                className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50/90 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 text-amber-800 dark:text-amber-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
+                title="Extracción rápida de efectivo del cajón / pago a proveedores (Alt+E o F9)"
+              >
+                <span>Retiro / Caja</span>
               </button>
             </div>
           </div>
@@ -858,6 +872,12 @@ export function POSPage() {
       <RecibirEnvaseModal
         isOpen={modalEnvaseOpen}
         onClose={() => setModalEnvaseOpen(false)}
+      />
+
+      {/* Modal para retiro rápido de efectivo en mostrador (Sangría de caja) */}
+      <RetiroCajaModal
+        isOpen={modalRetiroOpen}
+        onClose={() => setModalRetiroOpen(false)}
       />
     </div>
   )
