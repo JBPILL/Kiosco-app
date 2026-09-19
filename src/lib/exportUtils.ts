@@ -249,10 +249,15 @@ export async function exportarCatalogoExcel(
   const catMap = new Map<string, string>()
   categorias.forEach((c) => catMap.set(c.id, c.nombre))
 
-  // Filtrar exclusivamente productos comerciales activos (excluyendo devoluciones de envases y artículos virtuales)
+  // Filtrar exclusivamente productos comerciales físicos activos
+  // (excluyendo devoluciones de envases, combos promocionales virtuales y artículos ad-hoc que inflan la valuación)
   const productosValidos = productos.filter((p) => {
     if (p.activo === false) return false
+    if (p.es_combo === true) return false
+    const cod = (p.codigo_barras || '').toUpperCase().trim()
+    if (cod.startsWith('COMBO-') || cod === 'COMBO') return false
     const desc = (p.descripcion || '').toLowerCase().trim()
+    if (desc.startsWith('combo ') || desc === 'combo') return false
     if (desc.startsWith('devolución') || desc.startsWith('devolucion')) return false
     if (p.stock_actual > 90000 && !p.codigo_barras) return false
     return true
