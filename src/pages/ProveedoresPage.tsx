@@ -1239,10 +1239,9 @@ export function ProveedoresPage() {
                   onChange={(e) => setCargaRapidaMedio(e.target.value as MedioPagoCompra)}
                   className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                 >
-                  <option value="EFECTIVO">Efectivo (pagado)</option>
-                  <option value="TRANSFERENCIA">Transferencia (pagado)</option>
-                  <option value="CHEQUE">Cheque</option>
-                  <option value="CREDITO">Quedó a deber (deuda)</option>
+                  <option value="EFECTIVO">Efectivo (pagado de caja)</option>
+                  <option value="TRANSFERENCIA">Transferencia bancaria (pagado)</option>
+                  <option value="CUENTA_CORRIENTE">Quedó a deber (cuenta corriente / deuda)</option>
                 </select>
               </div>
 

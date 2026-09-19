@@ -105,6 +105,7 @@ export function ClientesPage() {
     setFormEmail(cli.email || '')
     setFormLimite(cli.limite_credito ? cli.limite_credito.toString() : '')
     setFormNotas(cli.notas || '')
+    setMostrarMasDatos(Boolean(cli.dni_cuit || cli.direccion || cli.email))
     setModalClienteOpen(true)
   }
 

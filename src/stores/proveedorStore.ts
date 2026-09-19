@@ -581,9 +581,10 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
       return { success: false, error: 'Sin sesión' }
     }
 
-    if (!compraInput.detalles || compraInput.detalles.length === 0) {
-      toast.error('Debe incluir al menos un producto en la compra')
-      return { success: false, error: 'Sin productos' }
+    const tieneDetalles = Boolean(compraInput.detalles && compraInput.detalles.length > 0)
+    if (!tieneDetalles && (!compraInput.total || compraInput.total <= 0)) {
+      toast.error('El monto total de la compra debe ser mayor a 0')
+      return { success: false, error: 'Monto inválido' }
     }
 
     const caja = useCajaStore.getState()
@@ -608,7 +609,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
       sesion_caja_id: sesionCajaId,
       notas: compraInput.notas?.trim() || null,
       proveedor: proveedor,
-      detalles: compraInput.detalles.map((d) => ({
+      detalles: (compraInput.detalles || []).map((d) => ({
         id: uuidv4(),
         compra_id: compraId,
         producto_id: d.producto_id,
@@ -630,27 +631,29 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
     saveLocalCompras(usuario.kiosco_id, comprasActualizadas)
     set({ compras: comprasActualizadas })
 
-    // 4. Actualizar stock local en catálogo de productos
-    try {
-      const cached = localStorage.getItem('kiosko_cache_productos')
-      if (cached) {
-        const productosList: Producto[] = JSON.parse(cached)
-        const updatedList = productosList.map((prod) => {
-          const item = compraInput.detalles.find((d) => d.producto_id === prod.id)
-          if (item) {
-            return {
-              ...prod,
-              stock_actual: prod.stock_actual + item.cantidad,
-              precio_costo: item.precio_costo_unitario,
-              fecha_actualizacion: new Date().toISOString(),
+    // 4. Actualizar stock local en catálogo de productos si hubo renglones
+    if (tieneDetalles) {
+      try {
+        const cached = localStorage.getItem('kiosko_cache_productos')
+        if (cached) {
+          const productosList: Producto[] = JSON.parse(cached)
+          const updatedList = productosList.map((prod) => {
+            const item = (compraInput.detalles || []).find((d) => d.producto_id === prod.id)
+            if (item) {
+              return {
+                ...prod,
+                stock_actual: prod.stock_actual + item.cantidad,
+                precio_costo: item.precio_costo_unitario,
+                fecha_actualizacion: new Date().toISOString(),
+              }
             }
-          }
-          return prod
-        })
-        localStorage.setItem('kiosko_cache_productos', JSON.stringify(updatedList))
+            return prod
+          })
+          localStorage.setItem('kiosko_cache_productos', JSON.stringify(updatedList))
+        }
+      } catch (e) {
+        console.warn('Error actualizando caché local de productos:', e)
       }
-    } catch (e) {
-      console.warn('Error actualizando caché local de productos:', e)
     }
 
     // 5. Si se solicitó descontar de la caja activa y el medio es EFECTIVO
@@ -684,8 +687,8 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
         notas: nuevaCompra.notas,
       })
 
-      if (!errorCabecera) {
-        const renglones = nuevaCompra.detalles!.map((d) => ({
+      if (!errorCabecera && tieneDetalles) {
+        const renglones = (nuevaCompra.detalles || []).map((d) => ({
           id: d.id,
           compra_id: d.compra_id,
           producto_id: d.producto_id,
@@ -694,13 +697,15 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
           subtotal: d.subtotal,
         }))
 
-        const { error: errorDetalles } = await supabase.from('detalles_compra').insert(renglones)
-        if (errorDetalles) {
-          console.warn('Error insertando detalles_compra en Supabase:', errorDetalles)
+        if (renglones.length > 0) {
+          const { error: errorDetalles } = await supabase.from('detalles_compra').insert(renglones)
+          if (errorDetalles) {
+            console.warn('Error insertando detalles_compra en Supabase:', errorDetalles)
+          }
         }
 
         // Actualizar stock_actual y precio_costo en tabla productos en Supabase
-        for (const item of compraInput.detalles) {
+        for (const item of (compraInput.detalles || [])) {
           try {
             const { data: pDB } = await supabase
               .from('productos')
