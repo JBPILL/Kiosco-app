@@ -169,6 +169,17 @@ export function useProducts() {
   const crearProducto = async (
     producto: Omit<Producto, 'id' | 'kiosco_id' | 'fecha_creacion' | 'fecha_actualizacion' | 'activo'>
   ): Promise<Producto | null> => {
+    const codigoBarrasLimpio = producto.codigo_barras?.trim()
+    if (codigoBarrasLimpio) {
+      const yaExiste = productos.some(
+        (p) => p.activo && p.codigo_barras?.trim().toLowerCase() === codigoBarrasLimpio.toLowerCase()
+      )
+      if (yaExiste) {
+        toast.error(`Ya existe un producto activo con el código de barras "${codigoBarrasLimpio}"`)
+        return null
+      }
+    }
+
     const nuevoId = uuidv4()
     const now = new Date().toISOString()
     const kioscoId = usuario?.kiosco_id || kiosco?.id || ''
@@ -231,6 +242,17 @@ export function useProducts() {
 
   // Actualizar producto
   const actualizarProducto = async (id: string, cambios: Partial<Producto>) => {
+    const codigoBarrasLimpio = cambios.codigo_barras?.trim()
+    if (codigoBarrasLimpio) {
+      const yaExiste = productos.some(
+        (p) => p.id !== id && p.activo && p.codigo_barras?.trim().toLowerCase() === codigoBarrasLimpio.toLowerCase()
+      )
+      if (yaExiste) {
+        toast.error(`Ya existe otro producto activo con el código de barras "${codigoBarrasLimpio}"`)
+        return false
+      }
+    }
+
     const cambiosCompletos = { ...cambios, fecha_actualizacion: new Date().toISOString() }
 
     // Actualizar UI localmente de inmediato

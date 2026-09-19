@@ -448,12 +448,19 @@ export function StockPage() {
         fecha: new Date().toISOString(),
       })
 
-      if (prod) {
-        const nuevoStock = Math.max(0, prod.stock_actual - lote.cantidad_actual)
+      // Obtener stock fresco de base de datos para evitar desincronización por estado stale
+      const { data: prodFresh } = await supabase
+        .from('productos')
+        .select('id, stock_actual')
+        .eq('id', lote.producto_id)
+        .single()
+
+      if (prodFresh) {
+        const nuevoStock = Math.max(0, (prodFresh.stock_actual || 0) - lote.cantidad_actual)
         await supabase
           .from('productos')
           .update({ stock_actual: nuevoStock, fecha_actualizacion: new Date().toISOString() })
-          .eq('id', prod.id)
+          .eq('id', prodFresh.id)
       }
 
       toast.success(`Lote de "${nombreProd}" dado de baja correctamente`)

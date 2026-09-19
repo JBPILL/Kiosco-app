@@ -698,6 +698,42 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
         if (errorDetalles) {
           console.warn('Error insertando detalles_compra en Supabase:', errorDetalles)
         }
+
+        // Actualizar stock_actual y precio_costo en tabla productos en Supabase
+        for (const item of compraInput.detalles) {
+          try {
+            const { data: pDB } = await supabase
+              .from('productos')
+              .select('id, stock_actual')
+              .eq('id', item.producto_id)
+              .single()
+
+            if (pDB) {
+              const nuevoStock = Number(((pDB.stock_actual || 0) + item.cantidad).toFixed(3))
+              await supabase
+                .from('productos')
+                .update({
+                  stock_actual: nuevoStock,
+                  precio_costo: item.precio_costo_unitario,
+                  fecha_actualizacion: new Date().toISOString(),
+                })
+                .eq('id', pDB.id)
+
+              await supabase.from('movimientos_stock').insert({
+                kiosco_id: usuario.kiosco_id,
+                producto_id: pDB.id,
+                tipo: 'INGRESO',
+                cantidad: item.cantidad,
+                motivo: 'COMPRA',
+                notas: `Compra ${compraInput.nro_comprobante ? `(${compraInput.nro_comprobante})` : ''} - Proveedor: ${proveedor?.nombre || 'General'}`,
+                usuario_id: usuario.id || null,
+                fecha: new Date().toISOString(),
+              })
+            }
+          } catch (errStockProd) {
+            console.warn('Error actualizando stock de producto en compra:', errStockProd)
+          }
+        }
       }
     } catch (err) {
       console.warn('Error al persistir compra en Supabase (guardada localmente):', err)
@@ -730,14 +766,84 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
       }
     }
 
-    // 2. Actualizar estado local
+    // 2. Revertir stock de los productos comprados (Supabase y caché local)
+    try {
+      let detalles = compra.detalles
+      if (!detalles || detalles.length === 0) {
+        detalles = await get().cargarDetallesCompra(compraId)
+      }
+
+      if (detalles && detalles.length > 0) {
+        // Revertir en Supabase
+        for (const item of detalles) {
+          try {
+            const { data: pDB } = await supabase
+              .from('productos')
+              .select('id, stock_actual')
+              .eq('id', item.producto_id)
+              .single()
+
+            if (pDB) {
+              const nuevoStock = Math.max(0, Number(((pDB.stock_actual || 0) - item.cantidad).toFixed(3)))
+              await supabase
+                .from('productos')
+                .update({
+                  stock_actual: nuevoStock,
+                  fecha_actualizacion: new Date().toISOString(),
+                })
+                .eq('id', pDB.id)
+
+              await supabase.from('movimientos_stock').insert({
+                kiosco_id: usuario.kiosco_id,
+                producto_id: pDB.id,
+                tipo: 'EGRESO',
+                cantidad: -item.cantidad,
+                motivo: 'AJUSTE',
+                notas: `Anulación de compra #${compra.nro_comprobante || compra.id.slice(0, 8).toUpperCase()}`,
+                usuario_id: usuario.id || null,
+                fecha: new Date().toISOString(),
+              })
+            }
+          } catch (errStockRev) {
+            console.warn('Error revirtiendo stock en anulación:', errStockRev)
+          }
+        }
+
+        // Revertir en caché local
+        try {
+          const cached = localStorage.getItem('kiosko_cache_productos')
+          if (cached) {
+            const productosList: Producto[] = JSON.parse(cached)
+            const detallesMap = new Map(detalles.map((d) => [d.producto_id, d.cantidad]))
+            const updatedList = productosList.map((prod) => {
+              const cantDeducir = detallesMap.get(prod.id)
+              if (cantDeducir !== undefined) {
+                return {
+                  ...prod,
+                  stock_actual: Math.max(0, prod.stock_actual - cantDeducir),
+                  fecha_actualizacion: new Date().toISOString(),
+                }
+              }
+              return prod
+            })
+            localStorage.setItem('kiosko_cache_productos', JSON.stringify(updatedList))
+          }
+        } catch (eLocal) {
+          console.warn('Error actualizando caché local al anular compra:', eLocal)
+        }
+      }
+    } catch (errDet) {
+      console.warn('Error al cargar detalles para revertir stock de compra:', errDet)
+    }
+
+    // 3. Actualizar estado local
     const comprasActualizadas = get().compras.map((c) =>
       c.id === compraId ? { ...c, estado: 'ANULADA' as const } : c
     )
     saveLocalCompras(usuario.kiosco_id, comprasActualizadas)
     set({ compras: comprasActualizadas })
 
-    // 3. Actualizar en Supabase
+    // 4. Actualizar en Supabase
     try {
       await supabase
         .from('compras_proveedor')
@@ -748,7 +854,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
       console.warn('Error al anular compra en Supabase:', err)
     }
 
-    toast.success('Compra marcada como ANULADA')
+    toast.success('Compra anulada y stock revertido correctamente')
     return true
   },
 }))

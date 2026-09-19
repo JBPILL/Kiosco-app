@@ -276,7 +276,7 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
       })
     }
 
-    const hoyStr = new Date().toISOString().split('T')[0]
+    const hoyStr = getFechaLocal()
     const diaHoy = new Date().getDay()
 
     // 1. Inicializar items con montos originales
