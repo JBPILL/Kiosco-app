@@ -642,7 +642,7 @@ export function StockPage() {
               : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
           }`}
         >
-          <span>Lotes y Vencimientos (FIFO)</span>
+          <span>Alertas de Vencimientos</span>
           {alertasLotes.vencidos.length + alertasLotes.criticos.length > 0 && (
             <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300">
               {alertasLotes.vencidos.length + alertasLotes.criticos.length}
@@ -840,7 +840,7 @@ export function StockPage() {
           )}
         </div>
       ) : (
-        /* Vista de Control de Lotes y Vencimientos (FIFO) */
+        /* Vista de Alertas de Vencimientos */
         <div className="space-y-4">
           {/* Tarjetas de Semáforo de Vencimiento */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -1364,18 +1364,6 @@ export function StockPage() {
                     value={fechaVencimiento}
                     onChange={(e) => setFechaVencimiento(e.target.value)}
                     className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 outline-none focus:border-indigo-500 font-medium"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
-                    N° de Lote (opcional)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ej: L2026-A"
-                    value={numeroLote}
-                    onChange={(e) => setNumeroLote(e.target.value)}
-                    className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 outline-none focus:border-indigo-500 uppercase font-mono"
                   />
                 </div>
               </div>

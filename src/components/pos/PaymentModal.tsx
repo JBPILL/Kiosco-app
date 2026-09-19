@@ -52,15 +52,11 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
     clientes,
     cargarClientes,
     imputarCargoVenta,
-    sumarPuntosCliente,
-    canjearPuntosCliente,
   } = useClienteStore()
   const { config: afipConfig, emitirFacturaVenta, cargarConfiguracion } = useAFIPStore()
   const [clienteSeleccionadoId, setClienteSeleccionadoId] = useState<string>('')
   const [busquedaCliente, setBusquedaCliente] = useState<string>('')
   const [mostrarBuscadorCliente, setMostrarBuscadorCliente] = useState<boolean>(false)
-  const [canjearPuntos, setCanjearPuntos] = useState<boolean>(false)
-
   const [emitirFiscal, setEmitirFiscal] = useState(false)
   const [tipoDocReceptor, setTipoDocReceptor] = useState<TipoDocumentoAFIP>(99)
   const [nroDocReceptor, setNroDocReceptor] = useState<string>('')
@@ -71,11 +67,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   const tieneAjuste = tipoAjuste !== 'NINGUNO'
 
   const clienteSeleccionado = clientes.find((c) => c.id === clienteSeleccionadoId)
-  const puntosDisponibles = clienteSeleccionado?.puntos_fidelidad || 0
-  const descuentoPuntos = canjearPuntos && puntosDisponibles > 0
-    ? Math.min(puntosDisponibles, Math.round(totalBase))
-    : 0
-  const total = Math.max(0, totalBase - descuentoPuntos)
+  const total = totalBase
 
   const [medioPago, setMedioPago] = useState<MedioPago>('EFECTIVO')
   const [pagaCon, setPagaCon] = useState<string>('')
@@ -249,18 +241,6 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         throw new Error('No se encontró el identificador del kiosco para registrar la venta')
       }
 
-      // Confirmación de seguridad si el canje de puntos salda el 100% de la venta
-      if (canjearPuntos && descuentoPuntos > 0 && total === 0) {
-        const confirmarCanjeTotal = window.confirm(
-          `Atención: Esta venta se saldará en un 100% canjeando ${descuentoPuntos.toLocaleString('es-AR')} puntos de fidelidad de ${clienteSeleccionado?.nombre || 'este cliente'}.\n\n¿Deseas confirmar la operación?`
-        )
-        if (!confirmarCanjeTotal) {
-          procesandoRef.current = false
-          setProcesando(false)
-          return
-        }
-      }
-
       // Validación de consistencia fiscal ante AFIP / ARCA
       if (emitirFiscal) {
         if (tipoDocReceptor === 96) {
@@ -284,9 +264,8 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
 
       const descAjuste = descripcionAjuste()
       const clienteInfo = clienteSeleccionado ? `Cliente: ${clienteSeleccionado.nombre}` : null
-      const notaCanje = descuentoPuntos > 0 ? `Canje fidelidad: -${formatPrecio(descuentoPuntos)} (${descuentoPuntos} pts)` : null
 
-      const notasBase = [descAjuste, referencia, notaCanje].filter(Boolean).join(' · ')
+      const notasBase = [descAjuste, referencia].filter(Boolean).join(' · ')
       const notasFinal = [clienteInfo, notasBase].filter(Boolean).join(' · ') || null
 
       // Advertencia en consola/log si algún producto tiene stock insuficiente
@@ -474,26 +453,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         await imputarCargoVenta(clienteSeleccionadoId, ventaId, montoCuentaCorriente, notasFinal || undefined)
       }
 
-      // 5b. Manejo de Puntos de Fidelización (Odoo ERP)
-      const puntosGanados = clienteSeleccionado ? Math.floor(total / 100) : 0
-      if (clienteSeleccionado) {
-        if (descuentoPuntos > 0) {
-          try {
-            await canjearPuntosCliente(clienteSeleccionado.id, descuentoPuntos)
-          } catch (errCanje) {
-            console.warn('Error al canjear puntos de fidelidad:', errCanje)
-          }
-        }
-        if (puntosGanados > 0) {
-          try {
-            await sumarPuntosCliente(clienteSeleccionado.id, puntosGanados)
-          } catch (errSuma) {
-            console.warn('Error al sumar puntos de fidelidad:', errSuma)
-          }
-        }
-      }
-
-      // 5c. Si AFIP está habilitado y se solicitó factura electrónica, emitirla
+      // 5b. Si AFIP está habilitado y se solicitó factura electrónica, emitirla
       let afipTicketData: TicketData['afip'] = undefined
 
       if (emitirFiscal && afipConfig?.habilitado) {
@@ -578,22 +538,14 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         clienteTelefono: clienteSeleccionado?.telefono || null,
         notas: notasFinal,
         afip: afipTicketData,
-        puntosFidelidad: clienteSeleccionado
-          ? {
-              ganados: puntosGanados,
-              canjeados: descuentoPuntos > 0 ? descuentoPuntos : undefined,
-              saldoTotal: Math.max(0, puntosDisponibles - descuentoPuntos + puntosGanados),
-            }
-          : undefined,
       }
 
-      const msgPuntos = clienteSeleccionado && puntosGanados > 0 ? ` (+${puntosGanados} pts)` : ''
       toast.success(
         esPagoMixto
-          ? `Venta con Pago Mixto registrada — ${formatPrecio(total)}${msgPuntos}`
+          ? `Venta con Pago Mixto registrada — ${formatPrecio(total)}`
           : medioPago === 'CUENTA_CORRIENTE'
-          ? `Venta a cuenta corriente registrada — ${formatPrecio(total)}${msgPuntos}`
-          : `Venta registrada — ${formatPrecio(total)}${msgPuntos}`
+          ? `Venta a cuenta corriente registrada — ${formatPrecio(total)}`
+          : `Venta registrada — ${formatPrecio(total)}`
       )
       if (!esPagoMixto && medioPago === 'EFECTIVO' && vuelto > 0) {
         toast(`Vuelto: ${formatPrecio(vuelto)}`, { duration: 5000 })
@@ -639,7 +591,6 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
     setReferencia('')
     setClienteSeleccionadoId('')
     setBusquedaCliente('')
-    setCanjearPuntos(false)
     setMostrarBuscadorCliente(false)
     setEmitirFiscal(false)
     setTipoDocReceptor(99)
@@ -660,12 +611,6 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
               <span className={tipoAjuste.startsWith('DESCUENTO') ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-blue-600 dark:text-blue-400 font-semibold'}>
                 {descripcionAjuste()} ({tipoAjuste.startsWith('DESCUENTO') ? '-' : '+'}{formatPrecio(Math.abs(ajuste))})
               </span>
-            </div>
-          )}
-          {descuentoPuntos > 0 && (
-            <div className="flex justify-between items-center px-4 text-xs text-emerald-600 dark:text-emerald-400 pb-1 border-b border-indigo-100 dark:border-indigo-800/40 font-semibold">
-              <span>Canje de puntos fidelidad ({descuentoPuntos} pts):</span>
-              <span>-{formatPrecio(descuentoPuntos)}</span>
             </div>
           )}
           <div className="text-center pt-0.5">
@@ -878,7 +823,6 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
                           type="button"
                           onClick={() => {
                             setClienteSeleccionadoId(cli.id)
-                            setCanjearPuntos(false)
                           }}
                           className={`w-full text-left p-2.5 rounded-lg border text-xs transition-all flex items-center justify-between cursor-pointer ${
                             isSelected
@@ -889,11 +833,6 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
                           <div>
                             <p className="font-semibold text-gray-900 dark:text-gray-100">{cli.nombre}</p>
                             {cli.dni_cuit && <p className="text-[10px] text-gray-400">DNI/CUIT: {cli.dni_cuit}</p>}
-                            {cli.puntos_fidelidad ? (
-                              <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
-                                Puntos: {cli.puntos_fidelidad} pts
-                              </p>
-                            ) : null}
                           </div>
                           <div className="text-right flex-shrink-0 ml-2">
                             <p
@@ -930,44 +869,11 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
                     type="button"
                     onClick={() => {
                       setClienteSeleccionadoId('')
-                      setCanjearPuntos(false)
                     }}
                     className="text-[11px] text-red-500 hover:underline cursor-pointer"
                   >
                     Cambiar
                   </button>
-                </div>
-
-                {/* Programa de Fidelización Odoo ERP */}
-                <div className="p-2.5 bg-indigo-50/80 dark:bg-indigo-950/40 rounded-lg border border-indigo-100 dark:border-indigo-900/60 space-y-1.5">
-                  <div className="flex justify-between items-center text-indigo-950 dark:text-indigo-200">
-                    <span className="font-semibold text-xs">Puntos de fidelidad acumulados:</span>
-                    <span className="font-bold text-xs">
-                      {puntosDisponibles} pts (${puntosDisponibles} de saldo)
-                    </span>
-                  </div>
-
-                  {puntosDisponibles > 0 ? (
-                    <label className="flex items-center gap-2 pt-1 border-t border-indigo-200/50 dark:border-indigo-800/50 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={canjearPuntos}
-                        onChange={(e) => setCanjearPuntos(e.target.checked)}
-                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span className="text-[11px] text-indigo-900 dark:text-indigo-300 font-medium">
-                        Canjear {Math.min(puntosDisponibles, Math.round(totalBase))} pts por {formatPrecio(Math.min(puntosDisponibles, Math.round(totalBase)))} de descuento
-                      </span>
-                    </label>
-                  ) : (
-                    <p className="text-[10px] text-gray-500 dark:text-gray-400">
-                      El cliente no tiene puntos para canjear en esta compra.
-                    </p>
-                  )}
-
-                  <p className="text-[10px] text-indigo-700 dark:text-indigo-400 font-medium">
-                    Esta compra acumulará +{Math.floor(total / 100)} pts (1 pt cada $100)
-                  </p>
                 </div>
 
                 {((!esPagoMixto && medioPago === 'CUENTA_CORRIENTE') || tieneCuentaCorrienteEnMixto) && (

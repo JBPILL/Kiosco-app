@@ -36,6 +36,7 @@ export function ClientesPage() {
   const [formLimite, setFormLimite] = useState('')
   const [formNotas, setFormNotas] = useState('')
   const [guardandoCliente, setGuardandoCliente] = useState(false)
+  const [mostrarMasDatos, setMostrarMasDatos] = useState(false)
 
   // Modal Ficha / Estado de Cuenta
   const [clienteFicha, setClienteFicha] = useState<Cliente | null>(null)
@@ -91,6 +92,7 @@ export function ClientesPage() {
     setFormEmail('')
     setFormLimite('')
     setFormNotas('')
+    setMostrarMasDatos(false)
     setModalClienteOpen(true)
   }
 
@@ -527,7 +529,7 @@ export function ClientesPage() {
         title={clienteEditando ? 'Editar Cliente' : 'Nuevo Cliente'}
         size="md"
       >
-        <form onSubmit={handleGuardarCliente} className="space-y-4">
+        <form onSubmit={handleGuardarCliente} className="space-y-3">
           <Input
             label="Nombre completo *"
             type="text"
@@ -545,23 +547,6 @@ export function ClientesPage() {
               placeholder="Ej: 1122334455"
               value={formTelefono}
               onChange={(e) => setFormTelefono(e.target.value)}
-            />
-            <Input
-              label="DNI o CUIT"
-              type="text"
-              placeholder="Ej: 35123456"
-              value={formDni}
-              onChange={(e) => setFormDni(e.target.value)}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input
-              label="Dirección"
-              type="text"
-              placeholder="Ej: San Martín 123"
-              value={formDireccion}
-              onChange={(e) => setFormDireccion(e.target.value)}
             />
             <Input
               label="Límite de crédito ($)"
@@ -582,7 +567,44 @@ export function ClientesPage() {
             onChange={(e) => setFormNotas(e.target.value)}
           />
 
-          <div className="flex gap-2 pt-2">
+          {/* Sección opcional: Más datos */}
+          <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setMostrarMasDatos((v) => !v)}
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+            >
+              <span>Más datos (opcional)</span>
+              <span>{mostrarMasDatos ? '▲' : '▼'}</span>
+            </button>
+            {mostrarMasDatos && (
+              <div className="px-3 pb-3 pt-2 space-y-3 border-t border-gray-100 dark:border-gray-700">
+                <Input
+                  label="DNI o CUIT"
+                  type="text"
+                  placeholder="Ej: 35123456"
+                  value={formDni}
+                  onChange={(e) => setFormDni(e.target.value)}
+                />
+                <Input
+                  label="Email"
+                  type="email"
+                  placeholder="Ej: juan@email.com"
+                  value={formEmail}
+                  onChange={(e) => setFormEmail(e.target.value)}
+                />
+                <Input
+                  label="Dirección"
+                  type="text"
+                  placeholder="Ej: San Martín 123"
+                  value={formDireccion}
+                  onChange={(e) => setFormDireccion(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2 pt-1">
             <Button type="submit" variant="primary" fullWidth loading={guardandoCliente}>
               {clienteEditando ? 'Guardar Cambios' : 'Registrar Cliente'}
             </Button>

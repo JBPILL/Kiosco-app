@@ -113,6 +113,13 @@ export function ProveedoresPage() {
   const [renglones, setRenglones] = useState<RenglonCompra[]>([])
   const [guardandoCompra, setGuardandoCompra] = useState(false)
 
+  // --- Carga Rápida de Compra ---
+  const [modoCompra, setModoCompra] = useState<'rapida' | 'detallada'>('rapida')
+  const [cargaRapidaTotal, setCargaRapidaTotal] = useState('')
+  const [cargaRapidaMedio, setCargaRapidaMedio] = useState<MedioPagoCompra>('EFECTIVO')
+  const [cargaRapidaNotas, setCargaRapidaNotas] = useState('')
+  const [guardandoCargaRapida, setGuardandoCargaRapida] = useState(false)
+
   // Buscador de productos para compra
   const [busquedaProducto, setBusquedaProducto] = useState('')
   const [productoSeleccionado, setProductoSeleccionado] = useState<Producto | null>(null)
@@ -749,6 +756,43 @@ export function ProveedoresPage() {
     }
   }
 
+  const handleGuardarCargaRapida = async () => {
+    if (!compraProveedorId) {
+      toast.error('Seleccioná el proveedor')
+      return
+    }
+    const totalNum = parseFloat(cargaRapidaTotal)
+    if (!totalNum || totalNum <= 0) {
+      toast.error('Ingresá un monto total válido')
+      return
+    }
+    setGuardandoCargaRapida(true)
+    try {
+      const resultado = await registrarCompra(
+        {
+          proveedor_id: compraProveedorId,
+          nro_comprobante: null,
+          fecha: new Date().toISOString(),
+          total: totalNum,
+          medio_pago: cargaRapidaMedio,
+          pagado_en_caja: cargaRapidaMedio === 'EFECTIVO',
+          notas: cargaRapidaNotas.trim() || 'Carga rápida',
+          detalles: [],
+        },
+        cargaRapidaMedio === 'EFECTIVO'
+      )
+      if (resultado.success) {
+        setCargaRapidaTotal('')
+        setCargaRapidaNotas('')
+        setCompraProveedorId('')
+        toast.success('Compra registrada correctamente')
+        setTabActiva('historial')
+      }
+    } finally {
+      setGuardandoCargaRapida(false)
+    }
+  }
+
   // Handlers Historial de Compras
   const handleVerDetalleCompra = async (c: CompraProveedor) => {
     setCompraDetalle(c)
@@ -1118,6 +1162,116 @@ export function ProveedoresPage() {
           TAB 2: REGISTRAR COMPRA / RECEPCIÓN DE MERCADERÍA
           ───────────────────────────────────────────────────────────── */}
       {tabActiva === 'nueva_compra' && (
+        <div className="space-y-4">
+
+          {/* ── Selector de modo ── */}
+          <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1 self-start">
+            <button
+              type="button"
+              onClick={() => setModoCompra('rapida')}
+              className={`px-4 py-1.5 text-sm font-semibold rounded-lg transition-all ${
+                modoCompra === 'rapida'
+                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              }`}
+            >
+              Carga Rápida
+            </button>
+            <button
+              type="button"
+              onClick={() => setModoCompra('detallada')}
+              className={`px-4 py-1.5 text-sm font-semibold rounded-lg transition-all ${
+                modoCompra === 'detallada'
+                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              }`}
+            >
+              Detallada (por producto)
+            </button>
+          </div>
+
+          {/* ── Modo Carga Rápida ── */}
+          {modoCompra === 'rapida' && (
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-4 max-w-md">
+              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700 pb-2">
+                Carga Rápida de Compra
+              </h2>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Proveedor *
+                </label>
+                <select
+                  value={compraProveedorId}
+                  onChange={(e) => setCompraProveedorId(e.target.value)}
+                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                >
+                  <option value="">-- Seleccionar Proveedor --</option>
+                  {proveedores.map((prov) => (
+                    <option key={prov.id} value={prov.id}>
+                      {prov.nombre} {prov.saldo_pendiente > 0 ? `(Deuda: ${formatPrecio(prov.saldo_pendiente)})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Monto total de la compra *
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="Ej: 15000"
+                  value={cargaRapidaTotal}
+                  onChange={(e) => setCargaRapidaTotal(e.target.value)}
+                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Medio de pago
+                </label>
+                <select
+                  value={cargaRapidaMedio}
+                  onChange={(e) => setCargaRapidaMedio(e.target.value as MedioPagoCompra)}
+                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                >
+                  <option value="EFECTIVO">Efectivo (pagado)</option>
+                  <option value="TRANSFERENCIA">Transferencia (pagado)</option>
+                  <option value="CHEQUE">Cheque</option>
+                  <option value="CREDITO">Quedó a deber (deuda)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Notas (opcional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Remito 0492, mercadería general"
+                  value={cargaRapidaNotas}
+                  onChange={(e) => setCargaRapidaNotas(e.target.value)}
+                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                />
+              </div>
+
+              <Button
+                variant="primary"
+                onClick={handleGuardarCargaRapida}
+                loading={guardandoCargaRapida}
+                fullWidth
+              >
+                Registrar Compra
+              </Button>
+            </div>
+          )}
+
+          {/* ── Modo Detallado (original) ── */}
+          {modoCompra === 'detallada' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-1 space-y-4">
             <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3">
@@ -1548,6 +1702,8 @@ export function ProveedoresPage() {
           </div>
         </div>
       )}
+    </div>
+  )}
 
       {/* ─────────────────────────────────────────────────────────────
           TAB 3: HISTORIAL DE COMPRAS

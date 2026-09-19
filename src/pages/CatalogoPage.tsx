@@ -40,6 +40,7 @@ export function CatalogoPage() {
   const [envasesOpen, setEnvasesOpen] = useState(false)
   const [etiquetasOpen, setEtiquetasOpen] = useState(false)
   const [productoEditar, setProductoEditar] = useState<Producto | null>(null)
+  const [categoriasOpen, setCategoriasOpen] = useState(false)
 
   const handleNuevo = () => {
     setProductoEditar(null)
@@ -112,14 +113,26 @@ export function CatalogoPage() {
         </div>
       </div>
 
-      {/* Gestión de categorías compacta */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 sm:p-4">
-        <CategoryManager
-          categorias={categorias}
-          onCrear={crearCategoria}
-          onActualizar={actualizarCategoria}
-          onEliminar={eliminarCategoria}
-        />
+      {/* Gestión de categorías colapsable */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setCategoriasOpen((o) => !o)}
+          className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+        >
+          <span>Gestionar Categorías</span>
+          <span className="text-gray-400 text-xs">{categoriasOpen ? '▲ Ocultar' : '▼ Ver'}</span>
+        </button>
+        {categoriasOpen && (
+          <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700 pt-3">
+            <CategoryManager
+              categorias={categorias}
+              onCrear={crearCategoria}
+              onActualizar={actualizarCategoria}
+              onEliminar={eliminarCategoria}
+            />
+          </div>
+        )}
       </div>
 
       {/* Tabla y lista de productos */}
