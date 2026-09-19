@@ -7,8 +7,6 @@ import { formatPrecio } from '../../lib/utils'
 import type { Categoria } from '../../types/database'
 import toast from 'react-hot-toast'
 import { v4 as uuidv4 } from 'uuid'
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const readXlsxFile: (file: File) => Promise<(string | number | boolean | Date | null)[][]> = require('read-excel-file/browser')
 
 interface ProductoImportRow {
   codigo_barras: string | null
@@ -210,7 +208,12 @@ export function ImportarCatalogoModal({
     if (esXlsx) {
       // ── Rama XLSX ────────────────────────────────────────────────────────────
       try {
-        const todasLasFilas = await readXlsxFile(file)
+        // Importación dinámica para evitar problemas ESM/CJS en Vite
+        const xlsxMod = await import('read-excel-file/browser')
+        const readFn: (file: File) => Promise<(string | number | boolean | Date | null)[][]> =
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (xlsxMod as any).default ?? (xlsxMod as any)
+        const todasLasFilas = await readFn(file)
 
         if (!todasLasFilas || todasLasFilas.length === 0) {
           setErrorParsing('El archivo Excel está vacío.')

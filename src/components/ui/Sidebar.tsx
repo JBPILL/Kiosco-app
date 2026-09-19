@@ -147,26 +147,26 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       {/* Sidebar con soporte para Dynamic Island y Home Indicator de iOS */}
       <aside
         className={`
-          fixed top-0 left-0 z-50 h-full w-72 max-w-[85vw] bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700
-          transform transition-transform duration-200 ease-in-out flex flex-col
-          lg:translate-x-0 lg:static lg:z-auto lg:w-64 shadow-2xl lg:shadow-xs
+          fixed top-0 left-0 z-50 h-screen w-72 max-w-[85vw] bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700
+          transform transition-transform duration-200 ease-in-out flex flex-col overflow-hidden
+          lg:translate-x-0 lg:static lg:z-auto lg:w-56 xl:w-64 shadow-2xl lg:shadow-xs
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
         {/* Logo / Encabezado */}
-        <div className="px-6 pt-[max(16px,env(safe-area-inset-top))] pb-5 border-b border-gray-200 dark:border-gray-700">
+        <div className="px-4 pt-3 pb-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div className="flex items-center justify-between">
-            <h1 className="text-xl font-bold text-indigo-600 dark:text-indigo-400 tracking-tight">KioskoPOS</h1>
+            <h1 className="text-lg font-bold text-indigo-600 dark:text-indigo-400 tracking-tight">KioskoPOS</h1>
             <button
               onClick={onClose}
-              className="lg:hidden p-2 -mr-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg"
+              className="lg:hidden p-1.5 -mr-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg"
               aria-label="Cerrar menú"
             >
               ✕
             </button>
           </div>
           {usuario && (
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
               {usuario.nombre} ·{' '}
               <span className="capitalize font-semibold text-indigo-600 dark:text-indigo-400">
                 {usuario.es_superadmin && !usuario.kiosco_id ? 'Super-Admin' : usuario.rol.toLowerCase()}
@@ -176,7 +176,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         </div>
 
         {/* Navegación con soporte para flechitas de teclado */}
-        <nav className="px-3 py-4 flex-1 overflow-y-auto space-y-1" role="menu" aria-label="Menú principal">
+        <nav className="px-2 py-2 flex-1 overflow-y-auto space-y-0.5" role="menu" aria-label="Menú principal">
           {itemsVisibles.map((item, index) => (
             <NavLink
               key={item.path}
@@ -185,8 +185,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               onClick={onClose}
               onKeyDown={(e) => handleItemKeyDown(e, index)}
               className={({ isActive }) => `
-                flex items-center justify-between px-4 py-3 rounded-xl min-h-[44px]
-                text-base font-medium transition-all
+                flex items-center justify-between px-3 py-2 rounded-lg min-h-[36px]
+                text-sm font-medium transition-all
                 focus:outline-hidden focus:bg-indigo-100/80 dark:focus:bg-gray-700 focus:text-indigo-900 dark:focus:text-white
                 ${isActive
                   ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-semibold'
@@ -194,8 +194,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 }
               `}
             >
-              <span>{item.label}</span>
-              <kbd className="hidden lg:inline-block px-1.5 py-0.5 rounded text-[10px] font-mono text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600">
+              <span className="truncate">{item.label}</span>
+              <kbd className="hidden lg:inline-block flex-shrink-0 ml-1 px-1 py-0.5 rounded text-[9px] font-mono text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600">
                 Alt+{index + 1}
               </kbd>
             </NavLink>
@@ -204,13 +204,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         {/* Acciones del Sistema: Configuración, Atajos [F1] y Soporte (solo para comercios, oculto en modo Super-Admin) */}
         {!usuario?.es_superadmin && (
-          <div className="px-3 py-2 border-t border-gray-200 dark:border-gray-700 space-y-1">
+          <div className="px-2 py-1.5 border-t border-gray-200 dark:border-gray-700 flex-shrink-0 space-y-0.5">
             {usuario?.rol === 'DUEÑO' && (
               <NavLink
                 to="/config"
                 onClick={onClose}
                 className={({ isActive }) => `
-                  flex items-center justify-between px-4 py-2.5 rounded-xl w-full text-sm font-medium transition-colors
+                  flex items-center justify-between px-3 py-2 rounded-lg w-full text-sm font-medium transition-colors
                   ${
                     isActive
                       ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-semibold'
@@ -228,11 +228,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 setModalShortcutsOpen(true)
                 onClose()
               }}
-              className="flex items-center justify-between px-4 py-2.5 rounded-xl w-full text-xs font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100 transition-colors cursor-pointer"
+              className="flex items-center justify-between px-3 py-2 rounded-lg w-full text-xs font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100 transition-colors cursor-pointer"
               title="Ver atajos de teclado [F1]"
             >
               <span>Atajos [F1]</span>
-              <kbd className="px-1.5 py-0.5 rounded text-[10px] font-mono text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600">
+              <kbd className="px-1 py-0.5 rounded text-[9px] font-mono text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600">
                 F1
               </kbd>
             </button>
@@ -241,7 +241,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               to="/soporte"
               onClick={onClose}
               className={({ isActive }) => `
-                flex items-center px-4 py-2.5 rounded-xl w-full text-xs font-semibold transition-colors
+                flex items-center px-3 py-2 rounded-lg w-full text-xs font-semibold transition-colors
                 ${
                   isActive
                     ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
@@ -256,13 +256,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         {/* Botón para instalar PWA de escritorio en la computadora */}
         {puedeInstalar && !estaInstalado && (
-          <div className="px-3 py-1.5 border-t border-gray-100 dark:border-gray-700/50">
+          <div className="px-2 py-1 border-t border-gray-100 dark:border-gray-700/50 flex-shrink-0">
             <button
               onClick={() => {
                 instalarApp()
                 onClose()
               }}
-              className="flex items-center justify-between px-4 py-2.5 rounded-xl w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white shadow-xs transition-all"
+              className="flex items-center justify-between px-3 py-2 rounded-lg w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white shadow-xs transition-all"
             >
               <span>Instalar en Escritorio</span>
               <span className="text-[10px] bg-indigo-800/80 px-1.5 py-0.5 rounded font-mono">APP</span>
@@ -270,8 +270,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           </div>
         )}
 
-        {/* Cerrar sesión con safe area bottom para iPhone */}
-        <div className="px-3 pt-2 pb-[max(16px,env(safe-area-inset-bottom))] border-t border-gray-100 dark:border-gray-700/50">
+        {/* Cerrar sesión */}
+        <div className="px-2 pt-1 pb-2 border-t border-gray-100 dark:border-gray-700/50 flex-shrink-0">
           <button
             onClick={logout}
             onKeyDown={(e) => {
@@ -280,7 +280,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 focusMainScreen()
               }
             }}
-            className="flex items-center px-4 py-3 rounded-xl w-full min-h-[44px]
+            className="flex items-center px-3 py-2 rounded-lg w-full
               text-sm font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 focus:outline-hidden focus:bg-red-100/70 dark:focus:bg-red-950/40 transition-colors"
           >
             Cerrar Sesión
