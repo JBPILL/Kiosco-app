@@ -51,6 +51,7 @@ export function CajaPage() {
   } = useCajaStore()
 
   const esDueno = usuario?.rol === 'DUEÑO'
+  const [tabActiva, setTabActiva] = useState<'turno' | 'movimientos' | 'historial'>('turno')
 
   useEffect(() => {
     cargarArqueoCiegoConfig()
@@ -283,12 +284,51 @@ export function CajaPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Encabezado */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Control de Caja y Arqueo</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
+            Control de Caja y Arqueo
+          </h1>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
             Apertura de turno, control de efectivo y arqueo al cierre
           </p>
+        </div>
+
+        {/* Pestañas de navegación ordenadas estilo Proveedores */}
+        <div className="flex flex-wrap bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 self-start sm:self-auto gap-1">
+          <button
+            type="button"
+            onClick={() => setTabActiva('turno')}
+            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer ${
+              tabActiva === 'turno'
+                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-gray-700/60'
+            }`}
+          >
+            Turno Actual
+          </button>
+          <button
+            type="button"
+            onClick={() => setTabActiva('movimientos')}
+            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer ${
+              tabActiva === 'movimientos'
+                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-gray-700/60'
+            }`}
+          >
+            Movimientos ({movimientosCaja.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setTabActiva('historial')}
+            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer ${
+              tabActiva === 'historial'
+                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-gray-700/60'
+            }`}
+          >
+            Historial de Cierres ({historial.length})
+          </button>
         </div>
       </div>
 
@@ -297,183 +337,289 @@ export function CajaPage() {
           <div className="animate-spin h-8 w-8 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto" />
           <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">Consultando estado de caja...</p>
         </div>
-      ) : !sesionActiva ? (
-        /* ── CAJA CERRADA: FORMULARIO DE APERTURA ── */
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 sm:p-8">
-          <div className="max-w-md mx-auto text-center space-y-4">
-            <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
-              Caja Cerrada
-            </div>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-              No hay un turno de caja abierto
-            </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Para registrar ventas y cobrar en el punto de venta, iniciá un nuevo turno ingresando el fondo de caja inicial.
-            </p>
-
-            <form onSubmit={handleAbrirCaja} className="space-y-4 pt-2 text-left">
-              <Input
-                label="Fondo inicial de caja (Efectivo para cambio) *"
-                type="number"
-                min="0"
-                step="100"
-                placeholder="Ej: 10000"
-                value={montoInicial}
-                onChange={(e) => setMontoInicial(e.target.value)}
-                required
-                autoFocus
-              />
-
-              <div className="flex gap-2">
-                {[5000, 10000, 20000].map((m) => (
-                  <button
-                    type="button"
-                    key={m}
-                    onClick={() => setMontoInicial(m.toString())}
-                    className="flex-1 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
-                  >
-                    {formatPrecio(m)}
-                  </button>
-                ))}
+      ) : tabActiva === 'turno' ? (
+        !sesionActiva ? (
+          /* ── CAJA CERRADA: FORMULARIO DE APERTURA ── */
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 sm:p-8">
+            <div className="max-w-md mx-auto text-center space-y-4">
+              <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                Caja Cerrada
               </div>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                No hay un turno de caja abierto
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Para registrar ventas y cobrar en el punto de venta, iniciá un nuevo turno ingresando el fondo de caja inicial.
+              </p>
 
-              <Button
-                type="submit"
-                fullWidth
-                size="lg"
-                loading={abriendo}
-                className="mt-4"
-              >
-                Abrir turno de caja
-              </Button>
-            </form>
+              <form onSubmit={handleAbrirCaja} className="space-y-4 pt-2 text-left">
+                <Input
+                  label="Fondo inicial de caja (Efectivo para cambio) *"
+                  type="number"
+                  min="0"
+                  step="100"
+                  placeholder="Ej: 10000"
+                  value={montoInicial}
+                  onChange={(e) => setMontoInicial(e.target.value)}
+                  required
+                  autoFocus
+                />
+
+                <div className="flex gap-2">
+                  {[5000, 10000, 20000].map((m) => (
+                    <button
+                      type="button"
+                      key={m}
+                      onClick={() => setMontoInicial(m.toString())}
+                      className="flex-1 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                    >
+                      {formatPrecio(m)}
+                    </button>
+                  ))}
+                </div>
+
+                <Button
+                  type="submit"
+                  fullWidth
+                  size="lg"
+                  loading={abriendo}
+                  className="mt-4"
+                >
+                  Abrir turno de caja
+                </Button>
+              </form>
+            </div>
           </div>
-        </div>
-      ) : (
-        /* ── CAJA ABIERTA: MONITOR EN VIVO Y ARQUEO ── */
-        <div className="space-y-6">
-          {/* Tarjeta de estado de turno */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-gray-100 dark:border-gray-700">
-              <div className="flex items-center gap-3">
-                <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400">
-                  Turno en curso
-                </span>
-                <div>
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                    Cajero: {sesionActiva.usuario?.nombre || usuario?.nombre || 'Personal'}
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Apertura: {formatFecha(sesionActiva.fecha_apertura)}
-                  </p>
+        ) : (
+          /* ── CAJA ABIERTA: MONITOR EN VIVO Y ARQUEO ── */
+          <div className="space-y-6">
+            {/* Tarjeta de estado de turno */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-gray-100 dark:border-gray-700">
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400">
+                    Turno en curso
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      Cajero: {sesionActiva.usuario?.nombre || usuario?.nombre || 'Personal'}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Apertura: {formatFecha(sesionActiva.fecha_apertura)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => cargarResumenSesion(sesionActiva.id)}
+                  >
+                    Actualizar valores
+                  </Button>
+                  <Button
+                    variant="danger"
+                    onClick={handleAbrirModalArqueo}
+                  >
+                    {esDueno || !arqueoCiegoObligatorio ? 'Hacer arqueo y cerrar turno' : 'Cerrar turno (Arqueo ciego)'}
+                  </Button>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 flex-wrap">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => cargarResumenSesion(sesionActiva.id)}
-                >
-                  Actualizar valores
-                </Button>
-                <Button
-                  variant="danger"
-                  onClick={handleAbrirModalArqueo}
-                >
-                  {esDueno || !arqueoCiegoObligatorio ? 'Hacer arqueo y cerrar turno' : 'Cerrar turno (Arqueo ciego)'}
-                </Button>
-              </div>
-            </div>
-
-            {/* Cuadrícula financiera del turno */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-4">
-              <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Fondo inicial</p>
-                <p className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">
-                  {formatPrecio(sesionActiva.monto_inicial)}
-                </p>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
-                <p className="text-xs text-gray-500 dark:text-gray-400">(+) Ventas efectivo</p>
-                <p className="text-base sm:text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                  {!modoCiegoEfectivo ? formatPrecio(resumenActivo?.total_efectivo || 0) : '••••••'}
-                </p>
-                {modoCiegoEfectivo && (
-                  <span className="text-[10px] text-gray-400 dark:text-gray-500 block">Arqueo ciego</span>
-                )}
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
-                <p className="text-xs text-gray-500 dark:text-gray-400">(+) Ingresos extra</p>
-                <p className="text-base sm:text-lg font-bold text-blue-600 dark:text-blue-400 mt-1">
-                  +{formatPrecio(resumenActivo?.total_ingresos_extra || 0)}
-                </p>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
-                <p className="text-xs text-gray-500 dark:text-gray-400">(-) Gastos / Egresos</p>
-                <p className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400 mt-1">
-                  -{formatPrecio(resumenActivo?.total_egresos || 0)}
-                </p>
-              </div>
-
-              <div className="col-span-2 sm:col-span-1 p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50 shadow-xs">
-                <p className="text-xs text-indigo-700 dark:text-indigo-400 font-semibold">
-                  {!modoCiegoEfectivo ? '(=) Esperado en cajón' : 'Control de Turno'}
-                </p>
-                <p className="text-base sm:text-lg font-bold text-indigo-700 dark:text-indigo-300 mt-1 truncate">
-                  {!modoCiegoEfectivo ? formatPrecio(efectivoEsperado) : 'Modo Ciego'}
-                </p>
-                {modoCiegoEfectivo && (
-                  <p className="text-[10px] text-indigo-600/70 dark:text-indigo-400/70 mt-0.5">
-                    Conteo físico al cierre
+              {/* Cuadrícula financiera del turno */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-4">
+                <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Fondo inicial</p>
+                  <p className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">
+                    {formatPrecio(sesionActiva.monto_inicial)}
                   </p>
-                )}
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">(+) Ventas efectivo</p>
+                  <p className="text-base sm:text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+                    {!modoCiegoEfectivo ? formatPrecio(resumenActivo?.total_efectivo || 0) : '••••••'}
+                  </p>
+                  {modoCiegoEfectivo && (
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500 block">Arqueo ciego</span>
+                  )}
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">(+) Ingresos extra</p>
+                  <p className="text-base sm:text-lg font-bold text-blue-600 dark:text-blue-400 mt-1">
+                    +{formatPrecio(resumenActivo?.total_ingresos_extra || 0)}
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">(-) Gastos / Egresos</p>
+                  <p className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400 mt-1">
+                    -{formatPrecio(resumenActivo?.total_egresos || 0)}
+                  </p>
+                </div>
+
+                <div className="col-span-2 sm:col-span-1 p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50 shadow-xs">
+                  <p className="text-xs text-indigo-700 dark:text-indigo-400 font-semibold">
+                    {!modoCiegoEfectivo ? '(=) Esperado en cajón' : 'Control de Turno'}
+                  </p>
+                  <p className="text-base sm:text-lg font-bold text-indigo-700 dark:text-indigo-300 mt-1 truncate">
+                    {!modoCiegoEfectivo ? formatPrecio(efectivoEsperado) : 'Modo Ciego'}
+                  </p>
+                  {modoCiegoEfectivo && (
+                    <p className="text-[10px] text-indigo-600/70 dark:text-indigo-400/70 mt-0.5">
+                      Conteo físico al cierre
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Medios digitales del turno */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-gray-100 dark:border-gray-700 mt-4">
+                <div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">Mercado Pago</p>
+                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mt-0.5">
+                    {formatPrecio(resumenActivo?.total_mercadopago || 0)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">Transferencia</p>
+                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mt-0.5">
+                    {formatPrecio(resumenActivo?.total_transferencia || 0)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">Tarjeta</p>
+                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mt-0.5">
+                    {formatPrecio(resumenActivo?.total_tarjeta || 0)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">Total ventas turno</p>
+                  <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
+                    {resumenActivo?.total_ventas || 0} operaciones ({formatPrecio(resumenActivo?.total_facturado || 0)})
+                  </p>
+                </div>
               </div>
             </div>
 
-            {/* Medios digitales del turno */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-gray-100 dark:border-gray-700 mt-4">
-              <div>
-                <p className="text-xs text-gray-400 dark:text-gray-500">Mercado Pago</p>
-                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mt-0.5">
-                  {formatPrecio(resumenActivo?.total_mercadopago || 0)}
-                </p>
+            {/* Tarjeta de Movimientos de Caja (Gastos y Entradas directas) */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-gray-100 dark:border-gray-700">
+                <div>
+                  <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">
+                    Gastos y Movimientos de Caja
+                  </h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Registrá pagos a proveedores, gastos menores, retiros o reposición de cambio
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => handleAbrirModalMovimiento('INGRESO')}
+                    className="text-xs text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                  >
+                    + Registrar Ingreso
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => handleAbrirModalMovimiento('EGRESO')}
+                    className="text-xs text-red-700 dark:text-red-400 border-red-300 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-950/30"
+                  >
+                    - Registrar Gasto / Egreso
+                  </Button>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-gray-400 dark:text-gray-500">Transferencia</p>
-                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mt-0.5">
-                  {formatPrecio(resumenActivo?.total_transferencia || 0)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400 dark:text-gray-500">Tarjeta</p>
-                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mt-0.5">
-                  {formatPrecio(resumenActivo?.total_tarjeta || 0)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400 dark:text-gray-500">Total ventas turno</p>
-                <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
-                  {resumenActivo?.total_ventas || 0} operaciones ({formatPrecio(resumenActivo?.total_facturado || 0)})
-                </p>
-              </div>
+
+              {/* Lista de movimientos de la sesión */}
+              {movimientosCaja.length === 0 ? (
+                <div className="py-6 text-center text-xs text-gray-400 dark:text-gray-500">
+                  No se registraron gastos ni ingresos directos en este turno.
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100 dark:divide-gray-700 max-h-60 overflow-y-auto">
+                  {movimientosCaja.map((mov) => (
+                    <div key={mov.id} className="py-2.5 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          className={`px-2 py-0.5 rounded font-semibold text-[11px] ${
+                            mov.tipo === 'INGRESO'
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400'
+                              : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
+                          }`}
+                        >
+                          {mov.tipo === 'INGRESO' ? 'Ingreso' : 'Egreso'}
+                        </span>
+                        <div>
+                          <span className="font-semibold text-gray-800 dark:text-gray-200">
+                            {formatMotivoMovimiento(mov.motivo)}
+                          </span>
+                          {mov.descripcion && (
+                            <span className="text-gray-500 dark:text-gray-400 ml-1.5">
+                              — {mov.descripcion}
+                            </span>
+                          )}
+                          <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+                            {formatFecha(mov.fecha_hora)}
+                          </p>
+                        </div>
+                      </div>
+                      <div
+                        className={`font-bold text-sm ${
+                          mov.tipo === 'INGRESO'
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-red-600 dark:text-red-400'
+                        }`}
+                      >
+                        {mov.tipo === 'INGRESO' ? '+' : '-'}{formatPrecio(mov.monto)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {movimientosCaja.length > 5 && (
+                <div className="pt-2 text-right">
+                  <button
+                    type="button"
+                    onClick={() => setTabActiva('movimientos')}
+                    className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                  >
+                    Ver todos los movimientos en su pestaña ({movimientosCaja.length}) →
+                  </button>
+                </div>
+              )}
             </div>
           </div>
-
-          {/* Tarjeta de Movimientos de Caja (Gastos y Entradas directas) */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-gray-100 dark:border-gray-700">
-              <div>
-                <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">
+        )
+      ) : tabActiva === 'movimientos' ? (
+        /* ── PESTAÑA DEDICADA DE MOVIMIENTOS ── */
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-gray-100 dark:border-gray-700">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100">
                   Gastos y Movimientos de Caja
                 </h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Registrá pagos a proveedores, gastos menores, retiros o reposición de cambio
-                </p>
+                {sesionActiva ? (
+                  <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400">
+                    Turno en curso
+                  </span>
+                ) : (
+                  <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                    Caja Cerrada
+                  </span>
+                )}
               </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Registrá pagos a proveedores, gastos menores, retiros o reposición de cambio
+              </p>
+            </div>
+            {sesionActiva ? (
               <div className="flex items-center gap-2">
                 <Button
                   size="sm"
@@ -492,145 +638,168 @@ export function CajaPage() {
                   - Registrar Gasto / Egreso
                 </Button>
               </div>
-            </div>
-
-            {/* Lista de movimientos de la sesión */}
-            {movimientosCaja.length === 0 ? (
-              <div className="py-6 text-center text-xs text-gray-400 dark:text-gray-500">
-                No se registraron gastos ni ingresos directos en este turno.
-              </div>
             ) : (
-              <div className="divide-y divide-gray-100 dark:divide-gray-700 max-h-60 overflow-y-auto">
-                {movimientosCaja.map((mov) => (
-                  <div key={mov.id} className="py-2.5 flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2.5">
-                      <span
-                        className={`px-2 py-0.5 rounded font-semibold text-[11px] ${
-                          mov.tipo === 'INGRESO'
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400'
-                            : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
-                        }`}
-                      >
-                        {mov.tipo === 'INGRESO' ? 'Ingreso' : 'Egreso'}
-                      </span>
-                      <div>
-                        <span className="font-semibold text-gray-800 dark:text-gray-200">
-                          {formatMotivoMovimiento(mov.motivo)}
-                        </span>
-                        {mov.descripcion && (
-                          <span className="text-gray-500 dark:text-gray-400 ml-1.5">
-                            — {mov.descripcion}
-                          </span>
-                        )}
-                        <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
-                          {formatFecha(mov.fecha_hora)}
-                        </p>
-                      </div>
-                    </div>
-                    <div
-                      className={`font-bold text-sm ${
-                        mov.tipo === 'INGRESO'
-                          ? 'text-emerald-600 dark:text-emerald-400'
-                          : 'text-red-600 dark:text-red-400'
-                      }`}
-                    >
-                      {mov.tipo === 'INGRESO' ? '+' : '-'}{formatPrecio(mov.monto)}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={() => setTabActiva('turno')}
+              >
+                Abrir turno para registrar
+              </Button>
             )}
           </div>
+
+          {/* Lista de movimientos de la sesión */}
+          {movimientosCaja.length === 0 ? (
+            <div className="py-12 text-center text-xs text-gray-400 dark:text-gray-500">
+              No se registraron gastos ni ingresos directos en este turno.
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100 dark:divide-gray-700">
+              {movimientosCaja.map((mov) => (
+                <div key={mov.id} className="py-3 flex items-center justify-between text-xs sm:text-sm">
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`px-2.5 py-1 rounded-md font-semibold text-xs ${
+                        mov.tipo === 'INGRESO'
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400'
+                          : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
+                      }`}
+                    >
+                      {mov.tipo === 'INGRESO' ? 'Ingreso' : 'Egreso'}
+                    </span>
+                    <div>
+                      <span className="font-semibold text-gray-800 dark:text-gray-200 text-sm">
+                        {formatMotivoMovimiento(mov.motivo)}
+                      </span>
+                      {mov.descripcion && (
+                        <span className="text-gray-500 dark:text-gray-400 ml-2">
+                          — {mov.descripcion}
+                        </span>
+                      )}
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                        {formatFecha(mov.fecha_hora)}
+                      </p>
+                    </div>
+                  </div>
+                  <div
+                    className={`font-bold text-base ${
+                      mov.tipo === 'INGRESO'
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-red-600 dark:text-red-400'
+                    }`}
+                  >
+                    {mov.tipo === 'INGRESO' ? '+' : '-'}{formatPrecio(mov.monto)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* ── PESTAÑA DEDICADA DE HISTORIAL DE CIERRES ── */
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                Historial de Cierres de Turno
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Auditoría histórica de arqueos de caja, diferencias y firmas de cajero
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={cargarHistorial}
+              disabled={cargandoHistorial}
+            >
+              Actualizar Historial
+            </Button>
+          </div>
+
+          {cargandoHistorial ? (
+            <p className="text-sm text-gray-400 dark:text-gray-500 py-4">Cargando historial...</p>
+          ) : historial.length === 0 ? (
+            <p className="text-sm text-gray-400 dark:text-gray-500 py-8 text-center">
+              Aún no se registraron cierres de caja en el sistema.
+            </p>
+          ) : (
+            <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Cierre</th>
+                      <th className="px-4 py-3 font-medium">Cajero</th>
+                      <th className="px-4 py-3 font-medium">Fondo inicial</th>
+                      {esDueno && <th className="px-4 py-3 font-medium">Esperado</th>}
+                      <th className="px-4 py-3 font-medium">{esDueno ? 'Contado' : 'Monto Declarado'}</th>
+                      {esDueno && <th className="px-4 py-3 font-medium">Diferencia</th>}
+                      {!esDueno && <th className="px-4 py-3 font-medium">Estado</th>}
+                      <th className="px-4 py-3 font-medium text-right">Detalle</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {historial.map((item) => {
+                      const dif = item.diferencia ?? 0
+                      return (
+                        <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                          <td className="px-4 py-3 text-gray-900 dark:text-gray-100 font-medium">
+                            {item.fecha_cierre ? formatFecha(item.fecha_cierre) : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                            {item.usuario?.nombre || 'Cajero'}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                            {formatPrecio(item.monto_inicial)}
+                          </td>
+                          {esDueno && (
+                            <td className="px-4 py-3 text-gray-600 dark:text-gray-300 font-medium">
+                              {formatPrecio(item.monto_final_sistema || 0)}
+                            </td>
+                          )}
+                          <td className="px-4 py-3 text-gray-900 dark:text-gray-100 font-semibold">
+                            {formatPrecio(item.monto_final_declarado || 0)}
+                          </td>
+                          {esDueno ? (
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${
+                                dif === 0
+                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400'
+                                  : dif > 0
+                                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-400'
+                                  : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
+                              }`}>
+                                {dif === 0 ? 'Exacto' : dif > 0 ? `+${formatPrecio(dif)}` : formatPrecio(dif)}
+                              </span>
+                            </td>
+                          ) : (
+                            <td className="px-4 py-3">
+                              <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                                Turno Registrado
+                              </span>
+                            </td>
+                          )}
+                          <td className="px-4 py-3 text-right">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setSesionDetalle(item)}
+                            >
+                              Ver
+                            </Button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
-
-      {/* ── HISTORIAL DE TURNOS CERRADOS ── */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-          Historial de Cierres de Turno
-        </h2>
-
-        {cargandoHistorial ? (
-          <p className="text-sm text-gray-400 dark:text-gray-500 py-4">Cargando historial...</p>
-        ) : historial.length === 0 ? (
-          <p className="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">
-            Aún no se registraron cierres de caja en el sistema.
-          </p>
-        ) : (
-          <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Cierre</th>
-                    <th className="px-4 py-3 font-medium">Cajero</th>
-                    <th className="px-4 py-3 font-medium">Fondo inicial</th>
-                    {esDueno && <th className="px-4 py-3 font-medium">Esperado</th>}
-                    <th className="px-4 py-3 font-medium">{esDueno ? 'Contado' : 'Monto Declarado'}</th>
-                    {esDueno && <th className="px-4 py-3 font-medium">Diferencia</th>}
-                    {!esDueno && <th className="px-4 py-3 font-medium">Estado</th>}
-                    <th className="px-4 py-3 font-medium text-right">Detalle</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {historial.map((item) => {
-                    const dif = item.diferencia ?? 0
-                    return (
-                      <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                        <td className="px-4 py-3 text-gray-900 dark:text-gray-100 font-medium">
-                          {item.fecha_cierre ? formatFecha(item.fecha_cierre) : '—'}
-                        </td>
-                        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                          {item.usuario?.nombre || 'Cajero'}
-                        </td>
-                        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                          {formatPrecio(item.monto_inicial)}
-                        </td>
-                        {esDueno && (
-                          <td className="px-4 py-3 text-gray-600 dark:text-gray-300 font-medium">
-                            {formatPrecio(item.monto_final_sistema || 0)}
-                          </td>
-                        )}
-                        <td className="px-4 py-3 text-gray-900 dark:text-gray-100 font-semibold">
-                          {formatPrecio(item.monto_final_declarado || 0)}
-                        </td>
-                        {esDueno ? (
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${
-                              dif === 0
-                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400'
-                                : dif > 0
-                                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-400'
-                                : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
-                            }`}>
-                              {dif === 0 ? 'Exacto' : dif > 0 ? `+${formatPrecio(dif)}` : formatPrecio(dif)}
-                            </span>
-                          </td>
-                        ) : (
-                          <td className="px-4 py-3">
-                            <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
-                              Turno Registrado
-                            </span>
-                          </td>
-                        )}
-                        <td className="px-4 py-3 text-right">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setSesionDetalle(item)}
-                          >
-                            Ver
-                          </Button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* ── MODAL DE ARQUEO Y CIERRE DE CAJA (CIEGO / GUIADO) ── */}
       <Modal
