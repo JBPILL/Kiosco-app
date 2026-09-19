@@ -834,7 +834,7 @@ export function ConfigPage() {
                   onClick={() => setModalImportarOpen(true)}
                   className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white"
                 >
-                  Importar / Restaurar (.CSV)
+                  Importar / Restaurar (.XLSX / .CSV)
                 </Button>
               </div>
             </div>

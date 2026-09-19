@@ -411,64 +411,68 @@ export function POSPage() {
       <div className="flex-1 flex flex-col lg:flex-row gap-3 min-h-0 min-w-0 overflow-hidden">
         {/* Columna de productos */}
         <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
-          {/* Buscador compacto y botón de Ítem Libre */}
-          <div className="flex items-center gap-1.5 sm:gap-2 mb-2 flex-shrink-0 min-w-0">
-            <div className="flex-1 min-w-0">
+          {/* Buscador + botones de acción (scroll horizontal en notebooks) */}
+          <div className="flex flex-col gap-1.5 mb-2 flex-shrink-0 min-w-0">
+            {/* Fila 1: Buscador (ocupa todo el ancho) */}
+            <div className="w-full min-w-0">
               <ProductSearch
                 onSelect={handleSeleccion}
                 onOpenScanner={() => setModalScannerOpen(true)}
               />
             </div>
-            <button
-              type="button"
-              onClick={() => setModalLibreOpen(true)}
-              className="h-10 px-2.5 sm:px-3.5 flex items-center gap-1 sm:gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
-              title="Cobrar concepto o monto libre sin código (Varios, fotocopias, etc.)"
-            >
-              <span className="text-base font-bold leading-none">+</span>
-              <span className="hidden sm:inline">Ítem </span><span>Libre</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const kid = usuario?.kiosco_id || kiosco?.id
-                if (kid) cargarPromociones(kid)
-                setModalPromosOpen(true)
-              }}
-              className="h-10 px-2.5 sm:px-3.5 flex items-center gap-1.5 rounded-xl border border-teal-300 dark:border-teal-700 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
-              title="Ver combos armados y promociones vigentes"
-            >
-              <span>Combos / Promos</span>
-              {promociones.filter((p) => p.activo).length > 0 && (
-                <span className="px-1.5 py-0.2 bg-teal-200 dark:bg-teal-800 text-teal-900 dark:text-teal-100 rounded-full text-[10px] font-bold">
-                  {promociones.filter((p) => p.activo).length}
-                </span>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => setModalTicketsOpen(true)}
-              className="h-10 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
-              title="Consultar historial de comprobantes y reimprimir tickets"
-            >
-              <span>Comprobantes</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setModalDevolucionOpen(true)}
-              className="h-10 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border border-red-200 dark:border-red-800/80 bg-red-50/70 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
-              title="Registrar devolución de ticket o cambio de producto"
-            >
-              <span>Devolución</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setModalEnvaseOpen(true)}
-              className="h-10 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-emerald-50/80 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
-              title="Registrar recepción de envases retornables vacíos"
-            >
-              <span>Recibir envase</span>
-            </button>
+            {/* Fila 2: Botones de acción con scroll horizontal en resoluciones bajas */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide min-w-0">
+              <button
+                type="button"
+                onClick={() => setModalLibreOpen(true)}
+                className="h-9 px-3 flex items-center gap-1 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
+                title="Cobrar concepto o monto libre sin código (Varios, fotocopias, etc.)"
+              >
+                <span className="text-sm font-bold leading-none">+</span>
+                <span>Ítem Libre</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const kid = usuario?.kiosco_id || kiosco?.id
+                  if (kid) cargarPromociones(kid)
+                  setModalPromosOpen(true)
+                }}
+                className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-teal-300 dark:border-teal-700 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
+                title="Ver combos armados y promociones vigentes"
+              >
+                <span>Combos / Promos</span>
+                {promociones.filter((p) => p.activo).length > 0 && (
+                  <span className="px-1.5 py-0.5 bg-teal-200 dark:bg-teal-800 text-teal-900 dark:text-teal-100 rounded-full text-[10px] font-bold">
+                    {promociones.filter((p) => p.activo).length}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setModalTicketsOpen(true)}
+                className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
+                title="Consultar historial de comprobantes y reimprimir tickets"
+              >
+                <span>Comprobantes</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setModalDevolucionOpen(true)}
+                className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-red-200 dark:border-red-800/80 bg-red-50/70 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
+                title="Registrar devolución de ticket o cambio de producto"
+              >
+                <span>Devolución</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setModalEnvaseOpen(true)}
+                className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-emerald-50/80 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
+                title="Registrar recepción de envases retornables vacíos"
+              >
+                <span>Recibir envase</span>
+              </button>
+            </div>
           </div>
 
           {/* Categorías deslizables */}

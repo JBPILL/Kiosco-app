@@ -87,7 +87,7 @@ export function CatalogoPage() {
             onClick={() => setImportarOpen(true)}
             className="flex items-center gap-1.5 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
           >
-            Importar (.CSV)
+            Importar (.XLSX / .CSV)
           </Button>
           <Button
             variant="secondary"

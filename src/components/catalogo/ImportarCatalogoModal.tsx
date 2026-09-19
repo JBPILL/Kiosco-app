@@ -7,6 +7,8 @@ import { formatPrecio } from '../../lib/utils'
 import type { Categoria } from '../../types/database'
 import toast from 'react-hot-toast'
 import { v4 as uuidv4 } from 'uuid'
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const readXlsxFile: (file: File) => Promise<(string | number | boolean | Date | null)[][]> = require('read-excel-file/browser')
 
 interface ProductoImportRow {
   codigo_barras: string | null
@@ -198,60 +200,69 @@ export function ImportarCatalogoModal({
     return isNaN(num) ? 0 : Math.round(num)
   }
 
-  // Procesar archivo CSV
-  const handleArchivoSeleccionado = (file: File) => {
+  // Procesar archivo CSV o XLSX
+  const handleArchivoSeleccionado = async (file: File) => {
     setErrorParsing(null)
     setArchivo(file)
 
-    const reader = new FileReader()
-    reader.onload = (e) => {
+    const esXlsx = file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')
+
+    if (esXlsx) {
+      // ── Rama XLSX ────────────────────────────────────────────────────────────
       try {
-        const texto = e.target?.result as string
-        if (!texto) {
-          setErrorParsing('El archivo seleccionado está vacío.')
+        const todasLasFilas = await readXlsxFile(file)
+
+        if (!todasLasFilas || todasLasFilas.length === 0) {
+          setErrorParsing('El archivo Excel está vacío.')
           return
         }
 
-        // Dividir líneas respetando retornos de carro
-        const lineas = texto.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
-        if (lineas.length <= 1) {
-          setErrorParsing('El archivo no contiene filas de datos.')
+        // Los archivos exportados por KioskoPOS tienen un encabezado corporativo.
+        // Buscar la fila de cabeceras detectando la que contenga "Descripción" o "Codigo"
+        let indiceEncabezado = -1
+        for (let i = 0; i < todasLasFilas.length; i++) {
+          const celda0 = String(todasLasFilas[i][0] ?? '').toLowerCase()
+          const celda1 = String(todasLasFilas[i][1] ?? '').toLowerCase()
+          const lineaStr = todasLasFilas[i].map((c: string | number | boolean | Date | null) => String(c ?? '')).join(' ').toLowerCase()
+          if (
+            lineaStr.includes('descripci') ||
+            lineaStr.includes('codigo de barras') ||
+            celda0.includes('codigo') ||
+            celda1.includes('descripci')
+          ) {
+            indiceEncabezado = i
+            break
+          }
+        }
+
+        if (indiceEncabezado === -1) {
+          setErrorParsing('No se encontró la fila de encabezados en el archivo Excel. Asegurate de usar un archivo exportado por KioskoPOS o con columnas estándar.')
           return
         }
 
-        // Detectar separador predominante en la primera línea (; o ,)
-        const primeraLinea = lineas[0]
-        const countPuntoComa = (primeraLinea.match(/;/g) || []).length
-        const countComa = (primeraLinea.match(/,/g) || []).length
-        const separador = countPuntoComa >= countComa ? ';' : ','
-
-        const cabeceras = parsearLineaCSV(primeraLinea, separador).map((c) => c.replace(/^["']|["']$/g, ''))
+        const cabeceras = todasLasFilas[indiceEncabezado].map((c: string | number | boolean | Date | null) => String(c ?? ''))
         const indices = detectarIndicesColumnas(cabeceras)
-
         const filasParseadas: ProductoImportRow[] = []
 
-        // Procesar filas de datos
-        for (let i = 1; i < lineas.length; i++) {
-          const linea = lineas[i]
-          if (!linea) continue
+        for (let i = indiceEncabezado + 1; i < todasLasFilas.length; i++) {
+          const fila = todasLasFilas[i]
+          if (!fila || fila.every((c: string | number | boolean | Date | null) => c === null || c === undefined || String(c).trim() === '')) continue
 
-          const columnas = parsearLineaCSV(linea, separador).map((c) => c.replace(/^["']|["']$/g, ''))
-          if (columnas.length === 0 || columnas.every((c) => !c)) continue
-
-          const rawCodigo = indices.codigo_barras >= 0 ? columnas[indices.codigo_barras] || null : null
+          const rawCodigo = indices.codigo_barras >= 0 ? fila[indices.codigo_barras] : null
+          const codigoStr = rawCodigo !== null && rawCodigo !== undefined ? String(rawCodigo).trim() : null
           const codigoBarras =
-            rawCodigo === '—' || rawCodigo === '-' || rawCodigo === 'null' || !rawCodigo ? null : rawCodigo.trim()
+            codigoStr === '—' || codigoStr === '-' || codigoStr === 'null' || !codigoStr ? null : codigoStr
 
-          const descripcion = indices.descripcion >= 0 ? (columnas[indices.descripcion] || '').trim() : ''
-          const categoriaNombre = indices.categoria >= 0 ? (columnas[indices.categoria] || '').trim() || null : null
-          const precioCosto = indices.precio_costo >= 0 ? parsearNumero(columnas[indices.precio_costo]) : 0
-          const precioVenta = indices.precio_venta >= 0 ? parsearNumero(columnas[indices.precio_venta]) : 0
-          const stockActual = indices.stock_actual >= 0 ? parsearNumero(columnas[indices.stock_actual]) : 0
-          const stockMinimo = indices.stock_minimo >= 0 ? Math.max(0, parsearNumero(columnas[indices.stock_minimo])) : 0
+          const descripcion = indices.descripcion >= 0 ? String(fila[indices.descripcion] ?? '').trim() : ''
+          const catRaw = indices.categoria >= 0 ? String(fila[indices.categoria] ?? '').trim() : ''
+          const categoriaNombre = catRaw === 'Sin categoría' || catRaw === '—' || !catRaw ? null : catRaw
+          const precioCosto = indices.precio_costo >= 0 ? parsearNumero(fila[indices.precio_costo]) : 0
+          const precioVenta = indices.precio_venta >= 0 ? parsearNumero(fila[indices.precio_venta]) : 0
+          const stockActual = indices.stock_actual >= 0 ? parsearNumero(fila[indices.stock_actual]) : 0
+          const stockMinimo = indices.stock_minimo >= 0 ? Math.max(0, parsearNumero(fila[indices.stock_minimo])) : 0
 
           let esValido = true
           let error: string | undefined
-
           if (!descripcion) {
             esValido = false
             error = 'Falta descripción'
@@ -260,32 +271,102 @@ export function ImportarCatalogoModal({
             error = 'Precio venta debe ser mayor a 0'
           }
 
-          filasParseadas.push({
-            codigo_barras: codigoBarras,
-            descripcion,
-            categoriaNombre: categoriaNombre === 'Sin categoría' || categoriaNombre === '—' ? null : categoriaNombre,
-            precio_costo: precioCosto,
-            precio_venta: precioVenta,
-            stock_actual: stockActual,
-            stock_minimo: stockMinimo,
-            esValido,
-            error,
-          })
+          filasParseadas.push({ codigo_barras: codigoBarras, descripcion, categoriaNombre, precio_costo: precioCosto, precio_venta: precioVenta, stock_actual: stockActual, stock_minimo: stockMinimo, esValido, error })
         }
 
         if (filasParseadas.length === 0) {
-          setErrorParsing('No se detectaron productos válidos en el archivo.')
+          setErrorParsing('No se detectaron productos válidos en el archivo Excel.')
           return
         }
 
         setFilas(filasParseadas)
       } catch (err) {
-        console.error('Error parseando archivo CSV/Excel:', err)
-        setErrorParsing('Error al leer el formato del archivo CSV. Verificá que sea un archivo válido.')
+        console.error('Error parseando archivo XLSX:', err)
+        setErrorParsing('Error al leer el archivo Excel. Verificá que sea un archivo .xlsx válido.')
       }
-    }
+    } else {
+      // ── Rama CSV ─────────────────────────────────────────────────────────────
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        try {
+          const texto = e.target?.result as string
+          if (!texto) {
+            setErrorParsing('El archivo seleccionado está vacío.')
+            return
+          }
 
-    reader.readAsText(file, 'UTF-8')
+          const lineas = texto.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+          if (lineas.length <= 1) {
+            setErrorParsing('El archivo no contiene filas de datos.')
+            return
+          }
+
+          const primeraLinea = lineas[0]
+          const countPuntoComa = (primeraLinea.match(/;/g) || []).length
+          const countComa = (primeraLinea.match(/,/g) || []).length
+          const separador = countPuntoComa >= countComa ? ';' : ','
+
+          const cabeceras = parsearLineaCSV(primeraLinea, separador).map((c) => c.replace(/^["']|["']$/g, ''))
+          const indices = detectarIndicesColumnas(cabeceras)
+
+          const filasParseadas: ProductoImportRow[] = []
+
+          for (let i = 1; i < lineas.length; i++) {
+            const linea = lineas[i]
+            if (!linea) continue
+
+            const columnas = parsearLineaCSV(linea, separador).map((c) => c.replace(/^["']|["']$/g, ''))
+            if (columnas.length === 0 || columnas.every((c) => !c)) continue
+
+            const rawCodigo = indices.codigo_barras >= 0 ? columnas[indices.codigo_barras] || null : null
+            const codigoBarras =
+              rawCodigo === '—' || rawCodigo === '-' || rawCodigo === 'null' || !rawCodigo ? null : rawCodigo.trim()
+
+            const descripcion = indices.descripcion >= 0 ? (columnas[indices.descripcion] || '').trim() : ''
+            const categoriaNombre = indices.categoria >= 0 ? (columnas[indices.categoria] || '').trim() || null : null
+            const precioCosto = indices.precio_costo >= 0 ? parsearNumero(columnas[indices.precio_costo]) : 0
+            const precioVenta = indices.precio_venta >= 0 ? parsearNumero(columnas[indices.precio_venta]) : 0
+            const stockActual = indices.stock_actual >= 0 ? parsearNumero(columnas[indices.stock_actual]) : 0
+            const stockMinimo = indices.stock_minimo >= 0 ? Math.max(0, parsearNumero(columnas[indices.stock_minimo])) : 0
+
+            let esValido = true
+            let error: string | undefined
+
+            if (!descripcion) {
+              esValido = false
+              error = 'Falta descripción'
+            } else if (precioVenta <= 0) {
+              esValido = false
+              error = 'Precio venta debe ser mayor a 0'
+            }
+
+            filasParseadas.push({
+              codigo_barras: codigoBarras,
+              descripcion,
+              categoriaNombre: categoriaNombre === 'Sin categoría' || categoriaNombre === '—' ? null : categoriaNombre,
+              precio_costo: precioCosto,
+              precio_venta: precioVenta,
+              stock_actual: stockActual,
+              stock_minimo: stockMinimo,
+              esValido,
+              error,
+            })
+          }
+
+          if (filasParseadas.length === 0) {
+            setErrorParsing('No se detectaron productos válidos en el archivo.')
+            return
+          }
+
+          setFilas(filasParseadas)
+        } catch (err) {
+          console.error('Error parseando archivo CSV:', err)
+          setErrorParsing('Error al leer el formato del archivo CSV. Verificá que sea un archivo válido.')
+        }
+      }
+
+      reader.readAsText(file, 'UTF-8')
+    }
   }
 
   // Confirmar e importar productos / ejecutar rollback a la base de datos
@@ -509,7 +590,7 @@ export function ImportarCatalogoModal({
   const filasValidasCount = filas.filter((f) => f.esValido).length
   const filasInvalidasCount = filas.length - filasValidasCount
 
-  const tituloModal = titulo || (modoRollback ? 'Restaurar Copia de Seguridad (Rollback)' : 'Importar Catálogo Masivo (.CSV)')
+  const tituloModal = titulo || (modoRollback ? 'Restaurar Copia de Seguridad (Rollback)' : 'Importar Catálogo (.XLSX / .CSV)')
 
   return (
     <Modal isOpen={isOpen} onClose={handleCerrar} title={tituloModal} size="xl">
@@ -581,13 +662,13 @@ export function ImportarCatalogoModal({
         {/* Zona de selección de archivo */}
         <div>
           <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-            Seleccionar archivo .CSV de Backup o Catálogo
+            Seleccionar archivo (.XLSX o .CSV)
           </label>
           <div className="flex items-center gap-3">
             <input
               ref={fileInputRef}
               type="file"
-              accept=".csv,text/csv"
+              accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={(e) => {
                 const f = e.target.files?.[0]
                 if (f) handleArchivoSeleccionado(f)
