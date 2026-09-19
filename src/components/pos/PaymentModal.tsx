@@ -156,7 +156,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         (c.dni_cuit && c.dni_cuit.includes(busquedaCliente)))
   )
 
-  // Si el cliente seleccionado tiene DNI o CUIT, precargar en AFIP
+  // Si el cliente seleccionado tiene DNI o CUIT, precargar en ARCA
   useEffect(() => {
     if (clienteSeleccionado?.dni_cuit) {
       const raw = clienteSeleccionado.dni_cuit.replace(/\D/g, '')
@@ -241,8 +241,15 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         throw new Error('No se encontró el identificador del kiosco para registrar la venta')
       }
 
-      // Validación de consistencia fiscal ante AFIP / ARCA
+      // Validación de consistencia fiscal ante ARCA
       if (emitirFiscal) {
+        if (!afipConfig?.habilitado) {
+          toast.error('La facturación electrónica ARCA no está habilitada en la Configuración.')
+          procesandoRef.current = false
+          setProcesando(false)
+          return
+        }
+
         if (tipoDocReceptor === 96) {
           const dniLimpio = nroDocReceptor.replace(/\D/g, '')
           if (!dniLimpio || dniLimpio.length < 7 || dniLimpio.length > 8) {
@@ -453,7 +460,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         await imputarCargoVenta(clienteSeleccionadoId, ventaId, montoCuentaCorriente, notasFinal || undefined)
       }
 
-      // 5b. Si AFIP está habilitado y se solicitó factura electrónica, emitirla
+      // 5b. Si ARCA está habilitado y se solicitó factura electrónica, emitirla
       let afipTicketData: TicketData['afip'] = undefined
 
       if (emitirFiscal && afipConfig?.habilitado) {
@@ -485,8 +492,8 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             }
           }
         } catch (errAFIP) {
-          console.error('Error emitiendo comprobante AFIP:', errAFIP)
-          toast.error(`Venta guardada, pero ocurrió un problema con AFIP: ${errAFIP instanceof Error ? errAFIP.message : 'Error desconocido'}`)
+          console.error('Error emitiendo comprobante ARCA:', errAFIP)
+          toast.error(`Venta guardada, pero ocurrió un problema con ARCA: ${errAFIP instanceof Error ? errAFIP.message : 'Error desconocido'}`)
         }
       }
 
@@ -996,18 +1003,24 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           />
         )}
 
-        {/* Selector de Comprobante: Ticket Interno vs Factura AFIP */}
+        {/* Selector de Comprobante: Ticket Interno vs Factura ARCA */}
         <div className="p-3.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-800/60 space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
               Tipo de Comprobante
             </span>
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
-              afipConfig?.entorno === 'PRODUCCION'
+              !afipConfig?.habilitado
+                ? 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                : afipConfig?.entorno === 'PRODUCCION'
                 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
                 : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
             }`}>
-              {afipConfig?.entorno === 'PRODUCCION' ? 'Producción' : 'Modo Homologación'}
+              {!afipConfig?.habilitado
+                ? 'ARCA Deshabilitada'
+                : afipConfig?.entorno === 'PRODUCCION'
+                ? 'ARCA Producción'
+                : 'ARCA Modo Pruebas'}
             </span>
           </div>
 
@@ -1026,30 +1039,48 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
                 {!emitirFiscal && <span className="w-2 h-2 rounded-full bg-indigo-600"></span>}
               </div>
               <span className="text-[10px] font-normal text-gray-500 dark:text-gray-400 mt-1">
-                Control mostrador (sin AFIP)
+                Control mostrador (sin ARCA)
               </span>
             </button>
 
             <button
               type="button"
-              onClick={() => setEmitirFiscal(true)}
-              className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-left flex flex-col justify-between cursor-pointer ${
-                emitirFiscal
-                  ? 'border-blue-600 bg-blue-50/80 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 ring-1 ring-blue-500/40 shadow-xs'
-                  : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50'
+              disabled={!afipConfig?.habilitado}
+              onClick={() => {
+                if (!afipConfig?.habilitado) {
+                  toast.error('La facturación electrónica ARCA no está habilitada en Configuración')
+                  return
+                }
+                setEmitirFiscal(true)
+              }}
+              title={
+                !afipConfig?.habilitado
+                  ? 'La facturación fiscal no está habilitada. Podés activarla en Configuración > Facturación ARCA'
+                  : undefined
+              }
+              className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-left flex flex-col justify-between ${
+                !afipConfig?.habilitado
+                  ? 'border-gray-200 dark:border-gray-700/60 bg-gray-100/70 dark:bg-gray-800/30 text-gray-400 dark:text-gray-500 opacity-60 cursor-not-allowed'
+                  : emitirFiscal
+                  ? 'border-blue-600 bg-blue-50/80 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 ring-1 ring-blue-500/40 shadow-xs cursor-pointer'
+                  : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50 cursor-pointer'
               }`}
             >
               <div className="flex items-center justify-between w-full">
-                <span>Factura AFIP</span>
-                {emitirFiscal && <span className="w-2 h-2 rounded-full bg-blue-600"></span>}
+                <span>Factura ARCA</span>
+                {emitirFiscal && afipConfig?.habilitado && <span className="w-2 h-2 rounded-full bg-blue-600"></span>}
               </div>
               <span className="text-[10px] font-normal text-gray-500 dark:text-gray-400 mt-1">
-                {afipConfig?.condicion_iva === 'RESPONSABLE_INSCRIPTO' ? 'Factura B con CAE' : 'Factura C con CAE'}
+                {!afipConfig?.habilitado
+                  ? 'Deshabilitada en Configuración'
+                  : afipConfig?.condicion_iva === 'RESPONSABLE_INSCRIPTO'
+                  ? 'Factura B con CAE'
+                  : 'Factura C con CAE'}
               </span>
             </button>
           </div>
 
-          {emitirFiscal && (
+          {emitirFiscal && afipConfig?.habilitado && (
             <div className="pt-2.5 border-t border-blue-200/60 dark:border-blue-800/40 space-y-2.5 text-xs">
               <div>
                 <label className="block text-[11px] font-medium text-blue-900 dark:text-blue-300 mb-1.5">
@@ -1124,7 +1155,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           disabled={!puedeConfirmar}
           loading={procesando}
         >
-          {emitirFiscal ? 'Confirmar y Facturar AFIP' : 'Confirmar Venta'}
+          {emitirFiscal ? 'Confirmar y Facturar ARCA' : 'Confirmar Venta'}
         </Button>
       </div>
     </Modal>

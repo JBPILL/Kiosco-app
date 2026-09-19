@@ -101,7 +101,7 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
       if (kData) {
         const local = getLocalAFIPConfig(kioscoId)
         const configCombinada: ConfiguracionAFIP = {
-          habilitado: kData.afip_habilitado ?? local?.habilitado ?? true,
+          habilitado: kData.afip_habilitado ?? local?.habilitado ?? false,
           cuit: kData.cuit || local?.cuit || '',
           razon_social: kData.nombre || local?.razon_social || '',
           condicion_iva: (kData.condicion_iva as any) || local?.condicion_iva || 'MONOTRIBUTO',
@@ -130,9 +130,9 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
       return localConfig
     }
 
-    // Configuración inicial por defecto (activa en modo Homologación)
+    // Configuración inicial por defecto (deshabilitada por defecto hasta que el titular configure sus datos)
     const defaultConfig: ConfiguracionAFIP = {
-      habilitado: true,
+      habilitado: false,
       cuit: '',
       razon_social: kiosco?.nombre || 'Mi Kiosco',
       condicion_iva: 'MONOTRIBUTO',
@@ -217,7 +217,7 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
     }
 
     set({ guardando: false })
-    toast.success('Configuración fiscal de AFIP guardada')
+    toast.success('Configuración fiscal de ARCA guardada')
     return true
   },
 
@@ -239,18 +239,9 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
       config = await get().cargarConfiguracion()
     }
 
-    if (!config) {
-      config = {
-        habilitado: true,
-        cuit: '20123456789',
-        razon_social: kiosco?.nombre || 'Mi Kiosco',
-        condicion_iva: 'MONOTRIBUTO',
-        punto_venta: 2,
-        entorno: 'HOMOLOGACION',
-        facturar_automatico: false,
-        monto_minimo_auto: 0,
-        ultimo_nro_comprobante: 0,
-      }
+    if (!config || !config.habilitado) {
+      toast.error('La facturación electrónica ARCA no está habilitada en la Configuración.')
+      return null
     }
 
     set({ facturando: true })

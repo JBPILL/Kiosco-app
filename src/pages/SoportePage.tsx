@@ -24,7 +24,7 @@ const MODULOS = [
   'Clientes y Fiados',
   'Proveedores',
   'Reportes y Balance',
-  'Facturación AFIP',
+  'Facturación ARCA',
   'Otro',
 ]
 

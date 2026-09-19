@@ -409,7 +409,14 @@ export function POSPage() {
               />
             </div>
             {/* Fila 2: Botones de acción con scroll horizontal en resoluciones bajas */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide min-w-0">
+            <div
+              onWheel={(e) => {
+                if (e.deltaY !== 0) {
+                  e.currentTarget.scrollLeft += e.deltaY
+                }
+              }}
+              className="flex items-center gap-1.5 overflow-x-auto pb-1 scroll-smooth min-w-0"
+            >
               <button
                 type="button"
                 onClick={() => setModalLibreOpen(true)}
@@ -460,11 +467,20 @@ export function POSPage() {
               >
                 <span>Retiro / Caja</span>
               </button>
+              {/* Espacio final de resguardo para que el último botón no se solape ni quede cortado */}
+              <div className="w-8 shrink-0 h-1 pointer-events-none" aria-hidden="true" />
             </div>
           </div>
 
-          {/* Categorías deslizables */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide min-w-0 mb-2.5">
+          {/* Categorías deslizables con margen de scroll y espaciador final */}
+          <div
+            onWheel={(e) => {
+              if (e.deltaY !== 0) {
+                e.currentTarget.scrollLeft += e.deltaY
+              }
+            }}
+            className="flex items-center gap-1.5 overflow-x-auto pb-2 scroll-smooth min-w-0 mb-2"
+          >
             {/* Botón de ventas en espera si existen */}
             {ventasEnEspera.length > 0 && (
               <button
@@ -502,6 +518,8 @@ export function POSPage() {
                 {cat.nombre}
               </button>
             ))}
+            {/* Espacio final de resguardo para que la última categoría se vea completa al 100% */}
+            <div className="w-8 shrink-0 h-1 pointer-events-none" aria-hidden="true" />
           </div>
 
           {/* Grilla compacta de productos */}

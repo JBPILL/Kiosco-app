@@ -65,11 +65,11 @@ export function AFIPConfigSection() {
 
     if (habilitado) {
       if (!cuitLimpio) {
-        toast.error('Debés ingresar el CUIT para habilitar la facturación AFIP')
+        toast.error('Debés ingresar el CUIT para habilitar la facturación ARCA')
         return
       }
       if (!validarCUIT(cuitLimpio)) {
-        toast.error('El CUIT ingresado no es válido según el algoritmo Módulo 11 de AFIP')
+        toast.error('El CUIT ingresado no es válido según el algoritmo Módulo 11 de ARCA')
         return
       }
       if (puntoVenta <= 0) {
@@ -93,7 +93,7 @@ export function AFIPConfigSection() {
 
     const ok = await guardarConfiguracion(nuevaConfig)
     if (ok) {
-      toast.success('Configuración fiscal de AFIP guardada correctamente')
+      toast.success('Configuración fiscal de ARCA guardada correctamente')
     }
   }
 
@@ -168,7 +168,7 @@ export function AFIPConfigSection() {
         <div>
           <div className="flex items-center gap-2.5">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              Facturación Electrónica AFIP (WSFEv1)
+              Facturación Electrónica ARCA (WSFEv1)
             </h2>
             <span
               className={`px-2.5 py-0.5 text-xs font-bold rounded-full ${
@@ -257,10 +257,10 @@ export function AFIPConfigSection() {
             </select>
           </div>
 
-          {/* Punto de Venta AFIP */}
+          {/* Punto de Venta ARCA */}
           <div>
             <Input
-              label="Punto de Venta AFIP *"
+              label="Punto de Venta ARCA *"
               type="number"
               min={1}
               max={9999}
@@ -271,7 +271,7 @@ export function AFIPConfigSection() {
               required={habilitado}
             />
             <p className="text-[11px] text-gray-400 mt-0.5">
-              Debe ser un punto de venta habilitado en AFIP para "Facturación Web Services".
+              Debe ser un punto de venta habilitado en ARCA para "Facturación Web Services".
             </p>
           </div>
 
@@ -296,7 +296,7 @@ export function AFIPConfigSection() {
           {/* Entorno de Trabajo */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Entorno AFIP
+              Entorno ARCA
             </label>
             <select
               value={entorno}
@@ -335,7 +335,7 @@ export function AFIPConfigSection() {
                 className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
               />
               <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                Tildar "Emitir Factura AFIP" automáticamente en cada venta
+                Tildar "Emitir Factura ARCA" automáticamente en cada venta
               </span>
             </label>
 
@@ -381,7 +381,7 @@ export function AFIPConfigSection() {
             onClick={() => setMostrarGuia(!mostrarGuia)}
             className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
           >
-            {mostrarGuia ? '▲ Ocultar guía de vinculación AFIP' : '▼ Ver instructivo paso a paso de AFIP'}
+            {mostrarGuia ? '▲ Ocultar guía de vinculación ARCA' : '▼ Ver instructivo paso a paso de ARCA'}
           </button>
         </div>
       </form>
@@ -390,21 +390,21 @@ export function AFIPConfigSection() {
       {mostrarGuia && (
         <div className="p-4 rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/20 text-xs text-gray-700 dark:text-gray-300 space-y-3">
           <h4 className="font-bold text-sm text-blue-900 dark:text-blue-200">
-            Guía rápida: Cómo configurar la Facturación Electrónica en AFIP
+            Guía rápida: Cómo configurar la Facturación Electrónica en ARCA
           </h4>
           <ol className="list-decimal pl-4 space-y-2 leading-relaxed">
             <li>
-              <strong>Crear Punto de Venta Web Services:</strong> Ingresá en el portal de AFIP con tu CUIT y Clave Fiscal (Nivel 3). Entrá a <em>"Administración de Puntos de Venta y Domicilios"</em> y agregá un nuevo punto de venta (por ejemplo, el <strong>2</strong> o superior) seleccionando el tipo de sistema <strong>"Facturación Electrónica - Web Services"</strong>.
+              <strong>Crear Punto de Venta Web Services:</strong> Ingresá en el portal de ARCA con tu CUIT y Clave Fiscal (Nivel 3). Entrá a <em>"Administración de Puntos de Venta y Domicilios"</em> y agregá un nuevo punto de venta (por ejemplo, el <strong>2</strong> o superior) seleccionando el tipo de sistema <strong>"Facturación Electrónica - Web Services"</strong>.
             </li>
             <li>
               <strong>Delegación del Servicio WSFEv1:</strong> En <em>"Administrador de Relaciones de Clave Fiscal"</em>, asociá el servicio <strong>"Facturación Electrónica" (WSFEv1)</strong>.
             </li>
             <li>
-              <strong>Cargar datos en KioskoPOS:</strong> Ingresá el CUIT y el número de punto de venta creado aquí arriba. En modo <em>Homologación</em> podés probar la impresión y el código QR de inmediato sin enviar datos a AFIP. Al pasar a <em>Producción</em>, las ventas quedarán registradas formalmente.
+              <strong>Cargar datos en KioskoPOS:</strong> Ingresá el CUIT y el número de punto de venta creado aquí arriba. En modo <em>Homologación</em> podés probar la impresión y el código QR de inmediato sin enviar datos a ARCA. Al pasar a <em>Producción</em>, las ventas quedarán registradas formalmente.
             </li>
           </ol>
           <p className="text-[11px] text-blue-800 dark:text-blue-300 italic pt-1">
-            Normativa de referencia: RG 4892 AFIP (Código QR obligatorio en comprobantes electrónicos emitidos en puntos de venta físicos o digitales).
+            Normativa de referencia: RG 4892 ARCA (Código QR obligatorio en comprobantes electrónicos emitidos en puntos de venta físicos o digitales).
           </p>
         </div>
       )}

@@ -459,7 +459,7 @@ export function ConfigPage() {
             </form>
           </div>
 
-          {/* Configuración Fiscal AFIP */}
+          {/* Configuración Fiscal ARCA */}
           <AFIPConfigSection />
 
           {/* Políticas de Seguridad y Control de Caja */}

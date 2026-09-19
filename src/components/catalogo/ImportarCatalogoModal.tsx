@@ -288,10 +288,11 @@ export function ImportarCatalogoModal({
         if (
           nombreArchivoLower.includes('libro_iva') ||
           textoPrimerasFilas.includes('libro iva ventas') ||
+          textoPrimerasFilas.includes('conforme rg arca') ||
           textoPrimerasFilas.includes('conforme rg afip')
         ) {
           setErrorParsing(
-            'El archivo seleccionado es el Libro IVA Ventas Digital de AFIP. Es un informe fiscal emitido para contabilidad y AFIP, no un catálogo de productos para importar.'
+            'El archivo seleccionado es el Libro IVA Ventas Digital de ARCA. Es un informe fiscal emitido para contabilidad y ARCA, no un catálogo de productos para importar.'
           )
           return
         }

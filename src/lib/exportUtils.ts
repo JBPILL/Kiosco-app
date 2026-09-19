@@ -474,7 +474,7 @@ export async function exportarVentasExcel(
     [
       ...cCardLabel('Ventas Totales Netas', 2),
       ...cCardLabel('Tickets Emitidos', 2),
-      ...cCardLabel('Facturado Fiscal AFIP', 2),
+      ...cCardLabel('Facturado Fiscal ARCA', 2),
       ...cCardLabel('Ticket Promedio', 2),
     ] as Row,
     [
@@ -501,7 +501,7 @@ export async function exportarVentasExcel(
       cHeader('N° Comprobante', 'center'),
       cHeader('Fecha y Hora', 'center'),
       cHeader('Circuito Fiscal', 'center'),
-      cHeader('CAE AFIP', 'center'),
+      cHeader('CAE ARCA', 'center'),
       cHeader('Cajero / Operador', 'left'),
       cHeader('Medio de Pago', 'left'),
       cHeader('Estado', 'center'),
@@ -518,7 +518,7 @@ export async function exportarVentasExcel(
       : 'T-S/N'
 
     const esFiscal = Boolean(v.afip_cae)
-    const circuitoStr = esFiscal ? 'AFIP Oficial' : 'Mostrador Interno'
+    const circuitoStr = esFiscal ? 'ARCA Oficial' : 'Mostrador Interno'
     const cajeroStr = Array.isArray(v.usuario)
       ? v.usuario[0]?.nombre || 'Cajero'
       : v.usuario?.nombre || 'Cajero'
@@ -819,7 +819,7 @@ export async function exportarLibroContableExcel(
 
     // Fila 2 de Tarjetas KPI (si hay métricas fiscales y de deuda)
     [
-      ...cCardLabel('Facturado Fiscal AFIP (CAE)', 2),
+      ...cCardLabel('Facturado Fiscal ARCA (CAE)', 2),
       ...cCardLabel('Ventas Internas Mostrador', 2),
       ...cCardLabel('Salidas Totales de Dinero', 2),
       ...cCardLabel('Deuda Pendiente Proveedores', 2),
@@ -1054,7 +1054,7 @@ export async function exportarLibroIvaVentasExcel(
 
   const rows: Row[] = [
     cSpan({
-      value: `${(kiosco?.nombre || 'KIOSKO').toUpperCase()} - LIBRO IVA VENTAS DIGITAL (AFIP / CONTADOR)`,
+      value: `${(kiosco?.nombre || 'KIOSKO').toUpperCase()} - LIBRO IVA VENTAS DIGITAL (ARCA / CONTADOR)`,
       type: String,
       fontWeight: 'bold',
       fontSize: 14,
@@ -1063,7 +1063,7 @@ export async function exportarLibroIvaVentasExcel(
       align: 'center',
     }, totalCols) as Row,
     cSpan({
-      value: `PERÍODO FISCAL: ${periodoNombre.toUpperCase()} | EMISIÓN: ${fechaGeneracion} | CONFORME RG AFIP`,
+      value: `PERÍODO FISCAL: ${periodoNombre.toUpperCase()} | EMISIÓN: ${fechaGeneracion} | CONFORME RG ARCA`,
       type: String,
       fontSize: 9,
       textColor: '#E2E8F0',
@@ -1085,7 +1085,7 @@ export async function exportarLibroIvaVentasExcel(
       borderStyle: 'thin',
     }, totalCols) as Row,
     [
-      ...cCardLabel('Total Facturado AFIP', 3),
+      ...cCardLabel('Total Facturado ARCA', 3),
       ...cCardLabel('Comprobantes CAE', 2),
       ...cCardLabel('Punto de Venta', 2),
       ...cCardLabel('CUIT Comercio', 2),
@@ -1116,7 +1116,7 @@ export async function exportarLibroIvaVentasExcel(
       cHeader('Tipo Comprobante', 'center'),
       cHeader('Punto Venta', 'center'),
       cHeader('N° Comprobante', 'center'),
-      cHeader('CAE AFIP', 'center'),
+      cHeader('CAE ARCA', 'center'),
       cHeader('Cajero / Emisor', 'left'),
       cHeader('Medio de Pago', 'left'),
       cHeader('Total Facturado ($)', 'right'),
@@ -1128,7 +1128,7 @@ export async function exportarLibroIvaVentasExcel(
     const d = new Date(v.fecha_hora)
     const fecha = d.toLocaleDateString('es-AR')
     const hora = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
-    const tipoCompStr = v.afip_tipo_comprobante === 11 ? 'Factura C (Cod 011)' : v.afip_tipo_comprobante === 6 ? 'Factura B (Cod 006)' : 'Factura AFIP'
+    const tipoCompStr = v.afip_tipo_comprobante === 11 ? 'Factura C (Cod 011)' : v.afip_tipo_comprobante === 6 ? 'Factura B (Cod 006)' : 'Factura ARCA'
     const pv = String(kiosco?.afip_punto_venta || 2).padStart(4, '0')
     const nro = String(v.afip_nro_comprobante || 0).padStart(8, '0')
     const medioStr = v.pagos && v.pagos.length > 0 ? v.pagos.map((p: any) => labelMedioPago(p.medio_pago)).join(' + ') : 'Efectivo'
@@ -1149,12 +1149,12 @@ export async function exportarLibroIvaVentasExcel(
 
   // Cierre
   rows.push([
-    ...cTotalLabel('TOTAL FACTURADO AFIP DEL PERÍODO', 8),
+    ...cTotalLabel('TOTAL FACTURADO ARCA DEL PERÍODO', 8),
     cTotalMoney(totalFacturadoAFIP),
   ] as Row)
 
   const cleanPeriod = periodoNombre.toLowerCase().replace(/[^a-z0-9]/g, '_')
-  const fileName = `libro_iva_ventas_afip_${cleanPeriod}.xlsx`
+  const fileName = `libro_iva_ventas_arca_${cleanPeriod}.xlsx`
 
   await writeXlsxFile(rows, { columns }).toFile(fileName)
 }

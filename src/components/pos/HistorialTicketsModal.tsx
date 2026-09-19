@@ -33,7 +33,7 @@ export function HistorialTicketsModal({
 }: HistorialTicketsModalProps) {
   const { usuario, kiosco } = useAuthStore()
   const { obtenerUltimasVentas } = useDevolucionStore()
-  const { emitirFacturaVenta } = useAFIPStore()
+  const { emitirFacturaVenta, config: afipConfig, cargarConfiguracion } = useAFIPStore()
 
   const [ventas, setVentas] = useState<VentaConDetalles[]>([])
   const [cargando, setCargando] = useState(false)
@@ -48,7 +48,17 @@ export function HistorialTicketsModal({
   const [nombreClienteReceptor, setNombreClienteReceptor] = useState<string>('')
   const [emitiendoAFIP, setEmitiendoAFIP] = useState<boolean>(false)
 
+  useEffect(() => {
+    if (isOpen) {
+      cargarConfiguracion()
+    }
+  }, [isOpen, cargarConfiguracion])
+
   const abrirModalFacturar = (v: VentaConDetalles) => {
+    if (!afipConfig?.habilitado) {
+      toast.error('La facturación electrónica ARCA no está habilitada en la Configuración.')
+      return
+    }
     setVentaParaFacturar(v)
     setNombreClienteReceptor(v.cliente?.nombre || '')
     if (v.cliente?.dni_cuit) {
@@ -71,6 +81,10 @@ export function HistorialTicketsModal({
 
   const handleEmitirFacturaDiferida = async () => {
     if (!ventaParaFacturar) return
+    if (!afipConfig?.habilitado) {
+      toast.error('La facturación electrónica ARCA no está habilitada en la Configuración.')
+      return
+    }
     if (tipoDocReceptor === 96) {
       const dniLimpio = nroDocReceptor.replace(/\D/g, '')
       if (!dniLimpio || dniLimpio.length < 7 || dniLimpio.length > 8) {
@@ -96,7 +110,7 @@ export function HistorialTicketsModal({
       })
 
       if (res) {
-        toast.success(`Factura AFIP emitida correctamente — CAE: ${res.cae}`)
+        toast.success(`Factura ARCA emitida correctamente — CAE: ${res.cae}`)
         const ventaActualizada: VentaConDetalles = {
           ...ventaParaFacturar,
           afip_cae: res.cae,
@@ -109,10 +123,10 @@ export function HistorialTicketsModal({
         setVentaParaFacturar(null)
         setTicketSeleccionado(ventaToTicketData(ventaActualizada, kiosco))
       } else {
-        toast.error('No se pudo emitir la factura electrónica. Verificá la configuración de AFIP.')
+        toast.error('No se pudo emitir la factura electrónica. Verificá la configuración de ARCA.')
       }
     } catch (err: any) {
-      toast.error(`Error emitiendo factura AFIP: ${err?.message || 'Error desconocido'}`)
+      toast.error(`Error emitiendo factura ARCA: ${err?.message || 'Error desconocido'}`)
     } finally {
       setEmitiendoAFIP(false)
     }
@@ -307,7 +321,7 @@ export function HistorialTicketsModal({
 
                         {v.afip_cae && (
                           <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/60 px-2 py-0.5 rounded-md">
-                            AFIP CAE: {v.afip_cae}
+                            ARCA CAE: {v.afip_cae}
                           </span>
                         )}
 
@@ -361,13 +375,13 @@ export function HistorialTicketsModal({
                       </div>
 
                       <div className="flex items-center gap-2">
-                        {/* Botón Facturar AFIP si no fue facturada aún y no está anulada */}
+                        {/* Botón Facturar ARCA si no fue facturada aún y no está anulada */}
                         {!esAnulada && !v.afip_cae && (
                           <button
                             type="button"
                             onClick={() => abrirModalFacturar(v)}
                             className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                            title="Emitir comprobante fiscal AFIP diferido con CAE"
+                            title="Emitir comprobante fiscal ARCA diferido con CAE"
                           >
                             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -376,7 +390,7 @@ export function HistorialTicketsModal({
                               <line x1="16" y1="17" x2="8" y2="17"></line>
                               <polyline points="10 9 9 9 8 9"></polyline>
                             </svg>
-                            <span>Facturar AFIP</span>
+                            <span>Facturar ARCA</span>
                           </button>
                         )}
 
@@ -538,7 +552,7 @@ export function HistorialTicketsModal({
                 onClick={handleEmitirFacturaDiferida}
                 loading={emitiendoAFIP}
               >
-                Emitir Factura AFIP con CAE
+                Emitir Factura ARCA con CAE
               </Button>
             </div>
           </div>

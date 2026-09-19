@@ -491,10 +491,10 @@ export function BalanceContableTab() {
     toast.success('Libro contable descargado en formato Excel (.xlsx)')
   }
 
-  // Exportar Libro IVA Ventas para AFIP / Contador en Excel (.xlsx)
+  // Exportar Libro IVA Ventas para ARCA / Contador en Excel (.xlsx)
   const handleExportarLibroIvaVentas = async () => {
     if (ventasFiscalesPeriodo.length === 0) {
-      toast.error('No hay ventas con factura electrónica AFIP en este período')
+      toast.error('No hay ventas con factura electrónica ARCA en este período')
       return
     }
 
@@ -591,7 +591,7 @@ export function BalanceContableTab() {
         </div>
       </div>
 
-      {/* Selector de Circuito de Ventas: Control Real vs AFIP Fiscal */}
+      {/* Selector de Circuito de Ventas: Control Real vs ARCA Fiscal */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-gray-800 p-3.5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold text-gray-700 dark:text-gray-300 mr-1">
@@ -618,7 +618,7 @@ export function BalanceContableTab() {
                   : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
               }`}
             >
-              <span>Facturas AFIP</span>
+              <span>Facturas ARCA</span>
               <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 font-bold">
                 {ventasFiscalesPeriodo.length}
               </span>
@@ -649,7 +649,7 @@ export function BalanceContableTab() {
             className="text-xs font-semibold whitespace-nowrap"
             title="Descargar planilla Excel con todas las ventas que tienen CAE para el contador"
           >
-            Exportar Libro IVA AFIP (.XLSX)
+            Exportar Libro IVA ARCA (.XLSX)
           </Button>
         </div>
       </div>
@@ -658,7 +658,7 @@ export function BalanceContableTab() {
       {filtroFiscal === 'SOLO_FISCALES' && (
         <div className="p-3 bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 rounded-xl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="text-blue-900 dark:text-blue-200">
-            <span className="font-bold">Vista Fiscal Oficial:</span> Mostrando exclusivamente las {ventasFiscalesPeriodo.length} ventas con CAE emitidas ante AFIP/ARCA. Total facturado: <strong>{formatPrecio(totalFacturadoAFIP)}</strong>.
+            <span className="font-bold">Vista Fiscal Oficial:</span> Mostrando exclusivamente las {ventasFiscalesPeriodo.length} ventas con CAE emitidas ante ARCA. Total facturado: <strong>{formatPrecio(totalFacturadoAFIP)}</strong>.
           </div>
           <span className="text-[11px] text-blue-700 dark:text-blue-400 font-mono">
             Punto de Venta: {String(kiosco?.afip_punto_venta || 2).padStart(4, '0')}
@@ -999,7 +999,7 @@ export function BalanceContableTab() {
                               </button>
                               {asiento.ventaData.afip_cae ? (
                                 <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200 uppercase">
-                                  AFIP
+                                  ARCA
                                 </span>
                               ) : (
                                 <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">

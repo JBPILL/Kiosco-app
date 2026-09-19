@@ -182,7 +182,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
       msg += `--------------------------------\n`
       msg += `CAE: ${ticket.afip.cae} | Vto: ${ticket.afip.vtoCae}\n`
       if (ticket.afip.qrUrl) {
-        msg += `Verificar en AFIP: ${ticket.afip.qrUrl}\n`
+        msg += `Verificar en ARCA: ${ticket.afip.qrUrl}\n`
       }
     }
     msg += `--------------------------------\n`
@@ -436,7 +436,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
                   <div className="flex justify-center py-1">
                     <img
                       src={qrDataUrl}
-                      alt="Código QR AFIP"
+                      alt="Código QR ARCA"
                       className="w-28 h-28 object-contain"
                     />
                   </div>
@@ -446,7 +446,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
                   <p>Vto. CAE: {ticket.afip.vtoCae}</p>
                 </div>
                 <p className="text-[9px] text-gray-500 italic pt-1">
-                  Comprobante Autorizado por AFIP (RG 4892)
+                  Comprobante Autorizado por ARCA (RG 4892)
                 </p>
                 <p className="font-semibold text-[10px] pt-0.5">¡Muchas gracias por su compra!</p>
               </div>
