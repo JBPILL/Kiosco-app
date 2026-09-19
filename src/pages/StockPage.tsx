@@ -738,88 +738,96 @@ export function StockPage() {
               </p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-100 dark:divide-gray-700/60 max-h-[560px] overflow-y-auto">
-              {movimientosFiltrados.map((mov) => {
-                const esIngreso = mov.tipo === 'INGRESO'
-                const esEgreso = mov.tipo === 'EGRESO'
-                const cantDisplay = esIngreso
-                  ? `+${mov.cantidad}`
-                  : esEgreso
-                  ? `${mov.cantidad}`
-                  : `=${mov.cantidad}`
+            <div className="overflow-hidden">
+              {/* Encabezado fijo de columnas para alinear perfectamente con el listado */}
+              <div className="hidden sm:flex items-center justify-between px-4 py-2.5 bg-gray-50/90 dark:bg-gray-800/90 border-b border-gray-200 dark:border-gray-700 text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <span className="flex-1 min-w-0">Producto / Movimiento</span>
+                <span className="w-52 text-center flex-shrink-0">Fecha y Horario</span>
+                <span className="w-28 text-right flex-shrink-0">Cantidad</span>
+              </div>
 
-                return (
-                  <div
-                    key={mov.id}
-                    className="p-3 sm:p-4 hover:bg-gray-50/70 dark:hover:bg-gray-750/50 flex items-center justify-between gap-3 transition-colors text-xs"
-                  >
-                    {/* Badge de tipo y datos de producto */}
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span
-                        className={`font-black text-[10px] tracking-wider px-2 py-1 rounded-md uppercase flex-shrink-0 ${
-                          tipoBadges[mov.tipo]
-                        }`}
-                      >
-                        {mov.tipo}
-                      </span>
+              <div className="divide-y divide-gray-100 dark:divide-gray-700/60 max-h-[560px] overflow-y-auto">
+                {movimientosFiltrados.map((mov) => {
+                  const esIngreso = mov.tipo === 'INGRESO'
+                  const esEgreso = mov.tipo === 'EGRESO'
+                  const cantDisplay = esIngreso
+                    ? `+${mov.cantidad}`
+                    : esEgreso
+                    ? `${mov.cantidad}`
+                    : `=${mov.cantidad}`
 
-                      <div className="min-w-0">
-                        <p className="font-bold text-gray-900 dark:text-gray-100 truncate text-xs sm:text-sm">
-                          {mov.producto?.descripcion || 'Producto sin descripción'}
-                        </p>
-                        <div className="flex items-center gap-2 text-[11px] text-gray-400 mt-0.5 flex-wrap">
-                          {mov.producto?.codigo_barras && (
-                            <span className="font-mono">{mov.producto.codigo_barras}</span>
-                          )}
-                          <span>·</span>
-                          {mov.notas && (
-                            <>
-                              <span>·</span>
-                              {/venta\s*#?[a-f0-9]{8}/i.test(mov.notas) ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleVerTicketDesdeNota(mov.notas!)}
-                                  className="font-mono font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 hover:underline cursor-pointer bg-indigo-50/70 dark:bg-indigo-950/40 px-1.5 py-0.5 rounded transition-colors text-left"
-                                  title="Hacé clic para ver el comprobante de esta venta"
-                                >
-                                  {mov.notas}
-                                </button>
-                              ) : (
-                                <span className="italic truncate max-w-[200px]" title={mov.notas}>
-                                  "{mov.notas}"
-                                </span>
-                              )}
-                            </>
-                          )}
+                  return (
+                    <div
+                      key={mov.id}
+                      className="p-3 sm:px-4 sm:py-3 hover:bg-gray-50 dark:hover:bg-gray-700/40 flex items-center justify-between gap-4 transition-colors text-xs"
+                    >
+                      {/* Badge de tipo y datos de producto (toma todo el espacio libre restante) */}
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <span
+                          className={`font-black text-[10px] tracking-wider px-2 py-1 rounded-md uppercase flex-shrink-0 ${
+                            tipoBadges[mov.tipo]
+                          }`}
+                        >
+                          {mov.tipo}
+                        </span>
+
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-gray-900 dark:text-gray-100 truncate text-xs sm:text-sm">
+                            {mov.producto?.descripcion || 'Producto sin descripción'}
+                          </p>
+                          <div className="flex items-center gap-2 text-[11px] text-gray-400 mt-0.5 flex-wrap">
+                            {mov.producto?.codigo_barras && (
+                              <span className="font-mono">{mov.producto.codigo_barras}</span>
+                            )}
+                            {mov.notas && (
+                              <>
+                                <span>·</span>
+                                {/venta\s*#?[a-f0-9]{8}/i.test(mov.notas) ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleVerTicketDesdeNota(mov.notas!)}
+                                    className="font-mono font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 hover:underline cursor-pointer bg-indigo-50/70 dark:bg-indigo-950/40 px-1.5 py-0.5 rounded transition-colors text-left"
+                                    title="Hacé clic para ver el comprobante de esta venta"
+                                  >
+                                    {mov.notas}
+                                  </button>
+                                ) : (
+                                  <span className="italic truncate max-w-[220px]" title={mov.notas}>
+                                    "{mov.notas}"
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Fecha del movimiento */}
-                    <div className="hidden sm:block text-right text-[11px] text-gray-400 flex-shrink-0">
-                      <p className="font-medium text-gray-600 dark:text-gray-300">
-                        {formatFecha(mov.fecha)}
-                      </p>
-                    </div>
+                      {/* Fecha del movimiento (columna con ancho fijo inmutable) */}
+                      <div className="hidden sm:block w-52 text-center text-[11px] text-gray-400 flex-shrink-0">
+                        <p className="font-mono font-medium text-gray-600 dark:text-gray-300">
+                          {formatFecha(mov.fecha)}
+                        </p>
+                      </div>
 
-                    {/* Cantidad variada */}
-                    <div className="text-right flex-shrink-0">
-                      <span
-                        className={`font-mono text-base font-black ${
-                          esIngreso
-                            ? 'text-emerald-600 dark:text-emerald-400'
-                            : esEgreso
-                            ? 'text-red-600 dark:text-red-400'
-                            : 'text-indigo-600 dark:text-indigo-400'
-                        }`}
-                      >
-                        {cantDisplay}
-                      </span>
-                      <span className="block text-[10px] text-gray-400">unidades</span>
+                      {/* Cantidad variada (columna con ancho fijo) */}
+                      <div className="w-28 text-right flex-shrink-0">
+                        <span
+                          className={`font-mono text-base font-black ${
+                            esIngreso
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : esEgreso
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-indigo-600 dark:text-indigo-400'
+                          }`}
+                        >
+                          {cantDisplay}
+                        </span>
+                        <span className="block text-[10px] text-gray-400">unidades</span>
+                      </div>
                     </div>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
             </div>
           )}
         </div>
@@ -984,7 +992,7 @@ export function StockPage() {
                       return (
                         <tr
                           key={lote.id}
-                          className="hover:bg-gray-50/60 dark:hover:bg-gray-750/40 transition-colors"
+                          className="hover:bg-gray-50/60 dark:hover:bg-gray-700/40 transition-colors"
                         >
                           <td className="py-3 px-4">
                             <p className="font-bold text-gray-900 dark:text-gray-100">

@@ -830,7 +830,7 @@ export function ImportarCatalogoModal({
         {/* Resumen y opciones si hay filas parseadas */}
         {filas.length > 0 && (
           <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 py-2 px-3 bg-gray-50 dark:bg-gray-750 rounded-lg border border-gray-200 dark:border-gray-700 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 py-2 px-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 text-xs">
               <div className="flex gap-3">
                 <span className="font-semibold text-gray-700 dark:text-gray-300">
                   Total detectado: <strong>{filas.length}</strong>

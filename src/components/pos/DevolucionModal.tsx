@@ -205,9 +205,9 @@ export function DevolucionModal({
         onClose()
       }}
       title="Devolución de Venta y Reintegro"
-      size="lg"
+      size="xl"
     >
-      <div className="space-y-4">
+      <div className="flex flex-col flex-1 min-h-0">
         {/* Formulario de búsqueda del ticket original */}
         {!venta ? (
           <div className="space-y-4">
@@ -323,29 +323,34 @@ export function DevolucionModal({
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
-            {/* Cabecera del ticket cargado */}
-            <div className="p-3 bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700 rounded-xl flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-gray-900 dark:text-gray-100 font-mono">
-                  Ticket #{venta.id.slice(0, 8).toUpperCase()}
-                </p>
-                <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                  Fecha: {formatFecha(venta.fecha_hora)} · Total Original: {formatPrecio(venta.total)}
-                </p>
+          <div className="flex flex-col flex-1 min-h-0 space-y-3">
+            {/* Cabecera del ticket cargado (fijo arriba) */}
+            <div className="p-2.5 sm:p-3 bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700 rounded-xl flex items-center justify-between flex-shrink-0">
+              <div className="min-w-0 pr-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-xs font-bold text-gray-900 dark:text-gray-100 font-mono">
+                    Ticket #{venta.id.slice(0, 8).toUpperCase()}
+                  </p>
+                  <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                    · {formatFecha(venta.fecha_hora)}
+                  </span>
+                  <span className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                    · Total: {formatPrecio(venta.total)}
+                  </span>
+                </div>
                 {venta.cliente && (
-                  <p className="text-[11px] text-indigo-600 dark:text-indigo-400 font-medium mt-0.5">
+                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium mt-0.5 truncate">
                     Cliente: {venta.cliente.nombre}
                   </p>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-shrink-0">
                 <button
                   type="button"
                   onClick={() => setTicketParaVer(ventaToTicketData(venta, kiosco))}
                   className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer font-semibold"
                 >
-                  Ver Comprobante
+                  Ver Ticket
                 </button>
                 <span className="text-gray-300 dark:text-gray-600">·</span>
                 <button
@@ -353,183 +358,191 @@ export function DevolucionModal({
                   onClick={reiniciar}
                   className="text-xs text-gray-500 hover:text-indigo-600 underline cursor-pointer"
                 >
-                  Buscar otro ticket
+                  Buscar otro
                 </button>
               </div>
             </div>
 
-            {/* Lista de productos facturados para seleccionar qué devolver */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-                Seleccioná los artículos a restituir y su cantidad:
-              </label>
+            {/* Contenedor desplazable con los artículos y opciones intermedias */}
+            <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pr-1">
+              {/* Lista de productos facturados para seleccionar qué devolver */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                  Seleccioná los artículos a restituir y su cantidad:
+                </label>
 
-              <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-semibold">
-                    <tr>
-                      <th className="px-3 py-2 text-center w-10">Sel.</th>
-                      <th className="px-3 py-2 text-left">Producto</th>
-                      <th className="px-2 py-2 text-center w-24">Cant. Dev.</th>
-                      <th className="px-2 py-2 text-right">P. Unit.</th>
-                      <th className="px-2 py-2 text-right">Subtotal</th>
-                      <th className="px-2 py-2 text-center w-28">¿Vuelve a Stock?</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                    {items.map((it) => (
-                      <tr
-                        key={it.productoId}
-                        className={`transition-colors ${
-                          it.seleccionado ? 'bg-indigo-50/40 dark:bg-indigo-950/20' : 'opacity-60'
-                        }`}
-                      >
-                        <td className="px-3 py-2 text-center">
-                          <input
-                            type="checkbox"
-                            checked={it.seleccionado}
-                            onChange={() => toggleSeleccionItem(it.productoId)}
-                            className="w-4 h-4 rounded text-indigo-600 border-gray-300"
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <p className="font-semibold text-gray-900 dark:text-gray-100">
-                            {it.descripcion}
-                          </p>
-                          <p className="text-[10px] text-gray-400">
-                            Original en ticket: {it.cantidadOriginal} un.
-                          </p>
-                        </td>
-                        <td className="px-2 py-2 text-center">
-                          <input
-                            type="number"
-                            min="0.001"
-                            max={it.cantidadOriginal}
-                            step={it.cantidadOriginal % 1 !== 0 ? '0.05' : '1'}
-                            disabled={!it.seleccionado}
-                            value={it.cantidadDevolver}
-                            onChange={(e) =>
-                              actualizarCantidadDevolver(it.productoId, parseFloat(e.target.value) || 1)
-                            }
-                            className="w-16 text-center text-xs py-1 px-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-bold outline-none"
-                          />
-                        </td>
-                        <td className="px-2 py-2 text-right font-mono text-gray-600 dark:text-gray-300">
-                          {formatPrecio(it.precioUnitario)}
-                        </td>
-                        <td className="px-2 py-2 text-right font-mono font-bold text-gray-900 dark:text-gray-100">
-                          {formatPrecio(Math.round(it.cantidadDevolver * it.precioUnitario))}
-                        </td>
-                        <td className="px-2 py-2 text-center">
-                          <label className="inline-flex items-center gap-1 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              disabled={!it.seleccionado}
-                              checked={it.reingresaStock}
-                              onChange={() => toggleReingresaStock(it.productoId)}
-                              className="w-3.5 h-3.5 rounded text-emerald-600"
-                            />
-                            <span className="text-[10px] font-medium text-gray-600 dark:text-gray-400">
-                              {it.reingresaStock ? 'Sí (Apto)' : 'No (Merma)'}
-                            </span>
-                          </label>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden shadow-2xs">
+                  <div className="max-h-[190px] sm:max-h-[230px] overflow-y-auto overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-semibold sticky top-0 z-10">
+                        <tr>
+                          <th className="px-3 py-2 text-center w-10">Sel.</th>
+                          <th className="px-3 py-2 text-left">Producto</th>
+                          <th className="px-2 py-2 text-center w-24">Cant. Dev.</th>
+                          <th className="px-2 py-2 text-right">P. Unit.</th>
+                          <th className="px-2 py-2 text-right">Subtotal</th>
+                          <th className="px-2 py-2 text-center w-28">¿Vuelve a Stock?</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                        {items.map((it) => (
+                          <tr
+                            key={it.productoId}
+                            className={`transition-colors ${
+                              it.seleccionado ? 'bg-indigo-50/40 dark:bg-indigo-950/20' : 'opacity-60'
+                            }`}
+                          >
+                            <td className="px-3 py-2 text-center">
+                              <input
+                                type="checkbox"
+                                checked={it.seleccionado}
+                                onChange={() => toggleSeleccionItem(it.productoId)}
+                                className="w-4 h-4 rounded text-indigo-600 border-gray-300"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <p className="font-semibold text-gray-900 dark:text-gray-100">
+                                {it.descripcion}
+                              </p>
+                              <p className="text-[10px] text-gray-400">
+                                Original en ticket: {it.cantidadOriginal} un.
+                              </p>
+                            </td>
+                            <td className="px-2 py-2 text-center">
+                              <input
+                                type="number"
+                                min="0.001"
+                                max={it.cantidadOriginal}
+                                step={it.cantidadOriginal % 1 !== 0 ? '0.05' : '1'}
+                                disabled={!it.seleccionado}
+                                value={it.cantidadDevolver}
+                                onChange={(e) =>
+                                  actualizarCantidadDevolver(it.productoId, parseFloat(e.target.value) || 1)
+                                }
+                                className="w-16 text-center text-xs py-1 px-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-bold outline-none"
+                              />
+                            </td>
+                            <td className="px-2 py-2 text-right font-mono text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                              {formatPrecio(it.precioUnitario)}
+                            </td>
+                            <td className="px-2 py-2 text-right font-mono font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                              {formatPrecio(Math.round(it.cantidadDevolver * it.precioUnitario))}
+                            </td>
+                            <td className="px-2 py-2 text-center whitespace-nowrap">
+                              <label className="inline-flex items-center gap-1 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  disabled={!it.seleccionado}
+                                  checked={it.reingresaStock}
+                                  onChange={() => toggleReingresaStock(it.productoId)}
+                                  className="w-3.5 h-3.5 rounded text-emerald-600"
+                                />
+                                <span className="text-[10px] font-medium text-gray-600 dark:text-gray-400">
+                                  {it.reingresaStock ? 'Sí (Apto)' : 'No (Merma)'}
+                                </span>
+                              </label>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
-            </div>
 
-            {/* Opciones de reintegro y motivo */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              {/* Opciones de reintegro y motivo */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-0.5">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Método de Reintegro:
+                  </label>
+                  <select
+                    value={metodoReintegro}
+                    onChange={(e) => setMetodoReintegro(e.target.value as MetodoReintegro)}
+                    className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 outline-none font-semibold"
+                  >
+                    <option value="EFECTIVO_CAJA">Efectivo (Egreso de Caja actual)</option>
+                    <option value="CUENTA_CORRIENTE" disabled={!venta.cliente}>
+                      Crédito en Cuenta Corriente {venta.cliente ? `(${venta.cliente.nombre})` : '(Sin cliente)'}
+                    </option>
+                    <option value="OTRO">Otro / Cambio Directo</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Motivo de Devolución:
+                  </label>
+                  <select
+                    value={motivo}
+                    onChange={(e) => setMotivo(e.target.value as MotivoDevolucion)}
+                    className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 outline-none font-semibold"
+                  >
+                    <option value="CAMBIO_PRODUCTO">Cambio de producto</option>
+                    <option value="FALLA_ROTURA">Mercadería fallada o rota</option>
+                    <option value="VENCIDO">Producto vencido</option>
+                    <option value="ERROR_COBRO">Error de tipeo o cobro</option>
+                    <option value="OTRO">Otro motivo</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Notas opcionales */}
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Método de Reintegro:
+                  Observaciones / Notas (opcional):
                 </label>
-                <select
-                  value={metodoReintegro}
-                  onChange={(e) => setMetodoReintegro(e.target.value as MetodoReintegro)}
-                  className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 outline-none font-semibold"
-                >
-                  <option value="EFECTIVO_CAJA">Efectivo (Egreso de Caja actual)</option>
-                  <option value="CUENTA_CORRIENTE" disabled={!venta.cliente}>
-                    Crédito en Cuenta Corriente {venta.cliente ? `(${venta.cliente.nombre})` : '(Sin cliente)'}
-                  </option>
-                  <option value="OTRO">Otro / Cambio Directo</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Motivo de Devolución:
-                </label>
-                <select
-                  value={motivo}
-                  onChange={(e) => setMotivo(e.target.value as MotivoDevolucion)}
-                  className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 outline-none font-semibold"
-                >
-                  <option value="CAMBIO_PRODUCTO">Cambio de producto</option>
-                  <option value="FALLA_ROTURA">Mercadería fallada o rota</option>
-                  <option value="VENCIDO">Producto vencido</option>
-                  <option value="ERROR_COBRO">Error de tipeo o cobro</option>
-                  <option value="OTRO">Otro motivo</option>
-                </select>
+                <input
+                  type="text"
+                  value={notas}
+                  onChange={(e) => setNotas(e.target.value)}
+                  placeholder="Ej: Cliente trajo ticket, producto sin abrir..."
+                  className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 outline-none"
+                />
               </div>
             </div>
 
-            {/* Notas opcionales */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                Observaciones / Notas (opcional):
-              </label>
-              <input
-                type="text"
-                value={notas}
-                onChange={(e) => setNotas(e.target.value)}
-                placeholder="Ej: Cliente trajo ticket, producto sin abrir..."
-                className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 outline-none"
-              />
-            </div>
-
-            {/* Resumen Total */}
-            <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/60 rounded-xl flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-red-900 dark:text-red-300 block">
-                  Total a Reintegrar:
-                </span>
-                <span className="text-[11px] text-red-700 dark:text-red-400">
-                  {itemsSeleccionados.length} artículo(s) seleccionado(s)
+            {/* Footer Fijo / No deformable: Resumen Total y Acciones */}
+            <div className="flex-shrink-0 pt-2 border-t border-gray-200 dark:border-gray-700 space-y-2.5">
+              <div className="p-2.5 sm:p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/60 rounded-xl flex items-center justify-between shadow-2xs">
+                <div>
+                  <span className="text-xs font-bold text-red-900 dark:text-red-300 block">
+                    Total a Reintegrar:
+                  </span>
+                  <span className="text-[11px] text-red-700 dark:text-red-400">
+                    {itemsSeleccionados.length} artículo(s) seleccionado(s)
+                  </span>
+                </div>
+                <span className="text-xl font-black text-red-700 dark:text-red-400 font-mono">
+                  {formatPrecio(totalReintegro)}
                 </span>
               </div>
-              <span className="text-xl font-black text-red-700 dark:text-red-400 font-mono">
-                {formatPrecio(totalReintegro)}
-              </span>
-            </div>
 
-            {/* Acciones */}
-            <div className="flex gap-2 pt-2">
-              <Button
-                type="button"
-                fullWidth
-                variant="danger"
-                loading={guardando}
-                disabled={totalReintegro <= 0}
-                onClick={handleConfirmarDevolucion}
-              >
-                Confirmar Devolución ({formatPrecio(totalReintegro)})
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                fullWidth
-                onClick={() => {
-                  reiniciar()
-                  onClose()
-                }}
-              >
-                Cancelar
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  fullWidth
+                  variant="danger"
+                  loading={guardando}
+                  disabled={totalReintegro <= 0}
+                  onClick={handleConfirmarDevolucion}
+                  className="font-bold shadow-xs py-2.5"
+                >
+                  Confirmar Devolución ({formatPrecio(totalReintegro)})
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  fullWidth
+                  onClick={() => {
+                    reiniciar()
+                    onClose()
+                  }}
+                  className="py-2.5"
+                >
+                  Cancelar
+                </Button>
+              </div>
             </div>
           </div>
         )}
