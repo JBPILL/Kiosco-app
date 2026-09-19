@@ -573,7 +573,7 @@ export function ClientesPage() {
             <button
               type="button"
               onClick={() => setMostrarMasDatos((v) => !v)}
-              className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:bg-gray-100/70 dark:hover:bg-gray-700/60 hover:text-gray-700 dark:hover:text-gray-200 transition-colors cursor-pointer"
             >
               <span>Más datos (opcional)</span>
               <span>{mostrarMasDatos ? '▲' : '▼'}</span>
