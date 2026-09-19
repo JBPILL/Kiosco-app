@@ -9,6 +9,7 @@ const CORE_PRODUCT_KEYS = new Set([
   'id',
   'kiosco_id',
   'categoria_id',
+  'proveedor_id',
   'codigo_barras',
   'descripcion',
   'precio_costo',
@@ -30,8 +31,8 @@ const CORE_PRODUCT_KEYS = new Set([
   'es_combo',
 ])
 
-// Cache en memoria para columnas que la base de datos Supabase del usuario aún no tenga
-const COLUMNAS_INEXISTENTES_SUPABASE = new Set<string>(['proveedor_id'])
+// Cache dinámico en memoria para columnas que la base de datos Supabase aún no tenga (si aplica)
+const COLUMNAS_INEXISTENTES_SUPABASE = new Set<string>()
 
 function prepararPayloadSupabase(obj: Record<string, any>): Record<string, any> {
   const payload: Record<string, any> = {}
