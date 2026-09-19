@@ -20,7 +20,7 @@ export function EtiquetasGondolaModal({
   onClose,
   productos,
   categorias,
-  kioscoNombre = 'KioskoPOS',
+  kioscoNombre = 'AlPaso POS',
 }: EtiquetasGondolaModalProps) {
   const [busqueda, setBusqueda] = useState('')
   const [categoriaId, setCategoriaId] = useState<string>('TODAS')

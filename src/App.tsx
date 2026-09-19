@@ -4,6 +4,7 @@ import { useAuthStore } from './stores/authStore'
 import { LoginScreen } from './components/auth/LoginScreen'
 import { MainLayout } from './components/layout/MainLayout'
 import { AppToaster } from './components/ui/Toast'
+import { AlPasoLogo } from './components/ui/AlPasoLogo'
 import { POSPage } from './pages/POSPage'
 import { CatalogoPage } from './pages/CatalogoPage'
 import { PromocionesPage } from './pages/PromocionesPage'
@@ -57,11 +58,11 @@ function App() {
   // Pantalla de carga mientras se verifica la sesión
   if (cargando) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="text-2xl font-bold text-indigo-600 mb-4">KioskoPOS</div>
-          <div className="animate-spin h-8 w-8 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto" />
-          <p className="text-gray-500 mt-4">Cargando...</p>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="text-center flex flex-col items-center">
+          <AlPasoLogo size="lg" layout="vertical" />
+          <div className="animate-spin h-7 w-7 border-3 border-indigo-600 border-t-transparent rounded-full mt-6" />
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-3 font-medium">Iniciando sistema...</p>
         </div>
       </div>
     )

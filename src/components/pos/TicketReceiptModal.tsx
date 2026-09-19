@@ -267,7 +267,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
                 </div>
 
                 <p className="font-bold text-sm tracking-wide uppercase pt-1">
-                  {ticket.kioscoNombre || 'KioskoPOS'}
+                  {ticket.kioscoNombre || 'AlPaso POS'}
                 </p>
                 {ticket.kioscoDireccion && (
                   <p className="text-[10px] text-gray-600">{ticket.kioscoDireccion}</p>
@@ -302,7 +302,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
             ) : (
               <div className="text-center space-y-0.5 pb-2 border-b border-dashed border-gray-400">
                 <p className="font-bold text-sm tracking-wide uppercase">
-                  {ticket.kioscoNombre || 'KioskoPOS'}
+                  {ticket.kioscoNombre || 'AlPaso POS'}
                 </p>
                 {ticket.kioscoDireccion && (
                   <p className="text-[11px] text-gray-600">{ticket.kioscoDireccion}</p>

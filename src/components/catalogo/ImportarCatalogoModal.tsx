@@ -178,7 +178,7 @@ export function ImportarCatalogoModal({
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.setAttribute('download', 'plantilla_productos_kioskopos.csv')
+    link.setAttribute('download', 'plantilla_productos_alpaso_pos.csv')
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -231,7 +231,7 @@ export function ImportarCatalogoModal({
       // ── Rama XLSX con SheetJS ─────────────────────────────────────────────────
       try {
         // SheetJS es el estándar para leer cualquier formato .xlsx, incluido
-        // los archivos corporativos con celdas combinadas generados por KioskoPOS
+        // los archivos corporativos con celdas combinadas generados por AlPaso POS
         const XLSX = await import('xlsx')
         const arrayBuffer = await file.arrayBuffer()
         const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true })
@@ -307,7 +307,7 @@ export function ImportarCatalogoModal({
           return
         }
 
-        // Los archivos exportados por KioskoPOS tienen encabezado corporativo.
+        // Los archivos exportados por AlPaso POS tienen encabezado corporativo.
         // Buscar la fila de cabeceras detectando la que contenga palabras clave
         let indiceEncabezado = -1
         for (let i = 0; i < todasLasFilas.length; i++) {
@@ -326,7 +326,7 @@ export function ImportarCatalogoModal({
         }
 
         if (indiceEncabezado === -1) {
-          setErrorParsing('No se encontró la fila de encabezados en el archivo. Asegurate de usar un archivo exportado por KioskoPOS o con columnas estándar (Descripción, Precio Venta, etc.).')
+          setErrorParsing('No se encontró la fila de encabezados en el archivo. Asegurate de usar un archivo exportado por AlPaso POS o con columnas estándar (Descripción, Precio Venta, etc.).')
           return
         }
 
@@ -403,7 +403,7 @@ export function ImportarCatalogoModal({
         setFilas(filasParseadas)
       } catch (err) {
         console.error('Error parseando archivo XLSX con SheetJS:', err)
-        setErrorParsing('Error al leer el archivo Excel. Verificá que sea un archivo de catálogo exportado por KioskoPOS.')
+        setErrorParsing('Error al leer el archivo Excel. Verificá que sea un archivo de catálogo exportado por AlPaso POS.')
       }
     } else {
       // ── Rama CSV ─────────────────────────────────────────────────────────────
@@ -752,7 +752,7 @@ export function ImportarCatalogoModal({
         <div className="p-3.5 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
           <div>
             <p className="font-bold text-indigo-900 dark:text-indigo-200">
-              Compatible con copias de seguridad de KioskoPOS y Excels externos
+              Compatible con copias de seguridad de AlPaso POS y Excels externos
             </p>
             <p className="text-indigo-700 dark:text-indigo-400 mt-0.5">
               Reconoce automáticamente columnas de Descripción, Código de Barras, Categoría, Precios y Stock.

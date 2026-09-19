@@ -197,7 +197,7 @@ export function StockInmovilizadoTab() {
     try {
       await exportarStockInmovilizadoExcel(
         itemsFiltrados,
-        kiosco?.nombre || 'KioskoPOS',
+        kiosco?.nombre || 'AlPaso POS',
         diasFiltro
       )
       toast.success('Informe de stock inmovilizado exportado en formato Excel (.xlsx)')

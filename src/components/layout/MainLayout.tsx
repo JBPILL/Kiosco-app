@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { Sidebar } from '../ui/Sidebar'
+import { AlPasoLogo } from '../ui/AlPasoLogo'
 import { useAuthStore } from '../../stores/authStore'
 import { useConfigAdminStore, formatearLinkWhatsApp } from '../../stores/configAdminStore'
 import { useOnlineStatus } from '../../hooks/useOnlineStatus'
@@ -40,8 +41,8 @@ export function MainLayout() {
       : 'Suscripción Mensual Vencida'
 
     const mensajeWhatsApp = esPlanPrueba
-      ? `Hola! Venció el período de prueba de "${kiosco.nombre}". Quiero abonar la suscripción mensual para seguir utilizando el sistema KioskoPOS.`
-      : `Hola! Te contacto desde el comercio "${kiosco.nombre}" para regularizar el abono mensual y reactivar el servicio de KioskoPOS.`
+      ? `Hola! Venció el período de prueba de "${kiosco.nombre}". Quiero abonar la suscripción mensual para seguir utilizando el sistema AlPaso POS.`
+      : `Hola! Te contacto desde el comercio "${kiosco.nombre}" para regularizar el abono mensual y reactivar el servicio de AlPaso POS.`
 
     const linkWhatsApp = formatearLinkWhatsApp(
       configAdmin.whatsapp_soporte,
@@ -192,7 +193,7 @@ export function MainLayout() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <h1 className="text-lg font-bold text-indigo-600 dark:text-indigo-400 tracking-tight">KioskoPOS</h1>
+            <AlPasoLogo size="sm" />
           </div>
 
           {/* Accesos rápidos visibles en la barra superior móvil */}

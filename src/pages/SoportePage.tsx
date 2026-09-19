@@ -32,7 +32,7 @@ const FAQ_ITEMS = [
   {
     pregunta: '¿Qué hago si se corta la conexión a internet?',
     respuesta:
-      'KioskoPOS está diseñado con arquitectura Offline-First. Podés seguir cobrando en efectivo normalmente sin interrupciones. En cuanto vuelva la señal, todas las operaciones se sincronizarán solas y en segundo plano con la nube.',
+      'AlPaso POS está diseñado con arquitectura Offline-First. Podés seguir cobrando en efectivo normalmente sin interrupciones. En cuanto vuelva la señal, todas las operaciones se sincronizarán solas y en segundo plano con la nube.',
   },
   {
     pregunta: '¿Cómo configuro o pruebo la impresora térmica de tickets?',
@@ -158,7 +158,7 @@ export function SoportePage() {
 
     // 2. Si el admin tiene WhatsApp, preparar y abrir el chat estructurado
     if (configAdmin.whatsapp_soporte) {
-      let cuerpo = `*REPORTE DE SOPORTE - KIOSKOPOS*\n`
+      let cuerpo = `*REPORTE DE SOPORTE - ALPASO POS*\n`
       cuerpo += `*Tipo:* ${tipoLabel}\n`
       cuerpo += `*Módulo:* ${moduloSeleccionado}\n`
       cuerpo += `------------------------------------\n`
@@ -191,7 +191,7 @@ export function SoportePage() {
 
   const linkChatDirecto = formatearLinkWhatsApp(
     configAdmin.whatsapp_soporte,
-    `Hola! Me comunico desde "${kiosco?.nombre || 'Mi Kiosco'}" para consultar sobre soporte técnico de KioskoPOS.`
+    `Hola! Me comunico desde "${kiosco?.nombre || 'Mi Kiosco'}" para consultar sobre soporte técnico de AlPaso POS.`
   )
 
   return (
@@ -237,7 +237,7 @@ export function SoportePage() {
                   Administrador de la Plataforma
                 </h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 break-words">
-                  {configAdmin.titular_cuenta ? `Titular: ${configAdmin.titular_cuenta}` : 'Soporte KioskoPOS'}
+                  {configAdmin.titular_cuenta ? `Titular: ${configAdmin.titular_cuenta}` : 'Soporte AlPaso POS'}
                 </p>
               </div>
 
@@ -495,7 +495,7 @@ export function SoportePage() {
                   Diagnóstico del Sistema
                 </h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Estado en tiempo real de tu terminal KioskoPOS
+                  Estado en tiempo real de tu terminal AlPaso POS
                 </p>
               </div>
               <button

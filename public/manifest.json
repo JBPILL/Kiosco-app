@@ -1,7 +1,7 @@
 {
-  "name": "KioskoPOS - Sistema de Ventas",
-  "short_name": "KioskoPOS",
-  "description": "Sistema de punto de venta, gestión de stock y facturación para comercios y kioscos",
+  "name": "AlPaso POS - Sistema de Ventas",
+  "short_name": "AlPaso POS",
+  "description": "Sistema ágil de punto de venta, gestión de stock y facturación para kioscos y comercios",
   "start_url": "/",
   "scope": "/",
   "id": "/?source=pwa",

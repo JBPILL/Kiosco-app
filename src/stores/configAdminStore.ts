@@ -19,7 +19,7 @@ const DEFAULT_CONFIG: ConfiguracionAdmin = {
   cbu_banco: '',
   titular_cuenta: '',
   banco_nombre: '',
-  mensaje_soporte: 'Hola, me comunico desde KioskoPOS.',
+  mensaje_soporte: 'Hola, me comunico desde AlPaso POS.',
 }
 
 /**

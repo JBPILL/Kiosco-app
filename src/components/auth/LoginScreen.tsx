@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Modal } from '../ui/Modal'
+import { AlPasoLogo } from '../ui/AlPasoLogo'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../stores/authStore'
 import toast from 'react-hot-toast'
@@ -166,9 +167,9 @@ export function LoginScreen() {
     <div className="min-h-dvh flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4 py-8 pt-[max(24px,env(safe-area-inset-top))] pb-[max(24px,env(safe-area-inset-bottom))]">
       <div className="w-full max-w-sm">
         {/* Logo */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-indigo-600 dark:text-indigo-400 mb-2 tracking-tight">KioskoPOS</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">Sistema de Ventas</p>
+        <div className="text-center mb-8 flex flex-col items-center">
+          <AlPasoLogo size="lg" layout="vertical" />
+          <p className="text-gray-500 dark:text-gray-400 mt-2 text-sm">Sistema de Gestión y Punto de Venta</p>
         </div>
 
         {/* Modo 1: Restablecer Contraseña (abierto desde el correo de Resend/Supabase) */}
@@ -177,7 +178,7 @@ export function LoginScreen() {
             <div className="text-center pb-2 border-b border-gray-100 dark:border-gray-700">
               <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Crear nueva contraseña</h2>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Ingresá tu nueva clave para acceder a tu cuenta de KioskoPOS.
+                Ingresá tu nueva clave para acceder a tu cuenta de AlPaso POS.
               </p>
             </div>
 
@@ -309,7 +310,7 @@ export function LoginScreen() {
         )}
 
         <p className="text-center text-xs text-gray-400 dark:text-gray-500 mt-6">
-          KioskoPOS v1.0 · Sistema de gestión de kioscos
+          AlPaso POS v1.0 · Sistema de gestión para kioscos y comercios
         </p>
       </div>
 

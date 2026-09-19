@@ -634,7 +634,7 @@ export function ConfigPage() {
                     <a
                       href={formatearLinkWhatsApp(
                         configAdmin.whatsapp_soporte,
-                        `Hola! Me comunico desde "${kiosco?.nombre || 'Mi Kiosco'}" para consultar sobre la renovación de mi abono en KioskoPOS.`
+                        `Hola! Me comunico desde "${kiosco?.nombre || 'Mi Kiosco'}" para consultar sobre la renovación de mi abono en AlPaso POS.`
                       )}
                       target="_blank"
                       rel="noopener noreferrer"
@@ -925,7 +925,7 @@ export function ConfigPage() {
                   </span>
                 </div>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  Ejecutá KioskoPOS como un programa nativo de Windows: con acceso directo en el Escritorio, fijado en la Barra de Tareas, sin barra del navegador y listo para vender sin conexión a internet.
+                  Ejecutá AlPaso POS como un programa nativo de Windows: con acceso directo en el Escritorio, fijado en la Barra de Tareas, sin barra del navegador y listo para vender sin conexión a internet.
                 </p>
               </div>
 
@@ -934,7 +934,7 @@ export function ConfigPage() {
                   variant="primary"
                   onClick={async () => {
                     const exito = await instalarApp()
-                    if (exito) toast.success('¡KioskoPOS se instaló exitosamente en tu PC!')
+                    if (exito) toast.success('¡AlPaso POS se instaló exitosamente en tu PC!')
                   }}
                   className="font-bold shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
                 >

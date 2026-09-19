@@ -17,7 +17,7 @@ export function ComprobantePagoModal({
   isOpen,
   onClose,
   pago,
-  nombreKiosco = 'KioskoPOS',
+  nombreKiosco = 'AlPaso POS',
   telefonoKiosco,
 }: ComprobantePagoModalProps) {
   const [anchoPapel, setAnchoPapel] = useState<'58mm' | '80mm'>('58mm')

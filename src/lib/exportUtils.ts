@@ -282,7 +282,7 @@ export async function exportarCatalogoExcel(
       align: 'center',
     }, totalCols) as Row,
     cSpan({
-      value: `FECHA DE INFORME: ${fechaGeneracion} | AUDITORÍA DE STOCK | SISTEMA KIOSKOPOS`,
+      value: `FECHA DE INFORME: ${fechaGeneracion} | AUDITORÍA DE STOCK | SISTEMA ALPASO POS`,
       type: String,
       fontSize: 9,
       textColor: '#E2E8F0',
@@ -450,7 +450,7 @@ export async function exportarVentasExcel(
       align: 'center',
     }, totalCols) as Row,
     cSpan({
-      value: `FECHA / PERÍODO: ${periodoStr} | GENERADO: ${fechaGeneracion} | SISTEMA KIOSKOPOS`,
+      value: `FECHA / PERÍODO: ${periodoStr} | GENERADO: ${fechaGeneracion} | SISTEMA ALPASO POS`,
       type: String,
       fontSize: 9,
       textColor: '#E2E8F0',
@@ -601,7 +601,7 @@ export async function exportarDetalleCompraExcel(
       align: 'center',
     }, totalCols) as Row,
     cSpan({
-      value: `COMPROBANTE N°: ${compra.nro_comprobante || 'S/N'} | FECHA: ${formatFecha(compra.fecha)} | SISTEMA KIOSKOPOS`,
+      value: `COMPROBANTE N°: ${compra.nro_comprobante || 'S/N'} | FECHA: ${formatFecha(compra.fecha)} | SISTEMA ALPASO POS`,
       type: String,
       fontSize: 9,
       textColor: '#E2E8F0',
@@ -781,7 +781,7 @@ export async function exportarLibroContableExcel(
       align: 'center',
     }, totalCols) as Row,
     cSpan({
-      value: `PERÍODO: ${periodoNombre.toUpperCase()} | EMISIÓN: ${fechaGeneracion} | SISTEMA KIOSKOPOS AUDITADO`,
+      value: `PERÍODO: ${periodoNombre.toUpperCase()} | EMISIÓN: ${fechaGeneracion} | SISTEMA ALPASO POS AUDITADO`,
       type: String,
       fontSize: 9,
       textColor: '#E2E8F0',
@@ -937,7 +937,7 @@ export async function exportarMovimientosStockExcel(
       align: 'center',
     }, totalCols) as Row,
     cSpan({
-      value: `EMISIÓN: ${fechaGeneracion} | CONTROL DE INVENTARIO | SISTEMA KIOSKOPOS`,
+      value: `EMISIÓN: ${fechaGeneracion} | CONTROL DE INVENTARIO | SISTEMA ALPASO POS`,
       type: String,
       fontSize: 9,
       textColor: '#E2E8F0',
@@ -1180,7 +1180,7 @@ export interface ItemStockInmovilizado {
 
 export async function exportarStockInmovilizadoExcel(
   items: ItemStockInmovilizado[],
-  kioscoNombre: string = 'KioskoPOS',
+  kioscoNombre: string = 'AlPaso POS',
   diasFiltro: number = 30
 ) {
   const totalCols = 9

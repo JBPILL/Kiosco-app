@@ -30,7 +30,7 @@ interface RenglonCompra {
 }
 
 export function ProveedoresPage() {
-  const { usuario } = useAuthStore()
+  const { usuario, kiosco } = useAuthStore()
   const {
     proveedores,
     compras,
@@ -687,7 +687,7 @@ export function ProveedoresPage() {
       `*Artículos solicitados:*\n` +
       lineas.join('\n') +
       `\n\n*Total estimado:* ${formatPrecio(totalCompraCalculado)}\n` +
-      `*Solicitado por:* ${usuario?.nombre || 'KioskoPOS'}`
+      `*Solicitado por:* ${usuario?.nombre || kiosco?.nombre || 'AlPaso POS'}`
 
     if (navigator.clipboard) {
       navigator.clipboard.writeText(mensaje)
@@ -2532,7 +2532,7 @@ export function ProveedoresPage() {
         isOpen={modalComprobantePagoOpen}
         onClose={() => setModalComprobantePagoOpen(false)}
         pago={pagoSeleccionado}
-        nombreKiosco="KioskoPOS"
+        nombreKiosco={kiosco?.nombre || 'AlPaso POS'}
         telefonoKiosco={usuario?.email || null}
       />
     </div>
