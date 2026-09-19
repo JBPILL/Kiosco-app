@@ -380,47 +380,18 @@ export function POSPage() {
 
   return (
     <div className="w-full h-full min-w-0 flex flex-col gap-2.5 pb-28 lg:pb-0 overflow-hidden">
-      {/* Banner compacto de estado de caja */}
-      {!sesionActiva ? (
+      {/* Banner de advertencia solo si la caja está cerrada */}
+      {!sesionActiva && (
         <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-lg text-amber-800 dark:text-amber-300 text-xs flex-shrink-0">
           <span className="truncate">
             <strong>Caja cerrada:</strong> No hay turno iniciado.
           </span>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              onClick={() => navigate('/clientes')}
-              className="px-2 py-0.5 font-medium text-xs text-amber-900 dark:text-amber-200 hover:underline"
-            >
-              Clientes
-            </button>
-            <button
-              onClick={() => navigate('/caja')}
-              className="px-2.5 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-semibold active:scale-95 transition-all"
-            >
-              Abrir turno
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-center justify-between px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 rounded-lg text-emerald-800 dark:text-emerald-300 text-xs flex-shrink-0">
-          <span className="truncate">
-            <strong>Turno activo</strong> · Fondo: ${sesionActiva.monto_inicial.toLocaleString('es-AR')}
-          </span>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              onClick={() => navigate('/clientes')}
-              className="font-semibold text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
-            >
-              Clientes
-            </button>
-            <span className="text-gray-300 dark:text-gray-600">·</span>
-            <button
-              onClick={() => navigate('/caja')}
-              className="font-medium underline hover:text-emerald-900 dark:hover:text-emerald-200"
-            >
-              Arqueo
-            </button>
-          </div>
+          <button
+            onClick={() => navigate('/caja')}
+            className="px-2.5 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-semibold active:scale-95 transition-all cursor-pointer flex-shrink-0"
+          >
+            Abrir turno
+          </button>
         </div>
       )}
 
