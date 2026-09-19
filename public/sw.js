@@ -1,16 +1,20 @@
-// Service Worker para KioskoPOS PWA
+// Service Worker para AlPaso POS PWA
 // Estrategia Network-First: Siempre intenta obtener la versión más reciente de la red.
 // Si no hay conexión a internet, usa la copia local guardada en caché.
 
-const CACHE_NAME = 'kioskopos-v3'
+const CACHE_NAME = 'alpaso-pos-v4'
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/favicon.svg',
+  '/favicon.ico',
+  '/favicon.png',
+  '/alpaso-logo.png',
+  '/logo.png',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
-  '/icons/icon-192.svg',
+  '/icons/icon-maskable-192.png',
+  '/icons/icon-maskable-512.png',
 ]
 
 self.addEventListener('install', (event) => {
