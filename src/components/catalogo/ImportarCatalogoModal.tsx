@@ -206,32 +206,45 @@ export function ImportarCatalogoModal({
     const esXlsx = file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')
 
     if (esXlsx) {
-      // ── Rama XLSX ────────────────────────────────────────────────────────────
+      // ── Rama XLSX con SheetJS ─────────────────────────────────────────────────
       try {
-        // Importación dinámica para evitar problemas ESM/CJS en Vite
-        const xlsxMod = await import('read-excel-file/browser')
-        const readFn: (file: File) => Promise<(string | number | boolean | Date | null)[][]> =
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (xlsxMod as any).default ?? (xlsxMod as any)
-        const todasLasFilas = await readFn(file)
+        // SheetJS es el estándar para leer cualquier formato .xlsx, incluido
+        // los archivos corporativos con celdas combinadas generados por KioskoPOS
+        const XLSX = await import('xlsx')
+        const arrayBuffer = await file.arrayBuffer()
+        const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true })
+
+        // Leer la primera hoja del archivo
+        const sheetName = workbook.SheetNames[0]
+        if (!sheetName) {
+          setErrorParsing('El archivo Excel no contiene hojas de datos.')
+          return
+        }
+        const sheet = workbook.Sheets[sheetName]
+        // sheet_to_json con header:1 devuelve array de arrays (filas con posición)
+        const todasLasFilas: unknown[][] = XLSX.utils.sheet_to_json(sheet, {
+          header: 1,
+          defval: null,
+          raw: false,   // Convierte todo a string para parseo uniforme
+        })
 
         if (!todasLasFilas || todasLasFilas.length === 0) {
           setErrorParsing('El archivo Excel está vacío.')
           return
         }
 
-        // Los archivos exportados por KioskoPOS tienen un encabezado corporativo.
-        // Buscar la fila de cabeceras detectando la que contenga "Descripción" o "Codigo"
+        // Los archivos exportados por KioskoPOS tienen encabezado corporativo.
+        // Buscar la fila de cabeceras detectando la que contenga palabras clave
         let indiceEncabezado = -1
         for (let i = 0; i < todasLasFilas.length; i++) {
-          const celda0 = String(todasLasFilas[i][0] ?? '').toLowerCase()
-          const celda1 = String(todasLasFilas[i][1] ?? '').toLowerCase()
-          const lineaStr = todasLasFilas[i].map((c: string | number | boolean | Date | null) => String(c ?? '')).join(' ').toLowerCase()
+          const fila = todasLasFilas[i]
+          if (!fila) continue
+          const lineaStr = fila.map((c) => String(c ?? '')).join(' ').toLowerCase()
           if (
             lineaStr.includes('descripci') ||
             lineaStr.includes('codigo de barras') ||
-            celda0.includes('codigo') ||
-            celda1.includes('descripci')
+            lineaStr.includes('precio venta') ||
+            lineaStr.includes('precio costo')
           ) {
             indiceEncabezado = i
             break
@@ -239,17 +252,17 @@ export function ImportarCatalogoModal({
         }
 
         if (indiceEncabezado === -1) {
-          setErrorParsing('No se encontró la fila de encabezados en el archivo Excel. Asegurate de usar un archivo exportado por KioskoPOS o con columnas estándar.')
+          setErrorParsing('No se encontró la fila de encabezados en el archivo. Asegurate de usar un archivo exportado por KioskoPOS o con columnas estándar (Descripción, Precio Venta, etc.).')
           return
         }
 
-        const cabeceras = todasLasFilas[indiceEncabezado].map((c: string | number | boolean | Date | null) => String(c ?? ''))
+        const cabeceras = todasLasFilas[indiceEncabezado].map((c) => String(c ?? ''))
         const indices = detectarIndicesColumnas(cabeceras)
         const filasParseadas: ProductoImportRow[] = []
 
         for (let i = indiceEncabezado + 1; i < todasLasFilas.length; i++) {
           const fila = todasLasFilas[i]
-          if (!fila || fila.every((c: string | number | boolean | Date | null) => c === null || c === undefined || String(c).trim() === '')) continue
+          if (!fila || fila.every((c) => c === null || c === undefined || String(c).trim() === '')) continue
 
           const rawCodigo = indices.codigo_barras >= 0 ? fila[indices.codigo_barras] : null
           const codigoStr = rawCodigo !== null && rawCodigo !== undefined ? String(rawCodigo).trim() : null
@@ -278,14 +291,14 @@ export function ImportarCatalogoModal({
         }
 
         if (filasParseadas.length === 0) {
-          setErrorParsing('No se detectaron productos válidos en el archivo Excel.')
+          setErrorParsing('No se detectaron productos válidos en el archivo Excel. Verificá que sea un archivo de catálogo (no un reporte de ventas).')
           return
         }
 
         setFilas(filasParseadas)
       } catch (err) {
-        console.error('Error parseando archivo XLSX:', err)
-        setErrorParsing('Error al leer el archivo Excel. Verificá que sea un archivo .xlsx válido.')
+        console.error('Error parseando archivo XLSX con SheetJS:', err)
+        setErrorParsing('Error al leer el archivo Excel. Verificá que sea un archivo de catálogo exportado por KioskoPOS.')
       }
     } else {
       // ── Rama CSV ─────────────────────────────────────────────────────────────
