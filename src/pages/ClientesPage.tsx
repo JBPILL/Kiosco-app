@@ -355,51 +355,46 @@ export function ClientesPage() {
 
                     {/* Botones de acción táctiles en móvil */}
                     <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                      <Button
-                        size="sm"
-                        variant="secondary"
+                      <button
+                        type="button"
                         onClick={() => abrirFichaCliente(cli)}
-                        className="text-xs justify-center"
+                        className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-gray-700 dark:text-gray-300 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700/60 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                       >
                         Ficha / Historial
-                      </Button>
+                      </button>
                       {debe ? (
-                        <Button
-                          size="sm"
-                          variant="primary"
+                        <button
+                          type="button"
                           onClick={() => handleAbrirAbonar(cli)}
-                          className="text-xs justify-center bg-emerald-600 hover:bg-emerald-700 text-white"
+                          className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                         >
                           Abonar deuda
-                        </Button>
+                        </button>
                       ) : (
-                        <Button
-                          size="sm"
-                          variant="ghost"
+                        <button
+                          type="button"
                           onClick={() => handleEditarCliente(cli)}
-                          className="text-xs justify-center border border-gray-200 dark:border-gray-700"
+                          className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                         >
                           Editar
-                        </Button>
+                        </button>
                       )}
                       {debe && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
+                        <button
+                          type="button"
                           onClick={() => handleEditarCliente(cli)}
-                          className="text-xs justify-center border border-gray-200 dark:border-gray-700"
+                          className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                         >
                           Editar
-                        </Button>
+                        </button>
                       )}
-                      <Button
-                        size="sm"
-                        variant="ghost"
+                      <button
+                        type="button"
                         onClick={() => handleEnviarWhatsApp(cli)}
-                        className="text-xs justify-center text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50"
+                        className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-teal-700 dark:text-teal-300 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/50 dark:hover:bg-teal-900/60 border border-teal-200 dark:border-teal-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                       >
                         WhatsApp
-                      </Button>
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
@@ -407,7 +402,7 @@ export function ClientesPage() {
                             eliminarCliente(cli.id)
                           }
                         }}
-                        className={`text-xs text-red-500 hover:text-red-700 py-1.5 transition-colors ${debe ? 'col-span-2' : ''}`}
+                        className={`inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-600 dark:text-red-300 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/60 border border-red-200 dark:border-red-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap ${debe ? 'col-span-2' : ''}`}
                       >
                         Eliminar cliente
                       </button>
@@ -462,54 +457,49 @@ export function ClientesPage() {
                           </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-1.5">
-                              <Button
-                                size="sm"
-                                variant="secondary"
+                              <button
+                                type="button"
                                 onClick={() => abrirFichaCliente(cli)}
-                                className="text-xs"
+                                className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-gray-700 dark:text-gray-300 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700/60 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                               >
                                 Ficha
-                              </Button>
+                              </button>
                               {debe && (
-                                <Button
-                                  size="sm"
-                                  variant="primary"
+                                <button
+                                  type="button"
                                   onClick={() => handleAbrirAbonar(cli)}
-                                  className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                                  className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                                 >
                                   Abonar
-                                </Button>
+                                </button>
                               )}
-                              <Button
-                                size="sm"
-                                variant="ghost"
+                              <button
+                                type="button"
                                 onClick={() => handleEditarCliente(cli)}
-                                className="text-xs"
+                                className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-indigo-600 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                               >
                                 Editar
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => handleEnviarWhatsApp(cli)}
-                                className="text-xs text-emerald-600 hover:text-emerald-700"
+                                className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-teal-700 dark:text-teal-300 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/50 dark:hover:bg-teal-900/60 border border-teal-200 dark:border-teal-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                                 title="Enviar resumen por WhatsApp"
                               >
                                 WhatsApp
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => {
                                   if (window.confirm(`¿Eliminar al cliente ${cli.nombre}?`)) {
                                     eliminarCliente(cli.id)
                                   }
                                 }}
-                                className="text-xs text-red-500 hover:text-red-700"
+                                className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-red-600 dark:text-red-300 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/60 border border-red-200 dark:border-red-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                                 title="Eliminar cliente"
                               >
                                 Eliminar
-                              </Button>
+                              </button>
                             </div>
                           </td>
                         </tr>

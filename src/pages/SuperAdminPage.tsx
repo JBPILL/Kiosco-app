@@ -1117,7 +1117,7 @@ export function SuperAdminPage() {
                       type="button"
                       onClick={() => abrirModalEditar(k)}
                       disabled={cargandoAccion}
-                      className="px-2.5 py-2 rounded-xl text-xs font-semibold bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition-colors"
+                      className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                     >
                       Editar
                     </button>
@@ -1127,7 +1127,7 @@ export function SuperAdminPage() {
                       type="button"
                       onClick={() => abrirModalEliminar(k)}
                       disabled={cargandoAccion}
-                      className="px-2.5 py-2 rounded-xl text-xs font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 transition-colors"
+                      className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-600 dark:text-red-300 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/60 border border-red-200 dark:border-red-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                     >
                       Eliminar
                     </button>

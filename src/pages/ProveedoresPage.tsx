@@ -1112,39 +1112,44 @@ export function ProveedoresPage() {
                       </div>
                     </div>
 
-                    <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700/60 flex items-center justify-between gap-1 text-xs">
-                      <div className="flex gap-1.5">
+                    <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700/60 flex items-center justify-between gap-2 text-xs flex-wrap">
+                      <div className="flex gap-1.5 flex-wrap items-center">
                         <button
+                          type="button"
                           onClick={() => handleIniciarCompraAProveedor(p)}
-                          className="px-2.5 py-1 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 font-semibold"
+                          className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                         >
                           Comprar
                         </button>
                         <button
+                          type="button"
                           onClick={() => handleAbrirAbonar(p)}
-                          className="px-2.5 py-1 rounded bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 font-semibold"
+                          className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                         >
                           Pagar / Abonar
                         </button>
                         <button
+                          type="button"
                           onClick={() => handleAbrirAjuste(p)}
-                          className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 text-[11px]"
+                          className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:hover:bg-amber-900/60 border border-amber-200 dark:border-amber-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                           title="Ajustar saldo sin mover caja"
                         >
                           Ajustar
                         </button>
                       </div>
 
-                      <div className="flex gap-2">
+                      <div className="flex gap-1.5 items-center">
                         <button
+                          type="button"
                           onClick={() => handleEditarProveedor(p)}
-                          className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 font-medium"
+                          className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-indigo-600 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                         >
                           Editar
                         </button>
                         <button
+                          type="button"
                           onClick={() => handleEliminarProveedor(p)}
-                          className="text-red-500 hover:text-red-700 dark:hover:text-red-400 font-medium"
+                          className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-red-600 dark:text-red-300 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/60 border border-red-200 dark:border-red-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                         >
                           Eliminar
                         </button>
@@ -1784,21 +1789,25 @@ export function ProveedoresPage() {
                             {c.estado}
                           </span>
                         </td>
-                        <td className="py-3 px-3 text-center space-x-2">
-                          <button
-                            onClick={() => handleVerDetalleCompra(c)}
-                            className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
-                          >
-                            Ver Renglones / Exportar
-                          </button>
-                          {!esAnulada && (
+                        <td className="py-3 px-3 text-center">
+                          <div className="flex items-center justify-center gap-1.5 flex-wrap">
                             <button
-                              onClick={() => handleAnularCompra(c)}
-                              className="text-xs font-semibold text-red-500 dark:text-red-400 hover:underline"
+                              type="button"
+                              onClick={() => handleVerDetalleCompra(c)}
+                              className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-indigo-600 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                             >
-                              Anular
+                              Ver Renglones
                             </button>
-                          )}
+                            {!esAnulada && (
+                              <button
+                                type="button"
+                                onClick={() => handleAnularCompra(c)}
+                                className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-red-600 dark:text-red-300 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/60 border border-red-200 dark:border-red-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                              >
+                                Anular
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     )
@@ -1895,22 +1904,26 @@ export function ProveedoresPage() {
                             {p.estado}
                           </span>
                         </td>
-                        <td className="py-3 px-3 text-center space-x-2">
-                          <button
-                            onClick={() => handleVerComprobantePago(p)}
-                            className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
-                          >
-                            Ver / Imprimir
-                          </button>
-                          {!esAnulado && (
+                        <td className="py-3 px-3 text-center">
+                          <div className="flex items-center justify-center gap-1.5 flex-wrap">
                             <button
-                              onClick={() => handleAnularPago(p)}
-                              className="text-xs font-semibold text-red-500 dark:text-red-400 hover:underline"
-                              title="Anular pago y restituir deuda"
+                              type="button"
+                              onClick={() => handleVerComprobantePago(p)}
+                              className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-indigo-600 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                             >
-                              Anular
+                              Ver / Imprimir
                             </button>
-                          )}
+                            {!esAnulado && (
+                              <button
+                                type="button"
+                                onClick={() => handleAnularPago(p)}
+                                className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-red-600 dark:text-red-300 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/60 border border-red-200 dark:border-red-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                                title="Anular pago y restituir deuda"
+                              >
+                                Anular
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     )

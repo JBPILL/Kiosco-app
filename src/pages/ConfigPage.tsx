@@ -810,7 +810,7 @@ export function ConfigPage() {
                               <button
                                 type="button"
                                 onClick={() => setUsuarioAEliminar(u)}
-                                className="px-2.5 py-1 text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40 rounded-lg transition-colors active:scale-95"
+                                className="inline-flex items-center justify-center px-2.5 py-1 text-xs font-semibold text-red-600 dark:text-red-300 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/60 border border-red-200 dark:border-red-800/60 rounded-lg transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                                 title="Eliminar este usuario"
                               >
                                 Eliminar
