@@ -66,57 +66,52 @@ export function CatalogoPage() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">Catálogo de Productos</h1>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Administrá tus productos, precios y categorías</p>
         </div>
-        {/* Barra de herramientas ordenada estilo Proveedores */}
-        <div className="flex flex-wrap bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 self-start sm:self-auto gap-1">
-          <button
-            type="button"
-            onClick={() => setCategoriasOpen((o) => !o)}
-            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer ${
-              categoriasOpen
-                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-gray-700/60'
-            }`}
-            title="Ver y gestionar categorías del catálogo"
-          >
-            Categorías ({categorias.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setAumentoOpen(true)}
-            className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer"
-          >
-            Aumento Masivo %
-          </button>
-          <button
-            type="button"
-            onClick={() => setEnvasesOpen(true)}
-            className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer"
-          >
-            Precios de Envases
-          </button>
-          <button
-            type="button"
-            onClick={() => setEtiquetasOpen(true)}
-            className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer"
-            title="Imprimir etiquetas de góndola y códigos de barras"
-          >
-            Etiquetas Góndola
-          </button>
-          <button
-            type="button"
-            onClick={() => setImportarOpen(true)}
-            className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer"
-          >
-            Importar (.XLSX / .CSV)
-          </button>
-          <button
-            type="button"
-            onClick={() => exportarCatalogoExcel(productos, categorias, kiosco?.nombre)}
-            className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer"
-            title="Descargar catálogo completo y valuación en formato Excel corporativo (.xlsx)"
-          >
-            Exportar (.XLSX)
-          </button>
+        {/* Grupos de botones ordenados estilo Proveedores */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Grupo 1: Precios y Góndola */}
+          <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1">
+            <button
+              type="button"
+              onClick={() => setAumentoOpen(true)}
+              className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer"
+            >
+              Aumento Masivo %
+            </button>
+            <button
+              type="button"
+              onClick={() => setEnvasesOpen(true)}
+              className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer"
+            >
+              Precios de Envases
+            </button>
+            <button
+              type="button"
+              onClick={() => setEtiquetasOpen(true)}
+              className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer"
+              title="Imprimir etiquetas de góndola y códigos de barras"
+            >
+              Etiquetas Góndola
+            </button>
+          </div>
+
+          {/* Grupo 2: Importar / Exportar XLSX */}
+          <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1">
+            <button
+              type="button"
+              onClick={() => setImportarOpen(true)}
+              className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer"
+            >
+              Importar (.XLSX / .CSV)
+            </button>
+            <button
+              type="button"
+              onClick={() => exportarCatalogoExcel(productos, categorias, kiosco?.nombre)}
+              className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer"
+              title="Descargar catálogo completo y valuación en formato Excel corporativo (.xlsx)"
+            >
+              Exportar (.XLSX)
+            </button>
+          </div>
         </div>
       </div>
 
