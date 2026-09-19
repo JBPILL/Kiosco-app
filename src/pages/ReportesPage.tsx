@@ -126,6 +126,22 @@ export function ReportesPage() {
     setAnulando(true)
 
     try {
+      // 0. Proteger contra anulación de ventas que ya tienen devoluciones parciales
+      const { data: devsPrevias } = await supabase
+        .from('devoluciones_venta')
+        .select('id, monto_total')
+        .eq('venta_id', ventaParaAnular.id)
+
+      if (devsPrevias && devsPrevias.length > 0) {
+        toast.error(
+          'Esta venta posee devoluciones parciales registradas. No puede anularse en su totalidad para no duplicar reintegros de dinero ni alterar el stock.',
+          { duration: 6000 }
+        )
+        setVentaParaAnular(null)
+        setAnulando(false)
+        return
+      }
+
       const ahora = new Date().toISOString()
       const kioscoId = usuario?.kiosco_id
 

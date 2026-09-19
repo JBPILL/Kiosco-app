@@ -32,7 +32,6 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     valorAjuste,
     aplicarAjuste,
     quitarAjuste,
-    suspenderVentaActual,
     descripcionAjuste,
     totalAhorroPromociones,
     toggleEnvaseItem,
@@ -44,8 +43,6 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
   } = useCartStore()
 
   const [modalAjusteOpen, setModalAjusteOpen] = useState(false)
-  const [modalSuspenderOpen, setModalSuspenderOpen] = useState(false)
-  const [notaSuspension, setNotaSuspension] = useState('')
 
   // Formulario de ajuste
   const [esDescuento, setEsDescuento] = useState(true)
@@ -407,16 +404,6 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     toast.success(esDescuento ? 'Descuento aplicado' : 'Recargo aplicado')
   }
 
-  const handleSuspender = (e: React.FormEvent) => {
-    e.preventDefault()
-    const ok = suspenderVentaActual(notaSuspension)
-    if (ok) {
-      toast.success('Venta puesta en espera')
-      setModalSuspenderOpen(false)
-      setNotaSuspension('')
-    }
-  }
-
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
       {/* Pestañas de tickets en paralelo estilo Odoo POS */}
@@ -477,12 +464,6 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
         <h2 className="font-bold text-gray-900 dark:text-gray-100 text-sm sm:text-base">Ticket</h2>
         {items.length > 0 && (
           <div className="flex items-center gap-3 text-xs">
-            <button
-              onClick={() => setModalSuspenderOpen(true)}
-              className="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
-            >
-              En espera
-            </button>
             <button
               onClick={() => {
                 if (items.length <= 1 || window.confirm(`¿Estás seguro de vaciar el ticket (${items.length} artículos)?`)) {
@@ -886,42 +867,6 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
               variant="secondary"
               fullWidth
               onClick={() => setModalAjusteOpen(false)}
-            >
-              Cancelar
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Modal Suspender Venta */}
-      <Modal
-        isOpen={modalSuspenderOpen}
-        onClose={() => setModalSuspenderOpen(false)}
-        title="Poner Venta en Espera"
-        size="sm"
-      >
-        <form onSubmit={handleSuspender} className="space-y-4">
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Los productos se guardarán temporalmente para que puedas atender a otro cliente. Podrás recuperar este ticket en cualquier momento.
-          </p>
-
-          <Input
-            label="Nota o referencia (opcional)"
-            placeholder="Ej: Cliente buzo azul / Mostrador"
-            value={notaSuspension}
-            onChange={(e) => setNotaSuspension(e.target.value)}
-            autoFocus
-          />
-
-          <div className="flex gap-2 pt-2">
-            <Button type="submit" fullWidth>
-              Poner en espera
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              fullWidth
-              onClick={() => setModalSuspenderOpen(false)}
             >
               Cancelar
             </Button>

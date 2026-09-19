@@ -319,6 +319,17 @@ export function POSPage() {
     [agregarProducto]
   )
 
+  const handleAbrirCobro = () => {
+    if (!sesionActiva?.id) {
+      toast.error('Caja cerrada: Debés abrir el turno de caja antes de cobrar.', {
+        icon: '🔒',
+        duration: 4000,
+      })
+      return
+    }
+    setPaymentOpen(true)
+  }
+
   useBarcodeGun({
     onScan: handleBarcodeGunScan,
     enabled: !paymentOpen && !cartModalOpen && !modalScannerOpen && !modalEsperaOpen && !ticketModalOpen && !modalBalanzaOpen && !modalDevolucionOpen && !modalTicketsOpen && !modalEnvaseOpen && !modalRetiroOpen,
@@ -335,7 +346,7 @@ export function POSPage() {
       },
       onCobrar: () => {
         if (cantItems > 0 && !paymentOpen) {
-          setPaymentOpen(true)
+          handleAbrirCobro()
         }
       },
       onVentasEnEspera: () => {
@@ -458,17 +469,9 @@ export function POSPage() {
                 type="button"
                 onClick={() => setModalTicketsOpen(true)}
                 className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
-                title="Consultar historial de comprobantes y reimprimir tickets"
+                title="Historial de comprobantes, reimpresión de tickets y devoluciones"
               >
                 <span>Comprobantes</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setModalDevolucionOpen(true)}
-                className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-red-200 dark:border-red-800/80 bg-red-50/70 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
-                title="Registrar devolución de ticket o cambio de producto"
-              >
-                <span>Devolución</span>
               </button>
               <button
                 type="button"
@@ -542,7 +545,7 @@ export function POSPage() {
 
         {/* Columna derecha: Ticket en Desktop / Pantallas grandes */}
         <div className="hidden lg:flex flex-col w-80 xl:w-96 flex-shrink-0 min-h-0 h-full">
-          <CartPanel onCobrar={() => setPaymentOpen(true)} />
+          <CartPanel onCobrar={handleAbrirCobro} />
         </div>
       </div>
 
@@ -570,8 +573,8 @@ export function POSPage() {
                 Ver ticket
               </button>
               <button
-                onClick={() => setPaymentOpen(true)}
-                className="px-4 py-1.5 rounded-lg font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm text-sm active:scale-95 transition-all"
+                onClick={handleAbrirCobro}
+                className="px-4 py-1.5 rounded-lg font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm text-sm active:scale-95 transition-all cursor-pointer"
               >
                 Cobrar
               </button>
@@ -591,7 +594,7 @@ export function POSPage() {
           <CartPanel
             onCobrar={() => {
               setCartModalOpen(false)
-              setPaymentOpen(true)
+              handleAbrirCobro()
             }}
           />
         </div>
