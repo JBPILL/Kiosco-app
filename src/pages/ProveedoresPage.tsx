@@ -892,7 +892,7 @@ export function ProveedoresPage() {
   return (
     <div className="max-w-6xl mx-auto space-y-4">
       {/* Encabezado */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex flex-col 2xl:flex-row 2xl:items-center 2xl:justify-between gap-3 sm:gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
             Proveedores y Compras
@@ -903,10 +903,10 @@ export function ProveedoresPage() {
         </div>
 
         {/* Pestañas de navegación */}
-        <div className="flex flex-wrap bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 self-start sm:self-auto gap-1">
+        <div className="flex items-center flex-nowrap overflow-x-auto scrollbar-hide max-w-full bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 self-start 2xl:self-auto gap-1">
           <button
             onClick={() => setTabActiva('directorio')}
-            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 ${
               tabActiva === 'directorio'
                 ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
@@ -916,7 +916,7 @@ export function ProveedoresPage() {
           </button>
           <button
             onClick={() => setTabActiva('nueva_compra')}
-            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 ${
               tabActiva === 'nueva_compra'
                 ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
@@ -926,7 +926,7 @@ export function ProveedoresPage() {
           </button>
           <button
             onClick={() => setTabActiva('historial')}
-            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 ${
               tabActiva === 'historial'
                 ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
@@ -936,7 +936,7 @@ export function ProveedoresPage() {
           </button>
           <button
             onClick={() => setTabActiva('pagos')}
-            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 ${
               tabActiva === 'pagos'
                 ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'

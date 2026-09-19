@@ -61,33 +61,33 @@ export function CatalogoPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-3.5">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+      <div className="flex flex-col 2xl:flex-row 2xl:items-center 2xl:justify-between gap-3 sm:gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">Catálogo de Productos</h1>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Administrá tus productos, precios y categorías</p>
         </div>
         {/* Grupos de botones ordenados estilo Proveedores */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2.5 self-start 2xl:self-auto max-w-full">
           {/* Grupo 1: Precios y Góndola */}
-          <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1">
+          <div className="flex items-center flex-nowrap overflow-x-auto scrollbar-hide max-w-full bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1">
             <button
               type="button"
               onClick={() => setAumentoOpen(true)}
-              className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer"
+              className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0"
             >
               Aumento Masivo %
             </button>
             <button
               type="button"
               onClick={() => setEnvasesOpen(true)}
-              className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer"
+              className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0"
             >
               Precios de Envases
             </button>
             <button
               type="button"
               onClick={() => setEtiquetasOpen(true)}
-              className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer"
+              className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0"
               title="Imprimir etiquetas de góndola y códigos de barras"
             >
               Etiquetas Góndola
@@ -95,18 +95,18 @@ export function CatalogoPage() {
           </div>
 
           {/* Grupo 2: Importar / Exportar XLSX */}
-          <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1">
+          <div className="flex items-center flex-nowrap overflow-x-auto scrollbar-hide max-w-full bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1">
             <button
               type="button"
               onClick={() => setImportarOpen(true)}
-              className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer"
+              className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0"
             >
               Importar (.XLSX / .CSV)
             </button>
             <button
               type="button"
               onClick={() => exportarCatalogoExcel(productos, categorias, kiosco?.nombre)}
-              className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer"
+              className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0"
               title="Descargar catálogo completo y valuación en formato Excel corporativo (.xlsx)"
             >
               Exportar (.XLSX)

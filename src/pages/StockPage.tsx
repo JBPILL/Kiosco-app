@@ -480,7 +480,7 @@ export function StockPage() {
   return (
     <div className="max-w-6xl mx-auto space-y-5">
       {/* Encabezado Principal */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex flex-col 2xl:flex-row 2xl:items-center 2xl:justify-between gap-3 sm:gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
             Gestión de Inventario y Stock
@@ -621,11 +621,11 @@ export function StockPage() {
       )}
 
       {/* Selector de Vista Principal: Movimientos vs. Lotes y Vencimientos */}
-      <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-700">
+      <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 overflow-x-auto scrollbar-hide max-w-full flex-nowrap">
         <button
           type="button"
           onClick={() => setVistaPrincipal('MOVIMIENTOS')}
-          className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all cursor-pointer ${
+          className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
             vistaPrincipal === 'MOVIMIENTOS'
               ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
               : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
@@ -636,7 +636,7 @@ export function StockPage() {
         <button
           type="button"
           onClick={() => setVistaPrincipal('VENCIMIENTOS')}
-          className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+          className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shrink-0 ${
             vistaPrincipal === 'VENCIMIENTOS'
               ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
               : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
@@ -657,13 +657,13 @@ export function StockPage() {
           {/* Barra superior de control: Pestañas, Buscador y Exportación */}
           <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-gray-50/50 dark:bg-gray-900/30">
             {/* Pestañas de filtrado por Tipo */}
-            <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/80 p-1 rounded-lg border border-gray-200 dark:border-gray-700 self-start md:self-auto flex-wrap">
+            <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/80 p-1 rounded-lg border border-gray-200 dark:border-gray-700 self-start md:self-auto flex-nowrap overflow-x-auto scrollbar-hide max-w-full">
               {(['TODOS', 'INGRESO', 'EGRESO', 'AJUSTE'] as const).map((tipo) => (
                 <button
                   key={tipo}
                   type="button"
                   onClick={() => setFiltroTipo(tipo)}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+                  className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap shrink-0 ${
                     filtroTipo === tipo
                       ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-2xs'
                       : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
