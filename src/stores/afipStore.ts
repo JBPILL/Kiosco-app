@@ -240,7 +240,7 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
     }
 
     if (!config || !config.habilitado) {
-      toast.error('La facturación electrónica ARCA no está habilitada en la Configuración.')
+      toast.error('La facturación electrónica ARCA no está habilitada en la Configuración.', { id: 'arca-deshabilitada' })
       return null
     }
 

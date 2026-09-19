@@ -244,7 +244,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       // Validación de consistencia fiscal ante ARCA
       if (emitirFiscal) {
         if (!afipConfig?.habilitado) {
-          toast.error('La facturación electrónica ARCA no está habilitada en la Configuración.')
+          toast.error('La facturación electrónica ARCA no está habilitada en la Configuración.', { id: 'arca-deshabilitada' })
           procesandoRef.current = false
           setProcesando(false)
           return

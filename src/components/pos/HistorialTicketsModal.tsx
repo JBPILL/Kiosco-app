@@ -56,7 +56,7 @@ export function HistorialTicketsModal({
 
   const abrirModalFacturar = (v: VentaConDetalles) => {
     if (!afipConfig?.habilitado) {
-      toast.error('La facturación electrónica ARCA no está habilitada en la Configuración.')
+      toast.error('La facturación electrónica ARCA no está habilitada en la Configuración.', { id: 'arca-deshabilitada' })
       return
     }
     setVentaParaFacturar(v)
@@ -82,7 +82,7 @@ export function HistorialTicketsModal({
   const handleEmitirFacturaDiferida = async () => {
     if (!ventaParaFacturar) return
     if (!afipConfig?.habilitado) {
-      toast.error('La facturación electrónica ARCA no está habilitada en la Configuración.')
+      toast.error('La facturación electrónica ARCA no está habilitada en la Configuración.', { id: 'arca-deshabilitada' })
       return
     }
     if (tipoDocReceptor === 96) {
@@ -379,9 +379,18 @@ export function HistorialTicketsModal({
                         {!esAnulada && !v.afip_cae && (
                           <button
                             type="button"
+                            disabled={!afipConfig?.habilitado}
                             onClick={() => abrirModalFacturar(v)}
-                            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                            title="Emitir comprobante fiscal ARCA diferido con CAE"
+                            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-2xs ${
+                              !afipConfig?.habilitado
+                                ? 'bg-gray-100 dark:bg-gray-800/60 text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700/60 cursor-not-allowed opacity-60'
+                                : 'bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 cursor-pointer'
+                            }`}
+                            title={
+                              !afipConfig?.habilitado
+                                ? 'Facturación electrónica ARCA deshabilitada en Configuración'
+                                : 'Emitir comprobante fiscal ARCA diferido con CAE'
+                            }
                           >
                             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -443,7 +452,7 @@ export function HistorialTicketsModal({
         <Modal
           isOpen={Boolean(ventaParaFacturar)}
           onClose={() => !emitiendoAFIP && setVentaParaFacturar(null)}
-          title="Facturación Electrónica AFIP Diferida"
+          title="Facturación Electrónica ARCA Diferida"
           size="md"
         >
           <div className="space-y-4">
