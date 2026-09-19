@@ -797,10 +797,10 @@ export function ConfigPage() {
               <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 space-y-2 flex flex-col justify-between">
                 <div>
                   <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                    Resguardo Histórico de Ventas
+                    Histórico de Ventas (Auditoría)
                   </h3>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Descargá el registro histórico de todas las ventas emitidas, totales, fechas y medios de pago cobrados.
+                    Descargá el informe contable de todas las ventas emitidas con fecha, comprobante, cajero y medios de pago para auditoría o contabilidad.
                   </p>
                 </div>
                 <Button
@@ -818,14 +818,14 @@ export function ConfigPage() {
                 <div>
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-bold text-indigo-950 dark:text-indigo-200">
-                      Restauración y Rollback
+                      Restaurar Catálogo / Rollback
                     </h3>
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
                       Recuperación
                     </span>
                   </div>
                   <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
-                    Importá un backup de Excel (.CSV) previo para revertir o recuperar productos, precios y niveles de stock.
+                    Importá la copia de seguridad de tu catálogo (.xlsx o .csv) para actualizar precios, costos y stock, o revertir a un estado anterior.
                   </p>
                 </div>
                 <Button
@@ -834,7 +834,7 @@ export function ConfigPage() {
                   onClick={() => setModalImportarOpen(true)}
                   className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white"
                 >
-                  Importar / Restaurar (.XLSX / .CSV)
+                  Restaurar Catálogo (.XLSX / .CSV)
                 </Button>
               </div>
             </div>

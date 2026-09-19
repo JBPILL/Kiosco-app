@@ -231,7 +231,7 @@ export async function exportarCatalogoExcel(
   categorias: Categoria[] = [],
   nombreKiosco: string = 'Kiosco'
 ) {
-  const totalCols = 10
+  const totalCols = 11
   const columns: SheetOptionsColumn[] = [
     { width: 16 }, // Código de Barras
     { width: 36 }, // Descripción
@@ -241,6 +241,7 @@ export async function exportarCatalogoExcel(
     { width: 16 }, // Margen Unitario ($)
     { width: 14 }, // Margen %
     { width: 14 }, // Stock Actual
+    { width: 14 }, // Stock Mínimo
     { width: 18 }, // Valuación Costo ($)
     { width: 14 }, // Estado
   ]
@@ -276,7 +277,7 @@ export async function exportarCatalogoExcel(
     }, totalCols) as Row,
     emptyRow(totalCols) as Row,
 
-    // KPI Cards: 5 tarjetas ocupando 2 columnas cada una
+    // KPI Cards: 5 tarjetas ocupando 11 columnas
     cSpan({
       value: 'RESUMEN EJECUTIVO DE CAPITAL EN MERCADERÍA',
       type: String,
@@ -293,14 +294,14 @@ export async function exportarCatalogoExcel(
       ...cCardLabel('Unidades en Inventario', 2),
       ...cCardLabel('Capital Invertido (Costo)', 2),
       ...cCardLabel('Valoración Comercial (Venta)', 2),
-      ...cCardLabel('Ganancia Bruta Potencial', 2),
+      ...cCardLabel('Ganancia Bruta Potencial', 3),
     ] as Row,
     [
       ...cCardValue(totalArticulos, false, 2, '#0F172A'),
       ...cCardValue(totalUnidades, false, 2, '#0F172A'),
       ...cCardValue(valuacionCosto, true, 2, '#0F172A'),
       ...cCardValue(valuacionVenta, true, 2, '#1E40AF'),
-      ...cCardValue(margenPotencial, true, 2, '#15803D'),
+      ...cCardValue(margenPotencial, true, 3, '#15803D'),
     ] as Row,
     emptyRow(totalCols) as Row,
 
@@ -325,6 +326,7 @@ export async function exportarCatalogoExcel(
       cHeader('Margen ($)', 'right'),
       cHeader('Margen %', 'right'),
       cHeader('Stock Actual', 'right'),
+      cHeader('Stock Mínimo', 'right'),
       cHeader('Valuación Costo ($)', 'right'),
       cHeader('Estado', 'center'),
     ] as Row,
@@ -346,6 +348,7 @@ export async function exportarCatalogoExcel(
       cMoney(margenMonto, bg),
       cPercent(margenPorc, bg),
       cNum(p.stock_actual || 0, bg, p.es_pesable ? '#,##0.000' : '#,##0'),
+      cNum(p.stock_minimo || 0, bg, p.es_pesable ? '#,##0.000' : '#,##0'),
       cMoney(valCostoProd, bg),
       cText(p.activo ? 'ACTIVO' : 'INACTIVO', bg, 'center'),
     ] as Row)
@@ -355,6 +358,7 @@ export async function exportarCatalogoExcel(
   rows.push([
     ...cTotalLabel('VALUACIÓN TOTAL DE INVENTARIO', 7),
     cTotalNum(totalUnidades, '#,##0'),
+    cText('—', '#F1F5F9', 'center'),
     cTotalMoney(valuacionCosto),
     cSpan({
       value: `VENTA: ${formatPrecio(valuacionVenta)}`,

@@ -185,15 +185,37 @@ export function ImportarCatalogoModal({
     URL.revokeObjectURL(url)
   }
 
-  // Parsear texto numérico tolerando formato argentino (1.500,50 o 1500.50 o 1500)
+  // Parsear texto numérico tolerando número nativo, formato argentino (1.500,50 o 1500) y formato internacional ($1,500.00)
   const parsearNumero = (valor: any): number => {
-    if (valor === null || valor === undefined) return 0
-    let limpio = valor.toString().trim().replace(/[$ ]/g, '')
-    if (limpio.includes(',') && limpio.includes('.')) {
-      limpio = limpio.replace(/\./g, '').replace(',', '.')
-    } else if (limpio.includes(',')) {
-      limpio = limpio.replace(',', '.')
+    if (valor === null || valor === undefined || valor === '') return 0
+    if (typeof valor === 'number') {
+      return isNaN(valor) ? 0 : Math.round(valor)
     }
+    let limpio = String(valor).trim().replace(/[$ ]/g, '')
+    if (!limpio) return 0
+
+    const tieneComa = limpio.includes(',')
+    const tienePunto = limpio.includes('.')
+
+    if (tieneComa && tienePunto) {
+      const idxComa = limpio.lastIndexOf(',')
+      const idxPunto = limpio.lastIndexOf('.')
+      if (idxComa > idxPunto) {
+        // Formato argentino: 1.500,50 -> miles punto, decimal coma
+        limpio = limpio.replace(/\./g, '').replace(',', '.')
+      } else {
+        // Formato internacional: 1,500.50 -> miles coma, decimal punto
+        limpio = limpio.replace(/,/g, '')
+      }
+    } else if (tieneComa) {
+      limpio = limpio.replace(',', '.')
+    } else if (tienePunto) {
+      const partes = limpio.split('.')
+      if (partes.length > 1 && partes.every((p, i) => i === 0 || p.length === 3)) {
+        limpio = limpio.replace(/\./g, '')
+      }
+    }
+
     const num = parseFloat(limpio)
     return isNaN(num) ? 0 : Math.round(num)
   }
@@ -221,15 +243,66 @@ export function ImportarCatalogoModal({
           return
         }
         const sheet = workbook.Sheets[sheetName]
-        // sheet_to_json con header:1 devuelve array de arrays (filas con posición)
+        // raw: true mantiene los números como números reales de JS (evita desfasaje de precios)
         const todasLasFilas: unknown[][] = XLSX.utils.sheet_to_json(sheet, {
           header: 1,
           defval: null,
-          raw: false,   // Convierte todo a string para parseo uniforme
+          raw: true,
         })
 
         if (!todasLasFilas || todasLasFilas.length === 0) {
           setErrorParsing('El archivo Excel está vacío.')
+          return
+        }
+
+        // Detectar si el usuario seleccionó un archivo de reporte contable o ventas
+        const nombreArchivoLower = file.name.toLowerCase()
+        const textoPrimerasFilas = todasLasFilas
+          .slice(0, 8)
+          .map((f) => (Array.isArray(f) ? f.map((c) => String(c ?? '')).join(' ') : ''))
+          .join(' ')
+          .toLowerCase()
+
+        if (
+          nombreArchivoLower.includes('reporte_ventas') ||
+          textoPrimerasFilas.includes('reporte ejecutivo de ventas') ||
+          textoPrimerasFilas.includes('registro detallado de comprobantes')
+        ) {
+          setErrorParsing(
+            'El archivo seleccionado es un Reporte de Ventas. Este asistente es exclusivamente para el Catálogo de Productos y Stock. Tus ventas ya se encuentran registradas permanentemente en tu sistema y no requieren reimportación.'
+          )
+          return
+        }
+
+        if (
+          nombreArchivoLower.includes('libro_contable') ||
+          textoPrimerasFilas.includes('libro diario contable') ||
+          textoPrimerasFilas.includes('variables contables')
+        ) {
+          setErrorParsing(
+            'El archivo seleccionado es el Libro Diario Contable. Este documento es un balance de auditoría contable para tu contador o administración, no un catálogo de productos para importar.'
+          )
+          return
+        }
+
+        if (
+          nombreArchivoLower.includes('libro_iva') ||
+          textoPrimerasFilas.includes('libro iva ventas') ||
+          textoPrimerasFilas.includes('conforme rg afip')
+        ) {
+          setErrorParsing(
+            'El archivo seleccionado es el Libro IVA Ventas Digital de AFIP. Es un informe fiscal emitido para contabilidad y AFIP, no un catálogo de productos para importar.'
+          )
+          return
+        }
+
+        if (
+          nombreArchivoLower.includes('movimientos_stock') ||
+          textoPrimerasFilas.includes('kardex de movimientos de stock')
+        ) {
+          setErrorParsing(
+            'El archivo seleccionado es el Historial de Movimientos de Stock (Kardex). Es un informe de auditoría histórica. Para restaurar el catálogo, seleccioná la copia de seguridad de catálogo (catalogo_valuacion_...).'
+          )
           return
         }
 
@@ -263,6 +336,18 @@ export function ImportarCatalogoModal({
         for (let i = indiceEncabezado + 1; i < todasLasFilas.length; i++) {
           const fila = todasLasFilas[i]
           if (!fila || fila.every((c) => c === null || c === undefined || String(c).trim() === '')) continue
+
+          // Omitir fila de totales y resúmenes de valuación al final de la tabla
+          const lineaFilaTexto = fila.map((c) => String(c ?? '')).join(' ').toLowerCase()
+          if (
+            lineaFilaTexto.includes('valuacion total') ||
+            lineaFilaTexto.includes('valuación total') ||
+            lineaFilaTexto.includes('total facturado') ||
+            lineaFilaTexto.includes('totales acumulados') ||
+            lineaFilaTexto.includes('total registros')
+          ) {
+            continue
+          }
 
           const rawCodigo = indices.codigo_barras >= 0 ? fila[indices.codigo_barras] : null
           const codigoStr = rawCodigo !== null && rawCodigo !== undefined ? String(rawCodigo).trim() : null
@@ -333,6 +418,18 @@ export function ImportarCatalogoModal({
 
             const columnas = parsearLineaCSV(linea, separador).map((c) => c.replace(/^["']|["']$/g, ''))
             if (columnas.length === 0 || columnas.every((c) => !c)) continue
+
+            // Omitir filas de totales de auditoría
+            const lineaTexto = columnas.join(' ').toLowerCase()
+            if (
+              lineaTexto.includes('valuacion total') ||
+              lineaTexto.includes('valuación total') ||
+              lineaTexto.includes('total facturado') ||
+              lineaTexto.includes('totales acumulados') ||
+              lineaTexto.includes('total registros')
+            ) {
+              continue
+            }
 
             const rawCodigo = indices.codigo_barras >= 0 ? columnas[indices.codigo_barras] || null : null
             const codigoBarras =
