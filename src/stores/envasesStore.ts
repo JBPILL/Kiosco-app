@@ -23,6 +23,7 @@ export interface TipoEnvase {
 
 export const TIPOS_ENVASES_DEFAULT: TipoEnvase[] = [
   { id: '1lt', nombre: '1LT', precio: 1500, descripcion: 'Cerveza o gaseosa de 1 litro vidrio', stock_vacios: 0 },
+  { id: '1.5lts', nombre: '1.5lts', precio: 1800, descripcion: 'Gaseosas medianas vidrio (Coca-Cola, Sprite, Fanta 1.5L)', stock_vacios: 0 },
   { id: '2lts', nombre: '2lts', precio: 2000, descripcion: 'Gaseosa retornable de 2 litros', stock_vacios: 0 },
   { id: '2.25lts', nombre: '2.25lts', precio: 2200, descripcion: 'Gaseosa retornable de 2.25 litros', stock_vacios: 0 },
   { id: 'sifon', nombre: 'Sifón de soda', precio: 2500, descripcion: 'Sifón de soda retornable', stock_vacios: 0 },
@@ -320,6 +321,10 @@ export const useEnvasesStore = create<EnvasesState>((set, get) => ({
     }
     if (q.includes('2l') || q.includes('2 l') || q.includes('2 lt') || q.includes('2lt')) {
       const t = tipos.find((x) => x.id === '2lts')
+      if (t) return t.precio
+    }
+    if (q.includes('1.5') || q.includes('1,5') || q.includes('1 1/2') || q.includes('1.5l') || q.includes('1,5l')) {
+      const t = tipos.find((x) => x.id === '1.5lts')
       if (t) return t.precio
     }
     if (q.includes('sifon') || q.includes('sifón') || q.includes('soda')) {

@@ -9,7 +9,6 @@ const CORE_PRODUCT_KEYS = new Set([
   'id',
   'kiosco_id',
   'categoria_id',
-  'proveedor_id',
   'codigo_barras',
   'descripcion',
   'precio_costo',
@@ -20,17 +19,83 @@ const CORE_PRODUCT_KEYS = new Set([
   'activo',
   'fecha_creacion',
   'fecha_actualizacion',
+  'es_retornable',
+  'precio_envase',
+  'nombre_envase',
+  'requiere_vencimiento',
+  'dias_alerta_vencimiento',
+  'es_pesable',
+  'unidad_medida',
+  'plu_balanza',
+  'es_combo',
 ])
+
+// Cache en memoria para columnas que la base de datos Supabase del usuario aún no tenga
+const COLUMNAS_INEXISTENTES_SUPABASE = new Set<string>(['proveedor_id'])
+
+function prepararPayloadSupabase(obj: Record<string, any>): Record<string, any> {
+  const payload: Record<string, any> = {}
+  for (const key of Object.keys(obj)) {
+    // Excluir relaciones de join que no son columnas de la tabla productos
+    if (key === 'categoria' || key === 'proveedor') continue
+    // Excluir columnas sabidas que no existen en Supabase para evitar fallas 400
+    if (COLUMNAS_INEXISTENTES_SUPABASE.has(key)) continue
+    payload[key] = obj[key]
+  }
+  return payload
+}
 
 function filtrarColumnasBase(obj: Record<string, any>): Record<string, any> {
   const base: Record<string, any> = {}
   for (const key of Object.keys(obj)) {
-    if (CORE_PRODUCT_KEYS.has(key)) {
+    if (CORE_PRODUCT_KEYS.has(key) && !COLUMNAS_INEXISTENTES_SUPABASE.has(key)) {
       base[key] = obj[key]
     }
   }
   return base
 }
+
+async function ejecutarOperacionSupabaseSegura(
+  payloadInicial: Record<string, any>,
+  operacion: (payload: Record<string, any>) => PromiseLike<{ error: any }>
+): Promise<{ ok: boolean; error?: any }> {
+  let datos = prepararPayloadSupabase(payloadInicial)
+  let intentos = 0
+
+  while (intentos < 5) {
+    intentos++
+    const { error } = await operacion(datos)
+    if (!error) return { ok: true }
+
+    const msg = (error.message || '').toLowerCase()
+    if (
+      error.code === '42703' ||
+      error.code === 'PGRST204' ||
+      msg.includes('column') ||
+      msg.includes('schema cache')
+    ) {
+      const matchPgrst = error.message.match(/Could not find the '([^']+)' column/i)
+      const matchPg = error.message.match(/column [^.]*\.?([a-zA-Z0-9_]+) does not exist/i)
+      const col = matchPgrst?.[1] || matchPg?.[1]
+      if (col && col in datos) {
+        console.warn(`Columna '${col}' no existe en Supabase productos. Reintentando sin ella...`)
+        COLUMNAS_INEXISTENTES_SUPABASE.add(col)
+        delete datos[col]
+        continue
+      }
+      console.warn('Reintentando con columnas base de productos...')
+      datos = filtrarColumnasBase(datos)
+      const { error: coreErr } = await operacion(datos)
+      return { ok: !coreErr, error: coreErr }
+    }
+
+    console.warn('Error en operación de productos Supabase:', error)
+    return { ok: false, error }
+  }
+
+  return { ok: false }
+}
+
 
 export function useProducts() {
   const { usuario, kiosco } = useAuthStore()
@@ -94,13 +159,34 @@ export function useProducts() {
           return {
             ...local,
             ...item,
-            es_retornable: item.es_retornable ?? local.es_retornable,
-            precio_envase: item.precio_envase ?? local.precio_envase,
+            es_retornable:
+              item.es_retornable !== undefined && item.es_retornable !== null
+                ? Boolean(item.es_retornable)
+                : Boolean(local.es_retornable),
+            precio_envase:
+              item.precio_envase !== undefined && item.precio_envase !== null
+                ? Number(item.precio_envase)
+                : local.precio_envase,
             nombre_envase: item.nombre_envase ?? local.nombre_envase,
-            es_pesable: item.es_pesable ?? local.es_pesable,
+            requiere_vencimiento:
+              item.requiere_vencimiento !== undefined && item.requiere_vencimiento !== null
+                ? Boolean(item.requiere_vencimiento)
+                : Boolean(local.requiere_vencimiento),
+            dias_alerta_vencimiento:
+              item.dias_alerta_vencimiento !== undefined && item.dias_alerta_vencimiento !== null
+                ? Number(item.dias_alerta_vencimiento)
+                : (local.dias_alerta_vencimiento || 15),
+            es_pesable:
+              item.es_pesable !== undefined && item.es_pesable !== null
+                ? Boolean(item.es_pesable)
+                : Boolean(local.es_pesable),
             unidad_medida: item.unidad_medida ?? local.unidad_medida,
             plu_balanza: item.plu_balanza ?? local.plu_balanza,
             proveedor_id: item.proveedor_id ?? local.proveedor_id,
+            es_combo:
+              item.es_combo !== undefined && item.es_combo !== null
+                ? Boolean(item.es_combo)
+                : Boolean(local.es_combo),
           }
         })
 
@@ -193,30 +279,11 @@ export function useProducts() {
     }
 
     let insertadoEnSupabase = false
-
     try {
-      // 1. Intentar insertar con todas las columnas
-      const { error: fullError } = await supabase.from('productos').insert(payload)
-      if (!fullError) {
-        insertadoEnSupabase = true
-      } else {
-        console.warn('Inserción completa rechazada por Supabase:', fullError.message)
-        // 2. Si falló por falta de columnas en la BD, reintentar solo con columnas base
-        if (
-          fullError.code === '42703' ||
-          fullError.code === 'PGRST204' ||
-          fullError.message?.toLowerCase().includes('column')
-        ) {
-          const payloadBase = filtrarColumnasBase(payload)
-          const { error: coreError } = await supabase.from('productos').insert(payloadBase)
-          if (!coreError) {
-            insertadoEnSupabase = true
-            console.info('Producto insertado con éxito en Supabase usando esquema base')
-          } else {
-            console.error('Error insertando esquema base en Supabase:', coreError)
-          }
-        }
-      }
+      const res = await ejecutarOperacionSupabaseSegura(payload, (datos) =>
+        supabase.from('productos').insert(datos)
+      )
+      insertadoEnSupabase = res.ok
     } catch (e) {
       console.warn('Fallo de red al crear producto:', e)
     }
@@ -265,27 +332,9 @@ export function useProducts() {
     })
 
     try {
-      const { error: fullError } = await supabase
-        .from('productos')
-        .update(cambiosCompletos)
-        .eq('id', id)
-
-      if (fullError) {
-        if (
-          fullError.code === '42703' ||
-          fullError.code === 'PGRST204' ||
-          fullError.message?.toLowerCase().includes('column')
-        ) {
-          const cambiosBase = filtrarColumnasBase(cambiosCompletos)
-          const { error: coreError } = await supabase
-            .from('productos')
-            .update(cambiosBase)
-            .eq('id', id)
-          if (coreError) {
-            console.error('Error al actualizar en Supabase:', coreError)
-          }
-        }
-      }
+      await ejecutarOperacionSupabaseSegura(cambiosCompletos, (datos) =>
+        supabase.from('productos').update(datos).eq('id', id)
+      )
     } catch (err) {
       console.warn('Error de red al actualizar producto:', err)
     }

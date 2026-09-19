@@ -124,7 +124,8 @@ export function PreciosEnvasesModal({
       tiposEnvases.forEach((t) => {
         if (
           envNom === t.nombre.toLowerCase() ||
-          (t.id === '1lt' && (envNom.includes('1l') || envNom.includes('litro'))) ||
+          (t.id === '1.5lts' && (envNom.includes('1.5') || envNom.includes('1,5') || envNom.includes('1 1/2'))) ||
+          (t.id === '1lt' && !envNom.includes('1.5') && !envNom.includes('1,5') && (envNom.includes('1l') || envNom.includes('litro'))) ||
           (t.id === '2lts' && (envNom.includes('2l') || envNom.includes('2 lt')) && !envNom.includes('2.25') && !envNom.includes('20')) ||
           (t.id === '2.25lts' && (envNom.includes('2.25') || envNom.includes('2,25'))) ||
           (t.id === 'sifon' && (envNom.includes('sifon') || envNom.includes('soda'))) ||
@@ -170,7 +171,8 @@ export function PreciosEnvasesModal({
         const envNom = (f.nombreEnvase || '').toLowerCase()
         const coincide =
           envNom === tipo.nombre.toLowerCase() ||
-          (tipo.id === '1lt' && (envNom.includes('1l') || envNom.includes('litro'))) ||
+          (tipo.id === '1.5lts' && (envNom.includes('1.5') || envNom.includes('1,5') || envNom.includes('1 1/2'))) ||
+          (tipo.id === '1lt' && !envNom.includes('1.5') && !envNom.includes('1,5') && (envNom.includes('1l') || envNom.includes('litro'))) ||
           (tipo.id === '2lts' && (envNom.includes('2l') || envNom.includes('2 lt')) && !envNom.includes('2.25')) ||
           (tipo.id === '2.25lts' && (envNom.includes('2.25') || envNom.includes('2,25'))) ||
           (tipo.id === 'sifon' && (envNom.includes('sifon') || envNom.includes('soda'))) ||
@@ -229,7 +231,8 @@ export function PreciosEnvasesModal({
           if (aplicado) return
           const coincide =
             envNom === t.nombre.toLowerCase() ||
-            (t.id === '1lt' && (envNom.includes('1l') || envNom.includes('litro'))) ||
+            (t.id === '1.5lts' && (envNom.includes('1.5') || envNom.includes('1,5') || envNom.includes('1 1/2'))) ||
+            (t.id === '1lt' && !envNom.includes('1.5') && !envNom.includes('1,5') && (envNom.includes('1l') || envNom.includes('litro'))) ||
             (t.id === '2lts' && (envNom.includes('2l') || envNom.includes('2 lt')) && !envNom.includes('2.25')) ||
             (t.id === '2.25lts' && (envNom.includes('2.25') || envNom.includes('2,25'))) ||
             (t.id === 'sifon' && (envNom.includes('sifon') || envNom.includes('soda'))) ||
@@ -383,20 +386,41 @@ export function PreciosEnvasesModal({
     setFilas((prev) => {
       const fila = prev[id]
       if (!fila) return prev
-      const primerTipo = tiposEnvases[0]
-      const precioDefault = primerTipo ? (preciosTiposLocal[primerTipo.id] ?? primerTipo.precio) : 1500
+
+      let tipoSugerido = tiposEnvases[0]
+      const desc = (fila.descripcion || '').toLowerCase()
+      if (desc.includes('1.5') || desc.includes('1,5') || desc.includes('1 1/2')) {
+        tipoSugerido = tiposEnvases.find((t) => t.id === '1.5lts') || tipoSugerido
+      } else if (desc.includes('2.25') || desc.includes('2,25')) {
+        tipoSugerido = tiposEnvases.find((t) => t.id === '2.25lts') || tipoSugerido
+      } else if (desc.includes('2l') || desc.includes('2 l') || desc.includes('2 lt') || desc.includes('2lt')) {
+        tipoSugerido = tiposEnvases.find((t) => t.id === '2lts') || tipoSugerido
+      } else if (desc.includes('sifon') || desc.includes('sifón') || desc.includes('soda')) {
+        tipoSugerido = tiposEnvases.find((t) => t.id === 'sifon') || tipoSugerido
+      } else if (desc.includes('bidon') || desc.includes('bidón') || desc.includes('20')) {
+        tipoSugerido = tiposEnvases.find((t) => t.id === 'bidon20l') || tipoSugerido
+      } else if (desc.includes('1l') || desc.includes('1 l') || desc.includes('1lt') || desc.includes('litro')) {
+        tipoSugerido = tiposEnvases.find((t) => t.id === '1lt') || tipoSugerido
+      }
+
+      const precioDefault = tipoSugerido ? (preciosTiposLocal[tipoSugerido.id] ?? tipoSugerido.precio) : 1500
       return {
         ...prev,
         [id]: {
           ...fila,
           esRetornable: checked,
-          nombreEnvase: checked && !fila.nombreEnvase ? (primerTipo?.nombre || '1LT') : fila.nombreEnvase,
+          nombreEnvase: checked && !fila.nombreEnvase ? (tipoSugerido?.nombre || '1LT') : fila.nombreEnvase,
           precioEnvase: checked && fila.precioEnvase === 0 ? precioDefault : fila.precioEnvase,
           modificado: true,
         },
       }
     })
   }
+
+  // Cantidad total de productos marcados como retornables
+  const cantRetornables = useMemo(() => {
+    return Object.values(filas).filter((f) => f.esRetornable).length
+  }, [filas])
 
   // Filtrado de productos visibles
   const filasVisibles = useMemo(() => {
@@ -499,13 +523,16 @@ export function PreciosEnvasesModal({
           <button
             type="button"
             onClick={() => setPestanaActiva('PRODUCTOS')}
-            className={`px-3 sm:px-4 py-2 text-xs font-bold rounded-t-lg transition-colors cursor-pointer border-b-2 ${
+            className={`px-3 sm:px-4 py-2 text-xs font-bold rounded-t-lg transition-colors cursor-pointer border-b-2 flex items-center gap-1.5 ${
               pestanaActiva === 'PRODUCTOS'
                 ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30'
                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
             }`}
           >
-            Productos del Catálogo ({filasVisibles.length})
+            <span>Productos del Catálogo</span>
+            <span className="bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 text-[10px] rounded-full font-bold">
+              {cantRetornables}
+            </span>
           </button>
           <button
             type="button"
@@ -717,8 +744,19 @@ export function PreciosEnvasesModal({
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60 bg-white dark:bg-gray-800">
                   {filasVisibles.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-12 text-center text-gray-400 dark:text-gray-500">
-                        No se encontraron productos con los filtros aplicados.
+                      <td colSpan={5} className="py-10 text-center text-gray-400 dark:text-gray-500 space-y-2">
+                        <p>No se encontraron productos con los filtros aplicados.</p>
+                        {soloRetornables && cantRetornables === 0 && (
+                          <div className="pt-1">
+                            <button
+                              type="button"
+                              onClick={() => setSoloRetornables(false)}
+                              className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer bg-indigo-50 dark:bg-indigo-950/40 px-3 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800"
+                            >
+                              Ver todos los productos del catálogo para configurar envases →
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ) : (

@@ -58,14 +58,15 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
   })
   const [guardando, setGuardando] = useState(false)
   const [scannerCamaraOpen, setScannerCamaraOpen] = useState(false)
-  const { tiposEnvases } = useEnvasesStore()
+  const { tiposEnvases, cargarTiposEnvases } = useEnvasesStore()
   const { proveedores, cargarProveedores } = useProveedorStore()
 
   useEffect(() => {
     if (isOpen) {
       cargarProveedores()
+      cargarTiposEnvases()
     }
-  }, [isOpen, cargarProveedores])
+  }, [isOpen, cargarProveedores, cargarTiposEnvases])
 
   // Soporte para pistolas lectoras físicas USB / Bluetooth en el formulario
   useBarcodeGun({
@@ -374,12 +375,27 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
                 checked={form.es_retornable || false}
                 onChange={(e) => {
                   const checked = e.target.checked
-                  const primerTipo = tiposEnvases[0]
+                  let tipoSugerido = tiposEnvases[0]
+                  const desc = (form.descripcion || '').toLowerCase()
+                  if (desc.includes('1.5') || desc.includes('1,5') || desc.includes('1 1/2')) {
+                    tipoSugerido = tiposEnvases.find((t) => t.id === '1.5lts') || tipoSugerido
+                  } else if (desc.includes('2.25') || desc.includes('2,25')) {
+                    tipoSugerido = tiposEnvases.find((t) => t.id === '2.25lts') || tipoSugerido
+                  } else if (desc.includes('2l') || desc.includes('2 l') || desc.includes('2 lt') || desc.includes('2lt')) {
+                    tipoSugerido = tiposEnvases.find((t) => t.id === '2lts') || tipoSugerido
+                  } else if (desc.includes('sifon') || desc.includes('sifón') || desc.includes('soda')) {
+                    tipoSugerido = tiposEnvases.find((t) => t.id === 'sifon') || tipoSugerido
+                  } else if (desc.includes('bidon') || desc.includes('bidón') || desc.includes('20')) {
+                    tipoSugerido = tiposEnvases.find((t) => t.id === 'bidon20l') || tipoSugerido
+                  } else if (desc.includes('1l') || desc.includes('1 l') || desc.includes('1lt') || desc.includes('litro')) {
+                    tipoSugerido = tiposEnvases.find((t) => t.id === '1lt') || tipoSugerido
+                  }
+
                   setForm({
                     ...form,
                     es_retornable: checked,
-                    nombre_envase: checked ? form.nombre_envase || primerTipo?.nombre || '1LT' : '',
-                    precio_envase: checked ? form.precio_envase || primerTipo?.precio || 1500 : 0,
+                    nombre_envase: checked ? form.nombre_envase || tipoSugerido?.nombre || '1LT' : '',
+                    precio_envase: checked ? form.precio_envase || tipoSugerido?.precio || 1500 : 0,
                   })
                 }}
                 className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 dark:border-gray-600"
