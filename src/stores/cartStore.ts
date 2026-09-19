@@ -527,14 +527,27 @@ export const useCartStore = create<CartState>((set, get) => ({
     const { tipoAjuste, valorAjuste } = get()
     const subtotal = get().subtotalMonto()
 
+    // Base comercial para descuentos y recargos porcentuales: sólo mercadería real,
+    // excluyendo los depósitos de envases retornables y devoluciones de envases.
+    const baseMercaderia = Math.max(
+      0,
+      get().items.reduce((sum, item) => {
+        if (item.es_devolucion_envase) return sum
+        const extraEnvase = item.sin_envase
+          ? Math.round(item.cantidad * (item.precio_envase_unitario || item.producto.precio_envase || 0))
+          : 0
+        return sum + Math.max(0, item.subtotal - extraEnvase)
+      }, 0)
+    )
+
     if (tipoAjuste === 'DESCUENTO_PORCENTAJE') {
-      return Math.round((subtotal * valorAjuste) / 100)
+      return Math.round((baseMercaderia * valorAjuste) / 100)
     }
     if (tipoAjuste === 'DESCUENTO_FIJO') {
       return Math.round(Math.min(valorAjuste, subtotal))
     }
     if (tipoAjuste === 'RECARGO_PORCENTAJE') {
-      return Math.round((subtotal * valorAjuste) / 100)
+      return Math.round((baseMercaderia * valorAjuste) / 100)
     }
     if (tipoAjuste === 'RECARGO_FIJO') {
       return Math.round(valorAjuste)

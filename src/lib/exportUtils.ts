@@ -1273,7 +1273,7 @@ export async function exportarStockInmovilizadoExcel(
       cText(it.categoria_nombre, bg, 'left'),
       cText(it.proveedor_nombre || '—', bg, 'left'),
       cNum(it.stock_actual, bg, '#,##0', true),
-      cText(`${it.dias_sin_ventas} días`, bg, 'center', true),
+      cNum(it.dias_sin_ventas, bg, '#,##0', true),
       cText(ultVentaStr, bg, 'center'),
       cMoney(it.precio_costo, bg),
       cMoney(it.capital_inmovilizado_costo, bg, true),

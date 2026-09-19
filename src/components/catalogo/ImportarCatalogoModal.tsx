@@ -189,7 +189,7 @@ export function ImportarCatalogoModal({
   const parsearNumero = (valor: any): number => {
     if (valor === null || valor === undefined || valor === '') return 0
     if (typeof valor === 'number') {
-      return isNaN(valor) ? 0 : Math.round(valor)
+      return isNaN(valor) ? 0 : Math.round(valor * 100) / 100
     }
     let limpio = String(valor).trim().replace(/[$ ]/g, '')
     if (!limpio) return 0
@@ -217,7 +217,7 @@ export function ImportarCatalogoModal({
     }
 
     const num = parseFloat(limpio)
-    return isNaN(num) ? 0 : Math.round(num)
+    return isNaN(num) ? 0 : Math.round(num * 100) / 100
   }
 
   // Procesar archivo CSV o XLSX
@@ -370,7 +370,13 @@ export function ImportarCatalogoModal({
             descNorm.startsWith('devolucion') ||
             descNorm.startsWith('combo ') ||
             codNorm.startsWith('COMBO-') ||
-            (stockActual > 90000 && !codigoBarras)
+            (stockActual > 90000 && !codigoBarras && (
+              descNorm.includes('envase') ||
+              descNorm.includes('devolucion') ||
+              descNorm.includes('devolución') ||
+              descNorm.includes('virtual') ||
+              descNorm.includes('ad-hoc')
+            ))
           ) {
             continue
           }

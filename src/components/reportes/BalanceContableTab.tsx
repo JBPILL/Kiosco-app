@@ -218,7 +218,11 @@ export function BalanceContableTab() {
     return compras.filter((c) => {
       if (c.estado === 'ANULADA') return false
       const f = c.fecha
-      return f >= rangoInicio && f <= rangoFin
+      const fISO = f.includes('T') ? f : `${f}T00:00:00`
+      const t = new Date(fISO).getTime()
+      const tIni = new Date(rangoInicio).getTime()
+      const tFin = new Date(rangoFin).getTime()
+      return !isNaN(t) ? (t >= tIni && t <= tFin) : (f >= rangoInicio && f <= rangoFin)
     })
   }, [compras, rangoInicio, rangoFin])
 
@@ -227,7 +231,11 @@ export function BalanceContableTab() {
     return pagos.filter((p) => {
       if (p.estado === 'ANULADO') return false
       const f = p.fecha
-      return f >= rangoInicio && f <= rangoFin
+      const fISO = f.includes('T') ? f : `${f}T00:00:00`
+      const t = new Date(fISO).getTime()
+      const tIni = new Date(rangoInicio).getTime()
+      const tFin = new Date(rangoFin).getTime()
+      return !isNaN(t) ? (t >= tIni && t <= tFin) : (f >= rangoInicio && f <= rangoFin)
     })
   }, [pagos, rangoInicio, rangoFin])
 
@@ -1031,7 +1039,9 @@ export function BalanceContableTab() {
                         Totales del Período:
                       </td>
                       <td className="py-2.5 px-3 text-right font-mono text-emerald-600 dark:text-emerald-400 text-sm">
-                        {formatPrecio(totalIngresos)}
+                        {formatPrecio(
+                          asientosFiltrados.reduce((sum, a) => sum + (a.ingreso || 0), 0)
+                        )}
                       </td>
                       <td className="py-2.5 px-3 text-right font-mono text-red-600 dark:text-red-400 text-sm">
                         {formatPrecio(

@@ -264,8 +264,13 @@ export function PreciosEnvasesModal({
 
   // Handlers para el depósito de envases vacíos
   const handleAbrirEntrega = (tipo: TipoEnvase) => {
+    const vacios = tipo.stock_vacios || 0
+    if (vacios <= 0) {
+      toast.error(`No hay envases vacíos de ${tipo.nombre} en depósito para entregar`)
+      return
+    }
     setTipoParaEntrega(tipo)
-    setCantidadEntrega(Math.max(1, Math.min(tipo.stock_vacios || 1, 10)))
+    setCantidadEntrega(Math.min(vacios, 10))
     setDistribuidorEntrega('Quilmes / Cervecería')
     setDistribuidorPersonalizado('')
     setNotasEntrega('')
@@ -281,6 +286,15 @@ export function PreciosEnvasesModal({
     }
     if (cantidadEntrega <= 0) {
       toast.error('La cantidad a entregar debe ser mayor a 0')
+      return
+    }
+    const stockDisponible = tipoParaEntrega.stock_vacios || 0
+    if (stockDisponible <= 0) {
+      toast.error('No hay envases vacíos disponibles en depósito para entregar')
+      return
+    }
+    if (cantidadEntrega > stockDisponible) {
+      toast.error(`No podés entregar más de los ${stockDisponible} envases disponibles en depósito`)
       return
     }
 
@@ -1040,14 +1054,18 @@ export function PreciosEnvasesModal({
                         <input
                           type="number"
                           min="1"
-                          max={tipoParaEntrega.stock_vacios || 999}
+                          max={Math.max(1, tipoParaEntrega.stock_vacios || 1)}
                           value={cantidadEntrega}
-                          onChange={(e) => setCantidadEntrega(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                          onChange={(e) => {
+                            const maxStock = tipoParaEntrega.stock_vacios || 1
+                            const val = parseInt(e.target.value, 10) || 1
+                            setCantidadEntrega(Math.max(1, Math.min(maxStock, val)))
+                          }}
                           className="flex-1 text-center font-bold text-base px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500"
                         />
                         <button
                           type="button"
-                          onClick={() => setCantidadEntrega((c) => Math.min(tipoParaEntrega.stock_vacios || 999, c + 1))}
+                          onClick={() => setCantidadEntrega((c) => Math.min(tipoParaEntrega.stock_vacios || 1, c + 1))}
                           className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 font-bold rounded-lg text-sm"
                         >
                           +
@@ -1055,12 +1073,12 @@ export function PreciosEnvasesModal({
                       </div>
                       <div className="flex gap-1.5 mt-1.5">
                         {[6, 12, 24, tipoParaEntrega.stock_vacios || 0]
-                          .filter((v, i, a) => v > 0 && a.indexOf(v) === i)
+                          .filter((v, i, a) => v > 0 && a.indexOf(v) === i && v <= (tipoParaEntrega.stock_vacios || 0))
                           .map((val) => (
                             <button
                               key={val}
                               type="button"
-                              onClick={() => setCantidadEntrega(Math.min(tipoParaEntrega.stock_vacios || 999, val))}
+                              onClick={() => setCantidadEntrega(Math.min(tipoParaEntrega.stock_vacios || 1, val))}
                               className="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-semibold text-[10px] hover:bg-indigo-100"
                             >
                               {val === (tipoParaEntrega.stock_vacios || 0) ? `Todos (${val})` : `${val} un.`}

@@ -371,7 +371,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           venta_id: ventaId,
           medio_pago: p.medio_pago,
           monto: p.monto,
-          referencia: referencia || null,
+          referencia: p.medio_pago === 'EFECTIVO' ? null : (referencia || null),
         }))
         const { error: pagoError } = await supabase.from('pagos_venta').insert(pagosInsertar)
         if (pagoError) throw pagoError
@@ -380,7 +380,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           venta_id: ventaId,
           medio_pago: medioPago,
           monto: total,
-          referencia: referencia || null,
+          referencia: medioPago === 'EFECTIVO' ? null : (referencia || null),
         })
         if (pagoError) throw pagoError
       }

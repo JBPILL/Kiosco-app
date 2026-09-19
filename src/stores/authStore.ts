@@ -33,6 +33,8 @@ interface AuthState {
   setModoRecuperacion: (modo: boolean) => void
 }
 
+let authRecoveryListenerRegistered = false
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   usuario: null,
   kiosco: null,
@@ -148,11 +150,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return
       }
 
-      supabase.auth.onAuthStateChange((event) => {
-        if (event === 'PASSWORD_RECOVERY') {
-          set({ esModoRecuperacion: true, cargando: false })
-        }
-      })
+      if (!authRecoveryListenerRegistered) {
+        authRecoveryListenerRegistered = true
+        supabase.auth.onAuthStateChange((event) => {
+          if (event === 'PASSWORD_RECOVERY') {
+            set({ esModoRecuperacion: true, cargando: false })
+          }
+        })
+      }
 
       const { data: { session } } = await supabase.auth.getSession()
 

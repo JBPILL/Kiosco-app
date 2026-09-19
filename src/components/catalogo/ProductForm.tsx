@@ -348,7 +348,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
                 </div>
                 <div>
                   <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
-                    Código PLU Balanza (4 dígitos):
+                    Código PLU Balanza (4 o 5 dígitos):
                   </label>
                   <input
                     type="text"

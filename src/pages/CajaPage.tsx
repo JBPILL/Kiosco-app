@@ -167,7 +167,7 @@ export function CajaPage() {
   }
 
   const efectivoEsperado = resumenActivo?.efectivo_esperado_en_caja ?? (sesionActiva?.monto_inicial || 0)
-  const contadoNum = parseFloat(efectivoContado) || 0
+  const contadoNum = Math.max(0, parseFloat(efectivoContado) || 0)
   const diferenciaArqueo = contadoNum - efectivoEsperado
 
   const handleConfirmarCierre = async () => {
@@ -799,7 +799,7 @@ export function CajaPage() {
               variant="danger"
               fullWidth
               loading={cerrando}
-              disabled={efectivoContado === ''}
+              disabled={efectivoContado === '' || parseFloat(efectivoContado) < 0}
               onClick={handleConfirmarCierre}
             >
               {modoCiego ? 'Confirmar y Finalizar Turno' : 'Confirmar Cierre de Caja'}

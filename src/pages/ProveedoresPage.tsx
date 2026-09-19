@@ -336,7 +336,11 @@ export function ProveedoresPage() {
   const handleFijarMontoPreset = (porcentaje: number) => {
     if (!proveedorAbonar) return
     const deuda = proveedorAbonar.saldo_pendiente || 0
-    const valor = Math.round((deuda * porcentaje) * 100) / 100
+    if (deuda <= 0) {
+      setMontoAbono('')
+      return
+    }
+    const valor = porcentaje === 1 ? deuda : Math.round(deuda * porcentaje * 100) / 100
     setMontoAbono(String(valor))
   }
 
