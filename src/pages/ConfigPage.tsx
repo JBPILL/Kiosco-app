@@ -9,6 +9,7 @@ import type { Kiosco, Usuario, Suscripcion, Categoria } from '../types/database'
 import { formatPrecio, formatFechaCorta } from '../lib/utils'
 import { exportarCatalogoExcel, exportarVentasExcel } from '../lib/exportUtils'
 import { AFIPConfigSection } from '../components/config/AFIPConfigSection'
+import { AccessibilityConfigSection } from '../components/config/AccessibilityConfigSection'
 import { useConfigAdminStore, formatearLinkWhatsApp } from '../stores/configAdminStore'
 import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
 import { usePwaStore } from '../stores/pwaStore'
@@ -458,6 +459,9 @@ export function ConfigPage() {
               </div>
             </form>
           </div>
+
+          {/* Tamaño de Letra y Accesibilidad Visual */}
+          <AccessibilityConfigSection />
 
           {/* Configuración Fiscal ARCA */}
           <AFIPConfigSection />

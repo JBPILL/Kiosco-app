@@ -25,9 +25,56 @@ html, body, #root {
   height: 100dvh;
 }
 
-/* En iOS Safari, fuentes menores a 16px provocan zoom automático al hacer foco en un input */
-input, select, textarea {
+/* ==========================================================================
+   Escala de Tamaño de Letra y Accesibilidad Visual
+   Aumenta o disminuye armónicamente toda la tipografía e interfaz del sistema.
+   Adaptado con diseño responsive para celulares, tablets y monitores de PC.
+   ========================================================================== */
+
+/* Nivel base en celulares y pantallas compactas (< 640px) */
+html {
   font-size: 16px;
+}
+
+html[data-font-size="compacto"] {
+  font-size: 14px;
+}
+
+html[data-font-size="normal"],
+html:not([data-font-size]) {
+  font-size: 16px;
+}
+
+html[data-font-size="grande"] {
+  font-size: 17.5px;
+}
+
+html[data-font-size="extra"] {
+  font-size: 19px;
+}
+
+/* Nivel ampliado en tablets, notebooks y PCs de mostrador (>= 640px) */
+@media (min-width: 640px) {
+  html[data-font-size="compacto"] {
+    font-size: 14.5px;
+  }
+
+  html[data-font-size="normal"] {
+    font-size: 16px;
+  }
+
+  html[data-font-size="grande"] {
+    font-size: 18.5px;
+  }
+
+  html[data-font-size="extra"] {
+    font-size: 21px;
+  }
+}
+
+/* En iOS Safari, evitar zoom indeseado si el texto es pequeño, pero permitir escala mayor */
+input, select, textarea {
+  font-size: max(16px, 1rem);
 }
 
 input, button {
@@ -43,9 +90,9 @@ input, button {
   padding-bottom: max(16px, env(safe-area-inset-bottom));
 }
 
-/* Transición suave al cambiar de tema */
+/* Transición suave al cambiar de tema o tamaño de fuente */
 * {
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, font-size 0.15s ease;
 }
 
 /* ==========================================================================
