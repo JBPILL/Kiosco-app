@@ -115,7 +115,7 @@ export function RetiroCajaModal({ isOpen, onClose }: RetiroCajaModalProps) {
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Resumen de caja actual */}
-          <div className="p-3 bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between items-center text-xs">
+          <div className="p-3 bg-gray-50/80 dark:bg-gray-800/60 rounded-xl border border-gray-300 dark:border-gray-700 flex justify-between items-center text-xs">
             <div>
               <span className="text-gray-500 dark:text-gray-400 block">Cajero en turno:</span>
               <span className="font-bold text-gray-900 dark:text-gray-100">

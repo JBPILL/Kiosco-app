@@ -569,7 +569,7 @@ export function ClientesPage() {
           />
 
           {/* Sección opcional: Más datos */}
-          <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+          <div className="border border-gray-300 dark:border-gray-700 rounded-lg overflow-hidden">
             <button
               type="button"
               onClick={() => setMostrarMasDatos((v) => !v)}
@@ -632,7 +632,7 @@ export function ClientesPage() {
         {clienteFicha && (
           <div className="space-y-4">
             {/* Cabecera del cliente */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-gray-50/80 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl text-xs">
               <div>
                 <p className="text-gray-500 dark:text-gray-400">Saldo Deudor Actual</p>
                 <p className="text-xl font-black text-red-600 dark:text-red-400 mt-0.5">
@@ -688,9 +688,9 @@ export function ClientesPage() {
                   Aún no hay movimientos registrados en la cuenta de este cliente.
                 </p>
               ) : (
-                <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+                <div className="border border-gray-300 dark:border-gray-700 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400">
+                    <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400">
                       <tr>
                         <th className="px-3 py-2 font-medium">Fecha</th>
                         <th className="px-3 py-2 font-medium">Tipo</th>
@@ -800,7 +800,7 @@ export function ClientesPage() {
                       key={v}
                       type="button"
                       onClick={() => setMontoAbono(v.toString())}
-                      className="px-2.5 py-1 text-xs font-medium rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                      className="px-2.5 py-1 text-xs font-medium rounded border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
                     >
                       +{formatPrecio(v)}
                     </button>
@@ -828,7 +828,7 @@ export function ClientesPage() {
 
             {/* Checkbox de ingreso en caja si es efectivo */}
             {medioPagoAbono === 'EFECTIVO' && sesionActiva && (
-              <label className="flex items-center gap-2 p-2.5 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
+              <label className="flex items-center gap-2 p-2.5 rounded-lg bg-gray-50/80 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={impactarEnCaja}

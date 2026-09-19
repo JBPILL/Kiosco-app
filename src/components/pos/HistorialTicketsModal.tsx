@@ -281,7 +281,7 @@ export function HistorialTicketsModal({
                     className={`p-3.5 rounded-xl border transition-all space-y-2.5 ${
                       esAnulada
                         ? 'border-red-200 dark:border-red-900/40 bg-red-50/20 dark:bg-red-950/15 opacity-75'
-                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/90 hover:border-indigo-400 dark:hover:border-indigo-500 shadow-2xs'
+                        : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800/90 hover:border-indigo-400 dark:hover:border-indigo-500 shadow-xs'
                     }`}
                   >
                     {/* Encabezado de la tarjeta: Ticket, Fecha, Medio de pago y Total */}

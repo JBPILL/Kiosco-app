@@ -194,7 +194,7 @@ export function ComboBuilderModal({
 
           {/* Lista de sugerencias cuando hay búsqueda */}
           {busqueda.trim().length > 0 && (
-            <div className="mt-1 max-h-40 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 shadow-md divide-y divide-gray-100 dark:divide-gray-700 z-10">
+            <div className="mt-1 max-h-40 overflow-y-auto border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 shadow-md divide-y divide-gray-100 dark:divide-gray-700 z-10">
               {productosCandidatos.length === 0 ? (
                 <div className="p-2.5 text-xs text-gray-400 text-center">
                   No se encontraron productos disponibles
@@ -232,13 +232,13 @@ export function ComboBuilderModal({
           </h4>
 
           {componentes.length === 0 ? (
-            <div className="p-6 text-center border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl text-gray-400 dark:text-gray-500 text-xs">
+            <div className="p-6 text-center border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl text-gray-400 dark:text-gray-500 text-xs">
               No hay productos en este combo aún. Buscá arriba para agregar los artículos (ej. Fernet 750ml + 2 Cocas 1.5L).
             </div>
           ) : (
-            <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+            <div className="border border-gray-300 dark:border-gray-700 rounded-xl overflow-hidden">
               <table className="w-full text-xs">
-                <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-semibold">
+                <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-semibold">
                   <tr>
                     <th className="px-3 py-2 text-left">Producto Componente</th>
                     <th className="px-2 py-2 text-center w-24">Cantidad</th>

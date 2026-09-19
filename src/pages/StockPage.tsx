@@ -1084,7 +1084,7 @@ export function StockPage() {
                 className={`py-2 px-2 text-xs font-bold rounded-xl border transition-all ${
                   tipoMovimiento === 'INGRESO'
                     ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 shadow-xs ring-1 ring-emerald-500/20'
-                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:border-gray-300'
+                    : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-400 hover:border-gray-400'
                 }`}
               >
                 + Ingreso
@@ -1099,7 +1099,7 @@ export function StockPage() {
                 className={`py-2 px-2 text-xs font-bold rounded-xl border transition-all ${
                   tipoMovimiento === 'EGRESO'
                     ? 'border-red-500 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 shadow-xs ring-1 ring-red-500/20'
-                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:border-gray-300'
+                    : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-400 hover:border-gray-400'
                 }`}
               >
                 - Egreso
@@ -1117,7 +1117,7 @@ export function StockPage() {
                 className={`py-2 px-2 text-xs font-bold rounded-xl border transition-all ${
                   tipoMovimiento === 'AJUSTE'
                     ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 shadow-xs ring-1 ring-indigo-500/20'
-                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:border-gray-300'
+                    : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-400 hover:border-gray-400'
                 }`}
               >
                 = Ajuste Físico
@@ -1141,7 +1141,7 @@ export function StockPage() {
             </div>
 
             {productoSeleccionado ? (
-              <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3 shadow-2xs">
+              <div className="p-3 rounded-xl bg-gray-50/80 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 flex items-center justify-between gap-3 shadow-xs">
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate">
                     {productoSeleccionado.descripcion}

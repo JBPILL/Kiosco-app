@@ -63,7 +63,7 @@ export function KeyboardShortcutsModal({ isOpen, onClose }: KeyboardShortcutsMod
             <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
               {sec.title}
             </h3>
-            <div className="divide-y divide-gray-100 dark:divide-gray-700/80 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-gray-50/50 dark:bg-gray-900/60">
+            <div className="divide-y divide-gray-100 dark:divide-gray-700/80 border border-gray-300 dark:border-gray-700 rounded-xl overflow-hidden bg-gray-50/50 dark:bg-gray-900/60">
               {sec.items.map((s) => (
                 <div
                   key={s.key}

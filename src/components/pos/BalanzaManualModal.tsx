@@ -107,7 +107,7 @@ export function BalanzaManualModal({
                 className={`py-2 px-1 text-center rounded-lg border text-xs font-bold transition-all cursor-pointer ${
                   gramosNum === p.gramos
                     ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-700 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:border-indigo-300'
+                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-700 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:border-indigo-400'
                 }`}
               >
                 {p.label}

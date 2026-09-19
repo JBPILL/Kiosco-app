@@ -139,7 +139,7 @@ export function RecibirEnvaseModal({ isOpen, onClose }: RecibirEnvaseModalProps)
                   className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer ${
                     seleccionado
                       ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 ring-2 ring-indigo-500 shadow-xs'
-                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                      : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-600'
                   }`}
                 >
                   <p className="font-bold text-xs truncate">{env.nombre}</p>
@@ -158,8 +158,8 @@ export function RecibirEnvaseModal({ isOpen, onClose }: RecibirEnvaseModalProps)
         </div>
 
         {/* Panel de Precio Fijo y Cantidad Ajustable */}
-        <div className="p-3.5 bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 rounded-xl space-y-3">
-          <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 pb-2.5">
+        <div className="p-3.5 bg-gray-50/80 dark:bg-gray-800/80 border border-gray-300 dark:border-gray-700 rounded-xl space-y-3">
+          <div className="flex items-center justify-between border-b border-gray-300 dark:border-gray-700 pb-2.5">
             <div>
               <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 block">
                 Precio unitario asignado:

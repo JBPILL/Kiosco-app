@@ -1054,16 +1054,20 @@ export function PreciosEnvasesModal({
 
             {/* Submodal para Entrega a Distribuidor */}
             {entregaModalOpen && tipoParaEntrega && (
-              <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in duration-100">
-                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 max-w-md w-full p-4 space-y-3">
-                  <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
-                    <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+              <div className="fixed inset-0 z-60 bg-slate-950/65 dark:bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in duration-100">
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  className="modal-container bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-slate-300 dark:border-gray-700 ring-1 ring-slate-900/15 dark:ring-white/10 max-w-md w-full p-4 space-y-3"
+                >
+                  <div className="flex items-center justify-between border-b border-slate-200 dark:border-gray-700 pb-2.5">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-gray-100">
                       Entregar {tipoParaEntrega.nombre} a Distribuidor
                     </h3>
                     <button
                       type="button"
                       onClick={() => setEntregaModalOpen(false)}
-                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg"
+                      className="text-slate-400 hover:text-slate-700 dark:hover:text-gray-200 text-lg font-bold"
                     >
                       ✕
                     </button>
@@ -1186,16 +1190,20 @@ export function PreciosEnvasesModal({
 
             {/* Submodal para Ajuste Manual Directo */}
             {ajusteModalOpen && tipoParaAjuste && (
-              <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in duration-100">
-                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 max-w-xs w-full p-4 space-y-3">
-                  <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-2">
-                    <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+              <div className="fixed inset-0 z-60 bg-slate-950/65 dark:bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in duration-100">
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  className="modal-container bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-slate-300 dark:border-gray-700 ring-1 ring-slate-900/15 dark:ring-white/10 max-w-xs w-full p-4 space-y-3"
+                >
+                  <div className="flex items-center justify-between border-b border-slate-200 dark:border-gray-700 pb-2.5">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-gray-100">
                       Conteo de {tipoParaAjuste.nombre}
                     </h3>
                     <button
                       type="button"
                       onClick={() => setAjusteModalOpen(false)}
-                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg"
+                      className="text-slate-400 hover:text-slate-700 dark:hover:text-gray-200 text-lg font-bold"
                     >
                       ✕
                     </button>

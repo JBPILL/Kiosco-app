@@ -81,7 +81,7 @@ export function ArticuloLibreModal({ isOpen, onClose }: ArticuloLibreModalProps)
                 key={m}
                 type="button"
                 onClick={() => setPrecio(m.toString())}
-                className="px-2.5 py-1 text-xs font-semibold rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-indigo-500 hover:text-indigo-600 active:scale-95 transition-all"
+                className="px-2.5 py-1 text-xs font-semibold rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-indigo-500 hover:text-indigo-600 active:scale-95 transition-all"
               >
                 ${m.toLocaleString('es-AR')}
               </button>

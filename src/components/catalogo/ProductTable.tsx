@@ -507,10 +507,14 @@ export function ProductTable({
 
       {/* Modal confirmar eliminación */}
       {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 max-w-sm w-full space-y-3 border border-gray-200 dark:border-gray-700">
-            <h4 className="font-bold text-gray-900 dark:text-gray-100">¿Eliminar producto?</h4>
-            <p className="text-sm text-gray-500 dark:text-gray-400">El producto dejará de estar visible en el sistema.</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/65 dark:bg-black/75 backdrop-blur-xs transition-opacity animate-in fade-in duration-150">
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="modal-container bg-white dark:bg-gray-800 rounded-2xl p-5 max-w-sm w-full space-y-3 border border-slate-300 dark:border-gray-700 ring-1 ring-slate-900/15 dark:ring-white/10 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+          >
+            <h4 className="font-bold text-slate-900 dark:text-gray-100">¿Eliminar producto?</h4>
+            <p className="text-sm text-slate-600 dark:text-gray-400">El producto dejará de estar visible en el sistema.</p>
             <div className="flex gap-2 pt-2">
               <Button
                 variant="danger"

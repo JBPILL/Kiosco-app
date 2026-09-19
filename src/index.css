@@ -75,12 +75,31 @@ input, button {
   border-color: #94a3b8; /* slate-400 */
 }
 
-/* Sombreado elegante en todas las secciones, contenedores y tarjetas en modo claro */
-:root:not(.dark) .bg-white.border,
-:root:not(.dark) .rounded-lg.border,
-:root:not(.dark) .rounded-xl.border,
-:root:not(.dark) .rounded-2xl.border {
+/* Sombreado elegante en todas las secciones, contenedores y tarjetas estándar en modo claro */
+:root:not(.dark) .bg-white.border:not(.shadow-2xl):not(.shadow-xl):not([role="dialog"]),
+:root:not(.dark) .rounded-lg.border:not(.shadow-2xl):not(.shadow-xl):not([role="dialog"]),
+:root:not(.dark) .rounded-xl.border:not(.shadow-2xl):not(.shadow-xl):not([role="dialog"]),
+:root:not(.dark) .rounded-2xl.border:not(.shadow-2xl):not(.shadow-xl):not([role="dialog"]) {
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.07), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+}
+
+/* ==========================================================================
+   Modales y Ventanas Emergentes en Modo Claro
+   Bordes nítidos, relieve tridimensional, ring perimetral de definición
+   y barra de título definida para máxima comodidad y contraste visual.
+   ========================================================================== */
+:root:not(.dark) [role="dialog"],
+:root:not(.dark) .modal-container,
+:root:not(.dark) .shadow-2xl {
+  box-shadow:
+    0 25px 50px -12px rgba(15, 23, 42, 0.32),
+    0 12px 24px -8px rgba(15, 23, 42, 0.2),
+    0 0 0 1px rgba(15, 23, 42, 0.14) !important;
+}
+
+:root:not(.dark) .modal-header {
+  background-color: #f1f5f9;
+  border-bottom-color: #cbd5e1;
 }
 
 /* Tono de recuadros internos, métricas y subpaneles en modo claro */

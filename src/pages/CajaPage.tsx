@@ -642,7 +642,7 @@ export function CajaPage() {
         <div className="space-y-4">
           {/* Selector de modo si es Dueño o si no se exige arqueo ciego obligatorio */}
           {(esDueno || !arqueoCiegoObligatorio) && (
-            <div className="flex rounded-lg bg-gray-100 dark:bg-gray-800 p-1">
+            <div className="flex rounded-lg bg-gray-100 dark:bg-gray-800 p-1 border border-gray-200 dark:border-gray-700">
               <button
                 type="button"
                 onClick={() => setModoCiego(false)}
@@ -678,7 +678,7 @@ export function CajaPage() {
             </div>
           ) : (
             /* Resumen guiado visible sólo para el Dueño */
-            <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 space-y-2">
+            <div className="p-4 rounded-lg bg-gray-50/80 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500 dark:text-gray-400">Fondo inicial de turno:</span>
                 <span className="font-semibold text-gray-900 dark:text-gray-100">
@@ -707,7 +707,7 @@ export function CajaPage() {
                   </span>
                 </div>
               )}
-              <div className="border-t border-gray-200 dark:border-gray-700 pt-2 flex justify-between text-base font-bold">
+              <div className="border-t border-gray-300 dark:border-gray-700 pt-2 flex justify-between text-base font-bold">
                 <span className="text-gray-800 dark:text-gray-200">Total en cajón esperado:</span>
                 <span className="text-indigo-600 dark:text-indigo-400">
                   {formatPrecio(efectivoEsperado)}
@@ -743,7 +743,7 @@ export function CajaPage() {
 
             {/* Desglosador interactivo de billetes */}
             {mostrarDesgloseBilletes && (
-              <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 space-y-2">
+              <div className="p-3 bg-gray-50/80 dark:bg-gray-900 rounded-lg border border-gray-300 dark:border-gray-700 space-y-2">
                 <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Calculadora de Billetes y Monedas
                 </p>

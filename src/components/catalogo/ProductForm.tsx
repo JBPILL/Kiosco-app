@@ -268,7 +268,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
           </div>
 
           {/* Opciones de Perecedero / Vencimiento */}
-          <div className="p-3 bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-xl space-y-2">
+          <div className="p-3.5 bg-gray-50/80 dark:bg-gray-900/40 border border-gray-300 dark:border-gray-700 rounded-xl space-y-2">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -307,7 +307,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
           </div>
 
           {/* Opciones de Balanza y Pesables */}
-          <div className="p-3 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-xl space-y-2">
+          <div className="p-3.5 bg-amber-50/80 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800/60 rounded-xl space-y-2">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -368,7 +368,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
           </div>
 
           {/* Envases Retornables */}
-          <div className="p-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl space-y-2.5">
+          <div className="p-3.5 bg-gray-50/80 dark:bg-gray-800/60 border border-gray-300 dark:border-gray-700 rounded-xl space-y-2.5">
             <label className="flex items-center gap-2 cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -429,7 +429,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
                           className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all border cursor-pointer ${
                             activo
                               ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
-                              : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                              : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
                           }`}
                         >
                           {tipo.nombre} (${tipo.precio.toLocaleString('es-AR')})

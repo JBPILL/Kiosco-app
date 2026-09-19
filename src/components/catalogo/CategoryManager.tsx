@@ -162,7 +162,7 @@ export function CategoryManager({ categorias, onCrear, onActualizar, onEliminar 
             <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
               Vista previa
             </label>
-            <div className="inline-flex items-center gap-2 pl-2.5 pr-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xs">
+            <div className="inline-flex items-center gap-2 pl-2.5 pr-3 py-1.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xs">
               <span
                 className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                 style={{ backgroundColor: color }}
