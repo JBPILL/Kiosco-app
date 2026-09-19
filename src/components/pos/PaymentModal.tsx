@@ -249,6 +249,18 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         throw new Error('No se encontró el identificador del kiosco para registrar la venta')
       }
 
+      // Confirmación de seguridad si el canje de puntos salda el 100% de la venta
+      if (canjearPuntos && descuentoPuntos > 0 && total === 0) {
+        const confirmarCanjeTotal = window.confirm(
+          `Atención: Esta venta se saldará en un 100% canjeando ${descuentoPuntos.toLocaleString('es-AR')} puntos de fidelidad de ${clienteSeleccionado?.nombre || 'este cliente'}.\n\n¿Deseas confirmar la operación?`
+        )
+        if (!confirmarCanjeTotal) {
+          procesandoRef.current = false
+          setProcesando(false)
+          return
+        }
+      }
+
       // Validación de consistencia fiscal ante AFIP / ARCA
       if (emitirFiscal) {
         if (tipoDocReceptor === 96) {

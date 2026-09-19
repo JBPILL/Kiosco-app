@@ -74,10 +74,13 @@ export function DevolucionModal({
     )
 
     const fueCC = ventaEncontrada.pagos?.some((p) => p.medio_pago === 'CUENTA_CORRIENTE')
+    const tieneEfectivo = ventaEncontrada.pagos?.some((p) => p.medio_pago === 'EFECTIVO')
     if (fueCC && ventaEncontrada.cliente) {
       setMetodoReintegro('CUENTA_CORRIENTE')
-    } else {
+    } else if (tieneEfectivo || !ventaEncontrada.pagos || ventaEncontrada.pagos.length === 0) {
       setMetodoReintegro('EFECTIVO_CAJA')
+    } else {
+      setMetodoReintegro('OTRO')
     }
   }, [])
 
@@ -207,6 +210,14 @@ export function DevolucionModal({
       toast.error(res.error || 'No se pudo procesar la devolución')
     }
   }
+
+  const esPagoDigitalPuro = Boolean(
+    venta &&
+    venta.pagos &&
+    venta.pagos.length > 0 &&
+    venta.pagos.every((p) => p.medio_pago === 'MERCADOPAGO' || p.medio_pago === 'TRANSFERENCIA' || p.medio_pago === 'TARJETA') &&
+    !venta.pagos.some((p) => p.medio_pago === 'EFECTIVO' || p.medio_pago === 'CUENTA_CORRIENTE')
+  )
 
   return (
     <>
@@ -385,6 +396,19 @@ export function DevolucionModal({
                 </button>
               </div>
             </div>
+
+            {/* Alerta si el cobro original fue 100% digital (sin efectivo) */}
+            {esPagoDigitalPuro && (
+              <div className="p-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800/60 rounded-xl text-xs text-amber-900 dark:text-amber-200 flex items-center gap-2 flex-shrink-0">
+                <span className="text-base">⚠️</span>
+                <div>
+                  <strong>Cobro originalmente digital ({venta.pagos?.map((p) => labelMedioPago(p.medio_pago)).join(', ') || 'Medio digital'}).</strong>
+                  <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                    Revisá si corresponde revertir por la misma vía digital o entregar mercadería a cambio antes de retirar efectivo físico de la caja.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Contenedor desplazable con los artículos y opciones intermedias */}
             <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pr-1">

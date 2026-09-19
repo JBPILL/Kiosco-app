@@ -557,14 +557,17 @@ export function ImportarCatalogoModal({
       if (categoriasNuevasNombres.size > 0) {
         setProgresoTexto('Sincronizando nuevas categorías...')
         const arrayNuevas = Array.from(categoriasNuevasNombres)
+        const maxOrdenExistente = categorias.reduce((max, c) => Math.max(max, c.orden || 0), 0)
+        let indexCat = 0
         for (const nombreCat of arrayNuevas) {
+          indexCat++
           const { data: catCreada, error: catErr } = await supabase
             .from('categorias')
             .insert({
               kiosco_id: kioscoId,
               nombre: nombreCat,
               color: '#6366f1',
-              orden: mapaCategorias.size + 1,
+              orden: maxOrdenExistente + indexCat,
             })
             .select('id, nombre')
             .single()

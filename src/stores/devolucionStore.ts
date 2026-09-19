@@ -259,6 +259,16 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
       return { success: false, error: 'No es posible procesar una devolución sobre una venta que ya fue anulada' }
     }
 
+    if (metodoReintegro === 'CUENTA_CORRIENTE') {
+      const targetClienteId = clienteId || venta.cliente?.id
+      if (!targetClienteId) {
+        return {
+          success: false,
+          error: 'No se puede reintegrar a cuenta corriente porque el ticket no posee un cliente asignado',
+        }
+      }
+    }
+
     // Verificar si ya existe devolución registrada para esta venta
     try {
       const { data: devExistentes, error: devCheckErr } = await supabase

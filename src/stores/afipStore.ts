@@ -184,6 +184,15 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
       ...nuevaConfig,
     }
 
+    // Validación rigurosa de CUIT mediante Algoritmo Módulo 11
+    if (configActualizada.habilitado && configActualizada.cuit) {
+      const cuitLimpio = configActualizada.cuit.replace(/\D/g, '')
+      if (!validarCUIT(cuitLimpio)) {
+        toast.error('El número de CUIT ingresado no es válido según el algoritmo Módulo 11')
+        return false
+      }
+    }
+
     set({ guardando: true })
 
     // 1. Guardar en localStorage

@@ -9,6 +9,7 @@ import { TicketReceiptModal, type TicketData } from '../components/pos/TicketRec
 import { BalanceContableTab } from '../components/reportes/BalanceContableTab'
 import { StockInmovilizadoTab } from '../components/reportes/StockInmovilizadoTab'
 import { useClienteStore } from '../stores/clienteStore'
+import { useCajaStore } from '../stores/cajaStore'
 import { ventaToTicketData } from '../lib/ticketUtils'
 import toast from 'react-hot-toast'
 
@@ -25,6 +26,7 @@ interface VentaResumen {
   total: number
   estado: string
   notas: string | null
+  sesion_caja_id?: string | null
   afip_cae?: string | null
   afip_vto_cae?: string | null
   afip_tipo_comprobante?: number | null
@@ -61,7 +63,7 @@ export function ReportesPage() {
     const { data, error } = await supabase
       .from('ventas')
       .select(`
-        id, fecha_hora, total, estado, notas,
+        id, fecha_hora, total, estado, notas, sesion_caja_id,
         afip_cae, afip_vto_cae, afip_tipo_comprobante, afip_nro_comprobante, afip_qr_url,
         usuario:usuarios(nombre),
         pagos:pagos_venta(medio_pago, monto),
@@ -180,6 +182,40 @@ export function ReportesPage() {
       const pagoCC = ventaParaAnular.pagos.find((p) => p.medio_pago === 'CUENTA_CORRIENTE')
       if (pagoCC) {
         await useClienteStore.getState().revertirCargoVenta(ventaParaAnular.id, pagoCC.monto)
+      }
+
+      // 4. Si la venta tuvo pago en EFECTIVO, asentar el egreso compensatorio en caja
+      const pagoEf = ventaParaAnular.pagos.find((p) => p.medio_pago === 'EFECTIVO')
+      if (pagoEf && pagoEf.monto > 0) {
+        const sesionActiva = useCajaStore.getState().sesionActiva
+        const descMov = `Reintegro en efectivo por anulación de Venta #${ventaParaAnular.id.slice(0, 8).toUpperCase()}`
+        if (sesionActiva) {
+          try {
+            await useCajaStore.getState().registrarMovimientoCaja(
+              'EGRESO',
+              'DEVOLUCION_VENTA',
+              pagoEf.monto,
+              descMov
+            )
+          } catch (errCaja) {
+            console.warn('Error registrando egreso de caja en sesión activa:', errCaja)
+          }
+        } else if (ventaParaAnular.sesion_caja_id && kioscoId) {
+          try {
+            await supabase.from('movimientos_caja').insert({
+              kiosco_id: kioscoId,
+              sesion_caja_id: ventaParaAnular.sesion_caja_id,
+              usuario_id: usuario?.id || null,
+              tipo: 'EGRESO',
+              motivo: 'DEVOLUCION_VENTA',
+              monto: pagoEf.monto,
+              descripcion: descMov,
+              fecha_hora: ahora,
+            })
+          } catch (errCaja) {
+            console.warn('Error registrando egreso compensatorio en Supabase:', errCaja)
+          }
+        }
       }
 
       toast.success('Venta anulada. Stock reincorporado y balance actualizado.')
