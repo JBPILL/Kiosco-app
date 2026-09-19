@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '../../lib/supabase'
 import { useCartStore } from '../../stores/cartStore'
@@ -81,12 +81,13 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   const [pagaCon, setPagaCon] = useState<string>('')
   const [referencia, setReferencia] = useState('')
   const [procesando, setProcesando] = useState(false)
+  const procesandoRef = useRef(false)
 
   // ── Estados para Pago Mixto / Dividido ─────────────────────────────────────
   const [esPagoMixto, setEsPagoMixto] = useState<boolean>(false)
   const [pagosMixtos, setPagosMixtos] = useState<LineaPagoMixto[]>([])
 
-  const totalPagosMixtos = pagosMixtos.reduce((acc, p) => acc + (Number(p.monto) || 0), 0)
+  const totalPagosMixtos = Math.round(pagosMixtos.reduce((acc, p) => acc + (Number(p.monto) || 0), 0))
   const saldoRestanteMixto = Math.round(total) - totalPagosMixtos
   const tieneCuentaCorrienteEnMixto = esPagoMixto && pagosMixtos.some((p) => p.medio_pago === 'CUENTA_CORRIENTE')
 
@@ -202,7 +203,8 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
     : true
 
   const confirmarVenta = async () => {
-    if (!puedeConfirmar) return
+    if (procesandoRef.current || !puedeConfirmar) return
+    procesandoRef.current = true
     setProcesando(true)
     let ventaCreadaId: string | null = null
 
@@ -215,20 +217,30 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       const diasRestantes = useAuthStore.getState().diasRestantes
       const kioscoId = usuario?.kiosco_id || kiosco?.id
 
+      if (!sesionActiva?.id) {
+        toast.error('No hay una caja abierta. Por favor, abrí el turno de caja antes de registrar ventas.')
+        procesandoRef.current = false
+        setProcesando(false)
+        return
+      }
+
       if (!usuario?.es_superadmin && (kiosco?.estado_suscripcion === 'SOLO_LECTURA' || (diasRestantes !== null && diasRestantes < 0))) {
         toast.error('El sistema está en modo Solo Lectura por suscripción vencida. No es posible registrar nuevas ventas.')
+        procesandoRef.current = false
         setProcesando(false)
         return
       }
 
       if (items.length === 0) {
         toast.error('El carrito no contiene productos')
+        procesandoRef.current = false
         setProcesando(false)
         return
       }
 
       if (totalBase < 0 || total < 0) {
         toast.error('El ticket tiene saldo a favor del cliente. Reintegrá el dinero desde "Recibir Envases > Pagar en efectivo" o agregá más productos.')
+        procesandoRef.current = false
         setProcesando(false)
         return
       }
@@ -243,6 +255,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           const dniLimpio = nroDocReceptor.replace(/\D/g, '')
           if (!dniLimpio || dniLimpio.length < 7 || dniLimpio.length > 8) {
             toast.error('Por favor ingresá un número de DNI válido (7 u 8 dígitos) o seleccioná Consumidor Final')
+            procesandoRef.current = false
             setProcesando(false)
             return
           }
@@ -250,6 +263,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           const cuitLimpio = nroDocReceptor.replace(/\D/g, '')
           if (!cuitLimpio || !validarCUIT(cuitLimpio)) {
             toast.error('Por favor ingresá un número de CUIT válido (11 dígitos verificados) o seleccioná Consumidor Final')
+            procesandoRef.current = false
             setProcesando(false)
             return
           }
@@ -279,6 +293,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       if (montoCuentaCorriente > 0) {
         if (!clienteSeleccionadoId || !clienteSeleccionado) {
           toast.error('Debes seleccionar un cliente para imputar a cuenta corriente')
+          procesandoRef.current = false
           setProcesando(false)
           return
         }
@@ -292,6 +307,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             `Atención: Esta venta superará el límite de crédito del cliente (${formatPrecio(clienteSeleccionado.limite_credito)}) por ${superaPor}.\n\n¿Desea autorizar la operación de todas formas?`
           )
           if (!confirmarExceso) {
+            procesandoRef.current = false
             setProcesando(false)
             return
           }
@@ -598,6 +614,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       }
       toast.error(msg, { duration: 6000 })
     } finally {
+      procesandoRef.current = false
       setProcesando(false)
     }
   }

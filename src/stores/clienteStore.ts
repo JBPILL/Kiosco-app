@@ -252,9 +252,25 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
     if (!usuario?.kiosco_id) return false
 
     const cliente = get().clientes.find((c) => c.id === id)
-    if (cliente && cliente.saldo_deudor > 0) {
-      toast.error('No se puede dar de baja un cliente con saldo deudor pendiente')
+    if (cliente && (cliente.saldo_deudor || 0) > 0) {
+      toast.error(`No se puede dar de baja un cliente con saldo deudor pendiente ($${cliente.saldo_deudor})`)
       return false
+    }
+
+    // Verificar en Supabase para evitar eliminar si otro puesto registró deuda
+    try {
+      const { data: cliDB } = await supabase
+        .from('clientes')
+        .select('saldo_deudor')
+        .eq('id', id)
+        .single()
+
+      if (cliDB && (cliDB.saldo_deudor || 0) > 0) {
+        toast.error(`No se puede dar de baja: el cliente posee deuda pendiente ($${cliDB.saldo_deudor})`)
+        return false
+      }
+    } catch (checkErr) {
+      console.warn('Aviso comprobando saldo remoto de cliente:', checkErr)
     }
 
     const actualizados = get().clientes.filter((c) => c.id !== id)

@@ -110,30 +110,8 @@ export function AumentoPreciosModal({
         nuevosPreciosMap.set(p.id, itemUpdate)
       }
 
-      // 2. Sincronizar de inmediato la caché local (kiosko_cache_productos)
-      try {
-        const cachedRaw = localStorage.getItem('kiosko_cache_productos')
-        if (cachedRaw) {
-          const cachedProds: Producto[] = JSON.parse(cachedRaw)
-          const actualizados = cachedProds.map((prod) => {
-            const upd = nuevosPreciosMap.get(prod.id)
-            if (upd) {
-              return {
-                ...prod,
-                precio_venta: upd.precio_venta,
-                precio_costo: upd.precio_costo !== undefined ? upd.precio_costo : prod.precio_costo,
-                fecha_actualizacion: ahora,
-              }
-            }
-            return prod
-          })
-          localStorage.setItem('kiosko_cache_productos', JSON.stringify(actualizados))
-        }
-      } catch (cacheErr) {
-        console.warn('Error sincronizando caché local en aumento masivo:', cacheErr)
-      }
-
-      // 3. Procesar en tandas de 20 para no saturar conexiones remotas
+      // 2. Procesar en tandas de 20 para no saturar conexiones remotas
+      const idsExitosos = new Set<string>()
       const TAMAÑO_LOTE = 20
       for (let i = 0; i < productosAfectados.length; i += TAMAÑO_LOTE) {
         const lote = productosAfectados.slice(i, i + TAMAÑO_LOTE)
@@ -155,12 +133,48 @@ export function AumentoPreciosModal({
               .update(updates)
               .eq('id', p.id)
 
-            if (!error) exitosos++
+            if (!error) {
+              exitosos++
+              idsExitosos.add(p.id)
+            }
           })
         )
       }
 
-      toast.success(`Aumento aplicado exitosamente a ${productosAfectados.length} productos`)
+      // 3. Sincronizar la caché local (kiosko_cache_productos) únicamente con los confirmados
+      try {
+        const cachedRaw = localStorage.getItem('kiosko_cache_productos')
+        if (cachedRaw && idsExitosos.size > 0) {
+          const cachedProds: Producto[] = JSON.parse(cachedRaw)
+          const actualizados = cachedProds.map((prod) => {
+            if (idsExitosos.has(prod.id)) {
+              const upd = nuevosPreciosMap.get(prod.id)
+              if (upd) {
+                return {
+                  ...prod,
+                  precio_venta: upd.precio_venta,
+                  precio_costo: upd.precio_costo !== undefined ? upd.precio_costo : prod.precio_costo,
+                  fecha_actualizacion: ahora,
+                }
+              }
+            }
+            return prod
+          })
+          localStorage.setItem('kiosko_cache_productos', JSON.stringify(actualizados))
+        }
+      } catch (cacheErr) {
+        console.warn('Error sincronizando caché local en aumento masivo:', cacheErr)
+      }
+
+      if (exitosos === productosAfectados.length) {
+        toast.success(`Aumento aplicado exitosamente a ${exitosos} productos`)
+      } else if (exitosos > 0) {
+        toast.success(`Aumento aplicado a ${exitosos} de ${productosAfectados.length} productos`)
+        toast.error('Algunos productos no pudieron actualizarse por error de conexión')
+      } else {
+        toast.error('No se pudo actualizar ningún producto. Verificá la conexión.')
+      }
+
       await onAumentoAplicado()
       onClose()
     } catch (err) {

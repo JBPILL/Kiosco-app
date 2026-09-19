@@ -50,6 +50,11 @@ export function DevolucionModal({
   const [ticketParaVer, setTicketParaVer] = useState<TicketData | null>(null)
 
   const seleccionarVenta = useCallback((ventaEncontrada: VentaConDetalles) => {
+    if (ventaEncontrada.estado === 'ANULADA') {
+      toast.error('Esta venta se encuentra ANULADA y no puede ser devuelta.')
+      return
+    }
+
     setVenta(ventaEncontrada)
     setItems(
       (ventaEncontrada.detalles || [])
@@ -288,6 +293,11 @@ export function DevolucionModal({
                             <span className="text-[10px] uppercase font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700/60 px-1.5 py-0.5 rounded">
                               {medio}
                             </span>
+                            {v.estado === 'ANULADA' && (
+                              <span className="text-[10px] uppercase font-bold text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-950/60 px-1.5 py-0.5 rounded border border-red-200 dark:border-red-800">
+                                Anulada
+                              </span>
+                            )}
                             {v.cliente && (
                               <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
                                 · {v.cliente.nombre}
@@ -316,7 +326,13 @@ export function DevolucionModal({
                             <button
                               type="button"
                               onClick={() => seleccionarVenta(v)}
-                              className="px-3 py-1 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-all shadow-xs"
+                              disabled={v.estado === 'ANULADA'}
+                              className={`px-3 py-1 text-xs font-bold rounded-lg transition-all shadow-xs ${
+                                v.estado === 'ANULADA'
+                                  ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                                  : 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer'
+                              }`}
+                              title={v.estado === 'ANULADA' ? 'Esta venta fue anulada' : 'Seleccionar para devolver'}
                             >
                               Devolver
                             </button>

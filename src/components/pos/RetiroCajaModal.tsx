@@ -53,7 +53,6 @@ export function RetiroCajaModal({ isOpen, onClose }: RetiroCajaModalProps) {
 
   const montoNum = parseFloat(monto) || 0
   const efectivoEnCaja = resumenActivo?.efectivo_esperado_en_caja ?? (sesionActiva?.monto_inicial || 0)
-  const superaEfectivo = !modoCiego && montoNum > efectivoEnCaja
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -64,6 +63,15 @@ export function RetiroCajaModal({ isOpen, onClose }: RetiroCajaModalProps) {
 
     if (montoNum <= 0) {
       toast.error('Por favor ingresá un monto mayor a $0')
+      return
+    }
+
+    if (montoNum > efectivoEnCaja) {
+      toast.error(
+        modoCiego
+          ? 'El monto solicitado supera el efectivo disponible en caja'
+          : `El monto supera el efectivo en caja (${formatPrecio(efectivoEnCaja)})`
+      )
       return
     }
 
@@ -169,9 +177,11 @@ export function RetiroCajaModal({ isOpen, onClose }: RetiroCajaModalProps) {
               ))}
             </div>
 
-            {superaEfectivo && (
-              <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-800 dark:text-amber-300 font-medium">
-                Atención: El monto a retirar ({formatPrecio(montoNum)}) supera el efectivo calculado en caja ({formatPrecio(efectivoEnCaja)}).
+            {montoNum > efectivoEnCaja && (
+              <div className="p-2.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 text-xs text-rose-800 dark:text-rose-300 font-medium">
+                {modoCiego
+                  ? 'Atención: El monto a retirar supera el efectivo disponible en caja.'
+                  : `Atención: El monto a retirar (${formatPrecio(montoNum)}) supera el efectivo disponible en caja (${formatPrecio(efectivoEnCaja)}).`}
               </div>
             )}
           </div>
@@ -227,7 +237,7 @@ export function RetiroCajaModal({ isOpen, onClose }: RetiroCajaModalProps) {
               variant="danger"
               size="md"
               loading={guardando}
-              disabled={montoNum <= 0}
+              disabled={montoNum <= 0 || montoNum > efectivoEnCaja}
             >
               Confirmar Retiro
             </Button>

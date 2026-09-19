@@ -255,10 +255,40 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
       return { success: false, error: 'No se seleccionaron productos para devolver' }
     }
 
+    if (venta.estado === 'ANULADA') {
+      return { success: false, error: 'No es posible procesar una devolución sobre una venta que ya fue anulada' }
+    }
+
+    // Verificar si ya existe devolución registrada para esta venta
+    try {
+      const { data: devExistentes, error: devCheckErr } = await supabase
+        .from('devoluciones_venta')
+        .select('id, monto_total')
+        .eq('venta_id', venta.id)
+
+      if (!devCheckErr && devExistentes && devExistentes.length > 0) {
+        const totalYaDevuelto = devExistentes.reduce((s, d) => s + (d.monto_total || 0), 0)
+        if (totalYaDevuelto >= (venta.total || 0)) {
+          return { success: false, error: 'Esta venta ya ha sido devuelta en su totalidad previamente' }
+        }
+      }
+    } catch (checkErr) {
+      console.warn('Advertencia al verificar devoluciones previas:', checkErr)
+    }
+
     const devolucionId = uuidv4()
     const ahora = new Date().toISOString()
+
+    // Si la venta original tuvo descuento global, prorratear el reintegro proporcionalmente
+    const subtotalOriginal = (venta.detalles || []).reduce(
+      (acc: number, d: any) => acc + (d.subtotal || Math.round((d.cantidad || 0) * (d.precio_unitario || 0))),
+      0
+    )
+    const tieneDescuento = subtotalOriginal > 0 && venta.total < subtotalOriginal
+    const ratioReintegro = tieneDescuento ? Math.max(0, venta.total / subtotalOriginal) : 1
+
     const montoTotal = itemsADevolver.reduce(
-      (acc, it) => acc + Math.round(it.cantidad * it.precioUnitario),
+      (acc, it) => acc + Math.round(it.cantidad * it.precioUnitario * ratioReintegro),
       0
     )
 
@@ -278,7 +308,8 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
         notas: notas || null,
       }
 
-      await supabase.from('devoluciones_venta').insert(payloadDev)
+      const { error: errorDev } = await supabase.from('devoluciones_venta').insert(payloadDev)
+      if (errorDev) throw errorDev
 
       // 2. Insertar detalles de devolución
       const detallesPayload: DetalleDevolucion[] = itemsADevolver.map((it) => ({
@@ -286,12 +317,13 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
         devolucion_id: devolucionId,
         producto_id: it.productoId,
         cantidad: it.cantidad,
-        precio_unitario: it.precioUnitario,
-        subtotal: Math.round(it.cantidad * it.precioUnitario),
+        precio_unitario: Math.round(it.precioUnitario * ratioReintegro),
+        subtotal: Math.round(it.cantidad * it.precioUnitario * ratioReintegro),
         reingresa_stock: it.reingresaStock,
       }))
 
-      await supabase.from('detalles_devolucion').insert(detallesPayload)
+      const { error: errorDet } = await supabase.from('detalles_devolucion').insert(detallesPayload)
+      if (errorDet) throw errorDet
 
       // 3. Reingresar stock físico para los ítems marcados
       for (const it of itemsADevolver) {

@@ -9,6 +9,7 @@ import { TicketReceiptModal, type TicketData } from '../components/pos/TicketRec
 import { BalanceContableTab } from '../components/reportes/BalanceContableTab'
 import { StockInmovilizadoTab } from '../components/reportes/StockInmovilizadoTab'
 import { useClienteStore } from '../stores/clienteStore'
+import { ventaToTicketData } from '../lib/ticketUtils'
 import toast from 'react-hot-toast'
 
 interface ResumenDiario {
@@ -24,6 +25,11 @@ interface VentaResumen {
   total: number
   estado: string
   notas: string | null
+  afip_cae?: string | null
+  afip_vto_cae?: string | null
+  afip_tipo_comprobante?: number | null
+  afip_nro_comprobante?: number | null
+  afip_qr_url?: string | null
   usuario?: { nombre: string }
   pagos: { medio_pago: string; monto: number }[]
   detalles: {
@@ -56,6 +62,7 @@ export function ReportesPage() {
       .from('ventas')
       .select(`
         id, fecha_hora, total, estado, notas,
+        afip_cae, afip_vto_cae, afip_tipo_comprobante, afip_nro_comprobante, afip_qr_url,
         usuario:usuarios(nombre),
         pagos:pagos_venta(medio_pago, monto),
         detalles:detalles_venta(cantidad, precio_unitario, subtotal, producto_id, producto:productos(id, descripcion, stock_actual))
@@ -188,35 +195,7 @@ export function ReportesPage() {
 
   const handleVerTicket = (v: VentaResumen) => {
     const kiosco = useAuthStore.getState().kiosco
-    const medio = v.pagos[0]?.medio_pago ? labelMedioPago(v.pagos[0].medio_pago) : 'Efectivo'
-    const subtotalCalculado = v.detalles.reduce((acc, d) => acc + d.subtotal, 0)
-    const ajusteMonto = v.total - subtotalCalculado
-
-    const ticketData: TicketData = {
-      ventaId: v.id,
-      fecha: v.fecha_hora,
-      items: v.detalles.map((d) => ({
-        descripcion: d.producto?.descripcion || 'Artículo',
-        cantidad: d.cantidad,
-        precioUnitario: d.precio_unitario || (d.cantidad > 0 ? d.subtotal / d.cantidad : 0),
-        subtotal: d.subtotal,
-      })),
-      subtotal: subtotalCalculado,
-      ajuste: Math.abs(ajusteMonto) > 0.01 ? {
-        descripcion: ajusteMonto < 0 ? 'Descuento' : 'Recargo',
-        monto: Math.abs(ajusteMonto),
-        esDescuento: ajusteMonto < 0,
-      } : null,
-      total: v.total,
-      medioPago: medio,
-      kioscoNombre: kiosco?.nombre,
-      kioscoDireccion: kiosco?.direccion,
-      kioscoTelefono: kiosco?.telefono,
-      cajeroNombre: v.usuario?.nombre,
-      notas: v.notas,
-    }
-
-    setTicketParaImprimir(ticketData)
+    setTicketParaImprimir(ventaToTicketData(v, kiosco))
   }
 
   const handleExportarVentasDia = async () => {

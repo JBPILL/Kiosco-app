@@ -302,6 +302,7 @@ export function StockPage() {
         motivo: motivo as any,
         notas: notas.trim() || null,
         usuario_id: usuario?.id || null,
+        fecha: new Date().toISOString(),
       })
 
       if (movError) throw movError
@@ -1391,7 +1392,7 @@ export function StockPage() {
               variant="primary"
               onClick={registrarMovimiento}
               loading={guardando}
-              disabled={!productoSeleccionado || !cantidad || parseInt(cantidad, 10) <= 0}
+              disabled={!productoSeleccionado || !cantidad || parseFloat(cantidad) <= 0}
               className="shadow-xs"
             >
               Confirmar Movimiento

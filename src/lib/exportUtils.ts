@@ -349,7 +349,7 @@ export async function exportarCatalogoExcel(
   productosValidos.forEach((p, idx) => {
     const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
     const catNombre = p.categoria?.nombre || (p.categoria_id ? catMap.get(p.categoria_id) : 'General') || 'General'
-    const margenMonto = Math.max(0, p.precio_venta - (p.precio_costo || 0))
+    const margenMonto = p.precio_venta - (p.precio_costo || 0)
     const margenPorc = p.precio_venta > 0 ? margenMonto / p.precio_venta : 0
     const valCostoProd = (p.stock_actual > 0 ? p.stock_actual : 0) * (p.precio_costo || 0)
 
@@ -1048,7 +1048,7 @@ export async function exportarLibroIvaVentasExcel(
   const totalFacturadoAFIP = ventasFiscales.reduce((s, v) => s + (v.total || 0), 0)
   const cantComprobantes = ventasFiscales.length
   const pvStr = String(kiosco?.afip_punto_venta || 2).padStart(4, '0')
-  const cuitStr = kiosco?.afip_cuit || 'No registrado'
+  const cuitStr = kiosco?.cuit || kiosco?.afip_cuit || 'No registrado'
 
   const fechaGeneracion = new Date().toLocaleDateString('es-AR') + ' ' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
 

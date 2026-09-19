@@ -606,7 +606,7 @@ export function ImportarCatalogoModal({
         if (existente && actualizarExistentes) {
           idsAfectados.add(existente.id)
 
-          await supabase
+          const { error: updErr } = await supabase
             .from('productos')
             .update({
               codigo_barras: barcode || existente.codigo_barras,
@@ -620,6 +620,11 @@ export function ImportarCatalogoModal({
               fecha_actualizacion: ahora,
             })
             .eq('id', existente.id)
+
+          if (updErr) {
+            console.error('Error actualizando producto existente en importación:', existente.id, updErr)
+            continue
+          }
 
           // Registrar movimiento de auditoría si varió el stock
           if (existente.stock_actual !== row.stock_actual) {
