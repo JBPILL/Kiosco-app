@@ -52,15 +52,20 @@ export function DevolucionModal({
   const seleccionarVenta = useCallback((ventaEncontrada: VentaConDetalles) => {
     setVenta(ventaEncontrada)
     setItems(
-      (ventaEncontrada.detalles || []).map((d) => ({
-        productoId: d.producto_id,
-        descripcion: d.producto?.descripcion || 'Artículo',
-        cantidadOriginal: d.cantidad,
-        cantidadDevolver: d.cantidad,
-        precioUnitario: d.precio_unitario,
-        reingresaStock: true,
-        seleccionado: true,
-      }))
+      (ventaEncontrada.detalles || [])
+        .filter((d) => (d.precio_unitario || 0) > 0) // Excluir devoluciones de envases o créditos virtuales
+        .map((d) => {
+          const cantEntera = Math.max(1, Math.floor(d.cantidad))
+          return {
+            productoId: d.producto_id,
+            descripcion: d.producto?.descripcion || 'Artículo',
+            cantidadOriginal: cantEntera,
+            cantidadDevolver: cantEntera,
+            precioUnitario: d.precio_unitario,
+            reingresaStock: true,
+            seleccionado: true,
+          }
+        })
     )
 
     const fueCC = ventaEncontrada.pagos?.some((p) => p.medio_pago === 'CUENTA_CORRIENTE')
@@ -126,12 +131,14 @@ export function DevolucionModal({
     )
   }
 
-  // Modificar cantidad a devolver
+  // Modificar cantidad a devolver (estrictamente números enteros >= 1 y <= cantidadOriginal)
   const actualizarCantidadDevolver = (prodId: string, cantidad: number) => {
     setItems((prev) =>
       prev.map((it) => {
         if (it.productoId === prodId) {
-          const val = Math.max(0.001, Math.min(cantidad, it.cantidadOriginal))
+          const maxVal = Math.max(1, Math.floor(it.cantidadOriginal))
+          const entero = Math.floor(Number(cantidad))
+          const val = isNaN(entero) || entero < 1 ? 1 : Math.min(entero, maxVal)
           return { ...it, cantidadDevolver: val }
         }
         return it
@@ -408,19 +415,49 @@ export function DevolucionModal({
                                 Original en ticket: {it.cantidadOriginal} un.
                               </p>
                             </td>
-                            <td className="px-2 py-2 text-center">
-                              <input
-                                type="number"
-                                min="0.001"
-                                max={it.cantidadOriginal}
-                                step={it.cantidadOriginal % 1 !== 0 ? '0.05' : '1'}
-                                disabled={!it.seleccionado}
-                                value={it.cantidadDevolver}
-                                onChange={(e) =>
-                                  actualizarCantidadDevolver(it.productoId, parseFloat(e.target.value) || 1)
-                                }
-                                className="w-16 text-center text-xs py-1 px-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-bold outline-none"
-                              />
+                            <td className="px-2 py-2 text-center whitespace-nowrap">
+                              <div className="inline-flex items-center justify-center border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden bg-white dark:bg-gray-800 shadow-2xs">
+                                <button
+                                  type="button"
+                                  disabled={!it.seleccionado || it.cantidadDevolver <= 1}
+                                  onClick={() => actualizarCantidadDevolver(it.productoId, it.cantidadDevolver - 1)}
+                                  className="px-2 py-1 text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed font-bold text-xs transition-colors"
+                                  title="Restar 1 unidad"
+                                >
+                                  -
+                                </button>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
+                                  disabled={!it.seleccionado}
+                                  value={it.cantidadDevolver}
+                                  onKeyDown={(e) => {
+                                    if (['-', '+', '.', ',', 'e', 'E'].includes(e.key)) {
+                                      e.preventDefault()
+                                    }
+                                  }}
+                                  onChange={(e) => {
+                                    const raw = e.target.value.replace(/[^0-9]/g, '')
+                                    if (raw === '') {
+                                      actualizarCantidadDevolver(it.productoId, 1)
+                                      return
+                                    }
+                                    const parsed = parseInt(raw, 10)
+                                    actualizarCantidadDevolver(it.productoId, isNaN(parsed) ? 1 : parsed)
+                                  }}
+                                  className="w-9 text-center text-xs py-1 px-0.5 bg-transparent text-gray-900 dark:text-gray-100 font-bold outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={!it.seleccionado || it.cantidadDevolver >= Math.floor(it.cantidadOriginal)}
+                                  onClick={() => actualizarCantidadDevolver(it.productoId, it.cantidadDevolver + 1)}
+                                  className="px-2 py-1 text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed font-bold text-xs transition-colors"
+                                  title="Sumar 1 unidad"
+                                >
+                                  +
+                                </button>
+                              </div>
                             </td>
                             <td className="px-2 py-2 text-right font-mono text-gray-600 dark:text-gray-300 whitespace-nowrap">
                               {formatPrecio(it.precioUnitario)}
