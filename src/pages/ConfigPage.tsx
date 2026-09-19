@@ -291,6 +291,7 @@ export function ConfigPage() {
         .from('productos')
         .select('*, categoria:categorias(*)')
         .eq('kiosco_id', usuario.kiosco_id)
+        .eq('activo', true)
       if (pErr) throw pErr
 
       const { data: cats } = await supabase

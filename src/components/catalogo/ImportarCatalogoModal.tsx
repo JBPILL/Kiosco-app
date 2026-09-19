@@ -362,6 +362,12 @@ export function ImportarCatalogoModal({
           const stockActual = indices.stock_actual >= 0 ? parsearNumero(fila[indices.stock_actual]) : 0
           const stockMinimo = indices.stock_minimo >= 0 ? Math.max(0, parsearNumero(fila[indices.stock_minimo])) : 0
 
+          // Omitir devoluciones de envases o artículos virtuales ad-hoc
+          const descNorm = descripcion.toLowerCase()
+          if (descNorm.startsWith('devolución') || descNorm.startsWith('devolucion') || (stockActual > 90000 && !codigoBarras)) {
+            continue
+          }
+
           let esValido = true
           let error: string | undefined
           if (!descripcion) {
@@ -442,9 +448,14 @@ export function ImportarCatalogoModal({
             const stockActual = indices.stock_actual >= 0 ? parsearNumero(columnas[indices.stock_actual]) : 0
             const stockMinimo = indices.stock_minimo >= 0 ? Math.max(0, parsearNumero(columnas[indices.stock_minimo])) : 0
 
+            // Omitir devoluciones de envases o artículos virtuales ad-hoc
+            const descNorm = descripcion.toLowerCase()
+            if (descNorm.startsWith('devolución') || descNorm.startsWith('devolucion') || (stockActual > 90000 && !codigoBarras)) {
+              continue
+            }
+
             let esValido = true
             let error: string | undefined
-
             if (!descripcion) {
               esValido = false
               error = 'Falta descripción'

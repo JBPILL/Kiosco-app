@@ -249,10 +249,19 @@ export async function exportarCatalogoExcel(
   const catMap = new Map<string, string>()
   categorias.forEach((c) => catMap.set(c.id, c.nombre))
 
-  const totalArticulos = productos.length
-  const totalUnidades = productos.reduce((s, p) => s + Math.max(0, p.stock_actual || 0), 0)
-  const valuacionCosto = productos.reduce((s, p) => s + (p.stock_actual > 0 ? p.stock_actual * (p.precio_costo || 0) : 0), 0)
-  const valuacionVenta = productos.reduce((s, p) => s + (p.stock_actual > 0 ? p.stock_actual * (p.precio_venta || 0) : 0), 0)
+  // Filtrar exclusivamente productos comerciales activos (excluyendo devoluciones de envases y artículos virtuales)
+  const productosValidos = productos.filter((p) => {
+    if (p.activo === false) return false
+    const desc = (p.descripcion || '').toLowerCase().trim()
+    if (desc.startsWith('devolución') || desc.startsWith('devolucion')) return false
+    if (p.stock_actual > 90000 && !p.codigo_barras) return false
+    return true
+  })
+
+  const totalArticulos = productosValidos.length
+  const totalUnidades = productosValidos.reduce((s, p) => s + Math.max(0, p.stock_actual || 0), 0)
+  const valuacionCosto = productosValidos.reduce((s, p) => s + (p.stock_actual > 0 ? p.stock_actual * (p.precio_costo || 0) : 0), 0)
+  const valuacionVenta = productosValidos.reduce((s, p) => s + (p.stock_actual > 0 ? p.stock_actual * (p.precio_venta || 0) : 0), 0)
   const margenPotencial = valuacionVenta - valuacionCosto
 
   const fechaGeneracion = new Date().toLocaleDateString('es-AR') + ' ' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
@@ -332,7 +341,7 @@ export async function exportarCatalogoExcel(
     ] as Row,
   ]
 
-  productos.forEach((p, idx) => {
+  productosValidos.forEach((p, idx) => {
     const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
     const catNombre = p.categoria?.nombre || (p.categoria_id ? catMap.get(p.categoria_id) : 'General') || 'General'
     const margenMonto = Math.max(0, p.precio_venta - (p.precio_costo || 0))
