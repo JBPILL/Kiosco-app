@@ -893,20 +893,21 @@ export function ProveedoresPage() {
     <div className="max-w-6xl mx-auto space-y-4">
       {/* Encabezado */}
       <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 sm:gap-4">
-        <div>
+        <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
             Proveedores y Compras
           </h1>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">
-            Recepción de mercadería, pistola lectora, alta al vuelo y control de remitos
+            Recepción de mercadería, remitos y control de pagos
           </p>
         </div>
 
-        {/* Pestañas de navegación */}
-        <div className="flex items-center flex-nowrap overflow-x-auto scrollbar-hide max-w-full bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 self-start xl:self-auto gap-1">
+        {/* Pestañas de navegación compactas y sin desborde */}
+        <div className="flex items-center flex-nowrap overflow-x-auto scrollbar-hide max-w-full bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 shrink-0 self-start xl:self-auto gap-1">
           <button
+            type="button"
             onClick={() => setTabActiva('directorio')}
-            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 ${
+            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer ${
               tabActiva === 'directorio'
                 ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
@@ -915,34 +916,40 @@ export function ProveedoresPage() {
             Directorio ({totalProveedores})
           </button>
           <button
+            type="button"
             onClick={() => setTabActiva('nueva_compra')}
-            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 ${
+            title="Cargar nueva compra o remito de proveedor"
+            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer ${
               tabActiva === 'nueva_compra'
                 ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
             }`}
           >
-            Nueva Compra / Remito
+            Nueva Compra
           </button>
           <button
+            type="button"
             onClick={() => setTabActiva('historial')}
-            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 ${
+            title="Historial de comprobantes y remitos"
+            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer ${
               tabActiva === 'historial'
                 ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
             }`}
           >
-            Historial Compras ({compras.length})
+            Compras ({compras.length})
           </button>
           <button
+            type="button"
             onClick={() => setTabActiva('pagos')}
-            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 ${
+            title="Historial de pagos a proveedores y recibos"
+            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer ${
               tabActiva === 'pagos'
                 ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
             }`}
           >
-            Historial de Pagos ({pagos.length})
+            Pagos ({pagos.length})
           </button>
         </div>
       </div>
