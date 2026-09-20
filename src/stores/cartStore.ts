@@ -250,7 +250,9 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   agregarProducto: (producto: Producto, cantidad: number = 1) => {
-    const cantAgregar = cantidad > 0 ? cantidad : 1
+    let cantAgregar = cantidad > 0 ? cantidad : 1
+    const tieneStockLimitado = !producto.es_pesable && producto.stock_actual > 0 && producto.stock_actual !== 99999
+
     // Si el producto figura con stock 0 en sistema, emitir aviso pero permitir agregarlo
     if (producto.stock_actual <= 0) {
       toast(`Aviso: "${producto.descripcion}" figura con stock 0 (se registrará con stock negativo)`, {
@@ -258,17 +260,37 @@ export const useCartStore = create<CartState>((set, get) => ({
       })
     }
 
+    // Si tiene stock limitado y ya no hay stock para sumar en el ticket actual
+    const stateActual = get()
+    const existenteActual = stateActual.items.find((item) => item.producto.id === producto.id)
+    if (tieneStockLimitado && existenteActual && existenteActual.cantidad >= producto.stock_actual) {
+      toast.error(
+        `Stock máximo alcanzado: Ya tenés el total (${producto.stock_actual} u.) de "${producto.descripcion}" en el ticket.`,
+        { id: `stock-max-${producto.id}`, duration: 3500 }
+      )
+      return
+    }
+
     set((state) => {
       const existente = state.items.find((item) => item.producto.id === producto.id)
       let nuevosItems: ItemCarrito[] = []
 
       if (existente) {
-        const nuevaCantidad = Number((existente.cantidad + cantAgregar).toFixed(3))
-        if (producto.stock_actual > 0 && nuevaCantidad > producto.stock_actual) {
-          toast(
-            `Aviso: Superando stock disponible de "${producto.descripcion}" (${producto.stock_actual} en sistema)`,
-            { duration: 3000 }
+        let nuevaCantidad = Number((existente.cantidad + cantAgregar).toFixed(3))
+        if (tieneStockLimitado && nuevaCantidad > producto.stock_actual) {
+          const restante = Math.max(0, producto.stock_actual - existente.cantidad)
+          if (restante <= 0) {
+            toast.error(
+              `Stock máximo alcanzado: Ya tenés el total (${producto.stock_actual} u.) de "${producto.descripcion}" en el ticket.`,
+              { id: `stock-max-${producto.id}`, duration: 3500 }
+            )
+            return state
+          }
+          toast.error(
+            `Stock insuficiente: Solo podés sumar ${restante} u. más de "${producto.descripcion}" (Stock total: ${producto.stock_actual})`,
+            { id: `stock-max-${producto.id}`, duration: 3500 }
           )
+          nuevaCantidad = producto.stock_actual
         }
 
         nuevosItems = state.items.map((item) => {
@@ -278,6 +300,13 @@ export const useCartStore = create<CartState>((set, get) => ({
           return itemAct
         })
       } else {
+        if (tieneStockLimitado && cantAgregar > producto.stock_actual) {
+          toast.error(
+            `Stock insuficiente: Solo hay ${producto.stock_actual} u. de "${producto.descripcion}". Se cargó el máximo disponible.`,
+            { id: `stock-max-${producto.id}`, duration: 3500 }
+          )
+          cantAgregar = producto.stock_actual
+        }
         const cantRedondeada = Number(cantAgregar.toFixed(3))
         const nuevoItem: ItemCarrito = {
           producto,
@@ -413,13 +442,16 @@ export const useCartStore = create<CartState>((set, get) => ({
 
     const state = get()
     const itemTarget = state.items.find((it) => it.producto.id === productoId)
-    const cantidadAjustada = cantidad
+    let cantidadAjustada = cantidad
 
-    if (itemTarget && itemTarget.producto.stock_actual > 0 && cantidad > itemTarget.producto.stock_actual) {
-      toast(
-        `Aviso: Superando stock disponible de "${itemTarget.producto.descripcion}" (${itemTarget.producto.stock_actual} en sistema)`,
-        { duration: 3000 }
-      )
+    if (itemTarget && !itemTarget.producto.es_pesable && itemTarget.producto.stock_actual > 0 && itemTarget.producto.stock_actual !== 99999) {
+      if (cantidad > itemTarget.producto.stock_actual) {
+        toast.error(
+          `Stock máximo alcanzado: No podés superar las ${itemTarget.producto.stock_actual} unidades disponibles de "${itemTarget.producto.descripcion}".`,
+          { id: `stock-max-${productoId}`, duration: 3500 }
+        )
+        cantidadAjustada = itemTarget.producto.stock_actual
+      }
     }
 
     const nuevos = state.items.map((item) => {

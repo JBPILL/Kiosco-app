@@ -2,6 +2,7 @@ import { useRef, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import type { Producto } from '../../types/database'
 import { formatPrecio } from '../../lib/utils'
+import { useCartStore } from '../../stores/cartStore'
 
 interface FavoritesGridProps {
   productos: Producto[]
@@ -10,6 +11,7 @@ interface FavoritesGridProps {
 
 export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const itemsTicket = useCartStore((s) => s.items)
 
   // Escuchar evento para enfocar el primer producto de la grilla
   useEffect(() => {
@@ -30,6 +32,26 @@ export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
     if (width >= 768) return 4
     if (width >= 640) return 3
     return 2
+  }
+
+  const handleItemSelect = (prod: Producto) => {
+    if (prod.stock_actual <= 0) {
+      toast.error(`"${prod.descripcion}" no tiene stock disponible (0 unidades)`)
+      return
+    }
+
+    const itemEnTicket = itemsTicket.find((it) => it.producto.id === prod.id)
+    const cantEnTicket = itemEnTicket ? itemEnTicket.cantidad : 0
+    const tieneStockLimitado = !prod.es_pesable && prod.stock_actual > 0 && prod.stock_actual !== 99999
+
+    if (tieneStockLimitado && cantEnTicket >= prod.stock_actual) {
+      toast.error(`"${prod.descripcion}" ya alcanzó el stock máximo disponible en el ticket (${prod.stock_actual} u.)`, {
+        id: `grid-stock-${prod.id}`,
+      })
+      return
+    }
+
+    onSelect(prod)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent, index: number, prod: Producto) => {
@@ -64,11 +86,7 @@ export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
       }
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
-      if (prod.stock_actual <= 0) {
-        toast.error(`"${prod.descripcion}" no tiene stock disponible (0 unidades)`)
-        return
-      }
-      onSelect(prod)
+      handleItemSelect(prod)
     }
   }
 
@@ -86,27 +104,42 @@ export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
       {productos.map((prod, index) => {
         const sinStock = prod.stock_actual <= 0
         const stockBajo = prod.stock_actual <= prod.stock_minimo && prod.stock_actual > 0
+        const itemEnTicket = itemsTicket.find((it) => it.producto.id === prod.id)
+        const cantEnTicket = itemEnTicket ? itemEnTicket.cantidad : 0
+        const tieneStockLimitado = !prod.es_pesable && prod.stock_actual > 0 && prod.stock_actual !== 99999
+        const stockMaxAlcanzado = tieneStockLimitado && cantEnTicket >= prod.stock_actual
+        const bloqueado = sinStock || stockMaxAlcanzado
 
         return (
           <button
             key={prod.id}
             ref={(el) => { buttonRefs.current[index] = el }}
-            onClick={() => {
-              if (sinStock) {
-                toast.error(`"${prod.descripcion}" no tiene stock disponible (0 unidades)`)
-                return
-              }
-              onSelect(prod)
-            }}
+            onClick={() => handleItemSelect(prod)}
             onKeyDown={(e) => handleKeyDown(e, index, prod)}
-            disabled={sinStock}
+            disabled={bloqueado}
             className={`group relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-xl text-center
               border transition-all duration-100 min-h-[66px] sm:min-h-[72px] select-none ${
                 sinStock
                   ? 'opacity-40 cursor-not-allowed border-dashed border-gray-300 dark:border-gray-700 bg-gray-100/50 dark:bg-gray-800/40'
+                  : stockMaxAlcanzado
+                  ? 'opacity-50 cursor-not-allowed border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/30'
                   : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/40 dark:hover:bg-gray-700/60 active:scale-95 cursor-pointer focus:outline-hidden focus:z-10 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-indigo-50/90 dark:focus:bg-gray-700'
               }`}
           >
+            {/* Badge de cantidad presente en el ticket */}
+            {cantEnTicket > 0 && !sinStock && (
+              <span
+                className={`absolute top-1 right-1 px-1.5 py-0.2 text-[9px] font-bold rounded-full shadow-xs ${
+                  stockMaxAlcanzado
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-indigo-600 text-white'
+                }`}
+                title={`Tenés ${cantEnTicket} unidad(es) de este producto en el ticket actual`}
+              >
+                {cantEnTicket}
+              </span>
+            )}
+
             <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 group-focus:text-indigo-950 dark:group-focus:text-white line-clamp-2 leading-tight">
               {prod.descripcion}
             </span>
@@ -114,10 +147,14 @@ export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
               {formatPrecio(prod.precio_venta)}
             </span>
 
-            {/* Indicador de stock actual */}
+            {/* Indicador de stock actual y estado en ticket */}
             {sinStock ? (
               <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 font-bold mt-1">
                 Sin stock
+              </span>
+            ) : stockMaxAlcanzado ? (
+              <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-bold mt-1">
+                Máx en ticket ({prod.stock_actual})
               </span>
             ) : stockBajo ? (
               <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-bold mt-1">

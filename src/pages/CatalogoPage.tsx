@@ -63,8 +63,8 @@ export function CatalogoPage() {
     <div className="max-w-6xl mx-auto space-y-3.5">
       <div className="flex flex-col 2xl:flex-row 2xl:items-center 2xl:justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">Catálogo de Productos</h1>
-          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Administrá tus productos, precios y categorías</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">Catálogo de Productos</h1>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">Administrá tus productos, precios y categorías</p>
         </div>
         {/* Grupos de botones ordenados estilo Proveedores */}
         <div className="flex flex-wrap items-center gap-2.5 self-start 2xl:self-auto max-w-full">

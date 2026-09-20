@@ -5,6 +5,7 @@ import type { Producto } from '../../types/database'
 import { formatPrecio } from '../../lib/utils'
 import { SearchInput } from '../ui/SearchInput'
 import { buscarProductoPorCodigoBalanza } from '../../lib/barcodeParser'
+import { useCartStore } from '../../stores/cartStore'
 
 interface ProductSearchProps {
   onSelect: (producto: Producto, cantidad?: number) => void
@@ -23,70 +24,59 @@ export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
   useEffect(() => {
     const handleFocus = () => {
       inputRef.current?.focus()
-      inputRef.current?.select()
     }
     window.addEventListener('pos-focus-search', handleFocus)
     return () => window.removeEventListener('pos-focus-search', handleFocus)
   }, [])
 
-  // Buscar productos mientras se escribe o escanea (Cache-First offline + Supabase)
+  // Buscar productos
   const buscar = useCallback(async (texto: string) => {
-    const queryTrim = texto.trim().toLowerCase()
-    if (queryTrim.length < 2) {
+    if (!texto.trim()) {
       setResultados([])
+      setMostrarResultados(false)
       return
     }
 
-    // 1. Búsqueda instantánea en caché local (offline-first, < 2ms)
+    const q = texto.trim()
+
+    // 1. Intentar buscar primero en la caché local para respuesta instantánea (< 2ms)
     let locales: Producto[] = []
     try {
       const cached = localStorage.getItem('kiosko_cache_productos')
       if (cached) {
-        const todos: Producto[] = JSON.parse(cached)
-        locales = todos
-          .filter((p) => {
-            if (!p.activo) return false
-            const matchDesc = p.descripcion?.toLowerCase().includes(queryTrim)
-            const matchCod = p.codigo_barras?.toLowerCase().includes(queryTrim)
-            const matchPlu = p.plu_balanza?.toLowerCase().includes(queryTrim)
-            return matchDesc || matchCod || matchPlu
-          })
-          .slice(0, 8)
+        locales = JSON.parse(cached)
       }
-    } catch {
-      // Ignorar error de parsing
-    }
+    } catch {}
 
     if (locales.length > 0) {
-      setResultados(locales)
-      setSelectedIndex(0)
+      const qLower = q.toLowerCase()
+      const matches = locales.filter((p) => {
+        if (!p.activo) return false
+        const matchDesc = p.descripcion.toLowerCase().includes(qLower)
+        const matchCode = p.codigo_barras?.toLowerCase().includes(qLower) || false
+        const matchPlu = p.plu_balanza?.toLowerCase().includes(qLower) || false
+        return matchDesc || matchCode || matchPlu
+      }).slice(0, 8)
+
+      if (matches.length > 0) {
+        setResultados(matches)
+        setSelectedIndex(0)
+        setMostrarResultados(true)
+        return
+      }
     }
 
-    // 2. Consulta en red a Supabase para sincronizar datos remotos
-    try {
-      let queryBuilder = supabase
-        .from('productos')
-        .select('*, categoria:categorias(nombre, color)')
-        .eq('activo', true)
+    // 2. Si no hubo coincidencias en memoria local o no hay caché, consultar Supabase
+    const { data } = await supabase
+      .from('productos')
+      .select('*, categoria:categorias(nombre, color)')
+      .eq('activo', true)
+      .or(`descripcion.ilike.%${q}%,codigo_barras.ilike.%${q}%,plu_balanza.ilike.%${q}%`)
+      .limit(8)
 
-      if (/^\d+$/.test(queryTrim)) {
-        queryBuilder = queryBuilder.or(`codigo_barras.ilike.%${queryTrim}%,descripcion.ilike.%${queryTrim}%`)
-      } else {
-        queryBuilder = queryBuilder.ilike('descripcion', `%${queryTrim}%`)
-      }
-
-      const { data, error } = await queryBuilder
-        .order('es_favorito', { ascending: false })
-        .limit(8)
-
-      if (!error && data && data.length > 0) {
-        setResultados(data)
-      } else if (locales.length === 0 && (!data || data.length === 0)) {
-        setResultados([])
-      }
-    } catch {
-      // Si falla la red o está offline, se conservan los resultados locales
-    }
+    setResultados(data || [])
+    setSelectedIndex(0)
+    setMostrarResultados(true)
   }, [])
 
   // Debounce de búsqueda
@@ -98,6 +88,18 @@ export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
   }, [query, buscar])
 
   const seleccionar = (producto: Producto) => {
+    const itemEnTicket = useCartStore.getState().items.find((it) => it.producto.id === producto.id)
+    const cantEnTicket = itemEnTicket ? itemEnTicket.cantidad : 0
+    const tieneStockLimitado = !producto.es_pesable && producto.stock_actual > 0 && producto.stock_actual !== 99999
+
+    if (tieneStockLimitado && cantEnTicket >= producto.stock_actual) {
+      toast.error(
+        `Stock máximo alcanzado: Ya tenés el total (${producto.stock_actual} u.) de "${producto.descripcion}" en el ticket.`,
+        { id: `search-stock-${producto.id}` }
+      )
+      return
+    }
+
     if (producto.stock_actual <= 0) {
       toast(`Aviso: "${producto.descripcion}" figura con stock 0 (se registrará con stock negativo)`, { duration: 3500 })
     }
@@ -198,34 +200,52 @@ export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
       {/* Dropdown de resultados */}
       {mostrarResultados && resultados.length > 0 && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg z-30 max-h-80 overflow-y-auto">
-          {resultados.map((prod, idx) => (
-            <button
-              key={prod.id}
-              onClick={() => seleccionar(prod)}
-              className={`w-full flex items-center justify-between px-4 py-3 text-left hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors ${
-                idx === selectedIndex ? 'bg-indigo-50 dark:bg-indigo-900/30' : ''
-              } ${idx < resultados.length - 1 ? 'border-b border-gray-100 dark:border-gray-700' : ''}`}
-            >
-              <div>
-                <span className="font-medium text-gray-900 dark:text-gray-100">{prod.descripcion}</span>
-                {prod.categoria && (
-                  <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">{prod.categoria.nombre}</span>
-                )}
-                <span className={`block text-xs mt-0.5 ${
-                  prod.stock_actual <= 0
-                    ? 'text-red-600 dark:text-red-400 font-bold'
-                    : prod.stock_actual <= prod.stock_minimo
-                    ? 'text-amber-600 dark:text-amber-400 font-medium'
-                    : 'text-gray-400 dark:text-gray-500'
-                }`}>
-                  {prod.stock_actual <= 0 ? 'Sin stock (0)' : `Stock: ${prod.stock_actual}`}
+          {resultados.map((prod, idx) => {
+            const itemEnTicket = useCartStore.getState().items.find((it) => it.producto.id === prod.id)
+            const cantEnTicket = itemEnTicket ? itemEnTicket.cantidad : 0
+            const tieneStockLimitado = !prod.es_pesable && prod.stock_actual > 0 && prod.stock_actual !== 99999
+            const stockMaxAlcanzado = tieneStockLimitado && cantEnTicket >= prod.stock_actual
+
+            return (
+              <button
+                key={prod.id}
+                onClick={() => seleccionar(prod)}
+                className={`w-full flex items-center justify-between px-4 py-3 text-left hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors ${
+                  idx === selectedIndex ? 'bg-indigo-50 dark:bg-indigo-900/30' : ''
+                } ${stockMaxAlcanzado ? 'opacity-60 bg-amber-50/40 dark:bg-amber-950/20' : ''} ${idx < resultados.length - 1 ? 'border-b border-gray-100 dark:border-gray-700' : ''}`}
+              >
+                <div>
+                  <span className="font-medium text-gray-900 dark:text-gray-100">{prod.descripcion}</span>
+                  {prod.categoria && (
+                    <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">{prod.categoria.nombre}</span>
+                  )}
+                  {cantEnTicket > 0 && (
+                    <span className="ml-2 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
+                      {cantEnTicket} en ticket
+                    </span>
+                  )}
+                  <span className={`block text-xs mt-0.5 ${
+                    prod.stock_actual <= 0
+                      ? 'text-red-600 dark:text-red-400 font-bold'
+                      : stockMaxAlcanzado
+                      ? 'text-amber-600 dark:text-amber-400 font-bold'
+                      : prod.stock_actual <= prod.stock_minimo
+                      ? 'text-amber-600 dark:text-amber-400 font-medium'
+                      : 'text-gray-400 dark:text-gray-500'
+                  }`}>
+                    {prod.stock_actual <= 0
+                      ? 'Sin stock (0)'
+                      : stockMaxAlcanzado
+                      ? `Máximo en ticket (${prod.stock_actual} u.)`
+                      : `Stock: ${prod.stock_actual}`}
+                  </span>
+                </div>
+                <span className="font-bold text-indigo-600 dark:text-indigo-400 whitespace-nowrap ml-3">
+                  {formatPrecio(prod.precio_venta)}
                 </span>
-              </div>
-              <span className="font-bold text-indigo-600 dark:text-indigo-400 whitespace-nowrap ml-3">
-                {formatPrecio(prod.precio_venta)}
-              </span>
-            </button>
-          ))}
+              </button>
+            )
+          })}
         </div>
       )}
 

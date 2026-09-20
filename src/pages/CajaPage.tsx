@@ -289,7 +289,7 @@ export function CajaPage() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
             Control de Caja y Arqueo
           </h1>
-          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">
             Apertura de turno, control de efectivo y arqueo al cierre
           </p>
         </div>

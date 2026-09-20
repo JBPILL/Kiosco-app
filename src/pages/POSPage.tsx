@@ -408,19 +408,12 @@ export function POSPage() {
                 onOpenScanner={() => setModalScannerOpen(true)}
               />
             </div>
-            {/* Fila 2: Botones de acción con scroll horizontal en resoluciones bajas */}
-            <div
-              onWheel={(e) => {
-                if (e.deltaY !== 0) {
-                  e.currentTarget.scrollLeft += e.deltaY
-                }
-              }}
-              className="flex items-center gap-1.5 overflow-x-auto pb-1 scroll-smooth min-w-0"
-            >
+            {/* Fila 2: Botones de acción responsive adaptables a notebooks y pantallas compactas */}
+            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
               <button
                 type="button"
                 onClick={() => setModalLibreOpen(true)}
-                className="h-9 px-3 flex items-center gap-1 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
+                className="h-8 sm:h-9 px-2.5 sm:px-3 flex items-center gap-1 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs cursor-pointer"
                 title="Cobrar concepto o monto libre sin código (Varios, fotocopias, etc.)"
               >
                 <span className="text-sm font-bold leading-none">+</span>
@@ -433,7 +426,7 @@ export function POSPage() {
                   if (kid) cargarPromociones(kid)
                   setModalPromosOpen(true)
                 }}
-                className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-teal-300 dark:border-teal-700 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
+                className="h-8 sm:h-9 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border border-teal-300 dark:border-teal-700 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs cursor-pointer"
                 title="Ver combos armados y promociones vigentes"
               >
                 <span>Combos / Promos</span>
@@ -446,7 +439,7 @@ export function POSPage() {
               <button
                 type="button"
                 onClick={() => setModalTicketsOpen(true)}
-                className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
+                className="h-8 sm:h-9 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs cursor-pointer"
                 title="Historial de comprobantes, reimpresión de tickets y devoluciones"
               >
                 <span>Comprobantes</span>
@@ -454,7 +447,7 @@ export function POSPage() {
               <button
                 type="button"
                 onClick={() => setModalEnvaseOpen(true)}
-                className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-emerald-50/80 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
+                className="h-8 sm:h-9 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-emerald-50/80 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs cursor-pointer"
                 title="Registrar recepción de envases retornables vacíos"
               >
                 <span>Recibir envase</span>
@@ -462,13 +455,11 @@ export function POSPage() {
               <button
                 type="button"
                 onClick={() => setModalRetiroOpen(true)}
-                className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50/90 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 text-amber-800 dark:text-amber-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs flex-shrink-0 cursor-pointer"
+                className="h-8 sm:h-9 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50/90 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 text-amber-800 dark:text-amber-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs cursor-pointer"
                 title="Extracción rápida de efectivo del cajón / pago a proveedores (Alt+E o F9)"
               >
                 <span>Retiro / Caja</span>
               </button>
-              {/* Espacio final de resguardo para que el último botón no se solape ni quede cortado */}
-              <div className="w-8 shrink-0 h-1 pointer-events-none" aria-hidden="true" />
             </div>
           </div>
 
@@ -479,7 +470,7 @@ export function POSPage() {
                 e.currentTarget.scrollLeft += e.deltaY
               }
             }}
-            className="flex items-center gap-1.5 overflow-x-auto pb-2 scroll-smooth min-w-0 mb-2"
+            className="flex items-center gap-1.5 overflow-x-auto pb-2 scroll-smooth min-w-0 mb-2 scrollbar-hide"
           >
             {/* Botón de ventas en espera si existen */}
             {ventasEnEspera.length > 0 && (

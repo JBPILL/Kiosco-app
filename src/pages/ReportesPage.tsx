@@ -264,7 +264,7 @@ export function ReportesPage() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
             Reportes y Contabilidad
           </h1>
-          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">
             {tabActiva === 'ventas'
               ? 'Detalle de tickets y facturación diaria por jornada'
               : 'Balance financiero, compras a proveedores y libro diario contable'}

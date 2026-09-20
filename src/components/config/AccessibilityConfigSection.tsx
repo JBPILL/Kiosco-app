@@ -1,13 +1,11 @@
 import React from 'react'
 import { useFontSizeStore, FONT_SIZE_OPTIONS, type FontSizeLevel } from '../../stores/fontSizeStore'
-import { useThemeStore } from '../../stores/themeStore'
 import { Button } from '../ui/Button'
 import toast from 'react-hot-toast'
 
 export const AccessibilityConfigSection: React.FC = () => {
   const { fontSize, setFontSize, increaseFontSize, decreaseFontSize, resetFontSize } =
     useFontSizeStore()
-  const { tema, toggleTema } = useThemeStore()
 
   const currentOption =
     FONT_SIZE_OPTIONS.find((opt) => opt.id === fontSize) || FONT_SIZE_OPTIONS[1]
@@ -257,26 +255,6 @@ export const AccessibilityConfigSection: React.FC = () => {
         <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
           💡 <strong>Nota de uso:</strong> Esta preferencia se guarda individualmente en cada dispositivo (navegador o equipo de mostrador), permitiendo que una pantalla táctil de cobro use <em>Grande o Extra Grande</em> para mayor comodidad visual, mientras que una computadora de oficina puede mantener el modo <em>Normal</em>.
         </p>
-      </div>
-
-      {/* Control de Contraste y Tema Oscuro / Claro integrado */}
-      <div className="pt-2 border-t border-gray-100 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <span className="text-sm font-bold text-gray-900 dark:text-gray-100 block">
-            Contraste de Pantalla (Tema)
-          </span>
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            Alterná entre fondo claro de alto contraste o modo oscuro descansado.
-          </span>
-        </div>
-
-        <button
-          type="button"
-          onClick={toggleTema}
-          className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 transition-colors self-start sm:self-auto cursor-pointer"
-        >
-          <span>{tema === 'dark' ? '☀️ Modo Claro' : '🌙 Modo Oscuro'}</span>
-        </button>
       </div>
     </div>
   )
