@@ -61,13 +61,13 @@ export function CatalogoPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-3.5">
-      <div className="flex flex-col 2xl:flex-row 2xl:items-center 2xl:justify-between gap-3 sm:gap-4">
+      <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 sm:gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">Catálogo de Productos</h1>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">Administrá tus productos, precios y categorías</p>
         </div>
         {/* Grupos de botones ordenados estilo Proveedores */}
-        <div className="flex flex-wrap items-center gap-2.5 self-start 2xl:self-auto max-w-full">
+        <div className="flex flex-wrap items-center gap-2.5 self-start xl:self-auto max-w-full">
           {/* Grupo 1: Precios y Góndola */}
           <div className="flex items-center flex-nowrap overflow-x-auto scrollbar-hide max-w-full bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1">
             <button

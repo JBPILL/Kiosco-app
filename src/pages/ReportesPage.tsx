@@ -259,7 +259,7 @@ export function ReportesPage() {
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       {/* Encabezado con selector de pestañas para Dueño y Visor */}
-      <div className="flex flex-col 2xl:flex-row 2xl:items-center 2xl:justify-between gap-3 sm:gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
             Reportes y Contabilidad
@@ -272,7 +272,7 @@ export function ReportesPage() {
         </div>
 
         {/* Selector de Pestañas */}
-        <div className="flex items-center flex-nowrap overflow-x-auto scrollbar-hide max-w-full bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 self-start 2xl:self-auto gap-1">
+        <div className="flex items-center flex-nowrap overflow-x-auto scrollbar-hide max-w-full bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 self-start lg:self-auto gap-1">
           <button
             type="button"
             onClick={() => setTabActiva('balance')}

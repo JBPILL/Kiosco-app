@@ -480,7 +480,7 @@ export function PromocionesPage() {
                     </div>
 
                     {esCombo && promo.precio_combo ? (
-                      <span className="text-sm font-black text-teal-600 dark:text-teal-400 font-mono flex-shrink-0">
+                      <span className="text-sm font-black text-teal-600 dark:text-teal-400 tabular-nums flex-shrink-0">
                         {formatPrecio(promo.precio_combo)}
                       </span>
                     ) : null}
@@ -516,7 +516,7 @@ export function PromocionesPage() {
                       <div className="flex items-center gap-1.5 flex-wrap text-xs">
                         <span className="font-semibold text-gray-700 dark:text-gray-300">Producto:</span>
                         <span>{promo.producto.descripcion}</span>
-                        <span className="text-gray-400 font-mono">({formatPrecio(promo.producto.precio_venta)})</span>
+                        <span className="text-gray-400 tabular-nums">({formatPrecio(promo.producto.precio_venta)})</span>
                       </div>
                     ) : promo.categoria ? (
                       <div className="flex items-center gap-1.5 flex-wrap text-xs">
@@ -536,7 +536,7 @@ export function PromocionesPage() {
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
                           <span className="text-[10px] text-gray-500 dark:text-gray-400 block leading-tight">Combo completo:</span>
-                          <span className="text-teal-600 dark:text-teal-400 font-bold text-sm font-mono">
+                          <span className="text-teal-600 dark:text-teal-400 font-bold text-sm tabular-nums">
                             {formatPrecio(promo.precio_combo || 0)}
                           </span>
                         </div>
@@ -878,10 +878,10 @@ export function PromocionesPage() {
                             className="w-20 h-7 text-xs font-semibold text-center border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100"
                             placeholder="Cant"
                           />
-                          <span className="text-xs text-gray-500 font-mono w-6">
+                          <span className="text-xs text-gray-500 w-6">
                             {prod?.unidad_medida === 'KG' ? 'kg' : 'u.'}
                           </span>
-                          <span className="text-xs font-bold text-gray-700 dark:text-gray-300 w-16 text-right font-mono">
+                          <span className="text-xs font-bold text-gray-700 dark:text-gray-300 w-16 text-right tabular-nums">
                             {formatPrecio(subtotalItem)}
                           </span>
                           <button
@@ -965,7 +965,7 @@ export function PromocionesPage() {
               <div className="p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 space-y-2">
                 <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
                   <span>Suma regular individual:</span>
-                  <span className="font-bold font-mono text-gray-900 dark:text-gray-100">
+                  <span className="font-bold tabular-nums text-gray-900 dark:text-gray-100">
                     {formatPrecio(sumaRegularCombo)}
                   </span>
                 </div>

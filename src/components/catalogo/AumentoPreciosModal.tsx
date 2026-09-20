@@ -506,7 +506,7 @@ export function AumentoPreciosModal({
                   <span className="font-semibold text-gray-800 dark:text-gray-200 truncate max-w-[180px] sm:max-w-[260px]">
                     {item.descripcion}
                   </span>
-                  <div className="flex items-center gap-2 font-mono flex-shrink-0">
+                  <div className="flex items-center gap-2 tabular-nums flex-shrink-0">
                     <span className="text-gray-400 dark:text-gray-500 line-through text-xs">
                       {formatPrecio(item.ventaActual)}
                     </span>

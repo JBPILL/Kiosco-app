@@ -952,7 +952,7 @@ export function BalanceContableTab() {
                         key={asiento.id}
                         className="hover:bg-gray-50/80 dark:hover:bg-gray-700/40 transition-colors"
                       >
-                        <td className="py-2 px-3 whitespace-nowrap text-gray-600 dark:text-gray-400 font-mono">
+                        <td className="py-2 px-3 whitespace-nowrap text-gray-600 dark:text-gray-400 tabular-nums">
                           {formatFecha(asiento.fecha)}
                         </td>
                         <td className="py-2 px-3 whitespace-nowrap">
@@ -982,7 +982,7 @@ export function BalanceContableTab() {
                             </span>
                           )}
                         </td>
-                        <td className="py-2 px-3 whitespace-nowrap font-mono font-semibold text-gray-800 dark:text-gray-200">
+                        <td className="py-2 px-3 whitespace-nowrap tabular-nums font-semibold text-gray-800 dark:text-gray-200">
                           {asiento.tipo === 'VENTA' && asiento.ventaData ? (
                             <div className="flex items-center gap-1.5">
                               <button
@@ -1024,10 +1024,10 @@ export function BalanceContableTab() {
                         <td className="py-2 px-3 whitespace-nowrap text-gray-600 dark:text-gray-400">
                           {asiento.medio_pago}
                         </td>
-                        <td className="py-2 px-3 text-right font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                        <td className="py-2 px-3 text-right font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
                           {asiento.ingreso > 0 ? formatPrecio(asiento.ingreso) : '—'}
                         </td>
-                        <td className="py-2 px-3 text-right font-bold font-mono text-red-600 dark:text-red-400">
+                        <td className="py-2 px-3 text-right font-bold tabular-nums text-red-600 dark:text-red-400">
                           {asiento.egreso > 0 ? formatPrecio(asiento.egreso) : '—'}
                         </td>
                       </tr>
@@ -1038,12 +1038,12 @@ export function BalanceContableTab() {
                       <td colSpan={5} className="py-2.5 px-3 text-right uppercase tracking-wider text-xs">
                         Totales del Período:
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono text-emerald-600 dark:text-emerald-400 text-sm">
+                      <td className="py-2.5 px-3 text-right tabular-nums text-emerald-600 dark:text-emerald-400 text-sm">
                         {formatPrecio(
                           asientosFiltrados.reduce((sum, a) => sum + (a.ingreso || 0), 0)
                         )}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono text-red-600 dark:text-red-400 text-sm">
+                      <td className="py-2.5 px-3 text-right tabular-nums text-red-600 dark:text-red-400 text-sm">
                         {formatPrecio(
                           asientosFiltrados.reduce((sum, a) => sum + (a.egreso || 0), 0)
                         )}

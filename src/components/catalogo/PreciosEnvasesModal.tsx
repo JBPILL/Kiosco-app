@@ -409,7 +409,7 @@ export function PreciosEnvasesModal({
         [id]: {
           ...fila,
           esRetornable: checked,
-          nombreEnvase: checked && !fila.nombreEnvase ? (tipoSugerido?.nombre || '1LT') : fila.nombreEnvase,
+          nombreEnvase: checked && !fila.nombreEnvase ? (tipoSugerido?.nombre || '1lt') : fila.nombreEnvase,
           precioEnvase: checked && fila.precioEnvase === 0 ? precioDefault : fila.precioEnvase,
           modificado: true,
         },
@@ -673,14 +673,14 @@ export function PreciosEnvasesModal({
                         Precio ($):
                       </span>
                       <div className="flex items-center gap-1">
-                        <span className="text-gray-400 font-mono text-xs">$</span>
+                        <span className="text-gray-400 text-xs">$</span>
                         <input
                           type="number"
                           min="0"
                           step="50"
                           value={precioActual || ''}
                           onChange={(e) => handleCambioPrecioTipo(tipo.id, parseFloat(e.target.value) || 0)}
-                          className="w-28 text-right text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1 outline-none focus:border-indigo-500 font-mono font-bold"
+                          className="w-28 text-right text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1 outline-none focus:border-indigo-500 font-bold tabular-nums"
                         />
                       </div>
                     </div>
@@ -810,7 +810,7 @@ export function PreciosEnvasesModal({
                         {/* Precio del envase */}
                         <td className="px-3 py-2 text-right w-36">
                           <div className="inline-flex items-center justify-end gap-1">
-                            <span className="text-gray-400 font-mono">$</span>
+                            <span className="text-gray-400 text-xs">$</span>
                             <input
                               type="number"
                               min="0"
@@ -819,7 +819,7 @@ export function PreciosEnvasesModal({
                               value={f.precioEnvase || ''}
                               onChange={(e) => handleCambioPrecioProducto(f.id, parseFloat(e.target.value) || 0)}
                               placeholder="0"
-                              className={`w-24 text-right text-xs rounded-md border px-2 py-1 outline-none font-mono font-bold transition-colors ${
+                              className={`w-24 text-right text-xs rounded-md border px-2 py-1 outline-none tabular-nums font-bold transition-colors ${
                                 !f.esRetornable
                                   ? 'bg-gray-100 dark:bg-gray-800/40 border-gray-200 dark:border-gray-700 text-gray-400 cursor-not-allowed'
                                   : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-indigo-500'

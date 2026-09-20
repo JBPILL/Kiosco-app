@@ -394,7 +394,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
                   setForm({
                     ...form,
                     es_retornable: checked,
-                    nombre_envase: checked ? form.nombre_envase || tipoSugerido?.nombre || '1LT' : '',
+                    nombre_envase: checked ? form.nombre_envase || tipoSugerido?.nombre || '1lt' : '',
                     precio_envase: checked ? form.precio_envase || tipoSugerido?.precio || 1500 : 0,
                   })
                 }}
@@ -451,7 +451,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
                       placeholder="Ej: 1500"
                       value={form.precio_envase || ''}
                       onChange={(e) => setForm({ ...form, precio_envase: parseFloat(e.target.value) || 0 })}
-                      className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-indigo-500 font-mono font-bold"
+                      className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-indigo-500 font-bold tabular-nums"
                     />
                     <p className="text-[10px] text-gray-400 mt-0.5">
                       Monto a sumar si el cliente no trae la botella vacía.
@@ -463,7 +463,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
                     </label>
                     <input
                       type="text"
-                      placeholder="Ej: 1LT"
+                      placeholder="Ej: 1lt"
                       value={form.nombre_envase || ''}
                       onChange={(e) => setForm({ ...form, nombre_envase: e.target.value || '' })}
                       className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-indigo-500 font-medium"

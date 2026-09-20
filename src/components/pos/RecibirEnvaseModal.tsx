@@ -128,7 +128,7 @@ export function RecibirEnvaseModal({ isOpen, onClose }: RecibirEnvaseModalProps)
           <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
             Tipo de envase:
           </label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
             {tiposEnvases.map((env) => {
               const seleccionado = tipoSeleccionado?.id === env.id
               return (
@@ -136,18 +136,18 @@ export function RecibirEnvaseModal({ isOpen, onClose }: RecibirEnvaseModalProps)
                   key={env.id}
                   type="button"
                   onClick={() => setTipoSeleccionado(env)}
-                  className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer ${
+                  className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between min-h-[82px] ${
                     seleccionado
                       ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 ring-2 ring-indigo-500 shadow-xs'
                       : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-600'
                   }`}
                 >
                   <p className="font-bold text-xs truncate">{env.nombre}</p>
-                  <p className="text-indigo-600 dark:text-indigo-400 font-bold font-mono text-sm mt-0.5">
+                  <p className="text-indigo-600 dark:text-indigo-400 font-bold text-sm tracking-tight tabular-nums my-0.5">
                     {formatPrecio(env.precio)}
                   </p>
                   {env.descripcion && (
-                    <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5">
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 line-clamp-1">
                       {env.descripcion}
                     </p>
                   )}
@@ -168,7 +168,7 @@ export function RecibirEnvaseModal({ isOpen, onClose }: RecibirEnvaseModalProps)
                 Valor fijo para {tipoSeleccionado?.nombre || 'este envase'}
               </span>
             </div>
-            <span className="text-base font-bold font-mono text-gray-900 dark:text-gray-100">
+            <span className="text-base font-bold tabular-nums text-gray-900 dark:text-gray-100">
               {formatPrecio(precioUnitario)}
             </span>
           </div>
@@ -197,7 +197,7 @@ export function RecibirEnvaseModal({ isOpen, onClose }: RecibirEnvaseModalProps)
                   const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10)
                   setCantidad(isNaN(val) ? 1 : Math.max(1, val))
                 }}
-                className="flex-1 h-10 text-center text-lg font-bold font-mono rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-none focus:border-indigo-500"
+                className="flex-1 h-10 text-center text-lg font-bold tabular-nums rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-none focus:border-indigo-500"
               />
 
               <button
@@ -239,7 +239,7 @@ export function RecibirEnvaseModal({ isOpen, onClose }: RecibirEnvaseModalProps)
               {cantidad} {cantidad === 1 ? 'unidad' : 'unidades'} x {formatPrecio(precioUnitario)}
             </span>
           </div>
-          <span className="text-xl font-black font-mono text-emerald-700 dark:text-emerald-300">
+          <span className="text-xl font-black tabular-nums text-emerald-700 dark:text-emerald-300">
             {formatPrecio(totalReconocimiento)}
           </span>
         </div>

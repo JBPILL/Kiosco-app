@@ -6,6 +6,22 @@
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
+/* Forzar tipografía Inter armónica en todos los elementos y controles del sistema */
+html,
+body,
+button,
+input,
+select,
+textarea,
+optgroup {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Números tabulares alineados prolijamente con la misma tipografía del sistema */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
 /* Variables del tema */
 :root {
   --color-primary: #6366f1;

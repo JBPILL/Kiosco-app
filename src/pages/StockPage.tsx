@@ -480,7 +480,7 @@ export function StockPage() {
   return (
     <div className="max-w-6xl mx-auto space-y-5">
       {/* Encabezado Principal */}
-      <div className="flex flex-col 2xl:flex-row 2xl:items-center 2xl:justify-between gap-3 sm:gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
             Gestión de Inventario y Stock
@@ -812,7 +812,7 @@ export function StockPage() {
 
                       {/* Fecha del movimiento (columna con ancho fijo inmutable) */}
                       <div className="hidden sm:block w-52 text-center text-[11px] text-gray-400 flex-shrink-0">
-                        <p className="font-mono font-medium text-gray-600 dark:text-gray-300">
+                        <p className="tabular-nums font-medium text-gray-600 dark:text-gray-300">
                           {formatFecha(mov.fecha)}
                         </p>
                       </div>
@@ -820,7 +820,7 @@ export function StockPage() {
                       {/* Cantidad variada (columna con ancho fijo) */}
                       <div className="w-28 text-right flex-shrink-0">
                         <span
-                          className={`font-mono text-base font-black ${
+                          className={`tabular-nums text-base font-black ${
                             esIngreso
                               ? 'text-emerald-600 dark:text-emerald-400'
                               : esEgreso
@@ -1015,7 +1015,7 @@ export function StockPage() {
                           <td className="py-3 px-4 font-mono font-semibold text-gray-600 dark:text-gray-300">
                             {lote.numero_lote || '—'}
                           </td>
-                          <td className="py-3 px-4 font-mono text-gray-900 dark:text-gray-100 font-bold">
+                          <td className="py-3 px-4 tabular-nums text-gray-900 dark:text-gray-100 font-bold">
                             {lote.fecha_vencimiento}
                           </td>
                           <td className="py-3 px-4">

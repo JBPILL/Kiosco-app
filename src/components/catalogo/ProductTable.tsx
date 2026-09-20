@@ -277,7 +277,7 @@ export function ProductTable({
                   </div>
 
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                    <span className="font-bold text-sm text-indigo-600 dark:text-indigo-400 font-mono">
+                    <span className="font-bold text-sm text-indigo-600 dark:text-indigo-400 tabular-nums">
                       {formatPrecio(prod.precio_venta)}
                     </span>
                     <div className="flex items-center gap-1.5 flex-wrap justify-end">
@@ -426,10 +426,10 @@ export function ProductTable({
                           {prod.stock_actual} ({stockLabels[nivel]})
                         </span>
                       </td>
-                      <td className="px-3.5 py-2.5 text-right font-bold text-sm text-gray-900 dark:text-gray-100 font-mono whitespace-nowrap">
+                      <td className="px-3.5 py-2.5 text-right font-bold text-sm text-gray-900 dark:text-gray-100 tabular-nums whitespace-nowrap">
                         {formatPrecio(prod.precio_venta)}
                       </td>
-                      <td className="px-3.5 py-2.5 text-right text-xs text-gray-500 dark:text-gray-400 font-mono whitespace-nowrap">
+                      <td className="px-3.5 py-2.5 text-right text-xs text-gray-500 dark:text-gray-400 tabular-nums whitespace-nowrap">
                         {formatPrecio(prod.precio_costo)}
                       </td>
                       <td className="px-3.5 py-2.5 text-center whitespace-nowrap">

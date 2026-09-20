@@ -22,7 +22,7 @@ export interface TipoEnvase {
 }
 
 export const TIPOS_ENVASES_DEFAULT: TipoEnvase[] = [
-  { id: '1lt', nombre: '1LT', precio: 1500, descripcion: 'Cerveza o gaseosa de 1 litro vidrio', stock_vacios: 0 },
+  { id: '1lt', nombre: '1lt', precio: 1500, descripcion: 'Cerveza o gaseosa de 1 litro vidrio', stock_vacios: 0 },
   { id: '1.5lts', nombre: '1.5lts', precio: 1800, descripcion: 'Gaseosas medianas vidrio (Coca-Cola, Sprite, Fanta 1.5L)', stock_vacios: 0 },
   { id: '2lts', nombre: '2lts', precio: 2000, descripcion: 'Gaseosa retornable de 2 litros', stock_vacios: 0 },
   { id: '2.25lts', nombre: '2.25lts', precio: 2200, descripcion: 'Gaseosa retornable de 2.25 litros', stock_vacios: 0 },
@@ -78,16 +78,27 @@ export const useEnvasesStore = create<EnvasesState>((set, get) => ({
       const stored = localStorage.getItem(key)
       if (stored) {
         const parsed: TipoEnvase[] = JSON.parse(stored)
-        const fusionados: TipoEnvase[] = parsed.map((item) => ({
-          ...item,
-          stock_vacios: typeof item.stock_vacios === 'number' ? item.stock_vacios : 0,
-        }))
+        let huboMigracion = false
+        const fusionados: TipoEnvase[] = parsed.map((item) => {
+          const nombreNormalizado = (item.id === '1lt' || item.nombre === '1LT') ? '1lt' : item.nombre
+          if (nombreNormalizado !== item.nombre) huboMigracion = true
+          return {
+            ...item,
+            nombre: nombreNormalizado,
+            stock_vacios: typeof item.stock_vacios === 'number' ? item.stock_vacios : 0,
+          }
+        })
         TIPOS_ENVASES_DEFAULT.forEach((def) => {
           const existe = fusionados.some(
             (t) => t.id === def.id || t.nombre.toLowerCase() === def.nombre.toLowerCase()
           )
           if (!existe) fusionados.push(def)
         })
+        if (huboMigracion) {
+          try {
+            localStorage.setItem(key, JSON.stringify(fusionados))
+          } catch {}
+        }
         set({ tiposEnvases: fusionados })
         get().cargarHistorialMovimientos(kioscoId)
         return

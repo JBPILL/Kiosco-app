@@ -614,7 +614,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
 
                 {/* Subtotal */}
                 <div className="w-16 sm:w-20 text-right flex-shrink-0 flex flex-col items-end justify-center">
-                  <span className={`text-sm font-bold font-mono ${item.es_devolucion_envase || item.subtotal < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-gray-100 group-focus:text-indigo-900 dark:group-focus:text-white'}`}>
+                  <span className={`text-sm font-bold tabular-nums ${item.es_devolucion_envase || item.subtotal < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-gray-100 group-focus:text-indigo-900 dark:group-focus:text-white'}`}>
                     {item.subtotal < 0 ? `-${formatPrecio(Math.abs(item.subtotal))}` : formatPrecio(item.subtotal)}
                   </span>
                   {item.descuento_promo !== undefined && item.descuento_promo > 0 && (

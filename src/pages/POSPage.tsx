@@ -812,7 +812,7 @@ export function POSPage() {
                           <>
                             <div className="text-right">
                               <span className="text-[10px] text-gray-400 block">Precio combo:</span>
-                              <span className="text-base font-bold text-teal-600 dark:text-teal-400 font-mono">
+                              <span className="text-base font-bold text-teal-600 dark:text-teal-400 tabular-nums">
                                 {formatPrecio(promo.precio_combo || 0)}
                               </span>
                             </div>

@@ -892,7 +892,7 @@ export function ProveedoresPage() {
   return (
     <div className="max-w-6xl mx-auto space-y-4">
       {/* Encabezado */}
-      <div className="flex flex-col 2xl:flex-row 2xl:items-center 2xl:justify-between gap-3 sm:gap-4">
+      <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 sm:gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
             Proveedores y Compras
@@ -903,7 +903,7 @@ export function ProveedoresPage() {
         </div>
 
         {/* Pestañas de navegación */}
-        <div className="flex items-center flex-nowrap overflow-x-auto scrollbar-hide max-w-full bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 self-start 2xl:self-auto gap-1">
+        <div className="flex items-center flex-nowrap overflow-x-auto scrollbar-hide max-w-full bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 self-start xl:self-auto gap-1">
           <button
             onClick={() => setTabActiva('directorio')}
             className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 ${
@@ -1758,7 +1758,7 @@ export function ProveedoresPage() {
                     const esAnulada = c.estado === 'ANULADA'
                     return (
                       <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                        <td className="py-3 px-3 text-gray-600 dark:text-gray-400 font-mono">
+                        <td className="py-3 px-3 text-gray-600 dark:text-gray-400 tabular-nums">
                           {formatFecha(c.fecha)}
                         </td>
                         <td className="py-3 px-3 font-semibold text-gray-900 dark:text-gray-100">
@@ -1775,7 +1775,7 @@ export function ProveedoresPage() {
                             </span>
                           )}
                         </td>
-                        <td className="py-3 px-3 text-right font-bold text-gray-900 dark:text-gray-100 text-sm">
+                        <td className="py-3 px-3 text-right font-bold tabular-nums text-gray-900 dark:text-gray-100 text-sm">
                           {formatPrecio(c.total)}
                         </td>
                         <td className="py-3 px-3 text-center">
@@ -1868,7 +1868,7 @@ export function ProveedoresPage() {
                     const esAnulado = p.estado === 'ANULADO'
                     return (
                       <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                        <td className="py-3 px-3 text-gray-600 dark:text-gray-400 font-mono">
+                        <td className="py-3 px-3 text-gray-600 dark:text-gray-400 tabular-nums">
                           {formatFecha(p.fecha)}
                         </td>
                         <td className="py-3 px-3 font-semibold text-gray-900 dark:text-gray-100">
@@ -1887,7 +1887,7 @@ export function ProveedoresPage() {
                             </span>
                           )}
                         </td>
-                        <td className="py-3 px-3 text-right font-bold text-gray-900 dark:text-gray-100 text-sm">
+                        <td className="py-3 px-3 text-right font-bold tabular-nums text-gray-900 dark:text-gray-100 text-sm">
                           {formatPrecio(p.monto)}
                         </td>
                         <td className="py-3 px-3 text-right font-medium text-gray-600 dark:text-gray-400">
