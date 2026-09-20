@@ -483,10 +483,10 @@ export function StockPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
-            Gestión de Inventario y Stock
+            Control de Productos y Stock
           </h1>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">
-            Control de existencias, lectura con código de barras, ingresos, egresos y ajustes
+            Entradas y salidas de mercadería, control de vencimientos y correcciones
           </p>
         </div>
       </div>
@@ -500,25 +500,25 @@ export function StockPage() {
             {metricas.total}
           </p>
           <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
-            {metricas.unidadesTotales} unidades en inventario
+            {metricas.unidadesTotales} unidades en el negocio
           </p>
         </div>
 
         {/* KPI 2: Stock Óptimo */}
         <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
-          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Stock Óptimo</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Stock suficiente</p>
           <p className="text-xl sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
             {metricas.optimos}
           </p>
           <p className="text-[11px] text-emerald-600/80 dark:text-emerald-400/80 mt-0.5">
-            Por encima del mínimo
+            Bien abastecido
           </p>
         </div>
 
         {/* KPI 3: Stock Bajo / Reposición */}
         <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
           <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Stock Bajo</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Por agotarse</p>
             {metricas.cantBajoStock > 0 && (
               <span className="text-[10px] px-1.5 py-0.5 rounded-md font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300">
                 Alerta
@@ -535,18 +535,18 @@ export function StockPage() {
             {metricas.cantBajoStock}
           </p>
           <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
-            {metricas.cantBajoStock === 1 ? '1 artículo a reponer' : `${metricas.cantBajoStock} artículos a reponer`}
+            {metricas.cantBajoStock === 1 ? '1 artículo para reponer' : `${metricas.cantBajoStock} artículos para reponer`}
           </p>
         </div>
 
         {/* KPI 4: Valorización de Inventario */}
         <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
-          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Valorización (Costo)</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Plata invertida en mercadería</p>
           <p className="text-xl sm:text-2xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">
             {formatPrecio(metricas.valorInventario)}
           </p>
           <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
-            Costo total en mercadería
+            Costo total de compra
           </p>
         </div>
       </div>
@@ -558,7 +558,7 @@ export function StockPage() {
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
               <h3 className="font-bold text-sm text-amber-900 dark:text-amber-200">
-                Productos con Stock Bajo o Agotado ({metricas.cantBajoStock})
+                Productos por agotarse o sin stock ({metricas.cantBajoStock})
               </h3>
             </div>
             <button
@@ -631,7 +631,7 @@ export function StockPage() {
               : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
           }`}
         >
-          Historial de Movimientos
+          Entradas y Salidas de Mercadería
         </button>
         <button
           type="button"
@@ -642,7 +642,7 @@ export function StockPage() {
               : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
           }`}
         >
-          <span>Alertas de Vencimientos</span>
+          <span>Fechas de Vencimiento</span>
           {alertasLotes.vencidos.length + alertasLotes.criticos.length > 0 && (
             <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300">
               {alertasLotes.vencidos.length + alertasLotes.criticos.length}

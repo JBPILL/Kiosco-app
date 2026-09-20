@@ -34,7 +34,7 @@ const MEDIOS_PAGO: { valor: MedioPago; label: string }[] = [
   { valor: 'MERCADOPAGO', label: 'Mercado Pago' },
   { valor: 'TRANSFERENCIA', label: 'Transferencia' },
   { valor: 'TARJETA', label: 'Tarjeta' },
-  { valor: 'CUENTA_CORRIENTE', label: 'Cuenta Corriente' },
+  { valor: 'CUENTA_CORRIENTE', label: 'Fiar / Cuenta' },
 ]
 
 export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModalProps) {
@@ -148,6 +148,36 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       setNroDocReceptor('')
     }
   }, [isOpen])
+
+  // Navegación rápida con flechas izquierda / derecha para alternar medios de pago
+  useEffect(() => {
+    if (!isOpen) return
+    const handleModalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') return
+
+      const activeEl = document.activeElement as HTMLElement | null
+      const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')
+
+      // Flechas Izquierda / Derecha para cambiar medio de pago si no está navegando texto
+      if (!esPagoMixto && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        // Solo prevenir si no está en un input o si el input está vacío
+        if (!isInput || (activeEl as HTMLInputElement).value === '') {
+          const order: MedioPago[] = ['EFECTIVO', 'MERCADOPAGO', 'TRANSFERENCIA', 'TARJETA', 'CUENTA_CORRIENTE']
+          const currIdx = order.indexOf(medioPago)
+          if (currIdx !== -1) {
+            e.preventDefault()
+            const nextIdx =
+              e.key === 'ArrowRight'
+                ? (currIdx + 1) % order.length
+                : (currIdx - 1 + order.length) % order.length
+            setMedioPago(order[nextIdx])
+          }
+        }
+      }
+    }
+    window.addEventListener('keydown', handleModalKeyDown)
+    return () => window.removeEventListener('keydown', handleModalKeyDown)
+  }, [isOpen, esPagoMixto, medioPago])
 
   const clientesFiltrados = clientes.filter(
     (c) =>
@@ -637,7 +667,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
             }`}
           >
-            Pago Simple
+            Un solo medio
           </button>
           <button
             type="button"
@@ -648,7 +678,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
             }`}
           >
-            Pago Mixto / Dividido
+            Dividir pago (dos medios)
           </button>
         </div>
 
@@ -923,7 +953,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         {!esPagoMixto && medioPago === 'EFECTIVO' && (
           <div className="space-y-3">
             <Input
-              label="El cliente paga con"
+              label="¿Con cuánto paga el cliente?"
               type="text"
               inputMode="numeric"
               pattern="[0-9]*"
@@ -935,7 +965,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
                   confirmarVenta()
                 }
               }}
-              placeholder="Ingresá monto (ej: 2500) y tocá Enter"
+              placeholder="Ingresá con cuánto paga y tocá Enter"
               autoFocus={typeof window !== 'undefined' && window.innerWidth >= 1024}
             />
 
@@ -961,26 +991,35 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
                 onClick={() => setPagaCon(Math.round(total).toString())}
                 className="px-4 py-2 min-h-[38px] rounded-xl border border-emerald-300 dark:border-emerald-700 text-sm font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 active:scale-95 transition-all cursor-pointer"
               >
-                Exacto
+                Paga justo
               </button>
             </div>
 
-            {/* Vuelto */}
+            {/* Vuelto Gigante para personas mayores */}
             {pagaConNum > 0 && (
-              <div className={`text-center py-3 rounded-xl ${
+              <div className={`text-center py-3.5 px-4 rounded-xl border ${
                 pagaConNum >= total
-                  ? 'bg-emerald-50 dark:bg-emerald-900/30'
-                  : 'bg-red-50 dark:bg-red-900/30'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800'
+                  : 'bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-800'
               }`}>
                 {pagaConNum >= total ? (
                   <>
-                    <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">Vuelto</p>
-                    <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{formatPrecio(vuelto)}</p>
+                    <p className="text-xs uppercase tracking-wider text-emerald-700 dark:text-emerald-300 font-bold">
+                      Su Vuelto a Entregar:
+                    </p>
+                    <p className="text-3xl sm:text-4xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums mt-0.5">
+                      {formatPrecio(vuelto)}
+                    </p>
                   </>
                 ) : (
-                  <p className="text-sm text-red-600 dark:text-red-400 font-medium">
-                    Faltan {formatPrecio(total - pagaConNum)}
-                  </p>
+                  <>
+                    <p className="text-xs uppercase tracking-wider text-red-700 dark:text-red-300 font-bold">
+                      Falta dinero para cubrir el total:
+                    </p>
+                    <p className="text-2xl font-bold text-red-600 dark:text-red-400 tabular-nums mt-0.5">
+                      Faltan {formatPrecio(total - pagaConNum)}
+                    </p>
+                  </>
                 )}
               </div>
             )}
@@ -1155,7 +1194,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           disabled={!puedeConfirmar}
           loading={procesando}
         >
-          {emitirFiscal ? 'Confirmar y Facturar ARCA' : 'Confirmar Venta'}
+          {emitirFiscal ? 'Confirmar y Facturar ARCA' : 'Confirmar y Cobrar'}
         </Button>
       </div>
     </Modal>

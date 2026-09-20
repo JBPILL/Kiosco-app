@@ -22,6 +22,14 @@ export function useKeyboardShortcuts(
     if (!enabled) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      const isInput = target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+      )
+
       // F1: Ayuda de atajos
       if (e.key === 'F1') {
         e.preventDefault()
@@ -29,8 +37,8 @@ export function useKeyboardShortcuts(
         return
       }
 
-      // F2: Enfocar barra de búsqueda
-      if (e.key === 'F2') {
+      // F2 o Ctrl+B o Barra si se enfoca búsqueda
+      if (e.key === 'F2' || ((e.ctrlKey || e.altKey) && e.key.toLowerCase() === 'b')) {
         e.preventDefault()
         handlers.onFocusSearch?.()
         return
@@ -43,8 +51,8 @@ export function useKeyboardShortcuts(
         return
       }
 
-      // F4: Abrir Cobro
-      if (e.key === 'F4') {
+      // Barra espaciadora (sin estar en un input), F4 o Ctrl+Enter: Cobrar ticket
+      if ((e.code === 'Space' && !isInput) || e.key === 'F4' || (e.ctrlKey && e.key === 'Enter')) {
         e.preventDefault()
         handlers.onCobrar?.()
         return

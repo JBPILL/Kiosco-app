@@ -122,6 +122,12 @@ export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setSelectedIndex((prev) => Math.max(prev - 1, 0))
+    } else if (e.key === 'Tab' && mostrarResultados && resultados.length > 0) {
+      // Permitir que Tab navegue por los resultados si la lista está abierta
+      if (!e.shiftKey) {
+        e.preventDefault()
+        setSelectedIndex((prev) => (prev + 1) % resultados.length)
+      }
     } else if (e.key === 'Enter') {
       e.preventDefault()
       const queryTrim = query.trim()
@@ -170,7 +176,7 @@ export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
       <div className="flex-1 min-w-0 relative">
         <SearchInput
           ref={inputRef}
-          placeholder="Buscar producto o escanear [F2]..."
+          placeholder="Escribí el nombre del producto o pasá el código de barras..."
           value={query}
           onChange={(e) => {
             setQuery(e.target.value)

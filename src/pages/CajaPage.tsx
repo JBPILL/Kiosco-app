@@ -287,10 +287,10 @@ export function CajaPage() {
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
-            Control de Caja y Arqueo
+            Control de Caja y Dinero del Turno
           </h1>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">
-            Apertura de turno, control de efectivo y arqueo al cierre
+            Apertura de turno, control de plata en caja y cierre al terminar la jornada
           </p>
         </div>
 
@@ -316,7 +316,7 @@ export function CajaPage() {
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-gray-700/60'
             }`}
           >
-            Movimientos ({movimientosCaja.length})
+            Entradas y Retiros ({movimientosCaja.length})
           </button>
           <button
             type="button"
@@ -354,7 +354,7 @@ export function CajaPage() {
 
               <form onSubmit={handleAbrirCaja} className="space-y-4 pt-2 text-left">
                 <Input
-                  label="Fondo inicial de caja (Efectivo para cambio) *"
+                  label="Plata inicial con la que abrís la caja (efectivo para cambio) *"
                   type="number"
                   min="0"
                   step="100"
@@ -385,13 +385,13 @@ export function CajaPage() {
                   loading={abriendo}
                   className="mt-4"
                 >
-                  Abrir turno de caja
+                  Iniciar turno de caja
                 </Button>
               </form>
             </div>
           </div>
         ) : (
-          /* ── CAJA ABIERTA: MONITOR EN VIVO Y ARQUEO ── */
+          /* ── CAJA ABIERTA: MONITOR EN VIVO Y CIERRE ── */
           <div className="space-y-6">
             {/* Tarjeta de estado de turno */}
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
@@ -422,7 +422,7 @@ export function CajaPage() {
                     variant="danger"
                     onClick={handleAbrirModalArqueo}
                   >
-                    {esDueno || !arqueoCiegoObligatorio ? 'Hacer arqueo y cerrar turno' : 'Cerrar turno (Arqueo ciego)'}
+                    {esDueno || !arqueoCiegoObligatorio ? 'Contar plata y cerrar turno' : 'Cerrar turno (Conteo a ciegas)'}
                   </Button>
                 </div>
               </div>
@@ -430,31 +430,31 @@ export function CajaPage() {
               {/* Cuadrícula financiera del turno */}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-4">
                 <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Fondo inicial</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Plata de inicio</p>
                   <p className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">
                     {formatPrecio(sesionActiva.monto_inicial)}
                   </p>
                 </div>
 
                 <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">(+) Ventas efectivo</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">(+) Ventas en efectivo</p>
                   <p className="text-base sm:text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-1">
                     {!modoCiegoEfectivo ? formatPrecio(resumenActivo?.total_efectivo || 0) : '••••••'}
                   </p>
                   {modoCiegoEfectivo && (
-                    <span className="text-[10px] text-gray-400 dark:text-gray-500 block">Arqueo ciego</span>
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500 block">Modo ciego</span>
                   )}
                 </div>
 
                 <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">(+) Ingresos extra</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">(+) Entradas de plata</p>
                   <p className="text-base sm:text-lg font-bold text-blue-600 dark:text-blue-400 mt-1">
                     +{formatPrecio(resumenActivo?.total_ingresos_extra || 0)}
                   </p>
                 </div>
 
                 <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">(-) Gastos / Egresos</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">(-) Retiros / Gastos</p>
                   <p className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400 mt-1">
                     -{formatPrecio(resumenActivo?.total_egresos || 0)}
                   </p>
@@ -462,7 +462,7 @@ export function CajaPage() {
 
                 <div className="col-span-2 sm:col-span-1 p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50 shadow-xs">
                   <p className="text-xs text-indigo-700 dark:text-indigo-400 font-semibold">
-                    {!modoCiegoEfectivo ? '(=) Esperado en cajón' : 'Control de Turno'}
+                    {!modoCiegoEfectivo ? '(=) Debería haber en cajón' : 'Control de Turno'}
                   </p>
                   <p className="text-base sm:text-lg font-bold text-indigo-700 dark:text-indigo-300 mt-1 truncate">
                     {!modoCiegoEfectivo ? formatPrecio(efectivoEsperado) : 'Modo Ciego'}

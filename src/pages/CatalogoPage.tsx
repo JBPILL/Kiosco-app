@@ -75,7 +75,7 @@ export function CatalogoPage() {
               onClick={() => setAumentoOpen(true)}
               className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0"
             >
-              Aumento Masivo %
+              Subir Precios en %
             </button>
             <button
               type="button"
@@ -90,7 +90,7 @@ export function CatalogoPage() {
               className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0"
               title="Imprimir etiquetas de góndola y códigos de barras"
             >
-              Etiquetas Góndola
+              Etiquetas de Precios
             </button>
           </div>
 

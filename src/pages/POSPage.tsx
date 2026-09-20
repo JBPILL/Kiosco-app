@@ -414,10 +414,10 @@ export function POSPage() {
                 type="button"
                 onClick={() => setModalLibreOpen(true)}
                 className="h-8 sm:h-9 px-2.5 sm:px-3 flex items-center gap-1 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs cursor-pointer"
-                title="Cobrar concepto o monto libre sin código (Varios, fotocopias, etc.)"
+                title="Cobrar concepto o monto manual sin código (fotocopias, golosinas sueltas, etc.)"
               >
                 <span className="text-sm font-bold leading-none">+</span>
-                <span>Ítem Libre</span>
+                <span>Cobro Manual</span>
               </button>
               <button
                 type="button"
@@ -427,9 +427,9 @@ export function POSPage() {
                   setModalPromosOpen(true)
                 }}
                 className="h-8 sm:h-9 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border border-teal-300 dark:border-teal-700 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs cursor-pointer"
-                title="Ver combos armados y promociones vigentes"
+                title="Ver combos armados y ofertas vigentes"
               >
-                <span>Combos / Promos</span>
+                <span>Combos y Ofertas</span>
                 {promociones.filter((p) => p.activo).length > 0 && (
                   <span className="px-1.5 py-0.5 bg-teal-200 dark:bg-teal-800 text-teal-900 dark:text-teal-100 rounded-full text-[10px] font-bold">
                     {promociones.filter((p) => p.activo).length}
@@ -440,25 +440,25 @@ export function POSPage() {
                 type="button"
                 onClick={() => setModalTicketsOpen(true)}
                 className="h-8 sm:h-9 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs cursor-pointer"
-                title="Historial de comprobantes, reimpresión de tickets y devoluciones"
+                title="Ver tickets emitidos, reimprimir comprobantes y devoluciones"
               >
-                <span>Comprobantes</span>
+                <span>Tickets Emitidos</span>
               </button>
               <button
                 type="button"
                 onClick={() => setModalEnvaseOpen(true)}
                 className="h-8 sm:h-9 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-emerald-50/80 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs cursor-pointer"
-                title="Registrar recepción de envases retornables vacíos"
+                title="Registrar botellas o envases vacíos que entrega el cliente"
               >
-                <span>Recibir envase</span>
+                <span>Recepción Envases</span>
               </button>
               <button
                 type="button"
                 onClick={() => setModalRetiroOpen(true)}
                 className="h-8 sm:h-9 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50/90 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 text-amber-800 dark:text-amber-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs cursor-pointer"
-                title="Extracción rápida de efectivo del cajón / pago a proveedores (Alt+E o F9)"
+                title="Retiro de plata del cajón o pago rápido a proveedor"
               >
-                <span>Retiro / Caja</span>
+                <span>Retirar Plata</span>
               </button>
             </div>
           </div>

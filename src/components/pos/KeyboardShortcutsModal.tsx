@@ -8,39 +8,33 @@ interface KeyboardShortcutsModalProps {
 
 const SHORTCUT_SECTIONS = [
   {
-    title: 'Navegación del Menú Principal',
+    title: 'Teclas Universales Fáciles (Sin necesidad de mouse)',
     items: [
-      { key: 'Alt + M / F10', desc: 'Enfocar el menú lateral (navegar con ↑ / ↓ y Enter)' },
-      { key: 'Alt + 1', desc: 'Ir a Punto de Venta' },
-      { key: 'Alt + 2', desc: 'Ir a Caja y Arqueo' },
-      { key: 'Alt + 3', desc: 'Ir a Clientes y Cuenta Corriente' },
-      { key: 'Alt + 4 ... 7', desc: 'Ir a Catálogo, Stock, Reportes o Configuración' },
-    ],
-  },
-  {
-    title: 'Navegación en el Punto de Venta (POS)',
-    items: [
-      { key: 'F2', desc: 'Enfocar buscador de productos (o presionar ↓ para ir a categorías)' },
-      { key: '← / →', desc: 'Cambiar de categoría en el POS' },
-      { key: '↑ / ↓ / ← / →', desc: 'Moverse por la grilla de productos' },
-      { key: 'Enter / Espacio', desc: 'Agregar el producto enfocado al ticket' },
-      { key: 'F4', desc: 'Abrir ventana de cobro (Cobrar ticket)' },
-      { key: 'F8', desc: 'Ver ventas en espera' },
-      { key: 'Alt + E / F9', desc: 'Retiro rápido de efectivo / Sangría de caja' },
-      { key: 'Escape', desc: 'Cerrar ventana emergente o cancelar' },
-      { key: 'Lector USB', desc: 'Escanear en cualquier momento para agregar al ticket' },
+      { key: 'Tab / Shift + Tab', desc: 'Avanzar y retroceder entre botones, campos y opciones' },
+      { key: 'Flechas ↑ / ↓', desc: 'Moverse por la lista de productos encontrados o ítems del ticket' },
+      { key: 'Flechas ← / →', desc: 'Cambiar de categoría de producto o medio de pago (Efectivo, MP...)' },
+      { key: 'Enter', desc: 'Confirmar la acción: cargar producto al ticket o confirmar el cobro' },
+      { key: 'Barra Espaciadora', desc: 'Cobrar ticket de venta (cuando no estás escribiendo en el buscador)' },
+      { key: 'Escape (Esc)', desc: 'Cerrar cualquier ventana emergente o volver atrás' },
     ],
   },
   {
     title: 'Control del Ticket con el Teclado',
     items: [
-      { key: 'F6 / Alt + T', desc: 'Enfocar el Ticket de venta' },
-      { key: '↑ / ↓', desc: 'Moverse verticalmente entre items, descuento y botón cobrar' },
-      { key: '← / → o Tab', desc: 'Moverse entre la fila, botón [-], botón [+] y botón [✕]' },
-      { key: 'Enter / Espacio', desc: 'Hacer clic en el botón [-], botón [+] o [✕] enfocado, o en Cobrar' },
-      { key: '+ / -', desc: 'Sumar o restar cantidad directamente desde el teclado' },
+      { key: '+ / -', desc: 'Sumar o restar unidades del producto seleccionado' },
       { key: 'Supr / Delete', desc: 'Quitar producto del ticket' },
-      { key: '← / Esc', desc: 'Volver a la grilla de productos o buscador' },
+      { key: 'F6 / Alt + T', desc: 'Enfocar el ticket de venta' },
+      { key: 'Lector de Barras USB', desc: 'Escanear en cualquier momento para agregar directo al ticket' },
+    ],
+  },
+  {
+    title: 'Atajos de Teclas de Función (Opcionales)',
+    items: [
+      { key: 'F4 / Ctrl + Enter', desc: 'Abrir ventana de cobro' },
+      { key: 'F2 / Ctrl + B', desc: 'Enfocar barra de búsqueda de productos' },
+      { key: 'Alt + 1 ... 7', desc: 'Ir a Ventas, Caja, Clientes, Catálogo, Stock o Reportes' },
+      { key: 'F8', desc: 'Ver tickets guardados en espera' },
+      { key: 'F9 / Alt + E', desc: 'Retiro de plata del cajón' },
     ],
   },
 ]
