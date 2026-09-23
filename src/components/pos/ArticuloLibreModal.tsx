@@ -3,6 +3,7 @@ import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { useCartStore } from '../../stores/cartStore'
+import { formatPrecio } from '../../lib/utils'
 import toast from 'react-hot-toast'
 
 interface ArticuloLibreModalProps {
@@ -10,13 +11,13 @@ interface ArticuloLibreModalProps {
   onClose: () => void
 }
 
+const MONTOS_RAPIDOS = [1000, 2000, 5000, 10000, 20000, 50000]
+
 export function ArticuloLibreModal({ isOpen, onClose }: ArticuloLibreModalProps) {
   const { agregarItemLibre } = useCartStore()
   const [descripcion, setDescripcion] = useState('Varios')
   const [precio, setPrecio] = useState('')
   const [cantidad, setCantidad] = useState('1')
-
-  const montosRapidos = [100, 200, 500, 1000, 2000, 5000]
 
   const limpiar = () => {
     setDescripcion('Varios')
@@ -29,10 +30,11 @@ export function ArticuloLibreModal({ isOpen, onClose }: ArticuloLibreModalProps)
     onClose()
   }
 
+  const precioNum = parseInt(precio.replace(/[^0-9]/g, ''), 10) || 0
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const desc = descripcion.trim() || 'Varios'
-    const precioNum = parseInt(precio.replace(/[^0-9]/g, ''), 10) || 0
     const cantNum = parseInt(cantidad.replace(/[^0-9]/g, ''), 10) || 1
 
     if (precioNum <= 0) {
@@ -74,18 +76,25 @@ export function ArticuloLibreModal({ isOpen, onClose }: ArticuloLibreModalProps)
             required
           />
 
-          {/* Botones de montos rápidos */}
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {montosRapidos.map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setPrecio(m.toString())}
-                className="px-2.5 py-1 text-xs font-semibold rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-indigo-500 hover:text-indigo-600 active:scale-95 transition-all"
-              >
-                ${m.toLocaleString('es-AR')}
-              </button>
-            ))}
+          {/* Botones de montos rápidos / billetes (mismo diseño que Retiro de Efectivo) */}
+          <div className="grid grid-cols-3 gap-2 sm:gap-2.5 pt-2 w-full">
+            {MONTOS_RAPIDOS.map((m) => {
+              const estaSeleccionado = precioNum === m
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setPrecio(m.toString())}
+                  className={`w-full py-2.5 px-2 text-xs sm:text-sm font-bold rounded-xl border transition-all cursor-pointer text-center flex items-center justify-center min-h-[42px] select-none active:scale-95 ${
+                    estaSeleccionado
+                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 shadow-xs ring-1 ring-indigo-500/40'
+                      : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700/60'
+                  }`}
+                >
+                  <span className="truncate">{formatPrecio(m)}</span>
+                </button>
+              )
+            })}
           </div>
         </div>
 

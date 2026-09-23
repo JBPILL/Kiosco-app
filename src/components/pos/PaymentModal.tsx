@@ -667,7 +667,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   }
 
   // Billetes rápidos para efectivo
-  const billetesRapidos = [1000, 2000, 5000, 10000, 20000]
+  const billetesRapidos = [1000, 2000, 5000, 10000, 20000, 50000]
 
   return (
     <Modal
@@ -1019,16 +1019,16 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             />
 
             {/* Billetes rápidos */}
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 pt-0.5">
               {billetesRapidos.map((billete) => (
                 <button
                   key={billete}
                   type="button"
                   onClick={() => setPagaCon(billete.toString())}
-                  className={`px-3.5 py-2 min-h-[38px] rounded-xl border text-sm font-semibold active:scale-95 transition-all cursor-pointer ${
+                  className={`px-3.5 py-2.5 min-h-[42px] rounded-xl border text-xs sm:text-sm font-bold active:scale-95 transition-all cursor-pointer ${
                     pagaConNum === billete
-                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'
-                      : 'border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-600 bg-white dark:bg-gray-800'
+                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 shadow-xs ring-1 ring-indigo-500/40'
+                      : 'border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/60'
                   }`}
                 >
                   {formatPrecio(billete)}
@@ -1038,7 +1038,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
               <button
                 type="button"
                 onClick={() => setPagaCon(Math.round(total).toString())}
-                className="px-4 py-2 min-h-[38px] rounded-xl border border-emerald-300 dark:border-emerald-700 text-sm font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 active:scale-95 transition-all cursor-pointer"
+                className="px-4 py-2.5 min-h-[42px] rounded-xl border border-emerald-300 dark:border-emerald-700 text-xs sm:text-sm font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 active:scale-95 transition-all cursor-pointer"
               >
                 Paga justo
               </button>

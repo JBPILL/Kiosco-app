@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 interface ModalProps {
   isOpen: boolean
@@ -21,6 +21,10 @@ const sizeStyles = {
 
 export function Modal({ isOpen, onClose, title, children, footer, size = 'md', zIndex = 'z-50' }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null)
+  const mouseDownOnOverlayRef = useRef(false)
+  const lastBackdropClickTimeRef = useRef(0)
+  const [mostrarAviso, setMostrarAviso] = useState(false)
+  const avisoTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -36,18 +40,61 @@ export function Modal({ isOpen, onClose, title, children, footer, size = 'md', z
     }
   }, [isOpen, onClose])
 
+  useEffect(() => {
+    if (!isOpen) {
+      setMostrarAviso(false)
+      lastBackdropClickTimeRef.current = 0
+      mouseDownOnOverlayRef.current = false
+      if (avisoTimerRef.current) clearTimeout(avisoTimerRef.current)
+    }
+  }, [isOpen])
+
   if (!isOpen) return null
+
+  const handleOverlayMouseDown = (e: React.MouseEvent) => {
+    mouseDownOnOverlayRef.current = e.target === overlayRef.current
+  }
+
+  const handleOverlayClick = (e: React.MouseEvent) => {
+    // Si mousedown no ocurrió directamente en el overlay (ej: arrastró seleccionando texto desde un input y soltó afuera), ignorar
+    if (!mouseDownOnOverlayRef.current || e.target !== overlayRef.current) {
+      mouseDownOnOverlayRef.current = false
+      return
+    }
+    mouseDownOnOverlayRef.current = false
+
+    const now = Date.now()
+    const diff = now - lastBackdropClickTimeRef.current
+
+    if (diff < 1500) {
+      // Segundo clic o doble clic afuera en menos de 1.5s -> Cerrar modal
+      lastBackdropClickTimeRef.current = 0
+      setMostrarAviso(false)
+      if (avisoTimerRef.current) clearTimeout(avisoTimerRef.current)
+      onClose()
+    } else {
+      // Primer clic afuera -> Registrar y mostrar aviso sutil
+      lastBackdropClickTimeRef.current = now
+      setMostrarAviso(true)
+      if (avisoTimerRef.current) clearTimeout(avisoTimerRef.current)
+      avisoTimerRef.current = setTimeout(() => {
+        setMostrarAviso(false)
+      }, 1500)
+    }
+  }
 
   return (
     <div
       ref={overlayRef}
       className={`fixed inset-0 ${zIndex} flex items-center justify-center p-2 sm:p-4 bg-slate-950/65 dark:bg-black/75 backdrop-blur-xs sm:backdrop-blur-sm transition-opacity animate-in fade-in duration-150`}
-      onClick={(e) => e.target === overlayRef.current && onClose()}
+      onMouseDown={handleOverlayMouseDown}
+      onClick={handleOverlayClick}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
+        onClick={(e) => e.stopPropagation()}
         className={`modal-container bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full ${sizeStyles[size]} max-h-[min(94vh,calc(100dvh-1.5rem))] my-auto flex flex-col border border-slate-300 dark:border-gray-700 ring-1 ring-slate-900/15 dark:ring-white/10 overflow-hidden animate-in fade-in zoom-in-95 duration-150`}
       >
         {/* Header con estilo de barra de ventana claramente delimitada */}
@@ -76,6 +123,15 @@ export function Modal({ isOpen, onClose, title, children, footer, size = 'md', z
           </div>
         )}
       </div>
+
+      {/* Aviso sutil tras el primer clic afuera */}
+      {mostrarAviso && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[70] pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-150">
+          <div className="px-3.5 py-1.5 rounded-full bg-slate-900/90 dark:bg-slate-100/95 text-white dark:text-slate-900 text-xs font-semibold shadow-xl border border-white/10 dark:border-black/10 backdrop-blur-xs flex items-center gap-1.5">
+            <span>Hacé otro clic afuera para cerrar</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
