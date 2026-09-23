@@ -807,8 +807,29 @@ export function CajaPage() {
         onClose={() => setModalArqueoOpen(false)}
         title={modoCiegoEfectivo ? 'Arqueo y Cierre de Turno (Ciego)' : 'Arqueo y Cierre de Turno (Guiado)'}
         size="md"
+        footer={
+          <div className="flex gap-2 w-full">
+            <Button
+              variant="danger"
+              fullWidth
+              loading={cerrando}
+              disabled={efectivoContado === '' || parseFloat(efectivoContado) < 0}
+              onClick={handleConfirmarCierre}
+            >
+              {modoCiego ? 'Confirmar y Finalizar Turno' : 'Confirmar Cierre de Caja'}
+            </Button>
+            <Button
+              variant="secondary"
+              fullWidth
+              disabled={cerrando}
+              onClick={() => setModalArqueoOpen(false)}
+            >
+              Volver
+            </Button>
+          </div>
+        }
       >
-        <div className="space-y-4">
+        <div className="space-y-3">
           {/* Selector de modo si es Dueño o si no se exige arqueo ciego obligatorio */}
           {(esDueno || !arqueoCiegoObligatorio) && (
             <div className="flex rounded-lg bg-gray-100 dark:bg-gray-800 p-1 border border-gray-200 dark:border-gray-700">
@@ -962,26 +983,6 @@ export function CajaPage() {
               </p>
             </div>
           )}
-
-          <div className="flex gap-2 pt-2">
-            <Button
-              variant="danger"
-              fullWidth
-              loading={cerrando}
-              disabled={efectivoContado === '' || parseFloat(efectivoContado) < 0}
-              onClick={handleConfirmarCierre}
-            >
-              {modoCiego ? 'Confirmar y Finalizar Turno' : 'Confirmar Cierre de Caja'}
-            </Button>
-            <Button
-              variant="secondary"
-              fullWidth
-              disabled={cerrando}
-              onClick={() => setModalArqueoOpen(false)}
-            >
-              Volver
-            </Button>
-          </div>
         </div>
       </Modal>
 
@@ -991,8 +992,31 @@ export function CajaPage() {
         onClose={() => setModalMovimientoOpen(false)}
         title={tipoMovimiento === 'INGRESO' ? 'Registrar Ingreso de Caja' : 'Registrar Gasto / Egreso de Caja'}
         size="md"
+        footer={
+          <div className="flex gap-2 w-full">
+            <Button
+              type="button"
+              variant="secondary"
+              fullWidth
+              disabled={guardandoMovimiento}
+              onClick={() => setModalMovimientoOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              form="form-movimiento-caja"
+              variant={tipoMovimiento === 'INGRESO' ? 'primary' : 'danger'}
+              fullWidth
+              loading={guardandoMovimiento}
+              disabled={!montoMovimiento || parseFloat(montoMovimiento) <= 0}
+            >
+              {tipoMovimiento === 'INGRESO' ? 'Confirmar Ingreso' : 'Confirmar Gasto'}
+            </Button>
+          </div>
+        }
       >
-        <form onSubmit={handleGuardarMovimiento} className="space-y-4">
+        <form id="form-movimiento-caja" onSubmit={handleGuardarMovimiento} className="space-y-3">
           {/* Selector de Tipo */}
           <div className="grid grid-cols-2 gap-2">
             <button
@@ -1087,27 +1111,6 @@ export function CajaPage() {
             value={descripcionMovimiento}
             onChange={(e) => setDescripcionMovimiento(e.target.value)}
           />
-
-          <div className="flex gap-2 pt-2">
-            <Button
-              type="submit"
-              variant={tipoMovimiento === 'INGRESO' ? 'primary' : 'danger'}
-              fullWidth
-              loading={guardandoMovimiento}
-              disabled={!montoMovimiento || parseFloat(montoMovimiento) <= 0}
-            >
-              {tipoMovimiento === 'INGRESO' ? 'Confirmar Ingreso' : 'Confirmar Gasto'}
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              fullWidth
-              disabled={guardandoMovimiento}
-              onClick={() => setModalMovimientoOpen(false)}
-            >
-              Cancelar
-            </Button>
-          </div>
         </form>
       </Modal>
 
@@ -1117,9 +1120,30 @@ export function CajaPage() {
         onClose={() => setSesionDetalle(null)}
         title="Detalle del Cierre de Caja"
         size="md"
+        footer={
+          sesionDetalle ? (
+            <div className="flex gap-2 w-full">
+              <Button
+                variant="primary"
+                fullWidth
+                onClick={() => handleImprimirHistorico(sesionDetalle)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
+                Imprimir Arqueo
+              </Button>
+              <Button
+                variant="secondary"
+                fullWidth
+                onClick={() => setSesionDetalle(null)}
+              >
+                Cerrar
+              </Button>
+            </div>
+          ) : undefined
+        }
       >
         {sesionDetalle && (
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Apertura</p>
@@ -1178,26 +1202,6 @@ export function CajaPage() {
                   Turno registrado y enviado para auditoría de la administración.
                 </div>
               )}
-            </div>
-
-            <div className="flex gap-2 pt-1">
-              <Button
-                variant="primary"
-                fullWidth
-                onClick={() => {
-                  if (sesionDetalle) handleImprimirHistorico(sesionDetalle)
-                }}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white"
-              >
-                Imprimir Arqueo
-              </Button>
-              <Button
-                variant="secondary"
-                fullWidth
-                onClick={() => setSesionDetalle(null)}
-              >
-                Cerrar
-              </Button>
             </div>
           </div>
         )}

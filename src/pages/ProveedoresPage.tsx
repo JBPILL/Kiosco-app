@@ -1283,116 +1283,118 @@ export function ProveedoresPage() {
 
           {/* ── Modo Detallado (original) ── */}
           {modoCompra === 'detallada' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-1 space-y-4">
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3">
-              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700 pb-2">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5 items-start">
+          <div className="lg:col-span-1 space-y-3">
+            <div className="bg-white dark:bg-gray-800 p-3.5 rounded-xl border border-gray-200 dark:border-gray-700 space-y-2.5">
+              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700 pb-1.5">
                 Datos del Comprobante
               </h2>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Proveedor *
-                </label>
-                <select
-                  value={compraProveedorId}
-                  onChange={(e) => setCompraProveedorId(e.target.value)}
-                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                >
-                  <option value="">-- Seleccionar Proveedor --</option>
-                  {proveedores.map((prov) => (
-                    <option key={prov.id} value={prov.id}>
-                      {prov.nombre} {prov.saldo_pendiente > 0 ? `(Deuda: ${formatPrecio(prov.saldo_pendiente)})` : ''}
-                    </option>
-                  ))}
-                </select>
-                {proveedores.length === 0 && (
-                  <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
-                    No hay proveedores. Creá uno en el Directorio primero.
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  N° Factura / Remito
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ej: REM-0001-000492"
-                  value={compraComprobante}
-                  onChange={(e) => setCompraComprobante(e.target.value)}
-                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Fecha y Hora
-                </label>
-                <input
-                  type="datetime-local"
-                  value={compraFecha}
-                  onChange={(e) => setCompraFecha(e.target.value)}
-                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Medio de Pago
-                </label>
-                <select
-                  value={compraMedioPago}
-                  onChange={(e) => setCompraMedioPago(e.target.value as MedioPagoCompra)}
-                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                >
-                  <option value="EFECTIVO">Efectivo</option>
-                  <option value="TRANSFERENCIA">Transferencia Bancaria</option>
-                  <option value="CUENTA_CORRIENTE">Cuenta Corriente (A Pagar)</option>
-                </select>
-              </div>
-
-              {compraMedioPago === 'EFECTIVO' && (
-                <div className="pt-1">
-                  <label className="flex items-center gap-2 cursor-pointer text-xs text-gray-700 dark:text-gray-300">
-                    <input
-                      type="checkbox"
-                      checked={compraDescontarCaja && Boolean(sesionActiva)}
-                      disabled={!sesionActiva}
-                      onChange={(e) => setCompraDescontarCaja(e.target.checked)}
-                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                    />
-                    <span>
-                      Descontar de la caja activa
-                      {!sesionActiva && ' (Caja cerrada)'}
-                    </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Proveedor *
                   </label>
-                  {sesionActiva && compraDescontarCaja && (
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 pl-6">
-                      Se registrará un egreso de ${formatPrecio(totalCompraCalculado)} en la sesión actual.
+                  <select
+                    value={compraProveedorId}
+                    onChange={(e) => setCompraProveedorId(e.target.value)}
+                    className="w-full py-1.5 px-2.5 text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  >
+                    <option value="">-- Seleccionar Proveedor --</option>
+                    {proveedores.map((prov) => (
+                      <option key={prov.id} value={prov.id}>
+                        {prov.nombre} {prov.saldo_pendiente > 0 ? `(Deuda: ${formatPrecio(prov.saldo_pendiente)})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {proveedores.length === 0 && (
+                    <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
+                      No hay proveedores. Creá uno en el Directorio primero.
                     </p>
                   )}
                 </div>
-              )}
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Notas / Observaciones
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Detalles sobre entrega, lotes o descuentos..."
-                  value={compraNotas}
-                  onChange={(e) => setCompraNotas(e.target.value)}
-                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                />
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    N° Factura / Remito
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: REM-0001-000492"
+                    value={compraComprobante}
+                    onChange={(e) => setCompraComprobante(e.target.value)}
+                    className="w-full py-1.5 px-2.5 text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Fecha y Hora
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={compraFecha}
+                    onChange={(e) => setCompraFecha(e.target.value)}
+                    className="w-full py-1.5 px-2.5 text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Medio de Pago
+                  </label>
+                  <select
+                    value={compraMedioPago}
+                    onChange={(e) => setCompraMedioPago(e.target.value as MedioPagoCompra)}
+                    className="w-full py-1.5 px-2.5 text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  >
+                    <option value="EFECTIVO">Efectivo</option>
+                    <option value="TRANSFERENCIA">Transferencia Bancaria</option>
+                    <option value="CUENTA_CORRIENTE">Cuenta Corriente (A Pagar)</option>
+                  </select>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Notas / Observaciones
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Detalles sobre entrega, lotes o descuentos..."
+                    value={compraNotas}
+                    onChange={(e) => setCompraNotas(e.target.value)}
+                    className="w-full py-1.5 px-2.5 text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  />
+                </div>
+
+                {compraMedioPago === 'EFECTIVO' && (
+                  <div className="sm:col-span-2 pt-0.5">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs text-gray-700 dark:text-gray-300">
+                      <input
+                        type="checkbox"
+                        checked={compraDescontarCaja && Boolean(sesionActiva)}
+                        disabled={!sesionActiva}
+                        onChange={(e) => setCompraDescontarCaja(e.target.checked)}
+                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                      />
+                      <span>
+                        Descontar de la caja activa
+                        {!sesionActiva && ' (Caja cerrada)'}
+                      </span>
+                    </label>
+                    {sesionActiva && compraDescontarCaja && (
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 pl-5">
+                        Se registrará un egreso de ${formatPrecio(totalCompraCalculado)} en la sesión actual.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Panel de Búsqueda y Escáner de Productos */}
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3">
-              <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 pb-2">
+            <div className="bg-white dark:bg-gray-800 p-3.5 rounded-xl border border-gray-200 dark:border-gray-700 space-y-2.5">
+              <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 pb-1.5">
                 <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
                   Buscar o Escanear Producto
                 </h2>
@@ -1561,8 +1563,8 @@ export function ProveedoresPage() {
           </div>
 
           {/* Columna Derecha: Tabla de Renglones Recibidos */}
-          <div className="lg:col-span-2 space-y-4">
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col justify-between min-h-[420px]">
+          <div className="lg:col-span-2 space-y-3">
+            <div className="bg-white dark:bg-gray-800 p-3.5 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col justify-between min-h-[360px]">
               <div>
                 <div className="flex flex-wrap justify-between items-center gap-2 border-b border-gray-200 dark:border-gray-700 pb-2 mb-3">
                   <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">

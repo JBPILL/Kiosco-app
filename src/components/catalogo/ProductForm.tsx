@@ -138,8 +138,23 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
 
   return (
     <>
-      <Modal isOpen={isOpen} onClose={onClose} title={producto ? 'Editar producto' : 'Nuevo producto'} size="lg">
-        <form onSubmit={handleSubmit} className="space-y-4">
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title={producto ? 'Editar producto' : 'Nuevo producto'}
+        size="lg"
+        footer={
+          <div className="flex gap-2 w-full">
+            <Button type="button" variant="secondary" onClick={onClose} fullWidth>
+              Cancelar
+            </Button>
+            <Button type="submit" form="product-form" fullWidth loading={guardando}>
+              {producto ? 'Guardar cambios' : 'Crear producto'}
+            </Button>
+          </div>
+        }
+      >
+        <form id="product-form" onSubmit={handleSubmit} className="space-y-3 sm:space-y-3.5">
           <Input
             label="Descripción *"
             placeholder="Ej: Coca Cola 500ml"
@@ -472,15 +487,6 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
                 </div>
               </div>
             )}
-          </div>
-
-          <div className="flex gap-2 pt-2">
-            <Button type="submit" fullWidth loading={guardando}>
-              {producto ? 'Guardar cambios' : 'Crear producto'}
-            </Button>
-            <Button type="button" variant="secondary" onClick={onClose} fullWidth>
-              Cancelar
-            </Button>
           </div>
         </form>
       </Modal>

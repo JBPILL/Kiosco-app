@@ -638,12 +638,29 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   const billetesRapidos = [1000, 2000, 5000, 10000, 20000]
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Cobrar" size="md">
-      <div className="space-y-5">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Cobrar"
+      size="md"
+      footer={
+        <Button
+          size="lg"
+          fullWidth
+          variant="success"
+          onClick={confirmarVenta}
+          disabled={!puedeConfirmar}
+          loading={procesando}
+        >
+          {emitirFiscal ? 'Confirmar y Facturar ARCA' : 'Confirmar y Cobrar'}
+        </Button>
+      }
+    >
+      <div className="space-y-3">
         {/* Total y Desglose */}
-        <div className="py-3 bg-indigo-50/80 dark:bg-indigo-900/30 rounded-xl space-y-1 border border-indigo-200 dark:border-indigo-800/60">
+        <div className="py-2 px-3 bg-indigo-50/80 dark:bg-indigo-900/30 rounded-xl space-y-0.5 border border-indigo-200 dark:border-indigo-800/60">
           {tieneAjuste && (
-            <div className="flex justify-between items-center px-4 text-xs text-gray-600 dark:text-gray-300 pb-1 border-b border-indigo-100 dark:border-indigo-800/40">
+            <div className="flex justify-between items-center px-2 text-xs text-gray-600 dark:text-gray-300 pb-1 border-b border-indigo-100 dark:border-indigo-800/40">
               <span>Subtotal: {formatPrecio(subtotal)}</span>
               <span className={tipoAjuste.startsWith('DESCUENTO') ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-blue-600 dark:text-blue-400 font-semibold'}>
                 {descripcionAjuste()} ({tipoAjuste.startsWith('DESCUENTO') ? '-' : '+'}{formatPrecio(Math.abs(ajuste))})
@@ -651,8 +668,8 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             </div>
           )}
           <div className="text-center pt-0.5">
-            <p className="text-xs uppercase tracking-wider text-indigo-700 dark:text-indigo-300 font-bold">Total a cobrar</p>
-            <p className="text-3xl font-black text-indigo-950 dark:text-white tracking-tight">{formatPrecio(total)}</p>
+            <p className="text-[11px] uppercase tracking-wider text-indigo-700 dark:text-indigo-300 font-bold">Total a cobrar</p>
+            <p className="text-2xl sm:text-3xl font-black text-indigo-950 dark:text-white tracking-tight tabular-nums">{formatPrecio(total)}</p>
           </div>
         </div>
 
@@ -685,14 +702,14 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         {/* Medio de pago - Pago Simple */}
         {!esPagoMixto && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Medio de pago</label>
+            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Medio de pago</label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {MEDIOS_PAGO.map((mp) => (
                 <button
                   key={mp.valor}
                   type="button"
                   onClick={() => setMedioPago(mp.valor)}
-                  className={`flex items-center justify-center p-3 rounded-xl border-2 text-sm font-semibold min-h-[46px] active:scale-95 transition-all cursor-pointer ${
+                  className={`flex items-center justify-center p-2.5 rounded-xl border-2 text-xs sm:text-sm font-semibold min-h-[42px] active:scale-95 transition-all cursor-pointer ${
                     mp.valor === 'CUENTA_CORRIENTE' ? 'col-span-2 sm:col-span-1' : ''
                   } ${
                     medioPago === mp.valor
@@ -997,26 +1014,26 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
 
             {/* Vuelto Gigante para personas mayores */}
             {pagaConNum > 0 && (
-              <div className={`text-center py-3.5 px-4 rounded-xl border ${
+              <div className={`text-center py-2 sm:py-2.5 px-3.5 rounded-xl border ${
                 pagaConNum >= total
                   ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800'
                   : 'bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-800'
               }`}>
                 {pagaConNum >= total ? (
                   <>
-                    <p className="text-xs uppercase tracking-wider text-emerald-700 dark:text-emerald-300 font-bold">
+                    <p className="text-[11px] uppercase tracking-wider text-emerald-700 dark:text-emerald-300 font-bold">
                       Su Vuelto a Entregar:
                     </p>
-                    <p className="text-3xl sm:text-4xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums mt-0.5">
+                    <p className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums mt-0.5">
                       {formatPrecio(vuelto)}
                     </p>
                   </>
                 ) : (
                   <>
-                    <p className="text-xs uppercase tracking-wider text-red-700 dark:text-red-300 font-bold">
+                    <p className="text-[11px] uppercase tracking-wider text-red-700 dark:text-red-300 font-bold">
                       Falta dinero para cubrir el total:
                     </p>
-                    <p className="text-2xl font-bold text-red-600 dark:text-red-400 tabular-nums mt-0.5">
+                    <p className="text-xl sm:text-2xl font-bold text-red-600 dark:text-red-400 tabular-nums mt-0.5">
                       Faltan {formatPrecio(total - pagaConNum)}
                     </p>
                   </>
@@ -1184,18 +1201,6 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             </div>
           )}
         </div>
-
-        {/* Botón confirmar */}
-        <Button
-          size="lg"
-          fullWidth
-          variant="success"
-          onClick={confirmarVenta}
-          disabled={!puedeConfirmar}
-          loading={procesando}
-        >
-          {emitirFiscal ? 'Confirmar y Facturar ARCA' : 'Confirmar y Cobrar'}
-        </Button>
       </div>
     </Modal>
   )

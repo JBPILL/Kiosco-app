@@ -519,8 +519,30 @@ export function ClientesPage() {
         onClose={() => setModalClienteOpen(false)}
         title={clienteEditando ? 'Editar Cliente' : 'Nuevo Cliente'}
         size="md"
+        footer={
+          <div className="flex gap-2 w-full">
+            <Button
+              type="button"
+              variant="secondary"
+              fullWidth
+              disabled={guardandoCliente}
+              onClick={() => setModalClienteOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              form="form-cliente"
+              variant="primary"
+              fullWidth
+              loading={guardandoCliente}
+            >
+              {clienteEditando ? 'Guardar Cambios' : 'Registrar Cliente'}
+            </Button>
+          </div>
+        }
       >
-        <form onSubmit={handleGuardarCliente} className="space-y-3">
+        <form id="form-cliente" onSubmit={handleGuardarCliente} className="space-y-3">
           <Input
             label="Nombre completo *"
             type="text"
@@ -594,21 +616,6 @@ export function ClientesPage() {
               </div>
             )}
           </div>
-
-          <div className="flex gap-2 pt-1">
-            <Button type="submit" variant="primary" fullWidth loading={guardandoCliente}>
-              {clienteEditando ? 'Guardar Cambios' : 'Registrar Cliente'}
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              fullWidth
-              disabled={guardandoCliente}
-              onClick={() => setModalClienteOpen(false)}
-            >
-              Cancelar
-            </Button>
-          </div>
         </form>
       </Modal>
 
@@ -618,6 +625,11 @@ export function ClientesPage() {
         onClose={() => setClienteFicha(null)}
         title={`Ficha de Cuenta Corriente — ${clienteFicha?.nombre || ''}`}
         size="lg"
+        footer={
+          <Button variant="secondary" fullWidth onClick={() => setClienteFicha(null)}>
+            Cerrar Ficha
+          </Button>
+        }
       >
         {clienteFicha && (
           <div className="space-y-4">
@@ -736,12 +748,6 @@ export function ClientesPage() {
                 </div>
               )}
             </div>
-
-            <div className="pt-2">
-              <Button variant="secondary" fullWidth onClick={() => setClienteFicha(null)}>
-                Cerrar
-              </Button>
-            </div>
           </div>
         )}
       </Modal>
@@ -752,9 +758,35 @@ export function ClientesPage() {
         onClose={() => setClienteAbonar(null)}
         title={`Registrar Abono — ${clienteAbonar?.nombre || ''}`}
         size="md"
+        footer={
+          clienteAbonar ? (
+            <div className="flex gap-2 w-full">
+              <Button
+                type="button"
+                variant="secondary"
+                fullWidth
+                disabled={guardandoAbono}
+                onClick={() => setClienteAbonar(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                form="form-abono"
+                variant="primary"
+                fullWidth
+                loading={guardandoAbono}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                disabled={!montoAbono || parseFloat(montoAbono) <= 0}
+              >
+                Confirmar Cobro
+              </Button>
+            </div>
+          ) : undefined
+        }
       >
         {clienteAbonar && (
-          <form onSubmit={handleConfirmarAbono} className="space-y-4">
+          <form id="form-abono" onSubmit={handleConfirmarAbono} className="space-y-3">
             <div className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg text-xs space-y-1">
               <div className="flex justify-between text-red-800 dark:text-red-300">
                 <span>Deuda actual del cliente:</span>
@@ -836,28 +868,6 @@ export function ClientesPage() {
               value={notasAbono}
               onChange={(e) => setNotasAbono(e.target.value)}
             />
-
-            <div className="flex gap-2 pt-2">
-              <Button
-                type="submit"
-                variant="primary"
-                fullWidth
-                loading={guardandoAbono}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                disabled={!montoAbono || parseFloat(montoAbono) <= 0}
-              >
-                Confirmar Cobro
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                fullWidth
-                disabled={guardandoAbono}
-                onClick={() => setClienteAbonar(null)}
-              >
-                Cancelar
-              </Button>
-            </div>
           </form>
         )}
       </Modal>

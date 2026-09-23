@@ -42,8 +42,23 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Ticket de Cierre de Caja (Arqueo Z)" size="md">
-      <div className="space-y-4">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Ticket de Cierre de Caja (Arqueo Z)"
+      size="md"
+      footer={
+        <div className="flex gap-2 w-full">
+          <Button variant="primary" fullWidth onClick={handleImprimir} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+            Imprimir Arqueo
+          </Button>
+          <Button variant="secondary" fullWidth onClick={onClose}>
+            Cerrar
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
         {/* Controles superiores */}
         <div className="flex items-center justify-between px-1 text-xs text-gray-600 dark:text-gray-400">
           <span className="font-medium">Formato térmico:</span>
@@ -54,7 +69,7 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
                 setAnchoPapel('58mm')
                 localStorage.setItem('kioskopos_ancho_ticket', '58mm')
               }}
-              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
                 anchoPapel === '58mm'
                   ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
                   : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
@@ -68,7 +83,7 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
                 setAnchoPapel('80mm')
                 localStorage.setItem('kioskopos_ancho_ticket', '80mm')
               }}
-              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
                 anchoPapel === '80mm'
                   ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
                   : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
@@ -80,7 +95,7 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
         </div>
 
         {/* Vista previa térmica imprimible */}
-        <div className="flex justify-center p-3 bg-gray-100 dark:bg-gray-900/60 rounded-xl overflow-x-auto">
+        <div className="flex justify-center p-2.5 sm:p-3 bg-gray-100 dark:bg-gray-900/60 rounded-xl overflow-y-auto max-h-[min(54vh,460px)]">
           <div
             id="printable-cierre"
             className={`bg-white text-gray-950 p-4 rounded shadow-sm font-mono text-xs leading-tight select-text ${
@@ -189,16 +204,6 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
               </div>
             </div>
           </div>
-        </div>
-
-        {/* Botones de acción */}
-        <div className="flex gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-          <Button variant="primary" fullWidth onClick={handleImprimir} className="bg-indigo-600 hover:bg-indigo-700 text-white">
-            Imprimir Arqueo
-          </Button>
-          <Button variant="secondary" fullWidth onClick={onClose}>
-            Cerrar
-          </Button>
         </div>
       </div>
 

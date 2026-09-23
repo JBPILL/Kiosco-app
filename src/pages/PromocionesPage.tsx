@@ -668,8 +668,22 @@ export function PromocionesPage() {
         onClose={() => setModalFormOpen(false)}
         title={promoEnEdicion ? 'Editar Regla de Promoción' : 'Nueva Regla de Promoción'}
         size="lg"
+        footer={
+          <div className="flex justify-end gap-2 w-full">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setModalFormOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button type="submit" form="modal-promo-form" variant="primary">
+              {promoEnEdicion ? 'Guardar Cambios' : 'Crear Promoción'}
+            </Button>
+          </div>
+        }
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form id="modal-promo-form" onSubmit={handleSubmit} className="space-y-3">
           {/* Nombre */}
           <div>
             <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
@@ -692,7 +706,7 @@ export function PromocionesPage() {
               <button
                 type="button"
                 onClick={() => setTipo('NXM')}
-                className={`p-2.5 rounded-xl border text-left transition-all ${
+                className={`p-2 rounded-xl border text-left transition-all ${
                   tipo === 'NXM'
                     ? 'border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 font-bold ring-2 ring-indigo-500'
                     : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
@@ -1207,20 +1221,6 @@ export function PromocionesPage() {
             <label htmlFor="activa_check" className="text-xs font-semibold text-gray-700 dark:text-gray-300 cursor-pointer">
               Promoción activa inmediatamente al guardar
             </label>
-          </div>
-
-          {/* Botones */}
-          <div className="pt-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setModalFormOpen(false)}
-            >
-              Cancelar
-            </Button>
-            <Button type="submit" variant="primary">
-              {promoEnEdicion ? 'Guardar Cambios' : 'Crear Promoción'}
-            </Button>
           </div>
         </form>
       </Modal>

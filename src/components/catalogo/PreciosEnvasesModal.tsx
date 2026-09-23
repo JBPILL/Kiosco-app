@@ -505,7 +505,50 @@ export function PreciosEnvasesModal({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Precios de Envases Retornables" size="2xl">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Precios de Envases Retornables"
+      size="2xl"
+      footer={
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 w-full">
+          <div className="text-xs text-gray-500 dark:text-gray-400 text-center sm:text-left">
+            {pestanaActiva === 'DEPOSITO' ? (
+              <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                Los movimientos de stock y entregas a distribuidores se asientan automáticamente en tiempo real.
+              </span>
+            ) : cantModificados > 0 ? (
+              <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                {cantModificados} {cantModificados === 1 ? 'producto modificado' : 'productos modificados'} sin guardar
+              </span>
+            ) : (
+              <span>Mostrando {filasVisibles.length} productos en catálogo</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onClose}
+              className="flex-1 sm:flex-none"
+            >
+              Cerrar
+            </Button>
+            {pestanaActiva !== 'DEPOSITO' && (
+              <Button
+                type="button"
+                onClick={handleGuardarTodos}
+                loading={guardando}
+                disabled={cantModificados === 0}
+                className="flex-1 sm:flex-none"
+              >
+                Guardar todos los cambios ({cantModificados})
+              </Button>
+            )}
+          </div>
+        </div>
+      }
+    >
       <div className="flex flex-col h-full space-y-3">
         {/* Pestañas superiores para navegación fija */}
         <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-700 pb-1">
@@ -1238,44 +1281,6 @@ export function PreciosEnvasesModal({
             )}
           </div>
         )}
-
-        {/* ── FOOTER FIJO: SIEMPRE VISIBLE EN EL FONDO ── */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-3 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
-          <div className="text-xs text-gray-500 dark:text-gray-400">
-            {pestanaActiva === 'DEPOSITO' ? (
-              <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                Los movimientos de stock y entregas a distribuidores se asientan automáticamente en tiempo real.
-              </span>
-            ) : cantModificados > 0 ? (
-              <span className="font-semibold text-indigo-600 dark:text-indigo-400">
-                {cantModificados} {cantModificados === 1 ? 'producto modificado' : 'productos modificados'} sin guardar
-              </span>
-            ) : (
-              <span>Mostrando {filasVisibles.length} productos en catálogo</span>
-            )}
-          </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={onClose}
-              className="flex-1 sm:flex-none"
-            >
-              Cerrar
-            </Button>
-            {pestanaActiva !== 'DEPOSITO' && (
-              <Button
-                type="button"
-                onClick={handleGuardarTodos}
-                loading={guardando}
-                disabled={cantModificados === 0}
-                className="flex-1 sm:flex-none"
-              >
-                Guardar todos los cambios ({cantModificados})
-              </Button>
-            )}
-          </div>
-        </div>
       </div>
     </Modal>
   )

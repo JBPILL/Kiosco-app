@@ -188,8 +188,28 @@ export function AumentoPreciosModal({
   const porcentajesRapidos = [5, 10, 15, 20, 25, 30, 50]
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Aumento Masivo de Precios" size="lg">
-      <div className="space-y-5">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Aumento Masivo de Precios"
+      size="lg"
+      footer={
+        <div className="flex justify-end gap-2.5 w-full">
+          <Button variant="secondary" onClick={onClose} disabled={procesando} className="text-xs sm:text-sm">
+            Cancelar
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleAplicar}
+            disabled={procesando || productosAfectados.length === 0}
+            className="text-xs sm:text-sm shadow-sm"
+          >
+            {procesando ? 'Actualizando...' : `Aplicar a ${productosAfectados.length} productos`}
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-3.5">
         {/* Cabecera informativa tipo Banner */}
         <div className="p-3.5 bg-gradient-to-r from-indigo-50/90 via-indigo-50/50 to-purple-50/40 dark:from-indigo-950/40 dark:via-indigo-950/20 dark:to-purple-950/20 border border-indigo-100 dark:border-indigo-900/50 rounded-xl flex items-center justify-between gap-3">
           <div className="space-y-0.5">
@@ -525,21 +545,6 @@ export function AumentoPreciosModal({
               )}
             </div>
           )}
-        </div>
-
-        {/* Acciones */}
-        <div className="flex justify-end gap-2.5 pt-3 border-t border-gray-200 dark:border-gray-700">
-          <Button variant="secondary" onClick={onClose} disabled={procesando} className="text-xs sm:text-sm">
-            Cancelar
-          </Button>
-          <Button
-            variant="primary"
-            onClick={handleAplicar}
-            disabled={procesando || productosAfectados.length === 0}
-            className="text-xs sm:text-sm shadow-sm"
-          >
-            {procesando ? 'Actualizando...' : `Aplicar a ${productosAfectados.length} productos`}
-          </Button>
         </div>
       </div>
     </Modal>

@@ -77,8 +77,45 @@ export function ComprobantePagoModal({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Comprobante de Pago a Proveedor" size="md">
-      <div className="space-y-4">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Comprobante de Pago a Proveedor"
+      size="md"
+      footer={
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full">
+          <Button
+            variant="primary"
+            onClick={handleImprimir}
+            className="text-xs"
+          >
+            Imprimir
+          </Button>
+          <Button
+            variant="success"
+            onClick={handleCompartirWhatsApp}
+            className="text-xs"
+          >
+            WhatsApp
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={handleCopiarTexto}
+            className="text-xs"
+          >
+            Copiar
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={onClose}
+            className="text-xs"
+          >
+            Cerrar
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
         {/* Controles superiores */}
         <div className="flex items-center justify-between gap-2 pb-2 border-b border-gray-100 dark:border-gray-700">
           <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
@@ -143,7 +180,7 @@ export function ComprobantePagoModal({
         )}
 
         {/* Vista previa del comprobante estilo ticket */}
-        <div className="flex justify-center p-3 bg-gray-100 dark:bg-gray-900/60 rounded-xl overflow-x-auto">
+        <div className="flex justify-center p-2.5 sm:p-3 bg-gray-100 dark:bg-gray-900/60 rounded-xl overflow-y-auto max-h-[min(54vh,460px)]">
           <div
             id="printable-pago-ticket"
             className={`bg-white text-gray-950 p-4 rounded shadow-sm font-mono text-xs leading-tight select-text ${
@@ -242,38 +279,6 @@ export function ComprobantePagoModal({
               <p>Constancia de Pago Comercial</p>
             </div>
           </div>
-        </div>
-
-        {/* Botones de acción */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2">
-          <Button
-            variant="primary"
-            onClick={handleImprimir}
-            className="text-xs"
-          >
-            Imprimir
-          </Button>
-          <Button
-            variant="success"
-            onClick={handleCompartirWhatsApp}
-            className="text-xs"
-          >
-            WhatsApp
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={handleCopiarTexto}
-            className="text-xs"
-          >
-            Copiar
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={onClose}
-            className="text-xs"
-          >
-            Cerrar
-          </Button>
         </div>
       </div>
 
