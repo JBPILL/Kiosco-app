@@ -29,6 +29,7 @@ export function AumentoPreciosModal({
   const [categoriaId, setCategoriaId] = useState<string>('TODAS')
   const [proveedorId, setProveedorId] = useState<string>('TODOS')
   const [porcentaje, setPorcentaje] = useState<number>(10)
+  const [porcentajeInput, setPorcentajeInput] = useState<string>('10')
   const [tipoPrecio, setTipoPrecio] = useState<'VENTA' | 'COSTO_Y_VENTA'>('VENTA')
   const [redondeo, setRedondeo] = useState<TipoRedondeo>('100')
   const [procesando, setProcesando] = useState(false)
@@ -36,8 +37,42 @@ export function AumentoPreciosModal({
   useEffect(() => {
     if (isOpen) {
       cargarProveedores()
+      setPorcentaje(10)
+      setPorcentajeInput('10')
     }
   }, [isOpen, cargarProveedores])
+
+  const handlePorcentajeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Permitir dígitos y una sola coma o punto
+    const raw = e.target.value.replace(/[^0-9.,]/g, '')
+    const parts = raw.split(/[.,]/)
+    let formatted = parts[0]
+    if (parts.length > 1) {
+      // Permitir hasta 2 decimales después de la coma
+      formatted += ',' + parts.slice(1).join('').slice(0, 2)
+    }
+
+    setPorcentajeInput(formatted)
+
+    const normalized = formatted.replace(',', '.')
+    const parsed = parseFloat(normalized)
+    if (!isNaN(parsed) && parsed >= 0) {
+      setPorcentaje(parsed)
+    } else {
+      setPorcentaje(0)
+    }
+  }
+
+  const handlePorcentajeBlur = () => {
+    if (porcentajeInput.endsWith(',') || porcentajeInput.endsWith('.')) {
+      const cleaned = porcentajeInput.slice(0, -1)
+      setPorcentajeInput(cleaned)
+    }
+    if (!porcentajeInput || porcentaje <= 0) {
+      setPorcentaje(1)
+      setPorcentajeInput('1')
+    }
+  }
 
   // Función para calcular nuevo precio aplicando incremento y regla de redondeo
   const calcularNuevo = (precio: number, pct: number, reg: TipoRedondeo): number => {
@@ -90,7 +125,7 @@ export function AumentoPreciosModal({
     }
 
     const confirmar = window.confirm(
-      `¿Confirmás aplicar un aumento del ${porcentaje}% a ${productosAfectados.length} productos?`
+      `¿Confirmás aplicar un aumento del ${porcentaje.toLocaleString('es-AR', { maximumFractionDigits: 2 })}% a ${productosAfectados.length} productos?`
     )
     if (!confirmar) return
 
@@ -368,14 +403,14 @@ export function AumentoPreciosModal({
           </div>
         </div>
 
-        {/* Sección de Porcentaje Unificada e Interactiva */}
+        {/* Sección de Porcentaje Unificada e Interactiva con soporte para decimales */}
         <div className="space-y-2.5 p-4 rounded-xl border border-gray-200 dark:border-gray-700/80 bg-white dark:bg-gray-800/60 shadow-2xs">
           <div className="flex items-center justify-between">
             <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
               Porcentaje de aumento
             </label>
             <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
-              +{porcentaje}%
+              +{porcentaje > 0 ? porcentaje.toLocaleString('es-AR', { maximumFractionDigits: 2 }) : 0}%
             </span>
           </div>
 
@@ -387,8 +422,11 @@ export function AumentoPreciosModal({
                 <button
                   key={pct}
                   type="button"
-                  onClick={() => setPorcentaje(pct)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 ${
+                  onClick={() => {
+                    setPorcentaje(pct)
+                    setPorcentajeInput(pct.toString())
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 cursor-pointer ${
                     activo
                       ? 'bg-indigo-600 text-white shadow-xs'
                       : 'bg-gray-100 dark:bg-gray-700/70 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600'
@@ -400,37 +438,46 @@ export function AumentoPreciosModal({
             })}
           </div>
 
-          {/* Stepper numérico preciso con botón +/- */}
+          {/* Stepper numérico preciso con botón +/- y soporte de decimales con coma */}
           <div className="flex items-center gap-3 pt-1">
             <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-gray-50 dark:bg-gray-900/60">
               <button
                 type="button"
-                onClick={() => setPorcentaje((prev) => Math.max(1, prev - 1))}
-                className="w-9 h-9 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 active:scale-90 transition-all font-bold text-lg"
+                onClick={() => {
+                  const nuevo = Math.max(0.1, Math.round((porcentaje - 1) * 10) / 10)
+                  setPorcentaje(nuevo)
+                  setPorcentajeInput(nuevo.toString().replace('.', ','))
+                }}
+                className="w-9 h-9 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 active:scale-90 transition-all font-bold text-lg cursor-pointer"
               >
                 −
               </button>
               <div className="relative flex items-center justify-center px-2">
                 <input
-                  type="number"
-                  min="1"
-                  max="500"
-                  value={porcentaje === 0 ? '' : porcentaje}
-                  onChange={(e) => setPorcentaje(parseInt(e.target.value, 10) || 0)}
-                  className="w-16 text-center text-base font-black text-indigo-600 dark:text-indigo-400 bg-transparent focus:outline-hidden py-1"
+                  type="text"
+                  inputMode="decimal"
+                  value={porcentajeInput}
+                  onChange={handlePorcentajeChange}
+                  onBlur={handlePorcentajeBlur}
+                  placeholder="0"
+                  className="w-20 text-center text-base font-black text-indigo-600 dark:text-indigo-400 bg-transparent focus:outline-hidden py-1"
                 />
                 <span className="text-xs font-bold text-gray-400 -ml-1">%</span>
               </div>
               <button
                 type="button"
-                onClick={() => setPorcentaje((prev) => Math.min(500, prev + 1))}
-                className="w-9 h-9 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 active:scale-90 transition-all font-bold text-lg"
+                onClick={() => {
+                  const nuevo = Math.min(500, Math.round((porcentaje + 1) * 10) / 10)
+                  setPorcentaje(nuevo)
+                  setPorcentajeInput(nuevo.toString().replace('.', ','))
+                }}
+                className="w-9 h-9 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 active:scale-90 transition-all font-bold text-lg cursor-pointer"
               >
                 +
               </button>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 leading-tight">
-              Podés ingresar cualquier valor numérico o usar los atajos de un clic.
+              Podés ingresar valores con coma (ej: 1,5%) o usar los atajos de un clic.
             </p>
           </div>
         </div>
@@ -510,7 +557,7 @@ export function AumentoPreciosModal({
               </span>
             </span>
             <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 font-black text-xs">
-              +{porcentaje}%
+              +{porcentaje > 0 ? porcentaje.toLocaleString('es-AR', { maximumFractionDigits: 2 }) : 0}%
             </span>
           </div>
 
