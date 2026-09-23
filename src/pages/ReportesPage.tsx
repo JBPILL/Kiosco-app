@@ -43,7 +43,7 @@ interface VentaResumen {
 }
 
 export function ReportesPage() {
-  const { usuario } = useAuthStore()
+  const { usuario, kiosco } = useAuthStore()
   const [tabActiva, setTabActiva] = useState<'balance' | 'ventas'>('balance')
   const [fecha, setFecha] = useState(() => getFechaLocal())
   const [ventas, setVentas] = useState<VentaResumen[]>([])
@@ -57,9 +57,10 @@ export function ReportesPage() {
   const cargarDatos = useCallback(async () => {
     setCargando(true)
     const { inicioISO, finISO } = getLimitesISODia(fecha)
+    const kid = usuario?.kiosco_id || kiosco?.id
 
     // Cargar ventas del día con detalles y pagos
-    const { data, error } = await supabase
+    let query = supabase
       .from('ventas')
       .select(`
         id, fecha_hora, total, estado, notas, sesion_caja_id,
@@ -71,6 +72,12 @@ export function ReportesPage() {
       .gte('fecha_hora', inicioISO)
       .lte('fecha_hora', finISO)
       .order('fecha_hora', { ascending: false })
+
+    if (kid) {
+      query = query.eq('kiosco_id', kid)
+    }
+
+    const { data, error } = await query
 
     if (error) {
       console.error('Error cargando ventas:', error)
@@ -106,7 +113,7 @@ export function ReportesPage() {
 
     setResumen({ totalVentas, cantidadVentas, ventaPromedio, porMedioPago })
     setCargando(false)
-  }, [fecha])
+  }, [fecha, usuario?.kiosco_id, kiosco?.id])
 
   useEffect(() => {
     cargarDatos()

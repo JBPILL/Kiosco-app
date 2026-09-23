@@ -132,6 +132,7 @@ export const useCajaStore = create<CajaState>((set, get) => ({
           total_mercadopago: 0,
           total_transferencia: 0,
           total_tarjeta: 0,
+          total_cuenta_corriente: 0,
           total_ingresos_extra: 0,
           total_egresos: 0,
           efectivo_esperado_en_caja: data.monto_inicial,
@@ -238,9 +239,21 @@ export const useCajaStore = create<CajaState>((set, get) => ({
         .maybeSingle()
 
       if (!viewError && resumenView) {
+        let totalCC = (resumenView as any).total_cuenta_corriente
+        if (totalCC === undefined || totalCC === null) {
+          const { data: pagosCC } = await supabase
+            .from('pagos_venta')
+            .select('monto, venta:ventas!inner(sesion_caja_id, estado)')
+            .eq('medio_pago', 'CUENTA_CORRIENTE')
+            .eq('venta.sesion_caja_id', targetId)
+            .eq('venta.estado', 'COMPLETADA')
+          totalCC = pagosCC ? pagosCC.reduce((acc, p) => acc + (p.monto || 0), 0) : 0
+        }
+
         const baseEsperado = resumenView.monto_inicial + (resumenView.total_efectivo || 0)
         const resumen: ResumenCaja = {
           ...(resumenView as ResumenCaja),
+          total_cuenta_corriente: totalCC || 0,
           total_ingresos_extra: totalIngresosExtra,
           total_egresos: totalEgresos,
           efectivo_esperado_en_caja: baseEsperado + totalIngresosExtra - totalEgresos,
@@ -270,6 +283,7 @@ export const useCajaStore = create<CajaState>((set, get) => ({
       let totalMP = 0
       let totalTransf = 0
       let totalTarjeta = 0
+      let totalCC = 0
 
       if (ventasSesion) {
         totalVentas = ventasSesion.length
@@ -281,6 +295,7 @@ export const useCajaStore = create<CajaState>((set, get) => ({
             else if (p.medio_pago === 'MERCADOPAGO') totalMP += p.monto
             else if (p.medio_pago === 'TRANSFERENCIA') totalTransf += p.monto
             else if (p.medio_pago === 'TARJETA') totalTarjeta += p.monto
+            else if (p.medio_pago === 'CUENTA_CORRIENTE') totalCC += p.monto
           }
         }
       }
@@ -299,6 +314,7 @@ export const useCajaStore = create<CajaState>((set, get) => ({
         total_mercadopago: totalMP,
         total_transferencia: totalTransf,
         total_tarjeta: totalTarjeta,
+        total_cuenta_corriente: totalCC,
         total_ingresos_extra: totalIngresosExtra,
         total_egresos: totalEgresos,
         efectivo_esperado_en_caja:

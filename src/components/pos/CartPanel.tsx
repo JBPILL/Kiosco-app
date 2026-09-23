@@ -410,7 +410,8 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
       <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/60 rounded-t-xl overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden flex-shrink-0">
         {tabs.map((tab) => {
           const esActiva = tab.id === tabActivaId
-          const cant = tab.items.reduce((acc, it) => acc + (it.producto.es_pesable ? 1 : it.cantidad), 0)
+          const itemsTab = esActiva ? items : tab.items
+          const cant = itemsTab.reduce((acc, it) => acc + (it.producto.es_pesable ? 1 : Math.round(it.cantidad)), 0)
           return (
             <div
               key={tab.id}

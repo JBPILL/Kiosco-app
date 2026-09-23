@@ -398,7 +398,11 @@ export function StockPage() {
   }, [movimientos, filtroTipo, busquedaHistorial])
 
   // Lotes y Vencimientos calculados
-  const alertasLotes = useMemo(() => obtenerAlertas(30), [obtenerAlertas, lotes])
+  const alertasLotes = useMemo(() => {
+    // Referenciar lotes para invalidar memo reactivamente cuando cambia el almacén
+    if (!lotes) return { vencidos: [], criticos: [], proximos: [], vigentes: [] }
+    return obtenerAlertas(30)
+  }, [obtenerAlertas, lotes])
 
   const lotesFiltrados = useMemo(() => {
     return lotes.filter((l) => {

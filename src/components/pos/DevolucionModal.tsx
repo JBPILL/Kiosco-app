@@ -25,6 +25,8 @@ interface ItemDevolucionSeleccionado {
   precioUnitario: number
   reingresaStock: boolean
   seleccionado: boolean
+  esPesable?: boolean
+  unidadMedida?: string
 }
 
 export function DevolucionModal({
@@ -60,15 +62,20 @@ export function DevolucionModal({
       (ventaEncontrada.detalles || [])
         .filter((d) => (d.precio_unitario || 0) > 0) // Excluir devoluciones de envases o créditos virtuales
         .map((d) => {
-          const cantEntera = Math.max(1, Math.floor(d.cantidad))
+          const esPesable = Boolean(d.producto?.es_pesable)
+          const cantReal = esPesable
+            ? Number(Number(d.cantidad || 0).toFixed(3))
+            : Math.max(1, Math.floor(d.cantidad))
           return {
             productoId: d.producto_id,
             descripcion: d.producto?.descripcion || 'Artículo',
-            cantidadOriginal: cantEntera,
-            cantidadDevolver: cantEntera,
+            cantidadOriginal: cantReal,
+            cantidadDevolver: cantReal,
             precioUnitario: d.precio_unitario,
             reingresaStock: true,
             seleccionado: true,
+            esPesable,
+            unidadMedida: d.producto?.unidad_medida || 'UN',
           }
         })
     )
@@ -139,11 +146,16 @@ export function DevolucionModal({
     )
   }
 
-  // Modificar cantidad a devolver (estrictamente números enteros >= 1 y <= cantidadOriginal)
+  // Modificar cantidad a devolver (números flotantes para pesables, enteros para unitarios)
   const actualizarCantidadDevolver = (prodId: string, cantidad: number) => {
     setItems((prev) =>
       prev.map((it) => {
         if (it.productoId === prodId) {
+          if (it.esPesable) {
+            const num = Number(Number(cantidad).toFixed(3))
+            const val = isNaN(num) || num <= 0 ? 0.001 : Math.min(num, it.cantidadOriginal)
+            return { ...it, cantidadDevolver: Number(val.toFixed(3)) }
+          }
           const maxVal = Math.max(1, Math.floor(it.cantidadOriginal))
           const entero = Math.floor(Number(cantidad))
           const val = isNaN(entero) || entero < 1 ? 1 : Math.min(entero, maxVal)
@@ -452,48 +464,61 @@ export function DevolucionModal({
                                 {it.descripcion}
                               </p>
                               <p className="text-[10px] text-gray-400">
-                                Original en ticket: {it.cantidadOriginal} un.
+                                Original en ticket: {it.cantidadOriginal} {it.esPesable ? (it.unidadMedida || 'KG') : 'un.'}
                               </p>
                             </td>
                             <td className="px-2 py-2 text-center whitespace-nowrap">
                               <div className="inline-flex items-center justify-center border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden bg-white dark:bg-gray-800 shadow-2xs">
                                 <button
                                   type="button"
-                                  disabled={!it.seleccionado || it.cantidadDevolver <= 1}
-                                  onClick={() => actualizarCantidadDevolver(it.productoId, it.cantidadDevolver - 1)}
+                                  disabled={!it.seleccionado || (it.esPesable ? it.cantidadDevolver <= 0.01 : it.cantidadDevolver <= 1)}
+                                  onClick={() => {
+                                    const paso = it.esPesable ? 0.1 : 1
+                                    actualizarCantidadDevolver(it.productoId, Number((it.cantidadDevolver - paso).toFixed(3)))
+                                  }}
                                   className="px-2 py-1 text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed font-bold text-xs transition-colors"
-                                  title="Restar 1 unidad"
+                                  title={it.esPesable ? "Restar 0.1 kg" : "Restar 1 unidad"}
                                 >
                                   -
                                 </button>
                                 <input
                                   type="text"
-                                  inputMode="numeric"
-                                  pattern="[0-9]*"
+                                  inputMode="decimal"
                                   disabled={!it.seleccionado}
                                   value={it.cantidadDevolver}
                                   onKeyDown={(e) => {
-                                    if (['-', '+', '.', ',', 'e', 'E'].includes(e.key)) {
-                                      e.preventDefault()
+                                    if (it.esPesable) {
+                                      if (['-', '+', 'e', 'E'].includes(e.key)) {
+                                        e.preventDefault()
+                                      }
+                                    } else {
+                                      if (['-', '+', '.', ',', 'e', 'E'].includes(e.key)) {
+                                        e.preventDefault()
+                                      }
                                     }
                                   }}
                                   onChange={(e) => {
-                                    const raw = e.target.value.replace(/[^0-9]/g, '')
-                                    if (raw === '') {
-                                      actualizarCantidadDevolver(it.productoId, 1)
+                                    const raw = e.target.value.replace(it.esPesable ? /[^0-9.,]/g : /[^0-9]/g, '')
+                                    if (raw === '' || raw === '.' || raw === ',') {
+                                      actualizarCantidadDevolver(it.productoId, it.esPesable ? 0.01 : 1)
                                       return
                                     }
-                                    const parsed = parseInt(raw, 10)
-                                    actualizarCantidadDevolver(it.productoId, isNaN(parsed) ? 1 : parsed)
+                                    const parsed = it.esPesable
+                                      ? parseFloat(raw.replace(',', '.'))
+                                      : parseInt(raw, 10)
+                                    actualizarCantidadDevolver(it.productoId, isNaN(parsed) ? (it.esPesable ? 0.01 : 1) : parsed)
                                   }}
-                                  className="w-9 text-center text-xs py-1 px-0.5 bg-transparent text-gray-900 dark:text-gray-100 font-bold outline-none"
+                                  className={`${it.esPesable ? 'w-14' : 'w-9'} text-center text-xs py-1 px-0.5 bg-transparent text-gray-900 dark:text-gray-100 font-bold outline-none`}
                                 />
                                 <button
                                   type="button"
-                                  disabled={!it.seleccionado || it.cantidadDevolver >= Math.floor(it.cantidadOriginal)}
-                                  onClick={() => actualizarCantidadDevolver(it.productoId, it.cantidadDevolver + 1)}
+                                  disabled={!it.seleccionado || it.cantidadDevolver >= it.cantidadOriginal}
+                                  onClick={() => {
+                                    const paso = it.esPesable ? 0.1 : 1
+                                    actualizarCantidadDevolver(it.productoId, Number((it.cantidadDevolver + paso).toFixed(3)))
+                                  }}
                                   className="px-2 py-1 text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed font-bold text-xs transition-colors"
-                                  title="Sumar 1 unidad"
+                                  title={it.esPesable ? "Sumar 0.1 kg" : "Sumar 1 unidad"}
                                 >
                                   +
                                 </button>

@@ -196,7 +196,7 @@ export function CajaPage() {
         { medio: 'Mercado Pago', total: resumenActivo?.total_mercadopago || 0 },
         { medio: 'Transferencia', total: resumenActivo?.total_transferencia || 0 },
         { medio: 'Tarjeta', total: resumenActivo?.total_tarjeta || 0 },
-        { medio: 'Otros / Cta Cte', total: otrosPagos },
+        { medio: 'Fiado / Cta Cte', total: resumenActivo?.total_cuenta_corriente ?? otrosPagos },
       ].filter((m) => m.total > 0),
       totalVentas: facturadoTotal,
       cantidadVentas: operacionesTotal,
@@ -241,7 +241,7 @@ export function CajaPage() {
         { medio: 'Mercado Pago', total: resumen?.total_mercadopago || 0 },
         { medio: 'Transferencia', total: resumen?.total_transferencia || 0 },
         { medio: 'Tarjeta', total: resumen?.total_tarjeta || 0 },
-        { medio: 'Otros / Cta Cte', total: otrosPagos },
+        { medio: 'Fiado / Cta Cte', total: resumen?.total_cuenta_corriente ?? otrosPagos },
       ].filter((m) => m.total > 0),
       totalVentas: facturadoTotal,
       cantidadVentas: operacionesTotal,
@@ -475,8 +475,8 @@ export function CajaPage() {
                 </div>
               </div>
 
-              {/* Medios digitales del turno */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-gray-100 dark:border-gray-700 mt-4">
+              {/* Medios de cobro del turno */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-4 border-t border-gray-100 dark:border-gray-700 mt-4">
                 <div>
                   <p className="text-xs text-gray-400 dark:text-gray-500">Mercado Pago</p>
                   <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mt-0.5">
@@ -496,6 +496,12 @@ export function CajaPage() {
                   </p>
                 </div>
                 <div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">Fiados / Cta. Cte.</p>
+                  <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 mt-0.5">
+                    {formatPrecio(resumenActivo?.total_cuenta_corriente || 0)}
+                  </p>
+                </div>
+                <div className="col-span-2 sm:col-span-1">
                   <p className="text-xs text-gray-400 dark:text-gray-500">Total ventas turno</p>
                   <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
                     {resumenActivo?.total_ventas || 0} operaciones ({formatPrecio(resumenActivo?.total_facturado || 0)})

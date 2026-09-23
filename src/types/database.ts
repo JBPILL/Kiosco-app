@@ -182,6 +182,7 @@ export interface ResumenCaja {
   total_mercadopago: number
   total_transferencia: number
   total_tarjeta: number
+  total_cuenta_corriente?: number
   total_ingresos_extra?: number
   total_egresos?: number
   efectivo_esperado_en_caja: number

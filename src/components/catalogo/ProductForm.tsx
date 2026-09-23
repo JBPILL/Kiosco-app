@@ -193,18 +193,26 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
 
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label="Stock actual"
+              label={`Stock actual ${form.es_pesable ? `(${form.unidad_medida || 'KG'})` : ''}`}
               type="number"
               min="0"
+              step={form.es_pesable ? '0.001' : '1'}
               value={form.stock_actual || ''}
-              onChange={(e) => setForm({ ...form, stock_actual: parseInt(e.target.value) || 0 })}
+              onChange={(e) => {
+                const val = form.es_pesable ? parseFloat(e.target.value) : parseInt(e.target.value, 10)
+                setForm({ ...form, stock_actual: isNaN(val) ? 0 : val })
+              }}
             />
             <Input
-              label="Stock mínimo"
+              label={`Stock mínimo ${form.es_pesable ? `(${form.unidad_medida || 'KG'})` : ''}`}
               type="number"
               min="0"
+              step={form.es_pesable ? '0.001' : '1'}
               value={form.stock_minimo || ''}
-              onChange={(e) => setForm({ ...form, stock_minimo: parseInt(e.target.value) || 0 })}
+              onChange={(e) => {
+                const val = form.es_pesable ? parseFloat(e.target.value) : parseInt(e.target.value, 10)
+                setForm({ ...form, stock_minimo: isNaN(val) ? 0 : val })
+              }}
             />
           </div>
 
