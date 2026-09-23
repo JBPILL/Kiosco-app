@@ -96,13 +96,73 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
   const inputTelefonoRef = useRef<HTMLInputElement>(null)
   const ticketScrollRef = useRef<HTMLDivElement>(null)
 
+  const [isDragging, setIsDragging] = useState(false)
+  const [puedeHacerScroll, setPuedeHacerScroll] = useState(false)
+  const [estaAlFinal, setEstaAlFinal] = useState(false)
+  const startYRef = useRef(0)
+  const startScrollTopRef = useRef(0)
+  const isMouseDownRef = useRef(false)
+
+  const verificarScroll = () => {
+    if (ticketScrollRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = ticketScrollRef.current
+      setPuedeHacerScroll(scrollHeight > clientHeight + 15)
+      setEstaAlFinal(scrollTop + clientHeight >= scrollHeight - 25)
+    }
+  }
+
+  const handleScroll = () => {
+    verificarScroll()
+  }
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0 || !ticketScrollRef.current) return
+    isMouseDownRef.current = true
+    setIsDragging(true)
+    startYRef.current = e.pageY - ticketScrollRef.current.offsetTop
+    startScrollTopRef.current = ticketScrollRef.current.scrollTop
+  }
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isMouseDownRef.current || !ticketScrollRef.current) return
+    e.preventDefault()
+    const y = e.pageY - ticketScrollRef.current.offsetTop
+    const walk = y - startYRef.current
+    ticketScrollRef.current.scrollTop = startScrollTopRef.current - walk
+  }
+
+  const handleMouseUp = () => {
+    isMouseDownRef.current = false
+    setIsDragging(false)
+  }
+
+  const handleToggleScroll = () => {
+    if (!ticketScrollRef.current) return
+    if (estaAlFinal) {
+      ticketScrollRef.current.scrollTo({ top: 0, behavior: 'smooth' })
+    } else {
+      ticketScrollRef.current.scrollTo({
+        top: ticketScrollRef.current.scrollHeight,
+        behavior: 'smooth',
+      })
+    }
+  }
+
   useEffect(() => {
     if (!isOpen) {
       setMostrarInputTelefono(false)
-    } else if (ticketScrollRef.current) {
-      ticketScrollRef.current.scrollTop = 0
+      setIsDragging(false)
+      isMouseDownRef.current = false
+    } else {
+      if (ticketScrollRef.current) {
+        ticketScrollRef.current.scrollTop = 0
+      }
+      const timer = setTimeout(() => {
+        verificarScroll()
+      }, 100)
+      return () => clearTimeout(timer)
     }
-  }, [isOpen, ticket])
+  }, [isOpen, ticket, anchoPapel, qrDataUrl])
 
   useEffect(() => {
     if (ticket?.clienteTelefono) {
@@ -284,16 +344,25 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
         </div>
 
         {/* Vista previa del ticket estilo papel térmico */}
-        <div
-          ref={ticketScrollRef}
-          className="flex justify-center items-start p-2.5 sm:p-4 bg-gray-100/90 dark:bg-gray-900/80 rounded-2xl overflow-y-auto max-h-[min(58vh,520px)] border border-gray-200/80 dark:border-gray-800"
-        >
+        <div className="relative w-full rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-gray-100/90 dark:bg-gray-900/80 overflow-hidden shadow-inner">
           <div
-            id="printable-ticket"
-            className={`bg-white text-gray-900 p-4 sm:p-5 rounded-lg shadow-md shadow-gray-400/20 dark:shadow-black/60 border border-gray-200/90 font-mono text-xs leading-tight select-text transition-all self-start h-fit flex-shrink-0 min-h-fit ${
-              anchoPapel === '58mm' ? 'w-[270px]' : 'w-[350px]'
+            ref={ticketScrollRef}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            onScroll={handleScroll}
+            className={`w-full overflow-y-auto max-h-[min(58vh,520px)] p-3 sm:p-5 select-none touch-pan-y overscroll-contain transition-colors ${
+              isDragging ? 'cursor-grabbing' : 'cursor-grab'
             }`}
+            style={{ scrollbarWidth: 'thin' }}
           >
+            <div
+              id="printable-ticket"
+              className={`mx-auto bg-white text-gray-950 p-4 sm:p-5 pb-6 rounded-xl shadow-md border border-gray-200/90 font-mono text-xs leading-tight transition-all select-none block ${
+                anchoPapel === '58mm' ? 'w-[270px]' : 'w-[350px]'
+              }`}
+            >
             {/* Encabezado */}
             {ticket.afip ? (
               <div className="text-center space-y-1 pb-2 border-b border-dashed border-gray-400">
@@ -481,7 +550,8 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
                     <img
                       src={qrDataUrl}
                       alt="Código QR ARCA"
-                      className="w-28 h-28 object-contain bg-white p-1 rounded"
+                      draggable={false}
+                      className="w-28 h-28 object-contain bg-white p-1 rounded pointer-events-none select-none"
                     />
                   </div>
                 )}
@@ -500,7 +570,32 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
                 <p>Comprobante no válido como factura</p>
               </div>
             )}
+            </div>
           </div>
+
+          {/* Botón flotante para arrastrar o saltar al final/inicio */}
+          {puedeHacerScroll && (
+            <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-10 pointer-events-auto transition-all animate-in fade-in duration-200">
+              <button
+                type="button"
+                onClick={handleToggleScroll}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-900/85 hover:bg-slate-950 dark:bg-slate-100/90 dark:hover:bg-white text-white dark:text-slate-900 text-xs font-semibold shadow-lg backdrop-blur-xs transition-all active:scale-95 cursor-pointer"
+              >
+                <svg
+                  className={`w-3.5 h-3.5 transition-transform duration-300 ${estaAlFinal ? 'rotate-180' : ''}`}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+                <span>{estaAlFinal ? 'Subir al inicio' : 'Arrastrá hacia abajo para ver completo'}</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Panel para enviar por WhatsApp */}

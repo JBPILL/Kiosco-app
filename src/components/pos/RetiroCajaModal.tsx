@@ -160,19 +160,19 @@ export function RetiroCajaModal({ isOpen, onClose }: RetiroCajaModalProps) {
             </div>
 
             {/* Botones de montos rápidos / billetes */}
-            <div className="grid grid-cols-3 gap-2 pt-1">
+            <div className="grid grid-cols-3 gap-2 sm:gap-2.5 pt-1 w-full">
               {MONTOS_RAPIDOS.map((m) => (
                 <button
                   key={m}
                   type="button"
                   onClick={() => setMonto(m.toString())}
-                  className={`py-2 px-2 text-xs sm:text-sm font-bold rounded-xl border transition-all cursor-pointer text-center flex items-center justify-center min-h-[38px] active:scale-95 ${
+                  className={`w-full py-2 px-2 text-xs sm:text-sm font-bold rounded-xl border transition-all cursor-pointer text-center flex items-center justify-center min-h-[42px] select-none active:scale-95 ${
                     montoNum === m
                       ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 shadow-xs ring-1 ring-indigo-500/40'
                       : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700/60'
                   }`}
                 >
-                  {formatPrecio(m)}
+                  <span className="truncate">{formatPrecio(m)}</span>
                 </button>
               ))}
             </div>

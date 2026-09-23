@@ -95,10 +95,10 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
         </div>
 
         {/* Vista previa térmica imprimible */}
-        <div className="flex justify-center p-2.5 sm:p-3 bg-gray-100 dark:bg-gray-900/60 rounded-xl overflow-y-auto max-h-[min(54vh,460px)]">
+        <div className="w-full p-2.5 sm:p-4 bg-gray-100 dark:bg-gray-900/60 rounded-xl overflow-y-auto max-h-[min(54vh,460px)]">
           <div
             id="printable-cierre"
-            className={`bg-white text-gray-950 p-4 rounded shadow-sm font-mono text-xs leading-tight select-text ${
+            className={`mx-auto bg-white text-gray-950 p-4 pb-5 rounded-lg shadow-sm font-mono text-xs leading-tight select-text block ${
               anchoPapel === '58mm' ? 'w-[260px]' : 'w-[340px]'
             }`}
           >
