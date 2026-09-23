@@ -47,6 +47,11 @@ export function ConfigPage() {
   const [direccion, setDireccion] = useState('')
   const [telefono, setTelefono] = useState('')
 
+  // Navegación por pestañas de configuración
+  const [pestanaActiva, setPestanaActiva] = useState<
+    'GENERAL' | 'FISCAL' | 'SEGURIDAD' | 'USUARIOS' | 'SUSCRIPCION' | 'BACKUP'
+  >('GENERAL')
+
   // Modal nuevo usuario
   const [modalUsuarioOpen, setModalUsuarioOpen] = useState(false)
   const [nuevoNombre, setNuevoNombre] = useState('')
@@ -389,593 +394,784 @@ export function ConfigPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">Configuración</h1>
-        <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">Administrá tu kiosco, suscripción y equipo de trabajo</p>
+    <div className="max-w-5xl mx-auto space-y-6">
+      {/* Encabezado Principal */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold tracking-wider uppercase px-2.5 py-1 rounded-md bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
+              Panel del Comercio
+            </span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">Ajustes & Parámetros</span>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-1">
+            Configuración General
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Administrá los datos del local, facturación electrónica, equipo, seguridad y resguardos.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {kiosco && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-50 dark:bg-gray-900/70 border border-gray-200 dark:border-gray-700 text-xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="font-bold text-gray-800 dark:text-gray-200 truncate max-w-[180px]">
+                {kiosco.nombre}
+              </span>
+            </div>
+          )}
+          <Button
+            variant="secondary"
+            onClick={cargarDatos}
+            disabled={cargando}
+            className="text-xs"
+          >
+            {cargando ? 'Actualizando...' : 'Actualizar'}
+          </Button>
+        </div>
+      </div>
+
+      {/* Selector de Pestañas de Configuración */}
+      <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 pb-2 overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => setPestanaActiva('GENERAL')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+            pestanaActiva === 'GENERAL'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+          }`}
+        >
+          <span>Negocio y Apariencia</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setPestanaActiva('FISCAL')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+            pestanaActiva === 'FISCAL'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+          }`}
+        >
+          <span>Facturación ARCA</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setPestanaActiva('SEGURIDAD')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+            pestanaActiva === 'SEGURIDAD'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+          }`}
+        >
+          <span>Seguridad y Caja</span>
+          {arqueoCiegoObligatorio && (
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setPestanaActiva('USUARIOS')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+            pestanaActiva === 'USUARIOS'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+          }`}
+        >
+          <span>Equipo y Usuarios</span>
+          <span
+            className={`text-xs px-2 py-0.2 rounded-full font-semibold ${
+              pestanaActiva === 'USUARIOS'
+                ? 'bg-white/20 text-white'
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+            }`}
+          >
+            {usuarios.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setPestanaActiva('SUSCRIPCION')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+            pestanaActiva === 'SUSCRIPCION'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+          }`}
+        >
+          <span>Suscripción</span>
+          <span
+            className={`text-xs px-2 py-0.2 rounded-full font-semibold ${
+              estadoEfectivo === 'ACTIVO'
+                ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300'
+                : 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300'
+            }`}
+          >
+            {estadoEfectivo === 'ACTIVO' ? 'Al día' : 'Atención'}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setPestanaActiva('BACKUP')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+            pestanaActiva === 'BACKUP'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+          }`}
+        >
+          <span>Backups y App</span>
+        </button>
       </div>
 
       {cargando ? (
-        <div className="text-center py-12">
+        <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
           <div className="animate-spin h-8 w-8 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto" />
-          <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">Cargando configuración...</p>
+          <p className="text-sm font-semibold text-gray-600 dark:text-gray-400 mt-3">
+            Cargando configuración del kiosco...
+          </p>
         </div>
       ) : (
         <>
-          {/* Apariencia / Modo Oscuro */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Apariencia del Sistema</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              Alterná entre tema claro y tema oscuro según la iluminación de tu local.
-            </p>
-
-            <div className="flex items-center gap-4">
-              <Button
-                variant={tema === 'light' ? 'primary' : 'secondary'}
-                onClick={() => tema !== 'light' && toggleTema()}
-              >
-                Modo claro
-              </Button>
-              <Button
-                variant={tema === 'dark' ? 'primary' : 'secondary'}
-                onClick={() => tema !== 'dark' && toggleTema()}
-              >
-                Modo oscuro
-              </Button>
-            </div>
-          </div>
-
-          {/* Datos del Kiosco */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Datos del Negocio</h2>
-            <form onSubmit={handleGuardarKiosco} className="space-y-4">
-              <Input
-                label="Nombre del Kiosco *"
-                placeholder="Ej: Kiosco Central"
-                value={nombreKiosco}
-                onChange={(e) => setNombreKiosco(e.target.value)}
-                required
-              />
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input
-                  label="Dirección"
-                  placeholder="Ej: Av. San Martín 1234"
-                  value={direccion}
-                  onChange={(e) => setDireccion(e.target.value)}
-                />
-                <Input
-                  label="Teléfono"
-                  placeholder="Ej: 11-2345-6789"
-                  value={telefono}
-                  onChange={(e) => setTelefono(e.target.value)}
-                />
-              </div>
-
-              <div className="pt-2">
-                <Button type="submit" loading={guardandoKiosco}>
-                  Guardar cambios
-                </Button>
-              </div>
-            </form>
-          </div>
-
-          {/* Tamaño de Letra y Accesibilidad Visual */}
-          <AccessibilityConfigSection />
-
-          {/* Configuración Fiscal ARCA */}
-          <AFIPConfigSection />
-
-          {/* Políticas de Seguridad y Control de Caja */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Control de Caja y Auditoría</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Reglas institucionales de seguridad para el turno de caja y arqueo de dinero
-              </p>
-            </div>
-
-            <div className="p-4 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="space-y-1">
-                <p className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                  Exigir Arqueo Ciego Obligatorio a Cajeros
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed max-w-xl">
-                  Al activarse, los empleados con rol Cajero no podrán ver el efectivo esperado por el sistema ni las ventas del turno. Deberán contar el dinero físicamente en el cajón a ciegas al cerrar para prevenir desvíos y manipulaciones.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                  arqueoCiegoObligatorio
-                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                    : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-                }`}>
-                  {arqueoCiegoObligatorio ? 'Obligatorio' : 'Opcional (Guiado)'}
-                </span>
-
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const nuevo = !arqueoCiegoObligatorio
-                    await guardarArqueoCiegoConfig(nuevo)
-                    toast.success(
-                      nuevo
-                        ? 'Arqueo ciego obligatorio activado para cajeros'
-                        : 'Arqueo ciego opcional: cajeros podrán ver efectivo esperado'
-                    )
-                  }}
-                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    arqueoCiegoObligatorio ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'
-                  }`}
-                  role="switch"
-                  aria-checked={arqueoCiegoObligatorio}
-                >
-                  <span
-                    aria-hidden="true"
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                      arqueoCiegoObligatorio ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Estado de Suscripción */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Estado de la Suscripción</h2>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {/* Tarjeta 1: Plan */}
-              <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Plan contratado</p>
-                <p className="text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">
-                  {suscripcion?.plan?.nombre || 'Kiosco Pro'}
-                </p>
-                <p className="text-xs text-indigo-600 dark:text-indigo-400 font-medium mt-0.5">
-                  {suscripcion?.plan?.precio_mensual
-                    ? `${formatPrecio(suscripcion.plan.precio_mensual)} / mes`
-                    : '$35.000 / mes'}
-                </p>
-              </div>
-
-              {/* Tarjeta 2: Estado del Servicio */}
-              <div
-                className={`p-4 rounded-xl border shadow-xs ${
-                  estadoEfectivo === 'ACTIVO'
-                    ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/50'
-                    : estadoEfectivo === 'SOLO_LECTURA'
-                    ? 'bg-amber-50/50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800/60'
-                    : 'bg-red-50/50 dark:bg-red-950/30 border-red-300 dark:border-red-800/60'
-                }`}
-              >
-                <p className="text-xs text-gray-500 dark:text-gray-400">Estado de servicio</p>
-                <p
-                  className={`text-lg font-bold mt-1 ${
-                    estadoEfectivo === 'ACTIVO'
-                      ? 'text-emerald-600 dark:text-emerald-400'
-                      : estadoEfectivo === 'SOLO_LECTURA'
-                      ? 'text-amber-600 dark:text-amber-400'
-                      : 'text-red-600 dark:text-red-400'
-                  }`}
-                >
-                  {estadoEfectivo === 'ACTIVO'
-                    ? 'Activo'
-                    : estadoEfectivo === 'SOLO_LECTURA'
-                    ? 'Solo Lectura'
-                    : 'Suspendido'}
-                </p>
-                <p
-                  className={`text-xs mt-0.5 ${
-                    estadoEfectivo === 'ACTIVO'
-                      ? 'text-gray-500 dark:text-gray-400'
-                      : estadoEfectivo === 'SOLO_LECTURA'
-                      ? 'text-amber-700 dark:text-amber-300 font-medium'
-                      : 'text-red-700 dark:text-red-300 font-medium'
-                  }`}
-                >
-                  {estadoEfectivo === 'ACTIVO'
-                    ? 'Acceso total habilitado'
-                    : estadoEfectivo === 'SOLO_LECTURA'
-                    ? 'Ventas pausadas (período vencido)'
-                    : 'Servicio pausado temporalmente'}
-                </p>
-              </div>
-
-              {/* Tarjeta 3: Vencimiento */}
-              <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Vencimiento del Abono</p>
-                <p className="text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">
-                  {suscripcion?.fecha_vencimiento
-                    ? formatFechaCorta(suscripcion.fecha_vencimiento)
-                    : 'Al día'}
-                </p>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                  {diasRestantes !== null
-                    ? diasRestantes > 5
-                      ? `Quedan ${diasRestantes} días de cobertura`
-                      : diasRestantes > 0
-                      ? `Vence en ${diasRestantes} días`
-                      : diasRestantes === 0
-                      ? 'Vence hoy'
-                      : `Vencido hace ${Math.abs(diasRestantes)} días`
-                    : 'Suscripción por tiempo indeterminado'}
-                </p>
-              </div>
-            </div>
-
-            {/* Aviso informativo condicional */}
-            {estadoEfectivo === 'SOLO_LECTURA' && (
-              <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-900 dark:text-amber-200">
-                <span className="font-bold">Modo Solo Lectura: </span>
-                Las ventas en el punto de venta (POS) están bloqueadas temporalmente por vencimiento del abono. Podés seguir consultando stock, caja y reportes de tu negocio. Para habilitar las ventas, comunicate con el administrador para regularizar tu suscripción.
-              </div>
-            )}
-
-            {estadoEfectivo === 'SUSPENDIDO' && (
-              <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 text-xs text-red-900 dark:text-red-200">
-                <span className="font-bold">Servicio Suspendido: </span>
-                El servicio se encuentra pausado temporalmente. Por favor, regularizá el abono para reactivar el sistema.
-              </div>
-            )}
-
-            {/* Datos para pago y renovación de suscripción */}
-            {(configAdmin.alias_mp || configAdmin.cbu_banco || configAdmin.titular_cuenta || configAdmin.whatsapp_soporte) && (
-              <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 space-y-3 mt-3 shadow-xs">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-200 dark:border-gray-700/80 pb-2.5">
-                  <div>
-                    <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                      Datos de Pago para Renovación de Abono
-                    </h3>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      Transferí el monto de tu plan y enviá el comprobante al WhatsApp del administrador para registrar la renovación.
-                    </p>
-                  </div>
-                  {configAdmin.whatsapp_soporte && (
-                    <a
-                      href={formatearLinkWhatsApp(
-                        configAdmin.whatsapp_soporte,
-                        `Hola! Me comunico desde "${kiosco?.nombre || 'Mi Kiosco'}" para consultar sobre la renovación de mi abono en AlPaso POS.`
-                      )}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition-colors self-start sm:self-auto"
-                    >
-                      WhatsApp Soporte
-                    </a>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
-                  {configAdmin.titular_cuenta && (
-                    <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-2xs">
-                      <span className="text-gray-400 dark:text-gray-500 block font-medium">Titular de la cuenta:</span>
-                      <span className="font-bold text-gray-900 dark:text-gray-100 mt-1 block text-sm leading-snug break-words">
-                        {configAdmin.titular_cuenta}
-                      </span>
-                    </div>
-                  )}
-
-                  {configAdmin.alias_mp && (
-                    <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3 shadow-2xs">
-                      <div className="min-w-0">
-                        <span className="text-gray-400 dark:text-gray-500 block font-medium">Alias Mercado Pago:</span>
-                        <span className="font-bold text-sky-600 dark:text-sky-400 mt-1 block text-sm break-words select-all">
-                          {configAdmin.alias_mp}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => copiarDato(configAdmin.alias_mp, 'Alias')}
-                        className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-xs font-semibold text-gray-700 dark:text-gray-200 transition-colors flex-shrink-0 active:scale-95"
-                      >
-                        Copiar
-                      </button>
-                    </div>
-                  )}
-
-                  {configAdmin.cbu_banco && (
-                    <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3 shadow-2xs">
-                      <div className="min-w-0">
-                        <span className="text-gray-400 dark:text-gray-500 block font-medium">CBU / CVU Bancario:</span>
-                        <span className="font-bold text-gray-900 dark:text-gray-100 mt-1 block font-mono text-sm tracking-wide break-all select-all">
-                          {configAdmin.cbu_banco}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => copiarDato(configAdmin.cbu_banco, 'CBU')}
-                        className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-xs font-semibold text-gray-700 dark:text-gray-200 transition-colors flex-shrink-0 active:scale-95"
-                      >
-                        Copiar
-                      </button>
-                    </div>
-                  )}
-
-                  {configAdmin.banco_nombre && (
-                    <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-2xs">
-                      <span className="text-gray-400 dark:text-gray-500 block font-medium">Banco / Billetera:</span>
-                      <span className="font-bold text-gray-900 dark:text-gray-100 mt-1 block text-sm break-words">
-                        {configAdmin.banco_nombre}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Gestión de Personal / Usuarios */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Usuarios del Kiosco</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Roles asignados para operar la caja y reportes</p>
-              </div>
-              <Button size="sm" onClick={() => setModalUsuarioOpen(true)}>
-                + Nuevo usuario
-              </Button>
-            </div>
-
-            <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400">
-                    <tr>
-                      <th className="px-4 py-3 font-medium">Nombre</th>
-                      <th className="px-4 py-3 font-medium">Email</th>
-                      <th className="px-4 py-3 font-medium">Rol</th>
-                      <th className="px-4 py-3 font-medium">Acceso / Login</th>
-                      <th className="px-4 py-3 font-medium">Cuenta de Usuario</th>
-                      <th className="px-4 py-3 font-medium text-right">Acción</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                    {usuarios.map((u) => {
-                      const esUltimoAdmin = u.rol === 'DUEÑO' && duenosActivos <= 1
-                      const esSesionActual = u.id === usuario?.id
-
-                      return (
-                        <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                          <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{u.nombre}</td>
-                          <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{u.email || '—'}</td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-flex items-center justify-center min-w-[70px] px-2.5 py-0.5 text-xs font-semibold rounded-full tracking-wide ${
-                                u.rol === 'DUEÑO'
-                                  ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400'
-                                  : u.rol === 'CAJERO'
-                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
-                                  : 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-400'
-                              }`}
-                            >
-                              {u.rol}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            {u.auth_user_id ? (
-                              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                                Habilitado
-                              </span>
-                            ) : (
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-amber-600 dark:text-amber-400 font-medium" title="Este usuario aún no tiene contraseña de inicio de sesión">
-                                  Sin clave de acceso
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setUsuarioParaClave(u)
-                                    setAsignarEmail(u.email || '')
-                                    setAsignarPassword('')
-                                  }}
-                                  className="px-2 py-0.5 text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded border border-indigo-200 dark:border-indigo-800 transition-colors"
-                                  title="Crear y asignar contraseña para que pueda iniciar sesión"
-                                >
-                                  Asignar clave
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
-                                u.activo
-                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
-                                  : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
-                              }`}
-                            >
-                              {u.activo ? 'Habilitado' : 'Deshabilitado'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            {esUltimoAdmin ? (
-                              <span
-                                className="text-xs text-gray-400 dark:text-gray-500 font-medium italic"
-                                title="No se puede eliminar el único administrador del kiosco"
-                              >
-                                Admin principal
-                              </span>
-                            ) : esSesionActual ? (
-                              <span
-                                className="text-xs text-indigo-600 dark:text-indigo-400 font-medium"
-                                title="Sesión activa actualmente"
-                              >
-                                Tu usuario
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => setUsuarioAEliminar(u)}
-                                className="inline-flex items-center justify-center px-2.5 py-1 text-xs font-semibold text-red-600 dark:text-red-300 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/60 border border-red-200 dark:border-red-800/60 rounded-lg transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
-                                title="Eliminar este usuario"
-                              >
-                                Eliminar
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          {/* Copias de Seguridad y Resguardo de Datos */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                Copias de Seguridad (Backup de Datos)
-              </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Descargá una copia física de la información de tu negocio en formato Excel corporativo (.XLSX) para tener siempre un resguardo seguro en tu computadora.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 space-y-2 flex flex-col justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                    Resguardo de Catálogo y Stock
-                  </h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Incluye todos tus productos con códigos de barra, categorías, costos, precios de venta y stock actual.
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={handleExportarCatalogo}
-                  disabled={exportandoBackup}
-                  className="w-full text-xs font-semibold"
-                >
-                  {exportandoBackup ? 'Generando...' : 'Descargar Catálogo (.XLSX)'}
-                </Button>
-              </div>
-
-              <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 space-y-2 flex flex-col justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                    Histórico de Ventas (Auditoría)
-                  </h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Descargá el informe contable de todas las ventas emitidas con fecha, comprobante, cajero y medios de pago para auditoría o contabilidad.
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={handleExportarVentas}
-                  disabled={exportandoBackup}
-                  className="w-full text-xs font-semibold"
-                >
-                  {exportandoBackup ? 'Generando...' : 'Descargar Ventas (.XLSX)'}
-                </Button>
-              </div>
-
-              <div className="p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 space-y-2 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-indigo-950 dark:text-indigo-200">
-                      Restaurar Catálogo / Rollback
-                    </h3>
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
-                      Recuperación
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
-                    Importá la copia de seguridad de tu catálogo (.xlsx o .csv) para actualizar precios, costos y stock, o revertir a un estado anterior.
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="primary"
-                  onClick={() => setModalImportarOpen(true)}
-                  className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white"
-                >
-                  Restaurar Catálogo (.XLSX / .CSV)
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          {/* Aplicación de Escritorio e Instalación PWA */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
+          {/* PESTAÑA: GENERAL Y LOCAL */}
+          {pestanaActiva === 'GENERAL' && (
+            <div className="space-y-6">
+              {/* Datos del Kiosco */}
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-4">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                    Aplicación de Escritorio (PWA Offline)
+                  <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300">
+                    Identificación
+                  </span>
+                  <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                    Datos del Negocio
                   </h2>
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      estaInstalado
-                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                        : puedeInstalar
-                        ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300'
-                        : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Información oficial del local que se imprime en los tickets de venta y comprobantes.
+                </p>
+
+                <form onSubmit={handleGuardarKiosco} className="space-y-4">
+                  <Input
+                    label="Nombre del Kiosco / Comercio *"
+                    placeholder="Ej: Kiosco Central"
+                    value={nombreKiosco}
+                    onChange={(e) => setNombreKiosco(e.target.value)}
+                    required
+                  />
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Input
+                      label="Dirección del Local"
+                      placeholder="Ej: Av. San Martín 1234"
+                      value={direccion}
+                      onChange={(e) => setDireccion(e.target.value)}
+                    />
+                    <Input
+                      label="Teléfono de Contacto"
+                      placeholder="Ej: 11-2345-6789"
+                      value={telefono}
+                      onChange={(e) => setTelefono(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="pt-2 flex justify-end">
+                    <Button type="submit" variant="primary" loading={guardandoKiosco} className="shadow-xs">
+                      Guardar Cambios del Comercio
+                    </Button>
+                  </div>
+                </form>
+              </div>
+
+              {/* Apariencia / Modo Oscuro */}
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-4">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300">
+                    Interfaz Visual
+                  </span>
+                  <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                    Tema y Modo de Visualización
+                  </h2>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Alterná entre tema claro y tema oscuro según la iluminación de tu local comercial.
+                </p>
+
+                <div className="grid grid-cols-2 gap-3 max-w-sm">
+                  <button
+                    type="button"
+                    onClick={() => tema !== 'light' && toggleTema()}
+                    className={`p-3 rounded-xl border text-center font-bold text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                      tema === 'light'
+                        ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-500/30 shadow-xs'
+                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
                     }`}
                   >
-                    {estaInstalado
-                      ? 'Instalada en este equipo'
-                      : puedeInstalar
-                      ? 'Disponible para instalar'
-                      : 'Navegador Web'}
-                  </span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                    <span>Modo Claro</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => tema !== 'dark' && toggleTema()}
+                    className={`p-3 rounded-xl border text-center font-bold text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                      tema === 'dark'
+                        ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-500/30 shadow-xs'
+                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-400" />
+                    <span>Modo Oscuro</span>
+                  </button>
                 </div>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  Ejecutá AlPaso POS como un programa nativo de Windows: con acceso directo en el Escritorio, fijado en la Barra de Tareas, sin barra del navegador y listo para vender sin conexión a internet.
-                </p>
               </div>
 
-              {puedeInstalar && !estaInstalado && (
-                <Button
-                  variant="primary"
-                  onClick={async () => {
-                    const exito = await instalarApp()
-                    if (exito) toast.success('¡AlPaso POS se instaló exitosamente en tu PC!')
-                  }}
-                  className="font-bold shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
-                >
-                  Instalar en esta PC
+              {/* Tamaño de Letra y Accesibilidad Visual */}
+              <AccessibilityConfigSection />
+            </div>
+          )}
+
+          {/* PESTAÑA: FACTURACIÓN ARCA */}
+          {pestanaActiva === 'FISCAL' && (
+            <div className="space-y-6">
+              <AFIPConfigSection />
+            </div>
+          )}
+
+          {/* PESTAÑA: SEGURIDAD Y CONTROL DE CAJA */}
+          {pestanaActiva === 'SEGURIDAD' && (
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-4">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300">
+                  Seguridad Operativa
+                </span>
+                <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                  Políticas de Turno y Control de Efectivo
+                </h2>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Reglas de control y auditoría financiera aplicables a los cajeros del comercio.
+              </p>
+
+              <div className="p-4 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
+                <div className="space-y-1">
+                  <p className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                    Exigir Arqueo Ciego Obligatorio a Cajeros
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed max-w-xl">
+                    Al activarse, los empleados con rol Cajero no podrán ver el efectivo esperado por el sistema ni las ventas del turno. Deberán contar el dinero físicamente en el cajón a ciegas al cerrar para prevenir desvíos y manipulaciones.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3 self-end sm:self-center">
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                    arqueoCiegoObligatorio
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                      : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                  }`}>
+                    {arqueoCiegoObligatorio ? 'Obligatorio' : 'Opcional (Guiado)'}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const nuevo = !arqueoCiegoObligatorio
+                      await guardarArqueoCiegoConfig(nuevo)
+                      toast.success(
+                        nuevo
+                          ? 'Arqueo ciego obligatorio activado para cajeros'
+                          : 'Arqueo ciego opcional: cajeros podrán ver efectivo esperado'
+                      )
+                    }}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                      arqueoCiegoObligatorio ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'
+                    }`}
+                    role="switch"
+                    aria-checked={arqueoCiegoObligatorio}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                        arqueoCiegoObligatorio ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* PESTAÑA: PERSONAL Y USUARIOS */}
+          {pestanaActiva === 'USUARIOS' && (
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-3 border-b border-gray-100 dark:border-gray-700 pb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300">
+                      Equipo y Accesos
+                    </span>
+                    <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                      Usuarios y Empleados del Kiosco
+                    </h2>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    Roles asignados para operar la caja, ventas y consulta de reportes.
+                  </p>
+                </div>
+                <Button size="sm" variant="primary" onClick={() => setModalUsuarioOpen(true)} className="shadow-xs">
+                  + Nuevo Usuario
                 </Button>
+              </div>
+
+              <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden shadow-2xs">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs sm:text-sm">
+                    <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 uppercase text-[11px]">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">Nombre</th>
+                        <th className="px-4 py-3 font-semibold">Email</th>
+                        <th className="px-4 py-3 font-semibold">Rol</th>
+                        <th className="px-4 py-3 font-semibold">Acceso / Login</th>
+                        <th className="px-4 py-3 font-semibold">Estado</th>
+                        <th className="px-4 py-3 font-semibold text-right">Acción</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                      {usuarios.map((u) => {
+                        const esUltimoAdmin = u.rol === 'DUEÑO' && duenosActivos <= 1
+                        const esSesionActual = u.id === usuario?.id
+
+                        return (
+                          <tr key={u.id} className="hover:bg-gray-50/80 dark:hover:bg-gray-700/50 transition-colors">
+                            <td className="px-4 py-3 font-bold text-gray-900 dark:text-gray-100">{u.nombre}</td>
+                            <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{u.email || '—'}</td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`inline-flex items-center justify-center min-w-[70px] px-2.5 py-0.5 text-xs font-bold rounded-full tracking-wide ${
+                                  u.rol === 'DUEÑO'
+                                    ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400'
+                                    : u.rol === 'CAJERO'
+                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                                    : 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-400'
+                                }`}
+                              >
+                                {u.rol}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              {u.auth_user_id ? (
+                                <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                  Habilitado
+                                </span>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                                    Sin clave
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setUsuarioParaClave(u)
+                                      setAsignarEmail(u.email || '')
+                                      setAsignarPassword('')
+                                    }}
+                                    className="px-2 py-0.5 text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded border border-indigo-200 dark:border-indigo-800 transition-colors"
+                                  >
+                                    Asignar clave
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${
+                                  u.activo
+                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
+                                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                                }`}
+                              >
+                                {u.activo ? 'Activo' : 'Desactivado'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              {esUltimoAdmin ? (
+                                <span
+                                  className="text-xs text-gray-400 dark:text-gray-500 font-medium italic"
+                                  title="No se puede eliminar el único administrador del kiosco"
+                                >
+                                  Admin principal
+                                </span>
+                              ) : esSesionActual ? (
+                                <span
+                                  className="text-xs text-indigo-600 dark:text-indigo-400 font-bold"
+                                  title="Sesión activa actualmente"
+                                >
+                                  Tu cuenta
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setUsuarioAEliminar(u)}
+                                  className="inline-flex items-center justify-center px-2.5 py-1 text-xs font-semibold text-red-600 dark:text-red-300 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/60 border border-red-200 dark:border-red-800/60 rounded-lg transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                                  title="Eliminar este usuario"
+                                >
+                                  Eliminar
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* PESTAÑA: SUSCRIPCIÓN Y COBERTURA */}
+          {pestanaActiva === 'SUSCRIPCION' && (
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-5">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-indigo-100 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-300">
+                  Abono Mensual
+                </span>
+                <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                  Estado de la Suscripción
+                </h2>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* Tarjeta 1: Plan */}
+                <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-900/80 border border-gray-200 dark:border-gray-700 shadow-2xs">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Plan contratado</p>
+                  <p className="text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">
+                    {suscripcion?.plan?.nombre || 'Kiosco Pro'}
+                  </p>
+                  <p className="text-xs text-indigo-600 dark:text-indigo-400 font-bold mt-0.5">
+                    {suscripcion?.plan?.precio_mensual
+                      ? `${formatPrecio(suscripcion.plan.precio_mensual)} / mes`
+                      : '$35.000 / mes'}
+                  </p>
+                </div>
+
+                {/* Tarjeta 2: Estado del Servicio */}
+                <div
+                  className={`p-4 rounded-xl border shadow-2xs ${
+                    estadoEfectivo === 'ACTIVO'
+                      ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/50'
+                      : estadoEfectivo === 'SOLO_LECTURA'
+                      ? 'bg-amber-50/50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800/60'
+                      : 'bg-red-50/50 dark:bg-red-950/30 border-red-300 dark:border-red-800/60'
+                  }`}
+                >
+                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Estado de servicio</p>
+                  <p
+                    className={`text-lg font-bold mt-1 ${
+                      estadoEfectivo === 'ACTIVO'
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : estadoEfectivo === 'SOLO_LECTURA'
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : 'text-red-600 dark:text-red-400'
+                    }`}
+                  >
+                    {estadoEfectivo === 'ACTIVO'
+                      ? 'Activo'
+                      : estadoEfectivo === 'SOLO_LECTURA'
+                      ? 'Solo Lectura'
+                      : 'Suspendido'}
+                  </p>
+                  <p
+                    className={`text-xs mt-0.5 ${
+                      estadoEfectivo === 'ACTIVO'
+                        ? 'text-gray-500 dark:text-gray-400'
+                        : estadoEfectivo === 'SOLO_LECTURA'
+                        ? 'text-amber-700 dark:text-amber-300 font-medium'
+                        : 'text-red-700 dark:text-red-300 font-medium'
+                    }`}
+                  >
+                    {estadoEfectivo === 'ACTIVO'
+                      ? 'Acceso total habilitado'
+                      : estadoEfectivo === 'SOLO_LECTURA'
+                      ? 'Ventas pausadas (período vencido)'
+                      : 'Servicio pausado temporalmente'}
+                  </p>
+                </div>
+
+                {/* Tarjeta 3: Vencimiento */}
+                <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-900/80 border border-gray-200 dark:border-gray-700 shadow-2xs">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Vencimiento del Abono</p>
+                  <p className="text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">
+                    {suscripcion?.fecha_vencimiento
+                      ? formatFechaCorta(suscripcion.fecha_vencimiento)
+                      : 'Al día'}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    {diasRestantes !== null
+                      ? diasRestantes > 5
+                        ? `Quedan ${diasRestantes} días de cobertura`
+                        : diasRestantes > 0
+                        ? `Vence en ${diasRestantes} días`
+                        : diasRestantes === 0
+                        ? 'Vence hoy'
+                        : `Vencido hace ${Math.abs(diasRestantes)} días`
+                      : 'Suscripción por tiempo indeterminado'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Aviso informativo condicional */}
+              {estadoEfectivo === 'SOLO_LECTURA' && (
+                <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-900 dark:text-amber-200">
+                  <span className="font-bold">Modo Solo Lectura: </span>
+                  Las ventas en el punto de venta (POS) están bloqueadas temporalmente por vencimiento del abono. Podés seguir consultando stock, caja y reportes de tu negocio. Para habilitar las ventas, comunicate con el administrador para regularizar tu suscripción.
+                </div>
+              )}
+
+              {estadoEfectivo === 'SUSPENDIDO' && (
+                <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 text-xs text-red-900 dark:text-red-200">
+                  <span className="font-bold">Servicio Suspendido: </span>
+                  El servicio se encuentra pausado temporalmente. Por favor, regularizá el abono para reactivar el sistema.
+                </div>
+              )}
+
+              {/* Datos para pago y renovación de suscripción */}
+              {(configAdmin.alias_mp || configAdmin.cbu_banco || configAdmin.titular_cuenta || configAdmin.whatsapp_soporte) && (
+                <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-900/70 border border-gray-200 dark:border-gray-700 space-y-3 shadow-2xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-200 dark:border-gray-700/80 pb-2.5">
+                    <div>
+                      <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                        Datos de Pago para Renovación de Abono
+                      </h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Transferí el monto de tu plan y enviá el comprobante al WhatsApp oficial del administrador.
+                      </p>
+                    </div>
+                    {configAdmin.whatsapp_soporte && (
+                      <a
+                        href={formatearLinkWhatsApp(
+                          configAdmin.whatsapp_soporte,
+                          `Hola! Me comunico desde "${kiosco?.nombre || 'Mi Kiosco'}" para consultar sobre la renovación de mi abono en AlPaso POS.`
+                        )}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs transition-colors self-start sm:self-auto"
+                      >
+                        WhatsApp Soporte
+                      </a>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    {configAdmin.titular_cuenta && (
+                      <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-2xs">
+                        <span className="text-gray-400 dark:text-gray-500 block font-medium">Titular de la cuenta:</span>
+                        <span className="font-bold text-gray-900 dark:text-gray-100 mt-1 block text-sm leading-snug break-words">
+                          {configAdmin.titular_cuenta}
+                        </span>
+                      </div>
+                    )}
+
+                    {configAdmin.alias_mp && (
+                      <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3 shadow-2xs">
+                        <div className="min-w-0">
+                          <span className="text-gray-400 dark:text-gray-500 block font-medium">Alias Mercado Pago:</span>
+                          <span className="font-bold text-sky-600 dark:text-sky-400 mt-1 block text-sm break-words select-all">
+                            {configAdmin.alias_mp}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => copiarDato(configAdmin.alias_mp, 'Alias')}
+                          className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-xs font-bold text-gray-700 dark:text-gray-200 transition-colors flex-shrink-0 active:scale-95"
+                        >
+                          Copiar
+                        </button>
+                      </div>
+                    )}
+
+                    {configAdmin.cbu_banco && (
+                      <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3 shadow-2xs">
+                        <div className="min-w-0">
+                          <span className="text-gray-400 dark:text-gray-500 block font-medium">CBU / CVU Bancario:</span>
+                          <span className="font-bold text-gray-900 dark:text-gray-100 mt-1 block font-mono text-sm tracking-wide break-all select-all">
+                            {configAdmin.cbu_banco}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => copiarDato(configAdmin.cbu_banco, 'CBU')}
+                          className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-xs font-bold text-gray-700 dark:text-gray-200 transition-colors flex-shrink-0 active:scale-95"
+                        >
+                          Copiar
+                        </button>
+                      </div>
+                    )}
+
+                    {configAdmin.banco_nombre && (
+                      <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-2xs">
+                        <span className="text-gray-400 dark:text-gray-500 block font-medium">Banco / Billetera:</span>
+                        <span className="font-bold text-gray-900 dark:text-gray-100 mt-1 block text-sm break-words">
+                          {configAdmin.banco_nombre}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
+          )}
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 text-xs">
-              <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 space-y-1">
-                <span className="font-bold text-gray-800 dark:text-gray-200 block">
-                  1. Ventana Independiente
-                </span>
-                <p className="text-gray-500 dark:text-gray-400">
-                  Se abre en su propia ventana maximizada sin distracciones ni barras de navegación para agilizar el cobro en mostrador.
+          {/* PESTAÑA: COPIAS DE SEGURIDAD Y PWA */}
+          {pestanaActiva === 'BACKUP' && (
+            <div className="space-y-6">
+              {/* Copias de Seguridad */}
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-4">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-indigo-100 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-300">
+                    Resguardo Local
+                  </span>
+                  <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                    Copias de Seguridad (Backup de Datos)
+                  </h2>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Descargá una copia física de la información de tu negocio en formato Excel corporativo (.XLSX) para tener siempre un resguardo seguro en tu computadora.
                 </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+                  <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 space-y-2 flex flex-col justify-between shadow-2xs">
+                    <div>
+                      <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                        Resguardo de Catálogo y Stock
+                      </h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Incluye todos tus productos con códigos de barra, categorías, costos, precios de venta y stock actual.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleExportarCatalogo}
+                      disabled={exportandoBackup}
+                      className="w-full text-xs font-bold"
+                    >
+                      {exportandoBackup ? 'Generando...' : 'Descargar Catálogo (.XLSX)'}
+                    </Button>
+                  </div>
+
+                  <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 space-y-2 flex flex-col justify-between shadow-2xs">
+                    <div>
+                      <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                        Histórico de Ventas (Auditoría)
+                      </h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Descargá el informe contable de todas las ventas emitidas con fecha, comprobante, cajero y medios de pago para auditoría o contabilidad.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleExportarVentas}
+                      disabled={exportandoBackup}
+                      className="w-full text-xs font-bold"
+                    >
+                      {exportandoBackup ? 'Generando...' : 'Descargar Ventas (.XLSX)'}
+                    </Button>
+                  </div>
+
+                  <div className="p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 space-y-2 flex flex-col justify-between shadow-2xs">
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-indigo-950 dark:text-indigo-200">
+                          Restaurar Catálogo / Rollback
+                        </h3>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                          Recuperación
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                        Importá la copia de seguridad de tu catálogo (.xlsx o .csv) para actualizar precios, costos y stock, o revertir a un estado anterior.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      onClick={() => setModalImportarOpen(true)}
+                      className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white"
+                    >
+                      Restaurar Catálogo (.XLSX / .CSV)
+                    </Button>
+                  </div>
+                </div>
               </div>
 
-              <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 space-y-1">
-                <span className="font-bold text-gray-800 dark:text-gray-200 block">
-                  2. 100% Operativo Sin Conexión
-                </span>
-                <p className="text-gray-500 dark:text-gray-400">
-                  Gracias al Service Worker local y caché permanente, si se corta internet el sistema abre al instante y permite seguir vendiendo.
-                </p>
-              </div>
+              {/* Aplicación de Escritorio e Instalación PWA */}
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300">
+                        Nativo Windows / Mobile
+                      </span>
+                      <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                        Aplicación de Escritorio (PWA Offline)
+                      </h2>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Ejecutá AlPaso POS como un programa nativo de Windows: acceso directo en el Escritorio, fijado en la Barra de Tareas y listo para operar sin internet.
+                    </p>
+                  </div>
 
-              <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 space-y-1">
-                <span className="font-bold text-gray-800 dark:text-gray-200 block">
-                  3. Instalación desde el Navegador
-                </span>
-                <p className="text-gray-500 dark:text-gray-400">
-                  En Google Chrome o Edge también podés hacer clic en el ícono de instalación que aparece a la derecha de la barra de direcciones.
-                </p>
+                  {puedeInstalar && !estaInstalado && (
+                    <Button
+                      variant="primary"
+                      onClick={async () => {
+                        const exito = await instalarApp()
+                        if (exito) toast.success('¡AlPaso POS se instaló exitosamente en tu PC!')
+                      }}
+                      className="font-bold shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+                    >
+                      Instalar en esta PC
+                    </Button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 text-xs">
+                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 space-y-1">
+                    <span className="font-bold text-gray-800 dark:text-gray-200 block">
+                      1. Ventana Independiente
+                    </span>
+                    <p className="text-gray-500 dark:text-gray-400">
+                      Se abre en su propia ventana maximizada sin distracciones ni barras de navegación.
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 space-y-1">
+                    <span className="font-bold text-gray-800 dark:text-gray-200 block">
+                      2. 100% Operativo Sin Conexión
+                    </span>
+                    <p className="text-gray-500 dark:text-gray-400">
+                      Caché permanente local: si se interrumpe internet, podés seguir vendiendo con normalidad.
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 space-y-1">
+                    <span className="font-bold text-gray-800 dark:text-gray-200 block">
+                      3. Acceso Directo de Windows
+                    </span>
+                    <p className="text-gray-500 dark:text-gray-400">
+                      Podés fijarlo a la Barra de Tareas e iniciarlo con un clic al encender tu PC.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </>
       )}
 
@@ -983,66 +1179,109 @@ export function ConfigPage() {
       <Modal
         isOpen={modalUsuarioOpen}
         onClose={() => setModalUsuarioOpen(false)}
-        title="Agregar usuario"
-        size="md"
-      >
-        <form onSubmit={handleCrearUsuario} className="space-y-4">
-          <Input
-            label="Nombre completo *"
-            placeholder="Ej: Laura Pérez"
-            value={nuevoNombre}
-            onChange={(e) => setNuevoNombre(e.target.value)}
-            required
-            autoFocus
-          />
-
-          <Input
-            label="Email para iniciar sesión *"
-            type="email"
-            placeholder="cajero@mitienda.com"
-            value={nuevoEmail}
-            onChange={(e) => setNuevoEmail(e.target.value)}
-            required
-          />
-
-          <Input
-            label="Contraseña *"
-            type="password"
-            placeholder="Mínimo 6 caracteres"
-            value={nuevoPassword}
-            onChange={(e) => setNuevoPassword(e.target.value)}
-            required={!authUserIdManual}
-            minLength={6}
-          />
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Rol en el kiosco
-            </label>
-            <select
-              value={nuevoRol}
-              onChange={(e) => setNuevoRol(e.target.value as 'CAJERO' | 'VISOR')}
-              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5 text-base text-gray-900 dark:text-gray-100"
+        title="Dar de Alta Usuario"
+        size="lg"
+        footer={
+          <div className="flex items-center justify-end gap-2.5 w-full">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setModalUsuarioOpen(false)}
+              disabled={creandoUsuario}
             >
-              <option value="CAJERO">CAJERO (Solo Punto de Venta, Caja y Clientes)</option>
-              <option value="VISOR">VISOR (Solo consulta de reportes y ventas)</option>
-            </select>
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              form="form-crear-usuario"
+              loading={creandoUsuario}
+              className="shadow-sm"
+            >
+              Guardar Usuario
+            </Button>
+          </div>
+        }
+      >
+        <form id="form-crear-usuario" onSubmit={handleCrearUsuario} className="space-y-4">
+          <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/40 space-y-3 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300">
+                1. Credenciales
+              </span>
+              <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
+                Datos de Identificación y Acceso
+              </span>
+            </div>
+
+            <Input
+              label="Nombre completo *"
+              placeholder="Ej: Laura Pérez"
+              value={nuevoNombre}
+              onChange={(e) => setNuevoNombre(e.target.value)}
+              required
+              autoFocus
+            />
+
+            <Input
+              label="Email para iniciar sesión *"
+              type="email"
+              placeholder="cajero@mitienda.com"
+              value={nuevoEmail}
+              onChange={(e) => setNuevoEmail(e.target.value)}
+              required
+            />
+
+            <Input
+              label="Contraseña *"
+              type="password"
+              placeholder="Mínimo 6 caracteres"
+              value={nuevoPassword}
+              onChange={(e) => setNuevoPassword(e.target.value)}
+              required={!authUserIdManual}
+              minLength={6}
+            />
           </div>
 
-          {/* Información de permisos */}
-          <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 rounded-xl text-xs text-indigo-900 dark:text-indigo-300 space-y-1">
-            <p className="font-semibold">Control de permisos del rol CAJERO:</p>
-            <p>
-              El cajero ingresará a la app con este email y contraseña. No tendrá permisos de administrador: las secciones de <strong>Catálogo</strong>, <strong>Stock</strong>, <strong>Reportes</strong> y <strong>Configuración</strong> estarán totalmente bloqueadas y ocultas.
-            </p>
+          <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/40 space-y-3 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300">
+                2. Nivel de Acceso
+              </span>
+              <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
+                Rol en el Punto de Venta
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                Rol Asignado
+              </label>
+              <select
+                value={nuevoRol}
+                onChange={(e) => setNuevoRol(e.target.value as 'CAJERO' | 'VISOR')}
+                className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 outline-none"
+              >
+                <option value="CAJERO">CAJERO — Solo Punto de Venta, Caja y Clientes</option>
+                <option value="VISOR">VISOR — Solo lectura de reportes y ventas</option>
+              </select>
+            </div>
+
+            {/* Información de permisos */}
+            <div className="p-3 bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 rounded-xl text-xs text-indigo-900 dark:text-indigo-300 space-y-1">
+              <p className="font-bold">Permisos de seguridad del rol CAJERO:</p>
+              <p className="leading-relaxed">
+                El cajero solo podrá registrar cobros y operar la caja. Las secciones de <strong>Catálogo</strong>, <strong>Stock</strong>, <strong>Reportes de Ganancia</strong> y <strong>Configuración</strong> estarán bloqueadas y ocultas.
+              </p>
+            </div>
           </div>
 
           {/* Opciones avanzadas para vincular Auth UID manualmente */}
-          <div className="pt-1">
+          <div className="pt-0.5">
             <button
               type="button"
               onClick={() => setMostrarAvanzadoAuth(!mostrarAvanzadoAuth)}
-              className="text-xs text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 underline font-medium"
+              className="text-xs text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 underline font-medium cursor-pointer"
             >
               {mostrarAvanzadoAuth ? 'Ocultar opciones avanzadas' : 'Vincular ID de Supabase Auth manualmente'}
             </button>
@@ -1050,7 +1289,7 @@ export function ConfigPage() {
             {mostrarAvanzadoAuth && (
               <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl space-y-2 text-xs">
                 <p className="text-gray-600 dark:text-gray-400">
-                  Si ya creaste el usuario directamente en el Dashboard de Supabase (Authentication → Users), pegá acá su User UID:
+                  Si creaste el usuario directamente en Supabase Auth Dashboard, pegá acá su UUID:
                 </p>
                 <Input
                   label="Supabase Auth User ID (UUID)"
@@ -1061,20 +1300,6 @@ export function ConfigPage() {
               </div>
             )}
           </div>
-
-          <div className="flex gap-2 pt-2">
-            <Button type="submit" fullWidth loading={creandoUsuario}>
-              Guardar usuario
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              fullWidth
-              onClick={() => setModalUsuarioOpen(false)}
-            >
-              Cancelar
-            </Button>
-          </div>
         </form>
       </Modal>
 
@@ -1082,34 +1307,36 @@ export function ConfigPage() {
       <Modal
         isOpen={!!usuarioAEliminar}
         onClose={() => setUsuarioAEliminar(null)}
-        title="Eliminar usuario"
-        size="sm"
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-gray-700 dark:text-gray-300">
-            ¿Estás seguro de que deseás eliminar al usuario <strong>{usuarioAEliminar?.nombre}</strong> ({usuarioAEliminar?.rol})?
-          </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Esta persona ya no podrá ingresar a la aplicación ni operar la caja del kiosco.
-          </p>
-
-          <div className="flex gap-2 pt-2">
+        title="Eliminar Usuario"
+        size="md"
+        footer={
+          <div className="flex items-center justify-end gap-2.5 w-full">
             <Button
-              variant="danger"
-              fullWidth
-              loading={eliminandoUsuario}
-              onClick={handleEliminarUsuario}
-            >
-              Confirmar eliminación
-            </Button>
-            <Button
+              type="button"
               variant="secondary"
-              fullWidth
               disabled={eliminandoUsuario}
               onClick={() => setUsuarioAEliminar(null)}
             >
               Cancelar
             </Button>
+            <Button
+              variant="danger"
+              loading={eliminandoUsuario}
+              onClick={handleEliminarUsuario}
+            >
+              Confirmar Eliminación
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 text-xs text-red-800 dark:text-red-200 space-y-1.5">
+            <p className="font-bold text-sm">
+              ¿Estás seguro de eliminar al usuario "{usuarioAEliminar?.nombre}"?
+            </p>
+            <p>
+              El usuario con rol <strong>{usuarioAEliminar?.rol}</strong> ({usuarioAEliminar?.email || 'Sin correo'}) ya no podrá acceder al sistema ni abrir turnos de caja en este comercio.
+            </p>
           </div>
         </div>
       </Modal>
@@ -1118,10 +1345,31 @@ export function ConfigPage() {
       <Modal
         isOpen={!!usuarioParaClave}
         onClose={() => setUsuarioParaClave(null)}
-        title={`Asignar clave a ${usuarioParaClave?.nombre || ''}`}
-        size="sm"
+        title={`Asignar Clave: ${usuarioParaClave?.nombre || ''}`}
+        size="md"
+        footer={
+          <div className="flex items-center justify-end gap-2.5 w-full">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={guardandoClave}
+              onClick={() => setUsuarioParaClave(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              form="form-asignar-clave"
+              loading={guardandoClave}
+              className="shadow-sm"
+            >
+              Guardar Clave
+            </Button>
+          </div>
+        }
       >
-        <form onSubmit={handleAsignarClave} className="space-y-4">
+        <form id="form-asignar-clave" onSubmit={handleAsignarClave} className="space-y-4">
           <p className="text-xs text-gray-500 dark:text-gray-400">
             Establecé las credenciales de acceso para que este {usuarioParaClave?.rol.toLowerCase()} pueda iniciar sesión en el punto de venta.
           </p>
@@ -1149,21 +1397,6 @@ export function ConfigPage() {
 
           <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs text-amber-900 dark:text-amber-300">
             <strong>Importante:</strong> Para que el cajero entre de inmediato sin confirmación por correo, desactivá <em>Confirm email</em> en Supabase (Authentication → Providers → Email).
-          </div>
-
-          <div className="flex gap-2 pt-2">
-            <Button type="submit" fullWidth loading={guardandoClave}>
-              Guardar clave
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              fullWidth
-              disabled={guardandoClave}
-              onClick={() => setUsuarioParaClave(null)}
-            >
-              Cancelar
-            </Button>
           </div>
         </form>
       </Modal>
