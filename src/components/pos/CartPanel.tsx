@@ -484,10 +484,10 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
         {/* Encabezado de columnas rígido y fijado arriba (Sticky) */}
         {items.length > 0 && (
           <div className="sticky top-0 z-10 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-xs border-b border-gray-200 dark:border-gray-700 px-2 py-1.5 shadow-2xs">
-            <div className="grid grid-cols-[1fr_96px_76px_28px] items-center gap-2 px-2.5 text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider select-none">
+            <div className="grid grid-cols-[1fr_96px_auto_28px] items-center gap-2 px-2.5 text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider select-none">
               <span className="truncate">Producto</span>
               <span className="text-center">Cantidad</span>
-              <span className="text-right">Monto</span>
+              <span className="text-right whitespace-nowrap">Monto</span>
               <span></span>
             </div>
           </div>
@@ -507,7 +507,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                 tabIndex={0}
                 role="row"
                 onKeyDown={(e) => handleItemKeyDown(e, idx, item.producto.id, item.cantidad)}
-                className="group grid grid-cols-[1fr_96px_76px_28px] items-center gap-2 px-2.5 py-2 rounded-xl border border-gray-100/60 dark:border-gray-800/80 hover:border-gray-200 dark:hover:border-gray-700/80 hover:bg-gray-50/60 dark:hover:bg-gray-750/50 focus:outline-hidden focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-indigo-50/90 dark:focus:bg-gray-700/80 transition-all cursor-pointer select-none"
+                className="group grid grid-cols-[1fr_96px_auto_28px] items-center gap-2 px-2.5 py-2 rounded-xl border border-gray-100/60 dark:border-gray-800/80 hover:border-gray-200 dark:hover:border-gray-700/80 hover:bg-gray-50/60 dark:hover:bg-gray-750/50 focus:outline-hidden focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-indigo-50/90 dark:focus:bg-gray-700/80 transition-all cursor-pointer select-none"
               >
                 {/* 1. Columna Producto (1fr) */}
                 <div className="min-w-0 flex flex-col justify-center">
@@ -618,20 +618,20 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                   </button>
                 </div>
 
-                {/* 3. Columna Monto */}
-                <div className="text-right flex flex-col justify-center min-w-0">
-                  <span className={`text-sm font-bold tabular-nums truncate ${item.es_devolucion_envase || item.subtotal < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-gray-100 group-focus:text-indigo-900 dark:group-focus:text-white'}`}>
+                {/* 3. Columna Monto - Sin truncar por nada */}
+                <div className="text-right flex flex-col justify-center shrink-0 whitespace-nowrap">
+                  <span className={`text-sm font-bold tabular-nums whitespace-nowrap ${item.es_devolucion_envase || item.subtotal < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-gray-100 group-focus:text-indigo-900 dark:group-focus:text-white'}`}>
                     {item.subtotal < 0 ? `-${formatPrecio(Math.abs(item.subtotal))}` : formatPrecio(item.subtotal)}
                   </span>
                   {item.descuento_promo !== undefined && item.descuento_promo > 0 && (
-                    <span className="text-[10px] text-gray-400 line-through truncate">
+                    <span className="text-[10px] text-gray-400 line-through whitespace-nowrap">
                       {formatPrecio(Math.round(item.cantidad * item.producto.precio_venta))}
                     </span>
                   )}
                 </div>
 
                 {/* 4. Columna Borrar */}
-                <div className="flex items-center justify-center min-w-0">
+                <div className="flex items-center justify-center shrink-0 w-[28px]">
                   <button
                     ref={(el) => { deleteBtnRefs.current[idx] = el }}
                     type="button"
@@ -723,9 +723,9 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
           </div>
         )}
 
-        <div className="flex justify-between items-baseline pt-1 border-t border-gray-200 dark:border-gray-700/80">
-          <span className="text-xs uppercase tracking-wider font-bold text-gray-500 dark:text-gray-400">TOTAL</span>
-          <span className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">
+        <div className="flex justify-between items-baseline pt-1 border-t border-gray-200 dark:border-gray-700/80 gap-2">
+          <span className="text-xs uppercase tracking-wider font-bold text-gray-500 dark:text-gray-400 shrink-0">TOTAL</span>
+          <span className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white tracking-tight whitespace-nowrap">
             {formatPrecio(total)}
           </span>
         </div>

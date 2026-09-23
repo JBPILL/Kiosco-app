@@ -519,7 +519,7 @@ export function POSPage() {
         </div>
 
         {/* Columna derecha: Ticket en Desktop / Pantallas grandes */}
-        <div className="hidden lg:flex flex-col w-80 xl:w-96 flex-shrink-0 min-h-0 h-full">
+        <div className="hidden lg:flex flex-col w-[350px] xl:w-[390px] flex-shrink-0 min-h-0 h-full">
           <CartPanel onCobrar={handleAbrirCobro} />
         </div>
       </div>
