@@ -401,7 +401,19 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         es_devolucion_envase: Boolean(item.es_devolucion_envase),
       }))
 
-      const { error: detalleError } = await supabase.from('detalles_venta').insert(detalles)
+      let { error: detalleError } = await supabase.from('detalles_venta').insert(detalles)
+
+      // Fallback de resiliencia: si la columna cantidad en Supabase aún es INTEGER (previo a migración)
+      if (detalleError && detalleError.message?.includes('invalid input syntax for type integer')) {
+        console.warn('detalles_venta.cantidad requiere tipo NUMERIC en Supabase. Aplicando compatibilidad para registrar la venta...')
+        const detallesCompat = detalles.map((d) => ({
+          ...d,
+          cantidad: Math.max(1, Math.round(d.cantidad)),
+        }))
+        const retryResult = await supabase.from('detalles_venta').insert(detallesCompat)
+        detalleError = retryResult.error
+      }
+
       if (detalleError) throw detalleError
 
       // 3. Insertar pago(s)
