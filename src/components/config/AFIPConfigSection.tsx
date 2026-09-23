@@ -229,8 +229,8 @@ export function AFIPConfigSection() {
           </p>
         </div>
 
-        {/* Toggle principal accesible y responsivo */}
-        <div className="flex items-center gap-3 select-none flex-shrink-0">
+        {/* Toggle principal accesible con posicion fija y animacion fluida */}
+        <div className="flex items-center gap-3 select-none flex-shrink-0 w-36 sm:w-40 justify-start">
           <button
             type="button"
             role="switch"
@@ -247,7 +247,7 @@ export function AFIPConfigSection() {
               }`}
             />
           </button>
-          <span className="text-sm font-semibold text-gray-900 dark:text-gray-200">
+          <span className="text-sm font-semibold text-gray-900 dark:text-gray-200 w-24 flex-shrink-0 select-none">
             {habilitado ? 'Activa en POS' : 'Inactiva'}
           </span>
         </div>
