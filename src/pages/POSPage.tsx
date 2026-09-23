@@ -160,7 +160,6 @@ export function POSPage() {
     }
 
     if (agregados > 0) {
-      playScanSound('success')
       toast.success(`Combo "${promo.nombre}" cargado al ticket`)
       setModalPromosOpen(false)
     }
@@ -227,7 +226,6 @@ export function POSPage() {
         } catch {}
 
         if (matchBalanza) {
-          playScanSound('success')
           agregarProducto(matchBalanza.producto, matchBalanza.pesoKg)
           toast.success(`${matchBalanza.producto.descripcion} (${matchBalanza.pesoKg} kg) agregado`)
           return
@@ -243,7 +241,6 @@ export function POSPage() {
             .maybeSingle()
 
           if (data) {
-            playScanSound('success')
             agregarProducto(data, parsedBalanza.pesoKg)
             toast.success(`${data.descripcion} (${parsedBalanza.pesoKg} kg) agregado`)
             return
@@ -271,7 +268,6 @@ export function POSPage() {
           setModalBalanzaOpen(true)
           return
         }
-        playScanSound('success')
         agregarProducto(productoEncontrado)
         toast.success(`${productoEncontrado.descripcion} agregado`)
         return
@@ -294,7 +290,6 @@ export function POSPage() {
             setModalBalanzaOpen(true)
             return
           }
-          playScanSound('success')
           agregarProducto(data)
           toast.success(`${data.descripcion} agregado`)
 
@@ -686,7 +681,6 @@ export function POSPage() {
         onConfirmar={(pesoKg) => {
           if (productoPesableModal) {
             agregarProducto(productoPesableModal, pesoKg)
-            playScanSound('success')
             toast.success(`${productoPesableModal.descripcion} (${pesoKg} kg) agregado`)
           }
         }}

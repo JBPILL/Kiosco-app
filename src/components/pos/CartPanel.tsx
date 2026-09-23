@@ -3,7 +3,6 @@ import { useCartStore } from '../../stores/cartStore'
 import { useAuthStore } from '../../stores/authStore'
 import type { TipoAjuste } from '../../stores/cartStore'
 import { formatPrecio } from '../../lib/utils'
-import { playScanSound } from '../../lib/sound'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Modal } from '../ui/Modal'
@@ -75,7 +74,6 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     const paso = item?.producto.es_pesable ? 0.1 : 1
     const nueva = Number((cantidad + paso).toFixed(3))
     actualizarCantidad(itemId, nueva)
-    playScanSound('success')
   }
 
   const handleRestarCantidad = (
@@ -481,6 +479,16 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
         )}
       </div>
 
+      {/* Encabezado de columnas para alinear y centrar nombres, cantidades y montos */}
+      {items.length > 0 && (
+        <div className="flex items-center gap-2 px-4 py-1.5 border-b border-gray-100 dark:border-gray-800 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider select-none flex-shrink-0 bg-gray-50/60 dark:bg-gray-900/40">
+          <span className="flex-1 min-w-0">Producto</span>
+          <span className="shrink-0 text-center w-[84px]">Cantidad</span>
+          <span className="shrink-0 text-right w-18 sm:w-20">Monto</span>
+          <span className="shrink-0 w-7"></span>
+        </div>
+      )}
+
       {/* Items */}
       <div className="flex-1 overflow-y-auto px-4 py-2">
         {items.length === 0 ? (
@@ -497,72 +505,71 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                 tabIndex={0}
                 role="row"
                 onKeyDown={(e) => handleItemKeyDown(e, idx, item.producto.id, item.cantidad)}
-                className="group flex items-center gap-2 py-2 px-2.5 rounded-xl border border-transparent hover:border-gray-200 dark:hover:border-gray-700 focus:outline-hidden focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-indigo-50/90 dark:focus:bg-gray-700/80 transition-all cursor-pointer select-none"
+                className="group flex items-center gap-2 py-2 px-2.5 rounded-xl border border-transparent hover:border-gray-200 dark:hover:border-gray-700/80 hover:bg-gray-50/60 dark:hover:bg-gray-750/50 focus:outline-hidden focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-indigo-50/90 dark:focus:bg-gray-700/80 transition-all cursor-pointer select-none"
               >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate group-focus:font-semibold">
+                {/* 1. Nombre & Detalle (Izquierda) */}
+                <div className="flex-1 min-w-0 flex flex-col justify-center">
+                  <p
+                    className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate group-focus:text-indigo-900 dark:group-focus:text-white"
+                    title={item.producto.descripcion}
+                  >
                     {item.producto.descripcion}
                   </p>
-                  {item.promo_nombre && (
-                    <div className="mt-0.5">
-                      <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60">
-                        {item.promo_nombre}
-                      </span>
-                    </div>
-                  )}
 
-                  {/* Tag sobrio para devolución de envase */}
-                  {item.es_devolucion_envase && (
-                    <div className="mt-0.5">
-                      <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60">
-                        Devolución de envase
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Selector sobrio de envase retornable (1 solo clic, sin modales ni iconos) */}
-                  {item.producto.es_retornable && !item.es_devolucion_envase && (
-                    <div className="mt-1 flex items-center">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleEnvaseItem(item.producto.id)
-                        }}
-                        className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border transition-all cursor-pointer select-none ${
-                          item.sin_envase
-                            ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300'
-                            : 'bg-gray-100 dark:bg-gray-700/60 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                        }`}
-                        title="Hacé clic para alternar si el cliente trajo o no el envase vacío"
-                      >
-                        {item.sin_envase
-                          ? `Sin envase (+${formatPrecio((item.precio_envase_unitario || item.producto.precio_envase || 0) * item.cantidad)})`
-                          : 'Con envase (mano a mano)'}
-                      </button>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
-                    <span>
-                      {formatPrecio(item.producto.precio_venta)}{' '}
-                      {item.producto.es_pesable ? `/${item.producto.unidad_medida || 'KG'}` : 'c/u'}
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                    <span className="font-medium">
+                      {formatPrecio(item.producto.precio_venta)}
+                      {item.producto.es_pesable ? `/${item.producto.unidad_medida || 'KG'}` : ' c/u'}
                     </span>
-                    <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                      (Disp: {item.producto.stock_actual})
+                    <span className="text-gray-300 dark:text-gray-600">·</span>
+                    <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                      Disp: {item.producto.stock_actual}
                     </span>
                     {item.producto.stock_actual > 0 && item.cantidad >= item.producto.stock_actual && (
-                      <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.2 rounded">
-                        Máx disponible
+                      <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1 rounded">
+                        Máx
                       </span>
                     )}
-                    <span className="hidden group-focus:inline-flex items-center text-[10px] text-indigo-600 dark:text-indigo-400 font-mono font-bold">
-                      (+/- Cant · Supr)
-                    </span>
                   </div>
+
+                  {/* Promociones y Envase Retornable */}
+                  {(item.promo_nombre || item.es_devolucion_envase || (item.producto.es_retornable && !item.es_devolucion_envase)) && (
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      {item.promo_nombre && (
+                        <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60">
+                          {item.promo_nombre}
+                        </span>
+                      )}
+                      {item.es_devolucion_envase && (
+                        <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60">
+                          Devolución envase
+                        </span>
+                      )}
+                      {item.producto.es_retornable && !item.es_devolucion_envase && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            toggleEnvaseItem(item.producto.id)
+                          }}
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-all cursor-pointer select-none ${
+                            item.sin_envase
+                              ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300'
+                              : 'bg-gray-100 dark:bg-gray-700/60 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                          }`}
+                          title="Hacé clic para alternar si el cliente trajo o no el envase vacío"
+                        >
+                          {item.sin_envase
+                            ? `Sin envase (+${formatPrecio((item.precio_envase_unitario || item.producto.precio_envase || 0) * item.cantidad)})`
+                            : 'Con envase (mano a mano)'}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                {/* Controles de cantidad táctiles y accesibles con teclado */}
-                <div className="flex items-center gap-1.5 flex-shrink-0">
+                {/* 2. Controles de Cantidad (Centro) - Perfectamente centrados */}
+                <div className="flex items-center justify-center gap-1 shrink-0 w-[84px]">
                   <button
                     ref={(el) => { minusBtnRefs.current[idx] = el }}
                     type="button"
@@ -572,17 +579,17 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                       handleRestarCantidad(item.producto.id, item.cantidad, idx, 'minus')
                     }}
                     onKeyDown={(e) => handleMinusKeyDown(e, idx, item.producto.id, item.cantidad)}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-300 font-bold text-base transition-transform focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-indigo-100 dark:focus:bg-gray-600 cursor-pointer select-none"
+                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-300 font-bold text-sm transition-transform focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-indigo-100 dark:focus:bg-gray-600 cursor-pointer select-none"
                     aria-label="Restar uno"
                     title="Restar [Enter o -]"
                   >
                     −
                   </button>
                   <span
-                    className={`text-center font-bold dark:text-gray-100 select-none ${
+                    className={`text-center font-bold text-gray-900 dark:text-gray-100 select-none ${
                       item.cantidad % 1 !== 0 || item.producto.es_pesable
-                        ? 'text-xs px-1 font-mono min-w-[3.5rem]'
-                        : 'w-7 text-sm'
+                        ? 'text-xs px-0.5 font-mono min-w-[2.5rem]'
+                        : 'w-6 text-sm'
                     }`}
                   >
                     {item.cantidad % 1 === 0 ? item.cantidad : `${item.cantidad} kg`}
@@ -597,7 +604,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                       handleSumarCantidad(item.producto.id, item.cantidad)
                     }}
                     onKeyDown={(e) => handlePlusKeyDown(e, idx, item.producto.id, item.cantidad)}
-                    className={`w-8 h-8 flex items-center justify-center rounded-lg font-bold text-base transition-transform select-none ${
+                    className={`w-7 h-7 flex items-center justify-center rounded-lg font-bold text-sm transition-transform select-none ${
                       item.producto.stock_actual > 0 && item.cantidad >= item.producto.stock_actual
                         ? 'opacity-30 cursor-not-allowed bg-gray-100 dark:bg-gray-800 text-gray-400'
                         : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-300 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-indigo-100 dark:focus:bg-gray-600'
@@ -613,8 +620,8 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                   </button>
                 </div>
 
-                {/* Subtotal */}
-                <div className="w-16 sm:w-20 text-right flex-shrink-0 flex flex-col items-end justify-center">
+                {/* 3. Subtotal / Monto (Derecha) - Centrado verticalmente y alineado con precisión */}
+                <div className="w-18 sm:w-20 text-right shrink-0 flex flex-col items-end justify-center">
                   <span className={`text-sm font-bold tabular-nums ${item.es_devolucion_envase || item.subtotal < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-gray-100 group-focus:text-indigo-900 dark:group-focus:text-white'}`}>
                     {item.subtotal < 0 ? `-${formatPrecio(Math.abs(item.subtotal))}` : formatPrecio(item.subtotal)}
                   </span>
@@ -625,7 +632,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                   )}
                 </div>
 
-                {/* Eliminar */}
+                {/* 4. Eliminar - Centrado verticalmente */}
                 <button
                   ref={(el) => { deleteBtnRefs.current[idx] = el }}
                   type="button"
@@ -635,7 +642,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                     handleQuitarItem(item.producto.id, idx)
                   }}
                   onKeyDown={(e) => handleDeleteKeyDown(e, idx, item.producto.id)}
-                  className="w-8 h-8 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 active:scale-90 text-base flex-shrink-0 transition-transform focus:outline-hidden focus:ring-2 focus:ring-red-500 dark:focus:ring-red-400 focus:bg-red-50 dark:focus:bg-red-950/40 rounded-lg cursor-pointer select-none"
+                  className="w-7 h-7 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 active:scale-90 text-sm shrink-0 transition-transform focus:outline-hidden focus:ring-2 focus:ring-red-500 dark:focus:ring-red-400 focus:bg-red-50 dark:focus:bg-red-950/40 rounded-lg cursor-pointer select-none"
                   aria-label="Eliminar producto"
                   title="Eliminar producto [Enter o Supr]"
                 >

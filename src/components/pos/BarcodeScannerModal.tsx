@@ -75,7 +75,6 @@ export function BarcodeScannerModal({
       if (error) throw error
 
       if (data) {
-        playScanSound('success')
         if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
           try { navigator.vibrate([40, 30, 40]) } catch {}
         }
