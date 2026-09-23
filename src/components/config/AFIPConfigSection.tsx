@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAFIPStore, validarCUIT } from '../../stores/afipStore'
 import { useAuthStore } from '../../stores/authStore'
 import { Button } from '../ui/Button'
@@ -8,6 +8,9 @@ import type { ConfiguracionAFIP, CondicionIvaAFIP, EntornoAFIP } from '../../typ
 import toast from 'react-hot-toast'
 
 export function AFIPConfigSection() {
+  const cuitInputRef = useRef<HTMLInputElement>(null)
+  const puntoVentaInputRef = useRef<HTMLInputElement>(null)
+
   const { usuario } = useAuthStore()
   const esDuenio = usuario?.rol === 'DUEÑO' || usuario?.es_superadmin
   const { config, cargando, guardando, cargarConfiguracion, guardarConfiguracion, emitirComprobantePrueba } =
@@ -63,17 +66,21 @@ export function AFIPConfigSection() {
       return
     }
 
+    if (cuitLimpio && !validarCUIT(cuitLimpio)) {
+      toast.error('El CUIT ingresado no es válido según el algoritmo Módulo 11 de ARCA')
+      cuitInputRef.current?.focus()
+      return
+    }
+
     if (habilitado) {
       if (!cuitLimpio) {
         toast.error('Debés ingresar el CUIT para habilitar la facturación ARCA')
-        return
-      }
-      if (!validarCUIT(cuitLimpio)) {
-        toast.error('El CUIT ingresado no es válido según el algoritmo Módulo 11 de ARCA')
+        cuitInputRef.current?.focus()
         return
       }
       if (puntoVenta <= 0) {
         toast.error('El Punto de Venta debe ser mayor a 0 (ej: 2)')
+        puntoVentaInputRef.current?.focus()
         return
       }
     }
@@ -107,15 +114,18 @@ export function AFIPConfigSection() {
 
     if (nuevoEstado) {
       if (!cuitLimpio) {
-        toast.error('Para activar la facturación ARCA, primero ingresá tu CUIT')
+        toast.error('Para activar la facturación ARCA, primero ingresá tu CUIT (11 dígitos) en el formulario de abajo')
+        cuitInputRef.current?.focus()
         return
       }
       if (!validarCUIT(cuitLimpio)) {
         toast.error('El CUIT ingresado no es válido según el algoritmo Módulo 11 de ARCA')
+        cuitInputRef.current?.focus()
         return
       }
       if (puntoVenta <= 0) {
         toast.error('El Punto de Venta debe ser mayor a 0 (ej: 2)')
+        puntoVentaInputRef.current?.focus()
         return
       }
     }
@@ -259,11 +269,11 @@ export function AFIPConfigSection() {
           {/* CUIT */}
           <div>
             <Input
+              ref={cuitInputRef}
               label="CUIT del Titular / Comercio *"
               placeholder="Ej: 20351234568 (11 dígitos sin guiones)"
               value={cuit}
               onChange={(e) => setCuit(e.target.value)}
-              disabled={!habilitado}
               required={habilitado}
             />
             {cuitLimpio.length > 0 && (
@@ -291,7 +301,6 @@ export function AFIPConfigSection() {
             placeholder="Ej: Juan Pérez / Kiosco El Sol"
             value={razonSocial}
             onChange={(e) => setRazonSocial(e.target.value)}
-            disabled={!habilitado}
           />
 
           {/* Condición ante el IVA */}
@@ -302,7 +311,6 @@ export function AFIPConfigSection() {
             <select
               value={condicionIva}
               onChange={(e) => setCondicionIva(e.target.value as CondicionIvaAFIP)}
-              disabled={!habilitado}
               className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:bg-gray-100 dark:disabled:bg-gray-900"
             >
               <option value="MONOTRIBUTO">Responsable Monotributo (Emite Factura C)</option>
@@ -313,6 +321,7 @@ export function AFIPConfigSection() {
           {/* Punto de Venta ARCA */}
           <div>
             <Input
+              ref={puntoVentaInputRef}
               label="Punto de Venta ARCA *"
               type="number"
               min={1}
@@ -320,7 +329,6 @@ export function AFIPConfigSection() {
               placeholder="Ej: 2"
               value={puntoVenta.toString()}
               onChange={(e) => setPuntoVenta(parseInt(e.target.value) || 1)}
-              disabled={!habilitado}
               required={habilitado}
             />
             <p className="text-[11px] text-gray-400 mt-0.5">
@@ -334,7 +342,6 @@ export function AFIPConfigSection() {
             placeholder="Ej: 20-35123456-8 o Exento"
             value={iibb}
             onChange={(e) => setIibb(e.target.value)}
-            disabled={!habilitado}
           />
 
           {/* Inicio de Actividades */}
@@ -343,7 +350,6 @@ export function AFIPConfigSection() {
             placeholder="Ej: 01/03/2021"
             value={inicioActividades}
             onChange={(e) => setInicioActividades(e.target.value)}
-            disabled={!habilitado}
           />
 
           {/* Entorno de Trabajo */}
@@ -354,7 +360,6 @@ export function AFIPConfigSection() {
             <select
               value={entorno}
               onChange={(e) => setEntorno(e.target.value as EntornoAFIP)}
-              disabled={!habilitado}
               className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:bg-gray-100 dark:disabled:bg-gray-900"
             >
               <option value="HOMOLOGACION">Homologación / Modo Pruebas (Recomendado para inicio)</option>
@@ -384,7 +389,6 @@ export function AFIPConfigSection() {
                 type="checkbox"
                 checked={facturarAutomatico}
                 onChange={(e) => setFacturarAutomatico(e.target.checked)}
-                disabled={!habilitado}
                 className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
               />
               <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
@@ -403,9 +407,8 @@ export function AFIPConfigSection() {
                   step={500}
                   value={montoMinimoAuto || ''}
                   onChange={(e) => setMontoMinimoAuto(parseFloat(e.target.value) || 0)}
-                  disabled={!habilitado}
                   placeholder="$ 0"
-                  className="w-full px-2.5 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 disabled:opacity-60"
+                  className="w-full px-2.5 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                 />
               </div>
             </div>
@@ -423,7 +426,7 @@ export function AFIPConfigSection() {
               variant="secondary"
               onClick={handleProbarComprobante}
               loading={generandoPrueba}
-              disabled={!habilitado}
+              disabled={generandoPrueba || cargando}
             >
               Emitir comprobante de prueba
             </Button>
