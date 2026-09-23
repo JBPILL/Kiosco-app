@@ -481,14 +481,12 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
 
       {/* Items */}
       <div className="flex-1 overflow-y-auto min-h-0">
-        {/* Encabezado de columnas rígido y fijado arriba (Sticky) */}
+        {/* Encabezado fijo superior */}
         {items.length > 0 && (
-          <div className="sticky top-0 z-10 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-xs border-b border-gray-200 dark:border-gray-700 px-2 py-1.5 shadow-2xs">
-            <div className="grid grid-cols-[1fr_96px_auto_28px] items-center gap-2 px-2.5 text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider select-none">
-              <span className="truncate">Producto</span>
-              <span className="text-center">Cantidad</span>
-              <span className="text-right whitespace-nowrap">Monto</span>
-              <span></span>
+          <div className="sticky top-0 z-10 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-xs border-b border-gray-200 dark:border-gray-700 px-3 py-1.5 shadow-2xs">
+            <div className="flex items-center justify-between text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider select-none">
+              <span>Producto</span>
+              <span>Subtotal</span>
             </div>
           </div>
         )}
@@ -499,7 +497,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
             <p className="text-xs mt-1">Seleccioná o buscá productos para comenzar</p>
           </div>
         ) : (
-          <div className="p-2 space-y-1">
+          <div className="p-2 space-y-1.5">
             {items.map((item, idx) => (
               <div
                 key={item.producto.id}
@@ -507,147 +505,151 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                 tabIndex={0}
                 role="row"
                 onKeyDown={(e) => handleItemKeyDown(e, idx, item.producto.id, item.cantidad)}
-                className="group grid grid-cols-[1fr_96px_auto_28px] items-center gap-2 px-2.5 py-2 rounded-xl border border-gray-100/60 dark:border-gray-800/80 hover:border-gray-200 dark:hover:border-gray-700/80 hover:bg-gray-50/60 dark:hover:bg-gray-750/50 focus:outline-hidden focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-indigo-50/90 dark:focus:bg-gray-700/80 transition-all cursor-pointer select-none"
+                className="group flex flex-col p-2.5 rounded-xl border border-gray-200/70 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 hover:bg-gray-50/80 dark:hover:bg-gray-800/70 focus:outline-hidden focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-indigo-50/70 dark:focus:bg-gray-750 transition-all cursor-pointer select-none gap-1.5 bg-white dark:bg-gray-800/50 shadow-2xs"
               >
-                {/* 1. Columna Producto (1fr) */}
-                <div className="min-w-0 flex flex-col justify-center">
+                {/* 1. Fila Superior: Nombre del producto y Subtotal */}
+                <div className="flex items-start justify-between gap-3 min-w-0">
                   <p
-                    className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate group-focus:text-indigo-900 dark:group-focus:text-white"
+                    className="text-sm font-semibold text-gray-900 dark:text-gray-100 group-focus:text-indigo-900 dark:group-focus:text-white leading-snug line-clamp-2 min-w-0 flex-1"
                     title={item.producto.descripcion}
                   >
                     {item.producto.descripcion}
                   </p>
 
-                  <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
-                    <span className="font-medium">
+                  <div className="text-right shrink-0 whitespace-nowrap pt-0.5">
+                    <span className={`text-base font-black tabular-nums whitespace-nowrap ${item.es_devolucion_envase || item.subtotal < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-gray-100 group-focus:text-indigo-900 dark:group-focus:text-white'}`}>
+                      {item.subtotal < 0 ? `-${formatPrecio(Math.abs(item.subtotal))}` : formatPrecio(item.subtotal)}
+                    </span>
+                    {item.descuento_promo !== undefined && item.descuento_promo > 0 && (
+                      <span className="block text-[10px] text-gray-400 line-through whitespace-nowrap">
+                        {formatPrecio(Math.round(item.cantidad * item.producto.precio_venta))}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 2. Fila Inferior: Detalles/Precio unitario a la izquierda y Controles de Cantidad + Borrar a la derecha */}
+                <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-100 dark:border-gray-800/80">
+                  {/* Info unitario y stock */}
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 min-w-0 flex-wrap">
+                    <span className="font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap">
                       {formatPrecio(item.producto.precio_venta)}
                       {item.producto.es_pesable ? `/${item.producto.unidad_medida || 'KG'}` : ' c/u'}
                     </span>
                     <span className="text-gray-300 dark:text-gray-600">·</span>
-                    <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                    <span className="text-[11px] text-gray-400 dark:text-gray-500 whitespace-nowrap">
                       Disp: {item.producto.stock_actual}
                     </span>
                     {item.producto.stock_actual > 0 && item.cantidad >= item.producto.stock_actual && (
-                      <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1 rounded">
+                      <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1 rounded whitespace-nowrap">
                         Máx
                       </span>
                     )}
                   </div>
 
-                  {/* Promociones y Envase Retornable */}
-                  {(item.promo_nombre || item.es_devolucion_envase || (item.producto.es_retornable && !item.es_devolucion_envase)) && (
-                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                      {item.promo_nombre && (
-                        <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60 truncate">
-                          {item.promo_nombre}
-                        </span>
-                      )}
-                      {item.es_devolucion_envase && (
-                        <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60">
-                          Devolución envase
-                        </span>
-                      )}
-                      {item.producto.es_retornable && !item.es_devolucion_envase && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            toggleEnvaseItem(item.producto.id)
-                          }}
-                          className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-all cursor-pointer select-none truncate ${
-                            item.sin_envase
-                              ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300'
-                              : 'bg-gray-100 dark:bg-gray-700/60 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                          }`}
-                          title="Hacé clic para alternar si el cliente trajo o no el envase vacío"
-                        >
-                          {item.sin_envase
-                            ? `Sin envase (+${formatPrecio((item.precio_envase_unitario || item.producto.precio_envase || 0) * item.cantidad)})`
-                            : 'Con envase (mano a mano)'}
-                        </button>
-                      )}
+                  {/* Controles de Cantidad + Botón Borrar */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Stepper Cantidad */}
+                    <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5 border border-gray-200/60 dark:border-gray-700/60">
+                      <button
+                        ref={(el) => { minusBtnRefs.current[idx] = el }}
+                        type="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleRestarCantidad(item.producto.id, item.cantidad, idx, 'minus')
+                        }}
+                        onKeyDown={(e) => handleMinusKeyDown(e, idx, item.producto.id, item.cantidad)}
+                        className="w-6 h-6 flex items-center justify-center rounded-md bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-200 font-bold text-xs shadow-2xs transition-all focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer select-none"
+                        aria-label="Restar uno"
+                        title="Restar [Enter o -]"
+                      >
+                        −
+                      </button>
+
+                      <span className="px-2 min-w-[28px] text-center font-bold text-xs font-mono text-gray-900 dark:text-gray-100 select-none whitespace-nowrap">
+                        {item.cantidad % 1 === 0 ? item.cantidad : Number(item.cantidad.toFixed(2))}
+                      </span>
+
+                      <button
+                        ref={(el) => { plusBtnRefs.current[idx] = el }}
+                        type="button"
+                        tabIndex={0}
+                        disabled={item.producto.stock_actual > 0 && item.cantidad >= item.producto.stock_actual}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleSumarCantidad(item.producto.id, item.cantidad)
+                        }}
+                        onKeyDown={(e) => handlePlusKeyDown(e, idx, item.producto.id, item.cantidad)}
+                        className={`w-6 h-6 flex items-center justify-center rounded-md font-bold text-xs shadow-2xs transition-all select-none ${
+                          item.producto.stock_actual > 0 && item.cantidad >= item.producto.stock_actual
+                            ? 'opacity-30 cursor-not-allowed bg-gray-200 dark:bg-gray-800 text-gray-400'
+                            : 'bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-200 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-indigo-500'
+                        }`}
+                        aria-label="Sumar uno"
+                        title={
+                          item.producto.stock_actual > 0 && item.cantidad >= item.producto.stock_actual
+                            ? `Stock máximo alcanzado (${item.producto.stock_actual})`
+                            : 'Sumar uno [Enter o +]'
+                        }
+                      >
+                        +
+                      </button>
                     </div>
-                  )}
+
+                    {/* Botón Borrar */}
+                    <button
+                      ref={(el) => { deleteBtnRefs.current[idx] = el }}
+                      type="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleQuitarItem(item.producto.id, idx)
+                      }}
+                      onKeyDown={(e) => handleDeleteKeyDown(e, idx, item.producto.id)}
+                      className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-md transition-colors focus:outline-hidden focus:ring-2 focus:ring-red-500 cursor-pointer select-none text-xs"
+                      aria-label="Eliminar producto"
+                      title="Eliminar producto [Enter o Supr]"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
 
-                {/* 2. Columna Cantidad */}
-                <div className="flex items-center justify-center gap-1 min-w-0">
-                  <button
-                    ref={(el) => { minusBtnRefs.current[idx] = el }}
-                    type="button"
-                    tabIndex={0}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleRestarCantidad(item.producto.id, item.cantidad, idx, 'minus')
-                    }}
-                    onKeyDown={(e) => handleMinusKeyDown(e, idx, item.producto.id, item.cantidad)}
-                    className="w-7 h-7 shrink-0 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-300 font-bold text-sm transition-transform focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-indigo-100 dark:focus:bg-gray-600 cursor-pointer select-none"
-                    aria-label="Restar uno"
-                    title="Restar [Enter o -]"
-                  >
-                    −
-                  </button>
-                  <span
-                    className="w-8 shrink-0 text-center font-bold text-xs sm:text-sm font-mono text-gray-900 dark:text-gray-100 select-none truncate"
-                  >
-                    {item.cantidad % 1 === 0 ? item.cantidad : Number(item.cantidad.toFixed(2))}
-                  </span>
-                  <button
-                    ref={(el) => { plusBtnRefs.current[idx] = el }}
-                    type="button"
-                    tabIndex={0}
-                    disabled={item.producto.stock_actual > 0 && item.cantidad >= item.producto.stock_actual}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleSumarCantidad(item.producto.id, item.cantidad)
-                    }}
-                    onKeyDown={(e) => handlePlusKeyDown(e, idx, item.producto.id, item.cantidad)}
-                    className={`w-7 h-7 shrink-0 flex items-center justify-center rounded-lg font-bold text-sm transition-transform select-none ${
-                      item.producto.stock_actual > 0 && item.cantidad >= item.producto.stock_actual
-                        ? 'opacity-30 cursor-not-allowed bg-gray-100 dark:bg-gray-800 text-gray-400'
-                        : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-300 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-indigo-100 dark:focus:bg-gray-600'
-                    }`}
-                    aria-label="Sumar uno"
-                    title={
-                      item.producto.stock_actual > 0 && item.cantidad >= item.producto.stock_actual
-                        ? `Stock máximo alcanzado (${item.producto.stock_actual})`
-                        : 'Sumar uno [Enter o +]'
-                    }
-                  >
-                    +
-                  </button>
-                </div>
-
-                {/* 3. Columna Monto - Sin truncar por nada */}
-                <div className="text-right flex flex-col justify-center shrink-0 whitespace-nowrap">
-                  <span className={`text-sm font-bold tabular-nums whitespace-nowrap ${item.es_devolucion_envase || item.subtotal < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-gray-100 group-focus:text-indigo-900 dark:group-focus:text-white'}`}>
-                    {item.subtotal < 0 ? `-${formatPrecio(Math.abs(item.subtotal))}` : formatPrecio(item.subtotal)}
-                  </span>
-                  {item.descuento_promo !== undefined && item.descuento_promo > 0 && (
-                    <span className="text-[10px] text-gray-400 line-through whitespace-nowrap">
-                      {formatPrecio(Math.round(item.cantidad * item.producto.precio_venta))}
-                    </span>
-                  )}
-                </div>
-
-                {/* 4. Columna Borrar */}
-                <div className="flex items-center justify-center shrink-0 w-[28px]">
-                  <button
-                    ref={(el) => { deleteBtnRefs.current[idx] = el }}
-                    type="button"
-                    tabIndex={0}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleQuitarItem(item.producto.id, idx)
-                    }}
-                    onKeyDown={(e) => handleDeleteKeyDown(e, idx, item.producto.id)}
-                    className="w-7 h-7 shrink-0 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 active:scale-90 text-sm transition-transform focus:outline-hidden focus:ring-2 focus:ring-red-500 dark:focus:ring-red-400 focus:bg-red-50 dark:focus:bg-red-950/40 rounded-lg cursor-pointer select-none"
-                    aria-label="Eliminar producto"
-                    title="Eliminar producto [Enter o Supr]"
-                  >
-                    ✕
-                  </button>
-                </div>
+                {/* 3. Fila Extra (si tiene promociones o envase) */}
+                {(item.promo_nombre || item.es_devolucion_envase || (item.producto.es_retornable && !item.es_devolucion_envase)) && (
+                  <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
+                    {item.promo_nombre && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60">
+                        {item.promo_nombre}
+                      </span>
+                    )}
+                    {item.es_devolucion_envase && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60">
+                        Devolución envase
+                      </span>
+                    )}
+                    {item.producto.es_retornable && !item.es_devolucion_envase && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleEnvaseItem(item.producto.id)
+                        }}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-all cursor-pointer select-none ${
+                          item.sin_envase
+                            ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300'
+                            : 'bg-gray-100 dark:bg-gray-700/60 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        }`}
+                        title="Hacé clic para alternar si el cliente trajo o no el envase vacío"
+                      >
+                        {item.sin_envase
+                          ? `Sin envase (+${formatPrecio((item.precio_envase_unitario || item.producto.precio_envase || 0) * item.cantidad)})`
+                          : 'Con envase (mano a mano)'}
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
