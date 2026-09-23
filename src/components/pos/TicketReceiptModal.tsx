@@ -94,12 +94,15 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
   const [mostrarInputTelefono, setMostrarInputTelefono] = useState(false)
   const [qrDataUrl, setQrDataUrl] = useState<string>('')
   const inputTelefonoRef = useRef<HTMLInputElement>(null)
+  const ticketScrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!isOpen) {
       setMostrarInputTelefono(false)
+    } else if (ticketScrollRef.current) {
+      ticketScrollRef.current.scrollTop = 0
     }
-  }, [isOpen])
+  }, [isOpen, ticket])
 
   useEffect(() => {
     if (ticket?.clienteTelefono) {
@@ -281,10 +284,13 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
         </div>
 
         {/* Vista previa del ticket estilo papel térmico */}
-        <div className="flex justify-center p-2.5 sm:p-3 bg-gray-100/80 dark:bg-gray-900/70 rounded-2xl overflow-y-auto max-h-[min(54vh,460px)] border border-gray-200/60 dark:border-gray-800/80">
+        <div
+          ref={ticketScrollRef}
+          className="flex justify-center items-start p-2.5 sm:p-4 bg-gray-100/90 dark:bg-gray-900/80 rounded-2xl overflow-y-auto max-h-[min(58vh,520px)] border border-gray-200/80 dark:border-gray-800"
+        >
           <div
             id="printable-ticket"
-            className={`bg-white text-gray-900 p-4 sm:p-5 rounded-lg shadow-md shadow-gray-300/40 dark:shadow-black/60 border border-gray-200/80 font-mono text-xs leading-tight select-text transition-all ${
+            className={`bg-white text-gray-900 p-4 sm:p-5 rounded-lg shadow-md shadow-gray-400/20 dark:shadow-black/60 border border-gray-200/90 font-mono text-xs leading-tight select-text transition-all self-start h-fit flex-shrink-0 min-h-fit ${
               anchoPapel === '58mm' ? 'w-[270px]' : 'w-[350px]'
             }`}
           >
@@ -373,7 +379,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
                     </span>
                   </div>
                   {it.promoNombre && (
-                    <div className="text-[9px] text-emerald-700 dark:text-emerald-400 font-medium pl-2">
+                    <div className="text-[9px] text-emerald-800 font-semibold pl-2">
                       {it.promoNombre}
                     </div>
                   )}
@@ -469,28 +475,28 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
 
             {/* Pie de ticket */}
             {ticket.afip ? (
-              <div className="pt-2 text-center text-[10px] text-gray-700 space-y-1">
+              <div className="pt-2 text-center text-[10px] text-gray-800 space-y-1">
                 {qrDataUrl && (
                   <div className="flex justify-center py-1">
                     <img
                       src={qrDataUrl}
                       alt="Código QR ARCA"
-                      className="w-28 h-28 object-contain"
+                      className="w-28 h-28 object-contain bg-white p-1 rounded"
                     />
                   </div>
                 )}
-                <div className="border-t border-dotted border-gray-300 pt-1 space-y-0.5">
-                  <p className="font-bold text-[11px]">CAE: {ticket.afip.cae}</p>
-                  <p>Vto. CAE: {ticket.afip.vtoCae}</p>
+                <div className="border-t border-dotted border-gray-400 pt-1 space-y-0.5">
+                  <p className="font-bold text-[11px] text-gray-950">CAE: {ticket.afip.cae}</p>
+                  <p className="text-gray-800">Vto. CAE: {ticket.afip.vtoCae}</p>
                 </div>
-                <p className="text-[9px] text-gray-500 italic pt-1">
+                <p className="text-[9px] text-gray-600 italic pt-1">
                   Comprobante Autorizado por ARCA (RG 4892)
                 </p>
-                <p className="font-semibold text-[10px] pt-0.5">¡Muchas gracias por su compra!</p>
+                <p className="font-bold text-[10px] text-gray-950 pt-0.5">¡Muchas gracias por su compra!</p>
               </div>
             ) : (
-              <div className="pt-2 text-center text-[10px] text-gray-500 space-y-0.5">
-                <p className="font-semibold">¡Muchas gracias por su compra!</p>
+              <div className="pt-2 text-center text-[10px] text-gray-600 space-y-0.5">
+                <p className="font-semibold text-gray-800">¡Muchas gracias por su compra!</p>
                 <p>Comprobante no válido como factura</p>
               </div>
             )}

@@ -159,17 +159,17 @@ export function RetiroCajaModal({ isOpen, onClose }: RetiroCajaModalProps) {
               />
             </div>
 
-            {/* Botones de montos rápidos */}
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 pt-1">
+            {/* Botones de montos rápidos / billetes */}
+            <div className="grid grid-cols-3 gap-2 pt-1">
               {MONTOS_RAPIDOS.map((m) => (
                 <button
                   key={m}
                   type="button"
                   onClick={() => setMonto(m.toString())}
-                  className={`py-1.5 px-2 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
+                  className={`py-2 px-2 text-xs sm:text-sm font-bold rounded-xl border transition-all cursor-pointer text-center flex items-center justify-center min-h-[38px] active:scale-95 ${
                     montoNum === m
-                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 shadow-2xs'
-                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 shadow-xs ring-1 ring-indigo-500/40'
+                      : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700/60'
                   }`}
                 >
                   {formatPrecio(m)}
