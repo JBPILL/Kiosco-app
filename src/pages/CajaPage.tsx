@@ -1017,37 +1017,36 @@ export function CajaPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {DENOMINACIONES_BILLETES.map((den) => {
                     const cant = desgloseBilletes[den] || 0
-                    const subtotal = den * cant
                     return (
                       <div
                         key={den}
-                        className={`p-3 rounded-xl border-2 transition-all flex items-center justify-between gap-2 ${
+                        className={`p-3.5 sm:p-4 rounded-xl border-2 transition-all flex items-center justify-between gap-3 ${
                           cant > 0
                             ? 'bg-gray-50/90 dark:bg-gray-800 border-gray-400 dark:border-gray-500 shadow-2xs'
-                            : 'bg-white dark:bg-gray-800/60 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                            : 'bg-white dark:bg-gray-800/60 border-2 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                         }`}
                       >
-                        {/* Denominación y unidades */}
-                        <div className="min-w-[70px] sm:min-w-[85px]">
-                          <span className="text-sm sm:text-base font-black text-gray-900 dark:text-gray-100 block tracking-tight">
+                        {/* Denominación y conteo */}
+                        <div className="flex flex-col">
+                          <span className="text-base sm:text-lg font-black text-gray-900 dark:text-gray-100 tracking-tight">
                             ${den.toLocaleString('es-AR')}
                           </span>
                           <span
-                            className={`text-[11px] font-bold block ${
+                            className={`text-xs font-semibold ${
                               cant > 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500'
                             }`}
                           >
-                            {cant > 0 ? `${cant} u.` : '0 u.'}
+                            {cant > 0 ? `${cant} ${cant === 1 ? 'billete' : 'billetes'}` : '0 billetes'}
                           </span>
                         </div>
 
-                        {/* Stepper amplio sin superposiciones */}
-                        <div className="flex items-center gap-1">
+                        {/* Stepper amplio y cómodo */}
+                        <div className="flex items-center gap-1.5">
                           <button
                             type="button"
                             onClick={() => handleIncrementarBillete(den, -1)}
                             disabled={cant <= 0}
-                            className="w-8 h-8 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-20 disabled:pointer-events-none text-gray-800 dark:text-gray-200 font-black text-base flex items-center justify-center cursor-pointer transition-transform active:scale-95 shadow-2xs select-none"
+                            className="w-9 h-9 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-20 disabled:pointer-events-none text-gray-800 dark:text-gray-200 font-black text-lg flex items-center justify-center cursor-pointer transition-transform active:scale-95 shadow-2xs select-none"
                             aria-label={`Restar billete de $${den}`}
                           >
                             -
@@ -1058,30 +1057,16 @@ export function CajaPage() {
                             placeholder="0"
                             value={cant || ''}
                             onChange={(e) => handleCambioBillete(den, parseInt(e.target.value) || 0)}
-                            className="w-14 text-center py-1 font-black text-sm rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:border-indigo-500 outline-none"
+                            className="w-16 text-center py-1.5 font-black text-base rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:border-indigo-500 outline-none shadow-2xs"
                           />
                           <button
                             type="button"
                             onClick={() => handleIncrementarBillete(den, 1)}
-                            className="w-8 h-8 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-black text-base flex items-center justify-center cursor-pointer transition-transform active:scale-95 shadow-2xs select-none"
+                            className="w-9 h-9 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-black text-lg flex items-center justify-center cursor-pointer transition-transform active:scale-95 shadow-2xs select-none"
                             aria-label={`Sumar billete de $${den}`}
                           >
                             +
                           </button>
-                        </div>
-
-                        {/* Subtotal en pesos */}
-                        <div className="text-right min-w-[75px] sm:min-w-[90px]">
-                          <span className="text-[10px] uppercase font-bold text-gray-400 dark:text-gray-500 block">
-                            Subtotal
-                          </span>
-                          <span
-                            className={`text-xs sm:text-sm font-black block tracking-tight ${
-                              cant > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-500'
-                            }`}
-                          >
-                            {cant > 0 ? formatPrecio(subtotal) : '$0'}
-                          </span>
                         </div>
                       </div>
                     )
