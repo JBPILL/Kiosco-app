@@ -12,6 +12,8 @@ interface ProductoImportRow {
   codigo_barras: string | null
   descripcion: string
   categoriaNombre: string | null
+  unidad_medida?: 'UN' | 'KG' | 'GR' | 'LT' | string | null
+  es_pesable?: boolean
   precio_costo: number
   precio_venta: number
   stock_actual: number
@@ -62,13 +64,56 @@ function normalizarTexto(txt: string): string {
 }
 
 /**
+ * Sanitiza códigos de barras:
+ * - Convierte números en notación científica generados por Excel (ej: 7.79123E+12) a string numérico entero exacto
+ * - Remueve sufijos flotantes .0 o .00 dejados por parseadores de celdas
+ * - Elimina espacios internos y guiones vacíos
+ */
+function sanitizarCodigoBarras(raw: unknown): string | null {
+  if (raw === null || raw === undefined) return null
+  let str = String(raw).trim()
+  if (!str || str === '—' || str === '-' || str === 'null' || str === 'undefined') return null
+
+  // Si viene en notación científica como 7.79123E+12
+  if (/[eE][+-]?\d+/.test(str)) {
+    const num = Number(str)
+    if (!isNaN(num) && isFinite(num)) {
+      try {
+        str = BigInt(Math.round(num)).toString()
+      } catch {
+        str = Math.round(num).toString()
+      }
+    }
+  }
+
+  // Si termina en .0 o .00 (muy común en celdas numéricas leídas de Excel)
+  str = str.replace(/\.0+$/, '')
+
+  // Eliminar espacios en blanco internos o saltos
+  str = str.replace(/\s+/g, '')
+
+  return str || null
+}
+
+function normalizarUnidad(val: unknown): 'UN' | 'KG' | 'GR' | 'LT' {
+  if (!val) return 'UN'
+  const u = String(val).trim().toUpperCase()
+  if (u === 'KG' || u === 'KILO' || u === 'KILOS' || u === 'KILOGRAMO') return 'KG'
+  if (u === 'GR' || u === 'G' || u === 'GRAMO' || u === 'GRAMOS') return 'GR'
+  if (u === 'LT' || u === 'L' || u === 'LITRO' || u === 'LITROS') return 'LT'
+  return 'UN'
+}
+
+/**
  * Detecta inteligentemente la posición de las columnas según los nombres de encabezado
  */
 function detectarIndicesColumnas(cabeceras: string[]): Record<string, number> {
   const indices: Record<string, number> = {
-    descripcion: -1,
     codigo_barras: -1,
+    descripcion: -1,
     categoria: -1,
+    unidad_medida: -1,
+    es_pesable: -1,
     precio_costo: -1,
     precio_venta: -1,
     stock_actual: -1,
@@ -93,6 +138,16 @@ function detectarIndicesColumnas(cabeceras: string[]): Record<string, number> {
     ) {
       indices.categoria = idx
     } else if (
+      indices.unidad_medida === -1 &&
+      (norm.includes('unidad') || norm.includes('medida') || norm === 'um' || norm === 'u.m.')
+    ) {
+      indices.unidad_medida = idx
+    } else if (
+      indices.es_pesable === -1 &&
+      (norm.includes('pesable') || norm.includes('balanza'))
+    ) {
+      indices.es_pesable = idx
+    } else if (
       indices.precio_costo === -1 &&
       (norm.includes('costo') || norm === 'precio_costo')
     ) {
@@ -115,15 +170,16 @@ function detectarIndicesColumnas(cabeceras: string[]): Record<string, number> {
     }
   })
 
-  // Fallback a posiciones predeterminadas de la plantilla clásica si no se reconocieron encabezados
+  // Fallback a posiciones predeterminadas de la plantilla si no se reconocieron encabezados
   if (indices.descripcion === -1) {
     indices.codigo_barras = 0
     indices.descripcion = 1
     indices.categoria = 2
-    indices.precio_costo = 3
-    indices.precio_venta = 4
-    indices.stock_actual = 5
-    indices.stock_minimo = 6
+    indices.unidad_medida = 3
+    indices.precio_costo = 4
+    indices.precio_venta = 5
+    indices.stock_actual = 6
+    indices.stock_minimo = 7
   }
 
   return indices
@@ -163,14 +219,14 @@ export function ImportarCatalogoModal({
 
   // Descargar plantilla CSV de muestra
   const descargarPlantilla = () => {
-    const encabezados = 'Descripción;Código de Barras;Categoría;Precio Costo;Precio Venta;Stock Actual;Stock Mínimo'
+    const encabezados = 'Código de Barras;Descripción;Categoría;Unidad de Medida;Precio Costo;Precio Venta;Stock Actual;Stock Mínimo'
     const filasEjemplo = [
-      'Coca Cola 500ml;7790895000997;Bebidas;850;1500;24;6',
-      'Alfajor Jorgito Chocolate;7791234567890;Golosinas;400;800;50;10',
-      'Papas Fritas Lays 85g;7799876543210;Snacks;900;1800;15;5',
-      'Cigarrillos Marlboro Box 20;7791111222233;Cigarrillos;2200;3000;20;5',
-      'Leche La Serenisima 1L;7794444555566;Lácteos;950;1400;12;4',
-      'Caramelos Sugus x Unidad;;Golosinas;15;30;200;50',
+      '7790895000997;Coca Cola 500ml;Bebidas;UN;850;1500;24;6',
+      '7791234567890;Alfajor Jorgito Chocolate;Golosinas;UN;400;800;50;10',
+      '7799876543210;Papas Fritas Lays 85g;Snacks;UN;900;1800;15;5',
+      '7791111222233;Cigarrillos Marlboro Box 20;Cigarrillos;UN;2200;3000;20;5',
+      ';Queso Cremoso x Kg;Fiambrería;KG;4500;7200;12.5;2',
+      ';Caramelos Sugus x Unidad;Golosinas;UN;15;30;200;50',
     ]
 
     const contenidoCSV = `\uFEFF${encabezados}\r\n${filasEjemplo.join('\r\n')}`
@@ -351,26 +407,31 @@ export function ImportarCatalogoModal({
           }
 
           const rawCodigo = indices.codigo_barras >= 0 ? fila[indices.codigo_barras] : null
-          const codigoStr = rawCodigo !== null && rawCodigo !== undefined ? String(rawCodigo).trim() : null
-          const codigoBarras =
-            codigoStr === '—' || codigoStr === '-' || codigoStr === 'null' || !codigoStr ? null : codigoStr
+          const codigoBarras = sanitizarCodigoBarras(rawCodigo)
 
           const descripcion = indices.descripcion >= 0 ? String(fila[indices.descripcion] ?? '').trim() : ''
           const catRaw = indices.categoria >= 0 ? String(fila[indices.categoria] ?? '').trim() : ''
           const categoriaNombre = catRaw === 'Sin categoría' || catRaw === '—' || !catRaw ? null : catRaw
+
+          const rawUnidad = indices.unidad_medida >= 0 ? fila[indices.unidad_medida] : null
+          const rawPesable = indices.es_pesable >= 0 ? String(fila[indices.es_pesable] ?? '').trim().toLowerCase() : ''
+          const unidadMedida = normalizarUnidad(rawUnidad)
+          const esPesable =
+            rawPesable === 'si' || rawPesable === 'true' || rawPesable === '1' || rawPesable === 'sí' ||
+            unidadMedida === 'KG' || unidadMedida === 'GR'
+
           const precioCosto = indices.precio_costo >= 0 ? parsearNumero(fila[indices.precio_costo]) : 0
           const precioVenta = indices.precio_venta >= 0 ? parsearNumero(fila[indices.precio_venta]) : 0
           const stockActual = indices.stock_actual >= 0 ? parsearNumero(fila[indices.stock_actual]) : 0
           const stockMinimo = indices.stock_minimo >= 0 ? Math.max(0, parsearNumero(fila[indices.stock_minimo])) : 0
 
-          // Omitir devoluciones de envases, combos promocionales o artículos virtuales ad-hoc
+          // Omitir devoluciones de envases, combos automáticos del sistema o artículos virtuales ad-hoc
           const descNorm = descripcion.toLowerCase()
           const codNorm = (codigoBarras || '').toUpperCase()
           if (
             descNorm.startsWith('devolución') ||
             descNorm.startsWith('devolucion') ||
-            descNorm.startsWith('combo ') ||
-            codNorm.startsWith('COMBO-') ||
+            codNorm.startsWith('COMBO-AUTO-') ||
             (stockActual > 90000 && !codigoBarras && (
               descNorm.includes('envase') ||
               descNorm.includes('devolucion') ||
@@ -392,7 +453,19 @@ export function ImportarCatalogoModal({
             error = 'Precio venta debe ser mayor a 0'
           }
 
-          filasParseadas.push({ codigo_barras: codigoBarras, descripcion, categoriaNombre, precio_costo: precioCosto, precio_venta: precioVenta, stock_actual: stockActual, stock_minimo: stockMinimo, esValido, error })
+          filasParseadas.push({
+            codigo_barras: codigoBarras,
+            descripcion,
+            categoriaNombre,
+            unidad_medida: unidadMedida,
+            es_pesable: esPesable,
+            precio_costo: precioCosto,
+            precio_venta: precioVenta,
+            stock_actual: stockActual,
+            stock_minimo: stockMinimo,
+            esValido,
+            error,
+          })
         }
 
         if (filasParseadas.length === 0) {
@@ -452,24 +525,31 @@ export function ImportarCatalogoModal({
             }
 
             const rawCodigo = indices.codigo_barras >= 0 ? columnas[indices.codigo_barras] || null : null
-            const codigoBarras =
-              rawCodigo === '—' || rawCodigo === '-' || rawCodigo === 'null' || !rawCodigo ? null : rawCodigo.trim()
+            const codigoBarras = sanitizarCodigoBarras(rawCodigo)
 
             const descripcion = indices.descripcion >= 0 ? (columnas[indices.descripcion] || '').trim() : ''
-            const categoriaNombre = indices.categoria >= 0 ? (columnas[indices.categoria] || '').trim() || null : null
+            const catRaw = indices.categoria >= 0 ? (columnas[indices.categoria] || '').trim() : ''
+            const categoriaNombre = catRaw === 'Sin categoría' || catRaw === '—' || !catRaw ? null : catRaw
+
+            const rawUnidad = indices.unidad_medida >= 0 ? columnas[indices.unidad_medida] : null
+            const rawPesable = indices.es_pesable >= 0 ? (columnas[indices.es_pesable] || '').trim().toLowerCase() : ''
+            const unidadMedida = normalizarUnidad(rawUnidad)
+            const esPesable =
+              rawPesable === 'si' || rawPesable === 'true' || rawPesable === '1' || rawPesable === 'sí' ||
+              unidadMedida === 'KG' || unidadMedida === 'GR'
+
             const precioCosto = indices.precio_costo >= 0 ? parsearNumero(columnas[indices.precio_costo]) : 0
             const precioVenta = indices.precio_venta >= 0 ? parsearNumero(columnas[indices.precio_venta]) : 0
             const stockActual = indices.stock_actual >= 0 ? parsearNumero(columnas[indices.stock_actual]) : 0
             const stockMinimo = indices.stock_minimo >= 0 ? Math.max(0, parsearNumero(columnas[indices.stock_minimo])) : 0
 
-            // Omitir devoluciones de envases, combos promocionales o artículos virtuales ad-hoc
+            // Omitir devoluciones de envases, combos automáticos del sistema o artículos virtuales ad-hoc
             const descNorm = descripcion.toLowerCase()
             const codNorm = (codigoBarras || '').toUpperCase()
             if (
               descNorm.startsWith('devolución') ||
               descNorm.startsWith('devolucion') ||
-              descNorm.startsWith('combo ') ||
-              codNorm.startsWith('COMBO-') ||
+              codNorm.startsWith('COMBO-AUTO-') ||
               (stockActual > 90000 && !codigoBarras)
             ) {
               continue
@@ -488,7 +568,9 @@ export function ImportarCatalogoModal({
             filasParseadas.push({
               codigo_barras: codigoBarras,
               descripcion,
-              categoriaNombre: categoriaNombre === 'Sin categoría' || categoriaNombre === '—' ? null : categoriaNombre,
+              categoriaNombre,
+              unidad_medida: unidadMedida,
+              es_pesable: esPesable,
               precio_costo: precioCosto,
               precio_venta: precioVenta,
               stock_actual: stockActual,
@@ -559,23 +641,22 @@ export function ImportarCatalogoModal({
         setProgresoTexto('Sincronizando nuevas categorías...')
         const arrayNuevas = Array.from(categoriasNuevasNombres)
         const maxOrdenExistente = categorias.reduce((max, c) => Math.max(max, c.orden || 0), 0)
-        let indexCat = 0
-        for (const nombreCat of arrayNuevas) {
-          indexCat++
-          const { data: catCreada, error: catErr } = await supabase
-            .from('categorias')
-            .insert({
-              kiosco_id: kioscoId,
-              nombre: nombreCat,
-              color: '#6366f1',
-              orden: maxOrdenExistente + indexCat,
-            })
-            .select('id, nombre')
-            .single()
+        const categoriasPayload = arrayNuevas.map((nombreCat, idx) => ({
+          kiosco_id: kioscoId,
+          nombre: nombreCat,
+          color: '#6366f1',
+          orden: maxOrdenExistente + idx + 1,
+        }))
 
-          if (!catErr && catCreada) {
-            mapaCategorias.set(catCreada.nombre.toLowerCase().trim(), catCreada.id)
-          }
+        const { data: catsCreadas, error: catErr } = await supabase
+          .from('categorias')
+          .insert(categoriasPayload)
+          .select('id, nombre')
+
+        if (!catErr && catsCreadas) {
+          catsCreadas.forEach((c) => {
+            mapaCategorias.set(c.nombre.toLowerCase().trim(), c.id)
+          })
         }
       }
 
@@ -583,7 +664,7 @@ export function ImportarCatalogoModal({
       setProgresoTexto('Consultando catálogo actual...')
       const { data: productosExistentes } = await supabase
         .from('productos')
-        .select('id, codigo_barras, descripcion, stock_actual, activo')
+        .select('id, codigo_barras, descripcion, stock_actual, activo, unidad_medida, es_pesable')
         .eq('kiosco_id', kioscoId)
 
       const mapaExistentesPorBarcode = new Map<string, any>()
@@ -600,6 +681,10 @@ export function ImportarCatalogoModal({
       const productosParaInsertar: any[] = []
       const movimientosStockParaInsertar: any[] = []
 
+      // Rastreadores para deduplicar filas dentro del propio archivo importado
+      const nuevosPorBarcode = new Map<string, any>()
+      const nuevosPorNombre = new Map<string, any>()
+
       // 3. Preparar filas para inserción y actualización
       setProgresoTexto('Procesando productos...')
       for (const row of validas) {
@@ -610,31 +695,44 @@ export function ImportarCatalogoModal({
         const barcode = row.codigo_barras?.trim() || null
         const descNorm = row.descripcion.toLowerCase().trim()
 
-        // Buscar coincidencia por código de barras o por nombre idéntico
+        // Buscar coincidencia en productos existentes de la base de datos
         const existente = (barcode ? mapaExistentesPorBarcode.get(barcode) : null) || mapaExistentesPorNombre.get(descNorm)
 
         if (existente && actualizarExistentes) {
           idsAfectados.add(existente.id)
 
+          const updatePayload: Record<string, any> = {
+            codigo_barras: barcode || existente.codigo_barras,
+            descripcion: row.descripcion,
+            categoria_id: catId,
+            precio_costo: row.precio_costo,
+            precio_venta: row.precio_venta,
+            stock_actual: row.stock_actual,
+            stock_minimo: row.stock_minimo,
+            activo: true,
+            fecha_actualizacion: ahora,
+          }
+          if (row.unidad_medida) {
+            updatePayload.unidad_medida = row.unidad_medida
+          }
+          if (row.es_pesable !== undefined) {
+            updatePayload.es_pesable = row.es_pesable
+          }
+
           const { error: updErr } = await supabase
             .from('productos')
-            .update({
-              codigo_barras: barcode || existente.codigo_barras,
-              descripcion: row.descripcion,
-              categoria_id: catId,
-              precio_costo: row.precio_costo,
-              precio_venta: row.precio_venta,
-              stock_actual: row.stock_actual,
-              stock_minimo: row.stock_minimo,
-              activo: true,
-              fecha_actualizacion: ahora,
-            })
+            .update(updatePayload)
             .eq('id', existente.id)
 
           if (updErr) {
             console.error('Error actualizando producto existente en importación:', existente.id, updErr)
             continue
           }
+
+          // Actualizar mapas en memoria por si el archivo vuelve a referenciar este producto
+          existente.stock_actual = row.stock_actual
+          existente.descripcion = row.descripcion
+          if (barcode) existente.codigo_barras = barcode
 
           // Registrar movimiento de auditoría si varió el stock
           if (existente.stock_actual !== row.stock_actual) {
@@ -652,36 +750,69 @@ export function ImportarCatalogoModal({
 
           actualizadosCount++
         } else {
-          const nuevoId = uuidv4()
-          idsAfectados.add(nuevoId)
+          // Si no está en BD, verificar si ya fue procesado previamente en este mismo archivo
+          const yaEncolado = (barcode ? nuevosPorBarcode.get(barcode) : null) || nuevosPorNombre.get(descNorm)
 
-          productosParaInsertar.push({
-            id: nuevoId,
-            kiosco_id: kioscoId,
-            codigo_barras: barcode,
-            descripcion: row.descripcion,
-            categoria_id: catId,
-            precio_costo: row.precio_costo,
-            precio_venta: row.precio_venta,
-            stock_actual: row.stock_actual,
-            stock_minimo: row.stock_minimo,
-            es_favorito: false,
-            activo: true,
-            fecha_creacion: ahora,
-            fecha_actualizacion: ahora,
-          })
+          if (yaEncolado) {
+            // Actualizar el elemento ya encolado para no generar fila duplicada en la base de datos
+            yaEncolado.codigo_barras = barcode || yaEncolado.codigo_barras
+            yaEncolado.descripcion = row.descripcion
+            yaEncolado.categoria_id = catId
+            yaEncolado.precio_costo = row.precio_costo
+            yaEncolado.precio_venta = row.precio_venta
+            yaEncolado.stock_actual = row.stock_actual
+            yaEncolado.stock_minimo = row.stock_minimo
+            if (row.unidad_medida) yaEncolado.unidad_medida = row.unidad_medida
+            if (row.es_pesable !== undefined) yaEncolado.es_pesable = row.es_pesable
+          } else {
+            const nuevoId = uuidv4()
+            idsAfectados.add(nuevoId)
+
+            const nuevoObj: Record<string, any> = {
+              id: nuevoId,
+              kiosco_id: kioscoId,
+              codigo_barras: barcode,
+              descripcion: row.descripcion,
+              categoria_id: catId,
+              precio_costo: row.precio_costo,
+              precio_venta: row.precio_venta,
+              stock_actual: row.stock_actual,
+              stock_minimo: row.stock_minimo,
+              es_favorito: false,
+              activo: true,
+              fecha_creacion: ahora,
+              fecha_actualizacion: ahora,
+              es_pesable: Boolean(row.es_pesable),
+              unidad_medida: (row.unidad_medida as 'UN' | 'KG' | 'GR' | 'LT') || (row.es_pesable ? 'KG' : 'UN'),
+            }
+
+            productosParaInsertar.push(nuevoObj)
+            if (barcode) nuevosPorBarcode.set(barcode, nuevoObj)
+            nuevosPorNombre.set(descNorm, nuevoObj)
+          }
         }
       }
 
-      // 4. Inserción en lotes de 100 productos
+      // 4. Inserción en lotes de 100 productos con contingencia individual si falla el lote
       if (productosParaInsertar.length > 0) {
         setProgresoTexto(`Guardando ${productosParaInsertar.length} productos nuevos...`)
         const LOTE_SIZE = 100
         for (let i = 0; i < productosParaInsertar.length; i += LOTE_SIZE) {
           const lote = productosParaInsertar.slice(i, i + LOTE_SIZE)
           const { error: insErr } = await supabase.from('productos').insert(lote)
-          if (insErr) throw insErr
-          insertadosCount += lote.length
+          if (insErr) {
+            console.warn('Lote de inserción falló, procediendo a inserción individual de contingencia...', insErr)
+            for (const prod of lote) {
+              const { error: singleErr } = await supabase.from('productos').insert(prod)
+              if (!singleErr) {
+                insertadosCount++
+              } else {
+                console.error('Error insertando producto individual:', prod.descripcion, singleErr)
+              }
+            }
+          } else {
+            insertadosCount += lote.length
+          }
         }
       }
 
@@ -879,6 +1010,7 @@ export function ImportarCatalogoModal({
                     <th className="px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-400">Código</th>
                     <th className="px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-400">Descripción</th>
                     <th className="px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-400">Categoría</th>
+                    <th className="px-3 py-2 text-center font-semibold text-gray-600 dark:text-gray-400">Unidad</th>
                     <th className="px-3 py-2 text-right font-semibold text-gray-600 dark:text-gray-400">Costo</th>
                     <th className="px-3 py-2 text-right font-semibold text-gray-600 dark:text-gray-400">Venta</th>
                     <th className="px-3 py-2 text-right font-semibold text-gray-600 dark:text-gray-400">Stock</th>
@@ -906,6 +1038,11 @@ export function ImportarCatalogoModal({
                       </td>
                       <td className="px-3 py-1.5 text-gray-600 dark:text-gray-400">
                         {f.categoriaNombre || 'Sin categoría'}
+                      </td>
+                      <td className="px-3 py-1.5 text-center font-mono text-[11px] text-gray-600 dark:text-gray-400">
+                        <span className={`inline-block px-1 rounded ${f.es_pesable ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 font-bold' : ''}`}>
+                          {f.unidad_medida || (f.es_pesable ? 'KG' : 'UN')}
+                        </span>
                       </td>
                       <td className="px-3 py-1.5 text-right font-mono text-gray-500">
                         {formatPrecio(f.precio_costo)}

@@ -30,6 +30,21 @@ export function descargarArchivo(contenido: string, nombreArchivo: string, tipoM
   URL.revokeObjectURL(url)
 }
 
+/**
+ * Sanitiza nombres de archivos para compatibilidad estricta con Windows, macOS y Linux.
+ */
+export function sanitizarNombreArchivo(nombre: string): string {
+  return (
+    nombre
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'archivo'
+  )
+}
+
 // ============================================================================
 // CONSTRUCTORES DE CELDAS Y ESTILOS CORPORATIVOS (SLATE EXECUTIVE DESIGN)
 // ============================================================================
@@ -231,11 +246,12 @@ export async function exportarCatalogoExcel(
   categorias: Categoria[] = [],
   nombreKiosco: string = 'Kiosco'
 ) {
-  const totalCols = 11
+  const totalCols = 12
   const columns: SheetOptionsColumn[] = [
     { width: 16 }, // Código de Barras
     { width: 36 }, // Descripción
     { width: 20 }, // Categoría
+    { width: 12 }, // Unidad
     { width: 16 }, // Precio Costo ($)
     { width: 16 }, // Precio Venta ($)
     { width: 16 }, // Margen Unitario ($)
@@ -250,14 +266,13 @@ export async function exportarCatalogoExcel(
   categorias.forEach((c) => catMap.set(c.id, c.nombre))
 
   // Filtrar exclusivamente productos comerciales físicos activos
-  // (excluyendo devoluciones de envases, combos promocionales virtuales y artículos ad-hoc que inflan la valuación)
+  // (excluyendo devoluciones de envases y artículos virtuales ad-hoc con stock simulado > 90000)
   const productosValidos = productos.filter((p) => {
     if (p.activo === false) return false
     if (p.es_combo === true) return false
     const cod = (p.codigo_barras || '').toUpperCase().trim()
-    if (cod.startsWith('COMBO-') || cod === 'COMBO') return false
+    if (cod.startsWith('COMBO-AUTO-')) return false
     const desc = (p.descripcion || '').toLowerCase().trim()
-    if (desc.startsWith('combo ') || desc === 'combo') return false
     if (desc.startsWith('devolución') || desc.startsWith('devolucion')) return false
     if (p.stock_actual > 90000 && !p.codigo_barras) return false
     return true
@@ -291,7 +306,7 @@ export async function exportarCatalogoExcel(
     }, totalCols) as Row,
     emptyRow(totalCols) as Row,
 
-    // KPI Cards: 5 tarjetas ocupando 11 columnas
+    // KPI Cards: 5 tarjetas ocupando 12 columnas
     cSpan({
       value: 'RESUMEN EJECUTIVO DE CAPITAL EN MERCADERÍA',
       type: String,
@@ -307,14 +322,14 @@ export async function exportarCatalogoExcel(
       ...cCardLabel('Artículos Registrados', 2),
       ...cCardLabel('Unidades en Inventario', 2),
       ...cCardLabel('Capital Invertido (Costo)', 2),
-      ...cCardLabel('Valoración Comercial (Venta)', 2),
+      ...cCardLabel('Valoración Comercial (Venta)', 3),
       ...cCardLabel('Ganancia Bruta Potencial', 3),
     ] as Row,
     [
       ...cCardValue(totalArticulos, false, 2, '#0F172A'),
       ...cCardValue(totalUnidades, false, 2, '#0F172A'),
       ...cCardValue(valuacionCosto, true, 2, '#0F172A'),
-      ...cCardValue(valuacionVenta, true, 2, '#1E40AF'),
+      ...cCardValue(valuacionVenta, true, 3, '#1E40AF'),
       ...cCardValue(margenPotencial, true, 3, '#15803D'),
     ] as Row,
     emptyRow(totalCols) as Row,
@@ -335,6 +350,7 @@ export async function exportarCatalogoExcel(
       cHeader('Código de Barras', 'center'),
       cHeader('Descripción del Producto', 'left'),
       cHeader('Categoría', 'left'),
+      cHeader('Unidad', 'center'),
       cHeader('Precio Costo ($)', 'right'),
       cHeader('Precio Venta ($)', 'right'),
       cHeader('Margen ($)', 'right'),
@@ -349,6 +365,7 @@ export async function exportarCatalogoExcel(
   productosValidos.forEach((p, idx) => {
     const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
     const catNombre = p.categoria?.nombre || (p.categoria_id ? catMap.get(p.categoria_id) : 'General') || 'General'
+    const unidadStr = p.es_pesable ? (p.unidad_medida || 'KG').toUpperCase() : 'UN'
     const margenMonto = p.precio_venta - (p.precio_costo || 0)
     const margenPorc = p.precio_venta > 0 ? margenMonto / p.precio_venta : 0
     const valCostoProd = (p.stock_actual > 0 ? p.stock_actual : 0) * (p.precio_costo || 0)
@@ -357,6 +374,7 @@ export async function exportarCatalogoExcel(
       cText(p.codigo_barras || '—', bg, 'center'),
       cText(p.descripcion, bg, 'left', true),
       cText(catNombre, bg, 'left'),
+      cText(unidadStr, bg, 'center'),
       cMoney(p.precio_costo || 0, bg),
       cMoney(p.precio_venta || 0, bg),
       cMoney(margenMonto, bg),
@@ -370,7 +388,7 @@ export async function exportarCatalogoExcel(
 
   // Fila de Total
   rows.push([
-    ...cTotalLabel('VALUACIÓN TOTAL DE INVENTARIO', 7),
+    ...cTotalLabel('VALUACIÓN TOTAL DE INVENTARIO', 8),
     cTotalNum(totalUnidades, '#,##0'),
     cText('—', '#F1F5F9', 'center'),
     cTotalMoney(valuacionCosto),
@@ -389,7 +407,7 @@ export async function exportarCatalogoExcel(
     }, 1)[0] as Cell,
   ] as Row)
 
-  const cleanName = nombreKiosco.toLowerCase().replace(/[^a-z0-9]/g, '_')
+  const cleanName = sanitizarNombreArchivo(nombreKiosco)
   const fechaStr = new Date().toISOString().split('T')[0]
   const fileName = `catalogo_valuacion_${cleanName}_${fechaStr}.xlsx`
 
@@ -546,7 +564,7 @@ export async function exportarVentasExcel(
     cTotalMoney(totalFacturado),
   ] as Row)
 
-  const cleanName = nombreKiosco.toLowerCase().replace(/[^a-z0-9]/g, '_')
+  const cleanName = sanitizarNombreArchivo(nombreKiosco)
   const fechaStr = new Date().toISOString().split('T')[0]
   const fileName = `reporte_ventas_${cleanName}_${fechaStr}.xlsx`
 
@@ -623,16 +641,12 @@ export async function exportarDetalleCompraExcel(
       borderStyle: 'thin',
     }, totalCols) as Row,
     [
-      cSpan({ value: `PROVEEDOR: ${compra.proveedor?.nombre || 'General'}`, type: String, fontWeight: 'bold', fontSize: 10, backgroundColor: '#F8FAFC', borderColor: '#CBD5E1', borderStyle: 'thin' }, 3)[0],
-      null, null,
-      cSpan({ value: `CONDICIÓN: ${compra.medio_pago || 'EFECTIVO'}${compra.pagado_en_caja ? ' (Caja mostrador)' : ''}`, type: String, fontSize: 10, backgroundColor: '#F8FAFC', borderColor: '#CBD5E1', borderStyle: 'thin' }, 3)[0],
-      null, null,
+      ...cSpan({ value: `PROVEEDOR: ${compra.proveedor?.nombre || 'General'}`, type: String, fontWeight: 'bold', fontSize: 10, backgroundColor: '#F8FAFC', borderColor: '#CBD5E1', borderStyle: 'thin' }, 3),
+      ...cSpan({ value: `CONDICIÓN: ${compra.medio_pago || 'EFECTIVO'}${compra.pagado_en_caja ? ' (Caja mostrador)' : ''}`, type: String, fontSize: 10, backgroundColor: '#F8FAFC', borderColor: '#CBD5E1', borderStyle: 'thin' }, 3),
     ] as Row,
     [
-      cSpan({ value: `CUIT PROVEEDOR: ${compra.proveedor?.cuit || 'No registrado'}`, type: String, fontSize: 9, backgroundColor: '#F8FAFC', borderColor: '#CBD5E1', borderStyle: 'thin' }, 3)[0],
-      null, null,
-      cSpan({ value: `OBSERVACIONES: ${compra.notas || 'Sin notas'}`, type: String, fontSize: 9, backgroundColor: '#F8FAFC', borderColor: '#CBD5E1', borderStyle: 'thin' }, 3)[0],
-      null, null,
+      ...cSpan({ value: `CUIT PROVEEDOR: ${compra.proveedor?.cuit || 'No registrado'}`, type: String, fontSize: 9, backgroundColor: '#F8FAFC', borderColor: '#CBD5E1', borderStyle: 'thin' }, 3),
+      ...cSpan({ value: `OBSERVACIONES: ${compra.notas || 'Sin notas'}`, type: String, fontSize: 9, backgroundColor: '#F8FAFC', borderColor: '#CBD5E1', borderStyle: 'thin' }, 3),
     ] as Row,
     emptyRow(totalCols) as Row,
 
@@ -706,9 +720,10 @@ export async function exportarDetalleCompraExcel(
     }, 1)[0] as Cell,
   ] as Row)
 
-  const compRef = compra.nro_comprobante ? compra.nro_comprobante.replace(/[^a-zA-Z0-9]/g, '_') : 'remito'
+  const compRef = sanitizarNombreArchivo(compra.nro_comprobante || 'remito')
+  const cleanName = sanitizarNombreArchivo(nombreKiosco)
   const fechaStr = new Date().toISOString().split('T')[0]
-  const fileName = `remito_${compRef}_${fechaStr}.xlsx`
+  const fileName = `remito_${cleanName}_${compRef}_${fechaStr}.xlsx`
 
   await writeXlsxFile(rows, { columns }).toFile(fileName)
 }
@@ -892,8 +907,8 @@ export async function exportarLibroContableExcel(
     },
   ] as Row)
 
-  const cleanName = nombreKiosco.toLowerCase().replace(/[^a-z0-9]/g, '_')
-  const cleanPeriod = periodoNombre.toLowerCase().replace(/[^a-z0-9]/g, '_')
+  const cleanName = sanitizarNombreArchivo(nombreKiosco)
+  const cleanPeriod = sanitizarNombreArchivo(periodoNombre)
   const fileName = `libro_contable_${cleanName}_${cleanPeriod}.xlsx`
 
   await writeXlsxFile(rows, { columns }).toFile(fileName)
@@ -1015,7 +1030,7 @@ export async function exportarMovimientosStockExcel(
     ...cTotalLabel(`${totalMovs} OPERACIONES REGISTRADAS`, 2),
   ] as Row)
 
-  const cleanName = nombreKiosco.toLowerCase().replace(/[^a-z0-9]/g, '_')
+  const cleanName = sanitizarNombreArchivo(nombreKiosco)
   const fechaStr = new Date().toISOString().split('T')[0]
   const fileName = `movimientos_stock_${cleanName}_${fechaStr}.xlsx`
 
@@ -1153,8 +1168,9 @@ export async function exportarLibroIvaVentasExcel(
     cTotalMoney(totalFacturadoAFIP),
   ] as Row)
 
-  const cleanPeriod = periodoNombre.toLowerCase().replace(/[^a-z0-9]/g, '_')
-  const fileName = `libro_iva_ventas_arca_${cleanPeriod}.xlsx`
+  const cleanKiosco = sanitizarNombreArchivo(kiosco?.nombre || 'kiosco')
+  const cleanPeriod = sanitizarNombreArchivo(periodoNombre)
+  const fileName = `libro_iva_ventas_arca_${cleanKiosco}_${cleanPeriod}.xlsx`
 
   await writeXlsxFile(rows, { columns }).toFile(fileName)
 }
@@ -1202,7 +1218,7 @@ export async function exportarStockInmovilizadoExcel(
   const fechaGen = new Date().toLocaleDateString('es-AR')
   const horaGen = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
 
-  const rows: (Row | (Cell | null)[])[] = [
+  const rows: Row[] = [
     // Encabezado institucional
     cSpan({
       value: `INFORME DE STOCK INMOVILIZADO Y CAPITAL ESTANCADO - ${kioscoNombre.toUpperCase()}`,
@@ -1223,16 +1239,16 @@ export async function exportarStockInmovilizadoExcel(
     }, totalCols) as Row,
     emptyRow(totalCols) as Row,
 
-    // Tarjetas ejecutivas KPI
+    // Tarjetas ejecutivas KPI (4 cols + 1 col + 4 cols = 9 cols)
     [
       ...cCardLabel('CAPITAL TOTAL INMOVILIZADO', 4),
-      null,
+      cText('', '#F8FAFC', 'center'),
       ...cCardLabel('UNIDADES FÍSICAS PARADAS', 4),
     ] as Row,
     [
       ...cCardValue(totalCapitalCosto, true, 4, '#B91C1C'),
-      null,
-      ...cCardValue(`${totalUnidades.toLocaleString('es-AR')} unidades`, false, 4, '#334155'),
+      cText('', '#F8FAFC', 'center'),
+      ...cCardValue(totalUnidades, false, 4, '#334155'),
     ] as Row,
     emptyRow(totalCols) as Row,
 
@@ -1286,7 +1302,9 @@ export async function exportarStockInmovilizadoExcel(
     cTotalMoney(totalCapitalCosto),
   ] as Row)
 
-  const fileName = `stock_inmovilizado_${diasFiltro}dias_${fechaGen.replace(/\//g, '-')}.xlsx`
+  const cleanKiosco = sanitizarNombreArchivo(kioscoNombre)
+  const fechaStr = new Date().toISOString().split('T')[0]
+  const fileName = `stock_inmovilizado_${diasFiltro}dias_${cleanKiosco}_${fechaStr}.xlsx`
   await writeXlsxFile(rows, { columns }).toFile(fileName)
 }
 
