@@ -4,17 +4,28 @@
 
 @theme {
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
-/* Forzar tipografía Inter armónica en todos los elementos y controles del sistema */
+/* Forzar tipografía Inter armónica y unificada en absolutamente todos los elementos del sistema */
+*,
+*::before,
+*::after {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
 html,
 body,
 button,
 input,
 select,
 textarea,
-optgroup {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+optgroup,
+code,
+kbd,
+samp,
+pre {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
 }
 
 /* Números tabulares alineados prolijamente con la misma tipografía del sistema */

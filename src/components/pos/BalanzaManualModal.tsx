@@ -87,7 +87,7 @@ export function BalanzaManualModal({
           </div>
           <div className="text-right">
             <span className="text-[11px] text-gray-500 dark:text-gray-400 block">Subtotal a cobrar:</span>
-            <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+            <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
               {formatPrecio(subtotal)}
             </span>
           </div>
@@ -131,13 +131,13 @@ export function BalanzaManualModal({
                 value={gramos}
                 onChange={(e) => setGramos(e.target.value)}
                 placeholder="Ej: 350"
-                className="w-full text-lg font-bold text-gray-900 dark:text-gray-100 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-900 outline-none font-mono"
+                className="w-full text-lg font-bold text-gray-900 dark:text-gray-100 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none tabular-nums"
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">
                 gramos (gr)
               </span>
             </div>
-            <div className="p-2.5 bg-gray-100 dark:bg-gray-800 rounded-lg text-xs font-mono font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap">
+            <div className="p-2.5 bg-gray-100 dark:bg-gray-800 rounded-lg text-xs font-bold text-gray-700 dark:text-gray-300 whitespace-nowrap tabular-nums">
               = {pesoKg.toFixed(3)} kg
             </div>
           </div>

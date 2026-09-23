@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
-import { Input } from '../ui/Input'
 import { useCartStore } from '../../stores/cartStore'
 import { formatPrecio } from '../../lib/utils'
 import toast from 'react-hot-toast'
@@ -53,31 +52,43 @@ export function ArticuloLibreModal({ isOpen, onClose }: ArticuloLibreModalProps)
           Agregá un concepto rápido al ticket sin necesidad de crearlo previamente en el catálogo.
         </p>
 
-        <div>
-          <Input
-            label="Concepto o descripción *"
+        {/* Concepto o descripción */}
+        <div className="space-y-1.5">
+          <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+            Concepto o descripción *
+          </label>
+          <input
+            type="text"
             value={descripcion}
             onChange={(e) => setDescripcion(e.target.value)}
             placeholder="Ej: Fotocopias, Hielo, Varios..."
             required
             autoFocus
+            className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-gray-400"
           />
         </div>
 
-        <div>
-          <Input
-            label="Precio unitario en pesos ($) *"
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            value={precio}
-            onChange={(e) => setPrecio(e.target.value.replace(/[^0-9]/g, ''))}
-            placeholder="Ingresá el importe (ej: 500)"
-            required
-          />
+        {/* Precio unitario con prefijo $ y fuente idéntica a Retiro de Efectivo */}
+        <div className="space-y-2">
+          <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+            Precio unitario en pesos ($) *
+          </label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base font-bold text-gray-400">$</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={precio}
+              onChange={(e) => setPrecio(e.target.value.replace(/[^0-9]/g, ''))}
+              placeholder="0"
+              required
+              className="w-full pl-8 pr-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-lg font-black tracking-tight focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-gray-400"
+            />
+          </div>
 
-          {/* Botones de montos rápidos / billetes (mismo diseño que Retiro de Efectivo) */}
-          <div className="grid grid-cols-3 gap-2 sm:gap-2.5 pt-2 w-full">
+          {/* Botones de montos rápidos idénticos a RetiroCajaModal */}
+          <div className="grid grid-cols-3 gap-2 sm:gap-2.5 pt-1 w-full">
             {MONTOS_RAPIDOS.map((m) => {
               const estaSeleccionado = precioNum === m
               return (
@@ -85,7 +96,7 @@ export function ArticuloLibreModal({ isOpen, onClose }: ArticuloLibreModalProps)
                   key={m}
                   type="button"
                   onClick={() => setPrecio(m.toString())}
-                  className={`w-full py-2.5 px-2 text-xs sm:text-sm font-bold rounded-xl border transition-all cursor-pointer text-center flex items-center justify-center min-h-[42px] select-none active:scale-95 ${
+                  className={`w-full py-2 px-2 text-xs sm:text-sm font-bold rounded-xl border transition-all cursor-pointer text-center flex items-center justify-center min-h-[42px] select-none active:scale-95 ${
                     estaSeleccionado
                       ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 shadow-xs ring-1 ring-indigo-500/40'
                       : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700/60'
@@ -98,22 +109,51 @@ export function ArticuloLibreModal({ isOpen, onClose }: ArticuloLibreModalProps)
           </div>
         </div>
 
-        <div className="w-1/2">
-          <Input
-            label="Cantidad"
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            value={cantidad}
-            onChange={(e) => setCantidad(e.target.value.replace(/[^0-9]/g, '') || '1')}
-          />
+        {/* Cantidad con stepper amplio y números nítidos */}
+        <div className="space-y-1.5">
+          <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+            Cantidad de unidades
+          </label>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCantidad(String(Math.max(1, (parseInt(cantidad) || 1) - 1)))}
+              className="w-9 h-9 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-black text-lg flex items-center justify-center cursor-pointer transition-transform active:scale-95 select-none"
+            >
+              -
+            </button>
+            <input
+              type="number"
+              min="1"
+              value={cantidad}
+              onChange={(e) => setCantidad(e.target.value.replace(/[^0-9]/g, '') || '1')}
+              className="w-20 text-center py-1.5 font-black text-base rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:border-indigo-500 outline-none shadow-2xs"
+            />
+            <button
+              type="button"
+              onClick={() => setCantidad(String((parseInt(cantidad) || 1) + 1))}
+              className="w-9 h-9 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-black text-lg flex items-center justify-center cursor-pointer transition-transform active:scale-95 select-none"
+            >
+              +
+            </button>
+          </div>
         </div>
 
-        <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
-          <Button type="button" variant="secondary" onClick={handleCerrar}>
+        {/* Botones de acción consistentes */}
+        <div className="flex flex-col sm:flex-row gap-2.5 pt-3 border-t border-gray-200 dark:border-gray-700">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleCerrar}
+            className="order-2 sm:order-1 sm:w-1/3 py-2.5 text-sm font-semibold"
+          >
             Cancelar
           </Button>
-          <Button type="submit" variant="primary" className="bg-indigo-600 hover:bg-indigo-700 text-white">
+          <Button
+            type="submit"
+            variant="primary"
+            className="order-1 sm:order-2 sm:w-2/3 py-2.5 text-sm font-bold shadow-md"
+          >
             Agregar al Ticket
           </Button>
         </div>
