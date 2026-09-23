@@ -591,13 +591,6 @@ export function SuperAdminPage() {
         <div className="flex items-center gap-2.5 flex-wrap">
           <Button
             variant="secondary"
-            onClick={abrirModalCobro}
-            className="text-sm border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
-          >
-            Datos de Cobro y Soporte
-          </Button>
-          <Button
-            variant="secondary"
             onClick={abrirModalPlanes}
             className="text-sm"
           >
@@ -830,7 +823,7 @@ export function SuperAdminPage() {
           <Button
             variant="secondary"
             onClick={abrirModalCobro}
-            className="text-xs font-semibold px-3 py-2"
+            className="text-xs font-bold px-3.5 py-2 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 shadow-2xs"
           >
             Modificar Datos
           </Button>
@@ -1472,143 +1465,207 @@ export function SuperAdminPage() {
         isOpen={modalNuevoOpen}
         onClose={() => setModalNuevoOpen(false)}
         title="Dar de Alta Nuevo Kiosco Cliente"
-        size="lg"
-      >
-        <form onSubmit={handleCrearNuevoKiosco} className="space-y-4">
-          <div className="bg-indigo-50 dark:bg-indigo-900/30 p-3 rounded-xl text-xs text-indigo-800 dark:text-indigo-300">
-            Esta acción crea el nuevo local (tenant), registra la cuenta de acceso para el dueño y genera la suscripción inicial.
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="sm:col-span-2">
-              <Input
-                label="Nombre del Kiosco / Comercio *"
-                placeholder="Ej: Kiosco El Paso"
-                value={nuevoNombreKiosco}
-                onChange={(e) => setNuevoNombreKiosco(e.target.value)}
-                required
-              />
-            </div>
-
-            <div>
-              <Input
-                label="Dirección del Local"
-                placeholder="Ej: Av. San Martín 1234"
-                value={nuevaDireccion}
-                onChange={(e) => setNuevaDireccion(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <Input
-                label="Teléfono / WhatsApp de Contacto"
-                placeholder="Ej: 1123456789"
-                value={nuevoTelefono}
-                onChange={(e) => setNuevoTelefono(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <Input
-                label="Nombre del Dueño *"
-                placeholder="Ej: Carlos Gómez"
-                value={nuevoNombreDueno}
-                onChange={(e) => setNuevoNombreDueno(e.target.value)}
-                required
-              />
-            </div>
-
-            <div>
-              <Input
-                label="Email de Acceso (Login) *"
-                type="email"
-                placeholder="carlos@gmail.com"
-                value={nuevoEmailDueno}
-                onChange={(e) => setNuevoEmailDueno(e.target.value)}
-                required
-              />
-            </div>
-
-            <div>
-              <Input
-                label="Contraseña Inicial *"
-                type="password"
-                placeholder="Clave de 6+ caracteres"
-                value={nuevoPasswordDueno}
-                onChange={(e) => setNuevoPasswordDueno(e.target.value)}
-                required
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Plan Asignado
-              </label>
-              <select
-                value={nuevoPlanId}
-                onChange={(e) => setNuevoPlanId(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-hidden"
+        size="xl"
+        footer={
+          <div className="flex items-center justify-between w-full">
+            <span className="text-xs text-gray-500 dark:text-gray-400 hidden sm:inline">
+              Crea el comercio y la cuenta de acceso inicial
+            </span>
+            <div className="flex items-center gap-2.5 ml-auto">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setModalNuevoOpen(false)}
+                disabled={cargandoAccion}
               >
-                {planesComerciales.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nombre} — {formatPrecio(p.precio_mensual)}/mes
-                  </option>
-                ))}
-              </select>
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                form="form-nuevo-kiosco"
+                disabled={cargandoAccion}
+                className="shadow-sm"
+              >
+                {cargandoAccion ? 'Creando Kiosco...' : 'Crear Kiosco'}
+              </Button>
             </div>
-
-            <div className="sm:col-span-2">
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
-                  Días de Período Inicial (Prueba / Pago)
-                </label>
-                <div className="flex gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setNuevosDiasValidez(15)}
-                    className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors ${
-                      nuevosDiasValidez === 15
-                        ? 'bg-indigo-600 text-white shadow-xs'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                    }`}
-                  >
-                    15 días (Prueba)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNuevosDiasValidez(30)}
-                    className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors ${
-                      nuevosDiasValidez === 30
-                        ? 'bg-indigo-600 text-white shadow-xs'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                    }`}
-                  >
-                    30 días (1 mes)
-                  </button>
-                </div>
-              </div>
-              <Input
-                type="number"
-                min={1}
-                max={365}
-                value={nuevosDiasValidez}
-                onChange={(e) => setNuevosDiasValidez(Number(e.target.value))}
-              />
+          </div>
+        }
+      >
+        <form id="form-nuevo-kiosco" onSubmit={handleCrearNuevoKiosco} className="space-y-4">
+          <div className="flex items-start gap-3 p-3.5 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/60 shadow-2xs">
+            <div className="w-8 h-8 rounded-lg bg-indigo-600/10 dark:bg-indigo-400/10 flex items-center justify-center flex-shrink-0 text-indigo-600 dark:text-indigo-400 mt-0.5">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
+            </div>
+            <div className="text-xs space-y-0.5">
+              <span className="font-bold text-indigo-950 dark:text-indigo-200 block text-xs sm:text-sm">
+                Alta de Nuevo Comercio (Tenant)
+              </span>
+              <p className="text-indigo-800/90 dark:text-indigo-300/80 leading-relaxed text-[11px] sm:text-xs">
+                Esta acción crea el nuevo local aislado en la base de datos, registra el usuario con rol de Dueño y activa la suscripción inicial.
+              </p>
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setModalNuevoOpen(false)}
-              disabled={cargandoAccion}
-            >
-              Cancelar
-            </Button>
-            <Button type="submit" variant="primary" disabled={cargandoAccion}>
-              {cargandoAccion ? 'Creando Kiosco...' : 'Crear Kiosco'}
-            </Button>
+          {/* Bloque 1: Datos del Comercio */}
+          <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/40 space-y-3 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300">
+                1. Comercio
+              </span>
+              <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
+                Identificación del Local
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <Input
+                  label="Nombre del Kiosco / Comercio *"
+                  placeholder="Ej: Kiosco El Paso"
+                  value={nuevoNombreKiosco}
+                  onChange={(e) => setNuevoNombreKiosco(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div>
+                <Input
+                  label="Dirección del Local"
+                  placeholder="Ej: Av. San Martín 1234"
+                  value={nuevaDireccion}
+                  onChange={(e) => setNuevaDireccion(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <Input
+                  label="Teléfono / WhatsApp de Contacto"
+                  placeholder="Ej: 1123456789"
+                  value={nuevoTelefono}
+                  onChange={(e) => setNuevoTelefono(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Bloque 2: Cuenta del Dueño */}
+          <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/40 space-y-3 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300">
+                2. Dueño
+              </span>
+              <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
+                Acceso y Credenciales de Administrador
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <Input
+                  label="Nombre del Dueño *"
+                  placeholder="Ej: Carlos Gómez"
+                  value={nuevoNombreDueno}
+                  onChange={(e) => setNuevoNombreDueno(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div>
+                <Input
+                  label="Email de Login *"
+                  type="email"
+                  placeholder="carlos@gmail.com"
+                  value={nuevoEmailDueno}
+                  onChange={(e) => setNuevoEmailDueno(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div>
+                <Input
+                  label="Contraseña Inicial *"
+                  type="password"
+                  placeholder="Mínimo 6 caracteres"
+                  value={nuevoPasswordDueno}
+                  onChange={(e) => setNuevoPasswordDueno(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Bloque 3: Plan y Validez */}
+          <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/40 space-y-3 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300">
+                3. Suscripción
+              </span>
+              <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
+                Plan Asignado y Días Iniciales
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Plan Contratado
+                </label>
+                <select
+                  value={nuevoPlanId}
+                  onChange={(e) => setNuevoPlanId(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-hidden"
+                >
+                  {planesComerciales.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nombre} — {formatPrecio(p.precio_mensual)}/mes
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                    Días Iniciales
+                  </label>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setNuevosDiasValidez(15)}
+                      className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors ${
+                        nuevosDiasValidez === 15
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      15d (Prueba)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNuevosDiasValidez(30)}
+                      className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors ${
+                        nuevosDiasValidez === 30
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      30d (1 mes)
+                    </button>
+                  </div>
+                </div>
+                <Input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={nuevosDiasValidez}
+                  onChange={(e) => setNuevosDiasValidez(Number(e.target.value))}
+                />
+              </div>
+            </div>
           </div>
         </form>
       </Modal>
@@ -1618,30 +1675,57 @@ export function SuperAdminPage() {
         isOpen={modalRenovarOpen}
         onClose={() => setModalRenovarOpen(false)}
         title="Registrar Cobro y Renovar Alquiler"
+        size="lg"
+        footer={
+          <div className="flex items-center justify-end gap-2.5 w-full">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setModalRenovarOpen(false)}
+              disabled={cargandoAccion}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              form="form-renovar-suscripcion"
+              disabled={cargandoAccion}
+              className="shadow-sm"
+            >
+              {cargandoAccion ? 'Registrando...' : 'Confirmar Renovación'}
+            </Button>
+          </div>
+        }
       >
         {kioscoParaRenovar && (
-          <form onSubmit={handleConfirmarRenovacion} className="space-y-4">
-            <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 text-xs space-y-1">
-              <p>
-                <strong className="text-gray-800 dark:text-gray-200">Kiosco:</strong> {kioscoParaRenovar.nombre_kiosco}
+          <form id="form-renovar-suscripcion" onSubmit={handleConfirmarRenovacion} className="space-y-4">
+            <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-xs space-y-1.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-gray-900 dark:text-gray-100 text-sm">
+                  {kioscoParaRenovar.nombre_kiosco}
+                </span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-semibold">
+                  {kioscoParaRenovar.nombre_plan || 'Plan Activo'}
+                </span>
+              </div>
+              <p className="text-gray-600 dark:text-gray-400">
+                <strong>Dueño:</strong> {kioscoParaRenovar.nombre_dueno} ({kioscoParaRenovar.email_dueno})
               </p>
-              <p>
-                <strong className="text-gray-800 dark:text-gray-200">Dueño:</strong> {kioscoParaRenovar.nombre_dueno} ({kioscoParaRenovar.email_dueno})
-              </p>
-              <p>
-                <strong className="text-gray-800 dark:text-gray-200">Vencimiento Actual:</strong> {kioscoParaRenovar.fecha_vencimiento || 'Sin fecha'}
+              <p className="text-gray-600 dark:text-gray-400">
+                <strong>Vencimiento Actual:</strong> {kioscoParaRenovar.fecha_vencimiento || 'Sin fecha'}
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                   Tiempo a Renovar
                 </label>
                 <select
                   value={mesesRenovacion}
                   onChange={(e) => handleCambiarMeses(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-hidden"
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-hidden"
                 >
                   <option value={1}>1 Mes (+30 días)</option>
                   <option value={2}>2 Meses (+60 días)</option>
@@ -1663,14 +1747,14 @@ export function SuperAdminPage() {
                 />
               </div>
 
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Medio de Pago
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Medio de Pago Utilizado
                 </label>
                 <select
                   value={medioPagoRenovacion}
                   onChange={(e) => setMedioPagoRenovacion(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-hidden"
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-hidden"
                 >
                   <option value="TRANSFERENCIA">Transferencia Bancaria</option>
                   <option value="MERCADOPAGO">Mercado Pago</option>
@@ -1679,7 +1763,7 @@ export function SuperAdminPage() {
                 </select>
               </div>
 
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Input
                   label="Notas o Comprobante (Opcional)"
                   placeholder="Ej: Transferencia recibida vía MP con alias kioscopos"
@@ -1687,20 +1771,6 @@ export function SuperAdminPage() {
                   onChange={(e) => setNotasRenovacion(e.target.value)}
                 />
               </div>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setModalRenovarOpen(false)}
-                disabled={cargandoAccion}
-              >
-                Cancelar
-              </Button>
-              <Button type="submit" variant="primary" disabled={cargandoAccion}>
-                {cargandoAccion ? 'Registrando...' : 'Confirmar Renovación'}
-              </Button>
             </div>
           </form>
         )}
@@ -1766,106 +1836,13 @@ export function SuperAdminPage() {
         isOpen={modalEditarOpen}
         onClose={() => setModalEditarOpen(false)}
         title={`Modificar Kiosco: ${kioscoParaEditar?.nombre_kiosco || ''}`}
-        size="lg"
-      >
-        {kioscoParaEditar && (
-          <form onSubmit={handleGuardarEdicion} className="space-y-4">
-            <div className="bg-indigo-50 dark:bg-indigo-900/30 p-3 rounded-xl text-xs text-indigo-800 dark:text-indigo-300">
-              Podés corregir el nombre, los datos del dueño, el estado operativo o la fecha de vencimiento de la suscripción.
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="sm:col-span-2">
-                <Input
-                  label="Nombre del Kiosco *"
-                  value={editNombreKiosco}
-                  onChange={(e) => setEditNombreKiosco(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Estado Operativo
-                </label>
-                <select
-                  value={editEstadoKiosco}
-                  onChange={(e) =>
-                    setEditEstadoKiosco(
-                      e.target.value as 'ACTIVO' | 'SOLO_LECTURA' | 'SUSPENDIDO'
-                    )
-                  }
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-hidden"
-                >
-                  <option value="ACTIVO">Activo (Operación normal)</option>
-                  <option value="SOLO_LECTURA">Solo Lectura (Ventas pausadas)</option>
-                  <option value="SUSPENDIDO">Suspendido (Bloqueo total)</option>
-                </select>
-              </div>
-
-              <div>
-                <Input
-                  label="Teléfono / WhatsApp"
-                  value={editTelefono}
-                  onChange={(e) => setEditTelefono(e.target.value)}
-                  placeholder="Ej: 1123456789"
-                />
-              </div>
-
-              <div className="sm:col-span-2">
-                <Input
-                  label="Dirección del Local"
-                  value={editDireccion}
-                  onChange={(e) => setEditDireccion(e.target.value)}
-                  placeholder="Ej: Av. San Martín 1234"
-                />
-              </div>
-
-              <div>
-                <Input
-                  label="Nombre del Dueño"
-                  value={editNombreDueno}
-                  onChange={(e) => setEditNombreDueno(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <Input
-                  label="Email del Dueño"
-                  type="email"
-                  value={editEmailDueno}
-                  onChange={(e) => setEditEmailDueno(e.target.value)}
-                />
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Plan Contratado
-                </label>
-                <select
-                  value={editPlanId}
-                  onChange={(e) => setEditPlanId(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-hidden"
-                >
-                  {planesComerciales.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.nombre} — {formatPrecio(p.precio_mensual)}/mes
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="sm:col-span-2">
-                <Input
-                  label="Fecha de Vencimiento de la Suscripción"
-                  type="date"
-                  value={editFechaVencimiento}
-                  onChange={(e) => setEditFechaVencimiento(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+        size="xl"
+        footer={
+          <div className="flex items-center justify-between w-full">
+            <span className="text-xs text-gray-500 dark:text-gray-400 hidden sm:inline">
+              Modificá parámetros operativos o vencimiento del comercio
+            </span>
+            <div className="flex items-center gap-2.5 ml-auto">
               <Button
                 type="button"
                 variant="secondary"
@@ -1874,9 +1851,150 @@ export function SuperAdminPage() {
               >
                 Cancelar
               </Button>
-              <Button type="submit" variant="primary" disabled={cargandoAccion}>
+              <Button
+                type="submit"
+                variant="primary"
+                form="form-editar-kiosco"
+                disabled={cargandoAccion}
+                className="shadow-sm"
+              >
                 {cargandoAccion ? 'Guardando...' : 'Guardar Cambios'}
               </Button>
+            </div>
+          </div>
+        }
+      >
+        {kioscoParaEditar && (
+          <form id="form-editar-kiosco" onSubmit={handleGuardarEdicion} className="space-y-4">
+            {/* Bloque 1: Datos del Local */}
+            <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/40 space-y-3 shadow-2xs">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300">
+                  Comercio
+                </span>
+                <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
+                  Identificación y Contacto
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <Input
+                    label="Nombre del Kiosco *"
+                    value={editNombreKiosco}
+                    onChange={(e) => setEditNombreKiosco(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <Input
+                    label="Teléfono / WhatsApp"
+                    value={editTelefono}
+                    onChange={(e) => setEditTelefono(e.target.value)}
+                    placeholder="Ej: 1123456789"
+                  />
+                </div>
+
+                <div>
+                  <Input
+                    label="Dirección del Local"
+                    value={editDireccion}
+                    onChange={(e) => setEditDireccion(e.target.value)}
+                    placeholder="Ej: Av. San Martín 1234"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Bloque 2: Cuenta del Dueño */}
+            <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/40 space-y-3 shadow-2xs">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300">
+                  Dueño
+                </span>
+                <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
+                  Datos de Contacto y Acceso
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Input
+                    label="Nombre del Dueño"
+                    value={editNombreDueno}
+                    onChange={(e) => setEditNombreDueno(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <Input
+                    label="Email del Dueño"
+                    type="email"
+                    value={editEmailDueno}
+                    onChange={(e) => setEditEmailDueno(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Bloque 3: Estado y Suscripción */}
+            <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/40 space-y-3 shadow-2xs">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300">
+                  Operación y Suscripción
+                </span>
+                <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
+                  Estado de Servicio y Vencimiento
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Estado Operativo
+                  </label>
+                  <select
+                    value={editEstadoKiosco}
+                    onChange={(e) =>
+                      setEditEstadoKiosco(
+                        e.target.value as 'ACTIVO' | 'SOLO_LECTURA' | 'SUSPENDIDO'
+                      )
+                    }
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-hidden"
+                  >
+                    <option value="ACTIVO">Activo (Operación normal)</option>
+                    <option value="SOLO_LECTURA">Solo Lectura (Ventas pausadas)</option>
+                    <option value="SUSPENDIDO">Suspendido (Bloqueo total)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Plan Contratado
+                  </label>
+                  <select
+                    value={editPlanId}
+                    onChange={(e) => setEditPlanId(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-hidden"
+                  >
+                    {planesComerciales.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nombre} — {formatPrecio(p.precio_mensual)}/mes
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <Input
+                    label="Fecha de Vencimiento"
+                    type="date"
+                    value={editFechaVencimiento}
+                    onChange={(e) => setEditFechaVencimiento(e.target.value)}
+                  />
+                </div>
+              </div>
             </div>
           </form>
         )}
@@ -2216,121 +2334,242 @@ export function SuperAdminPage() {
       <Modal
         isOpen={modalCobroOpen}
         onClose={() => setModalCobroOpen(false)}
-        title="Datos de Cobro y Soporte del Administrador"
-        size="lg"
+        title="Datos de Cobro y Canales de Soporte"
+        size="xl"
+        footer={
+          <div className="flex items-center justify-between w-full">
+            <span className="text-xs text-gray-500 dark:text-gray-400 hidden sm:inline">
+              Los cambios se sincronizan en tiempo real para todos los clientes
+            </span>
+            <div className="flex items-center gap-2.5 ml-auto">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setModalCobroOpen(false)}
+                disabled={guardandoConfigAdmin}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                form="form-config-cobro"
+                disabled={guardandoConfigAdmin}
+                className="shadow-sm"
+              >
+                {guardandoConfigAdmin ? 'Guardando...' : 'Guardar Cambios'}
+              </Button>
+            </div>
+          </div>
+        }
       >
-        <form onSubmit={handleGuardarConfigCobro} className="space-y-4">
-          <div className="bg-indigo-50 dark:bg-indigo-900/30 p-3.5 rounded-xl text-xs text-indigo-800 dark:text-indigo-300 space-y-1">
-            <p className="font-semibold">Información pública para los clientes</p>
-            <p>
-              Estos datos se mostrarán en tiempo real a los dueños de los kioscos en la pantalla de suspensión, en la sección de renovación de suscripción y en los botones de soporte técnico.
-            </p>
+        <form id="form-config-cobro" onSubmit={handleGuardarConfigCobro} className="space-y-4">
+          {/* Banner Informativo Superior */}
+          <div className="flex items-start gap-3 p-3.5 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/60 shadow-2xs">
+            <div className="w-8 h-8 rounded-lg bg-indigo-600/10 dark:bg-indigo-400/10 flex items-center justify-center flex-shrink-0 text-indigo-600 dark:text-indigo-400 mt-0.5">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div className="text-xs space-y-0.5">
+              <span className="font-bold text-indigo-950 dark:text-indigo-200 block text-xs sm:text-sm">
+                Información oficial visible para clientes
+              </span>
+              <p className="text-indigo-800/90 dark:text-indigo-300/80 leading-relaxed text-[11px] sm:text-xs">
+                Estos datos se transmiten automáticamente a las terminales de los kioscos. Se mostrarán cuando soliciten renovar su servicio, en las pantallas de advertencia o suspensión por mora, y en los botones de contacto directo de soporte.
+              </p>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-            <div className="sm:col-span-2 space-y-1">
+          {/* Bloque 1: Canal de Comunicación y WhatsApp */}
+          <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/40 space-y-3 shadow-2xs">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300">
+                  Canal Oficial
+                </span>
+                <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
+                  Línea de WhatsApp de Atención y Cobranzas
+                </span>
+              </div>
+              {cfgWhatsApp.trim() && (
+                <a
+                  href={formatearLinkWhatsApp(cfgWhatsApp, 'Hola! Mensaje de prueba desde el panel de SuperAdmin.')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
+                >
+                  <span>Probar chat de WhatsApp</span>
+                  <span className="text-emerald-500 font-bold">↗</span>
+                </a>
+              )}
+            </div>
+
+            <div className="space-y-1">
               <Input
-                label="WhatsApp de Soporte y Contacto *"
-                placeholder="Ej: 5491123456789 o 1123456789"
+                label="Número de WhatsApp *"
+                placeholder="Ej: 3644751119 o 1123456789"
                 value={cfgWhatsApp}
                 onChange={(e) => setCfgWhatsApp(e.target.value)}
                 required
               />
-              <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 px-0.5">
-                <span>Ingresá el número con o sin 549 / 011. El sistema lo normaliza automáticamente.</span>
-                {cfgWhatsApp.trim() && (
-                  <a
-                    href={formatearLinkWhatsApp(cfgWhatsApp, 'Hola! Mensaje de prueba desde el panel de SuperAdmin.')}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-semibold text-emerald-600 dark:text-emerald-400 hover:underline flex-shrink-0 ml-2"
-                  >
-                    Probar enlace ↗
-                  </a>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 px-0.5">
+                Ingresá el número con o sin prefijo de país. El sistema lo formateará automáticamente (código internacional +54 9 para Argentina).
+              </p>
+            </div>
+          </div>
+
+          {/* Bloque 2: Cuentas Bancarias y Billeteras Virtuales */}
+          <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/40 space-y-3.5 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-indigo-100 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-300">
+                Cobranza
+              </span>
+              <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
+                Datos de Cuenta Bancaria / Billeteras para Transferencias
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div className="sm:col-span-2">
+                <Input
+                  label="Nombre del Titular de la Cuenta *"
+                  placeholder="Ej: Jonathan Valerio Benítez Penayo"
+                  value={cfgTitularCuenta}
+                  onChange={(e) => setCfgTitularCuenta(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div>
+                <Input
+                  label="Alias de Cobro (Mercado Pago o Bancario)"
+                  placeholder="Ej: jonathan.penayo o kiosko.pos"
+                  value={cfgAliasMp}
+                  onChange={(e) => setCfgAliasMp(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <Input
+                  label="Entidad Bancaria o Billetera (Opcional)"
+                  placeholder="Ej: Mercado Pago / Santander / Brubank"
+                  value={cfgBancoNombre}
+                  onChange={(e) => setCfgBancoNombre(e.target.value)}
+                />
+              </div>
+
+              <div className="sm:col-span-2 space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                    CBU o CVU Bancario (22 dígitos)
+                  </label>
+                  {cfgCbuBanco.trim() && (
+                    <span
+                      className={`text-[11px] font-mono font-semibold px-2 py-0.5 rounded-md ${
+                        cfgCbuBanco.replace(/\D/g, '').length === 22
+                          ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300'
+                          : 'bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300'
+                      }`}
+                    >
+                      {cfgCbuBanco.replace(/\D/g, '').length}/22 dígitos
+                      {cfgCbuBanco.replace(/\D/g, '').length === 22 ? ' (Válido)' : ' (Incompleto)'}
+                    </span>
+                  )}
+                </div>
+                <Input
+                  placeholder="Ej: 0000003100021052629320"
+                  value={cfgCbuBanco}
+                  onChange={(e) => setCfgCbuBanco(e.target.value)}
+                  className="font-mono tracking-wider"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Bloque 3: Vista Previa Digital en Tiempo Real */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between px-0.5">
+              <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                Vista previa en tiempo real
+              </span>
+              <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                Así se presenta en la pantalla del kiosco
+              </span>
+            </div>
+
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 p-4 sm:p-5 text-white border border-indigo-500/30 shadow-xl space-y-4">
+              <div className="absolute -top-12 -right-12 w-40 h-40 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
+
+              <div className="flex items-center justify-between border-b border-white/10 pb-3 relative z-10">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-[11px] font-bold tracking-wider uppercase text-indigo-300">
+                    Datos Oficiales de Cobro
+                  </span>
+                </div>
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
+                  KioskoPOS SaaS
+                </span>
+              </div>
+
+              <div className="relative z-10">
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
+                  Titular de la Cuenta
+                </span>
+                <p className="text-base font-bold text-white tracking-tight mt-0.5">
+                  {cfgTitularCuenta.trim() || <span className="text-slate-500 italic font-normal">Sin titular especificado</span>}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 relative z-10 text-xs">
+                <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 space-y-0.5">
+                  <span className="text-[10px] font-semibold text-indigo-300 uppercase tracking-wider block">
+                    Alias de Cobro
+                  </span>
+                  <p className="font-mono font-bold text-emerald-400 break-all select-all">
+                    {cfgAliasMp.trim() || <span className="text-slate-500 italic font-sans font-normal">Sin alias</span>}
+                  </p>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 space-y-0.5">
+                  <span className="text-[10px] font-semibold text-indigo-300 uppercase tracking-wider block">
+                    Entidad / Billetera
+                  </span>
+                  <p className="font-medium text-slate-200 truncate">
+                    {cfgBancoNombre.trim() || <span className="text-slate-500 italic font-normal">Mercado Pago / Banco</span>}
+                  </p>
+                </div>
+
+                <div className="sm:col-span-2 p-2.5 rounded-xl bg-white/5 border border-white/10 space-y-0.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-semibold text-indigo-300 uppercase tracking-wider">
+                      CBU / CVU Bancario
+                    </span>
+                    {cfgCbuBanco.replace(/\D/g, '').length === 22 && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                        22 dígitos
+                      </span>
+                    )}
+                  </div>
+                  <p className="font-mono font-bold text-slate-100 tracking-wider text-xs sm:text-sm break-all select-all">
+                    {cfgCbuBanco.trim() || <span className="text-slate-500 italic font-sans font-normal">Sin CBU/CVU cargado</span>}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-1 border-t border-white/10 text-xs relative z-10">
+                <span className="text-slate-400 font-medium">WhatsApp Oficial:</span>
+                {cfgWhatsApp.trim() ? (
+                  <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    +{cfgWhatsApp.replace(/\D/g, '')}
+                  </span>
+                ) : (
+                  <span className="text-amber-400 italic">Sin número asignado</span>
                 )}
               </div>
             </div>
-
-            <div className="sm:col-span-2">
-              <Input
-                label="Nombre del Titular de la Cuenta *"
-                placeholder="Ej: Jonathan Penayo"
-                value={cfgTitularCuenta}
-                onChange={(e) => setCfgTitularCuenta(e.target.value)}
-                required
-              />
-            </div>
-
-            <div>
-              <Input
-                label="Alias de Mercado Pago"
-                placeholder="Ej: kiosko.pos.mp"
-                value={cfgAliasMp}
-                onChange={(e) => setCfgAliasMp(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <Input
-                label="Banco o Billetera (Opcional)"
-                placeholder="Ej: Mercado Pago / Santander"
-                value={cfgBancoNombre}
-                onChange={(e) => setCfgBancoNombre(e.target.value)}
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <Input
-                label="CBU o CVU Bancario (22 dígitos)"
-                placeholder="Ej: 0000003100012345678901"
-                value={cfgCbuBanco}
-                onChange={(e) => setCfgCbuBanco(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Vista previa de cómo lo verán los clientes */}
-          <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 text-xs space-y-2">
-            <span className="font-semibold text-gray-700 dark:text-gray-300 block">
-              Vista previa para el kiosquero:
-            </span>
-            <div className="p-3 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 space-y-1.5 text-gray-700 dark:text-gray-300">
-              <p>
-                <strong className="text-gray-900 dark:text-gray-100">Titular:</strong> {cfgTitularCuenta || '—'}
-              </p>
-              {cfgAliasMp && (
-                <p>
-                  <strong className="text-gray-900 dark:text-gray-100">Alias MP:</strong> {cfgAliasMp}
-                </p>
-              )}
-              {cfgCbuBanco && (
-                <p className="font-mono">
-                  <strong className="text-gray-900 dark:text-gray-100 font-sans">CBU/CVU:</strong> {cfgCbuBanco}
-                </p>
-              )}
-              {cfgBancoNombre && (
-                <p>
-                  <strong className="text-gray-900 dark:text-gray-100">Entidad:</strong> {cfgBancoNombre}
-                </p>
-              )}
-              <p className="text-emerald-600 dark:text-emerald-400 font-semibold pt-1">
-                WhatsApp: {cfgWhatsApp ? `+${cfgWhatsApp.replace(/\D/g, '')}` : 'Sin número asignado'}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setModalCobroOpen(false)}
-              disabled={guardandoConfigAdmin}
-            >
-              Cancelar
-            </Button>
-            <Button type="submit" variant="primary" disabled={guardandoConfigAdmin}>
-              {guardandoConfigAdmin ? 'Guardando...' : 'Guardar Configuración'}
-            </Button>
           </div>
         </form>
       </Modal>
