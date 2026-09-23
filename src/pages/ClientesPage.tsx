@@ -233,79 +233,53 @@ export function ClientesPage() {
         </div>
       </div>
 
-      {/* Tarjetas de Métricas Globales Rediseñadas */}
+      {/* Tarjetas de Métricas Globales */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         {/* Tarjeta 1: Total Clientes */}
-        <div className="p-4 sm:p-5 rounded-2xl border-2 border-indigo-200/90 dark:border-indigo-800/90 bg-gradient-to-br from-indigo-50/60 via-white to-white dark:from-indigo-950/30 dark:via-gray-800 dark:to-gray-800 shadow-xs flex flex-col justify-between transition-all hover:border-indigo-300 dark:hover:border-indigo-700">
+        <div className="p-4 sm:p-5 rounded-2xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xs flex flex-col justify-between transition-all hover:border-gray-300 dark:hover:border-gray-600">
           <div>
-            <div className="flex items-center justify-between">
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-bold uppercase tracking-wider border border-indigo-300 dark:border-indigo-700 bg-indigo-100/80 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
-                Padrón General
-              </span>
-              <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500">
-                Clientes
-              </span>
-            </div>
-            <p className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-300 mt-2.5">
-              Total Registrados
+            <p className="text-xs sm:text-sm font-semibold text-gray-500 dark:text-gray-400">
+              Total Clientes
             </p>
-            <p className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-gray-100 mt-0.5 tracking-tight">
+            <p className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-gray-100 mt-1 tracking-tight">
               {totalClientes}
             </p>
           </div>
           <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-700/80 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 font-medium">
             <span>Al día: {clientes.length - clientesConDeuda}</span>
-            <span className="text-indigo-600 dark:text-indigo-400 font-bold">
-              {clientesConDeuda > 0 ? `${clientesConDeuda} con deuda` : 'Todos al día'}
-            </span>
+            <span>{clientesConDeuda > 0 ? `${clientesConDeuda} con deuda` : 'Todos al día'}</span>
           </div>
         </div>
 
         {/* Tarjeta 2: Deuda en Calle */}
-        <div className="p-4 sm:p-5 rounded-2xl border-2 border-red-200/90 dark:border-red-800/90 bg-gradient-to-br from-red-50/60 via-white to-white dark:from-red-950/30 dark:via-gray-800 dark:to-gray-800 shadow-xs flex flex-col justify-between transition-all hover:border-red-300 dark:hover:border-red-700">
+        <div className="p-4 sm:p-5 rounded-2xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xs flex flex-col justify-between transition-all hover:border-gray-300 dark:hover:border-gray-600">
           <div>
-            <div className="flex items-center justify-between">
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-bold uppercase tracking-wider border border-red-300 dark:border-red-700 bg-red-100/80 dark:bg-red-900/60 text-red-700 dark:text-red-300">
-                Saldo por Cobrar
-              </span>
-              <span className="text-[11px] font-semibold text-red-500/80 dark:text-red-400/80">
-                Fiado
-              </span>
-            </div>
-            <p className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-300 mt-2.5">
+            <p className="text-xs sm:text-sm font-semibold text-gray-500 dark:text-gray-400">
               Deuda en Calle
             </p>
-            <p className="text-2xl sm:text-3xl font-black text-red-600 dark:text-red-400 mt-0.5 tracking-tight truncate">
+            <p className="text-2xl sm:text-3xl font-black text-red-600 dark:text-red-400 mt-1 tracking-tight truncate">
               {formatPrecio(totalDeudaGlobal)}
             </p>
           </div>
-          <div className="mt-3 pt-2.5 border-t border-red-100 dark:border-gray-700/80 flex items-center justify-between text-[11px] text-red-700/90 dark:text-red-400/90 font-medium">
+          <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-700/80 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 font-medium">
             <span>Total fiado en compras</span>
-            <span className="font-bold">Por cobrar</span>
+            <span>Por cobrar</span>
           </div>
         </div>
 
         {/* Tarjeta 3: Con Deuda */}
-        <div className="p-4 sm:p-5 rounded-2xl border-2 border-amber-200/90 dark:border-amber-800/90 bg-gradient-to-br from-amber-50/60 via-white to-white dark:from-amber-950/30 dark:via-gray-800 dark:to-gray-800 shadow-xs flex flex-col justify-between transition-all hover:border-amber-300 dark:hover:border-amber-700">
+        <div className="p-4 sm:p-5 rounded-2xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xs flex flex-col justify-between transition-all hover:border-gray-300 dark:hover:border-gray-600">
           <div>
-            <div className="flex items-center justify-between">
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-bold uppercase tracking-wider border border-amber-300 dark:border-amber-700 bg-amber-100/80 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300">
-                Cuentas Abiertas
-              </span>
-              <span className="text-[11px] font-semibold text-amber-600/80 dark:text-amber-400/80">
-                {totalClientes > 0 ? `${Math.round((clientesConDeuda / totalClientes) * 100)}% cartera` : '0%'}
-              </span>
-            </div>
-            <p className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-300 mt-2.5">
-              Clientes con Saldo Deudor
+            <p className="text-xs sm:text-sm font-semibold text-gray-500 dark:text-gray-400">
+              Con Deuda
             </p>
-            <p className="text-2xl sm:text-3xl font-black text-amber-600 dark:text-amber-400 mt-0.5 tracking-tight">
+            <p className="text-2xl sm:text-3xl font-black text-amber-600 dark:text-amber-400 mt-1 tracking-tight">
               {clientesConDeuda}
             </p>
           </div>
-          <div className="mt-3 pt-2.5 border-t border-amber-100 dark:border-gray-700/80 flex items-center justify-between text-[11px] text-amber-800/90 dark:text-amber-400/90 font-medium">
-            <span>{clientesConDeuda > 0 ? 'Con cuenta corriente activa' : 'Sin clientes con deuda'}</span>
-            <span className="font-bold">{clientesConDeuda > 0 ? 'Pendiente' : 'Al día'}</span>
+          <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-700/80 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 font-medium">
+            <span>{totalClientes > 0 ? `${Math.round((clientesConDeuda / totalClientes) * 100)}% de la cartera` : '0%'}</span>
+            <span>{clientesConDeuda > 0 ? 'Con saldo pendiente' : 'Al día'}</span>
           </div>
         </div>
       </div>
