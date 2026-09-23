@@ -7,6 +7,16 @@ import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import type { Cliente, MovimientoCuentaCorriente, MedioPago } from '../types/database'
 
+const MEDIOS_PAGO_CLIENTE: { valor: MedioPago; label: string; desc: string }[] = [
+  { valor: 'EFECTIVO', label: 'Efectivo', desc: 'Dinero en mano' },
+  { valor: 'MERCADOPAGO', label: 'Mercado Pago', desc: 'Transferencia o QR' },
+  { valor: 'TRANSFERENCIA', label: 'Transferencia', desc: 'CBU / CVU Bancario' },
+  { valor: 'TARJETA', label: 'Tarjeta', desc: 'Débito o Crédito' },
+]
+
+const LIMITES_RAPIDOS_CLIENTE = [10000, 20000, 50000, 100000]
+const BILLETES_RAPIDOS_ABONO = [1000, 2000, 5000, 10000, 20000]
+
 export function ClientesPage() {
   const {
     clientes,
@@ -517,16 +527,16 @@ export function ClientesPage() {
       <Modal
         isOpen={modalClienteOpen}
         onClose={() => setModalClienteOpen(false)}
-        title={clienteEditando ? 'Editar Cliente' : 'Nuevo Cliente'}
-        size="md"
+        title={clienteEditando ? 'Modificar Datos del Cliente' : 'Registrar Nuevo Cliente'}
+        size="lg"
         footer={
-          <div className="flex gap-2 w-full">
+          <div className="flex flex-col sm:flex-row gap-2.5 w-full">
             <Button
               type="button"
               variant="secondary"
-              fullWidth
               disabled={guardandoCliente}
               onClick={() => setModalClienteOpen(false)}
+              className="order-2 sm:order-1 sm:w-1/3 py-2.5 text-sm font-semibold"
             >
               Cancelar
             </Button>
@@ -534,82 +544,145 @@ export function ClientesPage() {
               type="submit"
               form="form-cliente"
               variant="primary"
-              fullWidth
               loading={guardandoCliente}
+              className="order-1 sm:order-2 sm:w-2/3 py-2.5 text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
             >
               {clienteEditando ? 'Guardar Cambios' : 'Registrar Cliente'}
             </Button>
           </div>
         }
       >
-        <form id="form-cliente" onSubmit={handleGuardarCliente} className="space-y-3">
-          <Input
-            label="Nombre completo *"
-            type="text"
-            placeholder="Ej: Juan Pérez"
-            value={formNombre}
-            onChange={(e) => setFormNombre(e.target.value)}
-            required
-            autoFocus
-          />
+        <form id="form-cliente" onSubmit={handleGuardarCliente} className="space-y-4">
+          {/* Banner de Ayuda Rápida */}
+          <div className="p-3 bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800/60 rounded-xl flex items-center gap-3 text-xs text-indigo-900 dark:text-indigo-300">
+            <span className="text-xl shrink-0">👤</span>
+            <p className="leading-relaxed">
+              Completá el nombre del cliente y su número de WhatsApp para poder fiarle mercadería y enviarle recordatorios de deuda con un solo clic.
+            </p>
+          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Bloque 1: Identificación y Contacto */}
+          <div className="space-y-3 bg-gray-50/60 dark:bg-gray-800/40 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              1. Datos Principales
+            </p>
+            <div className="space-y-3">
+              <Input
+                label="Nombre o Apodo del Cliente *"
+                type="text"
+                placeholder="Ej: Don Carlos, Juan Pérez, Vecina Marta..."
+                value={formNombre}
+                onChange={(e) => setFormNombre(e.target.value)}
+                required
+                autoFocus
+              />
+
+              <div>
+                <Input
+                  label="Celular o WhatsApp (para avisos de deuda)"
+                  type="tel"
+                  placeholder="Ej: 11 2345-6789"
+                  value={formTelefono}
+                  onChange={(e) => setFormTelefono(e.target.value)}
+                />
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
+                  Permite enviarle su resumen de cuenta por WhatsApp automáticamente.
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Bloque 2: Cuenta Corriente y Límite de Fiado */}
+          <div className="space-y-3 bg-gray-50/60 dark:bg-gray-800/40 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              2. Cuenta Corriente y Fiado
+            </p>
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                Límite máximo de fiado / crédito ($)
+              </label>
+              <Input
+                type="number"
+                min="0"
+                step="500"
+                placeholder="0 = Sin límite de fiado"
+                value={formLimite}
+                onChange={(e) => setFormLimite(e.target.value)}
+              />
+
+              {/* Botones de selección rápida de límite */}
+              <div className="flex flex-wrap gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setFormLimite('0')}
+                  className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                    formLimite === '0' || formLimite === ''
+                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 shadow-xs'
+                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  Sin límite ($0)
+                </button>
+                {LIMITES_RAPIDOS_CLIENTE.map((lim) => (
+                  <button
+                    key={lim}
+                    type="button"
+                    onClick={() => setFormLimite(lim.toString())}
+                    className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                      formLimite === lim.toString()
+                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 shadow-xs'
+                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    {formatPrecio(lim)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <Input
-              label="Teléfono / WhatsApp"
-              type="tel"
-              placeholder="Ej: 1122334455"
-              value={formTelefono}
-              onChange={(e) => setFormTelefono(e.target.value)}
-            />
-            <Input
-              label="Límite de crédito ($)"
-              type="number"
-              min="0"
-              step="500"
-              placeholder="0 = Sin límite"
-              value={formLimite}
-              onChange={(e) => setFormLimite(e.target.value)}
+              label="Notas o indicaciones (opcional)"
+              type="text"
+              placeholder="Ej: Vecino de la esquina, paga los días 5..."
+              value={formNotas}
+              onChange={(e) => setFormNotas(e.target.value)}
             />
           </div>
 
-          <Input
-            label="Notas / Observaciones"
-            type="text"
-            placeholder="Ej: Vecino del barrio, cobra los días 5"
-            value={formNotas}
-            onChange={(e) => setFormNotas(e.target.value)}
-          />
-
-          {/* Sección opcional: Más datos */}
-          <div className="border border-gray-300 dark:border-gray-700 rounded-lg overflow-hidden">
+          {/* Bloque 3: Datos Extras y Facturación (Acordeón desplegable) */}
+          <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-white dark:bg-gray-800">
             <button
               type="button"
               onClick={() => setMostrarMasDatos((v) => !v)}
-              className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:bg-gray-100/70 dark:hover:bg-gray-700/60 hover:text-gray-700 dark:hover:text-gray-200 transition-colors cursor-pointer"
+              className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/60 transition-colors cursor-pointer"
             >
-              <span>Más datos (opcional)</span>
+              <span className="flex items-center gap-1.5">
+                <span>📋</span>
+                <span>{mostrarMasDatos ? 'Ocultar datos fiscales y domicilio' : '¿Necesitás cargar DNI, Email o Dirección? (Opcional)'}</span>
+              </span>
               <span>{mostrarMasDatos ? '▲' : '▼'}</span>
             </button>
+
             {mostrarMasDatos && (
-              <div className="px-3 pb-3 pt-2 space-y-3 border-t border-gray-100 dark:border-gray-700">
+              <div className="px-4 pb-4 pt-2 space-y-3 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/40">
                 <Input
-                  label="DNI o CUIT"
+                  label="DNI o CUIT (para Facturación Electrónica ARCA)"
                   type="text"
-                  placeholder="Ej: 35123456"
+                  placeholder="Ej: 35123456 o 20-35123456-9"
                   value={formDni}
                   onChange={(e) => setFormDni(e.target.value)}
                 />
                 <Input
-                  label="Email"
+                  label="Correo Electrónico (Email)"
                   type="email"
-                  placeholder="Ej: juan@email.com"
+                  placeholder="Ej: cliente@email.com"
                   value={formEmail}
                   onChange={(e) => setFormEmail(e.target.value)}
                 />
                 <Input
-                  label="Dirección"
+                  label="Dirección o Domicilio"
                   type="text"
-                  placeholder="Ej: San Martín 123"
+                  placeholder="Ej: San Martín 123, Depto 4"
                   value={formDireccion}
                   onChange={(e) => setFormDireccion(e.target.value)}
                 />
@@ -624,112 +697,162 @@ export function ClientesPage() {
         isOpen={!!clienteFicha}
         onClose={() => setClienteFicha(null)}
         title={`Ficha de Cuenta Corriente — ${clienteFicha?.nombre || ''}`}
-        size="lg"
+        size="xl"
         footer={
-          <Button variant="secondary" fullWidth onClick={() => setClienteFicha(null)}>
-            Cerrar Ficha
-          </Button>
+          <div className="flex justify-end w-full">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setClienteFicha(null)}
+              className="py-2.5 px-6 text-sm font-semibold"
+            >
+              Cerrar Ficha
+            </Button>
+          </div>
         }
       >
         {clienteFicha && (
           <div className="space-y-4">
-            {/* Cabecera del cliente */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-gray-50/80 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl text-xs">
-              <div>
-                <p className="text-gray-500 dark:text-gray-400">Saldo Deudor Actual</p>
-                <p className="text-xl font-black text-red-600 dark:text-red-400 mt-0.5">
-                  {formatPrecio(clienteFicha.saldo_deudor)}
-                </p>
+            {/* Panel Superior KPI del Cliente */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Tarjeta de Saldo */}
+              <div
+                className={`p-4 rounded-xl border flex flex-col justify-between ${
+                  clienteFicha.saldo_deudor > 0
+                    ? 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800 text-red-900 dark:text-red-300'
+                    : 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-300'
+                }`}
+              >
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider block">
+                    {clienteFicha.saldo_deudor > 0 ? '🔴 Deuda Pendiente / Fiado' : '🟢 Cuenta al Día'}
+                  </span>
+                  <p className="text-2xl sm:text-3xl font-black mt-1">
+                    {formatPrecio(clienteFicha.saldo_deudor)}
+                  </p>
+                </div>
+                <span className="text-[11px] opacity-80 mt-1">
+                  {clienteFicha.saldo_deudor > 0
+                    ? 'Dinero que debe por compras en el kiosco.'
+                    : 'No tiene deuda registrada actualmente.'}
+                </span>
               </div>
-              <div>
-                <p className="text-gray-500 dark:text-gray-400">Límite de Crédito</p>
-                <p className="text-base font-bold text-gray-800 dark:text-gray-200 mt-0.5">
+
+              {/* Tarjeta de Límite de Crédito */}
+              <div className="p-4 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl flex flex-col justify-between">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 block">
+                    Límite de Fiado
+                  </span>
+                  <p className="text-xl font-bold text-gray-900 dark:text-gray-100 mt-1">
+                    {clienteFicha.limite_credito > 0
+                      ? formatPrecio(clienteFicha.limite_credito)
+                      : 'Sin límite fijado'}
+                  </p>
+                </div>
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
                   {clienteFicha.limite_credito > 0
-                    ? formatPrecio(clienteFicha.limite_credito)
-                    : 'Sin límite'}
-                </p>
+                    ? clienteFicha.saldo_deudor >= clienteFicha.limite_credito
+                      ? 'Límite máximo alcanzado'
+                      : `Disponible para fiar: ${formatPrecio(clienteFicha.limite_credito - clienteFicha.saldo_deudor)}`
+                    : 'Puede fiar sin restricción de monto'}
+                </span>
               </div>
-              <div>
-                <p className="text-gray-500 dark:text-gray-400">Contacto</p>
-                <p className="font-medium text-gray-700 dark:text-gray-300 mt-0.5">
-                  {clienteFicha.telefono || 'Sin teléfono'}
-                </p>
+
+              {/* Tarjeta de Contacto */}
+              <div className="p-4 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl flex flex-col justify-between">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 block">
+                    Contacto
+                  </span>
+                  <p className="text-base font-bold text-gray-900 dark:text-gray-100 mt-1 truncate">
+                    {clienteFicha.telefono || 'Sin teléfono guardado'}
+                  </p>
+                </div>
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 truncate">
+                  {clienteFicha.direccion || 'Sin dirección cargada'}
+                </span>
               </div>
             </div>
 
-            {/* Acciones directas de la ficha */}
-            <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                variant="primary"
+            {/* Acciones directas grandes y táctiles */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
                 onClick={() => handleAbrirAbonar(clienteFicha)}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+                className="py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-bold text-sm shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all"
               >
-                + Registrar Abono / Pago
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
+                <span className="text-lg">💵</span>
+                <span>Registrar Pago / Cobrar Deuda</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => handleEnviarWhatsApp(clienteFicha)}
-                className="text-xs"
+                className="py-3 px-4 rounded-xl bg-green-600 hover:bg-green-700 active:scale-98 text-white font-bold text-sm shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all"
               >
-                Enviar Resumen por WhatsApp
-              </Button>
+                <span className="text-lg">📲</span>
+                <span>Enviar Resumen por WhatsApp</span>
+              </button>
             </div>
 
-            {/* Historial de movimientos */}
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
-                Historial de Compras y Pagos
+            {/* Historial de compras y pagos */}
+            <div className="space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                Historial de Compras (Fiado) y Pagos
               </h3>
 
               {cargandoMovs ? (
-                <p className="text-xs text-gray-400 py-6 text-center">Cargando movimientos...</p>
+                <p className="text-xs text-gray-400 py-8 text-center">Cargando movimientos del cliente...</p>
               ) : movimientosCC.length === 0 ? (
-                <p className="text-xs text-gray-400 py-6 text-center">
-                  Aún no hay movimientos registrados en la cuenta de este cliente.
-                </p>
+                <div className="p-8 text-center bg-gray-50 dark:bg-gray-800/40 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
+                  <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+                    Aún no hay movimientos registrados
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Cuando este cliente compre fiado en el Punto de Venta o registre un pago, figurará aquí.
+                  </p>
+                </div>
               ) : (
-                <div className="border border-gray-300 dark:border-gray-700 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+                <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400">
+                    <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 sticky top-0">
                       <tr>
-                        <th className="px-3 py-2 font-medium">Fecha</th>
-                        <th className="px-3 py-2 font-medium">Tipo</th>
-                        <th className="px-3 py-2 font-medium">Detalle</th>
-                        <th className="px-3 py-2 font-medium text-right">Monto</th>
-                        <th className="px-3 py-2 font-medium text-right">Saldo</th>
+                        <th className="px-3.5 py-2.5 font-bold">Fecha</th>
+                        <th className="px-3.5 py-2.5 font-bold">Movimiento</th>
+                        <th className="px-3.5 py-2.5 font-bold">Detalle</th>
+                        <th className="px-3.5 py-2.5 font-bold text-right">Importe</th>
+                        <th className="px-3.5 py-2.5 font-bold text-right">Saldo Deudor</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                       {movimientosCC.map((m) => {
                         const esCargo = m.tipo === 'CARGO_VENTA'
                         return (
-                          <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                            <td className="px-3 py-2 text-gray-600 dark:text-gray-300">
+                          <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors">
+                            <td className="px-3.5 py-2.5 text-gray-600 dark:text-gray-300 whitespace-nowrap">
                               {formatFecha(m.fecha_hora)}
                             </td>
-                            <td className="px-3 py-2">
+                            <td className="px-3.5 py-2.5 whitespace-nowrap">
                               <span
-                                className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                                className={`px-2.5 py-1 rounded-lg font-bold text-[11px] ${
                                   esCargo
                                     ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
                                     : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400'
                                 }`}
                               >
-                                {esCargo ? 'Compra' : 'Abono'}
+                                {esCargo ? 'Compra (Fiado)' : 'Abono (Pago)'}
                               </span>
                             </td>
-                            <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
-                              {m.notas || (esCargo ? 'Venta en POS' : 'Pago de deuda')}
+                            <td className="px-3.5 py-2.5 text-gray-700 dark:text-gray-300">
+                              {m.notas || (esCargo ? 'Venta en mostrador' : 'Pago de deuda')}
                               {m.medio_pago && (
-                                <span className="text-gray-400 ml-1">
-                                  ({labelMedioPago(m.medio_pago)})
+                                <span className="text-gray-400 ml-1.5 text-[11px]">
+                                  • {labelMedioPago(m.medio_pago)}
                                 </span>
                               )}
                             </td>
                             <td
-                              className={`px-3 py-2 text-right font-bold ${
+                              className={`px-3.5 py-2.5 text-right font-black whitespace-nowrap ${
                                 esCargo
                                   ? 'text-red-600 dark:text-red-400'
                                   : 'text-emerald-600 dark:text-emerald-400'
@@ -737,7 +860,7 @@ export function ClientesPage() {
                             >
                               {esCargo ? `+${formatPrecio(m.monto)}` : `-${formatPrecio(m.monto)}`}
                             </td>
-                            <td className="px-3 py-2 text-right font-semibold text-gray-800 dark:text-gray-200">
+                            <td className="px-3.5 py-2.5 text-right font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap">
                               {formatPrecio(m.saldo_resultante)}
                             </td>
                           </tr>
@@ -756,17 +879,17 @@ export function ClientesPage() {
       <Modal
         isOpen={!!clienteAbonar}
         onClose={() => setClienteAbonar(null)}
-        title={`Registrar Abono — ${clienteAbonar?.nombre || ''}`}
+        title={`Cobrar Deuda — ${clienteAbonar?.nombre || ''}`}
         size="md"
         footer={
           clienteAbonar ? (
-            <div className="flex gap-2 w-full">
+            <div className="flex flex-col sm:flex-row gap-2.5 w-full">
               <Button
                 type="button"
                 variant="secondary"
-                fullWidth
                 disabled={guardandoAbono}
                 onClick={() => setClienteAbonar(null)}
+                className="order-2 sm:order-1 sm:w-1/3 py-2.5 text-sm font-semibold"
               >
                 Cancelar
               </Button>
@@ -774,100 +897,152 @@ export function ClientesPage() {
                 type="submit"
                 form="form-abono"
                 variant="primary"
-                fullWidth
                 loading={guardandoAbono}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                className="order-1 sm:order-2 sm:w-2/3 py-2.5 text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center justify-center gap-2"
                 disabled={!montoAbono || parseFloat(montoAbono) <= 0}
               >
-                Confirmar Cobro
+                <span>✓</span>
+                <span>Confirmar y Guardar Cobro</span>
               </Button>
             </div>
           ) : undefined
         }
       >
         {clienteAbonar && (
-          <form id="form-abono" onSubmit={handleConfirmarAbono} className="space-y-3">
-            <div className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg text-xs space-y-1">
-              <div className="flex justify-between text-red-800 dark:text-red-300">
-                <span>Deuda actual del cliente:</span>
-                <span className="font-bold text-sm">{formatPrecio(clienteAbonar.saldo_deudor)}</span>
+          <form id="form-abono" onSubmit={handleConfirmarAbono} className="space-y-4">
+            {/* Tarjeta de Deuda Pendiente */}
+            <div className="p-3.5 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-red-800 dark:text-red-300 block">
+                  Deuda actual a cobrar:
+                </span>
+                <span className="text-[11px] text-red-700/80 dark:text-red-400/80">
+                  Saldo pendiente en su cuenta
+                </span>
               </div>
+              <span className="text-xl sm:text-2xl font-black text-red-600 dark:text-red-400">
+                {formatPrecio(clienteAbonar.saldo_deudor)}
+              </span>
             </div>
 
             {/* Monto a abonar */}
-            <div>
-              <Input
-                label="Monto a abonar ($) *"
-                type="number"
-                min="1"
-                step="50"
-                placeholder="Ingresá el importe"
-                value={montoAbono}
-                onChange={(e) => setMontoAbono(e.target.value)}
-                required
-                autoFocus
-              />
-              {/* Botón para pagar deuda total si aplica */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
+                ¿Cuánto dinero entrega el cliente? *
+              </label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xl font-bold text-gray-400">
+                  $
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  step="50"
+                  placeholder="0"
+                  value={montoAbono}
+                  onChange={(e) => setMontoAbono(e.target.value)}
+                  required
+                  autoFocus
+                  className="w-full pl-9 pr-4 py-2.5 rounded-xl border-2 border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xl font-black tracking-tight focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder:text-gray-300"
+                />
+              </div>
+
+              {/* Botón rápido para saldar toda la deuda */}
               {clienteAbonar.saldo_deudor > 0 && (
-                <div className="flex gap-2 mt-2">
-                  <button
-                    type="button"
-                    onClick={() => setMontoAbono(clienteAbonar.saldo_deudor.toString())}
-                    className="px-2.5 py-1 text-xs font-semibold rounded border border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
-                  >
-                    Pagar total ({formatPrecio(clienteAbonar.saldo_deudor)})
-                  </button>
-                  {[1000, 2000, 5000].map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => setMontoAbono(v.toString())}
-                      className="px-2.5 py-1 text-xs font-medium rounded border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
-                    >
-                      +{formatPrecio(v)}
-                    </button>
-                  ))}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setMontoAbono(clienteAbonar.saldo_deudor.toString())}
+                  className="w-full py-2.5 px-3 rounded-xl border border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-xs"
+                >
+                  <span>⚡</span>
+                  <span>Cobrar la deuda completa ({formatPrecio(clienteAbonar.saldo_deudor)})</span>
+                </button>
               )}
+
+              {/* Botones de billetes rápidos */}
+              <div className="grid grid-cols-5 gap-1.5 pt-1">
+                {BILLETES_RAPIDOS_ABONO.map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setMontoAbono(v.toString())}
+                    className={`py-1.5 text-xs font-bold rounded-xl border transition-all cursor-pointer text-center select-none active:scale-95 ${
+                      parseFloat(montoAbono) === v
+                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300'
+                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    +{formatPrecio(v)}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Medio de pago */}
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Medio de pago
+            {/* Selector Visual de Medio de Pago */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
+                ¿Cómo te paga? *
               </label>
-              <select
-                value={medioPagoAbono}
-                onChange={(e) => setMedioPagoAbono(e.target.value as MedioPago)}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-              >
-                <option value="EFECTIVO">Efectivo</option>
-                <option value="MERCADOPAGO">Mercado Pago</option>
-                <option value="TRANSFERENCIA">Transferencia</option>
-                <option value="TARJETA">Tarjeta</option>
-              </select>
+              <div className="grid grid-cols-2 gap-2">
+                {MEDIOS_PAGO_CLIENTE.map((mp) => {
+                  const seleccionado = medioPagoAbono === mp.valor
+                  return (
+                    <button
+                      key={mp.valor}
+                      type="button"
+                      onClick={() => setMedioPagoAbono(mp.valor)}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        seleccionado
+                          ? 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-200 shadow-xs ring-1 ring-emerald-500/50'
+                          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold">{mp.label}</span>
+                        {seleccionado && <span className="text-xs font-black">✓</span>}
+                      </div>
+                      <span className="text-[11px] text-gray-500 dark:text-gray-400 block mt-0.5">
+                        {mp.desc}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
 
             {/* Checkbox de ingreso en caja si es efectivo */}
             {medioPagoAbono === 'EFECTIVO' && sesionActiva && (
-              <label className="flex items-center gap-2 p-2.5 rounded-lg bg-gray-50/80 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
+              <label className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-950 dark:text-amber-200 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={impactarEnCaja}
                   onChange={(e) => setImpactarEnCaja(e.target.checked)}
-                  className="rounded text-indigo-600 focus:ring-indigo-500"
+                  className="rounded mt-0.5 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                 />
-                <span>Ingresar este dinero en el turno de Caja actual (para arqueo exacto)</span>
+                <div>
+                  <span className="font-bold block">
+                    📥 Sumar este efectivo a la caja del turno activo
+                  </span>
+                  <span className="text-[11px] opacity-80 block mt-0.5">
+                    Recomendado para que la plata física en el cajón coincida con el arqueo de cierre.
+                  </span>
+                </div>
               </label>
             )}
 
-            <Input
-              label="Detalle o referencia (opcional)"
-              type="text"
-              placeholder="Ej: Pago entregado por el hijo..."
-              value={notasAbono}
-              onChange={(e) => setNotasAbono(e.target.value)}
-            />
+            {/* Detalle o referencia */}
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                Anotación o referencia (opcional)
+              </label>
+              <input
+                type="text"
+                placeholder="Ej: Pago entregado por el hijo, dejó seña..."
+                value={notasAbono}
+                onChange={(e) => setNotasAbono(e.target.value)}
+                className="w-full px-3.5 py-2 text-sm rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-500 outline-none"
+              />
+            </div>
           </form>
         )}
       </Modal>

@@ -30,6 +30,21 @@ function formatMotivoMovimiento(motivo: MotivoMovimientoCaja): string {
   }
 }
 
+const MOTIVOS_EGRESO: { valor: MotivoMovimientoCaja; label: string; desc: string }[] = [
+  { valor: 'PROVEEDOR', label: 'Pago a Proveedor', desc: 'Panadería, bebidas, lácteos, golosinas' },
+  { valor: 'GASTO_GENERAL', label: 'Gasto del Kiosco', desc: 'Bolsas, rollos de ticket, limpieza, librería' },
+  { valor: 'RETIRO_DUENO', label: 'Retiro del Dueño', desc: 'Extracción de ganancia o sangría de seguridad' },
+  { valor: 'OTRO', label: 'Otro Gasto / Salida', desc: 'Cualquier otra salida de dinero del cajón' },
+]
+
+const MOTIVOS_INGRESO: { valor: MotivoMovimientoCaja; label: string; desc: string }[] = [
+  { valor: 'REPOSICION_CAMBIO', label: 'Poner Cambio / Sencillo', desc: 'Billetes chicos o monedas para dar vuelto' },
+  { valor: 'OTRO', label: 'Plata Extra / Aporte', desc: 'Ingreso extraordinario o cobro extra de dinero' },
+]
+
+const MONTOS_RAPIDOS_MOVIMIENTO = [1000, 2000, 5000, 10000, 20000, 50000]
+const DENOMINACIONES_BILLETES = [20000, 10000, 2000, 1000, 500, 200, 100, 50]
+
 interface SesionHistorial extends SesionCaja {
   usuario?: Usuario
 }
@@ -145,6 +160,17 @@ export function CajaPage() {
       0
     )
     setEfectivoContado(total > 0 ? total.toString() : '')
+  }
+
+  const handleIncrementarBillete = (denominacion: number, delta: number) => {
+    const actual = desgloseBilletes[denominacion] || 0
+    handleCambioBillete(denominacion, Math.max(0, actual + delta))
+  }
+
+  const handleLimpiarBilletes = () => {
+    const reset = DENOMINACIONES_BILLETES.reduce((acc, d) => ({ ...acc, [d]: 0 }), {})
+    setDesgloseBilletes(reset)
+    setEfectivoContado('')
   }
 
   const handleAbrirModalArqueo = async () => {
@@ -811,181 +837,292 @@ export function CajaPage() {
       <Modal
         isOpen={modalArqueoOpen}
         onClose={() => setModalArqueoOpen(false)}
-        title={modoCiegoEfectivo ? 'Arqueo y Cierre de Turno (Ciego)' : 'Arqueo y Cierre de Turno (Guiado)'}
-        size="md"
+        title="Control y Cierre de Turno de Caja"
+        size="lg"
         footer={
-          <div className="flex gap-2 w-full">
+          <div className="flex flex-col sm:flex-row gap-2.5 w-full">
             <Button
+              type="button"
+              variant="secondary"
+              disabled={cerrando}
+              onClick={() => setModalArqueoOpen(false)}
+              className="order-2 sm:order-1 sm:w-1/3 py-2.5 text-sm font-semibold"
+            >
+              Volver a la Caja
+            </Button>
+            <Button
+              type="button"
               variant="danger"
-              fullWidth
               loading={cerrando}
               disabled={efectivoContado === '' || parseFloat(efectivoContado) < 0}
               onClick={handleConfirmarCierre}
+              className="order-1 sm:order-2 sm:w-2/3 py-2.5 text-sm font-bold bg-red-600 hover:bg-red-700 text-white shadow-sm"
             >
-              {modoCiego ? 'Confirmar y Finalizar Turno' : 'Confirmar Cierre de Caja'}
-            </Button>
-            <Button
-              variant="secondary"
-              fullWidth
-              disabled={cerrando}
-              onClick={() => setModalArqueoOpen(false)}
-            >
-              Volver
+              {modoCiego ? 'Finalizar y Cerrar Turno' : 'Confirmar Cierre de Caja'}
             </Button>
           </div>
         }
       >
-        <div className="space-y-3">
+        <div className="space-y-4">
           {/* Selector de modo si es Dueño o si no se exige arqueo ciego obligatorio */}
           {(esDueno || !arqueoCiegoObligatorio) && (
-            <div className="flex rounded-lg bg-gray-100 dark:bg-gray-800 p-1 border border-gray-200 dark:border-gray-700">
+            <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
               <button
                 type="button"
                 onClick={() => setModoCiego(false)}
-                className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                className={`py-2 px-3 text-xs sm:text-sm font-bold rounded-lg transition-all cursor-pointer text-center ${
                   !modoCiego
-                    ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
+                    ? 'bg-white dark:bg-gray-700 text-indigo-700 dark:text-indigo-300 shadow-sm border border-gray-200 dark:border-gray-600'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                 }`}
               >
-                Arqueo Guiado
+                Arqueo Guiado (Ver cálculos)
               </button>
               <button
                 type="button"
                 onClick={() => setModoCiego(true)}
-                className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                className={`py-2 px-3 text-xs sm:text-sm font-bold rounded-lg transition-all cursor-pointer text-center ${
                   modoCiego
-                    ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
+                    ? 'bg-white dark:bg-gray-700 text-indigo-700 dark:text-indigo-300 shadow-sm border border-gray-200 dark:border-gray-600'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                 }`}
               >
-                Arqueo Ciego
+                Arqueo Ciego (Solo conteo físico)
               </button>
             </div>
           )}
 
           {modoCiegoEfectivo ? (
             /* Banner explicativo de Arqueo Ciego */
-            <div className="p-3.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-300">
-              <p className="font-semibold text-sm mb-1">Control de Arqueo Ciego</p>
-              <p className="text-amber-800/90 dark:text-amber-300/80 leading-relaxed">
-                Por seguridad y control interno, contá físicamente todo el dinero en el cajón e ingresá el total. El valor quedará asentado para la auditoría administrativa del Dueño.
-              </p>
+            <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/80 text-amber-900 dark:text-amber-300 flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 shrink-0 text-lg">
+                🔒
+              </div>
+              <div className="text-xs sm:text-sm">
+                <p className="font-bold text-sm mb-0.5">Control de Auditoría a Ciegas</p>
+                <p className="text-amber-800/90 dark:text-amber-300/80 leading-relaxed">
+                  Por seguridad y orden del comercio, contá todo el dinero en el cajón e ingresá el valor exacto. El monto quedará guardado para la revisión administrativa del Dueño.
+                </p>
+              </div>
             </div>
           ) : (
-            /* Resumen guiado visible sólo para el Dueño */
-            <div className="p-4 rounded-lg bg-gray-50/80 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500 dark:text-gray-400">Fondo inicial de turno:</span>
-                <span className="font-semibold text-gray-900 dark:text-gray-100">
-                  {formatPrecio(sesionActiva?.monto_inicial || 0)}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500 dark:text-gray-400">(+) Efectivo ventas:</span>
-                <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                  +{formatPrecio(resumenActivo?.total_efectivo || 0)}
-                </span>
-              </div>
-              {(resumenActivo?.total_ingresos_extra || 0) > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-blue-600 dark:text-blue-400">(+) Ingresos extra de caja:</span>
-                  <span className="font-semibold text-blue-600 dark:text-blue-400">
-                    +{formatPrecio(resumenActivo?.total_ingresos_extra || 0)}
+            /* Resumen guiado con tarjetas claras de dinero */
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="p-3 bg-gray-50 dark:bg-gray-800/70 border border-gray-200 dark:border-gray-700 rounded-xl">
+                  <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 block">Fondo inicial:</span>
+                  <span className="text-sm font-black text-gray-900 dark:text-gray-100">
+                    {formatPrecio(sesionActiva?.monto_inicial || 0)}
                   </span>
                 </div>
-              )}
-              {(resumenActivo?.total_egresos || 0) > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-red-600 dark:text-red-400">(-) Gastos / Egresos de caja:</span>
-                  <span className="font-semibold text-red-600 dark:text-red-400">
-                    -{formatPrecio(resumenActivo?.total_egresos || 0)}
+                <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/60 rounded-xl">
+                  <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 block">(+) Ventas efectivo:</span>
+                  <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">
+                    +{formatPrecio(resumenActivo?.total_efectivo || 0)}
                   </span>
                 </div>
-              )}
-              <div className="border-t border-gray-300 dark:border-gray-700 pt-2 flex justify-between text-base font-bold">
-                <span className="text-gray-800 dark:text-gray-200">Total en cajón esperado:</span>
-                <span className="text-indigo-600 dark:text-indigo-400">
+                <div className="p-3 bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/60 rounded-xl">
+                  <span className="text-[11px] font-medium text-blue-700 dark:text-blue-400 block">(+) Ingresos extra:</span>
+                  <span className="text-sm font-black text-blue-600 dark:text-blue-400">
+                    +{(resumenActivo?.total_ingresos_extra || 0) > 0 ? formatPrecio(resumenActivo?.total_ingresos_extra || 0) : '$0'}
+                  </span>
+                </div>
+                <div className="p-3 bg-red-50/60 dark:bg-red-950/20 border border-red-200 dark:border-red-800/60 rounded-xl">
+                  <span className="text-[11px] font-medium text-red-700 dark:text-red-400 block">(-) Gastos / Salidas:</span>
+                  <span className="text-sm font-black text-red-600 dark:text-red-400">
+                    -{(resumenActivo?.total_egresos || 0) > 0 ? formatPrecio(resumenActivo?.total_egresos || 0) : '$0'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Total esperado destacado */}
+              <div className="p-3.5 bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950/40 dark:to-blue-950/40 border border-indigo-200 dark:border-indigo-800/60 rounded-xl flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-800 dark:text-indigo-300 block">
+                    Total esperado en cajón según sistema:
+                  </span>
+                  <span className="text-[11px] text-indigo-600/80 dark:text-indigo-400/80">
+                    (Fondo inicial + Efectivo cobrado + Entradas extra - Gastos)
+                  </span>
+                </div>
+                <span className="text-xl sm:text-2xl font-black text-indigo-700 dark:text-indigo-300">
                   {formatPrecio(efectivoEsperado)}
                 </span>
               </div>
             </div>
           )}
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
-                Efectivo físico contado en el cajón *
-              </label>
+          {/* Bloque de Conteo Físico */}
+          <div className="space-y-3 bg-gray-50/60 dark:bg-gray-800/40 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+              <div>
+                <label className="block text-sm font-black text-gray-900 dark:text-gray-100">
+                  ¿Cuánta plata en efectivo contaste en el cajón? *
+                </label>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Ingresá el total de billetes y monedas que tenés en la mano.
+                </p>
+              </div>
+
+              {/* Toggle de calculadora */}
               <button
                 type="button"
                 onClick={() => setMostrarDesgloseBilletes(!mostrarDesgloseBilletes)}
-                className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-medium cursor-pointer"
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 hover:underline cursor-pointer self-start sm:self-auto py-1"
               >
-                {mostrarDesgloseBilletes ? 'Ocultar desglosador' : '+ Contar por billetes'}
+                <span>🧮</span>
+                <span>{mostrarDesgloseBilletes ? 'Ocultar contador' : 'Contar billete por billete'}</span>
               </button>
             </div>
 
-            <Input
-              type="number"
-              min="0"
-              step="100"
-              placeholder="Ingresá el dinero total contado"
-              value={efectivoContado}
-              onChange={(e) => setEfectivoContado(e.target.value)}
-              required
-              autoFocus
-            />
+            {/* Input prominente de monto */}
+            <div className="relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xl sm:text-2xl font-black text-gray-400">
+                $
+              </span>
+              <input
+                type="number"
+                min="0"
+                step="100"
+                placeholder="0"
+                value={efectivoContado}
+                onChange={(e) => setEfectivoContado(e.target.value)}
+                required
+                autoFocus
+                className="w-full pl-9 pr-4 py-3 rounded-xl border-2 border-indigo-200 dark:border-indigo-800/80 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-2xl font-black tracking-tight focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder:text-gray-300"
+              />
+            </div>
 
-            {/* Desglosador interactivo de billetes */}
+            {/* Desglosador interactivo táctil de billetes */}
             {mostrarDesgloseBilletes && (
-              <div className="p-3 bg-gray-50/80 dark:bg-gray-900 rounded-lg border border-gray-300 dark:border-gray-700 space-y-2">
-                <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Calculadora de Billetes y Monedas
-                </p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {[20000, 10000, 2000, 1000, 500, 200, 100, 50].map((den) => (
-                    <div key={den} className="flex flex-col">
-                      <span className="text-[10px] font-medium text-gray-600 dark:text-gray-400">
-                        ${den.toLocaleString('es-AR')}
-                      </span>
-                      <input
-                        type="number"
-                        min="0"
-                        placeholder="0"
-                        value={desgloseBilletes[den] || ''}
-                        onChange={(e) => handleCambioBillete(den, parseInt(e.target.value) || 0)}
-                        className="w-full px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                      />
-                    </div>
-                  ))}
+              <div className="p-4 bg-white dark:bg-gray-800/90 rounded-xl border border-indigo-200 dark:border-indigo-800/70 space-y-3 shadow-xs">
+                <div className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-gray-700">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-300">
+                      Calculadora de Billetes y Monedas
+                    </p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                      Indicá cuántos billetes tenés de cada valor y te calculamos el total automáticamente.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleLimpiarBilletes}
+                    className="text-xs text-red-600 dark:text-red-400 hover:underline font-semibold cursor-pointer"
+                  >
+                    Poner en cero
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  {DENOMINACIONES_BILLETES.map((den) => {
+                    const cant = desgloseBilletes[den] || 0
+                    const subtotal = den * cant
+                    return (
+                      <div
+                        key={den}
+                        className={`p-2.5 rounded-xl border transition-all text-center flex flex-col justify-between ${
+                          cant > 0
+                            ? 'bg-indigo-50/60 dark:bg-indigo-950/40 border-indigo-300 dark:border-indigo-700'
+                            : 'bg-gray-50/80 dark:bg-gray-900/60 border-gray-200 dark:border-gray-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs font-black text-gray-900 dark:text-gray-100">
+                            ${den.toLocaleString('es-AR')}
+                          </span>
+                          {cant > 0 && (
+                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                              {cant} u.
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Stepper +/- */}
+                        <div className="flex items-center justify-center gap-1.5 my-1">
+                          <button
+                            type="button"
+                            onClick={() => handleIncrementarBillete(den, -1)}
+                            disabled={cant <= 0}
+                            className="w-7 h-7 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-30 text-gray-800 dark:text-gray-200 font-black text-sm flex items-center justify-center cursor-pointer transition-colors"
+                          >
+                            -
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={cant || ''}
+                            onChange={(e) => handleCambioBillete(den, parseInt(e.target.value) || 0)}
+                            className="w-12 text-center py-1 text-xs font-bold rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleIncrementarBillete(den, 1)}
+                            className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-900/60 hover:bg-indigo-200 dark:hover:bg-indigo-800 text-indigo-700 dark:text-indigo-300 font-black text-sm flex items-center justify-center cursor-pointer transition-colors"
+                          >
+                            +
+                          </button>
+                        </div>
+
+                        {/* Subtotal en pesos */}
+                        <div className="text-[11px] font-bold text-gray-500 dark:text-gray-400 mt-1">
+                          {cant > 0 ? (
+                            <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">
+                              {formatPrecio(subtotal)}
+                            </span>
+                          ) : (
+                            '$0'
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700 text-xs">
+                  <span className="text-gray-600 dark:text-gray-400">
+                    Total calculado en billetes:
+                  </span>
+                  <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
+                    {formatPrecio(contadoNum)}
+                  </span>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Cálculo de diferencia (SÓLO visible en Arqueo Guiado) */}
+          {/* Tarjeta de Conciliación de Diferencia (Visible en Arqueo Guiado) */}
           {!modoCiego && efectivoContado !== '' && (
-            <div className={`p-4 rounded-lg text-center ${
-              diferenciaArqueo === 0
-                ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                : diferenciaArqueo > 0
-                ? 'bg-blue-50 dark:bg-blue-950/20 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
-                : 'bg-red-50 dark:bg-red-950/20 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-800'
-            }`}>
-              <p className="text-xs font-semibold uppercase tracking-wider">
-                {diferenciaArqueo === 0
-                  ? 'Caja exacta'
+            <div
+              className={`p-4 rounded-xl text-center border transition-all ${
+                diferenciaArqueo === 0
+                  ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-700 text-emerald-900 dark:text-emerald-300'
                   : diferenciaArqueo > 0
-                  ? 'Sobrante de caja'
-                  : 'Faltante de caja'}
-              </p>
-              <p className="text-2xl font-bold mt-1">
+                  ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-700 text-blue-900 dark:text-blue-300'
+                  : 'bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-700 text-red-900 dark:text-red-300'
+              }`}
+            >
+              <div className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold mb-1 uppercase tracking-wider bg-white/70 dark:bg-black/20">
+                {diferenciaArqueo === 0
+                  ? '✅ Caja Cuadrada Perfecta'
+                  : diferenciaArqueo > 0
+                  ? '🔵 Sobrante de Caja'
+                  : '⚠️ Faltante de Caja'}
+              </div>
+              <p className="text-2xl sm:text-3xl font-black mt-1">
                 {diferenciaArqueo === 0
                   ? '$0'
                   : diferenciaArqueo > 0
                   ? `+${formatPrecio(diferenciaArqueo)}`
                   : formatPrecio(diferenciaArqueo)}
+              </p>
+              <p className="text-xs sm:text-sm font-medium mt-1 opacity-90 max-w-md mx-auto">
+                {diferenciaArqueo === 0
+                  ? 'El dinero contado coincide al centavo con lo esperado por el sistema.'
+                  : diferenciaArqueo > 0
+                  ? 'Tenés más dinero en el cajón de lo que calculó el sistema.'
+                  : 'Hay menos dinero en el cajón de lo esperado. Revisá si quedó algún gasto o comprobante sin registrar.'}
               </p>
             </div>
           )}
@@ -996,16 +1133,16 @@ export function CajaPage() {
       <Modal
         isOpen={modalMovimientoOpen}
         onClose={() => setModalMovimientoOpen(false)}
-        title={tipoMovimiento === 'INGRESO' ? 'Registrar Ingreso de Caja' : 'Registrar Gasto / Egreso de Caja'}
-        size="md"
+        title={tipoMovimiento === 'INGRESO' ? 'Registrar Entrada de Dinero' : 'Registrar Salida de Dinero / Gasto'}
+        size="lg"
         footer={
-          <div className="flex gap-2 w-full">
+          <div className="flex flex-col sm:flex-row gap-2.5 w-full">
             <Button
               type="button"
               variant="secondary"
-              fullWidth
               disabled={guardandoMovimiento}
               onClick={() => setModalMovimientoOpen(false)}
+              className="order-2 sm:order-1 sm:w-1/3 py-2.5 text-sm font-semibold"
             >
               Cancelar
             </Button>
@@ -1013,110 +1150,167 @@ export function CajaPage() {
               type="submit"
               form="form-movimiento-caja"
               variant={tipoMovimiento === 'INGRESO' ? 'primary' : 'danger'}
-              fullWidth
               loading={guardandoMovimiento}
               disabled={!montoMovimiento || parseFloat(montoMovimiento) <= 0}
+              className={`order-1 sm:order-2 sm:w-2/3 py-2.5 text-sm font-bold shadow-sm ${
+                tipoMovimiento === 'INGRESO'
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-red-600 hover:bg-red-700 text-white'
+              }`}
             >
-              {tipoMovimiento === 'INGRESO' ? 'Confirmar Ingreso' : 'Confirmar Gasto'}
+              {tipoMovimiento === 'INGRESO' ? 'Confirmar Entrada de Dinero' : 'Confirmar Salida de Dinero'}
             </Button>
           </div>
         }
       >
-        <form id="form-movimiento-caja" onSubmit={handleGuardarMovimiento} className="space-y-3">
-          {/* Selector de Tipo */}
-          <div className="grid grid-cols-2 gap-2">
+        <form id="form-movimiento-caja" onSubmit={handleGuardarMovimiento} className="space-y-4">
+          {/* Selector de Tipo (Salida vs Entrada) */}
+          <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
               onClick={() => {
                 setTipoMovimiento('EGRESO')
                 setMotivoMovimiento('PROVEEDOR')
               }}
-              className={`py-2 rounded-lg text-xs font-bold border transition-colors ${
+              className={`p-3 rounded-xl border-2 transition-all cursor-pointer text-left flex flex-col justify-between ${
                 tipoMovimiento === 'EGRESO'
-                  ? 'bg-red-50 dark:bg-red-950/40 border-red-500 text-red-700 dark:text-red-400'
+                  ? 'bg-red-50 dark:bg-red-950/40 border-red-500 text-red-900 dark:text-red-200 shadow-xs'
                   : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
               }`}
             >
-              Gasto / Egreso
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-red-600 dark:text-red-400">
+                  Salida de Dinero
+                </span>
+                <span className="text-lg">🔴</span>
+              </div>
+              <p className="text-sm font-black mt-1">Gasto o Retiro</p>
+              <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                Resta plata física del cajón
+              </span>
             </button>
+
             <button
               type="button"
               onClick={() => {
                 setTipoMovimiento('INGRESO')
                 setMotivoMovimiento('REPOSICION_CAMBIO')
               }}
-              className={`py-2 rounded-lg text-xs font-bold border transition-colors ${
+              className={`p-3 rounded-xl border-2 transition-all cursor-pointer text-left flex flex-col justify-between ${
                 tipoMovimiento === 'INGRESO'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-700 dark:text-emerald-400'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-900 dark:text-emerald-200 shadow-xs'
                   : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
               }`}
             >
-              Ingreso Extra
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                  Entrada de Dinero
+                </span>
+                <span className="text-lg">🟢</span>
+              </div>
+              <p className="text-sm font-black mt-1">Cambio o Aporte Extra</p>
+              <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                Suma plata física al cajón
+              </span>
             </button>
           </div>
 
-          {/* Motivo */}
-          <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Concepto / Motivo
+          {/* Motivo del Movimiento en Tarjetas Táctiles */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
+              ¿Por qué motivo se mueve la plata? *
             </label>
-            <select
-              value={motivoMovimiento}
-              onChange={(e) => setMotivoMovimiento(e.target.value as MotivoMovimientoCaja)}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500"
-            >
-              {tipoMovimiento === 'EGRESO' ? (
-                <>
-                  <option value="PROVEEDOR">Pago a Proveedor (Panadería, lácteos, etc.)</option>
-                  <option value="GASTO_GENERAL">Gasto General / Insumos (Bolsas, limpieza)</option>
-                  <option value="RETIRO_DUENO">Retiro de Ganancia / Retiro del Dueño</option>
-                  <option value="OTRO">Otro Egreso</option>
-                </>
-              ) : (
-                <>
-                  <option value="REPOSICION_CAMBIO">Reposición de Cambio / Billetes</option>
-                  <option value="OTRO">Otro Ingreso</option>
-                </>
-              )}
-            </select>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {(tipoMovimiento === 'EGRESO' ? MOTIVOS_EGRESO : MOTIVOS_INGRESO).map((mot) => {
+                const seleccionado = motivoMovimiento === mot.valor
+                return (
+                  <button
+                    key={mot.valor}
+                    type="button"
+                    onClick={() => setMotivoMovimiento(mot.valor)}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      seleccionado
+                        ? tipoMovimiento === 'EGRESO'
+                          ? 'border-red-500 bg-red-50/70 dark:bg-red-950/40 text-red-950 dark:text-red-200 shadow-xs ring-1 ring-red-500/50'
+                          : 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-200 shadow-xs ring-1 ring-emerald-500/50'
+                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold">{mot.label}</span>
+                      {seleccionado && (
+                        <span className="text-xs font-black">
+                          {tipoMovimiento === 'EGRESO' ? '✓' : '✓'}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">
+                      {mot.desc}
+                    </p>
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
-          {/* Monto */}
-          <div>
-            <Input
-              label="Monto en efectivo ($) *"
-              type="number"
-              min="1"
-              step="50"
-              placeholder="Ej: 5000"
-              value={montoMovimiento}
-              onChange={(e) => setMontoMovimiento(e.target.value)}
-              required
-              autoFocus
-            />
-            {/* Atajos de billetes */}
-            <div className="flex gap-2 mt-2">
-              {[1000, 2000, 5000, 10000, 20000].map((m) => (
+          {/* Monto e importe */}
+          <div className="space-y-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
+              Monto en efectivo ($) *
+            </label>
+            <div className="relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xl font-bold text-gray-400">
+                $
+              </span>
+              <input
+                type="number"
+                min="1"
+                step="50"
+                placeholder="0"
+                value={montoMovimiento}
+                onChange={(e) => setMontoMovimiento(e.target.value)}
+                required
+                autoFocus
+                className="w-full pl-9 pr-4 py-2.5 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xl font-black tracking-tight focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder:text-gray-300"
+              />
+            </div>
+
+            {/* Billetes rápidos estilo touch */}
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 pt-1 w-full">
+              {MONTOS_RAPIDOS_MOVIMIENTO.map((m) => (
                 <button
                   key={m}
                   type="button"
                   onClick={() => setMontoMovimiento(m.toString())}
-                  className="flex-1 py-1 text-[11px] font-medium rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                  className={`w-full py-2 px-1 text-xs font-bold rounded-xl border transition-all cursor-pointer text-center select-none active:scale-95 ${
+                    parseFloat(montoMovimiento) === m
+                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 shadow-xs ring-1 ring-indigo-500/40'
+                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/60'
+                  }`}
                 >
-                  +{formatPrecio(m)}
+                  {formatPrecio(m)}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Descripción */}
-          <Input
-            label="Detalle o descripción (opcional)"
-            type="text"
-            placeholder="Ej: 3 barras de hielo, panadería Don Juan..."
-            value={descripcionMovimiento}
-            onChange={(e) => setDescripcionMovimiento(e.target.value)}
-          />
+          {/* Detalle o descripción */}
+          <div className="space-y-1">
+            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+              Anotación o detalle (opcional)
+            </label>
+            <input
+              type="text"
+              placeholder={
+                tipoMovimiento === 'EGRESO'
+                  ? 'Ej: Se le pagó al repartidor de pan Don Juan...'
+                  : 'Ej: Se pusieron monedas de $100 y billetes chicos para cambio...'
+              }
+              value={descripcionMovimiento}
+              onChange={(e) => setDescripcionMovimiento(e.target.value)}
+              className="w-full px-3.5 py-2 text-sm rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-500 outline-none"
+            />
+          </div>
         </form>
       </Modal>
 
@@ -1124,91 +1318,120 @@ export function CajaPage() {
       <Modal
         isOpen={!!sesionDetalle}
         onClose={() => setSesionDetalle(null)}
-        title="Detalle del Cierre de Caja"
-        size="md"
+        title="Detalle del Turno de Caja"
+        size="lg"
         footer={
           sesionDetalle ? (
-            <div className="flex gap-2 w-full">
-              <Button
-                variant="primary"
-                fullWidth
-                onClick={() => handleImprimirHistorico(sesionDetalle)}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white"
-              >
-                Imprimir Arqueo
-              </Button>
+            <div className="flex flex-col sm:flex-row gap-2.5 w-full">
               <Button
                 variant="secondary"
                 fullWidth
                 onClick={() => setSesionDetalle(null)}
+                className="order-2 sm:order-1 sm:w-1/3 py-2.5 text-sm font-semibold"
               >
                 Cerrar
+              </Button>
+              <Button
+                variant="primary"
+                fullWidth
+                onClick={() => handleImprimirHistorico(sesionDetalle)}
+                className="order-1 sm:order-2 sm:w-2/3 py-2.5 text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm flex items-center justify-center gap-2"
+              >
+                <span>🖨️</span>
+                <span>Imprimir Ticket de Cierre</span>
               </Button>
             </div>
           ) : undefined
         }
       >
         {sesionDetalle && (
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="space-y-4">
+            {/* Metadatos del Turno */}
+            <div className="p-3.5 bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
               <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Apertura</p>
-                <p className="font-medium text-gray-900 dark:text-gray-100">
-                  {formatFecha(sesionDetalle.fecha_apertura)}
-                </p>
+                <span className="text-gray-500 dark:text-gray-400 block font-medium">Cajero responsable:</span>
+                <span className="text-sm font-black text-gray-900 dark:text-gray-100">
+                  {sesionDetalle.usuario?.nombre || usuario?.nombre || 'Personal'}
+                </span>
               </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Cierre</p>
-                <p className="font-medium text-gray-900 dark:text-gray-100">
-                  {sesionDetalle.fecha_cierre ? formatFecha(sesionDetalle.fecha_cierre) : '—'}
-                </p>
+              <div className="flex items-center gap-4">
+                <div>
+                  <span className="text-gray-500 dark:text-gray-400 block font-medium">Apertura:</span>
+                  <span className="font-bold text-gray-800 dark:text-gray-200">
+                    {formatFecha(sesionDetalle.fecha_apertura)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-500 dark:text-gray-400 block font-medium">Cierre:</span>
+                  <span className="font-bold text-gray-800 dark:text-gray-200">
+                    {sesionDetalle.fecha_cierre ? formatFecha(sesionDetalle.fecha_cierre) : '—'}
+                  </span>
+                </div>
               </div>
             </div>
 
-            <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">Fondo inicial:</span>
-                <span className="font-semibold text-gray-900 dark:text-gray-100">
+            {/* Tarjetas KPI de Balance */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+              <div className="p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl">
+                <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 block">Fondo inicial:</span>
+                <span className="text-base font-black text-gray-900 dark:text-gray-100">
                   {formatPrecio(sesionDetalle.monto_inicial)}
                 </span>
               </div>
               {esDueno && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500 dark:text-gray-400">Monto esperado por sistema:</span>
-                  <span className="font-semibold text-gray-900 dark:text-gray-100">
+                <div className="p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl">
+                  <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 block">Esperado según sistema:</span>
+                  <span className="text-base font-black text-indigo-600 dark:text-indigo-400">
                     {formatPrecio(sesionDetalle.monto_final_sistema || 0)}
                   </span>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">Monto contado en mano:</span>
-                <span className="font-semibold text-gray-900 dark:text-gray-100">
+              <div className="p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl">
+                <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 block">Contado físicamente:</span>
+                <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
                   {formatPrecio(sesionDetalle.monto_final_declarado || 0)}
                 </span>
               </div>
-              {esDueno ? (
-                <div className="border-t border-gray-200 dark:border-gray-700 pt-2 flex justify-between font-bold">
-                  <span className="text-gray-800 dark:text-gray-200">Diferencia final:</span>
-                  <span className={`${
-                    (sesionDetalle.diferencia ?? 0) === 0
-                      ? 'text-emerald-600 dark:text-emerald-400'
-                      : (sesionDetalle.diferencia ?? 0) > 0
-                      ? 'text-blue-600 dark:text-blue-400'
-                      : 'text-red-600 dark:text-red-400'
-                  }`}>
-                    {(sesionDetalle.diferencia ?? 0) === 0
-                      ? 'Exacto ($0)'
-                      : (sesionDetalle.diferencia ?? 0) > 0
-                      ? `+${formatPrecio(sesionDetalle.diferencia ?? 0)} (Sobrante)`
-                      : `${formatPrecio(sesionDetalle.diferencia ?? 0)} (Faltante)`}
-                  </span>
-                </div>
-              ) : (
-                <div className="border-t border-gray-200 dark:border-gray-700 pt-2 text-xs text-gray-500 dark:text-gray-400">
-                  Turno registrado y enviado para auditoría de la administración.
-                </div>
-              )}
             </div>
+
+            {/* Resultado Final de la Conciliación */}
+            {esDueno ? (
+              <div
+                className={`p-4 rounded-xl text-center border ${
+                  (sesionDetalle.diferencia ?? 0) === 0
+                    ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-700 text-emerald-900 dark:text-emerald-300'
+                    : (sesionDetalle.diferencia ?? 0) > 0
+                    ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-700 text-blue-900 dark:text-blue-300'
+                    : 'bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-700 text-red-900 dark:text-red-300'
+                }`}
+              >
+                <span className="text-xs font-bold uppercase tracking-wider block">
+                  {(sesionDetalle.diferencia ?? 0) === 0
+                    ? '✅ Caja Cuadrada / Exacta'
+                    : (sesionDetalle.diferencia ?? 0) > 0
+                    ? '🔵 Sobrante de Caja'
+                    : '⚠️ Faltante de Caja'}
+                </span>
+                <p className="text-2xl font-black mt-1">
+                  {(sesionDetalle.diferencia ?? 0) === 0
+                    ? '$0'
+                    : (sesionDetalle.diferencia ?? 0) > 0
+                    ? `+${formatPrecio(sesionDetalle.diferencia ?? 0)}`
+                    : formatPrecio(sesionDetalle.diferencia ?? 0)}
+                </p>
+                <p className="text-xs mt-1 opacity-80">
+                  {(sesionDetalle.diferencia ?? 0) === 0
+                    ? 'El arqueo cerró sin diferencias de dinero.'
+                    : (sesionDetalle.diferencia ?? 0) > 0
+                    ? 'El cajero declaró más dinero que el calculado por ventas.'
+                    : 'El cajero declaró menos dinero que el esperado por ventas.'}
+                </p>
+              </div>
+            ) : (
+              <div className="p-3 bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-200 dark:border-gray-700 text-xs text-gray-600 dark:text-gray-400 text-center">
+                Turno registrado y enviado para la auditoría de la administración.
+              </div>
+            )}
           </div>
         )}
       </Modal>
