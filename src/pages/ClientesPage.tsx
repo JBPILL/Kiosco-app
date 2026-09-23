@@ -233,30 +233,85 @@ export function ClientesPage() {
         </div>
       </div>
 
-      {/* Tarjetas de Métricas Globales */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-4">
-        <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-          <p className="text-[11px] sm:text-xs text-gray-500 dark:text-gray-400">Total Clientes</p>
-          <p className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-gray-100 mt-0.5 sm:mt-1">{totalClientes}</p>
+      {/* Tarjetas de Métricas Globales Rediseñadas */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        {/* Tarjeta 1: Total Clientes */}
+        <div className="p-4 sm:p-5 rounded-2xl border-2 border-indigo-200/90 dark:border-indigo-800/90 bg-gradient-to-br from-indigo-50/60 via-white to-white dark:from-indigo-950/30 dark:via-gray-800 dark:to-gray-800 shadow-xs flex flex-col justify-between transition-all hover:border-indigo-300 dark:hover:border-indigo-700">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-bold uppercase tracking-wider border border-indigo-300 dark:border-indigo-700 bg-indigo-100/80 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                Padrón General
+              </span>
+              <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500">
+                Clientes
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-300 mt-2.5">
+              Total Registrados
+            </p>
+            <p className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-gray-100 mt-0.5 tracking-tight">
+              {totalClientes}
+            </p>
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-700/80 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 font-medium">
+            <span>Al día: {clientes.length - clientesConDeuda}</span>
+            <span className="text-indigo-600 dark:text-indigo-400 font-bold">
+              {clientesConDeuda > 0 ? `${clientesConDeuda} con deuda` : 'Todos al día'}
+            </span>
+          </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-          <p className="text-[11px] sm:text-xs text-gray-500 dark:text-gray-400">Deuda en Calle</p>
-          <p className="text-lg sm:text-2xl font-bold text-red-600 dark:text-red-400 mt-0.5 sm:mt-1 truncate">
-            {formatPrecio(totalDeudaGlobal)}
-          </p>
+        {/* Tarjeta 2: Deuda en Calle */}
+        <div className="p-4 sm:p-5 rounded-2xl border-2 border-red-200/90 dark:border-red-800/90 bg-gradient-to-br from-red-50/60 via-white to-white dark:from-red-950/30 dark:via-gray-800 dark:to-gray-800 shadow-xs flex flex-col justify-between transition-all hover:border-red-300 dark:hover:border-red-700">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-bold uppercase tracking-wider border border-red-300 dark:border-red-700 bg-red-100/80 dark:bg-red-900/60 text-red-700 dark:text-red-300">
+                Saldo por Cobrar
+              </span>
+              <span className="text-[11px] font-semibold text-red-500/80 dark:text-red-400/80">
+                Fiado
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-300 mt-2.5">
+              Deuda en Calle
+            </p>
+            <p className="text-2xl sm:text-3xl font-black text-red-600 dark:text-red-400 mt-0.5 tracking-tight truncate">
+              {formatPrecio(totalDeudaGlobal)}
+            </p>
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-red-100 dark:border-gray-700/80 flex items-center justify-between text-[11px] text-red-700/90 dark:text-red-400/90 font-medium">
+            <span>Total fiado en compras</span>
+            <span className="font-bold">Por cobrar</span>
+          </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-          <p className="text-[11px] sm:text-xs text-gray-500 dark:text-gray-400">Con Deuda</p>
-          <p className="text-lg sm:text-2xl font-bold text-amber-600 dark:text-amber-400 mt-0.5 sm:mt-1">
-            {clientesConDeuda}
-          </p>
+        {/* Tarjeta 3: Con Deuda */}
+        <div className="p-4 sm:p-5 rounded-2xl border-2 border-amber-200/90 dark:border-amber-800/90 bg-gradient-to-br from-amber-50/60 via-white to-white dark:from-amber-950/30 dark:via-gray-800 dark:to-gray-800 shadow-xs flex flex-col justify-between transition-all hover:border-amber-300 dark:hover:border-amber-700">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-bold uppercase tracking-wider border border-amber-300 dark:border-amber-700 bg-amber-100/80 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300">
+                Cuentas Abiertas
+              </span>
+              <span className="text-[11px] font-semibold text-amber-600/80 dark:text-amber-400/80">
+                {totalClientes > 0 ? `${Math.round((clientesConDeuda / totalClientes) * 100)}% cartera` : '0%'}
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-300 mt-2.5">
+              Clientes con Saldo Deudor
+            </p>
+            <p className="text-2xl sm:text-3xl font-black text-amber-600 dark:text-amber-400 mt-0.5 tracking-tight">
+              {clientesConDeuda}
+            </p>
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-amber-100 dark:border-gray-700/80 flex items-center justify-between text-[11px] text-amber-800/90 dark:text-amber-400/90 font-medium">
+            <span>{clientesConDeuda > 0 ? 'Con cuenta corriente activa' : 'Sin clientes con deuda'}</span>
+            <span className="font-bold">{clientesConDeuda > 0 ? 'Pendiente' : 'Al día'}</span>
+          </div>
         </div>
       </div>
 
       {/* Contenedor Principal: Búsqueda, Filtros y Lista */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 sm:p-6 space-y-4">
+      <div className="bg-white dark:bg-gray-800 rounded-xl border-2 border-gray-200 dark:border-gray-700 p-4 sm:p-6 space-y-4 shadow-xs">
         {/* Barra superior de filtros */}
         <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
           <div className="flex-1 flex items-center gap-2 max-w-xl">
@@ -265,7 +320,7 @@ export function ClientesPage() {
               placeholder="Buscar por nombre, DNI o teléfono..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:border-indigo-500 outline-none"
+              className="w-full px-3 py-2 text-sm rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:border-indigo-500 outline-none"
             />
             <Button
               variant="primary"
@@ -279,30 +334,30 @@ export function ClientesPage() {
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
             <button
               onClick={() => setFiltroEstado('TODOS')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all border-2 cursor-pointer ${
                 filtroEstado === 'TODOS'
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  ? 'border-indigo-600 bg-indigo-600 text-white shadow-xs'
+                  : 'border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
               }`}
             >
               Todos ({clientes.length})
             </button>
             <button
               onClick={() => setFiltroEstado('CON_DEUDA')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all border-2 cursor-pointer ${
                 filtroEstado === 'CON_DEUDA'
-                  ? 'bg-amber-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  ? 'border-amber-600 bg-amber-600 text-white shadow-xs'
+                  : 'border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
               }`}
             >
               Con Deuda ({clientesConDeuda})
             </button>
             <button
               onClick={() => setFiltroEstado('AL_DIA')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all border-2 cursor-pointer ${
                 filtroEstado === 'AL_DIA'
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  ? 'border-emerald-600 bg-emerald-600 text-white shadow-xs'
+                  : 'border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500'
               }`}
             >
               Al Día ({clientes.length - clientesConDeuda})
@@ -363,12 +418,12 @@ export function ClientesPage() {
                       </div>
                     </div>
 
-                    {/* Botones de acción táctiles en móvil */}
+                    {/* Botones de acción táctiles en móvil con bordes nítidos */}
                     <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
                       <button
                         type="button"
                         onClick={() => abrirFichaCliente(cli)}
-                        className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-gray-700 dark:text-gray-300 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700/60 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                        className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-bold text-gray-800 dark:text-gray-200 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 border-2 border-gray-300 dark:border-gray-500 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                       >
                         Ficha / Historial
                       </button>
@@ -376,7 +431,7 @@ export function ClientesPage() {
                         <button
                           type="button"
                           onClick={() => handleAbrirAbonar(cli)}
-                          className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                          className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-bold text-emerald-800 dark:text-emerald-200 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 border-2 border-emerald-400 dark:border-emerald-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                         >
                           Abonar deuda
                         </button>
@@ -384,7 +439,7 @@ export function ClientesPage() {
                         <button
                           type="button"
                           onClick={() => handleEditarCliente(cli)}
-                          className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                          className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-bold text-indigo-800 dark:text-indigo-200 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 border-2 border-indigo-400 dark:border-indigo-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                         >
                           Editar
                         </button>
@@ -393,7 +448,7 @@ export function ClientesPage() {
                         <button
                           type="button"
                           onClick={() => handleEditarCliente(cli)}
-                          className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                          className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-bold text-indigo-800 dark:text-indigo-200 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 border-2 border-indigo-400 dark:border-indigo-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                         >
                           Editar
                         </button>
@@ -401,7 +456,7 @@ export function ClientesPage() {
                       <button
                         type="button"
                         onClick={() => handleEnviarWhatsApp(cli)}
-                        className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-teal-700 dark:text-teal-300 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/50 dark:hover:bg-teal-900/60 border border-teal-200 dark:border-teal-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                        className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-bold text-teal-800 dark:text-teal-200 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 dark:hover:bg-teal-900/60 border-2 border-teal-400 dark:border-teal-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                       >
                         WhatsApp
                       </button>
@@ -412,7 +467,7 @@ export function ClientesPage() {
                             eliminarCliente(cli.id)
                           }
                         }}
-                        className={`inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-600 dark:text-red-300 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/60 border border-red-200 dark:border-red-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap ${debe ? 'col-span-2' : ''}`}
+                        className={`inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-bold text-red-800 dark:text-red-200 bg-red-50 hover:bg-red-100 dark:bg-red-950/60 dark:hover:bg-red-900/60 border-2 border-red-400 dark:border-red-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap ${debe ? 'col-span-2' : ''}`}
                       >
                         Eliminar cliente
                       </button>
@@ -423,10 +478,10 @@ export function ClientesPage() {
             </div>
 
             {/* ── VISTA ESCRITORIO: Tabla completa (hidden sm:block) ── */}
-            <div className="hidden sm:block border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+            <div className="hidden sm:block border-2 border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden shadow-xs">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-xs uppercase">
+                  <thead className="bg-gray-50 dark:bg-gray-900 border-b-2 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-xs uppercase">
                     <tr>
                       <th className="px-4 py-3 font-semibold">Cliente</th>
                       <th className="px-4 py-3 font-semibold">Contacto / DNI</th>
@@ -470,7 +525,7 @@ export function ClientesPage() {
                               <button
                                 type="button"
                                 onClick={() => abrirFichaCliente(cli)}
-                                className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-gray-700 dark:text-gray-300 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700/60 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                                className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-bold text-gray-800 dark:text-gray-200 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 border-2 border-gray-300 dark:border-gray-500 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                               >
                                 Ficha
                               </button>
@@ -478,7 +533,7 @@ export function ClientesPage() {
                                 <button
                                   type="button"
                                   onClick={() => handleAbrirAbonar(cli)}
-                                  className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                                  className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-800 dark:text-emerald-200 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 border-2 border-emerald-400 dark:border-emerald-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                                 >
                                   Abonar
                                 </button>
@@ -486,14 +541,14 @@ export function ClientesPage() {
                               <button
                                 type="button"
                                 onClick={() => handleEditarCliente(cli)}
-                                className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-indigo-600 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                                className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-bold text-indigo-800 dark:text-indigo-200 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 border-2 border-indigo-400 dark:border-indigo-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                               >
                                 Editar
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleEnviarWhatsApp(cli)}
-                                className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-teal-700 dark:text-teal-300 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/50 dark:hover:bg-teal-900/60 border border-teal-200 dark:border-teal-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                                className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-bold text-teal-800 dark:text-teal-200 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 dark:hover:bg-teal-900/60 border-2 border-teal-400 dark:border-teal-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                                 title="Enviar resumen por WhatsApp"
                               >
                                 WhatsApp
@@ -505,7 +560,7 @@ export function ClientesPage() {
                                     eliminarCliente(cli.id)
                                   }
                                 }}
-                                className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-semibold text-red-600 dark:text-red-300 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/60 border border-red-200 dark:border-red-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                                className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-bold text-red-800 dark:text-red-200 bg-red-50 hover:bg-red-100 dark:bg-red-950/60 dark:hover:bg-red-900/60 border-2 border-red-400 dark:border-red-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                                 title="Eliminar cliente"
                               >
                                 Eliminar
@@ -554,15 +609,17 @@ export function ClientesPage() {
       >
         <form id="form-cliente" onSubmit={handleGuardarCliente} className="space-y-4">
           {/* Banner de Ayuda Rápida */}
-          <div className="p-3 bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800/60 rounded-xl flex items-center gap-3 text-xs text-indigo-900 dark:text-indigo-300">
-            <span className="text-xl shrink-0">👤</span>
-            <p className="leading-relaxed">
+          <div className="p-3 bg-indigo-50/70 dark:bg-indigo-950/40 border-2 border-indigo-200 dark:border-indigo-800 rounded-xl flex items-center gap-3 text-xs text-indigo-950 dark:text-indigo-200">
+            <span className="font-bold uppercase text-[10px] tracking-wider px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900 border border-indigo-300 dark:border-indigo-700 shrink-0">
+              Guía
+            </span>
+            <p className="leading-relaxed font-medium">
               Completá el nombre del cliente y su número de WhatsApp para poder fiarle mercadería y enviarle recordatorios de deuda con un solo clic.
             </p>
           </div>
 
           {/* Bloque 1: Identificación y Contacto */}
-          <div className="space-y-3 bg-gray-50/60 dark:bg-gray-800/40 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+          <div className="space-y-3 bg-gray-50/60 dark:bg-gray-800/40 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700">
             <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
               1. Datos Principales
             </p>
@@ -593,7 +650,7 @@ export function ClientesPage() {
           </div>
 
           {/* Bloque 2: Cuenta Corriente y Límite de Fiado */}
-          <div className="space-y-3 bg-gray-50/60 dark:bg-gray-800/40 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+          <div className="space-y-3 bg-gray-50/60 dark:bg-gray-800/40 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700">
             <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
               2. Cuenta Corriente y Fiado
             </p>
@@ -615,10 +672,10 @@ export function ClientesPage() {
                 <button
                   type="button"
                   onClick={() => setFormLimite('0')}
-                  className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg border-2 transition-all cursor-pointer ${
                     formLimite === '0' || formLimite === ''
-                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 shadow-xs'
-                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 shadow-xs'
+                      : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-400'
                   }`}
                 >
                   Sin límite ($0)
@@ -628,10 +685,10 @@ export function ClientesPage() {
                     key={lim}
                     type="button"
                     onClick={() => setFormLimite(lim.toString())}
-                    className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg border-2 transition-all cursor-pointer ${
                       formLimite === lim.toString()
-                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 shadow-xs'
-                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 shadow-xs'
+                        : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-400'
                     }`}
                   >
                     {formatPrecio(lim)}
@@ -650,17 +707,14 @@ export function ClientesPage() {
           </div>
 
           {/* Bloque 3: Datos Extras y Facturación (Acordeón desplegable) */}
-          <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-white dark:bg-gray-800">
+          <div className="border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-white dark:bg-gray-800">
             <button
               type="button"
               onClick={() => setMostrarMasDatos((v) => !v)}
-              className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/60 transition-colors cursor-pointer"
+              className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/60 transition-colors cursor-pointer"
             >
-              <span className="flex items-center gap-1.5">
-                <span>📋</span>
-                <span>{mostrarMasDatos ? 'Ocultar datos fiscales y domicilio' : '¿Necesitás cargar DNI, Email o Dirección? (Opcional)'}</span>
-              </span>
-              <span>{mostrarMasDatos ? '▲' : '▼'}</span>
+              <span>{mostrarMasDatos ? 'Ocultar datos fiscales y domicilio' : '¿Necesitás cargar DNI, Email o Dirección? (Opcional)'}</span>
+              <span className="font-mono text-xs">{mostrarMasDatos ? '▲' : '▼'}</span>
             </button>
 
             {mostrarMasDatos && (
@@ -717,17 +771,26 @@ export function ClientesPage() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {/* Tarjeta de Saldo */}
               <div
-                className={`p-4 rounded-xl border flex flex-col justify-between ${
+                className={`p-4 rounded-xl border-2 flex flex-col justify-between ${
                   clienteFicha.saldo_deudor > 0
-                    ? 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800 text-red-900 dark:text-red-300'
-                    : 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-300'
+                    ? 'bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-800 text-red-900 dark:text-red-300'
+                    : 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-300'
                 }`}
               >
                 <div>
-                  <span className="text-xs font-bold uppercase tracking-wider block">
-                    {clienteFicha.saldo_deudor > 0 ? '🔴 Deuda Pendiente / Fiado' : '🟢 Cuenta al Día'}
-                  </span>
-                  <p className="text-2xl sm:text-3xl font-black mt-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider block">
+                      {clienteFicha.saldo_deudor > 0 ? 'Deuda Pendiente / Fiado' : 'Cuenta al Día'}
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${
+                      clienteFicha.saldo_deudor > 0
+                        ? 'border-red-300 dark:border-red-700 bg-red-100 dark:bg-red-900/60 text-red-800 dark:text-red-300'
+                        : 'border-emerald-300 dark:border-emerald-700 bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300'
+                    }`}>
+                      {clienteFicha.saldo_deudor > 0 ? 'Pendiente' : 'Al Día'}
+                    </span>
+                  </div>
+                  <p className="text-2xl sm:text-3xl font-black mt-2">
                     {formatPrecio(clienteFicha.saldo_deudor)}
                   </p>
                 </div>
@@ -739,7 +802,7 @@ export function ClientesPage() {
               </div>
 
               {/* Tarjeta de Límite de Crédito */}
-              <div className="p-4 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl flex flex-col justify-between">
+              <div className="p-4 bg-gray-50 dark:bg-gray-800/60 border-2 border-gray-200 dark:border-gray-700 rounded-xl flex flex-col justify-between">
                 <div>
                   <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 block">
                     Límite de Fiado
@@ -760,7 +823,7 @@ export function ClientesPage() {
               </div>
 
               {/* Tarjeta de Contacto */}
-              <div className="p-4 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl flex flex-col justify-between">
+              <div className="p-4 bg-gray-50 dark:bg-gray-800/60 border-2 border-gray-200 dark:border-gray-700 rounded-xl flex flex-col justify-between">
                 <div>
                   <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 block">
                     Contacto
@@ -775,22 +838,20 @@ export function ClientesPage() {
               </div>
             </div>
 
-            {/* Acciones directas grandes y táctiles */}
+            {/* Acciones directas grandes y táctiles con bordes nítidos */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={() => handleAbrirAbonar(clienteFicha)}
-                className="py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-bold text-sm shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all"
+                className="py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-bold text-sm shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all border-2 border-emerald-500 hover:border-emerald-400"
               >
-                <span className="text-lg">💵</span>
                 <span>Registrar Pago / Cobrar Deuda</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleEnviarWhatsApp(clienteFicha)}
-                className="py-3 px-4 rounded-xl bg-green-600 hover:bg-green-700 active:scale-98 text-white font-bold text-sm shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all"
+                className="py-3 px-4 rounded-xl bg-emerald-800 hover:bg-emerald-900 active:scale-98 text-white font-bold text-sm shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all border-2 border-emerald-600 hover:border-emerald-500"
               >
-                <span className="text-lg">📲</span>
                 <span>Enviar Resumen por WhatsApp</span>
               </button>
             </div>
@@ -898,11 +959,10 @@ export function ClientesPage() {
                 form="form-abono"
                 variant="primary"
                 loading={guardandoAbono}
-                className="order-1 sm:order-2 sm:w-2/3 py-2.5 text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center justify-center gap-2"
+                className="order-1 sm:order-2 sm:w-2/3 py-2.5 text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center justify-center gap-2 border-2 border-emerald-500"
                 disabled={!montoAbono || parseFloat(montoAbono) <= 0}
               >
-                <span>✓</span>
-                <span>Confirmar y Guardar Cobro</span>
+                Confirmar y Guardar Cobro
               </Button>
             </div>
           ) : undefined
@@ -911,7 +971,7 @@ export function ClientesPage() {
         {clienteAbonar && (
           <form id="form-abono" onSubmit={handleConfirmarAbono} className="space-y-4">
             {/* Tarjeta de Deuda Pendiente */}
-            <div className="p-3.5 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl flex items-center justify-between">
+            <div className="p-3.5 bg-red-50 dark:bg-red-950/40 border-2 border-red-300 dark:border-red-800 rounded-xl flex items-center justify-between">
               <div>
                 <span className="text-xs font-bold text-red-800 dark:text-red-300 block">
                   Deuda actual a cobrar:
@@ -943,7 +1003,7 @@ export function ClientesPage() {
                   onChange={(e) => setMontoAbono(e.target.value)}
                   required
                   autoFocus
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl border-2 border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xl font-black tracking-tight focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder:text-gray-300"
+                  className="w-full pl-9 pr-4 py-2.5 rounded-xl border-2 border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xl font-black tracking-tight focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder:text-gray-300"
                 />
               </div>
 
@@ -952,24 +1012,23 @@ export function ClientesPage() {
                 <button
                   type="button"
                   onClick={() => setMontoAbono(clienteAbonar.saldo_deudor.toString())}
-                  className="w-full py-2.5 px-3 rounded-xl border border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-xs"
+                  className="w-full py-2.5 px-3 rounded-xl border-2 border-indigo-400 dark:border-indigo-600 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-800 dark:text-indigo-200 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-xs"
                 >
-                  <span>⚡</span>
-                  <span>Cobrar la deuda completa ({formatPrecio(clienteAbonar.saldo_deudor)})</span>
+                  Cobrar la deuda completa ({formatPrecio(clienteAbonar.saldo_deudor)})
                 </button>
               )}
 
-              {/* Botones de billetes rápidos */}
+              {/* Botones de billetes rápidos con bordes nítidos */}
               <div className="grid grid-cols-5 gap-1.5 pt-1">
                 {BILLETES_RAPIDOS_ABONO.map((v) => (
                   <button
                     key={v}
                     type="button"
                     onClick={() => setMontoAbono(v.toString())}
-                    className={`py-1.5 text-xs font-bold rounded-xl border transition-all cursor-pointer text-center select-none active:scale-95 ${
+                    className={`py-1.5 text-xs font-bold rounded-xl border-2 transition-all cursor-pointer text-center select-none active:scale-95 ${
                       parseFloat(montoAbono) === v
-                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300'
-                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 shadow-xs'
+                        : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-400'
                     }`}
                   >
                     +{formatPrecio(v)}
@@ -991,15 +1050,19 @@ export function ClientesPage() {
                       key={mp.valor}
                       type="button"
                       onClick={() => setMedioPagoAbono(mp.valor)}
-                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      className={`p-2.5 rounded-xl border-2 text-left transition-all cursor-pointer ${
                         seleccionado
-                          ? 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-200 shadow-xs ring-1 ring-emerald-500/50'
-                          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                          ? 'border-emerald-500 bg-emerald-50/80 dark:bg-emerald-950/50 text-emerald-950 dark:text-emerald-200 shadow-xs ring-1 ring-emerald-500/50'
+                          : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-400'
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold">{mp.label}</span>
-                        {seleccionado && <span className="text-xs font-black">✓</span>}
+                        {seleccionado && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300">
+                            Activo
+                          </span>
+                        )}
                       </div>
                       <span className="text-[11px] text-gray-500 dark:text-gray-400 block mt-0.5">
                         {mp.desc}
@@ -1012,7 +1075,7 @@ export function ClientesPage() {
 
             {/* Checkbox de ingreso en caja si es efectivo */}
             {medioPagoAbono === 'EFECTIVO' && sesionActiva && (
-              <label className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-950 dark:text-amber-200 cursor-pointer">
+              <label className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50/80 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-700/80 text-xs text-amber-950 dark:text-amber-200 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={impactarEnCaja}
@@ -1021,7 +1084,7 @@ export function ClientesPage() {
                 />
                 <div>
                   <span className="font-bold block">
-                    📥 Sumar este efectivo a la caja del turno activo
+                    Sumar este efectivo a la caja del turno activo
                   </span>
                   <span className="text-[11px] opacity-80 block mt-0.5">
                     Recomendado para que la plata física en el cajón coincida con el arqueo de cierre.

@@ -866,14 +866,14 @@ export function CajaPage() {
         <div className="space-y-4">
           {/* Selector de modo si es Dueño o si no se exige arqueo ciego obligatorio */}
           {(esDueno || !arqueoCiegoObligatorio) && (
-            <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+            <div className="grid grid-cols-2 gap-2 p-1.5 bg-gray-100 dark:bg-gray-800 rounded-xl border-2 border-gray-200 dark:border-gray-700">
               <button
                 type="button"
                 onClick={() => setModoCiego(false)}
                 className={`py-2 px-3 text-xs sm:text-sm font-bold rounded-lg transition-all cursor-pointer text-center ${
                   !modoCiego
-                    ? 'bg-white dark:bg-gray-700 text-indigo-700 dark:text-indigo-300 shadow-sm border border-gray-200 dark:border-gray-600'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                    ? 'bg-white dark:bg-gray-700 text-indigo-700 dark:text-indigo-300 shadow-sm border-2 border-indigo-500'
+                    : 'border-2 border-transparent text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
                 }`}
               >
                 Arqueo Guiado (Ver cálculos)
@@ -883,8 +883,8 @@ export function CajaPage() {
                 onClick={() => setModoCiego(true)}
                 className={`py-2 px-3 text-xs sm:text-sm font-bold rounded-lg transition-all cursor-pointer text-center ${
                   modoCiego
-                    ? 'bg-white dark:bg-gray-700 text-indigo-700 dark:text-indigo-300 shadow-sm border border-gray-200 dark:border-gray-600'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                    ? 'bg-white dark:bg-gray-700 text-indigo-700 dark:text-indigo-300 shadow-sm border-2 border-indigo-500'
+                    : 'border-2 border-transparent text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
                 }`}
               >
                 Arqueo Ciego (Solo conteo físico)
@@ -894,13 +894,13 @@ export function CajaPage() {
 
           {modoCiegoEfectivo ? (
             /* Banner explicativo de Arqueo Ciego */
-            <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/80 text-amber-900 dark:text-amber-300 flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 shrink-0 text-lg">
-                🔒
-              </div>
+            <div className="p-4 rounded-xl bg-amber-50/80 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-700 text-amber-950 dark:text-amber-200 flex flex-col sm:flex-row items-start gap-3">
+              <span className="font-bold uppercase text-[10px] tracking-wider px-2 py-0.5 rounded border border-amber-400 dark:border-amber-600 bg-amber-100 dark:bg-amber-900/60 shrink-0">
+                Auditoría Ciega
+              </span>
               <div className="text-xs sm:text-sm">
-                <p className="font-bold text-sm mb-0.5">Control de Auditoría a Ciegas</p>
-                <p className="text-amber-800/90 dark:text-amber-300/80 leading-relaxed">
+                <p className="font-bold text-sm mb-0.5">Control de Cierre de Caja</p>
+                <p className="opacity-90 leading-relaxed">
                   Por seguridad y orden del comercio, contá todo el dinero en el cajón e ingresá el valor exacto. El monto quedará guardado para la revisión administrativa del Dueño.
                 </p>
               </div>
@@ -909,25 +909,25 @@ export function CajaPage() {
             /* Resumen guiado con tarjetas claras de dinero */
             <div className="space-y-3">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                <div className="p-3 bg-gray-50 dark:bg-gray-800/70 border border-gray-200 dark:border-gray-700 rounded-xl">
+                <div className="p-3 bg-gray-50 dark:bg-gray-800/70 border-2 border-gray-200 dark:border-gray-700 rounded-xl">
                   <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 block">Fondo inicial:</span>
                   <span className="text-sm font-black text-gray-900 dark:text-gray-100">
                     {formatPrecio(sesionActiva?.monto_inicial || 0)}
                   </span>
                 </div>
-                <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/60 rounded-xl">
+                <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/20 border-2 border-emerald-200 dark:border-emerald-800/60 rounded-xl">
                   <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 block">(+) Ventas efectivo:</span>
                   <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">
                     +{formatPrecio(resumenActivo?.total_efectivo || 0)}
                   </span>
                 </div>
-                <div className="p-3 bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/60 rounded-xl">
+                <div className="p-3 bg-blue-50/60 dark:bg-blue-950/20 border-2 border-blue-200 dark:border-blue-800/60 rounded-xl">
                   <span className="text-[11px] font-medium text-blue-700 dark:text-blue-400 block">(+) Ingresos extra:</span>
                   <span className="text-sm font-black text-blue-600 dark:text-blue-400">
                     +{(resumenActivo?.total_ingresos_extra || 0) > 0 ? formatPrecio(resumenActivo?.total_ingresos_extra || 0) : '$0'}
                   </span>
                 </div>
-                <div className="p-3 bg-red-50/60 dark:bg-red-950/20 border border-red-200 dark:border-red-800/60 rounded-xl">
+                <div className="p-3 bg-red-50/60 dark:bg-red-950/20 border-2 border-red-200 dark:border-red-800/60 rounded-xl">
                   <span className="text-[11px] font-medium text-red-700 dark:text-red-400 block">(-) Gastos / Salidas:</span>
                   <span className="text-sm font-black text-red-600 dark:text-red-400">
                     -{(resumenActivo?.total_egresos || 0) > 0 ? formatPrecio(resumenActivo?.total_egresos || 0) : '$0'}
@@ -936,7 +936,7 @@ export function CajaPage() {
               </div>
 
               {/* Total esperado destacado */}
-              <div className="p-3.5 bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950/40 dark:to-blue-950/40 border border-indigo-200 dark:border-indigo-800/60 rounded-xl flex items-center justify-between">
+              <div className="p-3.5 bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950/40 dark:to-blue-950/40 border-2 border-indigo-200 dark:border-indigo-800/60 rounded-xl flex items-center justify-between">
                 <div>
                   <span className="text-xs font-bold uppercase tracking-wider text-indigo-800 dark:text-indigo-300 block">
                     Total esperado en cajón según sistema:
@@ -953,7 +953,7 @@ export function CajaPage() {
           )}
 
           {/* Bloque de Conteo Físico */}
-          <div className="space-y-3 bg-gray-50/60 dark:bg-gray-800/40 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+          <div className="space-y-3 bg-gray-50/60 dark:bg-gray-800/40 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
               <div>
                 <label className="block text-sm font-black text-gray-900 dark:text-gray-100">
@@ -964,14 +964,13 @@ export function CajaPage() {
                 </p>
               </div>
 
-              {/* Toggle de calculadora */}
+              {/* Toggle de calculadora con bordes visibles y sin emoji */}
               <button
                 type="button"
                 onClick={() => setMostrarDesgloseBilletes(!mostrarDesgloseBilletes)}
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 hover:underline cursor-pointer self-start sm:self-auto py-1"
+                className="inline-flex items-center px-3 py-1.5 rounded-lg border-2 border-indigo-300 dark:border-indigo-600 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-xs font-bold text-indigo-700 dark:text-indigo-300 transition-all cursor-pointer self-start sm:self-auto shadow-2xs"
               >
-                <span>🧮</span>
-                <span>{mostrarDesgloseBilletes ? 'Ocultar contador' : 'Contar billete por billete'}</span>
+                <span>{mostrarDesgloseBilletes ? 'Ocultar calculadora' : 'Contar billete por billete'}</span>
               </button>
             </div>
 
@@ -989,13 +988,13 @@ export function CajaPage() {
                 onChange={(e) => setEfectivoContado(e.target.value)}
                 required
                 autoFocus
-                className="w-full pl-9 pr-4 py-3 rounded-xl border-2 border-indigo-200 dark:border-indigo-800/80 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-2xl font-black tracking-tight focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder:text-gray-300"
+                className="w-full pl-9 pr-4 py-3 rounded-xl border-2 border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-2xl font-black tracking-tight focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder:text-gray-300"
               />
             </div>
 
             {/* Desglosador interactivo táctil de billetes */}
             {mostrarDesgloseBilletes && (
-              <div className="p-4 bg-white dark:bg-gray-800/90 rounded-xl border border-indigo-200 dark:border-indigo-800/70 space-y-3 shadow-xs">
+              <div className="p-4 bg-white dark:bg-gray-800/90 rounded-xl border-2 border-indigo-200 dark:border-indigo-800/70 space-y-3 shadow-xs">
                 <div className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-gray-700">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-300">
@@ -1008,7 +1007,7 @@ export function CajaPage() {
                   <button
                     type="button"
                     onClick={handleLimpiarBilletes}
-                    className="text-xs text-red-600 dark:text-red-400 hover:underline font-semibold cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/40 text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/60 cursor-pointer transition-all"
                   >
                     Poner en cero
                   </button>
@@ -1021,10 +1020,10 @@ export function CajaPage() {
                     return (
                       <div
                         key={den}
-                        className={`p-2.5 rounded-xl border transition-all text-center flex flex-col justify-between ${
+                        className={`p-2.5 rounded-xl border-2 transition-all text-center flex flex-col justify-between ${
                           cant > 0
-                            ? 'bg-indigo-50/60 dark:bg-indigo-950/40 border-indigo-300 dark:border-indigo-700'
-                            : 'bg-gray-50/80 dark:bg-gray-900/60 border-gray-200 dark:border-gray-700'
+                            ? 'bg-indigo-50/60 dark:bg-indigo-950/40 border-indigo-400 dark:border-indigo-600 shadow-2xs'
+                            : 'bg-gray-50/80 dark:bg-gray-900/60 border-gray-300 dark:border-gray-700'
                         }`}
                       >
                         <div className="flex items-center justify-between mb-1.5">
@@ -1038,13 +1037,14 @@ export function CajaPage() {
                           )}
                         </div>
 
-                        {/* Stepper +/- */}
+                        {/* Stepper +/- con bordes nítidos de alto contraste */}
                         <div className="flex items-center justify-center gap-1.5 my-1">
                           <button
                             type="button"
                             onClick={() => handleIncrementarBillete(den, -1)}
                             disabled={cant <= 0}
-                            className="w-7 h-7 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-30 text-gray-800 dark:text-gray-200 font-black text-sm flex items-center justify-center cursor-pointer transition-colors"
+                            className="w-8 h-8 rounded-lg border-2 border-gray-400 dark:border-gray-500 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-30 text-gray-900 dark:text-gray-100 font-black text-base flex items-center justify-center cursor-pointer transition-colors shadow-2xs select-none"
+                            aria-label={`Restar billete de $${den}`}
                           >
                             -
                           </button>
@@ -1054,12 +1054,13 @@ export function CajaPage() {
                             placeholder="0"
                             value={cant || ''}
                             onChange={(e) => handleCambioBillete(den, parseInt(e.target.value) || 0)}
-                            className="w-12 text-center py-1 text-xs font-bold rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                            className="w-14 text-center py-1 text-xs font-black rounded-lg border-2 border-gray-400 dark:border-gray-500 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:border-indigo-500 outline-none"
                           />
                           <button
                             type="button"
                             onClick={() => handleIncrementarBillete(den, 1)}
-                            className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-900/60 hover:bg-indigo-200 dark:hover:bg-indigo-800 text-indigo-700 dark:text-indigo-300 font-black text-sm flex items-center justify-center cursor-pointer transition-colors"
+                            className="w-8 h-8 rounded-lg border-2 border-indigo-400 dark:border-indigo-500 bg-indigo-100 dark:bg-indigo-900/70 hover:bg-indigo-200 dark:hover:bg-indigo-800 text-indigo-800 dark:text-indigo-200 font-black text-base flex items-center justify-center cursor-pointer transition-colors shadow-2xs select-none"
+                            aria-label={`Sumar billete de $${den}`}
                           >
                             +
                           </button>
@@ -1095,20 +1096,20 @@ export function CajaPage() {
           {/* Tarjeta de Conciliación de Diferencia (Visible en Arqueo Guiado) */}
           {!modoCiego && efectivoContado !== '' && (
             <div
-              className={`p-4 rounded-xl text-center border transition-all ${
+              className={`p-4 rounded-xl text-center border-2 transition-all ${
                 diferenciaArqueo === 0
-                  ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-700 text-emerald-900 dark:text-emerald-300'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-400 dark:border-emerald-600 text-emerald-900 dark:text-emerald-300'
                   : diferenciaArqueo > 0
-                  ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-700 text-blue-900 dark:text-blue-300'
-                  : 'bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-700 text-red-900 dark:text-red-300'
+                  ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-400 dark:border-blue-600 text-blue-900 dark:text-blue-300'
+                  : 'bg-red-50 dark:bg-red-950/30 border-red-400 dark:border-red-600 text-red-900 dark:text-red-300'
               }`}
             >
-              <div className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold mb-1 uppercase tracking-wider bg-white/70 dark:bg-black/20">
+              <div className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold mb-1 uppercase tracking-wider bg-white/70 dark:bg-black/20 border border-current">
                 {diferenciaArqueo === 0
-                  ? '✅ Caja Cuadrada Perfecta'
+                  ? 'Caja Exacta (Sin Diferencias)'
                   : diferenciaArqueo > 0
-                  ? '🔵 Sobrante de Caja'
-                  : '⚠️ Faltante de Caja'}
+                  ? 'Sobrante de Caja'
+                  : 'Faltante de Caja'}
               </div>
               <p className="text-2xl sm:text-3xl font-black mt-1">
                 {diferenciaArqueo === 0
@@ -1172,19 +1173,21 @@ export function CajaPage() {
                 setTipoMovimiento('EGRESO')
                 setMotivoMovimiento('PROVEEDOR')
               }}
-              className={`p-3 rounded-xl border-2 transition-all cursor-pointer text-left flex flex-col justify-between ${
+              className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer text-left flex flex-col justify-between ${
                 tipoMovimiento === 'EGRESO'
-                  ? 'bg-red-50 dark:bg-red-950/40 border-red-500 text-red-900 dark:text-red-200 shadow-xs'
-                  : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                  ? 'bg-red-50 dark:bg-red-950/50 border-red-500 text-red-950 dark:text-red-200 shadow-xs'
+                  : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
               }`}
             >
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold uppercase tracking-wider text-red-600 dark:text-red-400">
                   Salida de Dinero
                 </span>
-                <span className="text-lg">🔴</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-red-300 dark:border-red-700 bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300">
+                  Egreso
+                </span>
               </div>
-              <p className="text-sm font-black mt-1">Gasto o Retiro</p>
+              <p className="text-sm font-black mt-1.5">Gasto o Retiro</p>
               <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
                 Resta plata física del cajón
               </span>
@@ -1196,19 +1199,21 @@ export function CajaPage() {
                 setTipoMovimiento('INGRESO')
                 setMotivoMovimiento('REPOSICION_CAMBIO')
               }}
-              className={`p-3 rounded-xl border-2 transition-all cursor-pointer text-left flex flex-col justify-between ${
+              className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer text-left flex flex-col justify-between ${
                 tipoMovimiento === 'INGRESO'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-900 dark:text-emerald-200 shadow-xs'
-                  : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-500 text-emerald-950 dark:text-emerald-200 shadow-xs'
+                  : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
               }`}
             >
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
                   Entrada de Dinero
                 </span>
-                <span className="text-lg">🟢</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-emerald-300 dark:border-emerald-700 bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
+                  Ingreso
+                </span>
               </div>
-              <p className="text-sm font-black mt-1">Cambio o Aporte Extra</p>
+              <p className="text-sm font-black mt-1.5">Cambio o Aporte Extra</p>
               <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
                 Suma plata física al cajón
               </span>
@@ -1228,19 +1233,23 @@ export function CajaPage() {
                     key={mot.valor}
                     type="button"
                     onClick={() => setMotivoMovimiento(mot.valor)}
-                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                    className={`p-2.5 rounded-xl border-2 text-left transition-all cursor-pointer ${
                       seleccionado
                         ? tipoMovimiento === 'EGRESO'
-                          ? 'border-red-500 bg-red-50/70 dark:bg-red-950/40 text-red-950 dark:text-red-200 shadow-xs ring-1 ring-red-500/50'
-                          : 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-200 shadow-xs ring-1 ring-emerald-500/50'
-                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                          ? 'border-red-500 bg-red-50/80 dark:bg-red-950/50 text-red-950 dark:text-red-200 shadow-xs ring-1 ring-red-500/50'
+                          : 'border-emerald-500 bg-emerald-50/80 dark:bg-emerald-950/50 text-emerald-950 dark:text-emerald-200 shadow-xs ring-1 ring-emerald-500/50'
+                        : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-400'
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold">{mot.label}</span>
                       {seleccionado && (
-                        <span className="text-xs font-black">
-                          {tipoMovimiento === 'EGRESO' ? '✓' : '✓'}
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                          tipoMovimiento === 'EGRESO'
+                            ? 'bg-red-100 dark:bg-red-900 border-red-300 dark:border-red-700 text-red-800 dark:text-red-300'
+                            : 'bg-emerald-100 dark:bg-emerald-900 border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300'
+                        }`}>
+                          Activo
                         </span>
                       )}
                     </div>
@@ -1271,21 +1280,21 @@ export function CajaPage() {
                 onChange={(e) => setMontoMovimiento(e.target.value)}
                 required
                 autoFocus
-                className="w-full pl-9 pr-4 py-2.5 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xl font-black tracking-tight focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder:text-gray-300"
+                className="w-full pl-9 pr-4 py-2.5 rounded-xl border-2 border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xl font-black tracking-tight focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder:text-gray-300"
               />
             </div>
 
-            {/* Billetes rápidos estilo touch */}
+            {/* Billetes rápidos estilo touch con bordes nítidos */}
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 pt-1 w-full">
               {MONTOS_RAPIDOS_MOVIMIENTO.map((m) => (
                 <button
                   key={m}
                   type="button"
                   onClick={() => setMontoMovimiento(m.toString())}
-                  className={`w-full py-2 px-1 text-xs font-bold rounded-xl border transition-all cursor-pointer text-center select-none active:scale-95 ${
+                  className={`w-full py-2 px-1 text-xs font-bold rounded-xl border-2 transition-all cursor-pointer text-center select-none active:scale-95 ${
                     parseFloat(montoMovimiento) === m
-                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 shadow-xs ring-1 ring-indigo-500/40'
-                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/60'
+                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 shadow-xs ring-1 ring-indigo-500/40'
+                      : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-400'
                   }`}
                 >
                   {formatPrecio(m)}
@@ -1337,8 +1346,7 @@ export function CajaPage() {
                 onClick={() => handleImprimirHistorico(sesionDetalle)}
                 className="order-1 sm:order-2 sm:w-2/3 py-2.5 text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm flex items-center justify-center gap-2"
               >
-                <span>🖨️</span>
-                <span>Imprimir Ticket de Cierre</span>
+                Imprimir Ticket de Cierre
               </Button>
             </div>
           ) : undefined
@@ -1372,21 +1380,21 @@ export function CajaPage() {
 
             {/* Tarjetas KPI de Balance */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-              <div className="p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl">
+              <div className="p-3 bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl">
                 <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 block">Fondo inicial:</span>
                 <span className="text-base font-black text-gray-900 dark:text-gray-100">
                   {formatPrecio(sesionDetalle.monto_inicial)}
                 </span>
               </div>
               {esDueno && (
-                <div className="p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl">
+                <div className="p-3 bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl">
                   <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 block">Esperado según sistema:</span>
                   <span className="text-base font-black text-indigo-600 dark:text-indigo-400">
                     {formatPrecio(sesionDetalle.monto_final_sistema || 0)}
                   </span>
                 </div>
               )}
-              <div className="p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl">
+              <div className="p-3 bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl">
                 <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 block">Contado físicamente:</span>
                 <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
                   {formatPrecio(sesionDetalle.monto_final_declarado || 0)}
@@ -1397,21 +1405,21 @@ export function CajaPage() {
             {/* Resultado Final de la Conciliación */}
             {esDueno ? (
               <div
-                className={`p-4 rounded-xl text-center border ${
+                className={`p-4 rounded-xl text-center border-2 ${
                   (sesionDetalle.diferencia ?? 0) === 0
-                    ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-700 text-emerald-900 dark:text-emerald-300'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-400 dark:border-emerald-600 text-emerald-900 dark:text-emerald-300'
                     : (sesionDetalle.diferencia ?? 0) > 0
-                    ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-700 text-blue-900 dark:text-blue-300'
-                    : 'bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-700 text-red-900 dark:text-red-300'
+                    ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-400 dark:border-blue-600 text-blue-900 dark:text-blue-300'
+                    : 'bg-red-50 dark:bg-red-950/30 border-red-400 dark:border-red-600 text-red-900 dark:text-red-300'
                 }`}
               >
-                <span className="text-xs font-bold uppercase tracking-wider block">
+                <div className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold mb-1 uppercase tracking-wider bg-white/70 dark:bg-black/20 border border-current">
                   {(sesionDetalle.diferencia ?? 0) === 0
-                    ? '✅ Caja Cuadrada / Exacta'
+                    ? 'Caja Exacta (Sin Diferencias)'
                     : (sesionDetalle.diferencia ?? 0) > 0
-                    ? '🔵 Sobrante de Caja'
-                    : '⚠️ Faltante de Caja'}
-                </span>
+                    ? 'Sobrante de Caja'
+                    : 'Faltante de Caja'}
+                </div>
                 <p className="text-2xl font-black mt-1">
                   {(sesionDetalle.diferencia ?? 0) === 0
                     ? '$0'

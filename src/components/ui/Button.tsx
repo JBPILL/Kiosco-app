@@ -9,11 +9,11 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantStyles = {
-  primary: 'bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800',
-  secondary: 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 active:bg-gray-400 dark:active:bg-gray-500',
-  danger: 'bg-red-600 text-white hover:bg-red-700 active:bg-red-800',
-  success: 'bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800',
-  ghost: 'bg-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700',
+  primary: 'border-2 border-indigo-500 hover:border-indigo-600 dark:border-indigo-400 bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800',
+  secondary: 'border-2 border-gray-300 dark:border-gray-500 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 hover:border-gray-400 dark:hover:border-gray-400 active:bg-gray-300 dark:active:bg-gray-600',
+  danger: 'border-2 border-red-500 hover:border-red-600 dark:border-red-400 bg-red-600 text-white hover:bg-red-700 active:bg-red-800',
+  success: 'border-2 border-emerald-500 hover:border-emerald-600 dark:border-emerald-400 bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800',
+  ghost: 'border-2 border-transparent hover:border-gray-300 dark:hover:border-gray-600 bg-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700',
 }
 
 const sizeStyles = {
