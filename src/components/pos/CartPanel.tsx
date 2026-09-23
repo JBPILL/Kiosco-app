@@ -479,25 +479,27 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
         )}
       </div>
 
-      {/* Encabezado de columnas para alinear y centrar nombres, cantidades y montos */}
-      {items.length > 0 && (
-        <div className="flex items-center gap-2 px-4 py-1.5 border-b border-gray-100 dark:border-gray-800 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider select-none flex-shrink-0 bg-gray-50/60 dark:bg-gray-900/40">
-          <span className="flex-1 min-w-0">Producto</span>
-          <span className="shrink-0 text-center w-[84px]">Cantidad</span>
-          <span className="shrink-0 text-right w-18 sm:w-20">Monto</span>
-          <span className="shrink-0 w-7"></span>
-        </div>
-      )}
-
       {/* Items */}
-      <div className="flex-1 overflow-y-auto px-4 py-2">
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {/* Encabezado de columnas rígido y fijado arriba (Sticky) */}
+        {items.length > 0 && (
+          <div className="sticky top-0 z-10 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-xs border-b border-gray-200 dark:border-gray-700 px-2 py-1.5 shadow-2xs">
+            <div className="grid grid-cols-[1fr_96px_76px_28px] items-center gap-2 px-2.5 text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider select-none">
+              <span className="truncate">Producto</span>
+              <span className="text-center">Cantidad</span>
+              <span className="text-right">Monto</span>
+              <span></span>
+            </div>
+          </div>
+        )}
+
         {items.length === 0 ? (
-          <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+          <div className="text-center py-12 text-gray-400 dark:text-gray-500 px-4">
             <p className="text-sm font-medium">Ticket vacío</p>
             <p className="text-xs mt-1">Seleccioná o buscá productos para comenzar</p>
           </div>
         ) : (
-          <div className="space-y-1">
+          <div className="p-2 space-y-1">
             {items.map((item, idx) => (
               <div
                 key={item.producto.id}
@@ -505,10 +507,10 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                 tabIndex={0}
                 role="row"
                 onKeyDown={(e) => handleItemKeyDown(e, idx, item.producto.id, item.cantidad)}
-                className="group flex items-center gap-2 py-2 px-2.5 rounded-xl border border-transparent hover:border-gray-200 dark:hover:border-gray-700/80 hover:bg-gray-50/60 dark:hover:bg-gray-750/50 focus:outline-hidden focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-indigo-50/90 dark:focus:bg-gray-700/80 transition-all cursor-pointer select-none"
+                className="group grid grid-cols-[1fr_96px_76px_28px] items-center gap-2 px-2.5 py-2 rounded-xl border border-gray-100/60 dark:border-gray-800/80 hover:border-gray-200 dark:hover:border-gray-700/80 hover:bg-gray-50/60 dark:hover:bg-gray-750/50 focus:outline-hidden focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-indigo-50/90 dark:focus:bg-gray-700/80 transition-all cursor-pointer select-none"
               >
-                {/* 1. Nombre & Detalle (Izquierda) */}
-                <div className="flex-1 min-w-0 flex flex-col justify-center">
+                {/* 1. Columna Producto (1fr) */}
+                <div className="min-w-0 flex flex-col justify-center">
                   <p
                     className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate group-focus:text-indigo-900 dark:group-focus:text-white"
                     title={item.producto.descripcion}
@@ -536,7 +538,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                   {(item.promo_nombre || item.es_devolucion_envase || (item.producto.es_retornable && !item.es_devolucion_envase)) && (
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                       {item.promo_nombre && (
-                        <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60">
+                        <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60 truncate">
                           {item.promo_nombre}
                         </span>
                       )}
@@ -552,7 +554,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                             e.stopPropagation()
                             toggleEnvaseItem(item.producto.id)
                           }}
-                          className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-all cursor-pointer select-none ${
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-all cursor-pointer select-none truncate ${
                             item.sin_envase
                               ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300'
                               : 'bg-gray-100 dark:bg-gray-700/60 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
@@ -568,8 +570,8 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                   )}
                 </div>
 
-                {/* 2. Controles de Cantidad (Centro) - Perfectamente centrados */}
-                <div className="flex items-center justify-center gap-1 shrink-0 w-[84px]">
+                {/* 2. Columna Cantidad */}
+                <div className="flex items-center justify-center gap-1 min-w-0">
                   <button
                     ref={(el) => { minusBtnRefs.current[idx] = el }}
                     type="button"
@@ -579,20 +581,16 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                       handleRestarCantidad(item.producto.id, item.cantidad, idx, 'minus')
                     }}
                     onKeyDown={(e) => handleMinusKeyDown(e, idx, item.producto.id, item.cantidad)}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-300 font-bold text-sm transition-transform focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-indigo-100 dark:focus:bg-gray-600 cursor-pointer select-none"
+                    className="w-7 h-7 shrink-0 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-300 font-bold text-sm transition-transform focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-indigo-100 dark:focus:bg-gray-600 cursor-pointer select-none"
                     aria-label="Restar uno"
                     title="Restar [Enter o -]"
                   >
                     −
                   </button>
                   <span
-                    className={`text-center font-bold text-gray-900 dark:text-gray-100 select-none ${
-                      item.cantidad % 1 !== 0 || item.producto.es_pesable
-                        ? 'text-xs px-0.5 font-mono min-w-[2.5rem]'
-                        : 'w-6 text-sm'
-                    }`}
+                    className="w-8 shrink-0 text-center font-bold text-xs sm:text-sm font-mono text-gray-900 dark:text-gray-100 select-none truncate"
                   >
-                    {item.cantidad % 1 === 0 ? item.cantidad : `${item.cantidad} kg`}
+                    {item.cantidad % 1 === 0 ? item.cantidad : Number(item.cantidad.toFixed(2))}
                   </span>
                   <button
                     ref={(el) => { plusBtnRefs.current[idx] = el }}
@@ -604,7 +602,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                       handleSumarCantidad(item.producto.id, item.cantidad)
                     }}
                     onKeyDown={(e) => handlePlusKeyDown(e, idx, item.producto.id, item.cantidad)}
-                    className={`w-7 h-7 flex items-center justify-center rounded-lg font-bold text-sm transition-transform select-none ${
+                    className={`w-7 h-7 shrink-0 flex items-center justify-center rounded-lg font-bold text-sm transition-transform select-none ${
                       item.producto.stock_actual > 0 && item.cantidad >= item.producto.stock_actual
                         ? 'opacity-30 cursor-not-allowed bg-gray-100 dark:bg-gray-800 text-gray-400'
                         : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-300 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-indigo-100 dark:focus:bg-gray-600'
@@ -620,34 +618,36 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                   </button>
                 </div>
 
-                {/* 3. Subtotal / Monto (Derecha) - Centrado verticalmente y alineado con precisión */}
-                <div className="w-18 sm:w-20 text-right shrink-0 flex flex-col items-end justify-center">
-                  <span className={`text-sm font-bold tabular-nums ${item.es_devolucion_envase || item.subtotal < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-gray-100 group-focus:text-indigo-900 dark:group-focus:text-white'}`}>
+                {/* 3. Columna Monto */}
+                <div className="text-right flex flex-col justify-center min-w-0">
+                  <span className={`text-sm font-bold tabular-nums truncate ${item.es_devolucion_envase || item.subtotal < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-gray-100 group-focus:text-indigo-900 dark:group-focus:text-white'}`}>
                     {item.subtotal < 0 ? `-${formatPrecio(Math.abs(item.subtotal))}` : formatPrecio(item.subtotal)}
                   </span>
                   {item.descuento_promo !== undefined && item.descuento_promo > 0 && (
-                    <span className="text-[10px] text-gray-400 line-through">
+                    <span className="text-[10px] text-gray-400 line-through truncate">
                       {formatPrecio(Math.round(item.cantidad * item.producto.precio_venta))}
                     </span>
                   )}
                 </div>
 
-                {/* 4. Eliminar - Centrado verticalmente */}
-                <button
-                  ref={(el) => { deleteBtnRefs.current[idx] = el }}
-                  type="button"
-                  tabIndex={0}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleQuitarItem(item.producto.id, idx)
-                  }}
-                  onKeyDown={(e) => handleDeleteKeyDown(e, idx, item.producto.id)}
-                  className="w-7 h-7 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 active:scale-90 text-sm shrink-0 transition-transform focus:outline-hidden focus:ring-2 focus:ring-red-500 dark:focus:ring-red-400 focus:bg-red-50 dark:focus:bg-red-950/40 rounded-lg cursor-pointer select-none"
-                  aria-label="Eliminar producto"
-                  title="Eliminar producto [Enter o Supr]"
-                >
-                  ✕
-                </button>
+                {/* 4. Columna Borrar */}
+                <div className="flex items-center justify-center min-w-0">
+                  <button
+                    ref={(el) => { deleteBtnRefs.current[idx] = el }}
+                    type="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleQuitarItem(item.producto.id, idx)
+                    }}
+                    onKeyDown={(e) => handleDeleteKeyDown(e, idx, item.producto.id)}
+                    className="w-7 h-7 shrink-0 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 active:scale-90 text-sm transition-transform focus:outline-hidden focus:ring-2 focus:ring-red-500 dark:focus:ring-red-400 focus:bg-red-50 dark:focus:bg-red-950/40 rounded-lg cursor-pointer select-none"
+                    aria-label="Eliminar producto"
+                    title="Eliminar producto [Enter o Supr]"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
             ))}
           </div>
