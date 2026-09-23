@@ -17,6 +17,7 @@ import { ClientesPage } from './pages/ClientesPage'
 import { SuperAdminPage } from './pages/SuperAdminPage'
 import { SoportePage } from './pages/SoportePage'
 import { usePwaStore } from './stores/pwaStore'
+import { SingleInstanceGuard } from './components/ui/SingleInstanceGuard'
 
 interface RutaProtegidaProps {
   rolesPermitidos: ('DUEÑO' | 'CAJERO' | 'VISOR')[]
@@ -69,137 +70,139 @@ function App() {
   }
 
   return (
-    <BrowserRouter>
-      <AppToaster />
-      {!usuario ? (
-        <Routes>
-          <Route path="*" element={<LoginScreen />} />
-        </Routes>
-      ) : (
-        <Routes>
-          <Route element={<MainLayout />}>
-            {/* Rutas compartidas (Dueño y Cajero) */}
-            <Route
-              path="/"
-              element={
-                usuario.es_superadmin && !usuario.kiosco_id
-                  ? <Navigate to="/admin" replace />
-                  : usuario.rol === 'VISOR'
-                  ? <Navigate to="/reportes" replace />
-                  : <POSPage />
-              }
-            />
-            <Route
-              path="/caja"
-              element={
-                usuario.es_superadmin && !usuario.kiosco_id
-                  ? <Navigate to="/admin" replace />
-                  : usuario.rol === 'VISOR'
-                  ? <Navigate to="/reportes" replace />
-                  : <CajaPage />
-              }
-            />
-            <Route
-              path="/clientes"
-              element={
-                usuario.es_superadmin && !usuario.kiosco_id
-                  ? <Navigate to="/admin" replace />
-                  : usuario.rol === 'VISOR'
-                  ? <Navigate to="/reportes" replace />
-                  : <ClientesPage />
-              }
-            />
-
-            {/* Rutas exclusivas para Dueño */}
-            <Route
-              path="/catalogo"
-              element={
-                <RutaProtegida rolesPermitidos={['DUEÑO']}>
-                  <CatalogoPage />
-                </RutaProtegida>
-              }
-            />
-            <Route
-              path="/promociones"
-              element={
-                <RutaProtegida rolesPermitidos={['DUEÑO']}>
-                  <PromocionesPage />
-                </RutaProtegida>
-              }
-            />
-            <Route
-              path="/stock"
-              element={
-                <RutaProtegida rolesPermitidos={['DUEÑO']}>
-                  <StockPage />
-                </RutaProtegida>
-              }
-            />
-            <Route
-              path="/proveedores"
-              element={
-                <RutaProtegida rolesPermitidos={['DUEÑO']}>
-                  <ProveedoresPage />
-                </RutaProtegida>
-              }
-            />
-            <Route
-              path="/config"
-              element={
-                <RutaProtegida rolesPermitidos={['DUEÑO']}>
-                  <ConfigPage />
-                </RutaProtegida>
-              }
-            />
-
-            {/* Rutas para Dueño y Visor */}
-            <Route
-              path="/reportes"
-              element={
-                <RutaProtegida rolesPermitidos={['DUEÑO', 'VISOR']}>
-                  <ReportesPage />
-                </RutaProtegida>
-              }
-            />
-
-            {/* Ruta de Soporte y Ayuda para todos los usuarios */}
-            <Route
-              path="/soporte"
-              element={
-                <RutaProtegida rolesPermitidos={['DUEÑO', 'CAJERO', 'VISOR']}>
-                  <SoportePage />
-                </RutaProtegida>
-              }
-            />
-
-            {/* Ruta exclusiva para Super-Admin */}
-            <Route
-              path="/admin"
-              element={
-                <RutaSuperAdmin>
-                  <SuperAdminPage />
-                </RutaSuperAdmin>
-              }
-            />
-          </Route>
-          <Route
-            path="*"
-            element={
-              <Navigate
-                to={
+    <SingleInstanceGuard>
+      <BrowserRouter>
+        <AppToaster />
+        {!usuario ? (
+          <Routes>
+            <Route path="*" element={<LoginScreen />} />
+          </Routes>
+        ) : (
+          <Routes>
+            <Route element={<MainLayout />}>
+              {/* Rutas compartidas (Dueño y Cajero) */}
+              <Route
+                path="/"
+                element={
                   usuario.es_superadmin && !usuario.kiosco_id
-                    ? "/admin"
+                    ? <Navigate to="/admin" replace />
                     : usuario.rol === 'VISOR'
-                    ? "/reportes"
-                    : "/"
+                    ? <Navigate to="/reportes" replace />
+                    : <POSPage />
                 }
-                replace
               />
-            }
-          />
-        </Routes>
-      )}
-    </BrowserRouter>
+              <Route
+                path="/caja"
+                element={
+                  usuario.es_superadmin && !usuario.kiosco_id
+                    ? <Navigate to="/admin" replace />
+                    : usuario.rol === 'VISOR'
+                    ? <Navigate to="/reportes" replace />
+                    : <CajaPage />
+                }
+              />
+              <Route
+                path="/clientes"
+                element={
+                  usuario.es_superadmin && !usuario.kiosco_id
+                    ? <Navigate to="/admin" replace />
+                    : usuario.rol === 'VISOR'
+                    ? <Navigate to="/reportes" replace />
+                    : <ClientesPage />
+                }
+              />
+
+              {/* Rutas exclusivas para Dueño */}
+              <Route
+                path="/catalogo"
+                element={
+                  <RutaProtegida rolesPermitidos={['DUEÑO']}>
+                    <CatalogoPage />
+                  </RutaProtegida>
+                }
+              />
+              <Route
+                path="/promociones"
+                element={
+                  <RutaProtegida rolesPermitidos={['DUEÑO']}>
+                    <PromocionesPage />
+                  </RutaProtegida>
+                }
+              />
+              <Route
+                path="/stock"
+                element={
+                  <RutaProtegida rolesPermitidos={['DUEÑO']}>
+                    <StockPage />
+                  </RutaProtegida>
+                }
+              />
+              <Route
+                path="/proveedores"
+                element={
+                  <RutaProtegida rolesPermitidos={['DUEÑO']}>
+                    <ProveedoresPage />
+                  </RutaProtegida>
+                }
+              />
+              <Route
+                path="/config"
+                element={
+                  <RutaProtegida rolesPermitidos={['DUEÑO']}>
+                    <ConfigPage />
+                  </RutaProtegida>
+                }
+              />
+
+              {/* Rutas para Dueño y Visor */}
+              <Route
+                path="/reportes"
+                element={
+                  <RutaProtegida rolesPermitidos={['DUEÑO', 'VISOR']}>
+                    <ReportesPage />
+                  </RutaProtegida>
+                }
+              />
+
+              {/* Ruta de Soporte y Ayuda para todos los usuarios */}
+              <Route
+                path="/soporte"
+                element={
+                  <RutaProtegida rolesPermitidos={['DUEÑO', 'CAJERO', 'VISOR']}>
+                    <SoportePage />
+                  </RutaProtegida>
+                }
+              />
+
+              {/* Ruta exclusiva para Super-Admin */}
+              <Route
+                path="/admin"
+                element={
+                  <RutaSuperAdmin>
+                    <SuperAdminPage />
+                  </RutaSuperAdmin>
+                }
+              />
+            </Route>
+            <Route
+              path="*"
+              element={
+                <Navigate
+                  to={
+                    usuario.es_superadmin && !usuario.kiosco_id
+                      ? "/admin"
+                      : usuario.rol === 'VISOR'
+                      ? "/reportes"
+                      : "/"
+                  }
+                  replace
+                />
+              }
+            />
+          </Routes>
+        )}
+      </BrowserRouter>
+    </SingleInstanceGuard>
   )
 }
 
