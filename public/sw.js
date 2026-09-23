@@ -2,7 +2,7 @@
 // Estrategia Network-First: Siempre intenta obtener la versión más reciente de la red.
 // Si no hay conexión a internet, usa la copia local guardada en caché.
 
-const CACHE_NAME = 'alpaso-pos-v6'
+const CACHE_NAME = 'alpaso-pos-v7'
 const STATIC_ASSETS = [
   '/',
   '/index.html',

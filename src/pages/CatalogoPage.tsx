@@ -61,15 +61,15 @@ export function CatalogoPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-3.5">
-      <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 sm:gap-4">
-        <div>
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4">
+        <div className="shrink-0">
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">Catálogo de Productos</h1>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">Administrá tus productos, precios y categorías</p>
         </div>
-        {/* Grupos de botones ordenados estilo Proveedores */}
-        <div className="flex flex-wrap items-center gap-2.5 self-start xl:self-auto max-w-full">
-          {/* Grupo 1: Precios y Góndola */}
-          <div className="flex items-center flex-nowrap overflow-x-auto scrollbar-hide max-w-full bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1">
+        {/* Grupos de botones en una sola fila en 2 bloques separados */}
+        <div className="flex items-center flex-nowrap gap-2 sm:gap-2.5 overflow-x-auto scrollbar-hide max-w-full py-0.5 self-start lg:self-auto">
+          {/* Bloque 1: Precios y Góndola */}
+          <div className="flex items-center flex-nowrap bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1 shrink-0">
             <button
               type="button"
               onClick={() => setAumentoOpen(true)}
@@ -94,14 +94,15 @@ export function CatalogoPage() {
             </button>
           </div>
 
-          {/* Grupo 2: Importar / Exportar XLSX */}
-          <div className="flex items-center flex-nowrap overflow-x-auto scrollbar-hide max-w-full bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1">
+          {/* Bloque 2: Importar / Exportar */}
+          <div className="flex items-center flex-nowrap bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1 shrink-0">
             <button
               type="button"
               onClick={() => setImportarOpen(true)}
               className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0"
+              title="Importar productos desde archivo Excel (.xlsx) o CSV"
             >
-              Importar (.XLSX / .CSV)
+              Importar
             </button>
             <button
               type="button"
@@ -109,7 +110,7 @@ export function CatalogoPage() {
               className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0"
               title="Descargar catálogo completo y valuación en formato Excel corporativo (.xlsx)"
             >
-              Exportar (.XLSX)
+              Exportar
             </button>
           </div>
         </div>
