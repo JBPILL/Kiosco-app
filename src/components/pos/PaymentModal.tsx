@@ -361,7 +361,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       // 1b. Si hay artículos libres ad-hoc, persistirlos en productos con activo: false
       const itemsLibres = items.filter((it) => it.producto.activo === false)
       if (itemsLibres.length > 0) {
-        await supabase.from('productos').insert(
+        const { error: errorLibres } = await supabase.from('productos').upsert(
           itemsLibres.map((it) => ({
             id: it.producto.id,
             kiosco_id: kioscoId,
@@ -374,8 +374,12 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             activo: false,
             fecha_creacion: ahora,
             fecha_actualizacion: ahora,
-          }))
+          })),
+          { onConflict: 'id' }
         )
+        if (errorLibres) {
+          console.warn('Aviso al persistir artículos libres en catálogo:', errorLibres)
+        }
       }
 
       // 2. Insertar detalles de venta
@@ -383,11 +387,18 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         id: uuidv4(),
         venta_id: ventaId,
         producto_id: item.producto.id,
-        cantidad: item.cantidad,
-        precio_unitario: item.sin_envase
-          ? item.producto.precio_venta + (item.precio_envase_unitario || item.producto.precio_envase || 0)
-          : item.producto.precio_venta,
-        subtotal: item.subtotal,
+        cantidad: Math.max(0.001, Number(item.cantidad) || 1),
+        precio_unitario: Math.round(
+          Number(
+            item.sin_envase
+              ? item.producto.precio_venta + (item.precio_envase_unitario || item.producto.precio_envase || 0)
+              : item.producto.precio_venta
+          ) || 0
+        ),
+        subtotal: Math.round(Number(item.subtotal) || 0),
+        sin_envase: Boolean(item.sin_envase),
+        precio_envase_unitario: Number(item.precio_envase_unitario || 0),
+        es_devolucion_envase: Boolean(item.es_devolucion_envase),
       }))
 
       const { error: detalleError } = await supabase.from('detalles_venta').insert(detalles)
@@ -398,7 +409,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         const pagosInsertar = pagosMixtos.map((p) => ({
           venta_id: ventaId,
           medio_pago: p.medio_pago,
-          monto: p.monto,
+          monto: Math.round(Number(p.monto) || 0),
           referencia: p.medio_pago === 'EFECTIVO' ? null : (referencia || null),
         }))
         const { error: pagoError } = await supabase.from('pagos_venta').insert(pagosInsertar)
@@ -407,7 +418,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         const { error: pagoError } = await supabase.from('pagos_venta').insert({
           venta_id: ventaId,
           medio_pago: medioPago,
-          monto: total,
+          monto: Math.round(Number(total) || 0),
           referencia: medioPago === 'EFECTIVO' ? null : (referencia || null),
         })
         if (pagoError) throw pagoError
@@ -594,25 +605,46 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       onClose()
     } catch (error) {
       console.error('Error al registrar venta:', error)
+
+      // Extraer mensaje descriptivo real del error (PostgrestError, Error nativo o string)
+      const errObj = error as any
+      const rawMsg =
+        errObj?.message ||
+        errObj?.error_description ||
+        errObj?.details ||
+        (error instanceof Error ? error.message : typeof error === 'string' ? error : '')
+
+      let msg = 'No se pudo registrar la venta.'
+      const lower = (rawMsg || '').toLowerCase()
+      if (
+        lower.includes('failed to fetch') ||
+        lower.includes('network') ||
+        lower.includes('conexión') ||
+        lower.includes('fetch')
+      ) {
+        msg = 'Problema de conexión con el servidor. Verificá internet e intentá nuevamente.'
+      } else if (rawMsg) {
+        msg = `No se pudo registrar la venta: ${rawMsg}`
+      }
+
       // Rollback de venta incompleta para evitar datos huérfanos o corruptos
       if (ventaCreadaId) {
         try {
           await supabase.from('detalles_venta').delete().eq('venta_id', ventaCreadaId)
           await supabase.from('pagos_venta').delete().eq('venta_id', ventaCreadaId)
-          await supabase.from('ventas').delete().eq('id', ventaCreadaId)
+          const { data: delVenta } = await supabase.from('ventas').delete().eq('id', ventaCreadaId).select()
+          // Si el delete no eliminó filas (por políticas RLS), marcarla de inmediato como ANULADA
+          if (!delVenta || delVenta.length === 0) {
+            await supabase.from('ventas').update({
+              estado: 'ANULADA',
+              notas: `Registro cancelado por error: ${rawMsg || 'Error inesperado'}`,
+            }).eq('id', ventaCreadaId)
+          }
         } catch (cleanupErr) {
           console.warn('Error en rollback de venta fallida:', cleanupErr)
         }
       }
-      let msg = 'No se pudo registrar la venta. Por favor verificá tu conexión e intentá de nuevo.'
-      if (error instanceof Error) {
-        const lower = error.message.toLowerCase()
-        if (lower.includes('failed to fetch') || lower.includes('network') || lower.includes('conexión') || lower.includes('fetch')) {
-          msg = 'Problema de conexión con el servidor. Verificá internet e intentá nuevamente.'
-        } else {
-          msg = error.message
-        }
-      }
+
       toast.error(msg, { duration: 6000 })
     } finally {
       procesandoRef.current = false

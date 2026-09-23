@@ -93,7 +93,51 @@ export function AFIPConfigSection() {
 
     const ok = await guardarConfiguracion(nuevaConfig)
     if (ok) {
-      toast.success('Configuración fiscal de ARCA guardada correctamente')
+      // guardarConfiguracion ya emite toast de éxito
+    }
+  }
+
+  const handleToggleHabilitado = async () => {
+    if (!esDuenio) {
+      toast.error('Acceso denegado: Solo el Dueño puede modificar la configuración fiscal')
+      return
+    }
+
+    const nuevoEstado = !habilitado
+
+    if (nuevoEstado) {
+      if (!cuitLimpio) {
+        toast.error('Para activar la facturación ARCA, primero ingresá tu CUIT')
+        return
+      }
+      if (!validarCUIT(cuitLimpio)) {
+        toast.error('El CUIT ingresado no es válido según el algoritmo Módulo 11 de ARCA')
+        return
+      }
+      if (puntoVenta <= 0) {
+        toast.error('El Punto de Venta debe ser mayor a 0 (ej: 2)')
+        return
+      }
+    }
+
+    setHabilitado(nuevoEstado)
+
+    const ok = await guardarConfiguracion({
+      habilitado: nuevoEstado,
+      cuit: cuitLimpio,
+      razon_social: razonSocial.trim(),
+      condicion_iva: condicionIva,
+      punto_venta: Number(puntoVenta),
+      iibb: iibb.trim(),
+      inicio_actividades: inicioActividades.trim(),
+      entorno,
+      facturar_automatico: facturarAutomatico,
+      monto_minimo_auto: Number(montoMinimoAuto) || 0,
+    })
+
+    if (!ok) {
+      // Revertir si falló
+      setHabilitado(!nuevoEstado)
     }
   }
 
@@ -185,19 +229,28 @@ export function AFIPConfigSection() {
           </p>
         </div>
 
-        {/* Toggle principal */}
-        <label className="relative inline-flex items-center cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={habilitado}
-            onChange={(e) => setHabilitado(e.target.checked)}
-            className="sr-only peer"
-          />
-          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-          <span className="ml-3 text-sm font-medium text-gray-900 dark:text-gray-200">
+        {/* Toggle principal accesible y responsivo */}
+        <div className="flex items-center gap-3 select-none flex-shrink-0">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={habilitado}
+            onClick={handleToggleHabilitado}
+            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+              habilitado ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+            }`}
+          >
+            <span
+              aria-hidden="true"
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                habilitado ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
+          <span className="text-sm font-semibold text-gray-900 dark:text-gray-200">
             {habilitado ? 'Activa en POS' : 'Inactiva'}
           </span>
-        </label>
+        </div>
       </div>
 
       {/* Formulario de Configuración Fiscal */}

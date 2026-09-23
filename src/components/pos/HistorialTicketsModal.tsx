@@ -59,6 +59,15 @@ export function HistorialTicketsModal({
       toast.error('La facturación electrónica ARCA no está habilitada en la Configuración.', { id: 'arca-deshabilitada' })
       return
     }
+    const cant = v.detalles?.length || 0
+    if (cant === 0) {
+      toast.error('No se puede facturar ante ARCA un comprobante sin artículos registrados')
+      return
+    }
+    if (v.total <= 0) {
+      toast.error('El total del comprobante debe ser mayor a 0 para emitir factura fiscal')
+      return
+    }
     setVentaParaFacturar(v)
     setNombreClienteReceptor(v.cliente?.nombre || '')
     if (v.cliente?.dni_cuit) {
@@ -149,7 +158,12 @@ export function HistorialTicketsModal({
   }, [isOpen, cargarVentas])
 
   const ventasFiltradas = useMemo(() => {
-    let list = ventas
+    // Descartar transacciones abortadas o zombi (sin ningún artículo y sin ningún pago)
+    let list = ventas.filter((v) => {
+      const tieneItems = Boolean(v.detalles && v.detalles.length > 0)
+      const tienePagos = Boolean(v.pagos && v.pagos.length > 0)
+      return tieneItems || tienePagos
+    })
     const qLimpio = limpiarCodigoTicket(busqueda)
     const qTexto = busqueda.trim().toLowerCase()
 
@@ -379,16 +393,18 @@ export function HistorialTicketsModal({
                         {!esAnulada && !v.afip_cae && (
                           <button
                             type="button"
-                            disabled={!afipConfig?.habilitado}
+                            disabled={!afipConfig?.habilitado || cantArticulos === 0}
                             onClick={() => abrirModalFacturar(v)}
                             className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-2xs ${
-                              !afipConfig?.habilitado
+                              !afipConfig?.habilitado || cantArticulos === 0
                                 ? 'bg-gray-100 dark:bg-gray-800/60 text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700/60 cursor-not-allowed opacity-60'
                                 : 'bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 cursor-pointer'
                             }`}
                             title={
                               !afipConfig?.habilitado
                                 ? 'Facturación electrónica ARCA deshabilitada en Configuración'
+                                : cantArticulos === 0
+                                ? 'No se puede facturar un comprobante sin artículos registrados'
                                 : 'Emitir comprobante fiscal ARCA diferido con CAE'
                             }
                           >
