@@ -866,35 +866,35 @@ export function CajaPage() {
         <div className="space-y-4">
           {/* Selector de modo si es Dueño o si no se exige arqueo ciego obligatorio */}
           {(esDueno || !arqueoCiegoObligatorio) && (
-            <div className="grid grid-cols-2 gap-2 p-1.5 bg-gray-100 dark:bg-gray-800 rounded-xl border-2 border-gray-200 dark:border-gray-700">
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
               <button
                 type="button"
                 onClick={() => setModoCiego(false)}
-                className={`py-2 px-3 text-xs sm:text-sm font-bold rounded-lg transition-all cursor-pointer text-center ${
+                className={`py-2 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer text-center ${
                   !modoCiego
-                    ? 'bg-white dark:bg-gray-700 text-indigo-700 dark:text-indigo-300 shadow-sm border-2 border-indigo-500'
-                    : 'border-2 border-transparent text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-xs border border-gray-200 dark:border-gray-600'
+                    : 'border border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                 }`}
               >
-                Arqueo Guiado (Ver cálculos)
+                Arqueo Guiado
               </button>
               <button
                 type="button"
                 onClick={() => setModoCiego(true)}
-                className={`py-2 px-3 text-xs sm:text-sm font-bold rounded-lg transition-all cursor-pointer text-center ${
+                className={`py-2 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer text-center ${
                   modoCiego
-                    ? 'bg-white dark:bg-gray-700 text-indigo-700 dark:text-indigo-300 shadow-sm border-2 border-indigo-500'
-                    : 'border-2 border-transparent text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-xs border border-gray-200 dark:border-gray-600'
+                    : 'border border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                 }`}
               >
-                Arqueo Ciego (Solo conteo físico)
+                Arqueo Ciego
               </button>
             </div>
           )}
 
           {modoCiegoEfectivo ? (
             /* Banner explicativo de Arqueo Ciego */
-            <div className="p-4 rounded-xl bg-amber-50/80 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-700 text-amber-950 dark:text-amber-200 flex flex-col sm:flex-row items-start gap-3">
+            <div className="p-4 rounded-xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/80 text-amber-950 dark:text-amber-200 flex flex-col sm:flex-row items-start gap-3">
               <span className="font-bold uppercase text-[10px] tracking-wider px-2 py-0.5 rounded border border-amber-400 dark:border-amber-600 bg-amber-100 dark:bg-amber-900/60 shrink-0">
                 Auditoría Ciega
               </span>
@@ -909,43 +909,43 @@ export function CajaPage() {
             /* Resumen guiado con tarjetas claras de dinero */
             <div className="space-y-3">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                <div className="p-3 bg-gray-50 dark:bg-gray-800/70 border-2 border-gray-200 dark:border-gray-700 rounded-xl">
+                <div className="p-3 bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 rounded-xl">
                   <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 block">Fondo inicial:</span>
-                  <span className="text-sm font-black text-gray-900 dark:text-gray-100">
+                  <span className="text-sm font-bold text-gray-900 dark:text-gray-100">
                     {formatPrecio(sesionActiva?.monto_inicial || 0)}
                   </span>
                 </div>
-                <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/20 border-2 border-emerald-200 dark:border-emerald-800/60 rounded-xl">
-                  <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 block">(+) Ventas efectivo:</span>
-                  <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">
+                <div className="p-3 bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 rounded-xl">
+                  <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 block">(+) Ventas efectivo:</span>
+                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
                     +{formatPrecio(resumenActivo?.total_efectivo || 0)}
                   </span>
                 </div>
-                <div className="p-3 bg-blue-50/60 dark:bg-blue-950/20 border-2 border-blue-200 dark:border-blue-800/60 rounded-xl">
-                  <span className="text-[11px] font-medium text-blue-700 dark:text-blue-400 block">(+) Ingresos extra:</span>
-                  <span className="text-sm font-black text-blue-600 dark:text-blue-400">
+                <div className="p-3 bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 rounded-xl">
+                  <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 block">(+) Ingresos extra:</span>
+                  <span className="text-sm font-bold text-blue-600 dark:text-blue-400">
                     +{(resumenActivo?.total_ingresos_extra || 0) > 0 ? formatPrecio(resumenActivo?.total_ingresos_extra || 0) : '$0'}
                   </span>
                 </div>
-                <div className="p-3 bg-red-50/60 dark:bg-red-950/20 border-2 border-red-200 dark:border-red-800/60 rounded-xl">
-                  <span className="text-[11px] font-medium text-red-700 dark:text-red-400 block">(-) Gastos / Salidas:</span>
-                  <span className="text-sm font-black text-red-600 dark:text-red-400">
+                <div className="p-3 bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 rounded-xl">
+                  <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 block">(-) Gastos / Salidas:</span>
+                  <span className="text-sm font-bold text-red-600 dark:text-red-400">
                     -{(resumenActivo?.total_egresos || 0) > 0 ? formatPrecio(resumenActivo?.total_egresos || 0) : '$0'}
                   </span>
                 </div>
               </div>
 
               {/* Total esperado destacado */}
-              <div className="p-3.5 bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950/40 dark:to-blue-950/40 border-2 border-indigo-200 dark:border-indigo-800/60 rounded-xl flex items-center justify-between">
+              <div className="p-3.5 bg-gray-50 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700 rounded-xl flex items-center justify-between">
                 <div>
-                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-800 dark:text-indigo-300 block">
-                    Total esperado en cajón según sistema:
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300 block">
+                    Total esperado en cajón:
                   </span>
-                  <span className="text-[11px] text-indigo-600/80 dark:text-indigo-400/80">
+                  <span className="text-[11px] text-gray-500 dark:text-gray-400">
                     (Fondo inicial + Efectivo cobrado + Entradas extra - Gastos)
                   </span>
                 </div>
-                <span className="text-xl sm:text-2xl font-black text-indigo-700 dark:text-indigo-300">
+                <span className="text-xl sm:text-2xl font-black text-gray-900 dark:text-gray-100">
                   {formatPrecio(efectivoEsperado)}
                 </span>
               </div>
@@ -953,32 +953,32 @@ export function CajaPage() {
           )}
 
           {/* Bloque de Conteo Físico */}
-          <div className="space-y-3 bg-gray-50/60 dark:bg-gray-800/40 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+          <div className="p-4 sm:p-5 rounded-2xl bg-gray-50/60 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
               <div>
-                <label className="block text-sm font-black text-gray-900 dark:text-gray-100">
+                <label className="block text-sm font-bold text-gray-900 dark:text-gray-100">
                   ¿Cuánta plata en efectivo contaste en el cajón? *
                 </label>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Ingresá el total de billetes y monedas que tenés en la mano.
+                  Ingresá el total en mano o usá la calculadora para desglosar por billete.
                 </p>
               </div>
 
-              {/* Toggle de calculadora con bordes visibles y sin emoji */}
+              {/* Botón de toggle elegante */}
               <button
                 type="button"
                 onClick={() => setMostrarDesgloseBilletes(!mostrarDesgloseBilletes)}
-                className="inline-flex items-center px-3 py-1.5 rounded-lg border-2 border-indigo-300 dark:border-indigo-600 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-xs font-bold text-indigo-700 dark:text-indigo-300 transition-all cursor-pointer self-start sm:self-auto shadow-2xs"
+                className="inline-flex items-center justify-center px-3.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-200 transition-colors cursor-pointer self-start sm:self-auto shadow-2xs"
               >
                 <span>{mostrarDesgloseBilletes ? 'Ocultar calculadora' : 'Contar billete por billete'}</span>
               </button>
             </div>
 
-            {/* Input prominente de monto */}
-            <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xl sm:text-2xl font-black text-gray-400">
+            {/* Display prominente de monto con prefijo $ tipo panel bancario */}
+            <div className="relative flex items-center rounded-xl border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 focus-within:border-indigo-500 dark:focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800/60 border-r border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 font-black text-2xl select-none flex items-center">
                 $
-              </span>
+              </div>
               <input
                 type="number"
                 min="0"
@@ -988,26 +988,26 @@ export function CajaPage() {
                 onChange={(e) => setEfectivoContado(e.target.value)}
                 required
                 autoFocus
-                className="w-full pl-9 pr-4 py-3 rounded-xl border-2 border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-2xl font-black tracking-tight focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder:text-gray-300"
+                className="w-full px-4 py-3 bg-transparent text-gray-900 dark:text-gray-100 text-2xl sm:text-3xl font-black tracking-tight outline-none placeholder:text-gray-300 dark:placeholder:text-gray-600"
               />
             </div>
 
             {/* Desglosador interactivo táctil de billetes */}
             {mostrarDesgloseBilletes && (
-              <div className="p-4 bg-white dark:bg-gray-800/90 rounded-xl border-2 border-indigo-200 dark:border-indigo-800/70 space-y-3 shadow-xs">
-                <div className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-gray-700">
+              <div className="pt-3 border-t border-gray-200 dark:border-gray-700 space-y-3">
+                <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-300">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
                       Calculadora de Billetes y Monedas
-                    </p>
+                    </h4>
                     <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                      Indicá cuántos billetes tenés de cada valor y te calculamos el total automáticamente.
+                      Indicá la cantidad de billetes que tenés de cada valor.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={handleLimpiarBilletes}
-                    className="px-2.5 py-1 rounded-lg border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/40 text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/60 cursor-pointer transition-all"
+                    className="px-2.5 py-1 rounded-md border border-gray-300 dark:border-gray-600 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:border-red-300 dark:hover:border-red-800 hover:bg-red-50/50 dark:hover:bg-red-950/30 transition-colors cursor-pointer"
                   >
                     Poner en cero
                   </button>
@@ -1020,30 +1020,34 @@ export function CajaPage() {
                     return (
                       <div
                         key={den}
-                        className={`p-2.5 rounded-xl border-2 transition-all text-center flex flex-col justify-between ${
+                        className={`p-3 rounded-xl border transition-all text-center flex flex-col justify-between ${
                           cant > 0
-                            ? 'bg-indigo-50/60 dark:bg-indigo-950/40 border-indigo-400 dark:border-indigo-600 shadow-2xs'
-                            : 'bg-gray-50/80 dark:bg-gray-900/60 border-gray-300 dark:border-gray-700'
+                            ? 'bg-indigo-50/30 dark:bg-indigo-950/20 border-indigo-400 dark:border-indigo-600 shadow-2xs'
+                            : 'bg-white dark:bg-gray-800/80 border-gray-200 dark:border-gray-700'
                         }`}
                       >
                         <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-xs font-black text-gray-900 dark:text-gray-100">
+                          <span className="text-xs font-extrabold text-gray-900 dark:text-gray-100">
                             ${den.toLocaleString('es-AR')}
                           </span>
-                          {cant > 0 && (
-                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                          {cant > 0 ? (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
                               {cant} u.
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500">
+                              0 u.
                             </span>
                           )}
                         </div>
 
-                        {/* Stepper +/- con bordes nítidos de alto contraste */}
-                        <div className="flex items-center justify-center gap-1.5 my-1">
+                        {/* Stepper +/- integrado tipo pastilla */}
+                        <div className="flex items-center justify-between bg-gray-100 dark:bg-gray-900/80 rounded-lg p-1 border border-gray-200 dark:border-gray-700 my-1">
                           <button
                             type="button"
                             onClick={() => handleIncrementarBillete(den, -1)}
                             disabled={cant <= 0}
-                            className="w-8 h-8 rounded-lg border-2 border-gray-400 dark:border-gray-500 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-30 text-gray-900 dark:text-gray-100 font-black text-base flex items-center justify-center cursor-pointer transition-colors shadow-2xs select-none"
+                            className="w-7 h-7 rounded-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold text-sm flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-700 active:scale-95 disabled:opacity-25 disabled:pointer-events-none transition-all cursor-pointer select-none"
                             aria-label={`Restar billete de $${den}`}
                           >
                             -
@@ -1054,12 +1058,12 @@ export function CajaPage() {
                             placeholder="0"
                             value={cant || ''}
                             onChange={(e) => handleCambioBillete(den, parseInt(e.target.value) || 0)}
-                            className="w-14 text-center py-1 text-xs font-black rounded-lg border-2 border-gray-400 dark:border-gray-500 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:border-indigo-500 outline-none"
+                            className="w-10 text-center font-bold text-xs bg-transparent text-gray-900 dark:text-gray-100 outline-none"
                           />
                           <button
                             type="button"
                             onClick={() => handleIncrementarBillete(den, 1)}
-                            className="w-8 h-8 rounded-lg border-2 border-indigo-400 dark:border-indigo-500 bg-indigo-100 dark:bg-indigo-900/70 hover:bg-indigo-200 dark:hover:bg-indigo-800 text-indigo-800 dark:text-indigo-200 font-black text-base flex items-center justify-center cursor-pointer transition-colors shadow-2xs select-none"
+                            className="w-7 h-7 rounded-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 font-bold text-sm flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-700 active:scale-95 transition-all cursor-pointer select-none"
                             aria-label={`Sumar billete de $${den}`}
                           >
                             +
@@ -1067,13 +1071,15 @@ export function CajaPage() {
                         </div>
 
                         {/* Subtotal en pesos */}
-                        <div className="text-[11px] font-bold text-gray-500 dark:text-gray-400 mt-1">
+                        <div className="text-[11px] font-medium mt-1">
                           {cant > 0 ? (
-                            <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">
+                            <span className="text-emerald-600 dark:text-emerald-400 font-bold">
                               {formatPrecio(subtotal)}
                             </span>
                           ) : (
-                            '$0'
+                            <span className="text-gray-400 dark:text-gray-500">
+                              $0
+                            </span>
                           )}
                         </div>
                       </div>
@@ -1081,11 +1087,11 @@ export function CajaPage() {
                   })}
                 </div>
 
-                <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700 text-xs">
-                  <span className="text-gray-600 dark:text-gray-400">
+                <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-gray-100/70 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700 text-xs">
+                  <span className="font-medium text-gray-600 dark:text-gray-400">
                     Total calculado en billetes:
                   </span>
-                  <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
+                  <span className="text-base font-extrabold text-emerald-600 dark:text-emerald-400">
                     {formatPrecio(contadoNum)}
                   </span>
                 </div>
@@ -1096,15 +1102,15 @@ export function CajaPage() {
           {/* Tarjeta de Conciliación de Diferencia (Visible en Arqueo Guiado) */}
           {!modoCiego && efectivoContado !== '' && (
             <div
-              className={`p-4 rounded-xl text-center border-2 transition-all ${
+              className={`p-4 rounded-xl text-center border transition-all ${
                 diferenciaArqueo === 0
-                  ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-400 dark:border-emerald-600 text-emerald-900 dark:text-emerald-300'
+                  ? 'bg-emerald-50/80 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-300'
                   : diferenciaArqueo > 0
-                  ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-400 dark:border-blue-600 text-blue-900 dark:text-blue-300'
-                  : 'bg-red-50 dark:bg-red-950/30 border-red-400 dark:border-red-600 text-red-900 dark:text-red-300'
+                  ? 'bg-blue-50/80 dark:bg-blue-950/20 border-blue-300 dark:border-blue-800/60 text-blue-900 dark:text-blue-300'
+                  : 'bg-red-50/80 dark:bg-red-950/20 border-red-300 dark:border-red-800/60 text-red-900 dark:text-red-300'
               }`}
             >
-              <div className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold mb-1 uppercase tracking-wider bg-white/70 dark:bg-black/20 border border-current">
+              <div className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold mb-1 uppercase tracking-wider bg-white/80 dark:bg-black/20 border border-current">
                 {diferenciaArqueo === 0
                   ? 'Caja Exacta (Sin Diferencias)'
                   : diferenciaArqueo > 0
