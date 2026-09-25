@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useCajaStore } from './cajaStore'
 import { useClienteStore } from './clienteStore'
 import { useComboStore } from './comboStore'
+import { useLoteStore } from './loteStore'
 import { getCachedProductos, saveCachedProductos } from '../lib/utils'
 import type {
   DevolucionVenta,
@@ -380,6 +381,12 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
                       usuario_id: usuarioId || null,
                       fecha: ahora,
                     })
+
+                    try {
+                      await useLoteStore.getState().restituirStockLote(compProd.id, cantRestituir, kioscoId)
+                    } catch (errLote) {
+                      console.warn('Error restituyendo lote de componente en devolución:', errLote)
+                    }
                   }
                 }
               } else {
@@ -399,6 +406,12 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
                   usuario_id: usuarioId || null,
                   fecha: ahora,
                 })
+
+                try {
+                  await useLoteStore.getState().restituirStockLote(prodData.id, it.cantidad, kioscoId)
+                } catch (errLote) {
+                  console.warn('Error restituyendo lote en devolución:', errLote)
+                }
               }
             }
           } catch (errStock) {

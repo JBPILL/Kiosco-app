@@ -403,7 +403,7 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
 
       const cliente = get().clientes.find((c) => c.id === clienteId)
       const saldoActual = cliente?.saldo_deudor ?? 0
-      const nuevoSaldo = Math.max(0, saldoActual - monto)
+      const nuevoSaldo = Number((saldoActual - monto).toFixed(2))
 
       // Actualizar cliente localmente
       const actualizados = get().clientes.map((c) =>
@@ -472,7 +472,7 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
       return false
     }
 
-    const nuevoSaldo = Math.max(0, (cliente.saldo_deudor || 0) - monto)
+    const nuevoSaldo = Number(((cliente.saldo_deudor || 0) - monto).toFixed(2))
 
     // Actualizar cliente
     const actualizados = get().clientes.map((c) =>

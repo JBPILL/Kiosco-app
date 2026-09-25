@@ -325,13 +325,15 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           return
         }
 
+        const saldoDeudor = clienteSeleccionado.saldo_deudor || 0
+        const limiteCredito = clienteSeleccionado.limite_credito || 0
         if (
-          clienteSeleccionado.limite_credito > 0 &&
-          clienteSeleccionado.saldo_deudor + montoCuentaCorriente > clienteSeleccionado.limite_credito
+          limiteCredito > 0 &&
+          saldoDeudor + montoCuentaCorriente > limiteCredito
         ) {
-          const superaPor = formatPrecio(clienteSeleccionado.saldo_deudor + montoCuentaCorriente - clienteSeleccionado.limite_credito)
+          const superaPor = formatPrecio(saldoDeudor + montoCuentaCorriente - limiteCredito)
           const confirmarExceso = window.confirm(
-            `Atención: Esta venta superará el límite de crédito del cliente (${formatPrecio(clienteSeleccionado.limite_credito)}) por ${superaPor}.\n\n¿Desea autorizar la operación de todas formas?`
+            `Atención: Esta venta superará el límite de crédito del cliente (${formatPrecio(limiteCredito)}) por ${superaPor}.\n\n¿Desea autorizar la operación de todas formas?`
           )
           if (!confirmarExceso) {
             procesandoRef.current = false
@@ -986,15 +988,15 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
                       <span className="text-gray-500 dark:text-gray-400">Nuevo saldo estimado:</span>
                       <span className="font-bold text-indigo-600 dark:text-indigo-400">
                         {formatPrecio(
-                          clienteSeleccionado.saldo_deudor +
+                          (clienteSeleccionado.saldo_deudor || 0) +
                             (esPagoMixto
                               ? pagosMixtos.filter((p) => p.medio_pago === 'CUENTA_CORRIENTE').reduce((acc, p) => acc + p.monto, 0)
                               : total)
                         )}
                       </span>
                     </div>
-                    {clienteSeleccionado.limite_credito > 0 &&
-                      clienteSeleccionado.saldo_deudor +
+                    {(clienteSeleccionado.limite_credito || 0) > 0 &&
+                      (clienteSeleccionado.saldo_deudor || 0) +
                         (esPagoMixto
                           ? pagosMixtos.filter((p) => p.medio_pago === 'CUENTA_CORRIENTE').reduce((acc, p) => acc + p.monto, 0)
                           : total) >

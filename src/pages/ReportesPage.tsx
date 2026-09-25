@@ -10,6 +10,7 @@ import { BalanceContableTab } from '../components/reportes/BalanceContableTab'
 import { useClienteStore } from '../stores/clienteStore'
 import { useCajaStore } from '../stores/cajaStore'
 import { useComboStore } from '../stores/comboStore'
+import { useLoteStore } from '../stores/loteStore'
 import { ventaToTicketData } from '../lib/ticketUtils'
 import type { Producto } from '../types/database'
 import toast from 'react-hot-toast'
@@ -245,6 +246,12 @@ export function ReportesPage() {
                     fecha: ahora,
                   })
                 }
+
+                try {
+                  await useLoteStore.getState().restituirStockLote(compProd.id, cantRestituir, kioscoId || undefined)
+                } catch (errLote) {
+                  console.warn(`Error al reponer lote de componente ${compProd.id}:`, errLote)
+                }
               }
             }
           } else {
@@ -270,6 +277,12 @@ export function ReportesPage() {
                 usuario_id: usuario?.id || null,
                 fecha: ahora,
               })
+            }
+
+            try {
+              await useLoteStore.getState().restituirStockLote(prodId, det.cantidad, kioscoId || undefined)
+            } catch (errLote) {
+              console.warn(`Error al reponer lote de producto ${prodId}:`, errLote)
             }
           }
         } catch (errStock) {

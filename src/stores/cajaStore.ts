@@ -239,7 +239,7 @@ export const useCajaStore = create<CajaState>((set, get) => ({
         .maybeSingle()
 
       if (!viewError && resumenView) {
-        let totalCC = (resumenView as any).total_cuenta_corriente
+        let totalCC = (resumenView as any).total_cuenta_corriente ?? (resumenView as any).total_cta_cte
         if (totalCC === undefined || totalCC === null) {
           const { data: pagosCC } = await supabase
             .from('pagos_venta')

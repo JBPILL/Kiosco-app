@@ -18,22 +18,28 @@ interface PromocionState {
   totalAhorroPromociones: (items: ItemCarrito[]) => number
 }
 
-const STORAGE_KEY_PROMOS = 'kiosko_promociones'
+function getPromosStorageKey(kioscoId?: string): string {
+  return `kiosko_promociones_${kioscoId || 'default'}`
+}
 
-function cargarPromocionesLocal(): Promocion[] {
+function cargarPromocionesLocal(kioscoId?: string): Promocion[] {
   if (typeof window === 'undefined') return []
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_PROMOS)
+    const raw = localStorage.getItem(getPromosStorageKey(kioscoId))
+    if (!raw && (!kioscoId || kioscoId === 'default')) {
+      const fallback = localStorage.getItem('kiosko_promociones')
+      return fallback ? JSON.parse(fallback) : []
+    }
     return raw ? JSON.parse(raw) : []
   } catch {
     return []
   }
 }
 
-function guardarPromocionesLocal(promos: Promocion[]) {
+function guardarPromocionesLocal(promos: Promocion[], kioscoId?: string) {
   if (typeof window === 'undefined') return
   try {
-    localStorage.setItem(STORAGE_KEY_PROMOS, JSON.stringify(promos))
+    localStorage.setItem(getPromosStorageKey(kioscoId), JSON.stringify(promos))
   } catch (e) {
     console.error('Error guardando promociones local:', e)
   }
@@ -137,6 +143,11 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
         return
       }
 
+      const cached = cargarPromocionesLocal(kioscoId)
+      if (cached && cached.length > 0) {
+        set({ promociones: cached })
+      }
+
       const { data, error } = await supabase
         .from('promociones')
         .select(`
@@ -151,7 +162,7 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
         console.warn('Error cargando promociones de Supabase (usando local):', error.message)
       } else if (data) {
         set({ promociones: data })
-        guardarPromocionesLocal(data)
+        guardarPromocionesLocal(data, kioscoId)
       }
     } catch (e) {
       console.warn('Fallo de red cargando promociones (modo offline):', e)
@@ -170,7 +181,7 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
     // Actualizar estado local inmediatamente
     const actualizadas = [nuevaPromo, ...get().promociones]
     set({ promociones: actualizadas })
-    guardarPromocionesLocal(actualizadas)
+    guardarPromocionesLocal(actualizadas, nuevaPromo.kiosco_id)
 
     try {
       const { error } = await supabase.from('promociones').insert({
@@ -203,29 +214,41 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
   },
 
   actualizarPromocion: async (id: string, cambios: Partial<Promocion>) => {
+    const promoExistente = get().promociones.find((p) => p.id === id)
+    const kioscoId = promoExistente?.kiosco_id
+
     const actualizadas = get().promociones.map((p) => (p.id === id ? { ...p, ...cambios } : p))
     set({ promociones: actualizadas })
-    guardarPromocionesLocal(actualizadas)
+    guardarPromocionesLocal(actualizadas, kioscoId)
 
     try {
+      const payload: Record<string, any> = {}
+      const allowedKeys: (keyof Promocion)[] = [
+        'nombre',
+        'tipo',
+        'producto_id',
+        'categoria_id',
+        'cantidad_minima',
+        'cantidad_paga',
+        'precio_unitario_promo',
+        'descuento_porcentaje',
+        'precio_combo',
+        'items_combo',
+        'dias_semana',
+        'fecha_inicio',
+        'fecha_fin',
+        'activo',
+      ]
+
+      for (const key of allowedKeys) {
+        if (cambios[key] !== undefined) {
+          payload[key] = cambios[key]
+        }
+      }
+
       const { error } = await supabase
         .from('promociones')
-        .update({
-          nombre: cambios.nombre,
-          tipo: cambios.tipo,
-          producto_id: cambios.producto_id,
-          categoria_id: cambios.categoria_id,
-          cantidad_minima: cambios.cantidad_minima,
-          cantidad_paga: cambios.cantidad_paga,
-          precio_unitario_promo: cambios.precio_unitario_promo,
-          descuento_porcentaje: cambios.descuento_porcentaje,
-          precio_combo: cambios.precio_combo,
-          items_combo: cambios.items_combo,
-          dias_semana: cambios.dias_semana,
-          fecha_inicio: cambios.fecha_inicio,
-          fecha_fin: cambios.fecha_fin,
-          activo: cambios.activo,
-        })
+        .update(payload)
         .eq('id', id)
 
       if (error) throw error
@@ -239,9 +262,12 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
   },
 
   eliminarPromocion: async (id: string) => {
+    const promoExistente = get().promociones.find((p) => p.id === id)
+    const kioscoId = promoExistente?.kiosco_id
+
     const actualizadas = get().promociones.filter((p) => p.id !== id)
     set({ promociones: actualizadas })
-    guardarPromocionesLocal(actualizadas)
+    guardarPromocionesLocal(actualizadas, kioscoId)
 
     try {
       const { error } = await supabase.from('promociones').delete().eq('id', id)

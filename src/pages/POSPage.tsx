@@ -325,6 +325,14 @@ export function POSPage() {
       })
       return
     }
+    const montoTotal = totalMonto()
+    if (montoTotal <= 0) {
+      toast.error(
+        'El ticket posee saldo a favor del cliente o monto $0. Utilizá "Recibir Envase > Pagar en efectivo" o agregá productos para cobrar.',
+        { duration: 5000 }
+      )
+      return
+    }
     setPaymentOpen(true)
   }
 
@@ -343,7 +351,7 @@ export function POSPage() {
         window.dispatchEvent(new CustomEvent('pos-focus-ticket'))
       },
       onCobrar: () => {
-        if (cantItems > 0 && !paymentOpen) {
+        if (cantItems > 0 && totalMonto() > 0 && !paymentOpen) {
           handleAbrirCobro()
         }
       },

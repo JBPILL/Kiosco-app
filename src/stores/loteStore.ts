@@ -19,6 +19,11 @@ interface LoteState {
     productoId: string,
     cantidad: number
   ) => Promise<{ loteId: string; cantidadDescontada: number; fechaVencimiento: string }[]>
+  restituirStockLote: (
+    productoId: string,
+    cantidad: number,
+    kioscoId?: string | null
+  ) => Promise<boolean>
   darDeBajaLote: (loteId: string) => Promise<LoteProducto | null>
   obtenerLotesDeProducto: (productoId: string) => LoteProducto[]
   obtenerAlertas: (diasVentana?: number) => {
@@ -200,6 +205,45 @@ export const useLoteStore = create<LoteState>((set, get) => ({
     }
 
     return deducciones
+  },
+
+  restituirStockLote: async (productoId: string, cantidad: number, kioscoId?: string | null) => {
+    if (cantidad <= 0) return false
+
+    // Buscar lotes de este producto ordenados por fecha de vencimiento DESC (restituir al lote más lejano)
+    const lotesProducto = get()
+      .lotes.filter((l) => l.producto_id === productoId)
+      .sort((a, b) => b.fecha_vencimiento.localeCompare(a.fecha_vencimiento))
+
+    if (lotesProducto.length === 0) return false
+
+    const loteDestino = lotesProducto.find((l) => l.activo) || lotesProducto[0]
+    const nuevaCantidad = Number(((loteDestino.cantidad_actual || 0) + cantidad).toFixed(3))
+
+    const loteActualizado: LoteProducto = {
+      ...loteDestino,
+      cantidad_actual: nuevaCantidad,
+      activo: true,
+    }
+
+    const actualizados = get().lotes.map((l) => (l.id === loteDestino.id ? loteActualizado : l))
+    set({ lotes: actualizados })
+    const targetKioscoId = kioscoId || loteDestino.kiosco_id
+    guardarLotesLocales(actualizados, targetKioscoId)
+
+    if (navigator.onLine) {
+      Promise.resolve(
+        supabase
+          .from('lotes_producto')
+          .update({
+            cantidad_actual: nuevaCantidad,
+            activo: true,
+          })
+          .eq('id', loteDestino.id)
+      ).catch(() => {})
+    }
+
+    return true
   },
 
   darDeBajaLote: async (loteId: string) => {

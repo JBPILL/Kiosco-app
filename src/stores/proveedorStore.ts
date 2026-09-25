@@ -137,6 +137,11 @@ function saveLocalPagos(kioscoId: string, pagos: PagoProveedor[]) {
   }
 }
 
+function getKioscoId(): string | null {
+  const auth = useAuthStore.getState()
+  return auth.usuario?.kiosco_id || auth.kiosco?.id || null
+}
+
 export const useProveedorStore = create<ProveedorState>((set, get) => ({
   proveedores: [],
   compras: [],
@@ -146,42 +151,42 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
   cargandoPagos: false,
 
   cargarProveedores: async () => {
-    const usuario = useAuthStore.getState().usuario
-    if (!usuario?.kiosco_id) return []
+    const kioscoId = getKioscoId()
+    if (!kioscoId) return []
 
     set({ cargando: true })
     try {
       const { data, error } = await supabase
         .from('proveedores')
         .select('*')
-        .eq('kiosco_id', usuario.kiosco_id)
+        .eq('kiosco_id', kioscoId)
         .eq('activo', true)
         .order('nombre')
 
       if (!error && data) {
         set({ proveedores: data as Proveedor[], cargando: false })
-        saveLocalProveedores(usuario.kiosco_id, data as Proveedor[])
+        saveLocalProveedores(kioscoId, data as Proveedor[])
         return data as Proveedor[]
       }
     } catch {
       // Fallback a almacenamiento local
     }
 
-    const locales = getLocalProveedores(usuario.kiosco_id).filter((p) => p.activo !== false)
+    const locales = getLocalProveedores(kioscoId).filter((p) => p.activo !== false)
     set({ proveedores: locales, cargando: false })
     return locales
   },
 
   crearProveedor: async (datos) => {
-    const usuario = useAuthStore.getState().usuario
-    if (!usuario?.kiosco_id) {
+    const kioscoId = getKioscoId()
+    if (!kioscoId) {
       toast.error('No se pudo identificar el kiosco')
       return null
     }
 
     const nuevoProveedor: Proveedor = {
       id: uuidv4(),
-      kiosco_id: usuario.kiosco_id,
+      kiosco_id: kioscoId,
       nombre: datos.nombre.trim(),
       contacto_nombre: datos.contacto_nombre?.trim() || null,
       telefono: datos.telefono?.trim() || null,
@@ -197,7 +202,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
     const actualizados = [...get().proveedores, nuevoProveedor].sort((a, b) =>
       a.nombre.localeCompare(b.nombre)
     )
-    saveLocalProveedores(usuario.kiosco_id, actualizados)
+    saveLocalProveedores(kioscoId, actualizados)
     set({ proveedores: actualizados })
 
     try {
@@ -227,13 +232,13 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
   },
 
   actualizarProveedor: async (id, datos) => {
-    const usuario = useAuthStore.getState().usuario
-    if (!usuario?.kiosco_id) return false
+    const kioscoId = getKioscoId()
+    if (!kioscoId) return false
 
     const actualizados = get().proveedores.map((p) =>
       p.id === id ? { ...p, ...datos } : p
     )
-    saveLocalProveedores(usuario.kiosco_id, actualizados)
+    saveLocalProveedores(kioscoId, actualizados)
     set({ proveedores: actualizados })
 
     try {
@@ -241,7 +246,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
         .from('proveedores')
         .update(datos)
         .eq('id', id)
-        .eq('kiosco_id', usuario.kiosco_id)
+        .eq('kiosco_id', kioscoId)
 
       if (error) {
         console.warn('Supabase update fallback:', error.message)
@@ -255,11 +260,11 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
   },
 
   eliminarProveedor: async (id) => {
-    const usuario = useAuthStore.getState().usuario
-    if (!usuario?.kiosco_id) return false
+    const kioscoId = getKioscoId()
+    if (!kioscoId) return false
 
     const actualizados = get().proveedores.filter((p) => p.id !== id)
-    saveLocalProveedores(usuario.kiosco_id, actualizados)
+    saveLocalProveedores(kioscoId, actualizados)
     set({ proveedores: actualizados })
 
     try {
@@ -267,7 +272,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
         .from('proveedores')
         .update({ activo: false })
         .eq('id', id)
-        .eq('kiosco_id', usuario.kiosco_id)
+        .eq('kiosco_id', kioscoId)
 
       if (error) {
         console.warn('Supabase soft delete fallback:', error.message)
@@ -281,8 +286,8 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
   },
 
   cargarPagos: async (proveedorId?: string) => {
-    const usuario = useAuthStore.getState().usuario
-    if (!usuario?.kiosco_id) return []
+    const kioscoId = getKioscoId()
+    if (!kioscoId) return []
 
     set({ cargandoPagos: true })
     try {
@@ -292,7 +297,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
           *,
           proveedor:proveedores(*)
         `)
-        .eq('kiosco_id', usuario.kiosco_id)
+        .eq('kiosco_id', kioscoId)
         .order('fecha', { ascending: false })
 
       if (proveedorId) {
@@ -302,14 +307,14 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
       const { data, error } = await query
       if (!error && data) {
         set({ pagos: data as PagoProveedor[], cargandoPagos: false })
-        saveLocalPagos(usuario.kiosco_id, data as PagoProveedor[])
+        saveLocalPagos(kioscoId, data as PagoProveedor[])
         return data as PagoProveedor[]
       }
     } catch {
       // Fallback a localStorage
     }
 
-    let locales = getLocalPagos(usuario.kiosco_id)
+    let locales = getLocalPagos(kioscoId)
     if (proveedorId) {
       locales = locales.filter((p) => p.proveedor_id === proveedorId)
     }
@@ -325,8 +330,8 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
     notas,
     comprobanteRef
   ) => {
-    const usuario = useAuthStore.getState().usuario
-    if (!usuario?.kiosco_id) return null
+    const kioscoId = getKioscoId()
+    if (!kioscoId) return null
 
     const proveedor = get().proveedores.find((p) => p.id === id)
     if (!proveedor) {
@@ -341,7 +346,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
     const actualizados = get().proveedores.map((p) =>
       p.id === id ? { ...p, saldo_pendiente: nuevoSaldo } : p
     )
-    saveLocalProveedores(usuario.kiosco_id, actualizados)
+    saveLocalProveedores(kioscoId, actualizados)
     set({ proveedores: actualizados })
 
     try {
@@ -349,7 +354,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
         .from('proveedores')
         .update({ saldo_pendiente: nuevoSaldo })
         .eq('id', id)
-        .eq('kiosco_id', usuario.kiosco_id)
+        .eq('kiosco_id', kioscoId)
     } catch (err) {
       console.warn('Error al actualizar saldo en Supabase:', err)
     }
@@ -380,7 +385,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
     // 3. Crear comprobante de pago
     const nuevoPago: PagoProveedor = {
       id: uuidv4(),
-      kiosco_id: usuario.kiosco_id,
+      kiosco_id: kioscoId,
       proveedor_id: id,
       fecha: new Date().toISOString(),
       monto,
@@ -396,7 +401,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
     }
 
     const pagosActualizados = [nuevoPago, ...get().pagos]
-    saveLocalPagos(usuario.kiosco_id, pagosActualizados)
+    saveLocalPagos(kioscoId, pagosActualizados)
     set({ pagos: pagosActualizados })
 
     try {
@@ -424,8 +429,8 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
   },
 
   ajustarSaldoProveedor: async (id, nuevoSaldo, motivo) => {
-    const usuario = useAuthStore.getState().usuario
-    if (!usuario?.kiosco_id) return false
+    const kioscoId = getKioscoId()
+    if (!kioscoId) return false
 
     const proveedor = get().proveedores.find((p) => p.id === id)
     if (!proveedor) {
@@ -433,11 +438,11 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
       return false
     }
 
-    const saldoNumerico = Math.max(0, Number(nuevoSaldo) || 0)
+    const saldoNumerico = Number((Number(nuevoSaldo) || 0).toFixed(2))
     const actualizados = get().proveedores.map((p) =>
       p.id === id ? { ...p, saldo_pendiente: saldoNumerico } : p
     )
-    saveLocalProveedores(usuario.kiosco_id, actualizados)
+    saveLocalProveedores(kioscoId, actualizados)
     set({ proveedores: actualizados })
 
     try {
@@ -445,7 +450,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
         .from('proveedores')
         .update({ saldo_pendiente: saldoNumerico })
         .eq('id', id)
-        .eq('kiosco_id', usuario.kiosco_id)
+        .eq('kiosco_id', kioscoId)
     } catch (err) {
       console.warn('Error actualizando saldo en Supabase:', err)
     }
@@ -455,8 +460,8 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
   },
 
   anularPagoProveedor: async (pagoId: string) => {
-    const usuario = useAuthStore.getState().usuario
-    if (!usuario?.kiosco_id) return false
+    const kioscoId = getKioscoId()
+    if (!kioscoId) return false
 
     const pago = get().pagos.find((p) => p.id === pagoId)
     if (!pago) {
@@ -475,7 +480,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
       const actualizados = get().proveedores.map((p) =>
         p.id === proveedor.id ? { ...p, saldo_pendiente: saldoRestituido } : p
       )
-      saveLocalProveedores(usuario.kiosco_id, actualizados)
+      saveLocalProveedores(kioscoId, actualizados)
       set({ proveedores: actualizados })
 
       try {
@@ -483,7 +488,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
           .from('proveedores')
           .update({ saldo_pendiente: saldoRestituido })
           .eq('id', proveedor.id)
-          .eq('kiosco_id', usuario.kiosco_id)
+          .eq('kiosco_id', kioscoId)
       } catch (err) {
         console.warn('Error revirtiendo saldo:', err)
       }
@@ -510,7 +515,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
     const pagosActualizados = get().pagos.map((p) =>
       p.id === pagoId ? { ...p, estado: 'ANULADO' as const } : p
     )
-    saveLocalPagos(usuario.kiosco_id, pagosActualizados)
+    saveLocalPagos(kioscoId, pagosActualizados)
     set({ pagos: pagosActualizados })
 
     try {
@@ -518,7 +523,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
         .from('pagos_proveedor')
         .update({ estado: 'ANULADO' })
         .eq('id', pagoId)
-        .eq('kiosco_id', usuario.kiosco_id)
+        .eq('kiosco_id', kioscoId)
     } catch {
       // Fallback
     }
@@ -528,8 +533,8 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
   },
 
   cargarCompras: async () => {
-    const usuario = useAuthStore.getState().usuario
-    if (!usuario?.kiosco_id) return []
+    const kioscoId = getKioscoId()
+    if (!kioscoId) return []
 
     set({ cargandoCompras: true })
     try {
@@ -540,19 +545,19 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
           proveedor:proveedores(*),
           usuario:usuarios(id, nombre)
         `)
-        .eq('kiosco_id', usuario.kiosco_id)
+        .eq('kiosco_id', kioscoId)
         .order('fecha', { ascending: false })
 
       if (!error && data) {
         set({ compras: data as CompraProveedor[], cargandoCompras: false })
-        saveLocalCompras(usuario.kiosco_id, data as CompraProveedor[])
+        saveLocalCompras(kioscoId, data as CompraProveedor[])
         return data as CompraProveedor[]
       }
     } catch {
       // Fallback a localStorage
     }
 
-    const locales = getLocalCompras(usuario.kiosco_id)
+    const locales = getLocalCompras(kioscoId)
     set({ compras: locales, cargandoCompras: false })
     return locales
   },
@@ -581,7 +586,8 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
 
   registrarCompra: async (compraInput, descontarDeCaja = false) => {
     const usuario = useAuthStore.getState().usuario
-    if (!usuario?.kiosco_id) {
+    const kioscoId = getKioscoId()
+    if (!kioscoId) {
       toast.error('Sesión no identificada')
       return { success: false, error: 'Sin sesión' }
     }
@@ -602,9 +608,9 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
     // 1. Armar objeto cabecera de compra
     const nuevaCompra: CompraProveedor = {
       id: compraId,
-      kiosco_id: usuario.kiosco_id,
+      kiosco_id: kioscoId,
       proveedor_id: compraInput.proveedor_id,
-      usuario_id: usuario.id,
+      usuario_id: usuario?.id || null,
       nro_comprobante: compraInput.nro_comprobante?.trim() || null,
       fecha: fechaActual,
       total: compraInput.total,
@@ -633,13 +639,13 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
 
     // 3. Guardar en local storage para disponibilidad inmediata
     const comprasActualizadas = [nuevaCompra, ...get().compras]
-    saveLocalCompras(usuario.kiosco_id, comprasActualizadas)
+    saveLocalCompras(kioscoId, comprasActualizadas)
     set({ compras: comprasActualizadas })
 
     // 4. Actualizar stock local en catálogo de productos si hubo renglones
     if (tieneDetalles) {
       try {
-        const productosList: Producto[] = getCachedProductos(usuario.kiosco_id)
+        const productosList: Producto[] = getCachedProductos(kioscoId)
         if (productosList && productosList.length > 0) {
           const updatedList = productosList.map((prod) => {
             const item = (compraInput.detalles || []).find((d) => d.producto_id === prod.id)
@@ -653,7 +659,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
             }
             return prod
           })
-          saveCachedProductos(updatedList, usuario.kiosco_id)
+          saveCachedProductos(updatedList, kioscoId)
         }
       } catch (e) {
         console.warn('Error actualizando caché local de productos:', e)
@@ -729,13 +735,13 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
                 .eq('id', pDB.id)
 
               await supabase.from('movimientos_stock').insert({
-                kiosco_id: usuario.kiosco_id,
+                kiosco_id: kioscoId,
                 producto_id: pDB.id,
                 tipo: 'INGRESO',
                 cantidad: item.cantidad,
                 motivo: 'COMPRA',
                 notas: `Compra ${compraInput.nro_comprobante ? `(${compraInput.nro_comprobante})` : ''} - Proveedor: ${proveedor?.nombre || 'General'}`,
-                usuario_id: usuario.id || null,
+                usuario_id: usuario?.id || null,
                 fecha: new Date().toISOString(),
               })
             }
@@ -754,7 +760,8 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
 
   anularCompra: async (compraId: string) => {
     const usuario = useAuthStore.getState().usuario
-    if (!usuario?.kiosco_id) return false
+    const kioscoId = getKioscoId()
+    if (!kioscoId) return false
 
     const compra = get().compras.find((c) => c.id === compraId)
     if (!compra) {
@@ -820,13 +827,13 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
                 .eq('id', pDB.id)
 
               await supabase.from('movimientos_stock').insert({
-                kiosco_id: usuario.kiosco_id,
+                kiosco_id: kioscoId,
                 producto_id: pDB.id,
                 tipo: 'EGRESO',
                 cantidad: -item.cantidad,
                 motivo: 'AJUSTE',
                 notas: `Anulación de compra #${compra.nro_comprobante || compra.id.slice(0, 8).toUpperCase()}`,
-                usuario_id: usuario.id || null,
+                usuario_id: usuario?.id || null,
                 fecha: new Date().toISOString(),
               })
             }
@@ -837,7 +844,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
 
         // Revertir en caché local
         try {
-          const productosList: Producto[] = getCachedProductos(usuario.kiosco_id)
+          const productosList: Producto[] = getCachedProductos(kioscoId)
           if (productosList && productosList.length > 0) {
             const detallesMap = new Map(detalles.map((d) => [d.producto_id, d.cantidad]))
             const updatedList = productosList.map((prod) => {
@@ -851,7 +858,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
               }
               return prod
             })
-            saveCachedProductos(updatedList, usuario.kiosco_id)
+            saveCachedProductos(updatedList, kioscoId)
           }
         } catch (eLocal) {
           console.warn('Error actualizando caché local al anular compra:', eLocal)
@@ -865,7 +872,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
     const comprasActualizadas = get().compras.map((c) =>
       c.id === compraId ? { ...c, estado: 'ANULADA' as const } : c
     )
-    saveLocalCompras(usuario.kiosco_id, comprasActualizadas)
+    saveLocalCompras(kioscoId, comprasActualizadas)
     set({ compras: comprasActualizadas })
 
     // 4. Actualizar en Supabase
@@ -874,7 +881,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
         .from('compras_proveedor')
         .update({ estado: 'ANULADA' })
         .eq('id', compraId)
-        .eq('kiosco_id', usuario.kiosco_id)
+        .eq('kiosco_id', kioscoId)
     } catch (err) {
       console.warn('Error al anular compra en Supabase:', err)
     }
