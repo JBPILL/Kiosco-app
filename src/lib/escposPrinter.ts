@@ -6,6 +6,8 @@
  */
 
 import type { TicketData } from '../components/pos/TicketReceiptModal'
+import type { DatosCierreCaja } from '../components/pos/TicketCierreCajaModal'
+import { formatPrecio, formatFecha } from './utils'
 
 // Comandos ESC/POS estándar
 const ESC = 0x1b
@@ -232,6 +234,173 @@ export async function imprimirTicketEscPosDirecto(
     await port.close()
 
     return { ok: true, mensaje: 'Ticket impreso correctamente por conexión térmica directa.' }
+  } catch (err: unknown) {
+    const errObj = err as Error
+    if (errObj.name === 'NotFoundError') {
+      return { ok: false, mensaje: 'Selección de puerto cancelada por el usuario.' }
+    }
+    return {
+      ok: false,
+      mensaje: `Error al comunicar con la impresora: ${errObj.message || 'Desconocido'}`,
+    }
+  }
+}
+
+/**
+ * Construye el buffer binario Uint8Array con las instrucciones ESC/POS del cierre de caja (Arqueo Z / X)
+ */
+export function construirBufferCierreCajaEscPos(
+  datos: DatosCierreCaja,
+  anchoPapel: '58mm' | '80mm' = '58mm'
+): Uint8Array {
+  const anchoCols = anchoPapel === '80mm' ? 42 : 32
+  const encoder = new TextEncoder()
+  const bytes: number[] = []
+
+  const appendBytes = (arr: number[]) => {
+    bytes.push(...arr)
+  }
+
+  const appendTexto = (str: string, newline = true) => {
+    const raw = encoder.encode(normalizarTexto(str) + (newline ? '\n' : ''))
+    for (let i = 0; i < raw.length; i++) {
+      bytes.push(raw[i])
+    }
+  }
+
+  const separador = '-'.repeat(anchoCols)
+
+  // 1. Inicializar impresora
+  appendBytes(CMD_INIT)
+
+  // 2. Encabezado de comercio (Centrado)
+  appendBytes(CMD_ALIGN_CENTER)
+  appendBytes(CMD_DOUBLE_SIZE)
+  appendBytes(CMD_BOLD_ON)
+  appendTexto(datos.kioscoNombre || 'KIOSKO')
+  appendBytes(CMD_NORMAL_SIZE)
+  appendBytes(CMD_BOLD_OFF)
+
+  if (datos.kioscoDireccion) {
+    appendTexto(datos.kioscoDireccion)
+  }
+  if (datos.kioscoTelefono) {
+    appendTexto(`Tel: ${datos.kioscoTelefono}`)
+  }
+
+  appendBytes(CMD_BOLD_ON)
+  appendTexto(datos.esParcial ? '*** ARQUEO PARCIAL (X) ***' : '*** CIERRE DE CAJA (ARQUEO Z) ***')
+  appendBytes(CMD_BOLD_OFF)
+
+  // 3. Fechas y cajero
+  appendBytes(CMD_ALIGN_LEFT)
+  appendTexto(`Apertura: ${formatFecha(datos.fechaApertura)}`)
+  appendTexto(`Cierre:   ${formatFecha(datos.fechaCierre)}`)
+  if (datos.cajeroNombre) {
+    appendTexto(`Cajero:   ${datos.cajeroNombre}`)
+  }
+
+  appendTexto(separador)
+
+  // 4. Fondo inicial
+  appendBytes(CMD_BOLD_ON)
+  appendTexto(formatearLineaDosColumnas('Fondo Inicial:', formatPrecio(datos.montoInicial), anchoCols))
+  appendBytes(CMD_BOLD_OFF)
+  appendTexto(separador)
+
+  // 5. Ventas por medio
+  appendBytes(CMD_BOLD_ON)
+  appendTexto('VENTAS POR MEDIO:')
+  appendBytes(CMD_BOLD_OFF)
+  if (!datos.ventasPorMedio || datos.ventasPorMedio.length === 0) {
+    appendTexto('Sin ventas registradas')
+  } else {
+    for (const m of datos.ventasPorMedio) {
+      const cant = m.cantidad ? ` (${m.cantidad})` : ''
+      appendTexto(formatearLineaDosColumnas(`${m.medio}${cant}:`, formatPrecio(m.total), anchoCols))
+    }
+  }
+
+  appendBytes(CMD_BOLD_ON)
+  const cantVentas = datos.cantidadVentas ? ` (${datos.cantidadVentas})` : ''
+  appendTexto(formatearLineaDosColumnas(`TOTAL VENTAS${cantVentas}:`, formatPrecio(datos.totalVentas), anchoCols))
+  appendBytes(CMD_BOLD_OFF)
+
+  // 6. Movimientos de caja (ingresos/egresos extra)
+  if (datos.ingresosExtra > 0 || datos.egresosExtra > 0) {
+    appendTexto(separador)
+    appendBytes(CMD_BOLD_ON)
+    appendTexto('MOVIMIENTOS DE CAJA:')
+    appendBytes(CMD_BOLD_OFF)
+    if (datos.ingresosExtra > 0) {
+      appendTexto(formatearLineaDosColumnas('(+) Ingresos Extra:', `+${formatPrecio(datos.ingresosExtra)}`, anchoCols))
+    }
+    if (datos.egresosExtra > 0) {
+      appendTexto(formatearLineaDosColumnas('(-) Retiros/Gastos:', `-${formatPrecio(datos.egresosExtra)}`, anchoCols))
+    }
+  }
+
+  appendTexto(separador)
+
+  // 7. Balance de arqueo
+  appendBytes(CMD_BOLD_ON)
+  appendTexto('ARQUEO DE EFECTIVO:')
+  appendBytes(CMD_BOLD_OFF)
+  appendTexto(formatearLineaDosColumnas('Esperado en caja:', formatPrecio(datos.efectivoEsperado), anchoCols))
+  appendTexto(formatearLineaDosColumnas('Contado en mano:', formatPrecio(datos.efectivoContado), anchoCols))
+
+  appendBytes(CMD_BOLD_ON)
+  const dif = datos.diferencia
+  const difLabel = dif === 0 ? '$0 (Exacto)' : dif > 0 ? `+${formatPrecio(dif)} (Sobrante)` : `${formatPrecio(dif)} (Faltante)`
+  appendTexto(formatearLineaDosColumnas('Diferencia:', difLabel, anchoCols))
+  appendBytes(CMD_BOLD_OFF)
+
+  // 8. Espacio para firmas
+  appendTexto('')
+  appendTexto('')
+  appendBytes(CMD_ALIGN_CENTER)
+  const firmaLinea = '-'.repeat(Math.min(24, anchoCols - 4))
+  appendTexto(firmaLinea)
+  appendTexto('Firma Cajero / Turno')
+  appendTexto('')
+  appendTexto(firmaLinea)
+  appendTexto('Firma Encargado / Dueño')
+  appendTexto('')
+
+  // 9. Corte de papel
+  appendBytes(CMD_FEED_AND_CUT)
+
+  return new Uint8Array(bytes)
+}
+
+/**
+ * Envía directamente un ticket de cierre de caja (Arqueo) a la impresora térmica vía Web Serial
+ */
+export async function imprimirCierreCajaEscPosDirecto(
+  datos: DatosCierreCaja,
+  anchoPapel: '58mm' | '80mm' = '58mm',
+  baudRate = 9600
+): Promise<{ ok: boolean; mensaje: string }> {
+  if (!isWebSerialSupported()) {
+    return {
+      ok: false,
+      mensaje: 'Web Serial no es compatible con este navegador. Usá Chrome, Edge u Opera en PC.',
+    }
+  }
+
+  try {
+    const serial = (navigator as unknown as { serial: { requestPort: () => Promise<SerialPortLike> } }).serial
+    const port = await serial.requestPort()
+    await port.open({ baudRate })
+
+    const writer = port.writable.getWriter()
+    const buffer = construirBufferCierreCajaEscPos(datos, anchoPapel)
+
+    await writer.write(buffer)
+    writer.releaseLock()
+    await port.close()
+
+    return { ok: true, mensaje: 'Ticket de cierre impreso correctamente por conexión térmica directa.' }
   } catch (err: unknown) {
     const errObj = err as Error
     if (errObj.name === 'NotFoundError') {

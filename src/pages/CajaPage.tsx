@@ -51,7 +51,7 @@ interface SesionHistorial extends SesionCaja {
 }
 
 export function CajaPage() {
-  const { usuario } = useAuthStore()
+  const { usuario, kiosco } = useAuthStore()
   const {
     sesionActiva,
     resumenActivo,
@@ -228,6 +228,8 @@ export function CajaPage() {
 
     const snapshotCierre: DatosCierreCaja = {
       kioscoNombre: kiosco?.nombre,
+      kioscoDireccion: kiosco?.direccion,
+      kioscoTelefono: kiosco?.telefono,
       cajeroNombre: usuario?.nombre,
       fechaApertura: sesionActiva?.fecha_apertura || new Date().toISOString(),
       fechaCierre: new Date().toISOString(),
@@ -258,6 +260,47 @@ export function CajaPage() {
     }
   }
 
+  const handleImprimirArqueoActual = () => {
+    if (!sesionActiva) return
+    const facturadoTotal = resumenActivo?.total_facturado || 0
+    const operacionesTotal = resumenActivo?.total_ventas || 0
+    const otrosPagos = Math.max(
+      0,
+      facturadoTotal -
+        ((resumenActivo?.total_efectivo || 0) +
+          (resumenActivo?.total_mercadopago || 0) +
+          (resumenActivo?.total_transferencia || 0) +
+          (resumenActivo?.total_tarjeta || 0))
+    )
+
+    const datos: DatosCierreCaja = {
+      kioscoNombre: kiosco?.nombre,
+      kioscoDireccion: kiosco?.direccion,
+      kioscoTelefono: kiosco?.telefono,
+      cajeroNombre: sesionActiva.usuario?.nombre || usuario?.nombre,
+      fechaApertura: sesionActiva.fecha_apertura,
+      fechaCierre: new Date().toISOString(),
+      montoInicial: sesionActiva.monto_inicial,
+      ventasPorMedio: [
+        { medio: 'Efectivo', total: resumenActivo?.total_efectivo || 0 },
+        { medio: 'Mercado Pago', total: resumenActivo?.total_mercadopago || 0 },
+        { medio: 'Transferencia', total: resumenActivo?.total_transferencia || 0 },
+        { medio: 'Tarjeta', total: resumenActivo?.total_tarjeta || 0 },
+        { medio: 'Fiado / Cta Cte', total: resumenActivo?.total_cuenta_corriente ?? otrosPagos },
+      ].filter((m) => m.total > 0),
+      totalVentas: facturadoTotal,
+      cantidadVentas: operacionesTotal,
+      ingresosExtra: resumenActivo?.total_ingresos_extra || 0,
+      egresosExtra: resumenActivo?.total_egresos || 0,
+      efectivoEsperado,
+      efectivoContado: efectivoEsperado,
+      diferencia: 0,
+      esParcial: true,
+    }
+    setTicketCierre(datos)
+    setModalTicketCierreOpen(true)
+  }
+
   const handleImprimirHistorico = async (s: SesionHistorial) => {
     const resumen = await cargarResumenSesion(s.id)
     const facturadoTotal = resumen?.total_facturado || 0
@@ -273,6 +316,8 @@ export function CajaPage() {
 
     const datos: DatosCierreCaja = {
       kioscoNombre: useAuthStore.getState().kiosco?.nombre,
+      kioscoDireccion: useAuthStore.getState().kiosco?.direccion,
+      kioscoTelefono: useAuthStore.getState().kiosco?.telefono,
       cajeroNombre: s.usuario?.nombre || usuario?.nombre,
       fechaApertura: s.fecha_apertura,
       fechaCierre: s.fecha_cierre || s.fecha_apertura,
@@ -487,11 +532,21 @@ export function CajaPage() {
                     variant="secondary"
                     size="sm"
                     onClick={() => cargarResumenSesion(sesionActiva.id)}
+                    title="Recalcular ventas y movimientos en vivo"
                   >
                     Actualizar valores
                   </Button>
                   <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleImprimirArqueoActual}
+                    title="Generar o imprimir comprobante térmico de control del turno en curso (Arqueo X)"
+                  >
+                    Imprimir Arqueo Actual
+                  </Button>
+                  <Button
                     variant="danger"
+                    size="sm"
                     onClick={handleAbrirModalArqueo}
                   >
                     {esDueno || !arqueoCiegoObligatorio ? 'Contar plata y cerrar turno' : 'Cerrar turno (Conteo a ciegas)'}

@@ -2,10 +2,14 @@ import { useState, useEffect } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { formatPrecio, formatFecha } from '../../lib/utils'
+import { isWebSerialSupported, imprimirCierreCajaEscPosDirecto } from '../../lib/escposPrinter'
+import toast from 'react-hot-toast'
 
 export interface DatosCierreCaja {
-  kioscoNombre?: string
-  cajeroNombre?: string
+  kioscoNombre?: string | null
+  kioscoDireccion?: string | null
+  kioscoTelefono?: string | null
+  cajeroNombre?: string | null
   fechaApertura: string
   fechaCierre: string
   montoInicial: number
@@ -17,6 +21,7 @@ export interface DatosCierreCaja {
   efectivoEsperado: number
   efectivoContado: number
   diferencia: number
+  esParcial?: boolean
 }
 
 interface TicketCierreCajaModalProps {
@@ -27,6 +32,7 @@ interface TicketCierreCajaModalProps {
 
 export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCajaModalProps) {
   const [anchoPapel, setAnchoPapel] = useState<'58mm' | '80mm'>('58mm')
+  const [imprimiendoSerial, setImprimiendoSerial] = useState(false)
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -41,18 +47,57 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
     window.print()
   }
 
+  const handleImprimirEscPos = async () => {
+    if (!datos) return
+    setImprimiendoSerial(true)
+    try {
+      const res = await imprimirCierreCajaEscPosDirecto(datos, anchoPapel)
+      if (res.ok) {
+        toast.success(res.mensaje)
+      } else {
+        toast.error(res.mensaje)
+      }
+    } catch (e: any) {
+      toast.error('Error al imprimir por USB: ' + (e?.message || 'Error desconocido'))
+    } finally {
+      setImprimiendoSerial(false)
+    }
+  }
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Ticket de Cierre de Caja (Arqueo Z)"
+      title={datos.esParcial ? 'Ticket de Arqueo Parcial (X)' : 'Ticket de Cierre de Caja (Arqueo Z)'}
       size="md"
       footer={
-        <div className="flex gap-2 w-full">
-          <Button variant="primary" fullWidth onClick={handleImprimir} className="bg-indigo-600 hover:bg-indigo-700 text-white">
-            Imprimir Arqueo
-          </Button>
-          <Button variant="secondary" fullWidth onClick={onClose}>
+        <div className="w-full space-y-2">
+          <div className={isWebSerialSupported() ? "grid grid-cols-1 sm:grid-cols-2 gap-2" : "w-full"}>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleImprimir}
+              className="w-full text-xs sm:text-sm font-semibold shadow-xs"
+              title="Abrir ventana de impresión del sistema o guardar como PDF"
+            >
+              <span>Imprimir (Sistema / PDF)</span>
+            </Button>
+
+            {isWebSerialSupported() && (
+              <Button
+                variant="warning"
+                size="sm"
+                onClick={handleImprimirEscPos}
+                loading={imprimiendoSerial}
+                disabled={imprimiendoSerial}
+                className="w-full text-xs sm:text-sm font-semibold shadow-xs"
+                title="Impresión térmica directa por cable USB/COM sin ventana de diálogo"
+              >
+                <span>{imprimiendoSerial ? 'Imprimiendo...' : 'Imprimir Ticket USB'}</span>
+              </Button>
+            )}
+          </div>
+          <Button variant="secondary" size="sm" fullWidth onClick={onClose}>
             Cerrar
           </Button>
         </div>
@@ -107,8 +152,14 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
               <p className="font-bold text-sm tracking-wide uppercase">
                 {datos.kioscoNombre || 'KIOSKOPOS'}
               </p>
+              {datos.kioscoDireccion && (
+                <p className="text-[10px] text-gray-600">{datos.kioscoDireccion}</p>
+              )}
+              {datos.kioscoTelefono && (
+                <p className="text-[10px] text-gray-600">Tel: {datos.kioscoTelefono}</p>
+              )}
               <p className="font-bold text-[11px] uppercase tracking-wider bg-gray-100 py-0.5 rounded">
-                *** CIERRE DE CAJA (ARQUEO) ***
+                *** {datos.esParcial ? 'ARQUEO PARCIAL (X)' : 'CIERRE DE CAJA (ARQUEO Z)'} ***
               </p>
               <div className="text-[10px] text-gray-700 text-left pt-1 space-y-0.5">
                 <p>Apertura: {formatFecha(datos.fechaApertura)}</p>
