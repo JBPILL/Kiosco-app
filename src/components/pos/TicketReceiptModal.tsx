@@ -54,11 +54,6 @@ export interface TicketData {
     nroDocCliente?: string
     tipoComprobanteNombre?: string
   } | null
-  puntosFidelidad?: {
-    ganados: number
-    canjeados?: number
-    saldoTotal?: number
-  } | null
 }
 
 interface TicketReceiptModalProps {
@@ -249,18 +244,6 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
     }
     if (ticket.notas) {
       msg += `Notas: ${ticket.notas}\n`
-    }
-    if (ticket.puntosFidelidad) {
-      msg += `--------------------------------\n`
-      if (ticket.puntosFidelidad.ganados > 0) {
-        msg += `Puntos acumulados: +${ticket.puntosFidelidad.ganados} pts\n`
-      }
-      if (ticket.puntosFidelidad.canjeados && ticket.puntosFidelidad.canjeados > 0) {
-        msg += `Puntos canjeados: -${ticket.puntosFidelidad.canjeados} pts\n`
-      }
-      if (ticket.puntosFidelidad.saldoTotal !== undefined) {
-        msg += `Saldo total puntos: ${ticket.puntosFidelidad.saldoTotal} pts\n`
-      }
     }
     if (ticket.afip) {
       msg += `--------------------------------\n`
@@ -563,28 +546,6 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
               {ticket.notas && (
                 <div className="pt-1 text-[10px] text-gray-500">
                   <span>Nota: {ticket.notas}</span>
-                </div>
-              )}
-              {ticket.puntosFidelidad && (
-                <div className="pt-1.5 mt-1 border-t border-dotted border-gray-300 text-[10px] space-y-0.5">
-                  {ticket.puntosFidelidad.ganados > 0 && (
-                    <div className="flex justify-between font-semibold text-indigo-900">
-                      <span>Puntos sumados:</span>
-                      <span>+{ticket.puntosFidelidad.ganados} pts</span>
-                    </div>
-                  )}
-                  {ticket.puntosFidelidad.canjeados && ticket.puntosFidelidad.canjeados > 0 && (
-                    <div className="flex justify-between text-emerald-800">
-                      <span>Puntos canjeados:</span>
-                      <span>-{ticket.puntosFidelidad.canjeados} pts</span>
-                    </div>
-                  )}
-                  {ticket.puntosFidelidad.saldoTotal !== undefined && (
-                    <div className="flex justify-between text-gray-700 font-bold">
-                      <span>Saldo actual de puntos:</span>
-                      <span>{ticket.puntosFidelidad.saldoTotal} pts</span>
-                    </div>
-                  )}
                 </div>
               )}
             </div>

@@ -86,6 +86,7 @@ export function StockPage() {
       .select('id, descripcion, stock_actual, stock_minimo, precio_costo, precio_venta, codigo_barras, activo')
       .eq('activo', true)
       .order('descripcion')
+      .limit(10000)
 
     if (usuario?.kiosco_id) {
       query = query.eq('kiosco_id', usuario.kiosco_id)

@@ -48,9 +48,6 @@ interface ClienteState {
     impactarEnCaja?: boolean
   ) => Promise<boolean>
 
-  sumarPuntosCliente: (clienteId: string, puntos: number) => Promise<boolean>
-  canjearPuntosCliente: (clienteId: string, puntos: number) => Promise<boolean>
-
   cargarMovimientosCliente: (clienteId: string) => Promise<MovimientoCuentaCorriente[]>
 }
 
@@ -193,59 +190,6 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
     }
 
     toast.success('Cliente actualizado')
-    return true
-  },
-
-  sumarPuntosCliente: async (clienteId, puntos) => {
-    const usuario = useAuthStore.getState().usuario
-    if (!usuario?.kiosco_id) return false
-    const cliente = get().clientes.find((c) => c.id === clienteId)
-    if (!cliente) return false
-
-    const nuevosPuntos = Math.max(0, (cliente.puntos_fidelidad || 0) + Math.round(puntos))
-    const actualizados = get().clientes.map((c) =>
-      c.id === clienteId ? { ...c, puntos_fidelidad: nuevosPuntos } : c
-    )
-    saveLocalClientes(usuario.kiosco_id, actualizados)
-    set({ clientes: actualizados })
-
-    try {
-      await supabase
-        .from('clientes')
-        .update({ puntos_fidelidad: nuevosPuntos })
-        .eq('id', clienteId)
-    } catch (err) {
-      console.warn('No se pudo sincronizar puntos en Supabase:', err)
-    }
-    return true
-  },
-
-  canjearPuntosCliente: async (clienteId, puntos) => {
-    const usuario = useAuthStore.getState().usuario
-    if (!usuario?.kiosco_id) return false
-    const cliente = get().clientes.find((c) => c.id === clienteId)
-    if (!cliente) return false
-    if ((cliente.puntos_fidelidad || 0) < puntos) {
-      toast.error('Puntos insuficientes para canje')
-      return false
-    }
-
-    const nuevosPuntos = Math.max(0, (cliente.puntos_fidelidad || 0) - Math.round(puntos))
-    const actualizados = get().clientes.map((c) =>
-      c.id === clienteId ? { ...c, puntos_fidelidad: nuevosPuntos } : c
-    )
-    saveLocalClientes(usuario.kiosco_id, actualizados)
-    set({ clientes: actualizados })
-
-    try {
-      await supabase
-        .from('clientes')
-        .update({ puntos_fidelidad: nuevosPuntos })
-        .eq('id', clienteId)
-    } catch (err) {
-      console.warn('No se pudo sincronizar puntos en Supabase:', err)
-    }
-    toast.success(`Se canjearon ${puntos} puntos de fidelidad`)
     return true
   },
 

@@ -174,16 +174,7 @@ export function construirBufferEscPos(ticket: TicketData, anchoPapel: '58mm' | '
     appendTexto(formatearLineaDosColumnas('Vuelto:', `$${Math.round(ticket.vuelto || 0).toLocaleString('es-AR')}`, anchoCols))
   }
 
-  // 5. Datos fiscales AFIP / Puntos
-  if (ticket.puntosFidelidad && ticket.puntosFidelidad.ganados > 0) {
-    appendTexto(separador)
-    appendBytes(CMD_ALIGN_CENTER)
-    appendTexto(`Puntos ganados: +${ticket.puntosFidelidad.ganados} pts`)
-    if (ticket.puntosFidelidad.saldoTotal !== undefined) {
-      appendTexto(`Saldo acumulado: ${ticket.puntosFidelidad.saldoTotal} pts`)
-    }
-  }
-
+  // 5. Datos fiscales AFIP
   if (ticket.afip) {
     appendTexto(separador)
     appendBytes(CMD_ALIGN_CENTER)

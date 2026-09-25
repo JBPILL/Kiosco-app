@@ -183,6 +183,7 @@ export function useProducts() {
       .select('*, categoria:categorias(id, nombre, color)')
       .eq('activo', true)
       .order('descripcion')
+      .limit(10000)
 
     if (currentKioscoId) {
       query = query.eq('kiosco_id', currentKioscoId)

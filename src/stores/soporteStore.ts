@@ -259,8 +259,17 @@ export const useSoporteStore = create<SoporteState>((set, get) => ({
 
   suscribirRealtimeTickets: () => {
     try {
+      const channelName = 'tickets_soporte_realtime'
+
+      // BUG-32: Si ya existe un canal registrado con este topic, removerlo para evitar suscripciones duplicadas
+      const canalesExistentes = supabase.getChannels ? supabase.getChannels() : []
+      const canalPrevio = canalesExistentes.find((c: any) => c.topic === channelName || c.subTopic === channelName)
+      if (canalPrevio) {
+        supabase.removeChannel(canalPrevio)
+      }
+
       const canal = supabase
-        .channel('tickets_soporte_realtime')
+        .channel(channelName)
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'tickets_soporte' },
