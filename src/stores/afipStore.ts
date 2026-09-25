@@ -252,13 +252,14 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
         tipoComprobante || (config.condicion_iva === 'MONOTRIBUTO' ? 11 : 6)
       const letra: 'C' | 'B' | 'A' = tipoCmp === 11 || tipoCmp === 13 ? 'C' : tipoCmp === 1 || tipoCmp === 3 ? 'A' : 'B'
 
-      // Obtener el número correlativo seguro verificando tanto la última venta registrada en Supabase como el estado local
+      // Obtener el número correlativo seguro verificando tanto la última venta registrada en Supabase como el estado local para el tipo de comprobante
       let ultimoNroBase = config.ultimo_nro_comprobante || 0
       try {
         const { data: ultVenta } = await supabase
           .from('ventas')
           .select('afip_nro_comprobante')
           .eq('kiosco_id', kioscoId)
+          .eq('afip_tipo_comprobante', tipoCmp)
           .not('afip_nro_comprobante', 'is', null)
           .order('afip_nro_comprobante', { ascending: false })
           .limit(1)
@@ -271,7 +272,27 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
         console.warn('Verificación remota de correlativo AFIP omitida por fallback local:', errSync)
       }
 
-      const nuevoNroComp = ultimoNroBase + 1
+      let nuevoNroComp = ultimoNroBase + 1
+
+      // Verificación de colisión concurrente: asegurar que ninguna otra terminal tomó este mismo correlativo en simultáneo
+      try {
+        const { data: ultCompConcurrente } = await supabase
+          .from('ventas')
+          .select('afip_nro_comprobante')
+          .eq('kiosco_id', kioscoId)
+          .eq('afip_tipo_comprobante', tipoCmp)
+          .gte('afip_nro_comprobante', nuevoNroComp)
+          .order('afip_nro_comprobante', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (ultCompConcurrente?.afip_nro_comprobante && ultCompConcurrente.afip_nro_comprobante >= nuevoNroComp) {
+          nuevoNroComp = ultCompConcurrente.afip_nro_comprobante + 1
+        }
+      } catch (errConc) {
+        console.warn('Verificación de concurrencia de comprobante omitida:', errConc)
+      }
+
       const ahora = new Date()
       const fechaHoyStr = getFechaLocal(ahora)
 

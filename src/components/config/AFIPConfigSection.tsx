@@ -365,6 +365,15 @@ export function AFIPConfigSection() {
               <option value="HOMOLOGACION">Homologación / Modo Pruebas (Recomendado para inicio)</option>
               <option value="PRODUCCION">Producción (Comprobantes Fiscales Reales)</option>
             </select>
+            {entorno === 'HOMOLOGACION' ? (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1 font-medium">
+                <span>⚠️</span> Modo Pruebas activo: Los comprobantes emitidos tienen fines de prueba y validación interna (sin validez fiscal ante ARCA).
+              </p>
+            ) : (
+              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1 font-medium">
+                <span>🛡️</span> Modo Producción activo: Los comprobantes emitidos son oficiales y se rigen por la normativa RG 4892 de ARCA.
+              </p>
+            )}
           </div>
 
           {/* Último Comprobante */}
