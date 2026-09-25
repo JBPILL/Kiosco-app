@@ -321,7 +321,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
 
             {isWebSerialSupported() && (
               <Button
-                variant="secondary"
+                variant="warning"
                 size="sm"
                 onClick={handleImprimirEscPos}
                 loading={imprimiendoSerial}

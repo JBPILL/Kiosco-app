@@ -550,14 +550,13 @@ export function StockPage() {
         <div className="flex items-center gap-2 self-start sm:self-auto">
           <Button
             type="button"
-            variant="secondary"
+            variant="teal"
             size="sm"
             onClick={() => setModalAuditoriaOpen(true)}
-            className="flex items-center gap-1.5 text-xs font-semibold shadow-2xs"
+            className="text-xs font-semibold shadow-2xs"
             title="Toma de inventario físico y recuento con pistola de código de barras"
           >
-            <span>📋</span>
-            <span>Auditoría Física</span>
+            <span>Conteo Físico</span>
           </Button>
 
           <button
@@ -745,9 +744,9 @@ export function StockPage() {
         /* Historial de Movimientos de Stock */
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs overflow-hidden">
           {/* Barra superior de control: Pestañas, Buscador y Exportación */}
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-gray-50/50 dark:bg-gray-900/30">
+          <div className="p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col xl:flex-row xl:items-center justify-between gap-3 bg-gray-50/50 dark:bg-gray-900/30">
             {/* Pestañas de filtrado por Tipo */}
-            <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/80 p-1 rounded-lg border border-gray-200 dark:border-gray-700 self-start md:self-auto flex-nowrap overflow-x-auto scrollbar-hide max-w-full">
+            <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800/80 p-1 rounded-lg border border-gray-200 dark:border-gray-700 shrink-0 self-start xl:self-auto flex-nowrap overflow-x-auto scrollbar-hide max-w-full">
               {(['TODOS', 'INGRESO', 'EGRESO', 'AJUSTE'] as const).map((tipo) => (
                 <button
                   key={tipo}
@@ -770,12 +769,12 @@ export function StockPage() {
               ))}
             </div>
 
-            {/* Buscador y Exportar CSV */}
-            <div className="flex items-center gap-2 w-full md:w-auto">
-              <div className="relative flex-1 md:w-64">
+            {/* Buscador y Botones de Acción */}
+            <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
+              <div className="relative flex-1 min-w-[160px] sm:w-48 xl:w-56">
                 <input
                   type="text"
-                  placeholder="Buscar por producto, código o motivo..."
+                  placeholder="Buscar producto o código..."
                   value={busquedaHistorial}
                   onChange={(e) => setBusquedaHistorial(e.target.value)}
                   className="w-full text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 outline-none focus:border-indigo-500 transition-colors"
@@ -792,13 +791,13 @@ export function StockPage() {
               </div>
 
               <Button
-                variant="secondary"
+                variant="teal"
                 size="sm"
                 onClick={() => setModalAuditoriaOpen(true)}
-                className="text-xs whitespace-nowrap"
+                className="text-xs whitespace-nowrap font-medium shadow-xs"
                 title="Realizar una toma física o conteo rápido con lector de códigos de barras"
               >
-                Conteo Físico / Auditoría
+                Conteo Físico
               </Button>
 
               <Button
@@ -822,10 +821,10 @@ export function StockPage() {
                 size="sm"
                 onClick={() => exportarMovimientosStockExcel(movimientosFiltrados, kiosco?.nombre || 'Kiosco')}
                 disabled={movimientosFiltrados.length === 0}
-                className="text-xs whitespace-nowrap"
+                className="text-xs whitespace-nowrap font-medium shadow-xs"
                 title="Descargar historial filtrado en formato Excel corporativo (.xlsx)"
               >
-                Exportar Excel (.XLSX)
+                Exportar Excel
               </Button>
 
               <button

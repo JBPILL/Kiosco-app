@@ -2,7 +2,7 @@ import { forwardRef } from 'react'
 import type { ButtonHTMLAttributes } from 'react'
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'danger' | 'success' | 'ghost'
+  variant?: 'primary' | 'secondary' | 'danger' | 'success' | 'warning' | 'teal' | 'ghost'
   size?: 'sm' | 'md' | 'lg'
   fullWidth?: boolean
   loading?: boolean
@@ -13,6 +13,8 @@ const variantStyles = {
   secondary: 'border-2 border-gray-300 dark:border-gray-500 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 hover:border-gray-400 dark:hover:border-gray-400 active:bg-gray-300 dark:active:bg-gray-600',
   danger: 'border-2 border-red-500 hover:border-red-600 dark:border-red-400 bg-red-600 text-white hover:bg-red-700 active:bg-red-800',
   success: 'border-2 border-emerald-500 hover:border-emerald-600 dark:border-emerald-400 bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800',
+  warning: 'border-2 border-amber-500 hover:border-amber-600 dark:border-amber-400 bg-amber-600 text-white hover:bg-amber-700 active:bg-amber-800',
+  teal: 'border-2 border-teal-500 hover:border-teal-600 dark:border-teal-400 bg-teal-600 text-white hover:bg-teal-700 active:bg-teal-800',
   ghost: 'border-2 border-transparent hover:border-gray-300 dark:hover:border-gray-600 bg-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700',
 }
 
