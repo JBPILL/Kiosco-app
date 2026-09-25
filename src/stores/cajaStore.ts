@@ -60,6 +60,8 @@ export const useCajaStore = create<CajaState>((set, get) => ({
   cargando: false,
 
   verificarSesionActiva: async () => {
+    // BUG-10: Semáforo para evitar ejecución concurrente que limpia el estado válido
+    if (get().cargando) return
     const usuario = useAuthStore.getState().usuario
     if (!usuario?.kiosco_id) return
 
@@ -179,6 +181,12 @@ export const useCajaStore = create<CajaState>((set, get) => ({
       return false
     }
 
+    // BUG-12: Guard contra doble-click — si ya hay una operación de caja en curso, esperar
+    if (get().cargando) {
+      toast('Operación en curso, esperá un momento...', { duration: 1500 })
+      return false
+    }
+
     const nuevoMovimiento: MovimientoCaja = {
       id: uuidv4(),
       kiosco_id: usuario.kiosco_id,
@@ -196,6 +204,7 @@ export const useCajaStore = create<CajaState>((set, get) => ({
     const actualizados = [nuevoMovimiento, ...actuales]
     saveLocalMovimientos(sesion.id, actualizados)
 
+    set({ cargando: true })  // BUG-12: deshabilitar durante el await para evitar duplicados
     try {
       await supabase.from('movimientos_caja').insert({
         id: nuevoMovimiento.id,
@@ -210,6 +219,8 @@ export const useCajaStore = create<CajaState>((set, get) => ({
       })
     } catch (err) {
       console.warn('Supabase movimientos_caja no accesible, resguardado local:', err)
+    } finally {
+      set({ cargando: false })
     }
 
     set({ movimientosCaja: actualizados })
@@ -330,6 +341,8 @@ export const useCajaStore = create<CajaState>((set, get) => ({
   },
 
   cerrarCaja: async (montoDeclarado: number) => {
+    // BUG-11: Semáforo — prevenir doble cierre concurrente por doble-click
+    if (get().cargando) return false
     const sesion = get().sesionActiva
     if (!sesion?.id) {
       toast.error('No hay ninguna sesión de caja abierta')
@@ -352,6 +365,7 @@ export const useCajaStore = create<CajaState>((set, get) => ({
           estado: 'CERRADA',
         })
         .eq('id', sesion.id)
+        .eq('estado', 'ABIERTA')  // BUG-11: guard atómico en DB — solo actualizar sesiones abiertas
 
       if (error) throw error
 

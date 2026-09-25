@@ -94,16 +94,22 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
   },
 
   sincronizarCola: async (kioscoId: string) => {
+    // BUG-18: Verificar y fijar el semáforo de forma atómica antes de cualquier await
     if (get().sincronizando) return { exitosas: 0, fallidas: 0 }
+    set({ sincronizando: true })  // fijar inmediatamente (síncrono, antes del primer await)
+
     const pendientes = getLocalCola(kioscoId)
-    if (pendientes.length === 0) return { exitosas: 0, fallidas: 0 }
+    if (pendientes.length === 0) {
+      set({ sincronizando: false })
+      return { exitosas: 0, fallidas: 0 }
+    }
 
     if (!navigator.onLine) {
       toast.error('Sin conexión a internet para sincronizar ventas pendientes', { icon: '📶' })
+      set({ sincronizando: false })
       return { exitosas: 0, fallidas: pendientes.length }
     }
 
-    set({ sincronizando: true })
     const toastId = toast.loading(`Sincronizando ${pendientes.length} venta(s) guardadas offline...`)
 
     let exitosas = 0
@@ -128,7 +134,7 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
           throw errVenta
         }
 
-        // 2. Insertar renglones de detalles
+        // 2. Insertar renglones de detalles — BUG-17: throw en lugar de warn para no crear venta huérfana
         if (v.detalles && v.detalles.length > 0) {
           const detallesAInsertar = v.detalles.map((d) => ({
             id: d.id,
@@ -144,11 +150,13 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
 
           const { error: errDetalles } = await supabase.from('detalles_venta').insert(detallesAInsertar)
           if (errDetalles && !errDetalles.message?.includes('duplicate key')) {
-            console.warn('Aviso insertando detalles offline:', errDetalles)
+            // BUG-17: Lanzar error para que la venta quede en noSincronizadas y se reintente.
+            // Si pasamos silenciosamente, la venta queda huérfana (existe en 'ventas' sin detalles ni pagos).
+            throw errDetalles
           }
         }
 
-        // 3. Insertar pagos
+        // 3. Insertar pagos — BUG-17: ídem
         if (v.pagos && v.pagos.length > 0) {
           const pagosAInsertar = v.pagos.map((p) => ({
             venta_id: v.id,
@@ -159,7 +167,7 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
 
           const { error: errPagos } = await supabase.from('pagos_venta').insert(pagosAInsertar)
           if (errPagos && !errPagos.message?.includes('duplicate key')) {
-            console.warn('Aviso insertando pagos offline:', errPagos)
+            throw errPagos
           }
         }
 

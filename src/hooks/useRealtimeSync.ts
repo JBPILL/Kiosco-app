@@ -18,6 +18,14 @@ export function useRealtimeSync(kioscoId?: string, onProductChange?: () => void)
     if (!kioscoId) return
 
     const channelName = `realtime_kiosco_${kioscoId}`
+
+    // BUG-15: Si ya existe un canal registrado con este topic en el cliente, limpiarlo antes de abrir otro
+    const canalesExistentes = supabase.getChannels ? supabase.getChannels() : []
+    const canalPrevio = canalesExistentes.find((c: any) => c.topic === channelName || c.subTopic === channelName)
+    if (canalPrevio) {
+      supabase.removeChannel(canalPrevio)
+    }
+
     const canal = supabase
       .channel(channelName)
       .on(

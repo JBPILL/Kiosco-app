@@ -34,6 +34,7 @@ interface AuthState {
 }
 
 let authRecoveryListenerRegistered = false
+let authSubscription: { unsubscribe: () => void } | null = null
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   usuario: null,
@@ -128,6 +129,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    if (authSubscription) {
+      try {
+        authSubscription.unsubscribe()
+      } catch {}
+      authSubscription = null
+      authRecoveryListenerRegistered = false
+    }
     await supabase.auth.signOut()
     try {
       localStorage.removeItem('kiosko_cache_productos')
@@ -161,11 +169,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       if (!authRecoveryListenerRegistered) {
         authRecoveryListenerRegistered = true
-        supabase.auth.onAuthStateChange((event) => {
+        const { data } = supabase.auth.onAuthStateChange((event) => {
           if (event === 'PASSWORD_RECOVERY') {
             set({ esModoRecuperacion: true, cargando: false })
+          } else if (event === 'SIGNED_OUT') {
+            // BUG-16: Si la sesión expira o es revocada por el servidor, limpiar el estado zombie
+            set({
+              usuario: null,
+              kiosco: null,
+              suscripcion: null,
+              diasRestantes: null,
+              cargando: false,
+            })
           }
         })
+        authSubscription = data?.subscription || null
       }
 
       const { data: { session } } = await supabase.auth.getSession()

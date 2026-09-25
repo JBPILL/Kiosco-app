@@ -821,7 +821,12 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       )) {
         console.warn('Fallo de red detectado al cobrar. Derivando a cola offline local...')
         if (registrarVentaEnModoOffline) {
-          await registrarVentaEnModoOffline()
+          try {
+            await registrarVentaEnModoOffline()
+          } catch (offlineErr) {
+            console.error('Error guardando venta offline:', offlineErr)
+            toast.error('No se pudo guardar la venta en modo offline.')
+          }
           return
         }
       }
@@ -831,6 +836,35 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         try {
           await supabase.from('detalles_venta').delete().eq('venta_id', ventaCreadaId)
           await supabase.from('pagos_venta').delete().eq('venta_id', ventaCreadaId)
+
+          // BUG-13: También limpiar movimientos_stock y restaurar stock_actual
+          // para que el stock no quede decrementado tras una venta que se anuló por error.
+          const ventaRef = ventaCreadaId.slice(0, 8).toUpperCase()
+          await supabase
+            .from('movimientos_stock')
+            .delete()
+            .like('notas', `Venta #${ventaRef}%`)
+
+          // Restaurar stock_actual por cada producto estándar que se dedujo
+          for (const it of items) {
+            if (it.producto.es_combo || it.producto.activo === false) continue
+            try {
+              const { data: pActual } = await supabase
+                .from('productos')
+                .select('stock_actual')
+                .eq('id', it.producto.id)
+                .maybeSingle()
+              if (pActual && typeof pActual.stock_actual === 'number') {
+                await supabase
+                  .from('productos')
+                  .update({ stock_actual: Number((pActual.stock_actual + it.cantidad).toFixed(3)) })
+                  .eq('id', it.producto.id)
+              }
+            } catch (errRollStock) {
+              console.warn(`Aviso restaurando stock de ${it.producto.descripcion} en rollback:`, errRollStock)
+            }
+          }
+
           const { data: delVenta } = await supabase.from('ventas').delete().eq('id', ventaCreadaId).select()
           // Si el delete no eliminó filas (por políticas RLS), marcarla de inmediato como ANULADA
           if (!delVenta || delVenta.length === 0) {
