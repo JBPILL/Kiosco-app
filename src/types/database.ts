@@ -57,6 +57,8 @@ export interface Producto {
   es_retornable?: boolean
   precio_envase?: number
   nombre_envase?: string
+  // Sincronización offline
+  _local_offline?: boolean
 }
 
 export interface LoteProducto {
@@ -196,6 +198,7 @@ export type MotivoMovimientoCaja =
   | 'RETIRO_DUENO'
   | 'REPOSICION_CAMBIO'
   | 'DEVOLUCION_VENTA'
+  | 'COBRO_CUENTA_CORRIENTE'
   | 'OTRO'
 
 export interface MovimientoCaja {
@@ -257,6 +260,7 @@ export interface ItemCarrito {
   sin_envase?: boolean
   precio_envase_unitario?: number
   es_devolucion_envase?: boolean
+  tipo_envase_id?: string
 }
 
 // --- Promociones Automáticas (NxM, Volumen, Porcentaje) ---

@@ -61,7 +61,8 @@ export function RecibirEnvaseModal({ isOpen, onClose }: RecibirEnvaseModalProps)
     agregarDevolucionEnvase(
       tipoSeleccionado.nombre,
       precioUnitario,
-      cant
+      cant,
+      tipoSeleccionado.id
     )
     ajustarStockVacios(
       tipoSeleccionado.id,

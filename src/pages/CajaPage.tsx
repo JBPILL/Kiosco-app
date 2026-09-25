@@ -859,7 +859,7 @@ export function CajaPage() {
               onClick={handleConfirmarCierre}
               className="order-1 sm:order-2 sm:w-2/3 py-2.5 text-sm font-bold bg-red-600 hover:bg-red-700 text-white shadow-sm"
             >
-              {modoCiego ? 'Finalizar y Cerrar Turno' : 'Confirmar Cierre de Caja'}
+              {modoCiegoEfectivo ? 'Finalizar y Cerrar Turno' : 'Confirmar Cierre de Caja'}
             </Button>
           </div>
         }
@@ -872,7 +872,7 @@ export function CajaPage() {
                 type="button"
                 onClick={() => setModoCiego(false)}
                 className={`py-2 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer text-center ${
-                  !modoCiego
+                  !modoCiegoEfectivo
                     ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-xs border border-gray-200 dark:border-gray-600'
                     : 'border border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                 }`}
@@ -883,7 +883,7 @@ export function CajaPage() {
                 type="button"
                 onClick={() => setModoCiego(true)}
                 className={`py-2 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer text-center ${
-                  modoCiego
+                  modoCiegoEfectivo
                     ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-xs border border-gray-200 dark:border-gray-600'
                     : 'border border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                 }`}
@@ -1096,7 +1096,7 @@ export function CajaPage() {
           </div>
 
           {/* Tarjeta de Conciliación de Diferencia (Visible en Arqueo Guiado) */}
-          {!modoCiego && efectivoContado !== '' && (
+          {!modoCiegoEfectivo && efectivoContado !== '' && (
             <div
               className={`p-4 rounded-xl text-center border transition-all ${
                 diferenciaArqueo === 0

@@ -31,6 +31,8 @@ interface ProductTableProps {
   onToggleFavorito: (id: string, esFavorito: boolean) => void
   onNuevo: () => void
   cargando: boolean
+  onPurgarHuerfanos?: () => void
+  onSincronizar?: () => void
 }
 
 type SortField = 'descripcion' | 'categoria' | 'stock' | 'precio_venta' | 'precio_costo'
@@ -47,6 +49,8 @@ export function ProductTable({
   onToggleFavorito,
   onNuevo,
   cargando,
+  onPurgarHuerfanos,
+  onSincronizar,
 }: ProductTableProps) {
   const { proveedores, cargarProveedores } = useProveedorStore()
   const [proveedorFiltro, setProveedorFiltro] = useState<string | null>(null)
@@ -63,6 +67,12 @@ export function ProductTable({
     proveedores.forEach((p) => map.set(p.id, p.nombre))
     return map
   }, [proveedores])
+
+  const categoriasMap = useMemo(() => {
+    const map = new Map<string, Categoria>()
+    categorias.forEach((c) => map.set(c.id, c))
+    return map
+  }, [categorias])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -85,24 +95,37 @@ export function ProductTable({
   }
 
   const productosFiltradosYOrdenados = useMemo(() => {
-    let list = productos
+    // 0. Ocultar estrictamente productos inactivos (eliminados lógicamente)
+    let list = productos.filter((p) => p.activo !== false)
 
     // 1. Filtrar por categoría
     if (categoriaFiltro) {
-      const catObj = categorias.find((c) => c.id === categoriaFiltro)
-      const catNombreNorm = catObj?.nombre?.toLowerCase().trim()
+      if (categoriaFiltro === '__SIN_CATEGORIA__') {
+        list = list.filter((p) => !p.categoria_id && !p.categoria?.id)
+      } else {
+        const catObj = categorias.find((c) => c.id === categoriaFiltro)
+        const catNombreNorm = catObj?.nombre?.toLowerCase().trim()
 
-      list = list.filter((p) => {
-        if (p.categoria_id && p.categoria_id === categoriaFiltro) return true
-        if (p.categoria?.id && p.categoria.id === categoriaFiltro) return true
-        if (catNombreNorm && p.categoria?.nombre && p.categoria.nombre.toLowerCase().trim() === catNombreNorm) return true
-        return false
-      })
+        list = list.filter((p) => {
+          if (p.categoria_id && p.categoria_id === categoriaFiltro) return true
+          if (p.categoria?.id && p.categoria.id === categoriaFiltro) return true
+          if (catNombreNorm && p.categoria?.nombre && p.categoria.nombre.toLowerCase().trim() === catNombreNorm) return true
+          return false
+        })
+      }
     }
 
     // 1b. Filtrar por proveedor
     if (proveedorFiltro) {
       list = list.filter((p) => p.proveedor_id === proveedorFiltro)
+    }
+
+    const obtenerNombreCategoria = (p: Producto): string => {
+      if (p.categoria?.nombre) return p.categoria.nombre
+      if (p.categoria_id && categoriasMap.has(p.categoria_id)) {
+        return categoriasMap.get(p.categoria_id)!.nombre
+      }
+      return 'Sin categoría'
     }
 
     // 2. Filtrar por búsqueda
@@ -111,7 +134,7 @@ export function ProductTable({
       list = list.filter((p) => {
         const desc = (p.descripcion || '').toLowerCase()
         const cod = (p.codigo_barras || '').toLowerCase()
-        const cat = (p.categoria?.nombre || '').toLowerCase()
+        const cat = obtenerNombreCategoria(p).toLowerCase()
         return desc.includes(q) || cod.includes(q) || cat.includes(q)
       })
     }
@@ -122,8 +145,8 @@ export function ProductTable({
       let valB: any = ''
 
       if (sortField === 'categoria') {
-        valA = a.categoria?.nombre?.toLowerCase() || 'zzz'
-        valB = b.categoria?.nombre?.toLowerCase() || 'zzz'
+        valA = obtenerNombreCategoria(a).toLowerCase()
+        valB = obtenerNombreCategoria(b).toLowerCase()
         if (valA === valB) {
           return a.descripcion.localeCompare(b.descripcion)
         }
@@ -166,6 +189,7 @@ export function ProductTable({
             onChange={(e) => onCategoriaChange(e.target.value || null)}
           >
             <option value="">Todas las categorías</option>
+            <option value="__SIN_CATEGORIA__">Sin categoría (—)</option>
             {categorias.map((cat) => (
               <option key={cat.id} value={cat.id}>{cat.nombre}</option>
             ))}
@@ -185,8 +209,51 @@ export function ProductTable({
           <Button size="sm" onClick={onNuevo} className="whitespace-nowrap flex items-center gap-1.5 font-semibold">
             + Nuevo Producto
           </Button>
+
+          {onSincronizar && (
+            <button
+              type="button"
+              onClick={onSincronizar}
+              title="Sincronizar catálogo con el servidor (limpia la caché local)"
+              className="inline-flex items-center justify-center p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all cursor-pointer shadow-2xs"
+            >
+              <svg
+                className={`w-4 h-4 ${cargando ? 'animate-spin text-indigo-600' : ''}`}
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Banner de depuración cuando se filtran productos huérfanos sin categoría */}
+      {categoriaFiltro === '__SIN_CATEGORIA__' && productosFiltradosYOrdenados.length > 0 && (
+        <div className="mb-3.5 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="text-xs text-amber-800 dark:text-amber-300">
+            <span className="font-bold">{productosFiltradosYOrdenados.length} producto(s) huérfano(s)</span> sin categoría asignada. Podés editarlos para asignarles categoría o eliminarlos directamente.
+          </div>
+          {onPurgarHuerfanos && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(`¿Confirmás la eliminación permanente de todos los ${productosFiltradosYOrdenados.length} productos sin categoría?`)) {
+                  onPurgarHuerfanos()
+                }
+              }}
+              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer self-start sm:self-auto shrink-0 shadow-xs"
+            >
+              Depurar todos los huérfanos
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Estado de carga */}
       {cargando ? (
@@ -197,7 +264,9 @@ export function ProductTable({
       ) : productosFiltradosYOrdenados.length === 0 ? (
         <div className="text-center py-10 text-gray-500 dark:text-gray-400 text-sm">
           <p className="font-medium text-gray-700 dark:text-gray-300">
-            {categoriaFiltro
+            {categoriaFiltro === '__SIN_CATEGORIA__'
+              ? 'No hay productos huérfanos sin categoría.'
+              : categoriaFiltro
               ? `No hay productos cargados en la categoría "${categorias.find((c) => c.id === categoriaFiltro)?.nombre || 'seleccionada'}".`
               : proveedorFiltro
               ? `No hay productos asociados al proveedor "${proveedores.find((p) => p.id === proveedorFiltro)?.nombre || 'seleccionado'}".`
@@ -267,12 +336,15 @@ export function ProductTable({
                       <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap ${stockColors[nivel]}`}>
                         Stock: {prod.stock_actual}
                       </span>
-                      {prod.categoria && (
-                        <span className="inline-flex items-center gap-1 truncate max-w-[140px] whitespace-nowrap">
-                          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: prod.categoria.color }} />
-                          <span className="truncate">{prod.categoria.nombre}</span>
-                        </span>
-                      )}
+                      {(() => {
+                        const cat = prod.categoria || (prod.categoria_id ? categoriasMap.get(prod.categoria_id) : undefined)
+                        return cat ? (
+                          <span className="inline-flex items-center gap-1 truncate max-w-[140px] whitespace-nowrap">
+                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
+                            <span className="truncate">{cat.nombre}</span>
+                          </span>
+                        ) : null
+                      })()}
                     </div>
                   </div>
 
@@ -412,14 +484,17 @@ export function ProductTable({
                         )}
                       </td>
                       <td className="px-3.5 py-2.5 whitespace-nowrap">
-                        {prod.categoria ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 dark:bg-gray-700/80 text-gray-800 dark:text-gray-100 border border-gray-200/60 dark:border-gray-600/60 shadow-2xs whitespace-nowrap">
-                            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 shadow-2xs" style={{ backgroundColor: prod.categoria.color }} />
-                            <span className="whitespace-nowrap">{prod.categoria.nombre}</span>
-                          </span>
-                        ) : (
-                          <span className="text-gray-400 dark:text-gray-500 text-xs">—</span>
-                        )}
+                        {(() => {
+                          const cat = prod.categoria || (prod.categoria_id ? categoriasMap.get(prod.categoria_id) : undefined)
+                          return cat ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 dark:bg-gray-700/80 text-gray-800 dark:text-gray-100 border border-gray-200/60 dark:border-gray-600/60 shadow-2xs whitespace-nowrap">
+                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 shadow-2xs" style={{ backgroundColor: cat.color }} />
+                              <span className="whitespace-nowrap">{cat.nombre}</span>
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 dark:text-gray-500 text-xs">—</span>
+                          )
+                        })()}
                       </td>
                       <td className="px-3.5 py-2.5 text-center whitespace-nowrap">
                         <span className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${stockColors[nivel]}`}>
@@ -501,9 +576,12 @@ export function ProductTable({
                 variant="danger"
                 fullWidth
                 size="sm"
-                onClick={() => {
-                  onEliminar(confirmDelete)
+                onClick={async () => {
+                  const idABorrar = confirmDelete
                   setConfirmDelete(null)
+                  if (idABorrar) {
+                    await onEliminar(idABorrar)
+                  }
                 }}
               >
                 Eliminar

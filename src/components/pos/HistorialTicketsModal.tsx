@@ -147,7 +147,7 @@ export function HistorialTicketsModal({
     const data = await obtenerUltimasVentas(kid, 50)
     setVentas(data)
     setCargando(false)
-  }, [usuario?.kiosco_id, kiosco?.id])
+  }, [usuario?.kiosco_id, kiosco?.id, obtenerUltimasVentas])
 
   useEffect(() => {
     if (isOpen) {

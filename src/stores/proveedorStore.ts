@@ -334,7 +334,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
     }
 
     const saldoAnterior = Number(proveedor.saldo_pendiente) || 0
-    const nuevoSaldo = Math.max(0, saldoAnterior - monto)
+    const nuevoSaldo = Number((saldoAnterior - monto).toFixed(2))
 
     // 1. Actualizar proveedor
     const actualizados = get().proveedores.map((p) =>
@@ -766,8 +766,25 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
     if (compra.medio_pago === 'CUENTA_CORRIENTE' && compra.proveedor_id) {
       const proveedor = get().proveedores.find((p) => p.id === compra.proveedor_id)
       if (proveedor) {
-        const saldoRevertido = Math.max(0, (proveedor.saldo_pendiente || 0) - compra.total)
-        get().actualizarProveedor(compra.proveedor_id, { saldo_pendiente: saldoRevertido })
+        const saldoRevertido = Number(((proveedor.saldo_pendiente || 0) - compra.total).toFixed(2))
+        await get().actualizarProveedor(compra.proveedor_id, { saldo_pendiente: saldoRevertido })
+      }
+    }
+
+    // 1b. Si se había descontado de caja y la caja sigue abierta, ingresar reintegro para evitar faltante ficticio
+    if (compra.pagado_en_caja) {
+      const caja = useCajaStore.getState()
+      if (caja.sesionActiva) {
+        try {
+          await caja.registrarMovimientoCaja(
+            'INGRESO',
+            'PROVEEDOR',
+            compra.total,
+            `Reintegro por anulación de compra #${compra.nro_comprobante || compra.id.slice(0, 8).toUpperCase()} - Proveedor: ${compra.proveedor?.nombre || 'General'}`
+          )
+        } catch (errCaja) {
+          console.warn('Error reintegrando a caja en anulación de compra:', errCaja)
+        }
       }
     }
 

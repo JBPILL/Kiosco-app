@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/authStore'
@@ -100,30 +100,95 @@ async function ejecutarOperacionSupabaseSegura(
 
 export function useProducts() {
   const { usuario, kiosco } = useAuthStore()
+  const kioscoId = usuario?.kiosco_id || kiosco?.id
+  const idsBorradosRef = useRef<Set<string>>(new Set())
+
+  const getCacheKeyProductos = useCallback(() => {
+    return kioscoId ? `kiosko_cache_productos_${kioscoId}` : 'kiosko_cache_productos'
+  }, [kioscoId])
+
+  const getCacheKeyCategorias = useCallback(() => {
+    return kioscoId ? `kiosko_cache_categorias_${kioscoId}` : 'kiosko_cache_categorias'
+  }, [kioscoId])
+
+  const guardarProductosEnCache = useCallback((lista: Producto[]) => {
+    const limpios = lista.filter(
+      (p) =>
+        p &&
+        p.activo !== false &&
+        !idsBorradosRef.current.has(p.id) &&
+        (!kioscoId || !p.kiosco_id || p.kiosco_id === kioscoId)
+    )
+    try {
+      localStorage.setItem(getCacheKeyProductos(), JSON.stringify(limpios))
+      localStorage.setItem('kiosko_cache_productos', JSON.stringify(limpios))
+    } catch (e) {
+      console.warn('Error al guardar productos en caché:', e)
+    }
+  }, [kioscoId, getCacheKeyProductos])
+
+  const guardarCategoriasEnCache = useCallback((lista: Categoria[]) => {
+    try {
+      localStorage.setItem(getCacheKeyCategorias(), JSON.stringify(lista))
+      localStorage.setItem('kiosko_cache_categorias', JSON.stringify(lista))
+    } catch (e) {
+      console.warn('Error al guardar categorías en caché:', e)
+    }
+  }, [getCacheKeyCategorias])
+
   const [productos, setProductos] = useState<Producto[]>(() => {
     try {
-      const cached = localStorage.getItem('kiosko_cache_productos')
-      return cached ? JSON.parse(cached) : []
+      const cached =
+        (kioscoId && localStorage.getItem(`kiosko_cache_productos_${kioscoId}`)) ||
+        localStorage.getItem('kiosko_cache_productos')
+      if (!cached) return []
+      const parsed = JSON.parse(cached)
+      if (Array.isArray(parsed)) {
+        return parsed.filter(
+          (p: Producto) =>
+            p &&
+            p.activo !== false &&
+            (!kioscoId || !p.kiosco_id || p.kiosco_id === kioscoId)
+        )
+      }
+      return []
     } catch {
       return []
     }
   })
+
   const [categorias, setCategorias] = useState<Categoria[]>(() => {
     try {
-      const cached = localStorage.getItem('kiosko_cache_categorias')
+      const cached =
+        (kioscoId && localStorage.getItem(`kiosko_cache_categorias_${kioscoId}`)) ||
+        localStorage.getItem('kiosko_cache_categorias')
       return cached ? JSON.parse(cached) : []
     } catch {
       return []
     }
   })
+
   const [cargando, setCargando] = useState(false)
   const [busqueda, setBusqueda] = useState('')
   const [categoriaFiltro, setCategoriaFiltro] = useState<string | null>(null)
 
+  // Si cambia el kiosco autenticado, resetear o purgar el catálogo residual de otros comercios
+  useEffect(() => {
+    if (kioscoId) {
+      setProductos((prev) => {
+        const filtrados = prev.filter(
+          (p) => p && p.activo !== false && (!p.kiosco_id || p.kiosco_id === kioscoId)
+        )
+        guardarProductosEnCache(filtrados)
+        return filtrados
+      })
+    }
+  }, [kioscoId, guardarProductosEnCache])
+
   // Cargar productos con join a categoría
   const cargarProductos = useCallback(async () => {
     setCargando(true)
-    const kioscoId = usuario?.kiosco_id || kiosco?.id
+    const currentKioscoId = usuario?.kiosco_id || kiosco?.id
 
     let query = supabase
       .from('productos')
@@ -131,17 +196,29 @@ export function useProducts() {
       .eq('activo', true)
       .order('descripcion')
 
-    if (kioscoId) {
-      query = query.eq('kiosco_id', kioscoId)
+    if (currentKioscoId) {
+      query = query.eq('kiosco_id', currentKioscoId)
     }
 
     const { data, error } = await query
 
     if (error) {
-      const cached = localStorage.getItem('kiosko_cache_productos')
+      const cached =
+        localStorage.getItem(currentKioscoId ? `kiosko_cache_productos_${currentKioscoId}` : 'kiosko_cache_productos') ||
+        localStorage.getItem('kiosko_cache_productos')
       if (cached && productos.length === 0) {
         try {
-          setProductos(JSON.parse(cached))
+          const parsed = JSON.parse(cached)
+          const validos = Array.isArray(parsed)
+            ? parsed.filter(
+                (p: Producto) =>
+                  p &&
+                  p.activo !== false &&
+                  !idsBorradosRef.current.has(p.id) &&
+                  (!currentKioscoId || !p.kiosco_id || p.kiosco_id === currentKioscoId)
+              )
+            : []
+          setProductos(validos)
           toast('Modo local: Mostrando catálogo guardado en memoria', { icon: '📦' })
         } catch {
           toast.error('Error al cargar productos')
@@ -152,9 +229,13 @@ export function useProducts() {
       console.error('Error al cargar productos:', error)
     } else if (data) {
       setProductos((prev) => {
-        // Enriquecer datos remotos con atributos locales si existen
         const localMap = new Map(prev.map((p) => [p.id, p]))
-        const merged = data.map((item) => {
+        const remoteIds = new Set(data.map((d) => d.id))
+        const cleanData = data.filter(
+          (item) => item.activo !== false && !idsBorradosRef.current.has(item.id)
+        )
+
+        const merged = cleanData.map((item) => {
           const local = localMap.get(item.id)
           if (!local) return item
           return {
@@ -191,37 +272,44 @@ export function useProducts() {
           }
         })
 
-        // Preservar productos creados localmente que aún no figuran en Supabase
-        const remoteIds = new Set(data.map((d) => d.id))
-        const soloLocales = prev.filter((p) => !remoteIds.has(p.id))
-        const total = [...soloLocales, ...merged]
+        // Preservar ÚNICAMENTE borradores locales legítimos (offline), NUNCA productos inactivos, borrados o de otro comercio
+        const soloLocales = prev.filter(
+          (p) =>
+            Boolean(p._local_offline) &&
+            p.activo !== false &&
+            !remoteIds.has(p.id) &&
+            !idsBorradosRef.current.has(p.id) &&
+            (!currentKioscoId || !p.kiosco_id || p.kiosco_id === currentKioscoId)
+        )
+        const total = [...soloLocales, ...merged].filter(
+          (p) => p.activo !== false && !idsBorradosRef.current.has(p.id)
+        )
 
-        try {
-          localStorage.setItem('kiosko_cache_productos', JSON.stringify(total))
-        } catch (e) {
-          console.warn('No se pudo guardar catálogo en localStorage:', e)
-        }
+        guardarProductosEnCache(total)
         return total
       })
     }
     setCargando(false)
-  }, [usuario?.kiosco_id, kiosco?.id])
+  }, [usuario?.kiosco_id, kiosco?.id, guardarProductosEnCache])
 
   // Cargar categorías
   const cargarCategorias = useCallback(async () => {
+    const currentKioscoId = usuario?.kiosco_id || kiosco?.id
     let query = supabase
       .from('categorias')
       .select('*')
       .order('orden')
 
-    if (usuario?.kiosco_id) {
-      query = query.eq('kiosco_id', usuario.kiosco_id)
+    if (currentKioscoId) {
+      query = query.eq('kiosco_id', currentKioscoId)
     }
 
     const { data, error } = await query
 
     if (error) {
-      const cached = localStorage.getItem('kiosko_cache_categorias')
+      const cached =
+        localStorage.getItem(currentKioscoId ? `kiosko_cache_categorias_${currentKioscoId}` : 'kiosko_cache_categorias') ||
+        localStorage.getItem('kiosko_cache_categorias')
       if (cached && categorias.length === 0) {
         try {
           setCategorias(JSON.parse(cached))
@@ -233,16 +321,11 @@ export function useProducts() {
       }
       console.error('Error al cargar categorías:', error)
     } else {
-      setCategorias(data || [])
-      if (data && data.length > 0) {
-        try {
-          localStorage.setItem('kiosko_cache_categorias', JSON.stringify(data))
-        } catch (e) {
-          console.warn('No se pudo guardar categorías en localStorage:', e)
-        }
-      }
+      const cleanCats = data || []
+      setCategorias(cleanCats)
+      guardarCategoriasEnCache(cleanCats)
     }
-  }, [usuario?.kiosco_id])
+  }, [usuario?.kiosco_id, kiosco?.id, guardarCategoriasEnCache])
 
   useEffect(() => {
     cargarProductos()
@@ -289,12 +372,15 @@ export function useProducts() {
       console.warn('Fallo de red al crear producto:', e)
     }
 
+    const itemFinal: Producto = {
+      ...payload,
+      _local_offline: !insertadoEnSupabase,
+    }
+
     // Actualizar estado local inmediatamente
     setProductos((prev) => {
-      const listaActualizada = [payload, ...prev.filter((p) => p.id !== payload.id)]
-      try {
-        localStorage.setItem('kiosko_cache_productos', JSON.stringify(listaActualizada))
-      } catch {}
+      const listaActualizada = [itemFinal, ...prev.filter((p) => p.id !== itemFinal.id)]
+      guardarProductosEnCache(listaActualizada)
       return listaActualizada
     })
 
@@ -305,7 +391,7 @@ export function useProducts() {
       toast.success('Producto guardado en memoria local')
     }
 
-    return payload
+    return itemFinal
   }
 
   // Actualizar producto
@@ -326,9 +412,7 @@ export function useProducts() {
     // Actualizar UI localmente de inmediato
     setProductos((prev) => {
       const actualizados = prev.map((p) => (p.id === id ? { ...p, ...cambiosCompletos } : p))
-      try {
-        localStorage.setItem('kiosko_cache_productos', JSON.stringify(actualizados))
-      } catch {}
+      guardarProductosEnCache(actualizados)
       return actualizados
     })
 
@@ -345,17 +429,82 @@ export function useProducts() {
     return true
   }
 
-  // Eliminar producto (soft delete)
+  // Eliminar producto (soft delete y purga definitiva de memoria)
   const eliminarProducto = async (id: string) => {
+    idsBorradosRef.current.add(id)
+
+    // 1. Purgar inmediatamente del estado local y del caché en localStorage para evitar efecto zombie
+    setProductos((prev) => {
+      const filtrados = prev.filter((p) => p.id !== id)
+      guardarProductosEnCache(filtrados)
+      return filtrados
+    })
+
+    // 2. Si es un combo o componente, limpiar también sus recetas en combo_items
+    try {
+      await supabase.from('combo_items').delete().or(`combo_producto_id.eq.${id},componente_producto_id.eq.${id}`)
+    } catch {}
+
+    // 3. Desactivar en Supabase (soft-delete)
     const { error } = await supabase
       .from('productos')
-      .update({ activo: false })
+      .update({ activo: false, fecha_actualizacion: new Date().toISOString() })
       .eq('id', id)
+
+    // 4. Intento adicional de eliminación por si fuera un producto huérfano / demo local sin ventas
+    try {
+      await supabase.from('productos').delete().eq('id', id)
+    } catch {}
+
     if (error) {
-      toast.error('Error al eliminar producto')
+      console.warn('Advertencia al desactivar producto en Supabase:', error)
+    }
+
+    toast.success('Producto eliminado')
+    await cargarProductos()
+    return true
+  }
+
+  // Eliminar todos los productos sin categoría asignada (huérfanos) o residuales
+  const purgarProductosHuerfanos = async () => {
+    const currentKioscoId = usuario?.kiosco_id || kiosco?.id
+    const huerfanos = productos.filter(
+      (p) =>
+        (!p.categoria_id && !p.categoria?.id) ||
+        p.activo === false ||
+        (currentKioscoId && p.kiosco_id && p.kiosco_id !== currentKioscoId)
+    )
+    if (huerfanos.length === 0) {
+      toast('No hay productos huérfanos sin categoría.')
       return false
     }
-    toast.success('Producto eliminado')
+
+    const ids = huerfanos.map((p) => p.id)
+    ids.forEach((id) => idsBorradosRef.current.add(id))
+
+    setProductos((prev) => {
+      const filtrados = prev.filter((p) => !ids.includes(p.id))
+      guardarProductosEnCache(filtrados)
+      return filtrados
+    })
+
+    try {
+      await supabase.from('combo_items').delete().in('combo_producto_id', ids)
+      await supabase.from('combo_items').delete().in('componente_producto_id', ids)
+    } catch {}
+
+    try {
+      await supabase
+        .from('productos')
+        .update({ activo: false, fecha_actualizacion: new Date().toISOString() })
+        .in('id', ids)
+    } catch {}
+
+    try {
+      await supabase.from('productos').delete().in('id', ids)
+    } catch {}
+
+    toast.success(`${ids.length} producto(s) huérfano(s) eliminado(s)`)
     await cargarProductos()
     return true
   }
@@ -404,15 +553,103 @@ export function useProducts() {
     return true
   }
 
-  const eliminarCategoria = async (id: string) => {
-    const { error } = await supabase.from('categorias').delete().eq('id', id)
-    if (error) {
+  const eliminarCategoria = async (id: string, eliminarProductos?: boolean) => {
+    try {
+      if (eliminarProductos) {
+        // 1. Identificar productos a borrar tanto de memoria como de base de datos
+        const productosABorrar = productos.filter((p) => p.categoria_id === id || p.categoria?.id === id)
+        const idsABorrar = productosABorrar.map((p) => p.id)
+
+        // Traer de Supabase también por si hay productos no cargados en memoria
+        let idsRemotos: string[] = []
+        try {
+          const { data: dbProds } = await supabase
+            .from('productos')
+            .select('id')
+            .eq('categoria_id', id)
+          if (dbProds) idsRemotos = dbProds.map((p) => p.id)
+        } catch {}
+
+        const allIds = Array.from(new Set([...idsABorrar, ...idsRemotos]))
+        allIds.forEach((pid) => idsBorradosRef.current.add(pid))
+
+        // Purgar inmediatamente del estado local de productos y de la caché
+        setProductos((prev) => {
+          const filtrados = prev.filter(
+            (p) => !allIds.includes(p.id) && p.categoria_id !== id && p.categoria?.id !== id
+          )
+          guardarProductosEnCache(filtrados)
+          return filtrados
+        })
+
+        if (allIds.length > 0) {
+          // Desactivar en Supabase
+          await supabase
+            .from('productos')
+            .update({ activo: false, fecha_actualizacion: new Date().toISOString() })
+            .in('id', allIds)
+
+          // Si son combos, limpiar también sus recetas en combo_items
+          try {
+            await supabase.from('combo_items').delete().in('combo_producto_id', allIds)
+            await supabase.from('combo_items').delete().in('componente_producto_id', allIds)
+          } catch {}
+        }
+
+        // También desactivar en Supabase por categoria_id directo
+        try {
+          await supabase
+            .from('productos')
+            .update({ activo: false, fecha_actualizacion: new Date().toISOString() })
+            .eq('categoria_id', id)
+        } catch {}
+      } else {
+        // Si no se eliminan productos, desvincularlos en Supabase para que no fallen por foreign key
+        try {
+          await supabase
+            .from('productos')
+            .update({ categoria_id: null, fecha_actualizacion: new Date().toISOString() })
+            .eq('categoria_id', id)
+        } catch {}
+
+        setProductos((prev) => {
+          const actualizados = prev.map((p) =>
+            p.categoria_id === id || p.categoria?.id === id
+              ? { ...p, categoria_id: null, categoria: undefined }
+              : p
+          )
+          guardarProductosEnCache(actualizados)
+          return actualizados
+        })
+      }
+
+      // 2. Eliminar la categoría de la base de datos
+      const { error } = await supabase.from('categorias').delete().eq('id', id)
+      if (error) {
+        toast.error('Error al eliminar categoría: ' + (error.message || ''))
+        return false
+      }
+
+      // 3. Purgar categoría del estado local y caché
+      setCategorias((prev) => {
+        const filtradas = prev.filter((c) => c.id !== id)
+        guardarCategoriasEnCache(filtradas)
+        return filtradas
+      })
+
+      toast.success(
+        eliminarProductos
+          ? 'Categoría y productos asociados eliminados'
+          : 'Categoría eliminada'
+      )
+
+      await Promise.all([cargarCategorias(), cargarProductos()])
+      return true
+    } catch (err) {
+      console.error('Error en eliminarCategoria:', err)
       toast.error('Error al eliminar categoría')
       return false
     }
-    toast.success('Categoría eliminada')
-    await cargarCategorias()
-    return true
   }
 
   return {
@@ -428,6 +665,7 @@ export function useProducts() {
     crearProducto,
     actualizarProducto,
     eliminarProducto,
+    purgarProductosHuerfanos,
     toggleFavorito,
     crearCategoria,
     actualizarCategoria,

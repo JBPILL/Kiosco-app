@@ -6,6 +6,7 @@ import { formatPrecio } from '../../lib/utils'
 import { SearchInput } from '../ui/SearchInput'
 import { buscarProductoPorCodigoBalanza } from '../../lib/barcodeParser'
 import { useCartStore } from '../../stores/cartStore'
+import { useAuthStore } from '../../stores/authStore'
 
 interface ProductSearchProps {
   onSelect: (producto: Producto, cantidad?: number) => void
@@ -13,6 +14,8 @@ interface ProductSearchProps {
 }
 
 export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
+  const { usuario, kiosco } = useAuthStore()
+  const kioscoId = usuario?.kiosco_id || kiosco?.id
   const [query, setQuery] = useState('')
   const [resultados, setResultados] = useState<Producto[]>([])
   const [mostrarResultados, setMostrarResultados] = useState(false)
@@ -52,6 +55,7 @@ export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
       const qLower = q.toLowerCase()
       const matches = locales.filter((p) => {
         if (!p.activo) return false
+        if (kioscoId && p.kiosco_id && p.kiosco_id !== kioscoId) return false
         const matchDesc = p.descripcion.toLowerCase().includes(qLower)
         const matchCode = p.codigo_barras?.toLowerCase().includes(qLower) || false
         const matchPlu = p.plu_balanza?.toLowerCase().includes(qLower) || false
@@ -67,17 +71,31 @@ export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
     }
 
     // 2. Si no hubo coincidencias en memoria local o no hay caché, consultar Supabase
-    const { data } = await supabase
+    // Sanitizar caracteres que rompen la sintaxis URL/or() de PostgREST (, () \ %)
+    const qSanitized = q.replace(/[,()\\%]/g, ' ').trim()
+    if (!qSanitized) {
+      setResultados([])
+      setMostrarResultados(false)
+      return
+    }
+
+    let querySupa = supabase
       .from('productos')
       .select('*, categoria:categorias(nombre, color)')
       .eq('activo', true)
-      .or(`descripcion.ilike.%${q}%,codigo_barras.ilike.%${q}%,plu_balanza.ilike.%${q}%`)
+      .or(`descripcion.ilike.%${qSanitized}%,codigo_barras.ilike.%${qSanitized}%,plu_balanza.ilike.%${qSanitized}%`)
       .limit(8)
+
+    if (kioscoId) {
+      querySupa = querySupa.eq('kiosco_id', kioscoId)
+    }
+
+    const { data } = await querySupa
 
     setResultados(data || [])
     setSelectedIndex(0)
     setMostrarResultados(true)
-  }, [])
+  }, [kioscoId])
 
   // Debounce de búsqueda
   useEffect(() => {
@@ -110,7 +128,7 @@ export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
     inputRef.current?.focus()
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = async (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       if (resultados.length > 0 && mostrarResultados) {
@@ -131,6 +149,7 @@ export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
     } else if (e.key === 'Enter') {
       e.preventDefault()
       const queryTrim = query.trim()
+      if (!queryTrim) return
 
       // 1. Chequear si es código de balanza comercial (EAN-13 con prefijo 20 o 02)
       let todosLocales: Producto[] = []
@@ -148,12 +167,52 @@ export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
         return
       }
 
+      // 2. Coincidencia inmediata en memoria/caché local (vital para lectores de código de barras rápidos)
+      if (todosLocales.length > 0) {
+        const exactLocal = todosLocales.find(
+          (p) => p.activo && (p.codigo_barras === queryTrim || p.plu_balanza === queryTrim)
+        )
+        if (exactLocal) {
+          seleccionar(exactLocal)
+          return
+        }
+      }
+
+      // 3. Coincidencia exacta en resultados ya filtrados
       if (resultados.length > 0) {
-        // Si hay un producto con coincidencia exacta de código de barras o PLU, seleccionarlo
         const exactMatch = resultados.find(
           (r) => r.codigo_barras === queryTrim || r.plu_balanza === queryTrim
         )
-        seleccionar(exactMatch || resultados[selectedIndex])
+        if (exactMatch) {
+          seleccionar(exactMatch)
+          return
+        }
+      }
+
+      // 4. Si el lector disparó Enter antes de que terminara el debounce y no estaba en caché, buscar directo en Supabase
+      const qSanitized = queryTrim.replace(/[,()\\%]/g, ' ').trim()
+      if (qSanitized) {
+        let queryDirecta = supabase
+          .from('productos')
+          .select('*, categoria:categorias(nombre, color)')
+          .eq('activo', true)
+          .or(`codigo_barras.eq.${qSanitized},plu_balanza.eq.${qSanitized}`)
+          .limit(1)
+
+        if (kioscoId) {
+          queryDirecta = queryDirecta.eq('kiosco_id', kioscoId)
+        }
+
+        const { data: supaMatches } = await queryDirecta
+        if (supaMatches && supaMatches.length > 0) {
+          seleccionar(supaMatches[0])
+          return
+        }
+      }
+
+      // 5. Fallback a navegación de lista por índice si no es código exacto
+      if (resultados.length > 0) {
+        seleccionar(resultados[selectedIndex])
       }
     } else if (e.key === 'Escape') {
       setMostrarResultados(false)

@@ -9,6 +9,7 @@ import { PreciosEnvasesModal } from '../components/catalogo/PreciosEnvasesModal'
 import { EtiquetasGondolaModal } from '../components/catalogo/EtiquetasGondolaModal'
 import { exportarCatalogoExcel } from '../lib/exportUtils'
 import { useAuthStore } from '../stores/authStore'
+import toast from 'react-hot-toast'
 import type { Producto } from '../types/database'
 import type { ProductFormData } from '../components/catalogo/ProductForm'
 
@@ -27,6 +28,7 @@ export function CatalogoPage() {
     crearProducto,
     actualizarProducto,
     eliminarProducto,
+    purgarProductosHuerfanos,
     toggleFavorito,
     crearCategoria,
     actualizarCategoria,
@@ -57,6 +59,19 @@ export function CatalogoPage() {
     }
     const res = await crearProducto(data as Omit<Producto, 'id' | 'kiosco_id' | 'fecha_creacion' | 'fecha_actualizacion' | 'activo'>)
     return Boolean(res)
+  }
+
+  const handleSincronizar = async () => {
+    try {
+      localStorage.removeItem('kiosko_cache_productos')
+      localStorage.removeItem('kiosko_cache_categorias')
+      if (kiosco?.id) {
+        localStorage.removeItem(`kiosko_cache_productos_${kiosco.id}`)
+        localStorage.removeItem(`kiosko_cache_categorias_${kiosco.id}`)
+      }
+    } catch {}
+    await Promise.all([cargarCategorias(), cargarProductos()])
+    toast.success('Catálogo sincronizado con el servidor')
   }
 
   return (
@@ -152,6 +167,8 @@ export function CatalogoPage() {
           onToggleFavorito={toggleFavorito}
           onNuevo={handleNuevo}
           cargando={cargando}
+          onPurgarHuerfanos={purgarProductosHuerfanos}
+          onSincronizar={handleSincronizar}
         />
       </div>
 

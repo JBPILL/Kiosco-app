@@ -460,11 +460,31 @@ export function StockPage() {
         .single()
 
       if (prodFresh) {
-        const nuevoStock = Math.max(0, (prodFresh.stock_actual || 0) - lote.cantidad_actual)
+        const nuevoStock = Math.max(0, Math.round(((prodFresh.stock_actual || 0) - lote.cantidad_actual) * 1000) / 1000)
         await supabase
           .from('productos')
           .update({ stock_actual: nuevoStock, fecha_actualizacion: new Date().toISOString() })
           .eq('id', prodFresh.id)
+
+        // Sincronizar de inmediato la caché local de productos para que el POS refleje el stock correcto
+        try {
+          const cachedRaw = localStorage.getItem('kiosko_cache_productos')
+          if (cachedRaw) {
+            const cachedProds: Producto[] = JSON.parse(cachedRaw)
+            const actualizados = cachedProds.map((p) =>
+              p.id === prodFresh.id
+                ? {
+                    ...p,
+                    stock_actual: nuevoStock,
+                    fecha_actualizacion: new Date().toISOString(),
+                  }
+                : p
+            )
+            localStorage.setItem('kiosko_cache_productos', JSON.stringify(actualizados))
+          }
+        } catch (cacheErr) {
+          console.warn('Error sincronizando stock local tras baja de lote:', cacheErr)
+        }
       }
 
       toast.success(`Lote de "${nombreProd}" dado de baja correctamente`)

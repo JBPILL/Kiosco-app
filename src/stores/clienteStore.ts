@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from './authStore'
+import { useCajaStore } from './cajaStore'
 import type {
   Cliente,
   MovimientoCuentaCorriente,
@@ -43,7 +44,8 @@ interface ClienteState {
     clienteId: string,
     monto: number,
     medioPago: MedioPago,
-    notas?: string
+    notas?: string,
+    impactarEnCaja?: boolean
   ) => Promise<boolean>
 
   sumarPuntosCliente: (clienteId: string, puntos: number) => Promise<boolean>
@@ -446,7 +448,7 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
     }
   },
 
-  registrarAbono: async (clienteId, monto, medioPago, notas) => {
+  registrarAbono: async (clienteId, monto, medioPago, notas, impactarEnCaja = true) => {
     const usuario = useAuthStore.getState().usuario
     if (!usuario?.kiosco_id) return false
 
@@ -505,6 +507,23 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
       })
     } catch (err) {
       console.warn('Supabase registro abono no disponible, resguardado local:', err)
+    }
+
+    // Si el abono es en EFECTIVO y se solicitó impactar en caja, asentar el ingreso único en la caja activa
+    if (medioPago === 'EFECTIVO' && monto > 0 && impactarEnCaja) {
+      const sesionActiva = useCajaStore.getState().sesionActiva
+      if (sesionActiva) {
+        try {
+          await useCajaStore.getState().registrarMovimientoCaja(
+            'INGRESO',
+            'COBRO_CUENTA_CORRIENTE',
+            monto,
+            `Cobro cta. cte.: ${cliente.nombre}`
+          )
+        } catch (cajaErr) {
+          console.warn('No se pudo registrar ingreso de abono en caja:', cajaErr)
+        }
+      }
     }
 
     toast.success(`Abono de $${monto.toLocaleString('es-AR')} registrado con éxito`)

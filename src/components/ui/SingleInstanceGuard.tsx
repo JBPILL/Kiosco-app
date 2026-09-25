@@ -157,7 +157,6 @@ export function SingleInstanceGuard({ children }: { children: React.ReactNode })
 
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload)
-      handleBeforeUnload()
     }
   }, [requestAppLock, yieldLock, stopHeartbeat])
 

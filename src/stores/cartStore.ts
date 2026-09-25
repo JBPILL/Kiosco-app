@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import toast from 'react-hot-toast'
 import type { Producto, ItemCarrito } from '../types/database'
 import { usePromocionStore } from './promocionStore'
+import { useEnvasesStore } from './envasesStore'
 
 export type TipoAjuste =
   | 'NINGUNO'
@@ -40,7 +41,7 @@ interface CartState {
   tabActivaId: string
   crearNuevaTab: (nombre?: string) => string
   cambiarTab: (id: string) => void
-  cerrarTab: (id: string) => void
+  cerrarTab: (id: string, revertirEnvases?: boolean) => void
   renombrarTab: (id: string, nombre: string) => void
 
   // Ventas en espera
@@ -51,10 +52,10 @@ interface CartState {
   agregarItemLibre: (descripcion: string, precio: number, cantidad?: number) => void
   quitarProducto: (productoId: string) => void
   actualizarCantidad: (productoId: string, cantidad: number) => void
-  vaciarCarrito: () => void
+  vaciarCarrito: (revertirEnvases?: boolean) => void
   completarVentaTabActiva: () => void
   toggleEnvaseItem: (productoId: string) => void
-  agregarDevolucionEnvase: (nombreEnvase: string, precioUnitario: number, cantidad?: number) => void
+  agregarDevolucionEnvase: (nombreEnvase: string, precioUnitario: number, cantidad?: number, tipoEnvaseId?: string) => void
 
   // Acciones de descuentos y recargos
   aplicarAjuste: (tipo: TipoAjuste, valor: number) => void
@@ -115,6 +116,25 @@ function evaluarConPromociones(items: ItemCarrito[]): ItemCarrito[] {
     return usePromocionStore.getState().evaluarCarrito(items)
   } catch {
     return items
+  }
+}
+
+function revertirStockEnvasesDeItems(items: ItemCarrito[]) {
+  try {
+    for (const it of items) {
+      if (it.es_devolucion_envase && it.tipo_envase_id) {
+        useEnvasesStore.getState().ajustarStockVacios(
+          it.tipo_envase_id,
+          -it.cantidad,
+          'AJUSTE_MANUAL',
+          undefined,
+          undefined,
+          `Cancelación recepción ticket (-${it.cantidad})`
+        )
+      }
+    }
+  } catch (err) {
+    console.warn('Error al revertir stock de envases devueltos:', err)
   }
 }
 
@@ -198,10 +218,18 @@ export const useCartStore = create<CartState>((set, get) => ({
     })
   },
 
-  cerrarTab: (targetId: string) => {
+  cerrarTab: (targetId: string, revertirEnvases = true) => {
     const state = get()
+    if (revertirEnvases) {
+      const tabCerrada = state.tabs.find((t) => t.id === targetId)
+      if (tabCerrada) {
+        const itemsTab = tabCerrada.id === state.tabActivaId ? state.items : tabCerrada.items
+        revertirStockEnvasesDeItems(itemsTab)
+      }
+    }
+
     if (state.tabs.length <= 1) {
-      get().vaciarCarrito()
+      get().vaciarCarrito(false)
       return
     }
 
@@ -234,9 +262,9 @@ export const useCartStore = create<CartState>((set, get) => ({
   completarVentaTabActiva: () => {
     const state = get()
     if (state.tabs.length > 1) {
-      get().cerrarTab(state.tabActivaId)
+      get().cerrarTab(state.tabActivaId, false)
     } else {
-      get().vaciarCarrito()
+      get().vaciarCarrito(false)
       set((s) => ({
         tabs: s.tabs.map((t) => (/^Ticket\s+\d+$/i.test(t.nombre) ? { ...t, nombre: 'Ticket 1' } : t)),
       }))
@@ -346,7 +374,7 @@ export const useCartStore = create<CartState>((set, get) => ({
     })
   },
 
-  agregarDevolucionEnvase: (nombreEnvase: string, precioUnitario: number, cantidad = 1) => {
+  agregarDevolucionEnvase: (nombreEnvase: string, precioUnitario: number, cantidad = 1, tipoEnvaseId?: string) => {
     const cant = Math.max(1, Math.round(cantidad))
     const precio = Math.max(1, Math.round(precioUnitario))
     const desc = `Devolución ${nombreEnvase}`
@@ -377,6 +405,7 @@ export const useCartStore = create<CartState>((set, get) => ({
           subtotal: -(precio * cant),
           es_devolucion_envase: true,
           precio_envase_unitario: precio,
+          tipo_envase_id: tipoEnvaseId,
         },
       ]
       return {
@@ -426,8 +455,14 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   quitarProducto: (productoId: string) => {
-    set((state) => {
-      const filtrados = state.items.filter((item) => item.producto.id !== productoId)
+    const state = get()
+    const itemTarget = state.items.find((it) => it.producto.id === productoId)
+    if (itemTarget && itemTarget.es_devolucion_envase && itemTarget.tipo_envase_id) {
+      revertirStockEnvasesDeItems([itemTarget])
+    }
+
+    set((s) => {
+      const filtrados = s.items.filter((item) => item.producto.id !== productoId)
       return {
         items: evaluarConPromociones(filtrados),
       }
@@ -464,8 +499,11 @@ export const useCartStore = create<CartState>((set, get) => ({
     set({ items: evaluarConPromociones(nuevos) })
   },
 
-  vaciarCarrito: () => {
+  vaciarCarrito: (revertirEnvases = true) => {
     const state = get()
+    if (revertirEnvases) {
+      revertirStockEnvasesDeItems(state.items)
+    }
     set({
       items: [],
       tipoAjuste: 'NINGUNO',
@@ -500,20 +538,21 @@ export const useCartStore = create<CartState>((set, get) => ({
     get().items.reduce((acc, it) => acc + (it.descuento_promo || 0), 0),
 
   suspenderVentaActual: (nota?: string) => {
-    const { items, tipoAjuste, valorAjuste, totalMonto } = get()
+    const state = get()
+    const { items, tipoAjuste, valorAjuste, totalMonto } = state
     if (items.length === 0) return false
 
     const nuevaVentaEspera: VentaEnEspera = {
       id: uuidv4(),
       fecha: new Date().toISOString(),
-      nota: nota?.trim() || `Venta #${get().ventasEnEspera.length + 1}`,
+      nota: nota?.trim() || `Venta #${state.ventasEnEspera.length + 1}`,
       items: [...items],
       tipoAjuste,
       valorAjuste,
       total: totalMonto(),
     }
 
-    const actualizadas = [nuevaVentaEspera, ...get().ventasEnEspera]
+    const actualizadas = [nuevaVentaEspera, ...state.ventasEnEspera]
     guardarVentasEnEspera(actualizadas)
 
     set({
@@ -521,23 +560,36 @@ export const useCartStore = create<CartState>((set, get) => ({
       tipoAjuste: 'NINGUNO',
       valorAjuste: 0,
       ventasEnEspera: actualizadas,
+      tabs: state.tabs.map((t) =>
+        t.id === state.tabActivaId
+          ? { ...t, items: [], tipoAjuste: 'NINGUNO', valorAjuste: 0 }
+          : t
+      ),
     })
 
     return true
   },
 
   recuperarVenta: (id: string) => {
-    const venta = get().ventasEnEspera.find((v) => v.id === id)
+    const state = get()
+    const venta = state.ventasEnEspera.find((v) => v.id === id)
     if (!venta) return
 
-    const restantes = get().ventasEnEspera.filter((v) => v.id !== id)
+    const restantes = state.ventasEnEspera.filter((v) => v.id !== id)
     guardarVentasEnEspera(restantes)
 
+    const itemsEvaluados = evaluarConPromociones(venta.items)
+
     set({
-      items: evaluarConPromociones(venta.items),
+      items: itemsEvaluados,
       tipoAjuste: venta.tipoAjuste,
       valorAjuste: venta.valorAjuste,
       ventasEnEspera: restantes,
+      tabs: state.tabs.map((t) =>
+        t.id === state.tabActivaId
+          ? { ...t, items: itemsEvaluados, tipoAjuste: venta.tipoAjuste, valorAjuste: venta.valorAjuste }
+          : t
+      ),
     })
   },
 

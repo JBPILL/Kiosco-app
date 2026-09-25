@@ -29,7 +29,7 @@ export function ClientesPage() {
     cargarMovimientosCliente,
   } = useClienteStore()
 
-  const { sesionActiva, registrarMovimientoCaja } = useCajaStore()
+  const { sesionActiva } = useCajaStore()
 
   // Filtros y búsqueda
   const [busqueda, setBusqueda] = useState('')
@@ -172,20 +172,11 @@ export function ClientesPage() {
       clienteAbonar.id,
       monto,
       medioPagoAbono,
-      notasAbono || undefined
+      notasAbono || undefined,
+      impactarEnCaja
     )
 
     if (ok) {
-      // Si fue en efectivo y hay caja abierta, registrar como ingreso
-      if (medioPagoAbono === 'EFECTIVO' && impactarEnCaja && sesionActiva) {
-        await registrarMovimientoCaja(
-          'INGRESO',
-          'OTRO',
-          monto,
-          `Cobro cuenta corriente - ${clienteAbonar.nombre}`
-        )
-      }
-
       setClienteAbonar(null)
       // Si la ficha del cliente estaba abierta, refrescarla
       if (clienteFicha?.id === clienteAbonar.id) {

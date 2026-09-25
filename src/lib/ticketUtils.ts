@@ -1,6 +1,7 @@
 import type { TicketData } from '../components/pos/TicketReceiptModal'
 import { labelMedioPago } from './utils'
 import { construirURLQRAFIP } from './afipQR'
+import { useAFIPStore } from '../stores/afipStore'
 
 /**
  * Mapea una venta obtenida de Supabase con sus relaciones (detalles, pagos, usuario, cliente)
@@ -19,7 +20,9 @@ export function ventaToTicketData(v: any, kiosco?: any): TicketData {
   const subtotalCalculado = detalles.reduce((acc: number, d: any) => acc + (d.subtotal || 0), 0)
   const ajusteMonto = (v.total || 0) - subtotalCalculado
 
-  const afipPtoVta = kiosco?.afip_punto_venta || 2
+  const afipStoreConfig = useAFIPStore.getState().config
+  const cuitEmisor = kiosco?.cuit || afipStoreConfig?.cuit || undefined
+  const afipPtoVta = kiosco?.afip_punto_venta || afipStoreConfig?.punto_venta || 2
   const afipTipoCmp = v.afip_tipo_comprobante || 11
   const fechaStr = (v.fecha_hora || new Date().toISOString()).split('T')[0]
 
@@ -28,7 +31,7 @@ export function ventaToTicketData(v: any, kiosco?: any): TicketData {
     try {
       qrUrl = construirURLQRAFIP({
         fecha: fechaStr,
-        cuit: kiosco?.cuit || '20123456789',
+        cuit: cuitEmisor || '20123456789',
         puntoVenta: afipPtoVta,
         tipoComprobante: afipTipoCmp,
         numeroComprobante: v.afip_nro_comprobante || 1,
@@ -48,10 +51,10 @@ export function ventaToTicketData(v: any, kiosco?: any): TicketData {
         letra: (afipTipoCmp === 11 ? 'C' : 'B') as 'C' | 'B' | 'A',
         puntoVenta: afipPtoVta,
         nroComprobante: v.afip_nro_comprobante || 0,
-        cuitEmisor: kiosco?.cuit || undefined,
-        iibb: kiosco?.iibb || undefined,
-        condicionIva: kiosco?.condicion_iva || undefined,
-        inicioActividades: kiosco?.inicio_actividades || undefined,
+        cuitEmisor: cuitEmisor,
+        iibb: kiosco?.iibb || afipStoreConfig?.iibb || undefined,
+        condicionIva: kiosco?.condicion_iva || afipStoreConfig?.condicion_iva || undefined,
+        inicioActividades: kiosco?.inicio_actividades || afipStoreConfig?.inicio_actividades || undefined,
         qrUrl: qrUrl || undefined,
       }
     : null

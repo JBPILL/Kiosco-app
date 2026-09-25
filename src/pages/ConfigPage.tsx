@@ -72,8 +72,10 @@ export function ConfigPage() {
   const [asignarPassword, setAsignarPassword] = useState('')
   const [guardandoClave, setGuardandoClave] = useState(false)
 
+  const kioscoId = usuario?.kiosco_id
+
   const cargarDatos = useCallback(async () => {
-    if (!usuario?.kiosco_id) return
+    if (!kioscoId) return
     setCargando(true)
 
     try {
@@ -81,7 +83,7 @@ export function ConfigPage() {
       const { data: kioscoData } = await supabase
         .from('kioscos')
         .select('*')
-        .eq('id', usuario.kiosco_id)
+        .eq('id', kioscoId)
         .single()
 
       if (kioscoData) {
@@ -95,7 +97,7 @@ export function ConfigPage() {
       const { data: subData } = await supabase
         .from('suscripciones')
         .select('*, plan:planes(*)')
-        .eq('kiosco_id', usuario.kiosco_id)
+        .eq('kiosco_id', kioscoId)
         .order('fecha_vencimiento', { ascending: false })
         .limit(1)
         .maybeSingle()
@@ -108,7 +110,7 @@ export function ConfigPage() {
       const { data: usuariosData } = await supabase
         .from('usuarios')
         .select('*')
-        .eq('kiosco_id', usuario.kiosco_id)
+        .eq('kiosco_id', kioscoId)
         .order('fecha_creacion')
 
       if (usuariosData) {
@@ -119,7 +121,7 @@ export function ConfigPage() {
       const { data: categoriasData } = await supabase
         .from('categorias')
         .select('*')
-        .eq('kiosco_id', usuario.kiosco_id)
+        .eq('kiosco_id', kioscoId)
         .order('orden')
 
       if (categoriasData) {
@@ -131,7 +133,7 @@ export function ConfigPage() {
     } finally {
       setCargando(false)
     }
-  }, [usuario?.kiosco_id])
+  }, [kioscoId])
 
   useEffect(() => {
     cargarDatos()

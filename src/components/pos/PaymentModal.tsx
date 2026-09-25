@@ -219,7 +219,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       pagosMixtos.every((p) => p.monto > 0) &&
       (!tieneCuentaCorrienteEnMixto || !!clienteSeleccionadoId)
     : medioPago === 'EFECTIVO'
-    ? pagaConNum >= total
+    ? (pagaCon === '' || pagaConNum >= total)
     : medioPago === 'CUENTA_CORRIENTE'
     ? !!clienteSeleccionadoId
     : true
@@ -440,8 +440,43 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       for (const it of items) {
         if (it.producto.activo === false) continue
 
-        const nuevoStock = Number((it.producto.stock_actual - it.cantidad).toFixed(3))
         try {
+          // Si el producto es un combo, el stock físico reside en sus componentes individuales
+          if (it.producto.es_combo) {
+            try {
+              await useComboStore
+                .getState()
+                .descontarStockComponentesCombo(
+                  it.producto.id,
+                  it.cantidad,
+                  kioscoId,
+                  usuario?.id || null,
+                  ventaId
+                )
+            } catch (errCombo) {
+              console.warn(`Error deduciendo componentes del combo ${it.producto.descripcion}:`, errCombo)
+            }
+            continue
+          }
+
+          // Si es un producto estándar, consultar el stock fresco en Supabase para evitar Lost Updates por ventas concurrentes
+          let stockBase = it.producto.stock_actual
+          try {
+            const { data: pActual } = await supabase
+              .from('productos')
+              .select('stock_actual')
+              .eq('id', it.producto.id)
+              .maybeSingle()
+
+            if (pActual && typeof pActual.stock_actual === 'number') {
+              stockBase = pActual.stock_actual
+            }
+          } catch (errSyncStock) {
+            console.warn('Fallback a stock de carrito para deducción:', errSyncStock)
+          }
+
+          const nuevoStock = Number((stockBase - it.cantidad).toFixed(3))
+
           await supabase
             .from('productos')
             .update({
@@ -466,23 +501,6 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             await useLoteStore.getState().descontarStockFEFO(it.producto.id, it.cantidad)
           } catch (errLote) {
             console.warn(`Aviso: deducción de lote FEFO para ${it.producto.descripcion}:`, errLote)
-          }
-
-          // Si el producto es un combo, descontar stock de sus componentes
-          if (it.producto.es_combo) {
-            try {
-              await useComboStore
-                .getState()
-                .descontarStockComponentesCombo(
-                  it.producto.id,
-                  it.cantidad,
-                  kioscoId,
-                  usuario?.id || null,
-                  ventaId
-                )
-            } catch (errCombo) {
-              console.warn(`Error deduciendo componentes del combo ${it.producto.descripcion}:`, errCombo)
-            }
           }
         } catch (errStock) {
           console.warn(`Error al actualizar stock para ${it.producto.descripcion}:`, errStock)
@@ -588,8 +606,8 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           ? 'Pago Mixto'
           : (medioPago === 'CUENTA_CORRIENTE' ? 'Cuenta Corriente' : medioPago),
         pagos: pagosTicket,
-        pagaCon: !esPagoMixto && medioPago === 'EFECTIVO' ? pagaConNum : undefined,
-        vuelto: !esPagoMixto && medioPago === 'EFECTIVO' ? vuelto : undefined,
+        pagaCon: !esPagoMixto && medioPago === 'EFECTIVO' ? (pagaCon === '' ? total : pagaConNum) : undefined,
+        vuelto: !esPagoMixto && medioPago === 'EFECTIVO' ? (pagaCon === '' ? 0 : vuelto) : undefined,
         kioscoNombre: kiosco?.nombre,
         kioscoDireccion: kiosco?.direccion,
         kioscoTelefono: kiosco?.telefono,
@@ -607,7 +625,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           ? `Venta a cuenta corriente registrada — ${formatPrecio(total)}`
           : `Venta registrada — ${formatPrecio(total)}`
       )
-      if (!esPagoMixto && medioPago === 'EFECTIVO' && vuelto > 0) {
+      if (!esPagoMixto && medioPago === 'EFECTIVO' && pagaCon !== '' && vuelto > 0) {
         toast(`Vuelto: ${formatPrecio(vuelto)}`, { duration: 5000 })
       }
 
@@ -1026,7 +1044,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
                   confirmarVenta()
                 }
               }}
-              placeholder="Ingresá con cuánto paga y tocá Enter"
+              placeholder={`Monto exacto: ${formatPrecio(total)} (o ingresá billete)`}
               autoFocus={typeof window !== 'undefined' && window.innerWidth >= 1024}
             />
 
@@ -1055,6 +1073,13 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
                 Paga justo
               </button>
             </div>
+
+            {/* Indicador de cobro exacto rápido */}
+            {pagaCon === '' && (
+              <div className="text-center py-2 px-3 rounded-xl border bg-blue-50/70 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800/60 text-xs text-blue-700 dark:text-blue-300">
+                Cobro exacto sin vuelto — Presioná <strong>Enter</strong> o <strong>Confirmar y Cobrar</strong> para registrar directamente.
+              </div>
+            )}
 
             {/* Vuelto Gigante para personas mayores */}
             {pagaConNum > 0 && (

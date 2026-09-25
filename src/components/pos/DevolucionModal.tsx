@@ -112,7 +112,7 @@ export function DevolucionModal({
     } else {
       reiniciar()
     }
-  }, [isOpen, ventaInicial, usuario?.kiosco_id, kiosco?.id, seleccionarVenta])
+  }, [isOpen, ventaInicial, usuario?.kiosco_id, kiosco?.id, seleccionarVenta, obtenerUltimasVentas])
 
   const handleBuscar = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()

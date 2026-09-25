@@ -239,15 +239,23 @@ export function BalanceContableTab() {
     })
   }, [pagos, rangoInicio, rangoFin])
 
-  // Filtrar movimientos varios de caja del período (excluyendo pagos a proveedores duplicados)
+  // Filtrar movimientos varios de caja del período (excluyendo deducciones automáticas ya computadas en Compras o Pagos)
   const egresosCajaPeriodo = useMemo(() => {
     return movimientosCaja.filter((m) => {
-      return (
-        m.tipo === 'EGRESO' &&
-        m.motivo !== 'PROVEEDOR' &&
-        m.fecha_hora >= rangoInicio &&
-        m.fecha_hora <= rangoFin
-      )
+      if (m.tipo !== 'EGRESO') return false
+      if (m.fecha_hora < rangoInicio || m.fecha_hora > rangoFin) return false
+
+      // Si el egreso de caja fue generado automáticamente al registrar una compra o pago de deuda a proveedor,
+      // se excluye aquí para no duplicarlo, ya que se computa a través de comprasPeriodo y pagosPeriodo.
+      // Pero si fue un retiro manual de mostrador por caja (ej: panadería, sodero), debe incluirse como gasto de caja.
+      if (m.motivo === 'PROVEEDOR') {
+        const desc = m.descripcion || ''
+        const esAutoPago = desc.startsWith('Pago de saldo a proveedor:')
+        const esAutoCompra = desc.startsWith('Compra a ')
+        if (esAutoPago || esAutoCompra) return false
+      }
+
+      return true
     })
   }, [movimientosCaja, rangoInicio, rangoFin])
 
@@ -296,6 +304,15 @@ export function BalanceContableTab() {
     return comprasPeriodo.reduce((sum, c) => sum + c.total, 0)
   }, [comprasPeriodo])
 
+  // Compras de mercadería abonadas de contado (efectivo, transferencia, débito) en el período
+  const comprasContadoPeriodo = useMemo(() => {
+    return comprasPeriodo.filter((c) => c.medio_pago !== 'CUENTA_CORRIENTE')
+  }, [comprasPeriodo])
+
+  const totalComprasContado = useMemo(() => {
+    return comprasContadoPeriodo.reduce((sum, c) => sum + c.total, 0)
+  }, [comprasContadoPeriodo])
+
   const totalPagosAbonados = useMemo(() => {
     return pagosPeriodo.reduce((sum, p) => sum + p.monto, 0)
   }, [pagosPeriodo])
@@ -308,13 +325,32 @@ export function BalanceContableTab() {
     return ingresosCajaPeriodo.reduce((sum, m) => sum + m.monto, 0)
   }, [ingresosCajaPeriodo])
 
-  const totalSalidasFinancieras = totalPagosAbonados + totalGastosCaja
+  // Ventas otorgadas a crédito / cuenta corriente (fiadas) en el período
+  const totalVentasCredito = useMemo(() => {
+    return ventasValidas.reduce((sum, v) => {
+      if (v.pagos && Array.isArray(v.pagos) && v.pagos.length > 0) {
+        const fiado = v.pagos
+          .filter((p) => p.medio_pago === 'CUENTA_CORRIENTE')
+          .reduce((s, p) => s + (p.monto || 0), 0)
+        return sum + fiado
+      }
+      return sum
+    }, 0)
+  }, [ventasValidas])
+
+  // Total cobrado de contado en ventas (efectivo, MP, transferencia, tarjeta)
+  const ventasCobradasContado = useMemo(() => {
+    return Math.max(0, totalIngresos - totalVentasCredito)
+  }, [totalIngresos, totalVentasCredito])
+
+  // Salidas financieras efectivas: pagos de saldo/deuda a proveedores + compras de contado abonadas + gastos varios de caja
+  const totalSalidasFinancieras = totalPagosAbonados + totalComprasContado + totalGastosCaja
 
   // Margen bruto sobre mercadería ingresada
   const resultadoOperativo = totalIngresos - totalComprasMercaderia
 
-  // Flujo neto de dinero real (ingresos por ventas y caja menos desembolsos de caja y pagos)
-  const flujoCajaNeto = (totalIngresos + totalIngresosCaja) - totalSalidasFinancieras
+  // Flujo neto de dinero real (ingresos percibidos de contado por ventas y cobros/ingresos de caja menos desembolsos financieros)
+  const flujoCajaNeto = (ventasCobradasContado + totalIngresosCaja) - totalSalidasFinancieras
 
   // Deuda total acumulada con proveedores al día de hoy
   const deudaTotalProveedores = useMemo(() => {
@@ -743,8 +779,8 @@ export function BalanceContableTab() {
                     Salidas Financieras
                   </p>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300 font-bold whitespace-nowrap flex-shrink-0">
-                    {pagosPeriodo.length + egresosCajaPeriodo.length}{' '}
-                    {pagosPeriodo.length + egresosCajaPeriodo.length === 1 ? 'salida' : 'salidas'}
+                    {pagosPeriodo.length + comprasContadoPeriodo.length + egresosCajaPeriodo.length}{' '}
+                    {pagosPeriodo.length + comprasContadoPeriodo.length + egresosCajaPeriodo.length === 1 ? 'salida' : 'salidas'}
                   </span>
                 </div>
                 <p className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white mt-1">
@@ -753,9 +789,9 @@ export function BalanceContableTab() {
               </div>
               <p
                 className="text-[11px] text-gray-400 dark:text-gray-500 mt-2 truncate"
-                title={`Pagos a prov. (${formatPrecio(totalPagosAbonados)}) + Gastos caja (${formatPrecio(totalGastosCaja)})`}
+                title={`Pagos prov. (${formatPrecio(totalPagosAbonados + totalComprasContado)}) + Gastos caja (${formatPrecio(totalGastosCaja)})`}
               >
-                Pagos a prov. ({formatPrecio(totalPagosAbonados)}) + Gastos caja ({formatPrecio(totalGastosCaja)})
+                Pagos prov. ({formatPrecio(totalPagosAbonados + totalComprasContado)}) + Gastos caja ({formatPrecio(totalGastosCaja)})
               </p>
             </div>
 
@@ -766,15 +802,22 @@ export function BalanceContableTab() {
                   <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wide leading-snug">
                     Margen Bruto
                   </p>
-                  <span
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap flex-shrink-0 ${
-                      resultadoOperativo >= 0
-                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                        : 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300'
-                    }`}
-                  >
-                    {resultadoOperativo >= 0 ? '+ Rentable' : 'Déficit'}
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {totalIngresos > 0 && (
+                      <span className="text-xs font-bold text-gray-500 dark:text-gray-400">
+                        {Math.round((resultadoOperativo / totalIngresos) * 100)}%
+                      </span>
+                    )}
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap ${
+                        resultadoOperativo >= 0
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                          : 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300'
+                      }`}
+                    >
+                      {resultadoOperativo >= 0 ? '+ Rentable' : 'Déficit'}
+                    </span>
+                  </div>
                 </div>
                 <p
                   className={`text-2xl sm:text-3xl font-black mt-1 ${

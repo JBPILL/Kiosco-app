@@ -14,7 +14,7 @@ interface CategoryManagerProps {
   categorias: Categoria[]
   onCrear: (nombre: string, color: string) => Promise<boolean>
   onActualizar: (id: string, nombre: string, color: string) => Promise<boolean>
-  onEliminar: (id: string) => Promise<boolean>
+  onEliminar: (id: string, eliminarProductos?: boolean) => Promise<boolean>
 }
 
 export function CategoryManager({ categorias, onCrear, onActualizar, onEliminar }: CategoryManagerProps) {
@@ -23,6 +23,7 @@ export function CategoryManager({ categorias, onCrear, onActualizar, onEliminar 
   const [nombre, setNombre] = useState('')
   const [color, setColor] = useState('#6366f1')
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [eliminarProductosAsociados, setEliminarProductosAsociados] = useState(true)
 
   const abrirNuevo = () => {
     setEditando(null)
@@ -50,7 +51,7 @@ export function CategoryManager({ categorias, onCrear, onActualizar, onEliminar 
   }
 
   const handleEliminar = async (id: string) => {
-    await onEliminar(id)
+    await onEliminar(id, eliminarProductosAsociados)
     setConfirmDelete(null)
   }
 
@@ -180,12 +181,38 @@ export function CategoryManager({ categorias, onCrear, onActualizar, onEliminar 
         title="¿Eliminar categoría?"
         size="sm"
       >
-        <p className="text-gray-600 dark:text-gray-400 mb-4">
-          Los productos de esta categoría quedarán sin categoría asignada.
-        </p>
+        <div className="space-y-3 mb-4">
+          <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+            ¿Qué deseás hacer con los productos pertenecientes a esta categoría?
+          </p>
+
+          <label className="flex items-start gap-2.5 p-2.5 rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50/50 dark:bg-red-950/20 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={eliminarProductosAsociados}
+              onChange={(e) => setEliminarProductosAsociados(e.target.checked)}
+              className="mt-0.5 rounded text-red-600 focus:ring-red-500"
+            />
+            <div className="text-xs">
+              <span className="font-bold text-red-800 dark:text-red-300">
+                Eliminar también los productos de esta categoría
+              </span>
+              <p className="text-red-600 dark:text-red-400 mt-0.5">
+                Los productos (incluidos combos y recetas) se darán de baja del catálogo y ya no aparecerán en la lista.
+              </p>
+            </div>
+          </label>
+
+          {!eliminarProductosAsociados && (
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 italic">
+              Si desmarcás esta opción, los productos se conservarán en el catálogo como artículos sin categoría asignada.
+            </p>
+          )}
+        </div>
+
         <div className="flex gap-2">
           <Button variant="danger" onClick={() => confirmDelete && handleEliminar(confirmDelete)} fullWidth>
-            Eliminar
+            Eliminar Categoría
           </Button>
           <Button variant="secondary" onClick={() => setConfirmDelete(null)} fullWidth>
             Cancelar

@@ -9,7 +9,9 @@ import { TicketReceiptModal, type TicketData } from '../components/pos/TicketRec
 import { BalanceContableTab } from '../components/reportes/BalanceContableTab'
 import { useClienteStore } from '../stores/clienteStore'
 import { useCajaStore } from '../stores/cajaStore'
+import { useComboStore } from '../stores/comboStore'
 import { ventaToTicketData } from '../lib/ticketUtils'
+import type { Producto } from '../types/database'
 import toast from 'react-hot-toast'
 
 interface ResumenDiario {
@@ -165,39 +167,115 @@ export function ReportesPage() {
         if (!prodId) continue
 
         try {
-          // Consultar el stock actual en base de datos
+          // Consultar el stock actual en base de datos y si es combo
           const { data: prodData } = await supabase
             .from('productos')
-            .select('stock_actual, descripcion')
+            .select('id, stock_actual, descripcion, es_combo')
             .eq('id', prodId)
             .maybeSingle()
 
-          const stockActual = prodData?.stock_actual ?? det.producto?.stock_actual ?? 0
-          const nuevoStock = stockActual + det.cantidad
+          if (!prodData) continue
 
-          await supabase
-            .from('productos')
-            .update({
-              stock_actual: nuevoStock,
-              fecha_actualizacion: ahora,
-            })
-            .eq('id', prodId)
+          if (prodData.es_combo) {
+            // Si es un combo, restituir el stock físico de sus componentes individuales
+            const componentes = useComboStore.getState().obtenerComponentesDeCombo(prodData.id)
+            for (const comp of componentes) {
+              const cantRestituir = comp.cantidad * det.cantidad
+              const { data: compProd } = await supabase
+                .from('productos')
+                .select('id, stock_actual, descripcion')
+                .eq('id', comp.componente_producto_id)
+                .maybeSingle()
 
-          if (kioscoId) {
-            await supabase.from('movimientos_stock').insert({
-              kiosco_id: kioscoId,
-              producto_id: prodId,
-              tipo: 'INGRESO',
-              cantidad: det.cantidad,
-              motivo: 'DEVOLUCION',
-              notas: `Devolución por anulación de Venta #${ventaParaAnular.id.slice(0, 8).toUpperCase()}`,
-              usuario_id: usuario?.id || null,
-              fecha: ahora,
-            })
+              if (compProd) {
+                const nuevoStockComp = Number(((compProd.stock_actual || 0) + cantRestituir).toFixed(3))
+                await supabase
+                  .from('productos')
+                  .update({
+                    stock_actual: nuevoStockComp,
+                    fecha_actualizacion: ahora,
+                  })
+                  .eq('id', compProd.id)
+
+                if (kioscoId) {
+                  await supabase.from('movimientos_stock').insert({
+                    kiosco_id: kioscoId,
+                    producto_id: compProd.id,
+                    tipo: 'INGRESO',
+                    cantidad: cantRestituir,
+                    motivo: 'DEVOLUCION',
+                    notas: `Devolución Combo #${ventaParaAnular.id.slice(0, 8).toUpperCase()} - ${prodData.descripcion}`,
+                    usuario_id: usuario?.id || null,
+                    fecha: ahora,
+                  })
+                }
+              }
+            }
+          } else {
+            const stockActual = prodData?.stock_actual ?? det.producto?.stock_actual ?? 0
+            const nuevoStock = Math.round((stockActual + det.cantidad) * 1000) / 1000
+
+            await supabase
+              .from('productos')
+              .update({
+                stock_actual: nuevoStock,
+                fecha_actualizacion: ahora,
+              })
+              .eq('id', prodId)
+
+            if (kioscoId) {
+              await supabase.from('movimientos_stock').insert({
+                kiosco_id: kioscoId,
+                producto_id: prodId,
+                tipo: 'INGRESO',
+                cantidad: det.cantidad,
+                motivo: 'DEVOLUCION',
+                notas: `Devolución por anulación de Venta #${ventaParaAnular.id.slice(0, 8).toUpperCase()}`,
+                usuario_id: usuario?.id || null,
+                fecha: ahora,
+              })
+            }
           }
         } catch (errStock) {
           console.warn(`Error al reponer stock de producto ${prodId}:`, errStock)
         }
+      }
+
+      // Actualizar la caché local de productos (kiosko_cache_productos) para que el POS refleje el stock inmediatamente
+      try {
+        const cachedRaw = localStorage.getItem('kiosko_cache_productos')
+        if (cachedRaw) {
+          const prodList: Producto[] = JSON.parse(cachedRaw)
+          const cantidadesMap = new Map<string, number>()
+
+          for (const det of ventaParaAnular.detalles) {
+            const pId = det.producto_id || det.producto?.id
+            if (!pId) continue
+
+            const prod = prodList.find((p) => p.id === pId)
+            if (prod?.es_combo) {
+              const componentes = useComboStore.getState().obtenerComponentesDeCombo(prod.id)
+              for (const comp of componentes) {
+                const actual = cantidadesMap.get(comp.componente_producto_id) || 0
+                cantidadesMap.set(comp.componente_producto_id, actual + comp.cantidad * det.cantidad)
+              }
+            } else {
+              cantidadesMap.set(pId, (cantidadesMap.get(pId) || 0) + det.cantidad)
+            }
+          }
+
+          const actualizados = prodList.map((p) => {
+            const devuelto = cantidadesMap.get(p.id)
+            if (devuelto !== undefined) {
+              const st = Math.round(((p.stock_actual || 0) + devuelto) * 1000) / 1000
+              return { ...p, stock_actual: st, fecha_actualizacion: ahora }
+            }
+            return p
+          })
+          localStorage.setItem('kiosko_cache_productos', JSON.stringify(actualizados))
+        }
+      } catch (errCache) {
+        console.warn('Error al actualizar caché local tras anulación:', errCache)
       }
 
       // 3. Si la venta tuvo pago en CUENTA_CORRIENTE, revertir la deuda del cliente

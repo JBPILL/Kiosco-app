@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '../lib/supabase'
 import { useCajaStore } from './cajaStore'
 import { useClienteStore } from './clienteStore'
+import { useComboStore } from './comboStore'
 import type {
   DevolucionVenta,
   DetalleDevolucion,
@@ -207,9 +208,12 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
           .from('ventas')
           .select('*, detalles:detalles_venta(*, producto:productos(*)), pagos:pagos_venta(*), usuario:usuarios(nombre)')
           .eq('id', limpio)
-          .maybeSingle()
 
-        const { data: vExacta } = await queryExacta
+        if (kioscoId) {
+          queryExacta = queryExacta.eq('kiosco_id', kioscoId)
+        }
+
+        const { data: vExacta } = await queryExacta.maybeSingle()
         if (vExacta) {
           return vExacta as VentaConDetalles
         }
@@ -339,30 +343,62 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
       for (const it of itemsADevolver) {
         if (it.reingresaStock) {
           try {
-            // Traer stock actual
+            // Traer stock actual y verificar si es combo
             const { data: prodData } = await supabase
               .from('productos')
-              .select('id, stock_actual, descripcion')
+              .select('id, stock_actual, descripcion, es_combo')
               .eq('id', it.productoId)
               .single()
 
             if (prodData) {
-              const nuevoStock = Number(((prodData.stock_actual || 0) + it.cantidad).toFixed(3))
-              await supabase
-                .from('productos')
-                .update({ stock_actual: nuevoStock, fecha_actualizacion: ahora })
-                .eq('id', prodData.id)
+              if (prodData.es_combo) {
+                // Si es un combo, restituir el stock físico de sus componentes individuales
+                const componentes = useComboStore.getState().obtenerComponentesDeCombo(prodData.id)
+                for (const comp of componentes) {
+                  const cantRestituir = comp.cantidad * it.cantidad
+                  const { data: compProd } = await supabase
+                    .from('productos')
+                    .select('id, stock_actual, descripcion')
+                    .eq('id', comp.componente_producto_id)
+                    .single()
 
-              await supabase.from('movimientos_stock').insert({
-                kiosco_id: kioscoId,
-                producto_id: prodData.id,
-                tipo: 'INGRESO',
-                cantidad: it.cantidad,
-                motivo: 'AJUSTE',
-                notas: `Devolución Venta #${venta.id.slice(0, 8).toUpperCase()} (${motivo})`,
-                usuario_id: usuarioId || null,
-                fecha: ahora,
-              })
+                  if (compProd) {
+                    const nuevoStockComp = Number(((compProd.stock_actual || 0) + cantRestituir).toFixed(3))
+                    await supabase
+                      .from('productos')
+                      .update({ stock_actual: nuevoStockComp, fecha_actualizacion: ahora })
+                      .eq('id', compProd.id)
+
+                    await supabase.from('movimientos_stock').insert({
+                      kiosco_id: kioscoId,
+                      producto_id: compProd.id,
+                      tipo: 'INGRESO',
+                      cantidad: cantRestituir,
+                      motivo: 'AJUSTE',
+                      notas: `Devolución Combo #${venta.id.slice(0, 8).toUpperCase()} - ${prodData.descripcion}`,
+                      usuario_id: usuarioId || null,
+                      fecha: ahora,
+                    })
+                  }
+                }
+              } else {
+                const nuevoStock = Number(((prodData.stock_actual || 0) + it.cantidad).toFixed(3))
+                await supabase
+                  .from('productos')
+                  .update({ stock_actual: nuevoStock, fecha_actualizacion: ahora })
+                  .eq('id', prodData.id)
+
+                await supabase.from('movimientos_stock').insert({
+                  kiosco_id: kioscoId,
+                  producto_id: prodData.id,
+                  tipo: 'INGRESO',
+                  cantidad: it.cantidad,
+                  motivo: 'AJUSTE',
+                  notas: `Devolución Venta #${venta.id.slice(0, 8).toUpperCase()} (${motivo})`,
+                  usuario_id: usuarioId || null,
+                  fecha: ahora,
+                })
+              }
             }
           } catch (errStock) {
             console.warn('Error reingresando stock de devolución:', errStock)
@@ -375,9 +411,21 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
         const cachedRaw = localStorage.getItem('kiosko_cache_productos')
         if (cachedRaw) {
           const cachedProds: Producto[] = JSON.parse(cachedRaw)
-          const itemsReingresadosMap = new Map(
-            itemsADevolver.filter((i) => i.reingresaStock).map((i) => [i.productoId, i.cantidad])
-          )
+          const itemsReingresadosMap = new Map<string, number>()
+
+          for (const i of itemsADevolver.filter((i) => i.reingresaStock)) {
+            const prod = cachedProds.find((p) => p.id === i.productoId)
+            if (prod?.es_combo) {
+              const componentes = useComboStore.getState().obtenerComponentesDeCombo(prod.id)
+              for (const comp of componentes) {
+                const actual = itemsReingresadosMap.get(comp.componente_producto_id) || 0
+                itemsReingresadosMap.set(comp.componente_producto_id, actual + comp.cantidad * i.cantidad)
+              }
+            } else {
+              const actual = itemsReingresadosMap.get(i.productoId) || 0
+              itemsReingresadosMap.set(i.productoId, actual + i.cantidad)
+            }
+          }
 
           const actualizados = cachedProds.map((p) => {
             const sum = itemsReingresadosMap.get(p.id)

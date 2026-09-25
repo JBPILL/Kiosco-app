@@ -129,6 +129,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async () => {
     await supabase.auth.signOut()
+    try {
+      localStorage.removeItem('kiosko_cache_productos')
+      localStorage.removeItem('kiosko_cache_categorias')
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith('kiosko_cache_')) {
+          localStorage.removeItem(key)
+        }
+      })
+    } catch {}
     set({
       usuario: null,
       kiosco: null,

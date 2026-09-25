@@ -69,34 +69,43 @@ export function POSPage() {
 
   // Cargar favoritos
   const cargarFavoritos = useCallback(async () => {
-    const { data } = await supabase
+    const kid = usuario?.kiosco_id || kiosco?.id
+    let query = supabase
       .from('productos')
       .select('*')
       .eq('activo', true)
       .eq('es_favorito', true)
       .order('descripcion')
+    if (kid) query = query.eq('kiosco_id', kid)
+    const { data } = await query
     setFavoritos(data || [])
-  }, [])
+  }, [usuario?.kiosco_id, kiosco?.id])
 
   // Cargar categorías
   const cargarCategorias = useCallback(async () => {
-    const { data } = await supabase
+    const kid = usuario?.kiosco_id || kiosco?.id
+    let query = supabase
       .from('categorias')
       .select('*')
       .order('orden')
+    if (kid) query = query.eq('kiosco_id', kid)
+    const { data } = await query
     setCategorias(data || [])
-  }, [])
+  }, [usuario?.kiosco_id, kiosco?.id])
 
   // Cargar productos por categoría
   const cargarPorCategoria = useCallback(async (catId: string) => {
-    const { data } = await supabase
+    const kid = usuario?.kiosco_id || kiosco?.id
+    let query = supabase
       .from('productos')
       .select('*')
       .eq('activo', true)
       .eq('categoria_id', catId)
       .order('descripcion')
+    if (kid) query = query.eq('kiosco_id', kid)
+    const { data } = await query
     setProductosCategoria(data || [])
-  }, [])
+  }, [usuario?.kiosco_id, kiosco?.id])
 
   useEffect(() => {
     cargarFavoritos()
@@ -233,12 +242,14 @@ export function POSPage() {
 
         // Si no estaba en caché local, buscar en Supabase por plu_balanza o codigo_barras
         try {
-          const { data } = await supabase
+          const kid = usuario?.kiosco_id || kiosco?.id
+          let queryBalanza = supabase
             .from('productos')
             .select('*, categoria:categorias(nombre, color)')
             .eq('activo', true)
             .or(`plu_balanza.eq.${parsedBalanza.plu4},plu_balanza.eq.${parsedBalanza.pluCorto},plu_balanza.eq.${parsedBalanza.plu5},codigo_barras.eq.${parsedBalanza.plu4},codigo_barras.eq.${parsedBalanza.pluCorto}`)
-            .maybeSingle()
+          if (kid) queryBalanza = queryBalanza.eq('kiosco_id', kid)
+          const { data } = await queryBalanza.maybeSingle()
 
           if (data) {
             agregarProducto(data, parsedBalanza.pesoKg)
@@ -275,12 +286,15 @@ export function POSPage() {
 
       // 2. Si no estaba en caché, buscar en Supabase
       try {
-        const { data, error } = await supabase
+        const kid = usuario?.kiosco_id || kiosco?.id
+        let queryGun = supabase
           .from('productos')
           .select('*, categoria:categorias(nombre, color)')
           .eq('activo', true)
           .eq('codigo_barras', codeTrim)
-          .maybeSingle()
+        if (kid) queryGun = queryGun.eq('kiosco_id', kid)
+
+        const { data, error } = await queryGun.maybeSingle()
 
         if (error) throw error
 
