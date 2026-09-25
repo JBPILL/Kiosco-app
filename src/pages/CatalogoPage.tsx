@@ -8,6 +8,7 @@ import { AumentoPreciosModal } from '../components/catalogo/AumentoPreciosModal'
 import { PreciosEnvasesModal } from '../components/catalogo/PreciosEnvasesModal'
 import { EtiquetasGondolaModal } from '../components/catalogo/EtiquetasGondolaModal'
 import { exportarCatalogoExcel } from '../lib/exportUtils'
+import { clearCachedProductos } from '../lib/utils'
 import { useAuthStore } from '../stores/authStore'
 import toast from 'react-hot-toast'
 import type { Producto } from '../types/database'
@@ -63,10 +64,9 @@ export function CatalogoPage() {
 
   const handleSincronizar = async () => {
     try {
-      localStorage.removeItem('kiosko_cache_productos')
+      clearCachedProductos(kiosco?.id)
       localStorage.removeItem('kiosko_cache_categorias')
       if (kiosco?.id) {
-        localStorage.removeItem(`kiosko_cache_productos_${kiosco.id}`)
         localStorage.removeItem(`kiosko_cache_categorias_${kiosco.id}`)
       }
     } catch {}

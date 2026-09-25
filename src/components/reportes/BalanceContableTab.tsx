@@ -12,13 +12,13 @@ import toast from 'react-hot-toast'
 import type { MovimientoCaja, Venta } from '../../types/database'
 
 type TipoPeriodo = 'HOY' | 'SEMANA' | 'MES' | 'MES_ANTERIOR' | 'PERSONALIZADO'
-type FiltroTipoMovimiento = 'TODOS' | 'VENTAS' | 'COMPRAS' | 'PAGOS' | 'CAJA'
+type FiltroTipoMovimiento = 'TODOS' | 'VENTAS' | 'COMPRAS' | 'PAGOS' | 'CAJA' | 'DEVOLUCIONES'
 type FiltroFiscal = 'TODAS' | 'SOLO_FISCALES' | 'SOLO_INTERNAS'
 
 interface AsientoContable {
   id: string
   fecha: string
-  tipo: 'VENTA' | 'COMPRA' | 'PAGO_PROVEEDOR' | 'EGRESO_CAJA' | 'INGRESO_CAJA'
+  tipo: 'VENTA' | 'COMPRA' | 'PAGO_PROVEEDOR' | 'EGRESO_CAJA' | 'INGRESO_CAJA' | 'DEVOLUCION'
   comprobante: string
   concepto: string
   medio_pago: string
@@ -56,6 +56,7 @@ export function BalanceContableTab() {
   // Datos locales
   const [ventas, setVentas] = useState<Venta[]>([])
   const [movimientosCaja, setMovimientosCaja] = useState<MovimientoCaja[]>([])
+  const [devoluciones, setDevoluciones] = useState<any[]>([])
   const [cargando, setCargando] = useState(true)
   const [ticketParaVer, setTicketParaVer] = useState<TicketData | null>(null)
 
@@ -201,6 +202,21 @@ export function BalanceContableTab() {
       } else if (movsData) {
         setMovimientosCaja(movsData as MovimientoCaja[])
       }
+
+      // 4. Cargar devoluciones del período para computar ventas netas y libro diario
+      let queryDevs = supabase
+        .from('devoluciones_venta')
+        .select('*')
+        .gte('fecha_hora', rangoInicio)
+        .lte('fecha_hora', rangoFin)
+        .order('fecha_hora', { ascending: false })
+
+      if (kid) {
+        queryDevs = queryDevs.eq('kiosco_id', kid)
+      }
+
+      const { data: devsData } = await queryDevs
+      setDevoluciones(devsData || [])
     } catch (err) {
       console.error('Error cargando balance contable:', err)
       toast.error('Error al cargar datos contables')
@@ -296,9 +312,14 @@ export function BalanceContableTab() {
   // ==========================================
   // KPIs FINANCIEROS Y CONTABLES
   // ==========================================
+  const totalDevoluciones = useMemo(() => {
+    return devoluciones.reduce((sum, d) => sum + (d.monto_total || 0), 0)
+  }, [devoluciones])
+
   const totalIngresos = useMemo(() => {
-    return ventasValidas.reduce((sum, v) => sum + v.total, 0)
-  }, [ventasValidas])
+    const ventasTot = ventasValidas.reduce((sum, v) => sum + v.total, 0)
+    return Math.max(0, ventasTot - totalDevoluciones)
+  }, [ventasValidas, totalDevoluciones])
 
   const totalComprasMercaderia = useMemo(() => {
     return comprasPeriodo.reduce((sum, c) => sum + c.total, 0)
@@ -464,9 +485,30 @@ export function BalanceContableTab() {
       })
     })
 
+    // 6. Devoluciones de mercadería / Reintegros
+    devoluciones.forEach((d: any) => {
+      let canal = 'Efectivo'
+      if (d.metodo_reintegro === 'EFECTIVO_CAJA') canal = 'Efectivo'
+      else if (d.metodo_reintegro === 'MERCADOPAGO') canal = 'Mercado Pago'
+      else if (d.metodo_reintegro === 'TRANSFERENCIA') canal = 'Transferencia'
+      else if (d.metodo_reintegro === 'CUENTA_CORRIENTE') canal = 'Cuenta Corriente'
+
+      asientos.push({
+        id: `dev-${d.id}`,
+        fecha: d.fecha_hora,
+        tipo: 'DEVOLUCION',
+        comprobante: `DEV-${d.id.slice(0, 8).toUpperCase()}`,
+        concepto: `Reintegro por devolución (${d.motivo || 'Devolución'})`,
+        medio_pago: canal,
+        ingreso: 0,
+        egreso: d.monto_total || 0,
+        notas: d.notas,
+      })
+    })
+
     // Ordenar cronológicamente descendente (lo más reciente primero)
     return asientos.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
-  }, [ventasValidas, comprasPeriodo, pagosPeriodo, egresosCajaPeriodo, ingresosCajaPeriodo])
+  }, [ventasValidas, comprasPeriodo, pagosPeriodo, egresosCajaPeriodo, ingresosCajaPeriodo, devoluciones])
 
   // Filtrado de asientos para la tabla
   const asientosFiltrados = useMemo(() => {
@@ -476,6 +518,7 @@ export function BalanceContableTab() {
       if (filtroTipo === 'COMPRAS' && a.tipo !== 'COMPRA') return false
       if (filtroTipo === 'PAGOS' && a.tipo !== 'PAGO_PROVEEDOR') return false
       if (filtroTipo === 'CAJA' && a.tipo !== 'EGRESO_CAJA' && a.tipo !== 'INGRESO_CAJA') return false
+      if (filtroTipo === 'DEVOLUCIONES' && a.tipo !== 'DEVOLUCION') return false
 
       // Filtro por búsqueda
       if (busqueda.trim()) {
@@ -938,6 +981,7 @@ export function BalanceContableTab() {
                     { tipo: 'COMPRAS', label: 'Compras' },
                     { tipo: 'PAGOS', label: 'Pagos Prov.' },
                     { tipo: 'CAJA', label: 'Caja' },
+                    { tipo: 'DEVOLUCIONES', label: 'Devoluciones' },
                   ] as const
                 ).map(({ tipo, label }) => (
                   <button
@@ -1022,6 +1066,11 @@ export function BalanceContableTab() {
                           {asiento.tipo === 'INGRESO_CAJA' && (
                             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300">
                               INGRESO CAJA
+                            </span>
+                          )}
+                          {asiento.tipo === 'DEVOLUCION' && (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                              DEVOLUCIÓN
                             </span>
                           )}
                         </td>

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../stores/authStore'
 import { useProveedorStore } from '../../stores/proveedorStore'
-import { formatPrecio } from '../../lib/utils'
+import { formatPrecio, getCachedProductos } from '../../lib/utils'
 import { exportarStockInmovilizadoExcel, type ItemStockInmovilizado } from '../../lib/exportUtils'
 import { SearchInput } from '../ui/SearchInput'
 import { Button } from '../ui/Button'
@@ -50,10 +50,9 @@ export function StockInmovilizadoTab() {
 
       if (prodErr) {
         // Fallback a localStorage si estamos offline o en modo simulado
-        const localCache = localStorage.getItem('kiosko_cache_productos')
-        if (localCache) {
-          const parsed: Producto[] = JSON.parse(localCache)
-          setProductos(parsed.filter((p) => p.activo && p.stock_actual > 0))
+        const localCache = getCachedProductos(kioscoId)
+        if (localCache && localCache.length > 0) {
+          setProductos(localCache.filter((p: Producto) => p.activo && p.stock_actual > 0))
         }
       } else if (prodData) {
         setProductos(prodData)
@@ -66,10 +65,14 @@ export function StockInmovilizadoTab() {
 
       let detallesQuery = supabase
         .from('detalles_venta')
-        .select('producto_id, venta:ventas!inner(fecha_hora, estado)')
+        .select('producto_id, venta:ventas!inner(fecha_hora, estado, kiosco_id)')
         .gte('venta.fecha_hora', fechaLimite.toISOString())
         .eq('venta.estado', 'COMPLETADA')
         .order('venta(fecha_hora)', { ascending: false })
+
+      if (kioscoId) {
+        detallesQuery = detallesQuery.eq('venta.kiosco_id', kioscoId)
+      }
 
       const { data: detData, error: detErr } = await detallesQuery
 

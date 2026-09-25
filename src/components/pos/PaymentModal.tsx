@@ -5,7 +5,7 @@ import { useCartStore } from '../../stores/cartStore'
 import { useCajaStore } from '../../stores/cajaStore'
 import { useAuthStore } from '../../stores/authStore'
 import { useClienteStore } from '../../stores/clienteStore'
-import { formatPrecio } from '../../lib/utils'
+import { formatPrecio, getCachedProductos, saveCachedProductos } from '../../lib/utils'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Modal } from '../ui/Modal'
@@ -506,11 +506,10 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         }
       }
 
-      // Sincronizar de inmediato el stock en la caché local (kiosko_cache_productos)
+      // Sincronizar de inmediato el stock en la caché local asegurando coherencia multi-inquilino
       try {
-        const cachedRaw = localStorage.getItem('kiosko_cache_productos')
-        if (cachedRaw) {
-          const cachedProds: any[] = JSON.parse(cachedRaw)
+        const cachedProds = getCachedProductos(kioscoId)
+        if (cachedProds && cachedProds.length > 0) {
           const itemsMap = new Map(items.map((i) => [i.producto.id, i.cantidad]))
           const actualizados = cachedProds.map((p) => {
             const qty = itemsMap.get(p.id)
@@ -519,7 +518,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             }
             return p
           })
-          localStorage.setItem('kiosko_cache_productos', JSON.stringify(actualizados))
+          saveCachedProductos(actualizados, kioscoId)
         }
       } catch (cacheErr) {
         console.warn('Error sincronizando stock en memoria local:', cacheErr)
@@ -632,6 +631,13 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       resetForm()
       onVentaCompletada(ticketGenerado)
       onClose()
+
+      // Mantener actualizado el arqueo y balance de caja en memoria
+      if (sesionActiva?.id) {
+        useCajaStore.getState().cargarResumenSesion(sesionActiva.id).catch((err) => {
+          console.warn('Aviso sincronizando resumen de caja post-venta:', err)
+        })
+      }
     } catch (error) {
       console.error('Error al registrar venta:', error)
 
@@ -700,7 +706,9 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={() => {
+        if (!procesando) onClose()
+      }}
       title="Cobrar"
       size="md"
       footer={

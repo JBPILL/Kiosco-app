@@ -743,7 +743,7 @@ export interface MetricasBalanceExport {
 
 export interface MovimientoContableCSV {
   fecha_hora: string
-  tipo: 'VENTA' | 'COMPRA' | 'PAGO_PROVEEDOR' | 'EGRESO_CAJA' | 'INGRESO_CAJA'
+  tipo: 'VENTA' | 'COMPRA' | 'PAGO_PROVEEDOR' | 'EGRESO_CAJA' | 'INGRESO_CAJA' | 'DEVOLUCION'
   comprobante: string
   concepto: string
   medio_pago: string

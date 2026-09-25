@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '../lib/supabase'
 import { useLoteStore } from './loteStore'
+import { getCachedProductos, saveCachedProductos } from '../lib/utils'
 import type { ItemCombo, Producto } from '../types/database'
 import toast from 'react-hot-toast'
 
@@ -212,7 +213,7 @@ export const useComboStore = create<ComboState>((set, get) => ({
           .single()
 
         if (prodData) {
-          const nuevoStock = Math.max(0, (prodData.stock_actual || 0) - totalADescontar)
+          const nuevoStock = Number(((prodData.stock_actual || 0) - totalADescontar).toFixed(3))
 
           // 2. Actualizar stock en productos
           await supabase
@@ -244,22 +245,21 @@ export const useComboStore = create<ComboState>((set, get) => ({
       }
     }
 
-    // Actualizar de forma inmediata en la caché local de productos
+    // Actualizar de forma inmediata en la caché local de productos asegurando coherencia multi-inquilino
     try {
-      const cachedRaw = localStorage.getItem('kiosko_cache_productos')
-      if (cachedRaw) {
-        const cachedProds: Producto[] = JSON.parse(cachedRaw)
+      const cachedProds: Producto[] = getCachedProductos(kioscoId)
+      if (cachedProds && cachedProds.length > 0) {
         const deducMap = new Map(componentes.map((c) => [c.componente_producto_id, c.cantidad * cantidadVendida]))
 
         const actualizados = cachedProds.map((p) => {
           const qty = deducMap.get(p.id)
           if (qty !== undefined) {
-            return { ...p, stock_actual: Math.max(0, (p.stock_actual || 0) - qty) }
+            return { ...p, stock_actual: Number(((p.stock_actual || 0) - qty).toFixed(3)) }
           }
           return p
         })
 
-        localStorage.setItem('kiosko_cache_productos', JSON.stringify(actualizados))
+        saveCachedProductos(actualizados, kioscoId)
       }
     } catch (eCache) {
       console.warn('Error actualizando caché local tras venta de combo:', eCache)

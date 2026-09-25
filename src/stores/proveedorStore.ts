@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from './authStore'
 import { useCajaStore } from './cajaStore'
+import { getCachedProductos, saveCachedProductos } from '../lib/utils'
 import type {
   Proveedor,
   CompraProveedor,
@@ -360,6 +361,10 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
       : null
 
     if (sesionCajaId) {
+      const efectivoEnCaja = caja.resumenActivo?.efectivo_esperado_en_caja ?? (caja.sesionActiva?.monto_inicial || 0)
+      if (monto > efectivoEnCaja) {
+        toast('Aviso: El pago al proveedor supera el efectivo registrado en caja.', { icon: '⚠️' })
+      }
       try {
         await caja.registrarMovimientoCaja(
           'EGRESO',
@@ -634,9 +639,8 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
     // 4. Actualizar stock local en catálogo de productos si hubo renglones
     if (tieneDetalles) {
       try {
-        const cached = localStorage.getItem('kiosko_cache_productos')
-        if (cached) {
-          const productosList: Producto[] = JSON.parse(cached)
+        const productosList: Producto[] = getCachedProductos(usuario.kiosco_id)
+        if (productosList && productosList.length > 0) {
           const updatedList = productosList.map((prod) => {
             const item = (compraInput.detalles || []).find((d) => d.producto_id === prod.id)
             if (item) {
@@ -649,7 +653,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
             }
             return prod
           })
-          localStorage.setItem('kiosko_cache_productos', JSON.stringify(updatedList))
+          saveCachedProductos(updatedList, usuario.kiosco_id)
         }
       } catch (e) {
         console.warn('Error actualizando caché local de productos:', e)
@@ -833,9 +837,8 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
 
         // Revertir en caché local
         try {
-          const cached = localStorage.getItem('kiosko_cache_productos')
-          if (cached) {
-            const productosList: Producto[] = JSON.parse(cached)
+          const productosList: Producto[] = getCachedProductos(usuario.kiosco_id)
+          if (productosList && productosList.length > 0) {
             const detallesMap = new Map(detalles.map((d) => [d.producto_id, d.cantidad]))
             const updatedList = productosList.map((prod) => {
               const cantDeducir = detallesMap.get(prod.id)
@@ -848,7 +851,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
               }
               return prod
             })
-            localStorage.setItem('kiosko_cache_productos', JSON.stringify(updatedList))
+            saveCachedProductos(updatedList, usuario.kiosco_id)
           }
         } catch (eLocal) {
           console.warn('Error actualizando caché local al anular compra:', eLocal)

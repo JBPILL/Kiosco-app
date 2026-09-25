@@ -3,7 +3,7 @@ import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../stores/authStore'
-import { formatPrecio } from '../../lib/utils'
+import { formatPrecio, saveCachedProductos } from '../../lib/utils'
 import type { Categoria } from '../../types/database'
 import toast from 'react-hot-toast'
 import { v4 as uuidv4 } from 'uuid'
@@ -729,18 +729,20 @@ export function ImportarCatalogoModal({
             continue
           }
 
+          const stockAnterior = existente.stock_actual || 0
+
           // Actualizar mapas en memoria por si el archivo vuelve a referenciar este producto
           existente.stock_actual = row.stock_actual
           existente.descripcion = row.descripcion
           if (barcode) existente.codigo_barras = barcode
 
           // Registrar movimiento de auditoría si varió el stock
-          if (existente.stock_actual !== row.stock_actual) {
+          if (stockAnterior !== row.stock_actual) {
             movimientosStockParaInsertar.push({
               kiosco_id: kioscoId,
               producto_id: existente.id,
               tipo: 'AJUSTE',
-              cantidad: row.stock_actual - (existente.stock_actual || 0),
+              cantidad: row.stock_actual - stockAnterior,
               motivo: 'CONTEO',
               notas: 'Restauración / Rollback desde backup',
               usuario_id: usuario?.id || null,
@@ -849,9 +851,7 @@ export function ImportarCatalogoModal({
         .eq('activo', true)
 
       if (catalogoCompleto) {
-        try {
-          localStorage.setItem('kiosko_cache_productos', JSON.stringify(catalogoCompleto))
-        } catch {}
+        saveCachedProductos(catalogoCompleto, kioscoId)
       }
 
       const mensajeExito = modoRollback && desactivadosCount > 0

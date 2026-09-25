@@ -2,7 +2,8 @@ import { useState, useMemo, useEffect } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { supabase } from '../../lib/supabase'
-import { formatPrecio } from '../../lib/utils'
+import { formatPrecio, getCachedProductos, saveCachedProductos } from '../../lib/utils'
+import { useAuthStore } from '../../stores/authStore'
 import type { Producto, Categoria } from '../../types/database'
 import { useProveedorStore } from '../../stores/proveedorStore'
 import toast from 'react-hot-toast'
@@ -176,12 +177,13 @@ export function AumentoPreciosModal({
         )
       }
 
-      // 3. Sincronizar la caché local (kiosko_cache_productos) únicamente con los confirmados
+      // 3. Sincronizar la caché local únicamente con los confirmados
       try {
-        const cachedRaw = localStorage.getItem('kiosko_cache_productos')
-        if (cachedRaw && idsExitosos.size > 0) {
-          const cachedProds: Producto[] = JSON.parse(cachedRaw)
-          const actualizados = cachedProds.map((prod) => {
+        const usuario = useAuthStore.getState().usuario
+        const kioscoId = usuario?.kiosco_id
+        const cachedProds = getCachedProductos(kioscoId)
+        if (cachedProds && cachedProds.length > 0 && idsExitosos.size > 0) {
+          const actualizados = cachedProds.map((prod: Producto) => {
             if (idsExitosos.has(prod.id)) {
               const upd = nuevosPreciosMap.get(prod.id)
               if (upd) {
@@ -195,7 +197,7 @@ export function AumentoPreciosModal({
             }
             return prod
           })
-          localStorage.setItem('kiosko_cache_productos', JSON.stringify(actualizados))
+          saveCachedProductos(actualizados, kioscoId)
         }
       } catch (cacheErr) {
         console.warn('Error sincronizando caché local en aumento masivo:', cacheErr)

@@ -309,6 +309,16 @@ export function CajaPage() {
     const monto = parseFloat(montoMovimiento) || 0
     if (monto <= 0) return
 
+    if (tipoMovimiento === 'EGRESO') {
+      const efectivoDisponible = resumenActivo?.efectivo_esperado_en_caja ?? (sesionActiva?.monto_inicial || 0)
+      if (monto > efectivoDisponible) {
+        const confirmar = window.confirm(
+          `Atención: El monto a retirar ($${monto.toLocaleString('es-AR')}) supera el efectivo registrado en el cajón ($${efectivoDisponible.toLocaleString('es-AR')}).\n\n¿Deseas registrar la salida de dinero de todas formas?`
+        )
+        if (!confirmar) return
+      }
+    }
+
     setGuardandoMovimiento(true)
     const ok = await registrarMovimientoCaja(
       tipoMovimiento,

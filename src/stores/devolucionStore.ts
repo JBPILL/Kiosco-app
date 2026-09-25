@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useCajaStore } from './cajaStore'
 import { useClienteStore } from './clienteStore'
 import { useComboStore } from './comboStore'
+import { getCachedProductos, saveCachedProductos } from '../lib/utils'
 import type {
   DevolucionVenta,
   DetalleDevolucion,
@@ -406,11 +407,10 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
         }
       }
 
-      // 4. Actualizar caché local de productos (kiosko_cache_productos)
+      // 4. Actualizar caché local de productos asegurando coherencia multi-inquilino
       try {
-        const cachedRaw = localStorage.getItem('kiosko_cache_productos')
-        if (cachedRaw) {
-          const cachedProds: Producto[] = JSON.parse(cachedRaw)
+        const cachedProds: Producto[] = getCachedProductos(kioscoId)
+        if (cachedProds && cachedProds.length > 0) {
           const itemsReingresadosMap = new Map<string, number>()
 
           for (const i of itemsADevolver.filter((i) => i.reingresaStock)) {
@@ -435,7 +435,7 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
             return p
           })
 
-          localStorage.setItem('kiosko_cache_productos', JSON.stringify(actualizados))
+          saveCachedProductos(actualizados, kioscoId)
         }
       } catch (eCache) {
         console.warn('Error actualizando caché tras devolución:', eCache)

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { formatFecha, formatPrecio } from '../lib/utils'
+import { formatFecha, formatPrecio, getCachedProductos, saveCachedProductos, clearCachedProductos } from '../lib/utils'
 import { exportarMovimientosStockExcel } from '../lib/exportUtils'
 import { playScanSound } from '../lib/sound'
 import { useBarcodeGun } from '../hooks/useBarcodeGun'
@@ -104,12 +104,7 @@ export function StockPage() {
 
   const handleSincronizar = async () => {
     setSincronizando(true)
-    try {
-      localStorage.removeItem('kiosko_cache_productos')
-      if (usuario?.kiosco_id) {
-        localStorage.removeItem(`kiosko_cache_productos_${usuario.kiosco_id}`)
-      }
-    } catch {}
+    clearCachedProductos(usuario?.kiosco_id || kiosco?.id)
     await Promise.all([
       cargarMovimientos(),
       cargarProductos(),
@@ -339,9 +334,9 @@ export function StockPage() {
 
       // Sincronizar de inmediato la caché local de productos para el POS
       try {
-        const cachedRaw = localStorage.getItem('kiosko_cache_productos')
-        if (cachedRaw) {
-          const cachedProds: Producto[] = JSON.parse(cachedRaw)
+        const kid = usuario?.kiosco_id || kiosco?.id
+        const cachedProds = getCachedProductos(kid)
+        if (cachedProds.length > 0) {
           const actualizados = cachedProds.map((p) =>
             p.id === productoSeleccionado.id
               ? {
@@ -351,7 +346,7 @@ export function StockPage() {
                 }
               : p
           )
-          localStorage.setItem('kiosko_cache_productos', JSON.stringify(actualizados))
+          saveCachedProductos(actualizados, kid)
         }
       } catch (cacheErr) {
         console.warn('Error sincronizando stock local:', cacheErr)
@@ -487,9 +482,9 @@ export function StockPage() {
 
         // Sincronizar de inmediato la caché local de productos para que el POS refleje el stock correcto
         try {
-          const cachedRaw = localStorage.getItem('kiosko_cache_productos')
-          if (cachedRaw) {
-            const cachedProds: Producto[] = JSON.parse(cachedRaw)
+          const kid = usuario?.kiosco_id || kiosco?.id
+          const cachedProds = getCachedProductos(kid)
+          if (cachedProds.length > 0) {
             const actualizados = cachedProds.map((p) =>
               p.id === prodFresh.id
                 ? {
@@ -499,7 +494,7 @@ export function StockPage() {
                   }
                 : p
             )
-            localStorage.setItem('kiosko_cache_productos', JSON.stringify(actualizados))
+            saveCachedProductos(actualizados, kid)
           }
         } catch (cacheErr) {
           console.warn('Error sincronizando stock local tras baja de lote:', cacheErr)

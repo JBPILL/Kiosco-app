@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/authStore'
-import { formatPrecio, formatFecha, labelMedioPago, getFechaLocal, getLimitesISODia } from '../lib/utils'
+import { formatPrecio, formatFecha, labelMedioPago, getFechaLocal, getLimitesISODia, getCachedProductos, saveCachedProductos } from '../lib/utils'
 import { exportarVentasExcel } from '../lib/exportUtils'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
@@ -16,6 +16,7 @@ import toast from 'react-hot-toast'
 
 interface ResumenDiario {
   totalVentas: number
+  totalDevoluciones?: number
   cantidadVentas: number
   ventaPromedio: number
   porMedioPago: { medio: string; total: number; cantidad: number }[]
@@ -93,8 +94,23 @@ export function ReportesPage() {
 
     // Solo ventas COMPLETADAS para el resumen financiero
     const ventasValidas = ventasData.filter((v) => v.estado === 'COMPLETADA')
-    const totalVentas = ventasValidas.reduce((sum, v) => sum + v.total, 0)
+    const totalVentasBrutas = ventasValidas.reduce((sum, v) => sum + v.total, 0)
     const cantidadVentas = ventasValidas.length
+
+    // Cargar devoluciones del día para calcular ventas netas y deducir reintegros
+    let queryDevs = supabase
+      .from('devoluciones_venta')
+      .select('id, monto_total, metodo_reintegro, fecha_hora')
+      .gte('fecha_hora', inicioISO)
+      .lte('fecha_hora', finISO)
+
+    if (kid) {
+      queryDevs = queryDevs.eq('kiosco_id', kid)
+    }
+
+    const { data: devsData } = await queryDevs
+    const totalDevoluciones = (devsData || []).reduce((acc: number, d: any) => acc + (d.monto_total || 0), 0)
+    const totalVentas = Math.max(0, totalVentasBrutas - totalDevoluciones)
     const ventaPromedio = cantidadVentas > 0 ? totalVentas / cantidadVentas : 0
 
     // Agrupar por medio de pago
@@ -108,12 +124,32 @@ export function ReportesPage() {
         })
       }
     }
+
+    // Deducir reintegros según el canal correspondiente
+    if (devsData && devsData.length > 0) {
+      for (const dev of devsData) {
+        let canal = 'EFECTIVO'
+        if (dev.metodo_reintegro === 'EFECTIVO_CAJA') canal = 'EFECTIVO'
+        else if (dev.metodo_reintegro === 'MERCADOPAGO') canal = 'MERCADOPAGO'
+        else if (dev.metodo_reintegro === 'TRANSFERENCIA') canal = 'TRANSFERENCIA'
+        else if (dev.metodo_reintegro === 'CUENTA_CORRIENTE') canal = 'CUENTA_CORRIENTE'
+
+        const actual = mediosMap.get(canal)
+        if (actual) {
+          mediosMap.set(canal, {
+            total: Math.max(0, actual.total - (dev.monto_total || 0)),
+            cantidad: actual.cantidad,
+          })
+        }
+      }
+    }
+
     const porMedioPago = Array.from(mediosMap.entries()).map(([medio, data]) => ({
       medio,
       ...data,
     }))
 
-    setResumen({ totalVentas, cantidadVentas, ventaPromedio, porMedioPago })
+    setResumen({ totalVentas, totalDevoluciones, cantidadVentas, ventaPromedio, porMedioPago })
     setCargando(false)
   }, [fecha, usuario?.kiosco_id, kiosco?.id])
 
@@ -241,11 +277,10 @@ export function ReportesPage() {
         }
       }
 
-      // Actualizar la caché local de productos (kiosko_cache_productos) para que el POS refleje el stock inmediatamente
+      // Actualizar la caché local de productos asegurando coherencia multi-inquilino
       try {
-        const cachedRaw = localStorage.getItem('kiosko_cache_productos')
-        if (cachedRaw) {
-          const prodList: Producto[] = JSON.parse(cachedRaw)
+        const prodList: Producto[] = getCachedProductos(kioscoId)
+        if (prodList && prodList.length > 0) {
           const cantidadesMap = new Map<string, number>()
 
           for (const det of ventaParaAnular.detalles) {
@@ -272,7 +307,7 @@ export function ReportesPage() {
             }
             return p
           })
-          localStorage.setItem('kiosko_cache_productos', JSON.stringify(actualizados))
+          saveCachedProductos(actualizados, kioscoId)
         }
       } catch (errCache) {
         console.warn('Error al actualizar caché local tras anulación:', errCache)

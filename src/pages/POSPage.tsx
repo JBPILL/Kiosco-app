@@ -5,7 +5,7 @@ import { useCartStore } from '../stores/cartStore'
 import { useCajaStore } from '../stores/cajaStore'
 import { useAuthStore } from '../stores/authStore'
 import { usePromocionStore } from '../stores/promocionStore'
-import { formatPrecio, formatFecha } from '../lib/utils'
+import { formatPrecio, formatFecha, getCachedProductos, saveCachedProductos } from '../lib/utils'
 import { ProductSearch } from '../components/pos/ProductSearch'
 import { FavoritesGrid } from '../components/pos/FavoritesGrid'
 import { CartPanel } from '../components/pos/CartPanel'
@@ -222,17 +222,16 @@ export function POSPage() {
       const codeTrim = code.trim()
       if (!codeTrim) return
 
+      const kid = usuario?.kiosco_id || kiosco?.id
+
       // 0. Comprobar si es código de balanza comercial argentina (EAN-13 con prefijo 20 o 02)
       const parsedBalanza = parsearCodigoBalanza(codeTrim)
       if (parsedBalanza) {
         let matchBalanza: { producto: Producto; pesoKg: number } | null = null
-        try {
-          const cachedRaw = localStorage.getItem('kiosko_cache_productos')
-          if (cachedRaw) {
-            const todos: Producto[] = JSON.parse(cachedRaw)
-            matchBalanza = buscarProductoPorCodigoBalanza(codeTrim, todos)
-          }
-        } catch {}
+        const todos: Producto[] = getCachedProductos(kid)
+        if (todos.length > 0) {
+          matchBalanza = buscarProductoPorCodigoBalanza(codeTrim, todos)
+        }
 
         if (matchBalanza) {
           agregarProducto(matchBalanza.producto, matchBalanza.pesoKg)
@@ -242,7 +241,6 @@ export function POSPage() {
 
         // Si no estaba en caché local, buscar en Supabase por plu_balanza o codigo_barras
         try {
-          const kid = usuario?.kiosco_id || kiosco?.id
           let queryBalanza = supabase
             .from('productos')
             .select('*, categoria:categorias(nombre, color)')
@@ -263,14 +261,9 @@ export function POSPage() {
 
       // 1. Buscar de inmediato en la caché local (< 2ms, sin lag de red)
       let productoEncontrado: Producto | null = null
-      try {
-        const cachedRaw = localStorage.getItem('kiosko_cache_productos')
-        if (cachedRaw) {
-          const todos: Producto[] = JSON.parse(cachedRaw)
-          productoEncontrado = todos.find((p) => p.activo && p.codigo_barras === codeTrim) || null
-        }
-      } catch {
-        // Ignorar error de parsing
+      const todos: Producto[] = getCachedProductos(kid)
+      if (todos.length > 0) {
+        productoEncontrado = todos.find((p) => p.activo && p.codigo_barras === codeTrim) || null
       }
 
       if (productoEncontrado) {
@@ -286,7 +279,6 @@ export function POSPage() {
 
       // 2. Si no estaba en caché, buscar en Supabase
       try {
-        const kid = usuario?.kiosco_id || kiosco?.id
         let queryGun = supabase
           .from('productos')
           .select('*, categoria:categorias(nombre, color)')
@@ -308,13 +300,10 @@ export function POSPage() {
           toast.success(`${data.descripcion} agregado`)
 
           // Actualizar caché local agregando el producto nuevo
-          try {
-            const cachedRaw = localStorage.getItem('kiosko_cache_productos')
-            const list: Producto[] = cachedRaw ? JSON.parse(cachedRaw) : []
-            if (!list.some((p) => p.id === data.id)) {
-              localStorage.setItem('kiosko_cache_productos', JSON.stringify([data, ...list]))
-            }
-          } catch {}
+          const list: Producto[] = getCachedProductos(kid)
+          if (!list.some((p) => p.id === data.id)) {
+            saveCachedProductos([data, ...list], kid)
+          }
         } else {
           playScanSound('warning')
           toast.error(`Código no encontrado: ${codeTrim}`)
@@ -325,7 +314,7 @@ export function POSPage() {
         toast.error('No se pudo verificar el código de barras en la red')
       }
     },
-    [agregarProducto]
+    [agregarProducto, usuario?.kiosco_id, kiosco?.id]
   )
 
   const handleAbrirCobro = () => {

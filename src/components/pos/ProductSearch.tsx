@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
 import type { Producto } from '../../types/database'
-import { formatPrecio } from '../../lib/utils'
+import { formatPrecio, getCachedProductos } from '../../lib/utils'
 import { SearchInput } from '../ui/SearchInput'
 import { buscarProductoPorCodigoBalanza } from '../../lib/barcodeParser'
 import { useCartStore } from '../../stores/cartStore'
@@ -43,13 +43,7 @@ export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
     const q = texto.trim()
 
     // 1. Intentar buscar primero en la caché local para respuesta instantánea (< 2ms)
-    let locales: Producto[] = []
-    try {
-      const cached = localStorage.getItem('kiosko_cache_productos')
-      if (cached) {
-        locales = JSON.parse(cached)
-      }
-    } catch {}
+    const locales: Producto[] = getCachedProductos(kioscoId)
 
     if (locales.length > 0) {
       const qLower = q.toLowerCase()
@@ -152,11 +146,7 @@ export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
       if (!queryTrim) return
 
       // 1. Chequear si es código de balanza comercial (EAN-13 con prefijo 20 o 02)
-      let todosLocales: Producto[] = []
-      try {
-        const cached = localStorage.getItem('kiosko_cache_productos')
-        if (cached) todosLocales = JSON.parse(cached)
-      } catch {}
+      const todosLocales: Producto[] = getCachedProductos(kioscoId)
 
       const matchBalanza = buscarProductoPorCodigoBalanza(queryTrim, todosLocales.length > 0 ? todosLocales : resultados)
       if (matchBalanza) {

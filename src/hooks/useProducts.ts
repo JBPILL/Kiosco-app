@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/authStore'
 import type { Producto, Categoria } from '../types/database'
+import { getCachedProductos, saveCachedProductos } from '../lib/utils'
 import toast from 'react-hot-toast'
 
 const CORE_PRODUCT_KEYS = new Set([
@@ -103,10 +104,6 @@ export function useProducts() {
   const kioscoId = usuario?.kiosco_id || kiosco?.id
   const idsBorradosRef = useRef<Set<string>>(new Set())
 
-  const getCacheKeyProductos = useCallback(() => {
-    return kioscoId ? `kiosko_cache_productos_${kioscoId}` : 'kiosko_cache_productos'
-  }, [kioscoId])
-
   const getCacheKeyCategorias = useCallback(() => {
     return kioscoId ? `kiosko_cache_categorias_${kioscoId}` : 'kiosko_cache_categorias'
   }, [kioscoId])
@@ -119,13 +116,8 @@ export function useProducts() {
         !idsBorradosRef.current.has(p.id) &&
         (!kioscoId || !p.kiosco_id || p.kiosco_id === kioscoId)
     )
-    try {
-      localStorage.setItem(getCacheKeyProductos(), JSON.stringify(limpios))
-      localStorage.setItem('kiosko_cache_productos', JSON.stringify(limpios))
-    } catch (e) {
-      console.warn('Error al guardar productos en caché:', e)
-    }
-  }, [kioscoId, getCacheKeyProductos])
+    saveCachedProductos(limpios, kioscoId)
+  }, [kioscoId])
 
   const guardarCategoriasEnCache = useCallback((lista: Categoria[]) => {
     try {
@@ -138,11 +130,7 @@ export function useProducts() {
 
   const [productos, setProductos] = useState<Producto[]>(() => {
     try {
-      const cached =
-        (kioscoId && localStorage.getItem(`kiosko_cache_productos_${kioscoId}`)) ||
-        localStorage.getItem('kiosko_cache_productos')
-      if (!cached) return []
-      const parsed = JSON.parse(cached)
+      const parsed = getCachedProductos(kioscoId)
       if (Array.isArray(parsed)) {
         return parsed.filter(
           (p: Producto) =>
@@ -203,27 +191,18 @@ export function useProducts() {
     const { data, error } = await query
 
     if (error) {
-      const cached =
-        localStorage.getItem(currentKioscoId ? `kiosko_cache_productos_${currentKioscoId}` : 'kiosko_cache_productos') ||
-        localStorage.getItem('kiosko_cache_productos')
-      if (cached && productos.length === 0) {
-        try {
-          const parsed = JSON.parse(cached)
-          const validos = Array.isArray(parsed)
-            ? parsed.filter(
-                (p: Producto) =>
-                  p &&
-                  p.activo !== false &&
-                  !idsBorradosRef.current.has(p.id) &&
-                  (!currentKioscoId || !p.kiosco_id || p.kiosco_id === currentKioscoId)
-              )
-            : []
-          setProductos(validos)
-          toast('Modo local: Mostrando catálogo guardado en memoria', { icon: '📦' })
-        } catch {
-          toast.error('Error al cargar productos')
-        }
-      } else if (!cached) {
+      const cachedList = getCachedProductos(currentKioscoId)
+      if (cachedList.length > 0 && productos.length === 0) {
+        const validos = cachedList.filter(
+          (p: Producto) =>
+            p &&
+            p.activo !== false &&
+            !idsBorradosRef.current.has(p.id) &&
+            (!currentKioscoId || !p.kiosco_id || p.kiosco_id === currentKioscoId)
+        )
+        setProductos(validos)
+        toast('Modo local: Mostrando catálogo guardado en memoria', { icon: '📦' })
+      } else if (cachedList.length === 0) {
         toast.error('Error al cargar productos: ' + (error.message || ''))
       }
       console.error('Error al cargar productos:', error)

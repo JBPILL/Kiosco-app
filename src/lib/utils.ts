@@ -115,3 +115,54 @@ export function getLimitesISORango(desdeYYYYMMDD: string, hastaYYYYMMDD: string)
     finISO: fin.toISOString(),
   }
 }
+
+/**
+ * Retorna la clave de almacenamiento local de productos para un kiosco determinado.
+ */
+export function getProductosCacheKey(kioscoId?: string | null): string {
+  return kioscoId ? `kiosko_cache_productos_${kioscoId}` : 'kiosko_cache_productos'
+}
+
+/**
+ * Lee la lista de productos cacheados para el kiosco activo con fallback a clave genérica.
+ */
+export function getCachedProductos(kioscoId?: string | null): any[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const key = getProductosCacheKey(kioscoId)
+    const raw = localStorage.getItem(key) || (kioscoId ? localStorage.getItem('kiosko_cache_productos') : null)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Guarda la lista de productos en la caché local asegurando coherencia multi-inquilino.
+ */
+export function saveCachedProductos(productos: any[], kioscoId?: string | null): void {
+  if (typeof window === 'undefined') return
+  try {
+    const json = JSON.stringify(productos)
+    const key = getProductosCacheKey(kioscoId)
+    localStorage.setItem(key, json)
+    // Sincronizar clave global como compatibilidad
+    localStorage.setItem('kiosko_cache_productos', json)
+  } catch (e) {
+    console.warn('Error guardando productos en caché local:', e)
+  }
+}
+
+/**
+ * Limpia la caché local de productos tanto para el kiosco activo como la genérica.
+ */
+export function clearCachedProductos(kioscoId?: string | null): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.removeItem('kiosko_cache_productos')
+    if (kioscoId) {
+      localStorage.removeItem(getProductosCacheKey(kioscoId))
+    }
+  } catch {}
+}
+
