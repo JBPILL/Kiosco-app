@@ -100,6 +100,25 @@ export function StockPage() {
     cargarLotes(usuario?.kiosco_id || undefined)
   }, [cargarMovimientos, cargarProductos, cargarLotes, usuario?.kiosco_id])
 
+  const [sincronizando, setSincronizando] = useState(false)
+
+  const handleSincronizar = async () => {
+    setSincronizando(true)
+    try {
+      localStorage.removeItem('kiosko_cache_productos')
+      if (usuario?.kiosco_id) {
+        localStorage.removeItem(`kiosko_cache_productos_${usuario.kiosco_id}`)
+      }
+    } catch {}
+    await Promise.all([
+      cargarMovimientos(),
+      cargarProductos(),
+      cargarLotes(usuario?.kiosco_id || undefined),
+    ])
+    setSincronizando(false)
+    toast.success('Stock sincronizado con el servidor')
+  }
+
   const handleVerTicketDesdeNota = async (textoNota: string) => {
     const match = textoNota.match(/venta\s*#?([a-f0-9-]{8,36})/i)
     if (!match) return
@@ -513,6 +532,27 @@ export function StockPage() {
             Entradas y salidas de mercadería, control de vencimientos y correcciones
           </p>
         </div>
+
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={handleSincronizar}
+            title="Sincronizar stock con el servidor (limpia la caché local)"
+            className="inline-flex items-center justify-center p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all cursor-pointer shadow-2xs shrink-0"
+          >
+            <svg
+              className={`w-4 h-4 ${sincronizando || cargando ? 'animate-spin text-indigo-600' : ''}`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Cuadrícula de Métricas Rápidas (KPIs) */}
@@ -751,6 +791,25 @@ export function StockPage() {
               >
                 Exportar Excel (.XLSX)
               </Button>
+
+              <button
+                type="button"
+                onClick={handleSincronizar}
+                title="Sincronizar stock con el servidor (limpia la caché local)"
+                className="inline-flex items-center justify-center p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all cursor-pointer shadow-2xs shrink-0"
+              >
+                <svg
+                  className={`w-4 h-4 ${sincronizando || cargando ? 'animate-spin text-indigo-600' : ''}`}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3" />
+                </svg>
+              </button>
             </div>
           </div>
 

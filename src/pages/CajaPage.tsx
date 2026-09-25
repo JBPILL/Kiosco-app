@@ -7,6 +7,7 @@ import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import { TicketCierreCajaModal, type DatosCierreCaja } from '../components/pos/TicketCierreCajaModal'
+import toast from 'react-hot-toast'
 import type {
   SesionCaja,
   Usuario,
@@ -136,6 +137,19 @@ export function CajaPage() {
     verificarSesionActiva()
     cargarHistorial()
   }, [verificarSesionActiva, cargarHistorial])
+
+  const [sincronizando, setSincronizando] = useState(false)
+
+  const handleSincronizar = async () => {
+    setSincronizando(true)
+    await Promise.all([
+      verificarSesionActiva(),
+      cargarHistorial(),
+      cargarArqueoCiegoConfig(),
+    ])
+    setSincronizando(false)
+    toast.success('Caja sincronizada con el servidor')
+  }
 
   const handleAbrirCaja = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -321,40 +335,61 @@ export function CajaPage() {
           </p>
         </div>
 
-        {/* Pestañas de navegación ordenadas estilo Proveedores */}
-        <div className="flex items-center flex-nowrap overflow-x-auto scrollbar-hide max-w-full bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 self-start lg:self-auto gap-1">
+        <div className="flex items-center gap-2 self-start lg:self-auto">
+          {/* Pestañas de navegación ordenadas estilo Proveedores */}
+          <div className="flex items-center flex-nowrap overflow-x-auto scrollbar-hide max-w-full bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1">
+            <button
+              type="button"
+              onClick={() => setTabActiva('turno')}
+              className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                tabActiva === 'turno'
+                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-gray-700/60'
+              }`}
+            >
+              Turno Actual
+            </button>
+            <button
+              type="button"
+              onClick={() => setTabActiva('movimientos')}
+              className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                tabActiva === 'movimientos'
+                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-gray-700/60'
+              }`}
+            >
+              Entradas y Retiros ({movimientosCaja.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTabActiva('historial')}
+              className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                tabActiva === 'historial'
+                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-gray-700/60'
+              }`}
+            >
+              Historial de Cierres ({historial.length})
+            </button>
+          </div>
+
           <button
             type="button"
-            onClick={() => setTabActiva('turno')}
-            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-              tabActiva === 'turno'
-                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-gray-700/60'
-            }`}
+            onClick={handleSincronizar}
+            title="Sincronizar caja con el servidor"
+            className="inline-flex items-center justify-center p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all cursor-pointer shadow-2xs shrink-0"
           >
-            Turno Actual
-          </button>
-          <button
-            type="button"
-            onClick={() => setTabActiva('movimientos')}
-            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-              tabActiva === 'movimientos'
-                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-gray-700/60'
-            }`}
-          >
-            Entradas y Retiros ({movimientosCaja.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setTabActiva('historial')}
-            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-              tabActiva === 'historial'
-                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-gray-700/60'
-            }`}
-          >
-            Historial de Cierres ({historial.length})
+            <svg
+              className={`w-4 h-4 ${sincronizando || cargando ? 'animate-spin text-indigo-600' : ''}`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3" />
+            </svg>
           </button>
         </div>
       </div>
