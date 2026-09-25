@@ -34,12 +34,49 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
   const [anchoPapel, setAnchoPapel] = useState<'58mm' | '80mm'>('58mm')
   const [imprimiendoSerial, setImprimiendoSerial] = useState(false)
 
+  // Restaurar preferencia de ancho de papel guardada
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (isOpen && typeof window !== 'undefined') {
       const saved = localStorage.getItem('kioskopos_ancho_ticket')
       if (saved === '58mm' || saved === '80mm') setAnchoPapel(saved)
     }
   }, [isOpen])
+
+  // BUG-08: Inyectar estilos de impresión en el <head> del documento para garantizar
+  // que @media print funcione correctamente en todos los navegadores, independientemente
+  // de si Modal usa un portal de React o no.
+  useEffect(() => {
+    if (!isOpen) return
+    const styleId = 'kioskopos-print-cierre'
+    let el = document.getElementById(styleId) as HTMLStyleElement | null
+    if (!el) {
+      el = document.createElement('style')
+      el.id = styleId
+      document.head.appendChild(el)
+    }
+    el.textContent = `
+      @media print {
+        body * { visibility: hidden !important; }
+        #printable-cierre, #printable-cierre * { visibility: visible !important; }
+        #printable-cierre {
+          position: fixed !important;
+          left: 0 !important;
+          top: 0 !important;
+          width: ${anchoPapel} !important;
+          margin: 0 !important;
+          padding: 4mm !important;
+          box-shadow: none !important;
+          border-radius: 0 !important;
+          background: white !important;
+          color: black !important;
+        }
+      }
+    `
+    return () => {
+      // Limpiar el estilo cuando el modal se cierra
+      document.getElementById(styleId)?.remove()
+    }
+  }, [isOpen, anchoPapel])
 
   if (!datos) return null
 
@@ -258,29 +295,7 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
         </div>
       </div>
 
-      {/* Estilos aislados para impresión térmica del arqueo */}
-      <style>{`
-        @media print {
-          body * {
-            visibility: hidden !important;
-          }
-          #printable-cierre, #printable-cierre * {
-            visibility: visible !important;
-          }
-          #printable-cierre {
-            position: fixed !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: ${anchoPapel} !important;
-            margin: 0 !important;
-            padding: 4mm !important;
-            box-shadow: none !important;
-            border-radius: 0 !important;
-            background: white !important;
-            color: black !important;
-          }
-        }
-      `}</style>
+      {/* Los estilos de impresión se inyectan en el <head> mediante useEffect (BUG-08) */}
     </Modal>
   )
 }

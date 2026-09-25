@@ -379,24 +379,19 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           fecha_encolado: ahora,
         })
 
-        // Descontar de lotes por FEFO localmente (manejando combos y productos estándar)
+        // Descontar de lotes por FEFO localmente SOLO para productos estándar.
+        // Los componentes de combos se gestionan en descontarStockComponentesCombo durante
+        // la sincronización (offlineSyncStore), para evitar doble deducción (BUG-02).
         for (const it of items) {
           if (it.producto.es_combo) {
-            const componentes = useComboStore.getState().obtenerComponentesDeCombo(it.producto.id)
-            for (const comp of componentes) {
-              const cantComp = comp.cantidad * it.cantidad
-              try {
-                await useLoteStore.getState().descontarStockFEFO(comp.componente_producto_id, cantComp)
-              } catch (e) {
-                console.warn('Aviso lote FEFO combo offline:', e)
-              }
-            }
-          } else {
-            try {
-              await useLoteStore.getState().descontarStockFEFO(it.producto.id, it.cantidad)
-            } catch (e) {
-              console.warn('Aviso lote FEFO offline:', e)
-            }
+            // No llamar descontarStockFEFO aquí para combos.
+            // La sincronización (offlineSyncStore → descontarStockComponentesCombo) lo hará.
+            continue
+          }
+          try {
+            await useLoteStore.getState().descontarStockFEFO(it.producto.id, it.cantidad)
+          } catch (e) {
+            console.warn('Aviso lote FEFO offline:', e)
           }
         }
 
@@ -652,19 +647,27 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         }
       }
 
-      // Sincronizar de inmediato el stock en la caché local asegurando coherencia multi-inquilino
+      // Sincronizar de inmediato el stock en la caché local para productos estándar.
+      // Los combos ya fueron actualizados por descontarStockComponentesCombo internamente (BUG-01).
       try {
         const cachedProds = getCachedProductos(kioscoId)
         if (cachedProds && cachedProds.length > 0) {
-          const itemsMap = new Map(items.map((i) => [i.producto.id, i.cantidad]))
-          const actualizados = cachedProds.map((p) => {
-            const qty = itemsMap.get(p.id)
-            if (qty !== undefined) {
-              return { ...p, stock_actual: Number(((p.stock_actual || 0) - qty).toFixed(3)) }
-            }
-            return p
-          })
-          saveCachedProductos(actualizados, kioscoId)
+          const itemsMap = new Map<string, number>()
+          for (const it of items) {
+            if (it.producto.es_combo || it.producto.activo === false) continue
+            const actual = itemsMap.get(it.producto.id) || 0
+            itemsMap.set(it.producto.id, actual + it.cantidad)
+          }
+          if (itemsMap.size > 0) {
+            const actualizados = cachedProds.map((p) => {
+              const qty = itemsMap.get(p.id)
+              if (qty !== undefined) {
+                return { ...p, stock_actual: Number(((p.stock_actual || 0) - qty).toFixed(3)) }
+              }
+              return p
+            })
+            saveCachedProductos(actualizados, kioscoId)
+          }
         }
       } catch (cacheErr) {
         console.warn('Error sincronizando stock en memoria local:', cacheErr)

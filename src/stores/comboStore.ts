@@ -27,7 +27,8 @@ interface ComboState {
     cantidadVendida: number,
     kioscoId: string,
     usuarioId?: string | null,
-    ventaIdRef?: string
+    ventaIdRef?: string,
+    fechaVenta?: string
   ) => Promise<void>
 }
 
@@ -142,7 +143,12 @@ export const useComboStore = create<ComboState>((set, get) => ({
       return true
     } catch (e: any) {
       console.warn('Error persistiendo combo en Supabase:', e)
-      toast.success('Componentes guardados localmente')
+      // BUG-05: No emitir toast.success cuando Supabase falla — el usuario debe saber que
+      // el guardado fue solo local y puede perderse si se limpia la caché del navegador.
+      toast('Componentes guardados localmente (sin conexión al servidor — sincronizá cuando vuelva internet)', {
+        icon: '⚠️',
+        duration: 5000,
+      })
       return true
     }
   },
@@ -192,12 +198,14 @@ export const useComboStore = create<ComboState>((set, get) => ({
     cantidadVendida: number,
     kioscoId: string,
     usuarioId?: string | null,
-    ventaIdRef?: string
+    ventaIdRef?: string,
+    fechaVenta?: string  // BUG-04: fecha original de la venta para consistencia en historial
   ) => {
     const componentes = get().itemsCombo.filter((item) => item.combo_producto_id === comboProductoId)
     if (componentes.length === 0) return
 
     const ahora = new Date().toISOString()
+    const fechaMovimiento = fechaVenta || ahora  // BUG-04: usar fecha original de la venta si existe
     const descVenta = ventaIdRef ? `#${ventaIdRef.slice(0, 8).toUpperCase()}` : ''
 
     // Deducción por cada componente que integra el combo
@@ -221,7 +229,7 @@ export const useComboStore = create<ComboState>((set, get) => ({
             .update({ stock_actual: nuevoStock, fecha_actualizacion: ahora })
             .eq('id', prodData.id)
 
-          // 3. Asentar movimiento de stock
+          // 3. Asentar movimiento de stock con la fecha original de la venta (BUG-04)
           await supabase.from('movimientos_stock').insert({
             kiosco_id: kioscoId,
             producto_id: prodData.id,
@@ -230,7 +238,7 @@ export const useComboStore = create<ComboState>((set, get) => ({
             motivo: 'VENTA',
             notas: `Venta Combo ${descVenta} (${comp.cantidad} un/combo)`,
             usuario_id: usuarioId || null,
-            fecha: ahora,
+            fecha: fechaMovimiento,
           })
 
           // 4. Descontar lote por regla FEFO si el componente tiene lotes perecederos

@@ -192,7 +192,8 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
                   item.cantidad,
                   v.kiosco_id,
                   v.usuario_id,
-                  v.id
+                  v.id,
+                  v.fecha_hora  // BUG-04: fecha original de la venta para consistencia en historial
                 )
               continue
             }

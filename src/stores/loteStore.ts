@@ -18,7 +18,7 @@ interface LoteState {
   descontarStockFEFO: (
     productoId: string,
     cantidad: number
-  ) => Promise<{ loteId: string; cantidadDescontada: number; fechaVencimiento: string }[]>
+  ) => Promise<{ loteId: string; cantidadDescontada: number; fechaVencimiento: string; stockFaltante?: number }[]>
   restituirStockLote: (
     productoId: string,
     cantidad: number,
@@ -156,7 +156,7 @@ export const useLoteStore = create<LoteState>((set, get) => ({
       .sort((a, b) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento))
 
     let restante = cantidad
-    const deducciones: { loteId: string; cantidadDescontada: number; fechaVencimiento: string }[] = []
+    const deducciones: { loteId: string; cantidadDescontada: number; fechaVencimiento: string; stockFaltante?: number }[] = []
     const lotesModificados = new Map<string, LoteProducto>()
 
     for (const lote of lotesProducto) {
@@ -180,6 +180,22 @@ export const useLoteStore = create<LoteState>((set, get) => ({
       })
 
       restante = Number((restante - aDescontar).toFixed(3))
+    }
+
+    // BUG-09: Si quedó stock sin descontar (lotes insuficientes), agregar indicador
+    if (restante > 0) {
+      console.warn(
+        `[FEFO] Deducción incompleta para producto ${productoId}: ` +
+        `se solicitaron ${cantidad} unidades pero solo se encontraron ${(cantidad - restante).toFixed(3)} en lotes activos. ` +
+        `Faltan ${restante.toFixed(3)} unidades en lotes.`
+      )
+      // Agregar entrada especial con stockFaltante para que el caller pueda detectarlo
+      deducciones.push({
+        loteId: '__sin_lote__',
+        cantidadDescontada: 0,
+        fechaVencimiento: '',
+        stockFaltante: restante,
+      })
     }
 
     if (lotesModificados.size > 0) {

@@ -38,6 +38,18 @@ export function useBarcodeGun({
     const handleKeyDown = (e: KeyboardEvent) => {
       const now = performance.now()
       const timeSinceLastKey = now - lastKeyTimeRef.current
+
+      // BUG-06: Si el foco está en un input/textarea/select, el usuario está escribiendo
+      // manualmente. Ignorar todos los eventos para no mezclar texto manual con el buffer
+      // del escáner, salvo que el intervalo sea tan corto que sólo un lector HW lo genere.
+      const activeEl = document.activeElement as HTMLElement | null
+      const isEditableActive =
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.tagName === 'SELECT' ||
+          activeEl.isContentEditable)
+
       lastKeyTimeRef.current = now
 
       // Tecla Enter indica fin del código de barras
@@ -69,6 +81,15 @@ export function useBarcodeGun({
 
       // Ignorar teclas modificadoras o de función
       if (e.key.length > 1) {
+        return
+      }
+
+      // BUG-06: Si el foco está en un campo editable Y el intervalo NO es ultra-corto
+      // (propio de lectores HW), ignorar el carácter para no contaminar el buffer.
+      if (isEditableActive && timeSinceLastKey > maxIntervalMs) {
+        // Resetear buffer: el usuario está escribiendo manualmente entre escaneos
+        bufferRef.current = ''
+        isScannerBurstRef.current = false
         return
       }
 

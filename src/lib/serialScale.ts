@@ -97,9 +97,10 @@ export async function leerPesoBalanzaSerial(baudRate = 9600): Promise<LecturaBal
       throw new Error('El puerto serie no permite lectura.')
     }
 
-    const textDecoder = new TextDecoderStream()
-    port.readable.pipeTo(textDecoder.writable).catch(() => {})
-    reader = textDecoder.readable.getReader()
+    // BUG-03: Usar getReader() directamente en lugar de pipeTo() para evitar que
+    // el ReadableStream quede bloqueado con un lock activo al cerrar el puerto.
+    reader = port.readable.getReader()
+    const textDecoder = new TextDecoder()
 
     let buffer = ''
     const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500))
@@ -110,7 +111,8 @@ export async function leerPesoBalanzaSerial(baudRate = 9600): Promise<LecturaBal
         const { value, done } = await reader.read()
         if (done) break
         if (value) {
-          buffer += value
+          // Decodificar chunk de bytes a string (mode stream para multi-byte correctamente)
+          buffer += textDecoder.decode(value, { stream: true })
           const peso = extraerPesoDesdeTrama(buffer)
           if (peso !== null && peso > 0) {
             return peso
@@ -144,8 +146,13 @@ export async function leerPesoBalanzaSerial(baudRate = 9600): Promise<LecturaBal
       mensaje: `Error al leer la balanza: ${error.message || 'Error de puerto'}`,
     }
   } finally {
+    // BUG-03: Primero cancelar el reader para liberar el lock sobre port.readable,
+    // luego cerrar el puerto. El orden importa — close() falla si readable aún tiene lock.
     try {
       await reader?.cancel()
+    } catch {}
+    try {
+      reader?.releaseLock()
     } catch {}
     try {
       await port?.close()

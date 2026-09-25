@@ -215,15 +215,27 @@ export function CajaPage() {
   const handleConfirmarCierre = async () => {
     setCerrando(true)
     const kiosco = useAuthStore.getState().kiosco
-    const facturadoTotal = resumenActivo?.total_facturado || 0
-    const operacionesTotal = resumenActivo?.total_ventas || 0
+
+    // BUG-07: Refrescar el resumen justo antes del cierre para capturar
+    // todas las ventas que hayan ocurrido desde que se abrió el modal de arqueo.
+    let resumenFinal = resumenActivo
+    if (sesionActiva?.id) {
+      try {
+        resumenFinal = await cargarResumenSesion(sesionActiva.id)
+      } catch {
+        // Si falla, usar el resumen que ya estaba en memoria
+      }
+    }
+
+    const facturadoTotal = resumenFinal?.total_facturado || 0
+    const operacionesTotal = resumenFinal?.total_ventas || 0
     const otrosPagos = Math.max(
       0,
       facturadoTotal -
-        ((resumenActivo?.total_efectivo || 0) +
-          (resumenActivo?.total_mercadopago || 0) +
-          (resumenActivo?.total_transferencia || 0) +
-          (resumenActivo?.total_tarjeta || 0))
+        ((resumenFinal?.total_efectivo || 0) +
+          (resumenFinal?.total_mercadopago || 0) +
+          (resumenFinal?.total_transferencia || 0) +
+          (resumenFinal?.total_tarjeta || 0))
     )
 
     const snapshotCierre: DatosCierreCaja = {
@@ -235,16 +247,16 @@ export function CajaPage() {
       fechaCierre: new Date().toISOString(),
       montoInicial: sesionActiva?.monto_inicial || 0,
       ventasPorMedio: [
-        { medio: 'Efectivo', total: resumenActivo?.total_efectivo || 0 },
-        { medio: 'Mercado Pago', total: resumenActivo?.total_mercadopago || 0 },
-        { medio: 'Transferencia', total: resumenActivo?.total_transferencia || 0 },
-        { medio: 'Tarjeta', total: resumenActivo?.total_tarjeta || 0 },
-        { medio: 'Fiado / Cta Cte', total: resumenActivo?.total_cuenta_corriente ?? otrosPagos },
+        { medio: 'Efectivo', total: resumenFinal?.total_efectivo || 0 },
+        { medio: 'Mercado Pago', total: resumenFinal?.total_mercadopago || 0 },
+        { medio: 'Transferencia', total: resumenFinal?.total_transferencia || 0 },
+        { medio: 'Tarjeta', total: resumenFinal?.total_tarjeta || 0 },
+        { medio: 'Fiado / Cta Cte', total: resumenFinal?.total_cuenta_corriente ?? otrosPagos },
       ].filter((m) => m.total > 0),
       totalVentas: facturadoTotal,
       cantidadVentas: operacionesTotal,
-      ingresosExtra: resumenActivo?.total_ingresos_extra || 0,
-      egresosExtra: resumenActivo?.total_egresos || 0,
+      ingresosExtra: resumenFinal?.total_ingresos_extra || 0,
+      egresosExtra: resumenFinal?.total_egresos || 0,
       efectivoEsperado,
       efectivoContado: contadoNum,
       diferencia: diferenciaArqueo,
