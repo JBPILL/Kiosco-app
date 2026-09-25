@@ -95,6 +95,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
   const [telefonoWhatsApp, setTelefonoWhatsApp] = useState('')
   const [mostrarInputTelefono, setMostrarInputTelefono] = useState(false)
   const [qrDataUrl, setQrDataUrl] = useState<string>('')
+  const [imprimiendoSerial, setImprimiendoSerial] = useState(false)
   const inputTelefonoRef = useRef<HTMLInputElement>(null)
   const ticketScrollRef = useRef<HTMLDivElement>(null)
 
@@ -192,8 +193,6 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
   }, [ticket?.afip?.qrUrl])
 
   if (!ticket) return null
-
-  const [imprimiendoSerial, setImprimiendoSerial] = useState(false)
 
   const handleImprimir = () => {
     window.print()
@@ -310,7 +309,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
               className="py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 active:scale-98 transition-all shadow-xs cursor-pointer shrink-0"
               title="Impresión térmica directa por USB/COM (ESC/POS sin diálogo)"
             >
-              <span>{imprimiendoSerial ? 'Imprimiendo...' : '⚡ ESC/POS'}</span>
+              <span>{imprimiendoSerial ? 'Imprimiendo...' : 'Imprimir ESC/POS'}</span>
             </button>
           )}
           <button

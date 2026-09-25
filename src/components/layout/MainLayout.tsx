@@ -292,7 +292,7 @@ export function MainLayout() {
           <div className="bg-indigo-600 text-white px-4 py-2 text-xs sm:text-sm font-semibold flex items-center justify-between shadow-xs z-20">
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 bg-indigo-800 rounded text-[10px] uppercase font-bold tracking-wider flex items-center gap-1">
-                ☁️ Cola Offline ({colaOffline.length})
+                Cola Offline ({colaOffline.length})
               </span>
               <span>
                 Tenés {colaOffline.length} venta{colaOffline.length > 1 ? 's' : ''} guardada{colaOffline.length > 1 ? 's' : ''} localmente listas para sincronizar en la nube.

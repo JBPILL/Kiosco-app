@@ -152,7 +152,7 @@ export function BalanzaManualModal({
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer shadow-2xs active:scale-98"
                 title="Capturar peso automáticamente desde balanza conectada por cable USB o Serial RS-232"
               >
-                <span>{leyendoBalanza ? '⏳ Leyendo...' : '⚖️ Leer Balanza USB'}</span>
+                <span>{leyendoBalanza ? 'Leyendo...' : 'Leer Balanza USB'}</span>
               </button>
             )}
           </div>
