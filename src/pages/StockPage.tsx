@@ -10,10 +10,12 @@ import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import { BarcodeScannerModal } from '../components/pos/BarcodeScannerModal'
 import { TicketReceiptModal, type TicketData } from '../components/pos/TicketReceiptModal'
+import { AuditoriaInventarioModal } from '../components/stock/AuditoriaInventarioModal'
 import { ventaToTicketData } from '../lib/ticketUtils'
 import { useDevolucionStore } from '../stores/devolucionStore'
 import { useLoteStore, calcularDiasHastaVencimiento } from '../stores/loteStore'
 import type { Producto, MovimientoStock } from '../types/database'
+import { useRealtimeSync } from '../hooks/useRealtimeSync'
 import toast from 'react-hot-toast'
 
 export function StockPage() {
@@ -38,6 +40,7 @@ export function StockPage() {
   // Modales
   const [modalOpen, setModalOpen] = useState(false)
   const [modalScannerOpen, setModalScannerOpen] = useState(false)
+  const [modalAuditoriaOpen, setModalAuditoriaOpen] = useState(false)
 
   // Formulario de movimiento
   const [tipoMovimiento, setTipoMovimiento] = useState<'INGRESO' | 'EGRESO' | 'AJUSTE'>('INGRESO')
@@ -99,6 +102,11 @@ export function StockPage() {
     cargarProductos()
     cargarLotes(usuario?.kiosco_id || undefined)
   }, [cargarMovimientos, cargarProductos, cargarLotes, usuario?.kiosco_id])
+
+  useRealtimeSync(usuario?.kiosco_id || kiosco?.id, () => {
+    cargarProductos()
+    cargarMovimientos()
+  })
 
   const [sincronizando, setSincronizando] = useState(false)
 
@@ -307,10 +315,12 @@ export function StockPage() {
           ? -cantNum
           : calculoStockResultante.delta
 
+      const kid = usuario?.kiosco_id || kiosco?.id
+
       // 1. Insertar registro de movimiento
       const { error: movError } = await supabase.from('movimientos_stock').insert({
         producto_id: productoSeleccionado.id,
-        kiosco_id: usuario?.kiosco_id,
+        kiosco_id: kid,
         tipo: tipoMovimiento,
         cantidad: cantidadMovimiento,
         motivo: motivo as any,
@@ -334,7 +344,6 @@ export function StockPage() {
 
       // Sincronizar de inmediato la caché local de productos para el POS
       try {
-        const kid = usuario?.kiosco_id || kiosco?.id
         const cachedProds = getCachedProductos(kid)
         if (cachedProds.length > 0) {
           const actualizados = cachedProds.map((p) =>
@@ -356,7 +365,7 @@ export function StockPage() {
       if (tipoMovimiento === 'INGRESO' && fechaVencimiento) {
         try {
           await crearLote({
-            kiosco_id: usuario?.kiosco_id || '',
+            kiosco_id: kid || '',
             producto_id: productoSeleccionado.id,
             numero_lote: numeroLote.trim() || null,
             fecha_vencimiento: fechaVencimiento,
@@ -364,6 +373,15 @@ export function StockPage() {
           })
         } catch (errLote) {
           console.warn('Aviso al registrar lote de vencimiento:', errLote)
+        }
+      }
+
+      // 3b. Si fue un egreso (merma, rotura, vencimiento), descontar también de los lotes por FEFO
+      if (tipoMovimiento === 'EGRESO') {
+        try {
+          await useLoteStore.getState().descontarStockFEFO(productoSeleccionado.id, cantNum)
+        } catch (errLote) {
+          console.warn('Aviso al descontar lote de vencimiento en egreso:', errLote)
         }
       }
 
@@ -453,11 +471,12 @@ export function StockPage() {
     if (!confirmar) return
 
     try {
+      const kid = usuario?.kiosco_id || kiosco?.id
       await darDeBajaLote(loteId)
 
       await supabase.from('movimientos_stock').insert({
         producto_id: lote.producto_id,
-        kiosco_id: usuario?.kiosco_id,
+        kiosco_id: kid,
         tipo: 'EGRESO',
         cantidad: -lote.cantidad_actual,
         motivo: 'VENCIMIENTO',
@@ -529,6 +548,18 @@ export function StockPage() {
         </div>
 
         <div className="flex items-center gap-2 self-start sm:self-auto">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => setModalAuditoriaOpen(true)}
+            className="flex items-center gap-1.5 text-xs font-semibold shadow-2xs"
+            title="Toma de inventario físico y recuento con pistola de código de barras"
+          >
+            <span>📋</span>
+            <span>Auditoría Física</span>
+          </Button>
+
           <button
             type="button"
             onClick={handleSincronizar}
@@ -759,6 +790,16 @@ export function StockPage() {
                   </button>
                 )}
               </div>
+
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setModalAuditoriaOpen(true)}
+                className="text-xs whitespace-nowrap shadow-xs font-semibold text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                title="Realizar una toma física o conteo rápido con lector de códigos de barras"
+              >
+                📋 Conteo Físico / Auditoría
+              </Button>
 
               <Button
                 variant="primary"
@@ -1481,6 +1522,18 @@ export function StockPage() {
         isOpen={Boolean(ticketParaVer)}
         onClose={() => setTicketParaVer(null)}
         ticket={ticketParaVer}
+      />
+
+      {/* Modal de Auditoría y Toma de Inventario Físico */}
+      <AuditoriaInventarioModal
+        isOpen={modalAuditoriaOpen}
+        onClose={() => setModalAuditoriaOpen(false)}
+        productos={productos}
+        onInventarioAplicado={() => {
+          cargarProductos()
+          cargarMovimientos()
+          cargarLotes(usuario?.kiosco_id || kiosco?.id || undefined)
+        }}
       />
     </div>
   )

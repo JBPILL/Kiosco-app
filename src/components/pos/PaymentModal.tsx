@@ -14,6 +14,7 @@ import type { TicketData } from './TicketReceiptModal'
 import { useAFIPStore, validarCUIT } from '../../stores/afipStore'
 import { useLoteStore } from '../../stores/loteStore'
 import { useComboStore } from '../../stores/comboStore'
+import { useOfflineSyncStore } from '../../stores/offlineSyncStore'
 import type { TipoDocumentoAFIP } from '../../types/afip'
 import toast from 'react-hot-toast'
 
@@ -228,6 +229,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
     procesandoRef.current = true
     setProcesando(true)
     let ventaCreadaId: string | null = null
+    let registrarVentaEnModoOffline: (() => Promise<void>) | null = null
 
     try {
       const ventaId = uuidv4()
@@ -341,6 +343,123 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             return
           }
         }
+      }
+
+      // Función auxiliar para registrar la venta en cola offline local si no hay red
+      registrarVentaEnModoOffline = async () => {
+        useOfflineSyncStore.getState().encolarVenta({
+          id: ventaId,
+          kiosco_id: kioscoId,
+          usuario_id: usuario?.id || null,
+          sesion_caja_id: sesionActiva?.id || null,
+          fecha_hora: ahora,
+          total,
+          estado: 'COMPLETADA',
+          notas: notasFinal ? `${notasFinal} (Guardado Offline)` : '(Guardado Offline)',
+          detalles: items.map((item) => ({
+            id: uuidv4(),
+            producto_id: item.producto.id,
+            cantidad: Math.max(0.001, Number(item.cantidad) || 1),
+            precio_unitario: Math.round(
+              Number(
+                item.sin_envase
+                  ? item.producto.precio_venta + (item.precio_envase_unitario || item.producto.precio_envase || 0)
+                  : item.producto.precio_venta
+              ) || 0
+            ),
+            subtotal: Math.round(Number(item.subtotal) || 0),
+            sin_envase: Boolean(item.sin_envase),
+            precio_envase_unitario: Number(item.precio_envase_unitario || 0),
+            es_devolucion_envase: Boolean(item.es_devolucion_envase),
+          })),
+          pagos: esPagoMixto
+            ? pagosMixtos.map((p) => ({ medio_pago: p.medio_pago, monto: Math.round(Number(p.monto) || 0), referencia: referencia || null }))
+            : [{ medio_pago: medioPago, monto: total, referencia: referencia || null }],
+          cliente_id: clienteSeleccionadoId || null,
+          fecha_encolado: ahora,
+        })
+
+        // Descontar de lotes por FEFO localmente
+        for (const it of items) {
+          try {
+            await useLoteStore.getState().descontarStockFEFO(it.producto.id, it.cantidad)
+          } catch (e) {
+            console.warn('Aviso lote FEFO offline:', e)
+          }
+        }
+
+        // Descontar stock local en memoria
+        try {
+          const cachedProds = getCachedProductos(kioscoId)
+          if (cachedProds && cachedProds.length > 0) {
+            const itemsMap = new Map(items.map((i) => [i.producto.id, i.cantidad]))
+            const actualizados = cachedProds.map((p) => {
+              const qty = itemsMap.get(p.id)
+              if (qty !== undefined) {
+                return { ...p, stock_actual: Number(((p.stock_actual || 0) - qty).toFixed(3)) }
+              }
+              return p
+            })
+            saveCachedProductos(actualizados, kioscoId)
+          }
+        } catch (e) {
+          console.warn('Error stock local offline:', e)
+        }
+
+        // Generar comprobante / ticket
+        const pagosTicket = esPagoMixto
+          ? pagosMixtos.map((p) => ({ medioPago: p.medio_pago, monto: p.monto }))
+          : [{ medioPago: medioPago === 'CUENTA_CORRIENTE' ? 'Cuenta Corriente' : medioPago, monto: total }]
+
+        const ticketGenerado: TicketData = {
+          ventaId,
+          fecha: ahora,
+          items: items.map((it) => {
+            let desc = it.producto.descripcion
+            if (it.sin_envase) desc = `${it.producto.descripcion} (Sin envase)`
+            const precioUnit = it.sin_envase
+              ? it.producto.precio_venta + (it.precio_envase_unitario || it.producto.precio_envase || 0)
+              : it.producto.precio_venta
+            return {
+              descripcion: desc,
+              cantidad: it.cantidad,
+              precioUnitario: precioUnit,
+              subtotal: it.subtotal,
+            }
+          }),
+          subtotal: Math.round(items.reduce((acc, it) => acc + it.subtotal, 0)),
+          ajuste: ajuste !== 0 ? { descripcion: descAjuste || 'Ajuste', monto: ajuste, esDescuento: tipoAjuste.startsWith('DESCUENTO') } : null,
+          total,
+          medioPago: esPagoMixto ? 'Pago Mixto' : (medioPago === 'CUENTA_CORRIENTE' ? 'Cuenta Corriente' : medioPago),
+          pagos: pagosTicket,
+          pagaCon: !esPagoMixto && medioPago === 'EFECTIVO' ? (pagaCon === '' ? total : pagaConNum) : undefined,
+          vuelto: !esPagoMixto && medioPago === 'EFECTIVO' ? (pagaCon === '' ? 0 : vuelto) : undefined,
+          kioscoNombre: kiosco?.nombre,
+          kioscoDireccion: kiosco?.direccion,
+          kioscoTelefono: kiosco?.telefono,
+          cajeroNombre: usuario?.nombre,
+          clienteNombre: clienteSeleccionado?.nombre || null,
+          clienteTelefono: clienteSeleccionado?.telefono || null,
+          notas: notasFinal ? `${notasFinal} [GUARDADO OFFLINE]` : '[GUARDADO OFFLINE]',
+        }
+
+        toast.success(`Venta guardada offline — ${formatPrecio(total)}. Se sincronizará automáticamente cuando vuelva internet.`, { icon: '💾', duration: 5000 })
+        if (!esPagoMixto && medioPago === 'EFECTIVO' && pagaCon !== '' && vuelto > 0) {
+          toast(`Vuelto: ${formatPrecio(vuelto)}`, { duration: 5000 })
+        }
+
+        completarVentaTabActiva()
+        resetForm()
+        onVentaCompletada(ticketGenerado)
+        onClose()
+        procesandoRef.current = false
+        setProcesando(false)
+      }
+
+      // Si el navegador no tiene conexión a internet, procesar directamente en la cola offline
+      if (!navigator.onLine) {
+        await registrarVentaEnModoOffline()
+        return
       }
 
       // 1. Insertar la venta
@@ -662,6 +781,21 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         msg = 'Problema de conexión con el servidor. Verificá internet e intentá nuevamente.'
       } else if (rawMsg) {
         msg = `No se pudo registrar la venta: ${rawMsg}`
+      }
+
+      // Si falló por desconexión de red antes de impactar en Supabase, registrar en cola offline
+      if (!ventaCreadaId && (
+        lower.includes('failed to fetch') ||
+        lower.includes('network') ||
+        lower.includes('conexión') ||
+        lower.includes('fetch') ||
+        !navigator.onLine
+      )) {
+        console.warn('Fallo de red detectado al cobrar. Derivando a cola offline local...')
+        if (registrarVentaEnModoOffline) {
+          await registrarVentaEnModoOffline()
+          return
+        }
       }
 
       // Rollback de venta incompleta para evitar datos huérfanos o corruptos

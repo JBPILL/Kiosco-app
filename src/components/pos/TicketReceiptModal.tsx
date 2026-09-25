@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { Modal } from '../ui/Modal'
 import { formatPrecio, formatFecha } from '../../lib/utils'
 import { generarImagenQRAFIP } from '../../lib/afipQR'
+import { imprimirTicketEscPosDirecto, isWebSerialSupported } from '../../lib/escposPrinter'
+import toast from 'react-hot-toast'
 
 export interface TicketItem {
   descripcion: string
@@ -191,8 +193,27 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
 
   if (!ticket) return null
 
+  const [imprimiendoSerial, setImprimiendoSerial] = useState(false)
+
   const handleImprimir = () => {
     window.print()
+  }
+
+  const handleImprimirEscPos = async () => {
+    if (!ticket) return
+    setImprimiendoSerial(true)
+    try {
+      const res = await imprimirTicketEscPosDirecto(ticket, anchoPapel)
+      if (res.ok) {
+        toast.success(res.mensaje)
+      } else {
+        toast.error(res.mensaje)
+      }
+    } catch (e: unknown) {
+      toast.error('Error al imprimir por puerto serie: ' + ((e as Error).message || ''))
+    } finally {
+      setImprimiendoSerial(false)
+    }
   }
 
   const generarTextoWhatsApp = () => {
@@ -281,6 +302,17 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
       size="md"
       footer={
         <div className="flex items-center gap-2 w-full">
+          {isWebSerialSupported() && (
+            <button
+              type="button"
+              onClick={handleImprimirEscPos}
+              disabled={imprimiendoSerial}
+              className="py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 active:scale-98 transition-all shadow-xs cursor-pointer shrink-0"
+              title="Impresión térmica directa por USB/COM (ESC/POS sin diálogo)"
+            >
+              <span>{imprimiendoSerial ? 'Imprimiendo...' : '⚡ ESC/POS'}</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={handleImprimir}

@@ -2,7 +2,10 @@ import { useState, useEffect, useRef } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { formatPrecio } from '../../lib/utils'
+import { leerPesoBalanzaSerial } from '../../lib/serialScale'
+import { isWebSerialSupported } from '../../lib/escposPrinter'
 import type { Producto } from '../../types/database'
+import toast from 'react-hot-toast'
 
 interface BalanzaManualModalProps {
   isOpen: boolean
@@ -29,6 +32,7 @@ export function BalanzaManualModal({
   onConfirmar,
 }: BalanzaManualModalProps) {
   const [gramos, setGramos] = useState<string>('250')
+  const [leyendoBalanza, setLeyendoBalanza] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -62,6 +66,24 @@ export function BalanzaManualModal({
     setGramos(gr.toString())
     onConfirmar(Number((gr / 1000).toFixed(3)))
     onClose()
+  }
+
+  const handleLeerBalanzaSerial = async () => {
+    setLeyendoBalanza(true)
+    try {
+      const res = await leerPesoBalanzaSerial()
+      if (res.ok && res.pesoKg !== undefined) {
+        const gr = Math.round(res.pesoKg * 1000)
+        setGramos(gr.toString())
+        toast.success(`Peso capturado: ${res.pesoKg.toFixed(3)} kg`)
+      } else {
+        toast.error(res.mensaje)
+      }
+    } catch (e: unknown) {
+      toast.error('Error al comunicar con la balanza: ' + ((e as Error).message || ''))
+    } finally {
+      setLeyendoBalanza(false)
+    }
   }
 
   return (
@@ -118,9 +140,22 @@ export function BalanzaManualModal({
 
         {/* Entrada numérica de gramos o kilos */}
         <div className="pt-1">
-          <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-            O escribí los gramos exactos pesados en la balanza:
-          </label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+              O escribí los gramos exactos:
+            </label>
+            {isWebSerialSupported() && (
+              <button
+                type="button"
+                onClick={handleLeerBalanzaSerial}
+                disabled={leyendoBalanza}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer shadow-2xs active:scale-98"
+                title="Capturar peso automáticamente desde balanza conectada por cable USB o Serial RS-232"
+              >
+                <span>{leyendoBalanza ? '⏳ Leyendo...' : '⚖️ Leer Balanza USB'}</span>
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <input

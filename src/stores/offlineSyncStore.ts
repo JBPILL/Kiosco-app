@@ -1,0 +1,227 @@
+import { create } from 'zustand'
+import { supabase } from '../lib/supabase'
+import { useClienteStore } from './clienteStore'
+import toast from 'react-hot-toast'
+
+export interface DetalleVentaOffline {
+  id: string
+  producto_id: string
+  cantidad: number
+  precio_unitario: number
+  subtotal: number
+  sin_envase?: boolean
+  precio_envase_unitario?: number
+  es_devolucion_envase?: boolean
+}
+
+export interface PagoVentaOffline {
+  medio_pago: string
+  monto: number
+  referencia?: string | null
+}
+
+export interface VentaOfflinePendiente {
+  id: string
+  kiosco_id: string
+  usuario_id: string | null
+  sesion_caja_id: string | null
+  fecha_hora: string
+  total: number
+  estado: string
+  notas: string | null
+  detalles: DetalleVentaOffline[]
+  pagos: PagoVentaOffline[]
+  cliente_id?: string | null
+  fecha_encolado: string
+}
+
+interface OfflineSyncState {
+  cola: VentaOfflinePendiente[]
+  sincronizando: boolean
+  ultimaSincronizacion: string | null
+
+  cargarCola: (kioscoId: string) => VentaOfflinePendiente[]
+  encolarVenta: (venta: VentaOfflinePendiente) => void
+  sincronizarCola: (kioscoId: string) => Promise<{ exitosas: number; fallidas: number }>
+  limpiarCola: (kioscoId: string) => void
+}
+
+function getStorageKey(kioscoId: string): string {
+  return `kioskopos_cola_offline_${kioscoId || 'default'}`
+}
+
+function getLocalCola(kioscoId: string): VentaOfflinePendiente[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(getStorageKey(kioscoId))
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function saveLocalCola(kioscoId: string, cola: VentaOfflinePendiente[]) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(getStorageKey(kioscoId), JSON.stringify(cola))
+  } catch (e) {
+    console.error('Error guardando cola offline:', e)
+  }
+}
+
+export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
+  cola: [],
+  sincronizando: false,
+  ultimaSincronizacion: null,
+
+  cargarCola: (kioscoId: string) => {
+    const cola = getLocalCola(kioscoId)
+    set({ cola })
+    return cola
+  },
+
+  encolarVenta: (venta: VentaOfflinePendiente) => {
+    const colaActual = getLocalCola(venta.kiosco_id)
+    const nuevaCola = [...colaActual, venta]
+    saveLocalCola(venta.kiosco_id, nuevaCola)
+    set({ cola: nuevaCola })
+  },
+
+  limpiarCola: (kioscoId: string) => {
+    saveLocalCola(kioscoId, [])
+    set({ cola: [] })
+  },
+
+  sincronizarCola: async (kioscoId: string) => {
+    if (get().sincronizando) return { exitosas: 0, fallidas: 0 }
+    const pendientes = getLocalCola(kioscoId)
+    if (pendientes.length === 0) return { exitosas: 0, fallidas: 0 }
+
+    if (!navigator.onLine) {
+      toast.error('Sin conexión a internet para sincronizar ventas pendientes', { icon: '📶' })
+      return { exitosas: 0, fallidas: pendientes.length }
+    }
+
+    set({ sincronizando: true })
+    const toastId = toast.loading(`Sincronizando ${pendientes.length} venta(s) guardadas offline...`)
+
+    let exitosas = 0
+    const noSincronizadas: VentaOfflinePendiente[] = []
+
+    for (const v of pendientes) {
+      try {
+        // 1. Insertar cabecera de venta
+        const { error: errVenta } = await supabase.from('ventas').insert({
+          id: v.id,
+          kiosco_id: v.kiosco_id,
+          usuario_id: v.usuario_id,
+          sesion_caja_id: v.sesion_caja_id,
+          fecha_hora: v.fecha_hora,
+          total: v.total,
+          estado: 'COMPLETADA',
+          notas: v.notas,
+          sincronizado: true,
+        })
+
+        if (errVenta && !errVenta.message?.includes('duplicate key')) {
+          throw errVenta
+        }
+
+        // 2. Insertar renglones de detalles
+        if (v.detalles && v.detalles.length > 0) {
+          const detallesAInsertar = v.detalles.map((d) => ({
+            id: d.id,
+            venta_id: v.id,
+            producto_id: d.producto_id,
+            cantidad: d.cantidad,
+            precio_unitario: d.precio_unitario,
+            subtotal: d.subtotal,
+            sin_envase: Boolean(d.sin_envase),
+            precio_envase_unitario: d.precio_envase_unitario || 0,
+            es_devolucion_envase: Boolean(d.es_devolucion_envase),
+          }))
+
+          const { error: errDetalles } = await supabase.from('detalles_venta').insert(detallesAInsertar)
+          if (errDetalles && !errDetalles.message?.includes('duplicate key')) {
+            console.warn('Aviso insertando detalles offline:', errDetalles)
+          }
+        }
+
+        // 3. Insertar pagos
+        if (v.pagos && v.pagos.length > 0) {
+          const pagosAInsertar = v.pagos.map((p) => ({
+            venta_id: v.id,
+            medio_pago: p.medio_pago,
+            monto: p.monto,
+            referencia: p.referencia || null,
+          }))
+
+          const { error: errPagos } = await supabase.from('pagos_venta').insert(pagosAInsertar)
+          if (errPagos && !errPagos.message?.includes('duplicate key')) {
+            console.warn('Aviso insertando pagos offline:', errPagos)
+          }
+        }
+
+        // 4. Si fue cuenta corriente con cliente asignado, impactar cargo en cuenta corriente
+        const tieneCC = v.pagos.some((p) => p.medio_pago === 'CUENTA_CORRIENTE')
+        if (tieneCC && v.cliente_id) {
+          const montoCC = v.pagos
+            .filter((p) => p.medio_pago === 'CUENTA_CORRIENTE')
+            .reduce((acc, p) => acc + p.monto, 0)
+
+          if (montoCC > 0) {
+            try {
+              await useClienteStore.getState().imputarCargoVenta(v.cliente_id, v.id, montoCC, 'Cargo por venta offline')
+            } catch (errCargo) {
+              console.warn('Aviso registrando cargo en cuenta corriente offline:', errCargo)
+            }
+          }
+        }
+
+        // 5. Impactar movimientos de stock en Supabase
+        for (const item of v.detalles) {
+          try {
+            await supabase.from('movimientos_stock').insert({
+              kiosco_id: v.kiosco_id,
+              producto_id: item.producto_id,
+              tipo: 'EGRESO',
+              cantidad: -item.cantidad,
+              motivo: 'VENTA',
+              notas: `Venta offline sincronizada #${v.id.slice(0, 8).toUpperCase()}`,
+              usuario_id: v.usuario_id,
+              fecha: v.fecha_hora,
+            })
+          } catch (errMov) {
+            console.warn('Aviso movimiento stock offline:', errMov)
+          }
+        }
+
+        exitosas++
+      } catch (errVenta) {
+        console.error('Error sincronizando venta offline:', v.id, errVenta)
+        noSincronizadas.push(v)
+      }
+    }
+
+    saveLocalCola(kioscoId, noSincronizadas)
+    set({
+      cola: noSincronizadas,
+      sincronizando: false,
+      ultimaSincronizacion: new Date().toISOString(),
+    })
+
+    toast.dismiss(toastId)
+    if (exitosas > 0) {
+      toast.success(
+        noSincronizadas.length === 0
+          ? `¡Todas las ventas offline (${exitosas}) fueron sincronizadas con éxito en la nube!`
+          : `Se sincronizaron ${exitosas} ventas. Quedan ${noSincronizadas.length} pendientes.`,
+        { icon: '☁️', duration: 5000 }
+      )
+    } else if (noSincronizadas.length > 0) {
+      toast.error('No se pudieron sincronizar las ventas offline. Se reintentará automáticamente.', { duration: 5000 })
+    }
+
+    return { exitosas, fallidas: noSincronizadas.length }
+  },
+}))

@@ -27,6 +27,7 @@ import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import type { Producto, Categoria } from '../types/database'
 import type { VentaConDetalles } from '../stores/devolucionStore'
+import { useRealtimeSync } from '../hooks/useRealtimeSync'
 import toast from 'react-hot-toast'
 
 export function POSPage() {
@@ -120,6 +121,8 @@ export function POSPage() {
       cargarPorCategoria(categoriaActiva)
     }
   }, [categoriaActiva, cargarPorCategoria])
+
+  useRealtimeSync(usuario?.kiosco_id || kiosco?.id, cargarFavoritos)
 
   const handleSeleccion = (producto: Producto, cantidad?: number) => {
     if (cantidad && cantidad > 0) {

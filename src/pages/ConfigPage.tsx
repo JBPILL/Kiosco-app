@@ -8,6 +8,7 @@ import { Modal } from '../components/ui/Modal'
 import type { Kiosco, Usuario, Suscripcion, Categoria } from '../types/database'
 import { formatPrecio, formatFechaCorta } from '../lib/utils'
 import { exportarCatalogoExcel, exportarVentasExcel } from '../lib/exportUtils'
+import { generarBackupIntegral } from '../lib/backupUtils'
 import { AFIPConfigSection } from '../components/config/AFIPConfigSection'
 import { AccessibilityConfigSection } from '../components/config/AccessibilityConfigSection'
 import { useConfigAdminStore, formatearLinkWhatsApp } from '../stores/configAdminStore'
@@ -341,6 +342,24 @@ export function ConfigPage() {
     } catch (err: any) {
       console.error('Error al exportar ventas:', err)
       toast.error(err?.message ? `Error al exportar ventas: ${err.message}` : 'Error al exportar ventas')
+    } finally {
+      setExportandoBackup(false)
+    }
+  }
+
+  const handleExportarBackupIntegral = async () => {
+    if (!usuario?.kiosco_id) return
+    setExportandoBackup(true)
+    try {
+      const res = await generarBackupIntegral(usuario.kiosco_id, kiosco?.nombre)
+      if (res.ok) {
+        toast.success(res.mensaje)
+      } else {
+        toast.error(res.mensaje)
+      }
+    } catch (err: any) {
+      console.error('Error al generar backup:', err)
+      toast.error(err?.message ? `Error al generar backup: ${err.message}` : 'Error al generar backup')
     } finally {
       setExportandoBackup(false)
     }
@@ -1045,7 +1064,32 @@ export function ConfigPage() {
                   Descargá una copia física de la información de tu negocio en formato Excel corporativo (.XLSX) para tener siempre un resguardo seguro en tu computadora.
                 </p>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
+                  <div className="p-4 rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/40 dark:bg-emerald-950/20 space-y-2 flex flex-col justify-between shadow-2xs">
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-emerald-950 dark:text-emerald-200">
+                          Backup Completo (JSON)
+                        </h3>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
+                          1 Clic
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                        Descargá la totalidad de tus datos (catálogo, categorías, clientes, proveedores, promociones y lotes) en un archivo JSON único.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      onClick={handleExportarBackupIntegral}
+                      disabled={exportandoBackup}
+                      className="w-full text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      {exportandoBackup ? 'Generando...' : 'Descargar Todo (.JSON)'}
+                    </Button>
+                  </div>
+
                   <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 space-y-2 flex flex-col justify-between shadow-2xs">
                     <div>
                       <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
