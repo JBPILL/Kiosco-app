@@ -56,7 +56,6 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   const { config: afipConfig, emitirFacturaVenta, cargarConfiguracion } = useAFIPStore()
   const [clienteSeleccionadoId, setClienteSeleccionadoId] = useState<string>('')
   const [busquedaCliente, setBusquedaCliente] = useState<string>('')
-  const [mostrarBuscadorCliente, setMostrarBuscadorCliente] = useState<boolean>(false)
   const [emitirFiscal, setEmitirFiscal] = useState(false)
   const [tipoDocReceptor, setTipoDocReceptor] = useState<TipoDocumentoAFIP>(99)
   const [nroDocReceptor, setNroDocReceptor] = useState<string>('')
@@ -690,7 +689,6 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
     setReferencia('')
     setClienteSeleccionadoId('')
     setBusquedaCliente('')
-    setMostrarBuscadorCliente(false)
     setEmitirFiscal(false)
     setTipoDocReceptor(99)
     setNroDocReceptor('')
@@ -878,37 +876,13 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           </div>
         )}
 
-        {/* Botón rápido para asignar cliente en ventas comunes */}
-        {((!esPagoMixto && medioPago !== 'CUENTA_CORRIENTE') || (esPagoMixto && !tieneCuentaCorrienteEnMixto)) && !clienteSeleccionado && (
-          <div className="flex justify-end -mt-2">
-            <button
-              type="button"
-              onClick={() => setMostrarBuscadorCliente(!mostrarBuscadorCliente)}
-              className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-            >
-              {mostrarBuscadorCliente ? 'Ocultar asignación de cliente' : '+ Asignar Cliente / Puntos de Fidelidad'}
-            </button>
-          </div>
-        )}
-
-        {/* Panel de Cliente, Puntos y Cuenta Corriente */}
-        {((!esPagoMixto && medioPago === 'CUENTA_CORRIENTE') || tieneCuentaCorrienteEnMixto || mostrarBuscadorCliente || clienteSeleccionado) && (
+        {/* Panel de Cliente para Fiar / Cuenta Corriente */}
+        {((!esPagoMixto && medioPago === 'CUENTA_CORRIENTE') || tieneCuentaCorrienteEnMixto) && (
           <div className="space-y-3 p-3.5 bg-gray-50/80 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl">
             <div className="flex justify-between items-center">
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                {(!esPagoMixto && medioPago === 'CUENTA_CORRIENTE') || tieneCuentaCorrienteEnMixto
-                  ? 'Seleccionar Cliente para fiar / imputar deuda *'
-                  : 'Cliente asignado a la venta (Fidelización / AFIP)'}
+                Seleccionar Cliente para fiar / imputar deuda *
               </label>
-              {!((!esPagoMixto && medioPago === 'CUENTA_CORRIENTE') || tieneCuentaCorrienteEnMixto) && !clienteSeleccionado && (
-                <button
-                  type="button"
-                  onClick={() => setMostrarBuscadorCliente(false)}
-                  className="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer"
-                >
-                  Cerrar
-                </button>
-              )}
             </div>
 
             {!clienteSeleccionado && (
