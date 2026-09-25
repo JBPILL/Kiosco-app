@@ -6,6 +6,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { getCachedProductos, saveCachedProductos } from '../../lib/utils'
 import { playScanSound } from '../../lib/sound'
 import { useBarcodeGun } from '../../hooks/useBarcodeGun'
+import { useLoteStore } from '../../stores/loteStore'
 import type { Producto } from '../../types/database'
 import toast from 'react-hot-toast'
 
@@ -176,6 +177,16 @@ export function AuditoriaInventarioModal({
             usuario_id: usuario?.id || null,
             fecha: ahora,
           })
+
+          // BUG-26: Si hubo faltante (merma/rotura no registrada), alinear lotes de vencimiento por FEFO
+          if (delta < 0) {
+            try {
+              await useLoteStore.getState().descontarStockFEFO(item.producto.id, Math.abs(delta))
+            } catch (errLote) {
+              console.warn('Aviso sincronizando lotes en auditoría:', errLote)
+            }
+          }
+
           ajustados++
         }
       }

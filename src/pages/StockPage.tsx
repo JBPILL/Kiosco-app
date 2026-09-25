@@ -316,8 +316,20 @@ export function StockPage() {
           : calculoStockResultante.delta
 
       const kid = usuario?.kiosco_id || kiosco?.id
+      const ahora = new Date().toISOString()
 
-      // 1. Insertar registro de movimiento
+      // 1. Actualizar stock_actual en la tabla productos (verdad primaria de stock)
+      const { error: prodError } = await supabase
+        .from('productos')
+        .update({
+          stock_actual: calculoStockResultante.nuevoStock,
+          fecha_actualizacion: ahora,
+        })
+        .eq('id', productoSeleccionado.id)
+
+      if (prodError) throw prodError
+
+      // 2. Registrar movimiento de stock (BUG-25: solo si el stock se actualizó exitosamente)
       const { error: movError } = await supabase.from('movimientos_stock').insert({
         producto_id: productoSeleccionado.id,
         kiosco_id: kid,
@@ -326,21 +338,12 @@ export function StockPage() {
         motivo: motivo as any,
         notas: notas.trim() || null,
         usuario_id: usuario?.id || null,
-        fecha: new Date().toISOString(),
+        fecha: ahora,
       })
 
-      if (movError) throw movError
-
-      // 2. Actualizar stock_actual en la tabla productos
-      const { error: prodError } = await supabase
-        .from('productos')
-        .update({
-          stock_actual: calculoStockResultante.nuevoStock,
-          fecha_actualizacion: new Date().toISOString(),
-        })
-        .eq('id', productoSeleccionado.id)
-
-      if (prodError) throw prodError
+      if (movError) {
+        console.warn('Aviso: el movimiento de stock no pudo insertarse:', movError)
+      }
 
       // Sincronizar de inmediato la caché local de productos para el POS
       try {

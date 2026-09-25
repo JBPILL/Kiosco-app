@@ -158,6 +158,8 @@ export function ConfigPage() {
       if (error) throw error
 
       toast.success('Datos del kiosco actualizados correctamente')
+      // BUG-24: Refrescar datos del comercio en useAuthStore para que los tickets reflejen los cambios sin relogin
+      useAuthStore.getState().refrescarKiosco()
       cargarDatos()
     } catch (err) {
       console.error('Error actualizando kiosco:', err)
