@@ -379,20 +379,45 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           fecha_encolado: ahora,
         })
 
-        // Descontar de lotes por FEFO localmente
+        // Descontar de lotes por FEFO localmente (manejando combos y productos estándar)
         for (const it of items) {
-          try {
-            await useLoteStore.getState().descontarStockFEFO(it.producto.id, it.cantidad)
-          } catch (e) {
-            console.warn('Aviso lote FEFO offline:', e)
+          if (it.producto.es_combo) {
+            const componentes = useComboStore.getState().obtenerComponentesDeCombo(it.producto.id)
+            for (const comp of componentes) {
+              const cantComp = comp.cantidad * it.cantidad
+              try {
+                await useLoteStore.getState().descontarStockFEFO(comp.componente_producto_id, cantComp)
+              } catch (e) {
+                console.warn('Aviso lote FEFO combo offline:', e)
+              }
+            }
+          } else {
+            try {
+              await useLoteStore.getState().descontarStockFEFO(it.producto.id, it.cantidad)
+            } catch (e) {
+              console.warn('Aviso lote FEFO offline:', e)
+            }
           }
         }
 
-        // Descontar stock local en memoria
+        // Descontar stock local en memoria (componentes físicos de combos y productos estándar)
         try {
           const cachedProds = getCachedProductos(kioscoId)
           if (cachedProds && cachedProds.length > 0) {
-            const itemsMap = new Map(items.map((i) => [i.producto.id, i.cantidad]))
+            const itemsMap = new Map<string, number>()
+            for (const it of items) {
+              if (it.producto.es_combo) {
+                const componentes = useComboStore.getState().obtenerComponentesDeCombo(it.producto.id)
+                for (const comp of componentes) {
+                  const actual = itemsMap.get(comp.componente_producto_id) || 0
+                  itemsMap.set(comp.componente_producto_id, actual + comp.cantidad * it.cantidad)
+                }
+              } else {
+                const actual = itemsMap.get(it.producto.id) || 0
+                itemsMap.set(it.producto.id, actual + it.cantidad)
+              }
+            }
+
             const actualizados = cachedProds.map((p) => {
               const qty = itemsMap.get(p.id)
               if (qty !== undefined) {

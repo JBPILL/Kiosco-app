@@ -39,6 +39,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     crearNuevaTab,
     cambiarTab,
     cerrarTab,
+    suspenderVentaActual,
   } = useCartStore()
 
   const [modalAjusteOpen, setModalAjusteOpen] = useState(false)
@@ -462,7 +463,21 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
         <h2 className="font-bold text-gray-900 dark:text-gray-100 text-sm sm:text-base">Ticket</h2>
         {items.length > 0 && (
-          <div className="flex items-center gap-3 text-xs">
+          <div className="flex items-center gap-2.5 text-xs">
+            <button
+              type="button"
+              onClick={() => {
+                const ok = suspenderVentaActual()
+                if (ok) {
+                  toast.success('Venta guardada en espera (podés recuperarla cuando vuelva el cliente)')
+                }
+              }}
+              className="text-amber-600 dark:text-amber-400 hover:text-amber-700 font-semibold cursor-pointer transition-colors"
+              title="Pausar esta venta para atender a otro cliente y recuperarla luego (F6)"
+            >
+              Pausar
+            </button>
+            <span className="text-gray-300 dark:text-gray-600 select-none">·</span>
             <button
               onClick={() => {
                 if (items.length <= 1 || window.confirm(`¿Estás seguro de vaciar el ticket (${items.length} artículos)?`)) {
@@ -470,7 +485,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                   toast('Ticket vaciado', { duration: 2000 })
                 }
               }}
-              className="text-red-500 dark:text-red-400 hover:underline font-medium cursor-pointer"
+              className="text-red-500 dark:text-red-400 hover:text-red-600 font-medium cursor-pointer transition-colors"
               title="Vaciar ticket completo"
             >
               Vaciar

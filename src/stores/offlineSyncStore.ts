@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import { useClienteStore } from './clienteStore'
+import { useComboStore } from './comboStore'
 import toast from 'react-hot-toast'
 
 export interface DetalleVentaOffline {
@@ -181,6 +182,21 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
         // 5. Impactar movimientos de stock y actualizar stock_actual en Supabase
         for (const item of v.detalles) {
           try {
+            // Verificar si es un combo para descontar sus componentes físicos
+            const componentes = useComboStore.getState().obtenerComponentesDeCombo(item.producto_id)
+            if (componentes && componentes.length > 0) {
+              await useComboStore
+                .getState()
+                .descontarStockComponentesCombo(
+                  item.producto_id,
+                  item.cantidad,
+                  v.kiosco_id,
+                  v.usuario_id,
+                  v.id
+                )
+              continue
+            }
+
             // Actualizar stock_actual real en Supabase para mantener la consistencia
             const { data: pActual } = await supabase
               .from('productos')
