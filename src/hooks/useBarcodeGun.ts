@@ -27,6 +27,11 @@ export function useBarcodeGun({
   const lastScannedCodeRef = useRef<string>('')
   const lastScannedTimeRef = useRef<number>(0)
 
+  const onScanRef = useRef(onScan)
+  useEffect(() => {
+    onScanRef.current = onScan
+  }, [onScan])
+
   useEffect(() => {
     if (!enabled) return
 
@@ -57,7 +62,7 @@ export function useBarcodeGun({
 
           lastScannedCodeRef.current = code
           lastScannedTimeRef.current = now
-          onScan(code)
+          onScanRef.current(code)
         }
         return
       }
@@ -82,5 +87,5 @@ export function useBarcodeGun({
     return () => {
       window.removeEventListener('keydown', handleKeyDown, { capture: true })
     }
-  }, [enabled, onScan, minChars, maxIntervalMs])
+  }, [enabled, minChars, maxIntervalMs, debounceMs])
 }

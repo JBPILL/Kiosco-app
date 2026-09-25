@@ -227,11 +227,13 @@ export async function imprimirTicketEscPosDirecto(
     await port.open({ baudRate })
 
     const writer = port.writable.getWriter()
-    const buffer = construirBufferEscPos(ticket, anchoPapel)
-
-    await writer.write(buffer)
-    writer.releaseLock()
-    await port.close()
+    try {
+      const buffer = construirBufferEscPos(ticket, anchoPapel)
+      await writer.write(buffer)
+    } finally {
+      try { writer.releaseLock() } catch {}
+      try { await port.close() } catch {}
+    }
 
     return { ok: true, mensaje: 'Ticket impreso correctamente por conexión térmica directa.' }
   } catch (err: unknown) {
@@ -394,11 +396,13 @@ export async function imprimirCierreCajaEscPosDirecto(
     await port.open({ baudRate })
 
     const writer = port.writable.getWriter()
-    const buffer = construirBufferCierreCajaEscPos(datos, anchoPapel)
-
-    await writer.write(buffer)
-    writer.releaseLock()
-    await port.close()
+    try {
+      const buffer = construirBufferCierreCajaEscPos(datos, anchoPapel)
+      await writer.write(buffer)
+    } finally {
+      try { writer.releaseLock() } catch {}
+      try { await port.close() } catch {}
+    }
 
     return { ok: true, mensaje: 'Ticket de cierre impreso correctamente por conexión térmica directa.' }
   } catch (err: unknown) {
@@ -430,9 +434,12 @@ export async function abrirCajonDineroDirecto(baudRate = 9600): Promise<{ ok: bo
     await port.open({ baudRate })
 
     const writer = port.writable.getWriter()
-    await writer.write(new Uint8Array(CMD_KICK_DRAWER))
-    writer.releaseLock()
-    await port.close()
+    try {
+      await writer.write(new Uint8Array(CMD_KICK_DRAWER))
+    } finally {
+      try { writer.releaseLock() } catch {}
+      try { await port.close() } catch {}
+    }
 
     return { ok: true, mensaje: 'Cajón de dinero abierto.' }
   } catch (err: unknown) {

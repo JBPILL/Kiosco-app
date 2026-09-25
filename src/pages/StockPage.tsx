@@ -167,7 +167,7 @@ export function StockPage() {
 
   // Lector de Código de Barras Físico (USB / Bluetooth)
   useBarcodeGun({
-    enabled: true,
+    enabled: !modalOpen && !modalScannerOpen && !modalAuditoriaOpen && !ticketParaVer,
     onScan: (barcode) => {
       const codigoLimpio = barcode.trim().toLowerCase()
       const match = productos.find(

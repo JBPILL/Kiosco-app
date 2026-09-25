@@ -98,7 +98,7 @@ export async function leerPesoBalanzaSerial(baudRate = 9600): Promise<LecturaBal
     }
 
     const textDecoder = new TextDecoderStream()
-    const readableStreamClosed = port.readable.pipeTo(textDecoder.writable)
+    port.readable.pipeTo(textDecoder.writable).catch(() => {})
     reader = textDecoder.readable.getReader()
 
     let buffer = ''
@@ -122,14 +122,6 @@ export async function leerPesoBalanzaSerial(baudRate = 9600): Promise<LecturaBal
 
     const pesoObtenido = await Promise.race([readPromise, timeoutPromise])
 
-    try {
-      await reader.cancel()
-      await readableStreamClosed.catch(() => {})
-      await port.close()
-    } catch {
-      // Limpieza silenciosa
-    }
-
     if (pesoObtenido !== null && pesoObtenido !== undefined) {
       return {
         ok: true,
@@ -151,5 +143,12 @@ export async function leerPesoBalanzaSerial(baudRate = 9600): Promise<LecturaBal
       ok: false,
       mensaje: `Error al leer la balanza: ${error.message || 'Error de puerto'}`,
     }
+  } finally {
+    try {
+      await reader?.cancel()
+    } catch {}
+    try {
+      await port?.close()
+    } catch {}
   }
 }

@@ -178,9 +178,28 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
           }
         }
 
-        // 5. Impactar movimientos de stock en Supabase
+        // 5. Impactar movimientos de stock y actualizar stock_actual en Supabase
         for (const item of v.detalles) {
           try {
+            // Actualizar stock_actual real en Supabase para mantener la consistencia
+            const { data: pActual } = await supabase
+              .from('productos')
+              .select('stock_actual')
+              .eq('id', item.producto_id)
+              .maybeSingle()
+
+            if (pActual && typeof pActual.stock_actual === 'number') {
+              const nuevoStock = Number((pActual.stock_actual - item.cantidad).toFixed(3))
+              await supabase
+                .from('productos')
+                .update({
+                  stock_actual: nuevoStock,
+                  fecha_actualizacion: new Date().toISOString(),
+                })
+                .eq('id', item.producto_id)
+            }
+
+            // Registrar renglón en historial de movimientos
             await supabase.from('movimientos_stock').insert({
               kiosco_id: v.kiosco_id,
               producto_id: item.producto_id,

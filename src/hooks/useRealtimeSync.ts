@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { getCachedProductos, saveCachedProductos } from '../lib/utils'
 import type { Producto } from '../types/database'
@@ -9,6 +9,11 @@ import type { Producto } from '../types/database'
  * o desde el celular del dueño se reflejen instantáneamente sin recargar la página.
  */
 export function useRealtimeSync(kioscoId?: string, onProductChange?: () => void) {
+  const onProductChangeRef = useRef(onProductChange)
+  useEffect(() => {
+    onProductChangeRef.current = onProductChange
+  }, [onProductChange])
+
   useEffect(() => {
     if (!kioscoId) return
 
@@ -43,8 +48,8 @@ export function useRealtimeSync(kioscoId?: string, onProductChange?: () => void)
             console.warn('Aviso sincronizando productos en realtime:', e)
           }
 
-          if (onProductChange) {
-            onProductChange()
+          if (onProductChangeRef.current) {
+            onProductChangeRef.current()
           }
           window.dispatchEvent(new CustomEvent('kiosko-products-updated'))
         }
@@ -54,5 +59,5 @@ export function useRealtimeSync(kioscoId?: string, onProductChange?: () => void)
     return () => {
       supabase.removeChannel(canal)
     }
-  }, [kioscoId, onProductChange])
+  }, [kioscoId])
 }
