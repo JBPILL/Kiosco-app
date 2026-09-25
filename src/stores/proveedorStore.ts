@@ -339,7 +339,19 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
       return null
     }
 
-    const saldoAnterior = Number(proveedor.saldo_pendiente) || 0
+    // BUG-28: Consultar saldo fresco en base de datos para evitar Lost Updates por concurrencia
+    let saldoAnterior = Number(proveedor.saldo_pendiente) || 0
+    try {
+      const { data: provDB } = await supabase
+        .from('proveedores')
+        .select('saldo_pendiente')
+        .eq('id', id)
+        .maybeSingle()
+      if (provDB && typeof provDB.saldo_pendiente === 'number') {
+        saldoAnterior = provDB.saldo_pendiente
+      }
+    } catch {}
+
     const nuevoSaldo = Number((saldoAnterior - monto).toFixed(2))
 
     // 1. Actualizar proveedor
@@ -476,7 +488,20 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
     // 1. Revertir saldo pendiente al proveedor
     const proveedor = get().proveedores.find((p) => p.id === pago.proveedor_id)
     if (proveedor) {
-      const saldoRestituido = (proveedor.saldo_pendiente || 0) + pago.monto
+      // BUG-28: Consultar saldo fresco en base de datos para evitar Lost Updates por concurrencia
+      let saldoBase = Number(proveedor.saldo_pendiente) || 0
+      try {
+        const { data: provDB } = await supabase
+          .from('proveedores')
+          .select('saldo_pendiente')
+          .eq('id', proveedor.id)
+          .maybeSingle()
+        if (provDB && typeof provDB.saldo_pendiente === 'number') {
+          saldoBase = provDB.saldo_pendiente
+        }
+      } catch {}
+
+      const saldoRestituido = Number((saldoBase + pago.monto).toFixed(2))
       const actualizados = get().proveedores.map((p) =>
         p.id === proveedor.id ? { ...p, saldo_pendiente: saldoRestituido } : p
       )
@@ -631,9 +656,21 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
       })),
     }
 
-    // 2. Si se pagó a cuenta corriente, acumular saldo pendiente al proveedor
+    // 2. Si se pagó a cuenta corriente, acumular saldo pendiente al proveedor (BUG-28)
     if (compraInput.medio_pago === 'CUENTA_CORRIENTE') {
-      const nuevoSaldo = (proveedor?.saldo_pendiente || 0) + compraInput.total
+      let saldoBase = Number(proveedor?.saldo_pendiente) || 0
+      try {
+        const { data: provDB } = await supabase
+          .from('proveedores')
+          .select('saldo_pendiente')
+          .eq('id', compraInput.proveedor_id)
+          .maybeSingle()
+        if (provDB && typeof provDB.saldo_pendiente === 'number') {
+          saldoBase = provDB.saldo_pendiente
+        }
+      } catch {}
+
+      const nuevoSaldo = Number((saldoBase + compraInput.total).toFixed(2))
       get().actualizarProveedor(compraInput.proveedor_id, { saldo_pendiente: nuevoSaldo })
     }
 
@@ -652,7 +689,8 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
             if (item) {
               return {
                 ...prod,
-                stock_actual: prod.stock_actual + item.cantidad,
+                // BUG-29: Sanitizar contra undefined/null para no generar NaN
+                stock_actual: Number(((prod.stock_actual || 0) + item.cantidad).toFixed(3)),
                 precio_costo: item.precio_costo_unitario,
                 fecha_actualizacion: new Date().toISOString(),
               }
@@ -717,11 +755,12 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
         // Actualizar stock_actual y precio_costo en tabla productos en Supabase
         for (const item of (compraInput.detalles || [])) {
           try {
+            // BUG-27: maybeSingle para no interrumpir el bucle si un producto fue dado de baja
             const { data: pDB } = await supabase
               .from('productos')
               .select('id, stock_actual')
               .eq('id', item.producto_id)
-              .single()
+              .maybeSingle()
 
             if (pDB) {
               const nuevoStock = Number(((pDB.stock_actual || 0) + item.cantidad).toFixed(3))
@@ -773,11 +812,23 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
       return false
     }
 
-    // 1. Si era cuenta corriente, revertir saldo del proveedor
+    // 1. Si era cuenta corriente, revertir saldo del proveedor (BUG-28)
     if (compra.medio_pago === 'CUENTA_CORRIENTE' && compra.proveedor_id) {
       const proveedor = get().proveedores.find((p) => p.id === compra.proveedor_id)
       if (proveedor) {
-        const saldoRevertido = Number(((proveedor.saldo_pendiente || 0) - compra.total).toFixed(2))
+        let saldoBase = Number(proveedor.saldo_pendiente) || 0
+        try {
+          const { data: provDB } = await supabase
+            .from('proveedores')
+            .select('saldo_pendiente')
+            .eq('id', compra.proveedor_id)
+            .maybeSingle()
+          if (provDB && typeof provDB.saldo_pendiente === 'number') {
+            saldoBase = provDB.saldo_pendiente
+          }
+        } catch {}
+
+        const saldoRevertido = Number((saldoBase - compra.total).toFixed(2))
         await get().actualizarProveedor(compra.proveedor_id, { saldo_pendiente: saldoRevertido })
       }
     }
@@ -810,11 +861,12 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
         // Revertir en Supabase
         for (const item of detalles) {
           try {
+            // BUG-27: maybeSingle para no interrumpir la anulación si un producto fue archivado
             const { data: pDB } = await supabase
               .from('productos')
               .select('id, stock_actual')
               .eq('id', item.producto_id)
-              .single()
+              .maybeSingle()
 
             if (pDB) {
               const nuevoStock = Math.max(0, Number(((pDB.stock_actual || 0) - item.cantidad).toFixed(3)))
