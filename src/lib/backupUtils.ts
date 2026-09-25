@@ -52,12 +52,12 @@ export async function generarBackupIntegral(
       promosRes,
       lotesRes,
     ] = await Promise.all([
-      supabase.from('productos').select('*').eq('kiosco_id', kioscoId),
-      supabase.from('categorias').select('*').eq('kiosco_id', kioscoId),
-      supabase.from('clientes').select('*').eq('kiosco_id', kioscoId),
-      supabase.from('proveedores').select('*').eq('kiosco_id', kioscoId),
-      supabase.from('promociones').select('*').eq('kiosco_id', kioscoId),
-      supabase.from('lotes_producto').select('*').eq('kiosco_id', kioscoId),
+      supabase.from('productos').select('*').eq('kiosco_id', kioscoId).limit(50000),
+      supabase.from('categorias').select('*').eq('kiosco_id', kioscoId).limit(50000),
+      supabase.from('clientes').select('*').eq('kiosco_id', kioscoId).limit(50000),
+      supabase.from('proveedores').select('*').eq('kiosco_id', kioscoId).limit(50000),
+      supabase.from('promociones').select('*').eq('kiosco_id', kioscoId).limit(50000),
+      supabase.from('lotes_producto').select('*').eq('kiosco_id', kioscoId).limit(50000),
     ])
 
     const productos = prodsRes.data || []

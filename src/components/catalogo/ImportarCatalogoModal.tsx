@@ -666,6 +666,7 @@ export function ImportarCatalogoModal({
         .from('productos')
         .select('id, codigo_barras, descripcion, stock_actual, activo, unidad_medida, es_pesable')
         .eq('kiosco_id', kioscoId)
+        .limit(50000)
 
       const mapaExistentesPorBarcode = new Map<string, any>()
       const mapaExistentesPorNombre = new Map<string, any>()

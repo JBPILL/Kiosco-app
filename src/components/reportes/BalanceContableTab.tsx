@@ -170,6 +170,7 @@ export function BalanceContableTab() {
         .gte('fecha_hora', rangoInicio)
         .lte('fecha_hora', rangoFin)
         .order('fecha_hora', { ascending: false })
+        .limit(10000)
 
       if (kid) {
         queryVentas = queryVentas.eq('kiosco_id', kid)
@@ -190,6 +191,7 @@ export function BalanceContableTab() {
         .gte('fecha_hora', rangoInicio)
         .lte('fecha_hora', rangoFin)
         .order('fecha_hora', { ascending: false })
+        .limit(10000)
 
       if (kid) {
         queryMovs = queryMovs.eq('kiosco_id', kid)

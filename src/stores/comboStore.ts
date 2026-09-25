@@ -218,7 +218,7 @@ export const useComboStore = create<ComboState>((set, get) => ({
           .from('productos')
           .select('id, stock_actual, descripcion')
           .eq('id', comp.componente_producto_id)
-          .single()
+          .maybeSingle()
 
         if (prodData) {
           const nuevoStock = Number(((prodData.stock_actual || 0) - totalADescontar).toFixed(3))

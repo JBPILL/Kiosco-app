@@ -201,7 +201,10 @@ export const useLoteStore = create<LoteState>((set, get) => ({
     if (lotesModificados.size > 0) {
       const actualizados = get().lotes.map((l) => lotesModificados.get(l.id) || l)
       set({ lotes: actualizados })
-      const kioscoId = lotesProducto[0]?.kiosco_id
+      // Obtener kioscoId del primer lote modificado de forma segura (antes se leía de lotesProducto[0]
+      // que podría ser vacío en condiciones de carrera con lotes de otro producto en el store)
+      const primerModificado = lotesModificados.values().next().value
+      const kioscoId = primerModificado?.kiosco_id || lotesProducto[0]?.kiosco_id
       guardarLotesLocales(actualizados, kioscoId)
 
       // Actualizar en Supabase en segundo plano

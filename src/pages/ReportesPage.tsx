@@ -76,6 +76,7 @@ export function ReportesPage() {
       .gte('fecha_hora', inicioISO)
       .lte('fecha_hora', finISO)
       .order('fecha_hora', { ascending: false })
+      .limit(10000)
 
     if (kid) {
       query = query.eq('kiosco_id', kid)
@@ -167,7 +168,7 @@ export function ReportesPage() {
   const esHoy = fecha === getFechaLocal()
 
   const handleAnularVenta = async () => {
-    if (!ventaParaAnular) return
+    if (!ventaParaAnular || anulando) return
     setAnulando(true)
 
     try {
