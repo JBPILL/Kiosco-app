@@ -795,7 +795,7 @@ export function StockPage() {
                 variant="secondary"
                 size="sm"
                 onClick={() => setModalAuditoriaOpen(true)}
-                className="text-xs whitespace-nowrap shadow-xs font-semibold text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                className="text-xs whitespace-nowrap"
                 title="Realizar una toma física o conteo rápido con lector de códigos de barras"
               >
                 Conteo Físico / Auditoría
