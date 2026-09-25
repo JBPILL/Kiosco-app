@@ -580,17 +580,47 @@ export const useCartStore = create<CartState>((set, get) => ({
 
     const itemsEvaluados = evaluarConPromociones(venta.items)
 
-    set({
-      items: itemsEvaluados,
-      tipoAjuste: venta.tipoAjuste,
-      valorAjuste: venta.valorAjuste,
-      ventasEnEspera: restantes,
-      tabs: state.tabs.map((t) =>
+    // BUG-22: Si la tab actual ya tiene productos, abrir una nueva tab para no pisar la venta en curso
+    if (state.items.length > 0) {
+      const tabsSync = state.tabs.map((t) =>
         t.id === state.tabActivaId
-          ? { ...t, items: itemsEvaluados, tipoAjuste: venta.tipoAjuste, valorAjuste: venta.valorAjuste }
+          ? { ...t, items: state.items, tipoAjuste: state.tipoAjuste, valorAjuste: state.valorAjuste }
           : t
-      ),
-    })
+      )
+
+      const nuevoId = uuidv4()
+      const nuevaTab: CarritoTab = {
+        id: nuevoId,
+        nombre: venta.nota?.slice(0, 14) || 'Ticket Recuperado',
+        items: itemsEvaluados,
+        tipoAjuste: venta.tipoAjuste,
+        valorAjuste: venta.valorAjuste,
+      }
+
+      set({
+        tabs: [...tabsSync, nuevaTab],
+        tabActivaId: nuevoId,
+        items: itemsEvaluados,
+        tipoAjuste: venta.tipoAjuste,
+        valorAjuste: venta.valorAjuste,
+        ventasEnEspera: restantes,
+      })
+      toast.success(`Venta recuperada en nueva pestaña ("${nuevaTab.nombre}")`)
+    } else {
+      // Si la tab activa está vacía, cargarla directamente aquí
+      set({
+        items: itemsEvaluados,
+        tipoAjuste: venta.tipoAjuste,
+        valorAjuste: venta.valorAjuste,
+        ventasEnEspera: restantes,
+        tabs: state.tabs.map((t) =>
+          t.id === state.tabActivaId
+            ? { ...t, items: itemsEvaluados, tipoAjuste: venta.tipoAjuste, valorAjuste: venta.valorAjuste }
+            : t
+        ),
+      })
+      toast.success('Venta en espera recuperada en el ticket actual')
+    }
   },
 
   eliminarVentaEnEspera: (id: string) => {

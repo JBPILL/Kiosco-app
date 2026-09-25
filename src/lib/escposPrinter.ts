@@ -207,6 +207,24 @@ export function construirBufferEscPos(ticket: TicketData, anchoPapel: '58mm' | '
 }
 
 /**
+ * Obtiene un puerto serie disponible: reutiliza uno previamente autorizado
+ * mediante getPorts() o solicita uno nuevo mediante requestPort() si no hay ninguno.
+ * (BUG-23: Evita diálogos modales repetitivos al imprimir tickets sucesivos).
+ */
+async function obtenerPuertoSerial(): Promise<SerialPortLike> {
+  const serial = (navigator as any).serial
+  try {
+    if (typeof serial.getPorts === 'function') {
+      const authorizedPorts = await serial.getPorts()
+      if (authorizedPorts && authorizedPorts.length > 0) {
+        return authorizedPorts[0] as SerialPortLike
+      }
+    }
+  } catch {}
+  return await serial.requestPort()
+}
+
+/**
  * Envía directamente un ticket a la impresora térmica vía Web Serial
  */
 export async function imprimirTicketEscPosDirecto(
@@ -222,8 +240,7 @@ export async function imprimirTicketEscPosDirecto(
   }
 
   try {
-    const serial = (navigator as unknown as { serial: { requestPort: () => Promise<SerialPortLike> } }).serial
-    const port = await serial.requestPort()
+    const port = await obtenerPuertoSerial()
     await port.open({ baudRate })
 
     const writer = port.writable.getWriter()
@@ -391,8 +408,7 @@ export async function imprimirCierreCajaEscPosDirecto(
   }
 
   try {
-    const serial = (navigator as unknown as { serial: { requestPort: () => Promise<SerialPortLike> } }).serial
-    const port = await serial.requestPort()
+    const port = await obtenerPuertoSerial()
     await port.open({ baudRate })
 
     const writer = port.writable.getWriter()
@@ -429,8 +445,7 @@ export async function abrirCajonDineroDirecto(baudRate = 9600): Promise<{ ok: bo
   }
 
   try {
-    const serial = (navigator as unknown as { serial: { requestPort: () => Promise<SerialPortLike> } }).serial
-    const port = await serial.requestPort()
+    const port = await obtenerPuertoSerial()
     await port.open({ baudRate })
 
     const writer = port.writable.getWriter()

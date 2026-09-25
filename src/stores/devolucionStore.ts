@@ -345,12 +345,12 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
       for (const it of itemsADevolver) {
         if (it.reingresaStock) {
           try {
-            // Traer stock actual y verificar si es combo
+            // Traer stock actual y verificar si es combo (BUG-19: maybeSingle en lugar de single)
             const { data: prodData } = await supabase
               .from('productos')
               .select('id, stock_actual, descripcion, es_combo')
               .eq('id', it.productoId)
-              .single()
+              .maybeSingle()
 
             if (prodData) {
               if (prodData.es_combo) {
@@ -362,7 +362,7 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
                     .from('productos')
                     .select('id, stock_actual, descripcion')
                     .eq('id', comp.componente_producto_id)
-                    .single()
+                    .maybeSingle()
 
                   if (compProd) {
                     const nuevoStockComp = Number(((compProd.stock_actual || 0) + cantRestituir).toFixed(3))
@@ -502,6 +502,17 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
       return { success: true, devolucionId }
     } catch (err: any) {
       console.error('Error al procesar devolución:', err)
+
+      // BUG-20: Rollback de devolución incompleta para no dejar registros huérfanos
+      if (devolucionId) {
+        try {
+          await supabase.from('detalles_devolucion').delete().eq('devolucion_id', devolucionId)
+          await supabase.from('devoluciones_venta').delete().eq('id', devolucionId)
+        } catch (cleanupErr) {
+          console.warn('Error en rollback de devolución:', cleanupErr)
+        }
+      }
+
       return { success: false, error: err.message || 'Error inesperado al procesar devolución' }
     }
   },

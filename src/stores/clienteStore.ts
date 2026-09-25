@@ -313,7 +313,20 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
       return false
     }
 
-    const nuevoSaldo = (cliente.saldo_deudor || 0) + monto
+    // BUG-21: Consultar saldo fresco en base de datos para evitar Lost Updates por concurrencia
+    let saldoBase = cliente.saldo_deudor || 0
+    try {
+      const { data: cliDB } = await supabase
+        .from('clientes')
+        .select('saldo_deudor')
+        .eq('id', clienteId)
+        .maybeSingle()
+      if (cliDB && typeof cliDB.saldo_deudor === 'number') {
+        saldoBase = cliDB.saldo_deudor
+      }
+    } catch {}
+
+    const nuevoSaldo = Number((saldoBase + monto).toFixed(2))
 
     // Actualizar cliente en estado y local
     const actualizados = get().clientes.map((c) =>
@@ -402,8 +415,20 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
       }
 
       const cliente = get().clientes.find((c) => c.id === clienteId)
-      const saldoActual = cliente?.saldo_deudor ?? 0
-      const nuevoSaldo = Number((saldoActual - monto).toFixed(2))
+      // BUG-21: Consultar saldo fresco en base de datos para evitar Lost Updates por concurrencia
+      let saldoBase = cliente?.saldo_deudor ?? 0
+      try {
+        const { data: cliDB } = await supabase
+          .from('clientes')
+          .select('saldo_deudor')
+          .eq('id', clienteId)
+          .maybeSingle()
+        if (cliDB && typeof cliDB.saldo_deudor === 'number') {
+          saldoBase = cliDB.saldo_deudor
+        }
+      } catch {}
+
+      const nuevoSaldo = Number((saldoBase - monto).toFixed(2))
 
       // Actualizar cliente localmente
       const actualizados = get().clientes.map((c) =>
@@ -472,7 +497,20 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
       return false
     }
 
-    const nuevoSaldo = Number(((cliente.saldo_deudor || 0) - monto).toFixed(2))
+    // BUG-21: Consultar saldo fresco en base de datos para evitar Lost Updates por concurrencia
+    let saldoBase = cliente.saldo_deudor || 0
+    try {
+      const { data: cliDB } = await supabase
+        .from('clientes')
+        .select('saldo_deudor')
+        .eq('id', clienteId)
+        .maybeSingle()
+      if (cliDB && typeof cliDB.saldo_deudor === 'number') {
+        saldoBase = cliDB.saldo_deudor
+      }
+    } catch {}
+
+    const nuevoSaldo = Number((saldoBase - monto).toFixed(2))
 
     // Actualizar cliente
     const actualizados = get().clientes.map((c) =>
