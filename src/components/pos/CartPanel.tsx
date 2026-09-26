@@ -81,26 +81,37 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     itemId: string,
     cantidad: number,
     index: number,
-    targetButton: 'minus' | 'plus' | 'item' = 'minus'
+    targetButton: 'minus' | 'plus' | 'item' = 'minus',
+    esTeclado = false
   ) => {
     const item = items.find((it) => it.producto.id === itemId)
     const paso = item?.producto.es_pesable ? 0.1 : 1
     if (cantidad > paso) {
       const nueva = Number((cantidad - paso).toFixed(3))
       actualizarCantidad(itemId, nueva)
-      pendingFocusIndex.current = index
-      pendingFocusTarget.current = targetButton
+      if (esTeclado) {
+        pendingFocusIndex.current = index
+        pendingFocusTarget.current = targetButton
+      }
     } else {
-      pendingFocusIndex.current = Math.max(0, index - 1)
-      pendingFocusTarget.current = 'item'
+      if (esTeclado) {
+        pendingFocusIndex.current = Math.max(0, index - 1)
+        pendingFocusTarget.current = 'item'
+      } else {
+        pendingFocusIndex.current = null
+      }
       quitarProducto(itemId)
       toast('Producto quitado del ticket', { duration: 1500 })
     }
   }
 
-  const handleQuitarItem = (itemId: string, index: number) => {
-    pendingFocusIndex.current = Math.min(index, items.length - 2)
-    pendingFocusTarget.current = 'item'
+  const handleQuitarItem = (itemId: string, index: number, esTeclado = false) => {
+    if (esTeclado) {
+      pendingFocusIndex.current = Math.min(index, items.length - 2)
+      pendingFocusTarget.current = 'item'
+    } else {
+      pendingFocusIndex.current = null
+    }
     quitarProducto(itemId)
     toast('Producto quitado del ticket', { duration: 1500 })
   }
@@ -173,10 +184,10 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
       handleSumarCantidad(itemId, cantidad)
     } else if (e.key === '-' || e.code === 'NumpadSubtract') {
       e.preventDefault()
-      handleRestarCantidad(itemId, cantidad, index, 'item')
+      handleRestarCantidad(itemId, cantidad, index, 'item', true)
     } else if (e.key === 'Delete' || e.key === 'Backspace' || e.key.toLowerCase() === 'd') {
       e.preventDefault()
-      handleQuitarItem(itemId, index)
+      handleQuitarItem(itemId, index, true)
     } else if (e.key === 'ArrowLeft' || e.key === 'Escape') {
       e.preventDefault()
       window.dispatchEvent(new CustomEvent('pos-focus-grid'))
@@ -220,7 +231,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
       e.stopPropagation()
-      handleRestarCantidad(itemId, cantidad, index, 'minus')
+      handleRestarCantidad(itemId, cantidad, index, 'minus', true)
     } else if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
       e.preventDefault()
       e.stopPropagation()
@@ -228,11 +239,11 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     } else if (e.key === '-' || e.code === 'NumpadSubtract') {
       e.preventDefault()
       e.stopPropagation()
-      handleRestarCantidad(itemId, cantidad, index, 'minus')
+      handleRestarCantidad(itemId, cantidad, index, 'minus', true)
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault()
       e.stopPropagation()
-      handleQuitarItem(itemId, index)
+      handleQuitarItem(itemId, index, true)
     } else if (e.key === 'Escape') {
       e.preventDefault()
       e.stopPropagation()
@@ -282,11 +293,11 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     } else if (e.key === '-' || e.code === 'NumpadSubtract') {
       e.preventDefault()
       e.stopPropagation()
-      handleRestarCantidad(itemId, cantidad, index, 'plus')
+      handleRestarCantidad(itemId, cantidad, index, 'plus', true)
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault()
       e.stopPropagation()
-      handleQuitarItem(itemId, index)
+      handleQuitarItem(itemId, index, true)
     } else if (e.key === 'Escape') {
       e.preventDefault()
       e.stopPropagation()
@@ -323,7 +334,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     } else if (e.key === 'Enter' || e.key === ' ' || e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault()
       e.stopPropagation()
-      handleQuitarItem(itemId, index)
+      handleQuitarItem(itemId, index, true)
     } else if (e.key === 'Escape') {
       e.preventDefault()
       e.stopPropagation()
@@ -520,19 +531,19 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                 tabIndex={0}
                 role="row"
                 onKeyDown={(e) => handleItemKeyDown(e, idx, item.producto.id, item.cantidad)}
-                className="group flex flex-col p-2.5 rounded-xl border border-gray-200/70 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 hover:bg-gray-50/80 dark:hover:bg-gray-800/70 focus:outline-hidden focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-indigo-50/70 dark:focus:bg-gray-750 transition-all cursor-pointer select-none gap-1.5 bg-white dark:bg-gray-800/50 shadow-2xs"
+                className="group flex flex-col p-2.5 rounded-xl border border-gray-200/70 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 hover:bg-gray-50/80 dark:hover:bg-gray-800/70 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500/50 dark:focus-visible:ring-indigo-400/50 focus-visible:border-indigo-500/60 dark:focus-visible:border-indigo-400/60 focus-visible:bg-gray-50/90 dark:focus-visible:bg-gray-800 transition-all cursor-pointer select-none gap-1.5 bg-white dark:bg-gray-800/50 shadow-2xs"
               >
                 {/* 1. Fila Superior: Nombre del producto y Subtotal */}
                 <div className="flex items-start justify-between gap-3 min-w-0">
                   <p
-                    className="text-sm font-semibold text-gray-900 dark:text-gray-100 group-focus:text-indigo-900 dark:group-focus:text-white leading-snug line-clamp-2 min-w-0 flex-1"
+                    className="text-sm font-semibold text-gray-900 dark:text-gray-100 leading-snug line-clamp-2 min-w-0 flex-1"
                     title={item.producto.descripcion}
                   >
                     {item.producto.descripcion}
                   </p>
 
                   <div className="text-right shrink-0 whitespace-nowrap pt-0.5">
-                    <span className={`text-base font-black tabular-nums whitespace-nowrap ${item.es_devolucion_envase || item.subtotal < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-gray-100 group-focus:text-indigo-900 dark:group-focus:text-white'}`}>
+                    <span className={`text-base font-black tabular-nums whitespace-nowrap ${item.es_devolucion_envase || item.subtotal < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-gray-100'}`}>
                       {item.subtotal < 0 ? `-${formatPrecio(Math.abs(item.subtotal))}` : formatPrecio(item.subtotal)}
                     </span>
                     {item.descuento_promo !== undefined && item.descuento_promo > 0 && (
@@ -572,7 +583,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                         tabIndex={0}
                         onClick={(e) => {
                           e.stopPropagation()
-                          handleRestarCantidad(item.producto.id, item.cantidad, idx, 'minus')
+                          handleRestarCantidad(item.producto.id, item.cantidad, idx, 'minus', false)
                         }}
                         onKeyDown={(e) => handleMinusKeyDown(e, idx, item.producto.id, item.cantidad)}
                         className="w-6 h-6 flex items-center justify-center rounded-md bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-200 font-bold text-xs shadow-2xs transition-all focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer select-none"
@@ -619,7 +630,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                       tabIndex={0}
                       onClick={(e) => {
                         e.stopPropagation()
-                        handleQuitarItem(item.producto.id, idx)
+                        handleQuitarItem(item.producto.id, idx, false)
                       }}
                       onKeyDown={(e) => handleDeleteKeyDown(e, idx, item.producto.id)}
                       className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-md transition-colors focus:outline-hidden focus:ring-2 focus:ring-red-500 cursor-pointer select-none text-xs"
