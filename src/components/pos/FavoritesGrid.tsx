@@ -57,6 +57,16 @@ export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
   const handleKeyDown = (e: React.KeyboardEvent, index: number, prod: Producto) => {
     const cols = getColsCount()
 
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      if (e.shiftKey) {
+        window.dispatchEvent(new CustomEvent('pos-focus-category'))
+      } else {
+        window.dispatchEvent(new CustomEvent('pos-focus-ticket'))
+      }
+      return
+    }
+
     if (e.key === 'ArrowRight') {
       e.preventDefault()
       if (index < productos.length - 1) {
@@ -114,6 +124,7 @@ export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
           <button
             key={prod.id}
             ref={(el) => { buttonRefs.current[index] = el }}
+            tabIndex={index === 0 ? 0 : -1}
             onClick={() => handleItemSelect(prod)}
             onKeyDown={(e) => handleKeyDown(e, index, prod)}
             disabled={bloqueado}

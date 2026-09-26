@@ -54,10 +54,11 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
   const minusBtnRefs = useRef<(HTMLButtonElement | null)[]>([])
   const plusBtnRefs = useRef<(HTMLButtonElement | null)[]>([])
   const deleteBtnRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const envaseBtnRefs = useRef<(HTMLButtonElement | null)[]>([])
   const descuentoBtnRef = useRef<HTMLButtonElement | HTMLDivElement | null>(null)
   const cobrarBtnRef = useRef<HTMLButtonElement | null>(null)
   const pendingFocusIndex = useRef<number | null>(null)
-  const pendingFocusTarget = useRef<'item' | 'minus' | 'plus' | 'delete'>('item')
+  const pendingFocusTarget = useRef<'item' | 'minus' | 'plus' | 'delete' | 'envase'>('item')
 
   const subtotal = subtotalMonto()
   const ajuste = montoAjuste()
@@ -142,6 +143,8 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
           minusBtnRefs.current[validIdx]?.focus()
         } else if (targetType === 'plus') {
           plusBtnRefs.current[validIdx]?.focus()
+        } else if (targetType === 'envase') {
+          envaseBtnRefs.current[validIdx]?.focus()
         } else {
           cartItemRefs.current[validIdx]?.focus()
         }
@@ -179,6 +182,13 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     } else if (e.key === 'ArrowRight') {
       e.preventDefault()
       minusBtnRefs.current[index]?.focus()
+    } else if (e.key.toLowerCase() === 'e') {
+      const it = items[index]
+      if (it && it.producto.es_retornable && !it.es_devolucion_envase) {
+        e.preventDefault()
+        toggleEnvaseItem(itemId)
+        toast.success(it.sin_envase ? 'Con envase (mano a mano)' : 'Sin envase (con cargo de envase)')
+      }
     } else if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
       e.preventDefault()
       handleSumarCantidad(itemId, cantidad)
@@ -310,14 +320,25 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     index: number,
     itemId: string
   ) => {
+    const it = items[index]
+    const tieneEnvase = it && it.producto.es_retornable && !it.es_devolucion_envase
+
     if (e.key === 'ArrowLeft') {
       e.preventDefault()
       e.stopPropagation()
       plusBtnRefs.current[index]?.focus()
+    } else if (e.key === 'ArrowRight') {
+      if (tieneEnvase && envaseBtnRefs.current[index]) {
+        e.preventDefault()
+        e.stopPropagation()
+        envaseBtnRefs.current[index]?.focus()
+      }
     } else if (e.key === 'ArrowDown') {
       e.preventDefault()
       e.stopPropagation()
-      if (index < items.length - 1) {
+      if (tieneEnvase && envaseBtnRefs.current[index]) {
+        envaseBtnRefs.current[index]?.focus()
+      } else if (index < items.length - 1) {
         deleteBtnRefs.current[index + 1]?.focus()
       } else {
         if (descuentoBtnRef.current) descuentoBtnRef.current.focus()
@@ -335,6 +356,42 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
       e.preventDefault()
       e.stopPropagation()
       handleQuitarItem(itemId, index, true)
+    } else if (e.key.toLowerCase() === 'e' && tieneEnvase) {
+      e.preventDefault()
+      e.stopPropagation()
+      toggleEnvaseItem(itemId)
+      toast.success(it.sin_envase ? 'Con envase (mano a mano)' : 'Sin envase (con cargo de envase)')
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      window.dispatchEvent(new CustomEvent('pos-focus-grid'))
+    }
+  }
+
+  const handleEnvaseKeyDown = (
+    e: React.KeyboardEvent,
+    index: number,
+    itemId: string
+  ) => {
+    const it = items[index]
+    if (e.key === 'Enter' || e.key === ' ' || e.key.toLowerCase() === 'e') {
+      e.preventDefault()
+      e.stopPropagation()
+      toggleEnvaseItem(itemId)
+      toast.success(it?.sin_envase ? 'Con envase (mano a mano)' : 'Sin envase (con cargo de envase)')
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      e.stopPropagation()
+      deleteBtnRefs.current[index]?.focus()
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      e.stopPropagation()
+      if (index < items.length - 1) {
+        cartItemRefs.current[index + 1]?.focus()
+      } else {
+        if (descuentoBtnRef.current) descuentoBtnRef.current.focus()
+        else if (cobrarBtnRef.current) cobrarBtnRef.current.focus()
+      }
     } else if (e.key === 'Escape') {
       e.preventDefault()
       e.stopPropagation()
@@ -657,17 +714,21 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                     )}
                     {item.producto.es_retornable && !item.es_devolucion_envase && (
                       <button
+                        ref={(el) => { envaseBtnRefs.current[idx] = el }}
                         type="button"
+                        tabIndex={0}
                         onClick={(e) => {
                           e.stopPropagation()
                           toggleEnvaseItem(item.producto.id)
                         }}
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-all cursor-pointer select-none ${
+                        onKeyDown={(e) => handleEnvaseKeyDown(e, idx, item.producto.id)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all cursor-pointer select-none focus:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500 dark:focus-visible:ring-indigo-400 ${
                           item.sin_envase
-                            ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300'
-                            : 'bg-gray-100 dark:bg-gray-700/60 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                            ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 focus-visible:bg-amber-100 dark:focus-visible:bg-amber-900/60'
+                            : 'bg-gray-100 dark:bg-gray-700/60 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 focus-visible:bg-gray-200 dark:focus-visible:bg-gray-600'
                         }`}
-                        title="Hacé clic para alternar si el cliente trajo o no el envase vacío"
+                        title="Hacé clic o presioná Enter para alternar si el cliente trajo o no el envase vacío [Enter o E]"
+                        aria-label={`Envase: ${item.sin_envase ? 'Sin envase' : 'Con envase'}. Presioná Enter para alternar.`}
                       >
                         {item.sin_envase
                           ? `Sin envase (+${formatPrecio((item.precio_envase_unitario || item.producto.precio_envase || 0) * item.cantidad)})`
