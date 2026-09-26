@@ -157,6 +157,7 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
         `)
         .eq('kiosco_id', kioscoId)
         .order('created_at', { ascending: false })
+        .limit(5000)
 
       if (error) {
         console.warn('Error cargando promociones de Supabase (usando local):', error.message)

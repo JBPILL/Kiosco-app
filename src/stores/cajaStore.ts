@@ -159,6 +159,7 @@ export const useCajaStore = create<CajaState>((set, get) => ({
         .select('*, usuario:usuarios(id, nombre)')
         .eq('sesion_caja_id', sesionId)
         .order('fecha_hora', { ascending: false })
+        .limit(10000)
 
       if (!error && data) {
         set({ movimientosCaja: data as MovimientoCaja[] })

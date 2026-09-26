@@ -104,6 +104,7 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
         .select('*')
         .eq('kiosco_id', usuario.kiosco_id)
         .order('nombre')
+        .limit(10000)
 
       if (!error && data) {
         set({ clientes: data as Cliente[], cargando: false })
@@ -216,7 +217,7 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
         .from('clientes')
         .select('saldo_deudor')
         .eq('id', id)
-        .single()
+        .maybeSingle()
 
       if (cliDB) {
         const saldoRemoto = cliDB.saldo_deudor || 0
@@ -533,6 +534,7 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
         .select('*, usuario:usuarios(id, nombre)')
         .eq('cliente_id', clienteId)
         .order('fecha_hora', { ascending: false })
+        .limit(1000)
 
       if (!error && data) {
         saveLocalMovimientosCC(clienteId, data as MovimientoCuentaCorriente[])

@@ -162,6 +162,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
         .eq('kiosco_id', kioscoId)
         .eq('activo', true)
         .order('nombre')
+        .limit(10000)
 
       if (!error && data) {
         set({ proveedores: data as Proveedor[], cargando: false })
@@ -299,6 +300,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
         `)
         .eq('kiosco_id', kioscoId)
         .order('fecha', { ascending: false })
+        .limit(10000)
 
       if (proveedorId) {
         query = query.eq('proveedor_id', proveedorId)
@@ -572,6 +574,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
         `)
         .eq('kiosco_id', kioscoId)
         .order('fecha', { ascending: false })
+        .limit(10000)
 
       if (!error && data) {
         set({ compras: data as CompraProveedor[], cargandoCompras: false })
