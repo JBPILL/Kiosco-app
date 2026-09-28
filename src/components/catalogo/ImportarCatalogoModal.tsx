@@ -598,6 +598,7 @@ export function ImportarCatalogoModal({
 
   // Confirmar e importar productos / ejecutar rollback a la base de datos
   const handleImportar = async () => {
+    if (procesando) return
     const kioscoId = usuario?.kiosco_id
     if (!kioscoId) {
       toast.error('No tenés un comercio activo identificado')

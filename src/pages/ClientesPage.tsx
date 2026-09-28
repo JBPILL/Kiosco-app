@@ -121,7 +121,7 @@ export function ClientesPage() {
 
   const handleGuardarCliente = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!formNombre.trim()) return
+    if (!formNombre.trim() || guardandoCliente) return
 
     setGuardandoCliente(true)
     const limiteNum = parseFloat(formLimite) || 0
@@ -163,7 +163,7 @@ export function ClientesPage() {
 
   const handleConfirmarAbono = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!clienteAbonar) return
+    if (!clienteAbonar || guardandoAbono) return
     const monto = parseFloat(montoAbono) || 0
     if (monto <= 0) return
 

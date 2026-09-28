@@ -168,7 +168,7 @@ export function ProductTable({
       if (valA > valB) return sortDirection === 'asc' ? 1 : -1
       return 0
     })
-  }, [productos, categoriaFiltro, busqueda, sortField, sortDirection, categorias])
+  }, [productos, categoriaFiltro, proveedorFiltro, busqueda, sortField, sortDirection, categorias])
 
   return (
     <div>

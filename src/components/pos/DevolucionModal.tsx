@@ -183,7 +183,7 @@ export function DevolucionModal({
   )
 
   const handleConfirmarDevolucion = async () => {
-    if (!venta) return
+    if (!venta || guardando) return
     if (itemsSeleccionados.length === 0) {
       toast.error('Debes tildar al menos un producto a devolver')
       return

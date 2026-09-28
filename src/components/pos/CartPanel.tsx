@@ -67,7 +67,13 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
   const tieneAjuste = tipoAjuste !== 'NINGUNO'
 
   // Acciones de modificación con retención de foco
-  const handleSumarCantidad = (itemId: string, cantidad: number) => {
+  const handleSumarCantidad = (
+    itemId: string,
+    cantidad: number,
+    index?: number,
+    targetButton: 'minus' | 'plus' | 'item' = 'plus',
+    esTeclado = false
+  ) => {
     const item = items.find((it) => it.producto.id === itemId)
     if (item && item.producto.stock_actual > 0 && cantidad >= item.producto.stock_actual) {
       toast.error(`Stock máximo alcanzado (${item.producto.stock_actual} disponibles)`)
@@ -76,6 +82,10 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     const paso = item?.producto.es_pesable ? 0.1 : 1
     const nueva = Number((cantidad + paso).toFixed(3))
     actualizarCantidad(itemId, nueva)
+    if (esTeclado && index !== undefined) {
+      pendingFocusIndex.current = index
+      pendingFocusTarget.current = targetButton
+    }
   }
 
   const handleRestarCantidad = (
@@ -160,6 +170,36 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     itemId: string,
     cantidad: number
   ) => {
+    const it = items[index]
+    const tieneEnvase = it && it.producto.es_retornable && !it.es_devolucion_envase
+
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      if (e.shiftKey) {
+        if (index > 0) {
+          const prevIt = items[index - 1]
+          if (prevIt && prevIt.producto.es_retornable && !prevIt.es_devolucion_envase && envaseBtnRefs.current[index - 1]) {
+            envaseBtnRefs.current[index - 1]?.focus()
+          } else {
+            cartItemRefs.current[index - 1]?.focus()
+          }
+        } else {
+          window.dispatchEvent(new CustomEvent('pos-focus-grid'))
+        }
+      } else {
+        if (tieneEnvase && envaseBtnRefs.current[index]) {
+          envaseBtnRefs.current[index]?.focus()
+        } else if (index < items.length - 1) {
+          cartItemRefs.current[index + 1]?.focus()
+        } else if (descuentoBtnRef.current) {
+          descuentoBtnRef.current.focus()
+        } else if (cobrarBtnRef.current) {
+          cobrarBtnRef.current.focus()
+        }
+      }
+      return
+    }
+
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       if (index < items.length - 1) {
@@ -183,15 +223,16 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
       e.preventDefault()
       minusBtnRefs.current[index]?.focus()
     } else if (e.key.toLowerCase() === 'e') {
-      const it = items[index]
-      if (it && it.producto.es_retornable && !it.es_devolucion_envase) {
+      if (tieneEnvase) {
         e.preventDefault()
+        pendingFocusIndex.current = index
+        pendingFocusTarget.current = 'item'
         toggleEnvaseItem(itemId)
         toast.success(it.sin_envase ? 'Con envase (mano a mano)' : 'Sin envase (con cargo de envase)')
       }
     } else if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
       e.preventDefault()
-      handleSumarCantidad(itemId, cantidad)
+      handleSumarCantidad(itemId, cantidad, index, 'item', true)
     } else if (e.key === '-' || e.code === 'NumpadSubtract') {
       e.preventDefault()
       handleRestarCantidad(itemId, cantidad, index, 'item', true)
@@ -203,7 +244,11 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
       window.dispatchEvent(new CustomEvent('pos-focus-grid'))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      plusBtnRefs.current[index]?.focus()
+      if (tieneEnvase && envaseBtnRefs.current[index]) {
+        envaseBtnRefs.current[index]?.focus()
+      } else {
+        plusBtnRefs.current[index]?.focus()
+      }
     }
   }
 
@@ -213,6 +258,26 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     itemId: string,
     cantidad: number
   ) => {
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.shiftKey) {
+        cartItemRefs.current[index]?.focus()
+      } else {
+        const it = items[index]
+        if (it && it.producto.es_retornable && !it.es_devolucion_envase && envaseBtnRefs.current[index]) {
+          envaseBtnRefs.current[index]?.focus()
+        } else if (index < items.length - 1) {
+          cartItemRefs.current[index + 1]?.focus()
+        } else if (descuentoBtnRef.current) {
+          descuentoBtnRef.current.focus()
+        } else if (cobrarBtnRef.current) {
+          cobrarBtnRef.current.focus()
+        }
+      }
+      return
+    }
+
     if (e.key === 'ArrowRight') {
       e.preventDefault()
       e.stopPropagation()
@@ -245,7 +310,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     } else if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
       e.preventDefault()
       e.stopPropagation()
-      handleSumarCantidad(itemId, cantidad)
+      handleSumarCantidad(itemId, cantidad, index, 'minus', true)
     } else if (e.key === '-' || e.code === 'NumpadSubtract') {
       e.preventDefault()
       e.stopPropagation()
@@ -267,6 +332,26 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     itemId: string,
     cantidad: number
   ) => {
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.shiftKey) {
+        cartItemRefs.current[index]?.focus()
+      } else {
+        const it = items[index]
+        if (it && it.producto.es_retornable && !it.es_devolucion_envase && envaseBtnRefs.current[index]) {
+          envaseBtnRefs.current[index]?.focus()
+        } else if (index < items.length - 1) {
+          cartItemRefs.current[index + 1]?.focus()
+        } else if (descuentoBtnRef.current) {
+          descuentoBtnRef.current.focus()
+        } else if (cobrarBtnRef.current) {
+          cobrarBtnRef.current.focus()
+        }
+      }
+      return
+    }
+
     if (e.key === 'ArrowRight') {
       e.preventDefault()
       e.stopPropagation()
@@ -295,11 +380,11 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
       e.stopPropagation()
-      handleSumarCantidad(itemId, cantidad)
+      handleSumarCantidad(itemId, cantidad, index, 'plus', true)
     } else if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
       e.preventDefault()
       e.stopPropagation()
-      handleSumarCantidad(itemId, cantidad)
+      handleSumarCantidad(itemId, cantidad, index, 'plus', true)
     } else if (e.key === '-' || e.code === 'NumpadSubtract') {
       e.preventDefault()
       e.stopPropagation()
@@ -322,6 +407,25 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
   ) => {
     const it = items[index]
     const tieneEnvase = it && it.producto.es_retornable && !it.es_devolucion_envase
+
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.shiftKey) {
+        cartItemRefs.current[index]?.focus()
+      } else {
+        if (tieneEnvase && envaseBtnRefs.current[index]) {
+          envaseBtnRefs.current[index]?.focus()
+        } else if (index < items.length - 1) {
+          cartItemRefs.current[index + 1]?.focus()
+        } else if (descuentoBtnRef.current) {
+          descuentoBtnRef.current.focus()
+        } else if (cobrarBtnRef.current) {
+          cobrarBtnRef.current.focus()
+        }
+      }
+      return
+    }
 
     if (e.key === 'ArrowLeft') {
       e.preventDefault()
@@ -359,6 +463,8 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     } else if (e.key.toLowerCase() === 'e' && tieneEnvase) {
       e.preventDefault()
       e.stopPropagation()
+      pendingFocusIndex.current = index
+      pendingFocusTarget.current = 'envase'
       toggleEnvaseItem(itemId)
       toast.success(it.sin_envase ? 'Con envase (mano a mano)' : 'Sin envase (con cargo de envase)')
     } else if (e.key === 'Escape') {
@@ -377,12 +483,28 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     if (e.key === 'Enter' || e.key === ' ' || e.key.toLowerCase() === 'e') {
       e.preventDefault()
       e.stopPropagation()
+      pendingFocusIndex.current = index
+      pendingFocusTarget.current = 'envase'
       toggleEnvaseItem(itemId)
       toast.success(it?.sin_envase ? 'Con envase (mano a mano)' : 'Sin envase (con cargo de envase)')
+    } else if (e.key === 'Tab') {
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.shiftKey) {
+        cartItemRefs.current[index]?.focus()
+      } else {
+        if (index < items.length - 1) {
+          cartItemRefs.current[index + 1]?.focus()
+        } else if (descuentoBtnRef.current) {
+          descuentoBtnRef.current.focus()
+        } else if (cobrarBtnRef.current) {
+          cobrarBtnRef.current.focus()
+        }
+      }
     } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
       e.preventDefault()
       e.stopPropagation()
-      deleteBtnRefs.current[index]?.focus()
+      cartItemRefs.current[index]?.focus()
     } else if (e.key === 'ArrowDown') {
       e.preventDefault()
       e.stopPropagation()
@@ -400,6 +522,26 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
   }
 
   const handleDescuentoKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      if (e.shiftKey) {
+        if (items.length > 0) {
+          const lastIdx = items.length - 1
+          const lastIt = items[lastIdx]
+          if (lastIt && lastIt.producto.es_retornable && !lastIt.es_devolucion_envase && envaseBtnRefs.current[lastIdx]) {
+            envaseBtnRefs.current[lastIdx]?.focus()
+          } else {
+            cartItemRefs.current[lastIdx]?.focus()
+          }
+        } else {
+          window.dispatchEvent(new CustomEvent('pos-focus-grid'))
+        }
+      } else {
+        cobrarBtnRef.current?.focus()
+      }
+      return
+    }
+
     if (e.key === 'ArrowUp') {
       e.preventDefault()
       if (items.length > 0) {
@@ -424,6 +566,28 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
   }
 
   const handleCobrarKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      if (e.shiftKey) {
+        if (descuentoBtnRef.current) {
+          descuentoBtnRef.current.focus()
+        } else if (items.length > 0) {
+          const lastIdx = items.length - 1
+          const lastIt = items[lastIdx]
+          if (lastIt && lastIt.producto.es_retornable && !lastIt.es_devolucion_envase && envaseBtnRefs.current[lastIdx]) {
+            envaseBtnRefs.current[lastIdx]?.focus()
+          } else {
+            cartItemRefs.current[lastIdx]?.focus()
+          }
+        } else {
+          window.dispatchEvent(new CustomEvent('pos-focus-grid'))
+        }
+      } else {
+        window.dispatchEvent(new CustomEvent('pos-focus-search'))
+      }
+      return
+    }
+
     if (e.key === 'ArrowUp') {
       e.preventDefault()
       if (descuentoBtnRef.current) {
@@ -637,7 +801,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                       <button
                         ref={(el) => { minusBtnRefs.current[idx] = el }}
                         type="button"
-                        tabIndex={0}
+                        tabIndex={-1}
                         onClick={(e) => {
                           e.stopPropagation()
                           handleRestarCantidad(item.producto.id, item.cantidad, idx, 'minus', false)
@@ -657,7 +821,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                       <button
                         ref={(el) => { plusBtnRefs.current[idx] = el }}
                         type="button"
-                        tabIndex={0}
+                        tabIndex={-1}
                         disabled={item.producto.stock_actual > 0 && item.cantidad >= item.producto.stock_actual}
                         onClick={(e) => {
                           e.stopPropagation()
@@ -684,7 +848,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                     <button
                       ref={(el) => { deleteBtnRefs.current[idx] = el }}
                       type="button"
-                      tabIndex={0}
+                      tabIndex={-1}
                       onClick={(e) => {
                         e.stopPropagation()
                         handleQuitarItem(item.producto.id, idx, false)
@@ -719,6 +883,8 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                         tabIndex={0}
                         onClick={(e) => {
                           e.stopPropagation()
+                          pendingFocusIndex.current = idx
+                          pendingFocusTarget.current = 'envase'
                           toggleEnvaseItem(item.producto.id)
                         }}
                         onKeyDown={(e) => handleEnvaseKeyDown(e, idx, item.producto.id)}

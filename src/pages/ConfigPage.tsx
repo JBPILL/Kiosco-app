@@ -85,7 +85,7 @@ export function ConfigPage() {
         .from('kioscos')
         .select('*')
         .eq('id', kioscoId)
-        .single()
+        .maybeSingle()
 
       if (kioscoData) {
         setKiosco(kioscoData)
@@ -113,6 +113,7 @@ export function ConfigPage() {
         .select('*')
         .eq('kiosco_id', kioscoId)
         .order('fecha_creacion')
+        .limit(1000)
 
       if (usuariosData) {
         setUsuarios(usuariosData)
@@ -124,6 +125,7 @@ export function ConfigPage() {
         .select('*')
         .eq('kiosco_id', kioscoId)
         .order('orden')
+        .limit(1000)
 
       if (categoriasData) {
         setCategorias(categoriasData as Categoria[])

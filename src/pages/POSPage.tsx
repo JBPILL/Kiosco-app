@@ -77,6 +77,7 @@ export function POSPage() {
       .eq('activo', true)
       .eq('es_favorito', true)
       .order('descripcion')
+      .limit(1000)
     if (kid) query = query.eq('kiosco_id', kid)
     const { data } = await query
     setFavoritos(data || [])
@@ -89,6 +90,7 @@ export function POSPage() {
       .from('categorias')
       .select('*')
       .order('orden')
+      .limit(1000)
     if (kid) query = query.eq('kiosco_id', kid)
     const { data } = await query
     setCategorias(data || [])
@@ -103,6 +105,7 @@ export function POSPage() {
       .eq('activo', true)
       .eq('categoria_id', catId)
       .order('descripcion')
+      .limit(10000)
     if (kid) query = query.eq('kiosco_id', kid)
     const { data } = await query
     setProductosCategoria(data || [])
@@ -122,7 +125,14 @@ export function POSPage() {
     }
   }, [categoriaActiva, cargarPorCategoria])
 
-  useRealtimeSync(usuario?.kiosco_id || kiosco?.id, cargarFavoritos)
+  const refrescarProductosVista = useCallback(() => {
+    cargarFavoritos()
+    if (categoriaActiva) {
+      cargarPorCategoria(categoriaActiva)
+    }
+  }, [cargarFavoritos, categoriaActiva, cargarPorCategoria])
+
+  useRealtimeSync(usuario?.kiosco_id || kiosco?.id, refrescarProductosVista)
 
   const handleSeleccion = (producto: Producto, cantidad?: number) => {
     if (cantidad && cantidad > 0) {
@@ -138,7 +148,7 @@ export function POSPage() {
   }
 
   const handleVentaCompletada = (ticket?: TicketData) => {
-    cargarFavoritos() // Refrescar stock
+    refrescarProductosVista() // Refrescar stock de la vista actual
     verificarSesionActiva()
     setCartModalOpen(false)
     if (ticket) {
@@ -249,6 +259,7 @@ export function POSPage() {
             .select('*, categoria:categorias(nombre, color)')
             .eq('activo', true)
             .or(`plu_balanza.eq.${parsedBalanza.plu4},plu_balanza.eq.${parsedBalanza.pluCorto},plu_balanza.eq.${parsedBalanza.plu5},codigo_barras.eq.${parsedBalanza.plu4},codigo_barras.eq.${parsedBalanza.pluCorto}`)
+            .limit(1)
           if (kid) queryBalanza = queryBalanza.eq('kiosco_id', kid)
           const { data } = await queryBalanza.maybeSingle()
 
@@ -287,6 +298,7 @@ export function POSPage() {
           .select('*, categoria:categorias(nombre, color)')
           .eq('activo', true)
           .eq('codigo_barras', codeTrim)
+          .limit(1)
         if (kid) queryGun = queryGun.eq('kiosco_id', kid)
 
         const { data, error } = await queryGun.maybeSingle()
@@ -721,7 +733,7 @@ export function POSPage() {
           setVentaParaDevolver(null)
         }}
         onDevolucionExitosa={() => {
-          cargarFavoritos()
+          refrescarProductosVista()
           verificarSesionActiva()
         }}
       />

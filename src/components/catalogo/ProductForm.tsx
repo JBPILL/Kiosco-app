@@ -122,6 +122,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (guardando) return
     setGuardando(true)
     const ok = await onGuardar(form)
     setGuardando(false)

@@ -97,6 +97,7 @@ export const useSoporteStore = create<SoporteState>((set, get) => ({
         .from('tickets_soporte')
         .select('*')
         .order('fecha_creacion', { ascending: false })
+        .limit(1000)
 
       if (error) {
         // Código 42P01 indica que la tabla no existe aún en la base de datos
@@ -132,6 +133,7 @@ export const useSoporteStore = create<SoporteState>((set, get) => ({
           .select('*')
           .eq('kiosco_id', kioscoId)
           .order('fecha_creacion', { ascending: false })
+          .limit(1000)
 
         if (!error && data) {
           const ticketsKiosco = data as TicketSoporte[]
@@ -179,7 +181,7 @@ export const useSoporteStore = create<SoporteState>((set, get) => ({
         .from('tickets_soporte')
         .insert([nuevoTicket])
         .select()
-        .single()
+        .maybeSingle()
 
       if (error) {
         if (error.code === '42P01' || error.message?.includes('tickets_soporte')) {

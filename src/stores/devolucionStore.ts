@@ -479,7 +479,8 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
               .revertirCargoVenta(
                 venta.id,
                 montoTotal,
-                `Crédito por devolución Ticket #${venta.id.slice(0, 8).toUpperCase()}`
+                `Crédito por devolución Ticket #${venta.id.slice(0, 8).toUpperCase()}`,
+                targetClienteId
               )
           } catch (errCC) {
             console.warn('Error revirtiendo saldo de cuenta corriente:', errCC)

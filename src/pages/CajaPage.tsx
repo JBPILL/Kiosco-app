@@ -213,6 +213,7 @@ export function CajaPage() {
   const diferenciaArqueo = contadoNum - efectivoEsperado
 
   const handleConfirmarCierre = async () => {
+    if (cerrando) return
     setCerrando(true)
     const kiosco = useAuthStore.getState().kiosco
 
@@ -238,6 +239,9 @@ export function CajaPage() {
           (resumenFinal?.total_tarjeta || 0))
     )
 
+    const esperadoFinal = resumenFinal?.efectivo_esperado_en_caja ?? (sesionActiva?.monto_inicial || 0)
+    const diferenciaFinal = contadoNum - esperadoFinal
+
     const snapshotCierre: DatosCierreCaja = {
       kioscoNombre: kiosco?.nombre,
       kioscoDireccion: kiosco?.direccion,
@@ -257,9 +261,9 @@ export function CajaPage() {
       cantidadVentas: operacionesTotal,
       ingresosExtra: resumenFinal?.total_ingresos_extra || 0,
       egresosExtra: resumenFinal?.total_egresos || 0,
-      efectivoEsperado,
+      efectivoEsperado: esperadoFinal,
       efectivoContado: contadoNum,
-      diferencia: diferenciaArqueo,
+      diferencia: diferenciaFinal,
     }
 
     const ok = await cerrarCaja(contadoNum)

@@ -289,6 +289,7 @@ export function StockPage() {
 
   // Confirmar y registrar movimiento
   const registrarMovimiento = async () => {
+    if (guardando) return
     if (!productoSeleccionado) {
       toast.error('Seleccioná un producto del catálogo')
       return

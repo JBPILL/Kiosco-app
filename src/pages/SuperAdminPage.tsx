@@ -286,7 +286,7 @@ export function SuperAdminPage() {
 
   const handleConfirmarRenovacion = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!kioscoParaRenovar) return
+    if (!kioscoParaRenovar || cargandoAccion) return
 
     const ok = await renovarSuscripcion(
       kioscoParaRenovar.kiosco_id,
@@ -304,7 +304,7 @@ export function SuperAdminPage() {
 
   const handleCrearNuevoKiosco = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!nuevoNombreKiosco.trim() || !nuevoNombreDueno.trim() || !nuevoEmailDueno.trim() || !nuevoPasswordDueno.trim()) {
+    if (cargandoAccion || !nuevoNombreKiosco.trim() || !nuevoNombreDueno.trim() || !nuevoEmailDueno.trim() || !nuevoPasswordDueno.trim()) {
       return
     }
 
@@ -346,7 +346,7 @@ export function SuperAdminPage() {
 
   const handleGuardarEdicion = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!kioscoParaEditar || !editNombreKiosco.trim()) return
+    if (!kioscoParaEditar || cargandoAccion || !editNombreKiosco.trim()) return
 
     const ok = await editarKiosco(kioscoParaEditar.kiosco_id, {
       nombreKiosco: editNombreKiosco.trim(),
@@ -375,7 +375,7 @@ export function SuperAdminPage() {
 
   const handleConfirmarEliminacion = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!kioscoParaEliminar) return
+    if (!kioscoParaEliminar || cargandoAccion) return
     const esperado = 'ELIMINAR'
     if (
       textoConfirmacion.trim().toUpperCase() !== esperado &&

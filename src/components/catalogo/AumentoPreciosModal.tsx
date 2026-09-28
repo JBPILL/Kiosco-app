@@ -115,6 +115,7 @@ export function AumentoPreciosModal({
   }, [productosAfectados, porcentaje, redondeo])
 
   const handleAplicar = async () => {
+    if (procesando) return
     if (productosAfectados.length === 0) {
       toast.error('No hay productos que cumplan con el criterio seleccionado')
       return

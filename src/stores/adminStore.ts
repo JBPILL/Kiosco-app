@@ -223,7 +223,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
             estado: 'ACTIVA',
           })
           .select('id')
-          .single()
+          .maybeSingle()
         subId = newSub?.id
       }
 
@@ -378,7 +378,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
       // 2.2 Proveedores y compras
       try { await supabase.from('pagos_proveedor').delete().eq('kiosco_id', kioscoId) } catch {}
       try {
-        const { data: compras } = await supabase.from('compras_proveedor').select('id').eq('kiosco_id', kioscoId)
+        const { data: compras } = await supabase.from('compras_proveedor').select('id').eq('kiosco_id', kioscoId).limit(10000)
         if (compras && compras.length > 0) {
           const cIds = compras.map((c) => c.id)
           await supabase.from('detalles_compra').delete().in('compra_id', cIds)
@@ -389,7 +389,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
 
       // 2.3 Devoluciones de venta
       try {
-        const { data: devs } = await supabase.from('devoluciones_venta').select('id').eq('kiosco_id', kioscoId)
+        const { data: devs } = await supabase.from('devoluciones_venta').select('id').eq('kiosco_id', kioscoId).limit(10000)
         if (devs && devs.length > 0) {
           const dIds = devs.map((d) => d.id)
           await supabase.from('detalles_devolucion').delete().in('devolucion_id', dIds)
@@ -407,7 +407,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
 
       // 2.6 Ventas, detalles y pagos
       try {
-        const { data: vts } = await supabase.from('ventas').select('id').eq('kiosco_id', kioscoId)
+        const { data: vts } = await supabase.from('ventas').select('id').eq('kiosco_id', kioscoId).limit(10000)
         if (vts && vts.length > 0) {
           const vIds = vts.map((v) => v.id)
           await supabase.from('detalles_venta').delete().in('venta_id', vIds)
@@ -426,7 +426,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
 
       // 2.9 Limpieza profunda de referencias hijas por producto_id antes de borrar productos
       try {
-        const { data: prods } = await supabase.from('productos').select('id').eq('kiosco_id', kioscoId)
+        const { data: prods } = await supabase.from('productos').select('id').eq('kiosco_id', kioscoId).limit(10000)
         if (prods && prods.length > 0) {
           const pIds = prods.map((p) => p.id)
           await supabase.from('detalles_compra').delete().in('producto_id', pIds)

@@ -105,6 +105,7 @@ export function ReportesPage() {
       .select('id, monto_total, metodo_reintegro, fecha_hora')
       .gte('fecha_hora', inicioISO)
       .lte('fecha_hora', finISO)
+      .limit(10000)
 
     if (kid) {
       queryDevs = queryDevs.eq('kiosco_id', kid)

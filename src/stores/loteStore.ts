@@ -91,6 +91,7 @@ export const useLoteStore = create<LoteState>((set, get) => ({
           .eq('kiosco_id', kioscoId)
           .eq('activo', true)
           .order('fecha_vencimiento', { ascending: true })
+          .limit(10000)
 
         if (!error && data) {
           set({ lotes: data })

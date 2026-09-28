@@ -60,6 +60,7 @@ export function AFIPConfigSection() {
 
   const handleGuardar = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (guardando) return
 
     if (!esDuenio) {
       toast.error('Acceso denegado: Solo el Dueño puede modificar la configuración fiscal')
@@ -105,6 +106,7 @@ export function AFIPConfigSection() {
   }
 
   const handleToggleHabilitado = async () => {
+    if (guardando) return
     if (!esDuenio) {
       toast.error('Acceso denegado: Solo el Dueño puede modificar la configuración fiscal')
       return
@@ -152,6 +154,7 @@ export function AFIPConfigSection() {
   }
 
   const handleProbarComprobante = async () => {
+    if (generandoPrueba) return
     setGenerandoPrueba(true)
     try {
       const res = await emitirComprobantePrueba()

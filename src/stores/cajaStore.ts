@@ -279,7 +279,7 @@ export const useCajaStore = create<CajaState>((set, get) => ({
         .from('sesiones_caja')
         .select('*, usuario:usuarios(nombre)')
         .eq('id', targetId)
-        .single()
+        .maybeSingle()
 
       if (!sesionData) return null
 
@@ -288,6 +288,7 @@ export const useCajaStore = create<CajaState>((set, get) => ({
         .select('id, total, pagos:pagos_venta(medio_pago, monto)')
         .eq('sesion_caja_id', targetId)
         .eq('estado', 'COMPLETADA')
+        .limit(10000)
 
       let totalVentas = 0
       let totalFacturado = 0

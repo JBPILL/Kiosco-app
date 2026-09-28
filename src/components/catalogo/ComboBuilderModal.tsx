@@ -126,7 +126,7 @@ export function ComboBuilderModal({
   }
 
   const handleGuardar = async () => {
-    if (!comboProducto) return
+    if (!comboProducto || guardando) return
     if (componentes.length === 0) {
       toast.error('Debes agregar al menos un producto componente al combo')
       return

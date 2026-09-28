@@ -37,7 +37,8 @@ interface ClienteState {
   revertirCargoVenta: (
     ventaId: string,
     monto: number,
-    notas?: string
+    notas?: string,
+    clienteIdOpcional?: string
   ) => Promise<boolean>
 
   registrarAbono: (
@@ -325,31 +326,33 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
     return true
   },
 
-  revertirCargoVenta: async (ventaId, monto, notas) => {
+  revertirCargoVenta: async (ventaId, monto, notas, clienteIdOpcional) => {
     const usuario = useAuthStore.getState().usuario
     if (!usuario?.kiosco_id) return false
 
     try {
-      // 1. Buscar si existe movimiento de cuenta corriente asociado a esta venta
-      let clienteId: string | null = null
+      // 1. Buscar si existe movimiento de cuenta corriente asociado a esta venta o usar cliente explícito
+      let clienteId: string | null = clienteIdOpcional || null
 
-      const { data: movs, error: movErr } = await supabase
-        .from('movimientos_cuenta_corriente')
-        .select('*')
-        .eq('venta_id', ventaId)
-        .order('fecha_hora', { ascending: false })
-        .limit(1)
+      if (!clienteId) {
+        const { data: movs, error: movErr } = await supabase
+          .from('movimientos_cuenta_corriente')
+          .select('*')
+          .eq('venta_id', ventaId)
+          .order('fecha_hora', { ascending: false })
+          .limit(1)
 
-      if (!movErr && movs && movs.length > 0) {
-        clienteId = movs[0].cliente_id
-      } else {
-        // Buscar en local
-        const todosLosClientes = get().clientes
-        for (const cl of todosLosClientes) {
-          const movsLocales = getLocalMovimientosCC(cl.id)
-          if (movsLocales.some((m) => m.venta_id === ventaId)) {
-            clienteId = cl.id
-            break
+        if (!movErr && movs && movs.length > 0) {
+          clienteId = movs[0].cliente_id
+        } else {
+          // Buscar en local
+          const todosLosClientes = get().clientes
+          for (const cl of todosLosClientes) {
+            const movsLocales = getLocalMovimientosCC(cl.id)
+            if (movsLocales.some((m) => m.venta_id === ventaId)) {
+              clienteId = cl.id
+              break
+            }
           }
         }
       }
