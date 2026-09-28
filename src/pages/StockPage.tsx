@@ -36,6 +36,7 @@ export function StockPage() {
   const [numeroLote, setNumeroLote] = useState('')
   const [filtroEstadoLote, setFiltroEstadoLote] = useState<'TODOS' | 'VENCIDOS' | 'CRITICOS' | 'PROXIMOS' | 'VIGENTES'>('TODOS')
   const [busquedaLote, setBusquedaLote] = useState('')
+  const [bajaLoteEnProgreso, setBajaLoteEnProgreso] = useState<string | null>(null)
 
   // Modales
   const [modalOpen, setModalOpen] = useState(false)
@@ -465,6 +466,7 @@ export function StockPage() {
   }, [lotes, productos, busquedaLote, filtroEstadoLote])
 
   const handleDarDeBajaLote = async (loteId: string) => {
+    if (bajaLoteEnProgreso === loteId) return
     const lote = lotes.find((l) => l.id === loteId)
     if (!lote) return
     const prod = productos.find((p) => p.id === lote.producto_id)
@@ -475,6 +477,7 @@ export function StockPage() {
     )
     if (!confirmar) return
 
+    setBajaLoteEnProgreso(loteId)
     try {
       const kid = usuario?.kiosco_id || kiosco?.id
       await darDeBajaLote(loteId)
@@ -495,7 +498,7 @@ export function StockPage() {
         .from('productos')
         .select('id, stock_actual')
         .eq('id', lote.producto_id)
-        .single()
+        .maybeSingle()
 
       if (prodFresh) {
         const nuevoStock = Math.max(0, Math.round(((prodFresh.stock_actual || 0) - lote.cantidad_actual) * 1000) / 1000)
@@ -529,6 +532,8 @@ export function StockPage() {
       await Promise.all([cargarMovimientos(), cargarProductos(), cargarLotes(usuario?.kiosco_id || undefined)])
     } catch (e: any) {
       toast.error('Error al dar de baja lote: ' + (e?.message || ''))
+    } finally {
+      setBajaLoteEnProgreso(null)
     }
   }
 
@@ -1167,10 +1172,13 @@ export function StockPage() {
                             <button
                               type="button"
                               onClick={() => handleDarDeBajaLote(lote.id)}
-                              className="inline-flex items-center justify-center px-2.5 py-1 text-xs font-semibold text-red-600 dark:text-red-300 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/60 border border-red-200 dark:border-red-800/60 rounded-lg transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                              disabled={bajaLoteEnProgreso === lote.id}
+                              className={`inline-flex items-center justify-center px-2.5 py-1 text-xs font-semibold text-red-600 dark:text-red-300 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/60 border border-red-200 dark:border-red-800/60 rounded-lg transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap ${
+                                bajaLoteEnProgreso === lote.id ? 'opacity-50 cursor-not-allowed' : ''
+                              }`}
                               title="Dar de baja por vencimiento (genera egreso de stock)"
                             >
-                              Dar de baja
+                              {bajaLoteEnProgreso === lote.id ? 'Dando de baja...' : 'Dar de baja'}
                             </button>
                           </td>
                         </tr>

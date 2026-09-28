@@ -520,7 +520,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
           estado_suscripcion: 'ACTIVO',
         })
         .select('id')
-        .single()
+        .maybeSingle()
 
       if (kError || !kioscoNuevo) throw kError || new Error('No se pudo crear el kiosco')
 

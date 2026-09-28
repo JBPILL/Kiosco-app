@@ -287,6 +287,7 @@ export function ProveedoresPage() {
 
   const handleGuardarProveedor = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (guardandoProveedor) return
     if (!formNombre.trim()) {
       toast.error('El nombre del proveedor es obligatorio')
       return
@@ -353,7 +354,7 @@ export function ProveedoresPage() {
 
   const handleGuardarAbono = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!proveedorAbonar) return
+    if (!proveedorAbonar || guardandoAbono) return
     const monto = Number(montoAbono)
     if (isNaN(monto) || monto <= 0) {
       toast.error('Ingresá un monto válido mayor a cero')
@@ -390,7 +391,7 @@ export function ProveedoresPage() {
 
   const handleGuardarAjuste = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!proveedorAjuste) return
+    if (!proveedorAjuste || guardandoAjuste) return
     const saldo = parseFloat(nuevoSaldoAjuste)
     if (isNaN(saldo) || saldo < 0) {
       toast.error('Ingresá un saldo válido mayor o igual a 0')
@@ -470,6 +471,7 @@ export function ProveedoresPage() {
 
   const handleGuardarNuevoProductoRapido = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (guardandoNuevoProd) return
     if (!nuevoProdDescripcion.trim()) {
       toast.error('El nombre del producto es obligatorio')
       return
@@ -516,7 +518,7 @@ export function ProveedoresPage() {
 
   // Asignar / Cambiar código de barras a producto existente seleccionado
   const handleGuardarCodigoExistente = async () => {
-    if (!productoSeleccionado) return
+    if (!productoSeleccionado || guardandoCodigoExistente) return
     const nuevoCodigo = codigoExistenteInput.trim() || null
 
     setGuardandoCodigoExistente(true)
@@ -713,6 +715,7 @@ export function ProveedoresPage() {
   }
 
   const handleGuardarCompra = async () => {
+    if (guardandoCompra) return
     if (!compraProveedorId) {
       toast.error('Seleccioná el proveedor emisor')
       return
@@ -757,6 +760,7 @@ export function ProveedoresPage() {
   }
 
   const handleGuardarCargaRapida = async () => {
+    if (guardandoCargaRapida) return
     if (!compraProveedorId) {
       toast.error('Seleccioná el proveedor')
       return

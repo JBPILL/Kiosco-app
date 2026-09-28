@@ -328,9 +328,12 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
       return true
     })
 
+    // BUG-55: Rastrear unidades de productos ya consumidas por combos previos para no duplicar descuentos
+    const cantUsadaEnCombo: Record<string, number> = {}
+
     for (const promo of comboPromos) {
       const itemsReq = promo.items_combo!
-      // Verificar cuántas veces se cumple el combo completo
+      // Verificar cuántas veces se cumple el combo completo con unidades disponibles
       let veces = Infinity
       for (const ic of itemsReq) {
         const cartIt = resItems.find((it) => it.producto.id === ic.producto_id)
@@ -338,13 +341,19 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
           veces = 0
           break
         }
-        const disponibles = Math.floor((cartIt.cantidad + 0.0001) / ic.cantidad)
+        const cantLibre = Math.max(0, cartIt.cantidad - (cantUsadaEnCombo[ic.producto_id] || 0))
+        const disponibles = Math.floor((cantLibre + 0.0001) / ic.cantidad)
         if (disponibles < veces) {
           veces = disponibles
         }
       }
 
       if (veces > 0 && isFinite(veces)) {
+        // Registrar cantidades consumidas para este combo
+        for (const ic of itemsReq) {
+          cantUsadaEnCombo[ic.producto_id] = (cantUsadaEnCombo[ic.producto_id] || 0) + ic.cantidad * veces
+        }
+
         // Calcular precio regular de 1 combo
         let regular1Combo = 0
         for (const ic of itemsReq) {

@@ -190,6 +190,9 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
         // 5. Impactar movimientos de stock y actualizar stock_actual en Supabase
         for (const item of v.detalles) {
           try {
+            // BUG-57: Ignorar devoluciones de envases retornables (no son egreso de mercadería)
+            if (item.es_devolucion_envase) continue
+
             // Verificar si es un combo para descontar sus componentes físicos
             const componentes = useComboStore.getState().obtenerComponentesDeCombo(item.producto_id)
             if (componentes && componentes.length > 0) {
@@ -213,16 +216,19 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
               .eq('id', item.producto_id)
               .maybeSingle()
 
-            if (pActual && typeof pActual.stock_actual === 'number') {
-              const nuevoStock = Number((pActual.stock_actual - item.cantidad).toFixed(3))
-              await supabase
-                .from('productos')
-                .update({
-                  stock_actual: nuevoStock,
-                  fecha_actualizacion: new Date().toISOString(),
-                })
-                .eq('id', item.producto_id)
+            // BUG-57: Si el producto no existe en la base (ej. ítem libre con UUID transitorio), no insertar en movimientos_stock para evitar violaciones de clave foránea
+            if (!pActual || typeof pActual.stock_actual !== 'number') {
+              continue
             }
+
+            const nuevoStock = Number((pActual.stock_actual - item.cantidad).toFixed(3))
+            await supabase
+              .from('productos')
+              .update({
+                stock_actual: nuevoStock,
+                fecha_actualizacion: new Date().toISOString(),
+              })
+              .eq('id', item.producto_id)
 
             // Registrar renglón en historial de movimientos
             await supabase.from('movimientos_stock').insert({

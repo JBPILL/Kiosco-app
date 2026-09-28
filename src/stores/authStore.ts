@@ -74,7 +74,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         .select('*')
         .eq('auth_user_id', authData.user.id)
         .eq('activo', true)
-        .single()
+        .maybeSingle()
 
       if (userError || !usuario) {
         await supabase.auth.signOut()
@@ -96,7 +96,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           .from('kioscos')
           .select('*')
           .eq('id', usuario.kiosco_id)
-          .single()
+          .maybeSingle()
 
         kioscoData = (kData as Kiosco) || null
 
@@ -198,7 +198,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         .select('*')
         .eq('auth_user_id', session.user.id)
         .eq('activo', true)
-        .single()
+        .maybeSingle()
 
       if (!usuario) {
         set({ cargando: false })
@@ -214,7 +214,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           .from('kioscos')
           .select('*')
           .eq('id', usuario.kiosco_id)
-          .single()
+          .maybeSingle()
 
         kioscoData = (kData as Kiosco) || null
 
@@ -251,7 +251,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         .from('kioscos')
         .select('*')
         .eq('id', usuario.kiosco_id)
-        .single()
+        .maybeSingle()
 
       const { data: sData } = await supabase
         .from('suscripciones')

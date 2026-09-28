@@ -113,7 +113,7 @@ export const useCajaStore = create<CajaState>((set, get) => ({
           estado: 'ABIERTA',
         })
         .select('*, usuario:usuarios(id, nombre, rol)')
-        .single()
+        .maybeSingle()
 
       if (error) throw error
 

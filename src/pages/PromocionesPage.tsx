@@ -35,6 +35,7 @@ export function PromocionesPage() {
 
   const [modalFormOpen, setModalFormOpen] = useState(false)
   const [promoEnEdicion, setPromoEnEdicion] = useState<Promocion | null>(null)
+  const [guardando, setGuardando] = useState(false)
 
   // Campos de formulario
   const [nombre, setNombre] = useState('')
@@ -192,7 +193,7 @@ export function PromocionesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!usuario?.kiosco_id) return
+    if (guardando || !usuario?.kiosco_id) return
 
     if (!nombre.trim()) {
       toast.error('Ingresá un nombre identificador para la promoción')
@@ -284,14 +285,19 @@ export function PromocionesPage() {
       activo: activa,
     }
 
-    if (promoEnEdicion) {
-      await actualizarPromocion(promoEnEdicion.id, payload)
-    } else {
-      await crearPromocion(payload)
-    }
+    setGuardando(true)
+    try {
+      if (promoEnEdicion) {
+        await actualizarPromocion(promoEnEdicion.id, payload)
+      } else {
+        await crearPromocion(payload)
+      }
 
-    recalcularPromociones()
-    setModalFormOpen(false)
+      recalcularPromociones()
+      setModalFormOpen(false)
+    } finally {
+      setGuardando(false)
+    }
   }
 
   const handleEliminar = async (id: string, nombrePromo: string) => {
@@ -677,8 +683,8 @@ export function PromocionesPage() {
             >
               Cancelar
             </Button>
-            <Button type="submit" form="modal-promo-form" variant="primary">
-              {promoEnEdicion ? 'Guardar Cambios' : 'Crear Promoción'}
+            <Button type="submit" form="modal-promo-form" variant="primary" disabled={guardando}>
+              {guardando ? 'Guardando...' : (promoEnEdicion ? 'Guardar Cambios' : 'Crear Promoción')}
             </Button>
           </div>
         }
