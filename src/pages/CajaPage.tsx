@@ -7,6 +7,7 @@ import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import { TicketCierreCajaModal, type DatosCierreCaja } from '../components/pos/TicketCierreCajaModal'
+import { procesarDespachoCierre } from '../lib/whatsappReport'
 import toast from 'react-hot-toast'
 import type {
   SesionCaja,
@@ -273,6 +274,24 @@ export function CajaPage() {
       cargarHistorial()
       setTicketCierre(snapshotCierre)
       setModalTicketCierreOpen(true)
+
+      // Despacho no-bloqueante del reporte al Webhook del comercio o apertura de WhatsApp
+      const kid = usuario?.kiosco_id || kiosco?.id
+      if (kid) {
+        procesarDespachoCierre(kid, snapshotCierre)
+          .then((res) => {
+            if (res.webhookIntentado) {
+              if (res.webhookExito) {
+                toast.success('Reporte de cierre enviado por Webhook al dueño', { icon: '📡' })
+              } else {
+                toast.error(`Aviso Webhook: ${res.errorWebhook || 'Sin respuesta'}`, { duration: 4000 })
+              }
+            }
+          })
+          .catch((err) => {
+            console.warn('Error en despacho de cierre:', err)
+          })
+      }
     }
   }
 

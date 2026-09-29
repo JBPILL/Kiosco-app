@@ -15,6 +15,14 @@ import { useConfigAdminStore, formatearLinkWhatsApp } from '../stores/configAdmi
 import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
 import { usePwaStore } from '../stores/pwaStore'
 import { useCajaStore } from '../stores/cajaStore'
+import {
+  getWhatsAppReportConfig,
+  saveWhatsAppReportConfig,
+  type WhatsAppReportConfig,
+  generarEnlaceWhatsApp,
+  enviarWebhookCierreCaja,
+  formatearReporteCierreTexto,
+} from '../lib/whatsappReport'
 import toast from 'react-hot-toast'
 
 export function ConfigPage() {
@@ -47,6 +55,17 @@ export function ConfigPage() {
   const [nombreKiosco, setNombreKiosco] = useState('')
   const [direccion, setDireccion] = useState('')
   const [telefono, setTelefono] = useState('')
+
+  // Configuración de Notificaciones (WhatsApp & Webhook)
+  const [waConfig, setWaConfig] = useState<WhatsAppReportConfig>({
+    whatsappDueno: '',
+    webhookUrl: '',
+    webhookToken: '',
+    autoAbrirWhatsApp: false,
+    habilitado: true,
+  })
+  const [guardandoWaConfig, setGuardandoWaConfig] = useState(false)
+  const [probandoWebhook, setProbandoWebhook] = useState(false)
 
   // Navegación por pestañas de configuración
   const [pestanaActiva, setPestanaActiva] = useState<
@@ -130,6 +149,10 @@ export function ConfigPage() {
       if (categoriasData) {
         setCategorias(categoriasData as Categoria[])
       }
+
+      // 5. Cargar configuración de notificaciones (WhatsApp / Webhook)
+      const waGuardada = getWhatsAppReportConfig(kioscoId)
+      setWaConfig(waGuardada)
     } catch (err) {
       console.error('Error al cargar configuración:', err)
       toast.error('Error al cargar datos de configuración')
@@ -168,6 +191,101 @@ export function ConfigPage() {
       toast.error('Error al guardar datos del kiosco')
     } finally {
       setGuardandoKiosco(false)
+    }
+  }
+
+  const handleGuardarWaConfig = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!usuario?.kiosco_id) return
+    setGuardandoWaConfig(true)
+    try {
+      const guardada = saveWhatsAppReportConfig(usuario.kiosco_id, waConfig)
+      setWaConfig(guardada)
+      toast.success('Configuración de notificaciones guardada correctamente')
+    } catch {
+      toast.error('Error al guardar configuración de notificaciones')
+    } finally {
+      setGuardandoWaConfig(false)
+    }
+  }
+
+  const handleProbarWhatsApp = () => {
+    if (!waConfig.whatsappDueno.trim()) {
+      toast('Abriendo WhatsApp para elegir destinatario (ingresá tu número para enviártelo directo)', {
+        icon: '💬',
+        duration: 4000,
+      })
+    }
+    const datosPrueba = {
+      kioscoNombre: nombreKiosco || kiosco?.nombre || 'Mi Kiosco',
+      kioscoDireccion: direccion || kiosco?.direccion || null,
+      kioscoTelefono: telefono || kiosco?.telefono || null,
+      cajeroNombre: usuario?.nombre || 'Cajero de Prueba',
+      fechaApertura: new Date(Date.now() - 8 * 3600 * 1000).toISOString(),
+      fechaCierre: new Date().toISOString(),
+      montoInicial: 10000,
+      totalVentas: 75400,
+      cantidadVentas: 48,
+      ventasPorMedio: [
+        { medio: 'Efectivo', total: 42000 },
+        { medio: 'Mercado Pago', total: 25400 },
+        { medio: 'Transferencia', total: 8000 },
+      ],
+      ingresosExtra: 0,
+      egresosExtra: 5000,
+      efectivoEsperado: 47000,
+      efectivoContado: 47000,
+      diferencia: 0,
+    }
+    const texto = formatearReporteCierreTexto(datosPrueba)
+    const url = generarEnlaceWhatsApp(waConfig.whatsappDueno, texto)
+    window.open(url, '_blank')
+  }
+
+  const handleProbarWebhook = async () => {
+    if (!waConfig.webhookUrl.trim()) {
+      toast.error('Ingresá primero una URL de Webhook válida')
+      return
+    }
+    setProbandoWebhook(true)
+    const datosPrueba = {
+      kioscoNombre: nombreKiosco || kiosco?.nombre || 'Mi Kiosco',
+      kioscoDireccion: direccion || kiosco?.direccion || null,
+      kioscoTelefono: telefono || kiosco?.telefono || null,
+      cajeroNombre: usuario?.nombre || 'Cajero de Prueba',
+      fechaApertura: new Date(Date.now() - 8 * 3600 * 1000).toISOString(),
+      fechaCierre: new Date().toISOString(),
+      montoInicial: 10000,
+      totalVentas: 75400,
+      cantidadVentas: 48,
+      ventasPorMedio: [
+        { medio: 'Efectivo', total: 42000 },
+        { medio: 'Mercado Pago', total: 25400 },
+        { medio: 'Transferencia', total: 8000 },
+      ],
+      ingresosExtra: 0,
+      egresosExtra: 5000,
+      efectivoEsperado: 47000,
+      efectivoContado: 47000,
+      diferencia: 0,
+    }
+    const texto = formatearReporteCierreTexto(datosPrueba)
+    try {
+      const res = await enviarWebhookCierreCaja(waConfig, datosPrueba, texto)
+      if (res.ok) {
+        toast.success(`Webhook exitoso (Respuesta ${res.status || 200} OK)`, { icon: '📡' })
+      } else {
+        toast.error(`Fallo Webhook: ${res.error}`)
+      }
+    } catch (e: any) {
+      const msg = e?.message || ''
+      if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+        toast.error('Error de red o CORS: asegurate de que el Webhook acepte peticiones POST desde el navegador.')
+      } else {
+        toast.error('Error al contactar Webhook: ' + msg)
+      }
+    } finally {
+      setProbandoWebhook(false)
     }
   }
 
@@ -668,63 +786,247 @@ export function ConfigPage() {
 
           {/* PESTAÑA: SEGURIDAD Y CONTROL DE CAJA */}
           {pestanaActiva === 'SEGURIDAD' && (
-            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-4">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300">
-                  Seguridad Operativa
-                </span>
-                <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                  Políticas de Turno y Control de Efectivo
-                </h2>
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Reglas de control y auditoría financiera aplicables a los cajeros del comercio.
-              </p>
-
-              <div className="p-4 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
-                <div className="space-y-1">
-                  <p className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                    Exigir Arqueo Ciego Obligatorio a Cajeros
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed max-w-xl">
-                    Al activarse, los empleados con rol Cajero no podrán ver el efectivo esperado por el sistema ni las ventas del turno. Deberán contar el dinero físicamente en el cajón a ciegas al cerrar para prevenir desvíos y manipulaciones.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3 self-end sm:self-center">
-                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                    arqueoCiegoObligatorio
-                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                      : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-                  }`}>
-                    {arqueoCiegoObligatorio ? 'Obligatorio' : 'Opcional (Guiado)'}
+            <div className="space-y-6">
+              {/* Tarjeta 1: Arqueo Ciego */}
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-4">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300">
+                    Seguridad Operativa
                   </span>
-
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const nuevo = !arqueoCiegoObligatorio
-                      await guardarArqueoCiegoConfig(nuevo)
-                      toast.success(
-                        nuevo
-                          ? 'Arqueo ciego obligatorio activado para cajeros'
-                          : 'Arqueo ciego opcional: cajeros podrán ver efectivo esperado'
-                      )
-                    }}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-                      arqueoCiegoObligatorio ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'
-                    }`}
-                    role="switch"
-                    aria-checked={arqueoCiegoObligatorio}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                        arqueoCiegoObligatorio ? 'translate-x-5' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
+                  <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                    Políticas de Turno y Control de Efectivo
+                  </h2>
                 </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Reglas de control y auditoría financiera aplicables a los cajeros del comercio.
+                </p>
+
+                <div className="p-4 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                      Exigir Arqueo Ciego Obligatorio a Cajeros
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed max-w-xl">
+                      Al activarse, los empleados con rol Cajero no podrán ver el efectivo esperado por el sistema ni las ventas del turno. Deberán contar el dinero físicamente en el cajón a ciegas al cerrar para prevenir desvíos y manipulaciones.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-3 self-end sm:self-center">
+                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                      arqueoCiegoObligatorio
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                        : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                    }`}>
+                      {arqueoCiegoObligatorio ? 'Obligatorio' : 'Opcional (Guiado)'}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const nuevo = !arqueoCiegoObligatorio
+                        await guardarArqueoCiegoConfig(nuevo)
+                        toast.success(
+                          nuevo
+                            ? 'Arqueo ciego obligatorio activado para cajeros'
+                            : 'Arqueo ciego opcional: cajeros podrán ver efectivo esperado'
+                        )
+                      }}
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                        arqueoCiegoObligatorio ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'
+                      }`}
+                      role="switch"
+                      aria-checked={arqueoCiegoObligatorio}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                          arqueoCiegoObligatorio ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tarjeta 2: Notificaciones y Reportes de Cierre a WhatsApp & Webhook */}
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300">
+                      Auditoría Remota
+                    </span>
+                    <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                      Reportes de Cierre de Caja a WhatsApp y Webhook
+                    </h2>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300">
+                    Notificación Instantánea
+                  </span>
+                </div>
+
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Recibí en tu celular un resumen completo cada vez que un cajero cierra su turno: facturación total, cobros por medio de pago (efectivo, Mercado Pago, transferencias) y faltante/sobrante de caja.
+                </p>
+
+                <form onSubmit={handleGuardarWaConfig} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Input
+                        label="Número de WhatsApp del Dueño / Titular"
+                        type="text"
+                        value={waConfig.whatsappDueno}
+                        onChange={(e) =>
+                          setWaConfig((prev) => ({ ...prev, whatsappDueno: e.target.value }))
+                        }
+                        placeholder="Ej: 11 2345-6789 o 5491123456789"
+                      />
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                        Formato nacional o internacional. El sistema normaliza automáticamente números de Argentina (+54 9 11...).
+                      </p>
+                    </div>
+
+                    <div className="p-3 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-bold text-gray-900 dark:text-gray-100">
+                            Habilitar Notificaciones de Cierre
+                          </p>
+                          <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                            Activa el envío de reportes al finalizar turnos.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setWaConfig((prev) => ({ ...prev, habilitado: !prev.habilitado }))
+                          }
+                          className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                            waConfig.habilitado ? 'bg-emerald-600' : 'bg-gray-300 dark:bg-gray-600'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                              waConfig.habilitado ? 'translate-x-4' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between border-t border-gray-200 dark:border-gray-700/60 pt-2.5">
+                        <div>
+                          <p className="text-xs font-bold text-gray-900 dark:text-gray-100">
+                            Abrir WhatsApp Web automáticamente
+                          </p>
+                          <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                            Abre una pestaña con el mensaje listo al confirmar el cierre de caja.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setWaConfig((prev) => ({
+                              ...prev,
+                              autoAbrirWhatsApp: !prev.autoAbrirWhatsApp,
+                            }))
+                          }
+                          className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                            waConfig.autoAbrirWhatsApp
+                              ? 'bg-indigo-600'
+                              : 'bg-gray-300 dark:bg-gray-600'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                              waConfig.autoAbrirWhatsApp ? 'translate-x-4' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Integración Avanzada con Webhooks */}
+                  <div className="p-4 bg-gray-50/70 dark:bg-gray-900/40 rounded-xl border border-gray-200 dark:border-gray-700/80 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">📡</span>
+                        <h3 className="text-xs font-bold text-gray-900 dark:text-gray-100">
+                          Integración con Webhook (n8n, Make, Evolution API, Baileys)
+                        </h3>
+                      </div>
+                      <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                        Opcional (HTTP POST JSON)
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <Input
+                          label="URL del Webhook (HTTP POST)"
+                          type="url"
+                          value={waConfig.webhookUrl}
+                          onChange={(e) =>
+                            setWaConfig((prev) => ({ ...prev, webhookUrl: e.target.value }))
+                          }
+                          placeholder="https://n8n.tudominio.com/webhook/cierre-caja"
+                        />
+                      </div>
+                      <div>
+                        <Input
+                          label="Token de Autorización Bearer (Opcional)"
+                          type="password"
+                          value={waConfig.webhookToken}
+                          onChange={(e) =>
+                            setWaConfig((prev) => ({ ...prev, webhookToken: e.target.value }))
+                          }
+                          placeholder="Bearer token o secret key"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Botonera de Acciones y Pruebas */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={handleProbarWhatsApp}
+                        className="w-full sm:w-auto text-xs font-semibold"
+                        title="Abre WhatsApp Web con un reporte simulado de prueba"
+                      >
+                        <span>📲 Probar WhatsApp</span>
+                      </Button>
+
+                      {waConfig.webhookUrl && (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={handleProbarWebhook}
+                          loading={probandoWebhook}
+                          disabled={probandoWebhook}
+                          className="w-full sm:w-auto text-xs font-semibold"
+                          title="Envía una petición de prueba al Webhook"
+                        >
+                          <span>📡 Probar Webhook</span>
+                        </Button>
+                      )}
+                    </div>
+
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      size="sm"
+                      loading={guardandoWaConfig}
+                      disabled={guardandoWaConfig}
+                      className="w-full sm:w-auto text-xs font-bold shadow-xs bg-indigo-600 hover:bg-indigo-700 text-white"
+                    >
+                      Guardar Configuración
+                    </Button>
+                  </div>
+                </form>
               </div>
             </div>
           )}

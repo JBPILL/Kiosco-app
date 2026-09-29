@@ -3,6 +3,12 @@ import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { formatPrecio, formatFecha } from '../../lib/utils'
 import { isWebSerialSupported, imprimirCierreCajaEscPosDirecto } from '../../lib/escposPrinter'
+import { useAuthStore } from '../../stores/authStore'
+import {
+  getWhatsAppReportConfig,
+  formatearReporteCierreTexto,
+  generarEnlaceWhatsApp,
+} from '../../lib/whatsappReport'
 import toast from 'react-hot-toast'
 
 export interface DatosCierreCaja {
@@ -101,6 +107,31 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
     }
   }
 
+  const [copiandoTexto, setCopiandoTexto] = useState(false)
+
+  const handleEnviarWhatsApp = () => {
+    if (!datos) return
+    const kioscoId = useAuthStore.getState().usuario?.kiosco_id || useAuthStore.getState().kiosco?.id
+    const config = getWhatsAppReportConfig(kioscoId)
+    const texto = formatearReporteCierreTexto(datos)
+    const url = generarEnlaceWhatsApp(config.whatsappDueno, texto)
+    window.open(url, '_blank')
+  }
+
+  const handleCopiarTexto = async () => {
+    if (!datos) return
+    setCopiandoTexto(true)
+    try {
+      const texto = formatearReporteCierreTexto(datos)
+      await navigator.clipboard.writeText(texto)
+      toast.success('Resumen de caja copiado al portapapeles', { icon: '📋' })
+    } catch {
+      toast.error('No se pudo copiar automáticamente')
+    } finally {
+      setTimeout(() => setCopiandoTexto(false), 2000)
+    }
+  }
+
   return (
     <Modal
       isOpen={isOpen}
@@ -109,15 +140,41 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
       size="md"
       footer={
         <div className="w-full space-y-2">
+          {/* Acciones Digitales: WhatsApp y Copiar */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={handleEnviarWhatsApp}
+              className="w-full text-xs sm:text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs flex items-center justify-center gap-1.5"
+              title="Abrir WhatsApp con el reporte formateado para el dueño"
+            >
+              <span>📲 Enviar a WhatsApp</span>
+            </Button>
+
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleCopiarTexto}
+              className="w-full text-xs sm:text-sm font-semibold shadow-xs flex items-center justify-center gap-1.5"
+              title="Copiar el texto del cierre al portapapeles"
+            >
+              <span>{copiandoTexto ? '✅ Copiado' : '📋 Copiar Texto'}</span>
+            </Button>
+          </div>
+
+          {/* Acciones de Impresión Física */}
           <div className={isWebSerialSupported() ? "grid grid-cols-1 sm:grid-cols-2 gap-2" : "w-full"}>
             <Button
-              variant="primary"
+              variant="secondary"
               size="sm"
               onClick={handleImprimir}
               className="w-full text-xs sm:text-sm font-semibold shadow-xs"
               title="Abrir ventana de impresión del sistema o guardar como PDF"
             >
-              <span>Imprimir (Sistema / PDF)</span>
+              <span>🖨️ Imprimir (PDF)</span>
             </Button>
 
             {isWebSerialSupported() && (
@@ -130,7 +187,7 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
                 className="w-full text-xs sm:text-sm font-semibold shadow-xs"
                 title="Impresión térmica directa por cable USB/COM sin ventana de diálogo"
               >
-                <span>{imprimiendoSerial ? 'Imprimiendo...' : 'Imprimir Ticket USB'}</span>
+                <span>{imprimiendoSerial ? 'Imprimiendo...' : '⚡ Ticket USB'}</span>
               </Button>
             )}
           </div>
