@@ -22,6 +22,7 @@ import {
   generarEnlaceWhatsApp,
   enviarWebhookCierreCaja,
   formatearReporteCierreTexto,
+  formatearAvisoCierreWhatsAppPDF,
   abrirEnlaceExternoSeguro,
 } from '../lib/whatsappReport'
 import toast from 'react-hot-toast'
@@ -237,7 +238,7 @@ export function ConfigPage() {
       efectivoContado: 47000,
       diferencia: 0,
     }
-    const texto = formatearReporteCierreTexto(datosPrueba)
+    const texto = formatearAvisoCierreWhatsAppPDF(datosPrueba)
     const url = generarEnlaceWhatsApp(waConfig.whatsappDueno, texto)
     abrirEnlaceExternoSeguro(url)
   }

@@ -270,7 +270,9 @@ export const useCajaStore = create<CajaState>((set, get) => ({
           total_egresos: totalEgresos,
           efectivo_esperado_en_caja: baseEsperado + totalIngresosExtra - totalEgresos,
         }
-        set({ resumenActivo: resumen })
+        if (!sesionId || sesionId === get().sesionActiva?.id) {
+          set({ resumenActivo: resumen })
+        }
         return resumen
       }
 
@@ -334,7 +336,9 @@ export const useCajaStore = create<CajaState>((set, get) => ({
           sesionData.monto_inicial + totalEfectivo + totalIngresosExtra - totalEgresos,
       }
 
-      set({ resumenActivo: resumen })
+      if (!sesionId || sesionId === get().sesionActiva?.id) {
+        set({ resumenActivo: resumen })
+      }
       return resumen
     } catch (err) {
       console.error('Error al calcular resumen de caja:', err)

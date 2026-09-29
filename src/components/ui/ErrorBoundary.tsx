@@ -46,6 +46,17 @@ export class ErrorBoundary extends Component<Props, State> {
                 Tus datos de ventas, turnos de caja y operaciones se encuentran seguros y guardados.
               </p>
             </div>
+            {this.state.error && (
+              <details className="text-left text-[11px] bg-gray-900/90 p-3 rounded-xl border border-gray-700/80 text-gray-400 font-mono overflow-auto max-h-36">
+                <summary className="cursor-pointer text-gray-300 font-sans text-xs font-medium mb-1 select-none">
+                  Detalles técnicos del incidente
+                </summary>
+                <p className="text-red-400 font-bold">{this.state.error.name}: {this.state.error.message}</p>
+                {this.state.error.stack && (
+                  <pre className="mt-1 text-[10px] text-gray-500 whitespace-pre-wrap">{this.state.error.stack.slice(0, 400)}</pre>
+                )}
+              </details>
+            )}
             <div className="pt-2 flex flex-col gap-2">
               <Button variant="primary" size="sm" onClick={this.handleRecargar} className="w-full">
                 Recargar pantalla

@@ -296,84 +296,98 @@ export function CajaPage() {
   }
 
   const handleImprimirArqueoActual = () => {
-    if (!sesionActiva) return
-    const facturadoTotal = resumenActivo?.total_facturado || 0
-    const operacionesTotal = resumenActivo?.total_ventas || 0
-    const otrosPagos = Math.max(
-      0,
-      facturadoTotal -
-        ((resumenActivo?.total_efectivo || 0) +
-          (resumenActivo?.total_mercadopago || 0) +
-          (resumenActivo?.total_transferencia || 0) +
-          (resumenActivo?.total_tarjeta || 0))
-    )
+    try {
+      if (!sesionActiva) {
+        toast.error('No hay una sesión de caja activa')
+        return
+      }
+      const facturadoTotal = resumenActivo?.total_facturado || 0
+      const operacionesTotal = resumenActivo?.total_ventas || 0
+      const otrosPagos = Math.max(
+        0,
+        facturadoTotal -
+          ((resumenActivo?.total_efectivo || 0) +
+            (resumenActivo?.total_mercadopago || 0) +
+            (resumenActivo?.total_transferencia || 0) +
+            (resumenActivo?.total_tarjeta || 0))
+      )
 
-    const datos: DatosCierreCaja = {
-      kioscoNombre: kiosco?.nombre,
-      kioscoDireccion: kiosco?.direccion,
-      kioscoTelefono: kiosco?.telefono,
-      cajeroNombre: sesionActiva.usuario?.nombre || usuario?.nombre,
-      fechaApertura: sesionActiva.fecha_apertura,
-      fechaCierre: new Date().toISOString(),
-      montoInicial: sesionActiva.monto_inicial,
-      ventasPorMedio: [
-        { medio: 'Efectivo', total: resumenActivo?.total_efectivo || 0 },
-        { medio: 'Mercado Pago', total: resumenActivo?.total_mercadopago || 0 },
-        { medio: 'Transferencia', total: resumenActivo?.total_transferencia || 0 },
-        { medio: 'Tarjeta', total: resumenActivo?.total_tarjeta || 0 },
-        { medio: 'Fiado / Cta Cte', total: resumenActivo?.total_cuenta_corriente ?? otrosPagos },
-      ].filter((m) => m.total > 0),
-      totalVentas: facturadoTotal,
-      cantidadVentas: operacionesTotal,
-      ingresosExtra: resumenActivo?.total_ingresos_extra || 0,
-      egresosExtra: resumenActivo?.total_egresos || 0,
-      efectivoEsperado,
-      efectivoContado: efectivoEsperado,
-      diferencia: 0,
-      esParcial: true,
+      const datos: DatosCierreCaja = {
+        kioscoNombre: kiosco?.nombre,
+        kioscoDireccion: kiosco?.direccion,
+        kioscoTelefono: kiosco?.telefono,
+        cajeroNombre: sesionActiva.usuario?.nombre || usuario?.nombre || 'Personal',
+        fechaApertura: sesionActiva.fecha_apertura || new Date().toISOString(),
+        fechaCierre: new Date().toISOString(),
+        montoInicial: sesionActiva.monto_inicial || 0,
+        ventasPorMedio: [
+          { medio: 'Efectivo', total: resumenActivo?.total_efectivo || 0 },
+          { medio: 'Mercado Pago', total: resumenActivo?.total_mercadopago || 0 },
+          { medio: 'Transferencia', total: resumenActivo?.total_transferencia || 0 },
+          { medio: 'Tarjeta', total: resumenActivo?.total_tarjeta || 0 },
+          { medio: 'Fiado / Cta Cte', total: resumenActivo?.total_cuenta_corriente ?? otrosPagos },
+        ].filter((m) => m.total > 0),
+        totalVentas: facturadoTotal,
+        cantidadVentas: operacionesTotal,
+        ingresosExtra: resumenActivo?.total_ingresos_extra || 0,
+        egresosExtra: resumenActivo?.total_egresos || 0,
+        efectivoEsperado: efectivoEsperado || 0,
+        efectivoContado: efectivoEsperado || 0,
+        diferencia: 0,
+        esParcial: true,
+      }
+      setTicketCierre(datos)
+      setModalTicketCierreOpen(true)
+    } catch (err: any) {
+      console.error('Error al generar arqueo actual:', err)
+      toast.error('No se pudo preparar el arqueo actual')
     }
-    setTicketCierre(datos)
-    setModalTicketCierreOpen(true)
   }
 
   const handleImprimirHistorico = async (s: SesionHistorial) => {
-    const resumen = await cargarResumenSesion(s.id)
-    const facturadoTotal = resumen?.total_facturado || 0
-    const operacionesTotal = resumen?.total_ventas || 0
-    const otrosPagos = Math.max(
-      0,
-      facturadoTotal -
-        ((resumen?.total_efectivo || 0) +
-          (resumen?.total_mercadopago || 0) +
-          (resumen?.total_transferencia || 0) +
-          (resumen?.total_tarjeta || 0))
-    )
+    try {
+      const resumen = await cargarResumenSesion(s.id)
+      const facturadoTotal = resumen?.total_facturado || 0
+      const operacionesTotal = resumen?.total_ventas || 0
+      const otrosPagos = Math.max(
+        0,
+        facturadoTotal -
+          ((resumen?.total_efectivo || 0) +
+            (resumen?.total_mercadopago || 0) +
+            (resumen?.total_transferencia || 0) +
+            (resumen?.total_tarjeta || 0))
+      )
 
-    const datos: DatosCierreCaja = {
-      kioscoNombre: useAuthStore.getState().kiosco?.nombre,
-      kioscoDireccion: useAuthStore.getState().kiosco?.direccion,
-      kioscoTelefono: useAuthStore.getState().kiosco?.telefono,
-      cajeroNombre: s.usuario?.nombre || usuario?.nombre,
-      fechaApertura: s.fecha_apertura,
-      fechaCierre: s.fecha_cierre || s.fecha_apertura,
-      montoInicial: s.monto_inicial,
-      ventasPorMedio: [
-        { medio: 'Efectivo', total: resumen?.total_efectivo || 0 },
-        { medio: 'Mercado Pago', total: resumen?.total_mercadopago || 0 },
-        { medio: 'Transferencia', total: resumen?.total_transferencia || 0 },
-        { medio: 'Tarjeta', total: resumen?.total_tarjeta || 0 },
-        { medio: 'Fiado / Cta Cte', total: resumen?.total_cuenta_corriente ?? otrosPagos },
-      ].filter((m) => m.total > 0),
-      totalVentas: facturadoTotal,
-      cantidadVentas: operacionesTotal,
-      ingresosExtra: resumen?.total_ingresos_extra || 0,
-      egresosExtra: resumen?.total_egresos || 0,
-      efectivoEsperado: s.monto_final_sistema || (resumen?.efectivo_esperado_en_caja ?? s.monto_inicial),
-      efectivoContado: s.monto_final_declarado || 0,
-      diferencia: s.diferencia || 0,
+      const datos: DatosCierreCaja = {
+        kioscoNombre: useAuthStore.getState().kiosco?.nombre,
+        kioscoDireccion: useAuthStore.getState().kiosco?.direccion,
+        kioscoTelefono: useAuthStore.getState().kiosco?.telefono,
+        cajeroNombre: s.usuario?.nombre || usuario?.nombre || 'Personal',
+        fechaApertura: s.fecha_apertura || new Date().toISOString(),
+        fechaCierre: s.fecha_cierre || s.fecha_apertura || new Date().toISOString(),
+        montoInicial: s.monto_inicial || 0,
+        ventasPorMedio: [
+          { medio: 'Efectivo', total: resumen?.total_efectivo || 0 },
+          { medio: 'Mercado Pago', total: resumen?.total_mercadopago || 0 },
+          { medio: 'Transferencia', total: resumen?.total_transferencia || 0 },
+          { medio: 'Tarjeta', total: resumen?.total_tarjeta || 0 },
+          { medio: 'Fiado / Cta Cte', total: resumen?.total_cuenta_corriente ?? otrosPagos },
+        ].filter((m) => m.total > 0),
+        totalVentas: facturadoTotal,
+        cantidadVentas: operacionesTotal,
+        ingresosExtra: resumen?.total_ingresos_extra || 0,
+        egresosExtra: resumen?.total_egresos || 0,
+        efectivoEsperado: s.monto_final_sistema || (resumen?.efectivo_esperado_en_caja ?? s.monto_inicial) || 0,
+        efectivoContado: s.monto_final_declarado || 0,
+        diferencia: s.diferencia || 0,
+      }
+      setSesionDetalle(null)
+      setTicketCierre(datos)
+      setModalTicketCierreOpen(true)
+    } catch (err: any) {
+      console.error('Error al cargar ticket de cierre histórico:', err)
+      toast.error('No se pudo preparar el comprobante del turno')
     }
-    setTicketCierre(datos)
-    setModalTicketCierreOpen(true)
   }
 
   const handleAbrirModalMovimiento = (tipo: TipoMovimientoCaja) => {

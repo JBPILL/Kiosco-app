@@ -219,6 +219,34 @@ export function formatearReporteCierreTexto(datos: DatosCierreCaja): string {
 }
 
 /**
+ * Formatea un aviso sobrio, elegante y conciso para WhatsApp cuando se envía junto con el comprobante PDF.
+ */
+export function formatearAvisoCierreWhatsAppPDF(datos: DatosCierreCaja): string {
+  const nombreKiosco = (datos.kioscoNombre || 'KIOSKO').trim().toUpperCase()
+  const tipoTitulo = datos.esParcial ? 'ARQUEO PARCIAL (X)' : 'CIERRE DE CAJA (ARQUEO Z)'
+
+  const diff = datos.diferencia || 0
+  let diffTexto = 'Caja Cuadrada ($0)'
+  if (diff > 0) diffTexto = `+${formatPrecio(diff)} (Sobrante)`
+  else if (diff < 0) diffTexto = `${formatPrecio(diff)} (Faltante)`
+
+  const lineas: string[] = [
+    `*${tipoTitulo}*`,
+    `Comercio: *${nombreKiosco}*`,
+    `Fecha: ${formatFecha(datos.fechaCierre)}`,
+    `Cajero: ${datos.cajeroNombre || 'Personal'}`,
+    `Total Ventas: *${formatPrecio(datos.totalVentas || 0)}* (${datos.cantidadVentas || 0} op.)`,
+    `Efectivo en Caja: *${formatPrecio(datos.efectivoContado || 0)}*`,
+    `Diferencia: *${diffTexto}*`,
+    '----------------------------------------',
+    '📄 *Comprobante oficial en PDF generado.*',
+    'Registro resguardado de arqueo y auditoría.',
+  ]
+
+  return lineas.join('\n')
+}
+
+/**
  * Abre un enlace externo de forma 100% segura para PWAs y navegadores de escritorio.
  * Evita que Chromium PWA navegue la ventana principal de la app o quede en blanco.
  */
@@ -372,7 +400,7 @@ export async function procesarDespachoCierre(
   errorWebhook?: string
 }> {
   const config = getWhatsAppReportConfig(kioscoId)
-  const mensajeTexto = formatearReporteCierreTexto(datos)
+  const mensajeTexto = formatearAvisoCierreWhatsAppPDF(datos)
   const whatsappUrl = generarEnlaceWhatsApp(config.whatsappDueno, mensajeTexto)
 
   let webhookIntentado = false
