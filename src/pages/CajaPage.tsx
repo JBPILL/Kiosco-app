@@ -282,7 +282,7 @@ export function CajaPage() {
           .then((res) => {
             if (res.webhookIntentado) {
               if (res.webhookExito) {
-                toast.success('Reporte de cierre enviado por Webhook al dueño', { icon: '📡' })
+                toast.success('Reporte de cierre enviado por Webhook al dueño')
               } else {
                 toast.error(`Aviso Webhook: ${res.errorWebhook || 'Sin respuesta'}`, { duration: 4000 })
               }

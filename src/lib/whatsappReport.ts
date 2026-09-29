@@ -172,55 +172,48 @@ export function formatearReporteCierreTexto(datos: DatosCierreCaja): string {
   const rangoHorario = horaInicio && horaFin ? `${horaInicio} a ${horaFin}` : 'Turno cerrado'
 
   const lineas: string[] = [
-    `🧾 *${tipoTitulo}*`,
-    `🏪 *${nombreKiosco}*`,
-    '━━━━━━━━━━━━━━━━━━━━',
-    `👤 *Cajero:* ${datos.cajeroNombre || 'No asignado'}`,
-    `📅 *Fecha:* ${formatFecha(datos.fechaCierre)}`,
-    `⏱️ *Turno:* ${rangoHorario} (${duracion})`,
-    '━━━━━━━━━━━━━━━━━━━━',
-    '💰 *RESUMEN DE RECAUDACIÓN:*',
-    `• *Total Facturado:* ${formatPrecio(datos.totalVentas)}`,
-    `• *Operaciones Realizadas:* ${datos.cantidadVentas ?? 0} ventas`,
-    `• *Fondo Inicial de Caja:* ${formatPrecio(datos.montoInicial)}`,
+    `*${tipoTitulo}*`,
+    `Comercio: *${nombreKiosco}*`,
+    '----------------------------------------',
+    `Cajero: ${datos.cajeroNombre || 'No asignado'}`,
+    `Fecha: ${formatFecha(datos.fechaCierre)}`,
+    `Turno: ${rangoHorario} (${duracion})`,
+    '----------------------------------------',
+    `*TOTAL FACTURADO: ${formatPrecio(datos.totalVentas)}*`,
+    `Operaciones: ${datos.cantidadVentas ?? 0} ventas`,
+    `Fondo Inicial: ${formatPrecio(datos.montoInicial)}`,
     '',
-    '💳 *DESGLOSE POR MEDIO DE PAGO:*',
+    '*DESGLOSE POR MEDIO DE PAGO:*',
   ]
 
   if (datos.ventasPorMedio && datos.ventasPorMedio.length > 0) {
     for (const m of datos.ventasPorMedio) {
-      let icon = '💵'
-      const mNorm = m.medio.toLowerCase()
-      if (mNorm.includes('mercadopago') || mNorm.includes('mercado pago')) icon = '📱'
-      else if (mNorm.includes('transferencia')) icon = '🏦'
-      else if (mNorm.includes('tarjeta') || mNorm.includes('debito') || mNorm.includes('credito')) icon = '💳'
-      else if (mNorm.includes('corriente') || mNorm.includes('fiado')) icon = '📓'
-      lineas.push(`  ${icon} ${m.medio}: ${formatPrecio(m.total)}`)
+      lineas.push(`- ${m.medio}: ${formatPrecio(m.total)}`)
     }
   } else {
-    lineas.push('  _Sin ventas registradas en el turno_')
+    lineas.push('- Sin ventas registradas en el turno')
   }
 
   lineas.push('')
-  lineas.push('💸 *MOVIMIENTOS DE EFECTIVO:*')
-  lineas.push(`  ➕ Ingresos manuales: ${formatPrecio(datos.ingresosExtra)}`)
-  lineas.push(`  ➖ Egresos / Pagos: ${formatPrecio(datos.egresosExtra)}`)
-  lineas.push('━━━━━━━━━━━━━━━━━━━━')
-  lineas.push('🎯 *CONTROL DE ARQUEO:*')
-  lineas.push(`• *Efectivo Esperado:* ${formatPrecio(datos.efectivoEsperado)}`)
-  lineas.push(`• *Efectivo Contado:* ${formatPrecio(datos.efectivoContado)}`)
+  lineas.push('*MOVIMIENTOS DE CAJA:*')
+  lineas.push(`- Ingresos adicionales: ${formatPrecio(datos.ingresosExtra)}`)
+  lineas.push(`- Egresos / Pagos: ${formatPrecio(datos.egresosExtra)}`)
+  lineas.push('----------------------------------------')
+  lineas.push('*CONTROL DE ARQUEO:*')
+  lineas.push(`- Efectivo esperado: ${formatPrecio(datos.efectivoEsperado)}`)
+  lineas.push(`- Efectivo contado:  ${formatPrecio(datos.efectivoContado)}`)
 
   const diff = datos.diferencia
   if (Math.abs(diff) < 0.01) {
-    lineas.push('• *DIFERENCIA:* ✅ *Caja Cuadrada ($0,00)*')
+    lineas.push('*DIFERENCIA: Caja Cuadrada ($0,00)*')
   } else if (diff > 0) {
-    lineas.push(`• *DIFERENCIA:* 🟢 *SOBRANTE: +${formatPrecio(diff)}*`)
+    lineas.push(`*DIFERENCIA: Sobrante de +${formatPrecio(diff)}*`)
   } else {
-    lineas.push(`• *DIFERENCIA:* 🔴 *FALTANTE: ${formatPrecio(diff)}*`)
+    lineas.push(`*DIFERENCIA: Faltante de ${formatPrecio(diff)}*`)
   }
 
-  lineas.push('━━━━━━━━━━━━━━━━━━━━')
-  lineas.push('_Reporte generado por KioskoApp_')
+  lineas.push('----------------------------------------')
+  lineas.push('KioskoApp - Control de Auditoría')
 
   return lineas.join('\n')
 }

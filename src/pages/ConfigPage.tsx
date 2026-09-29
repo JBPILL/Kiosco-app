@@ -212,7 +212,6 @@ export function ConfigPage() {
   const handleProbarWhatsApp = () => {
     if (!waConfig.whatsappDueno.trim()) {
       toast('Abriendo WhatsApp para elegir destinatario (ingresá tu número para enviártelo directo)', {
-        icon: '💬',
         duration: 4000,
       })
     }
@@ -273,7 +272,7 @@ export function ConfigPage() {
     try {
       const res = await enviarWebhookCierreCaja(waConfig, datosPrueba, texto)
       if (res.ok) {
-        toast.success(`Webhook exitoso (Respuesta ${res.status || 200} OK)`, { icon: '📡' })
+        toast.success(`Webhook exitoso (Respuesta ${res.status || 200} OK)`)
       } else {
         toast.error(`Fallo Webhook: ${res.error}`)
       }
@@ -949,7 +948,6 @@ export function ConfigPage() {
                   <div className="p-4 bg-gray-50/70 dark:bg-gray-900/40 rounded-xl border border-gray-200 dark:border-gray-700/80 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm">📡</span>
                         <h3 className="text-xs font-bold text-gray-900 dark:text-gray-100">
                           Integración con Webhook (n8n, Make, Evolution API, Baileys)
                         </h3>
@@ -996,7 +994,7 @@ export function ConfigPage() {
                         className="w-full sm:w-auto text-xs font-semibold"
                         title="Abre WhatsApp Web con un reporte simulado de prueba"
                       >
-                        <span>📲 Probar WhatsApp</span>
+                        <span>Probar WhatsApp</span>
                       </Button>
 
                       {waConfig.webhookUrl && (
@@ -1010,7 +1008,7 @@ export function ConfigPage() {
                           className="w-full sm:w-auto text-xs font-semibold"
                           title="Envía una petición de prueba al Webhook"
                         >
-                          <span>📡 Probar Webhook</span>
+                          <span>Probar Webhook</span>
                         </Button>
                       )}
                     </div>

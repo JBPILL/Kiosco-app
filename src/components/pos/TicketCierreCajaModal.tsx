@@ -9,6 +9,7 @@ import {
   formatearReporteCierreTexto,
   generarEnlaceWhatsApp,
 } from '../../lib/whatsappReport'
+import { exportarComprobanteCierrePDF } from '../../lib/pdfCierreUtils'
 import toast from 'react-hot-toast'
 
 export interface DatosCierreCaja {
@@ -108,6 +109,7 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
   }
 
   const [copiandoTexto, setCopiandoTexto] = useState(false)
+  const [generandoPdf, setGenerandoPdf] = useState(false)
 
   const handleEnviarWhatsApp = () => {
     if (!datos) return
@@ -124,11 +126,28 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
     try {
       const texto = formatearReporteCierreTexto(datos)
       await navigator.clipboard.writeText(texto)
-      toast.success('Resumen de caja copiado al portapapeles', { icon: '📋' })
+      toast.success('Resumen de caja copiado al portapapeles')
     } catch {
       toast.error('No se pudo copiar automáticamente')
     } finally {
       setTimeout(() => setCopiandoTexto(false), 2000)
+    }
+  }
+
+  const handleExportarPDF = () => {
+    if (!datos) return
+    setGenerandoPdf(true)
+    try {
+      const ok = exportarComprobanteCierrePDF(datos)
+      if (ok) {
+        toast.success('Comprobante PDF descargado')
+      } else {
+        toast.error('Error al generar el comprobante PDF')
+      }
+    } catch (e: any) {
+      toast.error('Error al generar PDF: ' + (e?.message || 'Error'))
+    } finally {
+      setGenerandoPdf(false)
     }
   }
 
@@ -140,17 +159,30 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
       size="md"
       footer={
         <div className="w-full space-y-2">
-          {/* Acciones Digitales: WhatsApp y Copiar */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {/* Fila 1: Comunicación y Resguardo Digital */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Button
               type="button"
               variant="primary"
               size="sm"
               onClick={handleEnviarWhatsApp}
-              className="w-full text-xs sm:text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs flex items-center justify-center gap-1.5"
-              title="Abrir WhatsApp con el reporte formateado para el dueño"
+              className="w-full text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+              title="Abrir WhatsApp con el reporte formal para el dueño"
             >
-              <span>📲 Enviar a WhatsApp</span>
+              <span>Enviar por WhatsApp</span>
+            </Button>
+
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleExportarPDF}
+              loading={generandoPdf}
+              disabled={generandoPdf}
+              className="w-full text-xs font-semibold shadow-xs"
+              title="Descargar comprobante en formato PDF"
+            >
+              <span>{generandoPdf ? 'Generando PDF...' : 'Descargar PDF'}</span>
             </Button>
 
             <Button
@@ -158,23 +190,23 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
               variant="secondary"
               size="sm"
               onClick={handleCopiarTexto}
-              className="w-full text-xs sm:text-sm font-semibold shadow-xs flex items-center justify-center gap-1.5"
+              className="w-full text-xs font-semibold shadow-xs"
               title="Copiar el texto del cierre al portapapeles"
             >
-              <span>{copiandoTexto ? '✅ Copiado' : '📋 Copiar Texto'}</span>
+              <span>{copiandoTexto ? 'Copiado' : 'Copiar Texto'}</span>
             </Button>
           </div>
 
-          {/* Acciones de Impresión Física */}
+          {/* Fila 2: Impresión Física */}
           <div className={isWebSerialSupported() ? "grid grid-cols-1 sm:grid-cols-2 gap-2" : "w-full"}>
             <Button
               variant="secondary"
               size="sm"
               onClick={handleImprimir}
-              className="w-full text-xs sm:text-sm font-semibold shadow-xs"
-              title="Abrir ventana de impresión del sistema o guardar como PDF"
+              className="w-full text-xs font-semibold shadow-xs"
+              title="Abrir ventana de impresión del sistema"
             >
-              <span>🖨️ Imprimir (PDF)</span>
+              <span>Imprimir Ticket</span>
             </Button>
 
             {isWebSerialSupported() && (
@@ -184,13 +216,14 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
                 onClick={handleImprimirEscPos}
                 loading={imprimiendoSerial}
                 disabled={imprimiendoSerial}
-                className="w-full text-xs sm:text-sm font-semibold shadow-xs"
+                className="w-full text-xs font-semibold shadow-xs"
                 title="Impresión térmica directa por cable USB/COM sin ventana de diálogo"
               >
-                <span>{imprimiendoSerial ? 'Imprimiendo...' : '⚡ Ticket USB'}</span>
+                <span>{imprimiendoSerial ? 'Imprimiendo...' : 'Ticket USB'}</span>
               </Button>
             )}
           </div>
+
           <Button variant="secondary" size="sm" fullWidth onClick={onClose}>
             Cerrar
           </Button>
