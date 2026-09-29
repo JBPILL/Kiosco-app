@@ -219,15 +219,45 @@ export function formatearReporteCierreTexto(datos: DatosCierreCaja): string {
 }
 
 /**
- * Genera el enlace directo wa.me con el mensaje encodeado
+ * Abre un enlace externo de forma 100% segura para PWAs y navegadores de escritorio.
+ * Evita que Chromium PWA navegue la ventana principal de la app o quede en blanco.
+ */
+export function abrirEnlaceExternoSeguro(url: string) {
+  if (typeof window === 'undefined' || !url) return
+  try {
+    const a = document.createElement('a')
+    a.href = url
+    a.target = '_blank'
+    a.rel = 'noopener noreferrer'
+    a.style.position = 'fixed'
+    a.style.top = '-9999px'
+    a.style.left = '-9999px'
+    a.style.opacity = '0'
+    document.body.appendChild(a)
+    a.click()
+    setTimeout(() => {
+      try {
+        a.remove()
+      } catch {
+        // Ignorar
+      }
+    }, 400)
+  } catch (err) {
+    console.warn('Fallback a window.open:', err)
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+}
+
+/**
+ * Genera el enlace directo a WhatsApp (usando api.whatsapp.com para máxima compatibilidad con PWAs)
  */
 export function generarEnlaceWhatsApp(telefono: string, mensaje: string): string {
   const numeroLimpio = sanitizarNumeroWhatsApp(telefono)
   const encodedText = encodeURIComponent(mensaje)
   if (numeroLimpio) {
-    return `https://wa.me/${numeroLimpio}?text=${encodedText}`
+    return `https://api.whatsapp.com/send?phone=${numeroLimpio}&text=${encodedText}`
   }
-  return `https://wa.me/?text=${encodedText}`
+  return `https://api.whatsapp.com/send?text=${encodedText}`
 }
 
 /**
@@ -349,10 +379,10 @@ export async function procesarDespachoCierre(
   let webhookExito = false
   let errorWebhook: string | undefined
 
-  // Si está activada la apertura automática de WhatsApp, disparar inmediatamente para evitar que el navegador bloquee el popup
+  // Si está activada la apertura automática de WhatsApp, disparar inmediatamente con método seguro
   if (config.habilitado && config.autoAbrirWhatsApp && typeof window !== 'undefined') {
     try {
-      window.open(whatsappUrl, '_blank')
+      abrirEnlaceExternoSeguro(whatsappUrl)
     } catch (err) {
       console.warn('No se pudo abrir automáticamente la pestaña de WhatsApp:', err)
     }

@@ -9,6 +9,7 @@ import { POSPage } from './pages/POSPage'
 import { CajaPage } from './pages/CajaPage'
 import { usePwaStore } from './stores/pwaStore'
 import { SingleInstanceGuard } from './components/ui/SingleInstanceGuard'
+import { ErrorBoundary } from './components/ui/ErrorBoundary'
 
 // Carga diferida (Code Splitting) para módulos secundarios y administrativos
 const CatalogoPage = lazy(() => import('./pages/CatalogoPage').then((m) => ({ default: m.CatalogoPage })))
@@ -84,7 +85,8 @@ function App() {
 
   return (
     <SingleInstanceGuard>
-      <BrowserRouter>
+      <ErrorBoundary>
+        <BrowserRouter>
         <AppToaster />
         {!usuario ? (
           <Routes>
@@ -216,7 +218,8 @@ function App() {
             </Routes>
           </Suspense>
         )}
-      </BrowserRouter>
+        </BrowserRouter>
+      </ErrorBoundary>
     </SingleInstanceGuard>
   )
 }

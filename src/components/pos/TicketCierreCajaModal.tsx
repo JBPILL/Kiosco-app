@@ -8,6 +8,7 @@ import {
   getWhatsAppReportConfig,
   formatearReporteCierreTexto,
   generarEnlaceWhatsApp,
+  abrirEnlaceExternoSeguro,
 } from '../../lib/whatsappReport'
 import { exportarComprobanteCierrePDF } from '../../lib/pdfCierreUtils'
 import toast from 'react-hot-toast'
@@ -117,7 +118,7 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
     const config = getWhatsAppReportConfig(kioscoId)
     const texto = formatearReporteCierreTexto(datos)
     const url = generarEnlaceWhatsApp(config.whatsappDueno, texto)
-    window.open(url, '_blank')
+    abrirEnlaceExternoSeguro(url)
   }
 
   const handleCopiarTexto = async () => {

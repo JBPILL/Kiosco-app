@@ -4,39 +4,54 @@
  * Formatea un número como precio argentino
  * Ejemplo: 2500.50 → "$2.500,50"
  */
-export function formatPrecio(monto: number): string {
+export function formatPrecio(monto?: number | null): string {
+  const val = typeof monto === 'number' && !isNaN(monto) ? monto : 0
   return new Intl.NumberFormat('es-AR', {
     style: 'currency',
     currency: 'ARS',
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
-  }).format(monto)
+  }).format(val)
 }
 
 /**
  * Formatea una fecha ISO a formato legible
  * Ejemplo: "2026-09-11T15:30:00" → "11/09/2026 15:30"
  */
-export function formatFecha(fecha: string): string {
-  return new Intl.DateTimeFormat('es-AR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(fecha))
+export function formatFecha(fecha?: string | null): string {
+  if (!fecha) return '—'
+  try {
+    const d = new Date(fecha)
+    if (isNaN(d.getTime())) return '—'
+    return new Intl.DateTimeFormat('es-AR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(d)
+  } catch {
+    return '—'
+  }
 }
 
 /**
  * Formatea solo la fecha sin hora
  * Ejemplo: "2026-09-11" → "11/09/2026"
  */
-export function formatFechaCorta(fecha: string): string {
-  return new Intl.DateTimeFormat('es-AR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(new Date(fecha))
+export function formatFechaCorta(fecha?: string | null): string {
+  if (!fecha) return '—'
+  try {
+    const d = new Date(fecha)
+    if (isNaN(d.getTime())) return '—'
+    return new Intl.DateTimeFormat('es-AR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(d)
+  } catch {
+    return '—'
+  }
 }
 
 /**
