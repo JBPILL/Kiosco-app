@@ -4,6 +4,7 @@ import { Button } from '../ui/Button'
 import { formatPrecio, formatFecha } from '../../lib/utils'
 import { generarImagenQRAFIP } from '../../lib/afipQR'
 import { imprimirTicketEscPosDirecto, isWebSerialSupported } from '../../lib/escposPrinter'
+import { exportarTicketVentaPDF, compartirTicketVentaWhatsApp } from '../../lib/pdfVentaUtils'
 import toast from 'react-hot-toast'
 
 export interface TicketItem {
@@ -62,23 +63,7 @@ interface TicketReceiptModalProps {
   ticket: TicketData | null
 }
 
-function formatearTelefonoWhatsApp(tel: string): string {
-  let limpio = tel.replace(/\D/g, '')
-  if (!limpio) return ''
-  // Si empieza con 0 (ej: 011...), sacarle el 0 inicial
-  if (limpio.startsWith('0')) limpio = limpio.slice(1)
-  // Si tiene el '15' en celulares de Argentina (ej: 11 15 2345 6789 -> 111523456789)
-  if (limpio.length === 12 && (limpio.startsWith('1115') || limpio.slice(2, 4) === '15')) {
-    limpio = limpio.slice(0, 2) + limpio.slice(4)
-  }
-  // Si tiene 10 dígitos (ej: 1123456789 o 3412345678)
-  if (limpio.length === 10) {
-    limpio = '549' + limpio
-  } else if (limpio.length === 12 && limpio.startsWith('54') && !limpio.startsWith('549')) {
-    limpio = '549' + limpio.slice(2)
-  }
-  return limpio
-}
+
 
 export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptModalProps) {
   const [anchoPapel, setAnchoPapel] = useState<'58mm' | '80mm'>(() => {
@@ -92,6 +77,8 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
   const [mostrarInputTelefono, setMostrarInputTelefono] = useState(false)
   const [qrDataUrl, setQrDataUrl] = useState<string>('')
   const [imprimiendoSerial, setImprimiendoSerial] = useState(false)
+  const [enviandoWhatsApp, setEnviandoWhatsApp] = useState(false)
+  const [generandoPdf, setGenerandoPdf] = useState(false)
   const inputTelefonoRef = useRef<HTMLInputElement>(null)
   const ticketScrollRef = useRef<HTMLDivElement>(null)
 
@@ -211,70 +198,49 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
     }
   }
 
-  const generarTextoWhatsApp = () => {
-    let msg = `*${ticket.kioscoNombre || 'Kiosko'}*\n`
-    if (ticket.kioscoDireccion) msg += `${ticket.kioscoDireccion}\n`
-    if (ticket.kioscoTelefono) msg += `Tel: ${ticket.kioscoTelefono}\n`
-    if (ticket.afip) {
-      msg += `*FACTURA ${ticket.afip.letra} N° ${String(ticket.afip.puntoVenta).padStart(4, '0')}-${String(ticket.afip.nroComprobante).padStart(8, '0')}*\n`
-    } else {
-      msg += `Ticket #${ticket.ventaId.slice(0, 8).toUpperCase()}\n`
-    }
-    msg += `Fecha: ${formatFecha(ticket.fecha)}\n`
-    msg += `--------------------------------\n`
-    ticket.items.forEach((it) => {
-      const cantStr = it.cantidad % 1 === 0 ? `${it.cantidad}x` : `${it.cantidad} kg x`
-      msg += `${cantStr} ${it.descripcion} ($${it.precioUnitario.toLocaleString('es-AR')}) = $${it.subtotal.toLocaleString('es-AR')}\n`
-      if (it.promoNombre) {
-        msg += `   [${it.promoNombre}]\n`
+
+
+  const handleExportarPDF = async () => {
+    if (!ticket) return
+    setGenerandoPdf(true)
+    try {
+      const ok = await exportarTicketVentaPDF(ticket)
+      if (ok) {
+        toast.success('Ticket PDF descargado')
+      } else {
+        toast.error('No se pudo generar el comprobante PDF')
       }
-    })
-    msg += `--------------------------------\n`
-    if (ticket.ajuste) {
-      msg += `Subtotal: $${ticket.subtotal.toLocaleString('es-AR')}\n`
-      msg += `${ticket.ajuste.descripcion}: ${ticket.ajuste.esDescuento ? '-' : '+'}$${Math.abs(ticket.ajuste.monto).toLocaleString('es-AR')}\n`
+    } catch (e: any) {
+      toast.error('Error al generar PDF: ' + (e?.message || 'Error'))
+    } finally {
+      setGenerandoPdf(false)
     }
-    msg += `*TOTAL: $${ticket.total.toLocaleString('es-AR')}*\n`
-    msg += `Pago: ${ticket.medioPago}\n`
-    if (ticket.clienteNombre) {
-      msg += `Cliente: ${ticket.clienteNombre}\n`
-    }
-    if (ticket.pagaCon !== undefined && ticket.pagaCon > 0) {
-      msg += `Abonó: $${ticket.pagaCon.toLocaleString('es-AR')} | Vuelto: $${(ticket.vuelto || 0).toLocaleString('es-AR')}\n`
-    }
-    if (ticket.notas) {
-      msg += `Notas: ${ticket.notas}\n`
-    }
-    if (ticket.afip) {
-      msg += `--------------------------------\n`
-      msg += `CAE: ${ticket.afip.cae} | Vto: ${ticket.afip.vtoCae}\n`
-      if (ticket.afip.qrUrl) {
-        msg += `Verificar en ARCA: ${ticket.afip.qrUrl}\n`
-      }
-    }
-    msg += `--------------------------------\n`
-    msg += `¡Muchas gracias por su compra!`
-    return encodeURIComponent(msg)
   }
 
   const handleBotonWhatsApp = () => {
-    if (!mostrarInputTelefono) {
+    const tel = telefonoWhatsApp || ticket.clienteTelefono || ''
+    if (!tel && !mostrarInputTelefono) {
       setMostrarInputTelefono(true)
       setTimeout(() => {
         inputTelefonoRef.current?.focus()
       }, 60)
-    } else {
-      handleCompartirWhatsApp()
+      return
     }
+    handleCompartirWhatsApp()
   }
 
-  const handleCompartirWhatsApp = () => {
-    const texto = generarTextoWhatsApp()
-    const telLimpio = formatearTelefonoWhatsApp(telefonoWhatsApp || ticket.clienteTelefono || '')
-    const url = telLimpio
-      ? `https://api.whatsapp.com/send?phone=${telLimpio}&text=${texto}`
-      : `https://api.whatsapp.com/send?text=${texto}`
-    window.open(url, '_blank')
+  const handleCompartirWhatsApp = async () => {
+    if (!ticket) return
+    setEnviandoWhatsApp(true)
+    try {
+      const tel = telefonoWhatsApp || ticket.clienteTelefono || ''
+      await compartirTicketVentaWhatsApp(ticket, tel)
+      setMostrarInputTelefono(false)
+    } catch (e: any) {
+      toast.error('Error al enviar ticket por WhatsApp: ' + (e?.message || 'Error'))
+    } finally {
+      setEnviandoWhatsApp(false)
+    }
   }
 
   return (
@@ -285,21 +251,51 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
       size="lg"
       footer={
         <div className="w-full space-y-2">
-          {/* Fila 1: Métodos de Impresión */}
-          <div className={isWebSerialSupported() ? "grid grid-cols-1 sm:grid-cols-2 gap-2" : "w-full"}>
+          {/* Fila 1: Métodos de Impresión y Descarga */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <Button
               variant="primary"
               size="sm"
               onClick={handleImprimir}
               className="w-full text-xs sm:text-sm font-semibold shadow-xs"
-              title="Abrir ventana de impresión del sistema o guardar como PDF"
+              title="Abrir ventana de impresión del sistema"
             >
               <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="6 9 6 2 18 2 18 9"/>
                 <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
                 <rect x="6" y="14" width="12" height="8"/>
               </svg>
-              <span>Imprimir (Sistema / PDF)</span>
+              <span>Imprimir Ticket</span>
+            </Button>
+
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleExportarPDF}
+              loading={generandoPdf}
+              disabled={generandoPdf}
+              className="w-full text-xs sm:text-sm font-semibold shadow-xs"
+              title="Descargar comprobante en formato PDF"
+            >
+              <span>{generandoPdf ? 'Generando PDF...' : 'Descargar PDF'}</span>
+            </Button>
+          </div>
+
+          {/* Fila 2: Canales Digitales y Cierre */}
+          <div className={isWebSerialSupported() ? "grid grid-cols-1 sm:grid-cols-3 gap-2" : "grid grid-cols-1 sm:grid-cols-2 gap-2"}>
+            <Button
+              variant="success"
+              size="sm"
+              onClick={handleBotonWhatsApp}
+              loading={enviandoWhatsApp}
+              disabled={enviandoWhatsApp}
+              className="w-full text-xs sm:text-sm font-semibold shadow-xs flex items-center justify-center gap-1.5"
+              title="Enviar ticket de venta en formato PDF por WhatsApp"
+            >
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
+              </svg>
+              <span>{enviandoWhatsApp ? 'Enviando...' : mostrarInputTelefono ? 'Listo para Enviar' : 'Enviar WhatsApp (PDF)'}</span>
             </Button>
 
             {isWebSerialSupported() && (
@@ -312,24 +308,9 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
                 className="w-full text-xs sm:text-sm font-semibold shadow-xs"
                 title="Impresión térmica directa por cable USB/COM sin ventana de diálogo"
               >
-                <span>{imprimiendoSerial ? 'Imprimiendo...' : 'Imprimir Ticket USB'}</span>
+                <span>{imprimiendoSerial ? 'Imprimiendo...' : 'Ticket USB'}</span>
               </Button>
             )}
-          </div>
-
-          {/* Fila 2: Canales Digitales y Cierre */}
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              variant="success"
-              size="sm"
-              onClick={handleBotonWhatsApp}
-              className="w-full text-xs sm:text-sm font-semibold shadow-xs"
-            >
-              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
-              </svg>
-              <span>{mostrarInputTelefono ? 'Listo para Enviar' : 'WhatsApp'}</span>
-            </Button>
 
             <Button
               variant="secondary"
@@ -614,7 +595,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
                 <svg className="w-4 h-4 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
                 </svg>
-                <span>Enviar comprobante por WhatsApp</span>
+                <span>Enviar comprobante PDF por WhatsApp</span>
               </div>
               <button
                 type="button"
@@ -641,9 +622,10 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
               <button
                 type="button"
                 onClick={handleCompartirWhatsApp}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition-all shadow-xs"
+                disabled={enviandoWhatsApp}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition-all shadow-xs disabled:opacity-50"
               >
-                <span>Enviar</span>
+                <span>{enviandoWhatsApp ? 'Enviando...' : 'Enviar'}</span>
               </button>
             </div>
             <p className="text-[11px] text-gray-500 dark:text-gray-400">
