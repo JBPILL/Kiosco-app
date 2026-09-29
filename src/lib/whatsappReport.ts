@@ -279,8 +279,14 @@ export function abrirEnlaceExternoSeguro(url: string) {
 /**
  * Genera el enlace directo a WhatsApp (usando api.whatsapp.com para máxima compatibilidad con PWAs)
  */
-export function generarEnlaceWhatsApp(telefono: string, mensaje: string): string {
+export function generarEnlaceWhatsApp(telefono: string, mensaje?: string): string {
   const numeroLimpio = sanitizarNumeroWhatsApp(telefono)
+  if (!mensaje || !mensaje.trim()) {
+    if (numeroLimpio) {
+      return `https://api.whatsapp.com/send?phone=${numeroLimpio}`
+    }
+    return `https://api.whatsapp.com/`
+  }
   const encodedText = encodeURIComponent(mensaje)
   if (numeroLimpio) {
     return `https://api.whatsapp.com/send?phone=${numeroLimpio}&text=${encodedText}`

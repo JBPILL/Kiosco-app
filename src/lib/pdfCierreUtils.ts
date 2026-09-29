@@ -9,7 +9,6 @@ import { sanitizarNombreArchivo } from './exportUtils'
 import {
   generarEnlaceWhatsApp,
   abrirEnlaceExternoSeguro,
-  formatearAvisoCierreWhatsAppPDF,
 } from './whatsappReport'
 import toast from 'react-hot-toast'
 import type { DatosCierreCaja } from '../components/pos/TicketCierreCajaModal'
@@ -130,11 +129,11 @@ export function crearDocumentoPDFCierre(datos: DatosCierreCaja): { doc: jsPDF; f
 
   // Total General Facturado
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8)
+  doc.setFontSize(7.5)
   const cantVentasTxt = datos.cantidadVentas ? ` (${datos.cantidadVentas} op.)` : ''
-  doc.text(`TOTAL FACTURADO${cantVentasTxt}:`, margin, y + 0.5)
-  doc.text(formatPrecio(datos.totalVentas || 0), pageWidth - margin, y + 0.5, { align: 'right' })
-  y += 5.5
+  doc.text(`TOTAL FACTURADO${cantVentasTxt}:`, margin, y)
+  doc.text(formatPrecio(datos.totalVentas || 0), pageWidth - margin, y, { align: 'right' })
+  y += 4.5
 
   // 5. Movimientos de Caja (si hubo)
   const ingresosExtra = datos.ingresosExtra || 0
@@ -183,14 +182,14 @@ export function crearDocumentoPDFCierre(datos: DatosCierreCaja): { doc: jsPDF; f
 
   // Diferencia destacada
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(7.8)
+  doc.setFontSize(7.5)
   doc.text('Diferencia de arqueo:', margin, y)
   const diff = datos.diferencia || 0
-  let diffTexto = '$ 0 (Caja cuadrada)'
+  let diffTexto = '$ 0 (Exacto)'
   if (diff > 0) diffTexto = `+${formatPrecio(diff)} (Sobrante)`
   else if (diff < 0) diffTexto = `${formatPrecio(diff)} (Faltante)`
   doc.text(diffTexto, pageWidth - margin, y, { align: 'right' })
-  y += 6.5
+  y += 5.5
 
   // 7. Cuadro de Firmas Oficiales
   doc.setLineDashPattern([], 0)
@@ -271,7 +270,6 @@ export async function compartirComprobanteCierreWhatsApp(
         await navigator.share({
           files: [pdfFile],
           title: `Cierre de Caja - ${datos.kioscoNombre || 'Kiosco'}`,
-          text: `Comprobante de cierre de caja en PDF (${datos.kioscoNombre || 'Kiosco'})`,
         })
         return { ok: true, metodo: 'share' }
       } catch (err: any) {
@@ -282,15 +280,14 @@ export async function compartirComprobanteCierreWhatsApp(
       }
     }
 
-    // Fallback para escritorio (Windows / PWA): Descargar el PDF y abrir el chat de WhatsApp
+    // Fallback para escritorio (Windows / PWA): Descargar el PDF y abrir el chat de WhatsApp sin texto preestablecido
     doc.save(fileName)
 
-    const mensajeResumen = formatearAvisoCierreWhatsAppPDF(datos)
-    const url = generarEnlaceWhatsApp(telefonoDueno || '', mensajeResumen)
+    const url = generarEnlaceWhatsApp(telefonoDueno || '', '')
     abrirEnlaceExternoSeguro(url)
 
-    toast.success('Comprobante PDF descargado y chat de WhatsApp abierto. ¡Listo para adjuntarlo!', {
-      duration: 5000,
+    toast.success('Comprobante PDF descargado y WhatsApp abierto.', {
+      duration: 4000,
     })
 
     return { ok: true, metodo: 'whatsapp_web' }

@@ -310,9 +310,9 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
                     </div>
                   ))
                 )}
-                <div className="flex justify-between items-center text-sm font-bold pt-1.5 border-t border-dotted border-gray-300 mt-1">
-                  <span>TOTAL FACTURADO{cantidadVentas ? ` (${cantidadVentas} op.)` : ''}:</span>
-                  <span>{formatPrecio(totalVentas)}</span>
+                <div className="flex justify-between items-baseline text-[11px] font-bold pt-1.5 border-t border-dotted border-gray-300 mt-1">
+                  <span className="truncate pr-2">TOTAL FACTURADO{cantidadVentas ? ` (${cantidadVentas} op.)` : ''}:</span>
+                  <span className="whitespace-nowrap">{formatPrecio(totalVentas)}</span>
                 </div>
               </div>
 
@@ -346,19 +346,19 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
                   <span>Efectivo contado físico:</span>
                   <span className="font-bold">{formatPrecio(efectivoContado)}</span>
                 </div>
-                <div className="flex justify-between text-xs font-bold pt-1.5 border-t border-dotted border-gray-400 mt-1">
+                <div className="flex justify-between items-baseline text-[11px] font-bold pt-1.5 border-t border-dotted border-gray-400 mt-1">
                   <span>Diferencia:</span>
                   <span
-                    className={
+                    className={`whitespace-nowrap ${
                       Math.abs(diferencia) < 0.01
                         ? 'text-emerald-700'
                         : diferencia > 0
                         ? 'text-blue-700'
                         : 'text-red-700'
-                    }
+                    }`}
                   >
                     {Math.abs(diferencia) < 0.01
-                      ? '$0 (Caja Cuadrada)'
+                      ? '$0 (Exacto)'
                       : diferencia > 0
                       ? `+${formatPrecio(diferencia)} (Sobrante)`
                       : `${formatPrecio(diferencia)} (Faltante)`}
