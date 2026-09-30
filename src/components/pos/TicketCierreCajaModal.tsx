@@ -6,6 +6,7 @@ import { isWebSerialSupported, imprimirCierreCajaEscPosDirecto } from '../../lib
 import { useAuthStore } from '../../stores/authStore'
 import { getWhatsAppReportConfig, formatearAvisoCierreWhatsAppPDF } from '../../lib/whatsappReport'
 import { exportarComprobanteCierrePDF, compartirComprobanteCierreWhatsApp } from '../../lib/pdfCierreUtils'
+import { getAnchoTicketGuardado, guardarAnchoTicket, type AnchoPapelTicket } from '../../lib/ticketPreferences'
 import toast from 'react-hot-toast'
 
 export interface DatosCierreCaja {
@@ -34,19 +35,38 @@ interface TicketCierreCajaModalProps {
 }
 
 export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCajaModalProps) {
-  const [anchoPapel, setAnchoPapel] = useState<'58mm' | '80mm'>('80mm')
+  // Inicialización síncrona con el ancho térmico guardado en el sistema (evita saltos o renders en 80mm)
+  const [anchoPapel, setAnchoPapel] = useState<AnchoPapelTicket>(getAnchoTicketGuardado)
   const [imprimiendoSerial, setImprimiendoSerial] = useState(false)
   const [enviandoWhatsApp, setEnviandoWhatsApp] = useState(false)
   const [generandoPdf, setGenerandoPdf] = useState(false)
   const [copiandoTexto, setCopiandoTexto] = useState(false)
 
-  // Restaurar preferencia de ancho de papel guardada
+  // Sincronizar en tiempo real si el ancho cambia en otra ventana o al abrir el modal
   useEffect(() => {
-    if (isOpen && typeof window !== 'undefined') {
-      const saved = localStorage.getItem('kioskopos_ancho_ticket')
-      if (saved === '58mm' || saved === '80mm') setAnchoPapel(saved)
+    if (isOpen) {
+      const saved = getAnchoTicketGuardado()
+      if (saved !== anchoPapel) {
+        setAnchoPapel(saved)
+      }
     }
   }, [isOpen])
+
+  useEffect(() => {
+    const handleCambio = (e: Event) => {
+      const nuevo = (e as CustomEvent<AnchoPapelTicket>).detail
+      if (nuevo === '58mm' || nuevo === '80mm') {
+        setAnchoPapel(nuevo)
+      }
+    }
+    window.addEventListener('kioskopos_ancho_ticket_change', handleCambio)
+    return () => window.removeEventListener('kioskopos_ancho_ticket_change', handleCambio)
+  }, [])
+
+  const cambiarAnchoPapel = (ancho: AnchoPapelTicket) => {
+    setAnchoPapel(ancho)
+    guardarAnchoTicket(ancho)
+  }
 
   if (!datos) return null
 
@@ -82,7 +102,7 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
     try {
       const kioscoId = useAuthStore.getState().usuario?.kiosco_id || useAuthStore.getState().kiosco?.id
       const config = getWhatsAppReportConfig(kioscoId)
-      await compartirComprobanteCierreWhatsApp(datos, config.whatsappDueno)
+      await compartirComprobanteCierreWhatsApp(datos, config.whatsappDueno, anchoPapel)
     } catch (e: any) {
       toast.error('Error al procesar el envío de WhatsApp: ' + (e?.message || 'Error'))
     } finally {
@@ -94,9 +114,9 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
     if (!datos) return
     setGenerandoPdf(true)
     try {
-      const ok = exportarComprobanteCierrePDF(datos)
+      const ok = exportarComprobanteCierrePDF(datos, anchoPapel)
       if (ok) {
-        toast.success('Comprobante PDF descargado')
+        toast.success(`Comprobante PDF (${anchoPapel}) descargado`)
       } else {
         toast.error('Error al generar el comprobante PDF')
       }
@@ -221,12 +241,7 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
           <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 p-0.5 bg-gray-200/60 dark:bg-gray-800">
             <button
               type="button"
-              onClick={() => {
-                setAnchoPapel('58mm')
-                try {
-                  localStorage.setItem('kioskopos_ancho_ticket', '58mm')
-                } catch {}
-              }}
+              onClick={() => cambiarAnchoPapel('58mm')}
               className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
                 anchoPapel === '58mm'
                   ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
@@ -237,12 +252,7 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
             </button>
             <button
               type="button"
-              onClick={() => {
-                setAnchoPapel('80mm')
-                try {
-                  localStorage.setItem('kioskopos_ancho_ticket', '80mm')
-                } catch {}
-              }}
+              onClick={() => cambiarAnchoPapel('80mm')}
               className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
                 anchoPapel === '80mm'
                   ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'

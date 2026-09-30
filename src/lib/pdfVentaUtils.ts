@@ -8,6 +8,7 @@ import { formatPrecio, formatFecha } from './utils'
 import { sanitizarNombreArchivo } from './exportUtils'
 import { generarImagenQRAFIP } from './afipQR'
 import { generarEnlaceWhatsApp, abrirEnlaceExternoSeguro } from './whatsappReport'
+import { getAnchoTicketGuardado, type AnchoPapelTicket } from './ticketPreferences'
 import toast from 'react-hot-toast'
 import type { TicketData } from '../components/pos/TicketReceiptModal'
 
@@ -31,27 +32,34 @@ export function formatearTelefonoWhatsAppVenta(tel: string): string {
 
 /**
  * Construye la instancia jsPDF y el nombre de archivo del ticket de venta.
+ * Soporta dinámicamente rollos continuos de 58mm y 80mm.
  */
-export async function crearDocumentoPDFVenta(ticket: TicketData): Promise<{ doc: jsPDF; fileName: string }> {
+export async function crearDocumentoPDFVenta(
+  ticket: TicketData,
+  anchoPapel?: AnchoPapelTicket
+): Promise<{ doc: jsPDF; fileName: string }> {
+  const ancho = anchoPapel || getAnchoTicketGuardado()
+  const es58 = ancho === '58mm'
+  const pageWidth = es58 ? 58 : 80
+  const margin = es58 ? 3.5 : 5.5
+
   // Cálculo de altura dinámica
-  let altoMm = 140
+  let altoMm = es58 ? 130 : 140
   const items = ticket.items || []
-  altoMm += items.length * 5.5
+  altoMm += items.length * (es58 ? 5 : 5.5)
 
   if (ticket.ajuste) altoMm += 8
   if (ticket.pagos && ticket.pagos.length > 1) altoMm += ticket.pagos.length * 4
   if (ticket.pagaCon !== undefined && ticket.pagaCon > 0) altoMm += 8
   if (ticket.notas) altoMm += 8
-  if (ticket.afip) altoMm += 45 // Espacio para recuadro fiscal, CAE y QR
+  if (ticket.afip) altoMm += es58 ? 40 : 45 // Espacio para recuadro fiscal, CAE y QR
 
-  const pageWidth = 80
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
-    format: [pageWidth, Math.max(160, altoMm)],
+    format: [pageWidth, Math.max(es58 ? 145 : 160, altoMm)],
   })
 
-  const margin = 5.5
   let y = 7
 
   const colorOscuro = [20, 24, 33]
@@ -188,7 +196,7 @@ export async function crearDocumentoPDFVenta(ticket: TicketData): Promise<{ doc:
   for (const it of items) {
     const cantStr = it.cantidad % 1 === 0 ? `${it.cantidad}x ` : `${it.cantidad} kg x `
     const descCompleta = `${cantStr}${it.descripcion}`
-    doc.text(descCompleta.slice(0, 28), margin, y)
+    doc.text(descCompleta.slice(0, es58 ? 21 : 28), margin, y)
     const subStr = it.subtotal < 0 ? `-${formatPrecio(Math.abs(it.subtotal))}` : formatPrecio(it.subtotal)
     doc.text(subStr, pageWidth - margin, y, { align: 'right' })
     y += 3.4
@@ -266,7 +274,7 @@ export async function crearDocumentoPDFVenta(ticket: TicketData): Promise<{ doc:
       try {
         const qrDataUrl = await generarImagenQRAFIP(ticket.afip.qrUrl, 160)
         if (qrDataUrl) {
-          const qrSize = 22
+          const qrSize = es58 ? 18 : 22
           doc.addImage(qrDataUrl, 'PNG', pageWidth / 2 - qrSize / 2, y, qrSize, qrSize)
           y += qrSize + 2
         }
@@ -276,12 +284,12 @@ export async function crearDocumentoPDFVenta(ticket: TicketData): Promise<{ doc:
     }
 
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(7)
+    doc.setFontSize(es58 ? 6.5 : 7)
     doc.text(`CAE: ${ticket.afip.cae}  |  Vto. CAE: ${ticket.afip.vtoCae}`, pageWidth / 2, y, { align: 'center' })
     y += 3.2
 
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(6)
+    doc.setFontSize(es58 ? 5.5 : 6)
     doc.setTextColor(colorGris[0], colorGris[1], colorGris[2])
     doc.text('Comprobante Autorizado por AFIP/ARCA (RG 4892)', pageWidth / 2, y, { align: 'center' })
     y += 3.5
@@ -290,14 +298,14 @@ export async function crearDocumentoPDFVenta(ticket: TicketData): Promise<{ doc:
   // 6. Pie de Ticket
   y += 2
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(7.5)
+  doc.setFontSize(es58 ? 7 : 7.5)
   doc.setTextColor(colorOscuro[0], colorOscuro[1], colorOscuro[2])
   doc.text('¡Muchas gracias por su compra!', pageWidth / 2, y, { align: 'center' })
   y += 3.2
 
   if (!ticket.afip) {
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(6)
+    doc.setFontSize(es58 ? 5.5 : 6)
     doc.setTextColor(colorGris[0], colorGris[1], colorGris[2])
     doc.text('Comprobante no válido como factura', pageWidth / 2, y, { align: 'center' })
   }
@@ -306,17 +314,20 @@ export async function crearDocumentoPDFVenta(ticket: TicketData): Promise<{ doc:
   const comercioClean = sanitizarNombreArchivo(ticket.kioscoNombre || 'ticket')
   const fechaStr = new Date(ticket.fecha).toISOString().slice(0, 10)
   const idCorto = ticket.ventaId.slice(0, 6)
-  const fileName = `ticket_${comercioClean}_${idCorto}_${fechaStr}.pdf`
+  const fileName = `ticket_${comercioClean}_${idCorto}_${ancho}_${fechaStr}.pdf`
 
   return { doc, fileName }
 }
 
 /**
- * Descarga directamente el ticket de venta en PDF en el equipo.
+ * Descarga directamente el ticket de venta en PDF en el equipo respetando el ancho de papel térmico.
  */
-export async function exportarTicketVentaPDF(ticket: TicketData): Promise<boolean> {
+export async function exportarTicketVentaPDF(
+  ticket: TicketData,
+  anchoPapel?: AnchoPapelTicket
+): Promise<boolean> {
   try {
-    const { doc, fileName } = await crearDocumentoPDFVenta(ticket)
+    const { doc, fileName } = await crearDocumentoPDFVenta(ticket, anchoPapel)
     doc.save(fileName)
     return true
   } catch (error) {
@@ -326,7 +337,7 @@ export async function exportarTicketVentaPDF(ticket: TicketData): Promise<boolea
 }
 
 /**
- * Comparte el comprobante PDF de venta por WhatsApp:
+ * Comparte el comprobante PDF de venta por WhatsApp en la medida térmica configurada (58mm u 80mm):
  * - En celulares o navegadores compatibles: abre el menú nativo compartiendo directamente el archivo PDF sin texto preestablecido.
  * - En computadoras de escritorio (Windows PWA / Brave / Chrome):
  *   1. Descarga el archivo PDF localmente en la máquina.
@@ -334,10 +345,11 @@ export async function exportarTicketVentaPDF(ticket: TicketData): Promise<boolea
  */
 export async function compartirTicketVentaWhatsApp(
   ticket: TicketData,
-  telefonoCliente?: string
+  telefonoCliente?: string,
+  anchoPapel?: AnchoPapelTicket
 ): Promise<{ ok: boolean; metodo: 'share' | 'whatsapp_web' | 'cancelado' }> {
   try {
-    const { doc, fileName } = await crearDocumentoPDFVenta(ticket)
+    const { doc, fileName } = await crearDocumentoPDFVenta(ticket, anchoPapel)
     const pdfBlob = doc.output('blob')
     const pdfFile = new File([pdfBlob], fileName, { type: 'application/pdf' })
 

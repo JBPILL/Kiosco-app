@@ -4,6 +4,7 @@ import { formatPrecio, formatFecha } from '../../lib/utils'
 import { generarImagenQRAFIP } from '../../lib/afipQR'
 import { imprimirTicketEscPosDirecto, isWebSerialSupported } from '../../lib/escposPrinter'
 import { exportarTicketVentaPDF, compartirTicketVentaWhatsApp } from '../../lib/pdfVentaUtils'
+import { getAnchoTicketGuardado, guardarAnchoTicket, type AnchoPapelTicket } from '../../lib/ticketPreferences'
 import toast from 'react-hot-toast'
 
 export interface TicketItem {
@@ -65,13 +66,7 @@ interface TicketReceiptModalProps {
 
 
 export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptModalProps) {
-  const [anchoPapel, setAnchoPapel] = useState<'58mm' | '80mm'>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('kioskopos_ancho_ticket')
-      if (saved === '58mm' || saved === '80mm') return saved
-    }
-    return '58mm'
-  })
+  const [anchoPapel, setAnchoPapel] = useState<AnchoPapelTicket>(getAnchoTicketGuardado)
   const [telefonoWhatsApp, setTelefonoWhatsApp] = useState('')
   const [mostrarInputTelefono, setMostrarInputTelefono] = useState(false)
   const [qrDataUrl, setQrDataUrl] = useState<string>('')
@@ -154,14 +149,31 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
     }
   }, [isOpen, ticket?.ventaId, ticket?.clienteTelefono, anchoPapel, qrDataUrl])
 
-  const cambiarAnchoPapel = (ancho: '58mm' | '80mm') => {
+  const cambiarAnchoPapel = (ancho: AnchoPapelTicket) => {
     setAnchoPapel(ancho)
-    try {
-      localStorage.setItem('kioskopos_ancho_ticket', ancho)
-    } catch (e) {
-      console.warn('Error al guardar preferencia de ticket:', e)
-    }
+    guardarAnchoTicket(ancho)
   }
+
+  // Sincronizar en tiempo real con cambios de formato realizados en otros modales (ej. Cierre de Caja)
+  useEffect(() => {
+    if (isOpen) {
+      const saved = getAnchoTicketGuardado()
+      if (saved !== anchoPapel) {
+        setAnchoPapel(saved)
+      }
+    }
+  }, [isOpen])
+
+  useEffect(() => {
+    const handleCambio = (e: Event) => {
+      const nuevo = (e as CustomEvent<AnchoPapelTicket>).detail
+      if (nuevo === '58mm' || nuevo === '80mm') {
+        setAnchoPapel(nuevo)
+      }
+    }
+    window.addEventListener('kioskopos_ancho_ticket_change', handleCambio)
+    return () => window.removeEventListener('kioskopos_ancho_ticket_change', handleCambio)
+  }, [])
 
   useEffect(() => {
     if (ticket?.afip?.qrUrl) {
@@ -194,15 +206,13 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
     }
   }
 
-
-
   const handleExportarPDF = async () => {
     if (!ticket) return
     setGenerandoPdf(true)
     try {
-      const ok = await exportarTicketVentaPDF(ticket)
+      const ok = await exportarTicketVentaPDF(ticket, anchoPapel)
       if (ok) {
-        toast.success('Ticket PDF descargado')
+        toast.success(`Ticket PDF (${anchoPapel}) descargado`)
       } else {
         toast.error('No se pudo generar el comprobante PDF')
       }
@@ -240,7 +250,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
     }
     setEnviandoWhatsApp(true)
     try {
-      await compartirTicketVentaWhatsApp(ticket, tel)
+      await compartirTicketVentaWhatsApp(ticket, tel, anchoPapel)
       setMostrarInputTelefono(false)
     } catch (e: any) {
       toast.error('Error al enviar ticket por WhatsApp: ' + (e?.message || 'Error'))

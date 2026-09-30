@@ -1023,15 +1023,15 @@ export function BalanceContableTab() {
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider">
-                      <th className="py-2.5 px-3">Fecha y Hora</th>
-                      <th className="py-2.5 px-3">Tipo</th>
-                      <th className="py-2.5 px-3">Comprobante / Ref</th>
-                      <th className="py-2.5 px-3">Concepto / Detalle</th>
-                      <th className="py-2.5 px-3">Medio de Pago</th>
-                      <th className="py-2.5 px-3 text-right text-emerald-600 dark:text-emerald-400">
+                      <th className="py-2.5 px-3 text-left w-40">Fecha y Hora</th>
+                      <th className="py-2.5 px-3 text-center w-28">Tipo</th>
+                      <th className="py-2.5 px-3 text-center w-48">Comprobante / Ref</th>
+                      <th className="py-2.5 px-3 text-left">Concepto / Detalle</th>
+                      <th className="py-2.5 px-3 text-center w-36">Medio de Pago</th>
+                      <th className="py-2.5 px-3 text-right text-emerald-600 dark:text-emerald-400 w-32">
                         Ingreso (+)
                       </th>
-                      <th className="py-2.5 px-3 text-right text-red-600 dark:text-red-400">
+                      <th className="py-2.5 px-3 text-right text-red-600 dark:text-red-400 w-32">
                         Egreso (-)
                       </th>
                     </tr>
@@ -1045,45 +1045,45 @@ export function BalanceContableTab() {
                         <td className="py-2 px-3 whitespace-nowrap text-gray-600 dark:text-gray-400 tabular-nums">
                           {formatFecha(asiento.fecha)}
                         </td>
-                        <td className="py-2 px-3 whitespace-nowrap">
+                        <td className="py-2 px-3 whitespace-nowrap text-center">
                           {asiento.tipo === 'VENTA' && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
                               VENTA
                             </span>
                           )}
                           {asiento.tipo === 'COMPRA' && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300">
+                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300">
                               COMPRA REMITO
                             </span>
                           )}
                           {asiento.tipo === 'PAGO_PROVEEDOR' && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300">
+                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300">
                               PAGO PROV.
                             </span>
                           )}
                           {asiento.tipo === 'EGRESO_CAJA' && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300">
+                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300">
                               EGRESO CAJA
                             </span>
                           )}
                           {asiento.tipo === 'INGRESO_CAJA' && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300">
+                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300">
                               INGRESO CAJA
                             </span>
                           )}
                           {asiento.tipo === 'DEVOLUCION' && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
                               DEVOLUCIÓN
                             </span>
                           )}
                         </td>
-                        <td className="py-2 px-3 whitespace-nowrap tabular-nums font-semibold text-gray-800 dark:text-gray-200">
+                        <td className="py-2 px-3 whitespace-nowrap tabular-nums font-semibold text-gray-800 dark:text-gray-200 text-center">
                           {asiento.tipo === 'VENTA' && asiento.ventaData ? (
-                            <div className="flex items-center gap-1.5">
+                            <div className="inline-flex items-center justify-center gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => setTicketParaVer(ventaToTicketData(asiento.ventaData, kiosco))}
-                                className={`font-mono font-bold hover:underline cursor-pointer px-2 py-0.5 rounded transition-colors text-left ${
+                                className={`font-mono font-bold hover:underline cursor-pointer px-2 py-0.5 rounded transition-colors text-center ${
                                   asiento.ventaData.afip_cae
                                     ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 hover:text-blue-900'
                                     : 'bg-indigo-50/80 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800'
@@ -1103,7 +1103,7 @@ export function BalanceContableTab() {
                               )}
                             </div>
                           ) : (
-                            asiento.comprobante
+                            <span className="font-mono text-center">{asiento.comprobante}</span>
                           )}
                         </td>
                         <td className="py-2 px-3">
@@ -1116,14 +1116,22 @@ export function BalanceContableTab() {
                             </p>
                           )}
                         </td>
-                        <td className="py-2 px-3 whitespace-nowrap text-gray-600 dark:text-gray-400">
+                        <td className="py-2 px-3 whitespace-nowrap text-center text-gray-600 dark:text-gray-400">
                           {asiento.medio_pago}
                         </td>
                         <td className="py-2 px-3 text-right font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-                          {asiento.ingreso > 0 ? formatPrecio(asiento.ingreso) : '—'}
+                          {asiento.ingreso > 0 ? (
+                            formatPrecio(asiento.ingreso)
+                          ) : (
+                            <span className="text-gray-400 dark:text-gray-600 font-normal mr-1">—</span>
+                          )}
                         </td>
                         <td className="py-2 px-3 text-right font-bold tabular-nums text-red-600 dark:text-red-400">
-                          {asiento.egreso > 0 ? formatPrecio(asiento.egreso) : '—'}
+                          {asiento.egreso > 0 ? (
+                            formatPrecio(asiento.egreso)
+                          ) : (
+                            <span className="text-gray-400 dark:text-gray-600 font-normal mr-1">—</span>
+                          )}
                         </td>
                       </tr>
                     ))}

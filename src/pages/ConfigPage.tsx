@@ -25,6 +25,7 @@ import {
   formatearAvisoCierreWhatsAppPDF,
   abrirEnlaceExternoSeguro,
 } from '../lib/whatsappReport'
+import { getAnchoTicketGuardado, guardarAnchoTicket, type AnchoPapelTicket } from '../lib/ticketPreferences'
 import toast from 'react-hot-toast'
 
 export function ConfigPage() {
@@ -57,6 +58,13 @@ export function ConfigPage() {
   const [nombreKiosco, setNombreKiosco] = useState('')
   const [direccion, setDireccion] = useState('')
   const [telefono, setTelefono] = useState('')
+  const [anchoImpresora, setAnchoImpresora] = useState<AnchoPapelTicket>(getAnchoTicketGuardado)
+
+  const handleCambiarAnchoImpresora = (nuevo: AnchoPapelTicket) => {
+    setAnchoImpresora(nuevo)
+    guardarAnchoTicket(nuevo)
+    toast.success(`Formato de papel predeterminado actualizado a ${nuevo}`)
+  }
 
   // Configuración de Notificaciones (WhatsApp & Webhook)
   const [waConfig, setWaConfig] = useState<WhatsAppReportConfig>({
@@ -720,6 +728,42 @@ export function ConfigPage() {
                       value={telefono}
                       onChange={(e) => setTelefono(e.target.value)}
                     />
+                  </div>
+                  
+                  {/* Selector de Ancho de Ticket Térmico Predeterminado */}
+                  <div className="pt-2 border-t border-gray-100 dark:border-gray-700/80 space-y-2">
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
+                      Ancho Predeterminado de Comprobantes Térmicos
+                    </label>
+                    <div className="grid grid-cols-2 gap-3 max-w-sm">
+                      <button
+                        type="button"
+                        onClick={() => handleCambiarAnchoImpresora('58mm')}
+                        className={`p-2.5 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                          anchoImpresora === '58mm'
+                            ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-500/30 shadow-xs'
+                            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                        <span>58 mm (Estándar Kiosco)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleCambiarAnchoImpresora('80mm')}
+                        className={`p-2.5 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                          anchoImpresora === '80mm'
+                            ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-500/30 shadow-xs'
+                            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                        <span>80 mm (Comandera Ancha)</span>
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                      Define los milímetros de impresión predeterminados para los tickets de venta y los arqueos de caja Z en pantalla y en PDF.
+                    </p>
                   </div>
 
                   <div className="pt-2 flex justify-end">
