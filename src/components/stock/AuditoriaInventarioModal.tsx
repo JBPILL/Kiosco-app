@@ -111,7 +111,8 @@ export function AuditoriaInventarioModal({
     let totalFaltante = 0
 
     for (const it of itemsAuditados) {
-      const diff = Number((it.stockContado - it.stockTeorico).toFixed(3))
+      const rawDiff = it.stockContado - it.stockTeorico
+      const diff = Math.abs(rawDiff) < 0.0001 ? 0 : Number(rawDiff.toFixed(3))
       if (diff !== 0) conDiferencia++
       if (diff > 0) totalSobrante += diff
       else if (diff < 0) totalFaltante += Math.abs(diff)
@@ -120,8 +121,8 @@ export function AuditoriaInventarioModal({
     return {
       totalItems: itemsAuditados.length,
       conDiferencia,
-      totalSobrante,
-      totalFaltante,
+      totalSobrante: Number(totalSobrante.toFixed(3)) || 0,
+      totalFaltante: Number(totalFaltante.toFixed(3)) || 0,
     }
   }, [itemsAuditados])
 
@@ -294,11 +295,15 @@ export function AuditoriaInventarioModal({
           </div>
           <div>
             <span className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-bold block">Sobrantes</span>
-            <span className="font-extrabold text-emerald-600 dark:text-emerald-400">+{metricas.totalSobrante}</span>
+            <span className={`font-extrabold ${metricas.totalSobrante > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-700 dark:text-gray-300'}`}>
+              {metricas.totalSobrante > 0 ? `+${metricas.totalSobrante}` : '0'}
+            </span>
           </div>
           <div>
             <span className="text-[10px] text-red-600 dark:text-red-400 uppercase font-bold block">Faltantes</span>
-            <span className="font-extrabold text-red-600 dark:text-red-400">-{metricas.totalFaltante}</span>
+            <span className={`font-extrabold ${metricas.totalFaltante > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'}`}>
+              {metricas.totalFaltante > 0 ? `-${metricas.totalFaltante}` : '0'}
+            </span>
           </div>
         </div>
 
@@ -322,7 +327,8 @@ export function AuditoriaInventarioModal({
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
                   {itemsAuditados.map((it) => {
-                    const diff = Number((it.stockContado - it.stockTeorico).toFixed(3))
+                    const rawDiff = it.stockContado - it.stockTeorico
+                    const diff = Math.abs(rawDiff) < 0.0001 ? 0 : Number(rawDiff.toFixed(3))
                     return (
                       <tr key={it.producto.id} className="hover:bg-gray-50/70 dark:hover:bg-gray-800/40">
                         <td className="px-3 py-1.5">
