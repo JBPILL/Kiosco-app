@@ -37,13 +37,32 @@ export interface ProductFormData {
   nombre_envase?: string
 }
 
+interface FormState {
+  descripcion: string
+  precio_costo: string
+  precio_venta: string
+  stock_actual: string
+  stock_minimo: string
+  categoria_id: string | null
+  proveedor_id: string | null
+  codigo_barras: string | null
+  requiere_vencimiento: boolean
+  dias_alerta_vencimiento: number
+  es_pesable: boolean
+  unidad_medida: 'UN' | 'KG' | 'GR' | 'LT'
+  plu_balanza: string | null
+  es_retornable: boolean
+  precio_envase: string
+  nombre_envase: string
+}
+
 export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }: ProductFormProps) {
-  const [form, setForm] = useState<ProductFormData>({
+  const [form, setForm] = useState<FormState>({
     descripcion: '',
-    precio_costo: 0,
-    precio_venta: 0,
-    stock_actual: 0,
-    stock_minimo: 5,
+    precio_costo: '',
+    precio_venta: '',
+    stock_actual: '0',
+    stock_minimo: '5',
     categoria_id: null,
     codigo_barras: null,
     requiere_vencimiento: false,
@@ -52,7 +71,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
     unidad_medida: 'UN',
     plu_balanza: null,
     es_retornable: false,
-    precio_envase: 0,
+    precio_envase: '',
     nombre_envase: '',
     proveedor_id: null,
   })
@@ -81,30 +100,30 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
   useEffect(() => {
     if (producto) {
       setForm({
-        descripcion: producto.descripcion,
-        precio_costo: producto.precio_costo,
-        precio_venta: producto.precio_venta,
-        stock_actual: producto.stock_actual,
-        stock_minimo: producto.stock_minimo,
+        descripcion: producto.descripcion || '',
+        precio_costo: producto.precio_costo ? String(producto.precio_costo) : '',
+        precio_venta: producto.precio_venta ? String(producto.precio_venta) : '',
+        stock_actual: String(producto.stock_actual ?? 0),
+        stock_minimo: String(producto.stock_minimo ?? 5),
         categoria_id: producto.categoria_id,
         proveedor_id: producto.proveedor_id || null,
-        codigo_barras: producto.codigo_barras,
-        requiere_vencimiento: producto.requiere_vencimiento || false,
+        codigo_barras: producto.codigo_barras || null,
+        requiere_vencimiento: Boolean(producto.requiere_vencimiento),
         dias_alerta_vencimiento: producto.dias_alerta_vencimiento || 15,
-        es_pesable: producto.es_pesable || false,
+        es_pesable: Boolean(producto.es_pesable),
         unidad_medida: producto.unidad_medida || 'UN',
         plu_balanza: producto.plu_balanza || null,
-        es_retornable: producto.es_retornable || false,
-        precio_envase: producto.precio_envase || 0,
+        es_retornable: Boolean(producto.es_retornable),
+        precio_envase: producto.precio_envase ? String(producto.precio_envase) : '',
         nombre_envase: producto.nombre_envase || '',
       })
     } else {
       setForm({
         descripcion: '',
-        precio_costo: 0,
-        precio_venta: 0,
-        stock_actual: 0,
-        stock_minimo: 5,
+        precio_costo: '',
+        precio_venta: '',
+        stock_actual: '0',
+        stock_minimo: '5',
         categoria_id: null,
         proveedor_id: null,
         codigo_barras: null,
@@ -114,7 +133,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
         unidad_medida: 'UN',
         plu_balanza: null,
         es_retornable: false,
-        precio_envase: 0,
+        precio_envase: '',
         nombre_envase: '',
       })
     }
@@ -123,8 +142,64 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (guardando) return
+
+    const descripcionLimpia = form.descripcion.trim()
+    if (!descripcionLimpia) {
+      toast.error('La descripción o nombre del producto es obligatoria')
+      return
+    }
+
+    const ventaNum = parseFloat(form.precio_venta)
+    if (isNaN(ventaNum) || ventaNum <= 0) {
+      toast.error('El precio de venta debe ser un monto mayor a $0')
+      return
+    }
+
+    const costoNum = parseFloat(form.precio_costo) || 0
+    if (costoNum < 0) {
+      toast.error('El precio de costo no puede ser negativo')
+      return
+    }
+
+    const stockActualNum = form.es_pesable
+      ? parseFloat(form.stock_actual) || 0
+      : parseInt(form.stock_actual, 10) || 0
+
+    const stockMinimoNum = form.es_pesable
+      ? parseFloat(form.stock_minimo) || 0
+      : parseInt(form.stock_minimo, 10) || 0
+
+    if (stockActualNum < 0) {
+      toast.error('El stock inicial no puede ser negativo')
+      return
+    }
+
+    if (stockMinimoNum < 0) {
+      toast.error('El stock mínimo no puede ser negativo')
+      return
+    }
+
     setGuardando(true)
-    const ok = await onGuardar(form)
+    const dataToSend: ProductFormData = {
+      descripcion: descripcionLimpia,
+      precio_costo: costoNum,
+      precio_venta: ventaNum,
+      stock_actual: stockActualNum,
+      stock_minimo: stockMinimoNum,
+      categoria_id: form.categoria_id,
+      proveedor_id: form.proveedor_id,
+      codigo_barras: form.codigo_barras?.trim() || null,
+      requiere_vencimiento: form.requiere_vencimiento,
+      dias_alerta_vencimiento: form.dias_alerta_vencimiento,
+      es_pesable: form.es_pesable,
+      unidad_medida: form.unidad_medida,
+      plu_balanza: form.plu_balanza?.trim() || null,
+      es_retornable: form.es_retornable,
+      precio_envase: parseFloat(form.precio_envase) || 0,
+      nombre_envase: form.nombre_envase.trim() || undefined,
+    }
+
+    const ok = await onGuardar(dataToSend)
     setGuardando(false)
     if (ok) onClose()
   }
@@ -134,8 +209,10 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
     toast.success(`Código capturado: ${code}`)
   }
 
-  const margen = form.precio_venta - form.precio_costo
-  const margenPct = form.precio_costo > 0 ? ((margen / form.precio_costo) * 100).toFixed(1) : '—'
+  const costoNum = parseFloat(form.precio_costo) || 0
+  const ventaNum = parseFloat(form.precio_venta) || 0
+  const margen = ventaNum - costoNum
+  const margenPct = costoNum > 0 ? ((margen / costoNum) * 100).toFixed(1) : '—'
 
   return (
     <>
@@ -207,8 +284,8 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
                   step="0.01"
                   min="0"
                   placeholder="0.00"
-                  value={form.precio_costo || ''}
-                  onChange={(e) => setForm({ ...form, precio_costo: parseFloat(e.target.value) || 0 })}
+                  value={form.precio_costo}
+                  onChange={(e) => setForm({ ...form, precio_costo: e.target.value })}
                 />
                 <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
                   Costo de compra al distribuidor (opcional).
@@ -221,8 +298,8 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
                   step="0.01"
                   min="0"
                   placeholder="0.00"
-                  value={form.precio_venta || ''}
-                  onChange={(e) => setForm({ ...form, precio_venta: parseFloat(e.target.value) || 0 })}
+                  value={form.precio_venta}
+                  onChange={(e) => setForm({ ...form, precio_venta: e.target.value })}
                   required
                 />
                 <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
@@ -232,7 +309,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
             </div>
 
             {/* Indicador de margen en tiempo real */}
-            {form.precio_costo > 0 && form.precio_venta > 0 && (
+            {costoNum > 0 && ventaNum > 0 && (
               <div className={`text-xs font-semibold px-3 py-2 rounded-lg flex items-center justify-between border ${
                 margen >= 0
                   ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
@@ -257,12 +334,9 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
                   type="number"
                   min="0"
                   step={form.es_pesable ? '0.001' : '1'}
-                  value={form.stock_actual || ''}
+                  value={form.stock_actual}
                   placeholder="0"
-                  onChange={(e) => {
-                    const val = form.es_pesable ? parseFloat(e.target.value) : parseInt(e.target.value, 10)
-                    setForm({ ...form, stock_actual: isNaN(val) ? 0 : val })
-                  }}
+                  onChange={(e) => setForm({ ...form, stock_actual: e.target.value })}
                 />
                 <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
                   Cantidad física real en el negocio.
@@ -274,12 +348,9 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
                   type="number"
                   min="0"
                   step={form.es_pesable ? '0.001' : '1'}
-                  value={form.stock_minimo || ''}
+                  value={form.stock_minimo}
                   placeholder="5"
-                  onChange={(e) => {
-                    const val = form.es_pesable ? parseFloat(e.target.value) : parseInt(e.target.value, 10)
-                    setForm({ ...form, stock_minimo: isNaN(val) ? 0 : val })
-                  }}
+                  onChange={(e) => setForm({ ...form, stock_minimo: e.target.value })}
                 />
                 <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
                   Avisa cuando falte mercadería para reponer.
@@ -494,7 +565,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
                     ...form,
                     es_retornable: checked,
                     nombre_envase: checked ? form.nombre_envase || tipoSugerido?.nombre || '1lt' : '',
-                    precio_envase: checked ? form.precio_envase || tipoSugerido?.precio || 1500 : 0,
+                    precio_envase: checked ? form.precio_envase || String(tipoSugerido?.precio || 1500) : '',
                   })
                 }}
                 className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 dark:border-gray-600"
@@ -522,7 +593,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
                             setForm({
                               ...form,
                               nombre_envase: tipo.nombre,
-                              precio_envase: tipo.precio,
+                              precio_envase: String(tipo.precio),
                             })
                           }
                           className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all border cursor-pointer ${
@@ -548,8 +619,8 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
                       min="0"
                       step="50"
                       placeholder="Ej: 1500"
-                      value={form.precio_envase || ''}
-                      onChange={(e) => setForm({ ...form, precio_envase: parseFloat(e.target.value) || 0 })}
+                      value={form.precio_envase}
+                      onChange={(e) => setForm({ ...form, precio_envase: e.target.value })}
                       className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-indigo-500 font-bold tabular-nums"
                     />
                     <p className="text-[10px] text-gray-400 mt-0.5">

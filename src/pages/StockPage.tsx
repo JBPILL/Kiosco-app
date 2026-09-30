@@ -288,6 +288,28 @@ export function StockPage() {
     }
   }, [productoSeleccionado, cantidad, tipoMovimiento])
 
+  // Validación de cantidad según la operación (en AJUSTE se permite 0 para conteo de faltante total)
+  const esCantidadValida = useMemo(() => {
+    if (!productoSeleccionado) return false
+    if (cantidad.trim() === '') return false
+    const num = parseFloat(cantidad)
+    if (isNaN(num)) return false
+    if (tipoMovimiento === 'AJUSTE') {
+      return num >= 0
+    }
+    return num > 0
+  }, [productoSeleccionado, cantidad, tipoMovimiento])
+
+  const cerrarModalMovimiento = () => {
+    setModalOpen(false)
+    setProductoSeleccionado(null)
+    setBusquedaProductoInput('')
+    setCantidad('1')
+    setNotas('')
+    setFechaVencimiento('')
+    setNumeroLote('')
+  }
+
   // Confirmar y registrar movimiento
   const registrarMovimiento = async () => {
     if (guardando) return
@@ -301,8 +323,12 @@ export function StockPage() {
       ? Number(parseFloat(cantidad).toFixed(3))
       : parseInt(cantidad, 10)
 
-    if (isNaN(cantNum) || cantNum <= 0) {
-      toast.error('Ingresá una cantidad válida mayor a 0')
+    if (isNaN(cantNum) || (tipoMovimiento === 'AJUSTE' ? cantNum < 0 : cantNum <= 0)) {
+      toast.error(
+        tipoMovimiento === 'AJUSTE'
+          ? 'El stock físico contado debe ser mayor o igual a 0'
+          : 'Ingresá una cantidad válida mayor a 0'
+      )
       return
     }
 
@@ -1195,7 +1221,7 @@ export function StockPage() {
       {/* Modal de Registro de Movimiento Renovado */}
       <Modal
         isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={cerrarModalMovimiento}
         title="Registrar Movimiento de Stock"
         size="lg"
         footer={
@@ -1204,7 +1230,7 @@ export function StockPage() {
               type="button"
               variant="secondary"
               disabled={guardando}
-              onClick={() => setModalOpen(false)}
+              onClick={cerrarModalMovimiento}
               className="order-2 sm:order-1 sm:w-1/3 py-2.5 text-sm font-semibold"
             >
               Cancelar
@@ -1214,7 +1240,7 @@ export function StockPage() {
               variant="primary"
               onClick={registrarMovimiento}
               loading={guardando}
-              disabled={!productoSeleccionado || !cantidad || parseFloat(cantidad) <= 0}
+              disabled={!esCantidadValida}
               className="order-1 sm:order-2 sm:w-2/3 py-2.5 text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
             >
               Confirmar Movimiento
@@ -1420,11 +1446,19 @@ export function StockPage() {
                 <input
                   ref={inputCantidadRef}
                   type="number"
-                  min={productoSeleccionado?.es_pesable ? '0.001' : '1'}
+                  min={tipoMovimiento === 'AJUSTE' ? '0' : productoSeleccionado?.es_pesable ? '0.001' : '1'}
                   step={productoSeleccionado?.es_pesable ? '0.001' : '1'}
                   value={cantidad}
                   onChange={(e) => setCantidad(e.target.value)}
-                  placeholder={productoSeleccionado?.es_pesable ? 'Ej: 1.5' : '1'}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      if (esCantidadValida) {
+                        registrarMovimiento()
+                      }
+                    }
+                  }}
+                  placeholder={tipoMovimiento === 'AJUSTE' ? '0' : productoSeleccionado?.es_pesable ? 'Ej: 1.5' : '1'}
                   className="w-full text-base font-bold rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3.5 py-2.5 outline-none focus:border-indigo-500 shadow-xs"
                 />
               </div>

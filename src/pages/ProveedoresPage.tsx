@@ -272,6 +272,19 @@ export function ProveedoresPage() {
     setModalProveedorOpen(true)
   }
 
+  const cerrarModalProveedor = () => {
+    setModalProveedorOpen(false)
+    setProveedorEditando(null)
+    setFormNombre('')
+    setFormContacto('')
+    setFormTelefono('')
+    setFormEmail('')
+    setFormCuit('')
+    setFormDiasVisita('')
+    setFormCbuAlias('')
+    setFormSaldoInicial('')
+  }
+
   const handleEditarProveedor = (p: Proveedor) => {
     setProveedorEditando(p)
     setFormNombre(p.nombre)
@@ -288,8 +301,15 @@ export function ProveedoresPage() {
   const handleGuardarProveedor = async (e: React.FormEvent) => {
     e.preventDefault()
     if (guardandoProveedor) return
-    if (!formNombre.trim()) {
+    const nombreLimpio = formNombre.trim()
+    if (!nombreLimpio) {
       toast.error('El nombre del proveedor es obligatorio')
+      return
+    }
+
+    const saldoNum = Number(formSaldoInicial) || 0
+    if (saldoNum < 0) {
+      toast.error('El saldo pendiente no puede ser negativo')
       return
     }
 
@@ -297,28 +317,28 @@ export function ProveedoresPage() {
     try {
       if (proveedorEditando) {
         await actualizarProveedor(proveedorEditando.id, {
-          nombre: formNombre.trim(),
+          nombre: nombreLimpio,
           contacto_nombre: formContacto.trim() || null,
           telefono: formTelefono.trim() || null,
           email: formEmail.trim() || null,
           cuit: formCuit.trim() || null,
           dias_visita: formDiasVisita.trim() || null,
           cbu_alias: formCbuAlias.trim() || null,
-          saldo_pendiente: Number(formSaldoInicial) || 0,
+          saldo_pendiente: saldoNum,
         })
       } else {
         await crearProveedor({
-          nombre: formNombre.trim(),
+          nombre: nombreLimpio,
           contacto_nombre: formContacto.trim() || null,
           telefono: formTelefono.trim() || null,
           email: formEmail.trim() || null,
           cuit: formCuit.trim() || null,
           dias_visita: formDiasVisita.trim() || null,
           cbu_alias: formCbuAlias.trim() || null,
-          saldo_pendiente: Number(formSaldoInicial) || 0,
+          saldo_pendiente: saldoNum,
         })
       }
-      setModalProveedorOpen(false)
+      cerrarModalProveedor()
     } finally {
       setGuardandoProveedor(false)
     }
@@ -1953,7 +1973,7 @@ export function ProveedoresPage() {
           ───────────────────────────────────────────────────────────── */}
       <Modal
         isOpen={modalProveedorOpen}
-        onClose={() => setModalProveedorOpen(false)}
+        onClose={cerrarModalProveedor}
         title={proveedorEditando ? 'Editar Proveedor' : 'Registrar Nuevo Proveedor'}
         size="lg"
         footer={
@@ -1962,7 +1982,7 @@ export function ProveedoresPage() {
               type="button"
               variant="secondary"
               disabled={guardandoProveedor}
-              onClick={() => setModalProveedorOpen(false)}
+              onClick={cerrarModalProveedor}
               className="order-2 sm:order-1 sm:w-1/3 py-2.5 text-sm font-semibold"
             >
               Cancelar
