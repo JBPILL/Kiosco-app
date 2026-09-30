@@ -19,6 +19,8 @@ import { DevolucionModal } from '../components/pos/DevolucionModal'
 import { HistorialTicketsModal } from '../components/pos/HistorialTicketsModal'
 import { RecibirEnvaseModal } from '../components/pos/RecibirEnvaseModal'
 import { RetiroCajaModal } from '../components/pos/RetiroCajaModal'
+import { AltaRapidaModal } from '../components/pos/AltaRapidaModal'
+import { buscarEnCatalogoMaestro, type ProductoMaestro } from '../data/catalogoMaestroArgentino'
 import { parsearCodigoBalanza, buscarProductoPorCodigoBalanza } from '../lib/barcodeParser'
 import { useBarcodeGun } from '../hooks/useBarcodeGun'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
@@ -55,6 +57,11 @@ export function POSPage() {
   const [productoPesableModal, setProductoPesableModal] = useState<Producto | null>(null)
   const [ticketReciente, setTicketReciente] = useState<TicketData | null>(null)
   const [ticketModalOpen, setTicketModalOpen] = useState(false)
+
+  // Asistente On-The-Fly Catálogo Semilla
+  const [modalAltaRapidaOpen, setModalAltaRapidaOpen] = useState(false)
+  const [codigoParaAlta, setCodigoParaAlta] = useState('')
+  const [productoSugeridoParaAlta, setProductoSugeridoParaAlta] = useState<ProductoMaestro | null>(null)
 
   const {
     agregarProducto,
@@ -111,13 +118,37 @@ export function POSPage() {
     setProductosCategoria(data || [])
   }, [usuario?.kiosco_id, kiosco?.id])
 
+  // Precargar el catálogo completo en la caché local para escaneos instantáneos (< 2ms)
+  const precargarCatalogoCompleto = useCallback(async () => {
+    const kid = usuario?.kiosco_id || kiosco?.id
+    if (!kid) return
+    try {
+      const cached = getCachedProductos(kid)
+      if (cached.length === 0) {
+        const { data } = await supabase
+          .from('productos')
+          .select('*, categoria:categorias(nombre, color)')
+          .eq('kiosco_id', kid)
+          .eq('activo', true)
+          .order('descripcion')
+          .limit(10000)
+        if (data && data.length > 0) {
+          saveCachedProductos(data, kid)
+        }
+      }
+    } catch (err) {
+      console.warn('Aviso precargando catálogo en POS:', err)
+    }
+  }, [usuario?.kiosco_id, kiosco?.id])
+
   useEffect(() => {
     cargarFavoritos()
     cargarCategorias()
+    precargarCatalogoCompleto()
     verificarSesionActiva()
     const kid = usuario?.kiosco_id || kiosco?.id
     if (kid) cargarPromociones(kid)
-  }, [cargarFavoritos, cargarCategorias, verificarSesionActiva, cargarPromociones, usuario?.kiosco_id, kiosco?.id])
+  }, [cargarFavoritos, cargarCategorias, precargarCatalogoCompleto, verificarSesionActiva, cargarPromociones, usuario?.kiosco_id, kiosco?.id])
 
   useEffect(() => {
     if (categoriaActiva) {
@@ -281,6 +312,7 @@ export function POSPage() {
       }
 
       if (productoEncontrado) {
+        window.dispatchEvent(new CustomEvent('pos-clear-search'))
         if (productoEncontrado.es_pesable) {
           setProductoPesableModal(productoEncontrado)
           setModalBalanzaOpen(true)
@@ -306,6 +338,7 @@ export function POSPage() {
         if (error) throw error
 
         if (data) {
+          window.dispatchEvent(new CustomEvent('pos-clear-search'))
           if (data.es_pesable) {
             setProductoPesableModal(data)
             setModalBalanzaOpen(true)
@@ -320,8 +353,13 @@ export function POSPage() {
             saveCachedProductos([data, ...list], kid)
           }
         } else {
+          // Disparar Asistente de Alta Rápida On-The-Fly con Catálogo Semilla
+          window.dispatchEvent(new CustomEvent('pos-clear-search'))
+          const matchMaestro = buscarEnCatalogoMaestro(codeTrim)
           playScanSound('warning')
-          toast.error(`Código no encontrado: ${codeTrim}`)
+          setCodigoParaAlta(codeTrim)
+          setProductoSugeridoParaAlta(matchMaestro || null)
+          setModalAltaRapidaOpen(true)
         }
       } catch (err) {
         console.error('Error procesando código de pistola:', err)
@@ -330,6 +368,20 @@ export function POSPage() {
       }
     },
     [agregarProducto, usuario?.kiosco_id, kiosco?.id]
+  )
+
+  // Asistente on-the-fly disparado cuando el cajero presiona Enter en un código desconocido en el buscador
+  const handleCodigoNoEncontradoDesdeBuscador = useCallback(
+    (code: string) => {
+      const codeTrim = code.trim()
+      if (!codeTrim) return
+      const matchMaestro = buscarEnCatalogoMaestro(codeTrim)
+      playScanSound('warning')
+      setCodigoParaAlta(codeTrim)
+      setProductoSugeridoParaAlta(matchMaestro || null)
+      setModalAltaRapidaOpen(true)
+    },
+    []
   )
 
   const handleAbrirCobro = () => {
@@ -353,7 +405,7 @@ export function POSPage() {
 
   useBarcodeGun({
     onScan: handleBarcodeGunScan,
-    enabled: !paymentOpen && !cartModalOpen && !modalScannerOpen && !modalEsperaOpen && !ticketModalOpen && !modalBalanzaOpen && !modalDevolucionOpen && !modalTicketsOpen && !modalEnvaseOpen && !modalRetiroOpen,
+    enabled: !paymentOpen && !cartModalOpen && !modalScannerOpen && !modalEsperaOpen && !ticketModalOpen && !modalBalanzaOpen && !modalDevolucionOpen && !modalTicketsOpen && !modalEnvaseOpen && !modalRetiroOpen && !modalAltaRapidaOpen,
   })
 
   // Atajos de teclado para PC de escritorio
@@ -383,7 +435,8 @@ export function POSPage() {
         setModalRetiroOpen((prev) => !prev)
       },
       onEscape: () => {
-        if (modalRetiroOpen) setModalRetiroOpen(false)
+        if (modalAltaRapidaOpen) setModalAltaRapidaOpen(false)
+        else if (modalRetiroOpen) setModalRetiroOpen(false)
         else if (modalPromosOpen) setModalPromosOpen(false)
         else if (modalTicketsOpen) setModalTicketsOpen(false)
         else if (modalDevolucionOpen) setModalDevolucionOpen(false)
@@ -427,6 +480,7 @@ export function POSPage() {
               <ProductSearch
                 onSelect={handleSeleccion}
                 onOpenScanner={() => setModalScannerOpen(true)}
+                onCodigoNoEncontrado={handleCodigoNoEncontradoDesdeBuscador}
               />
             </div>
             {/* Fila 2: Botones de acción responsive adaptables a notebooks y pantallas compactas */}
@@ -881,6 +935,20 @@ export function POSPage() {
       <RetiroCajaModal
         isOpen={modalRetiroOpen}
         onClose={() => setModalRetiroOpen(false)}
+      />
+
+      {/* Asistente On-The-Fly: Alta Rápida de producto desde Mostrador con Catálogo Semilla */}
+      <AltaRapidaModal
+        isOpen={modalAltaRapidaOpen}
+        onClose={() => setModalAltaRapidaOpen(false)}
+        codigo={codigoParaAlta}
+        productoSugerido={productoSugeridoParaAlta}
+        categorias={categorias}
+        onCategoriaCreada={(nuevaCat) => setCategorias((prev) => [...prev, nuevaCat])}
+        onGuardadoExitoso={(nuevoProd, cant) => {
+          handleSeleccion(nuevoProd, cant)
+          refrescarProductosVista()
+        }}
       />
     </div>
   )

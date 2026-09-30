@@ -4,6 +4,7 @@ import { CategoryManager } from '../components/catalogo/CategoryManager'
 import { ProductTable } from '../components/catalogo/ProductTable'
 import { ProductForm } from '../components/catalogo/ProductForm'
 import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
+import { SiembraCatalogoModal } from '../components/catalogo/SiembraCatalogoModal'
 import { AumentoPreciosModal } from '../components/catalogo/AumentoPreciosModal'
 import { PreciosEnvasesModal } from '../components/catalogo/PreciosEnvasesModal'
 import { EtiquetasGondolaModal } from '../components/catalogo/EtiquetasGondolaModal'
@@ -38,6 +39,7 @@ export function CatalogoPage() {
 
   const [formOpen, setFormOpen] = useState(false)
   const [importarOpen, setImportarOpen] = useState(false)
+  const [siembraOpen, setSiembraOpen] = useState(false)
   const [aumentoOpen, setAumentoOpen] = useState(false)
   const [envasesOpen, setEnvasesOpen] = useState(false)
   const [etiquetasOpen, setEtiquetasOpen] = useState(false)
@@ -109,8 +111,17 @@ export function CatalogoPage() {
             </button>
           </div>
 
-          {/* Bloque 2: Importar / Exportar */}
+          {/* Bloque 2: Importar / Exportar / Catálogo Kiosco */}
           <div className="flex items-center flex-nowrap bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setSiembraOpen(true)}
+              className="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/60 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5"
+              title="Cargar catálogo precargado de kiosco argentino con códigos de barras oficiales y precios sugeridos"
+            >
+              <span>🌱</span>
+              <span>Catálogo Kiosco</span>
+            </button>
             <button
               type="button"
               onClick={() => setImportarOpen(true)}
@@ -219,6 +230,17 @@ export function CatalogoPage() {
         productos={productos}
         categorias={categorias}
         kioscoNombre={kiosco?.nombre}
+      />
+
+      {/* Modal de siembra masiva de catálogo semilla argentino */}
+      <SiembraCatalogoModal
+        isOpen={siembraOpen}
+        onClose={() => setSiembraOpen(false)}
+        categoriasExistentes={categorias}
+        onSiembraCompletada={async () => {
+          await cargarCategorias()
+          await cargarProductos()
+        }}
       />
     </div>
   )

@@ -11,9 +11,10 @@ import { useAuthStore } from '../../stores/authStore'
 interface ProductSearchProps {
   onSelect: (producto: Producto, cantidad?: number) => void
   onOpenScanner?: () => void
+  onCodigoNoEncontrado?: (codigo: string) => void
 }
 
-export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
+export function ProductSearch({ onSelect, onOpenScanner, onCodigoNoEncontrado }: ProductSearchProps) {
   const { usuario, kiosco } = useAuthStore()
   const kioscoId = usuario?.kiosco_id || kiosco?.id
   const [query, setQuery] = useState('')
@@ -22,6 +23,17 @@ export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Escuchar evento global para limpiar la búsqueda tras un escaneo con pistola HW
+  useEffect(() => {
+    const handleClear = () => {
+      setQuery('')
+      setResultados([])
+      setMostrarResultados(false)
+    }
+    window.addEventListener('pos-clear-search', handleClear)
+    return () => window.removeEventListener('pos-clear-search', handleClear)
+  }, [])
 
   // Escuchar evento global de foco para el atajo F2
   useEffect(() => {
@@ -203,6 +215,11 @@ export function ProductSearch({ onSelect, onOpenScanner }: ProductSearchProps) {
       // 5. Fallback a navegación de lista por índice si no es código exacto
       if (resultados.length > 0) {
         seleccionar(resultados[selectedIndex])
+      } else if (onCodigoNoEncontrado && queryTrim.length >= 3) {
+        // Disparar asistente on-the-fly para código no encontrado
+        onCodigoNoEncontrado(queryTrim)
+        setQuery('')
+        setMostrarResultados(false)
       }
     } else if (e.key === 'Escape') {
       setMostrarResultados(false)
