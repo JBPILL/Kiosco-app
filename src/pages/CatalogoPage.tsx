@@ -78,13 +78,13 @@ export function CatalogoPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-3.5">
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4">
+      <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 sm:gap-4">
         <div className="shrink-0">
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">Catálogo de Productos</h1>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">Administrá tus productos, precios y categorías</p>
         </div>
-        {/* Grupos de botones en una sola fila en 2 bloques perfectamente alineados */}
-        <div className="flex items-center flex-nowrap gap-2 sm:gap-2.5 overflow-x-auto scrollbar-hide max-w-full py-0.5 self-start lg:self-auto">
+        {/* Grupos de botones adaptables para que nunca desborden en pantallas medianas ni con zoom */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 max-w-full py-0.5">
           {/* Bloque 1: Precios y Góndola */}
           <div className="flex items-center flex-nowrap bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1 shrink-0">
             <button

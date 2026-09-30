@@ -1954,84 +1954,162 @@ export function ProveedoresPage() {
       <Modal
         isOpen={modalProveedorOpen}
         onClose={() => setModalProveedorOpen(false)}
-        title={proveedorEditando ? 'Editar Proveedor' : 'Nuevo Proveedor'}
-        size="md"
-      >
-        <form onSubmit={handleGuardarProveedor} className="space-y-3">
-          <Input
-            label="Nombre de la empresa o proveedor *"
-            placeholder="Ej: Distribuidora Norte"
-            value={formNombre}
-            onChange={(e) => setFormNombre(e.target.value)}
-            required
-          />
-
-          <Input
-            label="Persona de contacto / Vendedor"
-            placeholder="Ej: Marcelo Gómez"
-            value={formContacto}
-            onChange={(e) => setFormContacto(e.target.value)}
-          />
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input
-              label="Teléfono / WhatsApp"
-              placeholder="Ej: 1123456789"
-              value={formTelefono}
-              onChange={(e) => setFormTelefono(e.target.value)}
-            />
-            <Input
-              label="CUIT"
-              placeholder="Ej: 30-12345678-9"
-              value={formCuit}
-              onChange={(e) => setFormCuit(e.target.value)}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input
-              label="Días de visita"
-              placeholder="Ej: Martes y Viernes"
-              value={formDiasVisita}
-              onChange={(e) => setFormDiasVisita(e.target.value)}
-            />
-            <Input
-              label="Email comercial"
-              type="email"
-              placeholder="ventas@proveedor.com"
-              value={formEmail}
-              onChange={(e) => setFormEmail(e.target.value)}
-            />
-          </div>
-
-          <Input
-            label="CBU o Alias bancario para pagos"
-            placeholder="Ej: distribuidora.mp"
-            value={formCbuAlias}
-            onChange={(e) => setFormCbuAlias(e.target.value)}
-          />
-
-          <Input
-            label="Saldo pendiente inicial ($)"
-            type="number"
-            step="0.01"
-            min="0"
-            placeholder="0"
-            value={formSaldoInicial}
-            onChange={(e) => setFormSaldoInicial(e.target.value)}
-          />
-
-          <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
+        title={proveedorEditando ? 'Editar Proveedor' : 'Registrar Nuevo Proveedor'}
+        size="lg"
+        footer={
+          <div className="flex flex-col sm:flex-row gap-2.5 w-full">
             <Button
               type="button"
               variant="secondary"
+              disabled={guardandoProveedor}
               onClick={() => setModalProveedorOpen(false)}
+              className="order-2 sm:order-1 sm:w-1/3 py-2.5 text-sm font-semibold"
             >
               Cancelar
             </Button>
-            <Button type="submit" loading={guardandoProveedor}>
-              {proveedorEditando ? 'Guardar Cambios' : 'Crear Proveedor'}
+            <Button
+              type="submit"
+              form="form-proveedor"
+              variant="primary"
+              loading={guardandoProveedor}
+              className="order-1 sm:order-2 sm:w-2/3 py-2.5 text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
+            >
+              {proveedorEditando ? 'Guardar Cambios' : 'Registrar Proveedor'}
             </Button>
+          </div>
+        }
+      >
+        <form id="form-proveedor" onSubmit={handleGuardarProveedor} className="space-y-4">
+          {/* Banner de Ayuda Rápida / Guía */}
+          <div className="p-3 bg-indigo-50/70 dark:bg-indigo-950/40 border-2 border-indigo-200 dark:border-indigo-800 rounded-xl flex items-center gap-3 text-xs text-indigo-950 dark:text-indigo-200">
+            <span className="font-bold uppercase text-[10px] tracking-wider px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900 border border-indigo-300 dark:border-indigo-700 shrink-0">
+              Guía
+            </span>
+            <p className="leading-relaxed font-medium">
+              {proveedorEditando
+                ? 'Actualizá los datos de contacto, días de visita o datos bancarios del distribuidor.'
+                : 'Registrá a tu distribuidor o preventista con su teléfono y días de visita para enviar pedidos por WhatsApp y gestionar sus cuentas corrientes.'}
+            </p>
+          </div>
+
+          {/* Bloque 1: Datos de la Empresa y Contacto */}
+          <div className="space-y-3 bg-gray-50/60 dark:bg-gray-800/40 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700">
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              1. Datos de la Empresa y Contacto
+            </p>
+            <div className="space-y-3">
+              <div>
+                <Input
+                  label="Nombre de la empresa o proveedor *"
+                  placeholder="Ej: Distribuidora Norte, Arcor, Quilmes..."
+                  value={formNombre}
+                  onChange={(e) => setFormNombre(e.target.value)}
+                  required
+                  autoFocus
+                />
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
+                  Nombre comercial con el que identificás a la distribuidora o mayorista.
+                </span>
+              </div>
+
+              <div>
+                <Input
+                  label="Persona de contacto / Preventista"
+                  placeholder="Ej: Marcelo Gómez (Vendedor)"
+                  value={formContacto}
+                  onChange={(e) => setFormContacto(e.target.value)}
+                />
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
+                  Nombre del vendedor o chofer que toma los pedidos en tu negocio.
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Input
+                    label="Teléfono / WhatsApp"
+                    placeholder="Ej: 11 2345-6789"
+                    value={formTelefono}
+                    onChange={(e) => setFormTelefono(e.target.value)}
+                  />
+                  <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
+                    Permite enviar la lista de pedidos directamente por WhatsApp.
+                  </span>
+                </div>
+                <div>
+                  <Input
+                    label="CUIT"
+                    placeholder="Ej: 30-12345678-9"
+                    value={formCuit}
+                    onChange={(e) => setFormCuit(e.target.value)}
+                  />
+                  <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
+                    Clave fiscal para conciliación de comprobantes y facturas.
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bloque 2: Operatoria Comercial y Pagos */}
+          <div className="space-y-3 bg-gray-50/60 dark:bg-gray-800/40 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700">
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              2. Operatoria Comercial y Pagos
+            </p>
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Input
+                    label="Días de visita habituales"
+                    placeholder="Ej: Martes y Viernes"
+                    value={formDiasVisita}
+                    onChange={(e) => setFormDiasVisita(e.target.value)}
+                  />
+                  <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
+                    Te recordará cuándo preparar el pedido de reposición.
+                  </span>
+                </div>
+                <div>
+                  <Input
+                    label="Email comercial"
+                    type="email"
+                    placeholder="ventas@proveedor.com"
+                    value={formEmail}
+                    onChange={(e) => setFormEmail(e.target.value)}
+                  />
+                  <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
+                    Para recibir listas de precios y facturas digitales.
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <Input
+                  label="CBU o Alias bancario para transferencias"
+                  placeholder="Ej: distribuidora.norte.mp"
+                  value={formCbuAlias}
+                  onChange={(e) => setFormCbuAlias(e.target.value)}
+                />
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
+                  Copiá y pegá su alias rápidamente al momento de abonar facturas pendientes.
+                </span>
+              </div>
+
+              <div>
+                <Input
+                  label="Saldo pendiente inicial ($)"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0"
+                  value={formSaldoInicial}
+                  onChange={(e) => setFormSaldoInicial(e.target.value)}
+                />
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
+                  Si ya mantenés una deuda previa con este proveedor, indicala acá. Si empezás de cero, dejá 0.
+                </span>
+              </div>
+            </div>
           </div>
         </form>
       </Modal>

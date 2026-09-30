@@ -142,156 +142,231 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
       <Modal
         isOpen={isOpen}
         onClose={onClose}
-        title={producto ? 'Editar producto' : 'Nuevo producto'}
+        title={producto ? 'Modificar Datos del Producto' : 'Registrar Nuevo Producto'}
         size="lg"
         footer={
-          <div className="flex gap-2 w-full">
-            <Button type="button" variant="secondary" onClick={onClose} fullWidth>
+          <div className="flex flex-col sm:flex-row gap-2.5 w-full">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={guardando}
+              onClick={onClose}
+              className="order-2 sm:order-1 sm:w-1/3 py-2.5 text-sm font-semibold"
+            >
               Cancelar
             </Button>
-            <Button type="submit" form="product-form" fullWidth loading={guardando}>
-              {producto ? 'Guardar cambios' : 'Crear producto'}
+            <Button
+              type="submit"
+              form="product-form"
+              variant="primary"
+              loading={guardando}
+              className="order-1 sm:order-2 sm:w-2/3 py-2.5 text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
+            >
+              {producto ? 'Guardar Cambios' : 'Crear Producto'}
             </Button>
           </div>
         }
       >
-        <form id="product-form" onSubmit={handleSubmit} className="space-y-3 sm:space-y-3.5">
-          <Input
-            label="Descripción *"
-            placeholder="Ej: Coca Cola 500ml"
-            value={form.descripcion}
-            onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
-            required
-            autoFocus
-          />
-
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Precio costo"
-              type="number"
-              step="0.01"
-              min="0"
-              value={form.precio_costo || ''}
-              onChange={(e) => setForm({ ...form, precio_costo: parseFloat(e.target.value) || 0 })}
-            />
-            <Input
-              label="Precio venta *"
-              type="number"
-              step="0.01"
-              min="0"
-              value={form.precio_venta || ''}
-              onChange={(e) => setForm({ ...form, precio_venta: parseFloat(e.target.value) || 0 })}
-              required
-            />
-          </div>
-
-          {/* Indicador de margen */}
-          {form.precio_costo > 0 && (
-            <div className={`text-sm px-3 py-2 rounded-lg ${margen >= 0 ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
-              Margen: ${margen.toFixed(2)} ({margenPct}%)
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label={`Stock actual ${form.es_pesable ? `(${form.unidad_medida || 'KG'})` : ''}`}
-              type="number"
-              min="0"
-              step={form.es_pesable ? '0.001' : '1'}
-              value={form.stock_actual || ''}
-              onChange={(e) => {
-                const val = form.es_pesable ? parseFloat(e.target.value) : parseInt(e.target.value, 10)
-                setForm({ ...form, stock_actual: isNaN(val) ? 0 : val })
-              }}
-            />
-            <Input
-              label={`Stock mínimo ${form.es_pesable ? `(${form.unidad_medida || 'KG'})` : ''}`}
-              type="number"
-              min="0"
-              step={form.es_pesable ? '0.001' : '1'}
-              value={form.stock_minimo || ''}
-              onChange={(e) => {
-                const val = form.es_pesable ? parseFloat(e.target.value) : parseInt(e.target.value, 10)
-                setForm({ ...form, stock_minimo: isNaN(val) ? 0 : val })
-              }}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Categoría</label>
-              <select
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2.5 text-base focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-900 transition-colors duration-150"
-                value={form.categoria_id || ''}
-                onChange={(e) => setForm({ ...form, categoria_id: e.target.value || null })}
-              >
-                <option value="">Sin categoría</option>
-                {categorias.map((cat) => (
-                  <option key={cat.id} value={cat.id}>{cat.nombre}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Proveedor Habitual (Opcional)
-              </label>
-              <select
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2.5 text-base focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-900 transition-colors duration-150"
-                value={form.proveedor_id || ''}
-                onChange={(e) => setForm({ ...form, proveedor_id: e.target.value || null })}
-              >
-                <option value="">Sin proveedor asignado</option>
-                {proveedores.filter((p) => p.activo).map((prov) => (
-                  <option key={prov.id} value={prov.id}>{prov.nombre}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Campo de Código de barras con botón de Escanear con cámara y soporte de lector */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Código de barras (opcional)
-            </label>
-            <div className="flex gap-2 items-center">
-              <div className="flex-1 relative">
-                <Input
-                  placeholder="Escanear con cámara/lector o escribir"
-                  value={form.codigo_barras || ''}
-                  onChange={(e) => setForm({ ...form, codigo_barras: e.target.value || null })}
-                />
-                {form.codigo_barras && (
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, codigo_barras: null })}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 text-xs font-semibold px-1 py-0.5 rounded cursor-pointer"
-                    title="Borrar código de barras"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setScannerCamaraOpen(true)}
-                className="sm:hidden flex items-center gap-1.5 px-3 sm:px-4 text-xs font-semibold text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 cursor-pointer flex-shrink-0 h-[42px]"
-                title="Escanear código con la cámara del celular"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                  <circle cx="12" cy="13" r="4" />
-                </svg>
-                <span>Cámara</span>
-              </Button>
-            </div>
-            <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
-              Podés disparar directamente con un lector de barras físico USB / Bluetooth o escribir el código.
+        <form id="product-form" onSubmit={handleSubmit} className="space-y-4">
+          {/* Banner de Ayuda Rápida / Guía */}
+          <div className="p-3 bg-indigo-50/70 dark:bg-indigo-950/40 border-2 border-indigo-200 dark:border-indigo-800 rounded-xl flex items-center gap-3 text-xs text-indigo-950 dark:text-indigo-200">
+            <span className="font-bold uppercase text-[10px] tracking-wider px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900 border border-indigo-300 dark:border-indigo-700 shrink-0">
+              Guía
+            </span>
+            <p className="leading-relaxed font-medium">
+              {producto
+                ? 'Modificá precios, stock o características del producto. Los cambios se actualizarán de inmediato en el mostrador.'
+                : 'Completá los datos del producto. Podés escanear el código de barras directamente con la lectora USB o Bluetooth para agilizar la carga.'}
             </p>
           </div>
 
-          {/* Opciones de Perecedero / Vencimiento */}
+          {/* Bloque 1: Identificación y Precios */}
+          <div className="space-y-3 bg-gray-50/60 dark:bg-gray-800/40 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700">
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              1. Identificación y Precios
+            </p>
+            <div>
+              <Input
+                label="Descripción o Nombre del Producto *"
+                placeholder="Ej: Coca Cola 500ml, Alfajor Jorgito Blanco..."
+                value={form.descripcion}
+                onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
+                required
+                autoFocus
+              />
+              <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
+                Nombre claro para identificarlo rápidamente en el mostrador y en los comprobantes.
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Input
+                  label="Precio costo ($)"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={form.precio_costo || ''}
+                  onChange={(e) => setForm({ ...form, precio_costo: parseFloat(e.target.value) || 0 })}
+                />
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
+                  Costo de compra al distribuidor (opcional).
+                </span>
+              </div>
+              <div>
+                <Input
+                  label="Precio venta al público * ($)"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={form.precio_venta || ''}
+                  onChange={(e) => setForm({ ...form, precio_venta: parseFloat(e.target.value) || 0 })}
+                  required
+                />
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
+                  Precio final que se cobrará al cliente en caja.
+                </span>
+              </div>
+            </div>
+
+            {/* Indicador de margen en tiempo real */}
+            {form.precio_costo > 0 && form.precio_venta > 0 && (
+              <div className={`text-xs font-semibold px-3 py-2 rounded-lg flex items-center justify-between border ${
+                margen >= 0
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                  : 'bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300 border-red-200 dark:border-red-800'
+              }`}>
+                <span>Ganancia bruta: <strong>${margen.toFixed(2)}</strong></span>
+                <span>Margen sobre costo: <strong>{margenPct}%</strong></span>
+              </div>
+            )}
+          </div>
+
+          {/* Bloque 2: Stock, Categoría y Código */}
+          <div className="space-y-3 bg-gray-50/60 dark:bg-gray-800/40 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700">
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              2. Stock y Clasificación
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Input
+                  label={`Stock actual ${form.es_pesable ? `(${form.unidad_medida || 'KG'})` : '(unidades)'}`}
+                  type="number"
+                  min="0"
+                  step={form.es_pesable ? '0.001' : '1'}
+                  value={form.stock_actual || ''}
+                  placeholder="0"
+                  onChange={(e) => {
+                    const val = form.es_pesable ? parseFloat(e.target.value) : parseInt(e.target.value, 10)
+                    setForm({ ...form, stock_actual: isNaN(val) ? 0 : val })
+                  }}
+                />
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
+                  Cantidad física real en el negocio.
+                </span>
+              </div>
+              <div>
+                <Input
+                  label={`Stock mínimo de alerta ${form.es_pesable ? `(${form.unidad_medida || 'KG'})` : '(unidades)'}`}
+                  type="number"
+                  min="0"
+                  step={form.es_pesable ? '0.001' : '1'}
+                  value={form.stock_minimo || ''}
+                  placeholder="5"
+                  onChange={(e) => {
+                    const val = form.es_pesable ? parseFloat(e.target.value) : parseInt(e.target.value, 10)
+                    setForm({ ...form, stock_minimo: isNaN(val) ? 0 : val })
+                  }}
+                />
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
+                  Avisa cuando falte mercadería para reponer.
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Categoría</label>
+                <select
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-xs sm:text-sm focus:border-indigo-500"
+                  value={form.categoria_id || ''}
+                  onChange={(e) => setForm({ ...form, categoria_id: e.target.value || null })}
+                >
+                  <option value="">Sin categoría (—)</option>
+                  {categorias.map((cat) => (
+                    <option key={cat.id} value={cat.id}>{cat.nombre}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Proveedor Habitual (Opcional)
+                </label>
+                <select
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-xs sm:text-sm focus:border-indigo-500"
+                  value={form.proveedor_id || ''}
+                  onChange={(e) => setForm({ ...form, proveedor_id: e.target.value || null })}
+                >
+                  <option value="">Sin proveedor asignado</option>
+                  {proveedores.filter((p) => p.activo).map((prov) => (
+                    <option key={prov.id} value={prov.id}>{prov.nombre}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Campo de Código de barras con botón de Escanear con cámara y soporte de lector */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                Código de barras (opcional)
+              </label>
+              <div className="flex gap-2 items-center">
+                <div className="flex-1 relative">
+                  <Input
+                    placeholder="Escanear con lectora o escribir código..."
+                    value={form.codigo_barras || ''}
+                    onChange={(e) => setForm({ ...form, codigo_barras: e.target.value || null })}
+                  />
+                  {form.codigo_barras && (
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, codigo_barras: null })}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 text-xs font-semibold px-1 py-0.5 rounded cursor-pointer"
+                      title="Borrar código de barras"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setScannerCamaraOpen(true)}
+                  className="sm:hidden flex items-center gap-1.5 px-3 text-xs font-semibold text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 cursor-pointer flex-shrink-0 h-[38px]"
+                  title="Escanear código con la cámara del celular"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                    <circle cx="12" cy="13" r="4" />
+                  </svg>
+                  <span>Cámara</span>
+                </Button>
+              </div>
+              <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
+                Podés disparar directamente con un lector de barras físico USB / Bluetooth o escribir el código.
+              </span>
+            </div>
+          </div>
+
+          {/* Bloque 3: Propiedades Especiales */}
+          <div className="space-y-3 bg-gray-50/60 dark:bg-gray-800/40 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700">
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              3. Propiedades Especiales
+            </p>
           <div className="p-3.5 bg-gray-50/80 dark:bg-gray-900/40 border border-gray-300 dark:border-gray-700 rounded-xl space-y-2">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -496,6 +571,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
                 </div>
               </div>
             )}
+          </div>
           </div>
         </form>
       </Modal>
