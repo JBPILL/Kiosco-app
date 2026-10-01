@@ -11,7 +11,9 @@ UPDATE public.kioscos
 SET rubro = 'KIOSCO' 
 WHERE rubro IS NULL;
 
--- 3. Actualizar la vista consolidada v_admin_kioscos para incluir la columna 'rubro'
+-- 3. Recrear la vista consolidada v_admin_kioscos para incluir la columna 'rubro'
+DROP VIEW IF EXISTS public.v_admin_kioscos CASCADE;
+
 CREATE OR REPLACE VIEW public.v_admin_kioscos
 WITH (security_invoker = true)
 AS
