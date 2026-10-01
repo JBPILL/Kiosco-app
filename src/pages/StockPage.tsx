@@ -16,10 +16,12 @@ import { useDevolucionStore } from '../stores/devolucionStore'
 import { useLoteStore, calcularDiasHastaVencimiento } from '../stores/loteStore'
 import type { Producto, MovimientoStock } from '../types/database'
 import { useRealtimeSync } from '../hooks/useRealtimeSync'
+import { useTenantConfig } from '../hooks/useTenantConfig'
 import toast from 'react-hot-toast'
 
 export function StockPage() {
   const { usuario, kiosco } = useAuthStore()
+  const { tieneVencimientos } = useTenantConfig()
   const { buscarVentaParaDevolucion } = useDevolucionStore()
 
   // Estados de datos
@@ -746,35 +748,37 @@ export function StockPage() {
       )}
 
       {/* Selector de Vista Principal: Movimientos vs. Lotes y Vencimientos */}
-      <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 overflow-x-auto scrollbar-hide max-w-full flex-nowrap">
-        <button
-          type="button"
-          onClick={() => setVistaPrincipal('MOVIMIENTOS')}
-          className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-            vistaPrincipal === 'MOVIMIENTOS'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-              : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
-          }`}
-        >
-          Entradas y Salidas de Mercadería
-        </button>
-        <button
-          type="button"
-          onClick={() => setVistaPrincipal('VENCIMIENTOS')}
-          className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shrink-0 ${
-            vistaPrincipal === 'VENCIMIENTOS'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-              : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
-          }`}
-        >
-          <span>Fechas de Vencimiento</span>
-          {alertasLotes.vencidos.length + alertasLotes.criticos.length > 0 && (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300">
-              {alertasLotes.vencidos.length + alertasLotes.criticos.length}
-            </span>
-          )}
-        </button>
-      </div>
+      {tieneVencimientos && (
+        <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 overflow-x-auto scrollbar-hide max-w-full flex-nowrap">
+          <button
+            type="button"
+            onClick={() => setVistaPrincipal('MOVIMIENTOS')}
+            className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+              vistaPrincipal === 'MOVIMIENTOS'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
+            }`}
+          >
+            Entradas y Salidas de Mercadería
+          </button>
+          <button
+            type="button"
+            onClick={() => setVistaPrincipal('VENCIMIENTOS')}
+            className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shrink-0 ${
+              vistaPrincipal === 'VENCIMIENTOS'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
+            }`}
+          >
+            <span>Fechas de Vencimiento</span>
+            {alertasLotes.vencidos.length + alertasLotes.criticos.length > 0 && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300">
+                {alertasLotes.vencidos.length + alertasLotes.criticos.length}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
 
       {vistaPrincipal === 'MOVIMIENTOS' ? (
         /* Historial de Movimientos de Stock */
@@ -1565,8 +1569,8 @@ export function StockPage() {
               3. Datos Adicionales (Opcional)
             </p>
 
-            {/* Lote y Vencimiento opcional (si es INGRESO) */}
-            {tipoMovimiento === 'INGRESO' && (
+            {/* Lote y Vencimiento opcional (si es INGRESO y el rubro maneja vencimientos) */}
+            {tieneVencimientos && tipoMovimiento === 'INGRESO' && (
               <div className="p-3 bg-white dark:bg-gray-900 border border-indigo-200 dark:border-indigo-800/60 rounded-xl space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="block text-xs font-bold text-indigo-900 dark:text-indigo-300 uppercase tracking-wide">

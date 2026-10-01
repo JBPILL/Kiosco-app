@@ -11,12 +11,14 @@ import { EtiquetasGondolaModal } from '../components/catalogo/EtiquetasGondolaMo
 import { exportarCatalogoExcel } from '../lib/exportUtils'
 import { clearCachedProductos } from '../lib/utils'
 import { useAuthStore } from '../stores/authStore'
+import { useTenantConfig } from '../hooks/useTenantConfig'
 import toast from 'react-hot-toast'
 import type { Producto } from '../types/database'
 import type { ProductFormData } from '../components/catalogo/ProductForm'
 
 export function CatalogoPage() {
   const { kiosco } = useAuthStore()
+  const { tieneEnvases } = useTenantConfig()
   const {
     productos,
     categorias,
@@ -94,13 +96,15 @@ export function CatalogoPage() {
             >
               Subir Precios en %
             </button>
-            <button
-              type="button"
-              onClick={() => setEnvasesOpen(true)}
-              className="h-8 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center justify-center"
-            >
-              Precios de Envases
-            </button>
+            {tieneEnvases && (
+              <button
+                type="button"
+                onClick={() => setEnvasesOpen(true)}
+                className="h-8 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center justify-center"
+              >
+                Precios de Envases
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setEtiquetasOpen(true)}
@@ -219,13 +223,15 @@ export function CatalogoPage() {
       />
 
       {/* Modal de modificación de precios de envases retornables */}
-      <PreciosEnvasesModal
-        isOpen={envasesOpen}
-        onClose={() => setEnvasesOpen(false)}
-        productos={productos}
-        onActualizarProducto={actualizarProducto}
-        onRecargarProductos={cargarProductos}
-      />
+      {tieneEnvases && (
+        <PreciosEnvasesModal
+          isOpen={envasesOpen}
+          onClose={() => setEnvasesOpen(false)}
+          productos={productos}
+          onActualizarProducto={actualizarProducto}
+          onRecargarProductos={cargarProductos}
+        />
+      )}
 
       {/* Modal de impresión de etiquetas de góndola */}
       <EtiquetasGondolaModal

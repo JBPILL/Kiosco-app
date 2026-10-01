@@ -21,6 +21,7 @@ import { RecibirEnvaseModal } from '../components/pos/RecibirEnvaseModal'
 import { RetiroCajaModal } from '../components/pos/RetiroCajaModal'
 import { AltaRapidaModal } from '../components/pos/AltaRapidaModal'
 import { buscarEnCatalogoMaestro, type ProductoMaestro } from '../data/catalogoMaestroArgentino'
+import { CATALOGO_MAESTRO_LIBRERIA } from '../data/catalogoMaestroLibreria'
 import { parsearCodigoBalanza, buscarProductoPorCodigoBalanza } from '../lib/barcodeParser'
 import { useBarcodeGun } from '../hooks/useBarcodeGun'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
@@ -30,11 +31,13 @@ import { Button } from '../components/ui/Button'
 import type { Producto, Categoria } from '../types/database'
 import type { VentaConDetalles } from '../stores/devolucionStore'
 import { useRealtimeSync } from '../hooks/useRealtimeSync'
+import { useTenantConfig } from '../hooks/useTenantConfig'
 import toast from 'react-hot-toast'
 
 export function POSPage() {
   const navigate = useNavigate()
   const { usuario, kiosco } = useAuthStore()
+  const { tieneEnvases, esFotocopiadora } = useTenantConfig()
   const { sesionActiva, verificarSesionActiva } = useCajaStore()
   const { promociones, cargarPromociones } = usePromocionStore()
   const [favoritos, setFavoritos] = useState<Producto[]>([])
@@ -355,7 +358,9 @@ export function POSPage() {
         } else {
           // Disparar Asistente de Alta Rápida On-The-Fly con Catálogo Semilla
           window.dispatchEvent(new CustomEvent('pos-clear-search'))
-          const matchMaestro = buscarEnCatalogoMaestro(codeTrim)
+          const matchMaestro = esFotocopiadora
+            ? CATALOGO_MAESTRO_LIBRERIA.find((p) => p.codigo_barras === codeTrim) || buscarEnCatalogoMaestro(codeTrim)
+            : buscarEnCatalogoMaestro(codeTrim)
           playScanSound('warning')
           setCodigoParaAlta(codeTrim)
           setProductoSugeridoParaAlta(matchMaestro || null)
@@ -367,7 +372,7 @@ export function POSPage() {
         toast.error('No se pudo verificar el código de barras en la red')
       }
     },
-    [agregarProducto, usuario?.kiosco_id, kiosco?.id]
+    [agregarProducto, usuario?.kiosco_id, kiosco?.id, esFotocopiadora]
   )
 
   // Asistente on-the-fly disparado cuando el cajero presiona Enter en un código desconocido en el buscador
@@ -375,13 +380,15 @@ export function POSPage() {
     (code: string) => {
       const codeTrim = code.trim()
       if (!codeTrim) return
-      const matchMaestro = buscarEnCatalogoMaestro(codeTrim)
+      const matchMaestro = esFotocopiadora
+        ? CATALOGO_MAESTRO_LIBRERIA.find((p) => p.codigo_barras === codeTrim) || buscarEnCatalogoMaestro(codeTrim)
+        : buscarEnCatalogoMaestro(codeTrim)
       playScanSound('warning')
       setCodigoParaAlta(codeTrim)
       setProductoSugeridoParaAlta(matchMaestro || null)
       setModalAltaRapidaOpen(true)
     },
-    []
+    [esFotocopiadora]
   )
 
   const handleAbrirCobro = () => {
@@ -519,14 +526,16 @@ export function POSPage() {
               >
                 <span>Tickets Emitidos</span>
               </button>
-              <button
-                type="button"
-                onClick={() => setModalEnvaseOpen(true)}
-                className="h-8 sm:h-9 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-emerald-50/80 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs cursor-pointer"
-                title="Registrar botellas o envases vacíos que entrega el cliente"
-              >
-                <span>Recepción Envases</span>
-              </button>
+              {tieneEnvases && (
+                <button
+                  type="button"
+                  onClick={() => setModalEnvaseOpen(true)}
+                  className="h-8 sm:h-9 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-emerald-50/80 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs cursor-pointer"
+                  title="Registrar botellas o envases vacíos que entrega el cliente"
+                >
+                  <span>Recepción Envases</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setModalRetiroOpen(true)}
@@ -926,10 +935,12 @@ export function POSPage() {
       </Modal>
 
       {/* Modal para recibir envases retornables vacíos */}
-      <RecibirEnvaseModal
-        isOpen={modalEnvaseOpen}
-        onClose={() => setModalEnvaseOpen(false)}
-      />
+      {tieneEnvases && (
+        <RecibirEnvaseModal
+          isOpen={modalEnvaseOpen}
+          onClose={() => setModalEnvaseOpen(false)}
+        />
+      )}
 
       {/* Modal para retiro rápido de efectivo en mostrador (Sangría de caja) */}
       <RetiroCajaModal

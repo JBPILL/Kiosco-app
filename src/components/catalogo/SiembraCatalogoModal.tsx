@@ -9,6 +9,11 @@ import {
   obtenerCategoriasMaestras,
   type ProductoMaestro,
 } from '../../data/catalogoMaestroArgentino'
+import {
+  CATALOGO_MAESTRO_LIBRERIA,
+  obtenerCategoriasMaestrasLibreria,
+} from '../../data/catalogoMaestroLibreria'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 import type { Categoria, Producto } from '../../types/database'
 import { v4 as uuidv4 } from 'uuid'
 import toast from 'react-hot-toast'
@@ -27,9 +32,17 @@ export function SiembraCatalogoModal({
   onSiembraCompletada,
 }: SiembraCatalogoModalProps) {
   const { usuario, kiosco } = useAuthStore()
+  const { esFotocopiadora } = useTenantConfig()
   const kioscoId = usuario?.kiosco_id || kiosco?.id
 
-  const categoriasMaestras = useMemo(() => obtenerCategoriasMaestras(), [])
+  const catalogoBase = useMemo(() => {
+    return esFotocopiadora ? CATALOGO_MAESTRO_LIBRERIA : CATALOGO_MAESTRO_ARGENTINO
+  }, [esFotocopiadora])
+
+  const categoriasMaestras = useMemo(() => {
+    return esFotocopiadora ? obtenerCategoriasMaestrasLibreria() : obtenerCategoriasMaestras()
+  }, [esFotocopiadora])
+
   const [categoriasSeleccionadas, setCategoriasSeleccionadas] = useState<Set<string>>(
     () => new Set(categoriasMaestras)
   )
@@ -45,10 +58,10 @@ export function SiembraCatalogoModal({
 
   // Productos a sembrar según categorías seleccionadas
   const productosFiltrados = useMemo(() => {
-    return CATALOGO_MAESTRO_ARGENTINO.filter((p) =>
+    return catalogoBase.filter((p) =>
       categoriasSeleccionadas.has(p.categoria_nombre)
     )
-  }, [categoriasSeleccionadas])
+  }, [catalogoBase, categoriasSeleccionadas])
 
   const toggleCategoria = (nombre: string) => {
     setCategoriasSeleccionadas((prev) => {
@@ -267,10 +280,14 @@ export function SiembraCatalogoModal({
           </div>
           <div>
             <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
-              Siembra Inicial: Catálogo Maestro Kiosco Argentino
+              {esFotocopiadora
+                ? 'Siembra Inicial: Catálogo Fotocopiadora & Librería'
+                : 'Siembra Inicial: Catálogo Maestro Kiosco Argentino'}
             </h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Cargá automáticamente los artículos más vendidos de Argentina (golosinas, bebidas, cigarrillos, galletitas) con códigos de barras oficiales.
+              {esFotocopiadora
+                ? 'Cargá automáticamente los servicios clave (fotocopias B/N y color, anillados, plastificados) y útiles escolares más vendidos (resmas, bolígrafos, cuadernos).'
+                : 'Cargá automáticamente los artículos más vendidos de Argentina (golosinas, bebidas, cigarrillos, galletitas) con códigos de barras oficiales.'}
             </p>
           </div>
         </div>

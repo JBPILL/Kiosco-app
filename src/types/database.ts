@@ -1,4 +1,4 @@
-// Tipos que representan las tablas de la base de datos
+export type RubroComercio = 'KIOSCO' | 'FOTOCOPIADORA_LIBRERIA' | 'GENERAL'
 
 export interface Kiosco {
   id: string
@@ -7,6 +7,7 @@ export interface Kiosco {
   telefono: string | null
   estado_suscripcion: 'ACTIVO' | 'SOLO_LECTURA' | 'SUSPENDIDO'
   fecha_creacion: string
+  rubro?: RubroComercio
   // Datos fiscales AFIP
   cuit?: string | null
   iibb?: string | null
@@ -367,6 +368,7 @@ export interface KioscoAdminView {
   telefono_kiosco: string | null
   estado_kiosco: 'ACTIVO' | 'SOLO_LECTURA' | 'SUSPENDIDO'
   fecha_creacion: string
+  rubro?: RubroComercio
   dueno_usuario_id: string | null
   nombre_dueno: string | null
   email_dueno: string | null

@@ -8,6 +8,7 @@ import { useBarcodeGun } from '../../hooks/useBarcodeGun'
 import { playScanSound } from '../../lib/sound'
 import { useEnvasesStore } from '../../stores/envasesStore'
 import { useProveedorStore } from '../../stores/proveedorStore'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 import toast from 'react-hot-toast'
 
 interface ProductFormProps {
@@ -57,6 +58,9 @@ interface FormState {
 }
 
 export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }: ProductFormProps) {
+  const { tieneEnvases, tieneBalanza, tieneVencimientos } = useTenantConfig()
+  const mostrarBloqueEspeciales = tieneVencimientos || tieneBalanza || tieneEnvases
+
   const [form, setForm] = useState<FormState>({
     descripcion: '',
     precio_costo: '',
@@ -434,216 +438,225 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
           </div>
 
           {/* Bloque 3: Propiedades Especiales */}
-          <div className="space-y-3 bg-gray-50/60 dark:bg-gray-800/40 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700">
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-              3. Propiedades Especiales
-            </p>
-          <div className="p-3.5 bg-gray-50/80 dark:bg-gray-900/40 border border-gray-300 dark:border-gray-700 rounded-xl space-y-2">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.requiere_vencimiento || false}
-                onChange={(e) => setForm({ ...form, requiere_vencimiento: e.target.checked })}
-                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 dark:border-gray-600"
-              />
-              <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">
-                Producto perecedero (Controlar fechas de vencimiento y lotes)
-              </span>
-            </label>
+          {mostrarBloqueEspeciales && (
+            <div className="space-y-3 bg-gray-50/60 dark:bg-gray-800/40 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700">
+              <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                3. Propiedades Especiales
+              </p>
 
-            {form.requiere_vencimiento && (
-              <div className="pt-1 pl-6">
-                <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">
-                  Días de anticipación para alerta preventiva:
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min="1"
-                    max="180"
-                    value={form.dias_alerta_vencimiento || 15}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        dias_alerta_vencimiento: parseInt(e.target.value, 10) || 15,
-                      })
-                    }
-                    className="w-24 text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-indigo-500 font-bold"
-                  />
-                  <span className="text-xs text-gray-400">días antes de caducar</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Opciones de Balanza y Pesables */}
-          <div className="p-3.5 bg-amber-50/80 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800/60 rounded-xl space-y-2">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.es_pesable || false}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    es_pesable: e.target.checked,
-                    unidad_medida: e.target.checked
-                      ? form.unidad_medida === 'UN'
-                        ? 'KG'
-                        : form.unidad_medida
-                      : 'UN',
-                  })
-                }
-                className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-gray-300 dark:border-gray-600"
-              />
-              <span className="text-xs font-semibold text-amber-950 dark:text-amber-200">
-                Producto fraccionable / por peso (Fiambrería, Verdulería, Balanza)
-              </span>
-            </label>
-
-            {form.es_pesable && (
-              <div className="pt-1 pl-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
-                    Unidad de medida:
+              {tieneVencimientos && (
+                <div className="p-3.5 bg-gray-50/80 dark:bg-gray-900/40 border border-gray-300 dark:border-gray-700 rounded-xl space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.requiere_vencimiento || false}
+                      onChange={(e) => setForm({ ...form, requiere_vencimiento: e.target.checked })}
+                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 dark:border-gray-600"
+                    />
+                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">
+                      Producto perecedero (Controlar fechas de vencimiento y lotes)
+                    </span>
                   </label>
-                  <select
-                    value={form.unidad_medida || 'KG'}
-                    onChange={(e) => setForm({ ...form, unidad_medida: e.target.value as any })}
-                    className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-amber-500 font-bold"
-                  >
-                    <option value="KG">Kilogramos (KG)</option>
-                    <option value="GR">Gramos (GR)</option>
-                    <option value="LT">Litros (LT)</option>
-                    <option value="UN">Unidades (UN)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
-                    Código PLU Balanza (4 o 5 dígitos):
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={5}
-                    placeholder="Ej: 0123"
-                    value={form.plu_balanza || ''}
-                    onChange={(e) => setForm({ ...form, plu_balanza: e.target.value.trim() || null })}
-                    className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-amber-500 font-mono font-bold"
-                  />
-                  <p className="text-[10px] text-gray-400 mt-0.5">
-                    Permite escanear etiquetas de balanzas Systel / Kretz (prefijo 20).
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
 
-          {/* Envases Retornables */}
-          <div className="p-3.5 bg-gray-50/80 dark:bg-gray-800/60 border border-gray-300 dark:border-gray-700 rounded-xl space-y-2.5">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={form.es_retornable || false}
-                onChange={(e) => {
-                  const checked = e.target.checked
-                  let tipoSugerido = tiposEnvases[0]
-                  const desc = (form.descripcion || '').toLowerCase()
-                  if (desc.includes('1.5') || desc.includes('1,5') || desc.includes('1 1/2')) {
-                    tipoSugerido = tiposEnvases.find((t) => t.id === '1.5lts') || tipoSugerido
-                  } else if (desc.includes('2.25') || desc.includes('2,25')) {
-                    tipoSugerido = tiposEnvases.find((t) => t.id === '2.25lts') || tipoSugerido
-                  } else if (desc.includes('2l') || desc.includes('2 l') || desc.includes('2 lt') || desc.includes('2lt')) {
-                    tipoSugerido = tiposEnvases.find((t) => t.id === '2lts') || tipoSugerido
-                  } else if (desc.includes('sifon') || desc.includes('sifón') || desc.includes('soda')) {
-                    tipoSugerido = tiposEnvases.find((t) => t.id === 'sifon') || tipoSugerido
-                  } else if (desc.includes('bidon') || desc.includes('bidón') || desc.includes('20')) {
-                    tipoSugerido = tiposEnvases.find((t) => t.id === 'bidon20l') || tipoSugerido
-                  } else if (desc.includes('1l') || desc.includes('1 l') || desc.includes('1lt') || desc.includes('litro')) {
-                    tipoSugerido = tiposEnvases.find((t) => t.id === '1lt') || tipoSugerido
-                  }
-
-                  setForm({
-                    ...form,
-                    es_retornable: checked,
-                    nombre_envase: checked ? form.nombre_envase || tipoSugerido?.nombre || '1lt' : '',
-                    precio_envase: checked ? form.precio_envase || String(tipoSugerido?.precio || 1500) : '',
-                  })
-                }}
-                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 dark:border-gray-600"
-              />
-              <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
-                Producto con envase retornable (cervezas, gaseosas de vidrio, sifones)
-              </span>
-            </label>
-
-            {form.es_retornable && (
-              <div className="pt-1 pl-6 space-y-2.5">
-                {/* Selector rápido de Tipos Oficiales */}
-                <div>
-                  <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
-                    Tipo de envase estándar:
-                  </label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {tiposEnvases.map((tipo) => {
-                      const activo = form.nombre_envase === tipo.nombre
-                      return (
-                        <button
-                          key={tipo.id}
-                          type="button"
-                          onClick={() =>
+                  {form.requiere_vencimiento && (
+                    <div className="pt-1 pl-6">
+                      <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">
+                        Días de anticipación para alerta preventiva:
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="1"
+                          max="180"
+                          value={form.dias_alerta_vencimiento || 15}
+                          onChange={(e) =>
                             setForm({
                               ...form,
-                              nombre_envase: tipo.nombre,
-                              precio_envase: String(tipo.precio),
+                              dias_alerta_vencimiento: parseInt(e.target.value, 10) || 15,
                             })
                           }
-                          className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all border cursor-pointer ${
-                            activo
-                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
-                              : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
-                          }`}
-                        >
-                          {tipo.nombre} (${tipo.precio.toLocaleString('es-AR')})
-                        </button>
-                      )
-                    })}
-                  </div>
+                          className="w-24 text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-indigo-500 font-bold"
+                        />
+                        <span className="text-xs text-gray-400">días antes de caducar</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
+              )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
-                      Precio unitario del envase ($):
-                    </label>
+              {/* Opciones de Balanza y Pesables */}
+              {tieneBalanza && (
+                <div className="p-3.5 bg-amber-50/80 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800/60 rounded-xl space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
                     <input
-                      type="number"
-                      min="0"
-                      step="50"
-                      placeholder="Ej: 1500"
-                      value={form.precio_envase}
-                      onChange={(e) => setForm({ ...form, precio_envase: e.target.value })}
-                      className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-indigo-500 font-bold tabular-nums"
+                      type="checkbox"
+                      checked={form.es_pesable || false}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          es_pesable: e.target.checked,
+                          unidad_medida: e.target.checked
+                            ? form.unidad_medida === 'UN'
+                              ? 'KG'
+                              : form.unidad_medida
+                            : 'UN',
+                        })
+                      }
+                      className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-gray-300 dark:border-gray-600"
                     />
-                    <p className="text-[10px] text-gray-400 mt-0.5">
-                      Monto a sumar si el cliente no trae la botella vacía.
-                    </p>
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
-                      Nombre o tipo asignado:
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ej: 1lt"
-                      value={form.nombre_envase || ''}
-                      onChange={(e) => setForm({ ...form, nombre_envase: e.target.value || '' })}
-                      className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-indigo-500 font-medium"
-                    />
-                  </div>
+                    <span className="text-xs font-semibold text-amber-950 dark:text-amber-200">
+                      Producto fraccionable / por peso (Fiambrería, Verdulería, Balanza)
+                    </span>
+                  </label>
+
+                  {form.es_pesable && (
+                    <div className="pt-1 pl-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
+                          Unidad de medida:
+                        </label>
+                        <select
+                          value={form.unidad_medida || 'KG'}
+                          onChange={(e) => setForm({ ...form, unidad_medida: e.target.value as any })}
+                          className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-amber-500 font-bold"
+                        >
+                          <option value="KG">Kilogramos (KG)</option>
+                          <option value="GR">Gramos (GR)</option>
+                          <option value="LT">Litros (LT)</option>
+                          <option value="UN">Unidades (UN)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
+                          Código PLU Balanza (4 o 5 dígitos):
+                        </label>
+                        <input
+                          type="text"
+                          maxLength={5}
+                          placeholder="Ej: 0123"
+                          value={form.plu_balanza || ''}
+                          onChange={(e) => setForm({ ...form, plu_balanza: e.target.value.trim() || null })}
+                          className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-amber-500 font-mono font-bold"
+                        />
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                          Permite escanear etiquetas de balanzas Systel / Kretz (prefijo 20).
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
-          </div>
-          </div>
+              )}
+
+              {/* Envases Retornables */}
+              {tieneEnvases && (
+                <div className="p-3.5 bg-gray-50/80 dark:bg-gray-800/60 border border-gray-300 dark:border-gray-700 rounded-xl space-y-2.5">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={form.es_retornable || false}
+                      onChange={(e) => {
+                        const checked = e.target.checked
+                        let tipoSugerido = tiposEnvases[0]
+                        const desc = (form.descripcion || '').toLowerCase()
+                        if (desc.includes('1.5') || desc.includes('1,5') || desc.includes('1 1/2')) {
+                          tipoSugerido = tiposEnvases.find((t) => t.id === '1.5lts') || tipoSugerido
+                        } else if (desc.includes('2.25') || desc.includes('2,25')) {
+                          tipoSugerido = tiposEnvases.find((t) => t.id === '2.25lts') || tipoSugerido
+                        } else if (desc.includes('2l') || desc.includes('2 l') || desc.includes('2 lt') || desc.includes('2lt')) {
+                          tipoSugerido = tiposEnvases.find((t) => t.id === '2lts') || tipoSugerido
+                        } else if (desc.includes('sifon') || desc.includes('sifón') || desc.includes('soda')) {
+                          tipoSugerido = tiposEnvases.find((t) => t.id === 'sifon') || tipoSugerido
+                        } else if (desc.includes('bidon') || desc.includes('bidón') || desc.includes('20')) {
+                          tipoSugerido = tiposEnvases.find((t) => t.id === 'bidon20l') || tipoSugerido
+                        } else if (desc.includes('1l') || desc.includes('1 l') || desc.includes('1lt') || desc.includes('litro')) {
+                          tipoSugerido = tiposEnvases.find((t) => t.id === '1lt') || tipoSugerido
+                        }
+
+                        setForm({
+                          ...form,
+                          es_retornable: checked,
+                          nombre_envase: checked ? form.nombre_envase || tipoSugerido?.nombre || '1lt' : '',
+                          precio_envase: checked ? form.precio_envase || String(tipoSugerido?.precio || 1500) : '',
+                        })
+                      }}
+                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 dark:border-gray-600"
+                    />
+                    <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                      Producto con envase retornable (cervezas, gaseosas de vidrio, sifones)
+                    </span>
+                  </label>
+
+                  {form.es_retornable && (
+                    <div className="pt-1 pl-6 space-y-2.5">
+                      {/* Selector rápido de Tipos Oficiales */}
+                      <div>
+                        <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
+                          Tipo de envase estándar:
+                        </label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {tiposEnvases.map((tipo) => {
+                            const activo = form.nombre_envase === tipo.nombre
+                            return (
+                              <button
+                                key={tipo.id}
+                                type="button"
+                                onClick={() =>
+                                  setForm({
+                                    ...form,
+                                    nombre_envase: tipo.nombre,
+                                    precio_envase: String(tipo.precio),
+                                  })
+                                }
+                                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all border cursor-pointer ${
+                                  activo
+                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                }`}
+                              >
+                                {tipo.nombre} (${tipo.precio.toLocaleString('es-AR')})
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
+                            Precio unitario del envase ($):
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="50"
+                            placeholder="Ej: 1500"
+                            value={form.precio_envase}
+                            onChange={(e) => setForm({ ...form, precio_envase: e.target.value })}
+                            className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-indigo-500 font-bold tabular-nums"
+                          />
+                          <p className="text-[10px] text-gray-400 mt-0.5">
+                            Monto a sumar si el cliente no trae la botella vacía.
+                          </p>
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-1">
+                            Nombre o tipo asignado:
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Ej: 1lt"
+                            value={form.nombre_envase || ''}
+                            onChange={(e) => setForm({ ...form, nombre_envase: e.target.value || '' })}
+                            className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-indigo-500 font-medium"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </form>
       </Modal>
 

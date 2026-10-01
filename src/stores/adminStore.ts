@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { supabase, createUnauthenticatedClient } from '../lib/supabase'
-import type { KioscoAdminView, Plan, PagoSuscripcion } from '../types/database'
+import type { KioscoAdminView, Plan, PagoSuscripcion, RubroComercio } from '../types/database'
 import { calcularDiasRestantes } from './authStore'
 import { getFechaLocal } from '../lib/utils'
 import toast from 'react-hot-toast'
@@ -9,6 +9,7 @@ interface NuevoKioscoPayload {
   nombreKiosco: string
   direccion?: string
   telefono?: string
+  rubro?: RubroComercio
   nombreDueno: string
   emailDueno: string
   passwordDueno: string
@@ -20,6 +21,7 @@ export interface EditarKioscoPayload {
   nombreKiosco: string
   direccion?: string
   telefono?: string
+  rubro?: RubroComercio
   estadoKiosco: 'ACTIVO' | 'SOLO_LECTURA' | 'SUSPENDIDO'
   duenoUsuarioId?: string | null
   nombreDueno?: string
@@ -131,6 +133,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
           telefono_kiosco: k.telefono,
           estado_kiosco: k.estado_suscripcion,
           fecha_creacion: k.fecha_creacion,
+          rubro: k.rubro || 'KIOSCO',
           dueno_usuario_id: dueno?.id || null,
           nombre_dueno: dueno?.nombre || null,
           email_dueno: dueno?.email || null,
@@ -289,6 +292,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
           direccion: payload.direccion?.trim() || null,
           telefono: payload.telefono?.trim() || null,
           estado_suscripcion: payload.estadoKiosco,
+          ...(payload.rubro ? { rubro: payload.rubro } : {}),
         })
         .eq('id', kioscoId)
 
@@ -518,6 +522,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
           direccion: payload.direccion?.trim() || null,
           telefono: payload.telefono?.trim() || null,
           estado_suscripcion: 'ACTIVO',
+          rubro: payload.rubro || 'KIOSCO',
         })
         .select('id')
         .maybeSingle()
@@ -557,16 +562,26 @@ export const useAdminStore = create<AdminState>((set, get) => ({
 
       if (sError) throw sError
 
-      // 5. Inicializar categorías estándar para el kiosco
+      // 5. Inicializar categorías estándar según el rubro
       try {
-        const categoriasIniciales = [
-          { nombre: 'Golosinas', color: '#f59e0b', orden: 1 },
-          { nombre: 'Bebidas', color: '#3b82f6', orden: 2 },
-          { nombre: 'Snacks', color: '#ef4444', orden: 3 },
-          { nombre: 'Cigarrillos', color: '#6b7280', orden: 4 },
-          { nombre: 'Almacén', color: '#10b981', orden: 5 },
-          { nombre: 'Lácteos', color: '#8b5cf6', orden: 6 },
-        ]
+        const esFotocopiadora = payload.rubro === 'FOTOCOPIADORA_LIBRERIA'
+        const categoriasIniciales = esFotocopiadora
+          ? [
+              { nombre: 'Fotocopias e Impresiones', color: '#3b82f6', orden: 1 },
+              { nombre: 'Librería Escolar', color: '#10b981', orden: 2 },
+              { nombre: 'Librería Comercial', color: '#f59e0b', orden: 3 },
+              { nombre: 'Anillados y Plastificados', color: '#8b5cf6', orden: 4 },
+              { nombre: 'Insumos e Informática', color: '#6366f1', orden: 5 },
+              { nombre: 'Papelería y Resmas', color: '#ec4899', orden: 6 },
+            ]
+          : [
+              { nombre: 'Golosinas', color: '#f59e0b', orden: 1 },
+              { nombre: 'Bebidas', color: '#3b82f6', orden: 2 },
+              { nombre: 'Snacks', color: '#ef4444', orden: 3 },
+              { nombre: 'Cigarrillos', color: '#6b7280', orden: 4 },
+              { nombre: 'Almacén', color: '#10b981', orden: 5 },
+              { nombre: 'Lácteos', color: '#8b5cf6', orden: 6 },
+            ]
 
         await supabase.from('categorias').insert(
           categoriasIniciales.map((c) => ({

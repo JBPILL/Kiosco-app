@@ -5,7 +5,7 @@ import { useSoporteStore, type TicketSoporte, type EstadoTicket, type TipoTicket
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
-import type { KioscoAdminView, PagoSuscripcion } from '../types/database'
+import type { KioscoAdminView, PagoSuscripcion, RubroComercio } from '../types/database'
 import { formatPrecio } from '../lib/utils'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { supabase } from '../lib/supabase'
@@ -54,6 +54,7 @@ export function SuperAdminPage() {
   // Modal Nuevo Kiosco
   const [modalNuevoOpen, setModalNuevoOpen] = useState(false)
   const [nuevoNombreKiosco, setNuevoNombreKiosco] = useState('')
+  const [nuevoRubro, setNuevoRubro] = useState<RubroComercio>('KIOSCO')
   const [nuevaDireccion, setNuevaDireccion] = useState('')
   const [nuevoTelefono, setNuevoTelefono] = useState('')
   const [nuevoNombreDueno, setNuevoNombreDueno] = useState('')
@@ -66,6 +67,7 @@ export function SuperAdminPage() {
   const [modalEditarOpen, setModalEditarOpen] = useState(false)
   const [kioscoParaEditar, setKioscoParaEditar] = useState<KioscoAdminView | null>(null)
   const [editNombreKiosco, setEditNombreKiosco] = useState('')
+  const [editRubro, setEditRubro] = useState<RubroComercio>('KIOSCO')
   const [editDireccion, setEditDireccion] = useState('')
   const [editTelefono, setEditTelefono] = useState('')
   const [editEstadoKiosco, setEditEstadoKiosco] = useState<'ACTIVO' | 'SOLO_LECTURA' | 'SUSPENDIDO'>('ACTIVO')
@@ -312,6 +314,7 @@ export function SuperAdminPage() {
       nombreKiosco: nuevoNombreKiosco.trim(),
       direccion: nuevaDireccion.trim() || undefined,
       telefono: nuevoTelefono.trim() || undefined,
+      rubro: nuevoRubro,
       nombreDueno: nuevoNombreDueno.trim(),
       emailDueno: nuevoEmailDueno.trim(),
       passwordDueno: nuevoPasswordDueno.trim(),
@@ -322,6 +325,7 @@ export function SuperAdminPage() {
     if (ok) {
       setModalNuevoOpen(false)
       setNuevoNombreKiosco('')
+      setNuevoRubro('KIOSCO')
       setNuevaDireccion('')
       setNuevoTelefono('')
       setNuevoNombreDueno('')
@@ -334,6 +338,7 @@ export function SuperAdminPage() {
   const abrirModalEditar = (k: KioscoAdminView) => {
     setKioscoParaEditar(k)
     setEditNombreKiosco(k.nombre_kiosco || '')
+    setEditRubro(k.rubro || 'KIOSCO')
     setEditDireccion(k.direccion || '')
     setEditTelefono(k.telefono_kiosco || '')
     setEditEstadoKiosco(k.estado_kiosco)
@@ -352,6 +357,7 @@ export function SuperAdminPage() {
       nombreKiosco: editNombreKiosco.trim(),
       direccion: editDireccion.trim() || undefined,
       telefono: editTelefono.trim() || undefined,
+      rubro: editRubro,
       estadoKiosco: editEstadoKiosco,
       duenoUsuarioId: kioscoParaEditar.dueno_usuario_id,
       nombreDueno: editNombreDueno.trim() || undefined,
@@ -1007,6 +1013,19 @@ export function SuperAdminPage() {
                       <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${badgeColor}`}>
                         {badgeTexto}
                       </span>
+                      {k.rubro === 'FOTOCOPIADORA_LIBRERIA' ? (
+                        <span className="text-xs px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 font-bold">
+                          📚 Librería / Copiado
+                        </span>
+                      ) : k.rubro === 'GENERAL' ? (
+                        <span className="text-xs px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950/40 border border-purple-300 dark:border-purple-800 text-purple-800 dark:text-purple-300 font-bold">
+                          🛍️ Comercio General
+                        </span>
+                      ) : (
+                        <span className="text-xs px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 border border-blue-300 dark:border-blue-800 text-blue-800 dark:text-blue-300 font-bold">
+                          🏪 Kiosco / Minimercado
+                        </span>
+                      )}
                       {k.nombre_plan && (
                         <span className="text-xs px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-medium">
                           {k.nombre_plan} ({k.precio_mensual ? formatPrecio(k.precio_mensual) : ''}/mes)
@@ -1525,7 +1544,7 @@ export function SuperAdminPage() {
               <div className="sm:col-span-2">
                 <Input
                   label="Nombre del Kiosco / Comercio *"
-                  placeholder="Ej: Kiosco El Paso"
+                  placeholder="Ej: Kiosco El Paso o Fotocopiadora Central"
                   value={nuevoNombreKiosco}
                   onChange={(e) => setNuevoNombreKiosco(e.target.value)}
                   required
@@ -1533,12 +1552,18 @@ export function SuperAdminPage() {
               </div>
 
               <div>
-                <Input
-                  label="Dirección del Local"
-                  placeholder="Ej: Av. San Martín 1234"
-                  value={nuevaDireccion}
-                  onChange={(e) => setNuevaDireccion(e.target.value)}
-                />
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Rubro del Comercio *
+                </label>
+                <select
+                  value={nuevoRubro}
+                  onChange={(e) => setNuevoRubro(e.target.value as RubroComercio)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-hidden"
+                >
+                  <option value="KIOSCO">🏪 Kiosco / Minimercado / Almacén</option>
+                  <option value="FOTOCOPIADORA_LIBRERIA">📚 Fotocopiadora / Librería / Centro de Copiado</option>
+                  <option value="GENERAL">🛍️ Comercio General / Retail</option>
+                </select>
               </div>
 
               <div>
@@ -1547,6 +1572,15 @@ export function SuperAdminPage() {
                   placeholder="Ej: 1123456789"
                   value={nuevoTelefono}
                   onChange={(e) => setNuevoTelefono(e.target.value)}
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <Input
+                  label="Dirección del Local"
+                  placeholder="Ej: Av. San Martín 1234"
+                  value={nuevaDireccion}
+                  onChange={(e) => setNuevaDireccion(e.target.value)}
                 />
               </div>
             </div>
@@ -1880,11 +1914,26 @@ export function SuperAdminPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="sm:col-span-2">
                   <Input
-                    label="Nombre del Kiosco *"
+                    label="Nombre del Kiosco / Comercio *"
                     value={editNombreKiosco}
                     onChange={(e) => setEditNombreKiosco(e.target.value)}
                     required
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Rubro del Comercio
+                  </label>
+                  <select
+                    value={editRubro}
+                    onChange={(e) => setEditRubro(e.target.value as RubroComercio)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-hidden"
+                  >
+                    <option value="KIOSCO">🏪 Kiosco / Minimercado / Almacén</option>
+                    <option value="FOTOCOPIADORA_LIBRERIA">📚 Fotocopiadora / Librería / Centro de Copiado</option>
+                    <option value="GENERAL">🛍️ Comercio General / Retail</option>
+                  </select>
                 </div>
 
                 <div>
@@ -1896,7 +1945,7 @@ export function SuperAdminPage() {
                   />
                 </div>
 
-                <div>
+                <div className="sm:col-span-2">
                   <Input
                     label="Dirección del Local"
                     value={editDireccion}
