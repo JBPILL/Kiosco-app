@@ -87,9 +87,11 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
   useEffect(() => {
     if (isOpen) {
       cargarProveedores()
-      cargarTiposEnvases()
+      if (tieneEnvases) {
+        cargarTiposEnvases()
+      }
     }
-  }, [isOpen, cargarProveedores, cargarTiposEnvases])
+  }, [isOpen, tieneEnvases, cargarProveedores, cargarTiposEnvases])
 
   // Soporte para pistolas lectoras físicas USB / Bluetooth en el formulario
   useBarcodeGun({
@@ -193,14 +195,14 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
       categoria_id: form.categoria_id,
       proveedor_id: form.proveedor_id,
       codigo_barras: form.codigo_barras?.trim() || null,
-      requiere_vencimiento: form.requiere_vencimiento,
-      dias_alerta_vencimiento: form.dias_alerta_vencimiento,
-      es_pesable: form.es_pesable,
-      unidad_medida: form.unidad_medida,
-      plu_balanza: form.plu_balanza?.trim() || null,
-      es_retornable: form.es_retornable,
-      precio_envase: parseFloat(form.precio_envase) || 0,
-      nombre_envase: form.nombre_envase.trim() || undefined,
+      requiere_vencimiento: tieneVencimientos ? form.requiere_vencimiento : false,
+      dias_alerta_vencimiento: tieneVencimientos ? form.dias_alerta_vencimiento : 15,
+      es_pesable: tieneBalanza ? form.es_pesable : false,
+      unidad_medida: tieneBalanza ? form.unidad_medida : 'UN',
+      plu_balanza: tieneBalanza ? (form.plu_balanza?.trim() || null) : null,
+      es_retornable: tieneEnvases ? form.es_retornable : false,
+      precio_envase: tieneEnvases ? (parseFloat(form.precio_envase) || 0) : 0,
+      nombre_envase: tieneEnvases ? (form.nombre_envase.trim() || undefined) : undefined,
     }
 
     const ok = await onGuardar(dataToSend)

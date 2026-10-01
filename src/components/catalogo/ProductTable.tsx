@@ -4,6 +4,7 @@ import { formatPrecio, nivelStock } from '../../lib/utils'
 import { SearchInput } from '../ui/SearchInput'
 import { Button } from '../ui/Button'
 import { useProveedorStore } from '../../stores/proveedorStore'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 
 const stockColors = {
   ok: 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30',
@@ -52,6 +53,7 @@ export function ProductTable({
   onPurgarHuerfanos,
   onSincronizar,
 }: ProductTableProps) {
+  const { tieneEnvases, tieneBalanza, tieneVencimientos } = useTenantConfig()
   const { proveedores, cargarProveedores } = useProveedorStore()
   const [proveedorFiltro, setProveedorFiltro] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
@@ -311,17 +313,17 @@ export function ProductTable({
                           ★ Fav
                         </span>
                       )}
-                      {prod.es_retornable && (
+                      {tieneEnvases && prod.es_retornable && (
                         <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 font-medium whitespace-nowrap">
                           Retornable (+{formatPrecio(prod.precio_envase || 0)})
                         </span>
                       )}
-                      {prod.requiere_vencimiento && (
+                      {tieneVencimientos && prod.requiere_vencimiento && (
                         <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60 font-medium whitespace-nowrap">
                           Perecedero ({prod.dias_alerta_vencimiento || 15}d)
                         </span>
                       )}
-                      {prod.es_pesable && (
+                      {tieneBalanza && prod.es_pesable && (
                         <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-800/60 font-medium whitespace-nowrap">
                           Balanza ({prod.unidad_medida || 'KG'})
                         </span>
@@ -456,17 +458,17 @@ export function ProductTable({
                       <td className="px-3.5 py-2.5">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-semibold text-gray-900 dark:text-gray-100">{prod.descripcion}</span>
-                          {prod.es_retornable && (
+                          {tieneEnvases && prod.es_retornable && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 font-medium whitespace-nowrap">
                               Retornable (+{formatPrecio(prod.precio_envase || 0)})
                             </span>
                           )}
-                          {prod.requiere_vencimiento && (
+                          {tieneVencimientos && prod.requiere_vencimiento && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60 font-medium whitespace-nowrap">
                               Perecedero ({prod.dias_alerta_vencimiento || 15}d)
                             </span>
                           )}
-                          {prod.es_pesable && (
+                          {tieneBalanza && prod.es_pesable && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-800/60 font-medium whitespace-nowrap">
                               Balanza ({prod.unidad_medida || 'KG'})
                             </span>

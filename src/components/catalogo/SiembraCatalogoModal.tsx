@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { supabase } from '../../lib/supabase'
@@ -46,6 +46,12 @@ export function SiembraCatalogoModal({
   const [categoriasSeleccionadas, setCategoriasSeleccionadas] = useState<Set<string>>(
     () => new Set(categoriasMaestras)
   )
+
+  useEffect(() => {
+    if (isOpen) {
+      setCategoriasSeleccionadas(new Set(categoriasMaestras))
+    }
+  }, [isOpen, categoriasMaestras])
 
   const [margenGananciaPct, setMargenGananciaPct] = useState<number>(60)
   const [usarPreciosSugeridos, setUsarPreciosSugeridos] = useState<boolean>(true)
@@ -182,6 +188,10 @@ export function SiembraCatalogoModal({
       const nuevosProductosPayload: Producto[] = productosAProcesar.map((p) => {
         const catId = mapaCategorias.get(p.categoria_nombre.toLowerCase().trim()) || null
         const pVenta = calcularPrecioVentaFinal(p)
+        const esFavSugerido = esFotocopiadora && (
+          p.categoria_nombre === 'Fotocopias e Impresiones' ||
+          p.categoria_nombre === 'Anillados y Plastificados'
+        )
         return {
           id: uuidv4(),
           kiosco_id: kioscoId,
@@ -189,12 +199,12 @@ export function SiembraCatalogoModal({
           descripcion: p.descripcion.trim(),
           precio_costo: p.precio_costo_ref,
           precio_venta: pVenta,
-          stock_actual: stockInicialDefault,
+          stock_actual: p.stock_inicial_sugerido ?? stockInicialDefault,
           stock_minimo: 5,
           categoria_id: catId,
           unidad_medida: p.unidad_medida || 'UN',
           es_pesable: Boolean(p.es_pesable),
-          es_favorito: false,
+          es_favorito: esFavSugerido,
           activo: true,
           fecha_creacion: now,
           fecha_actualizacion: now,
@@ -225,6 +235,7 @@ export function SiembraCatalogoModal({
             categoria_id: item.categoria_id,
             unidad_medida: item.unidad_medida,
             es_pesable: item.es_pesable,
+            es_favorito: item.es_favorito,
             activo: true,
           })),
           { onConflict: 'kiosco_id,codigo_barras' }

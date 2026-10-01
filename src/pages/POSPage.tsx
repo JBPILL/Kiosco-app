@@ -37,7 +37,7 @@ import toast from 'react-hot-toast'
 export function POSPage() {
   const navigate = useNavigate()
   const { usuario, kiosco } = useAuthStore()
-  const { tieneEnvases, esFotocopiadora } = useTenantConfig()
+  const { tieneEnvases, tieneBalanza, esFotocopiadora } = useTenantConfig()
   const { sesionActiva, verificarSesionActiva } = useCajaStore()
   const { promociones, cargarPromociones } = usePromocionStore()
   const [favoritos, setFavoritos] = useState<Producto[]>([])
@@ -173,7 +173,7 @@ export function POSPage() {
       agregarProducto(producto, cantidad)
       return
     }
-    if (producto.es_pesable) {
+    if (tieneBalanza && producto.es_pesable) {
       setProductoPesableModal(producto)
       setModalBalanzaOpen(true)
       return
@@ -272,38 +272,40 @@ export function POSPage() {
       const kid = usuario?.kiosco_id || kiosco?.id
 
       // 0. Comprobar si es código de balanza comercial argentina (EAN-13 con prefijo 20 o 02)
-      const parsedBalanza = parsearCodigoBalanza(codeTrim)
-      if (parsedBalanza) {
-        let matchBalanza: { producto: Producto; pesoKg: number } | null = null
-        const todos: Producto[] = getCachedProductos(kid)
-        if (todos.length > 0) {
-          matchBalanza = buscarProductoPorCodigoBalanza(codeTrim, todos)
-        }
+      if (tieneBalanza) {
+        const parsedBalanza = parsearCodigoBalanza(codeTrim)
+        if (parsedBalanza) {
+          let matchBalanza: { producto: Producto; pesoKg: number } | null = null
+          const todos: Producto[] = getCachedProductos(kid)
+          if (todos.length > 0) {
+            matchBalanza = buscarProductoPorCodigoBalanza(codeTrim, todos)
+          }
 
-        if (matchBalanza) {
-          agregarProducto(matchBalanza.producto, matchBalanza.pesoKg)
-          toast.success(`${matchBalanza.producto.descripcion} (${matchBalanza.pesoKg} kg) agregado`)
-          return
-        }
-
-        // Si no estaba en caché local, buscar en Supabase por plu_balanza o codigo_barras
-        try {
-          let queryBalanza = supabase
-            .from('productos')
-            .select('*, categoria:categorias(nombre, color)')
-            .eq('activo', true)
-            .or(`plu_balanza.eq.${parsedBalanza.plu4},plu_balanza.eq.${parsedBalanza.pluCorto},plu_balanza.eq.${parsedBalanza.plu5},codigo_barras.eq.${parsedBalanza.plu4},codigo_barras.eq.${parsedBalanza.pluCorto}`)
-            .limit(1)
-          if (kid) queryBalanza = queryBalanza.eq('kiosco_id', kid)
-          const { data } = await queryBalanza.maybeSingle()
-
-          if (data) {
-            agregarProducto(data, parsedBalanza.pesoKg)
-            toast.success(`${data.descripcion} (${parsedBalanza.pesoKg} kg) agregado`)
+          if (matchBalanza) {
+            agregarProducto(matchBalanza.producto, matchBalanza.pesoKg)
+            toast.success(`${matchBalanza.producto.descripcion} (${matchBalanza.pesoKg} kg) agregado`)
             return
           }
-        } catch (errBalanza) {
-          console.warn('Error buscando producto de balanza en Supabase:', errBalanza)
+
+          // Si no estaba en caché local, buscar en Supabase por plu_balanza o codigo_barras
+          try {
+            let queryBalanza = supabase
+              .from('productos')
+              .select('*, categoria:categorias(nombre, color)')
+              .eq('activo', true)
+              .or(`plu_balanza.eq.${parsedBalanza.plu4},plu_balanza.eq.${parsedBalanza.pluCorto},plu_balanza.eq.${parsedBalanza.plu5},codigo_barras.eq.${parsedBalanza.plu4},codigo_barras.eq.${parsedBalanza.pluCorto}`)
+              .limit(1)
+            if (kid) queryBalanza = queryBalanza.eq('kiosco_id', kid)
+            const { data } = await queryBalanza.maybeSingle()
+
+            if (data) {
+              agregarProducto(data, parsedBalanza.pesoKg)
+              toast.success(`${data.descripcion} (${parsedBalanza.pesoKg} kg) agregado`)
+              return
+            }
+          } catch (errBalanza) {
+            console.warn('Error buscando producto de balanza en Supabase:', errBalanza)
+          }
         }
       }
 
@@ -316,7 +318,7 @@ export function POSPage() {
 
       if (productoEncontrado) {
         window.dispatchEvent(new CustomEvent('pos-clear-search'))
-        if (productoEncontrado.es_pesable) {
+        if (tieneBalanza && productoEncontrado.es_pesable) {
           setProductoPesableModal(productoEncontrado)
           setModalBalanzaOpen(true)
           return
@@ -342,7 +344,7 @@ export function POSPage() {
 
         if (data) {
           window.dispatchEvent(new CustomEvent('pos-clear-search'))
-          if (data.es_pesable) {
+          if (tieneBalanza && data.es_pesable) {
             setProductoPesableModal(data)
             setModalBalanzaOpen(true)
             return

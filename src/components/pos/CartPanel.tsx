@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useCartStore } from '../../stores/cartStore'
 import { useAuthStore } from '../../stores/authStore'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 import type { TipoAjuste } from '../../stores/cartStore'
 import { formatPrecio } from '../../lib/utils'
 import { Button } from '../ui/Button'
@@ -14,6 +15,7 @@ interface CartPanelProps {
 
 export function CartPanel({ onCobrar }: CartPanelProps) {
   const { usuario, kiosco, diasRestantes } = useAuthStore()
+  const { tieneEnvases } = useTenantConfig()
   const esSoloLectura = !usuario?.es_superadmin && (
     kiosco?.estado_suscripcion === 'SOLO_LECTURA' ||
     (diasRestantes !== null && diasRestantes < 0)
@@ -171,7 +173,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     cantidad: number
   ) => {
     const it = items[index]
-    const tieneEnvase = it && it.producto.es_retornable && !it.es_devolucion_envase
+    const tieneEnvase = Boolean(tieneEnvases && it && it.producto.es_retornable && !it.es_devolucion_envase)
 
     if (e.key === 'Tab') {
       e.preventDefault()
@@ -406,7 +408,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
     itemId: string
   ) => {
     const it = items[index]
-    const tieneEnvase = it && it.producto.es_retornable && !it.es_devolucion_envase
+    const tieneEnvase = Boolean(tieneEnvases && it && it.producto.es_retornable && !it.es_devolucion_envase)
 
     if (e.key === 'Tab') {
       e.preventDefault()
@@ -864,7 +866,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                 </div>
 
                 {/* 3. Fila Extra (si tiene promociones o envase) */}
-                {(item.promo_nombre || item.es_devolucion_envase || (item.producto.es_retornable && !item.es_devolucion_envase)) && (
+                {(item.promo_nombre || item.es_devolucion_envase || (tieneEnvases && item.producto.es_retornable && !item.es_devolucion_envase)) && (
                   <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
                     {item.promo_nombre && (
                       <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60">
@@ -876,7 +878,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                         Devolución envase
                       </span>
                     )}
-                    {item.producto.es_retornable && !item.es_devolucion_envase && (
+                    {tieneEnvases && item.producto.es_retornable && !item.es_devolucion_envase && (
                       <button
                         ref={(el) => { envaseBtnRefs.current[idx] = el }}
                         type="button"

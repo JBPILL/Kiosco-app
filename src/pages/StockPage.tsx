@@ -104,8 +104,10 @@ export function StockPage() {
   useEffect(() => {
     cargarMovimientos()
     cargarProductos()
-    cargarLotes(usuario?.kiosco_id || undefined)
-  }, [cargarMovimientos, cargarProductos, cargarLotes, usuario?.kiosco_id])
+    if (tieneVencimientos) {
+      cargarLotes(usuario?.kiosco_id || undefined)
+    }
+  }, [cargarMovimientos, cargarProductos, cargarLotes, usuario?.kiosco_id, tieneVencimientos])
 
   useRealtimeSync(usuario?.kiosco_id || kiosco?.id, () => {
     cargarProductos()
@@ -117,11 +119,11 @@ export function StockPage() {
   const handleSincronizar = async () => {
     setSincronizando(true)
     clearCachedProductos(usuario?.kiosco_id || kiosco?.id)
-    await Promise.all([
-      cargarMovimientos(),
-      cargarProductos(),
-      cargarLotes(usuario?.kiosco_id || undefined),
-    ])
+    const promises: Promise<any>[] = [cargarMovimientos(), cargarProductos()]
+    if (tieneVencimientos) {
+      promises.push(cargarLotes(usuario?.kiosco_id || undefined))
+    }
+    await Promise.all(promises)
     setSincronizando(false)
     toast.success('Stock sincronizado con el servidor')
   }
@@ -432,7 +434,11 @@ export function StockPage() {
       setFechaVencimiento('')
       setNumeroLote('')
 
-      await Promise.all([cargarMovimientos(), cargarProductos(), cargarLotes(usuario?.kiosco_id || undefined)])
+      const syncPromises: Promise<any>[] = [cargarMovimientos(), cargarProductos()]
+      if (tieneVencimientos) {
+        syncPromises.push(cargarLotes(usuario?.kiosco_id || undefined))
+      }
+      await Promise.all(syncPromises)
     } catch (err: any) {
       playScanSound('error')
       toast.error(err?.message || 'Error al actualizar stock')

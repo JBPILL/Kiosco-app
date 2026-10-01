@@ -18,7 +18,7 @@ import type { ProductFormData } from '../components/catalogo/ProductForm'
 
 export function CatalogoPage() {
   const { kiosco } = useAuthStore()
-  const { tieneEnvases } = useTenantConfig()
+  const { tieneEnvases, esFotocopiadora } = useTenantConfig()
   const {
     productos,
     categorias,
@@ -121,14 +121,18 @@ export function CatalogoPage() {
               type="button"
               onClick={() => setSiembraOpen(true)}
               className="h-8 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center justify-center"
-              title="Cargar catálogo precargado de kiosco argentino con códigos de barras oficiales y precios sugeridos"
+              title={
+                esFotocopiadora
+                  ? 'Cargar catálogo precargado de librería, fotocopias y papelería con precios sugeridos'
+                  : 'Cargar catálogo precargado de kiosco argentino con códigos de barras oficiales y precios sugeridos'
+              }
             >
               <svg className="w-3.5 h-3.5 mr-1.5 text-emerald-600 dark:text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 10a6 6 0 0 0-6-6H3v2a6 6 0 0 0 6 6h3" />
                 <path d="M12 14a6 6 0 0 1 6-6h3v2a6 6 0 0 1-6 6h-3" />
                 <line x1="12" y1="10" x2="12" y2="21" />
               </svg>
-              <span>Catálogo Kiosco</span>
+              <span>{esFotocopiadora ? 'Catálogo Librería' : 'Catálogo Kiosco'}</span>
             </button>
             <button
               type="button"

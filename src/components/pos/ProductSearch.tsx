@@ -7,6 +7,7 @@ import { SearchInput } from '../ui/SearchInput'
 import { buscarProductoPorCodigoBalanza } from '../../lib/barcodeParser'
 import { useCartStore } from '../../stores/cartStore'
 import { useAuthStore } from '../../stores/authStore'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 
 interface ProductSearchProps {
   onSelect: (producto: Producto, cantidad?: number) => void
@@ -16,6 +17,7 @@ interface ProductSearchProps {
 
 export function ProductSearch({ onSelect, onOpenScanner, onCodigoNoEncontrado }: ProductSearchProps) {
   const { usuario, kiosco } = useAuthStore()
+  const { tieneBalanza } = useTenantConfig()
   const kioscoId = usuario?.kiosco_id || kiosco?.id
   const [query, setQuery] = useState('')
   const [resultados, setResultados] = useState<Producto[]>([])
@@ -160,13 +162,15 @@ export function ProductSearch({ onSelect, onOpenScanner, onCodigoNoEncontrado }:
       // 1. Chequear si es código de balanza comercial (EAN-13 con prefijo 20 o 02)
       const todosLocales: Producto[] = getCachedProductos(kioscoId)
 
-      const matchBalanza = buscarProductoPorCodigoBalanza(queryTrim, todosLocales.length > 0 ? todosLocales : resultados)
-      if (matchBalanza) {
-        onSelect(matchBalanza.producto, matchBalanza.pesoKg)
-        setQuery('')
-        setResultados([])
-        setMostrarResultados(false)
-        return
+      if (tieneBalanza) {
+        const matchBalanza = buscarProductoPorCodigoBalanza(queryTrim, todosLocales.length > 0 ? todosLocales : resultados)
+        if (matchBalanza) {
+          onSelect(matchBalanza.producto, matchBalanza.pesoKg)
+          setQuery('')
+          setResultados([])
+          setMostrarResultados(false)
+          return
+        }
       }
 
       // 2. Coincidencia inmediata en memoria/caché local (vital para lectores de código de barras rápidos)
