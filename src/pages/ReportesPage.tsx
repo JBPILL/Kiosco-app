@@ -20,6 +20,9 @@ interface ResumenDiario {
   totalDevoluciones?: number
   cantidadVentas: number
   ventaPromedio: number
+  totalCosto: number
+  gananciaBruta: number
+  margenPorcentaje: number
   porMedioPago: { medio: string; total: number; cantidad: number }[]
 }
 
@@ -42,12 +45,15 @@ interface VentaResumen {
     precio_unitario?: number
     subtotal: number
     producto_id: string
-    producto?: { id: string; descripcion: string; stock_actual: number }
+    sin_envase?: boolean
+    es_devolucion_envase?: boolean
+    producto?: { id: string; descripcion: string; stock_actual: number; precio_costo?: number }
   }[]
 }
 
 export function ReportesPage() {
   const { usuario, kiosco } = useAuthStore()
+  const esDueno = usuario?.rol === 'DUEÑO' || Boolean(usuario?.es_superadmin)
   const [tabActiva, setTabActiva] = useState<'balance' | 'ventas'>('balance')
   const [fecha, setFecha] = useState(() => getFechaLocal())
   const [ventas, setVentas] = useState<VentaResumen[]>([])
@@ -71,7 +77,7 @@ export function ReportesPage() {
         afip_cae, afip_vto_cae, afip_tipo_comprobante, afip_nro_comprobante, afip_qr_url,
         usuario:usuarios(nombre),
         pagos:pagos_venta(medio_pago, monto),
-        detalles:detalles_venta(cantidad, precio_unitario, subtotal, producto_id, producto:productos(id, descripcion, stock_actual))
+        detalles:detalles_venta(cantidad, precio_unitario, subtotal, producto_id, sin_envase, es_devolucion_envase, producto:productos(id, descripcion, stock_actual, precio_costo))
       `)
       .gte('fecha_hora', inicioISO)
       .lte('fecha_hora', finISO)
@@ -99,6 +105,16 @@ export function ReportesPage() {
     const totalVentasBrutas = ventasValidas.reduce((sum, v) => sum + v.total, 0)
     const cantidadVentas = ventasValidas.length
 
+    // Calcular costo total de la mercadería vendida (CMV)
+    let totalCostoVentas = 0
+    for (const venta of ventasValidas) {
+      for (const det of venta.detalles || []) {
+        if (det.es_devolucion_envase) continue
+        const costoUnitario = Number(det.producto?.precio_costo) || 0
+        totalCostoVentas += (Number(det.cantidad) || 0) * costoUnitario
+      }
+    }
+
     // Cargar devoluciones del día para calcular ventas netas y deducir reintegros
     let queryDevs = supabase
       .from('devoluciones_venta')
@@ -115,6 +131,9 @@ export function ReportesPage() {
     const totalDevoluciones = (devsData || []).reduce((acc: number, d: any) => acc + (d.monto_total || 0), 0)
     const totalVentas = Math.max(0, totalVentasBrutas - totalDevoluciones)
     const ventaPromedio = cantidadVentas > 0 ? totalVentas / cantidadVentas : 0
+
+    const gananciaBruta = Math.max(0, totalVentas - totalCostoVentas)
+    const margenPorcentaje = totalVentas > 0 ? (gananciaBruta / totalVentas) * 100 : 0
 
     // Agrupar por medio de pago
     const mediosMap = new Map<string, { total: number; cantidad: number }>()
@@ -152,7 +171,16 @@ export function ReportesPage() {
       ...data,
     }))
 
-    setResumen({ totalVentas, totalDevoluciones, cantidadVentas, ventaPromedio, porMedioPago })
+    setResumen({
+      totalVentas,
+      totalDevoluciones,
+      cantidadVentas,
+      ventaPromedio,
+      totalCosto: totalCostoVentas,
+      gananciaBruta,
+      margenPorcentaje,
+      porMedioPago,
+    })
     setCargando(false)
   }, [fecha, usuario?.kiosco_id, kiosco?.id])
 
@@ -494,20 +522,51 @@ export function ReportesPage() {
         <>
           {/* Tarjetas resumen */}
           {resumen && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className={`grid grid-cols-1 ${esDueno ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'} gap-4`}>
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                <p className="text-sm text-gray-500 dark:text-gray-400">Total facturado</p>
-                <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
+                <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Total facturado</p>
+                <p className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-1">
                   {formatPrecio(resumen.totalVentas)}
                 </p>
+                {resumen.totalDevoluciones !== undefined && resumen.totalDevoluciones > 0 && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
+                    Deducidos {formatPrecio(resumen.totalDevoluciones)} en devoluciones
+                  </p>
+                )}
               </div>
+
+              {esDueno && (
+                <div className="bg-emerald-50/70 dark:bg-emerald-950/40 rounded-xl border-2 border-emerald-300 dark:border-emerald-800 p-4 flex flex-col justify-between shadow-2xs">
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                        Ganancia Bruta
+                      </p>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300">
+                        Solo Dueño
+                      </span>
+                    </div>
+                    <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300 mt-1">
+                      {formatPrecio(resumen.gananciaBruta)}
+                    </p>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-xs text-emerald-800/90 dark:text-emerald-300/90 font-medium">
+                    <span>Margen: <strong>{resumen.margenPorcentaje.toFixed(1)}%</strong></span>
+                    <span className="opacity-80">Costo: {formatPrecio(resumen.totalCosto)}</span>
+                  </div>
+                </div>
+              )}
+
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                <p className="text-sm text-gray-500 dark:text-gray-400">Ventas completadas</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{resumen.cantidadVentas}</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Ventas completadas</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-1">{resumen.cantidadVentas}</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">Tickets emitidos en el día</p>
               </div>
+
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                <p className="text-sm text-gray-500 dark:text-gray-400">Ticket promedio</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{formatPrecio(resumen.ventaPromedio)}</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Ticket promedio</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-1">{formatPrecio(resumen.ventaPromedio)}</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">Promedio por cliente</p>
               </div>
             </div>
           )}
@@ -591,6 +650,27 @@ export function ReportesPage() {
                             ))}
                           </div>
 
+                          {esDueno && !esAnulada && (() => {
+                            const costoTicket = (venta.detalles || []).reduce((acc, det) => {
+                              if (det.es_devolucion_envase) return acc
+                              return acc + (Number(det.cantidad) || 0) * (Number(det.producto?.precio_costo) || 0)
+                            }, 0)
+                            const gananciaTicket = Math.max(0, venta.total - costoTicket)
+                            const margenTicket = venta.total > 0 ? (gananciaTicket / venta.total) * 100 : 0
+
+                            return (
+                              <div className="my-2 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex flex-wrap items-center justify-between text-xs text-emerald-800 dark:text-emerald-300 gap-1">
+                                <span className="font-medium">
+                                  Costo mercadería: <strong className="font-semibold">{formatPrecio(costoTicket)}</strong>
+                                </span>
+                                <span className="font-medium">
+                                  Ganancia ticket: <strong className="font-bold text-emerald-700 dark:text-emerald-400">+{formatPrecio(gananciaTicket)}</strong>{' '}
+                                  ({margenTicket.toFixed(1)}% margen)
+                                </span>
+                              </div>
+                            )
+                          })()}
+
                           <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                             <div className="flex flex-wrap gap-3">
                               {venta.pagos.map((p, i) => (
@@ -608,7 +688,7 @@ export function ReportesPage() {
                               >
                                 Ver Ticket
                               </Button>
-                              {!esAnulada && usuario?.rol === 'DUEÑO' && (
+                              {!esAnulada && esDueno && (
                                 <Button
                                   size="sm"
                                   variant="danger"
