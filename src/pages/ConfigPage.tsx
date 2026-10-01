@@ -13,6 +13,7 @@ import { AFIPConfigSection } from '../components/config/AFIPConfigSection'
 import { AccessibilityConfigSection } from '../components/config/AccessibilityConfigSection'
 import { useConfigAdminStore, formatearLinkWhatsApp } from '../stores/configAdminStore'
 import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
+import { RestaurarBackupModal } from '../components/config/RestaurarBackupModal'
 import { usePwaStore } from '../stores/pwaStore'
 import { useCajaStore } from '../stores/cajaStore'
 import {
@@ -43,6 +44,7 @@ export function ConfigPage() {
   const [exportandoBackup, setExportandoBackup] = useState(false)
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [modalImportarOpen, setModalImportarOpen] = useState(false)
+  const [modalRestaurarBackupOpen, setModalRestaurarBackupOpen] = useState(false)
 
   useEffect(() => {
     cargarConfigAdmin()
@@ -1487,7 +1489,7 @@ export function ConfigPage() {
                           Restaurar Catálogo / Rollback
                         </h3>
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
-                          Recuperación
+                          Excel / CSV
                         </span>
                       </div>
                       <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
@@ -1496,11 +1498,35 @@ export function ConfigPage() {
                     </div>
                     <Button
                       size="sm"
-                      variant="primary"
+                      variant="secondary"
                       onClick={() => setModalImportarOpen(true)}
-                      className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white"
+                      className="w-full text-xs font-bold"
                     >
                       Restaurar Catálogo (.XLSX / .CSV)
+                    </Button>
+                  </div>
+
+                  <div className="p-4 rounded-xl border-2 border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/30 space-y-2 flex flex-col justify-between shadow-xs">
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-emerald-950 dark:text-emerald-200">
+                          Restaurar Backup Completo (JSON)
+                        </h3>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                          Recuperación Integral
+                        </span>
+                      </div>
+                      <p className="text-xs text-emerald-900/80 dark:text-emerald-300/80 mt-1">
+                        Cargá un archivo .JSON oficial de KioskoApp para recuperar todo el negocio: productos, categorías, clientes con fiado, proveedores, promociones y vencimientos.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      onClick={() => setModalRestaurarBackupOpen(true)}
+                      className="w-full text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                    >
+                      Restaurar Copia (.JSON)
                     </Button>
                   </div>
                 </div>
@@ -1808,6 +1834,18 @@ export function ConfigPage() {
         categorias={categorias}
         modoInicial="ROLLBACK"
         titulo="Restaurar Copia de Seguridad (Rollback de Datos)"
+      />
+
+      {/* Modal para restaurar backup integral JSON */}
+      <RestaurarBackupModal
+        isOpen={modalRestaurarBackupOpen}
+        onClose={() => setModalRestaurarBackupOpen(false)}
+        kioscoId={usuario?.kiosco_id || kiosco?.id || ''}
+        kioscoNombre={kiosco?.nombre}
+        onRestauracionExitosa={async () => {
+          await cargarDatos()
+          toast.success('Base de datos y catálogo sincronizados correctamente')
+        }}
       />
     </div>
   )
