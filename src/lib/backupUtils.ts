@@ -454,7 +454,9 @@ export async function restaurarBackupIntegral(
     const mapaClientesPorNombre = new Map<string, string>()
     clientesExistentes?.forEach((c) => {
       mapaClientesPorNombre.set(c.nombre.trim().toLowerCase(), c.id)
-      if (c.dni_cuit) mapaClientesPorNombre.set(c.dni_cuit.trim(), c.id)
+      if (c.dni_cuit && c.dni_cuit.trim().length > 0) {
+        mapaClientesPorNombre.set(c.dni_cuit.trim(), c.id)
+      }
     })
 
     const clientesBackup = backupData.clientes || []
@@ -464,7 +466,8 @@ export async function restaurarBackupIntegral(
       if (!nombreNorm) continue
 
       const idExistente =
-        mapaClientesPorNombre.get(nombreNorm) || (cli.dni_cuit ? mapaClientesPorNombre.get(cli.dni_cuit.trim()) : null)
+        mapaClientesPorNombre.get(nombreNorm) ||
+        (cli.dni_cuit && cli.dni_cuit.trim().length > 0 ? mapaClientesPorNombre.get(cli.dni_cuit.trim()) : null)
 
       if (idExistente) {
         await supabase
@@ -479,22 +482,30 @@ export async function restaurarBackupIntegral(
           .eq('id', idExistente)
         resumen.clientesActualizados++
       } else {
-        const { error: errInsertCli } = await supabase.from('clientes').insert({
-          kiosco_id: kioscoId,
-          nombre: cli.nombre.trim(),
-          telefono: cli.telefono || null,
-          dni_cuit: cli.dni_cuit || null,
-          direccion: cli.direccion || null,
-          limite_credito: cli.limite_credito !== undefined ? cli.limite_credito : null,
-          saldo_deudor: Number(cli.saldo_deudor) || 0,
-          puntos_fidelidad: Number(cli.puntos_fidelidad) || 0,
-          notas: cli.notas || null,
-          activo: true,
-        })
+        const { data: cliNuevo, error: errInsertCli } = await supabase
+          .from('clientes')
+          .insert({
+            kiosco_id: kioscoId,
+            nombre: cli.nombre.trim(),
+            telefono: cli.telefono || null,
+            dni_cuit: cli.dni_cuit || null,
+            direccion: cli.direccion || null,
+            limite_credito: cli.limite_credito !== undefined ? cli.limite_credito : null,
+            saldo_deudor: Number(cli.saldo_deudor) || 0,
+            puntos_fidelidad: Number(cli.puntos_fidelidad) || 0,
+            notas: cli.notas || null,
+            activo: true,
+          })
+          .select('id')
+          .single()
 
-        if (!errInsertCli) {
+        if (!errInsertCli && cliNuevo) {
+          mapaClientesPorNombre.set(nombreNorm, cliNuevo.id)
+          if (cli.dni_cuit && cli.dni_cuit.trim().length > 0) {
+            mapaClientesPorNombre.set(cli.dni_cuit.trim(), cliNuevo.id)
+          }
           resumen.clientesCreados++
-        } else {
+        } else if (errInsertCli) {
           resumen.errores.push(`Cliente "${cli.nombre}": ${errInsertCli.message}`)
         }
       }
@@ -523,6 +534,7 @@ export async function restaurarBackupIntegral(
 
     const mapaProdsPorCodigo = new Map<string, any>()
     const mapaProdsPorDesc = new Map<string, any>()
+    const mapaProductosIdOriginal = new Map<string, string>()
     const idsExistentes = new Set<string>()
 
     prodsExistentes?.forEach((p) => {
@@ -586,6 +598,9 @@ export async function restaurarBackupIntegral(
 
             if (prodExistente) {
               idsProcesadosEnBackup.add(prodExistente.id)
+              if (prod.id) {
+                mapaProductosIdOriginal.set(prod.id, prodExistente.id)
+              }
               const { error: errUpd } = await supabase
                 .from('productos')
                 .update({
@@ -607,11 +622,16 @@ export async function restaurarBackupIntegral(
                   fecha_creacion: new Date().toISOString(),
                   fecha_actualizacion: new Date().toISOString(),
                 })
-                .select('id')
+                .select('id, codigo_barras, descripcion')
                 .single()
 
               if (!errIns && prodNuevo) {
                 idsProcesadosEnBackup.add(prodNuevo.id)
+                if (prod.id) {
+                  mapaProductosIdOriginal.set(prod.id, prodNuevo.id)
+                }
+                if (codeNorm) mapaProdsPorCodigo.set(codeNorm, prodNuevo)
+                if (descNorm) mapaProdsPorDesc.set(descNorm, prodNuevo)
                 resumen.productosCreados++
               } else if (errIns) {
                 resumen.errores.push(`Producto "${prod.descripcion}": ${errIns.message}`)
@@ -687,10 +707,19 @@ export async function restaurarBackupIntegral(
       const lote = lotesBackup[i]
       if (!lote.fecha_vencimiento) continue
 
+      // Resolver ID del producto: si venía con ID original mapeado, o directo si coincide
+      const prodIdFinal =
+        (lote.producto_id ? mapaProductosIdOriginal.get(lote.producto_id) : null) || lote.producto_id
+
+      // Si no existe el producto en el kiosco destino, omitir para evitar fallo de clave foránea FK
+      if (!prodIdFinal || (!idsExistentes.has(prodIdFinal) && !idsProcesadosEnBackup.has(prodIdFinal))) {
+        continue
+      }
+
       try {
         const { error: errLote } = await supabase.from('lotes_producto').insert({
           kiosco_id: kioscoId,
-          producto_id: lote.producto_id,
+          producto_id: prodIdFinal,
           numero_lote: lote.numero_lote || null,
           fecha_vencimiento: lote.fecha_vencimiento,
           cantidad_inicial: Number(lote.cantidad_inicial) || 0,
