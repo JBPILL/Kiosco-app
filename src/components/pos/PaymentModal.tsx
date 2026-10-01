@@ -11,7 +11,8 @@ import { Input } from '../ui/Input'
 import { Modal } from '../ui/Modal'
 import type { MedioPago } from '../../types/database'
 import type { TicketData } from './TicketReceiptModal'
-import { useAFIPStore, validarCUIT } from '../../stores/afipStore'
+import { useAFIPStore } from '../../stores/afipStore'
+import { validarCUIT, validarDocumentoArgentino } from '../../lib/cuitUtils'
 import { useLoteStore } from '../../stores/loteStore'
 import { useComboStore } from '../../stores/comboStore'
 import { useOfflineSyncStore } from '../../stores/offlineSyncStore'
@@ -1445,6 +1446,24 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
                     placeholder={tipoDocReceptor === 96 ? 'Ej: 35123456' : 'Ej: 20-35123456-8'}
                     className="w-full px-3 py-1.5 rounded-lg border border-blue-300 dark:border-blue-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all placeholder:text-gray-400 dark:placeholder:text-gray-500"
                   />
+                  {nroDocReceptor.trim().length > 0 && (() => {
+                    const val = validarDocumentoArgentino(nroDocReceptor, tipoDocReceptor)
+                    return (
+                      <div className="mt-1 flex items-center gap-1.5">
+                        {val.valido ? (
+                          <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            {tipoDocReceptor === 80 ? 'CUIT Válido (Módulo 11 OK)' : 'DNI Válido'}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-red-600 dark:text-red-400 font-medium flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                            {val.mensaje}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
             </div>

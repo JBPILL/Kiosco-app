@@ -32,30 +32,8 @@ interface AFIPState {
   emitirComprobantePrueba: () => Promise<ComprobanteAFIPResult | null>
 }
 
-/**
- * Validador oficial de CUIT argentino (Algoritmo Módulo 11).
- */
-export function validarCUIT(cuitStr: string): boolean {
-  const clean = cuitStr.replace(/\D/g, '')
-  if (clean.length !== 11) return false
-
-  const tipo = clean.slice(0, 2)
-  const tiposValidos = ['20', '23', '24', '27', '30', '33', '34']
-  if (!tiposValidos.includes(tipo)) return false
-
-  const coeficientes = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2]
-  let suma = 0
-  for (let i = 0; i < 10; i++) {
-    suma += parseInt(clean[i], 10) * coeficientes[i]
-  }
-
-  const resto = suma % 11
-  let digitoEsperado = 11 - resto
-  if (digitoEsperado === 11) digitoEsperado = 0
-  else if (digitoEsperado === 10) digitoEsperado = 9
-
-  return parseInt(clean[10], 10) === digitoEsperado
-}
+import { validarCUIT } from '../lib/cuitUtils'
+export { validarCUIT }
 
 function getLocalAFIPConfig(kioscoId: string): ConfiguracionAFIP | null {
   if (typeof window === 'undefined') return null

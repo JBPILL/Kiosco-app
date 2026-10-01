@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useClienteStore } from '../stores/clienteStore'
 import { useCajaStore } from '../stores/cajaStore'
 import { formatPrecio, formatFecha, labelMedioPago } from '../lib/utils'
+import { validarDocumentoArgentino } from '../lib/cuitUtils'
+import toast from 'react-hot-toast'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
@@ -123,6 +125,15 @@ export function ClientesPage() {
     e.preventDefault()
     if (!formNombre.trim() || guardandoCliente) return
 
+    const dniLimpio = formDni.trim()
+    if (dniLimpio) {
+      const valDoc = validarDocumentoArgentino(dniLimpio)
+      if (!valDoc.valido) {
+        toast.error(valDoc.mensaje || 'El DNI o CUIT ingresado no es válido')
+        return
+      }
+    }
+
     setGuardandoCliente(true)
     const limiteNum = parseFloat(formLimite) || 0
 
@@ -130,7 +141,7 @@ export function ClientesPage() {
       await actualizarCliente(clienteEditando.id, {
         nombre: formNombre.trim(),
         telefono: formTelefono.trim() || null,
-        dni_cuit: formDni.trim() || null,
+        dni_cuit: dniLimpio || null,
         direccion: formDireccion.trim() || null,
         email: formEmail.trim() || null,
         limite_credito: limiteNum,
@@ -140,7 +151,7 @@ export function ClientesPage() {
       await crearCliente({
         nombre: formNombre.trim(),
         telefono: formTelefono.trim() || null,
-        dni_cuit: formDni.trim() || null,
+        dni_cuit: dniLimpio || null,
         direccion: formDireccion.trim() || null,
         email: formEmail.trim() || null,
         limite_credito: limiteNum,
@@ -684,13 +695,33 @@ export function ClientesPage() {
 
             {mostrarMasDatos && (
               <div className="px-4 pb-4 pt-2 space-y-3 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/40">
-                <Input
-                  label="DNI o CUIT (para Facturación Electrónica ARCA)"
-                  type="text"
-                  placeholder="Ej: 35123456 o 20-35123456-9"
-                  value={formDni}
-                  onChange={(e) => setFormDni(e.target.value)}
-                />
+                <div>
+                  <Input
+                    label="DNI o CUIT (para Facturación Electrónica ARCA)"
+                    type="text"
+                    placeholder="Ej: 35123456 o 20-35123456-9"
+                    value={formDni}
+                    onChange={(e) => setFormDni(e.target.value)}
+                  />
+                  {formDni.trim().length > 0 && (() => {
+                    const validacion = validarDocumentoArgentino(formDni.trim())
+                    return (
+                      <div className="mt-1 flex items-center gap-1.5 text-xs">
+                        {validacion.valido ? (
+                          <span className="text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-1 text-[11px]">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            {validacion.tipo === 'CUIT' ? 'CUIT Válido (Módulo 11 Verificado)' : 'DNI Válido'}
+                          </span>
+                        ) : (
+                          <span className="text-red-600 dark:text-red-400 font-medium flex items-center gap-1 text-[11px]">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                            {validacion.mensaje}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })()}
+                </div>
                 <Input
                   label="Correo Electrónico (Email)"
                   type="email"

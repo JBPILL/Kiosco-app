@@ -215,6 +215,18 @@ async function obtenerPuertoSerial(): Promise<SerialPortLike> {
   return await serial.requestPort()
 }
 
+async function asegurarPuertoAbierto(port: SerialPortLike, baudRate: number): Promise<void> {
+  try {
+    await port.open({ baudRate })
+  } catch (err: any) {
+    if (err.name === 'InvalidStateError' || (err.message && err.message.toLowerCase().includes('already open'))) {
+      // El puerto ya se encuentra abierto por una operación previa
+      return
+    }
+    throw err
+  }
+}
+
 /**
  * Envía directamente un ticket a la impresora térmica vía Web Serial
  */
@@ -232,7 +244,7 @@ export async function imprimirTicketEscPosDirecto(
 
   try {
     const port = await obtenerPuertoSerial()
-    await port.open({ baudRate })
+    await asegurarPuertoAbierto(port, baudRate)
 
     const writer = port.writable.getWriter()
     try {
@@ -400,7 +412,7 @@ export async function imprimirCierreCajaEscPosDirecto(
 
   try {
     const port = await obtenerPuertoSerial()
-    await port.open({ baudRate })
+    await asegurarPuertoAbierto(port, baudRate)
 
     const writer = port.writable.getWriter()
     try {
@@ -437,7 +449,7 @@ export async function abrirCajonDineroDirecto(baudRate = 9600): Promise<{ ok: bo
 
   try {
     const port = await obtenerPuertoSerial()
-    await port.open({ baudRate })
+    await asegurarPuertoAbierto(port, baudRate)
 
     const writer = port.writable.getWriter()
     try {

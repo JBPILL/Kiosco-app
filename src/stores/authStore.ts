@@ -169,7 +169,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       if (!authRecoveryListenerRegistered) {
         authRecoveryListenerRegistered = true
-        const { data } = supabase.auth.onAuthStateChange((event) => {
+        if (authSubscription) {
+          try {
+            authSubscription.unsubscribe()
+          } catch {}
+          authSubscription = null
+        }
+        const { data } = supabase.auth.onAuthStateChange((event, session) => {
           if (event === 'PASSWORD_RECOVERY') {
             set({ esModoRecuperacion: true, cargando: false })
           } else if (event === 'SIGNED_OUT') {
@@ -181,6 +187,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               diasRestantes: null,
               cargando: false,
             })
+          } else if (event === 'TOKEN_REFRESHED' && session) {
+            // Liveness: extender sesión activa silenciosamente sin interrumpir cobros
+            get().refrescarKiosco()
           }
         })
         authSubscription = data?.subscription || null

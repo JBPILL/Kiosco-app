@@ -6,6 +6,7 @@ import { useAuthStore } from '../stores/authStore'
 import { useBarcodeGun } from '../hooks/useBarcodeGun'
 import { playScanSound } from '../lib/sound'
 import { formatPrecio, formatFecha, labelMedioPago } from '../lib/utils'
+import { validarCUIT, formatearCUIT } from '../lib/cuitUtils'
 import { exportarDetalleCompraExcel } from '../lib/exportUtils'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
@@ -313,6 +314,13 @@ export function ProveedoresPage() {
       return
     }
 
+    const cuitLimpio = formCuit.trim()
+    if (cuitLimpio && !validarCUIT(cuitLimpio)) {
+      toast.error('El CUIT ingresado no es válido según el algoritmo Módulo 11 de AFIP')
+      return
+    }
+    const cuitFinal = cuitLimpio ? formatearCUIT(cuitLimpio) : null
+
     setGuardandoProveedor(true)
     try {
       if (proveedorEditando) {
@@ -321,7 +329,7 @@ export function ProveedoresPage() {
           contacto_nombre: formContacto.trim() || null,
           telefono: formTelefono.trim() || null,
           email: formEmail.trim() || null,
-          cuit: formCuit.trim() || null,
+          cuit: cuitFinal,
           dias_visita: formDiasVisita.trim() || null,
           cbu_alias: formCbuAlias.trim() || null,
           saldo_pendiente: saldoNum,
@@ -332,7 +340,7 @@ export function ProveedoresPage() {
           contacto_nombre: formContacto.trim() || null,
           telefono: formTelefono.trim() || null,
           email: formEmail.trim() || null,
-          cuit: formCuit.trim() || null,
+          cuit: cuitFinal,
           dias_visita: formDiasVisita.trim() || null,
           cbu_alias: formCbuAlias.trim() || null,
           saldo_pendiente: saldoNum,
@@ -2063,9 +2071,23 @@ export function ProveedoresPage() {
                     value={formCuit}
                     onChange={(e) => setFormCuit(e.target.value)}
                   />
-                  <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
-                    Clave fiscal para conciliación de comprobantes y facturas.
-                  </span>
+                  {formCuit.trim().length > 0 ? (
+                    validarCUIT(formCuit.trim()) ? (
+                      <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1 mt-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                        CUIT Válido (Módulo 11 Verificado)
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-red-600 dark:text-red-400 font-medium flex items-center gap-1 mt-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                        CUIT inválido: no coincide el dígito verificador oficial de AFIP
+                      </span>
+                    )
+                  ) : (
+                    <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
+                      Clave fiscal para conciliación de comprobantes y facturas.
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
