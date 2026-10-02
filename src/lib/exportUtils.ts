@@ -134,7 +134,13 @@ function cMoney(value: number, bg: string = '#FFFFFF', isBold: boolean = false):
   }
 }
 
-function cNum(value: number, bg: string = '#FFFFFF', format: string = '#,##0', isBold: boolean = false): Cell {
+function cNum(
+  value: number,
+  bg: string = '#FFFFFF',
+  format: string = '#,##0',
+  isBold: boolean = false,
+  align: 'left' | 'center' | 'right' = 'right'
+): Cell {
   return {
     value: Number(value || 0),
     type: Number,
@@ -143,7 +149,7 @@ function cNum(value: number, bg: string = '#FFFFFF', format: string = '#,##0', i
     fontWeight: isBold ? 'bold' : undefined,
     textColor: '#0F172A',
     backgroundColor: bg,
-    align: 'right',
+    align,
     borderColor: '#E2E8F0',
     borderStyle: 'thin',
   }
@@ -244,7 +250,11 @@ function cTotalMoney(value: number): Cell {
   }
 }
 
-function cTotalNum(value: number, format: string = '#,##0'): Cell {
+function cTotalNum(
+  value: number,
+  format: string = '#,##0',
+  align: 'left' | 'center' | 'right' = 'right'
+): Cell {
   return {
     value: Number(value || 0),
     type: Number,
@@ -253,7 +263,7 @@ function cTotalNum(value: number, format: string = '#,##0'): Cell {
     fontSize: 10,
     textColor: '#0F172A',
     backgroundColor: '#F1F5F9',
-    align: 'right',
+    align,
     topBorderStyle: 'thin',
     topBorderColor: '#94A3B8',
     bottomBorderStyle: 'double',
@@ -1840,15 +1850,15 @@ export async function exportarMasterExcel(params: MasterExcelData) {
   {
     const totalCols = 9
     const columns: SheetOptionsColumn[] = [
-      { width: 18 }, // Código
-      { width: 36 }, // Descripción
-      { width: 20 }, // Categoría
-      { width: 15 }, // Costo
-      { width: 15 }, // Venta
-      { width: 12 }, // Margen %
-      { width: 14 }, // Stock Actual
-      { width: 14 }, // Stock Mínimo
-      { width: 14 }, // Unidad
+      { width: 18 }, // Código Barra
+      { width: 38 }, // Descripción del Producto
+      { width: 22 }, // Categoría
+      { width: 18 }, // Precio Costo ($)
+      { width: 18 }, // Precio Venta ($)
+      { width: 14 }, // Margen %
+      { width: 16 }, // Stock Actual
+      { width: 16 }, // Stock Mínimo
+      { width: 16 }, // Unidad Medida
     ]
 
     const catsMap = new Map<string, string>()
@@ -1902,9 +1912,7 @@ export async function exportarMasterExcel(params: MasterExcelData) {
       const margenPromedio = valVenta > 0 ? (valVenta - valCosto) / valVenta : 0
 
       rows.push([
-        cTotalText('TOTALES:', 'left', true),
-        cTotalText(`${prods.length} productos`, 'left', true),
-        cTotalText('—', 'center'),
+        ...cTotalLabel(`TOTALES (${prods.length} productos):`, 3),
         cTotalMoney(valCosto),
         cTotalMoney(valVenta),
         cTotalPercent(margenPromedio),
@@ -1925,13 +1933,13 @@ export async function exportarMasterExcel(params: MasterExcelData) {
   {
     const totalCols = 7
     const columns: SheetOptionsColumn[] = [
-      { width: 20 }, // Fecha
-      { width: 34 }, // Producto
-      { width: 16 }, // Tipo
-      { width: 14 }, // Cantidad
+      { width: 25 }, // Fecha y Hora (amplio para evitar desbordes)
+      { width: 38 }, // Producto
+      { width: 18 }, // Tipo Movimiento
+      { width: 16 }, // Cantidad
       { width: 22 }, // Motivo
-      { width: 30 }, // Notas
-      { width: 18 }, // Usuario
+      { width: 32 }, // Detalle / Observaciones
+      { width: 22 }, // Usuario
     ]
 
     const movs = params.movimientosStock || []
@@ -1943,7 +1951,7 @@ export async function exportarMasterExcel(params: MasterExcelData) {
         cHeader('Fecha y Hora', 'center'),
         cHeader('Producto', 'left'),
         cHeader('Tipo Movimiento', 'center'),
-        cHeader('Cantidad', 'right'),
+        cHeader('Cantidad', 'center'),
         cHeader('Motivo', 'left'),
         cHeader('Detalle / Observaciones', 'left'),
         cHeader('Usuario', 'left'),
@@ -1962,7 +1970,7 @@ export async function exportarMasterExcel(params: MasterExcelData) {
           cText(formatFecha(m.fecha), bg, 'center'),
           cText(prodDesc, bg, 'left', true),
           cText(m.tipo, bg, 'center'),
-          cNum(m.cantidad, bg),
+          cNum(m.cantidad, bg, '#,##0', false, 'center'),
           cText(m.motivo, bg, 'left'),
           cText(m.notas || '—', bg, 'left'),
           cText(usuarioNom, bg, 'left'),
@@ -1972,13 +1980,9 @@ export async function exportarMasterExcel(params: MasterExcelData) {
       const totalCantidad = movs.reduce((s, m) => s + Number(m.cantidad || 0), 0)
 
       rows.push([
-        cTotalText('TOTAL REGISTROS:', 'left', true),
-        cTotalText(`${movs.length} movimientos`, 'left', true),
-        cTotalText('—', 'center'),
-        cTotalNum(totalCantidad),
-        cTotalText('—', 'center'),
-        cTotalText('—', 'center'),
-        cTotalText('—', 'center'),
+        ...cTotalLabel(`TOTAL REGISTROS (${movs.length} movimientos):`, 3),
+        cTotalNum(totalCantidad, '#,##0', 'center'),
+        ...cSpan(cTotalText('—', 'center'), 3),
       ] as Row)
     }
 
@@ -1993,12 +1997,12 @@ export async function exportarMasterExcel(params: MasterExcelData) {
   {
     const totalCols = 6
     const columns: SheetOptionsColumn[] = [
-      { width: 28 }, // Cliente
-      { width: 18 }, // Teléfono
-      { width: 24 }, // Email
-      { width: 20 }, // Saldo Pendiente
-      { width: 18 }, // Límite Crédito
-      { width: 30 }, // Notas
+      { width: 34 }, // Nombre del Cliente
+      { width: 20 }, // Teléfono
+      { width: 28 }, // Correo Electrónico
+      { width: 20 }, // Saldo Deudor ($)
+      { width: 20 }, // Límite Crédito ($)
+      { width: 36 }, // Notas / Observaciones
     ]
 
     const clientes = params.clientes || []
@@ -2039,9 +2043,7 @@ export async function exportarMasterExcel(params: MasterExcelData) {
       })
 
       rows.push([
-        cTotalText('TOTAL CARTERA:', 'left', true),
-        cTotalText(`${clientes.length} clientes`, 'center', true),
-        cTotalText('—', 'center'),
+        ...cTotalLabel(`TOTAL CARTERA (${clientes.length} clientes):`, 3),
         cTotalMoney(totalDeudaClientes),
         cTotalMoney(totalLimiteCredito),
         cTotalText('—', 'center'),
@@ -2059,13 +2061,13 @@ export async function exportarMasterExcel(params: MasterExcelData) {
   {
     const totalCols = 7
     const columns: SheetOptionsColumn[] = [
-      { width: 28 }, // Razón Social
-      { width: 20 }, // Contacto
-      { width: 18 }, // Teléfono
-      { width: 18 }, // CUIT
-      { width: 24 }, // Email
-      { width: 26 }, // Visitas / Contacto
-      { width: 20 }, // Saldo Pendiente
+      { width: 36 }, // Razón Social / Proveedor
+      { width: 22 }, // Contacto
+      { width: 20 }, // Teléfono
+      { width: 20 }, // CUIT
+      { width: 28 }, // Correo Electrónico
+      { width: 28 }, // Días Visita / CBU Alias
+      { width: 22 }, // Saldo Pendiente ($)
     ]
 
     const provs = params.proveedores || []
@@ -2107,12 +2109,7 @@ export async function exportarMasterExcel(params: MasterExcelData) {
       })
 
       rows.push([
-        cTotalText('TOTAL PASIVOS:', 'left', true),
-        cTotalText(`${provs.length} proveedores`, 'left', true),
-        cTotalText('—', 'center'),
-        cTotalText('—', 'center'),
-        cTotalText('—', 'center'),
-        cTotalText('—', 'center'),
+        ...cTotalLabel(`TOTAL PASIVOS (${provs.length} proveedores):`, 6),
         cTotalMoney(totalDeudaProveedores),
       ] as Row)
     }
@@ -2128,12 +2125,12 @@ export async function exportarMasterExcel(params: MasterExcelData) {
   {
     const totalCols = 6
     const columns: SheetOptionsColumn[] = [
-      { width: 20 }, // Fecha
-      { width: 20 }, // Comprobante
-      { width: 18 }, // CAE
-      { width: 20 }, // Cajero
+      { width: 25 }, // Fecha y Hora
+      { width: 22 }, // Comprobante
+      { width: 20 }, // CAE ARCA
+      { width: 22 }, // Cajero
       { width: 24 }, // Medio de Pago
-      { width: 18 }, // Total
+      { width: 20 }, // Total ($)
     ]
 
     const vtas = params.ventas || []
@@ -2180,11 +2177,7 @@ export async function exportarMasterExcel(params: MasterExcelData) {
       })
 
       rows.push([
-        cTotalText('TOTAL FACTURACIÓN:', 'left', true),
-        cTotalText(`${vtas.length} tickets`, 'center', true),
-        cTotalText('—', 'center'),
-        cTotalText('—', 'center'),
-        cTotalText('—', 'center'),
+        ...cTotalLabel(`TOTAL FACTURACIÓN (${vtas.length} tickets):`, 5),
         cTotalMoney(totalVentasMonto),
       ] as Row)
     }
