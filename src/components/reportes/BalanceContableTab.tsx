@@ -1147,11 +1147,11 @@ export function BalanceContableTab() {
                           )}
                         </span>
 
-                        {/* Pista / Track de la barra (flex-1 para altura real en móviles) */}
-                        <div className="w-full flex-1 flex flex-col justify-end items-center bg-gray-100/90 dark:bg-gray-800/80 rounded-t-lg p-0.5 relative overflow-hidden border border-transparent group-hover:border-indigo-300 dark:group-hover:border-indigo-500/40 transition-colors">
+                        {/* Pista / Track de la barra con altura fija para compatibilidad total con WebKit/iOS */}
+                        <div className="w-full relative h-36 sm:h-[148px] bg-gray-100/90 dark:bg-gray-800/80 rounded-t-lg p-0.5 overflow-hidden border border-transparent group-hover:border-indigo-300 dark:group-hover:border-indigo-500/40 transition-colors">
                           <div
-                            style={{ height: `${porcentaje}%`, minHeight: m.totalVentas > 0 ? '10px' : '0px' }}
-                            className={`w-full rounded-t-md transition-all duration-300 relative flex items-center justify-center ${
+                            style={{ height: `${porcentaje}%`, minHeight: m.totalVentas > 0 ? '8px' : '0px' }}
+                            className={`absolute bottom-0 left-0 right-0 rounded-t-md transition-all duration-300 flex items-center justify-center ${
                               estaSeleccionado
                                 ? 'bg-gradient-to-t from-indigo-600 to-indigo-500 shadow-md ring-2 ring-indigo-400 ring-offset-1 dark:ring-offset-gray-900'
                                 : m.totalVentas > 0
@@ -1160,7 +1160,7 @@ export function BalanceContableTab() {
                             }`}
                           >
                             {m.cantidadTickets > 0 && porcentaje >= 25 && (
-                              <span className="text-[9px] font-bold text-white drop-shadow-xs px-0.5 truncate">
+                              <span className="text-[9px] font-bold text-white drop-shadow-xs px-0.5 truncate pointer-events-none">
                                 {m.cantidadTickets}
                               </span>
                             )}
