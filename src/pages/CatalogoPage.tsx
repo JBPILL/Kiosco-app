@@ -3,12 +3,10 @@ import { useProducts } from '../hooks/useProducts'
 import { CategoryManager } from '../components/catalogo/CategoryManager'
 import { ProductTable } from '../components/catalogo/ProductTable'
 import { ProductForm } from '../components/catalogo/ProductForm'
-import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
 import { SiembraCatalogoModal } from '../components/catalogo/SiembraCatalogoModal'
 import { AumentoPreciosModal } from '../components/catalogo/AumentoPreciosModal'
 import { PreciosEnvasesModal } from '../components/catalogo/PreciosEnvasesModal'
 import { EtiquetasGondolaModal } from '../components/catalogo/EtiquetasGondolaModal'
-import { exportarCatalogoExcel } from '../lib/exportUtils'
 import { clearCachedProductos } from '../lib/utils'
 import { useAuthStore } from '../stores/authStore'
 import { useTenantConfig } from '../hooks/useTenantConfig'
@@ -40,7 +38,6 @@ export function CatalogoPage() {
   } = useProducts()
 
   const [formOpen, setFormOpen] = useState(false)
-  const [importarOpen, setImportarOpen] = useState(false)
   const [siembraOpen, setSiembraOpen] = useState(false)
   const [aumentoOpen, setAumentoOpen] = useState(false)
   const [envasesOpen, setEnvasesOpen] = useState(false)
@@ -85,10 +82,9 @@ export function CatalogoPage() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">Catálogo de Productos</h1>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">Administrá tus productos, precios y categorías</p>
         </div>
-        {/* Grupos de botones adaptables para que nunca desborden en pantallas medianas ni con zoom */}
+        {/* Barra unificada de herramientas y acciones */}
         <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 max-w-full py-0.5">
-          {/* Bloque 1: Precios y Góndola */}
-          <div className="flex items-center flex-nowrap bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1 shrink-0">
+          <div className="flex items-center flex-nowrap bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1 shrink-0 overflow-x-auto scrollbar-hide">
             <button
               type="button"
               onClick={() => setAumentoOpen(true)}
@@ -113,10 +109,6 @@ export function CatalogoPage() {
             >
               Etiquetas de Precios
             </button>
-          </div>
-
-          {/* Bloque 2: Importar / Exportar / Catálogo Kiosco */}
-          <div className="flex items-center flex-nowrap bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1 shrink-0">
             <button
               type="button"
               onClick={() => setSiembraOpen(true)}
@@ -133,22 +125,6 @@ export function CatalogoPage() {
                 <line x1="12" y1="10" x2="12" y2="21" />
               </svg>
               <span>{esFotocopiadora ? 'Catálogo Librería' : 'Catálogo Kiosco'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setImportarOpen(true)}
-              className="h-8 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center justify-center"
-              title="Importar productos desde archivo Excel (.xlsx) o CSV"
-            >
-              Importar
-            </button>
-            <button
-              type="button"
-              onClick={() => exportarCatalogoExcel(productos, categorias, kiosco?.nombre)}
-              className="h-8 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center justify-center"
-              title="Descargar catálogo completo y valuación en formato Excel corporativo (.xlsx)"
-            >
-              Exportar
             </button>
           </div>
         </div>
@@ -202,17 +178,6 @@ export function CatalogoPage() {
         categorias={categorias}
         producto={productoEditar}
         onGuardar={handleGuardar}
-      />
-
-      {/* Modal de importación masiva CSV */}
-      <ImportarCatalogoModal
-        isOpen={importarOpen}
-        onClose={() => setImportarOpen(false)}
-        onImportCompletado={async () => {
-          await cargarCategorias()
-          await cargarProductos()
-        }}
-        categorias={categorias}
       />
 
       {/* Modal de aumento masivo de precios */}

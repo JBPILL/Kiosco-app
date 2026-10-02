@@ -7,7 +7,7 @@ import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import type { Kiosco, Usuario, Suscripcion, Categoria } from '../types/database'
 import { formatPrecio, formatFechaCorta } from '../lib/utils'
-import { exportarCatalogoExcel, exportarVentasExcel } from '../lib/exportUtils'
+import { exportarMasterExcel } from '../lib/exportUtils'
 import { generarBackupIntegral } from '../lib/backupUtils'
 import { AFIPConfigSection } from '../components/config/AFIPConfigSection'
 import { AccessibilityConfigSection } from '../components/config/AccessibilityConfigSection'
@@ -428,53 +428,62 @@ export function ConfigPage() {
     return 'ACTIVO'
   }, [kiosco?.estado_suscripcion, diasRestantes])
 
-  const handleExportarCatalogo = async () => {
+  const handleExportarMasterExcel = async () => {
     if (!usuario?.kiosco_id) return
     setExportandoBackup(true)
     try {
-      const { data: prods, error: pErr } = await supabase
-        .from('productos')
-        .select('*, categoria:categorias(*)')
-        .eq('kiosco_id', usuario.kiosco_id)
-        .eq('activo', true)
-      if (pErr) throw pErr
+      const [prodsRes, catsRes, movsRes, clientesRes, provsRes, ventasRes] = await Promise.all([
+        supabase
+          .from('productos')
+          .select('id, codigo_barra, descripcion, categoria_id, precio_costo, precio_venta, stock_actual, stock_minimo, unidad_medida, categoria:categorias(nombre)')
+          .eq('kiosco_id', usuario.kiosco_id)
+          .order('descripcion')
+          .limit(50000),
+        supabase
+          .from('categorias')
+          .select('id, nombre')
+          .eq('kiosco_id', usuario.kiosco_id)
+          .limit(1000),
+        supabase
+          .from('movimientos_stock')
+          .select('id, fecha, tipo, cantidad, motivo, notas, producto:productos(descripcion), usuario:usuarios(nombre)')
+          .eq('kiosco_id', usuario.kiosco_id)
+          .order('fecha', { ascending: false })
+          .limit(10000),
+        supabase
+          .from('clientes')
+          .select('id, nombre, telefono, email, saldo, limite_credito, notas')
+          .eq('kiosco_id', usuario.kiosco_id)
+          .order('nombre')
+          .limit(10000),
+        supabase
+          .from('proveedores')
+          .select('id, nombre, contacto_nombre, telefono, email, cuit, direccion, saldo_pendiente')
+          .eq('kiosco_id', usuario.kiosco_id)
+          .order('nombre')
+          .limit(5000),
+        supabase
+          .from('ventas')
+          .select('id, fecha_hora, total, estado, afip_cae, afip_nro_comprobante, usuario:usuarios(nombre), pagos:pagos_venta(medio_pago, monto)')
+          .eq('kiosco_id', usuario.kiosco_id)
+          .eq('estado', 'COMPLETADA')
+          .order('fecha_hora', { ascending: false })
+          .limit(15000),
+      ])
 
-      const { data: cats } = await supabase
-        .from('categorias')
-        .select('*')
-        .eq('kiosco_id', usuario.kiosco_id)
-
-      await exportarCatalogoExcel(prods || [], cats || [], kiosco?.nombre || 'Kiosco')
-      toast.success('Copia del catálogo descargada en Excel (.xlsx)')
-    } catch (err) {
-      console.error(err)
-      toast.error('Error al exportar catálogo')
-    } finally {
-      setExportandoBackup(false)
-    }
-  }
-
-  const handleExportarVentas = async () => {
-    if (!usuario?.kiosco_id) return
-    setExportandoBackup(true)
-    try {
-      const { data: vtas, error: vErr } = await supabase
-        .from('ventas')
-        .select(`
-          id, fecha_hora, total, estado, notas,
-          afip_cae, afip_tipo_comprobante, afip_nro_comprobante,
-          usuario:usuarios(nombre),
-          pagos:pagos_venta(medio_pago, monto)
-        `)
-        .eq('kiosco_id', usuario.kiosco_id)
-        .order('fecha_hora', { ascending: false })
-      if (vErr) throw vErr
-
-      await exportarVentasExcel(vtas || [], kiosco?.nombre || 'Kiosco', 'Histórico Completo')
-      toast.success('Copia de ventas descargada en Excel (.xlsx)')
+      await exportarMasterExcel({
+        nombreKiosco: kiosco?.nombre || 'Comercio',
+        productos: prodsRes.data || [],
+        categorias: catsRes.data || [],
+        movimientosStock: movsRes.data || [],
+        clientes: clientesRes.data || [],
+        proveedores: provsRes.data || [],
+        ventas: ventasRes.data || [],
+      })
+      toast.success('Resguardo maestro unificado exportado en Excel (.xlsx)')
     } catch (err: any) {
-      console.error('Error al exportar ventas:', err)
-      toast.error(err?.message ? `Error al exportar ventas: ${err.message}` : 'Error al exportar ventas')
+      console.error('Error al exportar backup maestro Excel:', err)
+      toast.error('No se pudo generar el Excel maestro unificado')
     } finally {
       setExportandoBackup(false)
     }
@@ -1427,7 +1436,33 @@ export function ConfigPage() {
                   Descargá una copia física de la información de tu negocio en formato Excel corporativo (.XLSX) para tener siempre un resguardo seguro en tu computadora.
                 </p>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+                  {/* Backup Unificado Excel 5 en 1 */}
+                  <div className="p-4 rounded-xl border-2 border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/30 space-y-2 flex flex-col justify-between shadow-xs">
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-indigo-950 dark:text-indigo-200">
+                          Excel Unificado (5 en 1)
+                        </h3>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/80 text-indigo-800 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700">
+                          Multi-Pestaña
+                        </span>
+                      </div>
+                      <p className="text-xs text-indigo-900/80 dark:text-indigo-300/80 mt-1">
+                        Descargá todo tu negocio en un único archivo Excel con pestañas para Catálogo, Movimientos de Stock, Clientes, Proveedores y Ventas.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      onClick={handleExportarMasterExcel}
+                      disabled={exportandoBackup}
+                      className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+                    >
+                      {exportandoBackup ? 'Generando...' : 'Descargar Excel Unificado'}
+                    </Button>
+                  </div>
+
                   <div className="p-4 rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/40 dark:bg-emerald-950/20 space-y-2 flex flex-col justify-between shadow-2xs">
                     <div>
                       <div className="flex items-center justify-between">
@@ -1450,46 +1485,6 @@ export function ConfigPage() {
                       className="w-full text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
                     >
                       {exportandoBackup ? 'Generando...' : 'Descargar Todo (.JSON)'}
-                    </Button>
-                  </div>
-
-                  <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 space-y-2 flex flex-col justify-between shadow-2xs">
-                    <div>
-                      <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                        Resguardo de Catálogo y Stock
-                      </h3>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Incluye todos tus productos con códigos de barra, categorías, costos, precios de venta y stock actual.
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={handleExportarCatalogo}
-                      disabled={exportandoBackup}
-                      className="w-full text-xs font-bold"
-                    >
-                      {exportandoBackup ? 'Generando...' : 'Descargar Catálogo'}
-                    </Button>
-                  </div>
-
-                  <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 space-y-2 flex flex-col justify-between shadow-2xs">
-                    <div>
-                      <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                        Histórico de Ventas (Auditoría)
-                      </h3>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Descargá el informe contable de todas las ventas emitidas con fecha, comprobante, cajero y medios de pago para auditoría o contabilidad.
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={handleExportarVentas}
-                      disabled={exportandoBackup}
-                      className="w-full text-xs font-bold"
-                    >
-                      {exportandoBackup ? 'Generando...' : 'Descargar Ventas'}
                     </Button>
                   </div>
 

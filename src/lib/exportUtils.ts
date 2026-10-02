@@ -1,4 +1,4 @@
-import writeXlsxFile, { type Row, type Cell } from 'write-excel-file/browser'
+import writeXlsxFile, { type Row, type Cell, type Sheet } from 'write-excel-file/browser'
 import type { Producto, Categoria, MovimientoStock } from '../types/database'
 import { formatFecha, formatPrecio, labelMedioPago } from './utils'
 
@@ -66,6 +66,29 @@ function cSpan(cell: Cell, span: number): (Cell | null)[] {
 
 function emptyRow(cols: number): (Cell | null)[] {
   return Array(cols).fill(null)
+}
+
+function cTitle(value: string): Cell {
+  return {
+    value,
+    type: String,
+    fontWeight: 'bold',
+    fontSize: 13,
+    textColor: '#FFFFFF',
+    backgroundColor: '#1E293B',
+    align: 'center',
+  }
+}
+
+function cSubtitle(value: string): Cell {
+  return {
+    value,
+    type: String,
+    fontSize: 9,
+    textColor: '#E2E8F0',
+    backgroundColor: '#334155',
+    align: 'center',
+  }
 }
 
 function cHeader(value: string, align: 'left' | 'center' | 'right' = 'left'): Cell {
@@ -1756,6 +1779,342 @@ export async function exportarRendimientosDuenoExcel(params: {
   const fechaStr = new Date().toISOString().split('T')[0]
   const fileName = `rendimientos_${cleanKiosco}_${cleanPeriod}_${fechaStr}.xlsx`
   await writeXlsxFile(rows, { columns }).toFile(fileName)
+}
+
+// ============================================================================
+// EXPORTACIÓN DE BACKUP MAESTRO UNIFICADO MULTI-HOJA (.XLSX)
+// ============================================================================
+export interface MasterExcelData {
+  nombreKiosco?: string
+  productos?: any[]
+  categorias?: any[]
+  movimientosStock?: any[]
+  clientes?: any[]
+  proveedores?: any[]
+  ventas?: any[]
+}
+
+export async function exportarMasterExcel(params: MasterExcelData) {
+  const fechaGeneracion =
+    new Date().toLocaleDateString('es-AR') +
+    ' ' +
+    new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+  const nombreKiosco = params.nombreKiosco || 'Comercio'
+
+  const sheets: Sheet<any>[] = []
+
+  // 1. Hoja Catálogo de Productos
+  if (params.productos && params.productos.length > 0) {
+    const totalCols = 9
+    const columns: SheetOptionsColumn[] = [
+      { width: 18 }, // Código
+      { width: 36 }, // Descripción
+      { width: 20 }, // Categoría
+      { width: 15 }, // Costo
+      { width: 15 }, // Venta
+      { width: 12 }, // Margen %
+      { width: 14 }, // Stock Actual
+      { width: 14 }, // Stock Mínimo
+      { width: 14 }, // Unidad
+    ]
+
+    const catsMap = new Map<string, string>()
+    ;(params.categorias || []).forEach((c: any) => catsMap.set(c.id, c.nombre))
+
+    const rows: Row[] = [
+      [...cSpan(cTitle('CATÁLOGO DE PRODUCTOS Y VALUACIÓN DE STOCK'), totalCols)] as Row,
+      [...cSpan(cSubtitle(`Comercio: ${nombreKiosco} | Fecha: ${fechaGeneracion} | Total: ${params.productos.length} ítems`), totalCols)] as Row,
+      emptyRow(totalCols) as Row,
+      [
+        cHeader('Código Barra', 'center'),
+        cHeader('Descripción del Producto', 'left'),
+        cHeader('Categoría', 'left'),
+        cHeader('Precio Costo ($)', 'right'),
+        cHeader('Precio Venta ($)', 'right'),
+        cHeader('Margen %', 'right'),
+        cHeader('Stock Actual', 'right'),
+        cHeader('Stock Mínimo', 'right'),
+        cHeader('Unidad Medida', 'center'),
+      ] as Row,
+    ]
+
+    params.productos.forEach((p, idx) => {
+      const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+      const costo = Number(p.precio_costo || 0)
+      const venta = Number(p.precio_venta || 0)
+      const margen = venta > 0 ? (venta - costo) / venta : 0
+      const cat = p.categoria?.nombre || catsMap.get(p.categoria_id) || 'General'
+
+      rows.push([
+        cText(p.codigo_barra || '—', bg, 'center'),
+        cText(p.descripcion, bg, 'left', true),
+        cText(cat, bg, 'left'),
+        cMoney(costo, bg),
+        cMoney(venta, bg, true),
+        cPercent(margen, bg),
+        cNum(p.stock_actual, bg),
+        cNum(p.stock_minimo || 0, bg),
+        cText(p.unidad_medida || 'UNIDAD', bg, 'center'),
+      ] as Row)
+    })
+
+    const totalStock = params.productos.reduce((s, p) => s + Number(p.stock_actual || 0), 0)
+    const valCosto = params.productos.reduce((s, p) => s + Number(p.stock_actual || 0) * Number(p.precio_costo || 0), 0)
+    const valVenta = params.productos.reduce((s, p) => s + Number(p.stock_actual || 0) * Number(p.precio_venta || 0), 0)
+
+    rows.push([
+      ...cTotalLabel(`TOTALES (${params.productos.length} PRODUCTOS):`, 3),
+      cTotalMoney(valCosto),
+      cTotalMoney(valVenta),
+      cText('—', '#F1F5F9', 'center', true),
+      cTotalNum(totalStock),
+      ...cSpan(cText('—', '#F1F5F9', 'center', true), 2),
+    ] as Row)
+
+    sheets.push({
+      sheet: 'Catálogo de Productos',
+      columns,
+      data: rows,
+    })
+  }
+
+  // 2. Hoja Movimientos de Stock
+  if (params.movimientosStock && params.movimientosStock.length > 0) {
+    const totalCols = 7
+    const columns: SheetOptionsColumn[] = [
+      { width: 20 }, // Fecha
+      { width: 34 }, // Producto
+      { width: 16 }, // Tipo
+      { width: 14 }, // Cantidad
+      { width: 22 }, // Motivo
+      { width: 30 }, // Notas
+      { width: 18 }, // Usuario
+    ]
+
+    const rows: Row[] = [
+      [...cSpan(cTitle('AUDITORÍA Y MOVIMIENTOS DE STOCK'), totalCols)] as Row,
+      [...cSpan(cSubtitle(`Comercio: ${nombreKiosco} | Fecha: ${fechaGeneracion} | Total: ${params.movimientosStock.length} movimientos`), totalCols)] as Row,
+      emptyRow(totalCols) as Row,
+      [
+        cHeader('Fecha y Hora', 'center'),
+        cHeader('Producto', 'left'),
+        cHeader('Tipo Movimiento', 'center'),
+        cHeader('Cantidad', 'right'),
+        cHeader('Motivo', 'left'),
+        cHeader('Detalle / Observaciones', 'left'),
+        cHeader('Usuario', 'left'),
+      ] as Row,
+    ]
+
+    params.movimientosStock.forEach((m, idx) => {
+      const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+      const prodDesc = m.producto?.descripcion || m.producto_descripcion || 'Producto'
+      const usuarioNom = m.usuario?.nombre || 'Sistema'
+
+      rows.push([
+        cText(formatFecha(m.fecha), bg, 'center'),
+        cText(prodDesc, bg, 'left', true),
+        cText(m.tipo, bg, 'center'),
+        cNum(m.cantidad, bg),
+        cText(m.motivo, bg, 'left'),
+        cText(m.notas || '—', bg, 'left'),
+        cText(usuarioNom, bg, 'left'),
+      ] as Row)
+    })
+
+    rows.push([
+      ...cTotalLabel('TOTAL REGISTROS:', 3),
+      cTotalNum(params.movimientosStock.length),
+      ...cSpan(cText('—', '#F1F5F9', 'center', true), 3),
+    ] as Row)
+
+    sheets.push({
+      sheet: 'Movimientos de Stock',
+      columns,
+      data: rows,
+    })
+  }
+
+  // 3. Hoja Clientes y Cuentas Corrientes
+  if (params.clientes && params.clientes.length > 0) {
+    const totalCols = 6
+    const columns: SheetOptionsColumn[] = [
+      { width: 28 }, // Cliente
+      { width: 18 }, // Teléfono
+      { width: 24 }, // Email
+      { width: 20 }, // Saldo Pendiente
+      { width: 18 }, // Límite Crédito
+      { width: 30 }, // Notas
+    ]
+
+    const rows: Row[] = [
+      [...cSpan(cTitle('CARTERA DE CLIENTES Y CUENTAS CORRIENTES'), totalCols)] as Row,
+      [...cSpan(cSubtitle(`Comercio: ${nombreKiosco} | Fecha: ${fechaGeneracion} | Total: ${params.clientes.length} clientes`), totalCols)] as Row,
+      emptyRow(totalCols) as Row,
+      [
+        cHeader('Nombre del Cliente', 'left'),
+        cHeader('Teléfono', 'center'),
+        cHeader('Correo Electrónico', 'left'),
+        cHeader('Saldo Deudor ($)', 'right'),
+        cHeader('Límite Crédito ($)', 'right'),
+        cHeader('Notas / Observaciones', 'left'),
+      ] as Row,
+    ]
+
+    let totalDeudaClientes = 0
+    params.clientes.forEach((cli, idx) => {
+      const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+      const saldo = Number(cli.saldo || 0)
+      totalDeudaClientes += saldo
+
+      rows.push([
+        cText(cli.nombre, bg, 'left', true),
+        cText(cli.telefono || '—', bg, 'center'),
+        cText(cli.email || '—', bg, 'left'),
+        cMoney(saldo, bg, saldo > 0),
+        cMoney(Number(cli.limite_credito || 0), bg),
+        cText(cli.notas || '—', bg, 'left'),
+      ] as Row)
+    })
+
+    rows.push([
+      ...cTotalLabel('TOTAL SALDO DEUDOR EXIGIBLE:', 3),
+      cTotalMoney(totalDeudaClientes),
+      ...cSpan(cText('—', '#F1F5F9', 'center', true), 2),
+    ] as Row)
+
+    sheets.push({
+      sheet: 'Clientes y Cuentas',
+      columns,
+      data: rows,
+    })
+  }
+
+  // 4. Hoja Proveedores y Pasivos
+  if (params.proveedores && params.proveedores.length > 0) {
+    const totalCols = 7
+    const columns: SheetOptionsColumn[] = [
+      { width: 28 }, // Razón Social
+      { width: 20 }, // Contacto
+      { width: 18 }, // Teléfono
+      { width: 18 }, // CUIT
+      { width: 24 }, // Email
+      { width: 26 }, // Dirección
+      { width: 20 }, // Saldo Pendiente
+    ]
+
+    const rows: Row[] = [
+      [...cSpan(cTitle('PROVEEDORES Y CUENTAS POR PAGAR (PASIVOS)'), totalCols)] as Row,
+      [...cSpan(cSubtitle(`Comercio: ${nombreKiosco} | Fecha: ${fechaGeneracion} | Total: ${params.proveedores.length} proveedores`), totalCols)] as Row,
+      emptyRow(totalCols) as Row,
+      [
+        cHeader('Razón Social / Proveedor', 'left'),
+        cHeader('Contacto', 'left'),
+        cHeader('Teléfono', 'center'),
+        cHeader('CUIT', 'center'),
+        cHeader('Correo Electrónico', 'left'),
+        cHeader('Dirección', 'left'),
+        cHeader('Saldo Pendiente ($)', 'right'),
+      ] as Row,
+    ]
+
+    let totalDeudaProveedores = 0
+    params.proveedores.forEach((prov, idx) => {
+      const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+      const saldo = Number(prov.saldo_pendiente || 0)
+      totalDeudaProveedores += saldo
+
+      rows.push([
+        cText(prov.nombre, bg, 'left', true),
+        cText(prov.contacto_nombre || '—', bg, 'left'),
+        cText(prov.telefono || '—', bg, 'center'),
+        cText(prov.cuit || '—', bg, 'center'),
+        cText(prov.email || '—', bg, 'left'),
+        cText(prov.direccion || '—', bg, 'left'),
+        cMoney(saldo, bg, saldo > 0),
+      ] as Row)
+    })
+
+    rows.push([
+      ...cTotalLabel('TOTAL PASIVO CON PROVEEDORES:', 6),
+      cTotalMoney(totalDeudaProveedores),
+    ] as Row)
+
+    sheets.push({
+      sheet: 'Proveedores y Pasivos',
+      columns,
+      data: rows,
+    })
+  }
+
+  // 5. Hoja Histórico de Ventas
+  if (params.ventas && params.ventas.length > 0) {
+    const totalCols = 6
+    const columns: SheetOptionsColumn[] = [
+      { width: 20 }, // Fecha
+      { width: 20 }, // Comprobante
+      { width: 18 }, // CAE
+      { width: 20 }, // Cajero
+      { width: 24 }, // Medio de Pago
+      { width: 18 }, // Total
+    ]
+
+    const rows: Row[] = [
+      [...cSpan(cTitle('HISTÓRICO DE VENTAS Y FACTURACIÓN'), totalCols)] as Row,
+      [...cSpan(cSubtitle(`Comercio: ${nombreKiosco} | Fecha: ${fechaGeneracion} | Total: ${params.ventas.length} tickets`), totalCols)] as Row,
+      emptyRow(totalCols) as Row,
+      [
+        cHeader('Fecha y Hora', 'center'),
+        cHeader('Comprobante', 'center'),
+        cHeader('CAE ARCA', 'center'),
+        cHeader('Cajero', 'left'),
+        cHeader('Medio de Pago', 'center'),
+        cHeader('Total ($)', 'right'),
+      ] as Row,
+    ]
+
+    let totalVentasMonto = 0
+    params.ventas.forEach((v, idx) => {
+      const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+      const tot = Number(v.total || 0)
+      totalVentasMonto += tot
+
+      const ticketRef = v.afip_nro_comprobante
+        ? `FC-${String(v.afip_nro_comprobante).padStart(8, '0')}`
+        : `T-${v.id.slice(0, 8).toUpperCase()}`
+
+      const medioStr =
+        v.pagos && v.pagos.length > 0
+          ? v.pagos.map((p: any) => labelMedioPago(p.medio_pago)).join(', ')
+          : 'Efectivo'
+
+      rows.push([
+        cText(formatFecha(v.fecha_hora), bg, 'center'),
+        cText(ticketRef, bg, 'center', true),
+        cText(v.afip_cae || '—', bg, 'center'),
+        cText(v.usuario?.nombre || 'Cajero', bg, 'left'),
+        cText(medioStr, bg, 'center'),
+        cMoney(tot, bg, true),
+      ] as Row)
+    })
+
+    rows.push([
+      ...cTotalLabel('TOTAL RECAUDACIÓN HISTÓRICA:', 5),
+      cTotalMoney(totalVentasMonto),
+    ] as Row)
+
+    sheets.push({
+      sheet: 'Histórico de Ventas',
+      columns,
+      data: rows,
+    })
+  }
+
+  const cleanKiosco = sanitizarNombreArchivo(nombreKiosco)
+  const fechaStr = new Date().toISOString().split('T')[0]
+  const fileName = `resguardo_maestro_unificado_${cleanKiosco}_${fechaStr}.xlsx`
+
+  await writeXlsxFile(sheets).toFile(fileName)
 }
 
 

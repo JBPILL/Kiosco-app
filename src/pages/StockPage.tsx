@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatFecha, formatPrecio, getCachedProductos, saveCachedProductos, clearCachedProductos } from '../lib/utils'
-import { exportarMovimientosStockExcel } from '../lib/exportUtils'
 import { playScanSound } from '../lib/sound'
 import { useBarcodeGun } from '../hooks/useBarcodeGun'
 import { useAuthStore } from '../stores/authStore'
@@ -862,16 +861,6 @@ export function StockPage() {
                 + Registrar Movimiento
               </Button>
 
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => exportarMovimientosStockExcel(movimientosFiltrados, kiosco?.nombre || 'Kiosco')}
-                disabled={movimientosFiltrados.length === 0}
-                className="text-xs whitespace-nowrap font-medium shadow-xs"
-                title="Descargar historial filtrado en formato Excel corporativo (.xlsx)"
-              >
-                Exportar Excel
-              </Button>
 
               <button
                 type="button"
