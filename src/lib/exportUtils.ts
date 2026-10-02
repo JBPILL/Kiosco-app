@@ -261,6 +261,39 @@ function cTotalNum(value: number, format: string = '#,##0'): Cell {
   }
 }
 
+function cTotalText(value: string = '—', align: 'left' | 'center' | 'right' = 'center', isBold: boolean = false): Cell {
+  return {
+    value,
+    type: String,
+    fontSize: 10,
+    fontWeight: isBold ? 'bold' : undefined,
+    textColor: '#0F172A',
+    backgroundColor: '#F1F5F9',
+    align,
+    topBorderStyle: 'thin',
+    topBorderColor: '#94A3B8',
+    bottomBorderStyle: 'double',
+    bottomBorderColor: '#0F172A',
+  }
+}
+
+function cTotalPercent(value: number): Cell {
+  return {
+    value: Number(value || 0),
+    type: Number,
+    format: '0.0%',
+    fontWeight: 'bold',
+    fontSize: 10,
+    textColor: '#0F172A',
+    backgroundColor: '#F1F5F9',
+    align: 'right',
+    topBorderStyle: 'thin',
+    topBorderColor: '#94A3B8',
+    bottomBorderStyle: 'double',
+    bottomBorderColor: '#0F172A',
+  }
+}
+
 // ============================================================================
 // VALUACIÓN DE INVENTARIO Y CATÁLOGO GENERAL
 // ============================================================================
@@ -1863,16 +1896,21 @@ export async function exportarMasterExcel(params: MasterExcelData) {
       })
 
       const totalStock = prods.reduce((s, p) => s + Number(p.stock_actual || 0), 0)
+      const totalStockMin = prods.reduce((s, p) => s + Number(p.stock_minimo || 0), 0)
       const valCosto = prods.reduce((s, p) => s + Number(p.stock_actual || 0) * Number(p.precio_costo || 0), 0)
       const valVenta = prods.reduce((s, p) => s + Number(p.stock_actual || 0) * Number(p.precio_venta || 0), 0)
+      const margenPromedio = valVenta > 0 ? (valVenta - valCosto) / valVenta : 0
 
       rows.push([
-        ...cTotalLabel(`TOTALES (${prods.length} PRODUCTOS):`, 3),
+        cTotalText('TOTALES:', 'left', true),
+        cTotalText(`${prods.length} productos`, 'left', true),
+        cTotalText('—', 'center'),
         cTotalMoney(valCosto),
         cTotalMoney(valVenta),
-        cText('—', '#F1F5F9', 'center', true),
+        cTotalPercent(margenPromedio),
         cTotalNum(totalStock),
-        ...cSpan(cText('—', '#F1F5F9', 'center', true), 2),
+        cTotalNum(totalStockMin),
+        cTotalText('—', 'center'),
       ] as Row)
     }
 
@@ -1931,10 +1969,16 @@ export async function exportarMasterExcel(params: MasterExcelData) {
         ] as Row)
       })
 
+      const totalCantidad = movs.reduce((s, m) => s + Number(m.cantidad || 0), 0)
+
       rows.push([
-        ...cTotalLabel('TOTAL REGISTROS:', 3),
-        cTotalNum(movs.length),
-        ...cSpan(cText('—', '#F1F5F9', 'center', true), 3),
+        cTotalText('TOTAL REGISTROS:', 'left', true),
+        cTotalText(`${movs.length} movimientos`, 'left', true),
+        cTotalText('—', 'center'),
+        cTotalNum(totalCantidad),
+        cTotalText('—', 'center'),
+        cTotalText('—', 'center'),
+        cTotalText('—', 'center'),
       ] as Row)
     }
 
@@ -1976,25 +2020,31 @@ export async function exportarMasterExcel(params: MasterExcelData) {
       rows.push([...cSpan(cText('No se registraron clientes en la cartera.', '#FFFFFF', 'center', true), totalCols)] as Row)
     } else {
       let totalDeudaClientes = 0
+      let totalLimiteCredito = 0
       clientes.forEach((cli: any, idx) => {
         const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
         const saldo = Number(cli.saldo_deudor ?? cli.saldo ?? 0)
+        const limite = Number(cli.limite_credito || 0)
         totalDeudaClientes += saldo
+        totalLimiteCredito += limite
 
         rows.push([
           cText(cli.nombre, bg, 'left', true),
           cText(cli.telefono || '—', bg, 'center'),
           cText(cli.email || '—', bg, 'left'),
           cMoney(saldo, bg, saldo > 0),
-          cMoney(Number(cli.limite_credito || 0), bg),
+          cMoney(limite, bg),
           cText(cli.notas || '—', bg, 'left'),
         ] as Row)
       })
 
       rows.push([
-        ...cTotalLabel('TOTAL SALDO DEUDOR EXIGIBLE:', 3),
+        cTotalText('TOTAL CARTERA:', 'left', true),
+        cTotalText(`${clientes.length} clientes`, 'center', true),
+        cTotalText('—', 'center'),
         cTotalMoney(totalDeudaClientes),
-        ...cSpan(cText('—', '#F1F5F9', 'center', true), 2),
+        cTotalMoney(totalLimiteCredito),
+        cTotalText('—', 'center'),
       ] as Row)
     }
 
@@ -2057,7 +2107,12 @@ export async function exportarMasterExcel(params: MasterExcelData) {
       })
 
       rows.push([
-        ...cTotalLabel('TOTAL PASIVO CON PROVEEDORES:', 6),
+        cTotalText('TOTAL PASIVOS:', 'left', true),
+        cTotalText(`${provs.length} proveedores`, 'left', true),
+        cTotalText('—', 'center'),
+        cTotalText('—', 'center'),
+        cTotalText('—', 'center'),
+        cTotalText('—', 'center'),
         cTotalMoney(totalDeudaProveedores),
       ] as Row)
     }
@@ -2125,7 +2180,11 @@ export async function exportarMasterExcel(params: MasterExcelData) {
       })
 
       rows.push([
-        ...cTotalLabel('TOTAL RECAUDACIÓN HISTÓRICA:', 5),
+        cTotalText('TOTAL FACTURACIÓN:', 'left', true),
+        cTotalText(`${vtas.length} tickets`, 'center', true),
+        cTotalText('—', 'center'),
+        cTotalText('—', 'center'),
+        cTotalText('—', 'center'),
         cTotalMoney(totalVentasMonto),
       ] as Row)
     }
