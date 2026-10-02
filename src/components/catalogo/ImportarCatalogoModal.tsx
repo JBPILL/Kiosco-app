@@ -395,13 +395,18 @@ export function ImportarCatalogoModal({
           if (!fila || fila.every((c) => c === null || c === undefined || String(c).trim() === '')) continue
 
           // Omitir fila de totales y resúmenes de valuación al final de la tabla
-          const lineaFilaTexto = fila.map((c) => String(c ?? '')).join(' ').toLowerCase()
+          const lineaFilaTexto = fila.map((c) => String(c ?? '')).join(' ').toLowerCase().trim()
           if (
-            lineaFilaTexto.includes('valuacion total') ||
-            lineaFilaTexto.includes('valuación total') ||
+            lineaFilaTexto.startsWith('total') ||
+            lineaFilaTexto.startsWith('totales') ||
+            lineaFilaTexto.includes('totales (') ||
             lineaFilaTexto.includes('total facturado') ||
             lineaFilaTexto.includes('totales acumulados') ||
-            lineaFilaTexto.includes('total registros')
+            lineaFilaTexto.includes('total registros') ||
+            lineaFilaTexto.includes('total cartera') ||
+            lineaFilaTexto.includes('total pasivos') ||
+            lineaFilaTexto.includes('valuacion total') ||
+            lineaFilaTexto.includes('valuación total')
           ) {
             continue
           }
@@ -425,13 +430,15 @@ export function ImportarCatalogoModal({
           const stockActual = indices.stock_actual >= 0 ? parsearNumero(fila[indices.stock_actual]) : 0
           const stockMinimo = indices.stock_minimo >= 0 ? Math.max(0, parsearNumero(fila[indices.stock_minimo])) : 0
 
-          // Omitir devoluciones de envases, combos automáticos del sistema o artículos virtuales ad-hoc
+          // Omitir devoluciones de envases, combos predefinidos/automáticos o artículos virtuales ad-hoc
           const descNorm = descripcion.toLowerCase()
           const codNorm = (codigoBarras || '').toUpperCase()
           if (
             descNorm.startsWith('devolución') ||
             descNorm.startsWith('devolucion') ||
-            codNorm.startsWith('COMBO-AUTO-') ||
+            descNorm.startsWith('combo ') ||
+            descNorm.startsWith('combo:') ||
+            codNorm.startsWith('COMBO-') ||
             (stockActual > 90000 && !codigoBarras && (
               descNorm.includes('envase') ||
               descNorm.includes('devolucion') ||
@@ -513,13 +520,18 @@ export function ImportarCatalogoModal({
             if (columnas.length === 0 || columnas.every((c) => !c)) continue
 
             // Omitir filas de totales de auditoría
-            const lineaTexto = columnas.join(' ').toLowerCase()
+            const lineaTexto = columnas.join(' ').toLowerCase().trim()
             if (
-              lineaTexto.includes('valuacion total') ||
-              lineaTexto.includes('valuación total') ||
+              lineaTexto.startsWith('total') ||
+              lineaTexto.startsWith('totales') ||
+              lineaTexto.includes('totales (') ||
               lineaTexto.includes('total facturado') ||
               lineaTexto.includes('totales acumulados') ||
-              lineaTexto.includes('total registros')
+              lineaTexto.includes('total registros') ||
+              lineaTexto.includes('total cartera') ||
+              lineaTexto.includes('total pasivos') ||
+              lineaTexto.includes('valuacion total') ||
+              lineaTexto.includes('valuación total')
             ) {
               continue
             }
@@ -543,13 +555,15 @@ export function ImportarCatalogoModal({
             const stockActual = indices.stock_actual >= 0 ? parsearNumero(columnas[indices.stock_actual]) : 0
             const stockMinimo = indices.stock_minimo >= 0 ? Math.max(0, parsearNumero(columnas[indices.stock_minimo])) : 0
 
-            // Omitir devoluciones de envases, combos automáticos del sistema o artículos virtuales ad-hoc
+            // Omitir devoluciones de envases, combos predefinidos/automáticos o artículos virtuales ad-hoc
             const descNorm = descripcion.toLowerCase()
             const codNorm = (codigoBarras || '').toUpperCase()
             if (
               descNorm.startsWith('devolución') ||
               descNorm.startsWith('devolucion') ||
-              codNorm.startsWith('COMBO-AUTO-') ||
+              descNorm.startsWith('combo ') ||
+              descNorm.startsWith('combo:') ||
+              codNorm.startsWith('COMBO-') ||
               (stockActual > 90000 && !codigoBarras)
             ) {
               continue

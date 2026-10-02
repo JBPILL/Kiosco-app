@@ -105,7 +105,13 @@ function cHeader(value: string, align: 'left' | 'center' | 'right' = 'left'): Ce
   }
 }
 
-function cText(value?: string | null, bg: string = '#FFFFFF', align: 'left' | 'center' | 'right' = 'left', isBold: boolean = false): Cell {
+function cText(
+  value?: string | null,
+  bg: string = '#FFFFFF',
+  align: 'left' | 'center' | 'right' = 'left',
+  isBold: boolean = false,
+  wrap: boolean = false
+): Cell {
   return {
     value: value || '—',
     type: String,
@@ -116,6 +122,7 @@ function cText(value?: string | null, bg: string = '#FFFFFF', align: 'left' | 'c
     align,
     borderColor: '#E2E8F0',
     borderStyle: 'thin',
+    wrap: wrap ? true : undefined,
   }
 }
 
@@ -332,13 +339,14 @@ export async function exportarCatalogoExcel(
   categorias.forEach((c) => catMap.set(c.id, c.nombre))
 
   // Filtrar exclusivamente productos comerciales físicos activos
-  // (excluyendo devoluciones de envases y artículos virtuales ad-hoc con stock simulado > 90000)
+  // (excluyendo devoluciones de envases, combos predefinidos y artículos virtuales ad-hoc)
   const productosValidos = productos.filter((p) => {
     if (p.activo === false) return false
     if (p.es_combo === true) return false
     const cod = (p.codigo_barras || '').toUpperCase().trim()
-    if (cod.startsWith('COMBO-AUTO-')) return false
+    if (cod.startsWith('COMBO-')) return false
     const desc = (p.descripcion || '').toLowerCase().trim()
+    if (desc.startsWith('combo ') || desc.startsWith('combo:')) return false
     if (desc.startsWith('devolución') || desc.startsWith('devolucion')) return false
     if (p.stock_actual > 90000 && !p.codigo_barras) return false
     return true
@@ -1851,8 +1859,8 @@ export async function exportarMasterExcel(params: MasterExcelData) {
     const totalCols = 9
     const columns: SheetOptionsColumn[] = [
       { width: 18 }, // Código Barra
-      { width: 38 }, // Descripción del Producto
-      { width: 22 }, // Categoría
+      { width: 42 }, // Descripción del Producto (ampliado para evitar recortes)
+      { width: 24 }, // Categoría
       { width: 18 }, // Precio Costo ($)
       { width: 18 }, // Precio Venta ($)
       { width: 14 }, // Margen %
@@ -1864,7 +1872,20 @@ export async function exportarMasterExcel(params: MasterExcelData) {
     const catsMap = new Map<string, string>()
     ;(params.categorias || []).forEach((c: any) => catsMap.set(c.id, c.nombre))
 
-    const prods = params.productos || []
+    // Filtrar exclusivamente productos comerciales físicos reales
+    // (excluyendo combos legacy del seed, promociones virtuales y devoluciones de envases)
+    const prods = (params.productos || []).filter((p: any) => {
+      if (p.activo === false) return false
+      if (p.es_combo === true) return false
+      const cod = String(p.codigo_barras || (p as any).codigo_barra || '').toUpperCase().trim()
+      if (cod.startsWith('COMBO-')) return false
+      const desc = String(p.descripcion || '').toLowerCase().trim()
+      if (desc.startsWith('combo ') || desc.startsWith('combo:')) return false
+      if (desc.startsWith('devolución') || desc.startsWith('devolucion')) return false
+      if (Number(p.stock_actual) > 90000 && !p.codigo_barras) return false
+      return true
+    })
+
     const rows: Row[] = [
       [...cSpan(cTitle('CATÁLOGO DE PRODUCTOS Y VALUACIÓN DE STOCK'), totalCols)] as Row,
       [...cSpan(cSubtitle(`Comercio: ${nombreKiosco} | Fecha: ${fechaGeneracion} | Total: ${prods.length} ítems`), totalCols)] as Row,
@@ -1894,7 +1915,7 @@ export async function exportarMasterExcel(params: MasterExcelData) {
 
         rows.push([
           cText(p.codigo_barras || (p as any).codigo_barra || '—', bg, 'center'),
-          cText(p.descripcion, bg, 'left', true),
+          cText(p.descripcion, bg, 'left', true, true),
           cText(cat, bg, 'left'),
           cMoney(costo, bg),
           cMoney(venta, bg, true),
@@ -1938,7 +1959,7 @@ export async function exportarMasterExcel(params: MasterExcelData) {
       { width: 18 }, // Tipo Movimiento
       { width: 16 }, // Cantidad
       { width: 22 }, // Motivo
-      { width: 32 }, // Detalle / Observaciones
+      { width: 45 }, // Detalle / Observaciones (ampliado de 32 a 45 con salto de línea)
       { width: 22 }, // Usuario
     ]
 
@@ -1972,7 +1993,7 @@ export async function exportarMasterExcel(params: MasterExcelData) {
           cText(m.tipo, bg, 'center'),
           cNum(m.cantidad, bg, '#,##0', false, 'center'),
           cText(m.motivo, bg, 'left'),
-          cText(m.notas || '—', bg, 'left'),
+          cText(m.notas || '—', bg, 'left', false, true),
           cText(usuarioNom, bg, 'left'),
         ] as Row)
       })
@@ -2002,7 +2023,7 @@ export async function exportarMasterExcel(params: MasterExcelData) {
       { width: 28 }, // Correo Electrónico
       { width: 20 }, // Saldo Deudor ($)
       { width: 20 }, // Límite Crédito ($)
-      { width: 36 }, // Notas / Observaciones
+      { width: 55 }, // Notas / Observaciones (expandido a 55 con wrap para no desbordar del cuadro)
     ]
 
     const clientes = params.clientes || []
@@ -2038,7 +2059,7 @@ export async function exportarMasterExcel(params: MasterExcelData) {
           cText(cli.email || '—', bg, 'left'),
           cMoney(saldo, bg, saldo > 0),
           cMoney(limite, bg),
-          cText(cli.notas || '—', bg, 'left'),
+          cText(cli.notas || '—', bg, 'left', false, true),
         ] as Row)
       })
 
@@ -2066,7 +2087,7 @@ export async function exportarMasterExcel(params: MasterExcelData) {
       { width: 20 }, // Teléfono
       { width: 20 }, // CUIT
       { width: 28 }, // Correo Electrónico
-      { width: 28 }, // Días Visita / CBU Alias
+      { width: 40 }, // Días Visita / CBU Alias (expandido a 40 con wrap)
       { width: 22 }, // Saldo Pendiente ($)
     ]
 
@@ -2103,7 +2124,7 @@ export async function exportarMasterExcel(params: MasterExcelData) {
           cText(prov.telefono || '—', bg, 'center'),
           cText(prov.cuit || '—', bg, 'center'),
           cText(prov.email || '—', bg, 'left'),
-          cText(extraInfo, bg, 'left'),
+          cText(extraInfo, bg, 'left', false, true),
           cMoney(saldo, bg, saldo > 0),
         ] as Row)
       })
