@@ -244,6 +244,7 @@ export function CajaPage() {
     const diferenciaFinal = contadoNum - esperadoFinal
 
     const snapshotCierre: DatosCierreCaja = {
+      sesionId: sesionActiva?.id,
       kioscoNombre: kiosco?.nombre,
       kioscoDireccion: kiosco?.direccion,
       kioscoTelefono: kiosco?.telefono,
@@ -313,6 +314,7 @@ export function CajaPage() {
       )
 
       const datos: DatosCierreCaja = {
+        sesionId: sesionActiva.id,
         kioscoNombre: kiosco?.nombre,
         kioscoDireccion: kiosco?.direccion,
         kioscoTelefono: kiosco?.telefono,
@@ -359,6 +361,7 @@ export function CajaPage() {
       )
 
       const datos: DatosCierreCaja = {
+        sesionId: s.id,
         kioscoNombre: useAuthStore.getState().kiosco?.nombre,
         kioscoDireccion: useAuthStore.getState().kiosco?.direccion,
         kioscoTelefono: useAuthStore.getState().kiosco?.telefono,

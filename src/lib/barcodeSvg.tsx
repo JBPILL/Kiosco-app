@@ -58,6 +58,7 @@ export interface BarcodeSvgProps {
   width?: number | string
   height?: number
   showText?: boolean
+  textLabel?: string
   className?: string
 }
 
@@ -65,6 +66,7 @@ export function BarcodeSvg({
   value,
   height = 42,
   showText = false,
+  textLabel,
   className = '',
 }: BarcodeSvgProps) {
   if (!value || !value.trim()) return null
@@ -101,8 +103,8 @@ export function BarcodeSvg({
         })}
       </svg>
       {showText && (
-        <span className="font-mono text-[10px] sm:text-xs tracking-widest text-gray-800 dark:text-gray-200 mt-0.5 font-bold">
-          {value.trim()}
+        <span className="font-mono text-[10px] sm:text-xs tracking-widest text-gray-900 mt-0.5 font-bold">
+          {textLabel || value.trim()}
         </span>
       )}
     </div>

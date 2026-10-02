@@ -31,14 +31,26 @@ export interface EditarKioscoPayload {
   fechaVencimiento?: string
 }
 
+export interface PagoSuscripcionDetallado extends PagoSuscripcion {
+  kiosco_id?: string
+  nombre_kiosco?: string
+  rubro?: RubroComercio
+  nombre_dueno?: string
+  email_dueno?: string
+  nombre_plan?: string
+}
+
 interface AdminState {
   kioscos: KioscoAdminView[]
   planes: Plan[]
+  todosLosPagos: PagoSuscripcionDetallado[]
   cargando: boolean
   cargandoAccion: boolean
+  cargandoReportes: boolean
   error: string | null
 
   cargarDatosAdmin: () => Promise<void>
+  cargarReportesAdmin: () => Promise<void>
   renovarSuscripcion: (
     kioscoId: string,
     meses: number,
@@ -62,8 +74,10 @@ interface AdminState {
 export const useAdminStore = create<AdminState>((set, get) => ({
   kioscos: [],
   planes: [],
+  todosLosPagos: [],
   cargando: false,
   cargandoAccion: false,
+  cargandoReportes: false,
   error: null,
 
   cargarDatosAdmin: async () => {
@@ -709,6 +723,47 @@ export const useAdminStore = create<AdminState>((set, get) => ({
       toast.error('Error al eliminar el plan')
       set({ cargandoAccion: false })
       return false
+    }
+  },
+
+  cargarReportesAdmin: async () => {
+    set({ cargandoReportes: true })
+    try {
+      if (get().kioscos.length === 0) {
+        await get().cargarDatosAdmin()
+      }
+      const kioscosList = get().kioscos
+
+      const { data: pagos, error } = await supabase
+        .from('pagos_suscripcion')
+        .select('*')
+        .order('fecha_pago', { ascending: false })
+
+      if (error) throw error
+
+      const enriquecidos: PagoSuscripcionDetallado[] = (pagos || []).map((p: any) => {
+        const kMatch = kioscosList.find((k) => k.suscripcion_id === p.suscripcion_id)
+        return {
+          id: p.id,
+          suscripcion_id: p.suscripcion_id,
+          monto: Number(p.monto) || 0,
+          fecha_pago: p.fecha_pago,
+          medio_pago: p.medio_pago || 'TRANSFERENCIA',
+          comprobante: p.comprobante,
+          notas: p.notas,
+          kiosco_id: kMatch?.kiosco_id,
+          nombre_kiosco: kMatch?.nombre_kiosco || 'Comercio Registrado',
+          rubro: kMatch?.rubro || 'KIOSCO',
+          nombre_dueno: kMatch?.nombre_dueno || 'Cliente',
+          email_dueno: kMatch?.email_dueno || '',
+          nombre_plan: kMatch?.nombre_plan || 'Plan SaaS',
+        }
+      })
+
+      set({ todosLosPagos: enriquecidos, cargandoReportes: false })
+    } catch (err) {
+      console.error('Error al cargar reportes globales de Super-Admin:', err)
+      set({ cargandoReportes: false })
     }
   },
 }))

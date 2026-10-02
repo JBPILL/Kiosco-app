@@ -7,6 +7,7 @@ import jsPDF from 'jspdf'
 import { formatPrecio, formatFecha } from './utils'
 import { sanitizarNombreArchivo } from './exportUtils'
 import { generarImagenQRAFIP } from './afipQR'
+import { generateCode128Bars } from './barcodeSvg'
 import { generarEnlaceWhatsApp, abrirEnlaceExternoSeguro } from './whatsappReport'
 import { getAnchoTicketGuardado, type AnchoPapelTicket } from './ticketPreferences'
 import toast from 'react-hot-toast'
@@ -44,7 +45,7 @@ export async function crearDocumentoPDFVenta(
   const margin = es58 ? 3.5 : 5.5
 
   // Cálculo de altura dinámica
-  let altoMm = es58 ? 130 : 140
+  let altoMm = es58 ? 145 : 155
   const items = ticket.items || []
   altoMm += items.length * (es58 ? 5 : 5.5)
 
@@ -53,6 +54,7 @@ export async function crearDocumentoPDFVenta(
   if (ticket.pagaCon !== undefined && ticket.pagaCon > 0) altoMm += 8
   if (ticket.notas) altoMm += 8
   if (ticket.afip) altoMm += es58 ? 40 : 45 // Espacio para recuadro fiscal, CAE y QR
+  altoMm += 18 // Espacio para código de barras y texto identificador
 
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -295,8 +297,35 @@ export async function crearDocumentoPDFVenta(
     y += 3.5
   }
 
-  // 6. Pie de Ticket
-  y += 2
+  // 6. Código de barras del comprobante para auditoría y devoluciones
+  const barcodeText = `T-${ticket.ventaId.slice(0, 8).toUpperCase()}`
+  const bars = generateCode128Bars(barcodeText)
+  if (bars.length > 0) {
+    y += 2
+    const quietModules = 10
+    const totalModules = bars.length + quietModules * 2
+    const targetWidth = es58 ? 40 : 50
+    const moduleW = targetWidth / totalModules
+    const barHeight = es58 ? 7 : 8.5
+    const startX = (pageWidth - targetWidth) / 2
+
+    doc.setFillColor(0, 0, 0)
+    for (let i = 0; i < bars.length; i++) {
+      if (bars[i]) {
+        const bx = startX + (quietModules + i) * moduleW
+        doc.rect(bx, y, moduleW, barHeight, 'F')
+      }
+    }
+    y += barHeight + 2
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(es58 ? 6 : 6.5)
+    doc.setTextColor(colorOscuro[0], colorOscuro[1], colorOscuro[2])
+    doc.text(`* ${barcodeText} *`, pageWidth / 2, y, { align: 'center' })
+    y += 3.5
+  }
+
+  // 7. Pie de Ticket
+  y += 1
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(es58 ? 7 : 7.5)
   doc.setTextColor(colorOscuro[0], colorOscuro[1], colorOscuro[2])

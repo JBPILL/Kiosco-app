@@ -7,9 +7,11 @@ import { useAuthStore } from '../../stores/authStore'
 import { getWhatsAppReportConfig, formatearAvisoCierreWhatsAppPDF } from '../../lib/whatsappReport'
 import { exportarComprobanteCierrePDF, compartirComprobanteCierreWhatsApp } from '../../lib/pdfCierreUtils'
 import { getAnchoTicketGuardado, guardarAnchoTicket, type AnchoPapelTicket } from '../../lib/ticketPreferences'
+import { BarcodeSvg } from '../../lib/barcodeSvg'
 import toast from 'react-hot-toast'
 
 export interface DatosCierreCaja {
+  sesionId?: string
   kioscoNombre?: string | null
   kioscoDireccion?: string | null
   kioscoTelefono?: string | null
@@ -387,7 +389,19 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
               </div>
 
               {/* Pie de ticket */}
-              <div className="pt-4 text-center text-[10px] text-gray-500 space-y-0.5 border-t border-dashed border-gray-300 mt-4">
+              <div className="pt-3 text-center text-[10px] text-gray-500 space-y-0.5 border-t border-dashed border-gray-300 mt-4">
+                {/* Código de barras del turno para auditoría y lector */}
+                {datos.sesionId && (
+                  <div className="pt-1 pb-1.5 flex flex-col items-center">
+                    <BarcodeSvg
+                      value={`${datos.esParcial ? 'X' : 'Z'}-${datos.sesionId.slice(0, 8).toUpperCase()}`}
+                      height={36}
+                      showText={true}
+                      textLabel={`* ${datos.esParcial ? 'X' : 'Z'}-${datos.sesionId.slice(0, 8).toUpperCase()} *`}
+                      className="w-full max-w-[210px]"
+                    />
+                  </div>
+                )}
                 <p className="font-semibold text-gray-700">Comprobante Oficial de Auditoría y Cierre</p>
                 <p>Sistema AlPaso Kiosco POS</p>
               </div>

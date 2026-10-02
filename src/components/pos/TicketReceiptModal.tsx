@@ -5,6 +5,7 @@ import { generarImagenQRAFIP } from '../../lib/afipQR'
 import { imprimirTicketEscPosDirecto, isWebSerialSupported } from '../../lib/escposPrinter'
 import { exportarTicketVentaPDF, compartirTicketVentaWhatsApp } from '../../lib/pdfVentaUtils'
 import { getAnchoTicketGuardado, guardarAnchoTicket, type AnchoPapelTicket } from '../../lib/ticketPreferences'
+import { BarcodeSvg } from '../../lib/barcodeSvg'
 import toast from 'react-hot-toast'
 
 export interface TicketItem {
@@ -619,10 +620,33 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
                 <p className="text-[9px] text-gray-600 italic pt-1">
                   Comprobante Autorizado por ARCA (RG 4892)
                 </p>
+
+                {/* Código de barras del comprobante para auditoría y devoluciones */}
+                <div className="pt-2 pb-1 flex flex-col items-center">
+                  <BarcodeSvg
+                    value={`T-${ticket.ventaId.slice(0, 8).toUpperCase()}`}
+                    height={38}
+                    showText={true}
+                    textLabel={`* T-${ticket.ventaId.slice(0, 8).toUpperCase()} *`}
+                    className="w-full max-w-[210px]"
+                  />
+                </div>
+
                 <p className="font-bold text-[10px] text-gray-950 pt-0.5">¡Muchas gracias por su compra!</p>
               </div>
             ) : (
               <div className="pt-2 text-center text-[10px] text-gray-600 space-y-0.5">
+                {/* Código de barras del comprobante para auditoría y devoluciones */}
+                <div className="pt-1 pb-1 flex flex-col items-center">
+                  <BarcodeSvg
+                    value={`T-${ticket.ventaId.slice(0, 8).toUpperCase()}`}
+                    height={38}
+                    showText={true}
+                    textLabel={`* T-${ticket.ventaId.slice(0, 8).toUpperCase()} *`}
+                    className="w-full max-w-[210px]"
+                  />
+                </div>
+
                 <p className="font-semibold text-gray-800">¡Muchas gracias por su compra!</p>
                 <p>Comprobante no válido como factura</p>
               </div>

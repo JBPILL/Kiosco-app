@@ -8,6 +8,8 @@ import { useCajaStore } from '../../stores/cajaStore'
 import { TicketReceiptModal, type TicketData } from './TicketReceiptModal'
 import { ventaToTicketData } from '../../lib/ticketUtils'
 import type { MetodoReintegro, MotivoDevolucion } from '../../types/database'
+import { useBarcodeGun } from '../../hooks/useBarcodeGun'
+import { playScanSound } from '../../lib/sound'
 import toast from 'react-hot-toast'
 
 interface DevolucionModalProps {
@@ -138,6 +140,31 @@ export function DevolucionModal({
 
     seleccionarVenta(ventaEncontrada)
   }
+
+  // Escaneo con pistola lectora directo en el modal de devoluciones
+  useBarcodeGun({
+    onScan: async (code) => {
+      const limpio = code.trim()
+      if (!limpio) return
+      playScanSound()
+      setCriterioBusqueda(limpio)
+      setBuscando(true)
+      const ventaEncontrada = await buscarVentaParaDevolucion(
+        limpio,
+        usuario?.kiosco_id || kiosco?.id || undefined
+      )
+      setBuscando(false)
+      if (ventaEncontrada) {
+        playScanSound('success')
+        seleccionarVenta(ventaEncontrada)
+        toast.success(`Ticket #${ventaEncontrada.id.slice(0, 8).toUpperCase()} cargado`)
+      } else {
+        playScanSound('error')
+        toast.error(`No se encontró ninguna venta con el código ${limpio}`)
+      }
+    },
+    enabled: isOpen && !guardando && !ticketParaVer,
+  })
 
   // Alternar selección de un producto
   const toggleSeleccionItem = (prodId: string) => {

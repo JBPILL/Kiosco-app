@@ -25,6 +25,24 @@ const CMD_FEED_AND_CUT = [ESC, 0x64, 0x03, GS, 0x56, 0x42, 0x00] // Avanza 3 lí
 const CMD_KICK_DRAWER = [ESC, 0x70, 0x00, 0x19, 0xfa] // Pulso para abrir cajón de dinero
 
 /**
+ * Genera la secuencia de bytes ESC/POS para imprimir un código de barras Code 128 (Subset B)
+ * con texto HRI centrado debajo. Compatible con Epson, Hasar, Xprinter, 3nStar, etc.
+ */
+function generarComandoBarcodeEscPos(texto: string): number[] {
+  const limpio = texto.trim().replace(/[^\x20-\x7E]/g, '')
+  if (!limpio) return []
+  const textBytes = Array.from(new TextEncoder().encode(limpio))
+  const data = [0x7B, 0x42, ...textBytes]
+  return [
+    GS, 0x68, 50,       // GS h 50: Altura de código de barras
+    GS, 0x77, 2,        // GS w 2: Ancho de barras
+    GS, 0x48, 2,        // GS H 2: Caracteres HRI legibles debajo
+    GS, 0x66, 0,        // GS f 0: Fuente HRI
+    GS, 0x6B, 73, data.length, ...data, // GS k 73: Code 128
+  ]
+}
+
+/**
  * Normaliza strings para impresoras térmicas eliminando acentos
  * y caracteres que puedan corromperse según la página de códigos del firmware.
  */
@@ -183,9 +201,14 @@ export function construirBufferEscPos(ticket: TicketData, anchoPapel: '58mm' | '
     appendTexto('Comprobante Autorizado por AFIP')
   }
 
-  // 6. Pie de página
+  // 6. Pie de página y código de barras
   appendTexto(separador)
   appendBytes(CMD_ALIGN_CENTER)
+
+  const barcodeVenta = `T-${ticket.ventaId.slice(0, 8).toUpperCase()}`
+  appendBytes(generarComandoBarcodeEscPos(barcodeVenta))
+  appendTexto('')
+
   if (ticket.notas) {
     appendTexto(ticket.notas)
   }
@@ -389,7 +412,14 @@ export function construirBufferCierreCajaEscPos(
   appendTexto('Firma Encargado / Dueño')
   appendTexto('')
 
-  // 9. Corte de papel
+  // 9. Código de barras de arqueo
+  if (datos.sesionId) {
+    const barcodeCierre = `${datos.esParcial ? 'X' : 'Z'}-${datos.sesionId.slice(0, 8).toUpperCase()}`
+    appendBytes(generarComandoBarcodeEscPos(barcodeCierre))
+    appendTexto('')
+  }
+
+  // 10. Corte de papel
   appendBytes(CMD_FEED_AND_CUT)
 
   return new Uint8Array(bytes)

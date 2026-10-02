@@ -7,6 +7,7 @@
 import jsPDF from 'jspdf'
 import { formatPrecio, formatFecha } from './utils'
 import { sanitizarNombreArchivo } from './exportUtils'
+import { generateCode128Bars } from './barcodeSvg'
 import {
   generarEnlaceWhatsApp,
   abrirEnlaceExternoSeguro,
@@ -36,6 +37,9 @@ export function crearDocumentoPDFCierre(
   }
   if ((datos.ingresosExtra || 0) > 0 || (datos.egresosExtra || 0) > 0) {
     altoMm += es58 ? 16 : 18
+  }
+  if (datos.sesionId) {
+    altoMm += 18
   }
 
   const doc = new jsPDF({
@@ -214,10 +218,41 @@ export function crearDocumentoPDFCierre(
   // Firma encargado
   doc.line(margin + 2, y + (es58 ? 5 : 6), pageWidth - margin - 2, y + (es58 ? 5 : 6))
   doc.text('Firma Encargado / Auditor', pageWidth / 2, y + (es58 ? 8.5 : 9.5), { align: 'center' })
-  y += es58 ? 11 : 13
+  y += es58 ? 10 : 12
 
-  // 8. Pie de Comprobante
+  // 8. Código de barras del turno para auditoría
+  if (datos.sesionId) {
+    const barcodeText = `${datos.esParcial ? 'X' : 'Z'}-${datos.sesionId.slice(0, 8).toUpperCase()}`
+    const bars = generateCode128Bars(barcodeText)
+    if (bars.length > 0) {
+      y += 1
+      const quietModules = 10
+      const totalModules = bars.length + quietModules * 2
+      const targetWidth = es58 ? 40 : 50
+      const moduleW = targetWidth / totalModules
+      const barHeight = es58 ? 6.5 : 8
+      const startX = (pageWidth - targetWidth) / 2
+
+      doc.setFillColor(0, 0, 0)
+      for (let i = 0; i < bars.length; i++) {
+        if (bars[i]) {
+          const bx = startX + (quietModules + i) * moduleW
+          doc.rect(bx, y, moduleW, barHeight, 'F')
+        }
+      }
+      y += barHeight + 2
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(es58 ? 6 : 6.5)
+      doc.setTextColor(colorOscuro[0], colorOscuro[1], colorOscuro[2])
+      doc.text(`* ${barcodeText} *`, pageWidth / 2, y, { align: 'center' })
+      y += 3.5
+    }
+  }
+
+  // 9. Pie de Comprobante
+  doc.setFont('helvetica', 'normal')
   doc.setFontSize(es58 ? 5.5 : 6)
+  doc.setTextColor(colorGris[0], colorGris[1], colorGris[2])
   doc.text('Comprobante Oficial de Auditoría y Cierre', pageWidth / 2, y, { align: 'center' })
   y += 3
   doc.text('Sistema AlPaso Kiosco POS', pageWidth / 2, y, { align: 'center' })

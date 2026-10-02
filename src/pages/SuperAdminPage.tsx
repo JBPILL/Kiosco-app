@@ -9,6 +9,7 @@ import type { KioscoAdminView, PagoSuscripcion, RubroComercio } from '../types/d
 import { formatPrecio } from '../lib/utils'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { supabase } from '../lib/supabase'
+import { ReportesSuperAdminTab } from '../components/admin/ReportesSuperAdminTab'
 import toast from 'react-hot-toast'
 
 export function SuperAdminPage() {
@@ -103,8 +104,8 @@ export function SuperAdminPage() {
   const [historialPagos, setHistorialPagos] = useState<PagoSuscripcion[]>([])
   const [cargandoHistorial, setCargandoHistorial] = useState(false)
 
-  // Navegación principal de pestañas (Kioscos vs Bandeja de Soporte)
-  const [pestanaActiva, setPestanaActiva] = useState<'KIOSCOS' | 'SOPORTE'>('KIOSCOS')
+  // Navegación principal de pestañas (Kioscos vs Bandeja de Soporte vs Rendimientos)
+  const [pestanaActiva, setPestanaActiva] = useState<'KIOSCOS' | 'SOPORTE' | 'REPORTES'>('KIOSCOS')
 
   // Store de Soporte Centralizado
   const {
@@ -768,9 +769,29 @@ export function SuperAdminPage() {
             </span>
           )}
         </button>
+
+        <button
+          onClick={() => setPestanaActiva('REPORTES')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all relative ${
+            pestanaActiva === 'REPORTES'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+          }`}
+        >
+          <span>Rendimientos y Reportes</span>
+          <span
+            className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+              pestanaActiva === 'REPORTES'
+                ? 'bg-white/20 text-white'
+                : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
+            }`}
+          >
+            SaaS
+          </span>
+        </button>
       </div>
 
-      {pestanaActiva === 'KIOSCOS' ? (
+      {pestanaActiva === 'KIOSCOS' && (
         <>
           {/* Tarjeta de Cobro y Soporte para Kioscos */}
       <div className="bg-gradient-to-r from-indigo-50/70 via-purple-50/40 to-white dark:from-indigo-950/30 dark:via-gray-800 dark:to-gray-800 p-4 sm:p-5 rounded-2xl border border-indigo-200/80 dark:border-indigo-800/60 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -1151,7 +1172,9 @@ export function SuperAdminPage() {
         )}
       </div>
         </>
-      ) : (
+      )}
+
+      {pestanaActiva === 'SOPORTE' && (
         /* BANDEJA DE SOPORTE */
         <div className="space-y-6">
           {/* Tarjetas KPI de Soporte */}
@@ -1478,6 +1501,8 @@ export function SuperAdminPage() {
           </div>
         </div>
       )}
+
+      {pestanaActiva === 'REPORTES' && <ReportesSuperAdminTab />}
 
       {/* MODAL NUEVO KIOSCO CLIENTE */}
       <Modal

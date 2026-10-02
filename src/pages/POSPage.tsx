@@ -29,7 +29,7 @@ import { playScanSound } from '../lib/sound'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import type { Producto, Categoria } from '../types/database'
-import type { VentaConDetalles } from '../stores/devolucionStore'
+import { useDevolucionStore, type VentaConDetalles } from '../stores/devolucionStore'
 import { useRealtimeSync } from '../hooks/useRealtimeSync'
 import { useTenantConfig } from '../hooks/useTenantConfig'
 import toast from 'react-hot-toast'
@@ -40,6 +40,7 @@ export function POSPage() {
   const { tieneEnvases, tieneBalanza, esFotocopiadora } = useTenantConfig()
   const { sesionActiva, verificarSesionActiva } = useCajaStore()
   const { promociones, cargarPromociones } = usePromocionStore()
+  const { buscarVentaParaDevolucion } = useDevolucionStore()
   const [favoritos, setFavoritos] = useState<Producto[]>([])
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [categoriaActiva, setCategoriaActiva] = useState<string | null>(null)
@@ -271,7 +272,30 @@ export function POSPage() {
 
       const kid = usuario?.kiosco_id || kiosco?.id
 
-      // 0. Comprobar si es código de balanza comercial argentina (EAN-13 con prefijo 20 o 02)
+      // 0. Comprobar si el código escaneado corresponde a un comprobante (Ticket de venta o Cierre de caja)
+      if (/^t-[a-f0-9]{4,36}$/i.test(codeTrim) || /^ticket-[a-f0-9-]+$/i.test(codeTrim)) {
+        playScanSound()
+        const ventaCandidata = await buscarVentaParaDevolucion(codeTrim, kid)
+        if (ventaCandidata) {
+          playScanSound('success')
+          window.dispatchEvent(new CustomEvent('pos-clear-search'))
+          setVentaParaDevolver(ventaCandidata)
+          setModalDevolucionOpen(true)
+          toast.success(`Ticket #${ventaCandidata.id.slice(0, 8).toUpperCase()} cargado para devolución`)
+        } else {
+          playScanSound('error')
+          toast.error(`No se encontró la venta con código ${codeTrim}`)
+        }
+        return
+      }
+
+      if (/^[zx]-[a-f0-9]{4,36}$/i.test(codeTrim)) {
+        playScanSound('warning')
+        toast('El código escaneado corresponde a un comprobante de cierre de caja', { icon: 'ℹ️' })
+        return
+      }
+
+      // 1. Comprobar si es código de balanza comercial argentina (EAN-13 con prefijo 20 o 02)
       if (tieneBalanza) {
         const parsedBalanza = parsearCodigoBalanza(codeTrim)
         if (parsedBalanza) {
@@ -374,7 +398,7 @@ export function POSPage() {
         toast.error('No se pudo verificar el código de barras en la red')
       }
     },
-    [agregarProducto, usuario?.kiosco_id, kiosco?.id, esFotocopiadora]
+    [agregarProducto, usuario?.kiosco_id, kiosco?.id, esFotocopiadora, tieneBalanza, buscarVentaParaDevolucion]
   )
 
   // Asistente on-the-fly disparado cuando el cajero presiona Enter en un código desconocido en el buscador
