@@ -82,7 +82,7 @@ function cHeader(value: string, align: 'left' | 'center' | 'right' = 'left'): Ce
   }
 }
 
-function cText(value: string, bg: string = '#FFFFFF', align: 'left' | 'center' | 'right' = 'left', isBold: boolean = false): Cell {
+function cText(value?: string | null, bg: string = '#FFFFFF', align: 'left' | 'center' | 'right' = 'left', isBold: boolean = false): Cell {
   return {
     value: value || '—',
     type: String,
@@ -1307,4 +1307,455 @@ export async function exportarStockInmovilizadoExcel(
   const fileName = `stock_inmovilizado_${diasFiltro}dias_${cleanKiosco}_${fechaStr}.xlsx`
   await writeXlsxFile(rows, { columns }).toFile(fileName)
 }
+
+// ============================================================================
+// EXPORTACIÓN DE RENDIMIENTOS SAAS SUPERADMIN (.XLSX)
+// ============================================================================
+export interface RendimientoMesExport {
+  numeroMes: number
+  nombre: string
+  nombreCorto: string
+  totalMonto: number
+  cantidadPagos: number
+  cantidadKioscosUnicos: number
+  ticketPromedio: number
+  variacionPorcentaje: number | null
+  medioMasUsado: string
+}
+
+export interface TransaccionSuperAdminExport {
+  id?: string
+  fecha_pago?: string | null
+  nombre_kiosco?: string | null
+  nombre_dueno?: string | null
+  email_dueno?: string | null
+  nombre_plan?: string | null
+  medio_pago?: string | null
+  monto: number
+  notas?: string | null
+  comprobante?: string | null
+  rubro?: string | null
+}
+
+export async function exportarRendimientosSuperAdminExcel(params: {
+  anio: number
+  mesNombre: string
+  mrrActual: number
+  totalFacturado: number
+  cantidadPagos: number
+  kioscosUnicos: number
+  ticketPromedio: number
+  datosMeses: RendimientoMesExport[]
+  transacciones: TransaccionSuperAdminExport[]
+}) {
+  const totalCols = 7
+  const columns: SheetOptionsColumn[] = [
+    { width: 16 }, // Fecha / Mes
+    { width: 28 }, // Comercio / Facturado
+    { width: 24 }, // Dueño / Cobros
+    { width: 18 }, // Plan / Comercios
+    { width: 18 }, // Medio de Pago
+    { width: 18 }, // Monto / Variación
+    { width: 26 }, // Notas / Detalle
+  ]
+
+  const fechaGeneracion = new Date().toLocaleDateString('es-AR') + ' ' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+
+  const rows: Row[] = [
+    cSpan({
+      value: 'SISTEMA ALPASO POS - SUPERADMIN: RENDIMIENTOS Y SUSCRIPCIONES SAAS',
+      type: String,
+      fontWeight: 'bold',
+      fontSize: 14,
+      textColor: '#FFFFFF',
+      backgroundColor: '#1E293B',
+      align: 'center',
+    }, totalCols) as Row,
+    cSpan({
+      value: `AÑO: ${params.anio} | PERÍODO: ${params.mesNombre.toUpperCase()} | GENERADO: ${fechaGeneracion}`,
+      type: String,
+      fontSize: 9,
+      textColor: '#E2E8F0',
+      backgroundColor: '#334155',
+      align: 'center',
+    }, totalCols) as Row,
+    emptyRow(totalCols) as Row,
+
+    // KPI Cards
+    cSpan({
+      value: 'INDICADORES CLAVE DE RENDIMIENTO Y FACTURACIÓN SAAS',
+      type: String,
+      fontWeight: 'bold',
+      fontSize: 10,
+      textColor: '#1E293B',
+      backgroundColor: '#E2E8F0',
+      align: 'left',
+      borderColor: '#CBD5E1',
+      borderStyle: 'thin',
+    }, totalCols) as Row,
+    [
+      ...cCardLabel('MRR Estimado Actual', 2),
+      ...cCardLabel(`Cobrado en ${params.mesNombre}`, 2),
+      ...cCardLabel('Cobros Realizados', 1),
+      ...cCardLabel('Ticket Promedio', 2),
+    ] as Row,
+    [
+      ...cCardValue(params.mrrActual, true, 2, '#4338CA'),
+      ...cCardValue(params.totalFacturado, true, 2, '#047857'),
+      ...cCardValue(params.cantidadPagos, false, 1, '#0F172A'),
+      ...cCardValue(params.ticketPromedio, true, 2, '#7C3AED'),
+    ] as Row,
+    emptyRow(totalCols) as Row,
+
+    // Tabla 1: Rendimientos Mensuales del Año
+    cSpan({
+      value: `EVOLUCIÓN INTERMENSUAL DE FACTURACIÓN Y RENDIMIENTOS (${params.anio})`,
+      type: String,
+      fontWeight: 'bold',
+      fontSize: 10,
+      textColor: '#1E293B',
+      backgroundColor: '#E2E8F0',
+      align: 'left',
+      borderColor: '#CBD5E1',
+      borderStyle: 'thin',
+    }, totalCols) as Row,
+    [
+      cHeader('Mes', 'center'),
+      cHeader('Facturado Total ($)', 'right'),
+      cHeader('Cobros', 'center'),
+      cHeader('Comercios', 'center'),
+      cHeader('Ticket Promedio ($)', 'right'),
+      cHeader('Variación Mes Previo', 'center'),
+      cHeader('Medio Principal', 'center'),
+    ] as Row,
+  ]
+
+  let totalAnualMonto = 0
+  let totalAnualPagos = 0
+
+  params.datosMeses.forEach((m, idx) => {
+    const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+    totalAnualMonto += m.totalMonto
+    totalAnualPagos += m.cantidadPagos
+
+    const varTexto = m.variacionPorcentaje !== null
+      ? `${m.variacionPorcentaje >= 0 ? '+' : ''}${m.variacionPorcentaje.toFixed(1)}%`
+      : '—'
+
+    rows.push([
+      cText(m.nombre, bg, 'center', true),
+      cMoney(m.totalMonto, bg, true),
+      cNum(m.cantidadPagos, bg, '#,##0'),
+      cNum(m.cantidadKioscosUnicos, bg, '#,##0'),
+      cMoney(m.ticketPromedio, bg),
+      cText(varTexto, bg, 'center', m.variacionPorcentaje !== null && m.variacionPorcentaje >= 0),
+      cText(m.medioMasUsado || '—', bg, 'center'),
+    ] as Row)
+  })
+
+  // Total anual de rendimientos
+  rows.push([
+    ...cTotalLabel('TOTAL ANUAL FACTURADO', 1),
+    cTotalMoney(totalAnualMonto),
+    cTotalNum(totalAnualPagos),
+    ...cTotalLabel('', 4),
+  ] as Row)
+
+  rows.push(emptyRow(totalCols) as Row)
+
+  // Tabla 2: Registro Detallado de Transacciones
+  if (params.transacciones.length > 0) {
+    rows.push(
+      cSpan({
+        value: `REGISTRO DETALLADO DE COBROS Y SUSCRIPCIONES (${params.transacciones.length} OPERACIONES)`,
+        type: String,
+        fontWeight: 'bold',
+        fontSize: 10,
+        textColor: '#1E293B',
+        backgroundColor: '#E2E8F0',
+        align: 'left',
+        borderColor: '#CBD5E1',
+        borderStyle: 'thin',
+      }, totalCols) as Row,
+      [
+        cHeader('Fecha de Pago', 'center'),
+        cHeader('Comercio Cliente', 'left'),
+        cHeader('Titular / Contacto', 'left'),
+        cHeader('Plan Contratado', 'center'),
+        cHeader('Medio de Pago', 'center'),
+        cHeader('Monto Cobrado ($)', 'right'),
+        cHeader('Notas / Comprobante', 'left'),
+      ] as Row
+    )
+
+    let totalDetalleCobrado = 0
+    params.transacciones.forEach((t, idx) => {
+      const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+      totalDetalleCobrado += Number(t.monto || 0)
+      const fechaTxt = t.fecha_pago ? formatFecha(t.fecha_pago) : '—'
+      const titularTxt = t.email_dueno ? `${t.nombre_dueno} (${t.email_dueno})` : t.nombre_dueno
+      const notasTxt = t.notas || t.comprobante || '—'
+
+      rows.push([
+        cText(fechaTxt, bg, 'center'),
+        cText(t.nombre_kiosco, bg, 'left', true),
+        cText(titularTxt, bg, 'left'),
+        cText(t.nombre_plan, bg, 'center'),
+        cText(t.medio_pago, bg, 'center'),
+        cMoney(t.monto, bg, true),
+        cText(notasTxt, bg, 'left'),
+      ] as Row)
+    })
+
+    rows.push([
+      ...cTotalLabel('TOTAL COBRADO EN EL PERÍODO', 5),
+      cTotalMoney(totalDetalleCobrado),
+      ...cTotalLabel('', 1),
+    ] as Row)
+  }
+
+  const cleanPeriod = sanitizarNombreArchivo(`${params.anio}_${params.mesNombre}`)
+  const fechaStr = new Date().toISOString().split('T')[0]
+  const fileName = `rendimientos_saas_${cleanPeriod}_${fechaStr}.xlsx`
+  await writeXlsxFile(rows, { columns }).toFile(fileName)
+}
+
+// ============================================================================
+// EXPORTACIÓN DE RENDIMIENTOS DEL COMERCIO / DUEÑO (.XLSX)
+// ============================================================================
+export interface RendimientoMesDuenoExport {
+  numeroMes: number
+  nombre: string
+  nombreCorto: string
+  totalVentas: number
+  cantidadTickets: number
+  ticketPromedio: number
+  variacionPorcentaje: number | null
+  medioPrincipal: string
+}
+
+export interface DetalleVentaRendimientoExport {
+  id: string
+  fecha_hora: string
+  nro_comprobante?: string | number | null
+  cajero?: string
+  medio_pago: string
+  total: number
+}
+
+export async function exportarRendimientosDuenoExcel(params: {
+  nombreKiosco: string
+  anio: number
+  mesNombre: string
+  totalFacturado: number
+  cantidadTickets: number
+  ticketPromedio: number
+  totalArticulos: number
+  datosMeses: RendimientoMesDuenoExport[]
+  mediosPago: { medio: string; total: number; count: number; porcentaje: number }[]
+  ventas: DetalleVentaRendimientoExport[]
+}) {
+  const totalCols = 6
+  const columns: SheetOptionsColumn[] = [
+    { width: 18 }, // Mes / Comprobante
+    { width: 22 }, // Facturado / Fecha
+    { width: 18 }, // Tickets / Cajero
+    { width: 20 }, // Ticket Promedio / Medio Pago
+    { width: 20 }, // Variación %
+    { width: 22 }, // Medio Principal / Total ($)
+  ]
+
+  const fechaGeneracion = new Date().toLocaleDateString('es-AR') + ' ' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+
+  const rows: Row[] = [
+    cSpan({
+      value: `${params.nombreKiosco.toUpperCase()} - REPORTE EJECUTIVO DE RENDIMIENTOS Y VENTAS`,
+      type: String,
+      fontWeight: 'bold',
+      fontSize: 14,
+      textColor: '#FFFFFF',
+      backgroundColor: '#1E293B',
+      align: 'center',
+    }, totalCols) as Row,
+    cSpan({
+      value: `AÑO: ${params.anio} | PERÍODO: ${params.mesNombre.toUpperCase()} | GENERADO: ${fechaGeneracion} | SISTEMA ALPASO POS`,
+      type: String,
+      fontSize: 9,
+      textColor: '#E2E8F0',
+      backgroundColor: '#334155',
+      align: 'center',
+    }, totalCols) as Row,
+    emptyRow(totalCols) as Row,
+
+    // KPI Cards
+    cSpan({
+      value: 'INDICADORES GENERALES DE RENDIMIENTO COMERCIAL',
+      type: String,
+      fontWeight: 'bold',
+      fontSize: 10,
+      textColor: '#1E293B',
+      backgroundColor: '#E2E8F0',
+      align: 'left',
+      borderColor: '#CBD5E1',
+      borderStyle: 'thin',
+    }, totalCols) as Row,
+    [
+      ...cCardLabel('Ventas Totales Netas', 2),
+      ...cCardLabel('Tickets Emitidos', 1),
+      ...cCardLabel('Ticket Promedio', 1),
+      ...cCardLabel('Artículos Despachados', 2),
+    ] as Row,
+    [
+      ...cCardValue(params.totalFacturado, true, 2, '#0F172A'),
+      ...cCardValue(params.cantidadTickets, false, 1, '#0F172A'),
+      ...cCardValue(params.ticketPromedio, true, 1, '#15803D'),
+      ...cCardValue(params.totalArticulos, false, 2, '#4338CA'),
+    ] as Row,
+    emptyRow(totalCols) as Row,
+
+    // Tabla 1: Rendimientos Mensuales
+    cSpan({
+      value: `EVOLUCIÓN INTERMENSUAL DE VENTAS (${params.anio})`,
+      type: String,
+      fontWeight: 'bold',
+      fontSize: 10,
+      textColor: '#1E293B',
+      backgroundColor: '#E2E8F0',
+      align: 'left',
+      borderColor: '#CBD5E1',
+      borderStyle: 'thin',
+    }, totalCols) as Row,
+    [
+      cHeader('Mes', 'center'),
+      cHeader('Facturado Total ($)', 'right'),
+      cHeader('Tickets', 'center'),
+      cHeader('Ticket Promedio ($)', 'right'),
+      cHeader('Variación Mes Previo', 'center'),
+      cHeader('Medio Principal', 'center'),
+    ] as Row,
+  ]
+
+  let totalAnualVentas = 0
+  let totalAnualTickets = 0
+
+  params.datosMeses.forEach((m, idx) => {
+    const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+    totalAnualVentas += m.totalVentas
+    totalAnualTickets += m.cantidadTickets
+
+    const varTexto = m.variacionPorcentaje !== null
+      ? `${m.variacionPorcentaje >= 0 ? '+' : ''}${m.variacionPorcentaje.toFixed(1)}%`
+      : '—'
+
+    rows.push([
+      cText(m.nombre, bg, 'center', true),
+      cMoney(m.totalVentas, bg, true),
+      cNum(m.cantidadTickets, bg, '#,##0'),
+      cMoney(m.ticketPromedio, bg),
+      cText(varTexto, bg, 'center', m.variacionPorcentaje !== null && m.variacionPorcentaje >= 0),
+      cText(m.medioPrincipal || '—', bg, 'center'),
+    ] as Row)
+  })
+
+  // Fila Total Anual
+  rows.push([
+    ...cTotalLabel('TOTAL ANUAL FACTURADO', 1),
+    cTotalMoney(totalAnualVentas),
+    cTotalNum(totalAnualTickets),
+    ...cTotalLabel('', 3),
+  ] as Row)
+
+  rows.push(emptyRow(totalCols) as Row)
+
+  // Tabla 2: Desglose por Medio de Pago
+  if (params.mediosPago.length > 0) {
+    rows.push(
+      cSpan({
+        value: 'DISTRIBUCIÓN DE INGRESOS POR MEDIO DE PAGO',
+        type: String,
+        fontWeight: 'bold',
+        fontSize: 10,
+        textColor: '#1E293B',
+        backgroundColor: '#E2E8F0',
+        align: 'left',
+        borderColor: '#CBD5E1',
+        borderStyle: 'thin',
+      }, totalCols) as Row,
+      [
+        cHeader('Canal / Medio de Pago', 'left'),
+        cHeader('Total Recaudado ($)', 'right'),
+        cHeader('Cantidad Pagos', 'center'),
+        cHeader('Participación (%)', 'right'),
+        ...cSpan(cHeader('', 'center'), 2),
+      ] as Row
+    )
+
+    params.mediosPago.forEach((item, idx) => {
+      const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+      rows.push([
+        cText(item.medio, bg, 'left', true),
+        cMoney(item.total, bg, true),
+        cNum(item.count, bg, '#,##0'),
+        cPercent(item.porcentaje / 100, bg, true),
+        ...emptyRow(2),
+      ] as Row)
+    })
+
+    rows.push(emptyRow(totalCols) as Row)
+  }
+
+  // Tabla 3: Registro Detallado de Ventas del Período
+  if (params.ventas.length > 0) {
+    rows.push(
+      cSpan({
+        value: `REGISTRO DETALLADO DE COMPROBANTES (${params.ventas.length} TICKETS)`,
+        type: String,
+        fontWeight: 'bold',
+        fontSize: 10,
+        textColor: '#1E293B',
+        backgroundColor: '#E2E8F0',
+        align: 'left',
+        borderColor: '#CBD5E1',
+        borderStyle: 'thin',
+      }, totalCols) as Row,
+      [
+        cHeader('N° Comprobante', 'center'),
+        cHeader('Fecha y Hora', 'center'),
+        cHeader('Cajero / Operador', 'left'),
+        cHeader('Medio de Pago', 'center'),
+        ...cSpan(cHeader('Total Venta ($)', 'right'), 2),
+      ] as Row
+    )
+
+    params.ventas.forEach((v, idx) => {
+      const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+      const ticketStr = v.nro_comprobante
+        ? `FC-${String(v.nro_comprobante).padStart(8, '0')}`
+        : v.id
+        ? `T-${v.id.slice(0, 8).toUpperCase()}`
+        : 'T-S/N'
+      const fechaTexto = v.fecha_hora ? formatFecha(v.fecha_hora) : '—'
+
+      rows.push([
+        cText(ticketStr, bg, 'center', true),
+        cText(fechaTexto, bg, 'center'),
+        cText(v.cajero || 'Cajero', bg, 'left'),
+        cText(v.medio_pago || 'Efectivo', bg, 'center'),
+        ...cSpan(cMoney(v.total, bg, true), 2),
+      ] as Row)
+    })
+
+    rows.push([
+      ...cTotalLabel('TOTAL FACTURADO EN EL PERÍODO', 4),
+      ...cSpan(cTotalMoney(params.totalFacturado), 2),
+    ] as Row)
+  }
+
+  const cleanKiosco = sanitizarNombreArchivo(params.nombreKiosco)
+  const cleanPeriod = sanitizarNombreArchivo(`${params.anio}_${params.mesNombre}`)
+  const fechaStr = new Date().toISOString().split('T')[0]
+  const fileName = `rendimientos_${cleanKiosco}_${cleanPeriod}_${fechaStr}.xlsx`
+  await writeXlsxFile(rows, { columns }).toFile(fileName)
+}
+
 

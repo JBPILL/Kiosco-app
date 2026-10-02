@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from 'react'
-import { useAdminStore } from '../../stores/adminStore'
-import { formatPrecio, formatFecha } from '../../lib/utils'
-import { exportarRendimientosSuperAdminExcel } from '../../lib/exportUtils'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { supabase } from '../../lib/supabase'
+import { useAuthStore } from '../../stores/authStore'
+import { formatPrecio, formatFecha, labelMedioPago } from '../../lib/utils'
+import { exportarRendimientosDuenoExcel, type RendimientoMesDuenoExport, type DetalleVentaRendimientoExport } from '../../lib/exportUtils'
 import { Button } from '../ui/Button'
 import toast from 'react-hot-toast'
 
@@ -35,14 +36,20 @@ const NOMBRES_MESES_CORTOS = [
   'Dic',
 ]
 
-export function ReportesSuperAdminTab() {
-  const {
-    kioscos,
-    todosLosPagos,
-    cargandoReportes,
-    cargarReportesAdmin,
-    cargarDatosAdmin,
-  } = useAdminStore()
+interface VentaRendimiento {
+  id: string
+  fecha_hora: string
+  total: number
+  estado: string
+  afip_nro_comprobante?: number | null
+  usuario?: { nombre: string } | null
+  pagos: { medio_pago: string; monto: number }[]
+  detalles: { cantidad: number; subtotal: number }[]
+}
+
+export function RendimientosTab() {
+  const { usuario, kiosco } = useAuthStore()
+  const kid = usuario?.kiosco_id || kiosco?.id
 
   const fechaHoy = new Date()
   const anioActual = fechaHoy.getFullYear()
@@ -52,272 +59,295 @@ export function ReportesSuperAdminTab() {
   const [mesSeleccionado, setMesSeleccionado] = useState<number | 'TODOS'>(mesActual)
   const [busquedaDetalle, setBusquedaDetalle] = useState('')
   const [filtroMedio, setFiltroMedio] = useState<string>('TODOS')
-  const [filtroRubro, setFiltroRubro] = useState<string>('TODOS')
   const [tablaRendimientosAbierta, setTablaRendimientosAbierta] = useState(false)
+  const [ventasAnio, setVentasAnio] = useState<VentaRendimiento[]>([])
+  const [cargando, setCargando] = useState(true)
+  const [exportando, setExportando] = useState(false)
+
+  // Cargar ventas de todo el año seleccionado para el comercio activo
+  const cargarVentasAnio = useCallback(async () => {
+    if (!kid) return
+    setCargando(true)
+
+    const inicioISO = `${anioSeleccionado}-01-01T00:00:00.000Z`
+    const finISO = `${anioSeleccionado}-12-31T23:59:59.999Z`
+
+    try {
+      const { data, error } = await supabase
+        .from('ventas')
+        .select(`
+          id, fecha_hora, total, estado, afip_nro_comprobante,
+          usuario:usuarios(nombre),
+          pagos:pagos_venta(medio_pago, monto),
+          detalles:detalles_venta(cantidad, subtotal)
+        `)
+        .eq('kiosco_id', kid)
+        .eq('estado', 'COMPLETADA')
+        .gte('fecha_hora', inicioISO)
+        .lte('fecha_hora', finISO)
+        .order('fecha_hora', { ascending: false })
+        .limit(15000)
+
+      if (error) {
+        console.error('Error cargando ventas anuales:', error)
+        toast.error('No se pudieron cargar los datos de rendimiento')
+        return
+      }
+
+      setVentasAnio((data || []) as unknown as VentaRendimiento[])
+    } catch (err: any) {
+      console.error('Error en cargarVentasAnio:', err)
+      toast.error('Error de conexión al cargar rendimientos')
+    } finally {
+      setCargando(false)
+    }
+  }, [kid, anioSeleccionado])
 
   useEffect(() => {
-    cargarReportesAdmin()
-    if (kioscos.length === 0) {
-      cargarDatosAdmin()
-    }
-  }, [cargarReportesAdmin, cargarDatosAdmin, kioscos.length])
+    cargarVentasAnio()
+  }, [cargarVentasAnio])
 
-  // Años disponibles a partir de los pagos registrados o por defecto
+  // Años disponibles en base al historial del comercio
   const aniosDisponibles = useMemo(() => {
     const setAnios = new Set<number>([anioActual, anioActual - 1])
-    for (const p of todosLosPagos) {
-      if (p.fecha_pago) {
-        const d = new Date(p.fecha_pago)
-        if (!isNaN(d.getFullYear())) {
-          setAnios.add(d.getFullYear())
-        }
-      }
-    }
-    for (const k of kioscos) {
-      if (k.fecha_creacion) {
-        const d = new Date(k.fecha_creacion)
+    for (const v of ventasAnio) {
+      if (v.fecha_hora) {
+        const d = new Date(v.fecha_hora)
         if (!isNaN(d.getFullYear())) {
           setAnios.add(d.getFullYear())
         }
       }
     }
     return Array.from(setAnios).sort((a, b) => b - a)
-  }, [todosLosPagos, kioscos, anioActual])
+  }, [ventasAnio, anioActual])
 
-  // 1. MRR (Monthly Recurring Revenue) actual estimado
-  const mrrActual = useMemo(() => {
-    return kioscos.reduce((acc, k) => {
-      if (k.estado_kiosco === 'ACTIVO' && k.precio_mensual) {
-        return acc + Number(k.precio_mensual)
-      }
-      return acc
-    }, 0)
-  }, [kioscos])
-
-  // 2. Pagos filtrados por el año seleccionado
-  const pagosDelAnio = useMemo(() => {
-    return todosLosPagos.filter((p) => {
-      if (!p.fecha_pago) return false
-      const d = new Date(p.fecha_pago)
-      return d.getFullYear() === anioSeleccionado
+  // Ventas agrupadas y filtradas por el mes seleccionado
+  const ventasPeriodo = useMemo(() => {
+    if (mesSeleccionado === 'TODOS') return ventasAnio
+    return ventasAnio.filter((v) => {
+      const d = new Date(v.fecha_hora)
+      return d.getMonth() + 1 === mesSeleccionado
     })
-  }, [todosLosPagos, anioSeleccionado])
+  }, [ventasAnio, mesSeleccionado])
 
-  // 3. Totales mes a mes para el año seleccionado (12 meses)
-  const datosPorMesDelAnio = useMemo(() => {
-    const meses = Array.from({ length: 12 }, (_, i) => ({
-      numeroMes: i + 1,
-      nombre: NOMBRES_MESES[i],
-      nombreCorto: NOMBRES_MESES_CORTOS[i],
-      totalMonto: 0,
-      cantidadPagos: 0,
-      kioscosIds: new Set<string>(),
-      medios: {} as Record<string, number>,
-    }))
+  // 1. Métricas Clave del Período (KPIs)
+  const kpisPeriodo = useMemo(() => {
+    const totalFacturado = ventasPeriodo.reduce((acc, v) => acc + Number(v.total || 0), 0)
+    const cantidadTickets = ventasPeriodo.length
+    const ticketPromedio = cantidadTickets > 0 ? totalFacturado / cantidadTickets : 0
 
-    for (const p of pagosDelAnio) {
-      const d = new Date(p.fecha_pago)
-      const mIdx = d.getMonth()
-      if (mIdx >= 0 && mIdx < 12) {
-        const m = meses[mIdx]
-        m.totalMonto += Number(p.monto) || 0
-        m.cantidadPagos += 1
-        if (p.kiosco_id) m.kioscosIds.add(p.kiosco_id)
-        const medioNorm = (p.medio_pago || 'TRANSFERENCIA').toUpperCase()
-        m.medios[medioNorm] = (m.medios[medioNorm] || 0) + (Number(p.monto) || 0)
+    let totalArticulos = 0
+    for (const v of ventasPeriodo) {
+      for (const det of v.detalles || []) {
+        totalArticulos += Number(det.cantidad || 0)
       }
     }
 
-    return meses.map((m, idx, arr) => {
-      const prevM = idx > 0 ? arr[idx - 1] : null
-      let variacionPorcentaje: number | null = null
-      if (prevM && prevM.totalMonto > 0) {
-        variacionPorcentaje = ((m.totalMonto - prevM.totalMonto) / prevM.totalMonto) * 100
-      } else if (prevM && prevM.totalMonto === 0 && m.totalMonto > 0) {
-        variacionPorcentaje = 100
-      }
-
-      // Medio predominante
-      let medioMasUsado = '-'
-      let maxMedioVal = 0
-      for (const [k, v] of Object.entries(m.medios)) {
-        if (v > maxMedioVal) {
-          maxMedioVal = v
-          medioMasUsado = k
-        }
-      }
-
-      return {
-        ...m,
-        cantidadKioscosUnicos: m.kioscosIds.size,
-        ticketPromedio: m.cantidadPagos > 0 ? m.totalMonto / m.cantidadPagos : 0,
-        variacionPorcentaje,
-        medioMasUsado,
-      }
-    })
-  }, [pagosDelAnio])
-
-  // Valor máximo mensual para escalar el gráfico de barras
-  const maxMontoMensual = useMemo(() => {
-    return Math.max(1, ...datosPorMesDelAnio.map((m) => m.totalMonto))
-  }, [datosPorMesDelAnio])
-
-  // 4. Pagos del período seleccionado (según año y mes elegidos)
-  const pagosPeriodo = useMemo(() => {
-    return pagosDelAnio.filter((p) => {
-      if (mesSeleccionado === 'TODOS') return true
-      const d = new Date(p.fecha_pago)
-      return d.getMonth() + 1 === mesSeleccionado
-    })
-  }, [pagosDelAnio, mesSeleccionado])
-
-  // 5. KPIs del período seleccionado
-  const kpisPeriodo = useMemo(() => {
-    const totalFacturado = pagosPeriodo.reduce((acc, p) => acc + (Number(p.monto) || 0), 0)
-    const cantidadPagos = pagosPeriodo.length
-    const kioscosUnicos = new Set(pagosPeriodo.map((p) => p.kiosco_id).filter(Boolean)).size
-    const ticketPromedio = cantidadPagos > 0 ? totalFacturado / cantidadPagos : 0
-
-    // Cálculo comparativo vs mes anterior
+    // Comparativa vs mes anterior si hay mes seleccionado
     let variacionVsAnterior: number | null = null
-    let textoComparativa = ''
+    let textoComparativa = 'Período completo'
 
     if (mesSeleccionado !== 'TODOS') {
-      const idxMes = (mesSeleccionado as number) - 1
-      const datosMesActual = datosPorMesDelAnio[idxMes]
-      variacionVsAnterior = datosMesActual.variacionPorcentaje
-
-      const mesPrevNombre = idxMes > 0 ? NOMBRES_MESES_CORTOS[idxMes - 1] : 'Dic (año ant.)'
-      if (variacionVsAnterior !== null) {
-        textoComparativa = `${variacionVsAnterior >= 0 ? '+' : ''}${variacionVsAnterior.toFixed(1)}% vs ${mesPrevNombre}`
+      const mesAnt = mesSeleccionado - 1
+      if (mesAnt >= 1) {
+        const ventasMesAnt = ventasAnio.filter((v) => {
+          const d = new Date(v.fecha_hora)
+          return d.getMonth() + 1 === mesAnt
+        })
+        const factMesAnt = ventasMesAnt.reduce((acc, v) => acc + Number(v.total || 0), 0)
+        if (factMesAnt > 0) {
+          variacionVsAnterior = ((totalFacturado - factMesAnt) / factMesAnt) * 100
+          textoComparativa = `${variacionVsAnterior >= 0 ? '+' : ''}${variacionVsAnterior.toFixed(1)}% vs ${NOMBRES_MESES[mesAnt - 1]}`
+        } else if (totalFacturado > 0) {
+          variacionVsAnterior = 100
+          textoComparativa = '+100% vs mes anterior ($0 previo)'
+        } else {
+          textoComparativa = 'Sin ventas en mes previo'
+        }
       } else {
-        textoComparativa = 'Sin datos comparativos previos'
+        textoComparativa = 'Primer mes del año'
       }
     } else {
-      textoComparativa = `Acumulado total de ${anioSeleccionado}`
+      textoComparativa = `Consolidado anual ${anioSeleccionado}`
     }
 
     return {
       totalFacturado,
-      cantidadPagos,
-      kioscosUnicos,
+      cantidadTickets,
       ticketPromedio,
+      totalArticulos,
       variacionVsAnterior,
       textoComparativa,
     }
-  }, [pagosPeriodo, mesSeleccionado, datosPorMesDelAnio, anioSeleccionado])
+  }, [ventasPeriodo, ventasAnio, mesSeleccionado, anioSeleccionado])
 
-  // 6. Desglose por Medio de Pago en el período seleccionado
+  // 2. Evolución mensual (Enero a Diciembre)
+  const datosPorMesDelAnio = useMemo(() => {
+    const meses = Array.from({ length: 12 }, (_, i) => {
+      const numMes = i + 1
+      const ventasDelMes = ventasAnio.filter((v) => {
+        const d = new Date(v.fecha_hora)
+        return d.getMonth() + 1 === numMes
+      })
+
+      const totalVentas = ventasDelMes.reduce((acc, v) => acc + Number(v.total || 0), 0)
+      const cantidadTickets = ventasDelMes.length
+      const ticketPromedio = cantidadTickets > 0 ? totalVentas / cantidadTickets : 0
+
+      // Medio de pago preponderante
+      const conteoMedios = new Map<string, number>()
+      for (const v of ventasDelMes) {
+        for (const p of v.pagos || []) {
+          conteoMedios.set(p.medio_pago, (conteoMedios.get(p.medio_pago) || 0) + Number(p.monto || 0))
+        }
+      }
+      let medioPrincipal = '—'
+      let maxMonto = 0
+      for (const [m, total] of conteoMedios.entries()) {
+        if (total > maxMonto) {
+          maxMonto = total
+          medioPrincipal = labelMedioPago(m)
+        }
+      }
+
+      return {
+        numeroMes: numMes,
+        nombre: NOMBRES_MESES[i],
+        nombreCorto: NOMBRES_MESES_CORTOS[i],
+        totalVentas,
+        cantidadTickets,
+        ticketPromedio,
+        medioPrincipal,
+        variacionPorcentaje: null as number | null,
+      }
+    })
+
+    // Calcular variación con el mes previo
+    for (let i = 1; i < meses.length; i++) {
+      const prev = meses[i - 1].totalVentas
+      const curr = meses[i].totalVentas
+      if (prev > 0) {
+        meses[i].variacionPorcentaje = ((curr - prev) / prev) * 100
+      } else if (curr > 0) {
+        meses[i].variacionPorcentaje = 100
+      }
+    }
+
+    return meses
+  }, [ventasAnio])
+
+  const maxMontoMensual = useMemo(() => {
+    return Math.max(1, ...datosPorMesDelAnio.map((m) => m.totalVentas))
+  }, [datosPorMesDelAnio])
+
+  // 3. Desglose por Medio de Pago en el período
   const desgloseMediosPago = useMemo(() => {
-    const map = new Map<string, { total: number; count: number }>()
-    for (const p of pagosPeriodo) {
-      const medio = (p.medio_pago || 'TRANSFERENCIA').toUpperCase()
-      const actual = map.get(medio) || { total: 0, count: 0 }
-      actual.total += Number(p.monto) || 0
-      actual.count += 1
-      map.set(medio, actual)
+    const mapa = new Map<string, { total: number; count: number }>()
+
+    for (const v of ventasPeriodo) {
+      if (v.pagos && v.pagos.length > 0) {
+        for (const p of v.pagos) {
+          const actual = mapa.get(p.medio_pago) || { total: 0, count: 0 }
+          mapa.set(p.medio_pago, {
+            total: actual.total + Number(p.monto || 0),
+            count: actual.count + 1,
+          })
+        }
+      } else {
+        const actual = mapa.get('EFECTIVO') || { total: 0, count: 0 }
+        mapa.set('EFECTIVO', {
+          total: actual.total + Number(v.total || 0),
+          count: actual.count + 1,
+        })
+      }
     }
 
     const totalPeriodo = kpisPeriodo.totalFacturado || 1
-    return Array.from(map.entries())
-      .map(([medio, d]) => ({
-        medio,
-        total: d.total,
-        count: d.count,
-        porcentaje: (d.total / totalPeriodo) * 100,
-      }))
-      .sort((a, b) => b.total - a.total)
-  }, [pagosPeriodo, kpisPeriodo.totalFacturado])
+    const lista = Array.from(mapa.entries()).map(([medio, val]) => ({
+      medio: labelMedioPago(medio),
+      total: val.total,
+      count: val.count,
+      porcentaje: Math.min(100, (val.total / totalPeriodo) * 100),
+    }))
 
-  // 7. Desglose por Rubro en el período seleccionado
-  const desgloseRubro = useMemo(() => {
-    let montoKiosco = 0
-    let countKiosco = 0
-    let montoFotocopiadora = 0
-    let countFotocopiadora = 0
+    return lista.sort((a, b) => b.total - a.total)
+  }, [ventasPeriodo, kpisPeriodo.totalFacturado])
 
-    for (const p of pagosPeriodo) {
-      const m = Number(p.monto) || 0
-      if (p.rubro === 'FOTOCOPIADORA_LIBRERIA') {
-        montoFotocopiadora += m
-        countFotocopiadora += 1
-      } else {
-        montoKiosco += m
-        countKiosco += 1
-      }
-    }
-
-    const total = kpisPeriodo.totalFacturado || 1
-    return [
-      {
-        rubro: 'KIOSCO',
-        etiqueta: 'Kiosco / Almacén',
-        total: montoKiosco,
-        count: countKiosco,
-        porcentaje: (montoKiosco / total) * 100,
-        color: '#6366f1',
-      },
-      {
-        rubro: 'FOTOCOPIADORA_LIBRERIA',
-        etiqueta: 'Fotocopiadora / Librería',
-        total: montoFotocopiadora,
-        count: countFotocopiadora,
-        porcentaje: (montoFotocopiadora / total) * 100,
-        color: '#06b6d4',
-      },
-    ]
-  }, [pagosPeriodo, kpisPeriodo.totalFacturado])
-
-  // 8. Filtrado de transacciones detalladas
+  // 4. Detalle de tickets filtrados
   const transaccionesFiltradas = useMemo(() => {
-    return pagosPeriodo.filter((p) => {
+    return ventasPeriodo.filter((v) => {
+      // Filtro por medio de pago
       if (filtroMedio !== 'TODOS') {
-        const medioNorm = (p.medio_pago || 'TRANSFERENCIA').toUpperCase()
-        if (medioNorm !== filtroMedio) return false
-      }
-      if (filtroRubro !== 'TODOS') {
-        const rubroNorm = p.rubro || 'KIOSCO'
-        if (rubroNorm !== filtroRubro) return false
-      }
-      if (busquedaDetalle.trim()) {
-        const q = busquedaDetalle.toLowerCase()
-        const matchKiosco = p.nombre_kiosco?.toLowerCase().includes(q)
-        const matchDueno = p.nombre_dueno?.toLowerCase().includes(q)
-        const matchEmail = p.email_dueno?.toLowerCase().includes(q)
-        const matchNotas = p.notas?.toLowerCase().includes(q)
-        const matchPlan = p.nombre_plan?.toLowerCase().includes(q)
-        if (!matchKiosco && !matchDueno && !matchEmail && !matchNotas && !matchPlan) {
+        const tieneMedio = (v.pagos || []).some((p) => p.medio_pago === filtroMedio)
+        if (!tieneMedio && !(v.pagos?.length === 0 && filtroMedio === 'EFECTIVO')) {
           return false
         }
       }
+
+      // Filtro por buscador (ticket o cajero)
+      if (busquedaDetalle.trim()) {
+        const q = busquedaDetalle.toLowerCase()
+        const idTicket = v.id.toLowerCase()
+        const nroComprobante = v.afip_nro_comprobante ? String(v.afip_nro_comprobante) : ''
+        const cajero = (v.usuario?.nombre || '').toLowerCase()
+
+        if (!idTicket.includes(q) && !nroComprobante.includes(q) && !cajero.includes(q)) {
+          return false
+        }
+      }
+
       return true
     })
-  }, [pagosPeriodo, filtroMedio, filtroRubro, busquedaDetalle])
+  }, [ventasPeriodo, filtroMedio, busquedaDetalle])
 
-  // Exportar a Excel (.xlsx) con diseño corporativo sobrio (write-excel-file)
+  // 5. Exportar reporte ejecutivo a Excel con write-excel-file
   const handleExportarExcel = async () => {
+    setExportando(true)
     try {
       const mesNombre =
         mesSeleccionado === 'TODOS'
           ? `Todo el Año (${anioSeleccionado})`
           : NOMBRES_MESES[(mesSeleccionado as number) - 1]
 
-      await exportarRendimientosSuperAdminExcel({
+      const datosMesesExport: RendimientoMesDuenoExport[] = datosPorMesDelAnio.map((m) => ({
+        numeroMes: m.numeroMes,
+        nombre: m.nombre,
+        nombreCorto: m.nombreCorto,
+        totalVentas: m.totalVentas,
+        cantidadTickets: m.cantidadTickets,
+        ticketPromedio: m.ticketPromedio,
+        variacionPorcentaje: m.variacionPorcentaje,
+        medioPrincipal: m.medioPrincipal,
+      }))
+
+      const ventasExport: DetalleVentaRendimientoExport[] = transaccionesFiltradas.map((v) => ({
+        id: v.id,
+        fecha_hora: v.fecha_hora,
+        nro_comprobante: v.afip_nro_comprobante,
+        cajero: v.usuario?.nombre || 'Cajero',
+        medio_pago: (v.pagos || []).map((p) => labelMedioPago(p.medio_pago)).join(', ') || 'Efectivo',
+        total: Number(v.total || 0),
+      }))
+
+      await exportarRendimientosDuenoExcel({
+        nombreKiosco: kiosco?.nombre || 'Comercio',
         anio: anioSeleccionado,
         mesNombre,
-        mrrActual,
         totalFacturado: kpisPeriodo.totalFacturado,
-        cantidadPagos: kpisPeriodo.cantidadPagos,
-        kioscosUnicos: kpisPeriodo.kioscosUnicos,
+        cantidadTickets: kpisPeriodo.cantidadTickets,
         ticketPromedio: kpisPeriodo.ticketPromedio,
-        datosMeses: datosPorMesDelAnio,
-        transacciones: transaccionesFiltradas,
+        totalArticulos: kpisPeriodo.totalArticulos,
+        datosMeses: datosMesesExport,
+        mediosPago: desgloseMediosPago,
+        ventas: ventasExport,
       })
 
-      toast.success('Reporte ejecutivo exportado en formato Excel (.xlsx)')
+      toast.success('Rendimientos exportados en formato Excel corporativo (.xlsx)')
     } catch (err: any) {
-      console.error('Error al exportar reporte Excel:', err)
+      console.error('Error al exportar rendimientos Excel:', err)
       toast.error('No se pudo generar el archivo Excel')
+    } finally {
+      setExportando(false)
     }
   }
 
@@ -327,15 +357,15 @@ export function ReportesSuperAdminTab() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
         <div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <span>📊</span>
-            <span>Rendimientos Mensuales de Suscripciones SaaS</span>
+            <span>Rendimientos Mensuales y Evolución Comercial</span>
           </h2>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            Analítica de cobros, ingresos recurrentes (MRR), evolución mes a mes y métricas de retención
+            Analítica de facturación, ticket promedio, distribución de cobros y rendimiento de tu negocio
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        {/* Controles de Período y Botones */}
+        <div className="flex flex-wrap items-center gap-2">
           {/* Selector de Año */}
           <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-700/60 px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-600">
             <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Año:</span>
@@ -379,16 +409,16 @@ export function ReportesSuperAdminTab() {
             </select>
           </div>
 
-          {/* Botón Actualizar */}
+          {/* Botón Actualizar compacto */}
           <button
             type="button"
-            onClick={() => cargarReportesAdmin()}
-            disabled={cargandoReportes}
-            title="Recargar pagos y métricas desde el servidor"
+            onClick={cargarVentasAnio}
+            disabled={cargando}
+            title="Recargar ventas y métricas del año seleccionado"
             className="inline-flex items-center justify-center p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all cursor-pointer shadow-2xs shrink-0"
           >
             <svg
-              className={`w-4 h-4 ${cargandoReportes ? 'animate-spin text-indigo-600' : ''}`}
+              className={`w-4 h-4 ${cargando ? 'animate-spin text-indigo-600' : ''}`}
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -400,41 +430,29 @@ export function ReportesSuperAdminTab() {
             </svg>
           </button>
 
-          {/* Botón Exportar Excel */}
+          {/* Botón Exportar Excel con diseño sobrio */}
           <Button
             variant="primary"
             size="sm"
             onClick={handleExportarExcel}
+            loading={exportando}
             className="text-xs font-bold shadow-xs bg-emerald-600 hover:bg-emerald-700 text-white"
-            title="Descargar reporte completo en archivo Excel (.xlsx)"
+            title="Descargar reporte corporativo de rendimientos en archivo Excel (.xlsx)"
           >
             <span>📥 Exportar Excel (.XLSX)</span>
           </Button>
         </div>
       </div>
 
-      {/* Tarjetas de Métricas Clave (KPIs) */}
+      {/* Tarjetas de Métricas Clave (KPIs) - Diseño sobrio sin íconos genéricos */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* KPI 1: MRR Actual */}
+        {/* KPI 1: Ventas Totales Netas */}
         <div className="bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
           <div className="flex items-center justify-between text-indigo-600 dark:text-indigo-400 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">MRR Estimado Actual</span>
-          </div>
-          <p className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white">
-            {formatPrecio(mrrActual)}
-          </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Ingresos mensuales recurrentes con base de clientes activa
-          </p>
-        </div>
-
-        {/* KPI 2: Total Cobrado en el Período */}
-        <div className="bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
-          <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">
               {mesSeleccionado === 'TODOS'
-                ? `Cobrado en ${anioSeleccionado}`
-                : `Cobrado en ${NOMBRES_MESES[(mesSeleccionado as number) - 1]}`}
+                ? `Ventas Totales (${anioSeleccionado})`
+                : `Ventas en ${NOMBRES_MESES[(mesSeleccionado as number) - 1]}`}
             </span>
           </div>
           <p className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white">
@@ -457,32 +475,50 @@ export function ReportesSuperAdminTab() {
           </div>
         </div>
 
-        {/* KPI 3: Transacciones y Comercios Cobrados */}
+        {/* KPI 2: Tickets Emitidos */}
         <div className="bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
-          <div className="flex items-center justify-between text-blue-600 dark:text-blue-400 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Cobros Realizados</span>
+          <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider">Tickets Emitidos</span>
           </div>
           <p className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white">
-            {kpisPeriodo.cantidadPagos}
+            {kpisPeriodo.cantidadTickets}
             <span className="text-sm font-semibold text-gray-500 dark:text-gray-400 ml-1.5">
               operaciones
             </span>
           </p>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            {kpisPeriodo.kioscosUnicos} comercio{kpisPeriodo.kioscosUnicos !== 1 ? 's' : ''} distinto{kpisPeriodo.kioscosUnicos !== 1 ? 's' : ''} abonaron
+            Ventas completadas en el período seleccionado
           </p>
         </div>
 
-        {/* KPI 4: Ticket Promedio por Renovación */}
+        {/* KPI 3: Ticket Promedio */}
         <div className="bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
-          <div className="flex items-center justify-between text-purple-600 dark:text-purple-400 mb-2">
+          <div className="flex items-center justify-between text-blue-600 dark:text-blue-400 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">Ticket Promedio</span>
           </div>
           <p className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white">
             {formatPrecio(kpisPeriodo.ticketPromedio)}
           </p>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Monto promedio por renovación o alquiler registrado
+            Monto promedio de compra por cada cliente atendido
+          </p>
+        </div>
+
+        {/* KPI 4: Artículos Despachados */}
+        <div className="bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
+          <div className="flex items-center justify-between text-purple-600 dark:text-purple-400 mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider">Artículos Despachados</span>
+          </div>
+          <p className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white">
+            {Math.round(kpisPeriodo.totalArticulos)}
+            <span className="text-sm font-semibold text-gray-500 dark:text-gray-400 ml-1.5">
+              unidades
+            </span>
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {kpisPeriodo.cantidadTickets > 0
+              ? `Promedio de ${(kpisPeriodo.totalArticulos / kpisPeriodo.cantidadTickets).toFixed(1)} art. por ticket`
+              : 'Sin artículos registrados'}
           </p>
         </div>
       </div>
@@ -492,11 +528,10 @@ export function ReportesSuperAdminTab() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
             <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <span>📊</span>
               <span>Evolución Mensual de Facturación ({anioSeleccionado})</span>
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Hacé click sobre cualquier mes para filtrar y analizar sus transacciones específicas
+              Hacé click sobre cualquier mes para filtrar y analizar sus ventas específicas
             </p>
           </div>
 
@@ -516,16 +551,16 @@ export function ReportesSuperAdminTab() {
             {datosPorMesDelAnio.map((m) => {
               const estaSeleccionado = mesSeleccionado === m.numeroMes
               const porcentajeAltura =
-                maxMontoMensual > 0 ? Math.max(4, Math.round((m.totalMonto / maxMontoMensual) * 100)) : 4
+                maxMontoMensual > 0 ? Math.max(4, Math.round((m.totalVentas / maxMontoMensual) * 100)) : 4
 
               return (
                 <div
                   key={m.numeroMes}
                   onClick={() => setMesSeleccionado(m.numeroMes)}
                   className="flex flex-col items-center h-full justify-end group cursor-pointer"
-                  title={`${m.nombre}: ${formatPrecio(m.totalMonto)} (${m.cantidadPagos} cobros)`}
+                  title={`${m.nombre}: ${formatPrecio(m.totalVentas)} (${m.cantidadTickets} tickets)`}
                 >
-                  {/* Etiqueta flotante con el monto */}
+                  {/* Etiqueta con el monto */}
                   <span
                     className={`text-[9px] sm:text-[10px] font-bold mb-1 transition-all truncate max-w-full ${
                       estaSeleccionado
@@ -533,7 +568,7 @@ export function ReportesSuperAdminTab() {
                         : 'text-gray-400 dark:text-gray-500 group-hover:text-gray-800 dark:group-hover:text-gray-200'
                     }`}
                   >
-                    {m.totalMonto > 0 ? `$${Math.round(m.totalMonto / 1000)}k` : '$0'}
+                    {m.totalVentas > 0 ? `$${Math.round(m.totalVentas / 1000)}k` : '$0'}
                   </span>
 
                   {/* Barra vertical interactiva */}
@@ -542,15 +577,15 @@ export function ReportesSuperAdminTab() {
                     className={`w-full rounded-t-lg transition-all duration-300 relative ${
                       estaSeleccionado
                         ? 'bg-gradient-to-t from-indigo-600 to-indigo-500 shadow-md ring-2 ring-indigo-400 ring-offset-2 dark:ring-offset-gray-800'
-                        : m.totalMonto > 0
+                        : m.totalVentas > 0
                         ? 'bg-gradient-to-t from-indigo-300 to-indigo-400 dark:from-indigo-900/60 dark:to-indigo-600 group-hover:from-indigo-400 group-hover:to-indigo-500'
                         : 'bg-gray-100 dark:bg-gray-700/60 group-hover:bg-gray-200'
                     }`}
                   >
-                    {/* Badge de cantidad de operaciones en la barra si hay espacio */}
-                    {m.cantidadPagos > 0 && porcentajeAltura > 20 && (
+                    {/* Badge de cantidad de tickets en la barra */}
+                    {m.cantidadTickets > 0 && porcentajeAltura > 20 && (
                       <span className="hidden sm:inline-block absolute top-1 left-1/2 -translate-x-1/2 text-[9px] font-bold text-white/90">
-                        {m.cantidadPagos}
+                        {m.cantidadTickets}
                       </span>
                     )}
                   </div>
@@ -572,18 +607,17 @@ export function ReportesSuperAdminTab() {
         </div>
       </div>
 
-      {/* Segmentación y Desgloses: Medios de Pago y Rubros */}
+      {/* Segmentación y Desgloses: Medios de Pago y Resumen Comercial */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Desglose por Medio de Pago */}
         <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
           <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-3">
-            <span>💳</span>
             <span>Facturación por Medio de Pago</span>
           </h3>
 
           {desgloseMediosPago.length === 0 ? (
             <p className="text-xs text-gray-500 dark:text-gray-400 py-4 text-center">
-              No hay transacciones registradas en este período.
+              No hay ventas registradas en este período.
             </p>
           ) : (
             <div className="space-y-3">
@@ -591,7 +625,7 @@ export function ReportesSuperAdminTab() {
                 <div key={item.medio} className="space-y-1">
                   <div className="flex justify-between text-xs">
                     <span className="font-semibold text-gray-800 dark:text-gray-200">
-                      {item.medio} ({item.count} cobro{item.count !== 1 ? 's' : ''})
+                      {item.medio} ({item.count} ticket{item.count !== 1 ? 's' : ''})
                     </span>
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-gray-900 dark:text-white">
@@ -614,58 +648,60 @@ export function ReportesSuperAdminTab() {
           )}
         </div>
 
-        {/* Desglose por Rubro del Comercio */}
-        <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
-          <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-3">
-            <span>🏪</span>
-            <span>Distribución de Clientes por Rubro</span>
-          </h3>
+        {/* Resumen Comercial de Operaciones */}
+        <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs flex flex-col justify-between">
+          <div>
+            <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-3">
+              <span>Resumen Operativo del Período</span>
+            </h3>
 
-          <div className="space-y-3">
-            {desgloseRubro.map((r) => (
-              <div key={r.rubro} className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="w-2.5 h-2.5 rounded-full"
-                      style={{ backgroundColor: r.color }}
-                    />
-                    <span className="font-semibold text-gray-800 dark:text-gray-200">
-                      {r.etiqueta} ({r.count} cobro{r.count !== 1 ? 's' : ''})
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-gray-900 dark:text-white">
-                      {formatPrecio(r.total)}
-                    </span>
-                    <span className="text-gray-500 dark:text-gray-400 text-[11px] w-10 text-right">
-                      {r.porcentaje.toFixed(1)}%
-                    </span>
-                  </div>
-                </div>
-                <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
-                  <div
-                    className="h-2 rounded-full transition-all duration-300"
-                    style={{
-                      width: `${r.porcentaje}%`,
-                      backgroundColor: r.color,
-                    }}
-                  />
-                </div>
+            <div className="space-y-2.5 text-xs">
+              <div className="flex justify-between py-1.5 border-b border-gray-100 dark:border-gray-700">
+                <span className="text-gray-500 dark:text-gray-400">Total facturado en el año ({anioSeleccionado}):</span>
+                <span className="font-bold text-gray-900 dark:text-white">
+                  {formatPrecio(ventasAnio.reduce((s, v) => s + Number(v.total || 0), 0))}
+                </span>
               </div>
-            ))}
+              <div className="flex justify-between py-1.5 border-b border-gray-100 dark:border-gray-700">
+                <span className="text-gray-500 dark:text-gray-400">Total tickets anuales:</span>
+                <span className="font-bold text-gray-900 dark:text-white">
+                  {ventasAnio.length} ventas
+                </span>
+              </div>
+              <div className="flex justify-between py-1.5 border-b border-gray-100 dark:border-gray-700">
+                <span className="text-gray-500 dark:text-gray-400">Mes de mayor recaudación:</span>
+                <span className="font-bold text-indigo-600 dark:text-indigo-400">
+                  {(() => {
+                    const top = [...datosPorMesDelAnio].sort((a, b) => b.totalVentas - a.totalVentas)[0]
+                    return top && top.totalVentas > 0
+                      ? `${top.nombre} (${formatPrecio(top.totalVentas)})`
+                      : 'Sin datos'
+                  })()}
+                </span>
+              </div>
+              <div className="flex justify-between py-1.5">
+                <span className="text-gray-500 dark:text-gray-400">Participación del mes seleccionado:</span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                  {(() => {
+                    const totalAnio = ventasAnio.reduce((s, v) => s + Number(v.total || 0), 0)
+                    if (totalAnio <= 0) return '0.0%'
+                    return `${((kpisPeriodo.totalFacturado / totalAnio) * 100).toFixed(1)}% del año`
+                  })()}
+                </span>
+              </div>
+            </div>
           </div>
 
           <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400 flex justify-between items-center">
-            <span>Comercios activos en plataforma:</span>
+            <span>Comercio:</span>
             <span className="font-bold text-gray-800 dark:text-gray-200">
-              {kioscos.filter((k) => k.estado_kiosco === 'ACTIVO').length} de {kioscos.length} totales
+              {kiosco?.nombre || 'Mi Comercio'}
             </span>
           </div>
         </div>
       </div>
 
-      {/* Tabla Comparativa de Rendimientos Mes a Mes (Desplegable) */}
+      {/* Tabla Comparativa de Rendimientos Mes a Mes (Desplegable para no ocupar espacio) */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-xs transition-all">
         <button
           type="button"
@@ -708,8 +744,7 @@ export function ReportesSuperAdminTab() {
                 <tr>
                   <th className="px-4 py-3">Mes</th>
                   <th className="px-4 py-3">Facturado Total</th>
-                  <th className="px-4 py-3 text-center">Cobros</th>
-                  <th className="px-4 py-3 text-center">Comercios</th>
+                  <th className="px-4 py-3 text-center">Tickets</th>
                   <th className="px-4 py-3">Ticket Promedio</th>
                   <th className="px-4 py-3">Variación Mes Previo</th>
                   <th className="px-4 py-3">Medio Principal</th>
@@ -735,13 +770,10 @@ export function ReportesSuperAdminTab() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-gray-900 dark:text-white font-bold">
-                        {formatPrecio(m.totalMonto)}
+                        {formatPrecio(m.totalVentas)}
                       </td>
                       <td className="px-4 py-3 text-center text-gray-700 dark:text-gray-300 font-medium">
-                        {m.cantidadPagos}
-                      </td>
-                      <td className="px-4 py-3 text-center text-gray-700 dark:text-gray-300 font-medium">
-                        {m.cantidadKioscosUnicos}
+                        {m.cantidadTickets}
                       </td>
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
                         {formatPrecio(m.ticketPromedio)}
@@ -763,7 +795,7 @@ export function ReportesSuperAdminTab() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                        {m.medioMasUsado}
+                        {m.medioPrincipal}
                       </td>
                     </tr>
                   )
@@ -774,16 +806,15 @@ export function ReportesSuperAdminTab() {
         )}
       </div>
 
-      {/* Detalle Individual de Transacciones y Cobros del Período */}
+      {/* Detalle Individual de Tickets del Período */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-xs">
         <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <span>📋</span>
-              <span>Transacciones y Cobros Detallados ({transaccionesFiltradas.length})</span>
+              <span>Comprobantes y Ventas del Período ({transaccionesFiltradas.length})</span>
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Registros individuales de suscripciones con medio de pago y comercio emisor
+              Listado individual de ventas efectuadas con desglose de medio de pago
             </p>
           </div>
 
@@ -791,10 +822,10 @@ export function ReportesSuperAdminTab() {
           <div className="flex flex-wrap items-center gap-2">
             <input
               type="text"
-              placeholder="Buscar comercio, dueño o nota..."
+              placeholder="Buscar por ticket o cajero..."
               value={busquedaDetalle}
               onChange={(e) => setBusquedaDetalle(e.target.value)}
-              aria-label="Buscar transacciones"
+              aria-label="Buscar ventas"
               className="text-xs px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/60 text-gray-900 dark:text-gray-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 w-48 sm:w-56"
             />
 
@@ -805,90 +836,69 @@ export function ReportesSuperAdminTab() {
               className="text-xs px-2.5 py-1.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/60 text-gray-800 dark:text-gray-200 focus:outline-hidden cursor-pointer"
             >
               <option value="TODOS">Todos los medios</option>
-              <option value="TRANSFERENCIA">Transferencia</option>
-              <option value="MERCADO_PAGO">Mercado Pago</option>
               <option value="EFECTIVO">Efectivo</option>
-              <option value="TARJETA">Tarjeta</option>
-            </select>
-
-            <select
-              value={filtroRubro}
-              onChange={(e) => setFiltroRubro(e.target.value)}
-              aria-label="Filtrar por rubro"
-              className="text-xs px-2.5 py-1.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/60 text-gray-800 dark:text-gray-200 focus:outline-hidden cursor-pointer"
-            >
-              <option value="TODOS">Todos los rubros</option>
-              <option value="KIOSCO">Kiosco</option>
-              <option value="FOTOCOPIADORA_LIBRERIA">Fotocopiadora</option>
+              <option value="MERCADO_PAGO">Mercado Pago</option>
+              <option value="DEBITO">Débito</option>
+              <option value="TRANSFERENCIA">Transferencia</option>
+              <option value="CREDITO">Crédito</option>
+              <option value="CUENTA_CORRIENTE">Cuenta Corriente</option>
             </select>
           </div>
         </div>
 
         {transaccionesFiltradas.length === 0 ? (
           <div className="py-12 text-center text-gray-500 dark:text-gray-400 text-xs">
-            <span className="text-3xl block mb-2">🔍</span>
             <p className="font-semibold text-gray-800 dark:text-gray-200">
-              No se encontraron cobros con los filtros seleccionados
+              No se encontraron ventas con los filtros seleccionados
             </p>
-            <p className="mt-1">Probá cambiando el mes, año o los criterios de búsqueda.</p>
+            <p className="mt-1">Probá cambiando el mes o los criterios de búsqueda.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-gray-50 dark:bg-gray-900/60 text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
                 <tr>
-                  <th className="px-4 py-3">Fecha</th>
-                  <th className="px-4 py-3">Comercio</th>
-                  <th className="px-4 py-3">Titular / Email</th>
-                  <th className="px-4 py-3">Plan</th>
+                  <th className="px-4 py-3">Comprobante</th>
+                  <th className="px-4 py-3">Fecha y Hora</th>
+                  <th className="px-4 py-3">Cajero / Operador</th>
                   <th className="px-4 py-3">Medio de Pago</th>
-                  <th className="px-4 py-3 text-right">Monto</th>
-                  <th className="px-4 py-3">Notas / Ref</th>
+                  <th className="px-4 py-3 text-right">Total ($)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
-                {transaccionesFiltradas.map((t) => (
-                  <tr
-                    key={t.id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                  >
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">
-                      {formatFecha(t.fecha_pago)}
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-gray-900 dark:text-white">
-                      <div className="flex items-center gap-1.5">
-                        <span>{t.nombre_kiosco}</span>
-                        {t.rubro === 'FOTOCOPIADORA_LIBRERIA' && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-cyan-100 dark:bg-cyan-950 text-cyan-700 dark:text-cyan-300 font-bold">
-                            Fotocopiadora
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                      <p className="font-medium">{t.nombre_dueno}</p>
-                      {t.email_dueno && (
-                        <p className="text-[11px] text-gray-400 dark:text-gray-500">
-                          {t.email_dueno}
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                      <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-[11px] font-semibold">
-                        {t.nombre_plan}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-800 dark:text-gray-200 uppercase font-medium">
-                      {t.medio_pago}
-                    </td>
-                    <td className="px-4 py-3 text-right font-black text-gray-900 dark:text-white text-sm whitespace-nowrap">
-                      {formatPrecio(t.monto)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 max-w-[200px] truncate">
-                      {t.notas || t.comprobante || '-'}
-                    </td>
-                  </tr>
-                ))}
+                {transaccionesFiltradas.map((v) => {
+                  const ticketStr = v.afip_nro_comprobante
+                    ? `FC-${String(v.afip_nro_comprobante).padStart(8, '0')}`
+                    : `T-${v.id.slice(0, 8).toUpperCase()}`
+
+                  const mediosStr =
+                    v.pagos && v.pagos.length > 0
+                      ? v.pagos.map((p) => labelMedioPago(p.medio_pago)).join(', ')
+                      : 'Efectivo'
+
+                  return (
+                    <tr
+                      key={v.id}
+                      className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                    >
+                      <td className="px-4 py-3 font-bold text-gray-900 dark:text-white">
+                        {ticketStr}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                        {formatFecha(v.fecha_hora)}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                        {v.usuario?.nombre || 'Cajero'}
+                      </td>
+                      <td className="px-4 py-3 text-gray-800 dark:text-gray-200 font-medium">
+                        {mediosStr}
+                      </td>
+                      <td className="px-4 py-3 text-right font-black text-gray-900 dark:text-white text-sm whitespace-nowrap">
+                        {formatPrecio(v.total)}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
