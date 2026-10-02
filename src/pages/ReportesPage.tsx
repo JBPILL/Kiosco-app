@@ -508,7 +508,7 @@ export function ReportesPage() {
                 className="text-xs"
                 title="Descargar las ventas de este día en formato Excel corporativo (.xlsx)"
               >
-                Exportar Día (.XLSX)
+                Exportar Día
               </Button>
             </div>
           </div>

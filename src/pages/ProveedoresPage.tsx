@@ -2641,7 +2641,7 @@ export function ProveedoresPage() {
                 onClick={handleExportarExcelRemito}
                 title="Descargar remito de mercadería en formato Excel corporativo (.xlsx)"
               >
-                Exportar Excel (.XLSX)
+                Exportar Excel
               </Button>
               <Button
                 variant="success"

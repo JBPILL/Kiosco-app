@@ -1469,7 +1469,7 @@ export function ConfigPage() {
                       disabled={exportandoBackup}
                       className="w-full text-xs font-bold"
                     >
-                      {exportandoBackup ? 'Generando...' : 'Descargar Catálogo (.XLSX)'}
+                      {exportandoBackup ? 'Generando...' : 'Descargar Catálogo'}
                     </Button>
                   </div>
 
@@ -1489,7 +1489,7 @@ export function ConfigPage() {
                       disabled={exportandoBackup}
                       className="w-full text-xs font-bold"
                     >
-                      {exportandoBackup ? 'Generando...' : 'Descargar Ventas (.XLSX)'}
+                      {exportandoBackup ? 'Generando...' : 'Descargar Ventas'}
                     </Button>
                   </div>
 
@@ -1513,7 +1513,7 @@ export function ConfigPage() {
                       onClick={() => setModalImportarOpen(true)}
                       className="w-full text-xs font-bold"
                     >
-                      Restaurar Catálogo (.XLSX / .CSV)
+                      Restaurar Catálogo
                     </Button>
                   </div>
 

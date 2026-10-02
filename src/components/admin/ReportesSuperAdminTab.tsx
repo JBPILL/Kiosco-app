@@ -423,7 +423,7 @@ export function ReportesSuperAdminTab() {
             className="text-xs font-bold shadow-xs bg-emerald-600 hover:bg-emerald-700 text-white"
             title="Descargar reporte completo en archivo Excel (.xlsx)"
           >
-            <span>📥 Exportar Excel (.XLSX)</span>
+            <span>Exportar Excel</span>
           </Button>
         </div>
       </div>
