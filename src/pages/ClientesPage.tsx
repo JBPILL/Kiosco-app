@@ -399,23 +399,23 @@ export function ClientesPage() {
                       <button
                         type="button"
                         onClick={() => abrirFichaCliente(cli)}
-                        className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-bold text-gray-800 dark:text-gray-200 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 border-2 border-gray-300 dark:border-gray-500 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                        className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/60 dark:hover:bg-slate-700/70 border border-slate-300 dark:border-slate-700 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                       >
-                        Ficha / Historial
+                        Ficha
                       </button>
                       {debe ? (
                         <button
                           type="button"
                           onClick={() => handleAbrirAbonar(cli)}
-                          className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-bold text-emerald-800 dark:text-emerald-200 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 border-2 border-emerald-400 dark:border-emerald-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                          className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                         >
-                          Abonar deuda
+                          Abonar
                         </button>
                       ) : (
                         <button
                           type="button"
                           onClick={() => handleEditarCliente(cli)}
-                          className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-bold text-indigo-800 dark:text-indigo-200 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 border-2 border-indigo-400 dark:border-indigo-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                          className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                         >
                           Editar
                         </button>
@@ -424,7 +424,7 @@ export function ClientesPage() {
                         <button
                           type="button"
                           onClick={() => handleEditarCliente(cli)}
-                          className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-bold text-indigo-800 dark:text-indigo-200 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 border-2 border-indigo-400 dark:border-indigo-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                          className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                         >
                           Editar
                         </button>
@@ -432,7 +432,7 @@ export function ClientesPage() {
                       <button
                         type="button"
                         onClick={() => handleEnviarWhatsApp(cli)}
-                        className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-bold text-teal-800 dark:text-teal-200 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 dark:hover:bg-teal-900/60 border-2 border-teal-400 dark:border-teal-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                        className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-teal-700 dark:text-teal-300 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/50 dark:hover:bg-teal-900/60 border border-teal-200 dark:border-teal-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                       >
                         WhatsApp
                       </button>
@@ -443,7 +443,7 @@ export function ClientesPage() {
                             eliminarCliente(cli.id)
                           }
                         }}
-                        className={`inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-bold text-red-800 dark:text-red-200 bg-red-50 hover:bg-red-100 dark:bg-red-950/60 dark:hover:bg-red-900/60 border-2 border-red-400 dark:border-red-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap ${debe ? 'col-span-2' : ''}`}
+                        className={`inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-600 dark:text-red-300 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/60 border border-red-200 dark:border-red-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap ${debe ? 'col-span-2' : ''}`}
                       >
                         Eliminar cliente
                       </button>
@@ -501,7 +501,7 @@ export function ClientesPage() {
                               <button
                                 type="button"
                                 onClick={() => abrirFichaCliente(cli)}
-                                className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-bold text-gray-800 dark:text-gray-200 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 border-2 border-gray-300 dark:border-gray-500 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                                className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/60 dark:hover:bg-slate-700/70 border border-slate-300 dark:border-slate-700 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                               >
                                 Ficha
                               </button>
@@ -509,7 +509,7 @@ export function ClientesPage() {
                                 <button
                                   type="button"
                                   onClick={() => handleAbrirAbonar(cli)}
-                                  className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-800 dark:text-emerald-200 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 border-2 border-emerald-400 dark:border-emerald-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                                  className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                                 >
                                   Abonar
                                 </button>
@@ -517,14 +517,14 @@ export function ClientesPage() {
                               <button
                                 type="button"
                                 onClick={() => handleEditarCliente(cli)}
-                                className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-bold text-indigo-800 dark:text-indigo-200 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 border-2 border-indigo-400 dark:border-indigo-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                                className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                               >
                                 Editar
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleEnviarWhatsApp(cli)}
-                                className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-bold text-teal-800 dark:text-teal-200 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 dark:hover:bg-teal-900/60 border-2 border-teal-400 dark:border-teal-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                                className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-teal-700 dark:text-teal-300 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/50 dark:hover:bg-teal-900/60 border border-teal-200 dark:border-teal-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                                 title="Enviar resumen por WhatsApp"
                               >
                                 WhatsApp
@@ -536,7 +536,7 @@ export function ClientesPage() {
                                     eliminarCliente(cli.id)
                                   }
                                 }}
-                                className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-bold text-red-800 dark:text-red-200 bg-red-50 hover:bg-red-100 dark:bg-red-950/60 dark:hover:bg-red-900/60 border-2 border-red-400 dark:border-red-600 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
+                                className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-600 dark:text-red-300 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/60 border border-red-200 dark:border-red-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
                                 title="Eliminar cliente"
                               >
                                 Eliminar

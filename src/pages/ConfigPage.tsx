@@ -435,13 +435,13 @@ export function ConfigPage() {
       const [prodsRes, catsRes, movsRes, clientesRes, provsRes, ventasRes] = await Promise.all([
         supabase
           .from('productos')
-          .select('id, codigo_barra, descripcion, categoria_id, precio_costo, precio_venta, stock_actual, stock_minimo, unidad_medida, categoria:categorias(nombre)')
+          .select('*, categoria:categorias(nombre)')
           .eq('kiosco_id', usuario.kiosco_id)
           .order('descripcion')
           .limit(50000),
         supabase
           .from('categorias')
-          .select('id, nombre')
+          .select('*')
           .eq('kiosco_id', usuario.kiosco_id)
           .limit(1000),
         supabase
@@ -452,13 +452,13 @@ export function ConfigPage() {
           .limit(10000),
         supabase
           .from('clientes')
-          .select('id, nombre, telefono, email, saldo, limite_credito, notas')
+          .select('*')
           .eq('kiosco_id', usuario.kiosco_id)
           .order('nombre')
           .limit(10000),
         supabase
           .from('proveedores')
-          .select('id, nombre, contacto_nombre, telefono, email, cuit, direccion, saldo_pendiente')
+          .select('*')
           .eq('kiosco_id', usuario.kiosco_id)
           .order('nombre')
           .limit(5000),
@@ -470,6 +470,10 @@ export function ConfigPage() {
           .order('fecha_hora', { ascending: false })
           .limit(15000),
       ])
+
+      if (prodsRes.error) console.error('Error al consultar productos para Excel:', prodsRes.error)
+      if (clientesRes.error) console.error('Error al consultar clientes para Excel:', clientesRes.error)
+      if (provsRes.error) console.error('Error al consultar proveedores para Excel:', provsRes.error)
 
       await exportarMasterExcel({
         nombreKiosco: kiosco?.nombre || 'Comercio',

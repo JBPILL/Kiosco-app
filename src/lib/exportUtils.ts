@@ -1804,7 +1804,7 @@ export async function exportarMasterExcel(params: MasterExcelData) {
   const sheets: Sheet<any>[] = []
 
   // 1. Hoja Catálogo de Productos
-  if (params.productos && params.productos.length > 0) {
+  {
     const totalCols = 9
     const columns: SheetOptionsColumn[] = [
       { width: 18 }, // Código
@@ -1821,9 +1821,10 @@ export async function exportarMasterExcel(params: MasterExcelData) {
     const catsMap = new Map<string, string>()
     ;(params.categorias || []).forEach((c: any) => catsMap.set(c.id, c.nombre))
 
+    const prods = params.productos || []
     const rows: Row[] = [
       [...cSpan(cTitle('CATÁLOGO DE PRODUCTOS Y VALUACIÓN DE STOCK'), totalCols)] as Row,
-      [...cSpan(cSubtitle(`Comercio: ${nombreKiosco} | Fecha: ${fechaGeneracion} | Total: ${params.productos.length} ítems`), totalCols)] as Row,
+      [...cSpan(cSubtitle(`Comercio: ${nombreKiosco} | Fecha: ${fechaGeneracion} | Total: ${prods.length} ítems`), totalCols)] as Row,
       emptyRow(totalCols) as Row,
       [
         cHeader('Código Barra', 'center'),
@@ -1838,38 +1839,42 @@ export async function exportarMasterExcel(params: MasterExcelData) {
       ] as Row,
     ]
 
-    params.productos.forEach((p, idx) => {
-      const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
-      const costo = Number(p.precio_costo || 0)
-      const venta = Number(p.precio_venta || 0)
-      const margen = venta > 0 ? (venta - costo) / venta : 0
-      const cat = p.categoria?.nombre || catsMap.get(p.categoria_id) || 'General'
+    if (prods.length === 0) {
+      rows.push([...cSpan(cText('No se registraron productos en el catálogo.', '#FFFFFF', 'center', true), totalCols)] as Row)
+    } else {
+      prods.forEach((p, idx) => {
+        const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+        const costo = Number(p.precio_costo || 0)
+        const venta = Number(p.precio_venta || 0)
+        const margen = venta > 0 ? (venta - costo) / venta : 0
+        const cat = p.categoria?.nombre || catsMap.get(p.categoria_id) || 'General'
+
+        rows.push([
+          cText(p.codigo_barras || (p as any).codigo_barra || '—', bg, 'center'),
+          cText(p.descripcion, bg, 'left', true),
+          cText(cat, bg, 'left'),
+          cMoney(costo, bg),
+          cMoney(venta, bg, true),
+          cPercent(margen, bg),
+          cNum(p.stock_actual, bg),
+          cNum(p.stock_minimo || 0, bg),
+          cText(p.unidad_medida || 'UNIDAD', bg, 'center'),
+        ] as Row)
+      })
+
+      const totalStock = prods.reduce((s, p) => s + Number(p.stock_actual || 0), 0)
+      const valCosto = prods.reduce((s, p) => s + Number(p.stock_actual || 0) * Number(p.precio_costo || 0), 0)
+      const valVenta = prods.reduce((s, p) => s + Number(p.stock_actual || 0) * Number(p.precio_venta || 0), 0)
 
       rows.push([
-        cText(p.codigo_barra || '—', bg, 'center'),
-        cText(p.descripcion, bg, 'left', true),
-        cText(cat, bg, 'left'),
-        cMoney(costo, bg),
-        cMoney(venta, bg, true),
-        cPercent(margen, bg),
-        cNum(p.stock_actual, bg),
-        cNum(p.stock_minimo || 0, bg),
-        cText(p.unidad_medida || 'UNIDAD', bg, 'center'),
+        ...cTotalLabel(`TOTALES (${prods.length} PRODUCTOS):`, 3),
+        cTotalMoney(valCosto),
+        cTotalMoney(valVenta),
+        cText('—', '#F1F5F9', 'center', true),
+        cTotalNum(totalStock),
+        ...cSpan(cText('—', '#F1F5F9', 'center', true), 2),
       ] as Row)
-    })
-
-    const totalStock = params.productos.reduce((s, p) => s + Number(p.stock_actual || 0), 0)
-    const valCosto = params.productos.reduce((s, p) => s + Number(p.stock_actual || 0) * Number(p.precio_costo || 0), 0)
-    const valVenta = params.productos.reduce((s, p) => s + Number(p.stock_actual || 0) * Number(p.precio_venta || 0), 0)
-
-    rows.push([
-      ...cTotalLabel(`TOTALES (${params.productos.length} PRODUCTOS):`, 3),
-      cTotalMoney(valCosto),
-      cTotalMoney(valVenta),
-      cText('—', '#F1F5F9', 'center', true),
-      cTotalNum(totalStock),
-      ...cSpan(cText('—', '#F1F5F9', 'center', true), 2),
-    ] as Row)
+    }
 
     sheets.push({
       sheet: 'Catálogo de Productos',
@@ -1879,7 +1884,7 @@ export async function exportarMasterExcel(params: MasterExcelData) {
   }
 
   // 2. Hoja Movimientos de Stock
-  if (params.movimientosStock && params.movimientosStock.length > 0) {
+  {
     const totalCols = 7
     const columns: SheetOptionsColumn[] = [
       { width: 20 }, // Fecha
@@ -1891,9 +1896,10 @@ export async function exportarMasterExcel(params: MasterExcelData) {
       { width: 18 }, // Usuario
     ]
 
+    const movs = params.movimientosStock || []
     const rows: Row[] = [
       [...cSpan(cTitle('AUDITORÍA Y MOVIMIENTOS DE STOCK'), totalCols)] as Row,
-      [...cSpan(cSubtitle(`Comercio: ${nombreKiosco} | Fecha: ${fechaGeneracion} | Total: ${params.movimientosStock.length} movimientos`), totalCols)] as Row,
+      [...cSpan(cSubtitle(`Comercio: ${nombreKiosco} | Fecha: ${fechaGeneracion} | Total: ${movs.length} movimientos`), totalCols)] as Row,
       emptyRow(totalCols) as Row,
       [
         cHeader('Fecha y Hora', 'center'),
@@ -1906,27 +1912,31 @@ export async function exportarMasterExcel(params: MasterExcelData) {
       ] as Row,
     ]
 
-    params.movimientosStock.forEach((m, idx) => {
-      const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
-      const prodDesc = m.producto?.descripcion || m.producto_descripcion || 'Producto'
-      const usuarioNom = m.usuario?.nombre || 'Sistema'
+    if (movs.length === 0) {
+      rows.push([...cSpan(cText('No se registraron movimientos de stock en el período.', '#FFFFFF', 'center', true), totalCols)] as Row)
+    } else {
+      movs.forEach((m, idx) => {
+        const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+        const prodDesc = m.producto?.descripcion || m.producto_descripcion || 'Producto'
+        const usuarioNom = m.usuario?.nombre || 'Sistema'
+
+        rows.push([
+          cText(formatFecha(m.fecha), bg, 'center'),
+          cText(prodDesc, bg, 'left', true),
+          cText(m.tipo, bg, 'center'),
+          cNum(m.cantidad, bg),
+          cText(m.motivo, bg, 'left'),
+          cText(m.notas || '—', bg, 'left'),
+          cText(usuarioNom, bg, 'left'),
+        ] as Row)
+      })
 
       rows.push([
-        cText(formatFecha(m.fecha), bg, 'center'),
-        cText(prodDesc, bg, 'left', true),
-        cText(m.tipo, bg, 'center'),
-        cNum(m.cantidad, bg),
-        cText(m.motivo, bg, 'left'),
-        cText(m.notas || '—', bg, 'left'),
-        cText(usuarioNom, bg, 'left'),
+        ...cTotalLabel('TOTAL REGISTROS:', 3),
+        cTotalNum(movs.length),
+        ...cSpan(cText('—', '#F1F5F9', 'center', true), 3),
       ] as Row)
-    })
-
-    rows.push([
-      ...cTotalLabel('TOTAL REGISTROS:', 3),
-      cTotalNum(params.movimientosStock.length),
-      ...cSpan(cText('—', '#F1F5F9', 'center', true), 3),
-    ] as Row)
+    }
 
     sheets.push({
       sheet: 'Movimientos de Stock',
@@ -1936,7 +1946,7 @@ export async function exportarMasterExcel(params: MasterExcelData) {
   }
 
   // 3. Hoja Clientes y Cuentas Corrientes
-  if (params.clientes && params.clientes.length > 0) {
+  {
     const totalCols = 6
     const columns: SheetOptionsColumn[] = [
       { width: 28 }, // Cliente
@@ -1947,9 +1957,10 @@ export async function exportarMasterExcel(params: MasterExcelData) {
       { width: 30 }, // Notas
     ]
 
+    const clientes = params.clientes || []
     const rows: Row[] = [
       [...cSpan(cTitle('CARTERA DE CLIENTES Y CUENTAS CORRIENTES'), totalCols)] as Row,
-      [...cSpan(cSubtitle(`Comercio: ${nombreKiosco} | Fecha: ${fechaGeneracion} | Total: ${params.clientes.length} clientes`), totalCols)] as Row,
+      [...cSpan(cSubtitle(`Comercio: ${nombreKiosco} | Fecha: ${fechaGeneracion} | Total: ${clientes.length} clientes`), totalCols)] as Row,
       emptyRow(totalCols) as Row,
       [
         cHeader('Nombre del Cliente', 'left'),
@@ -1961,27 +1972,31 @@ export async function exportarMasterExcel(params: MasterExcelData) {
       ] as Row,
     ]
 
-    let totalDeudaClientes = 0
-    params.clientes.forEach((cli, idx) => {
-      const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
-      const saldo = Number(cli.saldo || 0)
-      totalDeudaClientes += saldo
+    if (clientes.length === 0) {
+      rows.push([...cSpan(cText('No se registraron clientes en la cartera.', '#FFFFFF', 'center', true), totalCols)] as Row)
+    } else {
+      let totalDeudaClientes = 0
+      clientes.forEach((cli: any, idx) => {
+        const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+        const saldo = Number(cli.saldo_deudor ?? cli.saldo ?? 0)
+        totalDeudaClientes += saldo
+
+        rows.push([
+          cText(cli.nombre, bg, 'left', true),
+          cText(cli.telefono || '—', bg, 'center'),
+          cText(cli.email || '—', bg, 'left'),
+          cMoney(saldo, bg, saldo > 0),
+          cMoney(Number(cli.limite_credito || 0), bg),
+          cText(cli.notas || '—', bg, 'left'),
+        ] as Row)
+      })
 
       rows.push([
-        cText(cli.nombre, bg, 'left', true),
-        cText(cli.telefono || '—', bg, 'center'),
-        cText(cli.email || '—', bg, 'left'),
-        cMoney(saldo, bg, saldo > 0),
-        cMoney(Number(cli.limite_credito || 0), bg),
-        cText(cli.notas || '—', bg, 'left'),
+        ...cTotalLabel('TOTAL SALDO DEUDOR EXIGIBLE:', 3),
+        cTotalMoney(totalDeudaClientes),
+        ...cSpan(cText('—', '#F1F5F9', 'center', true), 2),
       ] as Row)
-    })
-
-    rows.push([
-      ...cTotalLabel('TOTAL SALDO DEUDOR EXIGIBLE:', 3),
-      cTotalMoney(totalDeudaClientes),
-      ...cSpan(cText('—', '#F1F5F9', 'center', true), 2),
-    ] as Row)
+    }
 
     sheets.push({
       sheet: 'Clientes y Cuentas',
@@ -1991,7 +2006,7 @@ export async function exportarMasterExcel(params: MasterExcelData) {
   }
 
   // 4. Hoja Proveedores y Pasivos
-  if (params.proveedores && params.proveedores.length > 0) {
+  {
     const totalCols = 7
     const columns: SheetOptionsColumn[] = [
       { width: 28 }, // Razón Social
@@ -1999,13 +2014,14 @@ export async function exportarMasterExcel(params: MasterExcelData) {
       { width: 18 }, // Teléfono
       { width: 18 }, // CUIT
       { width: 24 }, // Email
-      { width: 26 }, // Dirección
+      { width: 26 }, // Visitas / Contacto
       { width: 20 }, // Saldo Pendiente
     ]
 
+    const provs = params.proveedores || []
     const rows: Row[] = [
       [...cSpan(cTitle('PROVEEDORES Y CUENTAS POR PAGAR (PASIVOS)'), totalCols)] as Row,
-      [...cSpan(cSubtitle(`Comercio: ${nombreKiosco} | Fecha: ${fechaGeneracion} | Total: ${params.proveedores.length} proveedores`), totalCols)] as Row,
+      [...cSpan(cSubtitle(`Comercio: ${nombreKiosco} | Fecha: ${fechaGeneracion} | Total: ${provs.length} proveedores`), totalCols)] as Row,
       emptyRow(totalCols) as Row,
       [
         cHeader('Razón Social / Proveedor', 'left'),
@@ -2013,32 +2029,38 @@ export async function exportarMasterExcel(params: MasterExcelData) {
         cHeader('Teléfono', 'center'),
         cHeader('CUIT', 'center'),
         cHeader('Correo Electrónico', 'left'),
-        cHeader('Dirección', 'left'),
+        cHeader('Días Visita / CBU Alias', 'left'),
         cHeader('Saldo Pendiente ($)', 'right'),
       ] as Row,
     ]
 
-    let totalDeudaProveedores = 0
-    params.proveedores.forEach((prov, idx) => {
-      const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
-      const saldo = Number(prov.saldo_pendiente || 0)
-      totalDeudaProveedores += saldo
+    if (provs.length === 0) {
+      rows.push([...cSpan(cText('No se registraron proveedores en la cartera.', '#FFFFFF', 'center', true), totalCols)] as Row)
+    } else {
+      let totalDeudaProveedores = 0
+      provs.forEach((prov: any, idx) => {
+        const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+        const saldo = Number(prov.saldo_pendiente || 0)
+        totalDeudaProveedores += saldo
+
+        const extraInfo = prov.dias_visita ? `Visita: ${prov.dias_visita}` : prov.cbu_alias ? `CBU/Alias: ${prov.cbu_alias}` : (prov.direccion || '—')
+
+        rows.push([
+          cText(prov.nombre, bg, 'left', true),
+          cText(prov.contacto_nombre || '—', bg, 'left'),
+          cText(prov.telefono || '—', bg, 'center'),
+          cText(prov.cuit || '—', bg, 'center'),
+          cText(prov.email || '—', bg, 'left'),
+          cText(extraInfo, bg, 'left'),
+          cMoney(saldo, bg, saldo > 0),
+        ] as Row)
+      })
 
       rows.push([
-        cText(prov.nombre, bg, 'left', true),
-        cText(prov.contacto_nombre || '—', bg, 'left'),
-        cText(prov.telefono || '—', bg, 'center'),
-        cText(prov.cuit || '—', bg, 'center'),
-        cText(prov.email || '—', bg, 'left'),
-        cText(prov.direccion || '—', bg, 'left'),
-        cMoney(saldo, bg, saldo > 0),
+        ...cTotalLabel('TOTAL PASIVO CON PROVEEDORES:', 6),
+        cTotalMoney(totalDeudaProveedores),
       ] as Row)
-    })
-
-    rows.push([
-      ...cTotalLabel('TOTAL PASIVO CON PROVEEDORES:', 6),
-      cTotalMoney(totalDeudaProveedores),
-    ] as Row)
+    }
 
     sheets.push({
       sheet: 'Proveedores y Pasivos',
@@ -2048,7 +2070,7 @@ export async function exportarMasterExcel(params: MasterExcelData) {
   }
 
   // 5. Hoja Histórico de Ventas
-  if (params.ventas && params.ventas.length > 0) {
+  {
     const totalCols = 6
     const columns: SheetOptionsColumn[] = [
       { width: 20 }, // Fecha
@@ -2059,9 +2081,10 @@ export async function exportarMasterExcel(params: MasterExcelData) {
       { width: 18 }, // Total
     ]
 
+    const vtas = params.ventas || []
     const rows: Row[] = [
       [...cSpan(cTitle('HISTÓRICO DE VENTAS Y FACTURACIÓN'), totalCols)] as Row,
-      [...cSpan(cSubtitle(`Comercio: ${nombreKiosco} | Fecha: ${fechaGeneracion} | Total: ${params.ventas.length} tickets`), totalCols)] as Row,
+      [...cSpan(cSubtitle(`Comercio: ${nombreKiosco} | Fecha: ${fechaGeneracion} | Total: ${vtas.length} tickets`), totalCols)] as Row,
       emptyRow(totalCols) as Row,
       [
         cHeader('Fecha y Hora', 'center'),
@@ -2073,35 +2096,39 @@ export async function exportarMasterExcel(params: MasterExcelData) {
       ] as Row,
     ]
 
-    let totalVentasMonto = 0
-    params.ventas.forEach((v, idx) => {
-      const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
-      const tot = Number(v.total || 0)
-      totalVentasMonto += tot
+    if (vtas.length === 0) {
+      rows.push([...cSpan(cText('No se registraron ventas en el historial.', '#FFFFFF', 'center', true), totalCols)] as Row)
+    } else {
+      let totalVentasMonto = 0
+      vtas.forEach((v, idx) => {
+        const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+        const tot = Number(v.total || 0)
+        totalVentasMonto += tot
 
-      const ticketRef = v.afip_nro_comprobante
-        ? `FC-${String(v.afip_nro_comprobante).padStart(8, '0')}`
-        : `T-${v.id.slice(0, 8).toUpperCase()}`
+        const ticketRef = v.afip_nro_comprobante
+          ? `FC-${String(v.afip_nro_comprobante).padStart(8, '0')}`
+          : `T-${v.id.slice(0, 8).toUpperCase()}`
 
-      const medioStr =
-        v.pagos && v.pagos.length > 0
-          ? v.pagos.map((p: any) => labelMedioPago(p.medio_pago)).join(', ')
-          : 'Efectivo'
+        const medioStr =
+          v.pagos && v.pagos.length > 0
+            ? v.pagos.map((p: any) => labelMedioPago(p.medio_pago)).join(', ')
+            : 'Efectivo'
+
+        rows.push([
+          cText(formatFecha(v.fecha_hora), bg, 'center'),
+          cText(ticketRef, bg, 'center', true),
+          cText(v.afip_cae || '—', bg, 'center'),
+          cText(v.usuario?.nombre || 'Cajero', bg, 'left'),
+          cText(medioStr, bg, 'center'),
+          cMoney(tot, bg, true),
+        ] as Row)
+      })
 
       rows.push([
-        cText(formatFecha(v.fecha_hora), bg, 'center'),
-        cText(ticketRef, bg, 'center', true),
-        cText(v.afip_cae || '—', bg, 'center'),
-        cText(v.usuario?.nombre || 'Cajero', bg, 'left'),
-        cText(medioStr, bg, 'center'),
-        cMoney(tot, bg, true),
+        ...cTotalLabel('TOTAL RECAUDACIÓN HISTÓRICA:', 5),
+        cTotalMoney(totalVentasMonto),
       ] as Row)
-    })
-
-    rows.push([
-      ...cTotalLabel('TOTAL RECAUDACIÓN HISTÓRICA:', 5),
-      cTotalMoney(totalVentasMonto),
-    ] as Row)
+    }
 
     sheets.push({
       sheet: 'Histórico de Ventas',
