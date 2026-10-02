@@ -492,7 +492,6 @@ export function ReportesSuperAdminTab() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
             <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <span>📊</span>
               <span>Evolución Mensual de Facturación ({anioSeleccionado})</span>
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -577,7 +576,6 @@ export function ReportesSuperAdminTab() {
         {/* Desglose por Medio de Pago */}
         <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
           <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-3">
-            <span>💳</span>
             <span>Facturación por Medio de Pago</span>
           </h3>
 
@@ -617,7 +615,6 @@ export function ReportesSuperAdminTab() {
         {/* Desglose por Rubro del Comercio */}
         <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
           <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-3">
-            <span>🏪</span>
             <span>Distribución de Clientes por Rubro</span>
           </h3>
 
@@ -703,16 +700,25 @@ export function ReportesSuperAdminTab() {
 
         {tablaRendimientosAbierta && (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="table-fixed w-full text-left text-xs">
+              <colgroup>
+                <col className="w-[18%]" />
+                <col className="w-[18%]" />
+                <col className="w-[10%]" />
+                <col className="w-[12%]" />
+                <col className="w-[15%]" />
+                <col className="w-[14%]" />
+                <col className="w-[13%]" />
+              </colgroup>
               <thead className="bg-gray-50 dark:bg-gray-900/60 text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
                 <tr>
-                  <th className="px-4 py-3">Mes</th>
-                  <th className="px-4 py-3">Facturado Total</th>
-                  <th className="px-4 py-3 text-center">Cobros</th>
-                  <th className="px-4 py-3 text-center">Comercios</th>
-                  <th className="px-4 py-3">Ticket Promedio</th>
-                  <th className="px-4 py-3">Variación Mes Previo</th>
-                  <th className="px-4 py-3">Medio Principal</th>
+                  <th className="px-4 py-3 truncate">Mes</th>
+                  <th className="px-4 py-3 truncate">Facturado Total</th>
+                  <th className="px-4 py-3 text-center truncate">Cobros</th>
+                  <th className="px-4 py-3 text-center truncate">Comercios</th>
+                  <th className="px-4 py-3 truncate">Ticket Promedio</th>
+                  <th className="px-4 py-3 truncate">Variación Mes Previo</th>
+                  <th className="px-4 py-3 truncate">Medio Principal</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
@@ -726,27 +732,29 @@ export function ReportesSuperAdminTab() {
                         esMesSeleccionado ? 'bg-indigo-50/70 dark:bg-indigo-950/40 font-semibold' : ''
                       }`}
                     >
-                      <td className="px-4 py-3 text-gray-900 dark:text-white font-bold flex items-center gap-2">
-                        <span>{m.nombre}</span>
-                        {esMesSeleccionado && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-600 text-white font-bold">
-                            Activo
-                          </span>
-                        )}
-                      </td>
                       <td className="px-4 py-3 text-gray-900 dark:text-white font-bold">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="truncate">{m.nombre}</span>
+                          {esMesSeleccionado && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-600 text-white font-bold shrink-0">
+                              Activo
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-gray-900 dark:text-white font-bold truncate">
                         {formatPrecio(m.totalMonto)}
                       </td>
-                      <td className="px-4 py-3 text-center text-gray-700 dark:text-gray-300 font-medium">
+                      <td className="px-4 py-3 text-center text-gray-700 dark:text-gray-300 font-medium truncate">
                         {m.cantidadPagos}
                       </td>
-                      <td className="px-4 py-3 text-center text-gray-700 dark:text-gray-300 font-medium">
+                      <td className="px-4 py-3 text-center text-gray-700 dark:text-gray-300 font-medium truncate">
                         {m.cantidadKioscosUnicos}
                       </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 truncate">
                         {formatPrecio(m.ticketPromedio)}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 truncate">
                         {m.variacionPorcentaje !== null ? (
                           <span
                             className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold ${
@@ -762,7 +770,7 @@ export function ReportesSuperAdminTab() {
                           <span className="text-gray-400 dark:text-gray-500">-</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400 truncate">
                         {m.medioMasUsado}
                       </td>
                     </tr>
@@ -779,7 +787,6 @@ export function ReportesSuperAdminTab() {
         <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <span>📋</span>
               <span>Transacciones y Cobros Detallados ({transaccionesFiltradas.length})</span>
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -826,7 +833,6 @@ export function ReportesSuperAdminTab() {
 
         {transaccionesFiltradas.length === 0 ? (
           <div className="py-12 text-center text-gray-500 dark:text-gray-400 text-xs">
-            <span className="text-3xl block mb-2">🔍</span>
             <p className="font-semibold text-gray-800 dark:text-gray-200">
               No se encontraron cobros con los filtros seleccionados
             </p>
@@ -834,16 +840,25 @@ export function ReportesSuperAdminTab() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="table-fixed w-full text-left text-xs">
+              <colgroup>
+                <col className="w-[12%]" />
+                <col className="w-[18%]" />
+                <col className="w-[20%]" />
+                <col className="w-[12%]" />
+                <col className="w-[14%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
+              </colgroup>
               <thead className="bg-gray-50 dark:bg-gray-900/60 text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
                 <tr>
-                  <th className="px-4 py-3">Fecha</th>
-                  <th className="px-4 py-3">Comercio</th>
-                  <th className="px-4 py-3">Titular / Email</th>
-                  <th className="px-4 py-3">Plan</th>
-                  <th className="px-4 py-3">Medio de Pago</th>
-                  <th className="px-4 py-3 text-right">Monto</th>
-                  <th className="px-4 py-3">Notas / Ref</th>
+                  <th className="px-4 py-3 truncate">Fecha</th>
+                  <th className="px-4 py-3 truncate">Comercio</th>
+                  <th className="px-4 py-3 truncate">Titular / Email</th>
+                  <th className="px-4 py-3 truncate">Plan</th>
+                  <th className="px-4 py-3 truncate">Medio de Pago</th>
+                  <th className="px-4 py-3 text-right truncate">Monto</th>
+                  <th className="px-4 py-3 truncate">Notas / Ref</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
@@ -852,39 +867,39 @@ export function ReportesSuperAdminTab() {
                     key={t.id}
                     className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                   >
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300 truncate">
                       {formatFecha(t.fecha_pago)}
                     </td>
                     <td className="px-4 py-3 font-semibold text-gray-900 dark:text-white">
-                      <div className="flex items-center gap-1.5">
-                        <span>{t.nombre_kiosco}</span>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="truncate">{t.nombre_kiosco}</span>
                         {t.rubro === 'FOTOCOPIADORA_LIBRERIA' && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-cyan-100 dark:bg-cyan-950 text-cyan-700 dark:text-cyan-300 font-bold">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-cyan-100 dark:bg-cyan-950 text-cyan-700 dark:text-cyan-300 font-bold shrink-0">
                             Fotocopiadora
                           </span>
                         )}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                      <p className="font-medium">{t.nombre_dueno}</p>
+                      <p className="font-medium truncate">{t.nombre_dueno}</p>
                       {t.email_dueno && (
-                        <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                        <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate">
                           {t.email_dueno}
                         </p>
                       )}
                     </td>
                     <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                      <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-[11px] font-semibold">
+                      <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-[11px] font-semibold truncate inline-block max-w-full">
                         {t.nombre_plan}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-800 dark:text-gray-200 uppercase font-medium">
+                    <td className="px-4 py-3 text-gray-800 dark:text-gray-200 uppercase font-medium truncate">
                       {t.medio_pago}
                     </td>
-                    <td className="px-4 py-3 text-right font-black text-gray-900 dark:text-white text-sm whitespace-nowrap">
+                    <td className="px-4 py-3 text-right font-black text-gray-900 dark:text-white text-sm truncate">
                       {formatPrecio(t.monto)}
                     </td>
-                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 max-w-[200px] truncate">
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 truncate">
                       {t.notas || t.comprobante || '-'}
                     </td>
                   </tr>

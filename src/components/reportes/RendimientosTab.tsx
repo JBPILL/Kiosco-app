@@ -739,15 +739,23 @@ export function RendimientosTab() {
 
         {tablaRendimientosAbierta && (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="table-fixed w-full text-left text-xs">
+              <colgroup>
+                <col className="w-[20%]" />
+                <col className="w-[20%]" />
+                <col className="w-[12%]" />
+                <col className="w-[18%]" />
+                <col className="w-[15%]" />
+                <col className="w-[15%]" />
+              </colgroup>
               <thead className="bg-gray-50 dark:bg-gray-900/60 text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
                 <tr>
-                  <th className="px-4 py-3">Mes</th>
-                  <th className="px-4 py-3">Facturado Total</th>
-                  <th className="px-4 py-3 text-center">Tickets</th>
-                  <th className="px-4 py-3">Ticket Promedio</th>
-                  <th className="px-4 py-3">Variación Mes Previo</th>
-                  <th className="px-4 py-3">Medio Principal</th>
+                  <th className="px-4 py-3 truncate">Mes</th>
+                  <th className="px-4 py-3 truncate">Facturado Total</th>
+                  <th className="px-4 py-3 text-center truncate">Tickets</th>
+                  <th className="px-4 py-3 truncate">Ticket Promedio</th>
+                  <th className="px-4 py-3 truncate">Variación Mes Previo</th>
+                  <th className="px-4 py-3 truncate">Medio Principal</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
@@ -761,24 +769,26 @@ export function RendimientosTab() {
                         esMesSeleccionado ? 'bg-indigo-50/70 dark:bg-indigo-950/40 font-semibold' : ''
                       }`}
                     >
-                      <td className="px-4 py-3 text-gray-900 dark:text-white font-bold flex items-center gap-2">
-                        <span>{m.nombre}</span>
-                        {esMesSeleccionado && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-600 text-white font-bold">
-                            Activo
-                          </span>
-                        )}
-                      </td>
                       <td className="px-4 py-3 text-gray-900 dark:text-white font-bold">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="truncate">{m.nombre}</span>
+                          {esMesSeleccionado && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-600 text-white font-bold shrink-0">
+                              Activo
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-gray-900 dark:text-white font-bold truncate">
                         {formatPrecio(m.totalVentas)}
                       </td>
-                      <td className="px-4 py-3 text-center text-gray-700 dark:text-gray-300 font-medium">
+                      <td className="px-4 py-3 text-center text-gray-700 dark:text-gray-300 font-medium truncate">
                         {m.cantidadTickets}
                       </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 truncate">
                         {formatPrecio(m.ticketPromedio)}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 truncate">
                         {m.variacionPorcentaje !== null ? (
                           <span
                             className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold ${
@@ -794,7 +804,7 @@ export function RendimientosTab() {
                           <span className="text-gray-400 dark:text-gray-500">-</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400 truncate">
                         {m.medioPrincipal}
                       </td>
                     </tr>
@@ -855,14 +865,21 @@ export function RendimientosTab() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="table-fixed w-full text-left text-xs">
+              <colgroup>
+                <col className="w-[20%]" />
+                <col className="w-[22%]" />
+                <col className="w-[20%]" />
+                <col className="w-[20%]" />
+                <col className="w-[18%]" />
+              </colgroup>
               <thead className="bg-gray-50 dark:bg-gray-900/60 text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
                 <tr>
-                  <th className="px-4 py-3">Comprobante</th>
-                  <th className="px-4 py-3">Fecha y Hora</th>
-                  <th className="px-4 py-3">Cajero / Operador</th>
-                  <th className="px-4 py-3">Medio de Pago</th>
-                  <th className="px-4 py-3 text-right">Total ($)</th>
+                  <th className="px-4 py-3 truncate">Comprobante</th>
+                  <th className="px-4 py-3 truncate">Fecha y Hora</th>
+                  <th className="px-4 py-3 truncate">Cajero / Operador</th>
+                  <th className="px-4 py-3 truncate">Medio de Pago</th>
+                  <th className="px-4 py-3 text-right truncate">Total ($)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
@@ -881,19 +898,19 @@ export function RendimientosTab() {
                       key={v.id}
                       className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                     >
-                      <td className="px-4 py-3 font-bold text-gray-900 dark:text-white">
+                      <td className="px-4 py-3 font-bold text-gray-900 dark:text-white truncate">
                         {ticketStr}
                       </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300 truncate">
                         {formatFecha(v.fecha_hora)}
                       </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 truncate">
                         {v.usuario?.nombre || 'Cajero'}
                       </td>
-                      <td className="px-4 py-3 text-gray-800 dark:text-gray-200 font-medium">
+                      <td className="px-4 py-3 text-gray-800 dark:text-gray-200 font-medium truncate">
                         {mediosStr}
                       </td>
-                      <td className="px-4 py-3 text-right font-black text-gray-900 dark:text-white text-sm whitespace-nowrap">
+                      <td className="px-4 py-3 text-right font-black text-gray-900 dark:text-white text-sm truncate">
                         {formatPrecio(v.total)}
                       </td>
                     </tr>
