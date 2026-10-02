@@ -341,9 +341,8 @@ export function ReportesSuperAdminTab() {
       {/* Barra Superior con Selector de Período y Acciones */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <span>📊</span>
-            <span>Rendimientos Mensuales de Suscripciones SaaS</span>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+            Rendimientos Mensuales de Suscripciones SaaS
           </h2>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
             Analítica de cobros, ingresos recurrentes (MRR), evolución mes a mes y métricas de retención

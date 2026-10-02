@@ -1047,15 +1047,15 @@ export function SuperAdminPage() {
                       </span>
                       {k.rubro === 'FOTOCOPIADORA_LIBRERIA' ? (
                         <span className="text-xs px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 font-bold">
-                          📚 Librería / Copiado
+                          Librería / Copiado
                         </span>
                       ) : k.rubro === 'GENERAL' ? (
                         <span className="text-xs px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950/40 border border-purple-300 dark:border-purple-800 text-purple-800 dark:text-purple-300 font-bold">
-                          🛍️ Comercio General
+                          Comercio General
                         </span>
                       ) : (
                         <span className="text-xs px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 border border-blue-300 dark:border-blue-800 text-blue-800 dark:text-blue-300 font-bold">
-                          🏪 Kiosco / Minimercado
+                          Kiosco / Minimercado
                         </span>
                       )}
                       {k.nombre_plan && (
@@ -1596,9 +1596,9 @@ export function SuperAdminPage() {
                   onChange={(e) => setNuevoRubro(e.target.value as RubroComercio)}
                   className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-hidden"
                 >
-                  <option value="KIOSCO">🏪 Kiosco / Minimercado / Almacén</option>
-                  <option value="FOTOCOPIADORA_LIBRERIA">📚 Fotocopiadora / Librería / Centro de Copiado</option>
-                  <option value="GENERAL">🛍️ Comercio General / Retail</option>
+                  <option value="KIOSCO">Kiosco / Minimercado / Almacén</option>
+                  <option value="FOTOCOPIADORA_LIBRERIA">Fotocopiadora / Librería / Centro de Copiado</option>
+                  <option value="GENERAL">Comercio General / Retail</option>
                 </select>
               </div>
 
@@ -1966,9 +1966,9 @@ export function SuperAdminPage() {
                     onChange={(e) => setEditRubro(e.target.value as RubroComercio)}
                     className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-hidden"
                   >
-                    <option value="KIOSCO">🏪 Kiosco / Minimercado / Almacén</option>
-                    <option value="FOTOCOPIADORA_LIBRERIA">📚 Fotocopiadora / Librería / Centro de Copiado</option>
-                    <option value="GENERAL">🛍️ Comercio General / Retail</option>
+                    <option value="KIOSCO">Kiosco / Minimercado / Almacén</option>
+                    <option value="FOTOCOPIADORA_LIBRERIA">Fotocopiadora / Librería / Centro de Copiado</option>
+                    <option value="GENERAL">Comercio General / Retail</option>
                   </select>
                 </div>
 

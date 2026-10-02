@@ -1436,8 +1436,8 @@ export function ConfigPage() {
                   Descargá una copia física de la información de tu negocio en formato Excel corporativo (.XLSX) para tener siempre un resguardo seguro en tu computadora.
                 </p>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
-                  {/* Backup Unificado Excel 5 en 1 */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
+                  {/* 1. Backup Unificado Excel 5 en 1 */}
                   <div className="p-4 rounded-xl border-2 border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/30 space-y-2 flex flex-col justify-between shadow-xs">
                     <div>
                       <div className="flex items-center justify-between">
@@ -1463,7 +1463,8 @@ export function ConfigPage() {
                     </Button>
                   </div>
 
-                  <div className="p-4 rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/40 dark:bg-emerald-950/20 space-y-2 flex flex-col justify-between shadow-2xs">
+                  {/* 2. Backup Completo JSON */}
+                  <div className="p-4 rounded-xl border-2 border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/30 space-y-2 flex flex-col justify-between shadow-xs">
                     <div>
                       <div className="flex items-center justify-between">
                         <h3 className="text-sm font-bold text-emerald-950 dark:text-emerald-200">
@@ -1482,36 +1483,13 @@ export function ConfigPage() {
                       variant="primary"
                       onClick={handleExportarBackupIntegral}
                       disabled={exportandoBackup}
-                      className="w-full text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+                      className="w-full text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
                     >
                       {exportandoBackup ? 'Generando...' : 'Descargar Todo (.JSON)'}
                     </Button>
                   </div>
 
-                  <div className="p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 space-y-2 flex flex-col justify-between shadow-2xs">
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-bold text-indigo-950 dark:text-indigo-200">
-                          Restaurar Catálogo / Rollback
-                        </h3>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
-                          Excel / CSV
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
-                        Importá la copia de seguridad de tu catálogo (.xlsx o .csv) para actualizar precios, costos y stock, o revertir a un estado anterior.
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => setModalImportarOpen(true)}
-                      className="w-full text-xs font-bold"
-                    >
-                      Restaurar Catálogo
-                    </Button>
-                  </div>
-
+                  {/* 3. Restaurar Backup Completo JSON */}
                   <div className="p-4 rounded-xl border-2 border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/30 space-y-2 flex flex-col justify-between shadow-xs">
                     <div>
                       <div className="flex items-center justify-between">
@@ -1533,6 +1511,31 @@ export function ConfigPage() {
                       className="w-full text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
                     >
                       Restaurar Copia (.JSON)
+                    </Button>
+                  </div>
+
+                  {/* 4. Restaurar Catálogo / Rollback */}
+                  <div className="p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 space-y-2 flex flex-col justify-between shadow-2xs">
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-indigo-950 dark:text-indigo-200">
+                          Restaurar Catálogo / Rollback
+                        </h3>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                          Excel / CSV
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                        Importá la copia de seguridad de tu catálogo (.xlsx o .csv) para actualizar precios, costos y stock, o revertir a un estado anterior.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setModalImportarOpen(true)}
+                      className="w-full text-xs font-bold"
+                    >
+                      Restaurar Catálogo
                     </Button>
                   </div>
                 </div>
