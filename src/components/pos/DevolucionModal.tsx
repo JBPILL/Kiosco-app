@@ -668,9 +668,9 @@ export function DevolucionModal({
                               }`}
                             >
                               {it.reingresaStock ? (
-                                <span>📦 Vuelve a Stock (Apto)</span>
+                                <span>Vuelve a Stock (Apto)</span>
                               ) : (
-                                <span>⚠️ Descartar / Merma (Roto)</span>
+                                <span>Descartar / Merma (Roto)</span>
                               )}
                             </button>
                           </div>
@@ -790,7 +790,7 @@ export function DevolucionModal({
                                   }`}
                                   title="El producto vuelve a ingresar al inventario para su venta"
                                 >
-                                  📦 Apto (Stock)
+                                  Apto (Stock)
                                 </button>
                                 <button
                                   type="button"
@@ -803,7 +803,7 @@ export function DevolucionModal({
                                   }`}
                                   title="El producto NO reingresa a stock (se registra como merma/rotura)"
                                 >
-                                  ⚠️ Merma
+                                  Merma / Baja
                                 </button>
                               </div>
                             </td>
@@ -839,24 +839,23 @@ export function DevolucionModal({
                     }`}
                   >
                     <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-lg">💵</span>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <h5 className="text-xs font-bold text-gray-900 dark:text-gray-100">
+                          Efectivo de Caja
+                        </h5>
                         {metodoReintegro === 'EFECTIVO_CAJA' && (
-                          <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/60 px-1.5 py-0.5 rounded">
+                          <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/60 px-2 py-0.5 rounded-full">
                             Seleccionado
                           </span>
                         )}
                       </div>
-                      <h5 className="text-xs font-bold text-gray-900 dark:text-gray-100">
-                        Efectivo de Caja
-                      </h5>
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 leading-snug">
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">
                         Egresa dinero de la caja física y se computa en el arqueo del turno actual.
                       </p>
                     </div>
                     {!sesionActiva && (
                       <span className="text-[10px] text-amber-600 font-bold mt-2">
-                        ⚠️ Sin turno de caja abierto
+                        Sin turno de caja abierto
                       </span>
                     )}
                   </div>
@@ -875,18 +874,17 @@ export function DevolucionModal({
                     }`}
                   >
                     <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-lg">💳</span>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <h5 className="text-xs font-bold text-gray-900 dark:text-gray-100">
+                          Cuenta Corriente
+                        </h5>
                         {metodoReintegro === 'CUENTA_CORRIENTE' && (
-                          <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/60 px-1.5 py-0.5 rounded">
+                          <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/60 px-2 py-0.5 rounded-full">
                             Seleccionado
                           </span>
                         )}
                       </div>
-                      <h5 className="text-xs font-bold text-gray-900 dark:text-gray-100">
-                        Cuenta Corriente
-                      </h5>
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 leading-snug">
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">
                         {venta.cliente
                           ? `Acredita saldo a favor de ${venta.cliente.nombre} o amortiza deuda.`
                           : 'No disponible (esta venta no se asoció a ningún cliente).'}
@@ -909,18 +907,17 @@ export function DevolucionModal({
                     }`}
                   >
                     <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-lg">🔄</span>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <h5 className="text-xs font-bold text-gray-900 dark:text-gray-100">
+                          Cambio Directo
+                        </h5>
                         {metodoReintegro === 'OTRO' && (
-                          <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/60 px-1.5 py-0.5 rounded">
+                          <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/60 px-2 py-0.5 rounded-full">
                             Seleccionado
                           </span>
                         )}
                       </div>
-                      <h5 className="text-xs font-bold text-gray-900 dark:text-gray-100">
-                        Cambio Directo
-                      </h5>
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 leading-snug">
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">
                         Sin movimiento de dinero. El cliente se lleva otra mercadería por el mismo valor.
                       </p>
                     </div>
@@ -951,11 +948,11 @@ export function DevolucionModal({
                       onChange={(e) => setMotivo(e.target.value as MotivoDevolucion)}
                       className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 outline-none font-semibold focus:border-indigo-500"
                     >
-                      <option value="CAMBIO_PRODUCTO">🔄 Cambio de producto (gusto / modelo)</option>
-                      <option value="FALLA_ROTURA">⚠️ Mercadería fallada, rota o defectuosa</option>
-                      <option value="VENCIDO">⏳ Producto vencido / fuera de término</option>
-                      <option value="ERROR_COBRO">✏️ Error de cobro o tipeo en caja</option>
-                      <option value="OTRO">📝 Otro motivo / especial</option>
+                      <option value="CAMBIO_PRODUCTO">Cambio de producto (gusto / modelo)</option>
+                      <option value="FALLA_ROTURA">Mercadería fallada, rota o defectuosa</option>
+                      <option value="VENCIDO">Producto vencido / fuera de término</option>
+                      <option value="ERROR_COBRO">Error de cobro o tipeo en caja</option>
+                      <option value="OTRO">Otro motivo / especial</option>
                     </select>
                   </div>
 

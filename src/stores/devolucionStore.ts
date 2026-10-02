@@ -310,6 +310,16 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
 
     try {
       // 1. Insertar cabecera de devolución en Supabase
+      // La restricción CHECK en Supabase requiere motivo IN ('CAMBIO_PRODUCTO', 'FALLA_ROTURA', 'VENCIDO', 'ERROR_COBRO')
+      // Si el usuario seleccionó 'OTRO', enviamos 'CAMBIO_PRODUCTO' como valor SQL seguro y guardamos el detalle en notas
+      const motivoValidoSQL = ['CAMBIO_PRODUCTO', 'FALLA_ROTURA', 'VENCIDO', 'ERROR_COBRO'].includes(motivo)
+        ? motivo
+        : 'CAMBIO_PRODUCTO'
+
+      const notasFinales = motivo === 'OTRO'
+        ? (notas ? `[Motivo: Otro / especial] ${notas}` : '[Motivo: Otro / especial]')
+        : (notas || null)
+
       const payloadDev: Record<string, any> = {
         id: devolucionId,
         kiosco_id: kioscoId,
@@ -320,11 +330,21 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
         fecha_hora: ahora,
         monto_total: montoTotal,
         metodo_reintegro: metodoReintegro,
-        motivo,
-        notas: notas || null,
+        motivo: motivoValidoSQL,
+        notas: notasFinales,
       }
 
       let { error: errorDev } = await supabase.from('devoluciones_venta').insert(payloadDev)
+
+      // Fallback si la restricción de motivo fallara con cualquier otro valor
+      if (errorDev && (errorDev.message?.includes('motivo_check') || errorDev.message?.includes('devoluciones_venta_motivo_check'))) {
+        console.warn('Check constraint de motivo falló en devoluciones_venta, reintentando con CAMBIO_PRODUCTO:', errorDev)
+        payloadDev.motivo = 'CAMBIO_PRODUCTO'
+        payloadDev.notas = payloadDev.notas ? `[Motivo especial] ${payloadDev.notas}` : '[Motivo especial]'
+        const retryMotivo = await supabase.from('devoluciones_venta').insert(payloadDev)
+        errorDev = retryMotivo.error
+      }
+
       // Si la base de datos de producción aún no tiene la columna cliente_id, reintentar sin ella
       if (errorDev && (errorDev.message?.includes('cliente_id') || errorDev.code === 'PGRST204')) {
         console.warn('Campo cliente_id no encontrado en devoluciones_venta en Supabase, reintentando inserción sin él:', errorDev)
@@ -345,7 +365,14 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
         reingresa_stock: it.reingresaStock,
       }))
 
-      const { error: errorDet } = await supabase.from('detalles_devolucion').insert(detallesPayload)
+      let { error: errorDet } = await supabase.from('detalles_devolucion').insert(detallesPayload)
+      // Si la base de datos de producción aún no tiene la columna reingresa_stock en detalles_devolucion, reintentar sin ella
+      if (errorDet && (errorDet.message?.includes('reingresa_stock') || errorDet.code === 'PGRST204')) {
+        console.warn('Campo reingresa_stock no encontrado en detalles_devolucion, reintentando sin él:', errorDet)
+        const sinReingreso = detallesPayload.map(({ reingresa_stock, ...resto }) => resto)
+        const retryDet = await supabase.from('detalles_devolucion').insert(sinReingreso)
+        errorDet = retryDet.error
+      }
       if (errorDet) throw errorDet
 
       // 3. Reingresar stock físico para los ítems marcados
