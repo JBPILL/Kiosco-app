@@ -734,15 +734,31 @@ export const useAdminStore = create<AdminState>((set, get) => ({
       }
       const kioscosList = get().kioscos
 
-      const { data: pagos, error } = await supabase
-        .from('pagos_suscripcion')
-        .select('*')
-        .order('fecha_pago', { ascending: false })
+      const [{ data: pagos, error }, { data: subsData }] = await Promise.all([
+        supabase
+          .from('pagos_suscripcion')
+          .select('*')
+          .order('fecha_pago', { ascending: false }),
+        supabase
+          .from('suscripciones')
+          .select('id, kiosco_id, plan:planes(nombre)'),
+      ])
 
       if (error) throw error
 
+      const mapaSubs = new Map<string, { kiosco_id: string; nombre_plan?: string }>()
+      for (const s of subsData || []) {
+        mapaSubs.set(s.id, {
+          kiosco_id: s.kiosco_id,
+          nombre_plan: (s.plan as any)?.nombre,
+        })
+      }
+
       const enriquecidos: PagoSuscripcionDetallado[] = (pagos || []).map((p: any) => {
-        const kMatch = kioscosList.find((k) => k.suscripcion_id === p.suscripcion_id)
+        const subInfo = mapaSubs.get(p.suscripcion_id)
+        const kMatch = kioscosList.find(
+          (k) => (subInfo && k.kiosco_id === subInfo.kiosco_id) || k.suscripcion_id === p.suscripcion_id
+        )
         return {
           id: p.id,
           suscripcion_id: p.suscripcion_id,
@@ -751,12 +767,12 @@ export const useAdminStore = create<AdminState>((set, get) => ({
           medio_pago: p.medio_pago || 'TRANSFERENCIA',
           comprobante: p.comprobante,
           notas: p.notas,
-          kiosco_id: kMatch?.kiosco_id,
+          kiosco_id: kMatch?.kiosco_id || subInfo?.kiosco_id,
           nombre_kiosco: kMatch?.nombre_kiosco || 'Comercio Registrado',
           rubro: kMatch?.rubro || 'KIOSCO',
           nombre_dueno: kMatch?.nombre_dueno || 'Cliente',
           email_dueno: kMatch?.email_dueno || '',
-          nombre_plan: kMatch?.nombre_plan || 'Plan SaaS',
+          nombre_plan: kMatch?.nombre_plan || subInfo?.nombre_plan || 'Plan SaaS',
         }
       })
 

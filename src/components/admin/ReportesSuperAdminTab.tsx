@@ -1,9 +1,22 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useAdminStore } from '../../stores/adminStore'
-import { formatPrecio, formatFecha } from '../../lib/utils'
+import { formatPrecio, formatFecha, labelMedioPago } from '../../lib/utils'
 import { exportarRendimientosSuperAdminExcel } from '../../lib/exportUtils'
 import { Button } from '../ui/Button'
 import toast from 'react-hot-toast'
+
+/**
+ * Parsea año, mes y día de forma local sin desfasaje de zona horaria UTC.
+ */
+function parsePartesFecha(fechaStr?: string | null): { anio: number; mes: number; dia: number } {
+  if (!fechaStr) return { anio: 0, mes: 0, dia: 0 }
+  if (fechaStr.includes('T') || fechaStr.includes(' ')) {
+    const d = new Date(fechaStr)
+    return { anio: d.getFullYear(), mes: d.getMonth() + 1, dia: d.getDate() }
+  }
+  const [y, m, d] = fechaStr.split('-').map(Number)
+  return { anio: y || 0, mes: m || 0, dia: d || 0 }
+}
 
 const NOMBRES_MESES = [
   'Enero',
@@ -98,8 +111,8 @@ export function ReportesSuperAdminTab() {
   const pagosDelAnio = useMemo(() => {
     return todosLosPagos.filter((p) => {
       if (!p.fecha_pago) return false
-      const d = new Date(p.fecha_pago)
-      return d.getFullYear() === anioSeleccionado
+      const partes = parsePartesFecha(p.fecha_pago)
+      return partes.anio === anioSeleccionado
     })
   }, [todosLosPagos, anioSeleccionado])
 
@@ -116,8 +129,8 @@ export function ReportesSuperAdminTab() {
     }))
 
     for (const p of pagosDelAnio) {
-      const d = new Date(p.fecha_pago)
-      const mIdx = d.getMonth()
+      const partes = parsePartesFecha(p.fecha_pago)
+      const mIdx = partes.mes - 1
       if (mIdx >= 0 && mIdx < 12) {
         const m = meses[mIdx]
         m.totalMonto += Number(p.monto) || 0
@@ -166,8 +179,8 @@ export function ReportesSuperAdminTab() {
   const pagosPeriodo = useMemo(() => {
     return pagosDelAnio.filter((p) => {
       if (mesSeleccionado === 'TODOS') return true
-      const d = new Date(p.fecha_pago)
-      return d.getMonth() + 1 === mesSeleccionado
+      const partes = parsePartesFecha(p.fecha_pago)
+      return partes.mes === mesSeleccionado
     })
   }, [pagosDelAnio, mesSeleccionado])
 
@@ -273,7 +286,8 @@ export function ReportesSuperAdminTab() {
     return pagosPeriodo.filter((p) => {
       if (filtroMedio !== 'TODOS') {
         const medioNorm = (p.medio_pago || 'TRANSFERENCIA').toUpperCase()
-        if (medioNorm !== filtroMedio) return false
+        const matchMP = (filtroMedio === 'MERCADOPAGO' || filtroMedio === 'MERCADO_PAGO') && (medioNorm === 'MERCADOPAGO' || medioNorm === 'MERCADO_PAGO')
+        if (medioNorm !== filtroMedio && !matchMP) return false
       }
       if (filtroRubro !== 'TODOS') {
         const rubroNorm = p.rubro || 'KIOSCO'
@@ -285,8 +299,9 @@ export function ReportesSuperAdminTab() {
         const matchDueno = p.nombre_dueno?.toLowerCase().includes(q)
         const matchEmail = p.email_dueno?.toLowerCase().includes(q)
         const matchNotas = p.notas?.toLowerCase().includes(q)
+        const matchComp = p.comprobante?.toLowerCase().includes(q)
         const matchPlan = p.nombre_plan?.toLowerCase().includes(q)
-        if (!matchKiosco && !matchDueno && !matchEmail && !matchNotas && !matchPlan) {
+        if (!matchKiosco && !matchDueno && !matchEmail && !matchNotas && !matchComp && !matchPlan) {
           return false
         }
       }
@@ -813,9 +828,10 @@ export function ReportesSuperAdminTab() {
             >
               <option value="TODOS">Todos los medios</option>
               <option value="TRANSFERENCIA">Transferencia</option>
-              <option value="MERCADO_PAGO">Mercado Pago</option>
+              <option value="MERCADOPAGO">Mercado Pago</option>
               <option value="EFECTIVO">Efectivo</option>
               <option value="TARJETA">Tarjeta</option>
+              <option value="OTRO">Otro</option>
             </select>
 
             <select
@@ -893,8 +909,8 @@ export function ReportesSuperAdminTab() {
                         {t.nombre_plan}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-800 dark:text-gray-200 uppercase font-medium truncate">
-                      {t.medio_pago}
+                    <td className="px-4 py-3 text-gray-800 dark:text-gray-200 font-medium truncate">
+                      {labelMedioPago(t.medio_pago || 'TRANSFERENCIA')}
                     </td>
                     <td className="px-4 py-3 text-right font-black text-gray-900 dark:text-white text-sm truncate">
                       {formatPrecio(t.monto)}

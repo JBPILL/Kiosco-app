@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../stores/authStore'
-import { formatPrecio, formatFecha, labelMedioPago } from '../../lib/utils'
+import { formatPrecio, formatFecha, labelMedioPago, getLimitesISORango } from '../../lib/utils'
 import { exportarRendimientosDuenoExcel, type RendimientoMesDuenoExport, type DetalleVentaRendimientoExport } from '../../lib/exportUtils'
 import { Button } from '../ui/Button'
 import toast from 'react-hot-toast'
@@ -69,8 +69,10 @@ export function RendimientosTab() {
     if (!kid) return
     setCargando(true)
 
-    const inicioISO = `${anioSeleccionado}-01-01T00:00:00.000Z`
-    const finISO = `${anioSeleccionado}-12-31T23:59:59.999Z`
+    const { inicioISO, finISO } = getLimitesISORango(
+      `${anioSeleccionado}-01-01`,
+      `${anioSeleccionado}-12-31`
+    )
 
     try {
       const { data, error } = await supabase
@@ -278,7 +280,13 @@ export function RendimientosTab() {
     return ventasPeriodo.filter((v) => {
       // Filtro por medio de pago
       if (filtroMedio !== 'TODOS') {
-        const tieneMedio = (v.pagos || []).some((p) => p.medio_pago === filtroMedio)
+        const tieneMedio = (v.pagos || []).some((p) => {
+          const norm = (p.medio_pago || '').toUpperCase()
+          if (norm === filtroMedio) return true
+          if ((filtroMedio === 'MERCADOPAGO' || filtroMedio === 'MERCADO_PAGO') && (norm === 'MERCADOPAGO' || norm === 'MERCADO_PAGO')) return true
+          if (filtroMedio === 'TARJETA' && (norm === 'TARJETA' || norm === 'DEBITO' || norm === 'CREDITO')) return true
+          return false
+        })
         if (!tieneMedio && !(v.pagos?.length === 0 && filtroMedio === 'EFECTIVO')) {
           return false
         }
@@ -847,10 +855,9 @@ export function RendimientosTab() {
             >
               <option value="TODOS">Todos los medios</option>
               <option value="EFECTIVO">Efectivo</option>
-              <option value="MERCADO_PAGO">Mercado Pago</option>
-              <option value="DEBITO">Débito</option>
+              <option value="MERCADOPAGO">Mercado Pago</option>
               <option value="TRANSFERENCIA">Transferencia</option>
-              <option value="CREDITO">Crédito</option>
+              <option value="TARJETA">Tarjeta</option>
               <option value="CUENTA_CORRIENTE">Cuenta Corriente</option>
             </select>
           </div>
