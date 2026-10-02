@@ -1442,17 +1442,17 @@ export function ConfigPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
                   {/* 1. Backup Unificado Excel 5 en 1 */}
-                  <div className="p-4 rounded-xl border-2 border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/30 space-y-3 flex flex-col justify-between shadow-xs">
+                  <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/60 space-y-3 flex flex-col justify-between shadow-2xs hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/80 text-indigo-800 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-gray-200/70 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300/70 dark:border-gray-700">
                           Multi-Pestaña · 5 en 1
                         </span>
                       </div>
-                      <h3 className="text-sm font-bold text-indigo-950 dark:text-indigo-200 leading-snug">
+                      <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 leading-snug">
                         Excel Unificado
                       </h3>
-                      <p className="text-xs text-indigo-900/80 dark:text-indigo-300/80">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
                         Descargá todo tu negocio en un único archivo Excel con pestañas para Catálogo, Movimientos de Stock, Clientes, Proveedores y Ventas.
                       </p>
                     </div>
@@ -1468,17 +1468,17 @@ export function ConfigPage() {
                   </div>
 
                   {/* 2. Backup Completo JSON */}
-                  <div className="p-4 rounded-xl border-2 border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/30 space-y-3 flex flex-col justify-between shadow-xs">
+                  <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/60 space-y-3 flex flex-col justify-between shadow-2xs hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-gray-200/70 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300/70 dark:border-gray-700">
                           Resguardo Total · 1 Clic
                         </span>
                       </div>
-                      <h3 className="text-sm font-bold text-emerald-950 dark:text-emerald-200 leading-snug">
+                      <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 leading-snug">
                         Backup Completo (JSON)
                       </h3>
-                      <p className="text-xs text-gray-600 dark:text-gray-300">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
                         Descargá la totalidad de tus datos (catálogo, categorías, clientes, proveedores, promociones y lotes) en un archivo JSON único.
                       </p>
                     </div>
@@ -1487,24 +1487,24 @@ export function ConfigPage() {
                       variant="primary"
                       onClick={handleExportarBackupIntegral}
                       disabled={exportandoBackup}
-                      className="w-full text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                      className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
                     >
                       {exportandoBackup ? 'Generando...' : 'Descargar Todo (.JSON)'}
                     </Button>
                   </div>
 
                   {/* 3. Restaurar Backup Completo JSON */}
-                  <div className="p-4 rounded-xl border-2 border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/30 space-y-3 flex flex-col justify-between shadow-xs">
+                  <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/60 space-y-3 flex flex-col justify-between shadow-2xs hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-gray-200/70 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300/70 dark:border-gray-700">
                           Recuperación Integral
                         </span>
                       </div>
-                      <h3 className="text-sm font-bold text-emerald-950 dark:text-emerald-200 leading-snug">
+                      <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 leading-snug">
                         Restaurar Backup (JSON)
                       </h3>
-                      <p className="text-xs text-emerald-900/80 dark:text-emerald-300/80">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
                         Cargá un archivo .JSON oficial de KioskoApp para recuperar todo el negocio: productos, categorías, clientes con fiado, proveedores, promociones y vencimientos.
                       </p>
                     </div>
@@ -1512,32 +1512,32 @@ export function ConfigPage() {
                       size="sm"
                       variant="primary"
                       onClick={() => setModalRestaurarBackupOpen(true)}
-                      className="w-full text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                      className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
                     >
                       Restaurar Copia (.JSON)
                     </Button>
                   </div>
 
                   {/* 4. Restaurar Catálogo / Rollback */}
-                  <div className="p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 space-y-3 flex flex-col justify-between shadow-2xs">
+                  <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/60 space-y-3 flex flex-col justify-between shadow-2xs hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-gray-200/70 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300/70 dark:border-gray-700">
                           Excel / CSV
                         </span>
                       </div>
-                      <h3 className="text-sm font-bold text-indigo-950 dark:text-indigo-200 leading-snug">
+                      <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 leading-snug">
                         Restaurar Catálogo
                       </h3>
-                      <p className="text-xs text-gray-600 dark:text-gray-300">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
                         Importá la copia de seguridad de tu catálogo (.xlsx o .csv) para actualizar precios, costos y stock, o revertir a un estado anterior.
                       </p>
                     </div>
                     <Button
                       size="sm"
-                      variant="secondary"
+                      variant="primary"
                       onClick={() => setModalImportarOpen(true)}
-                      className="w-full text-xs font-bold"
+                      className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
                     >
                       Restaurar Catálogo
                     </Button>
