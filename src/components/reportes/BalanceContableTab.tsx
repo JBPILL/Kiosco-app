@@ -1106,63 +1106,81 @@ export function BalanceContableTab() {
               )}
             </div>
 
-            {/* Contenedor del Gráfico de 12 Barras */}
-            <div className="pt-8 pb-2">
-              <div className="grid grid-cols-12 gap-1.5 sm:gap-3 items-end h-56 border-b border-gray-200 dark:border-gray-700 px-1 sm:px-2">
-                {datosPorMesDelAnio.map((m) => {
-                  const estaSeleccionado = mesSeleccionado === m.numeroMes
-                  const porcentajeAltura =
-                    maxMontoMensual > 0 ? Math.max(4, Math.round((m.totalVentas / maxMontoMensual) * 100)) : 4
+            {/* Contenedor del Gráfico de 12 Barras con scroll horizontal fluido en celulares */}
+            <div className="pt-6 pb-2 overflow-x-auto scrollbar-thin">
+              <div className="min-w-[500px] sm:min-w-full">
+                <div className="grid grid-cols-12 gap-1.5 sm:gap-3 h-52 border-b border-gray-200 dark:border-gray-700 px-1 sm:px-2 pb-2">
+                  {datosPorMesDelAnio.map((m) => {
+                    const estaSeleccionado = mesSeleccionado === m.numeroMes
+                    const porcentaje =
+                      maxMontoMensual > 0
+                        ? m.totalVentas > 0
+                          ? Math.max(10, Math.round((m.totalVentas / maxMontoMensual) * 100))
+                          : 0
+                        : 0
 
-                  return (
-                    <div
-                      key={m.numeroMes}
-                      onClick={() => setMesSeleccionado(m.numeroMes)}
-                      className="flex flex-col items-center h-full justify-end group cursor-pointer"
-                      title={`${m.nombre}: ${formatPrecio(m.totalVentas)} (${m.cantidadTickets} tickets)`}
-                    >
-                      {/* Etiqueta con el monto */}
-                      <span
-                        className={`text-[9px] sm:text-[10px] font-bold mb-1 transition-all truncate max-w-full ${
-                          estaSeleccionado
-                            ? 'text-indigo-600 dark:text-indigo-400 scale-105'
-                            : 'text-gray-400 dark:text-gray-500 group-hover:text-gray-800 dark:group-hover:text-gray-200'
-                        }`}
-                      >
-                        {m.totalVentas > 0 ? `$${Math.round(m.totalVentas / 1000)}k` : '$0'}
-                      </span>
-
-                      {/* Barra vertical interactiva */}
+                    return (
                       <div
-                        style={{ height: `${porcentajeAltura}%` }}
-                        className={`w-full rounded-t-lg transition-all duration-300 relative ${
-                          estaSeleccionado
-                            ? 'bg-gradient-to-t from-indigo-600 to-indigo-500 shadow-md ring-2 ring-indigo-400 ring-offset-2 dark:ring-offset-gray-800'
-                            : m.totalVentas > 0
-                            ? 'bg-gradient-to-t from-indigo-300 to-indigo-400 dark:from-indigo-900/60 dark:to-indigo-600 group-hover:from-indigo-400 group-hover:to-indigo-500'
-                            : 'bg-gray-100 dark:bg-gray-700/60 group-hover:bg-gray-200'
-                        }`}
+                        key={m.numeroMes}
+                        onClick={() => setMesSeleccionado(m.numeroMes)}
+                        className="flex flex-col items-center h-full justify-end group cursor-pointer select-none"
+                        title={`${m.nombre}: ${formatPrecio(m.totalVentas)} (${m.cantidadTickets} tickets)`}
                       >
-                        {m.cantidadTickets > 0 && porcentajeAltura > 20 && (
-                          <span className="hidden sm:inline-block absolute top-1 left-1/2 -translate-x-1/2 text-[9px] font-bold text-white/90">
-                            {m.cantidadTickets}
-                          </span>
-                        )}
-                      </div>
+                        {/* Etiqueta con el monto arriba */}
+                        <span
+                          className={`text-[9px] sm:text-[10px] font-bold mb-1 transition-all truncate max-w-full leading-tight ${
+                            estaSeleccionado
+                              ? 'text-indigo-600 dark:text-indigo-400 font-extrabold scale-105'
+                              : m.totalVentas > 0
+                              ? 'text-gray-800 dark:text-gray-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400'
+                              : 'text-gray-400 dark:text-gray-500'
+                          }`}
+                        >
+                          {m.totalVentas > 0 ? (
+                            m.totalVentas >= 1000000
+                              ? `$${(m.totalVentas / 1000000).toFixed(1)}M`
+                              : m.totalVentas >= 1000
+                              ? `$${Math.round(m.totalVentas / 1000)}k`
+                              : `$${m.totalVentas}`
+                          ) : (
+                            '$0'
+                          )}
+                        </span>
 
-                      {/* Nombre del Mes */}
-                      <span
-                        className={`text-[10px] sm:text-xs font-semibold mt-2 transition-colors ${
-                          estaSeleccionado
-                            ? 'text-indigo-600 dark:text-indigo-400 font-bold'
-                            : 'text-gray-500 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-200'
-                        }`}
-                      >
-                        {m.nombreCorto}
-                      </span>
-                    </div>
-                  )
-                })}
+                        {/* Pista / Track de la barra (flex-1 para altura real en móviles) */}
+                        <div className="w-full flex-1 flex flex-col justify-end items-center bg-gray-100/90 dark:bg-gray-800/80 rounded-t-lg p-0.5 relative overflow-hidden border border-transparent group-hover:border-indigo-300 dark:group-hover:border-indigo-500/40 transition-colors">
+                          <div
+                            style={{ height: `${porcentaje}%`, minHeight: m.totalVentas > 0 ? '10px' : '0px' }}
+                            className={`w-full rounded-t-md transition-all duration-300 relative flex items-center justify-center ${
+                              estaSeleccionado
+                                ? 'bg-gradient-to-t from-indigo-600 to-indigo-500 shadow-md ring-2 ring-indigo-400 ring-offset-1 dark:ring-offset-gray-900'
+                                : m.totalVentas > 0
+                                ? 'bg-gradient-to-t from-indigo-500 to-indigo-400 dark:from-indigo-600 dark:to-cyan-400 shadow-xs group-hover:brightness-110'
+                                : 'bg-transparent'
+                            }`}
+                          >
+                            {m.cantidadTickets > 0 && porcentaje >= 25 && (
+                              <span className="text-[9px] font-bold text-white drop-shadow-xs px-0.5 truncate">
+                                {m.cantidadTickets}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Nombre del Mes */}
+                        <span
+                          className={`text-[10px] sm:text-xs font-semibold mt-2 transition-colors ${
+                            estaSeleccionado
+                              ? 'text-indigo-600 dark:text-indigo-400 font-bold'
+                              : 'text-gray-600 dark:text-gray-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400'
+                          }`}
+                        >
+                          {m.nombreCorto}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             </div>
           </div>
@@ -1463,156 +1481,291 @@ export function BalanceContableTab() {
               />
             </div>
 
-            {/* Tabla con anchos fijos y celdas sin saltos de línea */}
-            <div className="overflow-x-auto">
+            {/* Contenedor del Libro Diario: Tarjetas Ejecutivas en Celulares y Tabla Ancha en Computadoras */}
+            <div>
               {asientosFiltrados.length === 0 ? (
-                <div className="text-center py-12 text-gray-400 dark:text-gray-500 text-sm">
+                <div className="text-center py-12 text-gray-400 dark:text-gray-500 text-sm bg-gray-50/50 dark:bg-gray-900/30 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
                   No se encontraron asientos contables en este período.
                 </div>
               ) : (
-                <table className="table-fixed w-full text-left text-xs border-collapse">
-                  <colgroup>
-                    <col className="w-[15%]" />
-                    <col className="w-[11%]" />
-                    <col className="w-[16%]" />
-                    <col className="w-[28%]" />
-                    <col className="w-[12%]" />
-                    <col className="w-[9%]" />
-                    <col className="w-[9%]" />
-                  </colgroup>
-                  <thead>
-                    <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider">
-                      <th className="py-2.5 px-3 truncate">Fecha y Hora</th>
-                      <th className="py-2.5 px-3 text-center truncate">Tipo</th>
-                      <th className="py-2.5 px-3 text-center truncate">Comprobante / Ref</th>
-                      <th className="py-2.5 px-3 truncate">Concepto / Detalle</th>
-                      <th className="py-2.5 px-3 text-center truncate">Medio de Pago</th>
-                      <th className="py-2.5 px-3 text-right text-emerald-600 dark:text-emerald-400 truncate">
-                        Ingreso (+)
-                      </th>
-                      <th className="py-2.5 px-3 text-right text-red-600 dark:text-red-400 truncate">
-                        Egreso (-)
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
-                    {asientosFiltrados.map((asiento) => (
-                      <tr
-                        key={asiento.id}
-                        className="hover:bg-gray-50/80 dark:hover:bg-gray-700/40 transition-colors"
-                      >
-                        <td className="py-2.5 px-3 whitespace-nowrap text-gray-600 dark:text-gray-400 tabular-nums truncate">
-                          {formatFecha(asiento.fecha)}
-                        </td>
-                        <td className="py-2.5 px-3 whitespace-nowrap text-center">
-                          {asiento.tipo === 'VENTA' && (
-                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-                              VENTA
-                            </span>
-                          )}
-                          {asiento.tipo === 'COMPRA' && (
-                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300">
-                              COMPRA REMITO
-                            </span>
-                          )}
-                          {asiento.tipo === 'PAGO_PROVEEDOR' && (
-                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300">
-                              PAGO PROV.
-                            </span>
-                          )}
-                          {asiento.tipo === 'EGRESO_CAJA' && (
-                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300">
-                              EGRESO CAJA
-                            </span>
-                          )}
-                          {asiento.tipo === 'INGRESO_CAJA' && (
-                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300">
-                              INGRESO CAJA
-                            </span>
-                          )}
-                          {asiento.tipo === 'DEVOLUCION' && (
-                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
-                              DEVOLUCIÓN
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3 whitespace-nowrap tabular-nums font-semibold text-gray-800 dark:text-gray-200 text-center truncate">
-                          {asiento.tipo === 'VENTA' && asiento.ventaData ? (
-                            <div className="inline-flex items-center justify-center gap-1.5 min-w-0">
-                              <button
-                                type="button"
-                                onClick={() => setTicketParaVer(ventaToTicketData(asiento.ventaData, kiosco))}
-                                className={`font-mono font-bold hover:underline cursor-pointer px-2 py-0.5 rounded transition-colors text-center truncate ${
-                                  asiento.ventaData.afip_cae
-                                    ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 hover:text-blue-900'
-                                    : 'bg-indigo-50/80 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800'
-                                }`}
-                                title="Hacé clic para ver o imprimir el comprobante de esta venta"
-                              >
-                                {asiento.comprobante}
-                              </button>
-                              {asiento.ventaData.afip_cae ? (
-                                <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200 uppercase shrink-0">
-                                  ARCA
+                <>
+                  {/* 1. VISTA MÓVIL (PANTALLAS PEQUEÑAS / CELULARES) */}
+                  <div className="block md:hidden space-y-2.5">
+                    {asientosFiltrados.map((asiento) => {
+                      const esIngreso = (asiento.ingreso || 0) > 0
+                      const esEgreso = (asiento.egreso || 0) > 0
+
+                      return (
+                        <div
+                          key={asiento.id}
+                          className="bg-white dark:bg-gray-800 rounded-xl p-3.5 border border-gray-200 dark:border-gray-700 shadow-2xs space-y-2"
+                        >
+                          {/* Fila superior: Tipo, Fecha y Monto Destacado */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {asiento.tipo === 'VENTA' && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300">
+                                  VENTA
                                 </span>
+                              )}
+                              {asiento.tipo === 'COMPRA' && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300">
+                                  COMPRA
+                                </span>
+                              )}
+                              {asiento.tipo === 'PAGO_PROVEEDOR' && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300">
+                                  PAGO PROV.
+                                </span>
+                              )}
+                              {asiento.tipo === 'EGRESO_CAJA' && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 dark:bg-red-950/70 dark:text-red-300">
+                                  EGRESO CAJA
+                                </span>
+                              )}
+                              {asiento.tipo === 'INGRESO_CAJA' && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-800 dark:bg-teal-950/70 dark:text-teal-300">
+                                  INGRESO CAJA
+                                </span>
+                              )}
+                              {asiento.tipo === 'DEVOLUCION' && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300">
+                                  DEVOLUCIÓN
+                                </span>
+                              )}
+                              <span className="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
+                                {formatFecha(asiento.fecha)}
+                              </span>
+                            </div>
+
+                            {/* Monto financiero */}
+                            <div className="text-right shrink-0">
+                              {esIngreso && (
+                                <span className="text-sm font-extrabold tabular-nums text-emerald-600 dark:text-emerald-400">
+                                  +{formatPrecio(asiento.ingreso)}
+                                </span>
+                              )}
+                              {esEgreso && (
+                                <span className="text-sm font-extrabold tabular-nums text-red-600 dark:text-red-400">
+                                  -{formatPrecio(asiento.egreso)}
+                                </span>
+                              )}
+                              {!esIngreso && !esEgreso && (
+                                <span className="text-xs text-gray-400">—</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Concepto del asiento y notas */}
+                          <div>
+                            <p className="text-xs font-semibold text-gray-900 dark:text-gray-100 leading-snug">
+                              {asiento.concepto}
+                            </p>
+                            {asiento.notas && (
+                              <p className="text-[11px] text-gray-400 dark:text-gray-500 italic mt-0.5">
+                                {asiento.notas}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Fila inferior: Comprobante / Ticket interactivo + Medio de Pago */}
+                          <div className="flex items-center justify-between pt-1.5 border-t border-gray-100 dark:border-gray-700/60 text-xs">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              {asiento.tipo === 'VENTA' && asiento.ventaData ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setTicketParaVer(ventaToTicketData(asiento.ventaData, kiosco))}
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all shadow-2xs active:scale-95 cursor-pointer truncate ${
+                                    asiento.ventaData.afip_cae
+                                      ? 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                                      : 'bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
+                                  }`}
+                                  title="Tocar para ver el comprobante completo"
+                                >
+                                  <span>🧾 {asiento.comprobante}</span>
+                                  {asiento.ventaData.afip_cae ? (
+                                    <span className="text-[9px] font-black px-1 rounded bg-blue-200 text-blue-900 dark:bg-blue-900 dark:text-blue-100 shrink-0">
+                                      ARCA
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] text-indigo-600 dark:text-indigo-400 shrink-0 underline">
+                                      Ver
+                                    </span>
+                                  )}
+                                </button>
                               ) : (
-                                <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 shrink-0">
-                                  Interno
+                                <span className="font-mono text-gray-600 dark:text-gray-400 text-xs truncate">
+                                  {asiento.comprobante}
                                 </span>
                               )}
                             </div>
-                          ) : (
-                            <span className="font-mono text-center truncate">{asiento.comprobante}</span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3 min-w-0">
-                          <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
-                            {asiento.concepto}
-                          </p>
-                          {asiento.notas && (
-                            <p className="text-[11px] text-gray-400 dark:text-gray-500 italic truncate">
-                              {asiento.notas}
-                            </p>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3 whitespace-nowrap text-center text-gray-600 dark:text-gray-400 truncate">
-                          {asiento.medio_pago}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-bold tabular-nums text-emerald-600 dark:text-emerald-400 truncate">
-                          {asiento.ingreso > 0 ? (
-                            formatPrecio(asiento.ingreso)
-                          ) : (
-                            <span className="text-gray-400 dark:text-gray-600 font-normal mr-1">—</span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-bold tabular-nums text-red-600 dark:text-red-400 truncate">
-                          {asiento.egreso > 0 ? (
-                            formatPrecio(asiento.egreso)
-                          ) : (
-                            <span className="text-gray-400 dark:text-gray-600 font-normal mr-1">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 font-bold text-gray-900 dark:text-white">
-                      <td colSpan={5} className="py-3 px-3 text-right uppercase tracking-wider text-xs">
-                        Totales del Período ({asientosFiltrados.length} op.):
-                      </td>
-                      <td className="py-3 px-3 text-right tabular-nums text-emerald-600 dark:text-emerald-400 text-sm truncate">
-                        {formatPrecio(
-                          asientosFiltrados.reduce((sum, a) => sum + (a.ingreso || 0), 0)
-                        )}
-                      </td>
-                      <td className="py-3 px-3 text-right tabular-nums text-red-600 dark:text-red-400 text-sm truncate">
-                        {formatPrecio(
-                          asientosFiltrados.reduce((sum, a) => sum + (a.egreso || 0), 0)
-                        )}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
+
+                            <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 shrink-0">
+                              {asiento.medio_pago}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+
+                    {/* Resumen Total para Móvil */}
+                    <div className="bg-gray-50 dark:bg-gray-800/80 rounded-xl p-3.5 border border-gray-200 dark:border-gray-700 text-xs space-y-1.5 mt-3 shadow-2xs">
+                      <div className="font-bold text-gray-800 dark:text-gray-200 flex justify-between">
+                        <span>Totales ({asientosFiltrados.length} operaciones)</span>
+                      </div>
+                      <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-semibold">
+                        <span>Total Ingresos:</span>
+                        <span className="tabular-nums font-bold">
+                          +{formatPrecio(asientosFiltrados.reduce((sum, a) => sum + (a.ingreso || 0), 0))}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-red-600 dark:text-red-400 font-semibold">
+                        <span>Total Egresos:</span>
+                        <span className="tabular-nums font-bold">
+                          -{formatPrecio(asientosFiltrados.reduce((sum, a) => sum + (a.egreso || 0), 0))}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. VISTA ESCRITORIO (PANTALLAS MEDIANAS Y GRANDES) */}
+                  <div className="hidden md:block overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+                    <table className="w-full min-w-[850px] text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider">
+                          <th className="py-2.5 px-3 whitespace-nowrap w-[140px]">Fecha y Hora</th>
+                          <th className="py-2.5 px-3 text-center whitespace-nowrap w-[100px]">Tipo</th>
+                          <th className="py-2.5 px-3 text-center whitespace-nowrap w-[160px]">Comprobante / Ref</th>
+                          <th className="py-2.5 px-3">Concepto / Detalle</th>
+                          <th className="py-2.5 px-3 text-center whitespace-nowrap w-[130px]">Medio de Pago</th>
+                          <th className="py-2.5 px-3 text-right text-emerald-600 dark:text-emerald-400 whitespace-nowrap w-[110px]">
+                            Ingreso (+)
+                          </th>
+                          <th className="py-2.5 px-3 text-right text-red-600 dark:text-red-400 whitespace-nowrap w-[110px]">
+                            Egreso (-)
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60 bg-white dark:bg-gray-800">
+                        {asientosFiltrados.map((asiento) => (
+                          <tr
+                            key={asiento.id}
+                            className="hover:bg-gray-50/80 dark:hover:bg-gray-700/40 transition-colors"
+                          >
+                            <td className="py-2.5 px-3 whitespace-nowrap text-gray-600 dark:text-gray-400 tabular-nums">
+                              {formatFecha(asiento.fecha)}
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap text-center">
+                              {asiento.tipo === 'VENTA' && (
+                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                  VENTA
+                                </span>
+                              )}
+                              {asiento.tipo === 'COMPRA' && (
+                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300">
+                                  COMPRA
+                                </span>
+                              )}
+                              {asiento.tipo === 'PAGO_PROVEEDOR' && (
+                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300">
+                                  PAGO PROV.
+                                </span>
+                              )}
+                              {asiento.tipo === 'EGRESO_CAJA' && (
+                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300">
+                                  EGRESO CAJA
+                                </span>
+                              )}
+                              {asiento.tipo === 'INGRESO_CAJA' && (
+                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300">
+                                  INGRESO CAJA
+                                </span>
+                              )}
+                              {asiento.tipo === 'DEVOLUCION' && (
+                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                                  DEVOLUCIÓN
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap tabular-nums font-semibold text-gray-800 dark:text-gray-200 text-center">
+                              {asiento.tipo === 'VENTA' && asiento.ventaData ? (
+                                <div className="inline-flex items-center justify-center gap-1.5 min-w-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => setTicketParaVer(ventaToTicketData(asiento.ventaData, kiosco))}
+                                    className={`font-mono font-bold hover:underline cursor-pointer px-2 py-0.5 rounded transition-colors text-center ${
+                                      asiento.ventaData.afip_cae
+                                        ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 hover:text-blue-900'
+                                        : 'bg-indigo-50/80 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800'
+                                    }`}
+                                    title="Hacé clic para ver o imprimir el comprobante de esta venta"
+                                  >
+                                    {asiento.comprobante}
+                                  </button>
+                                  {asiento.ventaData.afip_cae ? (
+                                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200 uppercase shrink-0">
+                                      ARCA
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 shrink-0">
+                                      Interno
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="font-mono text-center">{asiento.comprobante}</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <p className="font-medium text-gray-900 dark:text-gray-100">
+                                {asiento.concepto}
+                              </p>
+                              {asiento.notas && (
+                                <p className="text-[11px] text-gray-400 dark:text-gray-500 italic">
+                                  {asiento.notas}
+                                </p>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap text-center text-gray-600 dark:text-gray-400">
+                              {asiento.medio_pago}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-bold tabular-nums text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                              {asiento.ingreso > 0 ? (
+                                formatPrecio(asiento.ingreso)
+                              ) : (
+                                <span className="text-gray-400 dark:text-gray-600 font-normal mr-1">—</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-bold tabular-nums text-red-600 dark:text-red-400 whitespace-nowrap">
+                              {asiento.egreso > 0 ? (
+                                formatPrecio(asiento.egreso)
+                              ) : (
+                                <span className="text-gray-400 dark:text-gray-600 font-normal mr-1">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 font-bold text-gray-900 dark:text-white">
+                          <td colSpan={5} className="py-3 px-3 text-right uppercase tracking-wider text-xs">
+                            Totales del Período ({asientosFiltrados.length} op.):
+                          </td>
+                          <td className="py-3 px-3 text-right tabular-nums text-emerald-600 dark:text-emerald-400 text-sm whitespace-nowrap">
+                            {formatPrecio(
+                              asientosFiltrados.reduce((sum, a) => sum + (a.ingreso || 0), 0)
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-right tabular-nums text-red-600 dark:text-red-400 text-sm whitespace-nowrap">
+                            {formatPrecio(
+                              asientosFiltrados.reduce((sum, a) => sum + (a.egreso || 0), 0)
+                            )}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </>
               )}
             </div>
           </div>

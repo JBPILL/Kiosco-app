@@ -77,65 +77,11 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
   const inputTelefonoRef = useRef<HTMLInputElement>(null)
   const ticketScrollRef = useRef<HTMLDivElement>(null)
 
-  const [isDragging, setIsDragging] = useState(false)
-  const [puedeHacerScroll, setPuedeHacerScroll] = useState(false)
-  const [estaAlFinal, setEstaAlFinal] = useState(false)
-  const startYRef = useRef(0)
-  const startScrollTopRef = useRef(0)
-  const isMouseDownRef = useRef(false)
-
-  const verificarScroll = () => {
-    if (ticketScrollRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = ticketScrollRef.current
-      setPuedeHacerScroll(scrollHeight > clientHeight + 15)
-      setEstaAlFinal(scrollTop + clientHeight >= scrollHeight - 25)
-    }
-  }
-
-  const handleScroll = () => {
-    verificarScroll()
-  }
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0 || !ticketScrollRef.current) return
-    isMouseDownRef.current = true
-    setIsDragging(true)
-    startYRef.current = e.pageY - ticketScrollRef.current.offsetTop
-    startScrollTopRef.current = ticketScrollRef.current.scrollTop
-  }
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isMouseDownRef.current || !ticketScrollRef.current) return
-    e.preventDefault()
-    const y = e.pageY - ticketScrollRef.current.offsetTop
-    const walk = y - startYRef.current
-    ticketScrollRef.current.scrollTop = startScrollTopRef.current - walk
-  }
-
-  const handleMouseUp = () => {
-    isMouseDownRef.current = false
-    setIsDragging(false)
-  }
-
-  const handleToggleScroll = () => {
-    if (!ticketScrollRef.current) return
-    if (estaAlFinal) {
-      ticketScrollRef.current.scrollTo({ top: 0, behavior: 'smooth' })
-    } else {
-      ticketScrollRef.current.scrollTo({
-        top: ticketScrollRef.current.scrollHeight,
-        behavior: 'smooth',
-      })
-    }
-  }
-
   useEffect(() => {
     if (!isOpen) {
       setMostrarInputTelefono(false)
       setTelefonoWhatsApp('')
       setEnviandoWhatsApp(false)
-      setIsDragging(false)
-      isMouseDownRef.current = false
     } else {
       setTelefonoWhatsApp(ticket?.clienteTelefono || '')
       setMostrarInputTelefono(false)
@@ -143,12 +89,8 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
       if (ticketScrollRef.current) {
         ticketScrollRef.current.scrollTop = 0
       }
-      const timer = setTimeout(() => {
-        verificarScroll()
-      }, 100)
-      return () => clearTimeout(timer)
     }
-  }, [isOpen, ticket?.ventaId, ticket?.clienteTelefono, anchoPapel, qrDataUrl])
+  }, [isOpen, ticket?.ventaId, ticket?.clienteTelefono])
 
   const cambiarAnchoPapel = (ancho: AnchoPapelTicket) => {
     setAnchoPapel(ancho)
@@ -225,7 +167,6 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
   }
 
   const handleBotonWhatsApp = () => {
-    // Si el panel de teléfono no está abierto, siempre abrirlo para que el cajero pueda ver, ingresar o confirmar el número
     if (!mostrarInputTelefono) {
       setMostrarInputTelefono(true)
       setTimeout(() => {
@@ -234,7 +175,6 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
       }, 60)
       return
     }
-    // Si ya está abierto y vuelve a pulsar el botón WhatsApp, disparar envío
     handleCompartirWhatsApp()
   }
 
@@ -267,13 +207,13 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
       title="Comprobante de Venta"
       size="lg"
       footer={
-        <div className="w-full space-y-2">
+        <div className="w-full space-y-2.5">
           {/* Panel para ingresar / confirmar teléfono de WhatsApp */}
           {mostrarInputTelefono && (
-            <div className="p-3 bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 rounded-xl space-y-2 animate-in fade-in-50 duration-150 shadow-xs">
+            <div className="p-3 bg-emerald-50/95 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800 rounded-xl space-y-2 animate-in fade-in-50 duration-150 shadow-xs">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
-                  <svg className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                  <svg className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
                   </svg>
                   <span>Enviar comprobante PDF por WhatsApp</span>
@@ -298,13 +238,13 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
                     if (e.key === 'Enter') handleCompartirWhatsApp()
                     if (e.key === 'Escape') setMostrarInputTelefono(false)
                   }}
-                  className="flex-1 px-3 py-1.5 text-xs sm:text-sm rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-mono focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-all shadow-2xs"
+                  className="flex-1 px-3 py-2 text-xs sm:text-sm rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-mono focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-all shadow-2xs"
                 />
                 <button
                   type="button"
                   onClick={handleCompartirWhatsApp}
                   disabled={enviandoWhatsApp}
-                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 active:scale-95 transition-all shadow-xs disabled:opacity-50 cursor-pointer shrink-0"
                 >
                   <span>{enviandoWhatsApp ? 'Enviando...' : 'Enviar PDF'}</span>
                 </button>
@@ -320,7 +260,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
             <button
               type="button"
               onClick={handleImprimir}
-              className="h-10 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 shadow-xs active:scale-[0.98] transition-all cursor-pointer whitespace-nowrap"
+              className="h-10 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-xs active:scale-[0.98] transition-all cursor-pointer whitespace-nowrap"
               title="Abrir ventana de impresión del sistema"
             >
               <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -335,7 +275,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
               type="button"
               onClick={handleBotonWhatsApp}
               disabled={enviandoWhatsApp}
-              className={`h-10 px-3 py-2 text-white rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 shadow-xs active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap ${
+              className={`h-10 px-3 py-2 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-xs active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap ${
                 mostrarInputTelefono
                   ? 'bg-emerald-700 ring-2 ring-emerald-400 dark:ring-emerald-500'
                   : 'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800'
@@ -394,289 +334,273 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
       }
     >
       <div className="space-y-3">
-        {/* Selector de ancho térmico */}
-        <div className="flex items-center justify-between px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-200/80 dark:border-gray-700/80">
-          <span className="font-semibold text-gray-700 dark:text-gray-300">Formato de papel:</span>
-          <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 p-0.5 bg-gray-200/60 dark:bg-gray-800">
-            <button
-              type="button"
-              onClick={() => cambiarAnchoPapel('58mm')}
-              className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                anchoPapel === '58mm'
-                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                  : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
-              }`}
-            >
-              58 mm
-            </button>
-            <button
-              type="button"
-              onClick={() => cambiarAnchoPapel('80mm')}
-              className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                anchoPapel === '80mm'
-                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                  : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
-              }`}
-            >
-              80 mm
-            </button>
+        {/* Barra superior de controles del comprobante */}
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs bg-gray-50 dark:bg-gray-800/80 rounded-xl border border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-gray-900 dark:text-gray-100">
+              {ticket.afip ? `Factura ${ticket.afip.letra}` : 'Ticket'} #{ticket.ventaId.slice(0, 8).toUpperCase()}
+            </span>
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300">
+              {formatPrecio(ticket.total)}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5 ml-auto">
+            <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Ancho:</span>
+            <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 p-0.5 bg-gray-200/70 dark:bg-gray-800">
+              <button
+                type="button"
+                onClick={() => cambiarAnchoPapel('58mm')}
+                className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                  anchoPapel === '58mm'
+                    ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                    : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                }`}
+              >
+                58 mm
+              </button>
+              <button
+                type="button"
+                onClick={() => cambiarAnchoPapel('80mm')}
+                className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                  anchoPapel === '80mm'
+                    ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                    : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                }`}
+              >
+                80 mm
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Vista previa del ticket estilo papel térmico */}
-        <div className="relative w-full rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-gray-100/90 dark:bg-gray-900/80 overflow-hidden shadow-inner">
+        {/* Vista previa del ticket estilo papel térmico con scroll nativo y ancho responsivo */}
+        <div className="relative w-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-100/90 dark:bg-gray-900/80 p-2 sm:p-4 overflow-hidden">
           <div
             ref={ticketScrollRef}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            onScroll={handleScroll}
-            className={`w-full overflow-y-auto max-h-[min(58vh,520px)] p-3 sm:p-5 select-none touch-pan-y overscroll-contain transition-colors ${
-              isDragging ? 'cursor-grabbing' : 'cursor-grab'
-            }`}
-            style={{ scrollbarWidth: 'thin' }}
+            className="w-full overflow-y-auto max-h-[min(62vh,540px)] scrollbar-thin px-0.5 py-1"
           >
             <div
               id="printable-ticket"
-              className={`mx-auto bg-white text-gray-950 p-4 sm:p-5 pb-6 rounded-xl shadow-md border border-gray-200/90 font-mono text-xs leading-tight transition-all select-none block ${
-                anchoPapel === '58mm' ? 'w-[270px]' : 'w-[350px]'
+              className={`mx-auto bg-white text-gray-950 p-4 sm:p-5 pb-6 rounded-xl shadow-md border border-gray-300 font-mono text-xs leading-tight transition-all select-text block box-border ${
+                anchoPapel === '58mm' ? 'w-full max-w-[280px]' : 'w-full max-w-[360px]'
               }`}
             >
-            {/* Encabezado */}
-            {ticket.afip ? (
-              <div className="text-center space-y-1 pb-2 border-b border-dashed border-gray-400">
-                {/* Cuadro de letra comprobante tipo C/B/A */}
-                <div className="flex justify-center items-center gap-2">
-                  <div className="border-2 border-black px-2 py-0.5 font-bold text-base leading-none">
-                    {ticket.afip.letra}
+              {/* Encabezado */}
+              {ticket.afip ? (
+                <div className="text-center space-y-1 pb-2 border-b border-dashed border-gray-400">
+                  {/* Cuadro de letra comprobante tipo C/B/A */}
+                  <div className="flex justify-center items-center gap-2">
+                    <div className="border-2 border-black px-2 py-0.5 font-bold text-base leading-none">
+                      {ticket.afip.letra}
+                    </div>
+                    <div className="text-left text-[9px] leading-tight">
+                      <p className="font-bold">
+                        {(ticket.afip.tipoComprobanteNombre || `Factura ${ticket.afip.letra}`).toUpperCase()}
+                      </p>
+                      <p>COD. {String(ticket.afip.tipoComprobante).padStart(3, '0')}</p>
+                    </div>
                   </div>
-                  <div className="text-left text-[9px] leading-tight">
-                    <p className="font-bold">
-                      {(ticket.afip.tipoComprobanteNombre || `Factura ${ticket.afip.letra}`).toUpperCase()}
-                    </p>
-                    <p>COD. {String(ticket.afip.tipoComprobante).padStart(3, '0')}</p>
-                  </div>
-                </div>
 
-                <p className="font-bold text-sm tracking-wide uppercase pt-1">
-                  {ticket.kioscoNombre || 'AlPaso POS'}
-                </p>
-                {ticket.kioscoDireccion && (
-                  <p className="text-[10px] text-gray-600">{ticket.kioscoDireccion}</p>
-                )}
-                {ticket.kioscoTelefono && (
-                  <p className="text-[10px] text-gray-600">Tel: {ticket.kioscoTelefono}</p>
-                )}
-
-                <div className="text-[10px] text-gray-700 pt-1 space-y-0.5 text-left border-t border-dotted border-gray-300">
-                  <div className="flex justify-between">
-                    <span>P.V.: {String(ticket.afip.puntoVenta).padStart(4, '0')}</span>
-                    <span className="font-bold">N°: {String(ticket.afip.nroComprobante).padStart(8, '0')}</span>
-                  </div>
-                  <p>Fecha: {formatFecha(ticket.fecha)}</p>
-                  {ticket.afip.cuitEmisor && <p>CUIT: {ticket.afip.cuitEmisor}</p>}
-                  {ticket.afip.condicionIva && <p>Cond. IVA: {ticket.afip.condicionIva}</p>}
-                  {ticket.afip.iibb && <p>Ing. Brutos: {ticket.afip.iibb}</p>}
-                  {ticket.afip.inicioActividades && <p>Ini. Act.: {ticket.afip.inicioActividades}</p>}
-                </div>
-
-                {/* Datos Receptor */}
-                <div className="text-[10px] text-gray-700 pt-1 border-t border-dotted border-gray-300 text-left">
-                  <p className="font-semibold text-gray-800">A CONSUMIDOR FINAL</p>
-                  {ticket.afip.nroDocCliente && ticket.afip.nroDocCliente !== '0' && (
-                    <p>
-                      Doc: {ticket.afip.tipoDocCliente === 80 ? 'CUIT' : ticket.afip.tipoDocCliente === 96 ? 'DNI' : 'Doc'}: {ticket.afip.nroDocCliente}
-                    </p>
+                  <p className="font-bold text-sm tracking-wide uppercase pt-1 text-gray-950">
+                    {ticket.kioscoNombre || 'AlPaso POS'}
+                  </p>
+                  {ticket.kioscoDireccion && (
+                    <p className="text-[10px] text-gray-600">{ticket.kioscoDireccion}</p>
                   )}
-                  {ticket.clienteNombre && <p>Nombre: {ticket.clienteNombre}</p>}
-                </div>
-              </div>
-            ) : (
-              <div className="text-center space-y-0.5 pb-2 border-b border-dashed border-gray-400">
-                <p className="font-bold text-sm tracking-wide uppercase">
-                  {ticket.kioscoNombre || 'AlPaso POS'}
-                </p>
-                {ticket.kioscoDireccion && (
-                  <p className="text-[11px] text-gray-600">{ticket.kioscoDireccion}</p>
-                )}
-                {ticket.kioscoTelefono && (
-                  <p className="text-[11px] text-gray-600">Tel: {ticket.kioscoTelefono}</p>
-                )}
-                <div className="pt-1 text-[10px] text-gray-500">
-                  <p>Ticket #{ticket.ventaId.slice(0, 8).toUpperCase()}</p>
-                  <p>{formatFecha(ticket.fecha)}</p>
-                </div>
-              </div>
-            )}
+                  {ticket.kioscoTelefono && (
+                    <p className="text-[10px] text-gray-600">Tel: {ticket.kioscoTelefono}</p>
+                  )}
 
-            {/* Detalle de productos */}
-            <div className="py-2 border-b border-dashed border-gray-400 space-y-1">
-              <div className="flex justify-between font-bold text-[10px] uppercase text-gray-500 pb-0.5">
-                <span>Cant / Articulo</span>
-                <span>Subtotal</span>
-              </div>
-              {ticket.items.map((it, idx) => (
-                <div key={idx} className="space-y-0.5 text-[11px]">
-                  <div className="flex justify-between items-start">
-                    <div className="pr-2 truncate">
-                      <span>{it.cantidad % 1 === 0 ? `${it.cantidad}x ` : `${it.cantidad} kg x `}</span>
-                      <span>{it.descripcion}</span>
+                  <div className="text-[10px] text-gray-700 pt-1 space-y-0.5 text-left border-t border-dotted border-gray-300">
+                    <div className="flex justify-between">
+                      <span>P.V.: {String(ticket.afip.puntoVenta).padStart(4, '0')}</span>
+                      <span className="font-bold">N°: {String(ticket.afip.nroComprobante).padStart(8, '0')}</span>
                     </div>
-                    <span className="font-semibold whitespace-nowrap">
-                      {it.subtotal < 0 ? `-${formatPrecio(Math.abs(it.subtotal))}` : formatPrecio(it.subtotal)}
-                    </span>
+                    <p>Fecha: {formatFecha(ticket.fecha)}</p>
+                    {ticket.afip.cuitEmisor && <p>CUIT: {ticket.afip.cuitEmisor}</p>}
+                    {ticket.afip.condicionIva && <p>Cond. IVA: {ticket.afip.condicionIva}</p>}
+                    {ticket.afip.iibb && <p>Ing. Brutos: {ticket.afip.iibb}</p>}
+                    {ticket.afip.inicioActividades && <p>Ini. Act.: {ticket.afip.inicioActividades}</p>}
                   </div>
-                  {it.promoNombre && (
-                    <div className="text-[9px] text-emerald-800 font-semibold pl-2">
-                      {it.promoNombre}
+
+                  {/* Datos Receptor */}
+                  <div className="text-[10px] text-gray-700 pt-1 border-t border-dotted border-gray-300 text-left">
+                    <p className="font-semibold text-gray-800">A CONSUMIDOR FINAL</p>
+                    {ticket.afip.nroDocCliente && ticket.afip.nroDocCliente !== '0' && (
+                      <p>
+                        Doc: {ticket.afip.tipoDocCliente === 80 ? 'CUIT' : ticket.afip.tipoDocCliente === 96 ? 'DNI' : 'Doc'}: {ticket.afip.nroDocCliente}
+                      </p>
+                    )}
+                    {ticket.clienteNombre && <p>Nombre: {ticket.clienteNombre}</p>}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center space-y-0.5 pb-2 border-b border-dashed border-gray-400">
+                  <p className="font-bold text-sm tracking-wide uppercase text-gray-950">
+                    {ticket.kioscoNombre || 'AlPaso POS'}
+                  </p>
+                  {ticket.kioscoDireccion && (
+                    <p className="text-[11px] text-gray-600">{ticket.kioscoDireccion}</p>
+                  )}
+                  {ticket.kioscoTelefono && (
+                    <p className="text-[11px] text-gray-600">Tel: {ticket.kioscoTelefono}</p>
+                  )}
+                  <div className="pt-1 text-[10px] text-gray-600">
+                    <p className="font-bold">Ticket #{ticket.ventaId.slice(0, 8).toUpperCase()}</p>
+                    <p>{formatFecha(ticket.fecha)}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Detalle de productos con ajuste de texto sin cortes */}
+              <div className="py-2 border-b border-dashed border-gray-400 space-y-1.5">
+                <div className="flex justify-between font-bold text-[10px] uppercase text-gray-500 pb-0.5 border-b border-dotted border-gray-200">
+                  <span>Cant / Artículo</span>
+                  <span className="text-right">Subtotal</span>
+                </div>
+                {ticket.items.map((it, idx) => (
+                  <div key={idx} className="space-y-0.5 text-[11px]">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="min-w-0 flex-1 break-words">
+                        <span className="font-bold text-gray-950">{it.cantidad % 1 === 0 ? `${it.cantidad}x ` : `${it.cantidad} kg x `}</span>
+                        <span className="text-gray-900">{it.descripcion}</span>
+                        {it.cantidad > 1 && (
+                          <span className="text-[10px] text-gray-500 block">
+                            (${formatPrecio(it.precioUnitario)} c/u)
+                          </span>
+                        )}
+                      </div>
+                      <span className="font-bold text-gray-950 whitespace-nowrap tabular-nums shrink-0">
+                        {it.subtotal < 0 ? `-${formatPrecio(Math.abs(it.subtotal))}` : formatPrecio(it.subtotal)}
+                      </span>
+                    </div>
+                    {it.promoNombre && (
+                      <div className="text-[9px] text-emerald-800 font-semibold pl-2">
+                        🏷️ {it.promoNombre}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Totales y Ajustes */}
+              <div className="py-2 border-b border-dashed border-gray-400 space-y-1 text-[11px]">
+                {ticket.ajuste && (
+                  <>
+                    <div className="flex justify-between text-gray-600">
+                      <span>Subtotal:</span>
+                      <span className="tabular-nums">{formatPrecio(ticket.subtotal)}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-700">
+                      <span>{ticket.ajuste.descripcion}:</span>
+                      <span className="tabular-nums">
+                        {ticket.ajuste.esDescuento ? '-' : '+'}
+                        {formatPrecio(Math.abs(ticket.ajuste.monto))}
+                      </span>
+                    </div>
+                  </>
+                )}
+                <div className="flex justify-between items-center text-sm font-extrabold pt-1 border-t border-dotted border-gray-300 text-gray-950">
+                  <span>TOTAL:</span>
+                  <span className="tabular-nums text-base">{formatPrecio(ticket.total)}</span>
+                </div>
+              </div>
+
+              {/* Medio de pago y vuelto */}
+              <div className="py-2 border-b border-dashed border-gray-400 space-y-1 text-[11px]">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Medio de pago:</span>
+                  <span className="font-bold uppercase text-gray-900">{ticket.medioPago}</span>
+                </div>
+                {ticket.pagos && ticket.pagos.length > 1 && (
+                  <div className="pl-2 space-y-0.5 text-[10px] text-gray-700">
+                    {ticket.pagos.map((p, idx) => (
+                      <div key={idx} className="flex justify-between">
+                        <span>• {p.medioPago}:</span>
+                        <span className="font-semibold tabular-nums">{formatPrecio(p.monto)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {ticket.clienteNombre && (
+                  <div className="flex justify-between font-semibold text-gray-800">
+                    <span>Cliente:</span>
+                    <span>{ticket.clienteNombre}</span>
+                  </div>
+                )}
+                {ticket.pagaCon !== undefined && ticket.pagaCon > 0 && (
+                  <>
+                    <div className="flex justify-between text-gray-600">
+                      <span>Abonó con:</span>
+                      <span className="tabular-nums">{formatPrecio(ticket.pagaCon)}</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-gray-900">
+                      <span>Vuelto:</span>
+                      <span className="tabular-nums">{formatPrecio(ticket.vuelto || 0)}</span>
+                    </div>
+                  </>
+                )}
+                {ticket.notas && (
+                  <div className="pt-1 text-[10px] text-gray-500">
+                    <span>Nota: {ticket.notas}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Pie de ticket */}
+              {ticket.afip ? (
+                <div className="pt-2 text-center text-[10px] text-gray-800 space-y-1">
+                  {qrDataUrl && (
+                    <div className="flex justify-center py-1">
+                      <img
+                        src={qrDataUrl}
+                        alt="Código QR ARCA"
+                        draggable={false}
+                        className="w-28 h-28 object-contain bg-white p-1 rounded select-none border border-gray-200"
+                      />
                     </div>
                   )}
-                </div>
-              ))}
-            </div>
+                  <div className="border border-dotted border-gray-400 rounded-lg p-1.5 bg-gray-50 text-center space-y-0.5">
+                    <p className="font-bold text-[11px] text-gray-950">CAE: {ticket.afip.cae}</p>
+                    <p className="text-gray-800">Vto. CAE: {ticket.afip.vtoCae}</p>
+                  </div>
+                  <p className="text-[9px] text-gray-600 italic pt-1">
+                    Comprobante Autorizado por ARCA (RG 4892)
+                  </p>
 
-            {/* Totales y Ajustes */}
-            <div className="py-2 border-b border-dashed border-gray-400 space-y-1 text-[11px]">
-              {ticket.ajuste && (
-                <>
-                  <div className="flex justify-between text-gray-600">
-                    <span>Subtotal:</span>
-                    <span>{formatPrecio(ticket.subtotal)}</span>
-                  </div>
-                  <div className="flex justify-between text-gray-700">
-                    <span>{ticket.ajuste.descripcion}:</span>
-                    <span>
-                      {ticket.ajuste.esDescuento ? '-' : '+'}
-                      {formatPrecio(Math.abs(ticket.ajuste.monto))}
-                    </span>
-                  </div>
-                </>
-              )}
-              <div className="flex justify-between items-center text-sm font-bold pt-1 border-t border-dotted border-gray-300">
-                <span>TOTAL:</span>
-                <span>{formatPrecio(ticket.total)}</span>
-              </div>
-            </div>
-
-            {/* Medio de pago y vuelto */}
-            <div className="py-2 border-b border-dashed border-gray-400 space-y-0.5 text-[11px]">
-              <div className="flex justify-between">
-                <span>Medio de pago:</span>
-                <span className="font-medium uppercase">{ticket.medioPago}</span>
-              </div>
-              {ticket.pagos && ticket.pagos.length > 1 && (
-                <div className="pl-2 space-y-0.5 text-[10px] text-gray-700">
-                  {ticket.pagos.map((p, idx) => (
-                    <div key={idx} className="flex justify-between">
-                      <span>• {p.medioPago}:</span>
-                      <span className="font-semibold">{formatPrecio(p.monto)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {ticket.clienteNombre && (
-                <div className="flex justify-between font-semibold text-gray-800">
-                  <span>Cliente:</span>
-                  <span>{ticket.clienteNombre}</span>
-                </div>
-              )}
-              {ticket.pagaCon !== undefined && ticket.pagaCon > 0 && (
-                <>
-                  <div className="flex justify-between text-gray-600">
-                    <span>Abonó con:</span>
-                    <span>{formatPrecio(ticket.pagaCon)}</span>
-                  </div>
-                  <div className="flex justify-between font-bold text-gray-900">
-                    <span>Vuelto:</span>
-                    <span>{formatPrecio(ticket.vuelto || 0)}</span>
-                  </div>
-                </>
-              )}
-              {ticket.notas && (
-                <div className="pt-1 text-[10px] text-gray-500">
-                  <span>Nota: {ticket.notas}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Pie de ticket */}
-            {ticket.afip ? (
-              <div className="pt-2 text-center text-[10px] text-gray-800 space-y-1">
-                {qrDataUrl && (
-                  <div className="flex justify-center py-1">
-                    <img
-                      src={qrDataUrl}
-                      alt="Código QR ARCA"
-                      draggable={false}
-                      className="w-28 h-28 object-contain bg-white p-1 rounded pointer-events-none select-none"
+                  {/* Código de barras del comprobante para auditoría y devoluciones */}
+                  <div className="pt-2 pb-1 flex flex-col items-center">
+                    <BarcodeSvg
+                      value={`T-${ticket.ventaId.slice(0, 8).toUpperCase()}`}
+                      height={38}
+                      showText={true}
+                      textLabel={`* T-${ticket.ventaId.slice(0, 8).toUpperCase()} *`}
+                      className="w-full max-w-[210px]"
                     />
                   </div>
-                )}
-                <div className="border-t border-dotted border-gray-400 pt-1 space-y-0.5">
-                  <p className="font-bold text-[11px] text-gray-950">CAE: {ticket.afip.cae}</p>
-                  <p className="text-gray-800">Vto. CAE: {ticket.afip.vtoCae}</p>
-                </div>
-                <p className="text-[9px] text-gray-600 italic pt-1">
-                  Comprobante Autorizado por ARCA (RG 4892)
-                </p>
 
-                {/* Código de barras del comprobante para auditoría y devoluciones */}
-                <div className="pt-2 pb-1 flex flex-col items-center">
-                  <BarcodeSvg
-                    value={`T-${ticket.ventaId.slice(0, 8).toUpperCase()}`}
-                    height={38}
-                    showText={true}
-                    textLabel={`* T-${ticket.ventaId.slice(0, 8).toUpperCase()} *`}
-                    className="w-full max-w-[210px]"
-                  />
+                  <p className="font-bold text-[10px] text-gray-950 pt-0.5">¡Muchas gracias por su compra!</p>
                 </div>
+              ) : (
+                <div className="pt-2 text-center text-[10px] text-gray-600 space-y-1">
+                  {/* Código de barras del comprobante para auditoría y devoluciones */}
+                  <div className="pt-1 pb-1 flex flex-col items-center">
+                    <BarcodeSvg
+                      value={`T-${ticket.ventaId.slice(0, 8).toUpperCase()}`}
+                      height={38}
+                      showText={true}
+                      textLabel={`* T-${ticket.ventaId.slice(0, 8).toUpperCase()} *`}
+                      className="w-full max-w-[210px]"
+                    />
+                  </div>
 
-                <p className="font-bold text-[10px] text-gray-950 pt-0.5">¡Muchas gracias por su compra!</p>
-              </div>
-            ) : (
-              <div className="pt-2 text-center text-[10px] text-gray-600 space-y-0.5">
-                {/* Código de barras del comprobante para auditoría y devoluciones */}
-                <div className="pt-1 pb-1 flex flex-col items-center">
-                  <BarcodeSvg
-                    value={`T-${ticket.ventaId.slice(0, 8).toUpperCase()}`}
-                    height={38}
-                    showText={true}
-                    textLabel={`* T-${ticket.ventaId.slice(0, 8).toUpperCase()} *`}
-                    className="w-full max-w-[210px]"
-                  />
+                  <p className="font-semibold text-gray-800">¡Muchas gracias por su compra!</p>
+                  <p className="text-[9px] text-gray-400">Comprobante no válido como factura</p>
                 </div>
-
-                <p className="font-semibold text-gray-800">¡Muchas gracias por su compra!</p>
-                <p>Comprobante no válido como factura</p>
-              </div>
-            )}
+              )}
             </div>
           </div>
-
-          {/* Botón flotante para arrastrar o saltar al final/inicio */}
-          {puedeHacerScroll && (
-            <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-10 pointer-events-auto transition-all animate-in fade-in duration-200">
-              <button
-                type="button"
-                onClick={handleToggleScroll}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-900/85 hover:bg-slate-950 dark:bg-slate-100/90 dark:hover:bg-white text-white dark:text-slate-900 text-xs font-semibold shadow-lg backdrop-blur-xs transition-all active:scale-95 cursor-pointer"
-              >
-                <svg
-                  className={`w-3.5 h-3.5 transition-transform duration-300 ${estaAlFinal ? 'rotate-180' : ''}`}
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-                <span>{estaAlFinal ? 'Subir al inicio' : 'Arrastrá hacia abajo para ver completo'}</span>
-              </button>
-            </div>
-          )}
         </div>
       </div>
 

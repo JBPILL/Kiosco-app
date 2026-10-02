@@ -310,7 +310,7 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
 
     try {
       // 1. Insertar cabecera de devolución en Supabase
-      const payloadDev: Partial<DevolucionVenta> = {
+      const payloadDev: Record<string, any> = {
         id: devolucionId,
         kiosco_id: kioscoId,
         venta_id: venta.id,
@@ -324,7 +324,14 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
         notas: notas || null,
       }
 
-      const { error: errorDev } = await supabase.from('devoluciones_venta').insert(payloadDev)
+      let { error: errorDev } = await supabase.from('devoluciones_venta').insert(payloadDev)
+      // Si la base de datos de producción aún no tiene la columna cliente_id, reintentar sin ella
+      if (errorDev && (errorDev.message?.includes('cliente_id') || errorDev.code === 'PGRST204')) {
+        console.warn('Campo cliente_id no encontrado en devoluciones_venta en Supabase, reintentando inserción sin él:', errorDev)
+        delete payloadDev.cliente_id
+        const retryResult = await supabase.from('devoluciones_venta').insert(payloadDev)
+        errorDev = retryResult.error
+      }
       if (errorDev) throw errorDev
 
       // 2. Insertar detalles de devolución
