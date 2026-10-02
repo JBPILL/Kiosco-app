@@ -945,17 +945,17 @@ export function BalanceContableTab() {
         </div>
 
         {/* Botones de Descarga Excel Corporativo */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">
           <Button
             size="sm"
             variant="secondary"
             onClick={handleExportarLibroDiario}
             loading={exportando}
             disabled={libroDiario.length === 0}
-            className="text-xs font-semibold whitespace-nowrap"
+            className="text-xs font-semibold whitespace-nowrap shrink-0"
             title="Descargar libro diario contable detallado en Excel (.xlsx)"
           >
-            <span>Descargar Libro Diario (.XLSX)</span>
+            <span>Descargar Libro Diario</span>
           </Button>
 
           <Button
@@ -963,10 +963,10 @@ export function BalanceContableTab() {
             variant="secondary"
             onClick={handleExportarRendimientos}
             loading={exportando}
-            className="text-xs font-semibold whitespace-nowrap"
+            className="text-xs font-semibold whitespace-nowrap shrink-0"
             title="Descargar analítica de rendimientos mensuales y desglose de medios de pago en Excel (.xlsx)"
           >
-            <span>Exportar Rendimientos (.XLSX)</span>
+            <span>Exportar Rendimientos</span>
           </Button>
 
           <Button
@@ -975,10 +975,10 @@ export function BalanceContableTab() {
             onClick={handleExportarLibroIvaVentas}
             loading={exportando}
             disabled={ventasFiscalesPeriodo.length === 0}
-            className="text-xs font-semibold whitespace-nowrap"
+            className="text-xs font-semibold whitespace-nowrap shrink-0"
             title="Descargar reporte fiscal de ventas ARCA para el contador en Excel (.xlsx)"
           >
-            <span>Exportar Libro IVA ARCA (.XLSX)</span>
+            <span>Exportar Libro IVA ARCA</span>
           </Button>
         </div>
       </div>
