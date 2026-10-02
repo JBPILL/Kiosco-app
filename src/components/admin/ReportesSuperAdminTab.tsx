@@ -429,17 +429,26 @@ export function ReportesSuperAdminTab() {
             </select>
           </div>
 
-          {/* Botón Refrescar */}
-          <Button
-            variant="secondary"
-            size="sm"
+          {/* Botón Actualizar */}
+          <button
+            type="button"
             onClick={() => cargarReportesAdmin()}
-            loading={cargandoReportes}
+            disabled={cargandoReportes}
             title="Recargar pagos y métricas desde el servidor"
-            className="text-xs font-semibold shadow-xs"
+            className="inline-flex items-center justify-center p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all cursor-pointer shadow-2xs shrink-0"
           >
-            <span>🔄 Refrescar</span>
-          </Button>
+            <svg
+              className={`w-4 h-4 ${cargandoReportes ? 'animate-spin text-indigo-600' : ''}`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3" />
+            </svg>
+          </button>
 
           {/* Botón Exportar Excel */}
           <Button
@@ -457,7 +466,7 @@ export function ReportesSuperAdminTab() {
       {/* Tarjetas de Métricas Clave (KPIs) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* KPI 1: MRR Actual */}
-        <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-gray-800 dark:to-gray-850 p-4 sm:p-5 rounded-2xl border border-indigo-100 dark:border-gray-700 shadow-xs">
+        <div className="bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
           <div className="flex items-center justify-between text-indigo-600 dark:text-indigo-400 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">MRR Estimado Actual</span>
             <span className="p-2 bg-indigo-100 dark:bg-indigo-950/60 rounded-xl text-lg">💰</span>
@@ -471,7 +480,7 @@ export function ReportesSuperAdminTab() {
         </div>
 
         {/* KPI 2: Total Cobrado en el Período */}
-        <div className="bg-gradient-to-br from-emerald-50 to-white dark:from-gray-800 dark:to-gray-850 p-4 sm:p-5 rounded-2xl border border-emerald-100 dark:border-gray-700 shadow-xs">
+        <div className="bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
           <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">
               {mesSeleccionado === 'TODOS'
@@ -501,7 +510,7 @@ export function ReportesSuperAdminTab() {
         </div>
 
         {/* KPI 3: Transacciones y Comercios Cobrados */}
-        <div className="bg-gradient-to-br from-blue-50 to-white dark:from-gray-800 dark:to-gray-850 p-4 sm:p-5 rounded-2xl border border-blue-100 dark:border-gray-700 shadow-xs">
+        <div className="bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
           <div className="flex items-center justify-between text-blue-600 dark:text-blue-400 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">Cobros Realizados</span>
             <span className="p-2 bg-blue-100 dark:bg-blue-950/60 rounded-xl text-lg">🧾</span>
@@ -518,7 +527,7 @@ export function ReportesSuperAdminTab() {
         </div>
 
         {/* KPI 4: Ticket Promedio por Renovación */}
-        <div className="bg-gradient-to-br from-purple-50 to-white dark:from-gray-800 dark:to-gray-850 p-4 sm:p-5 rounded-2xl border border-purple-100 dark:border-gray-700 shadow-xs">
+        <div className="bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
           <div className="flex items-center justify-between text-purple-600 dark:text-purple-400 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">Ticket Promedio</span>
             <span className="p-2 bg-purple-100 dark:bg-purple-950/60 rounded-xl text-lg">🏷️</span>
@@ -726,7 +735,7 @@ export function ReportesSuperAdminTab() {
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-gray-50 dark:bg-gray-850 text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
+            <thead className="bg-gray-50 dark:bg-gray-900/60 text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
               <tr>
                 <th className="px-4 py-3">Mes</th>
                 <th className="px-4 py-3">Facturado Total</th>
@@ -816,14 +825,14 @@ export function ReportesSuperAdminTab() {
               value={busquedaDetalle}
               onChange={(e) => setBusquedaDetalle(e.target.value)}
               aria-label="Buscar transacciones"
-              className="text-xs px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-750 text-gray-900 dark:text-gray-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 w-48 sm:w-56"
+              className="text-xs px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/60 text-gray-900 dark:text-gray-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 w-48 sm:w-56"
             />
 
             <select
               value={filtroMedio}
               onChange={(e) => setFiltroMedio(e.target.value)}
               aria-label="Filtrar por medio de pago"
-              className="text-xs px-2.5 py-1.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-750 text-gray-800 dark:text-gray-200 focus:outline-hidden cursor-pointer"
+              className="text-xs px-2.5 py-1.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/60 text-gray-800 dark:text-gray-200 focus:outline-hidden cursor-pointer"
             >
               <option value="TODOS">Todos los medios</option>
               <option value="TRANSFERENCIA">Transferencia</option>
@@ -836,7 +845,7 @@ export function ReportesSuperAdminTab() {
               value={filtroRubro}
               onChange={(e) => setFiltroRubro(e.target.value)}
               aria-label="Filtrar por rubro"
-              className="text-xs px-2.5 py-1.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-750 text-gray-800 dark:text-gray-200 focus:outline-hidden cursor-pointer"
+              className="text-xs px-2.5 py-1.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/60 text-gray-800 dark:text-gray-200 focus:outline-hidden cursor-pointer"
             >
               <option value="TODOS">Todos los rubros</option>
               <option value="KIOSCO">Kiosco</option>
@@ -856,7 +865,7 @@ export function ReportesSuperAdminTab() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-gray-50 dark:bg-gray-850 text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-900/60 text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
                 <tr>
                   <th className="px-4 py-3">Fecha</th>
                   <th className="px-4 py-3">Comercio</th>
@@ -871,7 +880,7 @@ export function ReportesSuperAdminTab() {
                 {transaccionesFiltradas.map((t) => (
                   <tr
                     key={t.id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+                    className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                   >
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">
                       {formatFecha(t.fecha_pago)}
