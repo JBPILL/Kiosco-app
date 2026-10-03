@@ -261,6 +261,12 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
       return { success: false, error: 'No se seleccionaron productos para devolver' }
     }
 
+    for (const it of itemsADevolver) {
+      if (typeof it.cantidad !== 'number' || isNaN(it.cantidad) || it.cantidad <= 0) {
+        return { success: false, error: 'Todos los productos a devolver deben tener una cantidad mayor a 0' }
+      }
+    }
+
     if (venta.estado === 'ANULADA') {
       return { success: false, error: 'No es posible procesar una devolución sobre una venta que ya fue anulada' }
     }

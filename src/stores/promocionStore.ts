@@ -104,8 +104,8 @@ export function evaluarItemPromociones(
         etiqueta = `${promo.nombre} (${unidadesGratis} gratis)`
       }
     } else if (promo.tipo === 'VOLUMEN') {
-      const min = Number(promo.cantidad_minima)
-      if (item.cantidad >= min) {
+      const min = Number(promo.cantidad_minima || 2)
+      if (min > 0 && item.cantidad >= min) {
         if (promo.precio_unitario_promo !== null && promo.precio_unitario_promo !== undefined) {
           const ahorroUnit = Math.max(0, item.producto.precio_venta - promo.precio_unitario_promo)
           descuentoCalculado = Math.round(item.cantidad * ahorroUnit)
@@ -217,7 +217,7 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
       return true
     } catch (err: any) {
       console.error('Error guardando promocion en Supabase:', err)
-      toast.success('Promoción guardada localmente (modo offline)')
+      toast('⚠️ Promoción guardada localmente (sin conexión). Se sincronizará cuando haya internet.', { icon: '📶', duration: 4000 })
       return true
     }
   },
@@ -265,7 +265,7 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
       return true
     } catch (err: any) {
       console.error('Error actualizando promoción en Supabase:', err)
-      toast.success('Cambios guardados localmente')
+      toast('⚠️ Cambios guardados localmente (sin conexión). Se sincronizará cuando haya internet.', { icon: '📶', duration: 4000 })
       return true
     }
   },
@@ -285,7 +285,7 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
       return true
     } catch (err: any) {
       console.error('Error eliminando promoción en Supabase:', err)
-      toast.success('Promoción eliminada localmente')
+      toast('⚠️ Promoción eliminada localmente (sin conexión). Se sincronizará cuando haya internet.', { icon: '📶', duration: 4000 })
       return true
     }
   },

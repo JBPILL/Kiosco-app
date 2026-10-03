@@ -148,12 +148,12 @@ export function PromocionesPage() {
     setProductoId(p.producto_id || (productos[0]?.id || ''))
     setCategoriaId(p.categoria_id || (categorias[0]?.id || ''))
     setCantidadMinima(p.cantidad_minima != null ? String(p.cantidad_minima) : (p.tipo === 'PORCENTAJE' ? '1' : '2'))
-    setCantidadPaga(p.cantidad_paga ? String(p.cantidad_paga) : '1')
-    setModoVolumen(p.precio_unitario_promo ? 'PRECIO' : 'PORCENTAJE')
-    setPrecioUnitarioPromo(p.precio_unitario_promo ? String(p.precio_unitario_promo) : '')
-    setDescuentoPorcentaje(p.descuento_porcentaje ? String(p.descuento_porcentaje) : '15')
+    setCantidadPaga(p.cantidad_paga != null ? String(p.cantidad_paga) : '1')
+    setModoVolumen(p.precio_unitario_promo != null ? 'PRECIO' : 'PORCENTAJE')
+    setPrecioUnitarioPromo(p.precio_unitario_promo != null ? String(p.precio_unitario_promo) : '')
+    setDescuentoPorcentaje(p.descuento_porcentaje != null ? String(p.descuento_porcentaje) : '15')
     setItemsCombo(p.items_combo ? [...p.items_combo] : [])
-    setPrecioCombo(p.precio_combo ? String(p.precio_combo) : '')
+    setPrecioCombo(p.precio_combo != null ? String(p.precio_combo) : '')
     setProductoParaComboId('')
     setCantidadParaCombo('1')
     setDiasSeleccionados(p.dias_semana || [])
@@ -225,6 +225,11 @@ export function PromocionesPage() {
       }
     }
 
+    if (fechaInicio && fechaFin && fechaFin < fechaInicio) {
+      toast.error('La fecha de fin no puede ser anterior a la fecha de inicio')
+      return
+    }
+
     const cantMinNum = Number(cantidadMinima)
     if (tipo !== 'COMBO' && (isNaN(cantMinNum) || cantMinNum < 1)) {
       toast.error('La cantidad mínima debe ser al menos 1')
@@ -233,6 +238,10 @@ export function PromocionesPage() {
 
     let cantPagaNum: number | null = null
     if (tipo === 'NXM') {
+      if (cantMinNum < 2) {
+        toast.error('Para una promo NxM, la cantidad mínima debe ser al menos 2 (ej. 2x1, 3x2)')
+        return
+      }
       cantPagaNum = Number(cantidadPaga)
       if (isNaN(cantPagaNum) || cantPagaNum < 1 || cantPagaNum >= cantMinNum) {
         toast.error(`Para una promo NxM, la cantidad a pagar debe ser menor a la cantidad llevada (ej. 2x1, 3x2)`)
@@ -244,6 +253,10 @@ export function PromocionesPage() {
     let descPorcNum: number | null = null
 
     if (tipo === 'VOLUMEN') {
+      if (cantMinNum < 2) {
+        toast.error('Para una promoción por volumen, la cantidad mínima debe ser al menos 2')
+        return
+      }
       if (modoVolumen === 'PRECIO') {
         precioPromoNum = Number(precioUnitarioPromo)
         if (isNaN(precioPromoNum) || precioPromoNum <= 0) {
@@ -723,7 +736,11 @@ export function PromocionesPage() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <button
                 type="button"
-                onClick={() => setTipo('NXM')}
+                onClick={() => {
+                  setTipo('NXM')
+                  if (Number(cantidadMinima) < 2) setCantidadMinima('2')
+                  if (Number(cantidadPaga) < 1) setCantidadPaga('1')
+                }}
                 className={`p-2 rounded-xl border text-left transition-all ${
                   tipo === 'NXM'
                     ? 'border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 font-bold ring-2 ring-indigo-500'
@@ -735,7 +752,10 @@ export function PromocionesPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setTipo('VOLUMEN')}
+                onClick={() => {
+                  setTipo('VOLUMEN')
+                  if (Number(cantidadMinima) < 2) setCantidadMinima('2')
+                }}
                 className={`p-2.5 rounded-xl border text-left transition-all ${
                   tipo === 'VOLUMEN'
                     ? 'border-purple-600 bg-purple-50/80 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 font-bold ring-2 ring-purple-500'
@@ -747,7 +767,10 @@ export function PromocionesPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setTipo('PORCENTAJE')}
+                onClick={() => {
+                  setTipo('PORCENTAJE')
+                  if (!cantidadMinima || Number(cantidadMinima) < 1) setCantidadMinima('1')
+                }}
                 className={`p-2.5 rounded-xl border text-left transition-all ${
                   tipo === 'PORCENTAJE'
                     ? 'border-amber-600 bg-amber-50/80 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 font-bold ring-2 ring-amber-500'

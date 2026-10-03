@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { formatPrecio, formatFecha, labelMedioPago } from '../../lib/utils'
@@ -216,10 +216,25 @@ export function DevolucionModal({
     )
   }
 
-  // Cálculo del monto total a reintegrar
+  // Si la venta original tuvo descuento global, prorratear el reintegro proporcionalmente
+  const subtotalOriginal = useMemo(() => {
+    if (!venta) return 0
+    return (venta.detalles || []).reduce(
+      (acc: number, d: any) => acc + (d.subtotal || Math.round((d.cantidad || 0) * (d.precio_unitario || 0))),
+      0
+    )
+  }, [venta])
+
+  const ratioReintegro = useMemo(() => {
+    if (!venta || subtotalOriginal <= 0) return 1
+    const tieneDescuento = venta.total < subtotalOriginal
+    return tieneDescuento ? Math.max(0, venta.total / subtotalOriginal) : 1
+  }, [venta, subtotalOriginal])
+
+  // Cálculo del monto total a reintegrar aplicando el ratio real de la venta
   const itemsSeleccionados = items.filter((i) => i.seleccionado)
   const totalReintegro = itemsSeleccionados.reduce(
-    (acc, it) => acc + Math.round(it.cantidadDevolver * it.precioUnitario),
+    (acc, it) => acc + Math.round(it.cantidadDevolver * it.precioUnitario * ratioReintegro),
     0
   )
   const stockVuelveCount = itemsSeleccionados.filter((i) => i.reingresaStock).length
@@ -648,7 +663,7 @@ export function DevolucionModal({
                                 </button>
                               </div>
                               <span className="text-xs font-mono font-bold text-indigo-700 dark:text-indigo-300 ml-1">
-                                = {formatPrecio(Math.round(it.cantidadDevolver * it.precioUnitario))}
+                                = {formatPrecio(Math.round(it.cantidadDevolver * it.precioUnitario * ratioReintegro))}
                               </span>
                             </div>
                           </div>
@@ -772,10 +787,10 @@ export function DevolucionModal({
                               </div>
                             </td>
                             <td className="px-2 py-2.5 text-right font-mono text-gray-600 dark:text-gray-300 whitespace-nowrap">
-                              {formatPrecio(it.precioUnitario)}
+                              {formatPrecio(Math.round(it.precioUnitario * ratioReintegro))}
                             </td>
                             <td className="px-2 py-2.5 text-right font-mono font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap">
-                              {formatPrecio(Math.round(it.cantidadDevolver * it.precioUnitario))}
+                              {formatPrecio(Math.round(it.cantidadDevolver * it.precioUnitario * ratioReintegro))}
                             </td>
                             <td className="px-3 py-2.5 text-center whitespace-nowrap">
                               <div className="inline-flex rounded-lg p-0.5 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[10px]">
