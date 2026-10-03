@@ -116,9 +116,14 @@ export function evaluarItemPromociones(
         }
       }
     } else if (promo.tipo === 'PORCENTAJE') {
-      if (promo.descuento_porcentaje && promo.descuento_porcentaje > 0) {
-        descuentoCalculado = Math.round((subtotalBase * promo.descuento_porcentaje) / 100)
-        etiqueta = `${promo.nombre} (${promo.descuento_porcentaje}% OFF)`
+      const min = Number(promo.cantidad_minima || 1)
+      if (item.cantidad >= min) {
+        if (promo.descuento_porcentaje && promo.descuento_porcentaje > 0) {
+          descuentoCalculado = Math.round((subtotalBase * promo.descuento_porcentaje) / 100)
+          etiqueta = min > 1
+            ? `${promo.nombre} (${promo.descuento_porcentaje}% OFF x${min}+)`
+            : `${promo.nombre} (${promo.descuento_porcentaje}% OFF)`
+        }
       }
     }
 

@@ -581,11 +581,23 @@ export function PromocionesPage() {
                     )}
                     {esPorcentaje && (
                       <p className="text-gray-800 dark:text-gray-200 font-medium text-xs">
-                        Descuento directo de{' '}
-                        <span className="text-amber-600 dark:text-amber-400 font-bold">
-                          {promo.descuento_porcentaje}% OFF
-                        </span>{' '}
-                        en cada unidad.
+                        {Number(promo.cantidad_minima) > 1 ? (
+                          <>
+                            Llevando <strong>{promo.cantidad_minima} o más</strong>: descuento de{' '}
+                            <span className="text-amber-600 dark:text-amber-400 font-bold">
+                              {promo.descuento_porcentaje}% OFF
+                            </span>{' '}
+                            en cada unidad.
+                          </>
+                        ) : (
+                          <>
+                            Descuento directo de{' '}
+                            <span className="text-amber-600 dark:text-amber-400 font-bold">
+                              {promo.descuento_porcentaje}% OFF
+                            </span>{' '}
+                            en cada unidad.
+                          </>
+                        )}
                       </p>
                     )}
                   </div>
@@ -1137,20 +1149,43 @@ export function PromocionesPage() {
               )}
 
               {tipo === 'PORCENTAJE' && (
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                    Porcentaje de Descuento (%) *
-                  </label>
-                  <Input
-                    type="number"
-                    min="1"
-                    max="100"
-                    step="1"
-                    value={descuentoPorcentaje}
-                    onChange={(e) => setDescuentoPorcentaje(e.target.value)}
-                    placeholder="Ej: 10, 15, 20"
-                    required
-                  />
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                        A partir de cuántas unidades *
+                      </label>
+                      <Input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={cantidadMinima}
+                        onChange={(e) => setCantidadMinima(e.target.value)}
+                        placeholder="Ej: 1, 3, 5"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                        Porcentaje de Descuento (%) *
+                      </label>
+                      <Input
+                        type="number"
+                        min="1"
+                        max="100"
+                        step="any"
+                        value={descuentoPorcentaje}
+                        onChange={(e) => setDescuentoPorcentaje(e.target.value)}
+                        placeholder="Ej: 10, 15, 20"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                    {Number(cantidadMinima) > 1
+                      ? `Llevando ${cantidadMinima} o más unidades, se descontará un ${descuentoPorcentaje || 0}% en cada una.`
+                      : `Se descontará un ${descuentoPorcentaje || 0}% directo desde la primera unidad.`}
+                  </p>
                 </div>
               )}
             </div>
