@@ -181,7 +181,7 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
           return (
             vid.startsWith(limpio) ||
             vidSinGuiones.startsWith(limpio) ||
-            vid.includes(limpio) ||
+            (limpio.length >= 4 && vid.includes(limpio)) ||
             afipNro === limpio
           )
         })
@@ -275,26 +275,6 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
       }
     }
 
-    // Verificar si ya existe devolución registrada para esta venta
-    try {
-      const { data: devExistentes, error: devCheckErr } = await supabase
-        .from('devoluciones_venta')
-        .select('id, monto_total')
-        .eq('venta_id', venta.id)
-
-      if (!devCheckErr && devExistentes && devExistentes.length > 0) {
-        const totalYaDevuelto = devExistentes.reduce((s, d) => s + (d.monto_total || 0), 0)
-        if (totalYaDevuelto >= (venta.total || 0)) {
-          return { success: false, error: 'Esta venta ya ha sido devuelta en su totalidad previamente' }
-        }
-      }
-    } catch (checkErr) {
-      console.warn('Advertencia al verificar devoluciones previas:', checkErr)
-    }
-
-    const devolucionId = uuidv4()
-    const ahora = new Date().toISOString()
-
     // Si la venta original tuvo descuento global, prorratear el reintegro proporcionalmente
     const subtotalOriginal = (venta.detalles || []).reduce(
       (acc: number, d: any) => acc + (d.subtotal || Math.round((d.cantidad || 0) * (d.precio_unitario || 0))),
@@ -307,6 +287,45 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
       (acc, it) => acc + Math.round(it.cantidad * it.precioUnitario * ratioReintegro),
       0
     )
+
+    // Verificar si ya existe devolución registrada para esta venta
+    try {
+      const { data: devExistentes, error: devCheckErr } = await supabase
+        .from('devoluciones_venta')
+        .select('id, monto_total, detalles:detalles_devolucion(producto_id, cantidad)')
+        .eq('venta_id', venta.id)
+
+      if (!devCheckErr && devExistentes) {
+        const totalYaDevuelto = devExistentes.reduce((s, d) => s + (d.monto_total || 0), 0)
+        if (totalYaDevuelto + montoTotal > (venta.total || 0)) {
+          return { success: false, error: `El monto a devolver ($${montoTotal}) sumado a lo ya devuelto ($${totalYaDevuelto}) supera el total original de la venta ($${venta.total || 0})` }
+        }
+
+        const cantidadesYaDevueltas: Record<string, number> = {}
+        for (const dev of devExistentes) {
+          if (dev.detalles) {
+            for (const det of dev.detalles) {
+              const productoId = (det as any).producto_id
+              const cant = (det as any).cantidad || 0
+              cantidadesYaDevueltas[productoId] = (cantidadesYaDevueltas[productoId] || 0) + cant
+            }
+          }
+        }
+
+        for (const item of itemsADevolver) {
+          const yaDevuelto = cantidadesYaDevueltas[item.productoId] || 0
+          const original = venta.detalles.find(d => d.producto_id === item.productoId)?.cantidad || 0
+          if (yaDevuelto + item.cantidad > original) {
+            return { success: false, error: `No se puede devolver ${item.cantidad} del producto (ya se devolvieron ${yaDevuelto} de ${original} originales)` }
+          }
+        }
+      }
+    } catch (checkErr) {
+      console.warn('Advertencia al verificar devoluciones previas:', checkErr)
+    }
+
+    const devolucionId = uuidv4()
+    const ahora = new Date().toISOString()
 
     try {
       // 1. Insertar cabecera de devolución en Supabase

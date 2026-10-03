@@ -173,7 +173,7 @@ export function AuditoriaInventarioModal({
             kiosco_id: kid,
             tipo: 'AJUSTE',
             cantidad: delta,
-            motivo: 'AJUSTE',
+            motivo: 'CONTEO',
             notas: `Auditoría física de inventario (Teórico: ${item.stockTeorico} → Físico: ${item.stockContado})`,
             usuario_id: usuario?.id || null,
             fecha: ahora,

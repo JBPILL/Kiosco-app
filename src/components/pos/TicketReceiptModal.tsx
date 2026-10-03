@@ -614,7 +614,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
             visibility: visible !important;
           }
           #printable-ticket {
-            position: fixed !important;
+            position: absolute !important;
             left: 0 !important;
             top: 0 !important;
             width: ${anchoPapel} !important;

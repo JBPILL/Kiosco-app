@@ -6,7 +6,7 @@ export function calcularDiasRestantes(fechaVencimientoStr?: string | null): numb
   if (!fechaVencimientoStr) return null
   const hoy = new Date()
   hoy.setHours(0, 0, 0, 0)
-  const partes = fechaVencimientoStr.split('-').map(Number)
+  const partes = fechaVencimientoStr.slice(0, 10).split('-').map(Number)
   if (partes.length !== 3) return null
   const [year, month, day] = partes
   const vencimiento = new Date(year, month - 1, day)
@@ -210,6 +210,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         .maybeSingle()
 
       if (!usuario) {
+        set({ cargando: false })
+        return
+      }
+
+      if (!usuario.es_superadmin && !usuario.kiosco_id) {
+        await supabase.auth.signOut()
         set({ cargando: false })
         return
       }

@@ -150,6 +150,8 @@ export function ReportesPage() {
     // Deducir reintegros según el canal correspondiente
     if (devsData && devsData.length > 0) {
       for (const dev of devsData) {
+        if (dev.metodo_reintegro === 'OTRO') continue
+        
         let canal = 'EFECTIVO'
         if (dev.metodo_reintegro === 'EFECTIVO_CAJA') canal = 'EFECTIVO'
         else if (dev.metodo_reintegro === 'MERCADOPAGO') canal = 'MERCADOPAGO'

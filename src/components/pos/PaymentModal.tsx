@@ -848,18 +848,36 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
 
           // Restaurar stock_actual por cada producto estándar que se dedujo
           for (const it of items) {
-            if (it.producto.es_combo || it.producto.activo === false) continue
+            if (it.producto.activo === false) continue
             try {
-              const { data: pActual } = await supabase
-                .from('productos')
-                .select('stock_actual')
-                .eq('id', it.producto.id)
-                .maybeSingle()
-              if (pActual && typeof pActual.stock_actual === 'number') {
-                await supabase
+              if (it.producto.es_combo) {
+                const componentes = useComboStore.getState().obtenerComponentesDeCombo(it.producto.id)
+                for (const comp of componentes) {
+                  const qtyRestaurar = comp.cantidad * it.cantidad
+                  const { data: pCompActual } = await supabase
+                    .from('productos')
+                    .select('stock_actual')
+                    .eq('id', comp.componente_producto_id)
+                    .maybeSingle()
+                  if (pCompActual && typeof pCompActual.stock_actual === 'number') {
+                    await supabase
+                      .from('productos')
+                      .update({ stock_actual: Number((pCompActual.stock_actual + qtyRestaurar).toFixed(3)) })
+                      .eq('id', comp.componente_producto_id)
+                  }
+                }
+              } else {
+                const { data: pActual } = await supabase
                   .from('productos')
-                  .update({ stock_actual: Number((pActual.stock_actual + it.cantidad).toFixed(3)) })
+                  .select('stock_actual')
                   .eq('id', it.producto.id)
+                  .maybeSingle()
+                if (pActual && typeof pActual.stock_actual === 'number') {
+                  await supabase
+                    .from('productos')
+                    .update({ stock_actual: Number((pActual.stock_actual + it.cantidad).toFixed(3)) })
+                    .eq('id', it.producto.id)
+                }
               }
             } catch (errRollStock) {
               console.warn(`Aviso restaurando stock de ${it.producto.descripcion} en rollback:`, errRollStock)

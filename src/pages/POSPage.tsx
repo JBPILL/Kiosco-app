@@ -5,6 +5,7 @@ import { useCartStore } from '../stores/cartStore'
 import { useCajaStore } from '../stores/cajaStore'
 import { useAuthStore } from '../stores/authStore'
 import { usePromocionStore } from '../stores/promocionStore'
+import { useComboStore } from '../stores/comboStore'
 import { formatPrecio, formatFecha, getCachedProductos, saveCachedProductos } from '../lib/utils'
 import { ProductSearch } from '../components/pos/ProductSearch'
 import { FavoritesGrid } from '../components/pos/FavoritesGrid'
@@ -151,7 +152,10 @@ export function POSPage() {
     precargarCatalogoCompleto()
     verificarSesionActiva()
     const kid = usuario?.kiosco_id || kiosco?.id
-    if (kid) cargarPromociones(kid)
+    if (kid) {
+      cargarPromociones(kid)
+      useComboStore.getState().cargarCombos(kid)
+    }
   }, [cargarFavoritos, cargarCategorias, precargarCatalogoCompleto, verificarSesionActiva, cargarPromociones, usuario?.kiosco_id, kiosco?.id])
 
   useEffect(() => {

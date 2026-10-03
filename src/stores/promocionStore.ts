@@ -325,8 +325,10 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
       if (p.tipo !== 'COMBO') return false
       if (!p.items_combo || p.items_combo.length === 0) return false
       if (!p.precio_combo || p.precio_combo <= 0) return false
-      if (p.fecha_inicio && hoyStr < p.fecha_inicio) return false
-      if (p.fecha_fin && hoyStr > p.fecha_fin) return false
+      const inicioNorm = p.fecha_inicio ? p.fecha_inicio.slice(0, 10) : null
+      const finNorm = p.fecha_fin ? p.fecha_fin.slice(0, 10) : null
+      if (inicioNorm && hoyStr < inicioNorm) return false
+      if (finNorm && hoyStr > finNorm) return false
       if (p.dias_semana && p.dias_semana.length > 0 && !p.dias_semana.includes(diaHoy)) return false
       return true
     })

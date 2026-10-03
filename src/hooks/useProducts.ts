@@ -566,7 +566,7 @@ export function useProducts() {
           // Desactivar en Supabase
           await supabase
             .from('productos')
-            .update({ activo: false, fecha_actualizacion: new Date().toISOString() })
+            .update({ activo: false, categoria_id: null, fecha_actualizacion: new Date().toISOString() })
             .in('id', allIds)
 
           // Si son combos, limpiar también sus recetas en combo_items
@@ -580,7 +580,7 @@ export function useProducts() {
         try {
           await supabase
             .from('productos')
-            .update({ activo: false, fecha_actualizacion: new Date().toISOString() })
+            .update({ activo: false, categoria_id: null, fecha_actualizacion: new Date().toISOString() })
             .eq('categoria_id', id)
         } catch {}
       } else {

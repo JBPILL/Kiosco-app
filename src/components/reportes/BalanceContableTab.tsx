@@ -88,6 +88,7 @@ interface VentaContable {
 
 export function BalanceContableTab() {
   const { usuario, kiosco } = useAuthStore()
+  const esDueno = usuario?.rol === 'DUEÑO' || Boolean(usuario?.es_superadmin)
   const kid = usuario?.kiosco_id || kiosco?.id
 
   const {
@@ -333,6 +334,7 @@ export function BalanceContableTab() {
     return movimientosCajaAnio.filter((m) => {
       if (m.tipo !== 'EGRESO') return false
       if (m.fecha_hora < rangoInicio || m.fecha_hora > rangoFin) return false
+      if (m.motivo === 'DEVOLUCION_VENTA') return false
 
       if (m.motivo === 'PROVEEDOR') {
         const desc = m.descripcion || ''
@@ -1230,88 +1232,90 @@ export function BalanceContableTab() {
             </div>
 
             {/* Cuentas por Pagar (Pasivos) y Resumen Financiero */}
-            <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <h3 className="text-base font-bold text-gray-900 dark:text-white">
-                      Cuentas por Pagar (Pasivos)
-                    </h3>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      Deuda acumulada vigente con proveedores
-                    </p>
+            {esDueno && (
+              <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                        Cuentas por Pagar (Pasivos)
+                      </h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Deuda acumulada vigente con proveedores
+                      </p>
+                    </div>
+                    <span className="text-lg sm:text-xl font-black text-amber-600 dark:text-amber-400">
+                      {formatPrecio(deudaTotalProveedores)}
+                    </span>
                   </div>
-                  <span className="text-lg sm:text-xl font-black text-amber-600 dark:text-amber-400">
-                    {formatPrecio(deudaTotalProveedores)}
-                  </span>
-                </div>
 
-                {/* Lista de saldos con proveedores */}
-                <div className="divide-y divide-gray-100 dark:divide-gray-700 max-h-36 overflow-y-auto pr-1">
-                  {proveedores.filter((p) => (p.saldo_pendiente || 0) > 0).length === 0 ? (
-                    <p className="text-xs text-emerald-600 dark:text-emerald-400 py-2.5 font-medium">
-                      Excelente: no hay saldos adeudados a proveedores actualmente.
-                    </p>
-                  ) : (
-                    proveedores
-                      .filter((p) => (p.saldo_pendiente || 0) > 0)
-                      .map((p) => (
-                        <div key={p.id} className="py-1.5 flex items-center justify-between text-xs">
-                          <div>
-                            <span className="font-semibold text-gray-900 dark:text-gray-100">{p.nombre}</span>
-                            {p.contacto_nombre && (
-                              <span className="text-gray-400 ml-1.5">({p.contacto_nombre})</span>
-                            )}
+                  {/* Lista de saldos con proveedores */}
+                  <div className="divide-y divide-gray-100 dark:divide-gray-700 max-h-36 overflow-y-auto pr-1">
+                    {proveedores.filter((p) => (p.saldo_pendiente || 0) > 0).length === 0 ? (
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 py-2.5 font-medium">
+                        Excelente: no hay saldos adeudados a proveedores actualmente.
+                      </p>
+                    ) : (
+                      proveedores
+                        .filter((p) => (p.saldo_pendiente || 0) > 0)
+                        .map((p) => (
+                          <div key={p.id} className="py-1.5 flex items-center justify-between text-xs">
+                            <div>
+                              <span className="font-semibold text-gray-900 dark:text-gray-100">{p.nombre}</span>
+                              {p.contacto_nombre && (
+                                <span className="text-gray-400 ml-1.5">({p.contacto_nombre})</span>
+                              )}
+                            </div>
+                            <span className="font-bold text-red-600 dark:text-red-400">
+                              {formatPrecio(p.saldo_pendiente || 0)}
+                            </span>
                           </div>
-                          <span className="font-bold text-red-600 dark:text-red-400">
-                            {formatPrecio(p.saldo_pendiente || 0)}
-                          </span>
-                        </div>
-                      ))
-                  )}
+                        ))
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              {/* Indicadores Financieros Operativos */}
-              <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700 space-y-1.5 text-xs">
-                <div className="flex justify-between text-gray-600 dark:text-gray-400">
-                  <span>Compras mercadería período:</span>
-                  <span className="font-bold text-gray-900 dark:text-white">
-                    {formatPrecio(totalComprasMercaderia)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-gray-600 dark:text-gray-400">
-                  <span>Salidas financieras efectivas:</span>
-                  <span className="font-bold text-red-600 dark:text-red-400">
-                    {formatPrecio(totalSalidasFinancieras)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-gray-600 dark:text-gray-400">
-                  <span>Margen bruto operativo:</span>
-                  <span
-                    className={`font-bold ${
-                      resultadoOperativo >= 0
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-red-600 dark:text-red-400'
-                    }`}
-                  >
-                    {formatPrecio(resultadoOperativo)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-gray-600 dark:text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-700/60">
-                  <span className="font-semibold text-gray-800 dark:text-gray-200">Flujo neto estimado:</span>
-                  <span
-                    className={`font-bold ${
-                      flujoCajaNeto >= 0
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-red-600 dark:text-red-400'
-                    }`}
-                  >
-                    {formatPrecio(flujoCajaNeto)}
-                  </span>
+                {/* Indicadores Financieros Operativos */}
+                <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700 space-y-1.5 text-xs">
+                  <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                    <span>Compras mercadería período:</span>
+                    <span className="font-bold text-gray-900 dark:text-white">
+                      {formatPrecio(totalComprasMercaderia)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                    <span>Salidas financieras efectivas:</span>
+                    <span className="font-bold text-red-600 dark:text-red-400">
+                      {formatPrecio(totalSalidasFinancieras)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                    <span>Margen bruto operativo:</span>
+                    <span
+                      className={`font-bold ${
+                        resultadoOperativo >= 0
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-red-600 dark:text-red-400'
+                      }`}
+                    >
+                      {formatPrecio(resultadoOperativo)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-gray-600 dark:text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-700/60">
+                    <span className="font-semibold text-gray-800 dark:text-gray-200">Flujo neto estimado:</span>
+                    <span
+                      className={`font-bold ${
+                        flujoCajaNeto >= 0
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-red-600 dark:text-red-400'
+                      }`}
+                    >
+                      {formatPrecio(flujoCajaNeto)}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* 6. TABLA COMPARATIVA DE RENDIMIENTOS (12 Meses - Desplegable con anchos fijos) */}

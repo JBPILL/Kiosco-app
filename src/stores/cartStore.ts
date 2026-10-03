@@ -233,7 +233,13 @@ export const useCartStore = create<CartState>((set, get) => ({
       return
     }
 
-    const restantes = state.tabs.filter((t) => t.id !== targetId)
+    const tabsSync = state.tabs.map((t) =>
+      t.id === state.tabActivaId
+        ? { ...t, items: state.items, tipoAjuste: state.tipoAjuste, valorAjuste: state.valorAjuste }
+        : t
+    )
+
+    const restantes = tabsSync.filter((t) => t.id !== targetId)
     // Renumerar secuencialmente las pestañas con nombre por defecto 'Ticket X' para reiniciar el contador
     let ticketCounter = 1
     const renumbered = restantes.map((tab) => {
@@ -658,7 +664,7 @@ export const useCartStore = create<CartState>((set, get) => ({
       return Math.round((baseMercaderia * valorAjuste) / 100)
     }
     if (tipoAjuste === 'DESCUENTO_FIJO') {
-      return Math.round(Math.min(valorAjuste, subtotal))
+      return Math.round(Math.max(0, Math.min(valorAjuste, subtotal)))
     }
     if (tipoAjuste === 'RECARGO_PORCENTAJE') {
       return Math.round((baseMercaderia * valorAjuste) / 100)
