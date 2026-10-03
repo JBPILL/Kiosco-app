@@ -7,6 +7,8 @@ import { SiembraCatalogoModal } from '../components/catalogo/SiembraCatalogoModa
 import { AumentoPreciosModal } from '../components/catalogo/AumentoPreciosModal'
 import { PreciosEnvasesModal } from '../components/catalogo/PreciosEnvasesModal'
 import { EtiquetasGondolaModal } from '../components/catalogo/EtiquetasGondolaModal'
+import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
+import { exportarCatalogoExcel } from '../lib/exportUtils'
 import { clearCachedProductos } from '../lib/utils'
 import { useAuthStore } from '../stores/authStore'
 import { useTenantConfig } from '../hooks/useTenantConfig'
@@ -39,6 +41,8 @@ export function CatalogoPage() {
 
   const [formOpen, setFormOpen] = useState(false)
   const [siembraOpen, setSiembraOpen] = useState(false)
+  const [importarOpen, setImportarOpen] = useState(false)
+  const [exportando, setExportando] = useState(false)
   const [aumentoOpen, setAumentoOpen] = useState(false)
   const [envasesOpen, setEnvasesOpen] = useState(false)
   const [etiquetasOpen, setEtiquetasOpen] = useState(false)
@@ -108,6 +112,47 @@ export function CatalogoPage() {
               title="Imprimir etiquetas de góndola y códigos de barras"
             >
               Etiquetas de Precios
+            </button>
+            <button
+              type="button"
+              onClick={() => setImportarOpen(true)}
+              className="h-8 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center justify-center gap-1.5"
+              title="Importar lista de precios o catálogo desde archivo Excel (.xlsx) o CSV"
+            >
+              <svg className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              <span>Importar</span>
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                if (productos.length === 0) {
+                  toast.error('No hay productos en el catálogo para exportar')
+                  return
+                }
+                setExportando(true)
+                try {
+                  await exportarCatalogoExcel(productos, categorias, kiosco?.nombre || 'Mi Comercio')
+                  toast.success('Catálogo exportado a Excel')
+                } catch (e: any) {
+                  toast.error(`Error al exportar: ${e?.message || 'Error desconocido'}`)
+                } finally {
+                  setExportando(false)
+                }
+              }}
+              disabled={exportando}
+              className="h-8 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center justify-center gap-1.5"
+              title="Descargar catálogo completo valorizado en Excel (.xlsx)"
+            >
+              <svg className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              <span>{exportando ? 'Exportando...' : 'Exportar Excel'}</span>
             </button>
             <button
               type="button"
@@ -217,6 +262,17 @@ export function CatalogoPage() {
         onClose={() => setSiembraOpen(false)}
         categoriasExistentes={categorias}
         onSiembraCompletada={async () => {
+          await cargarCategorias()
+          await cargarProductos()
+        }}
+      />
+
+      {/* Modal de importación de catálogo (Excel/CSV) */}
+      <ImportarCatalogoModal
+        isOpen={importarOpen}
+        onClose={() => setImportarOpen(false)}
+        categorias={categorias}
+        onImportCompletado={async () => {
           await cargarCategorias()
           await cargarProductos()
         }}

@@ -16,6 +16,7 @@ import { useLoteStore, calcularDiasHastaVencimiento } from '../stores/loteStore'
 import type { Producto, MovimientoStock } from '../types/database'
 import { useRealtimeSync } from '../hooks/useRealtimeSync'
 import { useTenantConfig } from '../hooks/useTenantConfig'
+import { exportarMovimientosStockExcel } from '../lib/exportUtils'
 import toast from 'react-hot-toast'
 
 export function StockPage() {
@@ -57,18 +58,22 @@ export function StockPage() {
   const [filtroTipo, setFiltroTipo] = useState<'TODOS' | 'INGRESO' | 'EGRESO' | 'AJUSTE'>('TODOS')
   const [busquedaHistorial, setBusquedaHistorial] = useState('')
   const [panelStockBajoExpandido, setPanelStockBajoExpandido] = useState(true)
+  const [exportando, setExportando] = useState(false)
+  const [limiteMovimientos, setLimiteMovimientos] = useState(100)
+  const [hayMasMovimientos, setHayMasMovimientos] = useState(false)
+  const [cargandoMas, setCargandoMas] = useState(false)
 
   const inputCantidadRef = useRef<HTMLInputElement>(null)
   const searchContainerRef = useRef<HTMLDivElement>(null)
 
-  // Cargar movimientos desde Supabase
-  const cargarMovimientos = useCallback(async () => {
+  // Cargar movimientos desde Supabase (con paginación / carga incremental)
+  const cargarMovimientos = useCallback(async (limite = 100) => {
     setCargando(true)
     let query = supabase
       .from('movimientos_stock')
       .select('*, producto:productos(id, descripcion, stock_actual, codigo_barras, precio_costo, precio_venta)')
       .order('fecha', { ascending: false })
-      .limit(100)
+      .limit(limite + 1)
 
     if (usuario?.kiosco_id) {
       query = query.eq('kiosco_id', usuario.kiosco_id)
@@ -76,10 +81,21 @@ export function StockPage() {
 
     const { data, error } = await query
     if (!error && data) {
-      setMovimientos(data as (MovimientoStock & { producto?: Producto })[])
+      const hayMas = data.length > limite
+      setHayMasMovimientos(hayMas)
+      setMovimientos((data.slice(0, limite)) as (MovimientoStock & { producto?: Producto })[])
     }
     setCargando(false)
   }, [usuario?.kiosco_id])
+
+  const handleCargarMasMovimientos = async () => {
+    if (cargandoMas) return
+    setCargandoMas(true)
+    const nuevoLimite = limiteMovimientos + 100
+    setLimiteMovimientos(nuevoLimite)
+    await cargarMovimientos(nuevoLimite)
+    setCargandoMas(false)
+  }
 
   // Cargar productos activos
   const cargarProductos = useCallback(async () => {
@@ -861,6 +877,31 @@ export function StockPage() {
                 + Registrar Movimiento
               </Button>
 
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={async () => {
+                  if (movimientos.length === 0) {
+                    toast.error('No hay movimientos registrados para exportar')
+                    return
+                  }
+                  setExportando(true)
+                  try {
+                    await exportarMovimientosStockExcel(movimientos as any, kiosco?.nombre || 'Mi Comercio')
+                    toast.success('Movimientos exportados a Excel')
+                  } catch (e: any) {
+                    toast.error(`Error al exportar: ${e?.message || 'Error desconocido'}`)
+                  } finally {
+                    setExportando(false)
+                  }
+                }}
+                disabled={exportando}
+                className="text-xs whitespace-nowrap shadow-xs font-semibold"
+                title="Descargar auditoría completa de movimientos de stock en Excel (.xlsx)"
+              >
+                {exportando ? 'Exportando...' : 'Exportar Excel'}
+              </Button>
+
 
               <button
                 type="button"
@@ -989,6 +1030,21 @@ export function StockPage() {
                   )
                 })}
               </div>
+
+              {/* Botón de carga incremental de movimientos */}
+              {hayMasMovimientos && (
+                <div className="p-4 text-center border-t border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/40">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleCargarMasMovimientos}
+                    disabled={cargandoMas}
+                    className="text-xs font-semibold px-6 shadow-xs"
+                  >
+                    {cargandoMas ? 'Cargando más movimientos...' : 'Cargar más movimientos (+100)'}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1569,7 +1625,7 @@ export function StockPage() {
               <div className="p-3 bg-white dark:bg-gray-900 border border-indigo-200 dark:border-indigo-800/60 rounded-xl space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="block text-xs font-bold text-indigo-900 dark:text-indigo-300 uppercase tracking-wide">
-                    Fecha de Vencimiento de Lote
+                    Identificación de Lote y Vencimiento
                   </label>
                   {productoSeleccionado?.requiere_vencimiento && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300">
@@ -1578,17 +1634,36 @@ export function StockPage() {
                   )}
                 </div>
 
-                <div>
-                  <input
-                    type="date"
-                    value={fechaVencimiento}
-                    onChange={(e) => setFechaVencimiento(e.target.value)}
-                    className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 outline-none focus:border-indigo-500 font-medium"
-                  />
-                  <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 block">
-                    Permite ordenar las ventas por vencimiento más próximo (FEFO).
-                  </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                      N° de Lote / Partida (opcional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej: L-2409, PART-892"
+                      value={numeroLote}
+                      onChange={(e) => setNumeroLote(e.target.value)}
+                      className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 outline-none focus:border-indigo-500 font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                      Fecha de Vencimiento
+                    </label>
+                    <input
+                      type="date"
+                      value={fechaVencimiento}
+                      onChange={(e) => setFechaVencimiento(e.target.value)}
+                      className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 outline-none focus:border-indigo-500 font-medium"
+                    />
+                  </div>
                 </div>
+
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 block">
+                  Permite ordenar las ventas por vencimiento más próximo (FEFO) y auditar partidas.
+                </span>
               </div>
             )}
 

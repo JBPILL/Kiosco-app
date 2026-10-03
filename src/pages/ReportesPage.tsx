@@ -115,10 +115,10 @@ export function ReportesPage() {
       }
     }
 
-    // Cargar devoluciones del día para calcular ventas netas y deducir reintegros
+    // Cargar devoluciones del día para calcular ventas netas y deducir reintegros y costo devuelto
     let queryDevs = supabase
       .from('devoluciones_venta')
-      .select('id, monto_total, metodo_reintegro, fecha_hora')
+      .select('id, monto_total, metodo_reintegro, fecha_hora, detalles:detalles_devolucion(cantidad, producto:productos(precio_costo))')
       .gte('fecha_hora', inicioISO)
       .lte('fecha_hora', finISO)
       .limit(10000)
@@ -129,10 +129,21 @@ export function ReportesPage() {
 
     const { data: devsData } = await queryDevs
     const totalDevoluciones = (devsData || []).reduce((acc: number, d: any) => acc + (d.monto_total || 0), 0)
+
+    // Deducir el costo de la mercadería reincorporada por devolución para que el CMV refleje el costo neto real
+    let totalCostoDevoluciones = 0
+    for (const d of devsData || []) {
+      for (const det of (d as any).detalles || []) {
+        const costoUnit = Number(det.producto?.precio_costo) || 0
+        totalCostoDevoluciones += (Number(det.cantidad) || 0) * costoUnit
+      }
+    }
+    const totalCostoVentasNeto = Math.max(0, totalCostoVentas - totalCostoDevoluciones)
+
     const totalVentas = Math.max(0, totalVentasBrutas - totalDevoluciones)
     const ventaPromedio = cantidadVentas > 0 ? totalVentas / cantidadVentas : 0
 
-    const gananciaBruta = Math.max(0, totalVentas - totalCostoVentas)
+    const gananciaBruta = Math.max(0, totalVentas - totalCostoVentasNeto)
     const margenPorcentaje = totalVentas > 0 ? (gananciaBruta / totalVentas) * 100 : 0
 
     // Agrupar por medio de pago
@@ -178,7 +189,7 @@ export function ReportesPage() {
       totalDevoluciones,
       cantidadVentas,
       ventaPromedio,
-      totalCosto: totalCostoVentas,
+      totalCosto: totalCostoVentasNeto,
       gananciaBruta,
       margenPorcentaje,
       porMedioPago,
