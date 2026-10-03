@@ -65,6 +65,13 @@ interface DevolucionState {
     sesionCajaId?: string | null
     clienteId?: string | null
   }) => Promise<{ success: boolean; devolucionId?: string; error?: string }>
+  obtenerDevolucionesPreviasDeVenta: (
+    ventaId: string
+  ) => Promise<{
+    devoluciones: DevolucionVenta[]
+    totalYaDevuelto: number
+    cantidadesYaDevueltas: Record<string, number>
+  }>
 }
 
 const getStorageKey = (kioscoId?: string) => `kioskopos_devoluciones_${kioscoId || 'default'}`
@@ -244,6 +251,40 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
     }
   },
 
+  obtenerDevolucionesPreviasDeVenta: async (ventaId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('devoluciones_venta')
+        .select('id, monto_total, fecha_hora, motivo, metodo_reintegro, notas, detalles:detalles_devolucion(producto_id, cantidad, precio_unitario, subtotal, reingresa_stock)')
+        .eq('venta_id', ventaId)
+        .order('fecha_hora', { ascending: false })
+
+      if (error || !data) {
+        return { devoluciones: [], totalYaDevuelto: 0, cantidadesYaDevueltas: {} }
+      }
+
+      const totalYaDevuelto = data.reduce((sum, d: any) => sum + (d.monto_total || 0), 0)
+      const cantidadesYaDevueltas: Record<string, number> = {}
+
+      for (const dev of data) {
+        for (const det of ((dev as any).detalles || [])) {
+          if (det.producto_id) {
+            cantidadesYaDevueltas[det.producto_id] = (cantidadesYaDevueltas[det.producto_id] || 0) + (det.cantidad || 0)
+          }
+        }
+      }
+
+      return {
+        devoluciones: data as unknown as DevolucionVenta[],
+        totalYaDevuelto,
+        cantidadesYaDevueltas,
+      }
+    } catch (e) {
+      console.warn('Error obteniendo devoluciones previas:', e)
+      return { devoluciones: [], totalYaDevuelto: 0, cantidadesYaDevueltas: {} }
+    }
+  },
+
   procesarDevolucion: async (params) => {
     const {
       venta,
@@ -294,6 +335,8 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
       0
     )
 
+    let totalYaDevueltoPrevio = 0
+
     // Verificar si ya existe devolución registrada para esta venta
     try {
       const { data: devExistentes, error: devCheckErr } = await supabase
@@ -302,7 +345,8 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
         .eq('venta_id', venta.id)
 
       if (!devCheckErr && devExistentes) {
-        const totalYaDevuelto = devExistentes.reduce((s, d) => s + (d.monto_total || 0), 0)
+        totalYaDevueltoPrevio = devExistentes.reduce((s, d) => s + (d.monto_total || 0), 0)
+        const totalYaDevuelto = totalYaDevueltoPrevio
         if (totalYaDevuelto + montoTotal > (venta.total || 0)) {
           return { success: false, error: `El monto a devolver ($${montoTotal}) sumado a lo ya devuelto ($${totalYaDevuelto}) supera el total original de la venta ($${venta.total || 0})` }
         }
@@ -514,8 +558,10 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
       }
 
       // 5. Impacto financiero según método de reintegro elegido
+      const nuevoTotalRestante = Math.max(0, (venta.total || 0) - totalYaDevueltoPrevio - montoTotal)
+
       if (metodoReintegro === 'EFECTIVO_CAJA') {
-        // Registrar egreso de caja en la sesión activa
+        // Registrar egreso de caja en la sesión activa con trazabilidad de total original y actualizado
         try {
           await useCajaStore
             .getState()
@@ -523,7 +569,7 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
               'EGRESO',
               'DEVOLUCION_VENTA',
               montoTotal,
-              `Reintegro por devolución Ticket #${venta.id.slice(0, 8).toUpperCase()}`
+              `Reintegro por devolución Ticket #${venta.id.slice(0, 8).toUpperCase()} (Original: $${(venta.total || 0).toLocaleString('es-AR')} ➔ Actualizado: $${nuevoTotalRestante.toLocaleString('es-AR')})`
             )
         } catch (errCaja) {
           console.warn('Error registrando egreso de caja por devolución:', errCaja)
@@ -538,13 +584,26 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
               .revertirCargoVenta(
                 venta.id,
                 montoTotal,
-                `Crédito por devolución Ticket #${venta.id.slice(0, 8).toUpperCase()}`,
+                `Crédito por devolución Ticket #${venta.id.slice(0, 8).toUpperCase()} (Original: $${(venta.total || 0).toLocaleString('es-AR')} ➔ Actualizado: $${nuevoTotalRestante.toLocaleString('es-AR')})`,
                 targetClienteId
               )
           } catch (errCC) {
             console.warn('Error revirtiendo saldo de cuenta corriente:', errCC)
           }
         }
+      }
+
+      // 5b. Registrar trazabilidad del ticket actualizado en la tabla de ventas
+      try {
+        const marcaFecha = new Date().toLocaleDateString('es-AR')
+        const notaDev = `[Devuelto -$${montoTotal.toLocaleString('es-AR')} (${motivo}) el ${marcaFecha} | Total actualizado: $${nuevoTotalRestante.toLocaleString('es-AR')}]`
+        const notasActualizadas = venta.notas ? `${venta.notas} ${notaDev}` : notaDev
+        await supabase
+          .from('ventas')
+          .update({ notas: notasActualizadas })
+          .eq('id', venta.id)
+      } catch (errNotas) {
+        console.warn('Aviso actualizando notas de venta tras devolución:', errNotas)
       }
 
       // 6. Guardar en historial de devoluciones local

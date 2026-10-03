@@ -23,6 +23,8 @@ interface ItemDevolucionSeleccionado {
   productoId: string
   descripcion: string
   cantidadOriginal: number
+  cantidadYaDevuelta: number
+  cantidadDisponible: number
   cantidadDevolver: number
   precioUnitario: number
   reingresaStock: boolean
@@ -39,11 +41,18 @@ export function DevolucionModal({
 }: DevolucionModalProps) {
   const { usuario, kiosco } = useAuthStore()
   const { sesionActiva } = useCajaStore()
-  const { buscarVentaParaDevolucion, procesarDevolucion, obtenerUltimasVentas } = useDevolucionStore()
+  const {
+    buscarVentaParaDevolucion,
+    procesarDevolucion,
+    obtenerUltimasVentas,
+    obtenerDevolucionesPreviasDeVenta,
+  } = useDevolucionStore()
 
   const [criterioBusqueda, setCriterioBusqueda] = useState('')
   const [buscando, setBuscando] = useState(false)
   const [cargandoRecientes, setCargandoRecientes] = useState(false)
+  const [cargandoPrevias, setCargandoPrevias] = useState(false)
+  const [totalYaDevueltoHistorico, setTotalYaDevueltoHistorico] = useState<number>(0)
   const [ultimasVentas, setUltimasVentas] = useState<VentaConDetalles[]>([])
   const [venta, setVenta] = useState<VentaConDetalles | null>(null)
   const [items, setItems] = useState<ItemDevolucionSeleccionado[]>([])
@@ -53,34 +62,57 @@ export function DevolucionModal({
   const [guardando, setGuardando] = useState(false)
   const [ticketParaVer, setTicketParaVer] = useState<TicketData | null>(null)
 
-  const seleccionarVenta = useCallback((ventaEncontrada: VentaConDetalles) => {
+  const seleccionarVenta = useCallback(async (ventaEncontrada: VentaConDetalles) => {
     if (ventaEncontrada.estado === 'ANULADA') {
       toast.error('Esta venta se encuentra ANULADA y no puede ser devuelta.')
       return
     }
 
     setVenta(ventaEncontrada)
-    setItems(
-      (ventaEncontrada.detalles || [])
-        .filter((d) => (d.precio_unitario || 0) > 0) // Excluir devoluciones de envases o créditos virtuales
-        .map((d) => {
-          const esPesable = Boolean(d.producto?.es_pesable)
-          const cantReal = esPesable
-            ? Number(Number(d.cantidad || 0).toFixed(3))
-            : Math.max(1, Math.floor(d.cantidad))
-          return {
-            productoId: d.producto_id,
-            descripcion: d.producto?.descripcion || 'Artículo',
-            cantidadOriginal: cantReal,
-            cantidadDevolver: cantReal,
-            precioUnitario: d.precio_unitario,
-            reingresaStock: true,
-            seleccionado: true,
-            esPesable,
-            unidadMedida: d.producto?.unidad_medida || 'UN',
-          }
-        })
-    )
+    setCargandoPrevias(true)
+
+    let totalYaDevuelto = 0
+    let cantidadesYaDevueltas: Record<string, number> = {}
+
+    try {
+      const previas = await obtenerDevolucionesPreviasDeVenta(ventaEncontrada.id)
+      totalYaDevuelto = previas.totalYaDevuelto || 0
+      cantidadesYaDevueltas = previas.cantidadesYaDevueltas || {}
+    } catch (err) {
+      console.warn('Aviso cargando devoluciones previas:', err)
+    } finally {
+      setCargandoPrevias(false)
+    }
+
+    setTotalYaDevueltoHistorico(totalYaDevuelto)
+
+    const itemsProcesados: ItemDevolucionSeleccionado[] = (ventaEncontrada.detalles || [])
+      .filter((d) => (d.precio_unitario || 0) > 0) // Excluir devoluciones de envases o créditos virtuales
+      .map((d) => {
+        const esPesable = Boolean(d.producto?.es_pesable)
+        const cantReal = esPesable
+          ? Number(Number(d.cantidad || 0).toFixed(3))
+          : Math.max(1, Math.floor(d.cantidad))
+        const cantYaDev = cantidadesYaDevueltas[d.producto_id] || 0
+        const cantDisponible = Math.max(0, Number((cantReal - cantYaDev).toFixed(3)))
+        const tieneDisponible = cantDisponible > 0
+
+        return {
+          productoId: d.producto_id,
+          descripcion: d.producto?.descripcion || 'Artículo',
+          cantidadOriginal: cantReal,
+          cantidadYaDevuelta: cantYaDev,
+          cantidadDisponible: cantDisponible,
+          cantidadDevolver: tieneDisponible ? cantDisponible : 0,
+          precioUnitario: d.precio_unitario,
+          reingresaStock: true,
+          seleccionado: tieneDisponible,
+          esPesable,
+          unidadMedida: d.producto?.unidad_medida || 'UN',
+        }
+      })
+
+    setItems(itemsProcesados)
 
     const fueCC = ventaEncontrada.pagos?.some((p) => p.medio_pago === 'CUENTA_CORRIENTE')
     const tieneEfectivo = ventaEncontrada.pagos?.some((p) => p.medio_pago === 'EFECTIVO')
@@ -91,12 +123,14 @@ export function DevolucionModal({
     } else {
       setMetodoReintegro('OTRO')
     }
-  }, [])
+  }, [obtenerDevolucionesPreviasDeVenta])
 
   const reiniciar = () => {
     setVenta(null)
     setItems([])
     setCriterioBusqueda('')
+    setTotalYaDevueltoHistorico(0)
+    setCargandoPrevias(false)
   }
 
   // Cargar ventas recientes al abrir si no hay venta seleccionada
@@ -169,26 +203,38 @@ export function DevolucionModal({
   // Alternar selección de un producto
   const toggleSeleccionItem = (prodId: string) => {
     setItems((prev) =>
-      prev.map((it) => (it.productoId === prodId ? { ...it, seleccionado: !it.seleccionado } : it))
+      prev.map((it) => {
+        if (it.productoId === prodId) {
+          if (it.cantidadDisponible <= 0) return it
+          return { ...it, seleccionado: !it.seleccionado }
+        }
+        return it
+      })
     )
   }
 
-  // Marcar o desmarcar todos los ítems
+  // Marcar o desmarcar todos los ítems disponibles
   const marcarTodos = (marcar: boolean) => {
-    setItems((prev) => prev.map((it) => ({ ...it, seleccionado: marcar })))
+    setItems((prev) =>
+      prev.map((it) => ({
+        ...it,
+        seleccionado: marcar ? it.cantidadDisponible > 0 : false,
+      }))
+    )
   }
 
-  // Modificar cantidad a devolver (números flotantes para pesables, enteros para unitarios)
+  // Modificar cantidad a devolver (limitada estrictamente por cantidadDisponible)
   const actualizarCantidadDevolver = (prodId: string, cantidad: number) => {
     setItems((prev) =>
       prev.map((it) => {
         if (it.productoId === prodId) {
+          if (it.cantidadDisponible <= 0) return it
           if (it.esPesable) {
             const num = Number(Number(cantidad).toFixed(3))
-            const val = isNaN(num) || num <= 0 ? 0.001 : Math.min(num, it.cantidadOriginal)
+            const val = isNaN(num) || num <= 0 ? 0.001 : Math.min(num, it.cantidadDisponible)
             return { ...it, cantidadDevolver: Number(val.toFixed(3)) }
           }
-          const maxVal = Math.max(1, Math.floor(it.cantidadOriginal))
+          const maxVal = Math.max(1, Math.floor(it.cantidadDisponible))
           const entero = Math.floor(Number(cantidad))
           const val = isNaN(entero) || entero < 1 ? 1 : Math.min(entero, maxVal)
           return { ...it, cantidadDevolver: val }
@@ -232,13 +278,18 @@ export function DevolucionModal({
   }, [venta, subtotalOriginal])
 
   // Cálculo del monto total a reintegrar aplicando el ratio real de la venta
-  const itemsSeleccionados = items.filter((i) => i.seleccionado)
+  const itemsSeleccionados = items.filter((i) => i.seleccionado && i.cantidadDisponible > 0)
   const totalReintegro = itemsSeleccionados.reduce(
     (acc, it) => acc + Math.round(it.cantidadDevolver * it.precioUnitario * ratioReintegro),
     0
   )
   const stockVuelveCount = itemsSeleccionados.filter((i) => i.reingresaStock).length
   const stockMermaCount = itemsSeleccionados.filter((i) => !i.reingresaStock).length
+
+  // Trazabilidad del ticket: total original facturado, total descontado acumulado, y monto actualizado resultante
+  const totalOriginalTicket = venta?.total || 0
+  const totalDescontadoAcumulado = totalYaDevueltoHistorico + totalReintegro
+  const nuevoTotalActualizadoTicket = Math.max(0, totalOriginalTicket - totalDescontadoAcumulado)
 
   const handleConfirmarDevolucion = async () => {
     if (!venta || guardando) return
@@ -292,20 +343,32 @@ export function DevolucionModal({
   // Pie fijo del modal cuando hay venta cargada
   const modalFooter = venta ? (
     <div className="w-full space-y-2.5">
-      <div className="p-2.5 sm:p-3 bg-red-50/90 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 rounded-xl flex items-center justify-between shadow-2xs">
+      <div className="p-3 bg-red-50/90 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 rounded-xl flex items-center justify-between shadow-2xs flex-wrap gap-2">
         <div className="min-w-0 pr-2">
           <span className="text-xs font-bold text-red-900 dark:text-red-300 block">
-            Total a Reintegrar:
+            Total a Reintegrar / Descontar del Ticket:
           </span>
           <span className="text-[11px] text-red-700 dark:text-red-400">
-            {itemsSeleccionados.length} producto(s) marcado(s)
-            {stockVuelveCount > 0 ? ` · ${stockVuelveCount} vuelven a stock` : ''}
+            {itemsSeleccionados.length} producto(s) seleccionado(s)
+            {stockVuelveCount > 0 ? ` · ${stockVuelveCount} vuelven a stock físico` : ''}
             {stockMermaCount > 0 ? ` · ${stockMermaCount} a merma/baja` : ''}
           </span>
         </div>
-        <span className="text-xl sm:text-2xl font-black text-red-700 dark:text-red-400 font-mono flex-shrink-0">
-          {formatPrecio(totalReintegro)}
-        </span>
+        <div className="text-right">
+          <span className="text-xl sm:text-2xl font-black text-red-700 dark:text-red-400 font-mono">
+            {formatPrecio(totalReintegro)}
+          </span>
+          <span className="block text-[11px] text-gray-600 dark:text-gray-300 font-medium mt-0.5">
+            Ticket original:{' '}
+            <strong className={`${totalDescontadoAcumulado > 0 ? 'line-through text-gray-400' : ''}`}>
+              {formatPrecio(totalOriginalTicket)}
+            </strong>{' '}
+            ➔ Nuevo total:{' '}
+            <strong className="text-emerald-700 dark:text-emerald-400 font-bold font-mono">
+              {formatPrecio(nuevoTotalActualizadoTicket)}
+            </strong>
+          </span>
+        </div>
       </div>
 
       <div className="flex gap-2">
@@ -318,7 +381,7 @@ export function DevolucionModal({
           onClick={handleConfirmarDevolucion}
           className="font-bold shadow-xs py-2.5 sm:py-3 text-xs sm:text-sm"
         >
-          Confirmar Devolución ({formatPrecio(totalReintegro)})
+          Confirmar Reintegro ({formatPrecio(totalReintegro)})
         </Button>
         <Button
           type="button"
@@ -488,44 +551,104 @@ export function DevolucionModal({
             /* PANTALLA 2: DEVOLUCIÓN DE LA VENTA SELECCIONADA      */
             /* ==================================================== */
             <div className="space-y-4">
-              {/* Cabecera del ticket cargado con botón para cambiar */}
-              <div className="p-3 bg-slate-50 dark:bg-gray-900/60 border border-slate-200 dark:border-gray-700 rounded-xl flex items-center justify-between flex-wrap gap-2">
-                <div className="min-w-0">
+              {/* Cabecera del ticket cargado con desglose contable de totales y trazabilidad */}
+              <div className="p-3.5 bg-gradient-to-r from-slate-50 to-indigo-50/40 dark:from-gray-900/80 dark:to-indigo-950/30 border border-slate-200 dark:border-gray-700 rounded-xl space-y-3 shadow-2xs">
+                <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-gray-200 dark:border-gray-700/60">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono font-bold text-xs bg-indigo-100 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-300 px-2 py-0.5 rounded-md">
+                    <span className="font-mono font-bold text-xs bg-indigo-100 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-300 px-2.5 py-0.5 rounded-md">
                       Ticket #{venta.id.slice(0, 8).toUpperCase()}
                     </span>
                     <span className="text-[11px] text-gray-500 dark:text-gray-400">
                       {formatFecha(venta.fecha_hora)}
-                    </span>
-                    <span className="text-xs font-mono font-bold text-indigo-700 dark:text-indigo-400">
-                      Total: {formatPrecio(venta.total)}
                     </span>
                     {venta.cliente && (
                       <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
                         👤 {venta.cliente.nombre}
                       </span>
                     )}
+                    {cargandoPrevias && (
+                      <span className="text-[11px] text-gray-400 italic">
+                        Verificando devoluciones previas...
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setTicketParaVer(ventaToTicketData(venta, kiosco))}
+                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-semibold cursor-pointer"
+                    >
+                      Ver comprobante
+                    </button>
+                    <span className="text-gray-300 dark:text-gray-600">·</span>
+                    <button
+                      type="button"
+                      onClick={reiniciar}
+                      className="text-xs text-gray-500 hover:text-indigo-600 underline cursor-pointer"
+                    >
+                      Buscar otro
+                    </button>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setTicketParaVer(ventaToTicketData(venta, kiosco))}
-                    className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-semibold cursor-pointer"
-                  >
-                    Ver comprobante
-                  </button>
-                  <span className="text-gray-300 dark:text-gray-600">·</span>
-                  <button
-                    type="button"
-                    onClick={reiniciar}
-                    className="text-xs text-gray-500 hover:text-indigo-600 underline cursor-pointer"
-                  >
-                    Buscar otro
-                  </button>
+                {/* Panel de Trazabilidad: Total Original -> Descontado -> Total Actualizado */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {/* 1. Total Facturado Original */}
+                  <div className="p-2.5 rounded-lg bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 shadow-2xs">
+                    <span className="text-[10px] uppercase font-bold text-gray-500 dark:text-gray-400 block tracking-wider">
+                      Total Original Facturado
+                    </span>
+                    <span className={`text-base font-black font-mono mt-0.5 block ${
+                      totalDescontadoAcumulado > 0 ? 'text-gray-500 dark:text-gray-400 line-through' : 'text-gray-800 dark:text-gray-200'
+                    }`}>
+                      {formatPrecio(totalOriginalTicket)}
+                    </span>
+                    {totalYaDevueltoHistorico > 0 && (
+                      <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">
+                        Devuelto previo: -{formatPrecio(totalYaDevueltoHistorico)}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* 2. Valor a descontar del ticket */}
+                  <div className="p-2.5 rounded-lg bg-red-50/90 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 shadow-2xs">
+                    <span className="text-[10px] uppercase font-bold text-red-700 dark:text-red-300 block tracking-wider">
+                      (-) A Descontar del Ticket
+                    </span>
+                    <span className="text-base font-black font-mono text-red-600 dark:text-red-400 mt-0.5 block">
+                      {totalReintegro > 0 ? `-${formatPrecio(totalReintegro)}` : '$ 0'}
+                    </span>
+                    <p className="text-[10px] text-red-700 dark:text-red-400 mt-0.5">
+                      {itemsSeleccionados.length} producto(s) a reintegrar
+                    </p>
+                  </div>
+
+                  {/* 3. Monto Actualizado del Ticket */}
+                  <div className="p-2.5 rounded-lg bg-emerald-50/90 dark:bg-emerald-950/40 border-2 border-emerald-300 dark:border-emerald-800 shadow-2xs">
+                    <span className="text-[10px] uppercase font-bold text-emerald-800 dark:text-emerald-300 block tracking-wider">
+                      (=) Monto Actualizado Ticket
+                    </span>
+                    <span className="text-base font-black font-mono text-emerald-700 dark:text-emerald-300 mt-0.5 block">
+                      {formatPrecio(nuevoTotalActualizadoTicket)}
+                    </span>
+                    <p className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium mt-0.5">
+                      {nuevoTotalActualizadoTicket === 0
+                        ? 'Devolución total (Ticket en $0)'
+                        : 'Nuevo valor neto restante'}
+                    </p>
+                  </div>
                 </div>
+
+                {/* Banner de stock */}
+                {stockVuelveCount > 0 && (
+                  <div className="text-[11px] text-emerald-800 dark:text-emerald-300 bg-emerald-100/70 dark:bg-emerald-900/30 px-3 py-1.5 rounded-lg flex items-center gap-2 font-medium border border-emerald-200 dark:border-emerald-800/50">
+                    <span className="text-sm">📦</span>
+                    <span>
+                      <strong>Stock a reincorporar:</strong> {stockVuelveCount} producto(s) marcado(s) como <em>Apto</em> volverán a sumar al inventario disponible.
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Alerta didáctica si el cobro original fue digital */}
@@ -591,24 +714,40 @@ export function DevolucionModal({
                         <input
                           type="checkbox"
                           checked={it.seleccionado}
+                          disabled={it.cantidadDisponible <= 0}
                           onChange={() => toggleSeleccionItem(it.productoId)}
-                          className="w-5 h-5 rounded text-indigo-600 border-gray-300 dark:border-gray-600 mt-0.5 cursor-pointer flex-shrink-0"
+                          className="w-5 h-5 rounded text-indigo-600 border-gray-300 dark:border-gray-600 mt-0.5 cursor-pointer flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
                         />
                         <div
-                          className="flex-1 min-w-0 cursor-pointer"
-                          onClick={() => toggleSeleccionItem(it.productoId)}
+                          className={`flex-1 min-w-0 ${it.cantidadDisponible > 0 ? 'cursor-pointer' : 'cursor-not-allowed'}`}
+                          onClick={() => it.cantidadDisponible > 0 && toggleSeleccionItem(it.productoId)}
                         >
-                          <h5 className="text-xs font-bold text-gray-900 dark:text-gray-100 leading-snug">
-                            {it.descripcion}
-                          </h5>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h5 className={`text-xs font-bold leading-snug ${it.cantidadDisponible <= 0 ? 'text-gray-400 dark:text-gray-500 line-through' : 'text-gray-900 dark:text-gray-100'}`}>
+                              {it.descripcion}
+                            </h5>
+                            {it.cantidadDisponible <= 0 ? (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-600">
+                                ✓ Totalmente devuelto ({it.cantidadYaDevuelta} de {it.cantidadOriginal})
+                              </span>
+                            ) : it.cantidadYaDevuelta > 0 ? (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                                Parcial ({it.cantidadYaDevuelta} devueltos)
+                              </span>
+                            ) : null}
+                          </div>
                           <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                            Original: <strong className="text-gray-700 dark:text-gray-300">{it.cantidadOriginal} {it.esPesable ? (it.unidadMedida || 'KG') : 'un.'}</strong> · {formatPrecio(it.precioUnitario)} c/u
+                            Original: <strong className="text-gray-700 dark:text-gray-300">{it.cantidadOriginal} {it.esPesable ? (it.unidadMedida || 'KG') : 'un.'}</strong>
+                            {it.cantidadYaDevuelta > 0 ? (
+                              <> · <span className="text-amber-600 dark:text-amber-400 font-semibold">Devuelto: {it.cantidadYaDevuelta}</span> · Quedan: <strong className="text-indigo-600 dark:text-indigo-400">{it.cantidadDisponible}</strong></>
+                            ) : null}
+                            {' '}· {formatPrecio(Math.round(it.precioUnitario * ratioReintegro))} c/u
                           </p>
                         </div>
                       </div>
 
-                      {/* Configuración del ítem cuando está tildado */}
-                      {it.seleccionado && (
+                      {/* Configuración del ítem cuando está tildado y disponible */}
+                      {it.seleccionado && it.cantidadDisponible > 0 && (
                         <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-700/60 space-y-2.5">
                           {/* Stepper y subtotal */}
                           <div className="flex items-center justify-between">
@@ -619,7 +758,7 @@ export function DevolucionModal({
                               <div className="inline-flex items-center border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden bg-white dark:bg-gray-800 shadow-2xs">
                                 <button
                                   type="button"
-                                  disabled={it.esPesable ? it.cantidadDevolver <= 0.01 : it.cantidadDevolver <= 1}
+                                  disabled={it.cantidadDisponible <= 0 || (it.esPesable ? it.cantidadDevolver <= 0.01 : it.cantidadDevolver <= 1)}
                                   onClick={() => {
                                     const paso = it.esPesable ? 0.1 : 1
                                     actualizarCantidadDevolver(it.productoId, Number((it.cantidadDevolver - paso).toFixed(3)))
@@ -631,6 +770,7 @@ export function DevolucionModal({
                                 <input
                                   type="text"
                                   inputMode="decimal"
+                                  disabled={it.cantidadDisponible <= 0}
                                   value={it.cantidadDevolver}
                                   onKeyDown={(e) => {
                                     if (it.esPesable) {
@@ -652,7 +792,7 @@ export function DevolucionModal({
                                 />
                                 <button
                                   type="button"
-                                  disabled={it.cantidadDevolver >= it.cantidadOriginal}
+                                  disabled={it.cantidadDisponible <= 0 || it.cantidadDevolver >= it.cantidadDisponible}
                                   onClick={() => {
                                     const paso = it.esPesable ? 0.1 : 1
                                     actualizarCantidadDevolver(it.productoId, Number((it.cantidadDevolver + paso).toFixed(3)))
@@ -714,30 +854,49 @@ export function DevolucionModal({
                           <tr
                             key={it.productoId}
                             className={`transition-colors ${
-                              it.seleccionado ? 'bg-indigo-50/40 dark:bg-indigo-950/20' : 'opacity-50'
+                              it.cantidadDisponible <= 0
+                                ? 'bg-gray-50/50 dark:bg-gray-800/30 opacity-60'
+                                : it.seleccionado
+                                ? 'bg-indigo-50/40 dark:bg-indigo-950/20'
+                                : 'opacity-60'
                             }`}
                           >
                             <td className="px-3 py-2.5 text-center">
                               <input
                                 type="checkbox"
                                 checked={it.seleccionado}
+                                disabled={it.cantidadDisponible <= 0}
                                 onChange={() => toggleSeleccionItem(it.productoId)}
-                                className="w-4 h-4 rounded text-indigo-600 border-gray-300 cursor-pointer"
+                                className="w-4 h-4 rounded text-indigo-600 border-gray-300 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                               />
                             </td>
                             <td className="px-3 py-2.5">
-                              <p className="font-semibold text-gray-900 dark:text-gray-100">
-                                {it.descripcion}
-                              </p>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className={`font-semibold ${it.cantidadDisponible <= 0 ? 'text-gray-400 dark:text-gray-500 line-through' : 'text-gray-900 dark:text-gray-100'}`}>
+                                  {it.descripcion}
+                                </p>
+                                {it.cantidadDisponible <= 0 ? (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-600">
+                                    ✓ Totalmente devuelto ({it.cantidadYaDevuelta} de {it.cantidadOriginal})
+                                  </span>
+                                ) : it.cantidadYaDevuelta > 0 ? (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                                    Parcial ({it.cantidadYaDevuelta} devueltos)
+                                  </span>
+                                ) : null}
+                              </div>
                               <p className="text-[10px] text-gray-400">
                                 Original: {it.cantidadOriginal} {it.esPesable ? (it.unidadMedida || 'KG') : 'un.'}
+                                {it.cantidadYaDevuelta > 0 ? (
+                                  <> · <span className="text-amber-600 dark:text-amber-400 font-semibold">Devuelto: {it.cantidadYaDevuelta}</span> · Quedan: <strong className="text-indigo-600 dark:text-indigo-400">{it.cantidadDisponible}</strong></>
+                                ) : null}
                               </p>
                             </td>
                             <td className="px-2 py-2.5 text-center whitespace-nowrap">
                               <div className="inline-flex items-center justify-center border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden bg-white dark:bg-gray-800 shadow-2xs">
                                 <button
                                   type="button"
-                                  disabled={!it.seleccionado || (it.esPesable ? it.cantidadDevolver <= 0.01 : it.cantidadDevolver <= 1)}
+                                  disabled={!it.seleccionado || it.cantidadDisponible <= 0 || (it.esPesable ? it.cantidadDevolver <= 0.01 : it.cantidadDevolver <= 1)}
                                   onClick={() => {
                                     const paso = it.esPesable ? 0.1 : 1
                                     actualizarCantidadDevolver(it.productoId, Number((it.cantidadDevolver - paso).toFixed(3)))
@@ -750,7 +909,7 @@ export function DevolucionModal({
                                 <input
                                   type="text"
                                   inputMode="decimal"
-                                  disabled={!it.seleccionado}
+                                  disabled={!it.seleccionado || it.cantidadDisponible <= 0}
                                   value={it.cantidadDevolver}
                                   onKeyDown={(e) => {
                                     if (it.esPesable) {
@@ -774,7 +933,7 @@ export function DevolucionModal({
                                 />
                                 <button
                                   type="button"
-                                  disabled={!it.seleccionado || it.cantidadDevolver >= it.cantidadOriginal}
+                                  disabled={!it.seleccionado || it.cantidadDisponible <= 0 || it.cantidadDevolver >= it.cantidadDisponible}
                                   onClick={() => {
                                     const paso = it.esPesable ? 0.1 : 1
                                     actualizarCantidadDevolver(it.productoId, Number((it.cantidadDevolver + paso).toFixed(3)))
@@ -793,34 +952,40 @@ export function DevolucionModal({
                               {formatPrecio(Math.round(it.cantidadDevolver * it.precioUnitario * ratioReintegro))}
                             </td>
                             <td className="px-3 py-2.5 text-center whitespace-nowrap">
-                              <div className="inline-flex rounded-lg p-0.5 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[10px]">
-                                <button
-                                  type="button"
-                                  disabled={!it.seleccionado}
-                                  onClick={() => setReingresaStock(it.productoId, true)}
-                                  className={`px-2 py-1 rounded-md font-bold transition-all cursor-pointer ${
-                                    it.reingresaStock
-                                      ? 'bg-emerald-600 text-white shadow-2xs'
-                                      : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
-                                  }`}
-                                  title="El producto vuelve a ingresar al inventario para su venta"
-                                >
-                                  Apto (Stock)
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={!it.seleccionado}
-                                  onClick={() => setReingresaStock(it.productoId, false)}
-                                  className={`px-2 py-1 rounded-md font-bold transition-all cursor-pointer ${
-                                    !it.reingresaStock
-                                      ? 'bg-amber-600 text-white shadow-2xs'
-                                      : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
-                                  }`}
-                                  title="El producto NO reingresa a stock (se registra como merma/rotura)"
-                                >
-                                  Merma / Baja
-                                </button>
-                              </div>
+                              {it.cantidadDisponible <= 0 ? (
+                                <span className="text-[11px] text-gray-400 italic">
+                                  Devuelto en op. previa
+                                </span>
+                              ) : (
+                                <div className="inline-flex rounded-lg p-0.5 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[10px]">
+                                  <button
+                                    type="button"
+                                    disabled={!it.seleccionado}
+                                    onClick={() => setReingresaStock(it.productoId, true)}
+                                    className={`px-2 py-1 rounded-md font-bold transition-all cursor-pointer ${
+                                      it.reingresaStock
+                                        ? 'bg-emerald-600 text-white shadow-2xs'
+                                        : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                                    }`}
+                                    title="El producto vuelve a ingresar al inventario para su venta"
+                                  >
+                                    Apto (Stock)
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={!it.seleccionado}
+                                    onClick={() => setReingresaStock(it.productoId, false)}
+                                    className={`px-2 py-1 rounded-md font-bold transition-all cursor-pointer ${
+                                      !it.reingresaStock
+                                        ? 'bg-amber-600 text-white shadow-2xs'
+                                        : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                                    }`}
+                                    title="El producto NO reingresa a stock (se registra como merma/rotura)"
+                                  >
+                                    Merma / Baja
+                                  </button>
+                                </div>
+                              )}
                             </td>
                           </tr>
                         ))}
