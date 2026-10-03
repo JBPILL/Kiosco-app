@@ -147,7 +147,7 @@ export function PromocionesPage() {
     setAmbito(p.producto_id ? 'PRODUCTO' : 'CATEGORIA')
     setProductoId(p.producto_id || (productos[0]?.id || ''))
     setCategoriaId(p.categoria_id || (categorias[0]?.id || ''))
-    setCantidadMinima(String(p.cantidad_minima || 2))
+    setCantidadMinima(p.cantidad_minima != null ? String(p.cantidad_minima) : (p.tipo === 'PORCENTAJE' ? '1' : '2'))
     setCantidadPaga(p.cantidad_paga ? String(p.cantidad_paga) : '1')
     setModoVolumen(p.precio_unitario_promo ? 'PRECIO' : 'PORCENTAJE')
     setPrecioUnitarioPromo(p.precio_unitario_promo ? String(p.precio_unitario_promo) : '')

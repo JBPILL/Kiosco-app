@@ -270,9 +270,11 @@ export function useProducts() {
           ;(async () => {
             try {
               for (const prodOffline of soloLocales) {
-                const { _local_offline, categoria, ...datosDB } = prodOffline as any
-                const { error: syncErr } = await supabase.from('productos').upsert(datosDB, { onConflict: 'id' })
-                if (!syncErr) {
+                const { _local_offline, categoria, proveedor, ...datosDB } = prodOffline as any
+                const { ok } = await ejecutarOperacionSupabaseSegura(datosDB, (d) =>
+                  supabase.from('productos').upsert(d, { onConflict: 'id' })
+                )
+                if (ok) {
                   setProductos((curr) => {
                     const actualizados = curr.map((p) => (p.id === prodOffline.id ? { ...p, _local_offline: false } : p))
                     guardarProductosEnCache(actualizados)
