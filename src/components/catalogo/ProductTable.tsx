@@ -34,7 +34,6 @@ interface ProductTableProps {
   cargando: boolean
   onPurgarHuerfanos?: () => void
   onSincronizar?: () => void
-  onConfigurarCombo?: (producto: Producto) => void
 }
 
 type SortField = 'descripcion' | 'categoria' | 'stock' | 'precio_venta' | 'precio_costo'
@@ -53,7 +52,6 @@ export function ProductTable({
   cargando,
   onPurgarHuerfanos,
   onSincronizar,
-  onConfigurarCombo,
 }: ProductTableProps) {
   const { tieneEnvases, tieneBalanza, tieneVencimientos } = useTenantConfig()
   const { proveedores, cargarProveedores } = useProveedorStore()
@@ -330,11 +328,6 @@ export function ProductTable({
                           Balanza ({prod.unidad_medida || 'KG'})
                         </span>
                       )}
-                      {prod.es_combo && (
-                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 font-bold flex-shrink-0">
-                          Combo
-                        </span>
-                      )}
                       {prod.proveedor_id && proveedoresMap.has(prod.proveedor_id) && (
                         <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 font-medium whitespace-nowrap">
                           {proveedoresMap.get(prod.proveedor_id)}
@@ -376,16 +369,6 @@ export function ProductTable({
                         </svg>
                         <span>{prod.es_favorito ? 'Fav' : '+Fav'}</span>
                       </button>
-                      {prod.es_combo && onConfigurarCombo && (
-                        <button
-                          type="button"
-                          onClick={() => onConfigurarCombo(prod)}
-                          title="Configurar receta / componentes del combo"
-                          className="inline-flex items-center justify-center text-xs font-semibold px-2 py-1 rounded-lg bg-purple-50 dark:bg-purple-950/50 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-600 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 transition-all active:scale-95 shadow-2xs whitespace-nowrap cursor-pointer"
-                        >
-                          Receta
-                        </button>
-                      )}
                       <button
                         type="button"
                         onClick={() => onEditar(prod)}
@@ -490,11 +473,6 @@ export function ProductTable({
                               Balanza ({prod.unidad_medida || 'KG'})
                             </span>
                           )}
-                          {prod.es_combo && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 font-semibold whitespace-nowrap">
-                              Combo / Pack
-                            </span>
-                          )}
                           {prod.proveedor_id && proveedoresMap.has(prod.proveedor_id) && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 font-medium whitespace-nowrap">
                               {proveedoresMap.get(prod.proveedor_id)}
@@ -558,16 +536,6 @@ export function ProductTable({
                       </td>
                       <td className="px-3.5 py-2.5 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1.5">
-                          {prod.es_combo && onConfigurarCombo && (
-                            <button
-                              type="button"
-                              onClick={() => onConfigurarCombo(prod)}
-                              title="Configurar receta / componentes del combo"
-                              className="inline-flex items-center justify-center px-2 py-1 text-xs font-semibold rounded-lg bg-purple-50 dark:bg-purple-950/50 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-600 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
-                            >
-                              Receta
-                            </button>
-                          )}
                           <button
                             type="button"
                             onClick={() => onEditar(prod)}
