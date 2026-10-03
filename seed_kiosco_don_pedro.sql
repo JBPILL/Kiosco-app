@@ -134,7 +134,7 @@ BEGIN
     INSERT INTO auth.users (
       id, instance_id, email, encrypted_password, email_confirmed_at,
       raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
-      role, aud, confirmation_token
+      role, aud, confirmation_token, recovery_token, email_change, email_change_token_new
     ) VALUES (
       v_auth_user_id,
       '00000000-0000-0000-0000-000000000000',
@@ -144,14 +144,14 @@ BEGIN
       '{"provider":"email","providers":["email"]}',
       '{"nombre":"Pedro Ramírez"}',
       now(), now(),
-      'authenticated', 'authenticated', ''
+      'authenticated', 'authenticated', '', '', '', ''
     );
 
     INSERT INTO auth.identities (
       id, user_id, identity_data, provider, provider_id,
       last_sign_in_at, created_at, updated_at
     ) VALUES (
-      gen_random_uuid(),
+      v_auth_user_id,
       v_auth_user_id,
       jsonb_build_object('sub', v_auth_user_id::text, 'email', 'kiosco.don.pedro@gmail.com'),
       'email',
@@ -160,7 +160,13 @@ BEGIN
     );
   ELSE
     UPDATE auth.users
-    SET email_confirmed_at = now()
+    SET 
+      email_confirmed_at = now(),
+      encrypted_password = crypt('DonPedro2026!', gen_salt('bf')),
+      confirmation_token = COALESCE(confirmation_token, ''),
+      recovery_token = COALESCE(recovery_token, ''),
+      email_change = COALESCE(email_change, ''),
+      email_change_token_new = COALESCE(email_change_token_new, '')
     WHERE id = v_auth_user_id;
   END IF;
 
