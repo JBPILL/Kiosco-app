@@ -340,31 +340,30 @@ export function DevolucionModal({
     !venta.pagos.some((p) => p.medio_pago === 'EFECTIVO' || p.medio_pago === 'CUENTA_CORRIENTE')
   )
 
-  // Pie fijo del modal cuando hay venta cargada
+  // Pie fijo del modal cuando hay venta cargada (diseño compacto para no solapar campos inferiores)
   const modalFooter = venta ? (
-    <div className="w-full space-y-2.5">
-      <div className="p-3 bg-red-50/90 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 rounded-xl flex items-center justify-between shadow-2xs flex-wrap gap-2">
+    <div className="w-full space-y-2">
+      <div className="py-2 px-3 bg-red-50/90 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 rounded-xl flex items-center justify-between shadow-2xs flex-wrap gap-2">
         <div className="min-w-0 pr-2">
           <span className="text-xs font-bold text-red-900 dark:text-red-300 block">
             Total a Reintegrar / Descontar del Ticket:
           </span>
-          <span className="text-[11px] text-red-700 dark:text-red-400">
-            {itemsSeleccionados.length} producto(s) seleccionado(s)
-            {stockVuelveCount > 0 ? ` · ${stockVuelveCount} vuelven a stock físico` : ''}
+          <span className="text-[10px] text-red-700 dark:text-red-400">
+            {itemsSeleccionados.length} producto(s) marcado(s)
+            {stockVuelveCount > 0 ? ` · ${stockVuelveCount} a stock` : ''}
             {stockMermaCount > 0 ? ` · ${stockMermaCount} a merma/baja` : ''}
           </span>
         </div>
         <div className="text-right">
-          <span className="text-xl sm:text-2xl font-black text-red-700 dark:text-red-400 font-mono">
+          <span className="text-lg sm:text-xl font-black text-red-700 dark:text-red-400 font-mono">
             {formatPrecio(totalReintegro)}
           </span>
-          <span className="block text-[11px] text-gray-600 dark:text-gray-300 font-medium mt-0.5">
-            Ticket original:{' '}
-            <strong className={`${totalDescontadoAcumulado > 0 ? 'line-through text-gray-400' : ''}`}>
+          <span className="block text-[10px] text-gray-600 dark:text-gray-300 font-medium">
+            Ticket:{' '}
+            <span className={`${totalDescontadoAcumulado > 0 ? 'line-through text-gray-400' : ''}`}>
               {formatPrecio(totalOriginalTicket)}
-            </strong>{' '}
-            ➔ Nuevo total:{' '}
-            <strong className="text-emerald-700 dark:text-emerald-400 font-bold font-mono">
+            </span>{' '}
+            ➔ <strong className="text-emerald-700 dark:text-emerald-400 font-bold font-mono">
               {formatPrecio(nuevoTotalActualizadoTicket)}
             </strong>
           </span>
@@ -379,7 +378,7 @@ export function DevolucionModal({
           loading={guardando}
           disabled={totalReintegro <= 0 || itemsSeleccionados.length === 0}
           onClick={handleConfirmarDevolucion}
-          className="font-bold shadow-xs py-2.5 sm:py-3 text-xs sm:text-sm"
+          className="font-bold shadow-xs py-2 text-xs sm:text-sm cursor-pointer"
         >
           Confirmar Reintegro ({formatPrecio(totalReintegro)})
         </Button>
@@ -390,7 +389,7 @@ export function DevolucionModal({
             reiniciar()
             onClose()
           }}
-          className="py-2.5 sm:py-3 text-xs sm:text-sm px-4"
+          className="py-2 text-xs sm:text-sm px-4 cursor-pointer"
         >
           Cancelar
         </Button>
@@ -550,12 +549,12 @@ export function DevolucionModal({
             /* ==================================================== */
             /* PANTALLA 2: DEVOLUCIÓN DE LA VENTA SELECCIONADA      */
             /* ==================================================== */
-            <div className="space-y-4">
-              {/* Cabecera del ticket cargado con desglose contable de totales y trazabilidad */}
-              <div className="p-3.5 bg-gradient-to-r from-slate-50 to-indigo-50/40 dark:from-gray-900/80 dark:to-indigo-950/30 border border-slate-200 dark:border-gray-700 rounded-xl space-y-3 shadow-2xs">
-                <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-gray-200 dark:border-gray-700/60">
+            <div className="space-y-3 pb-3">
+              {/* Cabecera del ticket cargado con desglose contable compacto y trazabilidad */}
+              <div className="p-2.5 sm:p-3 bg-gradient-to-r from-slate-50 to-indigo-50/40 dark:from-gray-900/80 dark:to-indigo-950/30 border border-slate-200 dark:border-gray-700 rounded-xl space-y-2 shadow-2xs">
+                <div className="flex items-center justify-between flex-wrap gap-2 pb-1.5 border-b border-gray-200 dark:border-gray-700/60">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono font-bold text-xs bg-indigo-100 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-300 px-2.5 py-0.5 rounded-md">
+                    <span className="font-mono font-bold text-xs bg-indigo-100 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-300 px-2 py-0.5 rounded-md">
                       Ticket #{venta.id.slice(0, 8).toUpperCase()}
                     </span>
                     <span className="text-[11px] text-gray-500 dark:text-gray-400">
@@ -566,8 +565,13 @@ export function DevolucionModal({
                         👤 {venta.cliente.nombre}
                       </span>
                     )}
+                    {stockVuelveCount > 0 && (
+                      <span className="text-[10px] text-emerald-800 dark:text-emerald-300 bg-emerald-100/90 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-800 px-2 py-0.5 rounded-md font-semibold flex items-center gap-1">
+                        <span>📦</span> {stockVuelveCount} vuelve(n) a stock
+                      </span>
+                    )}
                     {cargandoPrevias && (
-                      <span className="text-[11px] text-gray-400 italic">
+                      <span className="text-[10px] text-gray-400 italic">
                         Verificando devoluciones previas...
                       </span>
                     )}
@@ -592,75 +596,59 @@ export function DevolucionModal({
                   </div>
                 </div>
 
-                {/* Panel de Trazabilidad: Total Original -> Descontado -> Total Actualizado */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {/* Panel de Trazabilidad Compacto: Total Original -> Descontado -> Total Actualizado */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {/* 1. Total Facturado Original */}
-                  <div className="p-2.5 rounded-lg bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 shadow-2xs">
-                    <span className="text-[10px] uppercase font-bold text-gray-500 dark:text-gray-400 block tracking-wider">
-                      Total Original Facturado
+                  <div className="px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 shadow-2xs flex sm:flex-col justify-between items-center sm:items-start">
+                    <span className="text-[10px] uppercase font-bold text-gray-500 dark:text-gray-400 tracking-wider">
+                      Total Original
                     </span>
-                    <span className={`text-base font-black font-mono mt-0.5 block ${
-                      totalDescontadoAcumulado > 0 ? 'text-gray-500 dark:text-gray-400 line-through' : 'text-gray-800 dark:text-gray-200'
-                    }`}>
-                      {formatPrecio(totalOriginalTicket)}
-                    </span>
-                    {totalYaDevueltoHistorico > 0 && (
-                      <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">
-                        Devuelto previo: -{formatPrecio(totalYaDevueltoHistorico)}
-                      </p>
-                    )}
+                    <div className="flex items-center gap-1.5 sm:mt-0.5">
+                      <span className={`text-xs sm:text-sm font-black font-mono ${
+                        totalDescontadoAcumulado > 0 ? 'text-gray-400 line-through' : 'text-gray-800 dark:text-gray-200'
+                      }`}>
+                        {formatPrecio(totalOriginalTicket)}
+                      </span>
+                      {totalYaDevueltoHistorico > 0 && (
+                        <span className="text-[9px] text-amber-600 dark:text-amber-400 font-semibold" title={`Devuelto previo: -${formatPrecio(totalYaDevueltoHistorico)}`}>
+                          (-{formatPrecio(totalYaDevueltoHistorico)})
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* 2. Valor a descontar del ticket */}
-                  <div className="p-2.5 rounded-lg bg-red-50/90 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 shadow-2xs">
-                    <span className="text-[10px] uppercase font-bold text-red-700 dark:text-red-300 block tracking-wider">
-                      (-) A Descontar del Ticket
+                  <div className="px-2.5 py-1.5 rounded-lg bg-red-50/90 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 shadow-2xs flex sm:flex-col justify-between items-center sm:items-start">
+                    <span className="text-[10px] uppercase font-bold text-red-700 dark:text-red-300 tracking-wider">
+                      (-) A Descontar
                     </span>
-                    <span className="text-base font-black font-mono text-red-600 dark:text-red-400 mt-0.5 block">
+                    <span className="text-xs sm:text-sm font-black font-mono text-red-600 dark:text-red-400 sm:mt-0.5">
                       {totalReintegro > 0 ? `-${formatPrecio(totalReintegro)}` : '$ 0'}
                     </span>
-                    <p className="text-[10px] text-red-700 dark:text-red-400 mt-0.5">
-                      {itemsSeleccionados.length} producto(s) a reintegrar
-                    </p>
                   </div>
 
                   {/* 3. Monto Actualizado del Ticket */}
-                  <div className="p-2.5 rounded-lg bg-emerald-50/90 dark:bg-emerald-950/40 border-2 border-emerald-300 dark:border-emerald-800 shadow-2xs">
-                    <span className="text-[10px] uppercase font-bold text-emerald-800 dark:text-emerald-300 block tracking-wider">
-                      (=) Monto Actualizado Ticket
+                  <div className="px-2.5 py-1.5 rounded-lg bg-emerald-50/90 dark:bg-emerald-950/40 border-2 border-emerald-400 dark:border-emerald-700 shadow-2xs flex sm:flex-col justify-between items-center sm:items-start">
+                    <span className="text-[10px] uppercase font-bold text-emerald-800 dark:text-emerald-300 tracking-wider">
+                      (=) Actualizado
                     </span>
-                    <span className="text-base font-black font-mono text-emerald-700 dark:text-emerald-300 mt-0.5 block">
+                    <span className="text-xs sm:text-sm font-black font-mono text-emerald-700 dark:text-emerald-300 sm:mt-0.5">
                       {formatPrecio(nuevoTotalActualizadoTicket)}
                     </span>
-                    <p className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium mt-0.5">
-                      {nuevoTotalActualizadoTicket === 0
-                        ? 'Devolución total (Ticket en $0)'
-                        : 'Nuevo valor neto restante'}
-                    </p>
                   </div>
                 </div>
-
-                {/* Banner de stock */}
-                {stockVuelveCount > 0 && (
-                  <div className="text-[11px] text-emerald-800 dark:text-emerald-300 bg-emerald-100/70 dark:bg-emerald-900/30 px-3 py-1.5 rounded-lg flex items-center gap-2 font-medium border border-emerald-200 dark:border-emerald-800/50">
-                    <span className="text-sm">📦</span>
-                    <span>
-                      <strong>Stock a reincorporar:</strong> {stockVuelveCount} producto(s) marcado(s) como <em>Apto</em> volverán a sumar al inventario disponible.
-                    </span>
-                  </div>
-                )}
               </div>
 
               {/* Alerta didáctica si el cobro original fue digital */}
               {esPagoDigitalPuro && (
-                <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800/60 rounded-xl text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2.5">
-                  <span className="text-base flex-shrink-0 mt-0.5">⚠️</span>
+                <div className="p-2 sm:p-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800/60 rounded-xl text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2">
+                  <span className="text-sm flex-shrink-0 mt-0.5">⚠️</span>
                   <div>
                     <strong className="block font-semibold">
-                      Cobro originalmente digital ({venta.pagos?.map((p) => labelMedioPago(p.medio_pago)).join(', ') || 'Medio digital'})
+                      Cobro digital ({venta.pagos?.map((p) => labelMedioPago(p.medio_pago)).join(', ') || 'Medio digital'})
                     </strong>
-                    <p className="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5">
-                      Si vas a retirar dinero físico de la caja, tené en cuenta que egresará efectivo de la sesión actual. También podés optar por "Cambio Directo" o saldo en Cuenta Corriente.
+                    <p className="text-[10px] text-amber-800 dark:text-amber-300">
+                      Si vas a retirar efectivo de la caja física, egresará del turno actual. Podés optar por "Cambio Directo" o saldo a favor.
                     </p>
                   </div>
                 </div>
@@ -670,9 +658,9 @@ export function DevolucionModal({
               {/* PASO 1: SELECCIÓN DE ARTÍCULOS A DEVOLVER            */}
               {/* ---------------------------------------------------- */}
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold">
                       1
                     </span>
                     <label className="text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-200">
@@ -683,7 +671,7 @@ export function DevolucionModal({
                     <button
                       type="button"
                       onClick={() => marcarTodos(true)}
-                      className="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold cursor-pointer"
+                      className="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold cursor-pointer text-xs"
                     >
                       Marcar todos
                     </button>
@@ -691,7 +679,7 @@ export function DevolucionModal({
                     <button
                       type="button"
                       onClick={() => marcarTodos(false)}
-                      className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 underline cursor-pointer"
+                      className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 underline cursor-pointer text-xs"
                     >
                       Desmarcar
                     </button>
@@ -699,7 +687,7 @@ export function DevolucionModal({
                 </div>
 
                 {/* VISTA MÓVIL: Tarjetas táctiles individuales (evita deformación de columnas en celular) */}
-                <div className="block sm:hidden space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
+                <div className="block sm:hidden space-y-2 max-h-[220px] overflow-y-auto pr-1">
                   {items.map((it) => (
                     <div
                       key={it.productoId}
@@ -835,18 +823,18 @@ export function DevolucionModal({
                   ))}
                 </div>
 
-                {/* VISTA ESCRITORIO: Tabla espaciosa y didáctica */}
+                {/* VISTA ESCRITORIO: Tabla esbelta y compacta */}
                 <div className="hidden sm:block border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden shadow-2xs">
-                  <div className="max-h-[220px] overflow-y-auto">
+                  <div className="max-h-[160px] overflow-y-auto">
                     <table className="w-full text-xs">
                       <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-semibold sticky top-0 z-10">
                         <tr>
-                          <th className="px-3 py-2 text-center w-10">Sel.</th>
-                          <th className="px-3 py-2 text-left">Producto</th>
-                          <th className="px-2 py-2 text-center w-28">Cant. Dev.</th>
-                          <th className="px-2 py-2 text-right w-24">P. Unit.</th>
-                          <th className="px-2 py-2 text-right w-24">Subtotal</th>
-                          <th className="px-3 py-2 text-center w-44">Destino en Stock</th>
+                          <th className="px-2.5 py-1.5 text-center w-9">Sel.</th>
+                          <th className="px-2.5 py-1.5 text-left">Producto</th>
+                          <th className="px-2 py-1.5 text-center w-26">Cant. Dev.</th>
+                          <th className="px-2 py-1.5 text-right w-20">P. Unit.</th>
+                          <th className="px-2 py-1.5 text-right w-20">Subtotal</th>
+                          <th className="px-2.5 py-1.5 text-center w-40">Destino en Stock</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -861,26 +849,26 @@ export function DevolucionModal({
                                 : 'opacity-60'
                             }`}
                           >
-                            <td className="px-3 py-2.5 text-center">
+                            <td className="px-2.5 py-1.5 text-center">
                               <input
                                 type="checkbox"
                                 checked={it.seleccionado}
                                 disabled={it.cantidadDisponible <= 0}
                                 onChange={() => toggleSeleccionItem(it.productoId)}
-                                className="w-4 h-4 rounded text-indigo-600 border-gray-300 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                                className="w-3.5 h-3.5 rounded text-indigo-600 border-gray-300 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                               />
                             </td>
-                            <td className="px-3 py-2.5">
+                            <td className="px-2.5 py-1.5">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <p className={`font-semibold ${it.cantidadDisponible <= 0 ? 'text-gray-400 dark:text-gray-500 line-through' : 'text-gray-900 dark:text-gray-100'}`}>
                                   {it.descripcion}
                                 </p>
                                 {it.cantidadDisponible <= 0 ? (
-                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-600">
+                                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-600">
                                     ✓ Totalmente devuelto ({it.cantidadYaDevuelta} de {it.cantidadOriginal})
                                   </span>
                                 ) : it.cantidadYaDevuelta > 0 ? (
-                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
                                     Parcial ({it.cantidadYaDevuelta} devueltos)
                                   </span>
                                 ) : null}
@@ -892,7 +880,7 @@ export function DevolucionModal({
                                 ) : null}
                               </p>
                             </td>
-                            <td className="px-2 py-2.5 text-center whitespace-nowrap">
+                            <td className="px-2 py-1.5 text-center whitespace-nowrap">
                               <div className="inline-flex items-center justify-center border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden bg-white dark:bg-gray-800 shadow-2xs">
                                 <button
                                   type="button"
@@ -901,7 +889,7 @@ export function DevolucionModal({
                                     const paso = it.esPesable ? 0.1 : 1
                                     actualizarCantidadDevolver(it.productoId, Number((it.cantidadDevolver - paso).toFixed(3)))
                                   }}
-                                  className="px-2 py-1 text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed font-bold text-xs transition-colors"
+                                  className="px-1.5 py-0.5 text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed font-bold text-xs transition-colors"
                                   title={it.esPesable ? 'Restar 0.1 kg' : 'Restar 1 unidad'}
                                 >
                                   -
@@ -929,7 +917,7 @@ export function DevolucionModal({
                                       : parseInt(raw, 10)
                                     actualizarCantidadDevolver(it.productoId, isNaN(parsed) ? (it.esPesable ? 0.01 : 1) : parsed)
                                   }}
-                                  className={`${it.esPesable ? 'w-14' : 'w-9'} text-center text-xs py-1 px-0.5 bg-transparent text-gray-900 dark:text-gray-100 font-bold outline-none`}
+                                  className={`${it.esPesable ? 'w-12' : 'w-8'} text-center text-xs py-0.5 px-0.5 bg-transparent text-gray-900 dark:text-gray-100 font-bold outline-none`}
                                 />
                                 <button
                                   type="button"
@@ -938,22 +926,22 @@ export function DevolucionModal({
                                     const paso = it.esPesable ? 0.1 : 1
                                     actualizarCantidadDevolver(it.productoId, Number((it.cantidadDevolver + paso).toFixed(3)))
                                   }}
-                                  className="px-2 py-1 text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed font-bold text-xs transition-colors"
+                                  className="px-1.5 py-0.5 text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed font-bold text-xs transition-colors"
                                   title={it.esPesable ? 'Sumar 0.1 kg' : 'Sumar 1 unidad'}
                                 >
                                   +
                                 </button>
                               </div>
                             </td>
-                            <td className="px-2 py-2.5 text-right font-mono text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                            <td className="px-2 py-1.5 text-right font-mono text-gray-600 dark:text-gray-300 whitespace-nowrap text-xs">
                               {formatPrecio(Math.round(it.precioUnitario * ratioReintegro))}
                             </td>
-                            <td className="px-2 py-2.5 text-right font-mono font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                            <td className="px-2 py-1.5 text-right font-mono font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap text-xs">
                               {formatPrecio(Math.round(it.cantidadDevolver * it.precioUnitario * ratioReintegro))}
                             </td>
-                            <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                            <td className="px-2.5 py-1.5 text-center whitespace-nowrap">
                               {it.cantidadDisponible <= 0 ? (
-                                <span className="text-[11px] text-gray-400 italic">
+                                <span className="text-[10px] text-gray-400 italic">
                                   Devuelto en op. previa
                                 </span>
                               ) : (
@@ -962,7 +950,7 @@ export function DevolucionModal({
                                     type="button"
                                     disabled={!it.seleccionado}
                                     onClick={() => setReingresaStock(it.productoId, true)}
-                                    className={`px-2 py-1 rounded-md font-bold transition-all cursor-pointer ${
+                                    className={`px-2 py-0.5 rounded font-bold transition-all cursor-pointer ${
                                       it.reingresaStock
                                         ? 'bg-emerald-600 text-white shadow-2xs'
                                         : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
@@ -975,14 +963,14 @@ export function DevolucionModal({
                                     type="button"
                                     disabled={!it.seleccionado}
                                     onClick={() => setReingresaStock(it.productoId, false)}
-                                    className={`px-2 py-1 rounded-md font-bold transition-all cursor-pointer ${
+                                    className={`px-2 py-0.5 rounded font-bold transition-all cursor-pointer ${
                                       !it.reingresaStock
                                         ? 'bg-amber-600 text-white shadow-2xs'
                                         : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
                                     }`}
                                     title="El producto NO reingresa a stock (se registra como merma/rotura)"
                                   >
-                                    Merma / Baja
+                                    Merma
                                   </button>
                                 </div>
                               )}
@@ -999,8 +987,8 @@ export function DevolucionModal({
               {/* PASO 2: MÉTODO DE REINTEGRO & DESTINO DEL DINERO     */}
               {/* ---------------------------------------------------- */}
               <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <span className="w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold">
                     2
                   </span>
                   <label className="text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-200">
@@ -1008,34 +996,34 @@ export function DevolucionModal({
                   </label>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {/* Opción 1: Efectivo en Caja */}
                   <div
                     onClick={() => setMetodoReintegro('EFECTIVO_CAJA')}
-                    className={`p-3 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+                    className={`p-2 sm:p-2.5 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
                       metodoReintegro === 'EFECTIVO_CAJA'
                         ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 shadow-xs'
                         : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/80 hover:border-gray-300'
                     }`}
                   >
                     <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <h5 className="text-xs font-bold text-gray-900 dark:text-gray-100">
-                          Efectivo de Caja
+                      <div className="flex items-center justify-between mb-1">
+                        <h5 className="text-xs font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1">
+                          💵 Efectivo de Caja
                         </h5>
                         {metodoReintegro === 'EFECTIVO_CAJA' && (
-                          <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/60 px-2 py-0.5 rounded-full">
-                            Seleccionado
+                          <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/60 px-1.5 py-0.2 rounded-full">
+                            ✓ Activo
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">
-                        Egresa dinero de la caja física y se computa en el arqueo del turno actual.
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400 leading-tight">
+                        Egresa de caja física y se computa en el arqueo del turno actual.
                       </p>
                     </div>
                     {!sesionActiva && (
-                      <span className="text-[10px] text-amber-600 font-bold mt-2">
-                        Sin turno de caja abierto
+                      <span className="text-[9px] text-amber-600 font-bold mt-1">
+                        Sin turno abierto
                       </span>
                     )}
                   </div>
@@ -1045,7 +1033,7 @@ export function DevolucionModal({
                     onClick={() => {
                       if (venta.cliente) setMetodoReintegro('CUENTA_CORRIENTE')
                     }}
-                    className={`p-3 rounded-xl border-2 transition-all flex flex-col justify-between ${
+                    className={`p-2 sm:p-2.5 rounded-xl border-2 transition-all flex flex-col justify-between ${
                       !venta.cliente
                         ? 'opacity-40 cursor-not-allowed bg-gray-50 dark:bg-gray-900 border-dashed border-gray-200 dark:border-gray-700'
                         : metodoReintegro === 'CUENTA_CORRIENTE'
@@ -1054,24 +1042,24 @@ export function DevolucionModal({
                     }`}
                   >
                     <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <h5 className="text-xs font-bold text-gray-900 dark:text-gray-100">
-                          Cuenta Corriente
+                      <div className="flex items-center justify-between mb-1">
+                        <h5 className="text-xs font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1">
+                          👤 Cuenta Corriente
                         </h5>
                         {metodoReintegro === 'CUENTA_CORRIENTE' && (
-                          <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/60 px-2 py-0.5 rounded-full">
-                            Seleccionado
+                          <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/60 px-1.5 py-0.2 rounded-full">
+                            ✓ Activo
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400 leading-tight">
                         {venta.cliente
-                          ? `Acredita saldo a favor de ${venta.cliente.nombre} o amortiza deuda.`
-                          : 'No disponible (esta venta no se asoció a ningún cliente).'}
+                          ? `Saldo a favor para ${venta.cliente.nombre}.`
+                          : 'No disponible (sin cliente asociado).'}
                       </p>
                     </div>
                     {venta.cliente && (
-                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold mt-2 truncate">
+                      <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold mt-1 truncate">
                         Cliente: {venta.cliente.nombre}
                       </span>
                     )}
@@ -1080,25 +1068,25 @@ export function DevolucionModal({
                   {/* Opción 3: Cambio Directo */}
                   <div
                     onClick={() => setMetodoReintegro('OTRO')}
-                    className={`p-3 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+                    className={`p-2 sm:p-2.5 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
                       metodoReintegro === 'OTRO'
                         ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 shadow-xs'
                         : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/80 hover:border-gray-300'
                     }`}
                   >
                     <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <h5 className="text-xs font-bold text-gray-900 dark:text-gray-100">
-                          Cambio Directo
+                      <div className="flex items-center justify-between mb-1">
+                        <h5 className="text-xs font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1">
+                          🔄 Cambio Directo
                         </h5>
                         {metodoReintegro === 'OTRO' && (
-                          <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/60 px-2 py-0.5 rounded-full">
-                            Seleccionado
+                          <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/60 px-1.5 py-0.2 rounded-full">
+                            ✓ Activo
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">
-                        Sin movimiento de dinero. El cliente se lleva otra mercadería por el mismo valor.
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400 leading-tight">
+                        Sin egreso de dinero. El cliente se lleva otra mercadería.
                       </p>
                     </div>
                   </div>
@@ -1108,9 +1096,9 @@ export function DevolucionModal({
               {/* ---------------------------------------------------- */}
               {/* PASO 3: MOTIVO DE LA DEVOLUCIÓN & AUDITORÍA          */}
               {/* ---------------------------------------------------- */}
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold">
+              <div className="pb-4 pt-1">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <span className="w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold">
                     3
                   </span>
                   <label className="text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-200">
@@ -1118,7 +1106,7 @@ export function DevolucionModal({
                   </label>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
                     <label className="block text-[11px] font-semibold text-gray-600 dark:text-gray-400 mb-1">
                       Causa principal:
@@ -1126,7 +1114,7 @@ export function DevolucionModal({
                     <select
                       value={motivo}
                       onChange={(e) => setMotivo(e.target.value as MotivoDevolucion)}
-                      className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 outline-none font-semibold focus:border-indigo-500"
+                      className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none font-semibold focus:border-indigo-500 cursor-pointer"
                     >
                       <option value="CAMBIO_PRODUCTO">Cambio de producto (gusto / modelo)</option>
                       <option value="FALLA_ROTURA">Mercadería fallada, rota o defectuosa</option>
@@ -1145,7 +1133,7 @@ export function DevolucionModal({
                       value={notas}
                       onChange={(e) => setNotas(e.target.value)}
                       placeholder="Ej: Cliente trajo envoltorio cerrado, comprobante ok..."
-                      className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 outline-none focus:border-indigo-500"
+                      className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2.5 py-1.5 outline-none focus:border-indigo-500"
                     />
                   </div>
                 </div>
