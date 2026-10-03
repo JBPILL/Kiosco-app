@@ -1449,7 +1449,7 @@ export function CajaPage() {
               <input
                 type="number"
                 min="1"
-                step="50"
+                step="any"
                 placeholder="0"
                 value={montoMovimiento}
                 onChange={(e) => setMontoMovimiento(e.target.value)}

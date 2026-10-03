@@ -280,7 +280,7 @@ export function AltaRapidaModal({
                 ref={ventaInputRef}
                 type="number"
                 min="0"
-                step="10"
+                step="any"
                 value={precioVenta}
                 onChange={(e) => setPrecioVenta(e.target.value)}
                 placeholder="0"
@@ -297,7 +297,7 @@ export function AltaRapidaModal({
               <Input
                 type="number"
                 min="0"
-                step="10"
+                step="any"
                 value={precioCosto}
                 onChange={(e) => setPrecioCosto(e.target.value)}
                 placeholder="0"

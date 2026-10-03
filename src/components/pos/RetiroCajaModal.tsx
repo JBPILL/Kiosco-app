@@ -149,7 +149,7 @@ export function RetiroCajaModal({ isOpen, onClose }: RetiroCajaModalProps) {
               <input
                 type="number"
                 min="1"
-                step="100"
+                step="any"
                 autoFocus
                 value={monto}
                 onChange={(e) => setMonto(e.target.value)}

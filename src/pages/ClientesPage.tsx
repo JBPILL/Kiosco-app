@@ -993,7 +993,7 @@ export function ClientesPage() {
                 <input
                   type="number"
                   min="1"
-                  step="50"
+                  step="any"
                   placeholder="0"
                   value={montoAbono}
                   onChange={(e) => setMontoAbono(e.target.value)}
