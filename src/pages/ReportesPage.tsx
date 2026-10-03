@@ -244,7 +244,7 @@ export function ReportesPage() {
 
       // 2. Reincorporar stock de cada producto y registrar INGRESO por DEVOLUCION
       for (const det of ventaParaAnular.detalles) {
-        if (det.es_devolucion_envase || (det.producto as any)?.activo === false) continue
+        if (det.es_devolucion_envase || (det.producto as any)?.activo === false || (det.precio_unitario || 0) <= 0) continue
 
         const prodId = det.producto_id || det.producto?.id
         if (!prodId) continue
@@ -343,7 +343,7 @@ export function ReportesPage() {
           const cantidadesMap = new Map<string, number>()
 
           for (const det of ventaParaAnular.detalles) {
-            if (det.es_devolucion_envase || (det.producto as any)?.activo === false) continue
+            if (det.es_devolucion_envase || (det.producto as any)?.activo === false || (det.precio_unitario || 0) <= 0) continue
 
             const pId = det.producto_id || det.producto?.id
             if (!pId) continue
@@ -380,12 +380,12 @@ export function ReportesPage() {
         await useClienteStore.getState().revertirCargoVenta(ventaParaAnular.id, pagoCC.monto)
       }
 
-      // 4. Si la venta tuvo pago en EFECTIVO, asentar el egreso compensatorio en caja
+      // 4. Si la venta tuvo pago en EFECTIVO, asentar el egreso compensatorio en caja SOLO si hay sesión abierta
       const pagoEf = ventaParaAnular.pagos.find((p) => p.medio_pago === 'EFECTIVO')
       if (pagoEf && pagoEf.monto > 0) {
         const sesionActiva = useCajaStore.getState().sesionActiva
         const descMov = `Reintegro en efectivo por anulación de Venta #${ventaParaAnular.id.slice(0, 8).toUpperCase()}`
-        if (sesionActiva) {
+        if (sesionActiva && !sesionActiva.fecha_cierre && sesionActiva.estado === 'ABIERTA') {
           try {
             await useCajaStore.getState().registrarMovimientoCaja(
               'EGRESO',
@@ -400,9 +400,10 @@ export function ReportesPage() {
           // Buscar última sesión abierta si no hay sesión activa en el store
           const { data: ultSesion } = await supabase
             .from('sesiones_caja')
-            .select('id')
+            .select('id, estado, fecha_cierre')
             .eq('kiosco_id', kioscoId)
             .is('fecha_cierre', null)
+            .eq('estado', 'ABIERTA')
             .order('fecha_apertura', { ascending: false })
             .limit(1)
             .maybeSingle()
@@ -423,7 +424,7 @@ export function ReportesPage() {
               console.warn('Error registrando egreso compensatorio en Supabase:', errCaja)
             }
           } else {
-            toast.error('No hay sesión de caja abierta. Omitiendo movimiento de egreso de caja.', { duration: 6000 })
+            toast.error('No hay ninguna sesión de caja abierta. Omitiendo movimiento de egreso de caja para no alterar arqueos cerrados.', { duration: 6000 })
           }
         }
       }

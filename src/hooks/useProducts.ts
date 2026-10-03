@@ -265,6 +265,27 @@ export function useProducts() {
           (p) => p.activo !== false && !idsBorradosRef.current.has(p.id)
         )
 
+        // Auto-sincronizar productos creados offline cuando hay conexión (BUG-CAT-02)
+        if (soloLocales.length > 0 && typeof navigator !== 'undefined' && navigator.onLine) {
+          ;(async () => {
+            try {
+              for (const prodOffline of soloLocales) {
+                const { _local_offline, categoria, ...datosDB } = prodOffline as any
+                const { error: syncErr } = await supabase.from('productos').upsert(datosDB, { onConflict: 'id' })
+                if (!syncErr) {
+                  setProductos((curr) => {
+                    const actualizados = curr.map((p) => (p.id === prodOffline.id ? { ...p, _local_offline: false } : p))
+                    guardarProductosEnCache(actualizados)
+                    return actualizados
+                  })
+                }
+              }
+            } catch (errSync) {
+              console.warn('Aviso al sincronizar productos locales offline:', errSync)
+            }
+          })()
+        }
+
         guardarProductosEnCache(total)
         return total
       })

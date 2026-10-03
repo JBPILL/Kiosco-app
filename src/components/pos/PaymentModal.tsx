@@ -361,17 +361,21 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             const ratio = subtotal > 0 ? total / subtotal : 1
             const subtotalOriginal = Number(item.subtotal) || 0
             const subtotalFinal = tieneAjuste ? Math.round(subtotalOriginal * ratio) : Math.round(subtotalOriginal)
+            const cant = Math.max(0.001, Number(item.cantidad) || 1)
+            const precioUnitarioEfectivo = tieneAjuste && cant > 0
+              ? Math.round((subtotalFinal / cant) * 100) / 100
+              : Math.round(
+                  Number(
+                    item.sin_envase
+                      ? item.producto.precio_venta + (item.precio_envase_unitario || item.producto.precio_envase || 0)
+                      : item.producto.precio_venta
+                  ) || 0
+                )
             return {
               id: uuidv4(),
               producto_id: item.producto.id,
-              cantidad: Math.max(0.001, Number(item.cantidad) || 1),
-              precio_unitario: Math.round(
-                Number(
-                  item.sin_envase
-                    ? item.producto.precio_venta + (item.precio_envase_unitario || item.producto.precio_envase || 0)
-                    : item.producto.precio_venta
-                ) || 0
-              ),
+              cantidad: cant,
+              precio_unitario: precioUnitarioEfectivo,
               subtotal: subtotalFinal,
               sin_envase: Boolean(item.sin_envase),
               precio_envase_unitario: Number(item.precio_envase_unitario || 0),
@@ -533,18 +537,22 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         const ratio = subtotal > 0 ? total / subtotal : 1
         const subtotalOriginal = Number(item.subtotal) || 0
         const subtotalFinal = tieneAjuste ? Math.round(subtotalOriginal * ratio) : Math.round(subtotalOriginal)
+        const cant = Math.max(0.001, Number(item.cantidad) || 1)
+        const precioUnitarioEfectivo = tieneAjuste && cant > 0
+          ? Math.round((subtotalFinal / cant) * 100) / 100
+          : Math.round(
+              Number(
+                item.sin_envase
+                  ? item.producto.precio_venta + (item.precio_envase_unitario || item.producto.precio_envase || 0)
+                  : item.producto.precio_venta
+              ) || 0
+            )
         return {
           id: uuidv4(),
           venta_id: ventaId,
           producto_id: item.producto.id,
-          cantidad: Math.max(0.001, Number(item.cantidad) || 1),
-          precio_unitario: Math.round(
-            Number(
-              item.sin_envase
-                ? item.producto.precio_venta + (item.precio_envase_unitario || item.producto.precio_envase || 0)
-                : item.producto.precio_venta
-            ) || 0
-          ),
+          cantidad: cant,
+          precio_unitario: precioUnitarioEfectivo,
           subtotal: subtotalFinal,
           sin_envase: Boolean(item.sin_envase),
           precio_envase_unitario: Number(item.precio_envase_unitario || 0),

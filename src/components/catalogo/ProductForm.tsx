@@ -36,6 +36,7 @@ export interface ProductFormData {
   es_retornable?: boolean
   precio_envase?: number
   nombre_envase?: string
+  es_combo?: boolean
 }
 
 interface FormState {
@@ -55,11 +56,12 @@ interface FormState {
   es_retornable: boolean
   precio_envase: string
   nombre_envase: string
+  es_combo: boolean
 }
 
 export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }: ProductFormProps) {
   const { tieneEnvases, tieneBalanza, tieneVencimientos } = useTenantConfig()
-  const mostrarBloqueEspeciales = tieneVencimientos || tieneBalanza || tieneEnvases
+  const mostrarBloqueEspeciales = tieneVencimientos || tieneBalanza || tieneEnvases || true
 
   const [form, setForm] = useState<FormState>({
     descripcion: '',
@@ -78,6 +80,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
     precio_envase: '',
     nombre_envase: '',
     proveedor_id: null,
+    es_combo: false,
   })
   const [guardando, setGuardando] = useState(false)
   const [scannerCamaraOpen, setScannerCamaraOpen] = useState(false)
@@ -122,6 +125,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
         es_retornable: Boolean(producto.es_retornable),
         precio_envase: producto.precio_envase ? String(producto.precio_envase) : '',
         nombre_envase: producto.nombre_envase || '',
+        es_combo: Boolean(producto.es_combo),
       })
     } else {
       setForm({
@@ -141,6 +145,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
         es_retornable: false,
         precio_envase: '',
         nombre_envase: '',
+        es_combo: false,
       })
     }
   }, [producto, isOpen])
@@ -203,6 +208,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
       es_retornable: tieneEnvases ? form.es_retornable : false,
       precio_envase: tieneEnvases ? (parseFloat(form.precio_envase) || 0) : 0,
       nombre_envase: tieneEnvases ? (form.nombre_envase.trim() || undefined) : undefined,
+      es_combo: form.es_combo,
     }
 
     const ok = await onGuardar(dataToSend)
@@ -657,6 +663,29 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
                   )}
                 </div>
               )}
+
+              {/* Combos y Packs Físicos */}
+              <div className="p-3.5 bg-gray-50/80 dark:bg-gray-800/60 border border-gray-300 dark:border-gray-700 rounded-xl space-y-2.5">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={form.es_combo || false}
+                    onChange={(e) => setForm({ ...form, es_combo: e.target.checked })}
+                    className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-gray-300 dark:border-gray-600"
+                  />
+                  <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                    Producto tipo Combo / Pack (receta compuesta por varios artículos físicos)
+                  </span>
+                </label>
+
+                {form.es_combo && (
+                  <div className="pt-1 pl-6">
+                    <p className="text-xs text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 p-2.5 rounded-lg border border-purple-200 dark:border-purple-800">
+                      Al vender este combo, se descontará automáticamente el stock físico de sus artículos individuales según su receta. Podés configurar los componentes y cantidades directamente desde el botón <strong>Receta</strong> en el catálogo.
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </form>

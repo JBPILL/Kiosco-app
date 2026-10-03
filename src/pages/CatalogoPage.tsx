@@ -8,6 +8,7 @@ import { AumentoPreciosModal } from '../components/catalogo/AumentoPreciosModal'
 import { PreciosEnvasesModal } from '../components/catalogo/PreciosEnvasesModal'
 import { EtiquetasGondolaModal } from '../components/catalogo/EtiquetasGondolaModal'
 import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
+import { ComboBuilderModal } from '../components/catalogo/ComboBuilderModal'
 import { exportarCatalogoExcel } from '../lib/exportUtils'
 import { IconExportar, IconImportar } from '../components/ui/Icons'
 import { clearCachedProductos } from '../lib/utils'
@@ -48,6 +49,7 @@ export function CatalogoPage() {
   const [envasesOpen, setEnvasesOpen] = useState(false)
   const [etiquetasOpen, setEtiquetasOpen] = useState(false)
   const [productoEditar, setProductoEditar] = useState<Producto | null>(null)
+  const [comboAConfigurar, setComboAConfigurar] = useState<Producto | null>(null)
   const [categoriasOpen, setCategoriasOpen] = useState(false)
 
   const handleNuevo = () => {
@@ -206,6 +208,7 @@ export function CatalogoPage() {
           cargando={cargando}
           onPurgarHuerfanos={purgarProductosHuerfanos}
           onSincronizar={handleSincronizar}
+          onConfigurarCombo={(prod) => setComboAConfigurar(prod)}
         />
       </div>
 
@@ -216,6 +219,17 @@ export function CatalogoPage() {
         categorias={categorias}
         producto={productoEditar}
         onGuardar={handleGuardar}
+      />
+
+      {/* Modal de configuración de componentes de combo / pack */}
+      <ComboBuilderModal
+        isOpen={Boolean(comboAConfigurar)}
+        onClose={() => setComboAConfigurar(null)}
+        comboProducto={comboAConfigurar}
+        todosLosProductos={productos}
+        onGuardado={async () => {
+          await cargarProductos()
+        }}
       />
 
       {/* Modal de aumento masivo de precios */}

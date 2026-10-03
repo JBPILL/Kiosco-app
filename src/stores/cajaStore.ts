@@ -84,6 +84,18 @@ export const useCajaStore = create<CajaState>((set, get) => ({
       set({ sesionActiva: (data as (SesionCaja & { usuario?: Usuario })) || null })
 
       if (data?.id) {
+        const cierrePendiente = localStorage.getItem(`kioskopos_cierre_offline_${data.id}`)
+        if (cierrePendiente) {
+          try {
+            const cierreObj = JSON.parse(cierrePendiente)
+            await supabase.from('sesiones_caja').update(cierreObj).eq('id', data.id)
+            localStorage.removeItem(`kioskopos_cierre_offline_${data.id}`)
+            set({ sesionActiva: null, resumenActivo: null, movimientosCaja: [] })
+            return
+          } catch (e) {
+            console.warn('Error sincronizando cierre de caja pendiente:', e)
+          }
+        }
         await get().cargarMovimientosSesion(data.id)
         await get().cargarResumenSesion(data.id)
       } else {
@@ -178,7 +190,7 @@ export const useCajaStore = create<CajaState>((set, get) => ({
   registrarMovimientoCaja: async (tipo, motivo, monto, descripcion) => {
     const sesion = get().sesionActiva
     const usuario = useAuthStore.getState().usuario
-    if (!sesion?.id || !usuario?.kiosco_id) {
+    if (!sesion?.id || !usuario?.kiosco_id || sesion.fecha_cierre !== null || (sesion.estado && sesion.estado !== 'ABIERTA')) {
       toast.error('No hay una sesión de caja abierta')
       return false
     }
@@ -277,10 +289,31 @@ export const useCajaStore = create<CajaState>((set, get) => ({
           if (kioscoId) {
             const cola = useOfflineSyncStore.getState().cargarCola(kioscoId)
             const offlineDeSesion = cola.filter(v => v.sesion_caja_id === targetId)
-            const efectivoOffline = offlineDeSesion.reduce((acc, v) => {
-              const ef = v.pagos.filter(p => p.medio_pago === 'EFECTIVO').reduce((suma, p) => suma + p.monto, 0)
-              return acc + ef
-            }, 0)
+            let efectivoOffline = 0
+            let mpOffline = 0
+            let transfOffline = 0
+            let tarjetaOffline = 0
+            let ccOffline = 0
+            let facturadoOffline = 0
+
+            for (const v of offlineDeSesion) {
+              facturadoOffline += v.total
+              for (const p of v.pagos) {
+                if (p.medio_pago === 'EFECTIVO') efectivoOffline += p.monto
+                else if (p.medio_pago === 'MERCADOPAGO') mpOffline += p.monto
+                else if (p.medio_pago === 'TRANSFERENCIA') transfOffline += p.monto
+                else if (p.medio_pago === 'TARJETA') tarjetaOffline += p.monto
+                else if (p.medio_pago === 'CUENTA_CORRIENTE') ccOffline += p.monto
+              }
+            }
+
+            resumen.total_ventas += offlineDeSesion.length
+            resumen.total_facturado += facturadoOffline
+            resumen.total_efectivo = (resumen.total_efectivo || 0) + efectivoOffline
+            resumen.total_mercadopago = (resumen.total_mercadopago || 0) + mpOffline
+            resumen.total_transferencia = (resumen.total_transferencia || 0) + transfOffline
+            resumen.total_tarjeta = (resumen.total_tarjeta || 0) + tarjetaOffline
+            resumen.total_cuenta_corriente = (resumen.total_cuenta_corriente || 0) + ccOffline
             resumen.efectivo_esperado_en_caja += efectivoOffline
           }
         } catch (e) {
@@ -358,10 +391,31 @@ export const useCajaStore = create<CajaState>((set, get) => ({
         if (kioscoId) {
           const cola = useOfflineSyncStore.getState().cargarCola(kioscoId)
           const offlineDeSesion = cola.filter(v => v.sesion_caja_id === targetId)
-          const efectivoOffline = offlineDeSesion.reduce((acc, v) => {
-            const ef = v.pagos.filter(p => p.medio_pago === 'EFECTIVO').reduce((suma, p) => suma + p.monto, 0)
-            return acc + ef
-          }, 0)
+          let efectivoOffline = 0
+          let mpOffline = 0
+          let transfOffline = 0
+          let tarjetaOffline = 0
+          let ccOffline = 0
+          let facturadoOffline = 0
+
+          for (const v of offlineDeSesion) {
+            facturadoOffline += v.total
+            for (const p of v.pagos) {
+              if (p.medio_pago === 'EFECTIVO') efectivoOffline += p.monto
+              else if (p.medio_pago === 'MERCADOPAGO') mpOffline += p.monto
+              else if (p.medio_pago === 'TRANSFERENCIA') transfOffline += p.monto
+              else if (p.medio_pago === 'TARJETA') tarjetaOffline += p.monto
+              else if (p.medio_pago === 'CUENTA_CORRIENTE') ccOffline += p.monto
+            }
+          }
+
+          resumen.total_ventas += offlineDeSesion.length
+          resumen.total_facturado += facturadoOffline
+          resumen.total_efectivo = (resumen.total_efectivo || 0) + efectivoOffline
+          resumen.total_mercadopago = (resumen.total_mercadopago || 0) + mpOffline
+          resumen.total_transferencia = (resumen.total_transferencia || 0) + transfOffline
+          resumen.total_tarjeta = (resumen.total_tarjeta || 0) + tarjetaOffline
+          resumen.total_cuenta_corriente = (resumen.total_cuenta_corriente || 0) + ccOffline
           resumen.efectivo_esperado_en_caja += efectivoOffline
         }
       } catch (e) {
@@ -392,20 +446,38 @@ export const useCajaStore = create<CajaState>((set, get) => ({
       const resumen = await get().cargarResumenSesion(sesion.id)
       const montoFinalSistema = resumen?.efectivo_esperado_en_caja ?? sesion.monto_inicial
       const diferencia = montoDeclarado - montoFinalSistema
+      const ahora = new Date().toISOString()
 
-      const { error } = await supabase
-        .from('sesiones_caja')
-        .update({
-          fecha_cierre: new Date().toISOString(),
-          monto_final_declarado: montoDeclarado,
-          monto_final_sistema: montoFinalSistema,
-          diferencia: diferencia,
-          estado: 'CERRADA',
-        })
-        .eq('id', sesion.id)
-        .eq('estado', 'ABIERTA')  // BUG-11: guard atómico en DB — solo actualizar sesiones abiertas
+      try {
+        const { error } = await supabase
+          .from('sesiones_caja')
+          .update({
+            fecha_cierre: ahora,
+            monto_final_declarado: montoDeclarado,
+            monto_final_sistema: montoFinalSistema,
+            diferencia: diferencia,
+            estado: 'CERRADA',
+          })
+          .eq('id', sesion.id)
+          .eq('estado', 'ABIERTA')  // BUG-11: guard atómico en DB — solo actualizar sesiones abiertas
 
-      if (error) throw error
+        if (error) throw error
+      } catch (errDb) {
+        console.warn('Cierre de caja en modo offline o fallo de conexión remota:', errDb)
+        // Guardar cierre localmente para sincronizar cuando vuelva internet
+        try {
+          const cierreLocal = {
+            fecha_cierre: ahora,
+            monto_final_declarado: montoDeclarado,
+            monto_final_sistema: montoFinalSistema,
+            diferencia: diferencia,
+            estado: 'CERRADA',
+          }
+          localStorage.setItem(`kioskopos_cierre_offline_${sesion.id}`, JSON.stringify(cierreLocal))
+        } catch (e) {
+          console.error('Error guardando cierre offline en storage:', e)
+        }
+      }
 
       set({ sesionActiva: null, resumenActivo: null, movimientosCaja: [] })
       toast.success('Caja cerrada y arqueo completado')
