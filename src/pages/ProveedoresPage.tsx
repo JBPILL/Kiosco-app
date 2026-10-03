@@ -8,6 +8,7 @@ import { playScanSound } from '../lib/sound'
 import { formatPrecio, formatFecha, labelMedioPago } from '../lib/utils'
 import { validarCUIT, formatearCUIT } from '../lib/cuitUtils'
 import { exportarDetalleCompraExcel } from '../lib/exportUtils'
+import { IconExportar } from '../components/ui/Icons'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
@@ -2639,9 +2640,11 @@ export function ProveedoresPage() {
                 variant="secondary"
                 size="sm"
                 onClick={handleExportarExcelRemito}
+                className="inline-flex items-center gap-1.5"
                 title="Descargar remito de mercadería en formato Excel corporativo (.xlsx)"
               >
-                Exportar Excel
+                <IconExportar />
+                <span>Exportar Excel</span>
               </Button>
               <Button
                 variant="success"

@@ -13,6 +13,7 @@ import {
   type DetalleVentaRendimientoExport,
 } from '../../lib/exportUtils'
 import { Button } from '../ui/Button'
+import { IconExportar } from '../ui/Icons'
 import { SearchInput } from '../ui/SearchInput'
 import { TicketReceiptModal, type TicketData } from '../pos/TicketReceiptModal'
 import { ventaToTicketData } from '../../lib/ticketUtils'
@@ -954,9 +955,10 @@ export function BalanceContableTab() {
             onClick={handleExportarLibroDiario}
             loading={exportando}
             disabled={libroDiario.length === 0}
-            className="text-xs font-semibold whitespace-nowrap shrink-0"
+            className="text-xs font-semibold whitespace-nowrap shrink-0 inline-flex items-center gap-1.5"
             title="Descargar libro diario contable detallado en Excel (.xlsx)"
           >
+            <IconExportar />
             <span>Descargar Libro Diario</span>
           </Button>
 
@@ -965,9 +967,10 @@ export function BalanceContableTab() {
             variant="secondary"
             onClick={handleExportarRendimientos}
             loading={exportando}
-            className="text-xs font-semibold whitespace-nowrap shrink-0"
+            className="text-xs font-semibold whitespace-nowrap shrink-0 inline-flex items-center gap-1.5"
             title="Descargar analítica de rendimientos mensuales y desglose de medios de pago en Excel (.xlsx)"
           >
+            <IconExportar />
             <span>Exportar Rendimientos</span>
           </Button>
 
@@ -977,9 +980,10 @@ export function BalanceContableTab() {
             onClick={handleExportarLibroIvaVentas}
             loading={exportando}
             disabled={ventasFiscalesPeriodo.length === 0}
-            className="text-xs font-semibold whitespace-nowrap shrink-0"
+            className="text-xs font-semibold whitespace-nowrap shrink-0 inline-flex items-center gap-1.5"
             title="Descargar reporte fiscal de ventas ARCA para el contador en Excel (.xlsx)"
           >
+            <IconExportar />
             <span>Exportar Libro IVA ARCA</span>
           </Button>
         </div>

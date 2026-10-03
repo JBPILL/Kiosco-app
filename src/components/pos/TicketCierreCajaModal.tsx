@@ -8,6 +8,7 @@ import { getWhatsAppReportConfig, formatearAvisoCierreWhatsAppPDF } from '../../
 import { exportarComprobanteCierrePDF, compartirComprobanteCierreWhatsApp } from '../../lib/pdfCierreUtils'
 import { getAnchoTicketGuardado, guardarAnchoTicket, type AnchoPapelTicket } from '../../lib/ticketPreferences'
 import { BarcodeSvg } from '../../lib/barcodeSvg'
+import { IconExportar } from '../ui/Icons'
 import toast from 'react-hot-toast'
 
 export interface DatosCierreCaja {
@@ -185,9 +186,10 @@ export function TicketCierreCajaModal({ isOpen, onClose, datos }: TicketCierreCa
               onClick={handleExportarPDF}
               loading={generandoPdf}
               disabled={generandoPdf}
-              className="w-full text-xs font-semibold shadow-xs"
+              className="w-full text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5"
               title="Descargar comprobante en formato PDF"
             >
+              <IconExportar />
               <span>{generandoPdf ? 'Generando PDF...' : 'Descargar PDF'}</span>
             </Button>
           </div>

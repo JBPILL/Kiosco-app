@@ -3,6 +3,7 @@ import { useAdminStore } from '../../stores/adminStore'
 import { formatPrecio, formatFecha, labelMedioPago } from '../../lib/utils'
 import { exportarRendimientosSuperAdminExcel } from '../../lib/exportUtils'
 import { Button } from '../ui/Button'
+import { IconExportar } from '../ui/Icons'
 import toast from 'react-hot-toast'
 
 /**
@@ -419,9 +420,10 @@ export function ReportesSuperAdminTab() {
             variant="primary"
             size="sm"
             onClick={handleExportarExcel}
-            className="text-xs font-bold shadow-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+            className="text-xs font-bold shadow-xs bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1.5"
             title="Descargar reporte completo en archivo Excel (.xlsx)"
           >
+            <IconExportar className="w-3.5 h-3.5 text-white shrink-0" />
             <span>Exportar Excel</span>
           </Button>
         </div>

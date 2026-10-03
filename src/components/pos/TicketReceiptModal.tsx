@@ -6,6 +6,7 @@ import { imprimirTicketEscPosDirecto, isWebSerialSupported } from '../../lib/esc
 import { exportarTicketVentaPDF, compartirTicketVentaWhatsApp } from '../../lib/pdfVentaUtils'
 import { getAnchoTicketGuardado, guardarAnchoTicket, type AnchoPapelTicket } from '../../lib/ticketPreferences'
 import { BarcodeSvg } from '../../lib/barcodeSvg'
+import { IconExportar } from '../ui/Icons'
 import toast from 'react-hot-toast'
 
 export interface TicketItem {
@@ -298,11 +299,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
               className="h-9 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 dark:bg-gray-700/80 dark:hover:bg-gray-700 dark:active:bg-gray-600 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 shadow-2xs active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap"
               title="Descargar comprobante en formato PDF"
             >
-              <svg className="w-3.5 h-3.5 shrink-0 text-gray-500 dark:text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
+              <IconExportar />
               <span>{generandoPdf ? 'Generando...' : 'Descargar PDF'}</span>
             </button>
 

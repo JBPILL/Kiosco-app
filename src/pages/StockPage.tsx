@@ -17,6 +17,7 @@ import type { Producto, MovimientoStock } from '../types/database'
 import { useRealtimeSync } from '../hooks/useRealtimeSync'
 import { useTenantConfig } from '../hooks/useTenantConfig'
 import { exportarMovimientosStockExcel } from '../lib/exportUtils'
+import { IconExportar } from '../components/ui/Icons'
 import toast from 'react-hot-toast'
 
 export function StockPage() {
@@ -896,10 +897,11 @@ export function StockPage() {
                   }
                 }}
                 disabled={exportando}
-                className="text-xs whitespace-nowrap shadow-xs font-semibold"
+                className="text-xs whitespace-nowrap shadow-xs font-semibold inline-flex items-center gap-1.5"
                 title="Descargar auditoría completa de movimientos de stock en Excel (.xlsx)"
               >
-                {exportando ? 'Exportando...' : 'Exportar Excel'}
+                <IconExportar />
+                <span>{exportando ? 'Exportando...' : 'Exportar Excel'}</span>
               </Button>
 
 

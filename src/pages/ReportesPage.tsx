@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/authStore'
 import { formatPrecio, formatFecha, labelMedioPago, getFechaLocal, getLimitesISODia, getCachedProductos, saveCachedProductos } from '../lib/utils'
 import { exportarVentasExcel } from '../lib/exportUtils'
+import { IconExportar } from '../components/ui/Icons'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { TicketReceiptModal, type TicketData } from '../components/pos/TicketReceiptModal'
@@ -536,10 +537,11 @@ export function ReportesPage() {
                 variant="secondary"
                 onClick={handleExportarVentasDia}
                 disabled={ventas.length === 0}
-                className="text-xs"
+                className="text-xs inline-flex items-center gap-1.5"
                 title="Descargar las ventas de este día en formato Excel corporativo (.xlsx)"
               >
-                Exportar Día
+                <IconExportar />
+                <span>Exportar Día</span>
               </Button>
             </div>
           </div>

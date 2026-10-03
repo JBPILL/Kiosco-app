@@ -3,6 +3,7 @@ import { supabase, createUnauthenticatedClient } from '../lib/supabase'
 import { useAuthStore, calcularDiasRestantes } from '../stores/authStore'
 import { useThemeStore } from '../stores/themeStore'
 import { Button } from '../components/ui/Button'
+import { IconExportar, IconImportar } from '../components/ui/Icons'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import type { Kiosco, Usuario, Suscripcion, Categoria } from '../types/database'
@@ -1461,9 +1462,10 @@ export function ConfigPage() {
                       variant="primary"
                       onClick={handleExportarMasterExcel}
                       disabled={exportandoBackup}
-                      className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+                      className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs inline-flex items-center justify-center gap-1.5"
                     >
-                      {exportandoBackup ? 'Generando...' : 'Descargar Excel Unificado'}
+                      <IconExportar className="w-3.5 h-3.5 text-white shrink-0" />
+                      <span>{exportandoBackup ? 'Generando...' : 'Descargar Excel Unificado'}</span>
                     </Button>
                   </div>
 
@@ -1487,9 +1489,10 @@ export function ConfigPage() {
                       variant="primary"
                       onClick={handleExportarBackupIntegral}
                       disabled={exportandoBackup}
-                      className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+                      className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs inline-flex items-center justify-center gap-1.5"
                     >
-                      {exportandoBackup ? 'Generando...' : 'Descargar Todo (.JSON)'}
+                      <IconExportar className="w-3.5 h-3.5 text-white shrink-0" />
+                      <span>{exportandoBackup ? 'Generando...' : 'Descargar Todo (.JSON)'}</span>
                     </Button>
                   </div>
 
@@ -1512,9 +1515,10 @@ export function ConfigPage() {
                       size="sm"
                       variant="primary"
                       onClick={() => setModalRestaurarBackupOpen(true)}
-                      className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+                      className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs inline-flex items-center justify-center gap-1.5"
                     >
-                      Restaurar Copia (.JSON)
+                      <IconImportar className="w-3.5 h-3.5 text-white shrink-0" />
+                      <span>Restaurar Copia (.JSON)</span>
                     </Button>
                   </div>
 
@@ -1537,9 +1541,10 @@ export function ConfigPage() {
                       size="sm"
                       variant="primary"
                       onClick={() => setModalImportarOpen(true)}
-                      className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+                      className="w-full text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs inline-flex items-center justify-center gap-1.5"
                     >
-                      Restaurar Catálogo
+                      <IconImportar className="w-3.5 h-3.5 text-white shrink-0" />
+                      <span>Restaurar Catálogo</span>
                     </Button>
                   </div>
                 </div>

@@ -7,6 +7,7 @@ import { formatPrecio, saveCachedProductos } from '../../lib/utils'
 import type { Categoria } from '../../types/database'
 import toast from 'react-hot-toast'
 import { v4 as uuidv4 } from 'uuid'
+import { IconImportar } from '../ui/Icons'
 
 interface ProductoImportRow {
   codigo_barras: string | null
@@ -1102,17 +1103,20 @@ export function ImportarCatalogoModal({
             variant="primary"
             onClick={handleImportar}
             disabled={procesando || filasValidasCount === 0}
-            className={`text-white font-bold ${
+            className={`text-white font-bold flex items-center gap-1.5 ${
               modoRollback
                 ? 'bg-amber-600 hover:bg-amber-700'
                 : 'bg-indigo-600 hover:bg-indigo-700'
             }`}
           >
-            {procesando
-              ? 'Procesando...'
-              : modoRollback
-              ? `Ejecutar Rollback (${filasValidasCount})`
-              : `Confirmar Importación (${filasValidasCount})`}
+            <IconImportar className="w-4 h-4 text-white shrink-0" />
+            <span>
+              {procesando
+                ? 'Procesando...'
+                : modoRollback
+                ? `Ejecutar Rollback (${filasValidasCount})`
+                : `Confirmar Importación (${filasValidasCount})`}
+            </span>
           </Button>
         </div>
       </div>
