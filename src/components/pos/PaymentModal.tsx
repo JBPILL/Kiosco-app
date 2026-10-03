@@ -357,22 +357,27 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           total,
           estado: 'COMPLETADA',
           notas: notasFinal ? `${notasFinal} (Guardado Offline)` : '(Guardado Offline)',
-          detalles: items.map((item) => ({
-            id: uuidv4(),
-            producto_id: item.producto.id,
-            cantidad: Math.max(0.001, Number(item.cantidad) || 1),
-            precio_unitario: Math.round(
-              Number(
-                item.sin_envase
-                  ? item.producto.precio_venta + (item.precio_envase_unitario || item.producto.precio_envase || 0)
-                  : item.producto.precio_venta
-              ) || 0
-            ),
-            subtotal: Math.round(Number(item.subtotal) || 0),
-            sin_envase: Boolean(item.sin_envase),
-            precio_envase_unitario: Number(item.precio_envase_unitario || 0),
-            es_devolucion_envase: Boolean(item.es_devolucion_envase),
-          })),
+          detalles: items.map((item) => {
+            const ratio = subtotal > 0 ? total / subtotal : 1
+            const subtotalOriginal = Number(item.subtotal) || 0
+            const subtotalFinal = tieneAjuste ? Math.round(subtotalOriginal * ratio) : Math.round(subtotalOriginal)
+            return {
+              id: uuidv4(),
+              producto_id: item.producto.id,
+              cantidad: Math.max(0.001, Number(item.cantidad) || 1),
+              precio_unitario: Math.round(
+                Number(
+                  item.sin_envase
+                    ? item.producto.precio_venta + (item.precio_envase_unitario || item.producto.precio_envase || 0)
+                    : item.producto.precio_venta
+                ) || 0
+              ),
+              subtotal: subtotalFinal,
+              sin_envase: Boolean(item.sin_envase),
+              precio_envase_unitario: Number(item.precio_envase_unitario || 0),
+              es_devolucion_envase: Boolean(item.es_devolucion_envase),
+            }
+          }),
           pagos: esPagoMixto
             ? pagosMixtos.map((p) => ({ medio_pago: p.medio_pago, monto: Math.round(Number(p.monto) || 0), referencia: referencia || null }))
             : [{ medio_pago: medioPago, monto: total, referencia: referencia || null }],
@@ -524,23 +529,28 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       }
 
       // 2. Insertar detalles de venta
-      const detalles = items.map((item) => ({
-        id: uuidv4(),
-        venta_id: ventaId,
-        producto_id: item.producto.id,
-        cantidad: Math.max(0.001, Number(item.cantidad) || 1),
-        precio_unitario: Math.round(
-          Number(
-            item.sin_envase
-              ? item.producto.precio_venta + (item.precio_envase_unitario || item.producto.precio_envase || 0)
-              : item.producto.precio_venta
-          ) || 0
-        ),
-        subtotal: Math.round(Number(item.subtotal) || 0),
-        sin_envase: Boolean(item.sin_envase),
-        precio_envase_unitario: Number(item.precio_envase_unitario || 0),
-        es_devolucion_envase: Boolean(item.es_devolucion_envase),
-      }))
+      const detalles = items.map((item) => {
+        const ratio = subtotal > 0 ? total / subtotal : 1
+        const subtotalOriginal = Number(item.subtotal) || 0
+        const subtotalFinal = tieneAjuste ? Math.round(subtotalOriginal * ratio) : Math.round(subtotalOriginal)
+        return {
+          id: uuidv4(),
+          venta_id: ventaId,
+          producto_id: item.producto.id,
+          cantidad: Math.max(0.001, Number(item.cantidad) || 1),
+          precio_unitario: Math.round(
+            Number(
+              item.sin_envase
+                ? item.producto.precio_venta + (item.precio_envase_unitario || item.producto.precio_envase || 0)
+                : item.producto.precio_venta
+            ) || 0
+          ),
+          subtotal: subtotalFinal,
+          sin_envase: Boolean(item.sin_envase),
+          precio_envase_unitario: Number(item.precio_envase_unitario || 0),
+          es_devolucion_envase: Boolean(item.es_devolucion_envase),
+        }
+      })
 
       let { error: detalleError } = await supabase.from('detalles_venta').insert(detalles)
 
@@ -600,31 +610,40 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             continue
           }
 
-          // Si es un producto estándar, consultar el stock fresco en Supabase para evitar Lost Updates por ventas concurrentes
-          let stockBase = it.producto.stock_actual
+          // Si es un producto estándar, usar RPC atómico para evitar Lost Updates por ventas concurrentes
           try {
-            const { data: pActual } = await supabase
-              .from('productos')
-              .select('stock_actual')
-              .eq('id', it.producto.id)
-              .maybeSingle()
-
-            if (pActual && typeof pActual.stock_actual === 'number') {
-              stockBase = pActual.stock_actual
-            }
-          } catch (errSyncStock) {
-            console.warn('Fallback a stock de carrito para deducción:', errSyncStock)
-          }
-
-          const nuevoStock = Number((stockBase - it.cantidad).toFixed(3))
-
-          await supabase
-            .from('productos')
-            .update({
-              stock_actual: nuevoStock,
-              fecha_actualizacion: ahora,
+            const { error: rpcError } = await supabase.rpc('decrementar_stock', {
+              p_producto_id: it.producto.id,
+              p_cantidad: it.cantidad
             })
-            .eq('id', it.producto.id)
+            if (rpcError) throw rpcError
+          } catch (errRpc) {
+            console.warn('Fallback a stock de carrito por falta de RPC:', errRpc)
+            let stockBase = it.producto.stock_actual
+            try {
+              const { data: pActual } = await supabase
+                .from('productos')
+                .select('stock_actual')
+                .eq('id', it.producto.id)
+                .maybeSingle()
+
+              if (pActual && typeof pActual.stock_actual === 'number') {
+                stockBase = pActual.stock_actual
+              }
+            } catch (errSyncStock) {
+              console.warn('Fallback a stock de carrito para deducción:', errSyncStock)
+            }
+
+            const nuevoStock = Number((stockBase - it.cantidad).toFixed(3))
+
+            await supabase
+              .from('productos')
+              .update({
+                stock_actual: nuevoStock,
+                fecha_actualizacion: ahora,
+              })
+              .eq('id', it.producto.id)
+          }
 
           await supabase.from('movimientos_stock').insert({
             kiosco_id: kioscoId,

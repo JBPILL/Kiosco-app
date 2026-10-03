@@ -120,20 +120,47 @@ DECLARE
 
 BEGIN
 
-  -- 1. IDENTIFICAR O ASOCIAR AUTH USER ID
+  -- 1. CREAR O IDENTIFICAR AUTH USER (auto-provisión completa)
   SELECT id INTO v_auth_user_id
   FROM auth.users
   WHERE email = 'libreria.sol.demo@gmail.com'
   LIMIT 1;
 
   IF v_auth_user_id IS NULL THEN
-    v_auth_user_id := 'b1bd2139-9ef4-55b3-a4e8-d3a26c6e9423'::UUID;
-  END IF;
+    v_auth_user_id := gen_random_uuid();
 
-  -- Auto-confirmar el email del usuario demo
-  UPDATE auth.users
-  SET email_confirmed_at = now()
-  WHERE email = 'libreria.sol.demo@gmail.com';
+    INSERT INTO auth.users (
+      id, instance_id, email, encrypted_password, email_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+      role, aud, confirmation_token
+    ) VALUES (
+      v_auth_user_id,
+      '00000000-0000-0000-0000-000000000000',
+      'libreria.sol.demo@gmail.com',
+      crypt('LibreriaSol2026!', gen_salt('bf')),
+      now(),
+      '{"provider":"email","providers":["email"]}',
+      '{"nombre":"Lucía Fernández"}',
+      now(), now(),
+      'authenticated', 'authenticated', ''
+    );
+
+    INSERT INTO auth.identities (
+      id, user_id, identity_data, provider, provider_id,
+      last_sign_in_at, created_at, updated_at
+    ) VALUES (
+      gen_random_uuid(),
+      v_auth_user_id,
+      jsonb_build_object('sub', v_auth_user_id::text, 'email', 'libreria.sol.demo@gmail.com'),
+      'email',
+      v_auth_user_id::text,
+      now(), now(), now()
+    );
+  ELSE
+    UPDATE auth.users
+    SET email_confirmed_at = now()
+    WHERE id = v_auth_user_id;
+  END IF;
 
   -- 2. BUSCAR O ASIGNAR PLAN ACTIVO
   SELECT id INTO v_plan_id

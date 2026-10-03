@@ -232,6 +232,8 @@ export function ReportesPage() {
 
       // 2. Reincorporar stock de cada producto y registrar INGRESO por DEVOLUCION
       for (const det of ventaParaAnular.detalles) {
+        if (det.es_devolucion_envase || (det.producto as any)?.activo === false) continue
+
         const prodId = det.producto_id || det.producto?.id
         if (!prodId) continue
 
@@ -329,6 +331,8 @@ export function ReportesPage() {
           const cantidadesMap = new Map<string, number>()
 
           for (const det of ventaParaAnular.detalles) {
+            if (det.es_devolucion_envase || (det.producto as any)?.activo === false) continue
+
             const pId = det.producto_id || det.producto?.id
             if (!pId) continue
 
@@ -380,20 +384,34 @@ export function ReportesPage() {
           } catch (errCaja) {
             console.warn('Error registrando egreso de caja en sesión activa:', errCaja)
           }
-        } else if (ventaParaAnular.sesion_caja_id && kioscoId) {
-          try {
-            await supabase.from('movimientos_caja').insert({
-              kiosco_id: kioscoId,
-              sesion_caja_id: ventaParaAnular.sesion_caja_id,
-              usuario_id: usuario?.id || null,
-              tipo: 'EGRESO',
-              motivo: 'DEVOLUCION_VENTA',
-              monto: pagoEf.monto,
-              descripcion: descMov,
-              fecha_hora: ahora,
-            })
-          } catch (errCaja) {
-            console.warn('Error registrando egreso compensatorio en Supabase:', errCaja)
+        } else if (kioscoId) {
+          // Buscar última sesión abierta si no hay sesión activa en el store
+          const { data: ultSesion } = await supabase
+            .from('sesiones_caja')
+            .select('id')
+            .eq('kiosco_id', kioscoId)
+            .is('fecha_cierre', null)
+            .order('fecha_apertura', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+            
+          if (ultSesion) {
+            try {
+              await supabase.from('movimientos_caja').insert({
+                kiosco_id: kioscoId,
+                sesion_caja_id: ultSesion.id,
+                usuario_id: usuario?.id || null,
+                tipo: 'EGRESO',
+                motivo: 'DEVOLUCION_VENTA',
+                monto: pagoEf.monto,
+                descripcion: descMov,
+                fecha_hora: ahora,
+              })
+            } catch (errCaja) {
+              console.warn('Error registrando egreso compensatorio en Supabase:', errCaja)
+            }
+          } else {
+            toast.error('No hay sesión de caja abierta. Omitiendo movimiento de egreso de caja.', { duration: 6000 })
           }
         }
       }

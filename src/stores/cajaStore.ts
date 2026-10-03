@@ -11,6 +11,7 @@ import type {
   MotivoMovimientoCaja,
 } from '../types/database'
 import toast from 'react-hot-toast'
+import { useOfflineSyncStore } from './offlineSyncStore'
 
 interface CajaState {
   sesionActiva: (SesionCaja & { usuario?: Usuario }) | null
@@ -270,6 +271,22 @@ export const useCajaStore = create<CajaState>((set, get) => ({
           total_egresos: totalEgresos,
           efectivo_esperado_en_caja: baseEsperado + totalIngresosExtra - totalEgresos,
         }
+
+        try {
+          const kioscoId = get().sesionActiva?.kiosco_id || resumen.kiosco_id
+          if (kioscoId) {
+            const cola = useOfflineSyncStore.getState().cargarCola(kioscoId)
+            const offlineDeSesion = cola.filter(v => v.sesion_caja_id === targetId)
+            const efectivoOffline = offlineDeSesion.reduce((acc, v) => {
+              const ef = v.pagos.filter(p => p.medio_pago === 'EFECTIVO').reduce((suma, p) => suma + p.monto, 0)
+              return acc + ef
+            }, 0)
+            resumen.efectivo_esperado_en_caja += efectivoOffline
+          }
+        } catch (e) {
+          console.warn('Error calculando offline para resumen', e)
+        }
+
         if (!sesionId || sesionId === get().sesionActiva?.id) {
           set({ resumenActivo: resumen })
         }
@@ -334,6 +351,21 @@ export const useCajaStore = create<CajaState>((set, get) => ({
         total_egresos: totalEgresos,
         efectivo_esperado_en_caja:
           sesionData.monto_inicial + totalEfectivo + totalIngresosExtra - totalEgresos,
+      }
+
+      try {
+        const kioscoId = get().sesionActiva?.kiosco_id || resumen.kiosco_id
+        if (kioscoId) {
+          const cola = useOfflineSyncStore.getState().cargarCola(kioscoId)
+          const offlineDeSesion = cola.filter(v => v.sesion_caja_id === targetId)
+          const efectivoOffline = offlineDeSesion.reduce((acc, v) => {
+            const ef = v.pagos.filter(p => p.medio_pago === 'EFECTIVO').reduce((suma, p) => suma + p.monto, 0)
+            return acc + ef
+          }, 0)
+          resumen.efectivo_esperado_en_caja += efectivoOffline
+        }
+      } catch (e) {
+        console.warn('Error calculando offline para resumen', e)
       }
 
       if (!sesionId || sesionId === get().sesionActiva?.id) {
