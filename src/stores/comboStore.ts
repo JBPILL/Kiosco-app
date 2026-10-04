@@ -116,7 +116,11 @@ export const useComboStore = create<ComboState>((set, get) => ({
     // 2. Persistencia en Supabase
     try {
       // Eliminar los anteriores de este combo
-      await supabase.from('combo_items').delete().eq('combo_producto_id', comboProductoId)
+      const { error: errorDelete } = await supabase
+        .from('combo_items')
+        .delete()
+        .eq('combo_producto_id', comboProductoId)
+      if (errorDelete) throw new Error(errorDelete.message)
 
       if (nuevosItems.length > 0) {
         const payload = nuevosItems.map((item) => ({
@@ -128,9 +132,7 @@ export const useComboStore = create<ComboState>((set, get) => ({
         }))
 
         const { error } = await supabase.from('combo_items').insert(payload)
-        if (error) {
-          console.warn('Error insertando en Supabase combo_items:', error.message)
-        }
+        if (error) throw new Error(error.message)
       }
 
       // Marcar producto como es_combo: true

@@ -126,6 +126,7 @@ export const useEnvasesStore = create<EnvasesState>((set, get) => ({
   },
 
   actualizarPrecioTipo: (id: string, nuevoPrecio: number, kioscoId?: string) => {
+    if (!Number.isFinite(nuevoPrecio)) return
     const p = Math.max(0, nuevoPrecio)
     const actualizados = get().tiposEnvases.map((t) => (t.id === id ? { ...t, precio: p } : t))
     set({ tiposEnvases: actualizados })
@@ -141,12 +142,13 @@ export const useEnvasesStore = create<EnvasesState>((set, get) => ({
     valor: number,
     kioscoId?: string
   ) => {
+    if (!Number.isFinite(valor)) return
     const actualizados = get().tiposEnvases.map((t) => {
       let nuevoPrecio = t.precio
       if (modo === 'FIJO') {
         nuevoPrecio = Math.max(0, valor)
       } else if (modo === 'PORCENTAJE') {
-        nuevoPrecio = Math.round(t.precio * (1 + valor / 100))
+        nuevoPrecio = Math.max(0, Math.round(t.precio * (1 + valor / 100)))
       }
       return { ...t, precio: nuevoPrecio }
     })
@@ -169,6 +171,7 @@ export const useEnvasesStore = create<EnvasesState>((set, get) => ({
   },
 
   actualizarStockVacios: (id: string, nuevoStock: number, kioscoId?: string, usuarioNombre?: string) => {
+    if (!Number.isFinite(nuevoStock)) return
     const stockSeguro = Math.max(0, Math.round(nuevoStock))
     let envaseEncontrado: TipoEnvase | undefined
     const actualizados = get().tiposEnvases.map((t) => {
@@ -217,13 +220,16 @@ export const useEnvasesStore = create<EnvasesState>((set, get) => ({
     usuarioNombre?: string,
     notas?: string
   ) => {
+    if (!Number.isFinite(delta)) return
     let envaseEncontrado: TipoEnvase | undefined
     let nuevoStock = 0
+    let stockPrevio = 0
 
     const actualizados = get().tiposEnvases.map((t) => {
       if (t.id === id) {
         envaseEncontrado = t
-        nuevoStock = Math.max(0, (t.stock_vacios || 0) + delta)
+        stockPrevio = t.stock_vacios || 0
+        nuevoStock = Math.max(0, stockPrevio + delta)
         return { ...t, stock_vacios: nuevoStock }
       }
       return t
@@ -245,7 +251,7 @@ export const useEnvasesStore = create<EnvasesState>((set, get) => ({
       tipoEnvaseId: id,
       tipoEnvaseNombre: envaseEncontrado.nombre,
       tipo: motivo,
-      cantidad: delta,
+      cantidad: nuevoStock - stockPrevio,
       stockResultante: nuevoStock,
       usuarioNombre: usuarioNombre || 'Cajero',
       notas: notas || (delta > 0 ? `Recepción mostrador (+${delta})` : `Egreso mostrador (${delta})`),
@@ -267,15 +273,18 @@ export const useEnvasesStore = create<EnvasesState>((set, get) => ({
     kioscoId?: string,
     usuarioNombre?: string
   ) => {
+    if (!Number.isFinite(cantidad)) return false
     const cantADescontar = Math.max(1, Math.round(cantidad))
     let envaseEncontrado: TipoEnvase | undefined
     let stockResultante = 0
+    let realmenteDescontado = 0
 
     const actualizados = get().tiposEnvases.map((t) => {
       if (t.id === id) {
         envaseEncontrado = t
         const actual = t.stock_vacios || 0
         stockResultante = Math.max(0, actual - cantADescontar)
+        realmenteDescontado = actual - stockResultante
         return { ...t, stock_vacios: stockResultante }
       }
       return t
@@ -296,7 +305,7 @@ export const useEnvasesStore = create<EnvasesState>((set, get) => ({
       tipoEnvaseId: id,
       tipoEnvaseNombre: envaseEncontrado.nombre,
       tipo: 'ENTREGA_DISTRIBUIDOR',
-      cantidad: -cantADescontar,
+      cantidad: -realmenteDescontado,
       stockResultante,
       distribuidor: distribuidor.trim(),
       usuarioNombre: usuarioNombre || 'Dueño',
