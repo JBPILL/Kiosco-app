@@ -570,12 +570,12 @@ export function DevolucionModal({
                     </span>
                     {venta.cliente && (
                       <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
-                        👤 {venta.cliente.nombre}
+                        Cliente: {venta.cliente.nombre}
                       </span>
                     )}
                     {stockVuelveCount > 0 && (
-                      <span className="text-[10px] text-emerald-800 dark:text-emerald-300 bg-emerald-100/90 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-800 px-2 py-0.5 rounded-md font-semibold flex items-center gap-1">
-                        <span>📦</span> {stockVuelveCount} vuelve(n) a stock
+                      <span className="text-[10px] text-emerald-800 dark:text-emerald-300 bg-emerald-100/90 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-800 px-2 py-0.5 rounded-md font-semibold">
+                        {stockVuelveCount} vuelve(n) a stock
                       </span>
                     )}
                     {cargandoPrevias && (
