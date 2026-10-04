@@ -374,15 +374,19 @@ export function ReportesPage() {
         console.warn('Error al actualizar caché local tras anulación:', errCache)
       }
 
-      // 3. Si la venta tuvo pago en CUENTA_CORRIENTE, revertir la deuda del cliente
-      const pagoCC = ventaParaAnular.pagos.find((p) => p.medio_pago === 'CUENTA_CORRIENTE')
-      if (pagoCC) {
-        await useClienteStore.getState().revertirCargoVenta(ventaParaAnular.id, pagoCC.monto)
+      // 3. Si la venta tuvo pagos en CUENTA_CORRIENTE, revertir el total adeudado
+      const montoTotalCC = (ventaParaAnular.pagos || [])
+        .filter((p) => p.medio_pago === 'CUENTA_CORRIENTE')
+        .reduce((sum, p) => sum + (Number(p.monto) || 0), 0)
+      if (montoTotalCC > 0) {
+        await useClienteStore.getState().revertirCargoVenta(ventaParaAnular.id, montoTotalCC)
       }
 
-      // 4. Si la venta tuvo pago en EFECTIVO, asentar el egreso compensatorio en caja SOLO si hay sesión abierta
-      const pagoEf = ventaParaAnular.pagos.find((p) => p.medio_pago === 'EFECTIVO')
-      if (pagoEf && pagoEf.monto > 0) {
+      // 4. Si la venta tuvo pagos en EFECTIVO, asentar el egreso compensatorio en caja SOLO si hay sesión abierta
+      const montoTotalEf = (ventaParaAnular.pagos || [])
+        .filter((p) => p.medio_pago === 'EFECTIVO')
+        .reduce((sum, p) => sum + (Number(p.monto) || 0), 0)
+      if (montoTotalEf > 0) {
         const sesionActiva = useCajaStore.getState().sesionActiva
         const descMov = `Reintegro en efectivo por anulación de Venta #${ventaParaAnular.id.slice(0, 8).toUpperCase()}`
         if (sesionActiva && !sesionActiva.fecha_cierre && sesionActiva.estado === 'ABIERTA') {
@@ -390,7 +394,7 @@ export function ReportesPage() {
             await useCajaStore.getState().registrarMovimientoCaja(
               'EGRESO',
               'DEVOLUCION_VENTA',
-              pagoEf.monto,
+              montoTotalEf,
               descMov
             )
           } catch (errCaja) {
@@ -416,7 +420,7 @@ export function ReportesPage() {
                 usuario_id: usuario?.id || null,
                 tipo: 'EGRESO',
                 motivo: 'DEVOLUCION_VENTA',
-                monto: pagoEf.monto,
+                monto: montoTotalEf,
                 descripcion: descMov,
                 fecha_hora: ahora,
               })

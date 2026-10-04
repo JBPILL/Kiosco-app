@@ -64,6 +64,7 @@ interface AsientoContable {
   egreso: number
   notas?: string | null
   ventaData?: any
+  ticketRef?: string | null
 }
 
 interface VentaContable {
@@ -185,10 +186,19 @@ export function BalanceContableTab() {
         setMovimientosCajaAnio(mData || [])
       }
 
-      // Cargar devoluciones del año
+      // Cargar devoluciones del año con comprobante de venta original vinculado
       const { data: dData, error: dErr } = await supabase
         .from('devoluciones_venta')
-        .select('*')
+        .select(`
+          *,
+          venta:ventas(
+            id, fecha_hora, total, estado, notas,
+            afip_cae, afip_vto_cae, afip_tipo_comprobante, afip_nro_comprobante, afip_qr_url,
+            usuario:usuarios(nombre),
+            pagos:pagos_venta(medio_pago, monto),
+            detalles:detalles_venta(cantidad, precio_unitario, subtotal, producto:productos(descripcion))
+          )
+        `)
         .eq('kiosco_id', kid)
         .gte('fecha_hora', inicioISO)
         .lte('fecha_hora', finISO)
@@ -652,12 +662,17 @@ export function BalanceContableTab() {
       else if (d.metodo_reintegro === 'TRANSFERENCIA') canal = 'Transferencia'
       else if (d.metodo_reintegro === 'CUENTA_CORRIENTE') canal = 'Cuenta Corriente'
 
+      const ventaAsociada = (d.venta as VentaContable) || ventasAnio.find((v) => v.id === d.venta_id)
+      const ticketRef = d.venta_id ? `T-${d.venta_id.slice(0, 8).toUpperCase()}` : null
+
       asientos.push({
         id: `dev-${d.id}`,
         fecha: d.fecha_hora,
         tipo: 'DEVOLUCION',
         comprobante: `DEV-${d.id.slice(0, 8).toUpperCase()}`,
-        concepto: `Reintegro por devolución (${d.motivo || 'Devolución'})`,
+        ticketRef,
+        ventaData: ventaAsociada || null,
+        concepto: `Reintegro por devolución (${d.motivo || 'Devolución'})${ticketRef ? ` · Ticket ${ticketRef}` : ''}`,
         medio_pago: canal,
         ingreso: 0,
         egreso: Number(d.monto_total || 0),
@@ -673,6 +688,7 @@ export function BalanceContableTab() {
     egresosCajaPeriodo,
     ingresosCajaPeriodo,
     devolucionesPeriodo,
+    ventasAnio,
   ])
 
   // Filtrado de asientos del Libro Diario
@@ -1601,6 +1617,28 @@ export function BalanceContableTab() {
                                     </span>
                                   )}
                                 </button>
+                              ) : asiento.tipo === 'DEVOLUCION' ? (
+                                <div className="inline-flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-mono text-gray-700 dark:text-gray-300 font-semibold text-xs">
+                                    {asiento.comprobante}
+                                  </span>
+                                  {asiento.ticketRef && (
+                                    asiento.ventaData ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => setTicketParaVer(ventaToTicketData(asiento.ventaData, kiosco))}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 cursor-pointer"
+                                        title="Ver comprobante de venta original modificado"
+                                      >
+                                        <span>Ticket:</span> {asiento.ticketRef}
+                                      </button>
+                                    ) : (
+                                      <span className="text-[10px] font-mono text-gray-400">
+                                        Ticket: {asiento.ticketRef}
+                                      </span>
+                                    )
+                                  )}
+                                </div>
                               ) : (
                                 <span className="font-mono text-gray-600 dark:text-gray-400 text-xs truncate">
                                   {asiento.comprobante}
@@ -1718,6 +1756,28 @@ export function BalanceContableTab() {
                                     <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 shrink-0">
                                       Interno
                                     </span>
+                                  )}
+                                </div>
+                              ) : asiento.tipo === 'DEVOLUCION' ? (
+                                <div className="inline-flex flex-col items-center justify-center gap-0.5 min-w-0">
+                                  <span className="font-mono text-xs font-semibold text-gray-800 dark:text-gray-200">
+                                    {asiento.comprobante}
+                                  </span>
+                                  {asiento.ticketRef && (
+                                    asiento.ventaData ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => setTicketParaVer(ventaToTicketData(asiento.ventaData, kiosco))}
+                                        className="inline-flex items-center gap-1 font-mono text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer bg-indigo-50/80 dark:bg-indigo-950/50 px-1.5 py-0.5 rounded transition-colors"
+                                        title="Ver comprobante de venta original modificado"
+                                      >
+                                        <span>Ticket:</span> {asiento.ticketRef}
+                                      </button>
+                                    ) : (
+                                      <span className="font-mono text-[10px] text-gray-400 dark:text-gray-500">
+                                        Ticket: {asiento.ticketRef}
+                                      </span>
+                                    )
                                   )}
                                 </div>
                               ) : (

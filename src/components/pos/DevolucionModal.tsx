@@ -291,6 +291,14 @@ export function DevolucionModal({
   const totalDescontadoAcumulado = totalYaDevueltoHistorico + totalReintegro
   const nuevoTotalActualizadoTicket = Math.max(0, totalOriginalTicket - totalDescontadoAcumulado)
 
+  // Control de canal: verificar cuánto se cobró en efectivo en la venta original
+  const montoPagadoEfectivo = useMemo(() => {
+    if (!venta?.pagos) return 0
+    return (venta.pagos as any[])
+      .filter((p) => p.medio_pago === 'EFECTIVO')
+      .reduce((sum: number, p: any) => sum + (Number(p.monto) || 0), 0)
+  }, [venta])
+
   const handleConfirmarDevolucion = async () => {
     if (!venta || guardando) return
     if (itemsSeleccionados.length === 0) {
@@ -1009,7 +1017,7 @@ export function DevolucionModal({
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <h5 className="text-xs font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1">
-                          💵 Efectivo de Caja
+                          Efectivo de Caja
                         </h5>
                         {metodoReintegro === 'EFECTIVO_CAJA' && (
                           <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/60 px-1.5 py-0.2 rounded-full">
@@ -1021,10 +1029,19 @@ export function DevolucionModal({
                         Egresa de caja física y se computa en el arqueo del turno actual.
                       </p>
                     </div>
-                    {!sesionActiva && (
+                    {!sesionActiva ? (
                       <span className="text-[9px] text-amber-600 font-bold mt-1">
                         Sin turno abierto
                       </span>
+                    ) : (
+                      metodoReintegro === 'EFECTIVO_CAJA' &&
+                      venta?.pagos &&
+                      venta.pagos.length > 0 &&
+                      montoPagadoEfectivo < totalReintegro && (
+                        <span className="text-[9px] text-amber-700 dark:text-amber-400 font-medium mt-1 leading-tight">
+                          Aviso: Cobrado en efvo: ${montoPagadoEfectivo.toLocaleString('es-AR')}
+                        </span>
+                      )
                     )}
                   </div>
 
@@ -1044,7 +1061,7 @@ export function DevolucionModal({
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <h5 className="text-xs font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1">
-                          👤 Cuenta Corriente
+                          Cuenta Corriente
                         </h5>
                         {metodoReintegro === 'CUENTA_CORRIENTE' && (
                           <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/60 px-1.5 py-0.2 rounded-full">
@@ -1077,7 +1094,7 @@ export function DevolucionModal({
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <h5 className="text-xs font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1">
-                          🔄 Cambio Directo
+                          Cambio Directo
                         </h5>
                         {metodoReintegro === 'OTRO' && (
                           <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/60 px-1.5 py-0.2 rounded-full">

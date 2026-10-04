@@ -483,10 +483,10 @@ export const useCartStore = create<CartState>((set, get) => ({
 
     const state = get()
     const itemTarget = state.items.find((it) => it.producto.id === productoId)
-    let cantidadAjustada = cantidad
+    let cantidadAjustada = itemTarget?.producto.es_pesable ? cantidad : Math.max(1, Math.round(cantidad))
 
     if (itemTarget && !itemTarget.producto.es_pesable && itemTarget.producto.stock_actual > 0 && itemTarget.producto.stock_actual !== 99999) {
-      if (cantidad > itemTarget.producto.stock_actual) {
+      if (cantidadAjustada > itemTarget.producto.stock_actual) {
         toast.error(
           `Stock máximo alcanzado: No podés superar las ${itemTarget.producto.stock_actual} unidades disponibles de "${itemTarget.producto.descripcion}".`,
           { id: `stock-max-${productoId}`, duration: 3500 }

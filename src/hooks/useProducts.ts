@@ -353,6 +353,17 @@ export function useProducts() {
       }
     }
 
+    const pluLimpio = producto.plu_balanza?.trim()
+    if (pluLimpio) {
+      const yaExistePlu = productos.some(
+        (p) => p.activo && p.plu_balanza?.trim() === pluLimpio
+      )
+      if (yaExistePlu) {
+        toast.error(`Ya existe un producto activo con el código PLU de balanza "${pluLimpio}"`)
+        return null
+      }
+    }
+
     const nuevoId = uuidv4()
     const now = new Date().toISOString()
     const kioscoId = usuario?.kiosco_id || kiosco?.id || ''
@@ -406,6 +417,17 @@ export function useProducts() {
       )
       if (yaExiste) {
         toast.error(`Ya existe otro producto activo con el código de barras "${codigoBarrasLimpio}"`)
+        return false
+      }
+    }
+
+    const pluLimpio = cambios.plu_balanza?.trim()
+    if (pluLimpio) {
+      const yaExistePlu = productos.some(
+        (p) => p.id !== id && p.activo && p.plu_balanza?.trim() === pluLimpio
+      )
+      if (yaExistePlu) {
+        toast.error(`Ya existe otro producto activo con el código PLU de balanza "${pluLimpio}"`)
         return false
       }
     }

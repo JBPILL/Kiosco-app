@@ -185,13 +185,33 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
       return null
     }
 
+    const nombreLimpio = datos.nombre?.trim()
+    if (!nombreLimpio) {
+      toast.error('El nombre del proveedor es obligatorio')
+      return null
+    }
+
+    const existe = get().proveedores.some(
+      (p) => p.activo !== false && p.nombre.toLowerCase().trim() === nombreLimpio.toLowerCase()
+    )
+    if (existe) {
+      toast.error(`Ya existe un proveedor registrado con el nombre "${nombreLimpio}"`)
+      return null
+    }
+
+    const emailLimpio = datos.email?.trim() || null
+    if (emailLimpio && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLimpio)) {
+      toast.error('El formato del correo electrónico ingresado no es válido')
+      return null
+    }
+
     const nuevoProveedor: Proveedor = {
       id: uuidv4(),
       kiosco_id: kioscoId,
-      nombre: datos.nombre.trim(),
+      nombre: nombreLimpio,
       contacto_nombre: datos.contacto_nombre?.trim() || null,
       telefono: datos.telefono?.trim() || null,
-      email: datos.email?.trim() || null,
+      email: emailLimpio,
       cuit: datos.cuit?.trim() || null,
       dias_visita: datos.dias_visita?.trim() || null,
       cbu_alias: datos.cbu_alias?.trim() || null,
@@ -235,6 +255,31 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
   actualizarProveedor: async (id, datos) => {
     const kioscoId = getKioscoId()
     if (!kioscoId) return false
+
+    if (datos.nombre !== undefined) {
+      const nombreLimpio = datos.nombre.trim()
+      if (!nombreLimpio) {
+        toast.error('El nombre del proveedor no puede estar vacío')
+        return false
+      }
+      const existeOtro = get().proveedores.some(
+        (p) => p.id !== id && p.activo !== false && p.nombre.toLowerCase().trim() === nombreLimpio.toLowerCase()
+      )
+      if (existeOtro) {
+        toast.error(`Ya existe otro proveedor registrado con el nombre "${nombreLimpio}"`)
+        return false
+      }
+      datos.nombre = nombreLimpio
+    }
+
+    if (datos.email !== undefined && datos.email !== null) {
+      const emailLimpio = datos.email.trim()
+      if (emailLimpio && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLimpio)) {
+        toast.error('El formato del correo electrónico ingresado no es válido')
+        return false
+      }
+      datos.email = emailLimpio || null
+    }
 
     const actualizados = get().proveedores.map((p) =>
       p.id === id ? { ...p, ...datos } : p
