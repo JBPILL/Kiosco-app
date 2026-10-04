@@ -61,7 +61,7 @@ export function extraerPatronPromo(texto?: string | null): string | null {
   }
 
   // 3. Patrón Cantidad x $Precio (ej: "3 Cartulinas x $700", "3 x $700", "3x$700")
-  const matchPack = str.match(/(\d+)\s*(?:[a-zA-ZáéíóúñÁÉÍÓÚÑ\s]+)?\s*[xX]\s*\$?\s*([\d\.,]+)/)
+  const matchPack = str.match(/(\d+)\s*(?:[a-zA-ZáéíóúñÁÉÍÓÚÑ\s]+)?\s*[xX]\s*\$\s*([\d\.,]+)/)
   if (matchPack) {
     const cant = matchPack[1]
     const precio = matchPack[2]
@@ -69,7 +69,7 @@ export function extraerPatronPromo(texto?: string | null): string | null {
   }
 
   // 4. Patrón Porcentaje (ej: "15% OFF", "15% desc", "15%", "Descuento 15%")
-  const matchPct = str.match(/\b(\d+)\s*%\s*(?:OFF|desc)?\b/i)
+  const matchPct = str.match(/\b(\d+)\s*%/)
   if (matchPct) {
     return `${matchPct[1]}% OFF`
   }
