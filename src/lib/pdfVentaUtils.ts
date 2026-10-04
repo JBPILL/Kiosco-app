@@ -4,7 +4,7 @@
  */
 
 import jsPDF from 'jspdf'
-import { formatFecha, formatNumero } from './utils'
+import { formatFecha, formatNumero, formatearPromoTicket } from './utils'
 import { sanitizarNombreArchivo } from './exportUtils'
 import { generarImagenQRAFIP } from './afipQR'
 import { generateCode128Bars } from './barcodeSvg'
@@ -239,7 +239,7 @@ export async function crearDocumentoPDFVenta(
       y += 2.9
       doc.setFontSize(6.2)
       doc.setTextColor(16, 120, 60) // Verde sutil
-      doc.text(`  [${it.promoNombre}]`, margin, y)
+      doc.text(`  [${formatearPromoTicket(it.promoNombre)}]`, margin, y)
       doc.setFontSize(7.2)
       doc.setTextColor(colorOscuro[0], colorOscuro[1], colorOscuro[2])
     }

@@ -7,7 +7,7 @@
 
 import type { TicketData } from '../components/pos/TicketReceiptModal'
 import type { DatosCierreCaja } from '../components/pos/TicketCierreCajaModal'
-import { formatPrecio, formatFecha } from './utils'
+import { formatPrecio, formatFecha, formatearPromoTicket } from './utils'
 
 // Comandos ESC/POS estándar
 const ESC = 0x1b
@@ -200,7 +200,7 @@ export function construirBufferEscPos(ticket: TicketData, anchoPapel: '58mm' | '
     }
 
     if (it.promoNombre) {
-      appendTexto(`  * ${it.promoNombre}`)
+      appendTexto(`  * ${formatearPromoTicket(it.promoNombre)}`)
     }
   })
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal } from '../ui/Modal'
-import { formatPrecio, formatFecha, formatNumero } from '../../lib/utils'
+import { formatPrecio, formatFecha, formatNumero, formatearPromoTicket } from '../../lib/utils'
 import { generarImagenQRAFIP } from '../../lib/afipQR'
 import { imprimirTicketEscPosDirecto, isWebSerialSupported } from '../../lib/escposPrinter'
 import { exportarTicketVentaPDF, compartirTicketVentaWhatsApp } from '../../lib/pdfVentaUtils'
@@ -475,7 +475,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
                     </div>
                     {it.promoNombre && (
                       <div className="text-[9px] text-emerald-800 font-semibold pl-2">
-                        🏷️ {it.promoNombre}
+                        🏷️ {formatearPromoTicket(it.promoNombre)}
                       </div>
                     )}
                   </div>

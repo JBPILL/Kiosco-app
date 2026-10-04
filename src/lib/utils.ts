@@ -27,6 +27,65 @@ export function formatNumero(monto?: number | null): string {
 }
 
 /**
+ * Reduce el texto de una promoción para mostrar una etiqueta concisa y legible en tickets y carritos.
+ * Ejemplos:
+ * - "Promo 2x1 BIC Cristal Azul (3 gratis)" → "2x1"
+ * - "15% OFF Goma Eva (Llevando 5+) (15% OFF x5+)" → "15% OFF"
+ * - "2da al 50% Cuaderno Gloria 48h (25% OFF x2+)" → "2da al 50%"
+ * - "Promo 3 Cartulinas x $700 ($233,33 c/u)" → "3 x $700"
+ * - "3x2 Cerveza Quilmes" → "3x2"
+ */
+export function formatearPromoTicket(nombre?: string | null): string {
+  if (!nombre) return ''
+  const str = nombre.trim()
+
+  // 1. Patrón NxM (ej: 2x1, 3x2, 4x3) sin confundir con "3 x $700"
+  const matchNxM = str.match(/\b(\d+\s*[xX]\s*\d+)\b/)
+  if (matchNxM && !str.includes('$')) {
+    return matchNxM[1].toLowerCase().replace(/\s+/g, '')
+  }
+
+  // 2. Patrón "2da al XX%" o "segunda al XX%"
+  const match2da = str.match(/(?:2da|segunda)\s+al\s+\d+%/i)
+  if (match2da) {
+    return match2da[0]
+  }
+
+  // 3. Patrón Cantidad x $Precio (ej: "3 Cartulinas x $700", "3 x $700", "3x$700")
+  const matchPack = str.match(/(\d+)\s*(?:[a-zA-ZáéíóúñÁÉÍÓÚÑ\s]+)?\s*[xX]\s*\$?\s*([\d\.,]+)/)
+  if (matchPack) {
+    const cant = matchPack[1]
+    const precio = matchPack[2]
+    return `${cant} x $${precio}`
+  }
+
+  // 4. Patrón Porcentaje OFF (ej: "15% OFF", "20% OFF")
+  const matchOff = str.match(/\b(\d+%\s*OFF)\b/i)
+  if (matchOff) {
+    return matchOff[1].toUpperCase()
+  }
+
+  // 5. Patrón Porcentaje simple (ej: "15%", "25% de descuento")
+  const matchPct = str.match(/\b(\d+%)\b/)
+  if (matchPct && (str.toLowerCase().includes('off') || str.toLowerCase().includes('desc'))) {
+    return `${matchPct[1]} OFF`
+  }
+
+  // 6. Patrón Combo
+  if (str.toLowerCase().startsWith('combo')) {
+    const sinParentesis = str.replace(/\(.*?\)/g, '').trim()
+    return sinParentesis.length <= 18 ? sinParentesis : 'Combo'
+  }
+
+  // 7. Limpieza general: quitar paréntesis redundantes y acotar longitud
+  let limpio = str.replace(/\(.*?\)/g, '').trim()
+  if (limpio.length > 20) {
+    limpio = limpio.slice(0, 18).trim() + '...'
+  }
+  return limpio || str
+}
+
+/**
  * Formatea una fecha ISO a formato legible
  * Ejemplo: "2026-09-11T15:30:00" → "11/09/2026 15:30"
  */

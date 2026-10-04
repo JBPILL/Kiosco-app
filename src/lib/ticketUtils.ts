@@ -1,5 +1,5 @@
 import type { TicketData } from '../components/pos/TicketReceiptModal'
-import { labelMedioPago } from './utils'
+import { labelMedioPago, formatearPromoTicket } from './utils'
 import { construirURLQRAFIP } from './afipQR'
 import { useAFIPStore } from '../stores/afipStore'
 
@@ -74,6 +74,8 @@ export function ventaToTicketData(v: any, kiosco?: any): TicketData {
         cantidad: d.cantidad,
         precioUnitario: d.precio_unitario || (d.cantidad > 0 ? Math.abs(d.subtotal / d.cantidad) : 0),
         subtotal: d.subtotal,
+        descuentoPromo: d.descuento_promo,
+        promoNombre: d.promo_nombre ? formatearPromoTicket(d.promo_nombre) : undefined,
       }
     }),
     subtotal: subtotalCalculado,

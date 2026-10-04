@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '../lib/supabase'
-import { getFechaLocal } from '../lib/utils'
+import { getFechaLocal, formatearPromoTicket } from '../lib/utils'
 import type { Promocion, ItemCarrito } from '../types/database'
 import toast from 'react-hot-toast'
 
@@ -92,7 +92,9 @@ export function evaluarItemPromociones(
 
   for (const promo of aplicables) {
     let descuentoCalculado = 0
-    let etiqueta = promo.nombre
+
+    // Generar etiqueta corta y legible (ej: 2x1, 15% OFF, 2da al 50%, 3 x $700)
+    let etiqueta = formatearPromoTicket(promo.nombre)
 
     if (promo.tipo === 'NXM') {
       const min = Number(promo.cantidad_minima)
@@ -101,7 +103,9 @@ export function evaluarItemPromociones(
         const packs = Math.floor(item.cantidad / min)
         const unidadesGratis = packs * (min - paga)
         descuentoCalculado = Math.round(unidadesGratis * item.producto.precio_venta)
-        etiqueta = `${promo.nombre} (${unidadesGratis} gratis)`
+        if (!etiqueta || etiqueta === promo.nombre) {
+          etiqueta = `${min}x${paga}`
+        }
       }
     } else if (promo.tipo === 'VOLUMEN') {
       const min = Number(promo.cantidad_minima || 2)
@@ -109,10 +113,15 @@ export function evaluarItemPromociones(
         if (promo.precio_unitario_promo !== null && promo.precio_unitario_promo !== undefined && promo.precio_unitario_promo > 0) {
           const ahorroUnit = Math.max(0, item.producto.precio_venta - promo.precio_unitario_promo)
           descuentoCalculado = Math.round(item.cantidad * ahorroUnit)
-          etiqueta = `${promo.nombre} ($${promo.precio_unitario_promo.toLocaleString('es-AR')} c/u)`
+          if (!etiqueta || etiqueta === promo.nombre) {
+            const totalPack = Math.round(promo.precio_unitario_promo * min)
+            etiqueta = `${min} x $${totalPack.toLocaleString('es-AR')}`
+          }
         } else if (promo.descuento_porcentaje) {
           descuentoCalculado = Math.round((subtotalBase * promo.descuento_porcentaje) / 100)
-          etiqueta = `${promo.nombre} (${promo.descuento_porcentaje}% OFF)`
+          if (!etiqueta || etiqueta === promo.nombre) {
+            etiqueta = `${promo.descuento_porcentaje}% OFF`
+          }
         }
       }
     } else if (promo.tipo === 'PORCENTAJE') {
@@ -120,9 +129,9 @@ export function evaluarItemPromociones(
       if (item.cantidad >= min) {
         if (promo.descuento_porcentaje && promo.descuento_porcentaje > 0) {
           descuentoCalculado = Math.round((subtotalBase * promo.descuento_porcentaje) / 100)
-          etiqueta = min > 1
-            ? `${promo.nombre} (${promo.descuento_porcentaje}% OFF x${min}+)`
-            : `${promo.nombre} (${promo.descuento_porcentaje}% OFF)`
+          if (!etiqueta || etiqueta === promo.nombre) {
+            etiqueta = `${promo.descuento_porcentaje}% OFF`
+          }
         }
       }
     }
@@ -391,9 +400,10 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
             ahorroRestante -= descItem
             cartIt.descuento_promo = (cartIt.descuento_promo || 0) + descItem
             cartIt.subtotal = Math.max(0, cartIt.subtotal - descItem)
+            const nombreCombo = formatearPromoTicket(promo.nombre) || 'Combo'
             cartIt.promo_nombre = cartIt.promo_nombre
-              ? `${cartIt.promo_nombre} + ${promo.nombre}`
-              : `Combo: ${promo.nombre}`
+              ? `${cartIt.promo_nombre} + ${nombreCombo}`
+              : (nombreCombo.toLowerCase().startsWith('combo') ? nombreCombo : `Combo: ${nombreCombo}`)
           })
         }
       }

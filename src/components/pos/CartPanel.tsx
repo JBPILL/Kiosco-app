@@ -3,7 +3,7 @@ import { useCartStore } from '../../stores/cartStore'
 import { useAuthStore } from '../../stores/authStore'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import type { TipoAjuste } from '../../stores/cartStore'
-import { formatPrecio } from '../../lib/utils'
+import { formatPrecio, formatearPromoTicket } from '../../lib/utils'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Modal } from '../ui/Modal'
@@ -870,7 +870,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                   <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
                     {item.promo_nombre && (
                       <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60">
-                        {item.promo_nombre}
+                        {formatearPromoTicket(item.promo_nombre)}
                       </span>
                     )}
                     {item.es_devolucion_envase && (
