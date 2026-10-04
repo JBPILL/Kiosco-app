@@ -1,4 +1,7 @@
-import { vi } from 'vitest'
+import { afterEach, vi } from 'vitest'
+import { cleanup } from '@testing-library/react'
+
+afterEach(() => cleanup())
 
 vi.mock('react-hot-toast', () => {
   const toast = Object.assign(vi.fn(), {

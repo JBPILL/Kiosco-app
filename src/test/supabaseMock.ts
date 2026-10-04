@@ -58,7 +58,7 @@ function crearConsulta(tabla: string) {
       return consulta
     }
   }
-  for (const m of ['select', 'eq', 'gte', 'not', 'order', 'limit', 'maybeSingle', 'single', 'in']) encadenar(m)
+  for (const m of ['select', 'eq', 'gte', 'not', 'order', 'limit', 'maybeSingle', 'single', 'in', 'lte', 'is', 'or', 'neq']) encadenar(m)
 
   for (const op of ['insert', 'update', 'delete'] as const) {
     consulta[op] = (payload?: unknown) => {
