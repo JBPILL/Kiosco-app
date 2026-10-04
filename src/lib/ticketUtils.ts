@@ -1,5 +1,5 @@
 import type { TicketData } from '../components/pos/TicketReceiptModal'
-import { labelMedioPago, formatearPromoTicket } from './utils'
+import { labelMedioPago, formatearPromoTicket, extraerPatronPromo, obtenerEtiquetaPromocion } from './utils'
 import { construirURLQRAFIP } from './afipQR'
 import { useAFIPStore } from '../stores/afipStore'
 import { usePromocionStore, cargarPromocionesLocal } from '../stores/promocionStore'
@@ -105,40 +105,38 @@ export function ventaToTicketData(v: any, kiosco?: any): TicketData {
       const subtotalBase = cant * precioBase
       const diferenciaDescuento = subtotalBase - subtotalReal
 
-      let promoNombre: string | undefined = d.promo_nombre ? formatearPromoTicket(d.promo_nombre) : undefined
+      let promoNombre: string | undefined = undefined
       let descuentoPromo: number | undefined = d.descuento_promo
 
-      // 1. Revisar si la promoción vino guardada en los metadatos de las notas de la venta
-      if (!promoNombre && prodId && promosGuardadas[prodId]) {
-        promoNombre = promosGuardadas[prodId]
+      // 1. Revisar si la promoción vino guardada en notas persistidas o en el renglón
+      const candidata = (prodId && promosGuardadas[prodId]) || (d.promo_nombre ? formatearPromoTicket(d.promo_nombre) : undefined)
+      if (candidata) {
+        // Solo aceptar si ya contiene un patrón conciso explícito (ej: "15% OFF", "2x1", etc.)
+        const patron = extraerPatronPromo(candidata)
+        if (patron) {
+          promoNombre = patron
+        }
       }
 
-      // 2. Si hay descuento detectable o promoción no encontrada aún
+      // 2. Si no tenemos una etiqueta concisa válida, buscar en el catálogo de promociones
+      if (!promoNombre && promociones && promociones.length > 0) {
+        const promoCoincidente = promociones.find(
+          (p) =>
+            (prodId && p.producto_id === prodId) ||
+            (p.categoria_id && d.producto?.categoria_id && p.categoria_id === d.producto.categoria_id)
+        )
+        if (promoCoincidente) {
+          promoNombre = obtenerEtiquetaPromocion(promoCoincidente)
+        }
+      }
+
+      // 3. Si hay descuento detectable o promoción no encontrada aún
       if (diferenciaDescuento > 0.5 && cant > 0) {
         if (!descuentoPromo) {
           descuentoPromo = Math.round(diferenciaDescuento)
         }
 
-        // Si todavía no tenemos promoNombre, intentar buscar en promociones vigentes/configuradas
-        if (!promoNombre && promociones && promociones.length > 0) {
-          const promoCoincidente = promociones.find(
-            (p) =>
-              (prodId && p.producto_id === prodId) ||
-              (p.categoria_id && d.producto?.categoria_id && p.categoria_id === d.producto.categoria_id)
-          )
-          if (promoCoincidente) {
-            promoNombre = formatearPromoTicket(promoCoincidente.nombre)
-            if (!promoNombre || promoNombre === promoCoincidente.nombre) {
-              if (promoCoincidente.tipo === 'NXM') {
-                promoNombre = `${promoCoincidente.cantidad_minima}x${promoCoincidente.cantidad_paga || 1}`
-              } else if (promoCoincidente.tipo === 'PORCENTAJE' && promoCoincidente.descuento_porcentaje) {
-                promoNombre = `${promoCoincidente.descuento_porcentaje}% OFF`
-              }
-            }
-          }
-        }
-
-        // 3. Fallback matemático de inferencia infalible si la promo fue borrada o modificada
+        // Fallback matemático de inferencia infalible si la promo fue borrada o modificada
         if (!promoNombre && subtotalBase > 0) {
           const pct = Math.round((diferenciaDescuento / subtotalBase) * 100)
           const tolerancia = Math.max(2, subtotalBase * 0.03)

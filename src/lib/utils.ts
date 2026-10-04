@@ -35,14 +35,23 @@ export function formatNumero(monto?: number | null): string {
  * - "Promo 3 Cartulinas x $700 ($233,33 c/u)" → "3 x $700"
  * - "3x2 Cerveza Quilmes" → "3x2"
  */
-export function formatearPromoTicket(nombre?: string | null): string {
-  if (!nombre) return ''
-  const str = nombre.trim()
+/**
+ * Extrae un patrón explícito y conciso de promoción desde un texto o nombre.
+ * Retorna etiquetas estandarizadas como "2x1", "15% OFF", "2da al 50%", "3 x $700", "Combo".
+ * Si el texto no contiene ningún patrón de promoción reconocible, retorna null.
+ */
+export function extraerPatronPromo(texto?: string | null): string | null {
+  if (!texto) return null
+  const str = texto.trim()
 
-  // 1. Patrón NxM (ej: 2x1, 3x2, 4x3) sin confundir con "3 x $700"
-  const matchNxM = str.match(/\b(\d+\s*[xX]\s*\d+)\b/)
+  // 1. Patrón NxM (ej: 2x1, 3x2, 4x3) sin confundir con precios "3 x $700"
+  const matchNxM = str.match(/\b(\d+)\s*[xX]\s*(\d+)\b/)
   if (matchNxM && !str.includes('$')) {
-    return matchNxM[1].toLowerCase().replace(/\s+/g, '')
+    const n1 = parseInt(matchNxM[1], 10)
+    const n2 = parseInt(matchNxM[2], 10)
+    if (n1 > 0 && n2 > 0 && n1 > n2 && n1 <= 20) {
+      return `${n1}x${n2}`
+    }
   }
 
   // 2. Patrón "2da al XX%" o "segunda al XX%"
@@ -59,30 +68,95 @@ export function formatearPromoTicket(nombre?: string | null): string {
     return `${cant} x $${precio}`
   }
 
-  // 4. Patrón Porcentaje OFF (ej: "15% OFF", "20% OFF")
-  const matchOff = str.match(/\b(\d+%\s*OFF)\b/i)
-  if (matchOff) {
-    return matchOff[1].toUpperCase()
+  // 4. Patrón Porcentaje (ej: "15% OFF", "15% desc", "15%", "Descuento 15%")
+  const matchPct = str.match(/\b(\d+)\s*%\s*(?:OFF|desc)?\b/i)
+  if (matchPct) {
+    return `${matchPct[1]}% OFF`
   }
 
-  // 5. Patrón Porcentaje simple (ej: "15%", "25% de descuento")
-  const matchPct = str.match(/\b(\d+%)\b/)
-  if (matchPct && (str.toLowerCase().includes('off') || str.toLowerCase().includes('desc'))) {
-    return `${matchPct[1]} OFF`
-  }
-
-  // 6. Patrón Combo
+  // 5. Patrón Combo
   if (str.toLowerCase().startsWith('combo')) {
     const sinParentesis = str.replace(/\(.*?\)/g, '').trim()
     return sinParentesis.length <= 18 ? sinParentesis : 'Combo'
   }
 
-  // 7. Limpieza general: quitar paréntesis redundantes y acotar longitud
-  let limpio = str.replace(/\(.*?\)/g, '').trim()
-  if (limpio.length > 20) {
-    limpio = limpio.slice(0, 18).trim() + '...'
+  return null
+}
+
+/**
+ * Obtiene la etiqueta concisa óptima para una promoción.
+ * Si el nombre ya contiene un patrón explícito (ej: "15% OFF", "2x1"), lo usa.
+ * Si el nombre es un título genérico (ej: "Boligrafos Bic cristal"), deriva la etiqueta
+ * a partir de la configuración técnica de la promoción (ej: "15% OFF", "2x1", "3 x $700").
+ */
+export function obtenerEtiquetaPromocion(promo: {
+  tipo?: string
+  nombre?: string
+  descuento_porcentaje?: number | null
+  cantidad_minima?: number | null
+  cantidad_paga?: number | null
+  precio_unitario_promo?: number | null
+  precio_combo?: number | null
+}): string {
+  // 1. Si el nombre tiene un patrón explícito, tiene máxima prioridad
+  const patronEnNombre = extraerPatronPromo(promo.nombre)
+  if (patronEnNombre) {
+    return patronEnNombre
   }
-  return limpio || str
+
+  // 2. Si el tipo es PORCENTAJE
+  if (promo.tipo === 'PORCENTAJE') {
+    const pct = Number(promo.descuento_porcentaje) || 0
+    return pct > 0 ? `${pct}% OFF` : 'Descuento'
+  }
+
+  // 3. Si el tipo es NXM
+  if (promo.tipo === 'NXM') {
+    const min = Number(promo.cantidad_minima || 2)
+    const paga = Math.max(1, Number(promo.cantidad_paga ?? 1))
+    return `${min}x${paga}`
+  }
+
+  // 4. Si el tipo es VOLUMEN
+  if (promo.tipo === 'VOLUMEN') {
+    const min = Number(promo.cantidad_minima || 2)
+    if (promo.precio_unitario_promo && promo.precio_unitario_promo > 0) {
+      const totalPack = Math.round(promo.precio_unitario_promo * min)
+      return `${min} x $${totalPack.toLocaleString('es-AR')}`
+    }
+    if (promo.descuento_porcentaje && promo.descuento_porcentaje > 0) {
+      return `${promo.descuento_porcentaje}% OFF`
+    }
+    return `Pack x${min}`
+  }
+
+  // 5. Si el tipo es COMBO
+  if (promo.tipo === 'COMBO') {
+    return formatearPromoTicket(promo.nombre) || 'Combo'
+  }
+
+  // 6. Fallback a formatearPromoTicket
+  return formatearPromoTicket(promo.nombre)
+}
+
+/**
+ * Reduce el texto de una promoción para mostrar una etiqueta concisa y legible en tickets y carritos.
+ * Si el texto contiene un patrón reconocible (ej: 2x1, 15% OFF, 2da al 50%), lo extrae directamente.
+ * Descarta textos truncados que no contengan patrones para permitir la inferencia limpia.
+ */
+export function formatearPromoTicket(nombre?: string | null): string {
+  if (!nombre) return ''
+  const patron = extraerPatronPromo(nombre)
+  if (patron) return patron
+
+  const str = nombre.trim()
+  // Si fue un texto truncado como "Boligrafos Bic cri...", descartar
+  if (str.endsWith('...')) {
+    return ''
+  }
+
+  const limpio = str.replace(/\(.*?\)/g, '').trim()
+  return limpio.length <= 15 ? limpio : ''
 }
 
 /**
