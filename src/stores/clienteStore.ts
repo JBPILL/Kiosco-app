@@ -194,9 +194,11 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
     return nuevoCliente
   },
 
-  actualizarCliente: async (id, datos) => {
+  actualizarCliente: async (id, datosEntrada) => {
     const usuario = useAuthStore.getState().usuario
     if (!usuario?.kiosco_id) return false
+
+    const datos: Partial<Cliente> = { ...datosEntrada }
 
     if (datos.nombre !== undefined) {
       const nombreLimpio = datos.nombre.trim()
@@ -306,6 +308,11 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
       return false
     }
 
+    if (!Number.isFinite(monto) || monto <= 0) {
+      toast.error('El importe a cargar en cuenta corriente debe ser mayor a $0')
+      return false
+    }
+
     // BUG-21: Consultar saldo fresco en base de datos para evitar Lost Updates por concurrencia
     let saldoBase = cliente.saldo_deudor || 0
     try {
@@ -376,6 +383,7 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
   revertirCargoVenta: async (ventaId, monto, notas, clienteIdOpcional) => {
     const usuario = useAuthStore.getState().usuario
     if (!usuario?.kiosco_id) return false
+    if (!Number.isFinite(monto) || monto <= 0) return false
 
     try {
       // 1. Buscar si existe movimiento de cuenta corriente asociado a esta venta o usar cliente explícito
@@ -492,7 +500,7 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
       return false
     }
 
-    if (!monto || monto <= 0) {
+    if (!Number.isFinite(monto) || monto <= 0) {
       toast.error('El importe del abono debe ser mayor a $0')
       return false
     }

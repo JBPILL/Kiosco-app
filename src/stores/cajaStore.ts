@@ -144,7 +144,8 @@ export const useCajaStore = create<CajaState>((set, get) => ({
         if (cierrePendiente) {
           try {
             const cierreObj = JSON.parse(cierrePendiente)
-            await supabase.from('sesiones_caja').update(cierreObj).eq('id', data.id)
+            const { error: errCierre } = await supabase.from('sesiones_caja').update(cierreObj).eq('id', data.id)
+            if (errCierre) throw errCierre
             localStorage.removeItem(`kioskopos_cierre_offline_${data.id}`)
             set({ sesionActiva: null, resumenActivo: null, movimientosCaja: [] })
             return
@@ -168,6 +169,11 @@ export const useCajaStore = create<CajaState>((set, get) => ({
     const usuario = useAuthStore.getState().usuario
     if (!usuario?.kiosco_id || !usuario?.id) {
       toast.error('No se pudo identificar al usuario activo')
+      return false
+    }
+
+    if (!Number.isFinite(montoInicial)) {
+      toast.error('El monto inicial de la caja no es válido')
       return false
     }
 
@@ -531,6 +537,11 @@ export const useCajaStore = create<CajaState>((set, get) => ({
     const sesion = get().sesionActiva
     if (!sesion?.id) {
       toast.error('No hay ninguna sesión de caja abierta')
+      return false
+    }
+
+    if (!Number.isFinite(montoDeclarado) || montoDeclarado < 0) {
+      toast.error('El monto declarado del arqueo no es válido')
       return false
     }
 

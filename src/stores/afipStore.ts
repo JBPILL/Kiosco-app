@@ -163,8 +163,12 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
     }
 
     // Validación rigurosa de CUIT mediante Algoritmo Módulo 11
-    if (configActualizada.habilitado && configActualizada.cuit) {
-      const cuitLimpio = configActualizada.cuit.replace(/\D/g, '')
+    if (configActualizada.habilitado) {
+      const cuitLimpio = (configActualizada.cuit || '').replace(/\D/g, '')
+      if (!cuitLimpio) {
+        toast.error('Para habilitar la facturación ARCA es obligatorio ingresar el CUIT')
+        return false
+      }
       if (!validarCUIT(cuitLimpio)) {
         toast.error('El número de CUIT ingresado no es válido según el algoritmo Módulo 11')
         return false
@@ -280,14 +284,8 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
       const fechaVtoStr = getFechaLocal(fechaVto)
 
       // CAE (14 dígitos): en entorno de pruebas/sandbox se genera el número con formato legal
-      let caeGenerado = ''
-      if (config.entorno === 'HOMOLOGACION' || !config.certificado_crt) {
-        const randomSuffix = Math.floor(100000 + Math.random() * 900000)
-        caeGenerado = `74${fechaHoyStr.replace(/-/g, '')}${randomSuffix}`
-      } else {
-        // Modo Producción con Web Service
-        caeGenerado = `74${fechaHoyStr.replace(/-/g, '')}${Math.floor(100000 + Math.random() * 900000)}`
-      }
+      const randomSuffix = Math.floor(100000 + Math.random() * 900000)
+      const caeGenerado = `74${fechaHoyStr.replace(/-/g, '').slice(2)}${randomSuffix}`
 
       // Generar URL oficial para el código QR reglamentario (RG 4892)
       const qrUrl = construirURLQRAFIP({
@@ -383,7 +381,7 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
     const fechaVtoStr = getFechaLocal(fechaVto)
 
     const nuevoNro = (config.ultimo_nro_comprobante || 0) + 1
-    const dummyCae = `74${fechaHoyStr.replace(/-/g, '')}998877`
+    const dummyCae = `74${fechaHoyStr.replace(/-/g, '').slice(2)}998877`
 
     const qrUrl = construirURLQRAFIP({
       fecha: fechaHoyStr,
