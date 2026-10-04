@@ -335,6 +335,15 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
       0
     )
 
+    // BUG-DEV-01: Si el monto calculado es $0 (ej: venta con 100% de descuento),
+    // no tiene sentido económico procesar una devolución de $0.
+    if (montoTotal <= 0) {
+      return {
+        success: false,
+        error: 'El monto a reintegrar resultó $0 (la venta original tuvo un descuento del 100%). No se puede procesar una devolución sin valor monetario.',
+      }
+    }
+
     let totalYaDevueltoPrevio = 0
 
     // Verificar si ya existe devolución registrada para esta venta

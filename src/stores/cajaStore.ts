@@ -115,8 +115,30 @@ export const useCajaStore = create<CajaState>((set, get) => ({
       return false
     }
 
+    // BUG-CAJA-01: Evitar abrir otra caja si ya existe una abierta en memoria
+    if (get().sesionActiva && get().sesionActiva?.estado === 'ABIERTA') {
+      toast.error('Ya existe una sesión de caja abierta en este turno')
+      return false
+    }
+
     set({ cargando: true })
     try {
+      // Validar si ya existe una sesión ABIERTA en la base de datos para este kiosco
+      const { data: sesionExistente } = await supabase
+        .from('sesiones_caja')
+        .select('id, estado')
+        .eq('kiosco_id', usuario.kiosco_id)
+        .eq('estado', 'ABIERTA')
+        .order('fecha_apertura', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (sesionExistente) {
+        toast.error('Ya existe una sesión de caja abierta en este turno')
+        await get().verificarSesionActiva()
+        return false
+      }
+
       const { data, error } = await supabase
         .from('sesiones_caja')
         .insert({
@@ -198,6 +220,12 @@ export const useCajaStore = create<CajaState>((set, get) => ({
     // BUG-12: Guard contra doble-click — si ya hay una operación de caja en curso, esperar
     if (get().cargando) {
       toast('Operación en curso, esperá un momento...', { duration: 1500 })
+      return false
+    }
+
+    // BUG-CAJA-02: No registrar movimientos de $0, no tienen sentido contable
+    if (!monto || monto <= 0) {
+      toast.error('El monto debe ser mayor a $0')
       return false
     }
 

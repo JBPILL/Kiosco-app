@@ -96,7 +96,7 @@ export function evaluarItemPromociones(
 
     if (promo.tipo === 'NXM') {
       const min = Number(promo.cantidad_minima)
-      const paga = Number(promo.cantidad_paga || 1)
+      const paga = Math.max(1, Number(promo.cantidad_paga ?? 1))
       if (min > 1 && paga < min && item.cantidad >= min) {
         const packs = Math.floor(item.cantidad / min)
         const unidadesGratis = packs * (min - paga)
@@ -106,7 +106,7 @@ export function evaluarItemPromociones(
     } else if (promo.tipo === 'VOLUMEN') {
       const min = Number(promo.cantidad_minima || 2)
       if (min > 0 && item.cantidad >= min) {
-        if (promo.precio_unitario_promo !== null && promo.precio_unitario_promo !== undefined) {
+        if (promo.precio_unitario_promo !== null && promo.precio_unitario_promo !== undefined && promo.precio_unitario_promo > 0) {
           const ahorroUnit = Math.max(0, item.producto.precio_venta - promo.precio_unitario_promo)
           descuentoCalculado = Math.round(item.cantidad * ahorroUnit)
           etiqueta = `${promo.nombre} ($${promo.precio_unitario_promo.toLocaleString('es-AR')} c/u)`

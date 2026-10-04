@@ -144,7 +144,7 @@ export function ReportesPage() {
     const totalVentas = Math.max(0, totalVentasBrutas - totalDevoluciones)
     const ventaPromedio = cantidadVentas > 0 ? totalVentas / cantidadVentas : 0
 
-    const gananciaBruta = Math.max(0, totalVentas - totalCostoVentasNeto)
+    const gananciaBruta = totalVentas - totalCostoVentasNeto
     const margenPorcentaje = totalVentas > 0 ? (gananciaBruta / totalVentas) * 100 : 0
 
     // Agrupar por medio de pago
@@ -570,21 +570,43 @@ export function ReportesPage() {
               </div>
 
               {esDueno && (
-                <div className="bg-emerald-50/70 dark:bg-emerald-950/40 rounded-xl border-2 border-emerald-300 dark:border-emerald-800 p-4 flex flex-col justify-between shadow-2xs">
+                <div className={`rounded-xl border-2 p-4 flex flex-col justify-between shadow-2xs ${
+                  resumen.gananciaBruta < 0
+                    ? 'bg-rose-50/70 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800'
+                    : 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800'
+                }`}>
                   <div>
                     <div className="flex items-center justify-between">
-                      <p className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
-                        Ganancia Bruta
+                      <p className={`text-xs font-bold uppercase tracking-wider ${
+                        resumen.gananciaBruta < 0
+                          ? 'text-rose-800 dark:text-rose-300'
+                          : 'text-emerald-800 dark:text-emerald-300'
+                      }`}>
+                        {resumen.gananciaBruta < 0 ? 'Pérdida Neta' : 'Ganancia Bruta'}
                       </p>
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300">
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                        resumen.gananciaBruta < 0
+                          ? 'bg-rose-100 dark:bg-rose-900 border-rose-300 dark:border-rose-700 text-rose-800 dark:text-rose-300'
+                          : 'bg-emerald-100 dark:bg-emerald-900 border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300'
+                      }`}>
                         Solo Dueño
                       </span>
                     </div>
-                    <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300 mt-1">
-                      {formatPrecio(resumen.gananciaBruta)}
+                    <p className={`text-2xl font-black mt-1 ${
+                      resumen.gananciaBruta < 0
+                        ? 'text-rose-700 dark:text-rose-400'
+                        : 'text-emerald-700 dark:text-emerald-300'
+                    }`}>
+                      {resumen.gananciaBruta < 0
+                        ? `-${formatPrecio(Math.abs(resumen.gananciaBruta))}`
+                        : formatPrecio(resumen.gananciaBruta)}
                     </p>
                   </div>
-                  <div className="mt-1 flex items-center justify-between text-xs text-emerald-800/90 dark:text-emerald-300/90 font-medium">
+                  <div className={`mt-1 flex items-center justify-between text-xs font-medium ${
+                    resumen.gananciaBruta < 0
+                      ? 'text-rose-800/90 dark:text-rose-300/90'
+                      : 'text-emerald-800/90 dark:text-emerald-300/90'
+                  }`}>
                     <span>Margen: <strong>{resumen.margenPorcentaje.toFixed(1)}%</strong></span>
                     <span className="opacity-80">Costo: {formatPrecio(resumen.totalCosto)}</span>
                   </div>
@@ -689,16 +711,24 @@ export function ReportesPage() {
                               if (det.es_devolucion_envase) return acc
                               return acc + (Number(det.cantidad) || 0) * (Number(det.producto?.precio_costo) || 0)
                             }, 0)
-                            const gananciaTicket = Math.max(0, venta.total - costoTicket)
+                            const gananciaTicket = venta.total - costoTicket
                             const margenTicket = venta.total > 0 ? (gananciaTicket / venta.total) * 100 : 0
+                            const esPerdida = gananciaTicket < 0
 
                             return (
-                              <div className="my-2 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex flex-wrap items-center justify-between text-xs text-emerald-800 dark:text-emerald-300 gap-1">
+                              <div className={`my-2 px-3 py-1.5 rounded-lg border flex flex-wrap items-center justify-between text-xs gap-1 ${
+                                esPerdida
+                                  ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300'
+                                  : 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+                              }`}>
                                 <span className="font-medium">
                                   Costo mercadería: <strong className="font-semibold">{formatPrecio(costoTicket)}</strong>
                                 </span>
                                 <span className="font-medium">
-                                  Ganancia ticket: <strong className="font-bold text-emerald-700 dark:text-emerald-400">+{formatPrecio(gananciaTicket)}</strong>{' '}
+                                  {esPerdida ? 'Pérdida ticket:' : 'Ganancia ticket:'}{' '}
+                                  <strong className={`font-bold ${esPerdida ? 'text-rose-700 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
+                                    {esPerdida ? `-${formatPrecio(Math.abs(gananciaTicket))}` : `+${formatPrecio(gananciaTicket)}`}
+                                  </strong>{' '}
                                   ({margenTicket.toFixed(1)}% margen)
                                 </span>
                               </div>

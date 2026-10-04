@@ -273,6 +273,29 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         throw new Error('No se encontró el identificador del kiosco para registrar la venta')
       }
 
+      // BUG-PM-02: Validación defensiva estricta para pagos mixtos
+      if (esPagoMixto) {
+        const totalEsperado = Math.round(total)
+        if (pagosMixtos.length === 0) {
+          toast.error('Debes agregar al menos un medio de pago')
+          procesandoRef.current = false
+          setProcesando(false)
+          return
+        }
+        if (totalPagosMixtos !== totalEsperado) {
+          toast.error(`La suma de los pagos ($${totalPagosMixtos.toLocaleString('es-AR')}) no coincide con el total ($${totalEsperado.toLocaleString('es-AR')})`)
+          procesandoRef.current = false
+          setProcesando(false)
+          return
+        }
+        if (pagosMixtos.some((p) => !p.monto || p.monto <= 0)) {
+          toast.error('Todos los importes de pago mixto deben ser mayores a $0')
+          procesandoRef.current = false
+          setProcesando(false)
+          return
+        }
+      }
+
       // Validación de consistencia fiscal ante ARCA
       if (emitirFiscal) {
         if (!afipConfig?.habilitado) {
@@ -363,11 +386,13 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             const subtotalFinal = tieneAjuste ? Math.round(subtotalOriginal * ratio) : Math.round(subtotalOriginal)
             const cant = Math.max(0.001, Number(item.cantidad) || 1)
             const envaseUnitario = item.sin_envase
-              ? Number(item.precio_envase_unitario ?? item.producto.precio_envase ?? 0)
+              ? Math.max(0, Number(item.precio_envase_unitario ?? item.producto.precio_envase) || 0)
               : 0
-            const precioUnitarioEfectivo = tieneAjuste && cant > 0
+            const precioVentaBase = Number(item.producto.precio_venta) || 0
+            const precioUnitarioCalc = tieneAjuste && cant > 0
               ? Math.round((subtotalFinal / cant) * 100) / 100
-              : Math.round(Number(item.producto.precio_venta + envaseUnitario) || 0)
+              : Math.round(precioVentaBase + envaseUnitario)
+            const precioUnitarioEfectivo = isFinite(precioUnitarioCalc) && precioUnitarioCalc >= 0 ? precioUnitarioCalc : 0
             return {
               id: uuidv4(),
               producto_id: item.producto.id,
@@ -536,11 +561,13 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         const subtotalFinal = tieneAjuste ? Math.round(subtotalOriginal * ratio) : Math.round(subtotalOriginal)
         const cant = Math.max(0.001, Number(item.cantidad) || 1)
         const envaseUnitario = item.sin_envase
-          ? Number(item.precio_envase_unitario ?? item.producto.precio_envase ?? 0)
+          ? Math.max(0, Number(item.precio_envase_unitario ?? item.producto.precio_envase) || 0)
           : 0
-        const precioUnitarioEfectivo = tieneAjuste && cant > 0
+        const precioVentaBase = Number(item.producto.precio_venta) || 0
+        const precioUnitarioCalc = tieneAjuste && cant > 0
           ? Math.round((subtotalFinal / cant) * 100) / 100
-          : Math.round(Number(item.producto.precio_venta + envaseUnitario) || 0)
+          : Math.round(precioVentaBase + envaseUnitario)
+        const precioUnitarioEfectivo = isFinite(precioUnitarioCalc) && precioUnitarioCalc >= 0 ? precioUnitarioCalc : 0
         return {
           id: uuidv4(),
           venta_id: ventaId,

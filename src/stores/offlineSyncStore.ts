@@ -83,6 +83,9 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
 
   encolarVenta: (venta: VentaOfflinePendiente) => {
     const colaActual = getLocalCola(venta.kiosco_id)
+    if (colaActual.some((v) => v.id === venta.id)) {
+      return
+    }
     const nuevaCola = [...colaActual, venta]
     saveLocalCola(venta.kiosco_id, nuevaCola)
     set({ cola: nuevaCola })
@@ -253,9 +256,15 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
       }
     }
 
-    saveLocalCola(kioscoId, noSincronizadas)
+    // BUG-PM-04: Combinar las ventas que fallaron con cualquier nueva venta que haya sido encolada durante el proceso de sincronización
+    const colaFresca = getLocalCola(kioscoId)
+    const idsProcesados = new Set(pendientes.map((p) => p.id))
+    const nuevosEncolados = colaFresca.filter((item) => !idsProcesados.has(item.id))
+    const colaFinal = [...noSincronizadas, ...nuevosEncolados]
+
+    saveLocalCola(kioscoId, colaFinal)
     set({
-      cola: noSincronizadas,
+      cola: colaFinal,
       sincronizando: false,
       ultimaSincronizacion: new Date().toISOString(),
     })

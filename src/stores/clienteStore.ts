@@ -128,14 +128,36 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
       return null
     }
 
+    const nombreLimpio = datos.nombre.trim()
+    if (!nombreLimpio) {
+      toast.error('El nombre del cliente es obligatorio')
+      return null
+    }
+
+    // BUG-CLI-01: Validar clientes duplicados por nombre
+    const yaExiste = get().clientes.some(
+      (c) => c.nombre.toLowerCase().trim() === nombreLimpio.toLowerCase()
+    )
+    if (yaExiste) {
+      toast.error(`Ya existe un cliente registrado con el nombre "${nombreLimpio}"`)
+      return null
+    }
+
+    // BUG-CLI-02: Validar formato de email si se ingresó
+    const emailLimpio = datos.email?.trim() || null
+    if (emailLimpio && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLimpio)) {
+      toast.error('El formato del correo electrónico ingresado no es válido')
+      return null
+    }
+
     const nuevoCliente: Cliente = {
       id: uuidv4(),
       kiosco_id: usuario.kiosco_id,
-      nombre: datos.nombre.trim(),
+      nombre: nombreLimpio,
       telefono: datos.telefono?.trim() || null,
       dni_cuit: datos.dni_cuit?.trim() || null,
       direccion: datos.direccion?.trim() || null,
-      email: datos.email?.trim() || null,
+      email: emailLimpio,
       limite_credito: Math.max(0, datos.limite_credito || 0),
       saldo_deudor: 0,
       activo: true,
@@ -175,6 +197,31 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
   actualizarCliente: async (id, datos) => {
     const usuario = useAuthStore.getState().usuario
     if (!usuario?.kiosco_id) return false
+
+    if (datos.nombre !== undefined) {
+      const nombreLimpio = datos.nombre.trim()
+      if (!nombreLimpio) {
+        toast.error('El nombre del cliente no puede estar vacío')
+        return false
+      }
+      const yaExisteOtro = get().clientes.some(
+        (c) => c.id !== id && c.nombre.toLowerCase().trim() === nombreLimpio.toLowerCase()
+      )
+      if (yaExisteOtro) {
+        toast.error(`Ya existe otro cliente registrado con el nombre "${nombreLimpio}"`)
+        return false
+      }
+      datos.nombre = nombreLimpio
+    }
+
+    if (datos.email !== undefined && datos.email !== null) {
+      const emailLimpio = datos.email.trim()
+      if (emailLimpio && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLimpio)) {
+        toast.error('El formato del correo electrónico ingresado no es válido')
+        return false
+      }
+      datos.email = emailLimpio || null
+    }
 
     const actualizados = get().clientes.map((c) =>
       c.id === id ? { ...c, ...datos } : c
@@ -445,6 +492,11 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
       return false
     }
 
+    if (!monto || monto <= 0) {
+      toast.error('El importe del abono debe ser mayor a $0')
+      return false
+    }
+
     // BUG-21: Consultar saldo fresco en base de datos para evitar Lost Updates por concurrencia
     let saldoBase = cliente.saldo_deudor || 0
     try {
@@ -523,10 +575,23 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
         } catch (cajaErr) {
           console.warn('No se pudo registrar ingreso de abono en caja:', cajaErr)
         }
+      } else {
+        toast('Aviso: Caja cerrada. El cobro en efectivo no se asentó en la caja.', {
+          icon: '⚠️',
+          duration: 4000,
+        })
       }
     }
 
-    toast.success(`Abono de $${monto.toLocaleString('es-AR')} registrado con éxito`)
+    // BUG-CLI-03: Notificar si el abono superó la deuda y generó saldo a favor
+    if (nuevoSaldo < 0) {
+      toast(
+        `Aviso: El abono superó la deuda ($${saldoBase.toLocaleString('es-AR')}). El cliente quedó con saldo a favor de $${Math.abs(nuevoSaldo).toLocaleString('es-AR')}.`,
+        { icon: 'ℹ️', duration: 4500 }
+      )
+    } else {
+      toast.success(`Abono de $${monto.toLocaleString('es-AR')} registrado con éxito`)
+    }
     return true
   },
 

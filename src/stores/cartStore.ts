@@ -382,7 +382,7 @@ export const useCartStore = create<CartState>((set, get) => ({
 
   agregarDevolucionEnvase: (nombreEnvase: string, precioUnitario: number, cantidad = 1, tipoEnvaseId?: string) => {
     const cant = Math.max(1, Math.round(cantidad))
-    const precio = Math.max(1, Math.round(precioUnitario))
+    const precio = Math.max(0, Math.round(precioUnitario))
     const desc = `Devolución ${nombreEnvase}`
 
     const productoDevolucion: Producto = {
@@ -425,7 +425,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   agregarItemLibre: (descripcion: string, precio: number, cantidad = 1) => {
     const desc = descripcion.trim() || 'Varios'
     const cant = Math.max(1, Math.round(cantidad))
-    const precioUnitario = Math.max(1, Math.round(precio))
+    const precioUnitario = Math.max(0, Math.round(precio))
 
     const productoLibre: Producto = {
       id: uuidv4(),
