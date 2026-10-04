@@ -74,6 +74,37 @@ function formatearLineaDosColumnas(izq: string, der: string, anchoTotal: number)
 }
 
 /**
+ * Formatea un monto con posición fija del signo $ y el número alineado a la derecha
+ */
+function formatearMontoFijo(monto: number, ancho: number = 9): string {
+  const signo = monto < 0 ? '-$' : '$'
+  const numStr = Math.round(Math.abs(monto)).toLocaleString('es-AR')
+  const espacio = Math.max(1, ancho - signo.length - numStr.length)
+  return signo + ' '.repeat(espacio) + numStr
+}
+
+/**
+ * Divide un texto en líneas respetando palabras para que no se corten
+ */
+function dividirTextoEnLineas(texto: string, maxAncho: number): string[] {
+  const palabras = texto.split(' ')
+  const lineas: string[] = []
+  let lineaActual = ''
+  for (const p of palabras) {
+    if (!lineaActual) {
+      lineaActual = p
+    } else if (lineaActual.length + 1 + p.length <= maxAncho) {
+      lineaActual += ' ' + p
+    } else {
+      lineas.push(lineaActual)
+      lineaActual = p
+    }
+  }
+  if (lineaActual) lineas.push(lineaActual)
+  return lineas.length > 0 ? lineas : [texto.slice(0, maxAncho)]
+}
+
+/**
  * Verifica si el navegador soporta Web Serial API
  */
 export function isWebSerialSupported(): boolean {
@@ -148,24 +179,28 @@ export function construirBufferEscPos(ticket: TicketData, anchoPapel: '58mm' | '
   appendBytes(CMD_BOLD_OFF)
   appendTexto(separador)
 
+  const colMontoAncho = anchoPapel === '58mm' ? 9 : 11
+  const espacioDesc = anchoCols - colMontoAncho - 1
+
   ticket.items.forEach((it) => {
-    const cantStr = it.cantidad % 1 === 0 ? `${it.cantidad}x` : `${it.cantidad.toFixed(3)}kg`
-    const subtotalStr = `$${Math.round(it.subtotal).toLocaleString('es-AR')}`
-    
-    // Si la descripción cabe en una sola línea con la cantidad y subtotal
-    const descConCant = `${cantStr} ${it.descripcion}`
-    if (descConCant.length + subtotalStr.length + 1 <= anchoCols) {
-      appendTexto(formatearLineaDosColumnas(descConCant, subtotalStr, anchoCols))
-    } else {
-      // Línea 1: Descripción
-      appendTexto(descConCant.slice(0, anchoCols))
-      // Línea 2: Desglose y subtotal
-      const detalle = `  $${Math.round(it.precioUnitario).toLocaleString('es-AR')} c/u`
-      appendTexto(formatearLineaDosColumnas(detalle, subtotalStr, anchoCols))
+    const cantStr = it.cantidad % 1 === 0 ? `${it.cantidad}x ` : `${it.cantidad.toFixed(3)}kg `
+    const descConCant = `${cantStr}${it.descripcion}`
+    const montoFijo = formatearMontoFijo(it.subtotal, colMontoAncho)
+
+    const lineas = dividirTextoEnLineas(descConCant, espacioDesc)
+    const primeraLinea = lineas[0].padEnd(espacioDesc, ' ')
+    appendTexto(`${primeraLinea} ${montoFijo}`)
+
+    for (let l = 1; l < lineas.length; l++) {
+      appendTexto(lineas[l])
+    }
+
+    if (it.cantidad > 1) {
+      appendTexto(`  ($ ${Math.round(it.precioUnitario).toLocaleString('es-AR')} c/u)`)
     }
 
     if (it.promoNombre) {
-      appendTexto(`  * ${it.promoNombre}`.slice(0, anchoCols))
+      appendTexto(`  * ${it.promoNombre}`)
     }
   })
 
@@ -174,9 +209,9 @@ export function construirBufferEscPos(ticket: TicketData, anchoPapel: '58mm' | '
   // 4. Totales y Pagos
   appendBytes(CMD_ALIGN_RIGHT)
   if (ticket.ajuste) {
-    appendTexto(formatearLineaDosColumnas('Subtotal:', `$${Math.round(ticket.subtotal).toLocaleString('es-AR')}`, anchoCols))
+    appendTexto(formatearLineaDosColumnas('Subtotal:', formatearMontoFijo(ticket.subtotal, colMontoAncho), anchoCols))
     const signo = ticket.ajuste.esDescuento ? '-' : '+'
-    appendTexto(formatearLineaDosColumnas(`${ticket.ajuste.descripcion}:`, `${signo}$${Math.round(Math.abs(ticket.ajuste.monto)).toLocaleString('es-AR')}`, anchoCols))
+    appendTexto(formatearLineaDosColumnas(`${ticket.ajuste.descripcion}:`, `${signo}${formatearMontoFijo(Math.abs(ticket.ajuste.monto), colMontoAncho - 1)}`, anchoCols))
   }
 
   appendBytes(CMD_BOLD_ON)
@@ -188,8 +223,8 @@ export function construirBufferEscPos(ticket: TicketData, anchoPapel: '58mm' | '
   appendTexto(formatearLineaDosColumnas('Pago:', ticket.medioPago || 'Efectivo', anchoCols))
 
   if (ticket.pagaCon && ticket.pagaCon > 0) {
-    appendTexto(formatearLineaDosColumnas('Abono:', `$${Math.round(ticket.pagaCon).toLocaleString('es-AR')}`, anchoCols))
-    appendTexto(formatearLineaDosColumnas('Vuelto:', `$${Math.round(ticket.vuelto || 0).toLocaleString('es-AR')}`, anchoCols))
+    appendTexto(formatearLineaDosColumnas('Abono:', formatearMontoFijo(ticket.pagaCon, colMontoAncho), anchoCols))
+    appendTexto(formatearLineaDosColumnas('Vuelto:', formatearMontoFijo(ticket.vuelto || 0, colMontoAncho), anchoCols))
   }
 
   // 5. Datos fiscales AFIP

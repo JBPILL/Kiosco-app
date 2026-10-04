@@ -4,7 +4,7 @@
  */
 
 import jsPDF from 'jspdf'
-import { formatPrecio, formatFecha } from './utils'
+import { formatFecha, formatNumero } from './utils'
 import { sanitizarNombreArchivo } from './exportUtils'
 import { generarImagenQRAFIP } from './afipQR'
 import { generateCode128Bars } from './barcodeSvg'
@@ -44,10 +44,18 @@ export async function crearDocumentoPDFVenta(
   const pageWidth = es58 ? 58 : 80
   const margin = es58 ? 3.5 : 5.5
 
-  // Cálculo de altura dinámica
+  // Cálculo de altura dinámica considerando saltos de línea en descripciones
   let altoMm = es58 ? 145 : 155
   const items = ticket.items || []
-  altoMm += items.length * (es58 ? 5 : 5.5)
+  for (const it of items) {
+    const cantStr = it.cantidad % 1 === 0 ? `${it.cantidad}x ` : `${it.cantidad} kg x `
+    const desc = `${cantStr}${it.descripcion}`
+    const charPerLine = es58 ? 20 : 28
+    const lineas = Math.ceil(desc.length / charPerLine) || 1
+    altoMm += lineas * 3.4
+    if (it.cantidad > 1) altoMm += 3.2
+    if (it.promoNombre) altoMm += 3.2
+  }
 
   if (ticket.ajuste) altoMm += 8
   if (ticket.pagos && ticket.pagos.length > 1) altoMm += ticket.pagos.length * 4
@@ -184,11 +192,16 @@ export async function crearDocumentoPDFVenta(
   y += 4
 
   // 2. Detalle de Ítems
+  const colSubWidth = es58 ? 16 : 20
+  const xRight = pageWidth - margin
+  const xSubLeft = xRight - colSubWidth
+  const colDescWidth = xSubLeft - margin - 1.5
+
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(7)
   doc.setTextColor(colorGris[0], colorGris[1], colorGris[2])
   doc.text('CANT / ARTÍCULO', margin, y)
-  doc.text('SUBTOTAL', pageWidth - margin, y, { align: 'right' })
+  doc.text('SUBTOTAL', xRight, y, { align: 'right' })
   y += 3.8
 
   doc.setFont('helvetica', 'normal')
@@ -198,19 +211,40 @@ export async function crearDocumentoPDFVenta(
   for (const it of items) {
     const cantStr = it.cantidad % 1 === 0 ? `${it.cantidad}x ` : `${it.cantidad} kg x `
     const descCompleta = `${cantStr}${it.descripcion}`
-    doc.text(descCompleta.slice(0, es58 ? 21 : 28), margin, y)
-    const subStr = it.subtotal < 0 ? `-${formatPrecio(Math.abs(it.subtotal))}` : formatPrecio(it.subtotal)
-    doc.text(subStr, pageWidth - margin, y, { align: 'right' })
-    y += 3.4
+
+    // División en múltiples líneas según el ancho disponible para evitar truncamiento
+    const lineasDesc = doc.splitTextToSize(descCompleta, colDescWidth)
+    doc.text(lineasDesc[0] || '', margin, y)
+
+    const signo = it.subtotal < 0 ? '-$' : '$'
+    const numSubStr = formatNumero(Math.abs(it.subtotal))
+    doc.text(signo, xSubLeft, y)
+    doc.text(numSubStr, xRight, y, { align: 'right' })
+
+    for (let l = 1; l < lineasDesc.length; l++) {
+      y += 3.1
+      doc.text(lineasDesc[l], margin, y)
+    }
+
+    if (it.cantidad > 1) {
+      y += 2.9
+      doc.setFontSize(6.2)
+      doc.setTextColor(colorGris[0], colorGris[1], colorGris[2])
+      doc.text(`($ ${formatNumero(it.precioUnitario)} c/u)`, margin, y)
+      doc.setFontSize(7.2)
+      doc.setTextColor(colorOscuro[0], colorOscuro[1], colorOscuro[2])
+    }
 
     if (it.promoNombre) {
+      y += 2.9
       doc.setFontSize(6.2)
       doc.setTextColor(16, 120, 60) // Verde sutil
       doc.text(`  [${it.promoNombre}]`, margin, y)
       doc.setFontSize(7.2)
       doc.setTextColor(colorOscuro[0], colorOscuro[1], colorOscuro[2])
-      y += 3.2
     }
+
+    y += 3.4
   }
 
   dibujarSeparador(y)
@@ -221,19 +255,22 @@ export async function crearDocumentoPDFVenta(
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7.2)
     doc.text('Subtotal:', margin, y)
-    doc.text(formatPrecio(ticket.subtotal), pageWidth - margin, y, { align: 'right' })
+    doc.text(ticket.subtotal < 0 ? '-$' : '$', xSubLeft, y)
+    doc.text(formatNumero(Math.abs(ticket.subtotal)), xRight, y, { align: 'right' })
     y += 3.6
 
-    const signo = ticket.ajuste.esDescuento ? '-' : '+'
+    const signoAjuste = ticket.ajuste.esDescuento ? '-$' : '+$'
     doc.text(`${ticket.ajuste.descripcion}:`, margin, y)
-    doc.text(`${signo}${formatPrecio(Math.abs(ticket.ajuste.monto))}`, pageWidth - margin, y, { align: 'right' })
+    doc.text(signoAjuste, xSubLeft, y)
+    doc.text(formatNumero(Math.abs(ticket.ajuste.monto)), xRight, y, { align: 'right' })
     y += 3.6
   }
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(8)
   doc.text('TOTAL:', margin, y)
-  doc.text(formatPrecio(ticket.total), pageWidth - margin, y, { align: 'right' })
+  doc.text(ticket.total < 0 ? '-$' : '$', xSubLeft, y)
+  doc.text(formatNumero(Math.abs(ticket.total)), xRight, y, { align: 'right' })
   y += 4.8
 
   dibujarSeparador(y)
@@ -247,14 +284,22 @@ export async function crearDocumentoPDFVenta(
 
   if (ticket.pagos && ticket.pagos.length > 1) {
     for (const p of ticket.pagos) {
-      doc.text(`  • ${p.medioPago}: ${formatPrecio(p.monto)}`, margin, y)
+      doc.text(`  • ${p.medioPago}:`, margin, y)
+      doc.text('$', xSubLeft, y)
+      doc.text(formatNumero(p.monto), xRight, y, { align: 'right' })
       y += 3.2
     }
   }
 
   if (ticket.pagaCon !== undefined && ticket.pagaCon > 0) {
-    doc.text(`Abonó con: ${formatPrecio(ticket.pagaCon)}`, margin, y)
-    doc.text(`Vuelto: ${formatPrecio(ticket.vuelto || 0)}`, pageWidth - margin, y, { align: 'right' })
+    doc.text('Abonó con:', margin, y)
+    doc.text('$', xSubLeft, y)
+    doc.text(formatNumero(ticket.pagaCon), xRight, y, { align: 'right' })
+    y += 3.6
+
+    doc.text('Vuelto:', margin, y)
+    doc.text('$', xSubLeft, y)
+    doc.text(formatNumero(ticket.vuelto || 0), xRight, y, { align: 'right' })
     y += 3.6
   }
 

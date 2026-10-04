@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal } from '../ui/Modal'
-import { formatPrecio, formatFecha } from '../../lib/utils'
+import { formatPrecio, formatFecha, formatNumero } from '../../lib/utils'
 import { generarImagenQRAFIP } from '../../lib/afipQR'
 import { imprimirTicketEscPosDirecto, isWebSerialSupported } from '../../lib/escposPrinter'
 import { exportarTicketVentaPDF, compartirTicketVentaWhatsApp } from '../../lib/pdfVentaUtils'
@@ -450,27 +450,28 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
                 </div>
               )}
 
-              {/* Detalle de productos con ajuste de texto sin cortes */}
+              {/* Detalle de productos con ajuste de texto sin cortes y columna de montos alineada */}
               <div className="py-2 border-b border-dashed border-gray-400 space-y-1.5">
                 <div className="flex justify-between font-bold text-[10px] uppercase text-gray-500 pb-0.5 border-b border-dotted border-gray-200">
                   <span>Cant / Artículo</span>
-                  <span className="text-right">Subtotal</span>
+                  <span className="w-[80px] shrink-0 text-right">Subtotal</span>
                 </div>
                 {ticket.items.map((it, idx) => (
                   <div key={idx} className="space-y-0.5 text-[11px]">
                     <div className="flex justify-between items-start gap-2">
-                      <div className="min-w-0 flex-1 break-words">
+                      <div className="min-w-0 flex-1 break-words pr-1">
                         <span className="font-bold text-gray-950">{it.cantidad % 1 === 0 ? `${it.cantidad}x ` : `${it.cantidad} kg x `}</span>
                         <span className="text-gray-900">{it.descripcion}</span>
                         {it.cantidad > 1 && (
                           <span className="text-[10px] text-gray-500 block">
-                            (${formatPrecio(it.precioUnitario)} c/u)
+                            ($ {formatNumero(it.precioUnitario)} c/u)
                           </span>
                         )}
                       </div>
-                      <span className="font-bold text-gray-950 whitespace-nowrap tabular-nums shrink-0">
-                        {it.subtotal < 0 ? `-${formatPrecio(Math.abs(it.subtotal))}` : formatPrecio(it.subtotal)}
-                      </span>
+                      <div className="w-[80px] shrink-0 flex justify-between items-baseline font-bold tabular-nums text-gray-950">
+                        <span>{it.subtotal < 0 ? '-$' : '$'}</span>
+                        <span className="text-right">{formatNumero(Math.abs(it.subtotal))}</span>
+                      </div>
                     </div>
                     {it.promoNombre && (
                       <div className="text-[9px] text-emerald-800 font-semibold pl-2">
@@ -481,60 +482,75 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
                 ))}
               </div>
 
-              {/* Totales y Ajustes */}
+              {/* Totales y Ajustes con posición fija de $ */}
               <div className="py-2 border-b border-dashed border-gray-400 space-y-1 text-[11px]">
                 {ticket.ajuste && (
                   <>
-                    <div className="flex justify-between text-gray-600">
+                    <div className="flex justify-between items-baseline text-gray-600">
                       <span>Subtotal:</span>
-                      <span className="tabular-nums">{formatPrecio(ticket.subtotal)}</span>
+                      <div className="w-[80px] shrink-0 flex justify-between items-baseline tabular-nums">
+                        <span>{ticket.subtotal < 0 ? '-$' : '$'}</span>
+                        <span className="text-right">{formatNumero(Math.abs(ticket.subtotal))}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between text-gray-700">
+                    <div className="flex justify-between items-baseline text-gray-700">
                       <span>{ticket.ajuste.descripcion}:</span>
-                      <span className="tabular-nums">
-                        {ticket.ajuste.esDescuento ? '-' : '+'}
-                        {formatPrecio(Math.abs(ticket.ajuste.monto))}
-                      </span>
+                      <div className="w-[80px] shrink-0 flex justify-between items-baseline tabular-nums">
+                        <span>{ticket.ajuste.esDescuento ? '-$' : '+$'}</span>
+                        <span className="text-right">{formatNumero(Math.abs(ticket.ajuste.monto))}</span>
+                      </div>
                     </div>
                   </>
                 )}
-                <div className="flex justify-between items-center text-sm font-extrabold pt-1 border-t border-dotted border-gray-300 text-gray-950">
+                <div className="flex justify-between items-baseline text-sm font-extrabold pt-1 border-t border-dotted border-gray-300 text-gray-950">
                   <span>TOTAL:</span>
-                  <span className="tabular-nums text-base">{formatPrecio(ticket.total)}</span>
+                  <div className="w-[80px] shrink-0 flex justify-between items-baseline tabular-nums text-sm sm:text-base font-extrabold text-gray-950">
+                    <span>{ticket.total < 0 ? '-$' : '$'}</span>
+                    <span className="text-right">{formatNumero(Math.abs(ticket.total))}</span>
+                  </div>
                 </div>
               </div>
 
-              {/* Medio de pago y vuelto */}
+              {/* Medio de pago y vuelto con posición fija de $ */}
               <div className="py-2 border-b border-dashed border-gray-400 space-y-1 text-[11px]">
-                <div className="flex justify-between">
+                <div className="flex justify-between items-baseline">
                   <span className="text-gray-600">Medio de pago:</span>
                   <span className="font-bold uppercase text-gray-900">{ticket.medioPago}</span>
                 </div>
                 {ticket.pagos && ticket.pagos.length > 1 && (
                   <div className="pl-2 space-y-0.5 text-[10px] text-gray-700">
                     {ticket.pagos.map((p, idx) => (
-                      <div key={idx} className="flex justify-between">
+                      <div key={idx} className="flex justify-between items-baseline">
                         <span>• {p.medioPago}:</span>
-                        <span className="font-semibold tabular-nums">{formatPrecio(p.monto)}</span>
+                        <div className="w-[80px] shrink-0 flex justify-between items-baseline tabular-nums font-semibold">
+                          <span>$</span>
+                          <span className="text-right">{formatNumero(p.monto)}</span>
+                        </div>
                       </div>
                     ))}
                   </div>
                 )}
                 {ticket.clienteNombre && (
-                  <div className="flex justify-between font-semibold text-gray-800">
+                  <div className="flex justify-between items-baseline font-semibold text-gray-800">
                     <span>Cliente:</span>
                     <span>{ticket.clienteNombre}</span>
                   </div>
                 )}
                 {ticket.pagaCon !== undefined && ticket.pagaCon > 0 && (
                   <>
-                    <div className="flex justify-between text-gray-600">
+                    <div className="flex justify-between items-baseline text-gray-600">
                       <span>Abonó con:</span>
-                      <span className="tabular-nums">{formatPrecio(ticket.pagaCon)}</span>
+                      <div className="w-[80px] shrink-0 flex justify-between items-baseline tabular-nums">
+                        <span>$</span>
+                        <span className="text-right">{formatNumero(ticket.pagaCon)}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between font-bold text-gray-900">
+                    <div className="flex justify-between items-baseline font-bold text-gray-900">
                       <span>Vuelto:</span>
-                      <span className="tabular-nums">{formatPrecio(ticket.vuelto || 0)}</span>
+                      <div className="w-[80px] shrink-0 flex justify-between items-baseline tabular-nums font-bold text-gray-900">
+                        <span>$</span>
+                        <span className="text-right">{formatNumero(ticket.vuelto || 0)}</span>
+                      </div>
                     </div>
                   </>
                 )}

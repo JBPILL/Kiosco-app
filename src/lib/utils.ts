@@ -15,6 +15,18 @@ export function formatPrecio(monto?: number | null): string {
 }
 
 /**
+ * Formatea un monto numérico según la convención argentina sin el signo $
+ * Ejemplo: 2500.50 → "2.500,50", 10000 → "10.000"
+ */
+export function formatNumero(monto?: number | null): string {
+  const val = typeof monto === 'number' && !isNaN(monto) ? monto : 0
+  return new Intl.NumberFormat('es-AR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(val)
+}
+
+/**
  * Formatea una fecha ISO a formato legible
  * Ejemplo: "2026-09-11T15:30:00" → "11/09/2026 15:30"
  */
