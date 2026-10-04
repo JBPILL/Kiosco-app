@@ -22,7 +22,7 @@ function getPromosStorageKey(kioscoId?: string): string {
   return `kiosko_promociones_${kioscoId || 'default'}`
 }
 
-function cargarPromocionesLocal(kioscoId?: string): Promocion[] {
+export function cargarPromocionesLocal(kioscoId?: string): Promocion[] {
   if (typeof window === 'undefined') return []
   try {
     const raw = localStorage.getItem(getPromosStorageKey(kioscoId))

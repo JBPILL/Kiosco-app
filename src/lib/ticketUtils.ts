@@ -2,6 +2,7 @@ import type { TicketData } from '../components/pos/TicketReceiptModal'
 import { labelMedioPago, formatearPromoTicket } from './utils'
 import { construirURLQRAFIP } from './afipQR'
 import { useAFIPStore } from '../stores/afipStore'
+import { usePromocionStore, cargarPromocionesLocal } from '../stores/promocionStore'
 
 /**
  * Mapea una venta obtenida de Supabase con sus relaciones (detalles, pagos, usuario, cliente)
@@ -59,6 +60,28 @@ export function ventaToTicketData(v: any, kiosco?: any): TicketData {
       }
     : null
 
+  // Extraer mapa de promociones persistidas en notas si existen
+  let promosGuardadas: Record<string, string> = {}
+  let notasLimpias: string | null = v.notas || null
+  if (v.notas && typeof v.notas === 'string') {
+    const match = v.notas.match(/\[PROMOS:(.*?)\]/)
+    if (match) {
+      try {
+        promosGuardadas = JSON.parse(match[1])
+        notasLimpias = v.notas.replace(/\[PROMOS:.*?\]/, '').trim() || null
+      } catch (e) {
+        console.warn('Error al parsear promociones de las notas:', e)
+      }
+    }
+  }
+
+  // Cargar catálogo de promociones desde store o almacenamiento local para correlacionar
+  const promosStore = usePromocionStore.getState().promociones
+  const promociones =
+    promosStore && promosStore.length > 0
+      ? promosStore
+      : cargarPromocionesLocal(kiosco?.id || v.kiosco_id)
+
   return {
     ventaId: v.id,
     fecha: v.fecha_hora,
@@ -69,13 +92,86 @@ export function ventaToTicketData(v: any, kiosco?: any): TicketData {
       } else if (d.es_devolucion_envase) {
         desc = `${desc} (Devolución)`
       }
+
+      const prodId = d.producto_id || d.producto?.id
+      const cant = Number(d.cantidad) || 0
+      const subtotalReal = Number(d.subtotal) || 0
+
+      // Precio base unitario original (precio de venta catalogado o precio_unitario)
+      const precioBase =
+        Number(d.producto?.precio_venta) ||
+        Number(d.precio_unitario) ||
+        (cant > 0 ? Math.abs(subtotalReal / cant) : 0)
+      const subtotalBase = cant * precioBase
+      const diferenciaDescuento = subtotalBase - subtotalReal
+
+      let promoNombre: string | undefined = d.promo_nombre ? formatearPromoTicket(d.promo_nombre) : undefined
+      let descuentoPromo: number | undefined = d.descuento_promo
+
+      // 1. Revisar si la promoción vino guardada en los metadatos de las notas de la venta
+      if (!promoNombre && prodId && promosGuardadas[prodId]) {
+        promoNombre = promosGuardadas[prodId]
+      }
+
+      // 2. Si hay descuento detectable o promoción no encontrada aún
+      if (diferenciaDescuento > 0.5 && cant > 0) {
+        if (!descuentoPromo) {
+          descuentoPromo = Math.round(diferenciaDescuento)
+        }
+
+        // Si todavía no tenemos promoNombre, intentar buscar en promociones vigentes/configuradas
+        if (!promoNombre && promociones && promociones.length > 0) {
+          const promoCoincidente = promociones.find(
+            (p) =>
+              (prodId && p.producto_id === prodId) ||
+              (p.categoria_id && d.producto?.categoria_id && p.categoria_id === d.producto.categoria_id)
+          )
+          if (promoCoincidente) {
+            promoNombre = formatearPromoTicket(promoCoincidente.nombre)
+            if (!promoNombre || promoNombre === promoCoincidente.nombre) {
+              if (promoCoincidente.tipo === 'NXM') {
+                promoNombre = `${promoCoincidente.cantidad_minima}x${promoCoincidente.cantidad_paga || 1}`
+              } else if (promoCoincidente.tipo === 'PORCENTAJE' && promoCoincidente.descuento_porcentaje) {
+                promoNombre = `${promoCoincidente.descuento_porcentaje}% OFF`
+              }
+            }
+          }
+        }
+
+        // 3. Fallback matemático de inferencia infalible si la promo fue borrada o modificada
+        if (!promoNombre && subtotalBase > 0) {
+          const pct = Math.round((diferenciaDescuento / subtotalBase) * 100)
+          const tolerancia = Math.max(2, subtotalBase * 0.03)
+
+          if (cant >= 2 && Math.abs(subtotalReal - subtotalBase * 0.5) <= tolerancia) {
+            promoNombre = '2x1'
+          } else if (cant >= 3 && Math.abs(subtotalReal - subtotalBase * (2 / 3)) <= tolerancia) {
+            promoNombre = '3x2'
+          } else if (cant >= 4 && Math.abs(subtotalReal - subtotalBase * 0.75) <= tolerancia) {
+            promoNombre = '4x3'
+          } else if (cant >= 2 && (pct === 25 || Math.abs(diferenciaDescuento - precioBase * 0.5) <= tolerancia)) {
+            promoNombre = '2da al 50%'
+          } else if (cant >= 2 && (pct === 35 || Math.abs(diferenciaDescuento - precioBase * 0.7) <= tolerancia)) {
+            promoNombre = '2da al 70%'
+          } else if (pct > 0 && pct < 100) {
+            promoNombre = `${pct}% OFF`
+          }
+        }
+      }
+
+      // El precio unitario mostrado debe reflejar el precio de lista/base cuando hubo promoción
+      const precioUnitario =
+        d.producto?.precio_venta && Number(d.producto.precio_venta) > 0
+          ? Number(d.producto.precio_venta)
+          : Number(d.precio_unitario) || precioBase
+
       return {
         descripcion: desc,
-        cantidad: d.cantidad,
-        precioUnitario: d.precio_unitario || (d.cantidad > 0 ? Math.abs(d.subtotal / d.cantidad) : 0),
-        subtotal: d.subtotal,
-        descuentoPromo: d.descuento_promo,
-        promoNombre: d.promo_nombre ? formatearPromoTicket(d.promo_nombre) : undefined,
+        cantidad: cant,
+        precioUnitario,
+        subtotal: subtotalReal,
+        descuentoPromo,
+        promoNombre,
       }
     }),
     subtotal: subtotalCalculado,
@@ -96,7 +192,7 @@ export function ventaToTicketData(v: any, kiosco?: any): TicketData {
     cajeroNombre: v.usuario?.nombre,
     clienteNombre: v.cliente?.nombre || null,
     clienteTelefono: v.cliente?.telefono || null,
-    notas: v.notas,
+    notas: notasLimpias,
     afip: afipData,
   }
 }

@@ -5,7 +5,7 @@ import { useCartStore } from '../../stores/cartStore'
 import { useCajaStore } from '../../stores/cajaStore'
 import { useAuthStore } from '../../stores/authStore'
 import { useClienteStore } from '../../stores/clienteStore'
-import { formatPrecio, getCachedProductos, saveCachedProductos } from '../../lib/utils'
+import { formatPrecio, getCachedProductos, saveCachedProductos, formatearPromoTicket } from '../../lib/utils'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Modal } from '../ui/Modal'
@@ -330,6 +330,19 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       const notasBase = [descAjuste, referencia].filter(Boolean).join(' · ')
       const notasFinal = [clienteInfo, notasBase].filter(Boolean).join(' · ') || null
 
+      // Empaquetar mapa de promociones aplicadas para persistir en metadatos de notas sin alterar esquema DB
+      const promosMap: Record<string, string> = {}
+      items.forEach((it) => {
+        if (it.promo_nombre) {
+          const promoFormateada = formatearPromoTicket(it.promo_nombre)
+          if (promoFormateada) {
+            promosMap[it.producto.id] = promoFormateada
+          }
+        }
+      })
+      const metadataPromos = Object.keys(promosMap).length > 0 ? `[PROMOS:${JSON.stringify(promosMap)}]` : ''
+      const notasParaGuardar = [notasFinal, metadataPromos].filter(Boolean).join(' ') || null
+
       // Advertencia en consola/log si algún producto tiene stock insuficiente
       const productosSinStock = items.filter(
         (it) => it.producto.activo !== false && it.cantidad > it.producto.stock_actual
@@ -379,7 +392,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           fecha_hora: ahora,
           total,
           estado: 'COMPLETADA',
-          notas: notasFinal ? `${notasFinal} (Guardado Offline)` : '(Guardado Offline)',
+          notas: notasParaGuardar ? `${notasParaGuardar} (Guardado Offline)` : '(Guardado Offline)',
           detalles: items.map((item) => {
             const ratio = subtotal > 0 ? total / subtotal : 1
             const subtotalOriginal = Number(item.subtotal) || 0
@@ -477,6 +490,8 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
               cantidad: it.cantidad,
               precioUnitario: precioUnit,
               subtotal: it.subtotal,
+              descuentoPromo: it.descuento_promo,
+              promoNombre: it.promo_nombre ? formatearPromoTicket(it.promo_nombre) : undefined,
             }
           }),
           subtotal: Math.round(items.reduce((acc, it) => acc + it.subtotal, 0)),
@@ -523,7 +538,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         fecha_hora: ahora,
         total,
         estado: 'COMPLETADA',
-        notas: notasFinal,
+        notas: notasParaGuardar,
         sincronizado: true,
       })
 
@@ -786,7 +801,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             precioUnitario: precioUnit,
             subtotal: it.subtotal,
             descuentoPromo: it.descuento_promo,
-            promoNombre: it.promo_nombre,
+            promoNombre: it.promo_nombre ? formatearPromoTicket(it.promo_nombre) : undefined,
           }
         }),
         subtotal,

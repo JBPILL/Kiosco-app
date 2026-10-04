@@ -78,7 +78,7 @@ export function ReportesPage() {
         afip_cae, afip_vto_cae, afip_tipo_comprobante, afip_nro_comprobante, afip_qr_url,
         usuario:usuarios(nombre),
         pagos:pagos_venta(medio_pago, monto),
-        detalles:detalles_venta(cantidad, precio_unitario, subtotal, producto_id, sin_envase, es_devolucion_envase, producto:productos(id, descripcion, stock_actual, precio_costo))
+        detalles:detalles_venta(cantidad, precio_unitario, subtotal, producto_id, sin_envase, es_devolucion_envase, producto:productos(id, descripcion, stock_actual, precio_costo, precio_venta))
       `)
       .gte('fecha_hora', inicioISO)
       .lte('fecha_hora', finISO)
