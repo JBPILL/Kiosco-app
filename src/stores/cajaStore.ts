@@ -54,6 +54,62 @@ function saveLocalMovimientos(sesionId: string, movimientos: MovimientoCaja[]) {
   }
 }
 
+const CODIGO_DUPLICADO = '23505'
+
+function getPendientes(sesionId: string): MovimientoCaja[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(`kioskopos_movimientos_pendientes_${sesionId}`)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function savePendientes(sesionId: string, pendientes: MovimientoCaja[]) {
+  if (typeof window === 'undefined') return
+  try {
+    const key = `kioskopos_movimientos_pendientes_${sesionId}`
+    if (pendientes.length === 0) localStorage.removeItem(key)
+    else localStorage.setItem(key, JSON.stringify(pendientes))
+  } catch (e) {
+    console.error('Error guardando movimientos pendientes:', e)
+  }
+}
+
+async function insertarMovimiento(m: MovimientoCaja): Promise<boolean> {
+  try {
+    const { error } = await supabase.from('movimientos_caja').insert({
+      id: m.id,
+      kiosco_id: m.kiosco_id,
+      sesion_caja_id: m.sesion_caja_id,
+      usuario_id: m.usuario_id,
+      tipo: m.tipo,
+      motivo: m.motivo,
+      monto: m.monto,
+      descripcion: m.descripcion,
+      fecha_hora: m.fecha_hora,
+    })
+    // Un duplicado significa que ya está en la base: se considera sincronizado
+    return !error || error.code === CODIGO_DUPLICADO
+  } catch {
+    return false
+  }
+}
+
+async function sincronizarPendientes(sesionId: string): Promise<MovimientoCaja[]> {
+  const pendientes = getPendientes(sesionId)
+  if (pendientes.length === 0) return []
+
+  const restantes: MovimientoCaja[] = []
+  for (const mov of pendientes) {
+    const ok = await insertarMovimiento(mov)
+    if (!ok) restantes.push(mov)
+  }
+  savePendientes(sesionId, restantes)
+  return restantes
+}
+
 export const useCajaStore = create<CajaState>((set, get) => ({
   sesionActiva: null,
   resumenActivo: null,
@@ -189,6 +245,8 @@ export const useCajaStore = create<CajaState>((set, get) => ({
 
   cargarMovimientosSesion: async (sesionId: string) => {
     try {
+      const pendientes = await sincronizarPendientes(sesionId)
+
       const { data, error } = await supabase
         .from('movimientos_caja')
         .select('*, usuario:usuarios(id, nombre)')
@@ -197,8 +255,13 @@ export const useCajaStore = create<CajaState>((set, get) => ({
         .limit(10000)
 
       if (!error && data) {
-        set({ movimientosCaja: data as MovimientoCaja[] })
-        return data as MovimientoCaja[]
+        const idsRemotos = new Set((data as MovimientoCaja[]).map(m => m.id))
+        const sinSincronizar = pendientes.filter(m => !idsRemotos.has(m.id))
+        const combinados = [...(data as MovimientoCaja[]), ...sinSincronizar].sort(
+          (a, b) => b.fecha_hora.localeCompare(a.fecha_hora)
+        )
+        set({ movimientosCaja: combinados })
+        return combinados
       }
     } catch {
       // Fallback a almacenamiento local
@@ -224,7 +287,7 @@ export const useCajaStore = create<CajaState>((set, get) => ({
     }
 
     // BUG-CAJA-02: No registrar movimientos de $0, no tienen sentido contable
-    if (!monto || monto <= 0) {
+    if (!Number.isFinite(monto) || monto <= 0) {
       toast.error('El monto debe ser mayor a $0')
       return false
     }
@@ -247,27 +310,29 @@ export const useCajaStore = create<CajaState>((set, get) => ({
     saveLocalMovimientos(sesion.id, actualizados)
 
     set({ cargando: true })  // BUG-12: deshabilitar durante el await para evitar duplicados
+    let sincronizado = false
     try {
-      await supabase.from('movimientos_caja').insert({
-        id: nuevoMovimiento.id,
-        kiosco_id: nuevoMovimiento.kiosco_id,
-        sesion_caja_id: nuevoMovimiento.sesion_caja_id,
-        usuario_id: nuevoMovimiento.usuario_id,
-        tipo: nuevoMovimiento.tipo,
-        motivo: nuevoMovimiento.motivo,
-        monto: nuevoMovimiento.monto,
-        descripcion: nuevoMovimiento.descripcion,
-        fecha_hora: nuevoMovimiento.fecha_hora,
-      })
-    } catch (err) {
-      console.warn('Supabase movimientos_caja no accesible, resguardado local:', err)
+      sincronizado = await insertarMovimiento(nuevoMovimiento)
+      if (!sincronizado) {
+        // supabase-js no lanza: un insert rechazado devuelve { error }. Se encola para reintentar
+        // y para que el resumen lo siga contando aunque la base aún no lo tenga.
+        savePendientes(sesion.id, [nuevoMovimiento, ...getPendientes(sesion.id)])
+      }
     } finally {
       set({ cargando: false })
     }
 
     set({ movimientosCaja: actualizados })
     await get().cargarResumenSesion(sesion.id)
-    toast.success(tipo === 'INGRESO' ? 'Ingreso registrado en caja' : 'Gasto registrado en caja')
+
+    if (sincronizado) {
+      toast.success(tipo === 'INGRESO' ? 'Ingreso registrado en caja' : 'Gasto registrado en caja')
+    } else {
+      toast(
+        `${tipo === 'INGRESO' ? 'Ingreso' : 'Gasto'} guardado en este equipo. Se sincronizará cuando haya conexión.`,
+        { icon: '⚠️', duration: 4000 }
+      )
+    }
     return true
   },
 
