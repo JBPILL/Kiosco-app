@@ -32,6 +32,7 @@ export function AltaRapidaModal({
 }: AltaRapidaModalProps) {
   const { usuario, kiosco } = useAuthStore()
   const kioscoId = usuario?.kiosco_id || kiosco?.id
+  const puedeVerCostos = usuario?.rol === 'DUEÑO' || Boolean(usuario?.es_superadmin)
 
   const [descripcion, setDescripcion] = useState('')
   const [precioVenta, setPrecioVenta] = useState<number | string>('')
@@ -50,7 +51,7 @@ export function AltaRapidaModal({
     if (productoSugerido) {
       setDescripcion(productoSugerido.descripcion)
       setPrecioVenta(productoSugerido.precio_venta_sugerido)
-      setPrecioCosto(productoSugerido.precio_costo_ref)
+      setPrecioCosto(puedeVerCostos ? productoSugerido.precio_costo_ref : 0)
       setStockInicial(productoSugerido.stock_inicial_sugerido ?? 12)
 
       // Intentar vincular con categoría existente por nombre normalizado
@@ -76,7 +77,7 @@ export function AltaRapidaModal({
         descInputRef.current?.focus()
       }, 50)
     }
-  }, [isOpen, productoSugerido, categorias])
+  }, [isOpen, productoSugerido, categorias, puedeVerCostos])
 
   // Resolver o crear categoría si hace falta
   const resolverCategoriaId = async (): Promise<string | null> => {
@@ -129,7 +130,7 @@ export function AltaRapidaModal({
       return
     }
 
-    const cNum = Number(precioCosto) || 0
+    const cNum = puedeVerCostos ? Number(precioCosto) || 0 : 0
     const sNum = Number(stockInicial) || 0
     const codigoLimpio = codigo.trim() ? codigo.trim() : null
 
@@ -290,7 +291,8 @@ export function AltaRapidaModal({
             </div>
 
             {/* Precio Costo */}
-            <div className="col-span-1">
+            {puedeVerCostos && (
+              <div className="col-span-1">
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 Costo ($)
               </label>
@@ -302,10 +304,11 @@ export function AltaRapidaModal({
                 onChange={(e) => setPrecioCosto(e.target.value)}
                 placeholder="0"
               />
-            </div>
+              </div>
+            )}
 
             {/* Stock Inicial */}
-            <div className="col-span-2 sm:col-span-1">
+            <div className={puedeVerCostos ? 'col-span-2 sm:col-span-1' : 'col-span-1'}>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 Stock Inicial (u.)
               </label>
@@ -345,7 +348,7 @@ export function AltaRapidaModal({
         </div>
 
         {/* Margen calculado en vivo */}
-        {Number(precioVenta) > 0 && Number(precioCosto) > 0 && (
+        {puedeVerCostos && Number(precioVenta) > 0 && Number(precioCosto) > 0 && (
           <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-xl p-2.5 flex items-center justify-between text-xs">
             <span className="text-emerald-800 dark:text-emerald-300 font-medium">
               Ganancia estimada por unidad:

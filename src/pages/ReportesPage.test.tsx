@@ -94,6 +94,9 @@ describe('ReportesPage: resumen diario', () => {
     expect(screen.getByText('60.0%')).toBeTruthy()
     expect(screen.getByText('2')).toBeTruthy() // ventas completadas
     expect(screen.getByText(formatPrecio(750))).toBeTruthy() // ticket promedio
+    const seleccionProductos = llamadasA('ventas', 'select')[0].filtros.find(([nombre]) => nombre === 'select')?.[1]
+    expect(JSON.stringify(seleccionProductos)).not.toContain('precio_costo')
+    expect(llamadasA('producto_costos', 'select')).toHaveLength(1)
   })
 
   it('descuenta devoluciones del total, del costo y del canal de pago', async () => {
@@ -162,6 +165,19 @@ describe('ReportesPage: resumen diario', () => {
     expect(screen.queryByText('Solo Dueño')).toBeNull()
   })
 
+  it('no solicita datos de costo en las consultas de reportes para un cajero', async () => {
+    useAuthStore.setState({ usuario: { id: 'u2', rol: 'CAJERO', kiosco_id: KIOSCO } as never })
+    responder('ventas.select', { data: [venta({ id: 'v1', total: 100 })], error: null })
+
+    await abrirVentasDiarias()
+
+    const argumentosSeleccion = llamadasA('ventas', 'select')[0].filtros.find(([nombre]) => nombre === 'select')?.[1]
+    expect(JSON.stringify(argumentosSeleccion)).not.toContain('precio_costo')
+    const argumentosDevoluciones = llamadasA('devoluciones_venta', 'select')[0].filtros.find(([nombre]) => nombre === 'select')?.[1]
+    expect(JSON.stringify(argumentosDevoluciones)).not.toContain('precio_costo')
+    expect(llamadasA('producto_costos', 'select')).toHaveLength(0)
+  })
+
   it('filtra las consultas por el kiosco del usuario', async () => {
     responder('ventas.select', { data: [], error: null })
     await abrirVentasDiarias()
@@ -187,6 +203,7 @@ describe('ReportesPage: anulación de venta', () => {
     await abrirVentasDiarias()
     fireEvent.click(screen.getByText('Completada'))
     fireEvent.click(screen.getByText('Anular venta'))
+    fireEvent.change(screen.getByPlaceholderText('Ej.: venta duplicada, error en los productos...'), { target: { value: 'Anulación solicitada por el dueño' } })
   }
 
   const sesionAbierta = { id: 's1', estado: 'ABIERTA', fecha_cierre: null } as never
@@ -197,10 +214,11 @@ describe('ReportesPage: anulación de venta', () => {
     responder('productos.select', { data: { id: 'a', stock_actual: 10, descripcion: 'A', es_combo: false }, error: null })
 
     await abrirConfirmacion(venta({ id: 'abcdef123456', total: 200, detalles: [detalle('a', 2, 50)] }))
+    fireEvent.change(screen.getByPlaceholderText('Ej.: venta duplicada, error en los productos...'), { target: { value: 'Error de carga duplicada' } })
     fireEvent.click(screen.getByText('Sí, anular venta'))
 
     await waitFor(() => expect(toast.success).toHaveBeenCalled())
-    expect((llamadasA('ventas', 'update')[0].payload as { estado: string }).estado).toBe('ANULADA')
+    expect(llamadasA('ventas', 'update')[0].payload).toMatchObject({ estado: 'ANULADA', motivo_anulacion: 'Error de carga duplicada' })
     expect((llamadasA('productos', 'update')[0].payload as { stock_actual: number }).stock_actual).toBe(12)
     expect(llamadasA('movimientos_stock', 'insert')[0].payload).toMatchObject({
       producto_id: 'a',
@@ -220,11 +238,21 @@ describe('ReportesPage: anulación de venta', () => {
     )
 
     await abrirConfirmacion(venta({ id: 'v1', total: 200, detalles: [detalle('a', 2, 50)] }))
+    fireEvent.change(screen.getByPlaceholderText('Ej.: venta duplicada, error en los productos...'), { target: { value: 'Error de carga' } })
     fireEvent.click(screen.getByText('Sí, anular venta'))
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled())
     expect(llamadasA('ventas', 'update')).toHaveLength(0)
     expect(llamadasA('productos', 'update')).toHaveLength(0)
+  })
+
+  it('requiere un motivo suficiente antes de enviar la anulación', async () => {
+    await abrirConfirmacion(venta({ id: 'v1', total: 200 }))
+    fireEvent.change(screen.getByPlaceholderText('Ej.: venta duplicada, error en los productos...'), { target: { value: 'no' } })
+    fireEvent.click(screen.getByText('Sí, anular venta'))
+
+    expect(llamadasA('ventas', 'update')).toHaveLength(0)
+    expect(toast.error).toHaveBeenCalledWith('Escribí un motivo de al menos 5 caracteres para auditar la anulación.')
   })
 
   it('en un combo repone los componentes y no el combo', async () => {

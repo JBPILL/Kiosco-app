@@ -3,6 +3,12 @@ import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/authStore'
 import type { Producto, Categoria } from '../types/database'
+import {
+  adjuntarCostosProtegidos,
+  cargarCostosProtegidos,
+  guardarCostosProtegidosLocales,
+  leerCostosProtegidosLocales,
+} from '../lib/productCostAccess'
 import { getCachedProductos, saveCachedProductos } from '../lib/utils'
 import toast from 'react-hot-toast'
 
@@ -98,6 +104,19 @@ async function ejecutarOperacionSupabaseSegura(
   return { ok: false }
 }
 
+function esErrorDeRed(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  if ('code' in error && error.code) return false
+  const mensaje = 'message' in error && typeof error.message === 'string' ? error.message : ''
+  return /failed to fetch|fetch failed|network|load failed|supabase ca[ií]do/i.test(mensaje)
+}
+
+function mensajeDeError(error: unknown): string {
+  return error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+    ? error.message
+    : 'El servidor no aceptó el cambio.'
+}
+
 
 export function useProducts() {
   const { usuario, kiosco } = useAuthStore()
@@ -132,12 +151,16 @@ export function useProducts() {
     try {
       const parsed = getCachedProductos(kioscoId)
       if (Array.isArray(parsed)) {
-        return parsed.filter(
+        const validos = parsed.filter(
           (p: Producto) =>
             p &&
             p.activo !== false &&
             (!kioscoId || !p.kiosco_id || p.kiosco_id === kioscoId)
         )
+        if ((usuario?.rol === 'DUEÑO' || usuario?.es_superadmin) && kioscoId) {
+          return adjuntarCostosProtegidos(validos, leerCostosProtegidosLocales(kioscoId))
+        }
+        return validos
       }
       return []
     } catch {
@@ -194,13 +217,16 @@ export function useProducts() {
     if (error) {
       const cachedList = getCachedProductos(currentKioscoId)
       if (cachedList.length > 0 && productos.length === 0) {
-        const validos = cachedList.filter(
+        let validos = cachedList.filter(
           (p: Producto) =>
             p &&
             p.activo !== false &&
             !idsBorradosRef.current.has(p.id) &&
             (!currentKioscoId || !p.kiosco_id || p.kiosco_id === currentKioscoId)
         )
+        if ((usuario?.rol === 'DUEÑO' || usuario?.es_superadmin) && currentKioscoId) {
+          validos = adjuntarCostosProtegidos(validos, leerCostosProtegidosLocales(currentKioscoId))
+        }
         setProductos(validos)
         toast('Modo local: Mostrando catálogo guardado en memoria', { icon: '📦' })
       } else if (cachedList.length === 0) {
@@ -208,10 +234,29 @@ export function useProducts() {
       }
       console.error('Error al cargar productos:', error)
     } else if (data) {
+      let productosRemotos = data as Producto[]
+      const puedeVerCostos = usuario?.rol === 'DUEÑO' || Boolean(usuario?.es_superadmin)
+      if (puedeVerCostos && productosRemotos.length > 0) {
+        try {
+          const costos = await cargarCostosProtegidos(productosRemotos.map((producto) => producto.id))
+          productosRemotos = adjuntarCostosProtegidos(productosRemotos, costos)
+          if (currentKioscoId) guardarCostosProtegidosLocales(currentKioscoId, costos)
+        } catch (errCostos) {
+          console.error('Error cargando costos protegidos:', errCostos)
+          if (currentKioscoId) {
+            productosRemotos = adjuntarCostosProtegidos(
+              productosRemotos,
+              leerCostosProtegidosLocales(currentKioscoId)
+            )
+          }
+          toast.error('No se pudieron sincronizar los costos privados. Se muestran los últimos datos locales disponibles.')
+        }
+      }
+
       setProductos((prev) => {
         const localMap = new Map(prev.map((p) => [p.id, p]))
-        const remoteIds = new Set(data.map((d) => d.id))
-        const cleanData = data.filter(
+        const remoteIds = new Set(productosRemotos.map((d) => d.id))
+        const cleanData = productosRemotos.filter(
           (item) => item.activo !== false && !idsBorradosRef.current.has(item.id)
         )
 
@@ -293,7 +338,7 @@ export function useProducts() {
       })
     }
     setCargando(false)
-  }, [usuario?.kiosco_id, kiosco?.id, guardarProductosEnCache])
+  }, [usuario?.kiosco_id, usuario?.rol, usuario?.es_superadmin, kiosco?.id, guardarProductosEnCache])
 
   // Cargar categorías
   const cargarCategorias = useCallback(async () => {
@@ -390,6 +435,9 @@ export function useProducts() {
       ...payload,
       _local_offline: !insertadoEnSupabase,
     }
+    if ((usuario?.rol === 'DUEÑO' || usuario?.es_superadmin) && kioscoId) {
+      guardarCostosProtegidosLocales(kioscoId, [{ producto_id: nuevoId, precio_costo: payload.precio_costo }])
+    }
 
     // Actualizar estado local inmediatamente
     setProductos((prev) => {
@@ -433,24 +481,46 @@ export function useProducts() {
     }
 
     const cambiosCompletos = { ...cambios, fecha_actualizacion: new Date().toISOString() }
+    let sincronizado = false
+    try {
+      const resultado = await ejecutarOperacionSupabaseSegura(cambiosCompletos, (datos) =>
+        supabase.from('productos').update(datos).eq('id', id)
+      )
+      if (!resultado.ok && !esErrorDeRed(resultado.error)) {
+        toast.error(`No se pudo actualizar el producto: ${mensajeDeError(resultado.error)}`)
+        return false
+      }
+      sincronizado = resultado.ok
+    } catch (error) {
+      if (!esErrorDeRed(error)) {
+        toast.error(`No se pudo actualizar el producto: ${mensajeDeError(error)}`)
+        return false
+      }
+    }
 
-    // Actualizar UI localmente de inmediato
+    // Guardar solo tras aceptación del servidor o un fallo de transporte conocido.
+    // Un rechazo de permisos/validación conserva el producto y sus costos locales.
+    if (
+      cambiosCompletos.precio_costo !== undefined &&
+      (usuario?.rol === 'DUEÑO' || usuario?.es_superadmin) &&
+      kioscoId
+    ) {
+      guardarCostosProtegidosLocales(kioscoId, [{ producto_id: id, precio_costo: cambiosCompletos.precio_costo }])
+    }
+
+    // Actualizar UI y caché de forma inmutable.
     setProductos((prev) => {
       const actualizados = prev.map((p) => (p.id === id ? { ...p, ...cambiosCompletos } : p))
       guardarProductosEnCache(actualizados)
       return actualizados
     })
 
-    try {
-      await ejecutarOperacionSupabaseSegura(cambiosCompletos, (datos) =>
-        supabase.from('productos').update(datos).eq('id', id)
-      )
-    } catch (err) {
-      console.warn('Error de red al actualizar producto:', err)
+    if (sincronizado) {
+      toast.success('Producto actualizado')
+      await cargarProductos()
+    } else {
+      toast('Cambio guardado en este dispositivo; falta sincronizar con el servidor.', { icon: '📦' })
     }
-
-    toast.success('Producto actualizado')
-    await cargarProductos()
     return true
   }
 

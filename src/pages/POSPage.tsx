@@ -12,6 +12,7 @@ import { FavoritesGrid } from '../components/pos/FavoritesGrid'
 import { CartPanel } from '../components/pos/CartPanel'
 import { PaymentModal } from '../components/pos/PaymentModal'
 import { TicketReceiptModal, type TicketData } from '../components/pos/TicketReceiptModal'
+import { abrirCajonDineroDirecto, getAperturaAutomaticaCajon } from '../lib/escposPrinter'
 import { BarcodeScannerModal } from '../components/pos/BarcodeScannerModal'
 import { KeyboardShortcutsModal } from '../components/pos/KeyboardShortcutsModal'
 import { ArticuloLibreModal } from '../components/pos/ArticuloLibreModal'
@@ -62,6 +63,7 @@ export function POSPage() {
   const [productoPesableModal, setProductoPesableModal] = useState<Producto | null>(null)
   const [ticketReciente, setTicketReciente] = useState<TicketData | null>(null)
   const [ticketModalOpen, setTicketModalOpen] = useState(false)
+  const aperturasCajonProcesadas = useRef(new Set<string>())
 
   // Asistente On-The-Fly Catálogo Semilla
   const [modalAltaRapidaOpen, setModalAltaRapidaOpen] = useState(false)
@@ -191,6 +193,21 @@ export function POSPage() {
     verificarSesionActiva()
     setCartModalOpen(false)
     if (ticket) {
+      const ventaOffline = ticket.notas?.includes('[GUARDADO OFFLINE]') ?? false
+      const incluyeEfectivo = ticket.pagos?.length
+        ? ticket.pagos.some((pago) => (pago.medioPago || '').toUpperCase().includes('EFECTIVO') && pago.monto > 0)
+        : (ticket.medioPago || '').toUpperCase().includes('EFECTIVO')
+      if (
+        !ventaOffline &&
+        incluyeEfectivo &&
+        getAperturaAutomaticaCajon() &&
+        !aperturasCajonProcesadas.current.has(ticket.ventaId)
+      ) {
+        aperturasCajonProcesadas.current.add(ticket.ventaId)
+        void abrirCajonDineroDirecto().then((resultado) => {
+          if (!resultado.ok) toast.error(`Venta registrada; no se pudo abrir el cajón: ${resultado.mensaje}`)
+        })
+      }
       setTicketReciente(ticket)
       setTicketModalOpen(true)
     }

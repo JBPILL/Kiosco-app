@@ -265,12 +265,80 @@ async function obtenerPuertoSerial(): Promise<SerialPortLike> {
   try {
     if (typeof serial.getPorts === 'function') {
       const authorizedPorts = await serial.getPorts()
-      if (authorizedPorts && authorizedPorts.length > 0) {
-        return authorizedPorts[0] as SerialPortLike
+      const configurado = leerPuertoImpresoraConfigurado()
+      if (configurado) {
+        const coincidencias = (authorizedPorts as SerialPortLike[]).filter((port) => {
+          const info = port.getInfo?.()
+          return info?.usbVendorId === configurado.usbVendorId && info?.usbProductId === configurado.usbProductId
+        })
+        if (coincidencias.length === 1) return coincidencias[0]
+        if (coincidencias.length > 1) throw new Error('Hay varios dispositivos iguales autorizados; el navegador no permite distinguirlos. Desautorizá el otro dispositivo desde el navegador y volvé a configurar.')
+        throw new Error('La impresora configurada no está conectada o perdió el permiso. Configurala nuevamente en Ajustes.')
       }
+      if (authorizedPorts?.length === 1) return authorizedPorts[0] as SerialPortLike
+      if (authorizedPorts?.length > 1) throw new Error('Hay varios puertos autorizados. Elegí la impresora en Ajustes para evitar enviar el ticket al dispositivo equivocado.')
     }
-  } catch {}
-  return await serial.requestPort()
+  } catch (error) {
+    if (error instanceof Error && (error.message.includes('impresora') || error.message.includes('puertos autorizados') || error.message.includes('dispositivos iguales'))) throw error
+  }
+  throw new Error('No hay una impresora configurada. Seleccionala desde Ajustes antes de imprimir.')
+}
+
+const CLAVE_PUERTO_IMPRESORA = 'kioskopos_impresora_serial_v1'
+const CLAVE_APERTURA_AUTOMATICA = 'kioskopos_abrir_cajon_efectivo_v1'
+
+export function getAperturaAutomaticaCajon(): boolean {
+  try { return localStorage.getItem(CLAVE_APERTURA_AUTOMATICA) === 'true' } catch { return false }
+}
+
+export function setAperturaAutomaticaCajon(habilitada: boolean): void {
+  try { localStorage.setItem(CLAVE_APERTURA_AUTOMATICA, String(habilitada)) } catch {}
+}
+
+interface DatosPuertoImpresora {
+  usbVendorId?: number
+  usbProductId?: number
+}
+
+function leerPuertoImpresoraConfigurado(): DatosPuertoImpresora | null {
+  try {
+    const raw = localStorage.getItem(CLAVE_PUERTO_IMPRESORA)
+    return raw ? JSON.parse(raw) as DatosPuertoImpresora : null
+  } catch {
+    return null
+  }
+}
+
+/** Solicita permiso desde Ajustes y persiste únicamente el identificador USB del dispositivo. */
+export async function configurarImpresoraSerial(): Promise<{ ok: boolean; mensaje: string }> {
+  if (!isWebSerialSupported()) return { ok: false, mensaje: 'Web Serial no es compatible con este navegador.' }
+  try {
+    const port = await (navigator as any).serial.requestPort() as SerialPortLike
+    const info = port.getInfo?.() ?? {}
+    if (info.usbVendorId === undefined || info.usbProductId === undefined) {
+      return { ok: false, mensaje: 'El navegador no expone un identificador USB para este puerto; no se puede seleccionarlo de forma segura.' }
+    }
+    localStorage.setItem(CLAVE_PUERTO_IMPRESORA, JSON.stringify(info))
+    return { ok: true, mensaje: 'Impresora autorizada para este puesto.' }
+  } catch (error) {
+    const err = error as Error
+    return { ok: false, mensaje: err.name === 'NotFoundError' ? 'Selección cancelada.' : err.message || 'No se pudo configurar la impresora.' }
+  }
+}
+
+/** Envía una prueba inocua para comprobar conexión y papel, sin abrir el cajón. */
+export async function probarImpresoraSerial(baudRate = 9600): Promise<{ ok: boolean; mensaje: string }> {
+  if (!isWebSerialSupported()) return { ok: false, mensaje: 'Web Serial no es compatible con este navegador.' }
+  try {
+    const port = await obtenerPuertoSerial()
+    await asegurarPuertoAbierto(port, baudRate)
+    const writer = port.writable.getWriter()
+    try { await writer.write(new TextEncoder().encode('\x1b@\nKioskoPOS - prueba de impresora\n\n')) }
+    finally { try { writer.releaseLock() } catch {}; try { await port.close() } catch {} }
+    return { ok: true, mensaje: 'Prueba enviada. Verificá que haya salido el papel.' }
+  } catch (error) {
+    return { ok: false, mensaje: (error as Error).message || 'No se pudo probar la impresora.' }
+  }
 }
 
 async function asegurarPuertoAbierto(port: SerialPortLike, baudRate: number): Promise<void> {
@@ -532,6 +600,7 @@ export async function abrirCajonDineroDirecto(baudRate = 9600): Promise<{ ok: bo
 
 // Interfaz mínima para Web Serial API
 interface SerialPortLike {
+  getInfo?: () => { usbVendorId?: number; usbProductId?: number }
   open: (options: { baudRate: number }) => Promise<void>
   close: () => Promise<void>
   writable: {

@@ -17,6 +17,7 @@ import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoMo
 import { RestaurarBackupModal } from '../components/config/RestaurarBackupModal'
 import { usePwaStore } from '../stores/pwaStore'
 import { useCajaStore } from '../stores/cajaStore'
+import { adjuntarCostosProtegidos, cargarCostosProtegidos } from '../lib/productCostAccess'
 import {
   getWhatsAppReportConfig,
   saveWhatsAppReportConfig,
@@ -28,6 +29,9 @@ import {
   abrirEnlaceExternoSeguro,
 } from '../lib/whatsappReport'
 import { getAnchoTicketGuardado, guardarAnchoTicket, type AnchoPapelTicket } from '../lib/ticketPreferences'
+import { configurarImpresoraSerial, probarImpresoraSerial, isWebSerialSupported, getAperturaAutomaticaCajon, setAperturaAutomaticaCajon } from '../lib/escposPrinter'
+import { capacidadesPorDefecto } from '../hooks/useTenantConfig'
+import type { CapacidadesOperativas } from '../types/database'
 import toast from 'react-hot-toast'
 
 export function ConfigPage() {
@@ -46,6 +50,9 @@ export function ConfigPage() {
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [modalImportarOpen, setModalImportarOpen] = useState(false)
   const [modalRestaurarBackupOpen, setModalRestaurarBackupOpen] = useState(false)
+  const [cifrarBackupIntegral, setCifrarBackupIntegral] = useState(true)
+  const [claveBackupIntegral, setClaveBackupIntegral] = useState('')
+  const [confirmacionClaveBackupIntegral, setConfirmacionClaveBackupIntegral] = useState('')
 
   useEffect(() => {
     cargarConfigAdmin()
@@ -61,7 +68,31 @@ export function ConfigPage() {
   const [nombreKiosco, setNombreKiosco] = useState('')
   const [direccion, setDireccion] = useState('')
   const [telefono, setTelefono] = useState('')
+  const [capacidadesOperativas, setCapacidadesOperativas] = useState<CapacidadesOperativas>(capacidadesPorDefecto(kiosco?.rubro))
   const [anchoImpresora, setAnchoImpresora] = useState<AnchoPapelTicket>(getAnchoTicketGuardado)
+  const [configurandoImpresora, setConfigurandoImpresora] = useState(false)
+  const [probandoImpresora, setProbandoImpresora] = useState(false)
+  const [abrirCajonEnEfectivo, setAbrirCajonEnEfectivo] = useState(getAperturaAutomaticaCajon)
+
+  const handleConfigurarImpresora = async () => {
+    setConfigurandoImpresora(true)
+    try {
+      const result = await configurarImpresoraSerial()
+      result.ok ? toast.success(result.mensaje) : toast.error(result.mensaje)
+    } finally {
+      setConfigurandoImpresora(false)
+    }
+  }
+
+  const handleProbarImpresora = async () => {
+    setProbandoImpresora(true)
+    try {
+      const result = await probarImpresoraSerial()
+      result.ok ? toast.success(result.mensaje) : toast.error(result.mensaje)
+    } finally {
+      setProbandoImpresora(false)
+    }
+  }
 
   const handleCambiarAnchoImpresora = (nuevo: AnchoPapelTicket) => {
     setAnchoImpresora(nuevo)
@@ -124,6 +155,7 @@ export function ConfigPage() {
         setNombreKiosco(kioscoData.nombre || '')
         setDireccion(kioscoData.direccion || '')
         setTelefono(kioscoData.telefono || '')
+        setCapacidadesOperativas({ ...capacidadesPorDefecto(kioscoData.rubro), ...(kioscoData.capacidades_operativas || {}) })
       }
 
       // 2. Cargar suscripción del Kiosco con datos de plan
@@ -190,6 +222,7 @@ export function ConfigPage() {
           nombre: nombreKiosco.trim(),
           direccion: direccion.trim() || null,
           telefono: telefono.trim() || null,
+          capacidades_operativas: capacidadesOperativas,
         })
         .eq('id', usuario.kiosco_id)
 
@@ -476,16 +509,20 @@ export function ConfigPage() {
       if (clientesRes.error) console.error('Error al consultar clientes para Excel:', clientesRes.error)
       if (provsRes.error) console.error('Error al consultar proveedores para Excel:', provsRes.error)
 
+      const productosPublicos = prodsRes.data || []
+      const costos = await cargarCostosProtegidos(productosPublicos.map((producto: any) => producto.id))
+      const productosConCosto = adjuntarCostosProtegidos(productosPublicos, costos)
+
       await exportarMasterExcel({
         nombreKiosco: kiosco?.nombre || 'Comercio',
-        productos: prodsRes.data || [],
+        productos: productosConCosto,
         categorias: catsRes.data || [],
         movimientosStock: movsRes.data || [],
         clientes: clientesRes.data || [],
         proveedores: provsRes.data || [],
         ventas: ventasRes.data || [],
       })
-      toast.success('Resguardo maestro unificado exportado en Excel (.xlsx)')
+      toast.success('Excel unificado exportado (.xlsx)')
     } catch (err: any) {
       console.error('Error al exportar backup maestro Excel:', err)
       toast.error('No se pudo generar el Excel maestro unificado')
@@ -496,9 +533,21 @@ export function ConfigPage() {
 
   const handleExportarBackupIntegral = async () => {
     if (!usuario?.kiosco_id) return
+    if (cifrarBackupIntegral) {
+      if (claveBackupIntegral.length < 12) {
+        toast.error('La contraseña del backup debe tener al menos 12 caracteres.')
+        return
+      }
+      if (claveBackupIntegral !== confirmacionClaveBackupIntegral) {
+        toast.error('Las contraseñas del backup no coinciden.')
+        return
+      }
+    }
     setExportandoBackup(true)
     try {
-      const res = await generarBackupIntegral(usuario.kiosco_id, kiosco?.nombre)
+      const res = await generarBackupIntegral(usuario.kiosco_id, kiosco?.nombre, {
+        claveCifrado: cifrarBackupIntegral ? claveBackupIntegral : undefined,
+      })
       if (res.ok) {
         toast.success(res.mensaje)
       } else {
@@ -509,6 +558,8 @@ export function ConfigPage() {
       toast.error(err?.message ? `Error al generar backup: ${err.message}` : 'Error al generar backup')
     } finally {
       setExportandoBackup(false)
+      setClaveBackupIntegral('')
+      setConfirmacionClaveBackupIntegral('')
     }
   }
 
@@ -756,9 +807,55 @@ export function ConfigPage() {
                       onChange={(e) => setTelefono(e.target.value)}
                     />
                   </div>
+
+                  <fieldset className="pt-3 border-t border-gray-100 dark:border-gray-700/80 space-y-2">
+                    <legend className="text-xs font-bold text-gray-700 dark:text-gray-300">Módulos operativos de este comercio</legend>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">El rubro sugiere una configuración inicial; activá cada capacidad que use tu negocio. Los productos existentes se conservan.</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-700 dark:text-gray-300">
+                      {([
+                        ['envases', 'Envases retornables'],
+                        ['balanza', 'Productos pesables / balanza'],
+                        ['vencimientos', 'Lotes y vencimientos'],
+                        ['serviciosRapidos', 'Servicios rápidos'],
+                      ] as const).map(([key, label]) => (
+                        <label key={key} className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 p-2">
+                          <input type="checkbox" checked={capacidadesOperativas[key]} onChange={(e) => setCapacidadesOperativas((actual) => ({ ...actual, [key]: e.target.checked }))} />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
                   
                   {/* Selector de Ancho de Ticket Térmico Predeterminado */}
                   <div className="pt-2 border-t border-gray-100 dark:border-gray-700/80 space-y-2">
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
+                      Impresora térmica de este puesto
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="secondary" loading={configurandoImpresora} disabled={!isWebSerialSupported()} onClick={handleConfigurarImpresora}>
+                        Seleccionar impresora
+                      </Button>
+                      <Button type="button" variant="secondary" loading={probandoImpresora} disabled={!isWebSerialSupported()} onClick={handleProbarImpresora}>
+                        Imprimir prueba
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                      Seleccioná el puerto acá, antes de cobrar. La prueba no abre el cajón. Requiere Chrome o Edge en un origen seguro.
+                    </p>
+                    <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                      <input
+                        type="checkbox"
+                        checked={abrirCajonEnEfectivo}
+                        onChange={(e) => {
+                          setAbrirCajonEnEfectivo(e.target.checked)
+                          setAperturaAutomaticaCajon(e.target.checked)
+                        }}
+                      />
+                      Abrir cajón automáticamente después de confirmar un pago en efectivo
+                    </label>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                      Solo se activa si el pago confirmado incluye efectivo. Un error de hardware no cancela la venta ni reintenta la apertura.
+                    </p>
                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
                       Ancho Predeterminado de Comprobantes Térmicos
                     </label>
@@ -1431,14 +1528,14 @@ export function ConfigPage() {
               <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-4">
                 <div className="flex items-center gap-2">
                   <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-indigo-100 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-300">
-                    Resguardo Local
+                    Exportación local
                   </span>
                   <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                    Copias de Seguridad (Backup de Datos)
+                    Exportar y restaurar datos del comercio
                   </h2>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Descargá una copia física de la información de tu negocio en formato Excel corporativo (.XLSX) para tener siempre un resguardo seguro en tu computadora.
+                  Exportá los datos comerciales a Excel (.XLSX) para analizarlos. Incluye información sensible; guardalo en un lugar protegido. Para respaldos cifrados y restaurables, usá la copia integral JSON.
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
@@ -1474,16 +1571,50 @@ export function ConfigPage() {
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-gray-200/70 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300/70 dark:border-gray-700">
-                          Resguardo Total · 1 Clic
+                          Snapshot operativo
                         </span>
                       </div>
                       <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 leading-snug">
-                        Backup Completo (JSON)
+                        Respaldo operativo (JSON)
                       </h3>
                       <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                        Descargá la totalidad de tus datos (catálogo, categorías, clientes, proveedores, promociones y lotes) en un archivo JSON único.
+                        Guardá productos, categorías, clientes, proveedores, promociones y lotes en una copia coherente. Incluye costos; el historial de ventas y caja requiere un respaldo adicional.
                       </p>
                     </div>
+                    <label className="flex items-center gap-2 text-[11px] text-gray-700 dark:text-gray-300">
+                      <input
+                        type="checkbox"
+                        checked={cifrarBackupIntegral}
+                        onChange={(e) => setCifrarBackupIntegral(e.target.checked)}
+                      />
+                      Cifrar con contraseña
+                    </label>
+                    {cifrarBackupIntegral && (
+                      <div className="space-y-2">
+                        <Input
+                          label="Contraseña (mín. 12)"
+                          type="password"
+                          value={claveBackupIntegral}
+                          onChange={(e) => setClaveBackupIntegral(e.target.value)}
+                          autoComplete="new-password"
+                        />
+                        <Input
+                          label="Repetir contraseña"
+                          type="password"
+                          value={confirmacionClaveBackupIntegral}
+                          onChange={(e) => setConfirmacionClaveBackupIntegral(e.target.value)}
+                          autoComplete="new-password"
+                        />
+                        <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">
+                          La contraseña no se guarda ni puede recuperarse. Sin ella no será posible restaurar esta copia.
+                        </p>
+                      </div>
+                    )}
+                    {!cifrarBackupIntegral && (
+                      <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">
+                        Este archivo incluirá costos y datos personales sin cifrar. Guardalo solamente en un medio protegido.
+                      </p>
+                    )}
                     <Button
                       size="sm"
                       variant="primary"

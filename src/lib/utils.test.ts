@@ -140,7 +140,21 @@ describe('caché local de productos (multi-kiosco)', () => {
 
   it('guarda y lee por kiosco', () => {
     saveCachedProductos([{ id: 'a' }], 'k1')
-    expect(getCachedProductos('k1')).toEqual([{ id: 'a' }])
+    expect(getCachedProductos('k1')).toEqual([{ id: 'a', precio_costo: 0 }])
+  })
+
+  it('elimina costos privados existentes al leer y guardar la caché', () => {
+    localStorage.setItem('kiosko_cache_productos_k1', JSON.stringify([
+      { id: 'p1', precio_costo: 950, descripcion: 'Alfajor' },
+    ]))
+
+    expect(getCachedProductos('k1')).toEqual([
+      { id: 'p1', precio_costo: 0, descripcion: 'Alfajor' },
+    ])
+    expect(localStorage.getItem('kiosko_cache_productos_k1')).not.toContain('950')
+
+    saveCachedProductos([{ id: 'p1', precio_costo: 1200 }], 'k1')
+    expect(localStorage.getItem('kiosko_cache_productos_k1')).not.toContain('1200')
   })
 
   it('no mezcla productos entre kioscos distintos', () => {

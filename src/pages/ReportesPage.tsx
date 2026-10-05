@@ -12,6 +12,7 @@ import { useClienteStore } from '../stores/clienteStore'
 import { useCajaStore } from '../stores/cajaStore'
 import { useComboStore } from '../stores/comboStore'
 import { useLoteStore } from '../stores/loteStore'
+import { cargarCostosProtegidos } from '../lib/productCostAccess'
 import { ventaToTicketData } from '../lib/ticketUtils'
 import type { Producto } from '../types/database'
 import toast from 'react-hot-toast'
@@ -62,6 +63,7 @@ export function ReportesPage() {
   const [cargando, setCargando] = useState(true)
   const [ventaExpandida, setVentaExpandida] = useState<string | null>(null)
   const [ventaParaAnular, setVentaParaAnular] = useState<VentaResumen | null>(null)
+  const [motivoAnulacion, setMotivoAnulacion] = useState('')
   const [anulando, setAnulando] = useState(false)
   const [ticketParaImprimir, setTicketParaImprimir] = useState<TicketData | null>(null)
 
@@ -69,6 +71,7 @@ export function ReportesPage() {
     setCargando(true)
     const { inicioISO, finISO } = getLimitesISODia(fecha)
     const kid = usuario?.kiosco_id || kiosco?.id
+    const productoResumenSelect = 'id, descripcion, stock_actual, precio_venta'
 
     // Cargar ventas del día con detalles y pagos
     let query = supabase
@@ -78,7 +81,7 @@ export function ReportesPage() {
         afip_cae, afip_vto_cae, afip_tipo_comprobante, afip_nro_comprobante, afip_qr_url,
         usuario:usuarios(nombre),
         pagos:pagos_venta(medio_pago, monto),
-        detalles:detalles_venta(cantidad, precio_unitario, subtotal, producto_id, sin_envase, es_devolucion_envase, producto:productos(id, descripcion, stock_actual, precio_costo, precio_venta))
+        detalles:detalles_venta(cantidad, precio_unitario, subtotal, producto_id, sin_envase, es_devolucion_envase, producto:productos(${productoResumenSelect}))
       `)
       .gte('fecha_hora', inicioISO)
       .lte('fecha_hora', finISO)
@@ -98,28 +101,12 @@ export function ReportesPage() {
       return
     }
 
-    const ventasData = (data || []) as unknown as VentaResumen[]
-    setVentas(ventasData)
-
-    // Solo ventas COMPLETADAS para el resumen financiero
-    const ventasValidas = ventasData.filter((v) => v.estado === 'COMPLETADA')
-    const totalVentasBrutas = ventasValidas.reduce((sum, v) => sum + v.total, 0)
-    const cantidadVentas = ventasValidas.length
-
-    // Calcular costo total de la mercadería vendida (CMV)
-    let totalCostoVentas = 0
-    for (const venta of ventasValidas) {
-      for (const det of venta.detalles || []) {
-        if (det.es_devolucion_envase) continue
-        const costoUnitario = Number(det.producto?.precio_costo) || 0
-        totalCostoVentas += (Number(det.cantidad) || 0) * costoUnitario
-      }
-    }
+    let ventasData = (data || []) as unknown as VentaResumen[]
 
     // Cargar devoluciones del día para calcular ventas netas y deducir reintegros y costo devuelto
     let queryDevs = supabase
       .from('devoluciones_venta')
-      .select('id, monto_total, metodo_reintegro, fecha_hora, detalles:detalles_devolucion(cantidad, producto:productos(precio_costo))')
+      .select('id, monto_total, metodo_reintegro, fecha_hora, detalles:detalles_devolucion(cantidad, producto_id, producto:productos(id))')
       .gte('fecha_hora', inicioISO)
       .lte('fecha_hora', finISO)
       .limit(10000)
@@ -129,14 +116,78 @@ export function ReportesPage() {
     }
 
     const { data: devsData } = await queryDevs
-    const totalDevoluciones = (devsData || []).reduce((acc: number, d: any) => acc + (d.monto_total || 0), 0)
+
+    let devolucionesData = devsData || []
+    if (esDueno) {
+      const idsProductos = [
+        ...ventasData.flatMap((venta) => (venta.detalles || []).map((detalle) => detalle.producto_id)),
+        ...devolucionesData.flatMap((devolucion: any) =>
+          (devolucion.detalles || []).map((detalle: any) => detalle.producto_id || detalle.producto?.id)
+        ),
+      ]
+      try {
+        const costos = await cargarCostosProtegidos(idsProductos)
+        const costoPorId = new Map(costos.map((costo) => [costo.producto_id, Number(costo.precio_costo) || 0]))
+        ventasData = ventasData.map((venta) => ({
+          ...venta,
+          detalles: (venta.detalles || []).map((detalle) => ({
+            ...detalle,
+            producto: detalle.producto
+              ? { ...detalle.producto, precio_costo: costoPorId.get(detalle.producto_id) ?? (Number(detalle.producto.precio_costo) || 0) }
+              : undefined,
+          })),
+        }))
+        devolucionesData = devolucionesData.map((devolucion: any) => ({
+          ...devolucion,
+          detalles: (devolucion.detalles || []).map((detalle: any) => ({
+            ...detalle,
+            producto: detalle.producto
+              ? { ...detalle.producto, precio_costo: costoPorId.get(detalle.producto_id) ?? (Number(detalle.producto.precio_costo) || 0) }
+              : undefined,
+          })),
+        }))
+      } catch (errCostos) {
+        console.error('Error cargando costos protegidos para reportes:', errCostos)
+        toast.error('No se pudieron cargar los costos privados del reporte.')
+      }
+    } else {
+        ventasData = ventasData.map((venta) => ({
+        ...venta,
+        detalles: (venta.detalles || []).map(({ producto, ...detalle }) => {
+          if (!producto) return detalle
+          const { precio_costo: _precioCosto, ...productoPublico } = producto
+          return { ...detalle, producto: productoPublico }
+        }),
+      }))
+    }
+
+    setVentas(ventasData)
+
+    // Solo ventas COMPLETADAS para el resumen financiero
+    const ventasValidas = ventasData.filter((v) => v.estado === 'COMPLETADA')
+    const totalVentasBrutas = ventasValidas.reduce((sum, v) => sum + v.total, 0)
+    const cantidadVentas = ventasValidas.length
+
+    // Calcular costo total de la mercadería vendida (CMV) con datos privados del dueño.
+    let totalCostoVentas = 0
+    if (esDueno) {
+      for (const venta of ventasValidas) {
+        for (const det of venta.detalles || []) {
+          if (det.es_devolucion_envase) continue
+          totalCostoVentas += (Number(det.cantidad) || 0) * (Number(det.producto?.precio_costo) || 0)
+        }
+      }
+    }
+    const totalDevoluciones = devolucionesData.reduce((acc: number, d: any) => acc + (d.monto_total || 0), 0)
 
     // Deducir el costo de la mercadería reincorporada por devolución para que el CMV refleje el costo neto real
     let totalCostoDevoluciones = 0
-    for (const d of devsData || []) {
-      for (const det of (d as any).detalles || []) {
-        const costoUnit = Number(det.producto?.precio_costo) || 0
-        totalCostoDevoluciones += (Number(det.cantidad) || 0) * costoUnit
+    if (esDueno) {
+      for (const d of devolucionesData) {
+        for (const det of (d as any).detalles || []) {
+          const costoUnit = Number(det.producto?.precio_costo) || 0
+          totalCostoDevoluciones += (Number(det.cantidad) || 0) * costoUnit
+        }
       }
     }
     const totalCostoVentasNeto = Math.max(0, totalCostoVentas - totalCostoDevoluciones)
@@ -160,8 +211,8 @@ export function ReportesPage() {
     }
 
     // Deducir reintegros según el canal correspondiente
-    if (devsData && devsData.length > 0) {
-      for (const dev of devsData) {
+    if (devolucionesData.length > 0) {
+      for (const dev of devolucionesData) {
         if (dev.metodo_reintegro === 'OTRO') continue
         
         let canal = 'EFECTIVO'
@@ -196,7 +247,7 @@ export function ReportesPage() {
       porMedioPago,
     })
     setCargando(false)
-  }, [fecha, usuario?.kiosco_id, kiosco?.id])
+  }, [fecha, usuario?.kiosco_id, kiosco?.id, esDueno])
 
   useEffect(() => {
     cargarDatos()
@@ -212,6 +263,10 @@ export function ReportesPage() {
 
   const handleAnularVenta = async () => {
     if (!ventaParaAnular || anulando) return
+    if (motivoAnulacion.trim().length < 5) {
+      toast.error('Escribí un motivo de al menos 5 caracteres para auditar la anulación.')
+      return
+    }
     setAnulando(true)
 
     try {
@@ -237,7 +292,7 @@ export function ReportesPage() {
       // 1. Cambiar estado de la venta a ANULADA
       const { error } = await supabase
         .from('ventas')
-        .update({ estado: 'ANULADA' })
+        .update({ estado: 'ANULADA', motivo_anulacion: motivoAnulacion.trim() })
         .eq('id', ventaParaAnular.id)
 
       if (error) throw error
@@ -435,6 +490,7 @@ export function ReportesPage() {
 
       toast.success('Venta anulada. Stock reincorporado y balance actualizado.')
       setVentaParaAnular(null)
+      setMotivoAnulacion('')
       await cargarDatos()
     } catch (err) {
       console.error('Error al anular venta:', err)
@@ -760,7 +816,10 @@ export function ReportesPage() {
                                 <Button
                                   size="sm"
                                   variant="danger"
-                                  onClick={() => setVentaParaAnular(venta)}
+                                  onClick={() => {
+                                    setMotivoAnulacion('')
+                                    setVentaParaAnular(venta)
+                                  }}
                                 >
                                   Anular venta
                                 </Button>
@@ -783,7 +842,10 @@ export function ReportesPage() {
       {/* Modal de confirmación para anular venta */}
       <Modal
         isOpen={!!ventaParaAnular}
-        onClose={() => setVentaParaAnular(null)}
+        onClose={() => {
+          setVentaParaAnular(null)
+          setMotivoAnulacion('')
+        }}
         title="Confirmar anulación de venta"
         size="md"
       >
@@ -797,6 +859,20 @@ export function ReportesPage() {
           <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-300">
             Esta acción devolverá automáticamente los productos vendidos al inventario de stock y restará la venta del total facturado del día.
           </div>
+          <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+            Motivo de la anulación *
+            <textarea
+              value={motivoAnulacion}
+              onChange={(e) => setMotivoAnulacion(e.target.value)}
+              minLength={5}
+              maxLength={500}
+              rows={3}
+              disabled={anulando}
+              placeholder="Ej.: venta duplicada, error en los productos..."
+              className="mt-1.5 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm font-normal"
+              required
+            />
+          </label>
           <div className="flex gap-2 pt-2">
             <Button
               variant="danger"
@@ -810,7 +886,10 @@ export function ReportesPage() {
               variant="secondary"
               fullWidth
               disabled={anulando}
-              onClick={() => setVentaParaAnular(null)}
+              onClick={() => {
+                setVentaParaAnular(null)
+                setMotivoAnulacion('')
+              }}
             >
               Cancelar
             </Button>

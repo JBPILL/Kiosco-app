@@ -1,5 +1,12 @@
 export type RubroComercio = 'KIOSCO' | 'FOTOCOPIADORA_LIBRERIA' | 'GENERAL'
 
+export interface CapacidadesOperativas {
+  envases: boolean
+  balanza: boolean
+  vencimientos: boolean
+  serviciosRapidos: boolean
+}
+
 export interface Kiosco {
   id: string
   nombre: string
@@ -8,6 +15,7 @@ export interface Kiosco {
   estado_suscripcion: 'ACTIVO' | 'SOLO_LECTURA' | 'SUSPENDIDO'
   fecha_creacion: string
   rubro?: RubroComercio
+  capacidades_operativas?: CapacidadesOperativas | null
   // Datos fiscales AFIP
   cuit?: string | null
   iibb?: string | null
@@ -148,10 +156,12 @@ export interface MovimientoStock {
   producto_id: string
   tipo: 'INGRESO' | 'EGRESO' | 'AJUSTE'
   cantidad: number
-  motivo: 'COMPRA' | 'VENTA' | 'PERDIDA' | 'VENCIMIENTO' | 'ROTURA' | 'CONTEO' | 'DEVOLUCION'
+  motivo: 'COMPRA' | 'VENTA' | 'PERDIDA' | 'VENCIMIENTO' | 'ROTURA' | 'CONTEO' | 'DEVOLUCION' | 'MERMA' | 'ROBO' | 'CONSUMO_INTERNO'
   notas: string | null
   usuario_id: string | null
   fecha: string
+  costo_unitario_referencia?: number | null
+  lote_producto_id?: string | null
   // Relación opcional
   producto?: Producto
 }

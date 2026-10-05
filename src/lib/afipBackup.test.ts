@@ -97,4 +97,39 @@ describe('validarBackupJSON', () => {
     const r = validarBackupJSON(JSON.stringify(vieja), 'k1')
     expect(r.advertencias.some((a) => a.includes('hace más de'))).toBe(true)
   })
+
+  it('acepta el formato versionado 3.0 y marca colecciones excluidas', () => {
+    const r = validarBackupJSON(JSON.stringify({
+      ...backupValido,
+      version: '3.0',
+      categorias: [],
+      proveedores: [],
+      promociones: [],
+      lotes_producto: [],
+    }), 'k1')
+    expect(r.valido).toBe(true)
+    expect(r.datos?.version).toBe('3.0')
+    expect(r.datos?.contenido.incluyeVentas).toBe(false)
+    expect(r.datos?.contenido.incluyeMovimientosCaja).toBe(false)
+  })
+
+  it('rechaza versiones futuras para evitar restauraciones parciales', () => {
+    const r = validarBackupJSON(JSON.stringify({ ...backupValido, version: '99.0' }), 'k1')
+    expect(r.valido).toBe(false)
+    expect(r.mensaje).toContain('no es compatible')
+  })
+
+  it('rechaza un backup 3.0 truncado aunque todavía tenga productos', () => {
+    const r = validarBackupJSON(JSON.stringify({
+      ...backupValido,
+      version: '3.0',
+      categorias: [],
+      proveedores: [],
+      promociones: [],
+      lotes_producto: [],
+      kiosco: undefined,
+    }))
+    expect(r.valido).toBe(false)
+    expect(r.mensaje).toContain('incompleta')
+  })
 })

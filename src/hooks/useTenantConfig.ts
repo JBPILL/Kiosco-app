@@ -1,5 +1,14 @@
 import { useAuthStore } from '../stores/authStore'
-import type { RubroComercio } from '../types/database'
+import type { CapacidadesOperativas, RubroComercio } from '../types/database'
+
+export function capacidadesPorDefecto(rubro?: RubroComercio): CapacidadesOperativas {
+  return {
+    envases: rubro === 'KIOSCO',
+    balanza: rubro === 'KIOSCO',
+    vencimientos: rubro === 'KIOSCO',
+    serviciosRapidos: rubro === 'FOTOCOPIADORA_LIBRERIA',
+  }
+}
 
 export interface TenantConfig {
   rubro: RubroComercio
@@ -24,20 +33,21 @@ export function useTenantConfig(): TenantConfig {
   const esFotocopiadora = rubro === 'FOTOCOPIADORA_LIBRERIA'
   const esKiosco = rubro === 'KIOSCO'
   const esGeneral = rubro === 'GENERAL'
+  const capacidades = { ...capacidadesPorDefecto(rubro), ...(kiosco?.capacidades_operativas || {}) }
 
   return {
     rubro,
     esFotocopiadora,
     esKiosco,
     esGeneral,
-    // Envases retornables: exclusivo de kioscos/minimercados (cervezas, gaseosas)
-    tieneEnvases: esKiosco,
-    // Balanza para pesables: fiambres, quesos, verduras (no aplica a librería)
-    tieneBalanza: esKiosco,
-    // Lotes y fechas de caducidad para perecederos (no aplica a papelería y útiles)
-    tieneVencimientos: esKiosco,
+    // El rubro sugiere defaults; la capacidad persistida por comercio puede habilitar otros casos.
+    tieneEnvases: capacidades.envases,
+    // Los atributos por producto siguen determinando si el ítem se pesa.
+    tieneBalanza: capacidades.balanza,
+    // Lotes y fechas se activan independientemente del rubro.
+    tieneVencimientos: capacidades.vencimientos,
     // Servicios directos de fotocopias, impresiones, anillados y plastificados
-    tieneServiciosRapidos: esFotocopiadora,
+    tieneServiciosRapidos: capacidades.serviciosRapidos,
     // Textos adaptables para la interfaz
     nombreComercio: kiosco?.nombre || 'Comercio',
     tipoComercioLabel: esFotocopiadora

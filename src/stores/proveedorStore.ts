@@ -13,6 +13,7 @@ import type {
   Producto,
 } from '../types/database'
 import toast from 'react-hot-toast'
+import { cargarCostosProtegidos } from '../lib/productCostAccess'
 
 interface NuevoProveedorInput {
   nombre: string
@@ -646,7 +647,20 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
         .eq('compra_id', compraId)
 
       if (!error && data) {
-        return data as DetalleCompra[]
+        try {
+          const costos = await cargarCostosProtegidos(data.map((detalle: any) => detalle.producto_id))
+          const costoPorId = new Map(costos.map((costo) => [costo.producto_id, Number(costo.precio_costo) || 0]))
+          return (data as DetalleCompra[]).map((detalle) => ({
+            ...detalle,
+            producto: detalle.producto
+              ? { ...detalle.producto, precio_costo: costoPorId.get(detalle.producto_id) ?? 0 }
+              : undefined,
+          }))
+        } catch (errorCosto) {
+          console.error('Error cargando costos privados de compras:', errorCosto)
+          toast.error('No se pudieron cargar los costos privados de los productos.')
+          return data as DetalleCompra[]
+        }
       }
     } catch {
       // Fallback a buscar en compras locales

@@ -18,6 +18,7 @@ import { useRealtimeSync } from '../hooks/useRealtimeSync'
 import { useTenantConfig } from '../hooks/useTenantConfig'
 import { exportarMovimientosStockExcel } from '../lib/exportUtils'
 import { IconExportar } from '../components/ui/Icons'
+import { adjuntarCostosProtegidos, cargarCostosProtegidos } from '../lib/productCostAccess'
 import toast from 'react-hot-toast'
 
 export function StockPage() {
@@ -33,7 +34,7 @@ export function StockPage() {
   const [ticketParaVer, setTicketParaVer] = useState<TicketData | null>(null)
 
   // Lotes y Vencimientos (FIFO / FEFO)
-  const { lotes, cargarLotes, crearLote, darDeBajaLote, obtenerAlertas } = useLoteStore()
+  const { lotes, cargarLotes, obtenerAlertas } = useLoteStore()
   const [vistaPrincipal, setVistaPrincipal] = useState<'MOVIMIENTOS' | 'VENCIMIENTOS'>('MOVIMIENTOS')
   const [fechaVencimiento, setFechaVencimiento] = useState('')
   const [numeroLote, setNumeroLote] = useState('')
@@ -72,7 +73,7 @@ export function StockPage() {
     setCargando(true)
     let query = supabase
       .from('movimientos_stock')
-      .select('*, producto:productos(id, descripcion, stock_actual, codigo_barras, precio_costo, precio_venta)')
+      .select('*, producto:productos(id, descripcion, stock_actual, codigo_barras, precio_venta)')
       .order('fecha', { ascending: false })
       .limit(limite + 1)
 
@@ -102,7 +103,7 @@ export function StockPage() {
   const cargarProductos = useCallback(async () => {
     let query = supabase
       .from('productos')
-      .select('id, descripcion, stock_actual, stock_minimo, precio_costo, precio_venta, codigo_barras, activo')
+      .select('id, descripcion, stock_actual, stock_minimo, precio_venta, codigo_barras, activo')
       .eq('activo', true)
       .order('descripcion')
       .limit(10000)
@@ -113,7 +114,15 @@ export function StockPage() {
 
     const { data, error } = await query
     if (!error && data) {
-      setProductos((data as Producto[]) || [])
+      try {
+        const productos = data as Producto[]
+        const costos = await cargarCostosProtegidos(productos.map((producto) => producto.id))
+        setProductos(adjuntarCostosProtegidos(productos, costos))
+      } catch (errorCosto) {
+        console.error('Error cargando costos protegidos de inventario:', errorCosto)
+        toast.error('No se pudieron cargar los costos privados del inventario.')
+        setProductos((data as Producto[]) || [])
+      }
     }
   }, [usuario?.kiosco_id])
 
@@ -261,7 +270,10 @@ export function StockPage() {
     EGRESO: [
       { value: 'ROTURA', label: 'Rotura o deterioro' },
       { value: 'VENCIMIENTO', label: 'Producto vencido' },
-      { value: 'PERDIDA', label: 'Pérdida o faltante' },
+      { value: 'MERMA', label: 'Merma operativa' },
+      { value: 'ROBO', label: 'Robo' },
+      { value: 'CONSUMO_INTERNO', label: 'Consumo interno' },
+      { value: 'PERDIDA', label: 'Faltante sin causa identificada' },
       { value: 'VENTA', label: 'Venta manual fuera de caja' },
     ],
     AJUSTE: [
@@ -356,43 +368,22 @@ export function StockPage() {
 
     setGuardando(true)
     try {
-      // Cantidad a guardar en movimientos_stock
-      const cantidadMovimiento =
-        tipoMovimiento === 'INGRESO'
-          ? cantNum
-          : tipoMovimiento === 'EGRESO'
-          ? -cantNum
-          : calculoStockResultante.delta
-
       const kid = usuario?.kiosco_id || kiosco?.id
-      const ahora = new Date().toISOString()
-
-      // 1. Actualizar stock_actual en la tabla productos (verdad primaria de stock)
-      const { error: prodError } = await supabase
-        .from('productos')
-        .update({
-          stock_actual: calculoStockResultante.nuevoStock,
-          fecha_actualizacion: ahora,
-        })
-        .eq('id', productoSeleccionado.id)
-
-      if (prodError) throw prodError
-
-      // 2. Registrar movimiento de stock (BUG-25: solo si el stock se actualizó exitosamente)
-      const { error: movError } = await supabase.from('movimientos_stock').insert({
-        producto_id: productoSeleccionado.id,
-        kiosco_id: kid,
-        tipo: tipoMovimiento,
-        cantidad: cantidadMovimiento,
-        motivo: motivo as any,
-        notas: notas.trim() || null,
-        usuario_id: usuario?.id || null,
-        fecha: ahora,
+      const { data: movimientoData, error: movimientoError } = await supabase.rpc('registrar_movimiento_stock', {
+        p_producto_id: productoSeleccionado.id,
+        p_tipo: tipoMovimiento,
+        p_cantidad: cantNum,
+        p_motivo: motivo,
+        p_notas: notas.trim() || null,
+        p_fecha_vencimiento: tipoMovimiento === 'INGRESO' ? fechaVencimiento || null : null,
+        p_numero_lote: tipoMovimiento === 'INGRESO' ? numeroLote.trim() || null : null,
+        p_lote_id: null,
       })
-
-      if (movError) {
-        console.warn('Aviso: el movimiento de stock no pudo insertarse:', movError)
-      }
+      if (movimientoError) throw movimientoError
+      const resultadoMovimiento = Array.isArray(movimientoData) ? movimientoData[0] : movimientoData
+      if (!resultadoMovimiento) throw new Error('La base de datos no devolvió el resultado del movimiento.')
+      const stockAnterior = Number(resultadoMovimiento.stock_anterior)
+      const stockNuevo = Number(resultadoMovimiento.stock_nuevo)
 
       // Sincronizar de inmediato la caché local de productos para el POS
       try {
@@ -402,7 +393,7 @@ export function StockPage() {
             p.id === productoSeleccionado.id
               ? {
                   ...p,
-                  stock_actual: calculoStockResultante.nuevoStock,
+                  stock_actual: stockNuevo,
                   fecha_actualizacion: new Date().toISOString(),
                 }
               : p
@@ -413,33 +404,9 @@ export function StockPage() {
         console.warn('Error sincronizando stock local:', cacheErr)
       }
 
-      // 3. Si fue un ingreso y se indicó fecha de vencimiento, crear el lote correspondiente
-      if (tipoMovimiento === 'INGRESO' && fechaVencimiento) {
-        try {
-          await crearLote({
-            kiosco_id: kid || '',
-            producto_id: productoSeleccionado.id,
-            numero_lote: numeroLote.trim() || null,
-            fecha_vencimiento: fechaVencimiento,
-            cantidad: cantNum,
-          })
-        } catch (errLote) {
-          console.warn('Aviso al registrar lote de vencimiento:', errLote)
-        }
-      }
-
-      // 3b. Si fue un egreso (merma, rotura, vencimiento), descontar también de los lotes por FEFO
-      if (tipoMovimiento === 'EGRESO') {
-        try {
-          await useLoteStore.getState().descontarStockFEFO(productoSeleccionado.id, cantNum)
-        } catch (errLote) {
-          console.warn('Aviso al descontar lote de vencimiento en egreso:', errLote)
-        }
-      }
-
       playScanSound('success')
       toast.success(
-        `Stock actualizado: "${productoSeleccionado.descripcion}" (${calculoStockResultante.stockActual} → ${calculoStockResultante.nuevoStock})`
+        `Stock actualizado: "${productoSeleccionado.descripcion}" (${stockAnterior} → ${stockNuevo})`
       )
 
       setModalOpen(false)
@@ -530,52 +497,34 @@ export function StockPage() {
     setBajaLoteEnProgreso(loteId)
     try {
       const kid = usuario?.kiosco_id || kiosco?.id
-      await darDeBajaLote(loteId)
-
-      await supabase.from('movimientos_stock').insert({
-        producto_id: lote.producto_id,
-        kiosco_id: kid,
-        tipo: 'EGRESO',
-        cantidad: -lote.cantidad_actual,
-        motivo: 'VENCIMIENTO',
-        notas: `Baja de lote vencido ${lote.numero_lote ? `(${lote.numero_lote})` : ''} - Vto: ${lote.fecha_vencimiento}`,
-        usuario_id: usuario?.id || null,
-        fecha: new Date().toISOString(),
+      const { data: movimientoData, error: movimientoError } = await supabase.rpc('registrar_movimiento_stock', {
+        p_producto_id: lote.producto_id,
+        p_tipo: 'EGRESO',
+        p_cantidad: lote.cantidad_actual,
+        p_motivo: 'VENCIMIENTO',
+        p_notas: `Baja de lote vencido ${lote.numero_lote ? `(${lote.numero_lote})` : ''} - Vto: ${lote.fecha_vencimiento}`,
+        p_fecha_vencimiento: null,
+        p_numero_lote: null,
+        p_lote_id: loteId,
       })
+      if (movimientoError) throw movimientoError
+      const resultadoMovimiento = Array.isArray(movimientoData) ? movimientoData[0] : movimientoData
+      if (!resultadoMovimiento) throw new Error('La base de datos no devolvió el resultado del movimiento.')
+      const nuevoStock = Number(resultadoMovimiento.stock_nuevo)
 
-      // Obtener stock fresco de base de datos para evitar desincronización por estado stale
-      const { data: prodFresh } = await supabase
-        .from('productos')
-        .select('id, stock_actual')
-        .eq('id', lote.producto_id)
-        .maybeSingle()
-
-      if (prodFresh) {
-        const nuevoStock = Math.max(0, Math.round(((prodFresh.stock_actual || 0) - lote.cantidad_actual) * 1000) / 1000)
-        await supabase
-          .from('productos')
-          .update({ stock_actual: nuevoStock, fecha_actualizacion: new Date().toISOString() })
-          .eq('id', prodFresh.id)
-
-        // Sincronizar de inmediato la caché local de productos para que el POS refleje el stock correcto
-        try {
-          const kid = usuario?.kiosco_id || kiosco?.id
-          const cachedProds = getCachedProductos(kid)
-          if (cachedProds.length > 0) {
-            const actualizados = cachedProds.map((p) =>
-              p.id === prodFresh.id
-                ? {
-                    ...p,
-                    stock_actual: nuevoStock,
-                    fecha_actualizacion: new Date().toISOString(),
-                  }
-                : p
-            )
-            saveCachedProductos(actualizados, kid)
-          }
-        } catch (cacheErr) {
-          console.warn('Error sincronizando stock local tras baja de lote:', cacheErr)
+      // Sincronizar de inmediato la caché local de productos para que el POS refleje el stock correcto
+      try {
+        const cachedProds = getCachedProductos(kid)
+        if (cachedProds.length > 0) {
+          const actualizados = cachedProds.map((p) =>
+            p.id === lote.producto_id
+              ? { ...p, stock_actual: nuevoStock, fecha_actualizacion: new Date().toISOString() }
+              : p
+          )
+          saveCachedProductos(actualizados, kid)
         }
+      } catch (cacheErr) {
+        console.warn('Error sincronizando stock local tras baja de lote:', cacheErr)
       }
 
       toast.success(`Lote de "${nombreProd}" dado de baja correctamente`)
@@ -1315,7 +1264,7 @@ export function StockPage() {
               {tipoMovimiento === 'INGRESO'
                 ? 'Registrá la entrada de mercadería por compras o reposición. El stock se sumará automáticamente al inventario.'
                 : tipoMovimiento === 'EGRESO'
-                ? 'Registrá salidas por roturas, vencimientos, mermas o consumo del kiosco para mantener el stock físico exacto.'
+                ? 'Registrá cada salida como rotura, vencimiento, merma, robo, faltante o consumo interno para mantener el stock físico exacto.'
                 : 'Ajustá directamente el stock con el conteo físico real contado en la góndola o depósito.'}
             </p>
           </div>

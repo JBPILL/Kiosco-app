@@ -8,9 +8,13 @@
 import { supabase } from './supabase'
 import { descargarArchivo, sanitizarNombreArchivo } from './exportUtils'
 import { clearCachedProductos } from './utils'
+import { cifrarBackupJson } from './backupCrypto'
+import { identidadRestaurada } from './backupIdentity'
+import { leerColeccionPorId } from './backupPagination'
+import type { Categoria, Proveedor, Cliente, Producto } from '../types/database'
 
 export interface BackupData {
-  version: '2.0'
+  version: '2.0' | '3.0'
   app: 'KioskoApp'
   exportDate: string
   kiosco: {
@@ -31,6 +35,12 @@ export interface BackupData {
   proveedores: any[]
   promociones: any[]
   lotes_producto: any[]
+  contenido: {
+    colecciones: string[]
+    incluyeVentas: false
+    incluyeMovimientosCaja: false
+    incluyeCredenciales: false
+  }
 }
 
 export interface ResultadoValidacionBackup {
@@ -73,75 +83,92 @@ export interface ResultadoRestauracion {
   resumen?: ResumenRestauracion
 }
 
+export interface OpcionesBackupIntegral {
+  claveCifrado?: string
+}
+
+function idsConfirmados(datos: unknown): Set<string> {
+  if (!Array.isArray(datos)) return new Set()
+  return new Set(datos.flatMap((fila: unknown) => {
+    if (typeof fila !== 'object' || fila === null || !('id' in fila) || typeof fila.id !== 'string') return []
+    return [fila.id]
+  }))
+}
+
+async function guardarRegistroRestaurado(
+  tabla: 'promociones' | 'lotes_producto', origen: string, kioscoId: string,
+  idOriginal: string, campos: Record<string, unknown>,
+): Promise<void> {
+  const id = await identidadRestaurada(origen, kioscoId, tabla, idOriginal)
+  const { data: existente, error: errorLectura } = await supabase.from(tabla)
+    .select('id').eq('kiosco_id', kioscoId).eq('id', id).maybeSingle()
+  if (errorLectura) throw new Error(errorLectura.message)
+  // Evita que un conflicto de ID reasigne un registro de otro comercio mediante upsert.
+  const consulta = existente
+    ? supabase.from(tabla).update(campos).eq('kiosco_id', kioscoId).eq('id', id)
+    : supabase.from(tabla).insert({ ...campos, id, kiosco_id: kioscoId })
+  const { data: confirmado, error } = await consulta.select('id').single()
+  if (error) throw new Error(error.message)
+  if (confirmado?.id !== id) throw new Error('El servidor no confirmó el registro restaurado.')
+}
+
 /**
  * Genera y descarga un snapshot completo del kiosco en formato JSON
  */
 export async function generarBackupIntegral(
   kioscoId: string,
-  kioscoNombre?: string
+  kioscoNombre?: string,
+  opciones: OpcionesBackupIntegral = {}
 ): Promise<{ ok: boolean; mensaje: string }> {
   if (!kioscoId) {
     return { ok: false, mensaje: 'ID de comercio no especificado.' }
   }
 
   try {
-    const [
-      prodsRes,
-      catsRes,
-      clientesRes,
-      provsRes,
-      promosRes,
-      lotesRes,
-    ] = await Promise.all([
-      supabase.from('productos').select('*').eq('kiosco_id', kioscoId).limit(50000),
-      supabase.from('categorias').select('*').eq('kiosco_id', kioscoId).limit(50000),
-      supabase.from('clientes').select('*').eq('kiosco_id', kioscoId).limit(50000),
-      supabase.from('proveedores').select('*').eq('kiosco_id', kioscoId).limit(50000),
-      supabase.from('promociones').select('*').eq('kiosco_id', kioscoId).limit(50000),
-      supabase.from('lotes_producto').select('*').eq('kiosco_id', kioscoId).limit(50000),
-    ])
+    const { data, error } = await supabase.rpc('generar_snapshot_backup', { p_kiosco_id: kioscoId })
+    if (error) {
+      if (error.code === 'PGRST202' || error.code === '42883') {
+        throw new Error('El servicio de respaldo todavía no está habilitado. Contactá al administrador.')
+      }
+      throw new Error(error.message || 'No se pudo obtener el respaldo del servidor.')
+    }
 
-    const productos = prodsRes.data || []
-    const categorias = catsRes.data || []
-    const clientes = clientesRes.data || []
-    const proveedores = provsRes.data || []
-    const promociones = promosRes.data || []
-    const lotes = lotesRes.data || []
-
-    const backupPayload: BackupData = {
-      version: '2.0',
-      app: 'KioskoApp',
-      exportDate: new Date().toISOString(),
-      kiosco: {
-        id: kioscoId,
-        nombre: kioscoNombre || 'Kiosco',
-      },
-      estadisticas: {
-        totalProductos: productos.length,
-        totalCategorias: categorias.length,
-        totalClientes: clientes.length,
-        totalProveedores: proveedores.length,
-        totalPromociones: promociones.length,
-        totalLotes: lotes.length,
-      },
-      productos,
-      categorias,
-      clientes,
-      proveedores,
-      promociones,
-      lotes_producto: lotes,
+    const validacion = validarBackupJSON(JSON.stringify(data ?? null), kioscoId)
+    if (!validacion.valido || !validacion.datos || validacion.datos.version !== '3.0') {
+      throw new Error(validacion.mensaje || 'El servidor devolvió un respaldo incompleto o incompatible.')
+    }
+    if (!validacion.esMismoKiosco) {
+      throw new Error('El respaldo recibido no corresponde a este comercio.')
+    }
+    const recibido = data as BackupData
+    const backupPayload = validacion.datos
+    const conteos = Object.entries(backupPayload.estadisticas) as [keyof BackupData['estadisticas'], number][]
+    if (conteos.some(([campo, cantidad]) => recibido.estadisticas?.[campo] !== cantidad)) {
+      throw new Error('Los conteos del respaldo no coinciden con los registros recibidos. No se descargó una copia parcial.')
+    }
+    if (
+      recibido.contenido?.incluyeCredenciales !== false ||
+      recibido.contenido.incluyeVentas !== false ||
+      recibido.contenido.incluyeMovimientosCaja !== false
+    ) {
+      throw new Error('El alcance del respaldo recibido no corresponde al formato esperado.')
     }
 
     const jsonStr = JSON.stringify(backupPayload, null, 2)
+    const contenidoDescarga = opciones.claveCifrado
+      ? await cifrarBackupJson(jsonStr, opciones.claveCifrado)
+      : jsonStr
     const fechaHora = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
     const nombreSanitizado = sanitizarNombreArchivo(kioscoNombre || 'kiosco')
-    const fileName = `backup_integral_${nombreSanitizado}_${fechaHora}.json`
+    const fileName = opciones.claveCifrado
+      ? `backup_integral_cifrado_${nombreSanitizado}_${fechaHora}.json`
+      : `backup_integral_${nombreSanitizado}_${fechaHora}.json`
 
-    descargarArchivo(jsonStr, fileName, 'application/json;charset=utf-8;')
+    descargarArchivo(contenidoDescarga, fileName, 'application/json;charset=utf-8;')
 
     return {
       ok: true,
-      mensaje: `Copia de seguridad integral descargada con éxito (${productos.length} productos, ${clientes.length} clientes, ${promociones.length} promociones).`,
+      mensaje: `Copia de seguridad integral${opciones.claveCifrado ? ' cifrada' : ''} descargada con éxito (${backupPayload.productos.length} productos, ${backupPayload.clientes.length} clientes, ${backupPayload.promociones.length} promociones).`,
     }
   } catch (error: any) {
     return {
@@ -182,6 +209,24 @@ export function validarBackupJSON(contenidoTexto: string, kioscoActualId?: strin
     }
   }
 
+  const version = parsed.version || '2.0'
+  if (version !== '2.0' && version !== '3.0') {
+    return { valido: false, mensaje: `La versión de backup ${String(version)} no es compatible.`, advertencias, esMismoKiosco: false }
+  }
+
+  if (version === '3.0') {
+    const coleccionesRequeridas = ['productos', 'categorias', 'clientes', 'proveedores', 'promociones', 'lotes_producto']
+    const incompletas = coleccionesRequeridas.filter((coleccion) => !Array.isArray(parsed[coleccion]))
+    if (incompletas.length > 0 || !parsed.kiosco?.id || !parsed.exportDate) {
+      return {
+        valido: false,
+        mensaje: `La copia 3.0 está incompleta${incompletas.length ? `: faltan ${incompletas.join(', ')}` : '.'}`,
+        advertencias,
+        esMismoKiosco: false,
+      }
+    }
+  }
+
   // Comprobar colecciones esenciales
   if (!Array.isArray(parsed.productos)) {
     return {
@@ -214,7 +259,7 @@ export function validarBackupJSON(contenidoTexto: string, kioscoActualId?: strin
   }
 
   const datosValidados: BackupData = {
-    version: parsed.version || '2.0',
+    version,
     app: 'KioskoApp',
     exportDate: parsed.exportDate || new Date().toISOString(),
     kiosco: {
@@ -235,6 +280,14 @@ export function validarBackupJSON(contenidoTexto: string, kioscoActualId?: strin
     proveedores: Array.isArray(parsed.proveedores) ? parsed.proveedores : [],
     promociones: Array.isArray(parsed.promociones) ? parsed.promociones : [],
     lotes_producto: Array.isArray(parsed.lotes_producto) ? parsed.lotes_producto : [],
+    contenido: {
+      colecciones: Array.isArray(parsed.contenido?.colecciones)
+        ? parsed.contenido.colecciones.filter((item: unknown): item is string => typeof item === 'string')
+        : ['productos', 'categorias', 'clientes', 'proveedores', 'promociones', 'lotes_producto'],
+      incluyeVentas: false,
+      incluyeMovimientosCaja: false,
+      incluyeCredenciales: false,
+    },
   }
 
   return {
@@ -299,12 +352,11 @@ export async function restaurarBackupIntegral(
     // ─────────────────────────────────────────────────────────────
     reportar('CATEGORIAS', 'Sincronizando Categorías', 5, 'Consultando categorías existentes...')
 
-    const { data: categoriasExistentes, error: errCats } = await supabase
-      .from('categorias')
-      .select('id, nombre, orden')
-      .eq('kiosco_id', kioscoId)
-
-    if (errCats) throw new Error(`Error al leer categorías: ${errCats.message}`)
+    const categoriasExistentes = await leerColeccionPorId<Pick<Categoria, 'id' | 'nombre' | 'orden'>>((ultimoId) => {
+      const consulta = supabase.from('categorias').select('id, nombre, orden')
+        .eq('kiosco_id', kioscoId).order('id').limit(500)
+      return ultimoId ? consulta.gt('id', ultimoId) : consulta
+    }, 'categorías')
 
     const mapaCategoriasPorNombre = new Map<string, string>()
     const mapaCategoriasPorIdOriginal = new Map<string, string>()
@@ -319,7 +371,10 @@ export async function restaurarBackupIntegral(
     for (let i = 0; i < categoriasBackup.length; i++) {
       const cat = categoriasBackup[i]
       const nombreNorm = (cat.nombre || '').trim().toLowerCase()
-      if (!nombreNorm) continue
+      if (!nombreNorm) {
+        resumen.errores.push(`Categoría ${i + 1}: falta el nombre.`)
+        continue
+      }
 
       const idExistente = mapaCategoriasPorNombre.get(nombreNorm)
       if (idExistente) {
@@ -343,8 +398,8 @@ export async function restaurarBackupIntegral(
           mapaCategoriasPorNombre.set(nombreNorm, nuevaCat.id)
           mapaCategoriasPorIdOriginal.set(cat.id, nuevaCat.id)
           resumen.categoriasCreadas++
-        } else if (errInsertCat) {
-          resumen.errores.push(`Categoría "${cat.nombre}": ${errInsertCat.message}`)
+        } else {
+          resumen.errores.push(`Categoría "${cat.nombre}": ${errInsertCat?.message || 'El servidor no confirmó el registro creado.'}`)
         }
       }
 
@@ -363,12 +418,11 @@ export async function restaurarBackupIntegral(
     // ─────────────────────────────────────────────────────────────
     reportar('PROVEEDORES', 'Sincronizando Proveedores', 15, 'Consultando proveedores existentes...')
 
-    const { data: proveedoresExistentes, error: errProvs } = await supabase
-      .from('proveedores')
-      .select('id, nombre, cuit')
-      .eq('kiosco_id', kioscoId)
-
-    if (errProvs) throw new Error(`Error al leer proveedores: ${errProvs.message}`)
+    const proveedoresExistentes = await leerColeccionPorId<Pick<Proveedor, 'id' | 'nombre' | 'cuit'>>((ultimoId) => {
+      const consulta = supabase.from('proveedores').select('id, nombre, cuit')
+        .eq('kiosco_id', kioscoId).order('id').limit(500)
+      return ultimoId ? consulta.gt('id', ultimoId) : consulta
+    }, 'proveedores')
 
     const mapaProveedoresPorNombre = new Map<string, string>()
     const mapaProveedoresPorIdOriginal = new Map<string, string>()
@@ -382,7 +436,10 @@ export async function restaurarBackupIntegral(
     for (let i = 0; i < proveedoresBackup.length; i++) {
       const prov = proveedoresBackup[i]
       const nombreNorm = (prov.nombre || '').trim().toLowerCase()
-      if (!nombreNorm) continue
+      if (!nombreNorm) {
+        resumen.errores.push(`Proveedor ${i + 1}: falta el nombre.`)
+        continue
+      }
 
       const idExistente =
         mapaProveedoresPorNombre.get(nombreNorm) || (prov.cuit ? mapaProveedoresPorNombre.get(prov.cuit.trim()) : null)
@@ -390,7 +447,7 @@ export async function restaurarBackupIntegral(
       if (idExistente) {
         mapaProveedoresPorIdOriginal.set(prov.id, idExistente)
         // Actualizar datos de contacto si están presentes
-        await supabase
+        const { data: proveedoresConfirmados, error: errorActualizarProveedor } = await supabase
           .from('proveedores')
           .update({
             contacto_nombre: prov.contacto_nombre ?? null,
@@ -401,7 +458,15 @@ export async function restaurarBackupIntegral(
             cbu_alias: prov.cbu_alias ?? null,
           })
           .eq('id', idExistente)
-        resumen.proveedoresActualizados++
+          .eq('kiosco_id', kioscoId)
+          .select('id')
+        if (errorActualizarProveedor) {
+          resumen.errores.push(`Proveedor "${prov.nombre}": ${errorActualizarProveedor.message}`)
+        } else if (!idsConfirmados(proveedoresConfirmados).has(idExistente)) {
+          resumen.errores.push(`Proveedor "${prov.nombre}": el servidor no confirmó la actualización.`)
+        } else {
+          resumen.proveedoresActualizados++
+        }
       } else {
         const { data: nuevoProv, error: errInsertProv } = await supabase
           .from('proveedores')
@@ -424,8 +489,8 @@ export async function restaurarBackupIntegral(
           mapaProveedoresPorNombre.set(nombreNorm, nuevoProv.id)
           mapaProveedoresPorIdOriginal.set(prov.id, nuevoProv.id)
           resumen.proveedoresCreados++
-        } else if (errInsertProv) {
-          resumen.errores.push(`Proveedor "${prov.nombre}": ${errInsertProv.message}`)
+        } else {
+          resumen.errores.push(`Proveedor "${prov.nombre}": ${errInsertProv?.message || 'El servidor no confirmó el registro creado.'}`)
         }
       }
 
@@ -444,12 +509,11 @@ export async function restaurarBackupIntegral(
     // ─────────────────────────────────────────────────────────────
     reportar('CLIENTES', 'Sincronizando Clientes', 25, 'Consultando clientes actuales...')
 
-    const { data: clientesExistentes, error: errCli } = await supabase
-      .from('clientes')
-      .select('id, nombre, dni_cuit')
-      .eq('kiosco_id', kioscoId)
-
-    if (errCli) throw new Error(`Error al leer clientes: ${errCli.message}`)
+    const clientesExistentes = await leerColeccionPorId<Pick<Cliente, 'id' | 'nombre' | 'dni_cuit'>>((ultimoId) => {
+      const consulta = supabase.from('clientes').select('id, nombre, dni_cuit')
+        .eq('kiosco_id', kioscoId).order('id').limit(500)
+      return ultimoId ? consulta.gt('id', ultimoId) : consulta
+    }, 'clientes')
 
     const mapaClientesPorNombre = new Map<string, string>()
     clientesExistentes?.forEach((c) => {
@@ -463,14 +527,17 @@ export async function restaurarBackupIntegral(
     for (let i = 0; i < clientesBackup.length; i++) {
       const cli = clientesBackup[i]
       const nombreNorm = (cli.nombre || '').trim().toLowerCase()
-      if (!nombreNorm) continue
+      if (!nombreNorm) {
+        resumen.errores.push(`Cliente ${i + 1}: falta el nombre.`)
+        continue
+      }
 
       const idExistente =
         mapaClientesPorNombre.get(nombreNorm) ||
         (cli.dni_cuit && cli.dni_cuit.trim().length > 0 ? mapaClientesPorNombre.get(cli.dni_cuit.trim()) : null)
 
       if (idExistente) {
-        await supabase
+        const { data: clientesConfirmados, error: errorActualizarCliente } = await supabase
           .from('clientes')
           .update({
             telefono: cli.telefono || null,
@@ -480,7 +547,15 @@ export async function restaurarBackupIntegral(
             notas: cli.notas || null,
           })
           .eq('id', idExistente)
-        resumen.clientesActualizados++
+          .eq('kiosco_id', kioscoId)
+          .select('id')
+        if (errorActualizarCliente) {
+          resumen.errores.push(`Cliente "${cli.nombre}": ${errorActualizarCliente.message}`)
+        } else if (!idsConfirmados(clientesConfirmados).has(idExistente)) {
+          resumen.errores.push(`Cliente "${cli.nombre}": el servidor no confirmó la actualización.`)
+        } else {
+          resumen.clientesActualizados++
+        }
       } else {
         const { data: cliNuevo, error: errInsertCli } = await supabase
           .from('clientes')
@@ -505,8 +580,8 @@ export async function restaurarBackupIntegral(
             mapaClientesPorNombre.set(cli.dni_cuit.trim(), cliNuevo.id)
           }
           resumen.clientesCreados++
-        } else if (errInsertCli) {
-          resumen.errores.push(`Cliente "${cli.nombre}": ${errInsertCli.message}`)
+        } else {
+          resumen.errores.push(`Cliente "${cli.nombre}": ${errInsertCli?.message || 'El servidor no confirmó el registro creado.'}`)
         }
       }
 
@@ -525,12 +600,11 @@ export async function restaurarBackupIntegral(
     // ─────────────────────────────────────────────────────────────
     reportar('PRODUCTOS', 'Restaurando Catálogo de Productos', 35, 'Cargando catálogo existente...')
 
-    const { data: prodsExistentes, error: errProds } = await supabase
-      .from('productos')
-      .select('id, codigo_barras, descripcion, activo')
-      .eq('kiosco_id', kioscoId)
-
-    if (errProds) throw new Error(`Error al leer productos: ${errProds.message}`)
+    const prodsExistentes = await leerColeccionPorId<Pick<Producto, 'id' | 'codigo_barras' | 'descripcion' | 'activo'>>((ultimoId) => {
+      const consulta = supabase.from('productos').select('id, codigo_barras, descripcion, activo')
+        .eq('kiosco_id', kioscoId).order('id').limit(500)
+      return ultimoId ? consulta.gt('id', ultimoId) : consulta
+    }, 'productos')
 
     const mapaProdsPorCodigo = new Map<string, any>()
     const mapaProdsPorDesc = new Map<string, any>()
@@ -597,22 +671,22 @@ export async function restaurarBackupIntegral(
             }
 
             if (prodExistente) {
-              idsProcesadosEnBackup.add(prodExistente.id)
-              if (prod.id) {
-                mapaProductosIdOriginal.set(prod.id, prodExistente.id)
-              }
-              const { error: errUpd } = await supabase
+              const { data: productosConfirmados, error: errUpd } = await supabase
                 .from('productos')
                 .update({
                   ...datosProducto,
                   fecha_actualizacion: new Date().toISOString(),
                 })
                 .eq('id', prodExistente.id)
+                .eq('kiosco_id', kioscoId)
+                .select('id')
 
-              if (!errUpd) {
+              if (!errUpd && idsConfirmados(productosConfirmados).has(prodExistente.id)) {
+                idsProcesadosEnBackup.add(prodExistente.id)
+                if (prod.id) mapaProductosIdOriginal.set(prod.id, prodExistente.id)
                 resumen.productosActualizados++
               } else {
-                resumen.errores.push(`Producto "${prod.descripcion}": ${errUpd.message}`)
+                resumen.errores.push(`Producto "${prod.descripcion}": ${errUpd?.message || 'El servidor no confirmó la actualización.'}`)
               }
             } else {
               const { data: prodNuevo, error: errIns } = await supabase
@@ -633,8 +707,8 @@ export async function restaurarBackupIntegral(
                 if (codeNorm) mapaProdsPorCodigo.set(codeNorm, prodNuevo)
                 if (descNorm) mapaProdsPorDesc.set(descNorm, prodNuevo)
                 resumen.productosCreados++
-              } else if (errIns) {
-                resumen.errores.push(`Producto "${prod.descripcion}": ${errIns.message}`)
+              } else {
+                resumen.errores.push(`Producto "${prod.descripcion}": ${errIns?.message || 'El servidor no confirmó el registro creado.'}`)
               }
             }
           } catch (e: any) {
@@ -654,20 +728,6 @@ export async function restaurarBackupIntegral(
       )
     }
 
-    // Si el modo es REEMPLAZO TOTAL, desactivamos productos que no estuvieran en el backup
-    if (modo === 'REEMPLAZO' && prodsExistentes) {
-      reportar('PRODUCTOS', 'Ajustando Modo Reemplazo Total', 76, 'Desactivando artículos no incluidos en la copia...')
-      const idsADesactivar = prodsExistentes.filter((p) => p.activo && !idsProcesadosEnBackup.has(p.id)).map((p) => p.id)
-
-      if (idsADesactivar.length > 0) {
-        for (let i = 0; i < idsADesactivar.length; i += CHUNK_SIZE) {
-          const chunkIds = idsADesactivar.slice(i, i + CHUNK_SIZE)
-          await supabase.from('productos').update({ activo: false }).in('id', chunkIds)
-        }
-        resumen.productosDesactivados = idsADesactivar.length
-      }
-    }
-
     // ─────────────────────────────────────────────────────────────
     // PASO 5: PROMOCIONES Y COMBOS
     // ─────────────────────────────────────────────────────────────
@@ -676,24 +736,40 @@ export async function restaurarBackupIntegral(
 
     for (let i = 0; i < promocionesBackup.length; i++) {
       const promo = promocionesBackup[i]
-      if (!promo.nombre) continue
+      if (!promo.nombre) {
+        resumen.errores.push(`Promoción ${i + 1}: falta el nombre.`)
+        continue
+      }
 
       try {
-        const { error: errPromo } = await supabase.from('promociones').insert({
-          kiosco_id: kioscoId,
+        const productoId = promo.producto_id ? mapaProductosIdOriginal.get(promo.producto_id) : null
+        const categoriaId = promo.categoria_id ? mapaCategoriasPorIdOriginal.get(promo.categoria_id) : null
+        if (promo.producto_id && !productoId) throw new Error('No se recuperó el producto de la promoción.')
+        if (promo.categoria_id && !categoriaId) throw new Error('No se recuperó la categoría de la promoción.')
+        const itemsCombo = Array.isArray(promo.items_combo) ? promo.items_combo.map((item: { producto_id: string; cantidad: number }) => {
+          const producto = mapaProductosIdOriginal.get(item.producto_id)
+          if (!producto) throw new Error('No se recuperó un componente del combo.')
+          return { producto_id: producto, cantidad: item.cantidad }
+        }) : null
+        await guardarRegistroRestaurado('promociones', backupData.kiosco.id, kioscoId, promo.id, {
           nombre: promo.nombre.trim(),
-          tipo: promo.tipo || 'DESCUENTO_PORCENTAJE',
-          valor: Number(promo.valor) || 0,
-          dias_semana: Array.isArray(promo.dias_semana) ? promo.dias_semana : [1, 2, 3, 4, 5, 6, 7],
-          hora_desde: promo.hora_desde || null,
-          hora_hasta: promo.hora_hasta || null,
+          tipo: promo.tipo,
+          producto_id: productoId || null,
+          categoria_id: categoriaId || null,
+          cantidad_minima: promo.cantidad_minima ?? 1,
+          cantidad_paga: promo.cantidad_paga ?? null,
+          precio_unitario_promo: promo.precio_unitario_promo ?? null,
+          descuento_porcentaje: promo.descuento_porcentaje ?? null,
+          precio_combo: promo.precio_combo ?? null,
+          items_combo: itemsCombo,
+          dias_semana: Array.isArray(promo.dias_semana) ? promo.dias_semana : null,
           activo: promo.activo !== false,
-          fecha_desde: promo.fecha_desde || null,
-          fecha_hasta: promo.fecha_hasta || null,
+          fecha_inicio: promo.fecha_inicio || null,
+          fecha_fin: promo.fecha_fin || null,
         })
-        if (!errPromo) resumen.promocionesRestauradas++
-      } catch {
-        // Ignorar si la promo ya existía o falla opcional
+        resumen.promocionesRestauradas++
+      } catch (error: unknown) {
+        resumen.errores.push(`Promoción "${promo.nombre}": ${error instanceof Error ? error.message : 'Error inesperado.'}`)
       }
     }
 
@@ -705,7 +781,10 @@ export async function restaurarBackupIntegral(
 
     for (let i = 0; i < lotesBackup.length; i++) {
       const lote = lotesBackup[i]
-      if (!lote.fecha_vencimiento) continue
+      if (!lote.fecha_vencimiento) {
+        resumen.errores.push(`Lote ${i + 1}: falta la fecha de vencimiento.`)
+        continue
+      }
 
       // Resolver ID del producto: si venía con ID original mapeado, o directo si coincide
       const prodIdFinal =
@@ -713,12 +792,12 @@ export async function restaurarBackupIntegral(
 
       // Si no existe el producto en el kiosco destino, omitir para evitar fallo de clave foránea FK
       if (!prodIdFinal || (!idsExistentes.has(prodIdFinal) && !idsProcesadosEnBackup.has(prodIdFinal))) {
+        resumen.errores.push(`Lote ${i + 1}: no se pudo recuperar el producto asociado.`)
         continue
       }
 
       try {
-        const { error: errLote } = await supabase.from('lotes_producto').insert({
-          kiosco_id: kioscoId,
+        await guardarRegistroRestaurado('lotes_producto', backupData.kiosco.id, kioscoId, lote.id, {
           producto_id: prodIdFinal,
           numero_lote: lote.numero_lote || null,
           fecha_vencimiento: lote.fecha_vencimiento,
@@ -726,9 +805,33 @@ export async function restaurarBackupIntegral(
           cantidad_actual: Number(lote.cantidad_actual) || 0,
           activo: lote.activo !== false,
         })
-        if (!errLote) resumen.lotesRestaurados++
-      } catch {
-        // Ignorar fallas menores en lotes huérfanos
+        resumen.lotesRestaurados++
+      } catch (error: unknown) {
+        resumen.errores.push(`Lote ${i + 1}: ${error instanceof Error ? error.message : 'Error inesperado.'}`)
+      }
+    }
+
+    // Si el modo es REEMPLAZO TOTAL, desactivamos productos que no estuvieran en el backup
+    if (modo === 'REEMPLAZO' && prodsExistentes && resumen.errores.length === 0) {
+      reportar('PRODUCTOS', 'Ajustando Modo Reemplazo Total', 96, 'Desactivando artículos no incluidos en la copia...')
+      const idsADesactivar = prodsExistentes.filter((p) => p.activo && !idsProcesadosEnBackup.has(p.id)).map((p) => p.id)
+
+      if (idsADesactivar.length > 0) {
+        for (let i = 0; i < idsADesactivar.length; i += CHUNK_SIZE) {
+          const chunkIds = idsADesactivar.slice(i, i + CHUNK_SIZE)
+          const { data: productosDesactivados, error: errorDesactivar } = await supabase.from('productos')
+            .update({ activo: false }).eq('kiosco_id', kioscoId).in('id', chunkIds).select('id')
+          if (errorDesactivar) {
+            resumen.errores.push(`Desactivación de productos: ${errorDesactivar.message}`)
+          } else {
+            const confirmados = idsConfirmados(productosDesactivados)
+            const cantidadConfirmada = chunkIds.filter((id) => confirmados.has(id)).length
+            resumen.productosDesactivados += cantidadConfirmada
+            if (cantidadConfirmada !== chunkIds.length) {
+              resumen.errores.push(`Desactivación de productos: el servidor no confirmó ${chunkIds.length - cantidadConfirmada} artículos.`)
+            }
+          }
+        }
       }
     }
 
@@ -737,29 +840,36 @@ export async function restaurarBackupIntegral(
     // ─────────────────────────────────────────────────────────────
     reportar('FINALIZANDO', 'Finalizando Restauración', 98, 'Limpiando cachés locales del sistema...')
 
+    const completa = resumen.errores.length === 0
+    reportar('FINALIZANDO', completa ? 'Completado' : 'Restauración incompleta', 100,
+      completa ? 'Restauración integral finalizada con éxito.' : 'Se aplicaron cambios, pero quedaron registros sin recuperar.')
+
+    return {
+      ok: completa,
+      mensaje: completa
+        ? `Restauración completada: ${resumen.productosCreados} productos creados, ${resumen.productosActualizados} actualizados, ${resumen.categoriasCreadas} categorías nuevas.`
+        : `Restauración incompleta: ${resumen.errores.length} errores. Los cambios ya aplicados se conservaron; revisá el informe antes de reintentar.`,
+      resumen,
+    }
+  } catch (err: unknown) {
+    console.error('Error durante restaurarBackupIntegral:', err)
+    const mensaje = err instanceof Error ? err.message : 'Ocurrió un error inesperado al restaurar la copia de seguridad.'
+    resumen.errores.push(mensaje)
+    return {
+      ok: false,
+      mensaje,
+      resumen,
+    }
+  } finally {
+    // Una falla posterior no revierte las escrituras ya aplicadas en el servidor.
     try {
       clearCachedProductos(kioscoId)
       localStorage.removeItem('kiosko_cache_categorias')
       localStorage.removeItem(`kiosko_cache_categorias_${kioscoId}`)
       localStorage.removeItem('kiosko_cache_productos')
       localStorage.removeItem(`kiosko_cache_productos_${kioscoId}`)
-    } catch (e) {
-      console.warn('Aviso limpiando caché local:', e)
-    }
-
-    reportar('FINALIZANDO', 'Completado', 100, 'Restauración integral finalizada con éxito.')
-
-    return {
-      ok: true,
-      mensaje: `Restauración completada: ${resumen.productosCreados} productos creados, ${resumen.productosActualizados} actualizados, ${resumen.categoriasCreadas} categorías nuevas.`,
-      resumen,
-    }
-  } catch (err: any) {
-    console.error('Error durante restaurarBackupIntegral:', err)
-    return {
-      ok: false,
-      mensaje: err?.message || 'Ocurrió un error inesperado al restaurar la copia de seguridad.',
-      resumen,
+    } catch (error: unknown) {
+      console.warn('Aviso limpiando caché local:', error)
     }
   }
 }

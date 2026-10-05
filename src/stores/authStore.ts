@@ -36,6 +36,32 @@ interface AuthState {
 let authRecoveryListenerRegistered = false
 let authSubscription: { unsubscribe: () => void } | null = null
 
+function limpiarCostosPrivadosSiNoEsDueno(usuario: Usuario): void {
+  if (usuario.rol === 'DUEÑO' || usuario.es_superadmin || typeof localStorage === 'undefined') return
+  try {
+    const keys = Object.keys(localStorage)
+    for (const key of keys) {
+      if (key.startsWith('kiosko_cache_costos_privados_')) {
+        localStorage.removeItem(key)
+        continue
+      }
+      if (!key.startsWith('kiosko_cache_productos')) continue
+
+      const raw = localStorage.getItem(key)
+      if (!raw) continue
+      const productos: unknown = JSON.parse(raw)
+      if (!Array.isArray(productos)) continue
+      localStorage.setItem(
+        key,
+        JSON.stringify(productos.map((producto) => ({
+          ...producto,
+          precio_costo: 0,
+        })))
+      )
+    }
+  } catch {}
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   usuario: null,
   kiosco: null,
@@ -85,6 +111,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         await supabase.auth.signOut()
         throw new Error('Este usuario no tiene un comercio asignado. Contactá al soporte.')
       }
+
+      limpiarCostosPrivadosSiNoEsDueno(usuario as Usuario)
 
       // 3. Traer datos del kiosco
       let kioscoData: Kiosco | null = null
@@ -219,6 +247,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ cargando: false })
         return
       }
+
+      limpiarCostosPrivadosSiNoEsDueno(usuario as Usuario)
 
       let kioscoData: Kiosco | null = null
       let subData: Suscripcion | null = null

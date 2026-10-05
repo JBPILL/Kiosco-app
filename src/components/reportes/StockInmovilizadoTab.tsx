@@ -9,6 +9,7 @@ import { Button } from '../ui/Button'
 import { IconExportar } from '../ui/Icons'
 import type { Producto, Categoria } from '../../types/database'
 import toast from 'react-hot-toast'
+import { adjuntarCostosProtegidos, cargarCostosProtegidos } from '../../lib/productCostAccess'
 
 export function StockInmovilizadoTab() {
   const { usuario, kiosco } = useAuthStore()
@@ -56,7 +57,14 @@ export function StockInmovilizadoTab() {
           setProductos(localCache.filter((p: Producto) => p.activo && p.stock_actual > 0))
         }
       } else if (prodData) {
-        setProductos(prodData)
+        try {
+          const costos = await cargarCostosProtegidos(prodData.map((producto: Producto) => producto.id))
+          setProductos(adjuntarCostosProtegidos(prodData as Producto[], costos))
+        } catch (errorCosto) {
+          console.error('Error cargando costos protegidos del stock inmovilizado:', errorCosto)
+          toast.error('No se pudieron cargar los costos privados del stock inmovilizado.')
+          setProductos(prodData as Producto[])
+        }
       }
 
       // 4. Obtener las últimas ventas agrupadas por producto

@@ -11,6 +11,7 @@ import {
 } from '../../lib/backupUtils'
 import { formatFecha } from '../../lib/utils'
 import toast from 'react-hot-toast'
+import { descifrarBackupJson, esBackupCifrado } from '../../lib/backupCrypto'
 
 interface RestaurarBackupModalProps {
   isOpen: boolean
@@ -36,6 +37,9 @@ export function RestaurarBackupModal({
   const [restaurando, setRestaurando] = useState(false)
   const [progreso, setProgreso] = useState<ProgresoRestauracion | null>(null)
   const [resumenExito, setResumenExito] = useState<ResumenRestauracion | null>(null)
+  const [requiereClave, setRequiereClave] = useState(false)
+  const [claveCifrado, setClaveCifrado] = useState('')
+  const [descifrando, setDescifrando] = useState(false)
 
   const resetearEstado = () => {
     setArchivoCargado(null)
@@ -46,6 +50,8 @@ export function RestaurarBackupModal({
     setRestaurando(false)
     setProgreso(null)
     setResumenExito(null)
+    setRequiereClave(false)
+    setClaveCifrado('')
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -57,6 +63,26 @@ export function RestaurarBackupModal({
     }
     resetearEstado()
     onClose()
+  }
+
+  const validarContenido = (texto: string, file: File) => {
+    const resultado = validarBackupJSON(texto, kioscoId)
+    if (!resultado.valido) {
+      setErrorValidacion(resultado.mensaje || 'Archivo de copia de seguridad inválido.')
+      setArchivoCargado(null)
+      setBackupData(null)
+      setAdvertencias([])
+      return
+    }
+    if (resultado.datos) {
+      setArchivoCargado(file)
+      setBackupData(resultado.datos)
+      setAdvertencias(resultado.advertencias)
+      setErrorValidacion(null)
+      setRequiereClave(false)
+      setClaveCifrado('')
+      toast.success(`Archivo validado: ${resultado.datos.estadisticas.totalProductos} productos detectados.`)
+    }
   }
 
   const procesarArchivo = (file: File) => {
@@ -74,25 +100,36 @@ export function RestaurarBackupModal({
     const reader = new FileReader()
     reader.onload = (e) => {
       const texto = e.target?.result as string
-      const resultado = validarBackupJSON(texto, kioscoId)
-
-      if (!resultado.valido) {
-        setErrorValidacion(resultado.mensaje || 'Archivo de copia de seguridad inválido.')
-        setArchivoCargado(null)
+      if (esBackupCifrado(texto)) {
+        setArchivoCargado(file)
         setBackupData(null)
         setAdvertencias([])
-      } else if (resultado.datos) {
-        setArchivoCargado(file)
-        setBackupData(resultado.datos)
-        setAdvertencias(resultado.advertencias)
+        setRequiereClave(true)
         setErrorValidacion(null)
-        toast.success(`Archivo validado: ${resultado.datos.estadisticas.totalProductos} productos detectados.`)
+        return
       }
+      validarContenido(texto, file)
     }
     reader.onerror = () => {
       setErrorValidacion('Error al leer el archivo desde el dispositivo.')
     }
     reader.readAsText(file)
+  }
+
+  const desbloquearBackup = async () => {
+    if (!archivoCargado || !claveCifrado || descifrando) return
+    setDescifrando(true)
+    setErrorValidacion(null)
+    try {
+      const texto = await archivoCargado.text()
+      const contenido = await descifrarBackupJson(texto, claveCifrado)
+      validarContenido(contenido, archivoCargado)
+    } catch (err) {
+      setErrorValidacion(err instanceof Error ? err.message : 'No se pudo abrir el backup cifrado.')
+    } finally {
+      setClaveCifrado('')
+      setDescifrando(false)
+    }
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -115,7 +152,7 @@ export function RestaurarBackupModal({
 
     if (modo === 'REEMPLAZO') {
       const confirma = confirm(
-        '⚠️ ATENCIÓN: El modo "Reemplazo Total (Rollback)" dejará el catálogo y entidades exactamente como estaban en el backup.\n\nLos productos actuales que no figuren en la copia quedarán desactivados.\n\n¿Estás completamente seguro de continuar?'
+        '⚠️ ATENCIÓN: Se recuperarán los registros de esta copia. Los productos actuales que no figuren en ella quedarán desactivados si la recuperación previa no presenta errores.\n\nLa restauración aplica cambios por etapas y no revierte automáticamente las escrituras si algo falla.\n\n¿Querés continuar?'
       )
       if (!confirma) return
     }
@@ -133,6 +170,7 @@ export function RestaurarBackupModal({
         toast.success(resultado.mensaje, { duration: 5000 })
         await onRestauracionExitosa()
       } else {
+        if (resultado.resumen) setResumenExito(resultado.resumen)
         toast.error(resultado.mensaje || 'Error al restaurar copia de seguridad.')
       }
     } catch (err: any) {
@@ -195,8 +233,8 @@ export function RestaurarBackupModal({
             Guía
           </span>
           <p className="leading-relaxed font-medium">
-            Recuperá la información completa de tu negocio (productos, costos, precios, categorías, clientes con cuenta
-            corriente, proveedores, promociones y vencimientos) desde una copia oficial `.JSON` generada por KioskoApp.
+            Recuperá los datos operativos incluidos en la copia (productos, costos, precios, categorías, clientes,
+            proveedores, promociones y vencimientos). Las copias actuales no incluyen ventas ni movimientos de caja.
           </p>
         </div>
 
@@ -279,6 +317,26 @@ export function RestaurarBackupModal({
               )}
 
               {/* Resumen de Entidades Detectadas */}
+              {archivoCargado && requiereClave && (
+                <div className="mt-3 space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+                  <p className="text-xs font-semibold text-amber-900 dark:text-amber-200">Backup cifrado. Ingresá la contraseña para validarlo antes de restaurar.</p>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      type="password"
+                      autoComplete="current-password"
+                      value={claveCifrado}
+                      onChange={(event) => setClaveCifrado(event.target.value)}
+                      onKeyDown={(event) => { if (event.key === 'Enter') void desbloquearBackup() }}
+                      placeholder="Contraseña del backup"
+                      className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900"
+                    />
+                    <Button type="button" variant="primary" disabled={claveCifrado.length < 12 || descifrando} loading={descifrando} onClick={desbloquearBackup}>
+                      Abrir backup
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {backupData && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 pt-1">
                   <div className="p-2 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-center">
@@ -378,8 +436,8 @@ export function RestaurarBackupModal({
                   </span>
                 </div>
                 <p className="text-[11px] text-gray-600 dark:text-gray-400 leading-relaxed">
-                  Restaura el estado exacto de la copia de seguridad. Los artículos que no figuren en este archivo
-                  quedarán archivados/inactivos en el catálogo.
+                  Recupera los registros incluidos en la copia y desactiva los artículos ausentes si la recuperación previa no presenta errores.
+                  Las ventas y los movimientos de caja quedan fuera de este respaldo.
                 </p>
               </div>
             </div>
@@ -411,18 +469,31 @@ export function RestaurarBackupModal({
 
         {/* Bloque 4: Informe de Resultados al Completar */}
         {resumenExito && (
-          <div className="p-4 bg-emerald-50/80 dark:bg-emerald-950/40 border-2 border-emerald-300 dark:border-emerald-800 rounded-xl space-y-3">
+          <div className={`p-4 border-2 rounded-xl space-y-3 ${resumenExito.errores.length
+            ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800'
+            : 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800'}`}>
             <div className="flex items-center gap-2">
-              <span className="text-lg">🎉</span>
+              <span className="text-lg">{resumenExito.errores.length ? '⚠️' : '✓'}</span>
               <div>
                 <h4 className="text-xs font-bold text-emerald-950 dark:text-emerald-200">
-                  ¡Copia de seguridad restaurada con éxito!
+                  {resumenExito.errores.length ? 'Restauración incompleta' : 'Copia de seguridad restaurada con éxito'}
                 </h4>
                 <p className="text-[11px] text-emerald-800 dark:text-emerald-300">
-                  La base de datos y el catálogo han sido sincronizados correctamente en tu comercio ({kioscoNombre || 'Kiosco'}).
+                  {resumenExito.errores.length
+                    ? 'Los cambios ya aplicados se conservaron. Revisá los errores antes de volver a cargar la copia.'
+                    : `Se recuperaron los registros incluidos en la copia para ${kioscoNombre || 'Kiosco'}.`}
                 </p>
               </div>
             </div>
+
+            {resumenExito.errores.length > 0 && (
+              <div role="alert" className="max-h-48 overflow-auto text-xs text-amber-900 dark:text-amber-200">
+                <p className="font-semibold">Registros pendientes ({resumenExito.errores.length})</p>
+                <ul className="mt-2 list-disc space-y-1 pl-4">
+                  {resumenExito.errores.map((error, index) => <li key={index}>{error}</li>)}
+                </ul>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
               <div className="p-2 bg-white dark:bg-gray-900 rounded-lg border border-emerald-200 dark:border-emerald-800 text-center">

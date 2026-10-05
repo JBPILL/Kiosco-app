@@ -283,6 +283,10 @@ export function getProductosCacheKey(kioscoId?: string | null): string {
   return kioscoId ? `kiosko_cache_productos_${kioscoId}` : 'kiosko_cache_productos'
 }
 
+function sinCostosEnCache(productos: any[]): any[] {
+  return productos.map((producto) => ({ ...producto, precio_costo: 0 }))
+}
+
 /**
  * Lee la lista de productos cacheados para el kiosco activo con fallback a clave genérica.
  */
@@ -291,7 +295,16 @@ export function getCachedProductos(kioscoId?: string | null): any[] {
   try {
     const key = getProductosCacheKey(kioscoId)
     const raw = localStorage.getItem(key) || (kioscoId ? localStorage.getItem('kiosko_cache_productos') : null)
-    return raw ? JSON.parse(raw) : []
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    const productosSeguros = sinCostosEnCache(parsed)
+    const jsonSeguro = JSON.stringify(productosSeguros)
+    if (jsonSeguro !== raw) {
+      localStorage.setItem(key, jsonSeguro)
+      localStorage.setItem('kiosko_cache_productos', jsonSeguro)
+    }
+    return productosSeguros
   } catch {
     return []
   }
@@ -303,7 +316,7 @@ export function getCachedProductos(kioscoId?: string | null): any[] {
 export function saveCachedProductos(productos: any[], kioscoId?: string | null): void {
   if (typeof window === 'undefined') return
   try {
-    const json = JSON.stringify(productos)
+    const json = JSON.stringify(sinCostosEnCache(productos))
     const key = getProductosCacheKey(kioscoId)
     localStorage.setItem(key, json)
     // Sincronizar clave global como compatibilidad
