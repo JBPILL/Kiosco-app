@@ -50,7 +50,7 @@ export function ConfigPage() {
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [modalImportarOpen, setModalImportarOpen] = useState(false)
   const [modalRestaurarBackupOpen, setModalRestaurarBackupOpen] = useState(false)
-  const [cifrarBackupIntegral, setCifrarBackupIntegral] = useState(true)
+  const [cifrarBackupIntegral, setCifrarBackupIntegral] = useState(false)
   const [claveBackupIntegral, setClaveBackupIntegral] = useState('')
   const [confirmacionClaveBackupIntegral, setConfirmacionClaveBackupIntegral] = useState('')
 
@@ -810,21 +810,23 @@ export function ConfigPage() {
 
                   <fieldset className="pt-3 border-t border-gray-100 dark:border-gray-700/80 space-y-2">
                     <legend className="text-xs font-bold text-gray-700 dark:text-gray-300">Módulos operativos de este comercio</legend>
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400">El rubro sugiere una configuración inicial; activá cada capacidad que use tu negocio. Los productos existentes se conservan.</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-700 dark:text-gray-300">
+                    <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">El rubro sugiere una configuración inicial; activá cada capacidad que use tu negocio. Los productos existentes se conservan.</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {([
                         ['envases', 'Envases retornables'],
                         ['balanza', 'Lectura de balanza y códigos de peso'],
                         ['vencimientos', 'Lotes y vencimientos'],
                         ['serviciosRapidos', 'Servicios rápidos'],
                       ] as const).map(([key, label]) => (
-                        <label key={key} className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 p-2">
-                          <input type="checkbox" checked={capacidadesOperativas[key]} onChange={(e) => setCapacidadesOperativas((actual) => ({ ...actual, [key]: e.target.checked }))} />
+                        <label key={key} className={`flex items-center gap-3 rounded-xl border p-3 text-xs font-semibold cursor-pointer transition-colors ${capacidadesOperativas[key]
+                          ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300'
+                          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+                          <input className="h-4 w-4 shrink-0 accent-indigo-600 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500" type="checkbox" checked={capacidadesOperativas[key]} onChange={(e) => setCapacidadesOperativas((actual) => ({ ...actual, [key]: e.target.checked }))} />
                           {label}
                         </label>
                       ))}
                     </div>
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400">Los productos marcados como pesables siempre permiten ingresar el peso manualmente, aunque la lectura de balanza esté desactivada.</p>
+                    <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">Los productos marcados como pesables siempre permiten ingresar el peso manualmente, aunque la lectura de balanza esté desactivada.</p>
                   </fieldset>
                   
                   {/* Selector de Ancho de Ticket Térmico Predeterminado */}
@@ -832,19 +834,20 @@ export function ConfigPage() {
                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
                       Impresora térmica de este puesto
                     </label>
-                    <div className="flex flex-wrap gap-2">
-                      <Button type="button" variant="secondary" loading={configurandoImpresora} disabled={!isWebSerialSupported()} onClick={handleConfigurarImpresora}>
+                    <div className="flex flex-wrap gap-3">
+                      <Button type="button" size="sm" className="rounded-xl font-semibold py-2.5 shadow-xs" variant="secondary" loading={configurandoImpresora} disabled={!isWebSerialSupported()} onClick={handleConfigurarImpresora}>
                         Seleccionar impresora
                       </Button>
-                      <Button type="button" variant="secondary" loading={probandoImpresora} disabled={!isWebSerialSupported()} onClick={handleProbarImpresora}>
+                      <Button type="button" size="sm" className="rounded-xl font-semibold py-2.5 shadow-xs" variant="secondary" loading={probandoImpresora} disabled={!isWebSerialSupported()} onClick={handleProbarImpresora}>
                         Imprimir prueba
                       </Button>
                     </div>
                     <p className="text-[11px] text-gray-500 dark:text-gray-400">
                       Seleccioná el puerto acá, antes de cobrar. La prueba no abre el cajón. Requiere Chrome o Edge en un origen seguro.
                     </p>
-                    <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                    <label className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 text-xs font-semibold text-gray-700 dark:text-gray-300 cursor-pointer">
                       <input
+                        className="h-4 w-4 shrink-0 accent-indigo-600 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
                         type="checkbox"
                         checked={abrirCajonEnEfectivo}
                         onChange={(e) => {
@@ -1582,8 +1585,9 @@ export function ConfigPage() {
                         Guardá productos, categorías, clientes, proveedores, promociones y lotes en una copia coherente. Incluye costos; el historial de ventas y caja requiere un respaldo adicional.
                       </p>
                     </div>
-                    <label className="flex items-center gap-2 text-[11px] text-gray-700 dark:text-gray-300">
+                    <label className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-xs font-semibold text-gray-700 dark:text-gray-300 cursor-pointer">
                       <input
+                        className="h-4 w-4 shrink-0 accent-indigo-600 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
                         type="checkbox"
                         checked={cifrarBackupIntegral}
                         onChange={(e) => setCifrarBackupIntegral(e.target.checked)}

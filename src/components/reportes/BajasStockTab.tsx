@@ -4,6 +4,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { formatPrecio, getFechaLocal } from '../../lib/utils'
 import { ETIQUETAS_BAJAS, validarReporteBajas, type ReporteBajas } from '../../lib/stockLossReport'
 import { Button } from '../ui/Button'
+import { Input } from '../ui/Input'
 
 export function BajasStockTab() {
   const { usuario, kiosco } = useAuthStore()
@@ -59,12 +60,8 @@ export function BajasStockTab() {
           <p className="text-xs text-gray-500 dark:text-gray-400">Incluye todos los movimientos del período, por día argentino. Estimación de gestión; no modifica el resultado fiscal.</p>
         </div>
         <div className="flex flex-wrap items-end gap-3">
-          <label className="text-sm text-gray-700 dark:text-gray-300">Desde
-            <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="block rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1" />
-          </label>
-          <label className="text-sm text-gray-700 dark:text-gray-300">Hasta
-            <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="block rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1" />
-          </label>
+          <div className="w-40"><Input label="Desde" aria-label="Desde" type="date" value={desde} onChange={(e) => setDesde(e.target.value)} /></div>
+          <div className="w-40"><Input label="Hasta" aria-label="Hasta" type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} /></div>
           <Button variant="secondary" size="sm" disabled={cargando} onClick={() => setRevision((valor) => valor + 1)}>Actualizar</Button>
         </div>
       </div>

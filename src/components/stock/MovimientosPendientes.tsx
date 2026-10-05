@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Button } from '../ui/Button'
 import { supabase } from '../../lib/supabase'
 import { listarMovimientosStockPendientes, prepararMovimientoStock, type MovimientoStockPendiente } from '../../lib/stockOperation'
 import toast from 'react-hot-toast'
@@ -57,16 +58,16 @@ export function MovimientosPendientes({ kioscoId, onRefrescar, nombreProducto }:
 
   if (!error && pendientes.length === 0) return null
   return <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 dark:bg-amber-950/30" aria-label="Movimientos pendientes">
-    <h2 className="font-semibold">Movimientos pendientes de este dispositivo</h2>
+    <h2 className="text-sm font-bold text-amber-900 dark:text-amber-200">Movimientos pendientes de este dispositivo</h2>
     <p className="mt-1 text-sm">Consultá su estado antes de cargar otro movimiento del mismo producto. Cancelar no revierte movimientos ya aplicados.</p>
     {error && <p role="alert" className="mt-2 text-sm">{error}</p>}
     {pendientes.map((pendiente) => <div key={pendiente.id} className="mt-3 space-y-2 border-t border-amber-200 pt-3 text-sm">
       <p>{String(pendiente.solicitud.p_tipo || 'Movimiento')} · Cantidad: {String(pendiente.solicitud.p_cantidad)} · Motivo: {String(pendiente.solicitud.p_motivo || '')}</p>
       <p className="text-xs">Producto: {nombreProducto(pendiente.productoId)}</p>
       <div className="flex flex-wrap gap-3">
-        <button disabled={ocupado} onClick={() => void resolver(pendiente,'CONSULTAR')}>Consultar estado</button>
-        <button disabled={ocupado} onClick={() => void resolver(pendiente,'REINTENTAR')}>Reintentar solicitud original</button>
-        <button disabled={ocupado} onClick={() => void resolver(pendiente,'CANCELAR')}>Cancelar solicitud pendiente</button>
+        <Button type="button" variant="secondary" size="sm" disabled={ocupado} onClick={() => void resolver(pendiente,'CONSULTAR')}>Consultar estado</Button>
+        <Button type="button" variant="primary" size="sm" disabled={ocupado} onClick={() => void resolver(pendiente,'REINTENTAR')}>Reintentar solicitud original</Button>
+        <Button type="button" variant="danger" size="sm" disabled={ocupado} onClick={() => void resolver(pendiente,'CANCELAR')}>Cancelar solicitud pendiente</Button>
       </div>
     </div>)}
   </section>
