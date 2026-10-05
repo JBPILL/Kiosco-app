@@ -5,6 +5,7 @@ import { db, encolar, llamadasA, resetDb, responder } from '../test/supabaseMock
 
 vi.mock('../lib/supabase', async () => (await import('../test/supabaseMock')).crearModuloSupabase())
 vi.mock('../components/reportes/BalanceContableTab', () => ({ BalanceContableTab: () => <div>balance-tab</div> }))
+vi.mock('../components/reportes/RotacionTab', () => ({ RotacionTab: () => <div>rotacion-tab</div> }))
 vi.mock('../components/pos/TicketReceiptModal', () => ({ TicketReceiptModal: () => null }))
 vi.mock('../lib/exportUtils', () => ({ exportarVentasExcel: vi.fn() }))
 
@@ -321,3 +322,34 @@ describe('ReportesPage: anulación de venta', () => {
     expect(llamadasA('ventas', 'update')).toHaveLength(0)
   })
 })
+
+describe('ReportesPage - Pestaña Rotación y Stock Inmovilizado', () => {
+  it('muestra la pestaña de rotación para DUEÑO y permite seleccionarla', async () => {
+    useAuthStore.setState({
+      usuario: { id: 'u1', nombre: 'Dueño', rol: 'DUEÑO', kiosco_id: KIOSCO, activo: true } as never,
+      kiosco: { id: KIOSCO, nombre: 'Kiosco Central' } as never,
+    })
+
+    render(<ReportesPage />)
+
+    const btnRotacion = screen.getByText('Rotación y Stock Inmovilizado')
+    expect(btnRotacion).toBeTruthy()
+
+    fireEvent.click(btnRotacion)
+
+    expect(screen.getByText('rotacion-tab')).toBeTruthy()
+    expect(screen.queryByText('balance-tab')).toBeNull()
+  })
+
+  it('oculta la pestaña de rotación para usuarios con rol CAJERO', async () => {
+    useAuthStore.setState({
+      usuario: { id: 'u2', nombre: 'Cajero', rol: 'CAJERO', kiosco_id: KIOSCO, activo: true } as never,
+      kiosco: { id: KIOSCO, nombre: 'Kiosco Central' } as never,
+    })
+
+    render(<ReportesPage />)
+
+    expect(screen.queryByText('Rotación y Stock Inmovilizado')).toBeNull()
+  })
+})
+

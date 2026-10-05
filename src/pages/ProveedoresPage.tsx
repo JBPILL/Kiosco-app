@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useProveedorStore } from '../stores/proveedorStore'
 import { useProducts } from '../hooks/useProducts'
 import { useCajaStore } from '../stores/cajaStore'
@@ -63,6 +64,7 @@ export function ProveedoresPage() {
   } = useProducts()
 
   const { sesionActiva, verificarSesionActiva } = useCajaStore()
+  const location = useLocation()
 
   // Pestaña activa: directorio | nueva_compra | historial | pagos
   const [tabActiva, setTabActiva] = useState<'directorio' | 'nueva_compra' | 'historial' | 'pagos'>('directorio')
@@ -161,6 +163,25 @@ export function ProveedoresPage() {
     cargarProductos()
     verificarSesionActiva()
   }, [cargarProveedores, cargarCompras, cargarPagos, cargarProductos, verificarSesionActiva])
+
+  // Deep-link desde reporte de rotación para devolución o reposición con proveedor
+  useEffect(() => {
+    const state = location.state as { productoId?: string; proveedorId?: string } | null
+    if (state?.proveedorId) {
+      setCompraProveedorId(state.proveedorId)
+      setTabActiva('nueva_compra')
+      setModoCompra('detallada')
+    }
+    if (state?.productoId && productos.length > 0) {
+      const prod = productos.find((p) => p.id === state.productoId)
+      if (prod) {
+        setProductoSeleccionado(prod)
+        setCostoIngresar(String(prod.precio_costo || ''))
+        setTabActiva('nueva_compra')
+        setModoCompra('detallada')
+      }
+    }
+  }, [location.state, productos])
 
   // Lector de código de barras físico (USB / Bluetooth) en la pestaña de Recepción
   useBarcodeGun({

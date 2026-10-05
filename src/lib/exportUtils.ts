@@ -1,5 +1,6 @@
 import writeXlsxFile, { type Row, type Cell, type Sheet } from 'write-excel-file/browser'
 import type { Producto, Categoria, MovimientoStock } from '../types/database'
+import type { MetricasRotacion } from './rotacionInventario'
 import { formatFecha, formatPrecio, labelMedioPago } from './utils'
 
 export interface SheetOptionsColumn {
@@ -2216,5 +2217,133 @@ export async function exportarMasterExcel(params: MasterExcelData) {
 
   await writeXlsxFile(sheets).toFile(fileName)
 }
+
+/**
+ * Exporta el reporte de rotación de inventario y capital inmovilizado en formato Excel (.xlsx).
+ */
+export async function exportarRotacionExcel(metricas: MetricasRotacion, nombreKiosco: string = 'Kiosco') {
+  const totalCols = 10
+  const columns: SheetOptionsColumn[] = [
+    { width: 16 }, // Código
+    { width: 34 }, // Descripción
+    { width: 12 }, // Stock
+    { width: 16 }, // Costo
+    { width: 16 }, // Venta
+    { width: 22 }, // Capital Inmovilizado
+    { width: 16 }, // Última Venta
+    { width: 18 }, // Días sin Movimiento
+    { width: 16 }, // Segmento
+    { width: 14 }, // Ventas Período
+  ]
+
+  const cleanName = sanitizarNombreArchivo(nombreKiosco)
+  const fechaStr = new Date().toISOString().split('T')[0]
+  const fileName = `rotacion_capital_inmovilizado_${cleanName}_${fechaStr}.xlsx`
+
+  const rows: (Row | (Cell | null)[])[] = [
+    cSpan(cTitle(`INFORME DE ROTACIÓN DE STOCK Y CAPITAL INMOVILIZADO`), totalCols) as Row,
+    cSpan(cSubtitle(`COMERCIO: ${nombreKiosco.toUpperCase()} | EMISIÓN: ${new Date().toLocaleString('es-AR')}`), totalCols) as Row,
+    emptyRow(totalCols) as Row,
+
+    // KPI Cards
+    cSpan({
+      value: 'INDICADORES CLAVE DE CAPITAL INMOVILIZADO Y ROTACIÓN (VENTANA 90 DÍAS)',
+      type: String,
+      fontWeight: 'bold',
+      fontSize: 10,
+      textColor: '#1E293B',
+      backgroundColor: '#E2E8F0',
+      align: 'left',
+      borderColor: '#CBD5E1',
+      borderStyle: 'thin',
+    }, totalCols) as Row,
+    [
+      ...cCardLabel('Capital Inmovilizado (>30d)', 3),
+      ...cCardLabel('Artículos Inmovilizados', 2),
+      ...cCardLabel('% Capital Inmovilizado', 2),
+      ...cCardLabel('Índice de Rotación', 3),
+    ] as Row,
+    [
+      ...cCardValue(metricas.capitalInmovilizadoTotal, true, 3, '#B91C1C'),
+      ...cCardValue(metricas.totalProductosInmovilizados, false, 2, '#0F172A'),
+      ...cCardValue(`${metricas.porcentajeInmovilizado}%`, false, 2, '#B91C1C'),
+      ...cCardValue(metricas.indiceRotacion !== null ? `${metricas.indiceRotacion}x` : '—', false, 3, '#1E40AF'),
+    ] as Row,
+    emptyRow(totalCols) as Row,
+
+    // Cabecera tabla
+    cSpan({
+      value: 'DETALLE POR ARTÍCULO Y SEGMENTACIÓN DE ROTACIÓN',
+      type: String,
+      fontWeight: 'bold',
+      fontSize: 10,
+      textColor: '#1E293B',
+      backgroundColor: '#E2E8F0',
+      align: 'left',
+      borderColor: '#CBD5E1',
+      borderStyle: 'thin',
+    }, totalCols) as Row,
+    [
+      cHeader('Código', 'center'),
+      cHeader('Descripción del Producto', 'left'),
+      cHeader('Stock', 'right'),
+      cHeader('Costo Unit. ($)', 'right'),
+      cHeader('Precio Vta ($)', 'right'),
+      cHeader('Capital Inmovilizado ($)', 'right'),
+      cHeader('Última Venta', 'center'),
+      cHeader('Días sin Mov.', 'center'),
+      cHeader('Segmento', 'center'),
+      cHeader('U. Vendidas (90d)', 'right'),
+    ] as Row,
+  ]
+
+  metricas.items.forEach((it, idx) => {
+    const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+    const ultimaVentaStr = it.ultimaVentaFecha ? formatFecha(it.ultimaVentaFecha) : 'Sin ventas'
+    const segmentoStr =
+      it.segmento === 'ACTIVA'
+        ? 'Activa (0-30d)'
+        : it.segmento === 'ALERTA'
+        ? 'Alerta (31-60d)'
+        : it.segmento === 'ESTANCADO'
+        ? 'Estancado (61-90d)'
+        : 'Muerto (>90d)'
+
+    rows.push([
+      cText(it.producto.codigo_barras || '—', bg, 'center'),
+      cText(it.producto.descripcion, bg, 'left', true),
+      cNum(it.stock, bg),
+      cMoney(it.precioCosto, bg),
+      cMoney(it.precioVenta, bg),
+      cMoney(it.capitalInmovilizado, bg, true),
+      cText(ultimaVentaStr, bg, 'center'),
+      cNum(it.diasSinMovimiento, bg),
+      cText(segmentoStr, bg, 'center'),
+      cNum(it.unidadesVendidasPeriodo, bg),
+    ] as Row)
+  })
+
+  // Totales
+  rows.push([
+    ...cTotalLabel('TOTAL CAPITAL INVENTARIO ANALIZADO:', 5),
+    cTotalMoney(metricas.capitalTotalInventario),
+    ...cSpan({
+      value: `INMOVILIZADO (>30d): ${formatPrecio(metricas.capitalInmovilizadoTotal)} (${metricas.porcentajeInmovilizado}%)`,
+      type: String,
+      fontWeight: 'bold',
+      fontSize: 9,
+      textColor: '#B91C1C',
+      backgroundColor: '#F1F5F9',
+      align: 'center',
+      topBorderStyle: 'thin',
+      topBorderColor: '#94A3B8',
+      bottomBorderStyle: 'double',
+      bottomBorderColor: '#0F172A',
+    }, 4),
+  ] as Row)
+
+  await writeXlsxFile(rows as Row[], { columns }).toFile(fileName)
+}
+
 
 

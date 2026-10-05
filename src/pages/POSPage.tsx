@@ -31,7 +31,7 @@ import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import type { Producto, Categoria } from '../types/database'
 import { useDevolucionStore, type VentaConDetalles } from '../stores/devolucionStore'
-import { useRealtimeSync } from '../hooks/useRealtimeSync'
+import { useRealtimeSync, registrarToqueLocal, type KioskoProductsUpdatedDetail } from '../hooks/useRealtimeSync'
 import { useTenantConfig } from '../hooks/useTenantConfig'
 import toast from 'react-hot-toast'
 
@@ -171,7 +171,50 @@ export function POSPage() {
     }
   }, [cargarFavoritos, categoriaActiva, cargarPorCategoria])
 
-  useRealtimeSync(usuario?.kiosco_id || kiosco?.id, refrescarProductosVista)
+  useRealtimeSync(usuario?.kiosco_id || kiosco?.id)
+
+  // Suscripción a eventos realtime para actualizar favoritos y categoría in-place sin peticiones de red masivas
+  useEffect(() => {
+    const handleRealtime = (e: Event) => {
+      const detail = (e as CustomEvent<KioskoProductsUpdatedDetail>).detail
+      if (!detail || !detail.producto) return
+
+      const { eventType, producto, productoOld } = detail
+
+      setFavoritos((prev) => {
+        if (eventType === 'DELETE' || producto.activo === false || !producto.es_favorito) {
+          return prev.filter((p) => p.id !== (producto.id || productoOld?.id))
+        }
+        const exists = prev.some((p) => p.id === producto.id)
+        if (exists) {
+          return prev.map((p) => (p.id === producto.id ? { ...p, ...producto } : p))
+        }
+        if (producto.es_favorito) {
+          return [...prev, producto]
+        }
+        return prev
+      })
+
+      setProductosCategoria((prev) => {
+        if (eventType === 'DELETE' || producto.activo === false) {
+          return prev.filter((p) => p.id !== (producto.id || productoOld?.id))
+        }
+        if (categoriaActiva && producto.categoria_id === categoriaActiva) {
+          const exists = prev.some((p) => p.id === producto.id)
+          if (exists) {
+            return prev.map((p) => (p.id === producto.id ? { ...p, ...producto } : p))
+          }
+          return [...prev, producto]
+        }
+        return prev.filter((p) => p.id !== producto.id)
+      })
+    }
+
+    window.addEventListener('kiosko-products-updated', handleRealtime)
+    return () => {
+      window.removeEventListener('kiosko-products-updated', handleRealtime)
+    }
+  }, [categoriaActiva])
 
   const handleSeleccion = (producto: Producto, cantidad?: number) => {
     if (cantidad && cantidad > 0) {
@@ -187,7 +230,12 @@ export function POSPage() {
   }
 
   const handleVentaCompletada = (ticket?: TicketData) => {
-    refrescarProductosVista() // Refrescar stock de la vista actual
+    // Registrar toque local de los productos para evitar ecos
+    if (ticket && ticket.items) {
+      ticket.items.forEach((it: any) => {
+        if (it.producto?.id) registrarToqueLocal(it.producto.id)
+      })
+    }
     verificarSesionActiva()
     setCartModalOpen(false)
     if (ticket) {

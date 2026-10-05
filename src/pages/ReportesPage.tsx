@@ -8,6 +8,7 @@ import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { TicketReceiptModal, type TicketData } from '../components/pos/TicketReceiptModal'
 import { BalanceContableTab } from '../components/reportes/BalanceContableTab'
+import { RotacionTab } from '../components/reportes/RotacionTab'
 import { useClienteStore } from '../stores/clienteStore'
 import { useCajaStore } from '../stores/cajaStore'
 import { useComboStore } from '../stores/comboStore'
@@ -55,7 +56,7 @@ interface VentaResumen {
 export function ReportesPage() {
   const { usuario, kiosco } = useAuthStore()
   const esDueno = usuario?.rol === 'DUEÑO' || Boolean(usuario?.es_superadmin)
-  const [tabActiva, setTabActiva] = useState<'balance' | 'ventas'>('balance')
+  const [tabActiva, setTabActiva] = useState<'balance' | 'ventas' | 'rotacion'>('balance')
   const [fecha, setFecha] = useState(() => getFechaLocal())
   const [ventas, setVentas] = useState<VentaResumen[]>([])
   const [resumen, setResumen] = useState<ResumenDiario | null>(null)
@@ -467,6 +468,8 @@ export function ReportesPage() {
           <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">
             {tabActiva === 'ventas'
               ? 'Detalle de tickets y facturación diaria por jornada'
+              : tabActiva === 'rotacion'
+              ? 'Rotación de mercadería, capital inmovilizado y liquidación de stock'
               : 'Rendimientos comerciales, balance financiero, compras a proveedores y libro diario contable'}
           </p>
         </div>
@@ -495,11 +498,26 @@ export function ReportesPage() {
           >
             Ventas Diarias
           </button>
+          {esDueno && (
+            <button
+              type="button"
+              onClick={() => setTabActiva('rotacion')}
+              className={`px-3 sm:px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 ${
+                tabActiva === 'rotacion'
+                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              }`}
+            >
+              Rotación y Stock Inmovilizado
+            </button>
+          )}
         </div>
       </div>
 
       {tabActiva === 'balance' ? (
         <BalanceContableTab />
+      ) : tabActiva === 'rotacion' ? (
+        <RotacionTab />
       ) : (
         <div className="space-y-6">
           {/* Header con selector de fecha */}

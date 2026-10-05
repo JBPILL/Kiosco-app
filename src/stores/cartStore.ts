@@ -52,6 +52,7 @@ interface CartState {
   agregarItemLibre: (descripcion: string, precio: number, cantidad?: number) => void
   quitarProducto: (productoId: string) => void
   actualizarCantidad: (productoId: string, cantidad: number) => void
+  actualizarStockProductoEnCarrito: (productoId: string, nuevoStock: number) => void
   vaciarCarrito: (revertirEnvases?: boolean) => void
   completarVentaTabActiva: () => void
   toggleEnvaseItem: (productoId: string) => void
@@ -505,6 +506,50 @@ export const useCartStore = create<CartState>((set, get) => ({
     set({ items: evaluarConPromociones(nuevos) })
   },
 
+  actualizarStockProductoEnCarrito: (productoId: string, nuevoStock: number) => {
+    set((state) => {
+      const tieneEnActivo = state.items.some((it) => it.producto.id === productoId)
+      const nuevosItems = state.items.map((it) =>
+        it.producto.id === productoId
+          ? {
+              ...it,
+              producto: { ...it.producto, stock_actual: nuevoStock },
+            }
+          : it
+      )
+
+      const nuevasTabs = state.tabs.map((tab) => {
+        const sourceItems = tab.id === state.tabActivaId ? nuevosItems : tab.items
+        return {
+          ...tab,
+          items: sourceItems.map((it) =>
+            it.producto.id === productoId
+              ? {
+                  ...it,
+                  producto: { ...it.producto, stock_actual: nuevoStock },
+                }
+              : it
+          ),
+        }
+      })
+
+      if (nuevoStock <= 0 && tieneEnActivo) {
+        const item = state.items.find((it) => it.producto.id === productoId)
+        if (item) {
+          toast(
+            `Aviso: "${item.producto.descripcion}" se quedó sin stock disponible en otra terminal.`,
+            { id: `stock-agotado-${productoId}`, icon: '⚠️', duration: 4000 }
+          )
+        }
+      }
+
+      return {
+        items: nuevosItems,
+        tabs: nuevasTabs,
+      }
+    })
+  },
+
   vaciarCarrito: (revertirEnvases = true) => {
     const state = get()
     if (revertirEnvases) {
@@ -699,3 +744,14 @@ export const useCartStore = create<CartState>((set, get) => ({
     return null
   },
 }))
+
+// Suscripción automática a eventos de actualización realtime para mantener sincronizado el stock en tickets sin vaciarlos
+if (typeof window !== 'undefined') {
+  window.addEventListener('kiosko-products-updated', ((e: CustomEvent) => {
+    const prod = e.detail?.producto
+    if (prod && typeof prod.stock_actual === 'number') {
+      useCartStore.getState().actualizarStockProductoEnCarrito(prod.id, prod.stock_actual)
+    }
+  }) as EventListener)
+}
+

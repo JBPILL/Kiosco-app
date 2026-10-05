@@ -11,11 +11,18 @@ export interface Llamada {
 
 const VACIO: Resultado = { data: null, error: null }
 
+export interface InvocacionFuncion {
+  nombre: string
+  options?: { body?: unknown }
+}
+
 export const db = {
   fijas: new Map<string, Resultado>(),
   colas: new Map<string, Resultado[]>(),
   lanzar: new Set<string>(),
   llamadas: [] as Llamada[],
+  funciones: new Map<string, Resultado>(),
+  invocaciones: [] as InvocacionFuncion[],
 }
 
 export function resetDb() {
@@ -23,11 +30,22 @@ export function resetDb() {
   db.colas.clear()
   db.lanzar.clear()
   db.llamadas = []
+  db.funciones.clear()
+  db.invocaciones = []
 }
 
 /** Respuesta permanente para `tabla.operacion` (ej. 'clientes.update'). */
 export function responder(clave: string, resultado: Resultado) {
   db.fijas.set(clave, resultado)
+}
+
+/** Respuesta permanente para supabase.functions.invoke('nombre') */
+export function responderFuncion(nombre: string, resultado: Resultado) {
+  db.funciones.set(nombre, resultado)
+}
+
+export function invocacionesA(nombre: string): InvocacionFuncion[] {
+  return db.invocaciones.filter(i => i.nombre === nombre)
 }
 
 /** Respuestas consumidas en orden; al agotarse se usa la fija o la vacía. */
@@ -84,6 +102,18 @@ export function crearModuloSupabase() {
     supabaseUrl: 'http://localhost',
     supabaseAnonKey: 'test',
     createUnauthenticatedClient: () => ({}),
-    supabase: { from: crearConsulta },
+    supabase: {
+      from: crearConsulta,
+      functions: {
+        invoke: async (nombre: string, options?: { body?: unknown }) => {
+          db.invocaciones.push({ nombre, options })
+          if (db.lanzar.has(`functions.${nombre}`)) {
+            throw new Error(`supabase function caída (${nombre})`)
+          }
+          return db.funciones.get(nombre) ?? { data: null, error: null }
+        },
+      },
+    },
   }
 }
+
