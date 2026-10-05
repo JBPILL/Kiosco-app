@@ -252,25 +252,29 @@ export function RotacionTab() {
     switch (segmento) {
       case 'ACTIVA':
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold whitespace-nowrap bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
             Activa (0-30d)
           </span>
         )
       case 'ALERTA':
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold whitespace-nowrap bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
             Alerta (31-60d)
           </span>
         )
       case 'ESTANCADO':
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300 border border-orange-300 dark:border-orange-800">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold whitespace-nowrap bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400 border border-orange-200 dark:border-orange-800/60">
+            <span className="w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0" />
             Estancado (61-90d)
           </span>
         )
       case 'MUERTO':
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold whitespace-nowrap bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
             Stock Muerto (&gt;90d)
           </span>
         )
@@ -282,138 +286,165 @@ export function RotacionTab() {
       {/* 1. Header con KPIs Ejecutivos */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* KPI 1: Capital Inmovilizado */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-rose-200 dark:border-rose-900/60 shadow-xs relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-rose-600 dark:text-rose-400">
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-rose-200 dark:border-rose-900/60 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-2 min-h-[26px]">
+            <span className="text-xs font-semibold uppercase tracking-wider text-rose-600 dark:text-rose-400 truncate">
               Capital Inmovilizado (&gt;30d)
             </span>
-            <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300">
+            <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-md text-xs font-bold whitespace-nowrap shrink-0 bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/60">
               {metricas.porcentajeInmovilizado}%
             </span>
           </div>
-          <p className="text-2xl font-black text-gray-900 dark:text-gray-100 mt-2">
-            {formatPrecio(metricas.capitalInmovilizadoTotal)}
-          </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Dinero estancado en stock sin rotar
-          </p>
+          <div>
+            <p className="text-2xl font-black text-gray-900 dark:text-gray-100 mt-2">
+              {formatPrecio(metricas.capitalInmovilizadoTotal)}
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Dinero estancado en stock sin rotar
+            </p>
+          </div>
         </div>
 
         {/* KPI 2: Artículos en Riesgo */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-2 min-h-[26px]">
+            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">
               Artículos Inmovilizados
             </span>
-            <span className="text-xs font-semibold text-gray-400">
+            <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-md text-xs font-bold whitespace-nowrap shrink-0 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
               {metricas.totalProductosAnalizados} analizados
             </span>
           </div>
-          <p className="text-2xl font-black text-gray-900 dark:text-gray-100 mt-2">
-            {metricas.totalProductosInmovilizados}{' '}
-            <span className="text-sm font-normal text-gray-500 dark:text-gray-400">artículos</span>
-          </p>
-          <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 font-medium">
-            {metricas.conteoPorSegmento.MUERTO} en stock muerto
-          </p>
+          <div>
+            <p className="text-2xl font-black text-gray-900 dark:text-gray-100 mt-2">
+              {metricas.totalProductosInmovilizados}{' '}
+              <span className="text-sm font-normal text-gray-500 dark:text-gray-400">artículos</span>
+            </p>
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 font-medium">
+              {metricas.conteoPorSegmento.MUERTO} en stock muerto
+            </p>
+          </div>
         </div>
 
         {/* KPI 3: Índice de Rotación */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/60 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/60 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-2 min-h-[26px]">
+            <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 truncate">
               Índice de Rotación (90d)
             </span>
-            <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
+            <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-md text-xs font-bold whitespace-nowrap shrink-0 bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-900/60">
               CMV / Stock
             </span>
           </div>
-          <p className="text-2xl font-black text-gray-900 dark:text-gray-100 mt-2">
-            {metricas.indiceRotacion !== null ? `${metricas.indiceRotacion}x` : '—'}
-          </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            CMV del período: {formatPrecio(metricas.cmvPeriodo)}
-          </p>
+          <div>
+            <p className="text-2xl font-black text-gray-900 dark:text-gray-100 mt-2">
+              {metricas.indiceRotacion !== null ? `${metricas.indiceRotacion}x` : '—'}
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              CMV del período: {formatPrecio(metricas.cmvPeriodo)}
+            </p>
+          </div>
         </div>
 
         {/* KPI 4: Capital Total Inventario */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-2 min-h-[26px]">
+            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">
               Inventario Total a Costo
             </span>
-            <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+            <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-md text-xs font-bold whitespace-nowrap shrink-0 bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/60">
               {metricas.conteoPorSegmento.ACTIVA} activos
             </span>
           </div>
-          <p className="text-2xl font-black text-gray-900 dark:text-gray-100 mt-2">
-            {formatPrecio(metricas.capitalTotalInventario)}
-          </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Valuación de compra total de stock disponible
-          </p>
+          <div>
+            <p className="text-2xl font-black text-gray-900 dark:text-gray-100 mt-2">
+              {formatPrecio(metricas.capitalTotalInventario)}
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Valuación de compra total de stock disponible
+            </p>
+          </div>
         </div>
       </div>
 
       {/* 2. Barra de Control: Filtros por segmento + Buscador + Botón Exportar */}
       <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs space-y-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-          {/* Pills de Segmentos */}
-          <div className="flex items-center flex-wrap gap-1.5">
+          {/* Segmented Control de Filtros */}
+          <div className="flex items-center flex-nowrap overflow-x-auto scrollbar-hide max-w-full bg-gray-100 dark:bg-gray-800/90 p-1 rounded-xl border border-gray-200 dark:border-gray-700 self-start md:self-auto gap-1">
             <button
               type="button"
               onClick={() => setFiltroSegmento('TODOS')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                 filtroSegmento === 'TODOS'
-                  ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900 shadow-xs'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
+                  ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-xs border border-gray-200 dark:border-gray-600'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-gray-700/50'
               }`}
             >
-              Todos ({metricas.items.length})
+              <span>Todos</span>
+              <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300">
+                {metricas.items.length}
+              </span>
             </button>
             <button
               type="button"
               onClick={() => setFiltroSegmento('ACTIVA')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                 filtroSegmento === 'ACTIVA'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100'
+                  ? 'bg-white dark:bg-gray-700 text-emerald-700 dark:text-emerald-400 shadow-xs border border-emerald-200 dark:border-emerald-800'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-gray-700/50'
               }`}
             >
-              Activa ({metricas.conteoPorSegmento.ACTIVA})
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+              <span>Activa</span>
+              <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300">
+                {metricas.conteoPorSegmento.ACTIVA}
+              </span>
             </button>
             <button
               type="button"
               onClick={() => setFiltroSegmento('ALERTA')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                 filtroSegmento === 'ALERTA'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100'
+                  ? 'bg-white dark:bg-gray-700 text-amber-700 dark:text-amber-400 shadow-xs border border-amber-200 dark:border-amber-800'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-gray-700/50'
               }`}
             >
-              Alerta ({metricas.conteoPorSegmento.ALERTA})
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+              <span>Alerta</span>
+              <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300">
+                {metricas.conteoPorSegmento.ALERTA}
+              </span>
             </button>
             <button
               type="button"
               onClick={() => setFiltroSegmento('ESTANCADO')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                 filtroSegmento === 'ESTANCADO'
-                  ? 'bg-orange-600 text-white shadow-xs'
-                  : 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 hover:bg-orange-100'
+                  ? 'bg-white dark:bg-gray-700 text-orange-700 dark:text-orange-400 shadow-xs border border-orange-200 dark:border-orange-800'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-gray-700/50'
               }`}
             >
-              Estancado ({metricas.conteoPorSegmento.ESTANCADO})
+              <span className="w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0" />
+              <span>Estancado</span>
+              <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-orange-100 dark:bg-orange-950/70 text-orange-700 dark:text-orange-300">
+                {metricas.conteoPorSegmento.ESTANCADO}
+              </span>
             </button>
             <button
               type="button"
               onClick={() => setFiltroSegmento('MUERTO')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                 filtroSegmento === 'MUERTO'
-                  ? 'bg-rose-600 text-white shadow-xs'
-                  : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100'
+                  ? 'bg-white dark:bg-gray-700 text-rose-700 dark:text-rose-400 shadow-xs border border-rose-200 dark:border-rose-800'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-gray-700/50'
               }`}
             >
-              Stock Muerto ({metricas.conteoPorSegmento.MUERTO})
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+              <span>Stock Muerto</span>
+              <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300">
+                {metricas.conteoPorSegmento.MUERTO}
+              </span>
             </button>
           </div>
 
@@ -474,7 +505,7 @@ export function RotacionTab() {
                   </th>
                   <th className="px-3 py-3 text-center">Sin Movimiento</th>
                   <th className="px-3 py-3 text-center">Última Venta</th>
-                  <th className="px-3 py-3 text-center">Estado</th>
+                  <th className="px-3 py-3 text-center whitespace-nowrap">Estado</th>
                   <th className="px-4 py-3 text-center">Acciones</th>
                 </tr>
               </thead>
@@ -513,7 +544,7 @@ export function RotacionTab() {
                           <span className="text-rose-500 font-semibold">Nunca vendido</span>
                         )}
                       </td>
-                      <td className="px-3 py-3 text-center">
+                      <td className="px-3 py-3 text-center whitespace-nowrap">
                         {getBadgeSegmento(it.segmento)}
                       </td>
                       <td className="px-4 py-3 text-center">
@@ -521,10 +552,10 @@ export function RotacionTab() {
                           <button
                             type="button"
                             onClick={() => handleAbrirLiquidar(it)}
-                            className="px-2.5 py-1 text-xs font-semibold rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-colors"
+                            className="px-2.5 py-1 text-xs font-semibold rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-colors cursor-pointer whitespace-nowrap"
                             title="Crear promoción de liquidación"
                           >
-                            🏷️ Liquidar
+                            Liquidar
                           </button>
                           {it.producto.proveedor_id && (
                             <button
