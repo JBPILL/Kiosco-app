@@ -22,6 +22,7 @@ import { adjuntarCostosProtegidos, cargarCostosProtegidos } from '../lib/product
 import toast from 'react-hot-toast'
 import { prepararMovimientoStock } from '../lib/stockOperation'
 import { MovimientosPendientes } from '../components/stock/MovimientosPendientes'
+import { adjuntarCostosHistoricos } from '../lib/movementCostAccess'
 
 export function StockPage() {
   const { usuario, kiosco } = useAuthStore()
@@ -73,9 +74,11 @@ export function StockPage() {
   // Cargar movimientos desde Supabase (con paginación / carga incremental)
   const cargarMovimientos = useCallback(async (limite = 100) => {
     setCargando(true)
+    const puedeVerCostos = usuario?.rol === 'DUEÑO' || Boolean(usuario?.es_superadmin)
+    const seleccionMovimientos: string = `*, producto:productos(id, descripcion, stock_actual, codigo_barras, precio_venta)${puedeVerCostos ? ', costo_privado:movimiento_stock_costos(precio_costo)' : ''}`
     let query = supabase
       .from('movimientos_stock')
-      .select('*, producto:productos(id, descripcion, stock_actual, codigo_barras, precio_venta)')
+      .select(seleccionMovimientos)
       .order('fecha', { ascending: false })
       .limit(limite + 1)
 
@@ -87,10 +90,16 @@ export function StockPage() {
     if (!error && data) {
       const hayMas = data.length > limite
       setHayMasMovimientos(hayMas)
-      setMovimientos((data.slice(0, limite)) as (MovimientoStock & { producto?: Producto })[])
+      const filas = data.slice(0, limite) as unknown as (MovimientoStock & {
+        producto?: Producto
+        costo_privado?: { precio_costo: number | string | null } | null
+      })[]
+      setMovimientos(adjuntarCostosHistoricos(filas, puedeVerCostos))
+    } else if (error) {
+      toast.error('No se pudo cargar el historial de stock. Comprobá la conexión y las migraciones del servidor.')
     }
     setCargando(false)
-  }, [usuario?.kiosco_id])
+  }, [usuario?.kiosco_id, usuario?.rol, usuario?.es_superadmin])
 
   const handleCargarMasMovimientos = async () => {
     if (cargandoMas) return
@@ -940,6 +949,13 @@ export function StockPage() {
                           <div className="flex items-center gap-2 text-[11px] text-gray-400 mt-0.5 flex-wrap">
                             {mov.producto?.codigo_barras && (
                               <span className="font-mono">{mov.producto.codigo_barras}</span>
+                            )}
+                            {(usuario?.rol === 'DUEÑO' || usuario?.es_superadmin) && (
+                              <span>
+                                {mov.costo_unitario_referencia == null
+                                  ? 'Costo histórico no disponible'
+                                  : `Estimación a costo: ${formatPrecio(Math.abs(mov.cantidad) * mov.costo_unitario_referencia)}`}
+                              </span>
                             )}
                             {mov.notas && (
                               <>

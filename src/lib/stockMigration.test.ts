@@ -46,6 +46,7 @@ describe('movimientos manuales en PostgreSQL', () => {
     await db.exec(roles.slice(roles.indexOf('CREATE OR REPLACE FUNCTION public.auth_user_kiosco_id()'), roles.indexOf('-- 3. SOLUCIÓN ADVISOR:')))
     await db.exec(readFileSync('supabase_fase_seguridad_costos_privados.sql', 'utf8'))
     await db.exec(readFileSync('supabase_fase_mermas_trazables.sql', 'utf8'))
+    await db.exec(readFileSync('supabase_fase_costos_movimientos_privados.sql', 'utf8'))
     await db.exec(readFileSync('supabase_fase_stock_idempotente.sql', 'utf8'))
     await db.exec('GRANT SELECT ON productos,lotes_producto,movimientos_stock TO authenticated,service_role;')
   }, 30_000)
@@ -59,7 +60,8 @@ describe('movimientos manuales en PostgreSQL', () => {
     const result = await move('EGRESO', 4)
     expect(Number(result.rows[0].stock_nuevo)).toBe(6)
     expect(await state()).toEqual({ stock: 6, lots: [0, 2], movements: 1 })
-    expect(Number((await db.query<{ costo: string }>('SELECT costo_unitario_referencia AS costo FROM movimientos_stock')).rows[0].costo)).toBe(12)
+    expect(Number((await db.query<{ costo: string }>('SELECT precio_costo AS costo FROM movimiento_stock_costos')).rows[0].costo)).toBe(12)
+    expect((await db.query<{ costo: null }>('SELECT costo_unitario_referencia AS costo FROM movimientos_stock')).rows[0].costo).toBeNull()
   })
   it('repetir el mismo identificador devuelve el resultado sin descontar nuevamente', async () => {
     const params = ['40000000-0000-0000-0000-000000000001', product, 2]
@@ -107,7 +109,7 @@ describe('movimientos manuales en PostgreSQL', () => {
   it('el costo histórico no cambia al editar el producto ni el movimiento', async () => {
     await move('EGRESO', 1)
     await db.exec("RESET ROLE; SET request.jwt.claim.role='service_role'; UPDATE productos SET precio_costo=34; UPDATE movimientos_stock SET costo_unitario_referencia=99;")
-    const result = await db.query<{ costo: string }>('SELECT costo_unitario_referencia AS costo FROM movimientos_stock')
+    const result = await db.query<{ costo: string }>('SELECT precio_costo AS costo FROM movimiento_stock_costos')
     expect(Number(result.rows[0].costo)).toBe(12)
   })
   it('un ajuste a cero vacía lotes activos y registra el delta real', async () => {
@@ -161,6 +163,52 @@ describe('movimientos manuales en PostgreSQL', () => {
   it('rechaza ejecución anónima por permisos de función', async () => {
     await db.exec("RESET ROLE; SET ROLE anon;")
     await expect(move('EGRESO', 1)).rejects.toThrow('permission denied')
+  })
+  it('el cajero no obtiene snapshots aunque lea movimientos públicos', async () => {
+    await move('EGRESO',1)
+    await db.exec(`RESET ROLE; UPDATE usuarios SET rol='CAJERO' WHERE id='${user}';`)
+    await session()
+    expect((await db.query('SELECT * FROM movimiento_stock_costos')).rows).toEqual([])
+    expect((await db.query<{ costo: null }>('SELECT costo_unitario_referencia AS costo FROM movimientos_stock')).rows[0].costo).toBeNull()
+    await db.exec(`RESET ROLE; UPDATE usuarios SET rol='DUEÑO' WHERE id='${user}';`)
+  })
+  it('otro dueño no obtiene los costos de movimientos del comercio', async () => {
+    await move('EGRESO',1)
+    await session(foreignUser)
+    expect((await db.query('SELECT * FROM movimiento_stock_costos')).rows).toEqual([])
+  })
+  it('el dueño no puede falsificar el snapshot privado mediante update directo', async () => {
+    await move('EGRESO',1)
+    await expect(db.exec('UPDATE movimiento_stock_costos SET precio_costo=99')).rejects.toThrow('permission denied')
+    expect(Number((await db.query<{ costo: string }>('SELECT precio_costo AS costo FROM movimiento_stock_costos')).rows[0].costo)).toBe(12)
+  })
+  it('reaplicar mermas y costos privados conserva snapshots y columnas públicas vacías', async () => {
+    await move('EGRESO',1)
+    await db.exec('RESET ROLE;')
+    await db.exec(readFileSync('supabase_fase_mermas_trazables.sql','utf8'))
+    await db.exec(readFileSync('supabase_fase_costos_movimientos_privados.sql','utf8'))
+    await session()
+    await move('EGRESO',1)
+    const publicRows = (await db.query<{ costo: null }>('SELECT costo_unitario_referencia AS costo FROM movimientos_stock')).rows
+    expect(publicRows.every((row) => row.costo === null)).toBe(true)
+    expect((await db.query('SELECT * FROM movimiento_stock_costos')).rows).toHaveLength(2)
+  })
+  it('migra el costo histórico conocido sin inventar costos para registros anteriores desconocidos', async () => {
+    await db.exec(`RESET ROLE;
+      ALTER TABLE movimientos_stock DISABLE TRIGGER trg_capturar_costo_historico_movimiento_stock;
+      ALTER TABLE movimientos_stock DISABLE TRIGGER trg_guardar_costo_privado_movimiento_stock;
+      INSERT INTO movimientos_stock(id,kiosco_id,producto_id,tipo,cantidad,motivo,fecha,costo_unitario_referencia) VALUES
+      ('50000000-0000-0000-0000-000000000001','${kiosk}','${product}','EGRESO',-1,'MERMA',now(),21),
+      ('50000000-0000-0000-0000-000000000002','${kiosk}','${product}','EGRESO',-1,'MERMA',now(),NULL);
+      ALTER TABLE movimientos_stock ENABLE TRIGGER trg_capturar_costo_historico_movimiento_stock;
+      ALTER TABLE movimientos_stock ENABLE TRIGGER trg_guardar_costo_privado_movimiento_stock;
+    `)
+    await db.exec(readFileSync('supabase_fase_costos_movimientos_privados.sql','utf8'))
+    await session()
+    const snapshots = (await db.query<{ precio_costo: string }>('SELECT precio_costo FROM movimiento_stock_costos')).rows
+    expect(snapshots).toHaveLength(1)
+    expect(Number(snapshots[0].precio_costo)).toBe(21)
+    expect((await db.query<{ costo: null }>('SELECT costo_unitario_referencia AS costo FROM movimientos_stock')).rows.every((row) => row.costo === null)).toBe(true)
   })
   it('permite operaciones del backend con el rol de servicio', async () => {
     await db.exec("RESET ROLE; SET request.jwt.claim.sub=''; SET request.jwt.claim.role='service_role'; SET ROLE service_role;")

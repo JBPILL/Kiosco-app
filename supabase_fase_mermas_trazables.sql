@@ -20,6 +20,11 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 BEGIN
+  -- Reaplicar esta migración conserva la protección instalada de snapshots privados.
+  IF to_regclass('public.movimiento_stock_costos') IS NOT NULL THEN
+    NEW.costo_unitario_referencia := NULL;
+    RETURN NEW;
+  END IF;
   IF TG_OP = 'UPDATE' THEN
     -- El costo histórico se congela al insertar el movimiento.
     NEW.costo_unitario_referencia := OLD.costo_unitario_referencia;

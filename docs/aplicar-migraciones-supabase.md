@@ -38,6 +38,7 @@ Abrí cada archivo del repositorio, copiá su contenido completo en una consulta
 | 7 | `supabase_fase_mermas_trazables.sql` | Registra costo histórico, lotes y movimientos de stock. |
 | 8 | `supabase_fase_capacidades_multirrubro.sql` | Agrega capacidades configurables por comercio. |
 | 9 | `supabase_fase_stock_idempotente.sql` | Evita duplicar movimientos manuales al reintentar la misma solicitud. Requiere el paso 7. |
+| 10 | `supabase_fase_costos_movimientos_privados.sql` | Protege snapshots históricos de costos de stock. Requiere los pasos 3 y 7. |
 
 Si una consulta falla, detené la secuencia y guardá el error completo. Los archivos con BEGIN/COMMIT se ejecutan completos; si quedó una transacción abortada, ejecutá ROLLBACK antes de reintentar. No repongas costos privados en la columna pública como rollback. La aplicación actualizada necesita estas migraciones: sin la RPC de snapshot no genera nuevos respaldos.
 
@@ -86,3 +87,14 @@ Actualización de mermas: la migración corrigió el descuento de lotes en ajust
 El frontend con reintentos seguros necesita también el paso 9. Sin esa función, el movimiento informa un error; no recurre a una escritura sin protección contra duplicados. La función anterior permanece disponible para clientes anteriores.
 
 El paso 9 incluye ahora `resolver_operacion_stock` para la pantalla de pendientes. Reaplicá el archivo si ejecutaste su versión inicial. Consultar una operación ausente no la cancela; cancelar reserva su identificador e impide que una solicitud demorada se ejecute luego. Cancelar una operación aplicada informa su resultado y no revierte el movimiento.
+
+El paso 10 copia los costos históricos conocidos a `movimiento_stock_costos` con acceso restringido y deja NULL la referencia pública. No completa históricos desconocidos con precios actuales. El historial actualizado del dueño necesita esta relación instalada. Si reaplicás mermas, usá su versión actual, que conserva esta protección; después reaplicá el paso 10 para verificar funciones y triggers.
+
+Comprobación posterior al paso 10:
+
+```sql
+SELECT count(*) AS snapshots_publicos_expuestos
+FROM public.movimientos_stock WHERE costo_unitario_referencia IS NOT NULL;
+```
+
+Debe devolver cero. Luego comprobá con sesiones reales que el dueño puede leer sus snapshots privados y el cajero/otro comercio no los obtiene.

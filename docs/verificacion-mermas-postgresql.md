@@ -48,7 +48,15 @@ Tres casos SQL prueban consulta de ausencia y denegación de otro comercio, canc
 
 Pendiente: concurrencia real entre conexiones, sincronización de varios dispositivos, comportamiento ante datos locales dañados sin identidad recuperable y política de retención de operaciones. No borrar manualmente un pendiente con respuesta incierta: puede haberse aplicado. Una operación deliberadamente nueva después de confirmar recibe otra identidad. La RPC anterior conserva su comportamiento para clientes antiguos.
 
-Faltan PostgreSQL/PostgREST remoto, concurrencia de cajas, revisión de permisos sobre costos históricos de movimientos y conciliación de stock total con stock por lote. El ajuste al alza no inventa una fecha de vencimiento para cantidades sin lote identificado.
+### Costos históricos protegidos
+
+`supabase_fase_costos_movimientos_privados.sql` copia snapshots históricos conocidos a `movimiento_stock_costos`, con RLS para dueño del mismo comercio/superadmin y SELECT concedido al backend. Los clientes no tienen permiso de escritura directa. La columna pública se normaliza a NULL y los nuevos costos se capturan desde `producto_costos` en un trigger AFTER INSERT. No se calculan referencias para históricos desconocidos. Reaplicar la versión actual de mermas mantiene la columna pública en NULL.
+
+El historial del dueño solicita la relación privada y conserva el valor cero real o NULL desconocido. Cajeros no solicitan esa relación. La función de integración descarta cualquier costo recibido en la columna pública y no conserva el objeto anidado del costo privado.
+
+Cinco casos SQL adicionales prueban cajero leyendo movimientos públicos sin costos, aislamiento de otro dueño, rechazo de update privado, reaplicación de migraciones y conservación de un costo histórico distinto del costo actual sin inventar el desconocido. Dos casos de integración de datos prueban privado/cero/desconocido, restricción por rol y ausencia de mutación. La suite SQL de stock contiene 25 casos en total. La relación por PostgREST y la pantalla con sesiones reales siguen pendientes de verificación remota.
+
+Faltan PostgreSQL/PostgREST remoto, concurrencia de cajas, valuación de mermas en reportes usando estos snapshots y conciliación de stock total con stock por lote. El ajuste al alza no inventa una fecha de vencimiento para cantidades sin lote identificado.
 
 | Criterio | Puntaje | Evidencia y mejora |
 |---|---:|---|
