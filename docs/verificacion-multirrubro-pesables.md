@@ -40,3 +40,22 @@ Claridad 4/5: Ajustes explica el alcance; falta comprobar comprensión con cajer
 Acción 4/5: código y pruebas listos; publicación pendiente.
 Concisión 4/5: reutiliza modal y atributo existente; falta revisar presentación en
 pantalla pequeña. Promedio 4/5. Mejoras: piloto con cambios de rubro y hardware real.
+
+## Conservación de atributos en Catálogo
+
+El formulario del producto también conserva `es_pesable`, unidad, PLU, envase,
+depósito y vencimiento cuando los módulos del comercio están ocultos. Antes de la
+corrección, editar precios o descripción con capacidades desactivadas escribía
+valores falsos/por defecto sobre esos campos y podía cambiar la forma de venta.
+
+Dos regresiones de componente reprodujeron esa pérdida: un pesable perdió KG/PLU
+y un retornable/perecedero perdió depósito y alerta. Ahora el payload conserva los
+atributos inicializados desde el producto, incluyendo stock fraccionario. Las
+capacidades controlan qué campos se muestran; no reinterpretan los atributos al
+guardar. Los productos nuevos siguen usando los valores iniciales del formulario.
+
+No requiere SQL nuevo. Falta comprobar edición real después de cambiar capacidades
+y confirmar los valores guardados en Supabase; las pruebas locales inspeccionan el
+payload enviado a `onGuardar`, no una escritura remota. Autoevaluación específica:
+exactitud, completitud de esta corrección, claridad, acción y concisión 4/5; el límite
+común es la validación remota y visual pendiente. La fase completa sigue abierta.
