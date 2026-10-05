@@ -12,6 +12,7 @@ interface BalanzaManualModalProps {
   onClose: () => void
   producto: Producto | null
   onConfirmar: (pesoKg: number) => void
+  lecturaSerialHabilitada?: boolean
 }
 
 const PRESETS_PESO = [
@@ -30,6 +31,7 @@ export function BalanzaManualModal({
   onClose,
   producto,
   onConfirmar,
+  lecturaSerialHabilitada = true,
 }: BalanzaManualModalProps) {
   const [gramos, setGramos] = useState<string>('250')
   const [leyendoBalanza, setLeyendoBalanza] = useState(false)
@@ -69,6 +71,7 @@ export function BalanzaManualModal({
   }
 
   const handleLeerBalanzaSerial = async () => {
+    if (!lecturaSerialHabilitada) return
     setLeyendoBalanza(true)
     try {
       const res = await leerPesoBalanzaSerial()
@@ -144,7 +147,7 @@ export function BalanzaManualModal({
             <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
               O escribí los gramos exactos:
             </label>
-            {isWebSerialSupported() && (
+            {lecturaSerialHabilitada && isWebSerialSupported() && (
               <Button
                 type="button"
                 variant="secondary"

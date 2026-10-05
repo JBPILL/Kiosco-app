@@ -59,9 +59,9 @@ vi.mock('../components/pos/TicketReceiptModal', () => ({
   TicketReceiptModal: (p: { isOpen: boolean }) => (p.isOpen ? <div data-testid="ticket-modal" /> : null),
 }))
 vi.mock('../components/pos/BalanzaManualModal', () => ({
-  BalanzaManualModal: (p: { isOpen: boolean; producto: { descripcion: string } | null; onConfirmar: (kg: number) => void }) =>
+  BalanzaManualModal: (p: { isOpen: boolean; producto: { descripcion: string } | null; onConfirmar: (kg: number) => void; lecturaSerialHabilitada?: boolean }) =>
     p.isOpen ? (
-      <div data-testid="balanza" data-producto={p.producto?.descripcion}>
+      <div data-testid="balanza" data-producto={p.producto?.descripcion} data-serial={String(p.lecturaSerialHabilitada)}>
         <button onClick={() => p.onConfirmar(0.75)}>confirmar-peso</button>
       </div>
     ) : null,
@@ -268,6 +268,36 @@ describe('POSPage: pistola de códigos de barras', () => {
 
     fireEvent.click(screen.getByText('confirmar-peso'))
     expect(useCartStore.getState().totalMonto()).toBe(75) // 0.75 kg * $100
+  })
+
+  it('con balanza deshabilitada, un pesable del caché permite ingresar su peso manualmente', async () => {
+    mocks.tenant = { ...mocks.tenant, tieneBalanza: false }
+    saveCachedProductos([crearProducto({ id: 'q', descripcion: 'Queso', codigo_barras: '777', es_pesable: true })], KIOSCO)
+    await montar()
+    await escanear('777')
+    expect(screen.getByTestId('balanza')).toBeTruthy()
+    expect(screen.getByTestId('balanza').getAttribute('data-serial')).toBe('false')
+    expect(cantidadEnCarrito()).toBe(0)
+    fireEvent.click(screen.getByText('confirmar-peso'))
+    expect(useCartStore.getState().totalMonto()).toBe(75)
+  })
+
+  it('con balanza deshabilitada, un pesable remoto también solicita peso', async () => {
+    mocks.tenant = { ...mocks.tenant, tieneBalanza: false }
+    await montar()
+    responder('productos.select', { data: crearProducto({ id: 'q', descripcion: 'Queso', codigo_barras: '777', es_pesable: true }), error: null })
+    await escanear('777')
+    expect(screen.getByTestId('balanza')).toBeTruthy()
+    expect(cantidadEnCarrito()).toBe(0)
+  })
+
+  it('un favorito pesable conserva la venta por peso al deshabilitar la balanza', async () => {
+    mocks.tenant = { ...mocks.tenant, tieneBalanza: false }
+    responder('productos.select', { data: [crearProducto({ id: 'q', descripcion: 'Queso', es_pesable: true })], error: null })
+    await montar()
+    fireEvent.click(await screen.findByText('fav-Queso'))
+    expect(screen.getByTestId('balanza')).toBeTruthy()
+    expect(cantidadEnCarrito()).toBe(0)
   })
 
   it('un código de balanza (prefijo 20) agrega el producto con el peso codificado', async () => {

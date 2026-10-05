@@ -223,7 +223,8 @@ export function POSPage() {
       agregarProducto(producto, cantidad)
       return
     }
-    if (tieneBalanza && producto.es_pesable) {
+    // Desactivar la integración de balanza no convierte un producto por peso en una unidad.
+    if (producto.es_pesable) {
       setProductoPesableModal(producto)
       setModalBalanzaOpen(true)
       return
@@ -411,7 +412,7 @@ export function POSPage() {
 
       if (productoEncontrado) {
         window.dispatchEvent(new CustomEvent('pos-clear-search'))
-        if (tieneBalanza && productoEncontrado.es_pesable) {
+        if (productoEncontrado.es_pesable) {
           setProductoPesableModal(productoEncontrado)
           setModalBalanzaOpen(true)
           return
@@ -437,7 +438,7 @@ export function POSPage() {
 
         if (data) {
           window.dispatchEvent(new CustomEvent('pos-clear-search'))
-          if (tieneBalanza && data.es_pesable) {
+          if (data.es_pesable) {
             setProductoPesableModal(data)
             setModalBalanzaOpen(true)
             return
@@ -857,6 +858,7 @@ export function POSPage() {
       {/* Modal de ingreso de peso para artículos de balanza / fiambrería */}
       <BalanzaManualModal
         isOpen={modalBalanzaOpen}
+        lecturaSerialHabilitada={tieneBalanza}
         onClose={() => {
           setModalBalanzaOpen(false)
           setProductoPesableModal(null)
