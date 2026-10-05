@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   onScan: null as null | ((code: string) => Promise<void>),
   scanEnabled: true,
   atajos: {} as Record<string, (() => void) | undefined>,
-  tenant: { tieneEnvases: false, tieneBalanza: true, esFotocopiadora: false },
+  tenant: { tieneEnvases: false, tieneBalanza: true, tieneServiciosRapidos: false, esFotocopiadora: false },
   buscarVenta: vi.fn(),
 }))
 
@@ -78,7 +78,10 @@ vi.mock('../components/pos/BarcodeScannerModal', () => ({ BarcodeScannerModal: (
 vi.mock('../components/pos/KeyboardShortcutsModal', () => ({
   KeyboardShortcutsModal: (p: { isOpen: boolean }) => (p.isOpen ? <div data-testid="ayuda" /> : null),
 }))
-vi.mock('../components/pos/ArticuloLibreModal', () => ({ ArticuloLibreModal: () => null }))
+vi.mock('../components/pos/ArticuloLibreModal', () => ({
+  ArticuloLibreModal: (p: { isOpen: boolean; descripcionInicial?: string }) => p.isOpen
+    ? <div data-testid="articulo-libre" data-descripcion={p.descripcionInicial || ''} /> : null,
+}))
 vi.mock('../components/pos/HistorialTicketsModal', () => ({ HistorialTicketsModal: () => null }))
 vi.mock('../components/pos/RecibirEnvaseModal', () => ({ RecibirEnvaseModal: () => null }))
 vi.mock('../components/pos/RetiroCajaModal', () => ({
@@ -119,7 +122,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.onScan = null
   mocks.atajos = {}
-  mocks.tenant = { tieneEnvases: false, tieneBalanza: true, esFotocopiadora: false }
+  mocks.tenant = { tieneEnvases: false, tieneBalanza: true, tieneServiciosRapidos: false, esFotocopiadora: false }
   useCartStore.setState({
     items: [],
     tipoAjuste: 'NINGUNO',
@@ -349,6 +352,24 @@ describe('POSPage: comprobantes escaneados', () => {
     expect(toast).toHaveBeenCalledWith(expect.stringContaining('cierre de caja'), expect.anything())
     expect(llamadasA('productos', 'select')).toHaveLength(antes)
     expect(mocks.buscarVenta).not.toHaveBeenCalled()
+  })
+})
+
+describe('POSPage: servicios rápidos', () => {
+  it('oculta accesos de servicios cuando la capacidad está desactivada', async () => {
+    await montar()
+    expect(screen.queryByRole('button', { name: 'Fotocopias' })).toBeNull()
+    expect(screen.getByRole('button', { name: /Cobro Manual/ })).toBeTruthy()
+  })
+
+  it('muestra accesos y abre el cobro con el concepto seleccionado', async () => {
+    mocks.tenant = { ...mocks.tenant, tieneServiciosRapidos: true }
+    await montar()
+    for (const concepto of ['Fotocopias', 'Impresiones', 'Anillado', 'Plastificado']) {
+      expect(screen.getByRole('button', { name: concepto })).toBeTruthy()
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Fotocopias' }))
+    expect(screen.getByTestId('articulo-libre').getAttribute('data-descripcion')).toBe('Fotocopias')
   })
 })
 
