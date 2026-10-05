@@ -23,6 +23,8 @@ import toast from 'react-hot-toast'
 import { prepararMovimientoStock } from '../lib/stockOperation'
 import { MovimientosPendientes } from '../components/stock/MovimientosPendientes'
 import { adjuntarCostosHistoricos } from '../lib/movementCostAccess'
+import { presentarMovimientoStock } from '../lib/stockMovementDisplay'
+import { ResumenBajasStock } from '../components/stock/ResumenBajasStock'
 
 export function StockPage() {
   const { usuario, kiosco } = useAuthStore()
@@ -793,7 +795,7 @@ export function StockPage() {
                     ? 'Ingresos (+)'
                     : tipo === 'EGRESO'
                     ? 'Egresos (-)'
-                    : 'Ajustes (=)'}
+                    : 'Ajustes'}
                 </button>
               ))}
             </div>
@@ -893,6 +895,14 @@ export function StockPage() {
             </div>
           </div>
 
+          {!cargando && (
+            <ResumenBajasStock
+              movimientos={movimientosFiltrados}
+              autorizado={usuario?.rol === 'DUEÑO' || Boolean(usuario?.es_superadmin)}
+              hayMas={hayMasMovimientos}
+            />
+          )}
+
           {/* Lista de Movimientos */}
           {cargando ? (
             <div className="p-12 text-center text-gray-400 dark:text-gray-500">
@@ -921,11 +931,8 @@ export function StockPage() {
                 {movimientosFiltrados.map((mov) => {
                   const esIngreso = mov.tipo === 'INGRESO'
                   const esEgreso = mov.tipo === 'EGRESO'
-                  const cantDisplay = esIngreso
-                    ? `+${mov.cantidad}`
-                    : esEgreso
-                    ? `${mov.cantidad}`
-                    : `=${mov.cantidad}`
+                  const presentacion = presentarMovimientoStock(mov)
+                  const cantDisplay = presentacion.cantidad
 
                   return (
                     <div
@@ -952,9 +959,11 @@ export function StockPage() {
                             )}
                             {(usuario?.rol === 'DUEÑO' || usuario?.es_superadmin) && (
                               <span>
-                                {mov.costo_unitario_referencia == null
+                                {mov.tipo === 'AJUSTE'
+                                  ? 'Cantidad registrada; sin valoración del ajuste'
+                                  : presentacion.estimacion == null
                                   ? 'Costo histórico no disponible'
-                                  : `Estimación a costo: ${formatPrecio(Math.abs(mov.cantidad) * mov.costo_unitario_referencia)}`}
+                                  : `Estimación a costo: ${formatPrecio(presentacion.estimacion)}`}
                               </span>
                             )}
                             {mov.notas && (
