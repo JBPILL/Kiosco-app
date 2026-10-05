@@ -46,6 +46,7 @@ describe('movimientos manuales en PostgreSQL', () => {
     await db.exec(roles.slice(roles.indexOf('CREATE OR REPLACE FUNCTION public.auth_user_kiosco_id()'), roles.indexOf('-- 3. SOLUCIÓN ADVISOR:')))
     await db.exec(readFileSync('supabase_fase_seguridad_costos_privados.sql', 'utf8'))
     await db.exec(readFileSync('supabase_fase_mermas_trazables.sql', 'utf8'))
+    await db.exec(readFileSync('supabase_fase_stock_idempotente.sql', 'utf8'))
     await db.exec('GRANT SELECT ON productos,lotes_producto,movimientos_stock TO authenticated,service_role;')
   }, 30_000)
   beforeEach(async () => {
@@ -59,6 +60,45 @@ describe('movimientos manuales en PostgreSQL', () => {
     expect(Number(result.rows[0].stock_nuevo)).toBe(6)
     expect(await state()).toEqual({ stock: 6, lots: [0, 2], movements: 1 })
     expect(Number((await db.query<{ costo: string }>('SELECT costo_unitario_referencia AS costo FROM movimientos_stock')).rows[0].costo)).toBe(12)
+  })
+  it('repetir el mismo identificador devuelve el resultado sin descontar nuevamente', async () => {
+    const params = ['40000000-0000-0000-0000-000000000001', product, 2]
+    const sql = "SELECT * FROM registrar_movimiento_stock_idempotente($1::uuid,$2::uuid,'EGRESO',$3::numeric,'MERMA')"
+    const first = await db.query(sql, params)
+    const retry = await db.query(sql, params)
+    expect(retry.rows).toEqual(first.rows)
+    expect(await state()).toEqual({ stock: 8, lots: [0, 4], movements: 1 })
+    await expect(db.query(sql, [params[0], product, 3])).rejects.toThrow('otra operación')
+    expect((await state()).stock).toBe(8)
+  })
+  it('una operación fallida no reserva la clave ni conserva cambios parciales', async () => {
+    const sql = "SELECT * FROM registrar_movimiento_stock_idempotente($1::uuid,$2::uuid,'EGRESO',2,$3)"
+    const id = '40000000-0000-0000-0000-000000000002'
+    await expect(db.query(sql, [id, product, 'FALLA'])).rejects.toThrow('check constraint')
+    await db.query(sql, [id, product, 'MERMA'])
+    expect(await state()).toEqual({ stock: 8, lots: [0, 4], movements: 1 })
+  })
+  it('cancelar una identidad no aplicada impide una llegada tardía', async () => {
+    const id = '40000000-0000-0000-0000-000000000003'
+    const response = await db.query<{ estado: { estado: string } }>('SELECT resolver_operacion_stock($1::uuid,$2::uuid,$3::uuid,true) AS estado', [id,kiosk,product])
+    expect(response.rows[0].estado.estado).toBe('CANCELADA')
+    await expect(db.query("SELECT * FROM registrar_movimiento_stock_idempotente($1::uuid,$2::uuid,'EGRESO',2,'MERMA')", [id,product])).rejects.toThrow('cancelada')
+    expect(await state()).toEqual({ stock: 10, lots: [2,4], movements: 0 })
+  })
+  it('consultar ausencia no la confunde con cancelación ni concede acceso ajeno', async () => {
+    const id = '40000000-0000-0000-0000-000000000004'
+    const sql = 'SELECT resolver_operacion_stock($1::uuid,$2::uuid,$3::uuid,false) AS estado'
+    const response = await db.query<{ estado: { estado: string } }>(sql,[id,kiosk,product])
+    expect(response.rows[0].estado.estado).toBe('NO_REGISTRADA')
+    await session(foreignUser)
+    await expect(db.query(sql,[id,kiosk,product])).rejects.toThrow('No autorizado')
+  })
+  it('cancelar una identidad aplicada informa su resultado sin revertir stock', async () => {
+    const id = '40000000-0000-0000-0000-000000000005'
+    await db.query("SELECT * FROM registrar_movimiento_stock_idempotente($1::uuid,$2::uuid,'EGRESO',2,'MERMA')", [id,product])
+    const response = await db.query<{ estado: { estado: string } }>('SELECT resolver_operacion_stock($1::uuid,$2::uuid,$3::uuid,true) AS estado', [id,kiosk,product])
+    expect(response.rows[0].estado.estado).toBe('APLICADA')
+    expect(await state()).toEqual({ stock: 8, lots: [0,4], movements: 1 })
   })
   it('baja únicamente el lote seleccionado', async () => {
     await move('EGRESO', 2, 'VENCIMIENTO', lot2)

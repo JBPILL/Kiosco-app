@@ -20,6 +20,8 @@ import { exportarMovimientosStockExcel } from '../lib/exportUtils'
 import { IconExportar } from '../components/ui/Icons'
 import { adjuntarCostosProtegidos, cargarCostosProtegidos } from '../lib/productCostAccess'
 import toast from 'react-hot-toast'
+import { prepararMovimientoStock } from '../lib/stockOperation'
+import { MovimientosPendientes } from '../components/stock/MovimientosPendientes'
 
 export function StockPage() {
   const { usuario, kiosco } = useAuthStore()
@@ -369,7 +371,7 @@ export function StockPage() {
     setGuardando(true)
     try {
       const kid = usuario?.kiosco_id || kiosco?.id
-      const { data: movimientoData, error: movimientoError } = await supabase.rpc('registrar_movimiento_stock', {
+      const operacion = prepararMovimientoStock(kid, {
         p_producto_id: productoSeleccionado.id,
         p_tipo: tipoMovimiento,
         p_cantidad: cantNum,
@@ -379,6 +381,7 @@ export function StockPage() {
         p_numero_lote: tipoMovimiento === 'INGRESO' ? numeroLote.trim() || null : null,
         p_lote_id: null,
       })
+      const { data: movimientoData, error: movimientoError } = await supabase.rpc('registrar_movimiento_stock_idempotente', operacion.parametros)
       if (movimientoError) throw movimientoError
       const resultadoMovimiento = Array.isArray(movimientoData) ? movimientoData[0] : movimientoData
       if (!resultadoMovimiento) throw new Error('La base de datos no devolvió el resultado del movimiento.')
@@ -422,6 +425,7 @@ export function StockPage() {
         syncPromises.push(cargarLotes(usuario?.kiosco_id || undefined))
       }
       await Promise.all(syncPromises)
+      operacion.confirmar()
     } catch (err: any) {
       playScanSound('error')
       toast.error(err?.message || 'Error al actualizar stock')
@@ -497,7 +501,7 @@ export function StockPage() {
     setBajaLoteEnProgreso(loteId)
     try {
       const kid = usuario?.kiosco_id || kiosco?.id
-      const { data: movimientoData, error: movimientoError } = await supabase.rpc('registrar_movimiento_stock', {
+      const operacion = prepararMovimientoStock(kid, {
         p_producto_id: lote.producto_id,
         p_tipo: 'EGRESO',
         p_cantidad: lote.cantidad_actual,
@@ -507,6 +511,7 @@ export function StockPage() {
         p_numero_lote: null,
         p_lote_id: loteId,
       })
+      const { data: movimientoData, error: movimientoError } = await supabase.rpc('registrar_movimiento_stock_idempotente', operacion.parametros)
       if (movimientoError) throw movimientoError
       const resultadoMovimiento = Array.isArray(movimientoData) ? movimientoData[0] : movimientoData
       if (!resultadoMovimiento) throw new Error('La base de datos no devolvió el resultado del movimiento.')
@@ -529,6 +534,7 @@ export function StockPage() {
 
       toast.success(`Lote de "${nombreProd}" dado de baja correctamente`)
       await Promise.all([cargarMovimientos(), cargarProductos(), cargarLotes(usuario?.kiosco_id || undefined)])
+      operacion.confirmar()
     } catch (e: any) {
       toast.error('Error al dar de baja lote: ' + (e?.message || ''))
     } finally {
@@ -545,6 +551,9 @@ export function StockPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-5">
+      <MovimientosPendientes kioscoId={usuario?.kiosco_id || kiosco?.id} nombreProducto={(id) => productos.find((producto) => producto.id === id)?.descripcion || 'Producto no disponible en el catálogo'} onRefrescar={async () => {
+        await Promise.all([cargarMovimientos(), cargarProductos(), cargarLotes(usuario?.kiosco_id || undefined)])
+      }} />
       {/* Encabezado Principal */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>

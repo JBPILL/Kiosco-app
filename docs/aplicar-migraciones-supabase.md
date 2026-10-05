@@ -37,6 +37,7 @@ Abrí cada archivo del repositorio, copiá su contenido completo en una consulta
 | 6 | `supabase_fase_backup_integral.sql` | Habilita el snapshot operativo con costos privados. |
 | 7 | `supabase_fase_mermas_trazables.sql` | Registra costo histórico, lotes y movimientos de stock. |
 | 8 | `supabase_fase_capacidades_multirrubro.sql` | Agrega capacidades configurables por comercio. |
+| 9 | `supabase_fase_stock_idempotente.sql` | Evita duplicar movimientos manuales al reintentar la misma solicitud. Requiere el paso 7. |
 
 Si una consulta falla, detené la secuencia y guardá el error completo. Los archivos con BEGIN/COMMIT se ejecutan completos; si quedó una transacción abortada, ejecutá ROLLBACK antes de reintentar. No repongas costos privados en la columna pública como rollback. La aplicación actualizada necesita estas migraciones: sin la RPC de snapshot no genera nuevos respaldos.
 
@@ -81,3 +82,7 @@ Después de aplicar y comprobar el SQL del entorno destino, desplegá el fronten
 Estado de esta sesión: SQL preparado y comprobado parcialmente con PostgreSQL local en memoria; no aplicado a Supabase remoto. Las verificaciones de mermas, JWT/PostgREST y esquema completo siguen pendientes.
 
 Actualización de mermas: la migración corrigió el descuento de lotes en ajustes negativos, rechaza cantidades de más de tres decimales y habilita ejecución del backend de servicio. Si ya ejecutaste el paso 7 antes de esta corrección, volvé a ejecutar ese archivo completo. Ver alcance de las pruebas y conciliación pendiente en `docs/verificacion-mermas-postgresql.md`.
+
+El frontend con reintentos seguros necesita también el paso 9. Sin esa función, el movimiento informa un error; no recurre a una escritura sin protección contra duplicados. La función anterior permanece disponible para clientes anteriores.
+
+El paso 9 incluye ahora `resolver_operacion_stock` para la pantalla de pendientes. Reaplicá el archivo si ejecutaste su versión inicial. Consultar una operación ausente no la cancela; cancelar reserva su identificador e impide que una solicitud demorada se ejecute luego. Cancelar una operación aplicada informa su resultado y no revierte el movimiento.
