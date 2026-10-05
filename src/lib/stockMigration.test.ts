@@ -48,6 +48,7 @@ describe('movimientos manuales en PostgreSQL', () => {
     await db.exec(readFileSync('supabase_fase_mermas_trazables.sql', 'utf8'))
     await db.exec(readFileSync('supabase_fase_costos_movimientos_privados.sql', 'utf8'))
     await db.exec(readFileSync('supabase_fase_stock_idempotente.sql', 'utf8'))
+    await db.exec(readFileSync('supabase_fase_reporte_bajas_stock.sql', 'utf8'))
     await db.exec('GRANT SELECT ON productos,lotes_producto,movimientos_stock TO authenticated,service_role;')
   }, 30_000)
   beforeEach(async () => {
@@ -55,6 +56,79 @@ describe('movimientos manuales en PostgreSQL', () => {
     await session()
   })
   afterAll(async () => db?.close())
+
+  const report = (target = kiosk, from = '2026-10-01', to = '2026-10-31') => db.query<{
+    resumen: { movimientos: number; por_motivo: { motivo: string; movimientos: number; sin_costo: number; estimacion: number | null }[] }
+  }>('SELECT resumir_bajas_stock($1::uuid,$2::date,$3::date) AS resumen', [target, from, to])
+
+  it('reporte: incluye más de mil movimientos y separa motivos sin truncar', async () => {
+    await db.exec(`RESET ROLE;
+      INSERT INTO movimientos_stock(kiosco_id,producto_id,tipo,cantidad,motivo,fecha)
+      SELECT '${kiosk}','${product}','EGRESO',-1,'MERMA','2026-10-15 15:00Z' FROM generate_series(1,1201);
+      INSERT INTO movimientos_stock(kiosco_id,producto_id,tipo,cantidad,motivo,fecha) VALUES
+      ('${kiosk}','${product}','EGRESO',2,'ROBO','2026-10-15 15:00Z'),
+      ('${kiosk}','${product}','EGRESO',-3,'VENTA','2026-10-15 15:00Z'),
+      ('${kiosk}','${product}','AJUSTE',-4,'MERMA','2026-10-15 15:00Z');`)
+    await db.exec('UPDATE producto_costos SET precio_costo=99;')
+    await session()
+    const summary = (await report()).rows[0].resumen
+    expect(summary.movimientos).toBe(1202)
+    expect(summary.por_motivo).toContainEqual({ motivo: 'MERMA', movimientos: 1201, sin_costo: 0, estimacion: 14412 })
+    expect(summary.por_motivo).toContainEqual({ motivo: 'ROBO', movimientos: 1, sin_costo: 0, estimacion: 24 })
+  })
+
+  it('reporte: usa límites del día argentino y conserva cero y desconocido', async () => {
+    await db.exec(`RESET ROLE;
+      INSERT INTO movimientos_stock(kiosco_id,producto_id,tipo,cantidad,motivo,fecha) VALUES
+      ('${kiosk}','${product}','EGRESO',-1,'MERMA','2026-10-05 02:59:59Z'),
+      ('${kiosk}','${product}','EGRESO',-1,'MERMA','2026-10-05 03:00Z'),
+      ('${kiosk}','${product}','EGRESO',-1,'ROBO','2026-10-06 02:59:59Z'),
+      ('${kiosk}','${product}','EGRESO',-1,'MERMA','2026-10-06 03:00Z');
+      UPDATE movimiento_stock_costos SET precio_costo=CASE
+      WHEN movimiento_id IN(SELECT id FROM movimientos_stock WHERE motivo='ROBO') THEN 0 ELSE NULL END;`)
+    await session()
+    expect((await report(kiosk, '2026-10-05', '2026-10-05')).rows[0].resumen).toEqual({
+      movimientos: 2, por_motivo: [
+        { motivo: 'MERMA', movimientos: 1, sin_costo: 1, estimacion: null },
+        { motivo: 'ROBO', movimientos: 1, sin_costo: 0, estimacion: 0 },
+      ],
+    })
+  })
+
+  it('reporte: rechaza cajero, comercio ajeno y perfil desactivado', async () => {
+    await session(foreignUser)
+    await expect(report()).rejects.toThrow('No autorizado')
+    await db.exec(`RESET ROLE; UPDATE usuarios SET rol='CAJERO' WHERE id='${user}';`)
+    await session()
+    await expect(report()).rejects.toThrow('No autorizado')
+    await db.exec(`RESET ROLE; UPDATE usuarios SET rol='DUEÑO',activo=false WHERE id='${user}';`)
+    await session()
+    await expect(report()).rejects.toThrow('No autorizado')
+    await db.exec(`RESET ROLE; UPDATE usuarios SET activo=true WHERE id='${user}';`)
+  })
+
+  it('reporte: rechaza anónimo y rangos inválidos', async () => {
+    await expect(report(kiosk, '2026-10-06', '2026-10-05')).rejects.toThrow('Rango de fechas inválido')
+    await db.exec('RESET ROLE; SET ROLE anon;')
+    await expect(report()).rejects.toThrow('permission denied')
+  })
+
+  it('reporte: período sin movimientos devuelve conjunto vacío', async () => {
+    expect((await report()).rows[0].resumen).toEqual({ movimientos: 0, por_motivo: [] })
+  })
+
+  it('reporte: costos y cantidades NaN quedan fuera de la estimación', async () => {
+    await db.exec(`RESET ROLE;
+      INSERT INTO movimientos_stock(kiosco_id,producto_id,tipo,cantidad,motivo,fecha) VALUES
+      ('${kiosk}','${product}','EGRESO',-1,'MERMA','2026-10-15 15:00Z'),
+      ('${kiosk}','${product}','EGRESO','NaN','ROBO','2026-10-15 15:00Z');
+      UPDATE movimiento_stock_costos SET precio_costo='NaN' WHERE movimiento_id IN
+        (SELECT id FROM movimientos_stock WHERE motivo='MERMA');`)
+    await session()
+    const result = (await report()).rows[0].resumen
+    expect(result.movimientos).toBe(2)
+    expect(result.por_motivo.every((fila) => fila.sin_costo === 1 && fila.estimacion === null)).toBe(true)
+  })
 
   it('descuenta FEFO y conserva el costo al registrar la merma', async () => {
     const result = await move('EGRESO', 4)

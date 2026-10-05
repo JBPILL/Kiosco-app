@@ -9,6 +9,7 @@ import { Modal } from '../components/ui/Modal'
 import { TicketReceiptModal, type TicketData } from '../components/pos/TicketReceiptModal'
 import { BalanceContableTab } from '../components/reportes/BalanceContableTab'
 import { RotacionTab } from '../components/reportes/RotacionTab'
+import { BajasStockTab } from '../components/reportes/BajasStockTab'
 import { useClienteStore } from '../stores/clienteStore'
 import { useCajaStore } from '../stores/cajaStore'
 import { useComboStore } from '../stores/comboStore'
@@ -57,7 +58,7 @@ interface VentaResumen {
 export function ReportesPage() {
   const { usuario, kiosco } = useAuthStore()
   const esDueno = usuario?.rol === 'DUEÑO' || Boolean(usuario?.es_superadmin)
-  const [tabActiva, setTabActiva] = useState<'balance' | 'ventas' | 'rotacion'>('balance')
+  const [tabActiva, setTabActiva] = useState<'balance' | 'ventas' | 'rotacion' | 'bajas'>('balance')
   const [fecha, setFecha] = useState(() => getFechaLocal())
   const [ventas, setVentas] = useState<VentaResumen[]>([])
   const [resumen, setResumen] = useState<ResumenDiario | null>(null)
@@ -526,6 +527,8 @@ export function ReportesPage() {
               ? 'Detalle de tickets y facturación diaria por jornada'
               : tabActiva === 'rotacion'
               ? 'Rotación de mercadería, capital inmovilizado y liquidación de stock'
+              : tabActiva === 'bajas'
+              ? 'Mermas y otras bajas de inventario con estimación a costo histórico'
               : 'Rendimientos comerciales, balance financiero, compras a proveedores y libro diario contable'}
           </p>
         </div>
@@ -567,6 +570,19 @@ export function ReportesPage() {
               Rotación y Stock Inmovilizado
             </button>
           )}
+          {esDueno && (
+            <button
+              type="button"
+              onClick={() => setTabActiva('bajas')}
+              className={`px-3 sm:px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 ${
+                tabActiva === 'bajas'
+                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              }`}
+            >
+              Bajas de Inventario
+            </button>
+          )}
         </div>
       </div>
 
@@ -574,6 +590,8 @@ export function ReportesPage() {
         <BalanceContableTab />
       ) : tabActiva === 'rotacion' ? (
         <RotacionTab />
+      ) : tabActiva === 'bajas' ? (
+        <BajasStockTab />
       ) : (
         <div className="space-y-6">
           {/* Header con selector de fecha */}

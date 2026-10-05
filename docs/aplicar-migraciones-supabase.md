@@ -39,6 +39,7 @@ Abrí cada archivo del repositorio, copiá su contenido completo en una consulta
 | 8 | `supabase_fase_capacidades_multirrubro.sql` | Agrega capacidades configurables por comercio. |
 | 9 | `supabase_fase_stock_idempotente.sql` | Evita duplicar movimientos manuales al reintentar la misma solicitud. Requiere el paso 7. |
 | 10 | `supabase_fase_costos_movimientos_privados.sql` | Protege snapshots históricos de costos de stock. Requiere los pasos 3 y 7. |
+| 11 | `supabase_fase_reporte_bajas_stock.sql` | Consulta autorizada de bajas del período completo. Requiere el paso 10. |
 
 Si una consulta falla, detené la secuencia y guardá el error completo. Los archivos con BEGIN/COMMIT se ejecutan completos; si quedó una transacción abortada, ejecutá ROLLBACK antes de reintentar. No repongas costos privados en la columna pública como rollback. La aplicación actualizada necesita estas migraciones: sin la RPC de snapshot no genera nuevos respaldos.
 
@@ -98,3 +99,11 @@ FROM public.movimientos_stock WHERE costo_unitario_referencia IS NOT NULL;
 ```
 
 Debe devolver cero. Luego comprobá con sesiones reales que el dueño puede leer sus snapshots privados y el cajero/otro comercio no los obtiene.
+
+El paso 11 es nuevo: supabase_fase_reporte_bajas_stock.sql. Instala un reporte de gestión de bajas del período completo, autorizado para dueño/superadmin. No requiere reejecutar los pasos anteriores si sus versiones actuales ya están instaladas. Después de aplicarlo, comprobá la existencia con:
+
+```sql
+SELECT to_regprocedure('public.resumir_bajas_stock(uuid,date,date)') AS reporte_bajas;
+```
+
+Con una sesión de dueño en la aplicación actualizada, abrí Reportes > Bajas de Inventario y elegí el rango. Compará movimientos por motivo y snapshots conocidos con los registros del comercio. Probá también un período vacío y un cajero (no debe obtener costos mediante la función). No ejecutes la prueba de permisos únicamente desde SQL Editor con su rol administrador: eso no representa una sesión de usuario. Esta nueva migración aún no se aplicó remotamente desde la sesión de Codex.

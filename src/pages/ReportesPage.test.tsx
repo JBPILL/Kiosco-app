@@ -6,6 +6,7 @@ import { db, encolar, llamadasA, resetDb, responder } from '../test/supabaseMock
 vi.mock('../lib/supabase', async () => (await import('../test/supabaseMock')).crearModuloSupabase())
 vi.mock('../components/reportes/BalanceContableTab', () => ({ BalanceContableTab: () => <div>balance-tab</div> }))
 vi.mock('../components/reportes/RotacionTab', () => ({ RotacionTab: () => <div>rotacion-tab</div> }))
+vi.mock('../components/reportes/BajasStockTab', () => ({ BajasStockTab: () => <div>bajas-tab</div> }))
 vi.mock('../components/pos/TicketReceiptModal', () => ({ TicketReceiptModal: () => null }))
 vi.mock('../lib/exportUtils', () => ({ exportarVentasExcel: vi.fn() }))
 
@@ -72,6 +73,18 @@ beforeEach(() => {
 })
 
 describe('ReportesPage: resumen diario', () => {
+  it('permite al dueño abrir bajas de inventario', () => {
+    render(<ReportesPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Bajas de Inventario' }))
+    expect(screen.getByText('bajas-tab')).toBeTruthy()
+  })
+
+  it('no ofrece el reporte de costos de bajas al cajero', () => {
+    useAuthStore.setState({ usuario: { id: 'u1', rol: 'CAJERO', kiosco_id: KIOSCO } as never })
+    render(<ReportesPage />)
+    expect(screen.queryByRole('button', { name: 'Bajas de Inventario' })).toBeNull()
+  })
+
   it('abre en la pestaña de balance contable', () => {
     render(<ReportesPage />)
     expect(screen.getByText('balance-tab')).toBeTruthy()
