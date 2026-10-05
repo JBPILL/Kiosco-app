@@ -498,7 +498,7 @@ export function ConfigPage() {
           .limit(5000),
         supabase
           .from('ventas')
-          .select('id, fecha_hora, total, estado, afip_cae, afip_nro_comprobante, usuario:usuarios(nombre), pagos:pagos_venta(medio_pago, monto)')
+          .select('id, fecha_hora, total, estado, afip_cae, afip_nro_comprobante, usuario:usuarios!usuario_id(nombre), pagos:pagos_venta(medio_pago, monto)')
           .eq('kiosco_id', usuario.kiosco_id)
           .eq('estado', 'COMPLETADA')
           .order('fecha_hora', { ascending: false })

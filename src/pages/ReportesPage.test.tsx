@@ -97,6 +97,9 @@ describe('ReportesPage: resumen diario', () => {
     expect(screen.getByText(formatPrecio(750))).toBeTruthy() // ticket promedio
     const seleccionProductos = llamadasA('ventas', 'select')[0].filtros.find(([nombre]) => nombre === 'select')?.[1]
     expect(JSON.stringify(seleccionProductos)).not.toContain('precio_costo')
+    // ventas también referencia usuarios mediante anulada_por: elegir el vendedor.
+    expect(JSON.stringify(seleccionProductos)).toContain('usuario:usuarios!usuario_id(nombre)')
+    expect(JSON.stringify(seleccionProductos)).not.toContain('usuario:usuarios(nombre)')
     expect(llamadasA('producto_costos', 'select')).toHaveLength(1)
   })
 

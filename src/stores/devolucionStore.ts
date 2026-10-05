@@ -116,7 +116,7 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
     try {
       let query = supabase
         .from('ventas')
-        .select('*, detalles:detalles_venta(*, producto:productos(*)), pagos:pagos_venta(*), usuario:usuarios(nombre)')
+        .select('*, detalles:detalles_venta(*, producto:productos(*)), pagos:pagos_venta(*), usuario:usuarios!usuario_id(nombre)')
         .order('fecha_hora', { ascending: false })
         .limit(limite)
 
@@ -170,7 +170,7 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
       // (Resuelve T-BACFC93B, #BACFC93B, BACFC93B, venta #..., afip_nro_comprobante de manera 100% infalible)
       let queryRecientes = supabase
         .from('ventas')
-        .select('*, detalles:detalles_venta(*, producto:productos(*)), pagos:pagos_venta(*), usuario:usuarios(nombre)')
+        .select('*, detalles:detalles_venta(*, producto:productos(*)), pagos:pagos_venta(*), usuario:usuarios!usuario_id(nombre)')
         .order('fecha_hora', { ascending: false })
         .limit(150)
 
@@ -215,7 +215,7 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
       if (limpio.length === 36) {
         let queryExacta = supabase
           .from('ventas')
-          .select('*, detalles:detalles_venta(*, producto:productos(*)), pagos:pagos_venta(*), usuario:usuarios(nombre)')
+          .select('*, detalles:detalles_venta(*, producto:productos(*)), pagos:pagos_venta(*), usuario:usuarios!usuario_id(nombre)')
           .eq('id', limpio)
 
         if (kioscoId) {
@@ -233,7 +233,7 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
       if (!isNaN(numComp) && String(numComp) === limpio) {
         let queryAfip = supabase
           .from('ventas')
-          .select('*, detalles:detalles_venta(*, producto:productos(*)), pagos:pagos_venta(*), usuario:usuarios(nombre)')
+          .select('*, detalles:detalles_venta(*, producto:productos(*)), pagos:pagos_venta(*), usuario:usuarios!usuario_id(nombre)')
           .eq('afip_nro_comprobante', numComp)
 
         if (kioscoId) queryAfip = queryAfip.eq('kiosco_id', kioscoId)
