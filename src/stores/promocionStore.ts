@@ -175,8 +175,15 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
   },
 
   crearPromocion: async (promoData) => {
+    let cantPaga = promoData.cantidad_paga
+    if (promoData.tipo === 'NXM') {
+      const min = Math.max(2, Number(promoData.cantidad_minima || 2))
+      cantPaga = Math.max(1, Math.min(Number(promoData.cantidad_paga) || 1, min - 1))
+    }
+
     const nuevaPromo: Promocion = {
       ...promoData,
+      cantidad_paga: cantPaga,
       id: uuidv4(),
       created_at: new Date().toISOString(),
     }
@@ -220,7 +227,15 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
     const promoExistente = get().promociones.find((p) => p.id === id)
     const kioscoId = promoExistente?.kiosco_id
 
-    const actualizadas = get().promociones.map((p) => (p.id === id ? { ...p, ...cambios } : p))
+    const cambiosNormalizados = { ...cambios }
+    if (cambios.tipo === 'NXM' || (!cambios.tipo && promoExistente?.tipo === 'NXM')) {
+      const min = Math.max(2, Number(cambios.cantidad_minima ?? promoExistente?.cantidad_minima ?? 2))
+      if (cambios.cantidad_paga !== undefined && cambios.cantidad_paga !== null) {
+        cambiosNormalizados.cantidad_paga = Math.max(1, Math.min(Number(cambios.cantidad_paga) || 1, min - 1))
+      }
+    }
+
+    const actualizadas = get().promociones.map((p) => (p.id === id ? { ...p, ...cambiosNormalizados } : p))
     set({ promociones: actualizadas })
     guardarPromocionesLocal(actualizadas, kioscoId)
 
@@ -244,8 +259,8 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
       ]
 
       for (const key of allowedKeys) {
-        if (cambios[key] !== undefined) {
-          payload[key] = cambios[key]
+        if (cambiosNormalizados[key] !== undefined) {
+          payload[key] = cambiosNormalizados[key]
         }
       }
 

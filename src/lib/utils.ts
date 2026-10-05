@@ -69,7 +69,7 @@ export function extraerPatronPromo(texto?: string | null): string | null {
   }
 
   // 4. Patrón Porcentaje (ej: "15% OFF", "15% desc", "15%", "Descuento 15%")
-  const matchPct = str.match(/\b(\d+)\s*%/)
+  const matchPct = str.match(/\b(\d+)\s*%/i)
   if (matchPct) {
     return `${matchPct[1]}% OFF`
   }

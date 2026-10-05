@@ -183,16 +183,24 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
 
     // 2. Persistir en la tabla kioscos de Supabase
     try {
+      const payloadKiosco: Record<string, any> = {
+        cuit: configActualizada.cuit.trim() || null,
+        iibb: configActualizada.iibb?.trim() || null,
+        inicio_actividades: configActualizada.inicio_actividades || null,
+        condicion_iva: configActualizada.condicion_iva,
+        afip_punto_venta: configActualizada.punto_venta,
+        afip_habilitado: configActualizada.habilitado,
+        afip_entorno: configActualizada.entorno || 'HOMOLOGACION',
+      }
+      if (configActualizada.certificado_crt) {
+        payloadKiosco.afip_certificado_crt = configActualizada.certificado_crt
+      }
+      if (configActualizada.clave_privada_key) {
+        payloadKiosco.afip_clave_privada_key = configActualizada.clave_privada_key
+      }
       await supabase
         .from('kioscos')
-        .update({
-          cuit: configActualizada.cuit.trim() || null,
-          iibb: configActualizada.iibb?.trim() || null,
-          inicio_actividades: configActualizada.inicio_actividades || null,
-          condicion_iva: configActualizada.condicion_iva,
-          afip_punto_venta: configActualizada.punto_venta,
-          afip_habilitado: configActualizada.habilitado,
-        })
+        .update(payloadKiosco)
         .eq('id', kioscoId)
     } catch (err) {
       console.warn('Persistencia remota en kioscos fallback:', err)
@@ -233,6 +241,124 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
       const tipoCmp: TipoComprobanteAFIP =
         tipoComprobante || (config.condicion_iva === 'MONOTRIBUTO' ? 11 : 6)
       const letra: 'C' | 'B' | 'A' = tipoCmp === 11 || tipoCmp === 13 ? 'C' : tipoCmp === 1 || tipoCmp === 3 ? 'A' : 'B'
+
+      // Intentar emisión oficial vía Edge Function si se dispone de certificados
+      if (config.certificado_crt && config.clave_privada_key) {
+        try {
+          const { data: respEdge, error: errEdge } = await supabase.functions.invoke('afip-wsfe', {
+            body: {
+              venta_id: ventaId,
+              kiosco_id: kioscoId,
+              tipo_comprobante: tipoCmp,
+              tipo_doc_receptor: tipoDocCliente,
+              nro_doc_receptor: nroDocCliente,
+            },
+          })
+
+          if (!errEdge && respEdge?.success && respEdge.cae) {
+            const qrUrl = construirURLQRAFIP({
+              fecha: getFechaLocal(new Date()),
+              cuit: config.cuit || '20123456789',
+              puntoVenta: config.punto_venta,
+              tipoComprobante: tipoCmp,
+              numeroComprobante: respEdge.nro_comprobante,
+              importe: total,
+              tipoDocReceptor: tipoDocCliente,
+              nroDocReceptor: nroDocCliente,
+              codigoAutorizacion: respEdge.cae,
+            })
+
+            const configActualizada: ConfiguracionAFIP = {
+              ...config,
+              ultimo_nro_comprobante: respEdge.nro_comprobante,
+            }
+            saveLocalAFIPConfig(kioscoId, configActualizada)
+            set({ config: configActualizada })
+
+            try {
+              await supabase
+                .from('ventas')
+                .update({
+                  afip_cae: respEdge.cae,
+                  afip_vto_cae: respEdge.vto_cae || getFechaLocal(new Date(Date.now() + 10 * 86400000)),
+                  afip_tipo_comprobante: tipoCmp,
+                  afip_nro_comprobante: respEdge.nro_comprobante,
+                  afip_punto_venta: config.punto_venta,
+                  afip_qr_url: qrUrl,
+                  afip_estado: 'OFICIAL',
+                })
+                .eq('id', ventaId)
+            } catch (errSync) {
+              console.warn('Sync ventas local fallback:', errSync)
+            }
+
+            toast.success(`Factura ${letra} autorizada por AFIP (CAE: ${respEdge.cae})`, { icon: '🏛️' })
+            return {
+              cae: respEdge.cae,
+              vto_cae: respEdge.vto_cae || getFechaLocal(new Date(Date.now() + 10 * 86400000)),
+              tipo_comprobante: tipoCmp,
+              letra,
+              punto_venta: config.punto_venta,
+              nro_comprobante: respEdge.nro_comprobante,
+              cuit_emisor: config.cuit || '20123456789',
+              razon_social: config.razon_social || kiosco?.nombre || 'Comercio',
+              condicion_iva: config.condicion_iva === 'MONOTRIBUTO' ? 'Responsable Monotributo' : 'Responsable Inscripto',
+              iibb: config.iibb,
+              inicio_actividades: config.inicio_actividades,
+              tipo_doc_cliente: tipoDocCliente,
+              nro_doc_cliente: nroDocCliente,
+              nombre_cliente: nombreCliente,
+              total,
+              fecha_emision: new Date().toISOString(),
+              qr_url: qrUrl,
+              es_homologacion: config.entorno === 'HOMOLOGACION',
+            }
+          } else if (config.entorno === 'PRODUCCION') {
+            const errorMsg = respEdge?.error || errEdge?.message || 'Rechazado o no alcanzable por AFIP en producción'
+            await supabase
+              .from('ventas')
+              .update({
+                afip_estado: 'PENDIENTE',
+                afip_tipo_comprobante: tipoCmp,
+                afip_observaciones: errorMsg,
+              })
+              .eq('id', ventaId)
+
+            toast('AFIP no disponible en este momento. La venta se guardó en estado PENDIENTE de fiscalización.', {
+              icon: '⚠️',
+              duration: 5000,
+            })
+            return null
+          }
+        } catch (errInvoke) {
+          if (config.entorno === 'PRODUCCION') {
+            await supabase
+              .from('ventas')
+              .update({
+                afip_estado: 'PENDIENTE',
+                afip_tipo_comprobante: tipoCmp,
+                afip_observaciones: 'Error de red invocando función AFIP',
+              })
+              .eq('id', ventaId)
+
+            toast('Error de conexión con AFIP. Factura guardada en estado PENDIENTE.', { icon: '⚠️' })
+            return null
+          }
+        }
+      } else if (config.entorno === 'PRODUCCION') {
+        // En PRODUCCION sin certificados configurados: se guarda como PENDIENTE
+        await supabase
+          .from('ventas')
+          .update({
+            afip_estado: 'PENDIENTE',
+            afip_tipo_comprobante: tipoCmp,
+            afip_observaciones: 'Sin certificados digitales configurados en producción',
+          })
+          .eq('id', ventaId)
+
+        toast.error('No se configuraron los certificados digitales de AFIP (.crt/.key) en Producción. Factura registrada como PENDIENTE.')
+        return null
+      }
 
       // Obtener el número correlativo seguro verificando tanto la última venta registrada en Supabase como el estado local para el tipo de comprobante
       let ultimoNroBase = config.ultimo_nro_comprobante || 0
@@ -339,6 +465,7 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
             afip_nro_comprobante: nuevoNroComp,
             afip_vto_cae: fechaVtoStr,
             afip_qr_url: qrUrl,
+            afip_estado: 'SIMULADO',
           })
           .eq('id', ventaId)
 
@@ -350,6 +477,7 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
               afip_cae: caeGenerado,
               afip_tipo_comprobante: tipoCmp,
               afip_nro_comprobante: nuevoNroComp,
+              afip_estado: 'SIMULADO',
             })
             .eq('id', ventaId)
         }

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import toast from 'react-hot-toast'
 import type { ConfiguracionAFIP } from '../types/afip'
-import { db, encolar, llamadasA, resetDb, responder } from '../test/supabaseMock'
+import { db, encolar, invocacionesA, llamadasA, resetDb, responder, responderFuncion } from '../test/supabaseMock'
 
 vi.mock('../lib/supabase', async () => (await import('../test/supabaseMock')).crearModuloSupabase())
 
@@ -144,6 +144,24 @@ describe('afipStore.guardarConfiguracion', () => {
     expect(configLocal()).toMatchObject({ habilitado: true, punto_venta: 3 })
     expect(llamadasA('kioscos', 'update')[0].payload).toMatchObject({ afip_habilitado: true, afip_punto_venta: 3 })
     expect(useAFIPStore.getState().guardando).toBe(false)
+  })
+
+  it('persiste entorno, certificado y clave privada en kioscos de Supabase', async () => {
+    useAFIPStore.setState({ config: config() })
+
+    const ok = await useAFIPStore.getState().guardarConfiguracion({
+      entorno: 'PRODUCCION',
+      certificado_crt: '-----BEGIN CERTIFICATE-----\nMIIB...',
+      clave_privada_key: '-----BEGIN RSA PRIVATE KEY-----\nMIIE...',
+    })
+
+    expect(ok).toBe(true)
+    const [update] = llamadasA('kioscos', 'update')
+    expect(update.payload).toMatchObject({
+      afip_entorno: 'PRODUCCION',
+      afip_certificado_crt: '-----BEGIN CERTIFICATE-----\nMIIB...',
+      afip_clave_privada_key: '-----BEGIN RSA PRIVATE KEY-----\nMIIE...',
+    })
   })
 
   it('conserva la configuración local si Supabase falla', async () => {
@@ -319,5 +337,121 @@ describe('afipStore.emitirComprobantePrueba', () => {
   it('devuelve null si no hay configuración posible', async () => {
     useAuthStore.setState({ usuario: null, kiosco: null })
     expect(await useAFIPStore.getState().emitirComprobantePrueba()).toBeNull()
+  })
+})
+
+describe('afipStore.emitirFacturaVenta - Edge Function y contingencia', () => {
+  it('con certificados llama a la Edge Function afip-wsfe y persiste comprobante con afip_estado=OFICIAL', async () => {
+    useAFIPStore.setState({
+      config: config({
+        entorno: 'PRODUCCION',
+        certificado_crt: '-----BEGIN CERTIFICATE-----\nABC...',
+        clave_privada_key: '-----BEGIN PRIVATE KEY-----\nXYZ...',
+      }),
+    })
+
+    responderFuncion('afip-wsfe', {
+      data: {
+        success: true,
+        cae: '74123456789012',
+        vto_cae: '2026-10-15',
+        nro_comprobante: 125,
+      },
+      error: null,
+    })
+
+    const res = await useAFIPStore.getState().emitirFacturaVenta({ ventaId: 'v100', total: 2500 })
+
+    expect(res).not.toBeNull()
+    expect(res?.cae).toBe('74123456789012')
+    expect(res?.nro_comprobante).toBe(125)
+    expect(res?.es_homologacion).toBe(false)
+
+    const inv = invocacionesA('afip-wsfe')
+    expect(inv).toHaveLength(1)
+    expect(inv[0].options?.body).toMatchObject({
+      venta_id: 'v100',
+      kiosco_id: KIOSCO,
+    })
+
+    const updates = llamadasA('ventas', 'update')
+    expect(updates[0].payload).toMatchObject({
+      afip_cae: '74123456789012',
+      afip_nro_comprobante: 125,
+      afip_estado: 'OFICIAL',
+    })
+  })
+
+  it('en PRODUCCION si la Edge Function falla marca la venta como PENDIENTE sin inventar CAE', async () => {
+    useAFIPStore.setState({
+      config: config({
+        entorno: 'PRODUCCION',
+        certificado_crt: '-----BEGIN CERTIFICATE-----\nABC...',
+        clave_privada_key: '-----BEGIN PRIVATE KEY-----\nXYZ...',
+      }),
+    })
+
+    responderFuncion('afip-wsfe', {
+      data: {
+        success: false,
+        error: 'WSAA error: Certificado no autorizado',
+      },
+      error: null,
+    })
+
+    const res = await useAFIPStore.getState().emitirFacturaVenta({ ventaId: 'v101', total: 1200 })
+
+    expect(res).toBeNull()
+
+    const updates = llamadasA('ventas', 'update')
+    expect(updates.length).toBeGreaterThanOrEqual(1)
+    expect(updates[0].payload).toMatchObject({
+      afip_estado: 'PENDIENTE',
+      afip_observaciones: 'WSAA error: Certificado no autorizado',
+    })
+    expect(updates[0].payload).not.toHaveProperty('afip_cae')
+  })
+
+  it('en PRODUCCION si no hay certificados marca la venta como PENDIENTE sin inventar CAE fake', async () => {
+    useAFIPStore.setState({
+      config: config({
+        entorno: 'PRODUCCION',
+        certificado_crt: null,
+        clave_privada_key: null,
+      }),
+    })
+
+    const res = await useAFIPStore.getState().emitirFacturaVenta({ ventaId: 'v102', total: 950 })
+
+    expect(res).toBeNull()
+
+    const updates = llamadasA('ventas', 'update')
+    expect(updates.length).toBeGreaterThanOrEqual(1)
+    expect(updates[0].payload).toMatchObject({
+      afip_estado: 'PENDIENTE',
+    })
+    expect(updates[0].payload).not.toHaveProperty('afip_cae')
+  })
+
+  it('en HOMOLOGACION sin certificados emite mediante el simulador con afip_estado=SIMULADO', async () => {
+    useAFIPStore.setState({
+      config: config({
+        entorno: 'HOMOLOGACION',
+        certificado_crt: null,
+        clave_privada_key: null,
+      }),
+    })
+
+    const res = await useAFIPStore.getState().emitirFacturaVenta({ ventaId: 'v103', total: 500 })
+
+    expect(res).not.toBeNull()
+    expect(res?.cae).toMatch(/^\d{14}$/)
+    expect(res?.es_homologacion).toBe(true)
+
+    const updates = llamadasA('ventas', 'update')
+    expect(updates[0].payload).toMatchObject({
+      afip_cae: res?.cae,
+      afip_estado: 'SIMULADO',
+    })
   })
 })

@@ -34,7 +34,7 @@ npm run build
 
 - 9 casos SQL sobre PostgreSQL en memoria: 1502 productos, costos reales, aislamiento de todas las colecciones, dueño/cajero/superadmin, perfil desactivado, acceso anónimo, backend de servicio, comercio vacío y snapshot consistente.
 - 8 casos de descarga: contenido completo, permisos rechazados, conteos contradictorios, comercio incorrecto, cifrado y recuperación del contenido, función no instalada, caída de red y alcance que declara credenciales.
-- La suite completa terminó con **408 pruebas en 24 archivos** y build exitoso. Persiste el aviso conocido de tamaño del bundle principal.
+- La suite completa terminó con **441 pruebas en 29 archivos** y build exitoso. Persiste el aviso conocido de tamaño del bundle principal.
 
 ## Restauración: errores parciales
 
@@ -60,7 +60,13 @@ Las promociones usan ahora los campos del esquema vigente (`NXM`, `VOLUMEN`, `PO
 
 Tres pruebas de identidad usan Web Crypto real: ID local preservado, UUID reproducible y separación por origen/destino/tabla, y rechazo de identidad ausente. Tres casos adicionales con Supabase simulado prueban insertar una promoción/lote una sola vez y actualizarlo al repetir, y un rechazo explícito de inserción de promoción. Falta verificar la repetición y concurrencia en PostgreSQL/PostgREST con el esquema completo y agregar cobertura de remapeo de combos.
 
-Pendiente: transacción de restauración, paginación de lecturas existentes, resolución de identidades ambiguas de productos/clientes/proveedores, relaciones adicionales y verificación real de la recuperación repetida. No se considera terminada la fase por estas correcciones.
+## Lectura paginada de registros existentes
+
+Categorías, proveedores, clientes y productos se leen ordenados por ID, usando el último ID de cada página como cursor de la siguiente. Se continúa hasta recibir una página vacía, incluso si el servidor devuelve menos de los 500 registros solicitados. Una página repetida o respuesta sin colección confirmada aborta esa lectura; no se restaura esa colección con una lista parcial. Las consultas conservan el filtro del comercio.
+
+Dos casos de restauración prueban encontrar un producto en una segunda página corta y no escribir productos si esa página falla. Tres casos del lector comprueban avance del cursor, rechazo de página repetida y rechazo de respuesta sin datos. Esto evita depender de un límite implícito de filas; no representa un snapshot transaccional entre páginas, por lo que siguen pendientes cambios concurrentes y validación remota.
+
+Pendiente: transacción de restauración, resolución de identidades ambiguas de productos/clientes/proveedores, relaciones adicionales y verificación real de la recuperación repetida. No se considera terminada la fase por estas correcciones.
 
 Los casos SQL utilizan funciones de roles y migraciones reales con un esquema mínimo y autenticación emulada. Los casos de descarga usan una RPC simulada y cifrado real de Web Crypto. No prueban la validación de JWT, el esquema completo ni los límites de tamaño/tiempo del gateway remoto.
 

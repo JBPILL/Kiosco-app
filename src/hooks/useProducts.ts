@@ -10,6 +10,7 @@ import {
   leerCostosProtegidosLocales,
 } from '../lib/productCostAccess'
 import { getCachedProductos, saveCachedProductos } from '../lib/utils'
+import type { KioskoProductsUpdatedDetail } from './useRealtimeSync'
 import toast from 'react-hot-toast'
 
 const CORE_PRODUCT_KEYS = new Set([
@@ -382,6 +383,47 @@ export function useProducts() {
   useEffect(() => {
     cargarCategorias()
   }, [cargarCategorias])
+
+  // Sincronización reactiva en tiempo real con CustomEvent('kiosko-products-updated') sin recarga masiva
+  useEffect(() => {
+    const handleUpdate = (e: Event) => {
+      const detail = (e as CustomEvent<KioskoProductsUpdatedDetail>).detail
+      if (!detail) return
+
+      const { eventType, producto, productoOld } = detail
+      setProductos((prev) => {
+        let actualizados = prev
+        if (eventType === 'UPDATE' && producto) {
+          if (producto.activo === false) {
+            actualizados = prev.filter((p) => p.id !== producto.id)
+          } else {
+            const index = prev.findIndex((p) => p.id === producto.id)
+            if (index >= 0) {
+              actualizados = prev.map((p) => (p.id === producto.id ? { ...p, ...producto } : p))
+            } else {
+              actualizados = [producto, ...prev]
+            }
+          }
+        } else if (eventType === 'INSERT' && producto) {
+          if (producto.activo !== false && !prev.some((p) => p.id === producto.id)) {
+            actualizados = [producto, ...prev]
+          }
+        } else if (eventType === 'DELETE') {
+          const idBorrado = producto?.id || productoOld?.id
+          if (idBorrado) {
+            actualizados = prev.filter((p) => p.id !== idBorrado)
+          }
+        }
+        guardarProductosEnCache(actualizados)
+        return actualizados
+      })
+    }
+
+    window.addEventListener('kiosko-products-updated', handleUpdate)
+    return () => {
+      window.removeEventListener('kiosko-products-updated', handleUpdate)
+    }
+  }, [guardarProductosEnCache])
 
   // Crear producto
   const crearProducto = async (
