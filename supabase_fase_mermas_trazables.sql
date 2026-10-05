@@ -91,6 +91,9 @@ BEGIN
   IF p_tipo <> 'AJUSTE' AND p_cantidad <= 0 THEN
     RAISE EXCEPTION 'La cantidad debe ser mayor a cero' USING ERRCODE = '22023';
   END IF;
+  IF p_cantidad <> round(p_cantidad, 3) THEN
+    RAISE EXCEPTION 'La cantidad admite como máximo tres decimales' USING ERRCODE = '22023';
+  END IF;
 
   SELECT p.kiosco_id, COALESCE(p.stock_actual, 0)
     INTO v_kiosco_id, v_stock
@@ -112,7 +115,7 @@ BEGIN
 
   IF p_tipo = 'INGRESO' THEN
     v_delta := p_cantidad;
-  ELSIF p_tipo = 'EGRESO' OR (p_tipo = 'AJUSTE' AND v_delta < 0) THEN
+  ELSIF p_tipo = 'EGRESO' THEN
     v_delta := -p_cantidad;
   ELSE
     v_delta := p_cantidad - v_stock;
@@ -132,8 +135,8 @@ BEGIN
       AND l.activo = true
       AND l.cantidad_actual >= p_cantidad;
     IF NOT FOUND THEN RAISE EXCEPTION 'El lote no existe o no tiene cantidad suficiente' USING ERRCODE = '22023'; END IF;
-  ELSIF p_tipo = 'EGRESO' THEN
-    v_restante := p_cantidad;
+  ELSIF v_delta < 0 THEN
+    v_restante := -v_delta;
     FOR v_lote IN
       SELECT l.id, l.cantidad_actual
       FROM public.lotes_producto l
@@ -180,7 +183,7 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.registrar_movimiento_stock(uuid, text, numeric, text, text, date, text, uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.registrar_movimiento_stock(uuid, text, numeric, text, text, date, text, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.registrar_movimiento_stock(uuid, text, numeric, text, text, date, text, uuid) TO authenticated, service_role;
 
 -- Validación manual post migración:
 -- 1. Registrar un egreso con producto de costo conocido y confirmar snapshot.

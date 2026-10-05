@@ -79,3 +79,5 @@ Probá la restauración en la base de prueba; todavía aplica escrituras por eta
 Después de aplicar y comprobar el SQL del entorno destino, desplegá el frontend actualizado. `git push` publica código en GitHub; no ejecuta estas migraciones en Supabase. Si el hosting despliega automáticamente desde master, coordiná la migración SQL antes de usar la nueva versión.
 
 Estado de esta sesión: SQL preparado y comprobado parcialmente con PostgreSQL local en memoria; no aplicado a Supabase remoto. Las verificaciones de mermas, JWT/PostgREST y esquema completo siguen pendientes.
+
+Actualización de mermas: la migración corrigió el descuento de lotes en ajustes negativos, rechaza cantidades de más de tres decimales y habilita ejecución del backend de servicio. Si ya ejecutaste el paso 7 antes de esta corrección, volvé a ejecutar ese archivo completo. Ver alcance de las pruebas y conciliación pendiente en `docs/verificacion-mermas-postgresql.md`.
