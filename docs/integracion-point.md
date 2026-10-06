@@ -35,8 +35,9 @@ que el futuro orquestador consulte y concilie antes de repetir el cobro.
 
 Siete pruebas simuladas cubren cuerpo, identidad, cancelación pendiente,
 errores sin secretos, rutas manipuladas y respuestas incompletas.
-No se hicieron solicitudes reales. El cliente todavía no está conectado a
-un endpoint desplegado, a persistencia ni al checkout.
+No se hicieron solicitudes reales. El cliente se conecta localmente al
+procesador privado de notificaciones; no hay endpoint desplegado ni conexión
+al checkout.
 
 ## Persistencia preparada
 
@@ -117,9 +118,9 @@ Debe ajustarse con evidencia del entorno de prueba si el proveedor entrega
 esos datos mediante otra consulta. No se probaron cuotas, pagos reales ni
 respuestas del modelo de terminal del comercio.
 
-La conciliación todavía no está conectada al procesador de notificaciones o
-a una transacción de venta. Un pago confirmado no crea por sí solo la venta;
-esa coordinación exactamente una vez sigue pendiente.
+La conciliación está conectada localmente al procesador de notificaciones.
+Un pago confirmado no crea por sí solo la venta; esa coordinación exactamente
+una vez sigue pendiente.
 
 ## Procesamiento conectado a la conciliación
 
@@ -135,11 +136,35 @@ ambos en una transacción. Comprueba sus identidades, deduplica procesamiento,
 conserva estados finales y deriva mensajes contradictorios a conciliación.
 No cambia una venta confirmada ni crea una venta nueva.
 
-Pendiente implementar los adaptadores de base/configuración y el entrypoint
-del procesador, programar su ejecución y completar la transacción de venta.
+Los adaptadores de base/configuración y el entrypoint del procesador se
+prepararon en la siguiente etapa. Falta programar su ejecución y completar
+la transacción de venta.
 Los datos de cuenta esperada deben provenir de configuración privada del
 comercio. El frontend nunca debe suministrar esa identidad ni el estado final.
 No se ejecutó esta migración remotamente ni se comprobó concurrencia real.
+
+## Adaptadores y procesador privado
+
+La Edge Function `point-process` procesa una recepción por UUID y conecta las
+tablas privadas, la cuenta del comercio, el cliente del proveedor y la RPC
+de persistencia. El endpoint usa `POINT_WORKER_SECRET` (mínimo 32 caracteres).
+La configuración `POINT_ACCOUNTS_JSON` se guarda exclusivamente como secreto
+del servidor: cada UUID de comercio tiene applicationId, accountId, accessToken
+y modo explícito sandbox o production. No se devuelve esa configuración.
+
+Diez pruebas de configuración, HTTP y procesamiento pasaron. El chequeo local
+de TypeScript cubre módulos compartidos, no los imports remotos del entrypoint
+Deno. No está desplegado ni se configuraron secretos reales.
+
+La ejecución todavía es por recepción individual. Falta un despachador con
+reintentos y recuperación para que toda notificación se procese automáticamente.
+Solo habilitar ese despliegue después de completar y validar el flujo de cobro.
+El endpoint del procesador requiere también gateway sin JWT y su autenticación
+privada propia; nunca invocarlo ni distribuir su clave desde el navegador.
+
+No se congeló todavía el vínculo histórico a la cuenta en el intento. Un cambio
+de configuración privada puede dejar una orden anterior para conciliación;
+completar esa identidad antes de habilitar creación de cobros.
 
 ## Siguiente implementación
 
