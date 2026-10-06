@@ -18,6 +18,7 @@ import { useComboStore } from '../../stores/comboStore'
 import { useOfflineSyncStore } from '../../stores/offlineSyncStore'
 import type { TipoDocumentoAFIP } from '../../types/afip'
 import toast from 'react-hot-toast'
+import { distribuirTotalVenta } from '../../lib/distribuirTotalVenta'
 
 export interface LineaPagoMixto {
   id: string
@@ -383,6 +384,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       }
 
       // Función auxiliar para registrar la venta en cola offline local si no hay red
+      const subtotalesVenta = distribuirTotalVenta(items.map((item) => item.subtotal), total)
       registrarVentaEnModoOffline = async () => {
         useOfflineSyncStore.getState().encolarVenta({
           id: ventaId,
@@ -393,10 +395,8 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           total,
           estado: 'COMPLETADA',
           notas: notasParaGuardar ? `${notasParaGuardar} (Guardado Offline)` : '(Guardado Offline)',
-          detalles: items.map((item) => {
-            const ratio = subtotal > 0 ? total / subtotal : 1
-            const subtotalOriginal = Number(item.subtotal) || 0
-            const subtotalFinal = tieneAjuste ? Math.round(subtotalOriginal * ratio) : Math.round(subtotalOriginal)
+          detalles: items.map((item, indice) => {
+            const subtotalFinal = subtotalesVenta[indice]
             const cant = Math.max(0.001, Number(item.cantidad) || 1)
             const envaseUnitario = item.sin_envase
               ? Math.max(0, Number(item.precio_envase_unitario ?? item.producto.precio_envase) || 0)
@@ -575,10 +575,8 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       }
 
       // 2. Insertar detalles de venta
-      const detalles = items.map((item) => {
-        const ratio = subtotal > 0 ? total / subtotal : 1
-        const subtotalOriginal = Number(item.subtotal) || 0
-        const subtotalFinal = tieneAjuste ? Math.round(subtotalOriginal * ratio) : Math.round(subtotalOriginal)
+      const detalles = items.map((item, indice) => {
+        const subtotalFinal = subtotalesVenta[indice]
         const cant = Math.max(0.001, Number(item.cantidad) || 1)
         const envaseUnitario = item.sin_envase
           ? Math.max(0, Number(item.precio_envase_unitario ?? item.producto.precio_envase) || 0)
