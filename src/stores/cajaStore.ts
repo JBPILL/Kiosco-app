@@ -567,6 +567,11 @@ export const useCajaStore = create<CajaState>((set, get) => ({
 
         if (error) throw error
       } catch (errDb) {
+        if (errDb && typeof errDb === 'object' && 'message' in errDb
+          && typeof errDb.message === 'string' && errDb.message.includes('POINT_COBRO_PENDIENTE:')) {
+          toast.error('Hay cobros Point pendientes. Conciliá esos pagos antes de cerrar la caja.')
+          return false
+        }
         console.warn('Cierre de caja en modo offline o fallo de conexión remota:', errDb)
         // Guardar cierre localmente para sincronizar cuando vuelva internet
         try {

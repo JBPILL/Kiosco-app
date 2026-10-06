@@ -6,6 +6,7 @@ type Resultado = { data?: unknown; error: { code?: string; message: string } | n
 const db = vi.hoisted(() => ({
   insertResult: { error: null } as { error: { code?: string; message: string } | null },
   insertThrows: false,
+  updateError: null as { code?: string; message: string } | null,
   remoto: [] as unknown[],
   inserts: [] as Record<string, unknown>[],
 }))
@@ -17,7 +18,7 @@ vi.mock('../lib/supabase', () => ({
   supabase: {
     from: (tabla: string) => {
       const resultado = (): Resultado =>
-        tabla === 'movimientos_caja' ? { data: db.remoto, error: null } : { data: null, error: null }
+        tabla === 'movimientos_caja' ? { data: db.remoto, error: null } : { data: null, error: db.updateError }
       const chain: Record<string, unknown> = {}
       for (const metodo of ['select', 'eq', 'order', 'limit', 'maybeSingle']) {
         chain[metodo] = () => chain
@@ -27,6 +28,7 @@ vi.mock('../lib/supabase', () => ({
         if (db.insertThrows) throw new Error('network down')
         return db.insertResult
       }
+      chain.update = () => chain
       chain.then = (resolve: (r: Resultado) => unknown) => resolve(resultado())
       return chain
     },
@@ -49,6 +51,7 @@ describe('cajaStore.registrarMovimientoCaja', () => {
     localStorage.clear()
     db.insertResult = { error: null }
     db.insertThrows = false
+    db.updateError = null
     db.remoto = []
     db.inserts = []
     useAuthStore.setState({ usuario: { id: 'u1', nombre: 'Cajero', kiosco_id: 'k1' } as never })
@@ -67,6 +70,14 @@ describe('cajaStore.registrarMovimientoCaja', () => {
     expect(db.inserts).toHaveLength(1)
     expect(db.inserts[0]).toMatchObject({ tipo: 'EGRESO', monto: 500, descripcion: 'Hielo' })
     expect(leerPendientes()).toHaveLength(0)
+  })
+
+  it('conserva la caja y no encola un cierre que Point rechaza', async () => {
+    db.updateError = { code: 'P0001', message: 'POINT_COBRO_PENDIENTE: conciliá los cobros' }
+    expect(await useCajaStore.getState().cerrarCaja(1000)).toBe(false)
+    expect(useCajaStore.getState().sesionActiva?.id).toBe(SESION_ID)
+    expect(localStorage.getItem(`kioskopos_cierre_offline_${SESION_ID}`)).toBeNull()
+    expect(useCajaStore.getState().cargando).toBe(false)
   })
 
   it('REGRESIÓN: si el insert devuelve { error } el movimiento queda pendiente y se sigue contando', async () => {

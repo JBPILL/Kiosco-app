@@ -24,6 +24,9 @@ beforeAll(async () => {
   const sql = readFileSync('supabase_fase_point_caja.sql', 'utf8')
   await db.exec(sql)
   await db.exec(sql)
+  const cierre = readFileSync('supabase_fase_point_cierre_caja.sql', 'utf8')
+  await db.exec(cierre)
+  await db.exec(cierre)
 }, 30000)
 beforeEach(async () => {
   await db.exec("DELETE FROM point_intentos; UPDATE sesiones_caja SET estado='ABIERTA'")
@@ -31,6 +34,7 @@ beforeEach(async () => {
 afterAll(async () => db?.close())
 it('reserva una caja válida y conserva el reintento después de cerrar el turno', async () => {
   await preparar()
+  await db.exec("UPDATE point_intentos SET estado='VENTA_CONFIRMADA'")
   await db.exec("UPDATE sesiones_caja SET estado='CERRADA'")
   await preparar()
   expect((await db.query('SELECT id FROM point_intentos')).rows).toHaveLength(1)
@@ -46,4 +50,16 @@ it('rechaza caja ausente, versión antigua y usuario ajeno', async () => {
     await expect(preparar(sol)).rejects.toThrow()
   }
   expect((await db.query('SELECT id FROM point_intentos')).rows).toHaveLength(0)
+})
+it('bloquea el cierre por cobros pendientes, inciertos o pagos sin venta', async () => {
+  await preparar()
+  for (const estado of ['PREPARADO','PENDIENTE','CONCILIAR','CANCELACION_SOLICITADA','PAGO_CONFIRMADO']) {
+    await db.query('UPDATE point_intentos SET estado=$1', [estado])
+    await expect(db.exec("UPDATE sesiones_caja SET estado='CERRADA'")).rejects.toThrow('POINT_COBRO_PENDIENTE:')
+    expect((await db.query<{ estado: string }>('SELECT estado FROM sesiones_caja')).rows[0].estado).toBe('ABIERTA')
+  }
+  for (const estado of ['CANCELADO','RECHAZADO','VENTA_CONFIRMADA']) {
+    await db.query('UPDATE point_intentos SET estado=$1', [estado])
+    await db.exec("UPDATE sesiones_caja SET estado='CERRADA'; UPDATE sesiones_caja SET estado='ABIERTA'")
+  }
 })

@@ -194,5 +194,17 @@ asigna una caja: conciliá las órdenes existentes antes de desplegar el nuevo l
 
 Tres pruebas PostgreSQL locales verifican reserva, rollback por caja cerrada y
 rechazo de usuario ajeno o caja ausente. No se ejecutó contra Supabase remoto.
-El cierre de una caja con un pago Point pendiente todavía necesita protección en
-la fase de reserva y confirmación transaccionales; no habilites producción todavía.
+El cierre de una caja con un pago Point pendiente requiere también el paso 16.
+La reserva de stock y confirmación transaccionales siguen pendientes; no habilites producción todavía.
+
+## Paso 16: cierre de caja con cobros Point pendientes
+
+Aplicá `supabase_fase_point_cierre_caja.sql` después del paso 15 y publicá también
+la actualización de `cajaStore`. El servidor bloquea cerrar una caja con intentos
+preparados, pendientes, inciertos, en cancelación o pagados sin venta confirmada.
+La interfaz reconoce este rechazo, mantiene la caja abierta y no lo encola como
+un cierre offline. Cancelaciones/rechazos definitivos o ventas confirmadas permiten cerrar.
+
+Validación local: catorce pruebas de migración y caja aprobadas. Todavía falta
+verificar dos conexiones concurrentes y probar Supabase con sesiones reales.
+El Point integrado aún no está habilitado en el checkout: no actives producción.
