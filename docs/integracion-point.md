@@ -4,6 +4,52 @@ El usuario eligió Terminal Point y confirmará el modelo al instalar en el loca
 El desarrollo puede continuar en entorno de prueba; la selección y validación
 de la terminal real quedan como requisito para habilitar producción.
 Pendiente confirmar vinculación a la cuenta del comercio.
+
+## Estado vigente — 6 de octubre de 2026
+
+El backend local ya cotiza y congela el ticket, su caja original, consumo físico,
+asignación FEFO y crédito antes de crear la orden. El procesador consulta la orden
+en Mercado Pago y sólo un pago verificado puede llegar al RPC privado
+`confirmar_venta_point`. Ese RPC guarda venta, conceptos virtuales, detalles,
+pagos, stock físico, lotes, kardex con costos privados y deuda en una transacción.
+El checkout identifica la venta; un reintento devuelve esa venta sin repetir efectos.
+El vínculo no puede cambiarse y una venta luego anulada no se recrea.
+
+El pago verificado se persiste antes del cierre: si éste falla, queda
+`PAGO_CONFIRMADO` para reintentar. Una recepción `PROCESADA` no demuestra que la
+venta esté cerrada; el futuro despachador también debe buscar intentos pagados
+sin venta, volver a consultar el proveedor y reprocesar su recepción. No enviar
+otra orden para resolver un error de cierre.
+
+Faltan la interfaz de cobro/recuperación, el despacho automático, la disponibilidad
+reservada en el POS, el checkout manual/offline transaccional y compartir el stock
+de envases vacíos (actualmente local). El cierre nuevo registra la devolución como
+concepto monetario; no inventa una existencia compartida de envases. Mantené
+`POINT_PRODUCTION_ENABLED` desactivado. No se desplegaron funciones ni se hicieron
+cobros reales desde Codex. Las secciones siguientes registran etapas anteriores;
+este apartado describe el estado actual.
+
+La migración es `supabase_fase_point_confirmar_venta.sql`; orden y limitaciones en
+el paso 20 de `docs/aplicar-migraciones-supabase.md`. Las pruebas locales usan
+PostgreSQL embebido con esquema mínimo, precisiones, FK y triggers reales de las
+migraciones. No prueban JWT, PostgREST, dos conexiones concurrentes ni hardware.
+
+Validación de esta etapa: la suite completa aprobó 662 pruebas en 71 archivos,
+la compilación aprobó y los entrypoints `point-quote`, `point-start` y
+`point-process` aprobaron Deno check. La cotización valida que total, subtotales
+y precios unitarios puedan guardarse en `NUMERIC(12,2)`; el prorrateo exige una
+base positiva. La reserva conjunta también evita desbordar el saldo de crédito,
+aunque su límite comercial sea cero. Se comprueba antes de enviar la orden.
+
+Autoevaluación: precisión 4/5 (rollback y reintentos probados localmente; faltan
+sesiones remotas), completitud 3/5 (cierre servidor integrado; faltan UI y despacho),
+claridad 4/5 (estado vigente separado del historial; documentación extensa),
+accionabilidad 4/5 (SQL y dependencias concretos; falta proyecto de ensayo remoto),
+concisión 4/5 (pruebas y guía centralizadas; historial largo). Promedio 3.8/5.
+Prioridades siguientes: despacho durable de pagos sin venta, interfaz de
+recuperación y checkout manual/offline transaccional. La evaluación reconoce que
+la integración completa aún no está lista para producción.
+
 El repositorio tiene una Edge Function ARCA;
 todavía no tiene una función desplegada para Point.
 

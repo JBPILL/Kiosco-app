@@ -6,6 +6,7 @@ import { dividirPagoPoint } from './pointPaymentSplit.ts'
 import type { DivisionPagoPoint, PagoComplementarioPoint } from './pointPaymentSplit.ts'
 import { planificarStockPoint } from './pointStockPlan.ts'
 import type { ConsumoStockPoint } from './pointStockPlan.ts'
+import { distribuirTotalVenta } from '../../../src/lib/distribuirTotalVenta.ts'
 
 export type LineaCotizacionPoint =
   | { tipo: 'PRODUCTO'; id: string; productoId: string; cantidad: number; sinEnvase: boolean }
@@ -49,7 +50,7 @@ export function cotizarCobroPoint(
 }
 
 function validarImporte(valor: number): void {
-  if (!Number.isFinite(valor) || valor < 0 || !Number.isSafeInteger(Math.round(valor * 100))) {
+  if (!Number.isFinite(valor) || valor < 0 || valor > 9999999999.99 || !Number.isSafeInteger(Math.round(valor * 100))) {
     throw new Error('Importe comercial inválido')
   }
 }
@@ -119,7 +120,16 @@ export function cotizarPoint(
   const evaluados = evaluarCarritoPromociones(items, datos.promociones, contextoPromocionesArgentina(datos.fecha))
   const total = totalCarrito(evaluados, tipoAjuste, valorAjuste)
   const montoCentavos = total * 100
-  if (!Number.isSafeInteger(montoCentavos) || montoCentavos <= 0) throw new Error('Total Point inválido')
+  if (!Number.isSafeInteger(montoCentavos) || montoCentavos <= 0 || total > 9999999999) throw new Error('Total Point inválido')
+  // Comprobar el detalle antes de enviar una orden: un pago no debe llegar al
+  // cierre con una base no distribuible o importes fuera de NUMERIC(12,2).
+  const subtotales = distribuirTotalVenta(evaluados.map((item) => item.subtotal), total)
+  subtotales.forEach((subtotal, indice) => {
+    if (Math.abs(subtotal) > 9999999999.99
+      || Math.max(0, Math.round(subtotal / evaluados[indice].cantidad * 100)) > 999999999999) {
+      throw new Error('Detalle Point fuera de rango')
+    }
+  })
   const consumoStock = planificarStockPoint(evaluados, datos.productos, datos.componentes || [], datos.kioscoId)
   return { items: evaluados, consumoStock, subtotal: subtotalCarrito(evaluados),
     ajuste: ajusteCarrito(evaluados, tipoAjuste, valorAjuste), total, montoCentavos }

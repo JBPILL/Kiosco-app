@@ -18,12 +18,13 @@ export interface PointProcessorDependencies {
   recuperarContexto?: (notification: PointPendingNotification) => Promise<PointProcessingContext | null>
   consultarProveedor: (orderId: string, kioscoId: string) => Promise<PointOrderSnapshot>
   guardarResultado: (notification: PointPendingNotification, context: PointProcessingContext, result: PointReconciliation) => Promise<string>
+  confirmarVenta: (context: PointProcessingContext) => Promise<string>
 }
 
 /** No acepta el estado del webhook ni elimina trabajos ante fallas. */
 export async function procesarNotificacionPoint(
   notification: PointPendingNotification, deps: PointProcessorDependencies,
-): Promise<{ evaluacion: PointReconciliation; estadoPersistido: string }> {
+): Promise<{ evaluacion: PointReconciliation; estadoPersistido: string; ventaId?: string }> {
   const context = await deps.buscarContexto(notification.orderId)
     ?? await deps.recuperarContexto?.(notification)
   if (!context || context.applicationId !== notification.applicationId
@@ -33,5 +34,12 @@ export async function procesarNotificacionPoint(
   const orden = await deps.consultarProveedor(notification.orderId, context.kioscoId)
   const result = conciliarOrdenPoint(orden, context.expected)
   const estadoPersistido = await deps.guardarResultado(notification, context, result)
+  if (result.estado === 'PAGO_CONFIRMADO' && ['PAGO_CONFIRMADO','VENTA_CONFIRMADA'].includes(estadoPersistido)) {
+    const ventaId = await deps.confirmarVenta(context)
+    if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(ventaId)) {
+      throw new Error('Confirmación de venta inválida')
+    }
+    return { evaluacion: result, estadoPersistido: 'VENTA_CONFIRMADA', ventaId }
+  }
   return { evaluacion: result, estadoPersistido }
 }

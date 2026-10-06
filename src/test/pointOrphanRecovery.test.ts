@@ -70,7 +70,7 @@ it('vuelve a consultar la orden recuperada antes de guardar su estado financiero
   const result = await procesarNotificacionPoint(notification, {
     buscarContexto: vi.fn().mockResolvedValue(null),
     recuperarContexto: (recepcion) => recuperarOrdenPoint(recepcion, recovery),
-    consultarProveedor, guardarResultado,
+    consultarProveedor, guardarResultado, confirmarVenta: vi.fn(),
   })
   expect(recovery.vincular).toHaveBeenCalledOnce()
   expect(consultarProveedor).toHaveBeenCalledWith('ORD123', kid)

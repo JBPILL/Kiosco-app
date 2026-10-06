@@ -15,16 +15,19 @@ function dependencias() {
     buscarContexto: vi.fn().mockResolvedValue(context),
     consultarProveedor: vi.fn().mockResolvedValue(orden),
     guardarResultado: vi.fn().mockResolvedValue('PAGO_CONFIRMADO'),
+    confirmarVenta: vi.fn().mockResolvedValue('33333333-3333-3333-3333-333333333333'),
   } satisfies PointProcessorDependencies
 }
 
 it('consulta el proveedor con el comercio resuelto y persiste la conciliación', async () => {
   const deps = dependencias()
   expect(await procesarNotificacionPoint(notification, deps)).toEqual({
-    evaluacion: { estado: 'PAGO_CONFIRMADO', paymentId: 'PAY123' }, estadoPersistido: 'PAGO_CONFIRMADO',
+    evaluacion: { estado: 'PAGO_CONFIRMADO', paymentId: 'PAY123' }, estadoPersistido: 'VENTA_CONFIRMADA',
+    ventaId: '33333333-3333-3333-3333-333333333333',
   })
   expect(deps.consultarProveedor).toHaveBeenCalledWith('ORD123', 'k1')
   expect(deps.guardarResultado).toHaveBeenCalledWith(notification, context, { estado: 'PAGO_CONFIRMADO', paymentId: 'PAY123' })
+  expect(deps.confirmarVenta).toHaveBeenCalledWith(context)
 })
 
 it('no procesa una orden sin contexto o de otra aplicación', async () => {
@@ -52,4 +55,26 @@ it('guarda discrepancias para conciliación sin acreditar el pago', async () => 
   deps.guardarResultado.mockResolvedValue('CONCILIAR')
   expect((await procesarNotificacionPoint(notification, deps)).estadoPersistido).toBe('CONCILIAR')
   expect(deps.guardarResultado).toHaveBeenCalledWith(notification, context, expect.objectContaining({ estado: 'CONCILIAR' }))
+  expect(deps.confirmarVenta).not.toHaveBeenCalled()
+})
+
+it('propaga fallas de cierre para reintentar un pago confirmado sin crear otra orden', async () => {
+  const deps = dependencias()
+  deps.confirmarVenta.mockRejectedValueOnce(new Error('Falló venta'))
+  await expect(procesarNotificacionPoint(notification, deps)).rejects.toThrow('Falló venta')
+  deps.guardarResultado.mockResolvedValue('VENTA_CONFIRMADA')
+  expect((await procesarNotificacionPoint(notification, deps)).estadoPersistido).toBe('VENTA_CONFIRMADA')
+  expect(deps.confirmarVenta).toHaveBeenCalledTimes(2)
+})
+
+it('no confirma ante resultado pendiente o un rechazo persistido', async () => {
+  const deps = dependencias()
+  deps.guardarResultado.mockResolvedValue('RECHAZADO')
+  await procesarNotificacionPoint(notification, deps)
+  expect(deps.confirmarVenta).not.toHaveBeenCalled()
+  deps.guardarResultado.mockResolvedValue('PAGO_CONFIRMADO')
+  deps.consultarProveedor.mockResolvedValue({ ...orden, status: 'at_terminal',
+    payments: [{ ...orden.payments[0], status: 'at_terminal', paidAmount: null, statusDetail: null }] })
+  await procesarNotificacionPoint(notification, deps)
+  expect(deps.confirmarVenta).not.toHaveBeenCalled()
 })

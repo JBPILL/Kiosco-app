@@ -244,3 +244,50 @@ Ejecutalo completo en el proyecto de ensayo. El inicio actualizado exige
 La migración puede reaplicarse; no carga deuda ni confirma ventas. Catorce pruebas
 dirigidas de reserva e inicio aprobaron. No se ejecutó contra Supabase desde Codex.
 Mantené producción deshabilitada hasta completar la venta transaccional y su interfaz.
+
+## Paso 20: confirmación de venta Point (proyecto de ensayo)
+
+Ejecutá completo `supabase_fase_point_confirmar_venta.sql` en SQL Editor después
+del paso 19. Requiere también ventas, detalles, pagos, usuarios, movimientos de
+cuenta corriente, `supabase_fase_seguridad_costos_privados.sql`,
+`supabase_fase_mermas_trazables.sql` y `supabase_fase_costos_movimientos_privados.sql`.
+El procesador requiere `supabase_fase_point_notificaciones.sql` y
+`supabase_fase_point_procesamiento.sql` después de intentos. Si falta una tabla,
+aplicá la dependencia indicada antes de repetir el archivo completo.
+
+Si ya aplicaste el paso 19, reaplicá primero el archivo actualizado
+`supabase_fase_point_reserva_credito.sql`: ahora también valida la capacidad del
+saldo `NUMERIC(12,2)` antes de retener crédito y enviar una orden.
+
+Agrega `confirmar_venta_point`, ejecutable sólo por el servidor, y conserva un
+único vínculo entre intento y venta. No cambia las ventas existentes ni crea
+pagos al aplicar el SQL. Se puede reaplicar. El servidor rechaza intentos sin
+pago verificado, reservas completas, caja original o división monetaria coherente.
+Los conceptos virtuales se insertan antes del detalle. Un fallo revierte toda la
+venta, los recursos consumidos y la deuda. El pago previamente verificado queda
+registrado para reintentar. El stock de envases vacíos sigue siendo local.
+
+Después del SQL, el `point-process` actualizado llama al cierre. Este backend
+aún no debe habilitarse para producción: faltan su despacho automático, interfaz,
+disponibilidad reservada en POS y compatibilidad del checkout manual/offline.
+No se ejecutó esta migración en Supabase remoto desde Codex.
+
+Para revisar cierres pendientes con una cuenta administradora en SQL Editor:
+
+```sql
+select i.id, i.checkout_id, i.solicitud->>'sesionCajaId' as caja_original,
+       n.id as notificacion_id
+from public.point_intentos i
+left join public.point_notificaciones n on n.intento_id = i.id
+where i.estado = 'PAGO_CONFIRMADO' and i.venta_id is null
+order by i.fecha_creacion;
+```
+
+Esta consulta sólo diagnostica: no cambies estados ni vuelvas a cobrar para
+resolver esas filas. El servidor debe consultar el proveedor y reintentar el cierre.
+Para demostrar concurrencia, falta probar dos conexiones reales sobre el mismo
+intento y sobre intentos que comparten productos, lotes o cliente.
+
+Validación local de la etapa: 662 pruebas en 71 archivos de la suite completa,
+incluidas once pruebas del cierre SQL. La migración se reaplicó en la fixture.
+La compilación y los entrypoints Deno de cotización, inicio y procesamiento aprobaron.

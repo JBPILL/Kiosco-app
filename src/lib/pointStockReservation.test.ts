@@ -69,6 +69,13 @@ it('conserva el límite cero sin tope y no imputa deuda antes de la venta', asyn
   expect((await db.query<{ saldo_deudor: string }>('SELECT saldo_deudor FROM clientes')).rows[0].saldo_deudor).toBe('0')
   await expect(db.exec('UPDATE clientes SET activo=false')).rejects.toThrow('POINT_CREDITO_RESERVADO')
 })
+
+it('rechaza reservas que desbordarían el saldo de NUMERIC(12,2), aun sin tope', async () => {
+  await db.exec('UPDATE clientes SET limite_credito=0,saldo_deudor=9999999990')
+  await preparar(attempt, [{ productoId: product,cantidad: 1 }],1000)
+  await expect(db.query('SELECT reservar_checkout_point($1,$2)', [attempt,kid])).rejects.toThrow('fuera de rango')
+  expect((await db.query('SELECT * FROM point_reservas_stock')).rows).toHaveLength(0)
+})
 it('rechaza un cliente de otro comercio sin dejar reservas parciales', async () => {
   await db.exec("UPDATE clientes SET kiosco_id='10000000-0000-0000-0000-000000000002'")
   await preparar(attempt, [{ productoId: product,cantidad: 1 }],100)

@@ -41,6 +41,9 @@ BEGIN
       JOIN public.point_intentos i ON i.id=r.intento_id WHERE r.cliente_id=v_cliente
       AND i.estado NOT IN ('CANCELADO','RECHAZADO','VENTA_CONFIRMADA');
     -- Límite cero conserva la interpretación vigente de crédito sin tope.
+    IF round(v_saldo*100)+v_retenido+v_monto>999999999999 THEN
+      RAISE EXCEPTION 'Saldo de crédito fuera de rango';
+    END IF;
     IF v_limite>0 AND round(v_saldo*100)+v_retenido+v_monto>round(v_limite*100) THEN
       RAISE EXCEPTION 'Crédito disponible insuficiente';
     END IF;

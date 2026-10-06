@@ -62,7 +62,15 @@ serve(async (request: Request) => recibirProcesoPoint(request, {
         if (error || typeof data !== 'string') throw new Error('No se pudo guardar el resultado')
         return data
       },
+      confirmarVenta: async (context) => {
+        const { data, error } = await admin.rpc('confirmar_venta_point', {
+          p_intento_id: context.expected.attemptId, p_kiosco_id: context.kioscoId,
+        })
+        if (error || typeof data !== 'string') throw new Error('La venta Point sigue pendiente de confirmación')
+        return data
+      },
     })
-    return { estadoPersistido: resultado.estadoPersistido, estadoEvaluado: resultado.evaluacion.estado }
+    return { estadoPersistido: resultado.estadoPersistido, estadoEvaluado: resultado.evaluacion.estado,
+      ventaId: resultado.ventaId }
   },
 }))

@@ -59,4 +59,18 @@ describe('cotización Point con datos del backend', () => {
     expect(() => cotizarPoint([{ tipo: 'SERVICIO', id: 'prod-1', descripcion: 'Servicio', precio: 100, cantidad: 1 }],
       'NINGUNO', 0, datos())).toThrow('Identidad de servicio')
   })
+
+  it('rechaza antes de cobrar importes que no caben en la venta y un recargo sin base distribuible', () => {
+    const servicio: LineaCotizacionPoint = { tipo: 'SERVICIO',id: 's1',descripcion: 'Servicio',precio: 9999999999, cantidad: 2 }
+    expect(() => cotizarPoint([servicio], 'NINGUNO', 0, datos())).toThrow('Total Point')
+    expect(() => cotizarPoint([{ ...servicio,precio: 10000000000,cantidad: 1 }], 'NINGUNO', 0, datos())).toThrow('Importe')
+    expect(() => cotizarPoint([{ tipo: 'DEVOLUCION_ENVASE',id: 'e1',envaseId: 'env-1',cantidad: 1 }],
+      'RECARGO_FIJO', 100, datos())).toThrow('Subtotal de venta')
+  })
+
+  it('rechaza un recargo que desborda el precio unitario de un producto pesable', () => {
+    const origen = { ...datos(),promociones: [],productos: [crearProducto({ es_pesable: true,precio_venta: 1000 })] }
+    expect(() => cotizarPoint([{ ...producto,cantidad: 0.001,sinEnvase: false }],
+      'RECARGO_FIJO',100000000,origen)).toThrow('Detalle Point fuera de rango')
+  })
 })
