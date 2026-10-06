@@ -89,6 +89,7 @@ describe('cajaStore.abrirCaja', () => {
 
 describe('cajaStore.cerrarCaja', () => {
   beforeEach(() => {
+    responder('sesiones_caja.update', { data: [{ id: SESION.id }], error: null })
     useCajaStore.setState({
       sesionActiva: SESION as never,
       cargarResumenSesion: vi.fn().mockResolvedValue({ efectivo_esperado_en_caja: 5000 }),
@@ -147,6 +148,31 @@ describe('cajaStore.cerrarCaja', () => {
     }
     expect(llamadasA('sesiones_caja', 'update')).toHaveLength(0)
     expect(useCajaStore.getState().sesionActiva).not.toBeNull()
+  })
+
+  it('no cierra ni encola cuando el servidor no devuelve la fila actualizada', async () => {
+    responder('sesiones_caja.update', { data: [], error: null })
+    expect(await useCajaStore.getState().cerrarCaja(5000)).toBe(false)
+    expect(useCajaStore.getState().sesionActiva?.id).toBe(SESION.id)
+    expect(cierreOffline()).toBeNull()
+  })
+
+  it('no convierte una denegación de permisos en cierre offline', async () => {
+    responder('sesiones_caja.update', { error: { code: '42501', message: 'permission denied' } })
+    expect(await useCajaStore.getState().cerrarCaja(5000)).toBe(false)
+    expect(useCajaStore.getState().sesionActiva?.id).toBe(SESION.id)
+    expect(cierreOffline()).toBeNull()
+  })
+
+  it('conserva la caja si falla también el almacenamiento del arqueo offline', async () => {
+    responder('sesiones_caja.update', { error: { message: 'offline' } })
+    const guardar = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('QuotaExceeded') })
+    try {
+      expect(await useCajaStore.getState().cerrarCaja(5000)).toBe(false)
+      expect(useCajaStore.getState().sesionActiva?.id).toBe(SESION.id)
+    } finally {
+      guardar.mockRestore()
+    }
   })
 })
 

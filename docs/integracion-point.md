@@ -394,6 +394,13 @@ pendiente sólo se elimina después de recibir exactamente la identidad de la fi
 actualizada; una respuesta sin filas no se considera confirmación. Se filtra por
 comercio y estado abierto. Validación local de caja: 35 pruebas en dos archivos.
 
+El cierre inmediato también exige la identidad de la fila actualizada. Una
+denegación SQL/PostgREST no se convierte en cierre offline; el rechazo Point
+conserva su mensaje específico. Ante una falla de conexión, el arqueo debe
+persistir localmente antes de retirar la caja de pantalla. Si falla el almacenamiento,
+la caja permanece abierta. El aviso distingue cierre remoto de pendiente de
+sincronización. Validación ampliada: 38 pruebas locales de caja aprobadas.
+
 El procesador de notificaciones puede recuperar una orden que todavía no quedó
 vinculada al intento local. Consulta la orden con las cuentas privadas de la
 aplicación receptora y busca el intento existente por su `external_reference`.

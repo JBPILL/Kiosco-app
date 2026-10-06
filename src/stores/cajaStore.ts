@@ -564,9 +564,10 @@ export const useCajaStore = create<CajaState>((set, get) => ({
       const montoFinalSistema = resumen?.efectivo_esperado_en_caja ?? sesion.monto_inicial
       const diferencia = montoDeclarado - montoFinalSistema
       const ahora = new Date().toISOString()
+      let cierreRemoto = false
 
       try {
-        const { error } = await supabase
+        const { data: confirmacion, error } = await supabase
           .from('sesiones_caja')
           .update({
             fecha_cierre: ahora,
@@ -576,12 +577,25 @@ export const useCajaStore = create<CajaState>((set, get) => ({
             estado: 'CERRADA',
           })
           .eq('id', sesion.id)
+          .eq('kiosco_id', sesion.kiosco_id)
           .eq('estado', 'ABIERTA')  // BUG-11: guard atómico en DB — solo actualizar sesiones abiertas
+          .select('id')
 
         if (error) throw error
+        if (!Array.isArray(confirmacion) || confirmacion.length !== 1 || confirmacion[0].id !== sesion.id) {
+          toast.error('El servidor no confirmó el cierre. Revisá el estado de la caja antes de reintentar.')
+          return false
+        }
+        cierreRemoto = true
       } catch (errDb) {
         if (cierreBloqueadoPorPoint(errDb)) {
           toast.error('Hay cobros Point pendientes. Conciliá esos pagos antes de cerrar la caja.')
+          return false
+        }
+        if (errDb && typeof errDb === 'object' && 'code' in errDb
+          && typeof errDb.code === 'string' && /^(?:[0-9A-Z]{5}|PGRST\d+)$/.test(errDb.code)
+          && !errDb.code.startsWith('08')) {
+          toast.error('El servidor rechazó el cierre de caja. Revisá los permisos y los datos antes de reintentar.')
           return false
         }
         console.warn('Cierre de caja en modo offline o fallo de conexión remota:', errDb)
@@ -597,11 +611,14 @@ export const useCajaStore = create<CajaState>((set, get) => ({
           localStorage.setItem(`kioskopos_cierre_offline_${sesion.id}`, JSON.stringify(cierreLocal))
         } catch (e) {
           console.error('Error guardando cierre offline en storage:', e)
+          toast.error('No se pudo guardar el arqueo en este equipo. La caja sigue abierta.')
+          return false
         }
       }
 
       set({ sesionActiva: null, resumenActivo: null, movimientosCaja: [] })
-      toast.success('Caja cerrada y arqueo completado')
+      if (cierreRemoto) toast.success('Caja cerrada y arqueo completado')
+      else toast('Arqueo guardado en este equipo. El cierre está pendiente de sincronización.', { icon: '⚠️', duration: 5000 })
       return true
     } catch (err) {
       console.error('Error al cerrar caja:', err)
