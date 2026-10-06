@@ -25,6 +25,19 @@ reutiliza la referencia del intento y no incluye datos personales.
 Tres pruebas comprueban importes, identidad estable y entradas inválidas.
 No hace solicitudes externas ni habilita cobros en la interfaz.
 
+`pointClient.ts` agrega un cliente de uso servidor con URL fija de Mercado Pago,
+creación con clave estable, consulta y cancelación. Rechaza IDs manipulados,
+deshabilita redirecciones y limita el tiempo de espera. Devuelve IDs y estados
+del proveedor; no interpreta `created` ni HTTP 202 como cobro o cancelación
+definitiva. Los errores omiten credenciales y cuerpos del proveedor.
+Los cortes de conexión y respuestas inválidas se consideran inciertos para
+que el futuro orquestador consulte y concilie antes de repetir el cobro.
+
+Siete pruebas simuladas cubren cuerpo, identidad, cancelación pendiente,
+errores sin secretos, rutas manipuladas y respuestas incompletas.
+No se hicieron solicitudes reales. El cliente todavía no está conectado a
+un endpoint desplegado, a persistencia ni al checkout.
+
 ## Siguiente implementación
 
 1. Configuración privada por comercio: terminal y credenciales en servidor.
