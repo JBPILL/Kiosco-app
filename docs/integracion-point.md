@@ -362,6 +362,16 @@ basándose sólo en la cotización o esta comprobación de stock.
 
 ## Reserva física antes del cobro
 
+`supabase_fase_point_reserva_credito.sql` agrega `reservar_checkout_point`, que
+reserva stock y lotes y retiene la parte de cuenta corriente en la misma transacción.
+`point-start` usa ahora este RPC. Bloquea el cliente, vuelve a verificar saldo/límite
+y reservas activas y rechaza importes inconsistentes con los pagos congelados.
+Conserva el límite cero sin tope vigente. Retener crédito no imputa todavía deuda.
+Un trigger impide desactivar/mover el cliente o reducir su disponibilidad por debajo
+de lo retenido. Catorce pruebas dirigidas de reserva e inicio aprobaron idempotencia,
+rollback, retención incierta, aislamiento y permisos. Falta confirmación de venta e
+interfaz; el checkout manual actual no es atómico y Point producción sigue deshabilitado.
+
 La siguiente migración, `supabase_fase_point_reserva_lotes.sql`, agrega
 `reservar_lotes_point`, que ejecuta la reserva física y la asignación FEFO en una
 misma transacción. `point-start` ahora exige este RPC. Los lotes se ordenan por

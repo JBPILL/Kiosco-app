@@ -235,3 +235,12 @@ este RPC en lugar de llamar directamente a `reservar_stock_point`.
 Probalo en el proyecto de ensayo. Mantené producción deshabilitada hasta completar
 la confirmación transaccional de venta y la disponibilidad reservada en el POS.
 Cinco pruebas PostgreSQL locales aprobaron; la concurrencia remota sigue pendiente.
+
+## Paso 19: reserva conjunta con crédito Point (fase en desarrollo)
+
+`supabase_fase_point_reserva_credito.sql` requiere el paso 18 y `clientes`.
+Ejecutalo completo en el proyecto de ensayo. El inicio actualizado exige
+`reservar_checkout_point`, que retiene stock, lotes y crédito antes de llamar a Point.
+La migración puede reaplicarse; no carga deuda ni confirma ventas. Catorce pruebas
+dirigidas de reserva e inicio aprobaron. No se ejecutó contra Supabase desde Codex.
+Mantené producción deshabilitada hasta completar la venta transaccional y su interfaz.
