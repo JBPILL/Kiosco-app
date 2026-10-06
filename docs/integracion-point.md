@@ -121,6 +121,26 @@ La conciliación todavía no está conectada al procesador de notificaciones o
 a una transacción de venta. Un pago confirmado no crea por sí solo la venta;
 esa coordinación exactamente una vez sigue pendiente.
 
+## Procesamiento conectado a la conciliación
+
+`pointNotificationProcessor.ts` resuelve el comercio e intento desde el ID de
+orden, verifica la aplicación y consulta al proveedor con ese comercio.
+Conecta esa respuesta con la conciliación y solicita la persistencia del
+resultado. Una orden aún sin vincular queda pendiente, al igual que fallas de
+red o de escritura. El resultado incluye el estado realmente persistido para
+no presentar una evaluación antigua como estado actual.
+
+`supabase_fase_point_procesamiento.sql` bloquea recepción e intento y actualiza
+ambos en una transacción. Comprueba sus identidades, deduplica procesamiento,
+conserva estados finales y deriva mensajes contradictorios a conciliación.
+No cambia una venta confirmada ni crea una venta nueva.
+
+Pendiente implementar los adaptadores de base/configuración y el entrypoint
+del procesador, programar su ejecución y completar la transacción de venta.
+Los datos de cuenta esperada deben provenir de configuración privada del
+comercio. El frontend nunca debe suministrar esa identidad ni el estado final.
+No se ejecutó esta migración remotamente ni se comprobó concurrencia real.
+
 ## Siguiente implementación
 
 1. Configuración privada por comercio: terminal y credenciales en servidor.
