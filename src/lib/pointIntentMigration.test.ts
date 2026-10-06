@@ -27,6 +27,9 @@ beforeAll(async () => {
   await db.exec(notificaciones)
   await db.exec(notificaciones)
   await db.exec(readFileSync('supabase_fase_point_procesamiento.sql', 'utf8'))
+  const vincular = readFileSync('supabase_fase_point_vincular_orden.sql', 'utf8')
+  await db.exec(vincular)
+  await db.exec(vincular)
 }, 30000)
 
 beforeEach(async () => {
@@ -38,6 +41,19 @@ it('reserva el intento y devuelve el mismo registro en reintentos', async () => 
   expect((await preparar()).rows[0].resultado).toMatchObject({ id: intento, estado: 'PREPARADO' })
   await preparar()
   expect((await db.query('SELECT id FROM point_intentos')).rows).toHaveLength(1)
+})
+
+it('vincula una orden de forma estable y no confirma el pago por crearla', async () => {
+  await preparar()
+  const vincular = (orderId: string | null) => db.query<{ estado: string }>(
+    "SELECT vincular_orden_point($1,$2,'123','456',$3) AS estado", [intento,kiosco,orderId])
+  expect((await vincular(null)).rows[0].estado).toBe('CONCILIAR')
+  expect((await vincular('ORD123')).rows[0].estado).toBe('PENDIENTE')
+  expect((await vincular('ORD123')).rows[0].estado).toBe('PENDIENTE')
+  await expect(vincular('ORD456')).rejects.toThrow('otra orden')
+  await db.query("UPDATE point_intentos SET estado='PAGO_CONFIRMADO',payment_id='PAY123' WHERE id=$1", [intento])
+  expect((await vincular(null)).rows[0].estado).toBe('PAGO_CONFIRMADO')
+  expect((await vincular('ORD123')).rows[0].estado).toBe('PAGO_CONFIRMADO')
 })
 
 it('rechaza reutilizar el intento con otro importe y bloquea un segundo intento activo', async () => {

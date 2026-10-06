@@ -216,3 +216,116 @@ carrito y fecha comercial, incluyendo el límite de medianoche y la vigencia
 de combos. Aún falta conectar estos módulos a una cotización autoritativa que
 cargue precios y promociones del comercio desde el servidor; extraer el cálculo
 no valida importes recibidos del cliente ni habilita cobros Point.
+
+`supabase/functions/_shared/pointQuote.ts` reconstruye un ticket desde líneas
+de producto, servicio y devolución, con catálogo/promociones/envases y permisos
+suministrados por el backend. Usa precios del catálogo para productos y del
+registro de envases para devoluciones; los servicios requieren permiso explícito
+para su importe manual. Conserva depósitos fuera de la base porcentual y calcula
+el total en centavos para Point. Cuatro pruebas cubren el ticket combinado,
+comercio ajeno, permisos, importes no finitos y cantidades/identidades inválidas.
+
+`leerSolicitudCotizacionPoint` valida el
+JSON externo con campos permitidos, UUID normalizados y tipos numéricos sin
+coerción; rechaza precios de catálogo, total, credenciales y permisos enviados
+por el cliente. La capa HTTP debe usar ese lector y obtener los permisos y datos
+con identidad autenticada. Los tipos de envase actuales se almacenan localmente.
+`supabase_fase_envases_precios_compartidos.sql` prepara un catálogo remoto por
+comercio y un reemplazo transaccional autorizado al dueño. Tres pruebas locales
+validan reaplicación, actualización, rollback y permisos. El modal de precios de
+envases permite publicar el catálogo del puesto como dueño y cargar precios
+compartidos explícitamente, conservando el inventario local de vacíos. Avisos
+identifican tipos locales sin precio remoto activo. Falta validar este flujo con
+sesiones reales.
+La cotización no reserva stock ni confirma ventas.
+
+`cotizarCobroPoint` deriva el saldo Point del total cotizado, restando aportes
+netos de efectivo, transferencia, tarjeta, Mercado Pago manual y cuenta
+corriente. Valida enteros en centavos, identidades únicas y saldo Point positivo.
+El efectivo recibido y su vuelto no forman parte de esa resta. Fiado exige
+cliente; el backend todavía debe comprobar su pertenencia, límite crediticio y
+autorización, y confirmar todos los medios una sola vez junto con la venta.
+Esta división no acredita los medios manuales ni reemplaza el control del cajero.
+
+`pointQuoteAuthorization.ts` vincula perfil activo al usuario autenticado y
+comercio con suscripción activa. Dueño y cajero pueden cotizar; ajustes manuales
+requieren dueño en esta integración y servicios requieren capacidad explícita.
+La validación de fiado comprueba cliente activo del comercio, saldo y límite,
+conservando el significado existente de límite cero sin tope. Estos controles
+deben ejecutarse con registros consultados por el backend y revalidarse bajo
+bloqueo al confirmar la venta: una cotización no reserva crédito. Las pruebas de
+estas funciones aún no prueban autenticación HTTP ni RLS con usuarios reales.
+
+### Endpoint de cotización autenticada
+
+`point-quote/index.ts` verifica el token mediante Supabase Auth, exige un perfil
+activo único y consulta su comercio, productos, promociones paginadas, precios
+remotos de envases y cliente. Todas las consultas de negocio se filtran por el
+comercio del perfil. No confía en un ID de comercio enviado por el navegador.
+`pointQuoteHttp.ts` valida el cuerpo con límite de 200 kB, aplica permisos y
+crédito y devuelve sólo importes y líneas comerciales, sin costos. Tres pruebas
+del manejador cubren sesión inválida, campos inyectados, CORS y ausencia de costos.
+
+Configurar `POINT_ALLOWED_ORIGINS` con los orígenes exactos del POS separados por
+coma. La función todavía no está desplegada ni validada con Supabase real.
+El build del frontend no comprueba las importaciones remotas del entrypoint.
+Una cotización no crea una orden Point, no reserva stock/crédito ni confirma
+una venta; debe congelarse con el intento antes de iniciar el cobro.
+
+### Creación desde el intento persistido
+
+`pointOrderCreation.ts` usa exclusivamente identidad, terminal e importe del
+registro congelado. Reutiliza una orden ya vinculada y conserva la clave estable
+del intento al crear. La respuesta debe coincidir con referencia, cuenta,
+terminal y monto; errores e inconsistencias persisten `CONCILIAR`. Producción
+requiere habilitación explícita del backend y está desactivada por defecto.
+
+`supabase_fase_point_vincular_orden.sql` vincula el ID del proveedor bajo bloqueo
+y permite recuperar una creación incierta sin cambiar de intento. No acepta
+otra orden ni regresa estados de pago/venta confirmados. Vincular una orden no
+confirma un pago: el procesador debe consultarla y conciliarla. Once pruebas de
+migraciones Point y tres de creación pasaron localmente. Falta conectar reserva,
+cotización autenticada y creación en el endpoint de cobro y validar con el
+proveedor; este código todavía no está desplegado.
+
+`pointCheckoutStart.ts` coordina cotizar, reservar y crear. Antes de acceder al
+proveedor exige que la reserva haya terminado; recupera el snapshot existente
+en reintentos y verifica ticket, usuario, cuenta, modo y terminal. La comparación
+de entradas ignora el orden de claves JSONB y conserva el orden de líneas/pagos.
+Tres pruebas cubren esa recuperación, ticket modificado y fallo de reserva sin
+acceso al proveedor. Falta la confirmación transaccional de la venta; no hay un
+cobro habilitado en el POS.
+
+`point-start/index.ts` conecta ese coordinador con autenticación, cotización,
+reserva SQL, cliente del proveedor y vinculación de orden. Obtiene la terminal
+del registro de equipos del comercio y la cuenta de configuración privada.
+`pointCheckoutRecord.ts` exige snapshot versión 1 y verifica importes, entrada,
+líneas y división de pagos antes de reutilizarlo. No acepta snapshots anteriores
+sin esa información. Los errores HTTP devuelven una indicación genérica de
+recuperar el intento, sin exponer datos internos. Nueve pruebas de lectura,
+despacho HTTP y coordinación pasaron localmente.
+
+El entrypoint no está desplegado ni ejecutado con datos reales. No configurar
+`POINT_PRODUCTION_ENABLED=true` hasta validar reservas de stock/crédito,
+confirmación transaccional, recuperación en UI y conciliación completa en el
+entorno de prueba. Esta variable está desactivada por defecto; la etiqueta
+`modo=sandbox` de configuración no sustituye credenciales y dispositivos de
+prueba válidos del proveedor. Todavía no se realizaron cobros desde esta sesión.
+
+### Comprobación local de entrypoints Deno
+
+Se ejecutó con Deno 2.9.6 y terminó sin errores:
+
+```powershell
+npx --yes deno check --no-config --no-lock --node-modules-dir=none supabase/functions/point-quote/index.ts supabase/functions/point-start/index.ts supabase/functions/point-process/index.ts supabase/functions/point-webhook/index.ts
+```
+
+Comprueba tipos e importaciones remotas de los cuatro entrypoints y sus módulos
+compartidos. No inicia servidores, ejecuta consultas de negocio, aplica SQL ni
+envía cobros. La comprobación local no demuestra despliegue o funcionamiento en
+el runtime administrado de Supabase; eso sigue pendiente. Deno se obtuvo mediante
+la ejecución temporal de npm, sin añadirlo a las dependencias del proyecto.
+
+Validación de regresiones del estado actual: `npm test` terminó con 599 pruebas
+aprobadas en 61 archivos. Esto cubre pruebas locales y simulaciones; no cambia
+las verificaciones pendientes de despliegue, sesiones reales, hardware y cobros.
