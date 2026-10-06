@@ -16,7 +16,8 @@ it('consulta el período completo mediante RPC y muestra costos parciales', asyn
     movimientos: 1202, por_motivo: [{ motivo: 'MERMA', movimientos: 1202, sin_costo: 2, estimacion: 1200 }],
   }, error: null })
   render(<BajasStockTab />)
-  await screen.findByText('1202')
+  await screen.findByRole('rowheader', { name: 'Merma' })
+  expect(screen.getAllByText('1202').length).toBeGreaterThan(0)
   expect(rpc).toHaveBeenCalledWith('resumir_bajas_stock', expect.objectContaining({ p_kiosco_id: 'k1' }))
   expect(screen.getByText(/estimación es parcial/)).toBeTruthy()
   expect(screen.getByText(/todos los movimientos/)).toBeTruthy()
