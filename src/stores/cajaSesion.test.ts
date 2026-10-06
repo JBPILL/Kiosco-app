@@ -189,7 +189,7 @@ describe('cajaStore.verificarSesionActiva', () => {
 
   it('sincroniza un cierre offline pendiente y lo elimina cuando la base lo confirma', async () => {
     responder('sesiones_caja.select', { data: SESION, error: null })
-    responder('sesiones_caja.update', { error: null })
+    responder('sesiones_caja.update', { data: [{ id: SESION.id }], error: null })
     localStorage.setItem(`kioskopos_cierre_offline_${claveCierre}`, JSON.stringify({ estado: 'CERRADA', diferencia: 0 }))
 
     await useCajaStore.getState().verificarSesionActiva()
@@ -207,6 +207,24 @@ describe('cajaStore.verificarSesionActiva', () => {
     await useCajaStore.getState().verificarSesionActiva()
 
     expect(cierreOffline()).not.toBeNull()
+  })
+
+  it('conserva el arqueo y la caja cuando Point bloquea sincronizar el cierre', async () => {
+    responder('sesiones_caja.select', { data: SESION, error: null })
+    responder('sesiones_caja.update', { error: { code: 'P0001', message: 'POINT_COBRO_PENDIENTE: conciliá' } })
+    localStorage.setItem(`kioskopos_cierre_offline_${claveCierre}`, JSON.stringify({ estado: 'CERRADA', diferencia: -200 }))
+    await useCajaStore.getState().verificarSesionActiva()
+    expect(cierreOffline()).not.toBeNull()
+    expect(useCajaStore.getState().sesionActiva?.id).toBe(SESION.id)
+  })
+
+  it('no elimina un cierre pendiente si el update no confirma ninguna fila', async () => {
+    responder('sesiones_caja.select', { data: SESION, error: null })
+    responder('sesiones_caja.update', { data: [], error: null })
+    localStorage.setItem(`kioskopos_cierre_offline_${claveCierre}`, JSON.stringify({ estado: 'CERRADA', diferencia: 0 }))
+    await useCajaStore.getState().verificarSesionActiva()
+    expect(cierreOffline()).not.toBeNull()
+    expect(useCajaStore.getState().sesionActiva?.id).toBe(SESION.id)
   })
 })
 

@@ -388,6 +388,12 @@ en la interfaz y no se convierte en un cierre offline. Se permiten cierres tras
 cancelación/rechazo definitivos o venta confirmada. Las catorce pruebas locales de
 caja y migración aprobaron; la concurrencia y el funcionamiento remoto siguen pendientes.
 
+La sincronización de cierres offline también reconoce el rechazo Point: muestra
+el motivo y conserva tanto la caja abierta como el arqueo pendiente. El cierre
+pendiente sólo se elimina después de recibir exactamente la identidad de la fila
+actualizada; una respuesta sin filas no se considera confirmación. Se filtra por
+comercio y estado abierto. Validación local de caja: 35 pruebas en dos archivos.
+
 El procesador de notificaciones puede recuperar una orden que todavía no quedó
 vinculada al intento local. Consulta la orden con las cuentas privadas de la
 aplicación receptora y busca el intento existente por su `external_reference`.

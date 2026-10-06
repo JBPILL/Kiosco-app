@@ -56,6 +56,11 @@ function saveLocalMovimientos(sesionId: string, movimientos: MovimientoCaja[]) {
 
 const CODIGO_DUPLICADO = '23505'
 
+function cierreBloqueadoPorPoint(error: unknown): boolean {
+  return !!error && typeof error === 'object' && 'message' in error
+    && typeof error.message === 'string' && error.message.includes('POINT_COBRO_PENDIENTE:')
+}
+
 function getPendientes(sesionId: string): MovimientoCaja[] {
   if (typeof window === 'undefined') return []
   try {
@@ -144,12 +149,20 @@ export const useCajaStore = create<CajaState>((set, get) => ({
         if (cierrePendiente) {
           try {
             const cierreObj = JSON.parse(cierrePendiente)
-            const { error: errCierre } = await supabase.from('sesiones_caja').update(cierreObj).eq('id', data.id)
+            const { data: confirmacion, error: errCierre } = await supabase.from('sesiones_caja')
+              .update(cierreObj).eq('id', data.id).eq('kiosco_id', usuario.kiosco_id)
+              .eq('estado', 'ABIERTA').select('id')
             if (errCierre) throw errCierre
+            if (!Array.isArray(confirmacion) || confirmacion.length !== 1 || confirmacion[0].id !== data.id) {
+              throw new Error('El servidor no confirmó el cierre pendiente')
+            }
             localStorage.removeItem(`kioskopos_cierre_offline_${data.id}`)
             set({ sesionActiva: null, resumenActivo: null, movimientosCaja: [] })
             return
           } catch (e) {
+            if (cierreBloqueadoPorPoint(e)) {
+              toast.error('El cierre pendiente no pudo sincronizarse: conciliá los cobros Point. La caja sigue abierta.')
+            }
             console.warn('Error sincronizando cierre de caja pendiente:', e)
           }
         }
@@ -567,8 +580,7 @@ export const useCajaStore = create<CajaState>((set, get) => ({
 
         if (error) throw error
       } catch (errDb) {
-        if (errDb && typeof errDb === 'object' && 'message' in errDb
-          && typeof errDb.message === 'string' && errDb.message.includes('POINT_COBRO_PENDIENTE:')) {
+        if (cierreBloqueadoPorPoint(errDb)) {
           toast.error('Hay cobros Point pendientes. Conciliá esos pagos antes de cerrar la caja.')
           return false
         }
