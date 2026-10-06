@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { recuperarOrdenPoint } from '../../supabase/functions/_shared/pointOrphanRecovery'
+import { procesarNotificacionPoint } from '../../supabase/functions/_shared/pointNotificationProcessor'
 
 const kid = '11111111-1111-1111-1111-111111111111'
 const attempt = '22222222-2222-2222-2222-222222222222'
@@ -42,4 +43,37 @@ it('deja pendiente la notificación ante fallas de consulta y no consulta otra a
   expect(await recuperarOrdenPoint({ ...notification, applicationId: 'otra' }, deps)).toBeNull()
   expect(deps.consultar).not.toHaveBeenCalled()
   expect(deps.vincular).not.toHaveBeenCalled()
+})
+
+it('rechaza una cuenta, terminal, referencia u origen ajenos al intento', async () => {
+  for (const cambio of [{ accountId: '999' }, { terminalId: 'otro' },
+    { externalReference: '33333333-3333-3333-3333-333333333333' }, { type: 'online' }, { countryCode: 'BR' }]) {
+    const deps = dependencies()
+    const orden = await deps.consultar()
+    deps.consultar.mockResolvedValue({ ...orden, ...cambio })
+    expect(await recuperarOrdenPoint(notification, deps)).toBeNull()
+    expect(deps.vincular).not.toHaveBeenCalled()
+  }
+})
+
+it('no informa recuperación si falla la vinculación persistente', async () => {
+  const deps = dependencies()
+  deps.vincular.mockRejectedValue(new Error('No se pudo guardar'))
+  await expect(recuperarOrdenPoint(notification, deps)).rejects.toThrow('No se pudo guardar')
+})
+
+it('vuelve a consultar la orden recuperada antes de guardar su estado financiero', async () => {
+  const recovery = dependencies()
+  const guardarResultado = vi.fn().mockResolvedValue('PENDIENTE')
+  const consultarProveedor = vi.fn().mockResolvedValue({ ...await recovery.consultar(), status: 'at_terminal',
+    payments: [{ id: 'PAY123', amount: '150', paidAmount: null, status: 'at_terminal', statusDetail: null }] })
+  const result = await procesarNotificacionPoint(notification, {
+    buscarContexto: vi.fn().mockResolvedValue(null),
+    recuperarContexto: (recepcion) => recuperarOrdenPoint(recepcion, recovery),
+    consultarProveedor, guardarResultado,
+  })
+  expect(recovery.vincular).toHaveBeenCalledOnce()
+  expect(consultarProveedor).toHaveBeenCalledWith('ORD123', kid)
+  expect(result).toEqual({ evaluacion: { estado: 'PENDIENTE' }, estadoPersistido: 'PENDIENTE' })
+  expect(guardarResultado).toHaveBeenCalledWith(notification, expect.any(Object), { estado: 'PENDIENTE' })
 })

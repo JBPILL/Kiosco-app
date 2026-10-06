@@ -368,6 +368,11 @@ Verifica comercio, cuenta, modo, terminal e importe antes de ejecutar
 No crea otro intento ni realiza un nuevo cobro. Si falta evidencia, la recepción
 queda pendiente. Esta recuperación requiere la migración de vinculación existente.
 
-Validación local: siete pruebas dirigidas de recuperación y procesamiento aprobadas.
+Validación local ampliada: diez pruebas dirigidas de recuperación y procesamiento
+aprobadas. Se verifican cuentas, terminales, referencias y origen inconsistentes,
+fallas de persistencia y una nueva consulta del estado financiero tras recuperar.
+La suite completa aprobó 613 pruebas en 64 archivos y `npm run build` terminó sin
+errores; persiste la advertencia de tamaño de chunks. Estas pruebas locales no
+acreditan el estado de las migraciones ni los datos del Supabase remoto.
 No se probó con una terminal real ni se desplegó esta actualización.
 
