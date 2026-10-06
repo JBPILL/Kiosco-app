@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useClienteStore } from './clienteStore'
 import { useComboStore } from './comboStore'
 import toast from 'react-hot-toast'
+import { v5 as uuidv5 } from 'uuid'
 
 export interface DetalleVentaOffline {
   id: string
@@ -182,15 +183,19 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
 
         // 3. Insertar pagos — BUG-17: ídem
         if (v.pagos && v.pagos.length > 0) {
-          const pagosAInsertar = v.pagos.map((p) => ({
+          const pagosAInsertar = v.pagos.map((p, indice) => ({
+            id: uuidv5(`kioskopos:offline:${v.kiosco_id}:${v.id}:pago:${indice}`, uuidv5.URL),
             venta_id: v.id,
             medio_pago: p.medio_pago,
             monto: p.monto,
             referencia: p.referencia || null,
           }))
 
-          const { error: errPagos } = await supabase.from('pagos_venta').insert(pagosAInsertar)
-          if (errPagos && !errPagos.message?.includes('duplicate key')) {
+          const { error: errPagos } = await supabase.from('pagos_venta').upsert(pagosAInsertar, {
+            onConflict: 'id',
+            ignoreDuplicates: true,
+          })
+          if (errPagos) {
             throw errPagos
           }
         }

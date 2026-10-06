@@ -9,15 +9,23 @@ Las devoluciones de envases tampoco descuentan mercadería local.
 La consulta de stock al sincronizar limita el producto al comercio de la venta
 y excluye productos inactivos de colas anteriores.
 
-Verificación: 11 pruebas aprobadas en offlineServicios.test.ts y
+Verificación: 12 pruebas aprobadas en offlineServicios.test.ts y
 comboOffline.test.ts. Las dos nuevas pruebas cubren orden de persistencia,
 conservación del concepto en localStorage, ausencia de consultas de stock
-y conservación de la venta pendiente ante un error.
+y conservación de la venta pendiente ante un error. Una tercera prueba simula
+que el servidor guarda dos pagos iguales y se pierde la respuesta: el reintento
+reutiliza sus identificadores sin fusionar las dos líneas de pago.
+
+Cada pago offline usa un UUID determinista derivado del comercio, la venta y
+la posición de la línea. La inserción ignora exclusivamente conflictos de ID.
+Esto permite reintentar tras perder la respuesta sin generar otro pago.
 
 Pendiente: comprobar una transacción real con Supabase y pérdida de conexión.
 Las ventas antiguas cuya cola no guardó el concepto no pueden recuperar su
-descripción desde esta corrección. Los pagos offline siguen requiriendo una
-revisión de idempotencia en reintentos parciales.
+descripción desde esta corrección. Los pagos previamente sincronizados por
+versiones antiguas usaban IDs aleatorios; requieren conciliación si la venta
+todavía está en la cola. Sigue pendiente garantizar atomicidad e idempotencia
+de todos los efectos de stock y cuenta corriente de la venta.
 
 Autoevaluación: precisión 4/5, completitud 4/5, claridad 5/5,
 accionabilidad 4/5 y concisión 5/5. La evidencia automatizada cubre el flujo
