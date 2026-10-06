@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { useCartStore } from '../../stores/cartStore'
@@ -8,15 +8,21 @@ import toast from 'react-hot-toast'
 interface ArticuloLibreModalProps {
   isOpen: boolean
   onClose: () => void
+  descripcionInicial?: string
 }
 
 const MONTOS_RAPIDOS = [1000, 2000, 5000, 10000, 20000, 50000]
 
-export function ArticuloLibreModal({ isOpen, onClose }: ArticuloLibreModalProps) {
+export function ArticuloLibreModal({ isOpen, onClose, descripcionInicial }: ArticuloLibreModalProps) {
   const { agregarItemLibre } = useCartStore()
   const [descripcion, setDescripcion] = useState('Varios')
   const [precio, setPrecio] = useState('')
   const [cantidad, setCantidad] = useState('1')
+
+  // Cada acceso rápido abre un cobro nuevo con su concepto, sin conservar el anterior.
+  useEffect(() => {
+    if (isOpen) setDescripcion(descripcionInicial || 'Varios')
+  }, [isOpen, descripcionInicial])
 
   const limpiar = () => {
     setDescripcion('Varios')

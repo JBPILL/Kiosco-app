@@ -39,7 +39,7 @@ import toast from 'react-hot-toast'
 export function POSPage() {
   const navigate = useNavigate()
   const { usuario, kiosco } = useAuthStore()
-  const { tieneEnvases, tieneBalanza, esFotocopiadora } = useTenantConfig()
+  const { tieneEnvases, tieneBalanza, tieneServiciosRapidos, esFotocopiadora } = useTenantConfig()
   const { sesionActiva, verificarSesionActiva } = useCajaStore()
   const { promociones, cargarPromociones } = usePromocionStore()
   const { buscarVentaParaDevolucion } = useDevolucionStore()
@@ -53,6 +53,7 @@ export function POSPage() {
   const [modalScannerOpen, setModalScannerOpen] = useState(false)
   const [modalShortcutsOpen, setModalShortcutsOpen] = useState(false)
   const [modalLibreOpen, setModalLibreOpen] = useState(false)
+  const [descripcionLibreInicial, setDescripcionLibreInicial] = useState<string>()
   const [modalBalanzaOpen, setModalBalanzaOpen] = useState(false)
   const [modalDevolucionOpen, setModalDevolucionOpen] = useState(false)
   const [modalTicketsOpen, setModalTicketsOpen] = useState(false)
@@ -590,13 +591,30 @@ export function POSPage() {
             <div className="flex flex-wrap items-center gap-1.5 min-w-0">
               <button
                 type="button"
-                onClick={() => setModalLibreOpen(true)}
+                onClick={() => {
+                  setDescripcionLibreInicial(undefined)
+                  setModalLibreOpen(true)
+                }}
                 className="h-8 sm:h-9 px-2.5 sm:px-3 flex items-center gap-1 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs cursor-pointer"
                 title="Cobrar concepto o monto manual sin código (fotocopias, golosinas sueltas, etc.)"
               >
                 <span className="text-sm font-bold leading-none">+</span>
                 <span>Cobro Manual</span>
               </button>
+              {tieneServiciosRapidos && ['Fotocopias', 'Impresiones', 'Anillado', 'Plastificado'].map((concepto) => (
+                <button
+                  key={concepto}
+                  type="button"
+                  onClick={() => {
+                    setDescripcionLibreInicial(concepto)
+                    setModalLibreOpen(true)
+                  }}
+                  className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-xl border border-violet-300 dark:border-violet-700 bg-violet-50/80 hover:bg-violet-100 dark:bg-violet-950/40 dark:hover:bg-violet-900/50 text-violet-800 dark:text-violet-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs cursor-pointer"
+                  title={`Cobrar ${concepto.toLowerCase()} sin descontar stock`}
+                >
+                  {concepto}
+                </button>
+              ))}
               <button
                 type="button"
                 onClick={() => {
@@ -881,7 +899,11 @@ export function POSPage() {
       {/* Modal de cobro de ítem libre */}
       <ArticuloLibreModal
         isOpen={modalLibreOpen}
-        onClose={() => setModalLibreOpen(false)}
+        descripcionInicial={descripcionLibreInicial}
+        onClose={() => {
+          setModalLibreOpen(false)
+          setDescripcionLibreInicial(undefined)
+        }}
       />
 
       {/* Modal de devoluciones y cambios de venta */}
