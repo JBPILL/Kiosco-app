@@ -22,6 +22,8 @@ beforeAll(async () => {
     CREATE TABLE kioscos(id uuid PRIMARY KEY); CREATE TABLE ventas(id uuid PRIMARY KEY);
     CREATE TABLE sesiones_caja(id uuid PRIMARY KEY,kiosco_id uuid,usuario_id uuid,estado text);
     CREATE TABLE productos(id uuid PRIMARY KEY,kiosco_id uuid,stock_actual numeric,activo boolean,es_combo boolean);
+    CREATE TABLE lotes_producto(id uuid PRIMARY KEY,producto_id uuid,kiosco_id uuid,cantidad_actual numeric,
+      activo boolean,fecha_vencimiento date,fecha_ingreso timestamptz);
     INSERT INTO kioscos VALUES('${kid}');
     INSERT INTO sesiones_caja VALUES('${caja}','${kid}','${user}','ABIERTA');
     INSERT INTO productos VALUES('${product}','${kid}',5,true,false),('${other}','${kid}',1,true,false);`)
@@ -30,10 +32,34 @@ beforeAll(async () => {
   const sql = readFileSync('supabase_fase_point_reserva_stock.sql', 'utf8')
   await db.exec(sql)
   await db.exec(sql)
+  const lotes = readFileSync('supabase_fase_point_reserva_lotes.sql', 'utf8')
+  await db.exec(lotes)
+  await db.exec(lotes)
 }, 30000)
 beforeEach(async () => {
-  await db.exec(`DELETE FROM point_reservas_stock; DELETE FROM point_intentos;
+  await db.exec(`DELETE FROM point_reservas_lotes; DELETE FROM point_reservas_stock; DELETE FROM point_intentos; DELETE FROM lotes_producto;
     UPDATE productos SET stock_actual=CASE WHEN id='${product}' THEN 5 ELSE 1 END,activo=true,es_combo=false;`)
+})
+it('congela los lotes por vencimiento y protege cantidades y fechas', async () => {
+  const temprano = '60000000-0000-0000-0000-000000000001'
+  const tarde = '60000000-0000-0000-0000-000000000002'
+  await db.query(`INSERT INTO lotes_producto VALUES
+    ($1,$3,$4,2,true,'2026-10-20','2026-10-01'),($2,$3,$4,3,true,'2026-11-20','2026-10-01')`,
+    [temprano,tarde,product,kid])
+  await preparar(attempt,[{ productoId: product,cantidad: 3 }])
+  await db.query('SELECT reservar_lotes_point($1,$2)',[attempt,kid])
+  await db.query('SELECT reservar_lotes_point($1,$2)',[attempt,kid])
+  const filas = await db.query<{ lote_id: string; cantidad: string }>('SELECT lote_id,cantidad FROM point_reservas_lotes ORDER BY lote_id')
+  expect(filas.rows).toEqual([{ lote_id: temprano,cantidad: '2.000' },{ lote_id: tarde,cantidad: '1.000' }])
+  await expect(db.query('UPDATE lotes_producto SET cantidad_actual=1 WHERE id=$1',[temprano])).rejects.toThrow('POINT_LOTE_RESERVADO')
+  await expect(db.query("UPDATE lotes_producto SET fecha_vencimiento='2026-12-01' WHERE id=$1",[temprano])).rejects.toThrow('POINT_LOTE_RESERVADO')
+})
+it('mantiene el stock sin lote reservado físicamente', async () => {
+  await preparar()
+  await db.query('SELECT reservar_lotes_point($1,$2)',[attempt,kid])
+  expect((await db.query('SELECT * FROM point_reservas_stock')).rows).toHaveLength(1)
+  expect((await db.query('SELECT * FROM point_reservas_lotes')).rows).toHaveLength(0)
+  expect((await db.query<{ lotes_reservados_at: string | null }>('SELECT lotes_reservados_at FROM point_intentos')).rows[0].lotes_reservados_at).not.toBeNull()
 })
 afterAll(async () => db?.close())
 it('reserva fracciones una sola vez y protege el stock físico sin descontarlo', async () => {

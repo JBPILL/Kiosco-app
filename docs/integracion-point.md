@@ -362,6 +362,17 @@ basándose sólo en la cotización o esta comprobación de stock.
 
 ## Reserva física antes del cobro
 
+La siguiente migración, `supabase_fase_point_reserva_lotes.sql`, agrega
+`reservar_lotes_point`, que ejecuta la reserva física y la asignación FEFO en una
+misma transacción. `point-start` ahora exige este RPC. Los lotes se ordenan por
+vencimiento, ingreso e ID, y sus cantidades retenidas se excluyen de asignaciones
+nuevas. Las reservas impiden reducir un lote por debajo de lo retenido, desactivarlo
+o cambiar su producto, comercio o fechas. Las cantidades sin lote permanecen
+reservadas en el producto. Los reintentos recuperan la asignación original.
+Cinco pruebas PostgreSQL locales aprobaron. Sigue pendiente consumir esas reservas
+al confirmar la venta, reservar crédito y mostrar disponibilidad en el POS.
+No se probó concurrencia real ni se aplicó esta migración en Supabase desde Codex.
+
 `supabase_fase_point_reserva_stock.sql` guarda las cantidades del plan físico
 congelado en una tabla privada. `point-start` exige que `reservar_stock_point`
 confirme la reserva antes de llamar al proveedor. La operación bloquea intento,
@@ -373,7 +384,7 @@ conservan las cantidades; cancelación/rechazo definitivos o una venta confirmad
 dejan de retener disponibilidad. Un trigger impide bajar el stock por debajo de
 las reservas activas y cambiar el producto a inactivo, combo u otro comercio.
 
-Esta fase todavía no reserva lotes FEFO ni crédito, no muestra disponibilidad
+La reserva física por sí sola no reserva lotes FEFO ni crédito, no muestra disponibilidad
 reservada en el POS y no confirma una venta. El checkout manual existente usa
 varias escrituras: puede haber guardado la venta antes de recibir un rechazo de
 stock. Por eso la integración Point debe permanecer deshabilitada en producción

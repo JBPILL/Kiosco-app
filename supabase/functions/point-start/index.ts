@@ -69,7 +69,7 @@ serve(async (request: Request) => {
         },
         crear: (input) => client.crear(input),
         reservarStock: async (registro) => {
-          const { data, error } = await admin.rpc('reservar_stock_point', {
+          const { data, error } = await admin.rpc('reservar_lotes_point', {
             p_intento_id: registro.intento.id, p_kiosco_id: registro.intento.kioscoId,
           })
           if (error || data !== true) throw new Error('No se pudo reservar el stock físico')

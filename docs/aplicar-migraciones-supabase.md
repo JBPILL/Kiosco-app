@@ -224,3 +224,14 @@ completar esa integración. Esta fase debe probarse primero en un proyecto de en
 
 Ocho pruebas locales de reserva e inicio verifican idempotencia, rollback y
 rechazo de stock insuficiente; no se aplicó el script contra Supabase desde Codex.
+
+## Paso 18: asignación FEFO Point (fase en desarrollo)
+
+`supabase_fase_point_reserva_lotes.sql` requiere el paso 17 y `lotes_producto`.
+Puede reaplicarse y agrega reservas privadas por lote, el RPC `reservar_lotes_point`
+y protección de cantidades y fechas retenidas. El inicio Point actualizado usa
+este RPC en lugar de llamar directamente a `reservar_stock_point`.
+
+Probalo en el proyecto de ensayo. Mantené producción deshabilitada hasta completar
+la confirmación transaccional de venta y la disponibilidad reservada en el POS.
+Cinco pruebas PostgreSQL locales aprobaron; la concurrencia remota sigue pendiente.
