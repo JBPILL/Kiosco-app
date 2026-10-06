@@ -1,4 +1,4 @@
-export type RubroComercio = 'KIOSCO' | 'FOTOCOPIADORA_LIBRERIA' | 'GENERAL'
+export type RubroComercio = 'KIOSCO' | 'FOTOCOPIADORA_LIBRERIA' | 'GENERAL' | 'PETSHOP_VETERINARIA' | 'ELECTRONICA_CELULARES'
 
 export interface CapacidadesOperativas {
   envases: boolean

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { db, encolar, llamadasA, resetDb, responder } from '../test/supabaseMock'
 
@@ -54,7 +55,7 @@ function detalle(productoId: string, cantidad: number, costo: number, precio = 1
 }
 
 async function abrirVentasDiarias() {
-  render(<ReportesPage />)
+  render(<MemoryRouter><ReportesPage /></MemoryRouter>)
   fireEvent.click(screen.getByText('Ventas Diarias'))
   await waitFor(() => expect(screen.queryByText('Cargando reporte...')).toBeNull())
 }
@@ -74,19 +75,19 @@ beforeEach(() => {
 
 describe('ReportesPage: resumen diario', () => {
   it('permite al dueño abrir bajas de inventario', () => {
-    render(<ReportesPage />)
+    render(<MemoryRouter><ReportesPage /></MemoryRouter>)
     fireEvent.click(screen.getByRole('button', { name: 'Bajas de Inventario' }))
     expect(screen.getByText('bajas-tab')).toBeTruthy()
   })
 
   it('no ofrece el reporte de costos de bajas al cajero', () => {
     useAuthStore.setState({ usuario: { id: 'u1', rol: 'CAJERO', kiosco_id: KIOSCO } as never })
-    render(<ReportesPage />)
+    render(<MemoryRouter><ReportesPage /></MemoryRouter>)
     expect(screen.queryByRole('button', { name: 'Bajas de Inventario' })).toBeNull()
   })
 
   it('abre en la pestaña de balance contable', () => {
-    render(<ReportesPage />)
+    render(<MemoryRouter><ReportesPage /></MemoryRouter>)
     expect(screen.getByText('balance-tab')).toBeTruthy()
   })
 
@@ -374,7 +375,7 @@ describe('ReportesPage - Pestaña Rotación y Stock Inmovilizado', () => {
       kiosco: { id: KIOSCO, nombre: 'Kiosco Central' } as never,
     })
 
-    render(<ReportesPage />)
+    render(<MemoryRouter><ReportesPage /></MemoryRouter>)
 
     const btnRotacion = screen.getByText('Rotación y Stock Inmovilizado')
     expect(btnRotacion).toBeTruthy()
@@ -391,7 +392,7 @@ describe('ReportesPage - Pestaña Rotación y Stock Inmovilizado', () => {
       kiosco: { id: KIOSCO, nombre: 'Kiosco Central' } as never,
     })
 
-    render(<ReportesPage />)
+    render(<MemoryRouter><ReportesPage /></MemoryRouter>)
 
     expect(screen.queryByText('Rotación y Stock Inmovilizado')).toBeNull()
   })

@@ -11,6 +11,7 @@ import { clearCachedProductos } from './utils'
 import { cifrarBackupJson } from './backupCrypto'
 import { identidadRestaurada } from './backupIdentity'
 import { leerColeccionPorId } from './backupPagination'
+import { registrarDescargaRespaldoExterno } from './externalBackupReminder'
 import type { Categoria, Proveedor, Cliente, Producto } from '../types/database'
 
 export interface BackupData {
@@ -165,6 +166,7 @@ export async function generarBackupIntegral(
       : `backup_integral_${nombreSanitizado}_${fechaHora}.json`
 
     descargarArchivo(contenidoDescarga, fileName, 'application/json;charset=utf-8;')
+    registrarDescargaRespaldoExterno(kioscoId, 'JSON')
 
     return {
       ok: true,

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { supabase, createUnauthenticatedClient } from '../lib/supabase'
 import type { KioscoAdminView, Plan, PagoSuscripcion, RubroComercio } from '../types/database'
+import { obtenerCatalogoPorRubro, esCatalogoPlantilla } from '../data/catalogosPorRubro'
 import { calcularDiasRestantes } from './authStore'
 import { getFechaLocal } from '../lib/utils'
 import toast from 'react-hot-toast'
@@ -579,7 +580,10 @@ export const useAdminStore = create<AdminState>((set, get) => ({
       // 5. Inicializar categorías estándar según el rubro
       try {
         const esFotocopiadora = payload.rubro === 'FOTOCOPIADORA_LIBRERIA'
-        const categoriasIniciales = esFotocopiadora
+        const categoriasIniciales = payload.rubro && esCatalogoPlantilla(payload.rubro)
+          ? [...new Set(obtenerCatalogoPorRubro(payload.rubro).map(p => p.categoria_nombre))]
+            .map((nombre, i) => ({ nombre, color: '#4f46e5', orden: i + 1 }))
+          : esFotocopiadora
           ? [
               { nombre: 'Fotocopias e Impresiones', color: '#3b82f6', orden: 1 },
               { nombre: 'Librería Escolar', color: '#10b981', orden: 2 },

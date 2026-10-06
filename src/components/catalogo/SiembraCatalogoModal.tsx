@@ -4,15 +4,8 @@ import { Button } from '../ui/Button'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../stores/authStore'
 import { getCachedProductos, saveCachedProductos } from '../../lib/utils'
-import {
-  CATALOGO_MAESTRO_ARGENTINO,
-  obtenerCategoriasMaestras,
-  type ProductoMaestro,
-} from '../../data/catalogoMaestroArgentino'
-import {
-  CATALOGO_MAESTRO_LIBRERIA,
-  obtenerCategoriasMaestrasLibreria,
-} from '../../data/catalogoMaestroLibreria'
+import type { ProductoMaestro } from '../../data/catalogoMaestroArgentino'
+import { obtenerCatalogoPorRubro, esCatalogoPlantilla } from '../../data/catalogosPorRubro'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import type { Categoria, Producto } from '../../types/database'
 import { v4 as uuidv4 } from 'uuid'
@@ -32,16 +25,17 @@ export function SiembraCatalogoModal({
   onSiembraCompletada,
 }: SiembraCatalogoModalProps) {
   const { usuario, kiosco } = useAuthStore()
-  const { esFotocopiadora } = useTenantConfig()
+  const { esFotocopiadora, rubro, tipoComercioLabel } = useTenantConfig()
+  const plantilla = esCatalogoPlantilla(rubro)
   const kioscoId = usuario?.kiosco_id || kiosco?.id
 
   const catalogoBase = useMemo(() => {
-    return esFotocopiadora ? CATALOGO_MAESTRO_LIBRERIA : CATALOGO_MAESTRO_ARGENTINO
-  }, [esFotocopiadora])
+    return obtenerCatalogoPorRubro(rubro)
+  }, [rubro])
 
   const categoriasMaestras = useMemo(() => {
-    return esFotocopiadora ? obtenerCategoriasMaestrasLibreria() : obtenerCategoriasMaestras()
-  }, [esFotocopiadora])
+    return [...new Set(catalogoBase.map(p => p.categoria_nombre))]
+  }, [catalogoBase])
 
   const [categoriasSeleccionadas, setCategoriasSeleccionadas] = useState<Set<string>>(
     () => new Set(categoriasMaestras)
@@ -90,6 +84,7 @@ export function SiembraCatalogoModal({
   }
 
   const calcularPrecioVentaFinal = (prod: ProductoMaestro): number => {
+    if (plantilla) return 0
     if (usarPreciosSugeridos) {
       return prod.precio_venta_sugerido
     }
@@ -113,14 +108,15 @@ export function SiembraCatalogoModal({
     setProcesando(true)
     setProgreso(5)
     setMensajeEstado('Verificando categorías y stock existente...')
+    let insertadosTotal = 0
 
     try {
       // 1. Obtener productos existentes en el kiosco para detectar códigos duplicados
-      const { data: prodsActuales } = await supabase
+      const { data: prodsActuales, error: errorLectura } = await supabase
         .from('productos')
         .select('id, codigo_barras, descripcion')
         .eq('kiosco_id', kioscoId)
-        .eq('activo', true)
+      if (errorLectura || !prodsActuales) throw new Error('No se pudieron verificar los productos existentes')
 
       const codigosExistentes = new Set<string>()
       prodsActuales?.forEach((p) => {
@@ -132,7 +128,10 @@ export function SiembraCatalogoModal({
       setMensajeEstado('Sincronizando categorías...')
 
       const mapaCategorias = new Map<string, string>()
-      categoriasExistentes.forEach((c) => {
+      const { data: categoriasActuales, error: errorCategorias } = await supabase.from('categorias')
+        .select('id,nombre').eq('kiosco_id', kioscoId)
+      if (errorCategorias || !categoriasActuales) throw new Error('No se pudieron verificar las categorías existentes')
+      categoriasActuales.forEach((c) => {
         mapaCategorias.set(c.nombre.toLowerCase().trim(), c.id)
       })
 
@@ -158,11 +157,10 @@ export function SiembraCatalogoModal({
           .insert(payloadCats)
           .select()
 
-        if (!errCats && catsInsertadas) {
-          catsInsertadas.forEach((c) => {
-            mapaCategorias.set(c.nombre.toLowerCase().trim(), c.id)
-          })
-        }
+        if (errCats || !catsInsertadas || catsInsertadas.length !== payloadCats.length) throw new Error('No se pudieron crear las categorías')
+        catsInsertadas.forEach((c) => {
+          mapaCategorias.set(c.nombre.toLowerCase().trim(), c.id)
+        })
       }
 
       // 3. Preparar lista de productos finales a insertar
@@ -171,7 +169,7 @@ export function SiembraCatalogoModal({
 
       let productosAProcesar = productosFiltrados
 
-      if (omitirExistentes) {
+      if (plantilla || omitirExistentes) {
         productosAProcesar = productosFiltrados.filter(
           (p) => !codigosExistentes.has(p.codigo_barras.trim().toLowerCase())
         )
@@ -197,15 +195,16 @@ export function SiembraCatalogoModal({
           kiosco_id: kioscoId,
           codigo_barras: p.codigo_barras.trim(),
           descripcion: p.descripcion.trim(),
-          precio_costo: p.precio_costo_ref,
+          precio_costo: plantilla ? 0 : p.precio_costo_ref,
           precio_venta: pVenta,
-          stock_actual: p.stock_inicial_sugerido ?? stockInicialDefault,
+          stock_actual: plantilla ? 0 : p.stock_inicial_sugerido ?? stockInicialDefault,
           stock_minimo: 5,
           categoria_id: catId,
           unidad_medida: p.unidad_medida || 'UN',
           es_pesable: Boolean(p.es_pesable),
+          ...(plantilla ? { requiere_vencimiento: p.requiere_vencimiento ?? false, dias_alerta_vencimiento: p.dias_alerta_vencimiento ?? 30 } : {}),
           es_favorito: esFavSugerido,
-          activo: true,
+          activo: !plantilla,
           fecha_creacion: now,
           fecha_actualizacion: now,
         }
@@ -214,7 +213,6 @@ export function SiembraCatalogoModal({
       // 4. Inserción por lotes (*chunks* de 40 ítems) para no sobrepasar la red
       const CHUNK_SIZE = 40
       const totalLotes = Math.ceil(nuevosProductosPayload.length / CHUNK_SIZE)
-      let insertadosTotal = 0
 
       for (let i = 0; i < totalLotes; i++) {
         const chunk = nuevosProductosPayload.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
@@ -222,7 +220,7 @@ export function SiembraCatalogoModal({
         setProgreso(porcentajeLote)
         setMensajeEstado(`Insertando lote ${i + 1} de ${totalLotes} (${insertadosTotal + chunk.length} productos)...`)
 
-        const { error: errChunk } = await supabase.from('productos').upsert(
+        const { data: persistidos, error: errChunk } = await supabase.from('productos').upsert(
           chunk.map((item) => ({
             id: item.id,
             kiosco_id: item.kiosco_id,
@@ -235,40 +233,40 @@ export function SiembraCatalogoModal({
             categoria_id: item.categoria_id,
             unidad_medida: item.unidad_medida,
             es_pesable: item.es_pesable,
+            ...(plantilla ? { requiere_vencimiento: item.requiere_vencimiento ?? false, dias_alerta_vencimiento: item.dias_alerta_vencimiento ?? 30 } : {}),
             es_favorito: item.es_favorito,
-            activo: true,
+            activo: item.activo,
           })),
-          { onConflict: 'kiosco_id,codigo_barras' }
-        )
-
-        if (errChunk) {
-          console.warn(`Error en lote ${i + 1}:`, errChunk.message)
-        } else {
-          insertadosTotal += chunk.length
+          { onConflict: 'kiosco_id,codigo_barras', ignoreDuplicates: plantilla || omitirExistentes }
+        ).select()
+        if (errChunk || !persistidos) throw new Error(`No se pudo guardar el lote ${i + 1}`)
+        insertadosTotal += persistidos.length
+        // Cada lote confirmado permanece disponible incluso si el siguiente falla.
+        const mapaFinal = new Map(getCachedProductos(kioscoId).map(p => [p.id, p]))
+        for (const producto of persistidos as Producto[]) {
+          for (const [id, previo] of mapaFinal) {
+            if (previo.codigo_barras && previo.codigo_barras === producto.codigo_barras && id !== producto.id) mapaFinal.delete(id)
+          }
+          mapaFinal.set(producto.id, producto)
         }
+        saveCachedProductos(Array.from(mapaFinal.values()), kioscoId)
       }
 
       setProgreso(95)
       setMensajeEstado('Actualizando caché local del mostrador...')
 
-      // 5. Actualizar la caché local en memoria para que el mostrador responda en 0ms
-      const localesPrevios = getCachedProductos(kioscoId)
-      const mapaFinal = new Map<string, Producto>()
-      localesPrevios.forEach((p) => mapaFinal.set(p.id, p))
-      nuevosProductosPayload.forEach((p) => mapaFinal.set(p.id, p))
-      saveCachedProductos(Array.from(mapaFinal.values()), kioscoId)
-
       setProgreso(100)
+      await onSiembraCompletada()
       toast.success(
-        `¡Catálogo sembrado con éxito! Se cargaron ${insertadosTotal} productos listos para vender.`,
+        plantilla ? `Se importaron ${insertadosTotal} artículos inactivos. Configurá precios y existencias antes de activarlos.`
+          : `Se cargaron ${insertadosTotal} productos en el catálogo.`,
         { icon: '🚀', duration: 4000 }
       )
 
-      await onSiembraCompletada()
       onClose()
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error durante la siembra de catálogo:', err)
-      toast.error('Ocurrió un error al sembrar el catálogo')
+      toast.error(`${err instanceof Error ? err.message : 'Ocurrió un error al sembrar el catálogo'}. Se confirmaron ${insertadosTotal} artículos; podés reintentar omitiendo los existentes.`)
     } finally {
       setProcesando(false)
     }
@@ -291,12 +289,12 @@ export function SiembraCatalogoModal({
           </div>
           <div>
             <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
-              {esFotocopiadora
+              {plantilla ? `Catálogo inicial: ${tipoComercioLabel}` : esFotocopiadora
                 ? 'Siembra Inicial: Catálogo Fotocopiadora & Librería'
                 : 'Siembra Inicial: Catálogo Maestro Kiosco Argentino'}
             </h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              {esFotocopiadora
+              {plantilla ? 'Seleccioná las categorías comerciales que usa tu local. Configurá modelos, precios y stock antes de vender.' : esFotocopiadora
                 ? 'Cargá automáticamente los servicios clave (fotocopias B/N y color, anillados, plastificados) y útiles escolares más vendidos (resmas, bolígrafos, cuadernos).'
                 : 'Cargá automáticamente los artículos más vendidos de Argentina (golosinas, bebidas, cigarrillos, galletitas) con códigos de barras oficiales.'}
             </p>
@@ -323,6 +321,10 @@ export function SiembraCatalogoModal({
           </div>
         ) : (
           <div className="space-y-4">
+            {plantilla && <p className="rounded-xl bg-indigo-50 dark:bg-indigo-950/40 p-3 text-xs text-indigo-700 dark:text-indigo-300">
+              Plantilla comercial: los artículos se importan inactivos, con costo, precio y stock en cero.
+              Completá precios y existencias reales antes de activarlos. Los códigos VET-/TEC- son internos y podés reemplazarlos por los del proveedor.
+            </p>}
             {/* Selección de Categorías */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -342,7 +344,7 @@ export function SiembraCatalogoModal({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
                 {categoriasMaestras.map((catNom) => {
-                  const cantEnCat = CATALOGO_MAESTRO_ARGENTINO.filter(
+                  const cantEnCat = catalogoBase.filter(
                     (p) => p.categoria_nombre === catNom
                   ).length
                   const estaCheck = categoriasSeleccionadas.has(catNom)
@@ -374,7 +376,7 @@ export function SiembraCatalogoModal({
             </div>
 
             {/* Configuración de Precios y Margen */}
-            <div className="bg-gray-50 dark:bg-gray-700/30 p-3.5 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-3">
+            {!plantilla && <div className="bg-gray-50 dark:bg-gray-700/30 p-3.5 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-3">
               <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
                 Estrategia de Precios
               </h3>
@@ -426,11 +428,11 @@ export function SiembraCatalogoModal({
                   </div>
                 </div>
               )}
-            </div>
+            </div>}
 
             {/* Opciones de stock e idempotencia */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <div className="bg-gray-50 dark:bg-gray-700/30 p-3 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-1">
+              {!plantilla && <div className="bg-gray-50 dark:bg-gray-700/30 p-3 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-1">
                 <label className="font-semibold text-gray-700 dark:text-gray-300 block">
                   Stock inicial para cada producto:
                 </label>
@@ -445,13 +447,14 @@ export function SiembraCatalogoModal({
                   />
                   <span className="text-gray-500 text-[11px]">unidades</span>
                 </div>
-              </div>
+              </div>}
 
               <div className="bg-gray-50 dark:bg-gray-700/30 p-3 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-2 flex flex-col justify-center">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={omitirExistentes}
+                    checked={plantilla || omitirExistentes}
+                    disabled={plantilla}
                     onChange={(e) => setOmitirExistentes(e.target.checked)}
                     className="rounded text-indigo-600 focus:ring-indigo-500"
                   />

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { webcrypto } from 'node:crypto'
 import { generarBackupIntegral, type BackupData } from './backupUtils'
 import { descifrarBackupJson, esBackupCifrado } from './backupCrypto'
+import { leerDescargaRespaldoExterno } from './externalBackupReminder'
 
 const mocks = vi.hoisted(() => ({ rpc: vi.fn(), descargar: vi.fn(), consultar: vi.fn() }))
 vi.mock('./supabase', () => ({ supabase: { rpc: mocks.rpc, from: mocks.consultar } }))
@@ -22,6 +23,7 @@ function snapshot(): BackupData {
 }
 
 beforeEach(() => {
+  localStorage.clear()
   vi.clearAllMocks()
   vi.stubGlobal('crypto', webcrypto)
   mocks.consultar.mockImplementation(() => { throw new Error('No usar consultas parciales para generar el respaldo') })
@@ -33,6 +35,7 @@ describe('descarga del snapshot integral', () => {
   it('descarga todos los registros de la RPC sin consultas parciales a tablas', async () => {
     const resultado = await generarBackupIntegral('k1', 'Comercio')
     expect(resultado.ok).toBe(true)
+    expect(leerDescargaRespaldoExterno('k1')?.formato).toBe('JSON')
     expect(mocks.rpc).toHaveBeenCalledWith('generar_snapshot_backup', { p_kiosco_id: 'k1' })
     expect(mocks.consultar).not.toHaveBeenCalled()
     const datos = JSON.parse(mocks.descargar.mock.calls[0][0] as string)
@@ -88,6 +91,13 @@ describe('descarga del snapshot integral', () => {
     mocks.rpc.mockRejectedValue(new Error('Failed to fetch'))
     expect((await generarBackupIntegral('k1')).ok).toBe(false)
     expect(mocks.descargar).not.toHaveBeenCalled()
+    expect(leerDescargaRespaldoExterno('k1')).toBeNull()
+  })
+
+  it('no marca descarga cuando falla la solicitud al navegador', async () => {
+    mocks.descargar.mockImplementationOnce(() => { throw new Error('Download falló') })
+    expect((await generarBackupIntegral('k1')).ok).toBe(false)
+    expect(leerDescargaRespaldoExterno('k1')).toBeNull()
   })
 
   it('rechaza una respuesta que declara incluir credenciales', async () => {

@@ -10,6 +10,8 @@ export interface ProductoMaestro {
   categoria_nombre: string
   unidad_medida: 'UN' | 'KG' | 'GR' | 'LT'
   es_pesable?: boolean
+  requiere_vencimiento?: boolean
+  dias_alerta_vencimiento?: number
   precio_costo_ref: number
   precio_venta_sugerido: number
   stock_inicial_sugerido?: number

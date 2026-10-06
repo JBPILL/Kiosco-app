@@ -12,6 +12,7 @@ import type {
 } from '../types/database'
 import toast from 'react-hot-toast'
 import { useOfflineSyncStore } from './offlineSyncStore'
+import { crearRespaldoCierreLocal, guardarRespaldoCierreLocal } from '../lib/backupCierreLocal'
 
 interface CajaState {
   sesionActiva: (SesionCaja & { usuario?: Usuario }) | null
@@ -616,6 +617,17 @@ export const useCajaStore = create<CajaState>((set, get) => ({
         }
       }
 
+      // Tanto la proyección como la escritura pueden fallar después del cierre.
+      // El respaldo nunca conserva abierta una sesión ya registrada.
+      const avisarFalloRespaldo = () => {
+        toast.error('El arqueo se registró, pero falló su copia local. Descargá un respaldo externo.')
+      }
+      try {
+        const respaldo = crearRespaldoCierreLocal({ ...sesion, fecha_cierre: ahora,
+          monto_final_declarado: montoDeclarado, monto_final_sistema: montoFinalSistema,
+          diferencia, estado: 'CERRADA' }, resumen, get().movimientosCaja, cierreRemoto)
+        void guardarRespaldoCierreLocal(respaldo).catch(avisarFalloRespaldo)
+      } catch { avisarFalloRespaldo() }
       set({ sesionActiva: null, resumenActivo: null, movimientosCaja: [] })
       if (cierreRemoto) toast.success('Caja cerrada y arqueo completado')
       else toast('Arqueo guardado en este equipo. El cierre está pendiente de sincronización.', { icon: '⚠️', duration: 5000 })

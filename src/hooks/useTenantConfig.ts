@@ -4,8 +4,8 @@ import type { CapacidadesOperativas, RubroComercio } from '../types/database'
 export function capacidadesPorDefecto(rubro?: RubroComercio): CapacidadesOperativas {
   return {
     envases: rubro === 'KIOSCO',
-    balanza: rubro === 'KIOSCO',
-    vencimientos: rubro === 'KIOSCO',
+    balanza: rubro === 'KIOSCO' || rubro === 'PETSHOP_VETERINARIA',
+    vencimientos: rubro === 'KIOSCO' || rubro === 'PETSHOP_VETERINARIA',
     serviciosRapidos: rubro === 'FOTOCOPIADORA_LIBRERIA',
   }
 }
@@ -50,11 +50,15 @@ export function useTenantConfig(): TenantConfig {
     tieneServiciosRapidos: capacidades.serviciosRapidos,
     // Textos adaptables para la interfaz
     nombreComercio: kiosco?.nombre || 'Comercio',
-    tipoComercioLabel: esFotocopiadora
+    tipoComercioLabel: rubro === 'PETSHOP_VETERINARIA' ? 'Pet Shop y Veterinaria'
+      : rubro === 'ELECTRONICA_CELULARES' ? 'Electrónica y Celulares'
+      : esFotocopiadora
       ? 'Fotocopiadora y Librería'
       : esGeneral
       ? 'Comercio General'
       : 'Kiosco y Almacén',
-    etiquetaLocal: esFotocopiadora ? 'Librería' : esKiosco ? 'Kiosco' : 'Comercio',
+    etiquetaLocal: rubro === 'PETSHOP_VETERINARIA' ? 'Veterinaria'
+      : rubro === 'ELECTRONICA_CELULARES' ? 'Electrónica'
+      : esFotocopiadora ? 'Librería' : esKiosco ? 'Kiosco' : 'Comercio',
   }
 }

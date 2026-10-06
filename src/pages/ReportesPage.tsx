@@ -10,6 +10,7 @@ import { TicketReceiptModal, type TicketData } from '../components/pos/TicketRec
 import { BalanceContableTab } from '../components/reportes/BalanceContableTab'
 import { RotacionTab } from '../components/reportes/RotacionTab'
 import { BajasStockTab } from '../components/reportes/BajasStockTab'
+import { ExternalBackupReminder } from '../components/config/ExternalBackupReminder'
 import { useClienteStore } from '../stores/clienteStore'
 import { useCajaStore } from '../stores/cajaStore'
 import { useComboStore } from '../stores/comboStore'
@@ -516,6 +517,7 @@ export function ReportesPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
+      {usuario?.rol === 'DUEÑO' && <ExternalBackupReminder kioscoId={usuario.kiosco_id} fechaCreacion={kiosco?.fecha_creacion} />}
       {/* Encabezado con selector de pestañas para Dueño y Visor */}
       <div className="flex min-w-0 flex-col gap-4">
         <div>

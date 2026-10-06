@@ -317,3 +317,15 @@ Validación local final del paso 21: 697 pruebas aprobadas en 75 archivos. Los
 entrypoints `point-dispatch` y `point-process` aprobaron Deno check. Las pruebas
 de leases y CAS usan una base embebida y secuencias controladas; aún hace falta
 ensayar workers concurrentes y el programador en Supabase remoto.
+
+## Paso 22: capacidades al cambiar rubros especializados
+
+Ejecutá completo `supabase_fase_rubros_especializados.sql` después de
+`supabase_rubro_fotocopiadora.sql` y `supabase_fase_capacidades_multirrubro.sql`.
+Es reaplicable. Agrega un trigger que aplica las capacidades iniciales sólo al
+cambiar realmente el rubro; guardar el mismo conserva las preferencias.
+No modifica productos ni configura pagos Point.
+
+Seguí [catalogos-rubros-especializados.md](catalogos-rubros-especializados.md)
+para seleccionar el rubro e importar artículos comerciales inactivos. El SQL
+de esta etapa no se aplicó remotamente desde Codex.

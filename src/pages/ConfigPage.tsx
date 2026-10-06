@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase, createUnauthenticatedClient } from '../lib/supabase'
 import { useAuthStore, calcularDiasRestantes } from '../stores/authStore'
 import { useThemeStore } from '../stores/themeStore'
@@ -16,6 +17,8 @@ import { EquiposComercioSection, normalizarEquiposComercio } from '../components
 import { useConfigAdminStore, formatearLinkWhatsApp } from '../stores/configAdminStore'
 import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
 import { RestaurarBackupModal } from '../components/config/RestaurarBackupModal'
+import { ExternalBackupReminder } from '../components/config/ExternalBackupReminder'
+import { RespaldosCierreSection } from '../components/config/RespaldosCierreSection'
 import { usePwaStore } from '../stores/pwaStore'
 import { useCajaStore } from '../stores/cajaStore'
 import { adjuntarCostosProtegidos, cargarCostosProtegidos } from '../lib/productCostAccess'
@@ -36,6 +39,7 @@ import type { CapacidadesOperativas } from '../types/database'
 import toast from 'react-hot-toast'
 
 export function ConfigPage() {
+  const [parametros] = useSearchParams()
   const { usuario } = useAuthStore()
   const { tema, toggleTema } = useThemeStore()
   const { config: configAdmin, cargarConfig: cargarConfigAdmin } = useConfigAdminStore()
@@ -116,7 +120,7 @@ export function ConfigPage() {
   // Navegación por pestañas de configuración
   const [pestanaActiva, setPestanaActiva] = useState<
     'GENERAL' | 'FISCAL' | 'SEGURIDAD' | 'USUARIOS' | 'SUSCRIPCION' | 'BACKUP'
-  >('GENERAL')
+  >(parametros.get('seccion') === 'backup' ? 'BACKUP' : 'GENERAL')
 
   // Modal nuevo usuario
   const [modalUsuarioOpen, setModalUsuarioOpen] = useState(false)
@@ -516,15 +520,16 @@ export function ConfigPage() {
           .limit(15000),
       ])
 
-      if (prodsRes.error) console.error('Error al consultar productos para Excel:', prodsRes.error)
-      if (clientesRes.error) console.error('Error al consultar clientes para Excel:', clientesRes.error)
-      if (provsRes.error) console.error('Error al consultar proveedores para Excel:', provsRes.error)
+      if ([prodsRes,catsRes,movsRes,clientesRes,provsRes,ventasRes].some((resultado) => resultado.error)) {
+        throw new Error('No se pudieron leer todos los datos para el Excel maestro')
+      }
 
       const productosPublicos = prodsRes.data || []
       const costos = await cargarCostosProtegidos(productosPublicos.map((producto: any) => producto.id))
       const productosConCosto = adjuntarCostosProtegidos(productosPublicos, costos)
 
       await exportarMasterExcel({
+        kioscoId: usuario.kiosco_id,
         nombreKiosco: kiosco?.nombre || 'Comercio',
         productos: productosConCosto,
         categorias: catsRes.data || [],
@@ -625,6 +630,7 @@ export function ConfigPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      {usuario?.rol === 'DUEÑO' && <ExternalBackupReminder kioscoId={usuario.kiosco_id} fechaCreacion={kiosco?.fecha_creacion} abrirRespaldos={() => setPestanaActiva('BACKUP')} />}
       {/* Encabezado Principal */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
         <div>
@@ -1698,6 +1704,8 @@ export function ConfigPage() {
                   </div>
                 </div>
               </div>
+
+              <RespaldosCierreSection />
 
               {/* Aplicación de Escritorio e Instalación PWA */}
               <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-4">

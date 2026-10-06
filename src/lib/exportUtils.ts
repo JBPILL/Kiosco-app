@@ -2,6 +2,7 @@ import writeXlsxFile, { type Row, type Cell, type Sheet } from 'write-excel-file
 import type { Producto, Categoria, MovimientoStock } from '../types/database'
 import type { MetricasRotacion } from './rotacionInventario'
 import { formatFecha, formatPrecio, labelMedioPago } from './utils'
+import { registrarDescargaRespaldoExterno } from './externalBackupReminder'
 
 export interface SheetOptionsColumn {
   width?: number
@@ -1837,6 +1838,7 @@ export async function exportarRendimientosDuenoExcel(params: {
 // EXPORTACIÓN DE BACKUP MAESTRO UNIFICADO MULTI-HOJA (.XLSX)
 // ============================================================================
 export interface MasterExcelData {
+  kioscoId?: string
   nombreKiosco?: string
   productos?: any[]
   categorias?: any[]
@@ -2216,6 +2218,7 @@ export async function exportarMasterExcel(params: MasterExcelData) {
   const fileName = `resguardo_maestro_unificado_${cleanKiosco}_${fechaStr}.xlsx`
 
   await writeXlsxFile(sheets).toFile(fileName)
+  if (params.kioscoId) registrarDescargaRespaldoExterno(params.kioscoId, 'EXCEL')
 }
 
 /**
