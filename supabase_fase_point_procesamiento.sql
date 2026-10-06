@@ -25,6 +25,7 @@ BEGIN
   IF v_notificacion.application_id IS DISTINCT FROM p_application_id
     OR v_notificacion.order_id IS DISTINCT FROM p_order_id
     OR v_intento.kiosco_id IS DISTINCT FROM p_kiosco_id
+    OR v_intento.application_id IS DISTINCT FROM p_application_id
     OR v_intento.order_id IS DISTINCT FROM p_order_id
     OR (v_notificacion.intento_id IS NOT NULL AND v_notificacion.intento_id <> p_intento_id) THEN
     RAISE EXCEPTION 'Identidad Point no coincide' USING ERRCODE='22023';

@@ -8,7 +8,7 @@ const kiosco = '10000000-0000-0000-0000-000000000001'
 const intento = '20000000-0000-0000-0000-000000000001'
 const checkout = '30000000-0000-0000-0000-000000000001'
 const preparar = (id = intento, monto = 15000) => db.query<{ resultado: { id: string; estado: string } }>(
-  'SELECT preparar_intento_point($1::uuid,$2::uuid,$3::uuid,$4,$5::bigint,$6::jsonb) AS resultado',
+  "SELECT preparar_intento_point($1::uuid,$2::uuid,$3::uuid,$4,$5::bigint,$6::jsonb,'123','456','sandbox') AS resultado",
   [id, kiosco, checkout, 'terminal', monto, JSON.stringify({ items: [] })],
 )
 
@@ -76,6 +76,23 @@ it('guarda una sola recepción por identidad firmada y conserva el trabajo pendi
 
 it('rechaza importes inválidos', async () => {
   await expect(preparar(intento, 0)).rejects.toThrow('check constraint')
+})
+
+it('conserva cuenta, aplicación, modo e importe ante actualizaciones directas', async () => {
+  await preparar()
+  for (const [columna, valor] of [['account_id', '999'], ['application_id', '999'], ['modo', 'production'], ['monto_centavos', '20000']]) {
+    await expect(db.query(`UPDATE point_intentos SET ${columna}=$1 WHERE id=$2`, [valor, intento])).rejects.toThrow('identidad del intento')
+  }
+  expect((await db.query('SELECT account_id,application_id,modo,monto_centavos FROM point_intentos')).rows).toEqual([
+    { account_id: '456', application_id: '123', modo: 'sandbox', monto_centavos: 15000 },
+  ])
+})
+
+it('rechaza crear un intento nuevo sin cuenta incluso desde el servicio', async () => {
+  await expect(db.query(
+    "INSERT INTO point_intentos(id,kiosco_id,checkout_id,terminal_id,monto_centavos,solicitud) VALUES($1,$2,$3,'terminal',15000,'{}')",
+    [intento, kiosco, checkout],
+  )).rejects.toThrow('Falta la identidad de la cuenta Point')
 })
 
 it('aplica pago y recepción en una transacción y no revierte un pago por un mensaje tardío', async () => {

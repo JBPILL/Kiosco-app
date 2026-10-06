@@ -162,9 +162,22 @@ Solo habilitar ese despliegue después de completar y validar el flujo de cobro.
 El endpoint del procesador requiere también gateway sin JWT y su autenticación
 privada propia; nunca invocarlo ni distribuir su clave desde el navegador.
 
-No se congeló todavía el vínculo histórico a la cuenta en el intento. Un cambio
-de configuración privada puede dejar una orden anterior para conciliación;
-completar esa identidad antes de habilitar creación de cobros.
+## Identidad histórica de la cuenta
+
+El intento guarda ahora application_id, account_id y modo. La reserva exige
+esos datos y un trigger protege la identidad del intento frente a actualizaciones
+directas. También impide cambiar un ID de orden o pago ya asignado.
+El procesador exige coincidencia con la configuración privada antes de consultar;
+no reasigna una orden a la cuenta actual del comercio si esta cambió.
+
+Catorce pruebas locales de configuración y PostgreSQL pasaron, incluyendo
+inmutabilidad, rechazo de inserciones sin cuenta y cambios de configuración.
+Los intentos antiguos no se completan automáticamente con datos actuales;
+si carecen de vínculo histórico quedan para revisión. La migración retira
+la reserva anterior de seis parámetros y usa nueve parámetros obligatorios.
+Si se instaló una versión anterior de la migración Point, hay que reaplicar
+el archivo de intentos y después el de procesamiento antes de desplegar este
+procesador. No se ejecutaron estas migraciones en el proyecto remoto.
 
 ## Siguiente implementación
 

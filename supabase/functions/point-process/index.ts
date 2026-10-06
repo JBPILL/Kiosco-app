@@ -22,7 +22,7 @@ serve(async (request: Request) => recibirProcesoPoint(request, {
     const resultado = await procesarNotificacionPoint({ id: notificationId,
       orderId: receipt.order_id, applicationId: receipt.application_id }, {
       buscarContexto: async (orderId) => {
-        const { data, error } = await admin.from('point_intentos').select('id,kiosco_id,order_id,terminal_id,monto_centavos')
+        const { data, error } = await admin.from('point_intentos').select('id,kiosco_id,order_id,terminal_id,monto_centavos,application_id,account_id,modo')
           .eq('order_id', orderId).maybeSingle()
         if (error) throw new Error('No se pudo cargar el intento')
         return data ? contextoPointDesdeRegistro(data, cuentas) : null
