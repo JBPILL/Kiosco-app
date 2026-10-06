@@ -14,6 +14,7 @@ function dependencias(): InicioPointDependencies {
   return { cuenta: { applicationId: '123', accountId: '456', modo: 'sandbox', terminalId: 'terminal' },
     permitirProduccion: false, buscar: vi.fn(async () => null), cotizar: vi.fn(async () => cotizacion),
     resolverCaja: vi.fn(async () => id),
+    reservarStock: vi.fn(async () => undefined),
     reservar: vi.fn(async (registro) => registro), vincular: vi.fn(async () => 'PENDIENTE'),
     crear: vi.fn(async () => ({ id: 'ORD123', status: 'created', externalReference: id,
       type: 'point', countryCode: 'AR', accountId: '456', terminalId: 'terminal',
@@ -61,6 +62,12 @@ describe('inicio del checkout Point', () => {
     await expect(iniciarCheckoutPoint(permisos, entrada, deps)).rejects.toThrow('Sin caja abierta')
     expect(deps.cotizar).not.toHaveBeenCalled()
     expect(deps.reservar).not.toHaveBeenCalled()
+    expect(deps.crear).not.toHaveBeenCalled()
+  })
+  it('no envía el cobro si el servidor rechaza la reserva física', async () => {
+    const deps = dependencias()
+    deps.reservarStock = async () => { throw new Error('Stock insuficiente') }
+    await expect(iniciarCheckoutPoint(permisos, entrada, deps)).rejects.toThrow('Stock insuficiente')
     expect(deps.crear).not.toHaveBeenCalled()
   })
 })

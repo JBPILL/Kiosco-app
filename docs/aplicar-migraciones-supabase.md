@@ -208,3 +208,19 @@ un cierre offline. Cancelaciones/rechazos definitivos o ventas confirmadas permi
 Validación local: catorce pruebas de migración y caja aprobadas. Todavía falta
 verificar dos conexiones concurrentes y probar Supabase con sesiones reales.
 El Point integrado aún no está habilitado en el checkout: no actives producción.
+
+## Paso 17: reserva física Point (fase en desarrollo)
+
+`supabase_fase_point_reserva_stock.sql` depende de los pasos 15 y 16, del esquema
+de productos y de `supabase_fase_point_intentos.sql`. Agrega reservas privadas,
+el RPC `reservar_stock_point` y protección de cantidades retenidas. No modifica
+el stock al crear la reserva y puede reaplicarse.
+
+El endpoint Point actualizado exige este RPC antes de enviar un cobro. Mantené
+`POINT_PRODUCTION_ENABLED` desactivado: todavía faltan reservas FEFO/crédito,
+disponibilidad en el POS y confirmación transaccional de venta. Las ventas manuales
+actuales no son atómicas y no deben operar contra reservas Point activas hasta
+completar esa integración. Esta fase debe probarse primero en un proyecto de ensayo.
+
+Ocho pruebas locales de reserva e inicio verifican idempotencia, rollback y
+rechazo de stock insuficiente; no se aplicó el script contra Supabase desde Codex.

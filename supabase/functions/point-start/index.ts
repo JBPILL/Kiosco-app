@@ -68,6 +68,12 @@ serve(async (request: Request) => {
           return leerRegistroInicioPoint(data)
         },
         crear: (input) => client.crear(input),
+        reservarStock: async (registro) => {
+          const { data, error } = await admin.rpc('reservar_stock_point', {
+            p_intento_id: registro.intento.id, p_kiosco_id: registro.intento.kioscoId,
+          })
+          if (error || data !== true) throw new Error('No se pudo reservar el stock físico')
+        },
         vincular: async (intento, orderId) => {
           const { data, error } = await admin.rpc('vincular_orden_point', { p_intento_id: intento.id,
             p_kiosco_id: intento.kioscoId, p_application_id: intento.applicationId,

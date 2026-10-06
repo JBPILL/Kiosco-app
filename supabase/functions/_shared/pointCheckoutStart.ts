@@ -19,6 +19,7 @@ export interface InicioPointDependencies extends PointCreationDependencies {
   cotizar: (permisos: PermisosCotizacionPoint, entrada: SolicitudCotizacionPoint) => Promise<CotizacionCongelada>
   reservar: (registro: RegistroInicioPoint) => Promise<RegistroInicioPoint>
   resolverCaja: (permisos: PermisosCotizacionPoint) => Promise<string>
+  reservarStock: (registro: RegistroInicioPoint) => Promise<void>
 }
 
 function firmaEntrada(entrada: SolicitudCotizacionPoint): string {
@@ -66,6 +67,7 @@ export async function iniciarCheckoutPoint(
     if (registro.sesionCajaId !== sesionCajaId) throw new Error('La caja del intento no coincide con la reserva')
   }
   comprobarRegistro(registro, permisos, entrada, deps)
+  await deps.reservarStock(registro)
   const resultado = await crearOrdenIntentoPoint(registro.intento, deps)
   return { ...resultado, total: registro.cotizacion.ticket.total,
     montoPointCentavos: registro.cotizacion.cobro.montoPointCentavos }

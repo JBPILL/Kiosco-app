@@ -360,6 +360,34 @@ con FEFO, crédito y liberación segura en cancelaciones. No habilitar producci�
 basándose sólo en la cotización o esta comprobación de stock.
 # Recuperación de una respuesta de creación perdida
 
+## Reserva física antes del cobro
+
+`supabase_fase_point_reserva_stock.sql` guarda las cantidades del plan físico
+congelado en una tabla privada. `point-start` exige que `reservar_stock_point`
+confirme la reserva antes de llamar al proveedor. La operación bloquea intento,
+caja y productos ordenados por ID; descuenta las reservas activas de la disponibilidad
+y revierte todas las líneas si alguna falla. El stock físico no se modifica al reservar.
+
+Los reintentos reutilizan la reserva. `CONCILIAR` y un pago confirmado sin venta
+conservan las cantidades; cancelación/rechazo definitivos o una venta confirmada
+dejan de retener disponibilidad. Un trigger impide bajar el stock por debajo de
+las reservas activas y cambiar el producto a inactivo, combo u otro comercio.
+
+Esta fase todavía no reserva lotes FEFO ni crédito, no muestra disponibilidad
+reservada en el POS y no confirma una venta. El checkout manual existente usa
+varias escrituras: puede haber guardado la venta antes de recibir un rechazo de
+stock. Por eso la integración Point debe permanecer deshabilitada en producción
+hasta completar el checkout transaccional y probar el circuito completo.
+No se desplegó este endpoint ni se enviaron cobros. Ocho pruebas locales de reserva
+e inicio aprobaron; no prueban concurrencia entre conexiones de Supabase.
+
+Autoevaluación de esta fase: precisión 4/5 (pruebas locales, sin concurrencia real),
+completitud 2/5 (faltan FEFO, crédito, confirmación e interfaz), claridad 4/5
+(se explicita la diferencia entre stock físico y disponible), accionabilidad 3/5
+(migración lista, producción aún requiere el checkout completo), concisión 4/5
+(detalle concentrado en esta guía). Promedio 3.4/5. La siguiente mejora prioritaria
+es integrar FEFO y la confirmación de venta sin escrituras parciales.
+
 ## Caja original del cobro
 
 El inicio de un intento nuevo verifica una única sesión `ABIERTA` del usuario y
