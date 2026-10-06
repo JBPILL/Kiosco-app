@@ -329,3 +329,11 @@ la ejecución temporal de npm, sin añadirlo a las dependencias del proyecto.
 Validación de regresiones del estado actual: `npm test` terminó con 599 pruebas
 aprobadas en 61 archivos. Esto cubre pruebas locales y simulaciones; no cambia
 las verificaciones pendientes de despliegue, sesiones reales, hardware y cobros.
+
+Antes de incorporar componentes físicos al cierre de venta Point, aplicar
+`supabase_fase_seguridad_combos.sql`: el código usa `combo_items`, mientras que
+la migración maestra contiene también `items_combo`. El script antiguo de la
+primera permite acceso general. La nueva migración instala guardas por comercio
+y rol que sobreviven a esas políticas permisivas; cuatro pruebas locales cubren
+aislamiento, escritura, referencias y cantidades. No constituye todavía la
+reserva de componentes ni el cierre transaccional de la venta.

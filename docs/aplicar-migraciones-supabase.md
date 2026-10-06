@@ -158,3 +158,24 @@ precios de depósito de productos retornables se guardan por separado desde el
 catálogo. La interfaz no está verificada todavía con sesiones reales o fallas
 de red en producción. Aplicar sólo la migración deja el catálogo vacío y aún no
 habilita cobros Point.
+
+## Paso 14: aislamiento de componentes de combos
+
+Aplicá `supabase_fase_seguridad_combos.sql` después de `supabase_combos.sql` y
+las funciones de seguridad de roles. Protege `combo_items`, que es la tabla usada
+por el código. La migración maestra también contiene una tabla distinta,
+`items_combo`; protegerla no garantiza protección de la que utiliza el POS.
+
+El script antiguo de combos agrega políticas permisivas. Esta migración instala
+guardas restrictivas que siguen vigentes aunque se reaplique ese script: lectura
+por comercio, modificación por dueño/superadmin, componentes del mismo comercio
+y denegación anónima. Rechaza componentes idénticos al padre y cantidades que no
+sean positivas o tengan más de tres decimales. No migra recetas entre las dos
+tablas ni borra datos existentes.
+
+Cuatro pruebas PostgreSQL locales verifican lectura aislada, cajero sin escritura,
+componentes ajenos, cantidades y acceso anónimo tras una política/grant permisivos posteriores.
+Las funciones de identidad se simulan en la fixture; verificá después con sesiones
+reales de dueño, cajero y otro comercio. El guardado actual de recetas todavía usa
+varias solicitudes y conserva cambios locales si falla el servidor: esta migración
+no lo transforma en una transacción ni demuestra sincronización offline.
