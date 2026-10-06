@@ -11,6 +11,7 @@ export interface PointQuoteHttpDependencies {
   autenticar: (token: string) => Promise<{ authUserId: string; usuario: Usuario; kiosco: Kiosco } | null>
   cargarDatos: (permisos: PermisosCotizacionPoint, solicitud: SolicitudCotizacionPoint)
     => Promise<{ productos: DatosCotizacionPoint['productos']; promociones: DatosCotizacionPoint['promociones'];
+      componentes?: DatosCotizacionPoint['componentes'];
       envases: DatosCotizacionPoint['envases']; cliente: Cliente | null }>
   ahora: () => Date
   iniciarCheckout?: (permisos: PermisosCotizacionPoint, solicitud: SolicitudCotizacionPoint)

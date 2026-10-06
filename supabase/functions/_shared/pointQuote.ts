@@ -1,9 +1,11 @@
-import type { ItemCarrito, Producto, Promocion } from '../../../src/types/database.ts'
+import type { ItemCarrito, ItemCombo, Producto, Promocion } from '../../../src/types/database.ts'
 import { ajusteCarrito, subtotalCarrito, totalCarrito } from '../../../src/lib/carritoImportes.ts'
 import type { TipoAjuste } from '../../../src/lib/carritoImportes.ts'
 import { contextoPromocionesArgentina, evaluarCarritoPromociones } from '../../../src/lib/promocionesEngine.ts'
 import { dividirPagoPoint } from './pointPaymentSplit.ts'
 import type { DivisionPagoPoint, PagoComplementarioPoint } from './pointPaymentSplit.ts'
+import { planificarStockPoint } from './pointStockPlan.ts'
+import type { ConsumoStockPoint } from './pointStockPlan.ts'
 
 export type LineaCotizacionPoint =
   | { tipo: 'PRODUCTO'; id: string; productoId: string; cantidad: number; sinEnvase: boolean }
@@ -21,6 +23,7 @@ export interface EnvaseCotizacionPoint {
 export interface DatosCotizacionPoint {
   kioscoId: string
   productos: Producto[]
+  componentes?: ItemCombo[]
   promociones: Promocion[]
   envases: EnvaseCotizacionPoint[]
   permiteServicios: boolean
@@ -34,6 +37,7 @@ export interface CotizacionPoint {
   ajuste: number
   total: number
   montoCentavos: number
+  consumoStock: ConsumoStockPoint[]
 }
 
 export function cotizarCobroPoint(
@@ -116,6 +120,7 @@ export function cotizarPoint(
   const total = totalCarrito(evaluados, tipoAjuste, valorAjuste)
   const montoCentavos = total * 100
   if (!Number.isSafeInteger(montoCentavos) || montoCentavos <= 0) throw new Error('Total Point inválido')
-  return { items: evaluados, subtotal: subtotalCarrito(evaluados),
+  const consumoStock = planificarStockPoint(evaluados, datos.productos, datos.componentes || [], datos.kioscoId)
+  return { items: evaluados, consumoStock, subtotal: subtotalCarrito(evaluados),
     ajuste: ajusteCarrito(evaluados, tipoAjuste, valorAjuste), total, montoCentavos }
 }

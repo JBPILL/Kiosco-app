@@ -337,3 +337,24 @@ primera permite acceso general. La nueva migración instala guardas por comercio
 y rol que sobreviven a esas políticas permisivas; cuatro pruebas locales cubren
 aislamiento, escritura, referencias y cantidades. No constituye todavía la
 reserva de componentes ni el cierre transaccional de la venta.
+
+### Consumo físico congelado en la cotización
+
+`pointStockPlan.ts` agrega consumo directo y componentes de combos en un plan
+ordenado por producto físico. Excluye servicios y devoluciones de envases;
+no descuenta el stock virtual del combo. Rechaza recetas inexistentes,
+componentes ajenos/inactivos/virtuales, cantidades que requieren más de tres
+decimales y stock conjunto insuficiente al cotizar. El backend carga recetas
+desde `combo_items`, pagina componentes y consulta productos por grupos de 100
+para evitar una URL extensa. Los precios de envases se leen desde el catálogo
+compartido completo, limitado a 100 tipos activos.
+
+La cotización persistida incluye `consumoStock`; la lectura del snapshot exige
+ese plan con cantidades válidas e identidades sin duplicar. Diecinueve pruebas
+de cotización, consumo, snapshots e inicio HTTP pasaron; ambos entrypoints de
+cotización/inicio también pasaron `deno check`.
+
+Este plan no reserva stock ni lotes: la disponibilidad puede cambiar antes de
+cobrar. Todavía debe aplicarse bajo bloqueo en la reserva/cierre transaccional,
+con FEFO, crédito y liberación segura en cancelaciones. No habilitar producción
+basándose sólo en la cotización o esta comprobación de stock.

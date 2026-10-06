@@ -8,7 +8,7 @@ const permisos = { kioscoId: 'k1', usuarioId: 'u1', permiteServicios: true, perm
 const entrada: SolicitudCotizacionPoint = { intentoId: id, checkoutId: id, clienteId: null,
   lineas: [{ tipo: 'PRODUCTO', id, productoId: id, cantidad: 1, sinEnvase: false }],
   pagos: [], tipoAjuste: 'NINGUNO', valorAjuste: 0 }
-const cotizacion = { ticket: { items: [], subtotal: 100, ajuste: 0, total: 100, montoCentavos: 10000 },
+const cotizacion = { ticket: { items: [], consumoStock: [], subtotal: 100, ajuste: 0, total: 100, montoCentavos: 10000 },
   cobro: { montoPointCentavos: 10000, pagosComplementarios: [], montoCuentaCorrienteCentavos: 0 } }
 function dependencias(): InicioPointDependencies {
   return { cuenta: { applicationId: '123', accountId: '456', modo: 'sandbox', terminalId: 'terminal' },

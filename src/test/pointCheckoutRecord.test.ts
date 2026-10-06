@@ -10,7 +10,7 @@ function registro() {
       clienteId: null, tipoAjuste: 'NINGUNO', valorAjuste: 0, pagos: [],
       lineas: [{ tipo: 'PRODUCTO', id, productoId: id, cantidad: 1, sinEnvase: false }] },
       cotizacion: { ticket: { items: [crearItem(crearProducto({ id }), 1)],
-        subtotal: 100, ajuste: 0, total: 100, montoCentavos: 10000 },
+        consumoStock: [{ productoId: id, cantidad: 1 }], subtotal: 100, ajuste: 0, total: 100, montoCentavos: 10000 },
         cobro: { montoPointCentavos: 10000, montoCuentaCorrienteCentavos: 0, pagosComplementarios: [] } } } }
 }
 

@@ -53,6 +53,20 @@ export function leerRegistroInicioPoint(value: unknown): RegistroInicioPoint {
     }
   })
   const division = dividirPagoPoint(montoCentavos, entrada.pagos, entrada.clienteId)
+  if (!Array.isArray(ticket.consumoStock)) throw new Error('Plan de stock Point ausente')
+  const productosFisicos = new Set<string>()
+  const consumoStock = ticket.consumoStock.map((value) => {
+    const consumo = objeto(value)
+    const productoId = texto(consumo.productoId)
+    const cantidad = consumo.cantidad
+    if (productosFisicos.has(productoId) || typeof cantidad !== 'number' || !Number.isFinite(cantidad)
+      || cantidad <= 0 || !Number.isSafeInteger(Math.round(cantidad * 1000))
+      || Math.abs(cantidad * 1000 - Math.round(cantidad * 1000)) > 0.000001) {
+      throw new Error('Plan de stock Point inválido')
+    }
+    productosFisicos.add(productoId)
+    return { productoId, cantidad }
+  })
   if (division.montoPointCentavos !== montoPoint || cobro.montoPointCentavos !== montoPoint
     || division.montoCuentaCorrienteCentavos !== cobro.montoCuentaCorrienteCentavos) {
     throw new Error('División de pagos Point inconsistente')
@@ -60,7 +74,7 @@ export function leerRegistroInicioPoint(value: unknown): RegistroInicioPoint {
   entero(ticket.subtotal)
   entero(ticket.ajuste)
   return { entrada, usuarioId: texto(snapshot.usuarioId),
-    cotizacion: { ticket: ticket as unknown as RegistroInicioPoint['cotizacion']['ticket'], cobro: division },
+    cotizacion: { ticket: { ...ticket as unknown as RegistroInicioPoint['cotizacion']['ticket'], consumoStock }, cobro: division },
     intento: { id: texto(row.id), kioscoId: texto(row.kiosco_id), applicationId: row.application_id,
       accountId: row.account_id, modo: row.modo, terminalId: texto(row.terminal_id),
       montoCentavos: montoPoint, estado: row.estado, orderId: row.order_id as string | null } }
