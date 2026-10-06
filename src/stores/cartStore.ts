@@ -5,12 +5,9 @@ import type { Producto, ItemCarrito } from '../types/database'
 import { usePromocionStore } from './promocionStore'
 import { useEnvasesStore } from './envasesStore'
 
-export type TipoAjuste =
-  | 'NINGUNO'
-  | 'DESCUENTO_PORCENTAJE'
-  | 'DESCUENTO_FIJO'
-  | 'RECARGO_PORCENTAJE'
-  | 'RECARGO_FIJO'
+import { subtotalCarrito, ajusteCarrito, totalCarrito } from '../lib/carritoImportes'
+import type { TipoAjuste } from '../lib/carritoImportes'
+export type { TipoAjuste } from '../lib/carritoImportes'
 
 export interface VentaEnEspera {
   id: string
@@ -686,53 +683,11 @@ export const useCartStore = create<CartState>((set, get) => ({
       0
     ),
 
-  subtotalMonto: () => Math.round(get().items.reduce((sum, item) => sum + item.subtotal, 0)),
+  subtotalMonto: () => subtotalCarrito(get().items),
 
-  montoAjuste: () => {
-    const { tipoAjuste, valorAjuste } = get()
-    const subtotal = get().subtotalMonto()
+  montoAjuste: () => ajusteCarrito(get().items, get().tipoAjuste, get().valorAjuste),
 
-    // Base comercial para descuentos y recargos porcentuales: sólo mercadería real,
-    // excluyendo los depósitos de envases retornables y devoluciones de envases.
-    const baseMercaderia = Math.max(
-      0,
-      get().items.reduce((sum, item) => {
-        if (item.es_devolucion_envase) return sum
-        const extraEnvase = item.sin_envase
-          ? Math.round(item.cantidad * (item.precio_envase_unitario || item.producto.precio_envase || 0))
-          : 0
-        return sum + Math.max(0, item.subtotal - extraEnvase)
-      }, 0)
-    )
-
-    if (tipoAjuste === 'DESCUENTO_PORCENTAJE') {
-      return Math.round((baseMercaderia * valorAjuste) / 100)
-    }
-    if (tipoAjuste === 'DESCUENTO_FIJO') {
-      return Math.round(Math.max(0, Math.min(valorAjuste, subtotal)))
-    }
-    if (tipoAjuste === 'RECARGO_PORCENTAJE') {
-      return Math.round((baseMercaderia * valorAjuste) / 100)
-    }
-    if (tipoAjuste === 'RECARGO_FIJO') {
-      return Math.round(valorAjuste)
-    }
-    return 0
-  },
-
-  totalMonto: () => {
-    const subtotal = get().subtotalMonto()
-    const ajuste = get().montoAjuste()
-    const { tipoAjuste } = get()
-
-    if (tipoAjuste.startsWith('DESCUENTO')) {
-      return Math.round(Math.max(0, subtotal - ajuste))
-    }
-    if (tipoAjuste.startsWith('RECARGO')) {
-      return Math.round(subtotal + ajuste)
-    }
-    return Math.round(subtotal)
-  },
+  totalMonto: () => totalCarrito(get().items, get().tipoAjuste, get().valorAjuste),
 
   descripcionAjuste: () => {
     const { tipoAjuste, valorAjuste } = get()

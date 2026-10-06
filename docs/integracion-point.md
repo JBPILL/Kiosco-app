@@ -196,5 +196,23 @@ desconocida queda pendiente de conciliación. Las credenciales nunca deben ir
 en variables `VITE_*`, Git ni capturas del chat.
 
 Autoevaluación: precisión 4/5, completitud 2/5, claridad 4/5,
-accionabilidad 4/5 y concisión 4/5. Hay una base probada; faltan persistencia,
-backend, webhook, UI y validación real para completar la integración.
+accionabilidad 4/5 y concisión 4/5. Existen persistencia de intentos, recepción
+de webhooks y procesamiento privado preparados localmente; faltan creación
+autenticada de órdenes, confirmación transaccional de ventas, despacho de la
+cola, UI y validación real para completar la integración.
+
+### Cálculo comercial compartido
+
+El POS utiliza `src/lib/promocionesEngine.ts` y `src/lib/carritoImportes.ts`
+para promociones, depósitos de envases, descuentos, recargos y total. Estos
+módulos no dependen de Zustand, Supabase ni almacenamiento del navegador.
+Se conserva la API pública de los stores para sus consumidores existentes.
+
+El servidor puede suministrar un contexto explícito de fecha y día de semana;
+`contextoPromocionesArgentina` calcula ambos en Buenos Aires. Esto evita que
+el cambio de día UTC adelante o venza una promoción del comercio. El frontend
+conserva su contexto local por defecto. Se validaron 59 pruebas de promociones,
+carrito y fecha comercial, incluyendo el límite de medianoche y la vigencia
+de combos. Aún falta conectar estos módulos a una cotización autoritativa que
+cargue precios y promociones del comercio desde el servidor; extraer el cálculo
+no valida importes recibidos del cliente ni habilita cobros Point.
