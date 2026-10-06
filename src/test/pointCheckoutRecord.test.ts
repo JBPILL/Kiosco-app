@@ -6,7 +6,7 @@ const id = '01234567-1234-1234-1234-0123456789ab'
 function registro() {
   return { id, kiosco_id: 'k1', checkout_id: id, terminal_id: 'terminal', monto_centavos: '10000',
     application_id: '123', account_id: '456', modo: 'sandbox', estado: 'PREPARADO', order_id: null,
-    solicitud: { version: 1, usuarioId: 'u1', entrada: { intentoId: id, checkoutId: id,
+    solicitud: { version: 2, usuarioId: 'u1', sesionCajaId: id, entrada: { intentoId: id, checkoutId: id,
       clienteId: null, tipoAjuste: 'NINGUNO', valorAjuste: 0, pagos: [],
       lineas: [{ tipo: 'PRODUCTO', id, productoId: id, cantidad: 1, sinEnvase: false }] },
       cotizacion: { ticket: { items: [crearItem(crearProducto({ id }), 1)],
@@ -19,6 +19,7 @@ describe('lectura del snapshot Point persistido', () => {
     const resultado = leerRegistroInicioPoint(registro())
     expect(resultado.intento.montoCentavos).toBe(10000)
     expect(resultado.cotizacion.ticket.total).toBe(100)
+    expect(resultado.sesionCajaId).toBe(id)
   })
 
   it('rechaza versiones, identidades e importes incoherentes antes de crear', () => {
@@ -30,5 +31,8 @@ describe('lectura del snapshot Point persistido', () => {
     const linea = registro()
     linea.solicitud.cotizacion.ticket.items[0].cantidad = 2
     expect(() => leerRegistroInicioPoint(linea)).toThrow('Línea')
+    const sinCaja = registro()
+    sinCaja.solicitud.sesionCajaId = ''
+    expect(() => leerRegistroInicioPoint(sinCaja)).toThrow('Caja')
   })
 })

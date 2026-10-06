@@ -20,7 +20,9 @@ function entero(value: unknown): number {
 export function leerRegistroInicioPoint(value: unknown): RegistroInicioPoint {
   const row = objeto(value)
   const snapshot = objeto(row.solicitud)
-  if (snapshot.version !== 1) throw new Error('Versión de snapshot Point no soportada')
+  if (snapshot.version !== 2) throw new Error('Versión de snapshot Point no soportada')
+  if (typeof snapshot.sesionCajaId !== 'string'
+    || !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(snapshot.sesionCajaId)) throw new Error('Caja del snapshot Point inválida')
   const entrada = leerSolicitudCotizacionPoint(snapshot.entrada)
   const cotizacion = objeto(snapshot.cotizacion)
   const ticket = objeto(cotizacion.ticket)
@@ -73,7 +75,7 @@ export function leerRegistroInicioPoint(value: unknown): RegistroInicioPoint {
   }
   entero(ticket.subtotal)
   entero(ticket.ajuste)
-  return { entrada, usuarioId: texto(snapshot.usuarioId),
+  return { entrada, usuarioId: texto(snapshot.usuarioId), sesionCajaId: snapshot.sesionCajaId,
     cotizacion: { ticket: { ...ticket as unknown as RegistroInicioPoint['cotizacion']['ticket'], consumoStock }, cobro: division },
     intento: { id: texto(row.id), kioscoId: texto(row.kiosco_id), applicationId: row.application_id,
       accountId: row.account_id, modo: row.modo, terminalId: texto(row.terminal_id),

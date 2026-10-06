@@ -13,6 +13,7 @@ const cotizacion = { ticket: { items: [], consumoStock: [], subtotal: 100, ajust
 function dependencias(): InicioPointDependencies {
   return { cuenta: { applicationId: '123', accountId: '456', modo: 'sandbox', terminalId: 'terminal' },
     permitirProduccion: false, buscar: vi.fn(async () => null), cotizar: vi.fn(async () => cotizacion),
+    resolverCaja: vi.fn(async () => id),
     reservar: vi.fn(async (registro) => registro), vincular: vi.fn(async () => 'PENDIENTE'),
     crear: vi.fn(async () => ({ id: 'ORD123', status: 'created', externalReference: id,
       type: 'point', countryCode: 'AR', accountId: '456', terminalId: 'terminal',
@@ -38,9 +39,10 @@ describe('inicio del checkout Point', () => {
     const recuperada: SolicitudCotizacionPoint = { valorAjuste: entrada.valorAjuste,
       tipoAjuste: entrada.tipoAjuste, pagos: entrada.pagos, lineas: entrada.lineas,
       clienteId: entrada.clienteId, checkoutId: entrada.checkoutId, intentoId: entrada.intentoId }
-    deps.buscar = async () => ({ intento, entrada: recuperada, usuarioId: 'u1', cotizacion })
+    deps.buscar = async () => ({ intento, entrada: recuperada, usuarioId: 'u1', sesionCajaId: id, cotizacion })
     expect((await iniciarCheckoutPoint(permisos, entrada, deps)).total).toBe(100)
     expect(deps.cotizar).not.toHaveBeenCalled()
+    expect(deps.resolverCaja).not.toHaveBeenCalled()
     expect(deps.crear).not.toHaveBeenCalled()
     await expect(iniciarCheckoutPoint(permisos, { ...entrada, valorAjuste: 10 }, deps)).rejects.toThrow('no coincide')
     expect(deps.crear).not.toHaveBeenCalled()
@@ -50,6 +52,15 @@ describe('inicio del checkout Point', () => {
     const deps = dependencias()
     deps.reservar = async () => { throw new Error('checkout ocupado') }
     await expect(iniciarCheckoutPoint(permisos, entrada, deps)).rejects.toThrow('ocupado')
+    expect(deps.crear).not.toHaveBeenCalled()
+  })
+
+  it('no cotiza ni cobra si no puede verificar la caja abierta', async () => {
+    const deps = dependencias()
+    deps.resolverCaja = async () => { throw new Error('Sin caja abierta') }
+    await expect(iniciarCheckoutPoint(permisos, entrada, deps)).rejects.toThrow('Sin caja abierta')
+    expect(deps.cotizar).not.toHaveBeenCalled()
+    expect(deps.reservar).not.toHaveBeenCalled()
     expect(deps.crear).not.toHaveBeenCalled()
   })
 })

@@ -360,6 +360,19 @@ con FEFO, crédito y liberación segura en cancelaciones. No habilitar producci�
 basándose sólo en la cotización o esta comprobación de stock.
 # Recuperación de una respuesta de creación perdida
 
+## Caja original del cobro
+
+El inicio de un intento nuevo verifica una única sesión `ABIERTA` del usuario y
+comercio autenticados. Su identificador queda congelado como `sesionCajaId` en
+el snapshot versión 2. Los reintentos recuperan esa caja sin elegir un turno nuevo.
+El lector rechaza snapshots antiguos sin caja; no se les asigna una caja actual.
+No se modificaron intentos remotos. Antes de desplegar sobre intentos existentes,
+conciliar cualquier orden pendiente y revisar su caja original.
+
+La comprobación previa no mantiene un bloqueo de caja mientras se cobra: la reserva
+y la confirmación transaccionales aún deben definir y proteger el cierre de turno.
+Validación dirigida: siete pruebas en tres archivos aprobadas.
+
 El procesador de notificaciones puede recuperar una orden que todavía no quedó
 vinculada al intento local. Consulta la orden con las cuentas privadas de la
 aplicación receptora y busca el intento existente por su `external_reference`.

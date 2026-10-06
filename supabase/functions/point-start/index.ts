@@ -8,6 +8,7 @@ import { iniciarCheckoutPoint } from '../_shared/pointCheckoutStart.ts'
 import { leerRegistroInicioPoint } from '../_shared/pointCheckoutRecord.ts'
 import { cotizarCobroPoint } from '../_shared/pointQuote.ts'
 import { validarCreditoCotizacionPoint } from '../_shared/pointQuoteAuthorization.ts'
+import { resolverSesionCajaPoint } from '../_shared/pointCashSession.ts'
 
 serve(async (request: Request) => {
   const url = Deno.env.get('SUPABASE_URL')
@@ -32,6 +33,13 @@ serve(async (request: Request) => {
       return iniciarCheckoutPoint(permisos, entrada, {
         cuenta: { ...cuenta, terminalId: equipos.pointTerminalId.trim() },
         permitirProduccion: Deno.env.get('POINT_PRODUCTION_ENABLED') === 'true',
+        resolverCaja: async (permisos) => {
+          const { data, error } = await admin.from('sesiones_caja')
+            .select('id,kiosco_id,usuario_id,estado').eq('kiosco_id', permisos.kioscoId)
+            .eq('usuario_id', permisos.usuarioId).eq('estado', 'ABIERTA').limit(2)
+          if (error) throw new Error('No se pudo verificar la caja')
+          return resolverSesionCajaPoint(data, permisos.kioscoId, permisos.usuarioId)
+        },
         buscar: async (id, kioscoId) => {
           const { data, error } = await admin.from('point_intentos').select('*')
             .eq('id', id).eq('kiosco_id', kioscoId).maybeSingle()
@@ -53,8 +61,8 @@ serve(async (request: Request) => {
             p_id: intento.id, p_kiosco_id: intento.kioscoId, p_checkout_id: entrada.checkoutId,
             p_terminal_id: intento.terminalId, p_monto_centavos: intento.montoCentavos,
             p_application_id: intento.applicationId, p_account_id: intento.accountId, p_modo: intento.modo,
-            p_solicitud: { version: 1, entrada: registro.entrada,
-              usuarioId: registro.usuarioId, cotizacion: registro.cotizacion },
+            p_solicitud: { version: 2, entrada: registro.entrada,
+              usuarioId: registro.usuarioId, sesionCajaId: registro.sesionCajaId, cotizacion: registro.cotizacion },
           })
           if (error || !data) throw new Error('No se pudo reservar el intento')
           return leerRegistroInicioPoint(data)
