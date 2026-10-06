@@ -358,3 +358,16 @@ Este plan no reserva stock ni lotes: la disponibilidad puede cambiar antes de
 cobrar. Todavía debe aplicarse bajo bloqueo en la reserva/cierre transaccional,
 con FEFO, crédito y liberación segura en cancelaciones. No habilitar producción
 basándose sólo en la cotización o esta comprobación de stock.
+# Recuperación de una respuesta de creación perdida
+
+El procesador de notificaciones puede recuperar una orden que todavía no quedó
+vinculada al intento local. Consulta la orden con las cuentas privadas de la
+aplicación receptora y busca el intento existente por su `external_reference`.
+Verifica comercio, cuenta, modo, terminal e importe antes de ejecutar
+`vincular_orden_point`; después vuelve a consultar y conciliar por el circuito normal.
+No crea otro intento ni realiza un nuevo cobro. Si falta evidencia, la recepción
+queda pendiente. Esta recuperación requiere la migración de vinculación existente.
+
+Validación local: siete pruebas dirigidas de recuperación y procesamiento aprobadas.
+No se probó con una terminal real ni se desplegó esta actualización.
+

@@ -15,6 +15,7 @@ export interface PointProcessingContext {
 
 export interface PointProcessorDependencies {
   buscarContexto: (orderId: string) => Promise<PointProcessingContext | null>
+  recuperarContexto?: (notification: PointPendingNotification) => Promise<PointProcessingContext | null>
   consultarProveedor: (orderId: string, kioscoId: string) => Promise<PointOrderSnapshot>
   guardarResultado: (notification: PointPendingNotification, context: PointProcessingContext, result: PointReconciliation) => Promise<string>
 }
@@ -24,6 +25,7 @@ export async function procesarNotificacionPoint(
   notification: PointPendingNotification, deps: PointProcessorDependencies,
 ): Promise<{ evaluacion: PointReconciliation; estadoPersistido: string }> {
   const context = await deps.buscarContexto(notification.orderId)
+    ?? await deps.recuperarContexto?.(notification)
   if (!context || context.applicationId !== notification.applicationId
     || context.expected.orderId !== notification.orderId) {
     throw new Error('La notificación Point sigue pendiente de vinculación')
