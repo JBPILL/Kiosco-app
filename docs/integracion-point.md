@@ -101,6 +101,26 @@ desactivada para permitir llamadas del proveedor. Su autenticación es HMAC,
 no la ausencia de JWT. Configurar la URL en Mercado Pago solo en esa etapa.
 No guardar secretos en archivos, Git o variables VITE.
 
+## Conciliación de la respuesta del proveedor
+
+`pointReconciliation.ts` compara la orden obtenida por el cliente servidor con
+el intento guardado: referencia, ID, terminal, cuenta, país, tipo e importe.
+Solo acredita un pago `processed/accredited` con importe pedido y pagado
+coincidentes. Los estados se contrastaron con los
+[estados oficiales de Point](https://www.mercadopago.com.ar/developers/en/docs/mp-point/resources/status-order-transaction).
+Los importes se comparan como centavos enteros; formatos inválidos, respuestas
+incompletas y estados desconocidos quedan para conciliación.
+
+Ocho pruebas del cliente y conciliación pasaron. Es una validación conservadora:
+una respuesta real que omita terminal o importe pagado no confirma la venta.
+Debe ajustarse con evidencia del entorno de prueba si el proveedor entrega
+esos datos mediante otra consulta. No se probaron cuotas, pagos reales ni
+respuestas del modelo de terminal del comercio.
+
+La conciliación todavía no está conectada al procesador de notificaciones o
+a una transacción de venta. Un pago confirmado no crea por sí solo la venta;
+esa coordinación exactamente una vez sigue pendiente.
+
 ## Siguiente implementación
 
 1. Configuración privada por comercio: terminal y credenciales en servidor.

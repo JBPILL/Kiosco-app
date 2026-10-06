@@ -4,6 +4,8 @@ export interface PointPaymentSnapshot {
   id: string
   status: string
   amount: string | null
+  paidAmount: string | null
+  statusDetail: string | null
 }
 
 export interface PointOrderSnapshot {
@@ -11,6 +13,10 @@ export interface PointOrderSnapshot {
   status: string
   externalReference: string | null
   payments: PointPaymentSnapshot[]
+  type: string | null
+  accountId: string | null
+  terminalId: string | null
+  countryCode: string | null
 }
 
 /** No incluye el cuerpo del proveedor ni credenciales en mensajes de error. */
@@ -43,12 +49,20 @@ function leerOrden(value: unknown): PointOrderSnapshot {
     if (!pago || typeof pago.id !== 'string' || !pago.id || typeof pago.status !== 'string' || !pago.status) {
       throw new PointApiError(null, true)
     }
-    return { id: pago.id, status: pago.status, amount: typeof pago.amount === 'string' ? pago.amount : null }
+    return { id: pago.id, status: pago.status, amount: typeof pago.amount === 'string' ? pago.amount : null,
+      paidAmount: typeof pago.paid_amount === 'string' ? pago.paid_amount : null,
+      statusDetail: typeof pago.status_detail === 'string' ? pago.status_detail : null }
   })
+  const pointConfig = objeto(objeto(orden.config)?.point)
   return {
     id: orden.id, status: orden.status,
     externalReference: typeof orden.external_reference === 'string' ? orden.external_reference : null,
     payments,
+    type: typeof orden.type === 'string' ? orden.type : null,
+    accountId: typeof orden.user_id === 'string' ? orden.user_id
+      : typeof orden.user_id === 'number' && Number.isSafeInteger(orden.user_id) ? String(orden.user_id) : null,
+    terminalId: typeof pointConfig?.terminal_id === 'string' ? pointConfig.terminal_id : null,
+    countryCode: typeof orden.country_code === 'string' ? orden.country_code : null,
   }
 }
 
