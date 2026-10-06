@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useOfflineSyncStore, type VentaOfflinePendiente } from './offlineSyncStore'
 
 const db = vi.hoisted(() => ({ llamadas: [] as string[], fallarProducto: false,
@@ -34,7 +34,7 @@ beforeEach(() => {
   db.fallarProducto = false
   db.perderRespuestaPago = false
   db.pagos.clear()
-  useOfflineSyncStore.setState({ cola: [], sincronizando: false })
+  useOfflineSyncStore.setState({ cola: [], sincronizando: false, ultimaSincronizacion: null })
   vi.spyOn(console, 'error').mockImplementation(() => undefined)
 })
 
@@ -46,6 +46,36 @@ const venta: VentaOfflinePendiente = {
     subtotal: 150, articulo_libre: { descripcion: 'Fotocopias', precio_venta: 150 } }],
   pagos: [{ medio_pago: 'EFECTIVO', monto: 150 }],
 }
+
+afterEach(() => vi.restoreAllMocks())
+
+it('no confirma una venta offline cuando el almacenamiento está lleno', () => {
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('Lleno', 'QuotaExceededError') })
+  expect(() => useOfflineSyncStore.getState().encolarVenta(venta)).toThrow('No se pudo guardar')
+  expect(useOfflineSyncStore.getState().cola).toEqual([])
+})
+
+it('no sobrescribe una cola dañada al encolar otra venta', () => {
+  localStorage.setItem('kioskopos_cola_offline_k1', '{incompleto')
+  expect(() => useOfflineSyncStore.getState().encolarVenta(venta)).toThrow('No se pudo leer')
+  expect(localStorage.getItem('kioskopos_cola_offline_k1')).toBe('{incompleto')
+})
+
+it('libera el bloqueo de sincronización si no puede leer la cola persistida', async () => {
+  localStorage.setItem('kioskopos_cola_offline_k1', '{}')
+  await expect(useOfflineSyncStore.getState().sincronizarCola('k1')).rejects.toThrow('No se pudo leer')
+  expect(useOfflineSyncStore.getState().sincronizando).toBe(false)
+  expect(db.llamadas).toEqual([])
+})
+
+it('conserva la cola y no anuncia finalización si falla su escritura después del envío', async () => {
+  useOfflineSyncStore.getState().encolarVenta(venta)
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('Lleno', 'QuotaExceededError') })
+  await expect(useOfflineSyncStore.getState().sincronizarCola('k1')).rejects.toThrow('No se pudo guardar')
+  expect(useOfflineSyncStore.getState().cargarCola('k1')).toEqual([venta])
+  expect(useOfflineSyncStore.getState().sincronizando).toBe(false)
+  expect(useOfflineSyncStore.getState().ultimaSincronizacion).toBeNull()
+})
 
 it('recupera el servicio almacenado y lo persiste antes de la venta sin tocar stock', async () => {
   useOfflineSyncStore.getState().encolarVenta(venta)

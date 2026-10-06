@@ -26,7 +26,7 @@ export function MainLayout() {
     if (kid) {
       cargarColaOffline(kid)
       if (isOnline) {
-        sincronizarCola(kid)
+        void sincronizarCola(kid).catch(() => undefined)
       }
     }
   }, [isOnline, usuario?.kiosco_id, kiosco?.id, cargarColaOffline, sincronizarCola])
@@ -302,7 +302,7 @@ export function MainLayout() {
               type="button"
               onClick={() => {
                 const kid = usuario?.kiosco_id || kiosco?.id
-                if (kid) sincronizarCola(kid)
+                if (kid) void sincronizarCola(kid).catch(() => undefined)
               }}
               disabled={sincronizandoOffline}
               className="px-3 py-1 bg-white text-indigo-700 hover:bg-indigo-50 active:scale-95 text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
