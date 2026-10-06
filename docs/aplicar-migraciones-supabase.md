@@ -179,3 +179,20 @@ Las funciones de identidad se simulan en la fixture; verificá después con sesi
 reales de dueño, cajero y otro comercio. El guardado actual de recetas todavía usa
 varias solicitudes y conserva cambios locales si falla el servidor: esta migración
 no lo transforma en una transacción ni demuestra sincronización offline.
+
+## Paso 15: caja original de los intentos Point
+
+Para la fase Point, aplicá `supabase_fase_point_caja.sql` después de
+`supabase_fase_point_intentos.sql` y del esquema de `sesiones_caja`.
+Ejecutá el archivo completo en SQL Editor; puede reaplicarse. No habilita cobros.
+El inicio Point actualizado guarda snapshots versión 2 con `sesionCajaId`.
+
+La migración exige que la caja siga abierta para el usuario y comercio del intento
+nuevo, dentro de la transacción que lo guarda. Los reintentos conservan la solicitud
+original aunque el turno se haya cerrado. No modifica intentos anteriores ni les
+asigna una caja: conciliá las órdenes existentes antes de desplegar el nuevo lector.
+
+Tres pruebas PostgreSQL locales verifican reserva, rollback por caja cerrada y
+rechazo de usuario ajeno o caja ausente. No se ejecutó contra Supabase remoto.
+El cierre de una caja con un pago Point pendiente todavía necesita protección en
+la fase de reserva y confirmación transaccionales; no habilites producción todavía.

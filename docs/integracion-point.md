@@ -373,6 +373,15 @@ La comprobación previa no mantiene un bloqueo de caja mientras se cobra: la res
 y la confirmación transaccionales aún deben definir y proteger el cierre de turno.
 Validación dirigida: siete pruebas en tres archivos aprobadas.
 
+La migración `supabase_fase_point_caja.sql` agrega una segunda validación dentro
+de la transacción de creación del intento. Bloquea la fila de caja y exige que siga
+abierta para el usuario y comercio congelados. Un reintento de una identidad ya
+existente sigue comparando su solicitud original y puede recuperarse después del
+cierre del turno. El bloqueo termina al guardar el intento; no se mantiene durante
+la interacción con la terminal y no impide cerrar una caja con un pago pendiente.
+Tres pruebas PostgreSQL locales aprobaron reserva, rechazo y recuperación. La
+concurrencia real entre conexiones y la aplicación remota siguen sin verificar.
+
 El procesador de notificaciones puede recuperar una orden que todavía no quedó
 vinculada al intento local. Consulta la orden con las cuentas privadas de la
 aplicación receptora y busca el intento existente por su `external_reference`.
