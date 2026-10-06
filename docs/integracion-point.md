@@ -38,6 +38,27 @@ errores sin secretos, rutas manipuladas y respuestas incompletas.
 No se hicieron solicitudes reales. El cliente todavía no está conectado a
 un endpoint desplegado, a persistencia ni al checkout.
 
+## Persistencia preparada
+
+`supabase_fase_point_intentos.sql` crea una tabla privada de servidor y una
+función de reserva. Congela comercio, checkout, terminal, importe y solicitud
+para la identidad del intento. Bloquea otro intento activo del mismo checkout,
+incluidos resultados inciertos y pagos confirmados. Solo una cancelación o
+rechazo confirmados permiten un nuevo intento. El servicio deberá comprobar
+esos estados con el proveedor antes de marcarlos como definitivos.
+
+Cinco pruebas ejecutan la migración dos veces en PostgreSQL local y verifican
+reintentos, diferencias de importe, unicidad, resultado incierto y permisos.
+La migración no se aplicó remotamente y no habilita cobros. La Edge Function
+todavía debe validar al usuario y el comercio, calcular el importe del carrito
+en servidor, persistir el intento y coordinar los estados con el proveedor.
+No almacenar credenciales ni costos privados en la solicitud.
+
+La prueba local usa un esquema mínimo y roles simulados. No acredita JWT,
+PostgREST ni concurrencia entre procesos del Supabase remoto. La restricción
+única y el bloqueo de fila son la protección declarada para concurrencia;
+su validación con solicitudes simultáneas queda pendiente.
+
 ## Siguiente implementación
 
 1. Configuración privada por comercio: terminal y credenciales en servidor.
