@@ -1,0 +1,55 @@
+import { beforeEach, expect, it, vi } from 'vitest'
+import { useOfflineSyncStore, type VentaOfflinePendiente } from './offlineSyncStore'
+
+const db = vi.hoisted(() => ({ llamadas: [] as string[], fallarProducto: false }))
+vi.mock('../lib/supabase', () => ({
+  supabase: {
+    from: (tabla: string) => ({
+      upsert: (datos: unknown) => {
+        db.llamadas.push(`${tabla}:upsert`)
+        expect(datos).toEqual([expect.objectContaining({
+          id: 'servicio', kiosco_id: 'k1', descripcion: 'Fotocopias', activo: false,
+        })])
+        return Promise.resolve({ error: db.fallarProducto ? { message: 'Sin conexión' } : null })
+      },
+      insert: () => {
+        db.llamadas.push(`${tabla}:insert`)
+        return Promise.resolve({ error: null })
+      },
+      select: () => { throw new Error('Un servicio no debe consultar stock') },
+    }),
+  },
+}))
+
+beforeEach(() => {
+  localStorage.clear()
+  db.llamadas = []
+  db.fallarProducto = false
+  useOfflineSyncStore.setState({ cola: [], sincronizando: false })
+  vi.spyOn(console, 'error').mockImplementation(() => undefined)
+})
+
+const venta: VentaOfflinePendiente = {
+  id: 'v1', kiosco_id: 'k1', usuario_id: null, sesion_caja_id: null,
+  fecha_hora: '2026-10-05T12:00:00Z', fecha_encolado: '2026-10-05T12:00:00Z',
+  total: 150, estado: 'COMPLETADA', notas: null,
+  detalles: [{ id: 'd1', producto_id: 'servicio', cantidad: 1, precio_unitario: 150,
+    subtotal: 150, articulo_libre: { descripcion: 'Fotocopias', precio_venta: 150 } }],
+  pagos: [{ medio_pago: 'EFECTIVO', monto: 150 }],
+}
+
+it('recupera el servicio almacenado y lo persiste antes de la venta sin tocar stock', async () => {
+  useOfflineSyncStore.getState().encolarVenta(venta)
+  useOfflineSyncStore.getState().cargarCola('k1')
+  expect(await useOfflineSyncStore.getState().sincronizarCola('k1')).toEqual({ exitosas: 1, fallidas: 0 })
+  expect(db.llamadas).toEqual(['productos:upsert', 'ventas:insert', 'detalles_venta:insert', 'pagos_venta:insert'])
+  expect(useOfflineSyncStore.getState().cargarCola('k1')).toEqual([])
+})
+
+it('conserva la venta pendiente si no puede crear el servicio', async () => {
+  db.fallarProducto = true
+  useOfflineSyncStore.getState().encolarVenta(venta)
+  expect(await useOfflineSyncStore.getState().sincronizarCola('k1')).toEqual({ exitosas: 0, fallidas: 1 })
+  expect(db.llamadas).toEqual(['productos:upsert'])
+  expect(useOfflineSyncStore.getState().cargarCola('k1')).toEqual([venta])
+})

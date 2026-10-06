@@ -415,6 +415,9 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
               sin_envase: Boolean(item.sin_envase),
               precio_envase_unitario: envaseUnitario,
               es_devolucion_envase: Boolean(item.es_devolucion_envase),
+              articulo_libre: item.producto.activo === false
+                ? { descripcion: item.producto.descripcion, precio_venta: item.producto.precio_venta }
+                : undefined,
             }
           }),
           pagos: esPagoMixto
@@ -428,6 +431,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         // Los componentes de combos se gestionan en descontarStockComponentesCombo durante
         // la sincronización (offlineSyncStore), para evitar doble deducción (BUG-02).
         for (const it of items) {
+          if (it.producto.activo === false || it.es_devolucion_envase) continue
           if (it.producto.es_combo) {
             // No llamar descontarStockFEFO aquí para combos.
             // La sincronización (offlineSyncStore → descontarStockComponentesCombo) lo hará.
@@ -446,6 +450,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           if (cachedProds && cachedProds.length > 0) {
             const itemsMap = new Map<string, number>()
             for (const it of items) {
+              if (it.producto.activo === false || it.es_devolucion_envase) continue
               if (it.producto.es_combo) {
                 const componentes = useComboStore.getState().obtenerComponentesDeCombo(it.producto.id)
                 for (const comp of componentes) {

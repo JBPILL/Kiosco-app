@@ -13,6 +13,7 @@ export interface DetalleVentaOffline {
   sin_envase?: boolean
   precio_envase_unitario?: number
   es_devolucion_envase?: boolean
+  articulo_libre?: { descripcion: string; precio_venta: number }
 }
 
 export interface PagoVentaOffline {
@@ -120,6 +121,26 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
 
     for (const v of pendientes) {
       try {
+        const articulosLibres = v.detalles.filter((detalle) => detalle.articulo_libre)
+        if (articulosLibres.length > 0) {
+          const { error } = await supabase.from('productos').upsert(
+            articulosLibres.map((detalle) => ({
+              id: detalle.producto_id,
+              kiosco_id: v.kiosco_id,
+              descripcion: detalle.articulo_libre!.descripcion,
+              precio_costo: 0,
+              precio_venta: Math.max(0, detalle.articulo_libre!.precio_venta),
+              stock_actual: 99999,
+              stock_minimo: 0,
+              es_favorito: false,
+              activo: false,
+              fecha_creacion: v.fecha_hora,
+              fecha_actualizacion: v.fecha_hora,
+            })),
+            { onConflict: 'id' }
+          )
+          if (error) throw error
+        }
         // 1. Insertar cabecera de venta
         const { error: errVenta } = await supabase.from('ventas').insert({
           id: v.id,
@@ -194,7 +215,7 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
         for (const item of v.detalles) {
           try {
             // BUG-57: Ignorar devoluciones de envases retornables (no son egreso de mercadería)
-            if (item.es_devolucion_envase) continue
+            if (item.es_devolucion_envase || item.articulo_libre) continue
 
             // Verificar si es un combo para descontar sus componentes físicos
             const componentes = useComboStore.getState().obtenerComponentesDeCombo(item.producto_id)
@@ -215,12 +236,13 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
             // Actualizar stock_actual real en Supabase para mantener la consistencia
             const { data: pActual } = await supabase
               .from('productos')
-              .select('stock_actual')
+              .select('stock_actual, activo')
               .eq('id', item.producto_id)
+              .eq('kiosco_id', v.kiosco_id)
               .maybeSingle()
 
             // BUG-57: Si el producto no existe en la base (ej. ítem libre con UUID transitorio), no insertar en movimientos_stock para evitar violaciones de clave foránea
-            if (!pActual || typeof pActual.stock_actual !== 'number') {
+            if (!pActual || pActual.activo === false || typeof pActual.stock_actual !== 'number') {
               continue
             }
 
