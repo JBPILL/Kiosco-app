@@ -12,6 +12,7 @@ import { exportarMasterExcel } from '../lib/exportUtils'
 import { generarBackupIntegral } from '../lib/backupUtils'
 import { AFIPConfigSection } from '../components/config/AFIPConfigSection'
 import { AccessibilityConfigSection } from '../components/config/AccessibilityConfigSection'
+import { EquiposComercioSection, normalizarEquiposComercio } from '../components/config/EquiposComercioSection'
 import { useConfigAdminStore, formatearLinkWhatsApp } from '../stores/configAdminStore'
 import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
 import { RestaurarBackupModal } from '../components/config/RestaurarBackupModal'
@@ -68,6 +69,7 @@ export function ConfigPage() {
   const [nombreKiosco, setNombreKiosco] = useState('')
   const [direccion, setDireccion] = useState('')
   const [telefono, setTelefono] = useState('')
+  const [equiposComercio, setEquiposComercio] = useState(() => normalizarEquiposComercio(null))
   const [capacidadesOperativas, setCapacidadesOperativas] = useState<CapacidadesOperativas>(capacidadesPorDefecto(kiosco?.rubro))
   const [anchoImpresora, setAnchoImpresora] = useState<AnchoPapelTicket>(getAnchoTicketGuardado)
   const [configurandoImpresora, setConfigurandoImpresora] = useState(false)
@@ -155,6 +157,7 @@ export function ConfigPage() {
         setNombreKiosco(kioscoData.nombre || '')
         setDireccion(kioscoData.direccion || '')
         setTelefono(kioscoData.telefono || '')
+        setEquiposComercio(normalizarEquiposComercio(kioscoData.equipos_comercio))
         setCapacidadesOperativas({ ...capacidadesPorDefecto(kioscoData.rubro), ...(kioscoData.capacidades_operativas || {}) })
       }
 
@@ -216,17 +219,21 @@ export function ConfigPage() {
 
     setGuardandoKiosco(true)
     try {
-      const { error } = await supabase
+      const { data: comercioActualizado, error } = await supabase
         .from('kioscos')
         .update({
           nombre: nombreKiosco.trim(),
           direccion: direccion.trim() || null,
           telefono: telefono.trim() || null,
           capacidades_operativas: capacidadesOperativas,
+          equipos_comercio: normalizarEquiposComercio(equiposComercio),
         })
         .eq('id', usuario.kiosco_id)
+        .select('id')
+        .maybeSingle()
 
       if (error) throw error
+      if (!comercioActualizado) throw new Error('No se pudo actualizar el comercio. Revisá los permisos de tu usuario.')
 
       toast.success('Datos del kiosco actualizados correctamente')
       // BUG-24: Refrescar datos del comercio en useAuthStore para que los tickets reflejen los cambios sin relogin
@@ -234,7 +241,11 @@ export function ConfigPage() {
       cargarDatos()
     } catch (err) {
       console.error('Error actualizando kiosco:', err)
-      toast.error('Error al guardar datos del kiosco')
+      const mensaje = typeof err === 'object' && err !== null && 'message' in err && typeof err.message === 'string'
+        ? err.message : ''
+      toast.error(mensaje.includes('equipos_comercio')
+        ? 'Falta aplicar supabase_fase_equipos_comercio.sql en Supabase antes de guardar los equipos.'
+        : 'No se pudieron guardar los datos del comercio. Revisá la conexión y los permisos.')
     } finally {
       setGuardandoKiosco(false)
     }
@@ -829,6 +840,8 @@ export function ConfigPage() {
                     <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">Los productos marcados como pesables siempre permiten ingresar el peso manualmente, aunque la lectura de balanza esté desactivada.</p>
                   </fieldset>
                   
+                  <EquiposComercioSection value={equiposComercio} onChange={setEquiposComercio} />
+
                   {/* Selector de Ancho de Ticket Térmico Predeterminado */}
                   <div className="pt-2 border-t border-gray-100 dark:border-gray-700/80 space-y-2">
                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">

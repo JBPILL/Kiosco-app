@@ -16,6 +16,7 @@ export interface Kiosco {
   fecha_creacion: string
   rubro?: RubroComercio
   capacidades_operativas?: CapacidadesOperativas | null
+  equipos_comercio?: EquiposComercio | null
   // Datos fiscales AFIP
   cuit?: string | null
   iibb?: string | null
@@ -25,6 +26,18 @@ export interface Kiosco {
   afip_habilitado?: boolean
   // Políticas de Caja
   arqueo_ciego_obligatorio?: boolean
+}
+
+export interface EquiposComercio {
+  impresoraTipo: string
+  impresoraModelo: string
+  impresoraConexion: string
+  lectorTipo: string
+  lectorModelo: string
+  lectorConexion: string
+  pointModelo: string
+  pointTerminalId: string
+  observaciones: string
 }
 
 export interface Categoria {

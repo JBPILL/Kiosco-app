@@ -107,3 +107,25 @@ SELECT to_regprocedure('public.resumir_bajas_stock(uuid,date,date)') AS reporte_
 ```
 
 Con una sesión de dueño en la aplicación actualizada, abrí Reportes > Bajas de Inventario y elegí el rango. Compará movimientos por motivo y snapshots conocidos con los registros del comercio. Probá también un período vacío y un cajero (no debe obtener costos mediante la función). No ejecutes la prueba de permisos únicamente desde SQL Editor con su rol administrador: eso no representa una sesión de usuario. Esta nueva migración aún no se aplicó remotamente desde la sesión de Codex.
+
+## Paso 12: equipos del comercio
+
+Antes de publicar el formulario nuevo, ejecutá el archivo completo
+`supabase_fase_equipos_comercio.sql` en SQL Editor. Agrega una columna JSON
+opcional a kioscos; conserva los comercios existentes y sus políticas de acceso.
+No exige conocer todavía el modelo de los dispositivos.
+
+Después, en Configuración > General > Equipos del comercio, registrá tipo,
+marca/modelo y conexión de impresora y lector; el modelo e ID opcional de
+Terminal Point; y observaciones. Pulsá Guardar Cambios del Comercio.
+Salí y volvé a entrar para comprobar la persistencia.
+
+Es un registro compartido del comercio, no el permiso de conexión del navegador.
+Los datos declarados quedan con compatibilidad por verificar. No ingreses claves,
+tokens ni credenciales en esos campos. Esta migración no se ejecutó remotamente
+desde Codex; la confirmación de persistencia real queda pendiente.
+
+El guardado verifica que Supabase devuelva el ID del comercio actualizado.
+Si una política impide actualizarlo, no muestra éxito. Si falta la columna
+equipos_comercio, indica explícitamente el archivo SQL necesario. Los campos
+de identificación se limitan a 150 caracteres y las observaciones a 500.
