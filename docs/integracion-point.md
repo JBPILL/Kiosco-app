@@ -59,6 +59,24 @@ PostgREST ni concurrencia entre procesos del Supabase remoto. La restricción
 única y el bloqueo de fila son la protección declarada para concurrencia;
 su validación con solicitudes simultáneas queda pendiente.
 
+## Firma de notificaciones
+
+`pointWebhook.ts` verifica HMAC-SHA256 sobre el identificador y metadatos
+firmados, con Web Crypto. La construcción del manifiesto se contrastó con el
+[SDK oficial](https://github.com/mercadopago/sdk-nodejs/blob/master/src/utils/webhook/index.ts)
+y el uso del ID del query con la
+[documentación de Point](https://www.mercadopago.com.ar/developers/es/docs/mp-point/notifications).
+Rechaza parámetros repetidos, firmas malformadas y discrepancias entre ID
+firmado y cuerpo. Solo devuelve el ID, nunca una aprobación del pago.
+
+Cuatro pruebas usan HMAC independiente de Node para probar autenticidad,
+manipulación y consistencia del cuerpo. No se probaron notificaciones reales.
+La firma no elimina reenvíos: sigue pendiente registrar recepción durable,
+deduplicar procesamiento y consultar la orden antes de confirmar la venta.
+No se impone una ventana temporal hasta validar el comportamiento de reintentos
+del proveedor; el timestamp se conserva como parte exacta del manifiesto.
+El endpoint público y su despliegue todavía no están implementados.
+
 ## Siguiente implementación
 
 1. Configuración privada por comercio: terminal y credenciales en servidor.
