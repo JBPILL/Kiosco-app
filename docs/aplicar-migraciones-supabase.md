@@ -129,3 +129,32 @@ El guardado verifica que Supabase devuelva el ID del comercio actualizado.
 Si una política impide actualizarlo, no muestra éxito. Si falta la columna
 equipos_comercio, indica explícitamente el archivo SQL necesario. Los campos
 de identificación se limitan a 150 caracteres y las observaciones a 500.
+
+## Paso 13: precios compartidos de envases (preparación de Point)
+
+`supabase_fase_envases_precios_compartidos.sql` crea el catálogo de tipos y
+precios por comercio. Requiere las funciones de seguridad de roles previamente
+instaladas. Se puede aplicar completo y volver a aplicar. No copia los datos
+de este navegador ni modifica el stock de envases vacíos.
+
+El guardado se realiza mediante `guardar_precios_envases(uuid,jsonb)` con sesión
+de dueño. El JSON contiene sólo `id`, `nombre` y `precio` por tipo; es un reemplazo
+completo y los tipos omitidos se desactivan. La función valida duplicados y
+decimales y revierte todo ante un error. Cajeros pueden consultar precios de su
+comercio pero no modificarlos; otro comercio no puede leerlos ni guardarlos.
+
+Validado localmente con tres pruebas PostgreSQL: reaplicación, reemplazo,
+rollback y denegación de escritura. La fixture simula las funciones de identidad;
+todavía falta comprobar las políticas con sesiones reales en Supabase.
+Después de aplicar el SQL, abrí Catálogo > Precios de envases > Tipos Oficiales.
+Con sesión de dueño, revisá los precios de este puesto y pulsá **Publicar precios
+de este puesto**. Reemplaza el catálogo compartido con todos los tipos actuales.
+En otro puesto, pulsá **Cargar precios compartidos**. Conserva su stock de vacíos;
+tipos locales ausentes del catálogo remoto permanecen con aviso de revisión y
+no deben usarse para devoluciones Point hasta tener precio compartido activo.
+
+La carga es explícita: no sincroniza automáticamente todos los navegadores. Los
+precios de depósito de productos retornables se guardan por separado desde el
+catálogo. La interfaz no está verificada todavía con sesiones reales o fallas
+de red en producción. Aplicar sólo la migración deja el catálogo vacío y aún no
+habilita cobros Point.

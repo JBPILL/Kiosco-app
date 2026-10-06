@@ -7,6 +7,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { useEnvasesStore, type TipoEnvase } from '../../stores/envasesStore'
 import type { Producto } from '../../types/database'
 import toast from 'react-hot-toast'
+import { PreciosEnvasesCompartidos } from './PreciosEnvasesCompartidos'
 
 interface PreciosEnvasesModalProps {
   isOpen: boolean
@@ -550,6 +551,7 @@ export function PreciosEnvasesModal({
       }
     >
       <div className="flex flex-col h-full space-y-3">
+        {pestanaActiva === 'TIPOS' && <PreciosEnvasesCompartidos />}
         {/* Pestañas superiores para navegación fija */}
         <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-700 pb-1">
           <button
