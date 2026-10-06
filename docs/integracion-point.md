@@ -75,7 +75,31 @@ La firma no elimina reenvíos: sigue pendiente registrar recepción durable,
 deduplicar procesamiento y consultar la orden antes de confirmar la venta.
 No se impone una ventana temporal hasta validar el comportamiento de reintentos
 del proveedor; el timestamp se conserva como parte exacta del manifiesto.
-El endpoint público y su despliegue todavía no están implementados.
+El endpoint público se preparó localmente en la siguiente etapa; su despliegue
+y validación real siguen pendientes.
+
+## Recepción durable preparada
+
+La Edge Function `point-webhook` usa `POINT_WEBHOOK_SECRET` y
+`POINT_APPLICATION_ID` como secretos/configuración del servidor. Verifica la
+firma y guarda únicamente la identidad firmada en la tabla privada de
+notificaciones, sin almacenar el estado monetario enviado en el cuerpo.
+Responde 200 después de persistir y 503 si no puede guardar. La migración
+`supabase_fase_point_notificaciones.sql` evita duplicar una recepción y deja
+el trabajo pendiente para procesar la orden desde el proveedor.
+
+Catorce pruebas locales del receptor, la firma y las dos migraciones pasaron.
+La compilación TypeScript de la aplicación cubre los módulos compartidos por
+las pruebas; no compila el entrypoint Deno con sus dependencias remotas.
+Pendiente comprobar ese runtime, desplegar y probar notificaciones reales.
+
+El receptor todavía no procesa el pago: **no desplegarlo como integración
+terminada**. Primero completar el procesador, la creación autenticada y la
+confirmación transaccional de la venta. Luego aplicar las dos migraciones Point,
+configurar secretos en Supabase y desplegar `point-webhook` con verificación JWT
+desactivada para permitir llamadas del proveedor. Su autenticación es HMAC,
+no la ausencia de JWT. Configurar la URL en Mercado Pago solo en esa etapa.
+No guardar secretos en archivos, Git o variables VITE.
 
 ## Siguiente implementación
 

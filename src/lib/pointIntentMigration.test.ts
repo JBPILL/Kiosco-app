@@ -23,10 +23,13 @@ beforeAll(async () => {
   const sql = readFileSync('supabase_fase_point_intentos.sql', 'utf8')
   await db.exec(sql)
   await db.exec(sql)
+  const notificaciones = readFileSync('supabase_fase_point_notificaciones.sql', 'utf8')
+  await db.exec(notificaciones)
+  await db.exec(notificaciones)
 }, 30000)
 
 beforeEach(async () => {
-  await db.exec("RESET ROLE; DELETE FROM point_intentos; SET request.jwt.claim.role='service_role'; SET ROLE service_role;")
+  await db.exec("RESET ROLE; DELETE FROM point_notificaciones; DELETE FROM point_intentos; SET request.jwt.claim.role='service_role'; SET ROLE service_role;")
 })
 afterAll(async () => db?.close())
 
@@ -57,7 +60,16 @@ it('no permite al navegador leer ni escribir intentos ni ejecutar la reserva', a
     await db.exec(`RESET ROLE; SET request.jwt.claim.role='${rol}'; SET ROLE ${rol};`)
     await expect(db.query('SELECT * FROM point_intentos')).rejects.toThrow('permission denied')
     await expect(preparar()).rejects.toThrow('permission denied')
+    await expect(db.query('SELECT * FROM point_notificaciones')).rejects.toThrow('permission denied')
+    await expect(db.query("SELECT registrar_notificacion_point('123','ORD123','req-1','123')")).rejects.toThrow('permission denied')
   }
+})
+
+it('guarda una sola recepción por identidad firmada y conserva el trabajo pendiente', async () => {
+  const recibir = () => db.query<{ id: string }>("SELECT registrar_notificacion_point('123','ORD123','req-1','123') AS id")
+  const primera = (await recibir()).rows[0].id
+  expect((await recibir()).rows[0].id).toBe(primera)
+  expect((await db.query('SELECT estado FROM point_notificaciones')).rows).toEqual([{ estado: 'PENDIENTE' }])
 })
 
 it('rechaza importes inválidos', async () => {
