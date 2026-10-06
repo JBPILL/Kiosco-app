@@ -255,7 +255,7 @@ export function RotacionTab() {
     })
   }
 
-  const getBadgeSegmento = (segmento: SegmentoRotacion) => {
+  const getBadgeSegmento = (segmento: SegmentoRotacion, nuncaVendido = false) => {
     switch (segmento) {
       case 'ACTIVA':
         return (
@@ -282,7 +282,7 @@ export function RotacionTab() {
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold whitespace-nowrap bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60">
             <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
-            Stock Muerto (&gt;90d)
+            {nuncaVendido ? 'Sin ventas registradas' : 'Stock Muerto (>90d)'}
           </span>
         )
     }
@@ -500,7 +500,7 @@ export function RotacionTab() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs sm:text-sm">
+            <table className="w-full min-w-[1120px] text-left text-xs sm:text-sm [&_th]:align-middle [&_td]:align-middle [&_td:not(:first-child)]:whitespace-nowrap [&_th:not(:first-child)]:whitespace-nowrap">
               <thead className="bg-gray-50 dark:bg-gray-900/60 text-gray-600 dark:text-gray-400 uppercase text-[11px] font-bold border-b border-gray-200 dark:border-gray-700">
                 <tr>
                   <th className="px-4 py-3">Artículo</th>
@@ -524,7 +524,7 @@ export function RotacionTab() {
                       className="hover:bg-gray-50/80 dark:hover:bg-gray-700/40 transition-colors"
                     >
                       <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
-                        <div className="max-w-xs sm:max-w-md truncate" title={it.producto.descripcion}>
+                        <div className="w-64 xl:w-80 truncate" title={it.producto.descripcion}>
                           {it.producto.descripcion}
                         </div>
                         <div className="text-[11px] text-gray-400 font-mono">
@@ -552,7 +552,7 @@ export function RotacionTab() {
                         )}
                       </td>
                       <td className="px-3 py-3 text-center whitespace-nowrap">
-                        {getBadgeSegmento(it.segmento)}
+                        {getBadgeSegmento(it.segmento, !it.ultimaVentaFecha)}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <div className="flex items-center justify-center gap-1.5">

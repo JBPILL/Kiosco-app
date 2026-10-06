@@ -258,12 +258,12 @@ export function RecibirEnvaseModal({ isOpen, onClose }: RecibirEnvaseModalProps)
             </Button>
             <Button
               type="button"
-              variant="secondary"
+              variant="success"
               onClick={handlePagarEfectivo}
               fullWidth
               loading={procesando}
               disabled={precioUnitario <= 0}
-              className="border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+              className="font-semibold"
             >
               Pagar en efectivo de caja
             </Button>

@@ -300,7 +300,7 @@ interface DatosPuertoImpresora {
   usbProductId?: number
 }
 
-function leerPuertoImpresoraConfigurado(): DatosPuertoImpresora | null {
+export function leerPuertoImpresoraConfigurado(): DatosPuertoImpresora | null {
   try {
     const raw = localStorage.getItem(CLAVE_PUERTO_IMPRESORA)
     return raw ? JSON.parse(raw) as DatosPuertoImpresora : null
@@ -319,6 +319,7 @@ export async function configurarImpresoraSerial(): Promise<{ ok: boolean; mensaj
       return { ok: false, mensaje: 'El navegador no expone un identificador USB para este puerto; no se puede seleccionarlo de forma segura.' }
     }
     localStorage.setItem(CLAVE_PUERTO_IMPRESORA, JSON.stringify(info))
+    window.dispatchEvent(new Event('kioskopos-impresora-configurada'))
     return { ok: true, mensaje: 'Impresora autorizada para este puesto.' }
   } catch (error) {
     const err = error as Error
