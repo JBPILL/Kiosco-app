@@ -17,11 +17,17 @@ El vínculo no puede cambiarse y una venta luego anulada no se recrea.
 
 El pago verificado se persiste antes del cierre: si éste falla, queda
 `PAGO_CONFIRMADO` para reintentar. Una recepción `PROCESADA` no demuestra que la
-venta esté cerrada; el futuro despachador también debe buscar intentos pagados
-sin venta, volver a consultar el proveedor y reprocesar su recepción. No enviar
+venta esté cerrada; el despachador busca también intentos pagados sin venta y
+reintenta su cierre desde el pago persistido cuando no hay revisión pendiente.
+Las nuevas notificaciones consultan el proveedor para detectar discrepancias. No enviar
 otra orden para resolver un error de cierre.
 
-Faltan la interfaz de cobro/recuperación, el despacho automático, la disponibilidad
+El despacho automático está implementado localmente con cola privada, leases y
+reintentos. La exploración de cuentas de una recepción huérfana guarda su avance
+y continúa en la siguiente ejecución. Su despliegue y ensayo remoto siguen pendientes.
+La guía es `docs/desplegar-despacho-point.md` y el SQL, `supabase_fase_point_despacho.sql`.
+
+Faltan la interfaz de cobro/recuperación, la disponibilidad
 reservada en el POS, el checkout manual/offline transaccional y compartir el stock
 de envases vacíos (actualmente local). El cierre nuevo registra la devolución como
 concepto monetario; no inventa una existencia compartida de envases. Mantené
@@ -30,11 +36,11 @@ cobros reales desde Codex. Las secciones siguientes registran etapas anteriores;
 este apartado describe el estado actual.
 
 La migración es `supabase_fase_point_confirmar_venta.sql`; orden y limitaciones en
-el paso 20 de `docs/aplicar-migraciones-supabase.md`. Las pruebas locales usan
+los pasos 20 y 21 de `docs/aplicar-migraciones-supabase.md`. Las pruebas locales usan
 PostgreSQL embebido con esquema mínimo, precisiones, FK y triggers reales de las
 migraciones. No prueban JWT, PostgREST, dos conexiones concurrentes ni hardware.
 
-Validación de esta etapa: la suite completa aprobó 662 pruebas en 71 archivos,
+Validación de la etapa anterior de cierre: la suite completa aprobó 662 pruebas en 71 archivos,
 la compilación aprobó y los entrypoints `point-quote`, `point-start` y
 `point-process` aprobaron Deno check. La cotización valida que total, subtotales
 y precios unitarios puedan guardarse en `NUMERIC(12,2)`; el prorrateo exige una

@@ -44,7 +44,10 @@ export function contextoPointDesdeRegistro(value: unknown, cuentas: PointServerA
   if (!cuenta || !Number.isSafeInteger(monto) || monto <= 0
     || registro.application_id !== cuenta.applicationId || registro.account_id !== cuenta.accountId
     || registro.modo !== cuenta.modo) throw new Error('La cuenta del intento Point no coincide con la configuración')
-  return { kioscoId: registro.kiosco_id, applicationId: registro.application_id, expected: {
+  const pagoConfirmado = registro.estado === 'PAGO_CONFIRMADO'
+    && typeof registro.payment_id === 'string' && /^PAY[A-Za-z0-9]{1,100}$/.test(registro.payment_id)
+    ? { paymentId: registro.payment_id, revisionPendiente: registro.revision_pendiente_at !== null } : undefined
+  return { kioscoId: registro.kiosco_id, applicationId: registro.application_id, pagoConfirmado, expected: {
     attemptId: registro.id, orderId: registro.order_id, terminalId: registro.terminal_id,
     accountId: registro.account_id, amountCentavos: monto,
   } }

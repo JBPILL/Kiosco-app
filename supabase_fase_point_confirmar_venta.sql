@@ -9,6 +9,7 @@ DO $$ BEGIN
   END IF;
 END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS point_venta_unica ON public.point_intentos(venta_id) WHERE venta_id IS NOT NULL;
+ALTER TABLE public.point_intentos ADD COLUMN IF NOT EXISTS revision_pendiente_at timestamptz;
 
 CREATE OR REPLACE FUNCTION public.proteger_venta_point()
 RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $$
@@ -55,6 +56,7 @@ BEGIN
     RETURN v_venta.id;
   END IF;
   IF v_intento.estado<>'PAGO_CONFIRMADO' OR v_intento.venta_id IS NOT NULL
+    OR v_intento.revision_pendiente_at IS NOT NULL
     OR coalesce(v_intento.order_id,'') !~ '^ORD[A-Za-z0-9]{1,100}$'
     OR coalesce(v_intento.payment_id,'') !~ '^PAY[A-Za-z0-9]{1,100}$'
     OR v_intento.stock_reservado_at IS NULL OR v_intento.lotes_reservados_at IS NULL

@@ -89,13 +89,13 @@ beforeAll(async () => {
     'supabase_fase_point_intentos.sql','supabase_fase_point_notificaciones.sql','supabase_fase_point_procesamiento.sql',
     'supabase_fase_point_caja.sql','supabase_fase_point_cierre_caja.sql',
     'supabase_fase_point_reserva_stock.sql','supabase_fase_point_reserva_lotes.sql','supabase_fase_point_reserva_credito.sql',
-    'supabase_fase_point_confirmar_venta.sql']) {
+    'supabase_fase_point_confirmar_venta.sql','supabase_fase_point_despacho.sql']) {
     await db.exec(readFileSync(file, 'utf8'))
   }
   await db.exec(readFileSync('supabase_fase_point_confirmar_venta.sql', 'utf8'))
 }, 30000)
 beforeEach(async () => {
-  await db.exec(`DELETE FROM point_reservas_credito; DELETE FROM point_reservas_lotes; DELETE FROM point_reservas_stock;
+  await db.exec(`DELETE FROM point_trabajos; DELETE FROM point_reservas_credito; DELETE FROM point_reservas_lotes; DELETE FROM point_reservas_stock;
     DELETE FROM point_notificaciones; DELETE FROM point_intentos; DELETE FROM movimientos_cuenta_corriente; DELETE FROM movimientos_stock;
     DELETE FROM pagos_venta; DELETE FROM detalles_venta; DELETE FROM ventas; DELETE FROM lotes_producto;
     DELETE FROM productos WHERE id<>'${product}'; UPDATE productos SET stock_actual=10,activo=true;
@@ -259,6 +259,19 @@ it('conserva el pago verificado si falla el cierre y permite repetir una recepci
   expect((await aplicar()).rows[0].estado).toBe('PAGO_CONFIRMADO')
   await confirmar()
   expect((await aplicar()).rows[0].estado).toBe('VENTA_CONFIRMADA')
+  await confirmar()
+  expect(await leer('SELECT * FROM ventas')).toHaveLength(1)
+})
+
+it('impide confirmar una venta con revisión pendiente y conserva el pago y las reservas', async () => {
+  await preparar(); await pagar()
+  await db.exec("UPDATE point_intentos SET revision_pendiente_at=now()")
+  await expect(confirmar()).rejects.toThrow('conciliación')
+  expect(await leer('SELECT * FROM ventas')).toHaveLength(0)
+  expect(await leer('SELECT estado,payment_id FROM point_intentos')).toEqual([{ estado: 'PAGO_CONFIRMADO', payment_id: 'PAY123' }])
+  expect(await leer('SELECT * FROM point_reservas_stock')).not.toHaveLength(0)
+  expect(await leer(`SELECT stock_actual FROM productos WHERE id='${product}'`)).toEqual([{ stock_actual: '10.000' }])
+  await db.exec('UPDATE point_intentos SET revision_pendiente_at=NULL')
   await confirmar()
   expect(await leer('SELECT * FROM ventas')).toHaveLength(1)
 })

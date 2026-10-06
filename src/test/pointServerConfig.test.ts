@@ -31,3 +31,12 @@ it('no reasigna intentos anteriores al cambiar la cuenta o el modo configurados'
     expect(() => contextoPointDesdeRegistro(registro, cambiadas)).toThrow('no coincide')
   }
 })
+
+it('habilita recuperación sólo con pago persistido y revisión explícitamente libre', () => {
+  const pago = { ...registro, estado: 'PAGO_CONFIRMADO', payment_id: 'PAY123', revision_pendiente_at: null }
+  expect(contextoPointDesdeRegistro(pago, cuentas).pagoConfirmado).toEqual({ paymentId: 'PAY123', revisionPendiente: false })
+  expect(contextoPointDesdeRegistro({ ...pago, revision_pendiente_at: '2026-10-06T12:00:00Z' }, cuentas).pagoConfirmado?.revisionPendiente).toBe(true)
+  expect(contextoPointDesdeRegistro({ ...pago, revision_pendiente_at: undefined }, cuentas).pagoConfirmado?.revisionPendiente).toBe(true)
+  expect(contextoPointDesdeRegistro({ ...pago, estado: 'PENDIENTE' }, cuentas).pagoConfirmado).toBeUndefined()
+  expect(contextoPointDesdeRegistro({ ...pago, payment_id: 'otro' }, cuentas).pagoConfirmado).toBeUndefined()
+})

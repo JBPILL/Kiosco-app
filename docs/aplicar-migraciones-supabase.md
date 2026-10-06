@@ -284,10 +284,36 @@ order by i.fecha_creacion;
 ```
 
 Esta consulta sólo diagnostica: no cambies estados ni vuelvas a cobrar para
-resolver esas filas. El servidor debe consultar el proveedor y reintentar el cierre.
+resolver esas filas. El servidor reintenta el cierre del pago verificado; una
+discrepancia pendiente exige revisión antes de cerrar.
 Para demostrar concurrencia, falta probar dos conexiones reales sobre el mismo
 intento y sobre intentos que comparten productos, lotes o cliente.
 
 Validación local de la etapa: 662 pruebas en 71 archivos de la suite completa,
 incluidas once pruebas del cierre SQL. La migración se reaplicó en la fixture.
 La compilación y los entrypoints Deno de cotización, inicio y procesamiento aprobaron.
+
+## Paso 21: despacho automático Point (proyecto de ensayo)
+
+Reaplicá primero el archivo actualizado `supabase_fase_point_confirmar_venta.sql`
+del paso 20: incorpora la protección contra cerrar pagos con una revisión pendiente.
+Luego ejecutá completo `supabase_fase_point_despacho.sql`.
+
+Este archivo requiere intentos, notificaciones, procesamiento y cierre de las
+fases anteriores. Agrega una cola privada, leases con token, reintentos con espera
+progresiva y exploración reanudable de recepciones sin intento vinculado.
+Aplicar el SQL no programa llamadas HTTP ni configura las Edge Functions.
+
+Seguí [desplegar-despacho-point.md](desplegar-despacho-point.md) para desplegar
+`point-process` y `point-dispatch`, guardar los secretos en Vault y preparar el
+trabajo de Cron inicialmente inactivo. Ensayalo en el proyecto de prueba.
+El push de GitHub/Vercel sólo publica el frontend.
+
+No se aplicó este SQL ni se activó el trabajo remoto desde Codex. La interfaz de
+cobro Point, la disponibilidad reservada, el checkout manual/offline transaccional
+y la prueba de hardware siguen pendientes antes de habilitar producción.
+
+Validación local final del paso 21: 697 pruebas aprobadas en 75 archivos. Los
+entrypoints `point-dispatch` y `point-process` aprobaron Deno check. Las pruebas
+de leases y CAS usan una base embebida y secuencias controladas; aún hace falta
+ensayar workers concurrentes y el programador en Supabase remoto.

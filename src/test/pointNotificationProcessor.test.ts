@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { procesarNotificacionPoint, type PointProcessorDependencies } from '../../supabase/functions/_shared/pointNotificationProcessor'
+import { procesarNotificacionPoint, procesarOrdenPoint, type PointProcessorDependencies } from '../../supabase/functions/_shared/pointNotificationProcessor'
 import type { PointOrderSnapshot } from '../../supabase/functions/_shared/pointClient'
 
 const notification = { id: 'n1', orderId: 'ORD123', applicationId: '123' }
@@ -76,5 +76,49 @@ it('no confirma ante resultado pendiente o un rechazo persistido', async () => {
   deps.consultarProveedor.mockResolvedValue({ ...orden, status: 'at_terminal',
     payments: [{ ...orden.payments[0], status: 'at_terminal', paidAmount: null, statusDetail: null }] })
   await procesarNotificacionPoint(notification, deps)
+  expect(deps.confirmarVenta).not.toHaveBeenCalled()
+})
+
+it('sondea una orden conocida sin inventar una notificación ni enviar otro cobro', async () => {
+  const deps = dependencias()
+  const guardarResultado = vi.fn().mockResolvedValue('PAGO_CONFIRMADO')
+  expect((await procesarOrdenPoint(context, { ...deps,guardarResultado })).estadoPersistido).toBe('VENTA_CONFIRMADA')
+  expect(guardarResultado).toHaveBeenCalledWith(context, { estado: 'PAGO_CONFIRMADO',paymentId: 'PAY123' })
+  expect(deps.buscarContexto).not.toHaveBeenCalled()
+})
+
+it('reintenta el cierre de un pago persistido aunque el proveedor esté caído', async () => {
+  const deps = dependencias()
+  const confirmado = { ...context, pagoConfirmado: { paymentId: 'PAY123', revisionPendiente: false } }
+  const guardarResultado = vi.fn().mockResolvedValue('PAGO_CONFIRMADO')
+  const cierre = { ...deps, guardarResultado, recuperarCierrePersistido: true }
+  deps.consultarProveedor.mockRejectedValue(new Error('Proveedor caído'))
+  deps.confirmarVenta.mockRejectedValueOnce(new Error('Falló venta'))
+  await expect(procesarOrdenPoint(confirmado, cierre)).rejects.toThrow('Falló venta')
+  expect((await procesarOrdenPoint(confirmado, cierre)).estadoPersistido).toBe('VENTA_CONFIRMADA')
+  expect(deps.consultarProveedor).not.toHaveBeenCalled()
+  expect(guardarResultado).toHaveBeenCalledWith(confirmado, { estado: 'PAGO_CONFIRMADO', paymentId: 'PAY123' })
+  expect(deps.consultarProveedor).not.toHaveBeenCalled()
+})
+
+it('mantiene en conciliación un pago persistido con revisión pendiente', async () => {
+  const deps = dependencias()
+  const confirmado = { ...context, pagoConfirmado: { paymentId: 'PAY123', revisionPendiente: true } }
+  expect(await procesarOrdenPoint(confirmado, { ...deps, recuperarCierrePersistido: true })).toMatchObject({
+    evaluacion: { estado: 'CONCILIAR' }, estadoPersistido: 'PAGO_CONFIRMADO',
+  })
+  expect(deps.confirmarVenta).not.toHaveBeenCalled()
+  expect(deps.guardarResultado).not.toHaveBeenCalled()
+  expect(deps.consultarProveedor).not.toHaveBeenCalled()
+})
+
+it('una notificación nueva consulta evidencia fresca aunque el pago ya esté persistido', async () => {
+  const deps = dependencias()
+  const confirmado = { ...context, pagoConfirmado: { paymentId: 'PAY123', revisionPendiente: false } }
+  deps.buscarContexto.mockResolvedValue(confirmado)
+  deps.consultarProveedor.mockResolvedValue({ ...orden, status: 'canceled', payments: [{ ...orden.payments[0], status: 'canceled' }] })
+  expect((await procesarNotificacionPoint(notification, deps)).evaluacion.estado).toBe('CANCELADO')
+  expect(deps.consultarProveedor).toHaveBeenCalledWith('ORD123', 'k1')
+  expect(deps.guardarResultado).toHaveBeenCalledWith(notification, confirmado, { estado: 'CANCELADO' })
   expect(deps.confirmarVenta).not.toHaveBeenCalled()
 })

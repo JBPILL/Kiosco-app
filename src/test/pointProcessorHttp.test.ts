@@ -27,3 +27,11 @@ it('mantiene errores internos privados y no confirma una escritura fallida', asy
   expect(response.status).toBe(503)
   expect(await response.text()).not.toContain('token-privado')
 })
+
+it('limita el cuerpo y rechaza parámetros adicionales sin procesar', async () => {
+  const ejecutar = vi.fn()
+  expect((await recibirProcesoPoint(request(secret, { notificationId, cuenta: 'otra' }), { secret, ejecutar })).status).toBe(400)
+  expect((await recibirProcesoPoint(request(secret, { notificationId, relleno: 'x'.repeat(1024) }), { secret, ejecutar })).status).toBe(413)
+  expect((await recibirProcesoPoint(request(secret, [notificationId]), { secret, ejecutar })).status).toBe(400)
+  expect(ejecutar).not.toHaveBeenCalled()
+})

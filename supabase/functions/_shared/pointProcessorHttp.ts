@@ -1,3 +1,5 @@
+import { leerCuerpoWorkerPoint, PointWorkerBodyError } from './pointWorkerBody.ts'
+
 interface PointProcessorHttpDependencies {
   secret: string
   ejecutar: (notificationId: string) => Promise<{ estadoPersistido: string; estadoEvaluado: string }>
@@ -13,16 +15,24 @@ async function claveValida(received: string, expected: string): Promise<boolean>
   return diferencia === 0
 }
 
+export async function autorizarWorkerPoint(request: Request, secret: string): Promise<boolean> {
+  const authorization = request.headers.get('authorization') ?? ''
+  return secret.length >= 32 && authorization.startsWith('Bearer ')
+    && authorization.length <= 4096 && await claveValida(authorization.slice(7), secret)
+}
+
 export async function recibirProcesoPoint(request: Request, deps: PointProcessorHttpDependencies): Promise<Response> {
   if (request.method !== 'POST') return new Response('Método no permitido', { status: 405 })
   if (deps.secret.length < 32) return new Response('Servicio no configurado', { status: 503 })
-  const authorization = request.headers.get('authorization') ?? ''
-  if (!authorization.startsWith('Bearer ') || !await claveValida(authorization.slice(7), deps.secret)) {
+  if (!await autorizarWorkerPoint(request, deps.secret)) {
     return new Response('No autorizado', { status: 401 })
   }
   let body: unknown
-  try { body = await request.json() } catch { return new Response('Solicitud inválida', { status: 400 }) }
-  if (!body || typeof body !== 'object' || !('notificationId' in body) || typeof body.notificationId !== 'string'
+  try { body = await leerCuerpoWorkerPoint(request) } catch (error) {
+    return new Response('Solicitud inválida', { status: error instanceof PointWorkerBodyError ? error.status : 400 })
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length !== 1
+    || !('notificationId' in body) || typeof body.notificationId !== 'string'
     || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.notificationId)) {
     return new Response('Identificador inválido', { status: 400 })
   }
