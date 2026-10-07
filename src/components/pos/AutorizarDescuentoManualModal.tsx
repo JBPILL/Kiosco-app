@@ -6,6 +6,7 @@ import { autorizarDescuentoSupervisor } from '../../lib/supervisorPinClient'
 import type { CobroManualLocal } from '../../lib/manualCheckoutOutbox'
 import { formatPrecio } from '../../lib/utils'
 import { SupervisorPinBloqueado } from '../../lib/supervisorPinBlocked'
+import { useSupervisorPinWait } from '../../hooks/useSupervisorPinWait'
 
 export function AutorizarDescuentoManualModal({ cobro, onClose, onAutorizado }: {
   cobro: CobroManualLocal; onClose: () => void; onAutorizado: () => void
@@ -13,13 +14,15 @@ export function AutorizarDescuentoManualModal({ cobro, onClose, onAutorizado }: 
   const [pin, setPin] = useState('')
   const [ocupado, setOcupado] = useState(false)
   const [error, setError] = useState('')
+  const [reintentarEn, setReintentarEn] = useState<string | null>(null)
+  const espera = useSupervisorPinWait(reintentarEn)
   const enviando = useRef(false)
   const vigente = useRef(true)
   useEffect(() => { vigente.current = true; return () => { vigente.current = false } }, [])
 
   async function autorizar(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (enviando.current || !/^[0-9]{4,6}$/.test(pin)) return
+    if (enviando.current || espera > 0 || !/^[0-9]{4,6}$/.test(pin)) return
     enviando.current = true
     setOcupado(true)
     setError('')
@@ -27,6 +30,7 @@ export function AutorizarDescuentoManualModal({ cobro, onClose, onAutorizado }: 
       await autorizarDescuentoSupervisor(cobro.entrada, pin)
       if (vigente.current) onAutorizado()
     } catch (causa) {
+      if (vigente.current && causa instanceof SupervisorPinBloqueado) setReintentarEn(causa.reintentarEn)
       if (vigente.current) setError(causa instanceof SupervisorPinBloqueado ? causa.message : 'No se pudo autorizar. Revisá el PIN, la sesión y la conexión.')
     } finally {
       enviando.current = false
@@ -45,7 +49,8 @@ export function AutorizarDescuentoManualModal({ cobro, onClose, onAutorizado }: 
         <input autoFocus aria-label="PIN del supervisor" type="password" inputMode="numeric" minLength={4} maxLength={6} pattern="[0-9]{4,6}" autoComplete="off" required disabled={ocupado} value={pin} onChange={event => setPin(event.target.value)} className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900/50 px-4 py-3 text-center text-xl tracking-widest outline-none focus:ring-2 focus:ring-indigo-500/30" />
       </label>
       {error && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{error}</p>}
-      <div className="flex justify-end gap-2"><Button type="button" variant="secondary" size="sm" disabled={ocupado} onClick={onClose}>Cancelar</Button><Button type="submit" size="sm" loading={ocupado} disabled={!/^[0-9]{4,6}$/.test(pin)}>Autorizar</Button></div>
+      {espera > 0 && <p role="status" className="text-xs font-semibold text-amber-600 dark:text-amber-300">Podés reintentar en {espera} s</p>}
+      <div className="flex justify-end gap-2"><Button type="button" variant="secondary" size="sm" disabled={ocupado} onClick={onClose}>Cancelar</Button><Button type="submit" size="sm" loading={ocupado} disabled={espera > 0 || !/^[0-9]{4,6}$/.test(pin)}>Autorizar</Button></div>
     </form>
   </Modal>
 }

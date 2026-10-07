@@ -16,10 +16,13 @@ El navegador no puede escribir la fecha de reintento. No requiere secretos nuevo
 
 Pruebas sobre PostgreSQL local en memoria: espera inicial, progresión, éxito,
 finalización repetida, permisos y reejecución del SQL. Pendiente: piloto remoto,
-concurrencia con conexiones independientes y contador dinámico de tiempo restante.
+concurrencia con conexiones independientes y validación visual en navegador.
 El cliente ya interpreta el bloqueo HTTP 429 y el modal muestra la hora de
 reintento sin reproducir mensajes arbitrarios del servidor. La ventana de cobro
 presenta el mismo error seguro mediante su aviso existente.
+Ambos formularios muestran además los segundos restantes y desactivan el envío
+durante la espera. El contador no concede permisos ni reemplaza la comprobación
+del servidor, y se elimina su intervalo al vencer o desmontar el componente.
 El ZIP anterior de SQL no contiene este nuevo paso.
 
 Autoevaluación: exactitud 4 (pruebas SQL locales; falta concurrencia real),
