@@ -96,3 +96,11 @@ Promedio: 4/5. Mejora prioritaria: revisar el panel en navegador a ancho de escr
 - Tema y ancho de ticket informan su selección con aria-pressed. Tema, equipos y accesibilidad comparten bordes y sombras del diseño actual.
 - Validación: cuatro pruebas de módulos/equipos y compilación correctas. Sin inspección visual en navegador ni prueba física de impresión.
 - Autoevaluación: exactitud 4/5 (compilación y pruebas, falta hardware); completitud 4/5 (secciones solicitadas, falta revisión visual); claridad 4/5 (descripciones y estados, falta feedback del usuario); acción 4/5 (código publicable, sin inspección remota); concisión 4/5 (módulos reutilizables, ConfigPage todavía extensa). Promedio 4/5. Mejora prioritaria: revisar en navegador los tamaños reales y confirmar aceptación estética.
+
+## Punto de Venta — implementación de la maqueta
+
+- Encabezado compacto, estado real de turno, buscador y herramientas en una tarjeta con sombras; acciones por comercio envases/servicios conservan sus condiciones y se acomodan en varias filas.
+- Productos con ícono, texto alineado a izquierda, precio destacado y borde de selección por cantidad en ticket. Misma grilla por breakpoint para conservar la navegación de teclado.
+- Ticket con artículos en tarjetas, controles de cantidad más amplios y título Venta actual. Se conserva el resumen y el cobro al pie del panel, además del flujo móvil.
+- Validación: 29 pruebas del POS y dos pruebas nuevas del componente real FavoritesGrid (selección/teclado y bloqueo sin stock); compilación correcta. No se realizó inspección visual en navegador ni piloto con periféricos.
+- Autoevaluación: exactitud 4/5 (pruebas y compilación, falta piloto); completitud 4/5 (maqueta aplicada y módulos conservados, falta inspección en tamaños reales); claridad 4/5 (jerarquía de búsqueda/precios/ticket, pendiente aceptación estética); acción 4/5 (publicación lista, falta comprobar despliegue); concisión 4/5 (estilos locales e íconos SVG, páginas aún extensas). Promedio 4/5. Mejora prioritaria: revisar el POS en notebooks y con todos los servicios habilitados.

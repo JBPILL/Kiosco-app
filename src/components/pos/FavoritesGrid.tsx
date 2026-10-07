@@ -110,7 +110,7 @@ export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2 p-1" role="grid" aria-label="Catálogo de productos">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2.5 p-1" role="grid" aria-label="Catálogo de productos">
       {productos.map((prod, index) => {
         const sinStock = prod.stock_actual <= 0
         const stockBajo = prod.stock_actual <= prod.stock_minimo && prod.stock_actual > 0
@@ -128,8 +128,8 @@ export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
             onClick={() => handleItemSelect(prod)}
             onKeyDown={(e) => handleKeyDown(e, index, prod)}
             disabled={bloqueado}
-            className={`group relative flex flex-col items-center justify-center p-2 sm:p-2.5 rounded-xl text-center
-              border transition-all duration-100 min-h-[66px] sm:min-h-[72px] select-none ${
+            className={`group relative flex flex-col items-start justify-start p-3 sm:p-3.5 rounded-2xl text-left shadow-md dark:shadow-black/20
+              border transition-all duration-100 ${cantEnTicket > 0 && !bloqueado ? 'ring-2 ring-indigo-500/70' : ''} min-h-[112px] sm:min-h-[120px] select-none ${
                 sinStock
                   ? 'opacity-40 cursor-not-allowed border-dashed border-gray-300 dark:border-gray-700 bg-gray-100/50 dark:bg-gray-800/40'
                   : stockMaxAlcanzado
@@ -137,6 +137,7 @@ export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
                   : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/40 dark:hover:bg-gray-700/60 active:scale-95 cursor-pointer focus:outline-hidden focus:z-10 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-indigo-50/90 dark:focus:bg-gray-700'
               }`}
           >
+            <svg className="mb-2 shrink-0 text-indigo-400" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 7 12 2l9 5v10l-9 5-9-5V7Zm0 0 9 5 9-5M12 12v10" /></svg>
             {/* Badge de cantidad presente en el ticket */}
             {cantEnTicket > 0 && !sinStock && (
               <span
@@ -151,10 +152,10 @@ export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
               </span>
             )}
 
-            <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 group-focus:text-indigo-950 dark:group-focus:text-white line-clamp-2 leading-tight">
+            <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 group-focus:text-indigo-950 dark:group-focus:text-white line-clamp-3 leading-snug min-h-[32px]">
               {prod.descripcion}
             </span>
-            <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 group-focus:text-emerald-700 dark:group-focus:text-emerald-300 mt-1">
+            <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400 group-focus:text-emerald-700 dark:group-focus:text-emerald-300 mt-1">
               {formatPrecio(prod.precio_venta)}
             </span>
 

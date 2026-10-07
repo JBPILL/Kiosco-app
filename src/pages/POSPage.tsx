@@ -565,6 +565,10 @@ export function POSPage() {
   return (
     <div className="w-full h-full min-w-0 flex flex-col gap-2.5 pb-28 lg:pb-0 overflow-hidden">
       <CobrosManualesPendientes onVerTicket={ticket => { setTicketReciente(ticket); setTicketModalOpen(true); refrescarProductosVista() }} />
+      <header className="flex shrink-0 items-center justify-between gap-3 px-1 py-1">
+        <div className="flex min-w-0 items-center gap-3"><span className="hidden sm:flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-indigo-500 shadow-sm"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 8h18l-2 12H5L3 8ZM8 8l4-6 4 6M8 12v5M12 12v5M16 12v5" /></svg></span><div><h1 className="text-lg sm:text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100">Punto de Venta</h1><p className="hidden sm:block text-xs text-gray-500 dark:text-gray-400">Buscá, agregá y cobrá desde un solo lugar</p></div></div>
+        {sesionActiva && <span className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300"><span className="h-2 w-2 rounded-full bg-emerald-500" />Turno abierto</span>}
+      </header>
       {/* Banner de advertencia solo si la caja está cerrada */}
       {!sesionActiva && (
         <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-lg text-amber-800 dark:text-amber-300 text-xs flex-shrink-0">
@@ -585,7 +589,7 @@ export function POSPage() {
         {/* Columna de productos */}
         <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
           {/* Buscador + botones de acción (scroll horizontal en notebooks) */}
-          <div className="flex flex-col gap-1.5 mb-2 flex-shrink-0 min-w-0">
+          <div className="flex flex-col gap-3 mb-3 flex-shrink-0 min-w-0 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/70 p-3 shadow-md dark:shadow-black/20">
             {/* Fila 1: Buscador (ocupa todo el ancho) */}
             <div className="w-full min-w-0">
               <ProductSearch
@@ -595,14 +599,14 @@ export function POSPage() {
               />
             </div>
             {/* Fila 2: Botones de acción responsive adaptables a notebooks y pantallas compactas */}
-            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
               <button
                 type="button"
                 onClick={() => {
                   setDescripcionLibreInicial(undefined)
                   setModalLibreOpen(true)
                 }}
-                className="h-8 sm:h-9 px-2.5 sm:px-3 flex items-center gap-1 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs cursor-pointer"
+                className="min-h-10 px-3 flex items-center gap-1 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-sm cursor-pointer"
                 title="Cobrar concepto o monto manual sin código (fotocopias, golosinas sueltas, etc.)"
               >
                 <span className="text-sm font-bold leading-none">+</span>
@@ -616,9 +620,10 @@ export function POSPage() {
                     setDescripcionLibreInicial(concepto)
                     setModalLibreOpen(true)
                   }}
-                  className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-xl border border-violet-300 dark:border-violet-700 bg-violet-50/80 hover:bg-violet-100 dark:bg-violet-950/40 dark:hover:bg-violet-900/50 text-violet-800 dark:text-violet-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs cursor-pointer"
+                  className="min-h-10 px-3 inline-flex items-center gap-2 rounded-xl border border-violet-300 dark:border-violet-700 bg-violet-50/80 hover:bg-violet-100 dark:bg-violet-950/40 dark:hover:bg-violet-900/50 text-violet-800 dark:text-violet-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-sm cursor-pointer"
                   title={`Cobrar ${concepto.toLowerCase()} sin descontar stock`}
                 >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M6 3h12v18H6V3ZM9 7h6M9 11h6M9 15h4" /></svg>
                   {concepto}
                 </button>
               ))}
@@ -629,10 +634,10 @@ export function POSPage() {
                   if (kid) cargarPromociones(kid)
                   setModalPromosOpen(true)
                 }}
-                className="h-8 sm:h-9 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border border-teal-300 dark:border-teal-700 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs cursor-pointer"
+                className="min-h-10 px-3 flex items-center gap-1.5 rounded-xl border border-teal-300 dark:border-teal-700 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-sm cursor-pointer"
                 title="Ver combos armados y ofertas vigentes"
               >
-                <span>Combos y Ofertas</span>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 3h9l9 9-9 9-9-9V3ZM7 7h.01" /></svg><span>Combos y Ofertas</span>
                 {promociones.filter((p) => p.activo).length > 0 && (
                   <span className="px-1.5 py-0.5 bg-teal-200 dark:bg-teal-800 text-teal-900 dark:text-teal-100 rounded-full text-[10px] font-bold">
                     {promociones.filter((p) => p.activo).length}
@@ -642,28 +647,28 @@ export function POSPage() {
               <button
                 type="button"
                 onClick={() => setModalTicketsOpen(true)}
-                className="h-8 sm:h-9 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs cursor-pointer"
+                className="min-h-10 px-3 flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-sm cursor-pointer"
                 title="Ver tickets emitidos, reimprimir comprobantes y devoluciones"
               >
-                <span>Tickets Emitidos</span>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M6 3h12v18H6V3ZM9 7h6M9 11h6M9 15h4" /></svg><span>Tickets Emitidos</span>
               </button>
               {tieneEnvases && (
                 <button
                   type="button"
                   onClick={() => setModalEnvaseOpen(true)}
-                  className="h-8 sm:h-9 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-emerald-50/80 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs cursor-pointer"
+                  className="min-h-10 px-3 flex items-center gap-1.5 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-emerald-50/80 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-sm cursor-pointer"
                   title="Registrar botellas o envases vacíos que entrega el cliente"
                 >
-                  <span>Recepción Envases</span>
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M9 2h6v5l3 4v10H6V11l3-4V2ZM6 13h12" /></svg><span>Recepción Envases</span>
                 </button>
               )}
               <button
                 type="button"
                 onClick={() => setModalRetiroOpen(true)}
-                className="h-8 sm:h-9 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50/90 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 text-amber-800 dark:text-amber-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-xs cursor-pointer"
+                className="min-h-10 px-3 flex items-center gap-1.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50/90 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 text-amber-800 dark:text-amber-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-sm cursor-pointer"
                 title="Retiro de plata del cajón o pago rápido a proveedor"
               >
-                <span>Retirar Plata</span>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 6h18v12H3V6ZM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6" /></svg><span>Retirar Plata</span>
               </button>
             </div>
           </div>
@@ -675,13 +680,13 @@ export function POSPage() {
                 e.currentTarget.scrollLeft += e.deltaY
               }
             }}
-            className="flex items-center gap-1.5 overflow-x-auto pb-2 scroll-smooth min-w-0 mb-2 scrollbar-hide"
+            className="flex items-center gap-2 overflow-x-auto p-2 scroll-smooth min-w-0 mb-2 scrollbar-hide rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 shrink-0"
           >
             {/* Botón de ventas en espera si existen */}
             {ventasEnEspera.length > 0 && (
               <button
                 onClick={() => setModalEsperaOpen(true)}
-                className="px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap min-h-[32px] bg-amber-500 hover:bg-amber-600 text-white shadow-xs flex-shrink-0 animate-pulse active:scale-95 transition-all cursor-pointer"
+                className="px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap min-h-[32px] bg-amber-500 hover:bg-amber-600 text-white shadow-xs flex-shrink-0 animate-pulse active:scale-95 transition-all cursor-pointer"
               >
                 En espera ({ventasEnEspera.length})
               </button>
@@ -691,7 +696,7 @@ export function POSPage() {
               ref={(el) => { categoryRefs.current[0] = el }}
               onClick={() => setCategoriaActiva(null)}
               onKeyDown={(e) => handleCategoryKeyDown(e, 0, null)}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[32px] transition-all focus:outline-hidden cursor-pointer flex-shrink-0 ${
+              className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap min-h-[32px] transition-all focus:outline-hidden cursor-pointer flex-shrink-0 ${
                 !categoriaActiva
                   ? 'bg-indigo-600 text-white shadow-xs focus:bg-indigo-700'
                   : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-indigo-50/80 dark:focus:bg-gray-700 focus:text-indigo-900 dark:focus:text-white'
@@ -705,7 +710,7 @@ export function POSPage() {
                 ref={(el) => { categoryRefs.current[idx + 1] = el }}
                 onClick={() => setCategoriaActiva(cat.id)}
                 onKeyDown={(e) => handleCategoryKeyDown(e, idx + 1, cat.id)}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[32px] transition-all border focus:outline-hidden cursor-pointer flex-shrink-0 ${
+                className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap min-h-[32px] transition-all border focus:outline-hidden cursor-pointer flex-shrink-0 ${
                   categoriaActiva === cat.id
                     ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-bold focus:border-indigo-600'
                     : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:bg-indigo-50/80 dark:focus:bg-gray-700 focus:text-indigo-900 dark:focus:text-white'
@@ -729,7 +734,7 @@ export function POSPage() {
         </div>
 
         {/* Columna derecha: Ticket en Desktop / Pantallas grandes */}
-        <div className="hidden lg:flex flex-col w-[350px] xl:w-[390px] flex-shrink-0 min-h-0 h-full">
+        <div className="hidden lg:flex flex-col w-[350px] xl:w-[400px] flex-shrink-0 min-h-0 h-full">
           <CartPanel onCobrar={handleAbrirCobro} />
         </div>
       </div>

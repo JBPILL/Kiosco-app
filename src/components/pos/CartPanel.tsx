@@ -638,9 +638,9 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-lg dark:shadow-black/30">
       {/* Pestañas de tickets en paralelo estilo Odoo POS */}
-      <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/60 rounded-t-xl overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden flex-shrink-0">
+      <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/60 rounded-t-2xl overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden flex-shrink-0">
         {tabs.map((tab) => {
           const esActiva = tab.id === tabActivaId
           const itemsTab = esActiva ? items : tab.items
@@ -695,7 +695,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
 
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-        <h2 className="font-bold text-gray-900 dark:text-gray-100 text-sm sm:text-base">Ticket</h2>
+        <h2 className="font-bold text-gray-900 dark:text-gray-100 text-sm sm:text-base">Venta actual</h2>
         {items.length > 0 && (
           <div className="flex items-center gap-2.5 text-xs">
             <button
@@ -746,7 +746,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
             <p className="text-xs mt-1">Seleccioná o buscá productos para comenzar</p>
           </div>
         ) : (
-          <div className="p-2 space-y-1.5">
+          <div className="p-3 space-y-3">
             {items.map((item, idx) => (
               <div
                 key={item.producto.id}
@@ -754,7 +754,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                 tabIndex={0}
                 role="row"
                 onKeyDown={(e) => handleItemKeyDown(e, idx, item.producto.id, item.cantidad)}
-                className="group flex flex-col p-2.5 rounded-xl border border-gray-200/70 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 hover:bg-gray-50/80 dark:hover:bg-gray-800/70 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500/50 dark:focus-visible:ring-indigo-400/50 focus-visible:border-indigo-500/60 dark:focus-visible:border-indigo-400/60 focus-visible:bg-gray-50/90 dark:focus-visible:bg-gray-800 transition-all cursor-pointer select-none gap-1.5 bg-white dark:bg-gray-800/50 shadow-2xs"
+                className="group flex flex-col p-3.5 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-700 hover:bg-gray-50/80 dark:hover:bg-gray-800/70 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500/50 dark:focus-visible:ring-indigo-400/50 focus-visible:border-indigo-500/60 dark:focus-visible:border-indigo-400/60 focus-visible:bg-gray-50/90 dark:focus-visible:bg-gray-800 transition-all cursor-pointer select-none gap-1.5 bg-gray-50 dark:bg-gray-900/30 shadow-sm"
               >
                 {/* 1. Fila Superior: Nombre del producto y Subtotal */}
                 <div className="flex items-start justify-between gap-3 min-w-0">
@@ -809,7 +809,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                           handleRestarCantidad(item.producto.id, item.cantidad, idx, 'minus', false)
                         }}
                         onKeyDown={(e) => handleMinusKeyDown(e, idx, item.producto.id, item.cantidad)}
-                        className="w-6 h-6 flex items-center justify-center rounded-md bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-200 font-bold text-xs shadow-2xs transition-all focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer select-none"
+                        className="w-7 h-7 flex items-center justify-center rounded-lg bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-200 font-bold text-xs shadow-2xs transition-all focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer select-none"
                         aria-label="Restar uno"
                         title="Restar [Enter o -]"
                       >
@@ -830,7 +830,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                           handleSumarCantidad(item.producto.id, item.cantidad)
                         }}
                         onKeyDown={(e) => handlePlusKeyDown(e, idx, item.producto.id, item.cantidad)}
-                        className={`w-6 h-6 flex items-center justify-center rounded-md font-bold text-xs shadow-2xs transition-all select-none ${
+                        className={`w-7 h-7 flex items-center justify-center rounded-lg font-bold text-xs shadow-2xs transition-all select-none ${
                           item.producto.stock_actual > 0 && item.cantidad >= item.producto.stock_actual
                             ? 'opacity-30 cursor-not-allowed bg-gray-200 dark:bg-gray-800 text-gray-400'
                             : 'bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 active:scale-90 text-gray-700 dark:text-gray-200 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-indigo-500'
