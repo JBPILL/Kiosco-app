@@ -9,7 +9,7 @@ Esta lista corresponde a una base existente de KioskoPOS, con tablas comerciales
 3. Seguí el orden numerado. Si falla, detenete y compartí el error completo. Si quedó una transacción abortada, ejecutá `ROLLBACK;` antes del reintento.
 4. Anotá los nombres aplicados. Si ya instalaste la versión actual de un archivo, podés omitirlo; no tengo acceso al registro remoto para identificarlo por vos.
 
-Por tus últimos mensajes, electrónica y las fases anteriores ya estaban aplicadas. Para ponerte al día, revisá especialmente **18–33**. La presencia de una tabla no demuestra que tenga la última versión de sus funciones o políticas. Los archivos 29–33 preparan el supervisor; todavía falta la interfaz y el endpoint público.
+Por tus últimos mensajes, electrónica y las fases anteriores ya estaban aplicadas. Para ponerte al día, revisá especialmente **18–33**. La presencia de una tabla no demuestra que tenga la última versión de sus funciones o políticas. Los archivos 29–33 preparan el supervisor; todavía faltan la interfaz y el despliegue de su endpoint. La función está documentada en `docs/desplegar-supervisor-pin.md`.
 
 El ZIP de pendientes contiene **16 SQL (18–33)** y esta guía. La tabla siguiente conserva las referencias anteriores para comprobar dependencias, pero no te indica que vuelvas a ejecutar todos los SQL antiguos. En particular, el archivo 15 histórico recrea una vista con CASCADE: si ya está instalado el rubro, no lo reapliques como parte de esta actualización.
 
