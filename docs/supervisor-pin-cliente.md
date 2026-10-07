@@ -9,7 +9,11 @@ Comprueba operador, comercio activo y JWT antes del envío, y revalida la sesió
 después de cada llamada remota. Los errores remotos son genéricos para no copiar
 datos sensibles. El servidor sigue siendo la autoridad de roles y permisos.
 
-Pendiente: formularios de configuración y autorización, pruebas del cliente,
+El formulario del dueño está integrado en Seguridad y Caja. Usa campos ocultos,
+confirmación de 4 a 6 dígitos y limpia ambos campos después de cada envío.
+Cuatro pruebas del componente cubren rol, ceros iniciales, confirmación y errores.
+
+Pendiente: formulario de autorización del cajero, pruebas del cliente,
 prueba real de Edge Functions y validación del flujo completo en navegador.
 
 ## Autoevaluación de esta fase
