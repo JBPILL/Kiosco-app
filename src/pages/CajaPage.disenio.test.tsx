@@ -1,0 +1,35 @@
+import { render, screen, cleanup } from '@testing-library/react'
+import { afterEach, expect, it, vi } from 'vitest'
+import { CajaPage } from './CajaPage'
+
+const mocks = vi.hoisted(() => ({ rol: 'DUEÑO', cargar: vi.fn(), query: vi.fn() }))
+vi.mock('../stores/authStore', () => ({ useAuthStore: () => ({ usuario: { id: 'u1', kiosco_id: 'k1', rol: mocks.rol, nombre: 'Operador' }, kiosco: { id: 'k1' } }) }))
+vi.mock('../stores/cajaStore', () => ({ useCajaStore: () => ({
+  sesionActiva: { id: 's1', monto_inicial: 10000, fecha_apertura: '2026-10-07T12:00:00Z' },
+  resumenActivo: { total_efectivo: 12345, total_ingresos_extra: 0, total_egresos: 0 },
+  movimientosCaja: [], cargando: false, arqueoCiegoObligatorio: true,
+  verificarSesionActiva: mocks.cargar, cargarArqueoCiegoConfig: mocks.cargar,
+  cargarResumenSesion: mocks.cargar,
+}) }))
+vi.mock('../lib/supabase', () => ({ supabase: { from: () => ({ select: () => ({ eq: () => ({ eq: () => ({ order: () => ({ limit: async () => ({ data: [], error: null }) }) }) }) }) }) } }))
+vi.mock('../components/pos/TicketCierreCajaModal', () => ({ TicketCierreCajaModal: () => null }))
+vi.mock('../lib/whatsappReport', () => ({ procesarDespachoCierre: vi.fn() }))
+afterEach(() => { cleanup(); mocks.rol = 'DUEÑO' })
+
+it('unifica indicadores, ayuda de medios de cobro y un único refresco del turno', () => {
+  render(<CajaPage />)
+  expect(screen.getAllByRole('article')).toHaveLength(5)
+  expect(screen.getByText(/Los fiados quedan pendientes/)).toBeTruthy()
+  expect(screen.getByText('Sin movimientos de efectivo adicionales')).toBeTruthy()
+  expect(screen.getAllByRole('button', { name: /Actualizar caja/ })).toHaveLength(1)
+  expect(screen.queryByTitle('Recalcular ventas y movimientos en vivo')).toBeNull()
+})
+
+it('mantiene ocultos el efectivo de ventas y el esperado para el cajero en modo ciego', () => {
+  mocks.rol = 'CAJERO'
+  render(<CajaPage />)
+  expect(screen.getByText('••••••')).toBeTruthy()
+  expect(screen.getByText('Modo Ciego')).toBeTruthy()
+  expect(screen.queryByText(/12.345/)).toBeNull()
+  expect(screen.queryByText(/22.345/)).toBeNull()
+})

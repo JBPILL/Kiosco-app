@@ -58,3 +58,24 @@ carga rápida cubiertos, falta navegador), claridad 4/5 (ayudas y etiquetas,
 pendiente lectura con zoom), accionabilidad 4/5 (integrado, depende de despliegue),
 concisión 4/5 (guía contextual sin agregar pasos al registro). Promedio 4/5.
 Siguiente mejora: inspeccionar pantallas grandes y pequeñas con datos del comercio.
+
+## Caja y Dinero del Turno — 7 de octubre de 2026
+
+- Cinco indicadores compartidos con íconos, sombras y textos explicativos; valores largos pueden envolver sin truncarse.
+- Efectivo separado de otros medios de cobro; se aclara que los fiados quedan pendientes en cuenta corriente.
+- Tarjetas del turno y movimientos con bordes y sombras consistentes, acciones adaptables y estado vacío didáctico.
+- Se retira el refresco duplicado del turno: verificarSesionActiva recarga movimientos y resumen. El historial conserva su control específico.
+- Se mantienen las condiciones de ocultamiento de efectivo y esperado en arqueo ciego y todos los manejadores financieros.
+- Validación: 17 pruebas en tres archivos (incluidas dos de interfaz) y npm run build correctos. No se realizó revisión visual en navegador ni impresión física.
+
+### Autoevaluación
+
+| Eje | Nota | Evidencia y mejora |
+| --- | --- | --- |
+| Exactitud | 4/5 | Pruebas de interfaz y stores correctas; falta confirmar impresión física. |
+| Completitud | 4/5 | Panel del turno y movimientos adaptados; falta revisión visual en tamaños reales. |
+| Claridad | 4/5 | Ayudas distinguen efectivo, cobros digitales y fiados; confirmar lectura con cajero. |
+| Acción | 4/5 | Código listo para publicar, sin migración SQL; despliegue remoto aún sin inspeccionar. |
+| Concisión | 4/5 | Reutiliza IndicatorCard y elimina un control duplicado; CajaPage sigue siendo extenso. |
+
+Promedio: 4/5. Mejora prioritaria: revisar el panel en navegador a ancho de escritorio y móvil. La aceptación estética final corresponde al usuario.

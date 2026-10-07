@@ -1,3 +1,4 @@
+import { IndicatorCard } from '../components/ui/IndicatorCard'
 import { RefreshButton } from '../components/ui/RefreshButton'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
@@ -493,7 +494,7 @@ export function CajaPage() {
       ) : tabActiva === 'turno' ? (
         !sesionActiva ? (
           /* ── CAJA CERRADA: FORMULARIO DE APERTURA ── */
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 sm:p-8">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-6 shadow-md dark:shadow-black/20 sm:p-8">
             <div className="max-w-md mx-auto text-center space-y-4">
               <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
                 Caja Cerrada
@@ -547,7 +548,7 @@ export function CajaPage() {
           /* ── CAJA ABIERTA: MONITOR EN VIVO Y CIERRE ── */
           <div className="space-y-6">
             {/* Tarjeta de estado de turno */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-6 shadow-md dark:shadow-black/20">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-gray-100 dark:border-gray-700">
                 <div className="flex items-center gap-3">
                   <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400">
@@ -564,24 +565,6 @@ export function CajaPage() {
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => cargarResumenSesion(sesionActiva.id)}
-                    title="Recalcular ventas y movimientos en vivo"
-                    className="inline-flex items-center justify-center p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all cursor-pointer shadow-2xs shrink-0"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3" />
-                    </svg>
-                  </button>
                   <Button
                     variant="secondary"
                     size="sm"
@@ -601,80 +584,49 @@ export function CajaPage() {
               </div>
 
               {/* Cuadrícula financiera del turno */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-4">
-                <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Plata de inicio</p>
-                  <p className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">
-                    {formatPrecio(sesionActiva.monto_inicial)}
-                  </p>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">(+) Ventas en efectivo</p>
-                  <p className="text-base sm:text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                    {!modoCiegoEfectivo ? formatPrecio(resumenActivo?.total_efectivo || 0) : '••••••'}
-                  </p>
-                  {modoCiegoEfectivo && (
-                    <span className="text-[10px] text-gray-400 dark:text-gray-500 block">Modo ciego</span>
-                  )}
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">(+) Entradas de plata</p>
-                  <p className="text-base sm:text-lg font-bold text-blue-600 dark:text-blue-400 mt-1">
-                    +{formatPrecio(resumenActivo?.total_ingresos_extra || 0)}
-                  </p>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xs">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">(-) Retiros / Gastos</p>
-                  <p className="text-base sm:text-lg font-bold text-red-600 dark:text-red-400 mt-1">
-                    -{formatPrecio(resumenActivo?.total_egresos || 0)}
-                  </p>
-                </div>
-
-                <div className="col-span-2 sm:col-span-1 p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50 shadow-xs">
-                  <p className="text-xs text-indigo-700 dark:text-indigo-400 font-semibold">
-                    {!modoCiegoEfectivo ? '(=) Debería haber en cajón' : 'Control de Turno'}
-                  </p>
-                  <p className="text-base sm:text-lg font-bold text-indigo-700 dark:text-indigo-300 mt-1 truncate">
-                    {!modoCiegoEfectivo ? formatPrecio(efectivoEsperado) : 'Modo Ciego'}
-                  </p>
-                  {modoCiegoEfectivo && (
-                    <p className="text-[10px] text-indigo-600/70 dark:text-indigo-400/70 mt-0.5">
-                      Conteo físico al cierre
-                    </p>
-                  )}
-                </div>
+              <div className="pt-5">
+                <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">Efectivo del cajón</h2>
+                <p className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">El fondo inicial y los ingresos suman; los retiros y gastos descuentan efectivo.</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 pt-4">
+                <IndicatorCard label="Plata de inicio" valor={formatPrecio(sesionActiva.monto_inicial)} detalle="Fondo para dar vuelto al abrir el turno" icono="caja" />
+                <IndicatorCard label="Ventas en efectivo" valor={!modoCiegoEfectivo ? formatPrecio(resumenActivo?.total_efectivo || 0) : '••••••'} detalle={modoCiegoEfectivo ? 'Importe oculto durante el arqueo ciego' : 'Cobros en efectivo registrados en ventas'} icono="dinero" tono="emerald" />
+                <IndicatorCard label="Entradas de plata" valor={`+${formatPrecio(resumenActivo?.total_ingresos_extra || 0)}`} detalle="Aportes y reposiciones de cambio" icono="rotacion" tono="teal" />
+                <IndicatorCard label="Retiros / Gastos" valor={`-${formatPrecio(resumenActivo?.total_egresos || 0)}`} detalle="Dinero retirado del cajón durante el turno" icono="alerta" tono="rose" />
+                <IndicatorCard label={!modoCiegoEfectivo ? 'Debería haber en cajón' : 'Control de turno'} valor={!modoCiegoEfectivo ? formatPrecio(efectivoEsperado) : 'Modo Ciego'} detalle={modoCiegoEfectivo ? 'Contá el efectivo físico al cerrar' : 'Importe esperado para comparar con el conteo físico'} icono="check" tono="purple" />
               </div>
 
               {/* Medios de cobro del turno */}
+              <div className="mt-6 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 p-4">
+                <h3 className="text-sm font-bold text-indigo-700 dark:text-indigo-300">Otros medios de cobro y resumen de ventas</h3>
+                <p className="mt-1 text-xs leading-relaxed text-indigo-600 dark:text-indigo-300/80">Mercado Pago, transferencias y tarjetas no suman efectivo al cajón. Los fiados quedan pendientes de cobro en cuenta corriente.</p>
+              </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-4 border-t border-gray-100 dark:border-gray-700 mt-4">
-                <div>
+                <div className="min-w-0 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4 shadow-sm">
                   <p className="text-xs text-gray-400 dark:text-gray-500">Mercado Pago</p>
                   <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mt-0.5">
                     {formatPrecio(resumenActivo?.total_mercadopago || 0)}
                   </p>
                 </div>
-                <div>
+                <div className="min-w-0 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4 shadow-sm">
                   <p className="text-xs text-gray-400 dark:text-gray-500">Transferencia</p>
                   <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mt-0.5">
                     {formatPrecio(resumenActivo?.total_transferencia || 0)}
                   </p>
                 </div>
-                <div>
+                <div className="min-w-0 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4 shadow-sm">
                   <p className="text-xs text-gray-400 dark:text-gray-500">Tarjeta</p>
                   <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mt-0.5">
                     {formatPrecio(resumenActivo?.total_tarjeta || 0)}
                   </p>
                 </div>
-                <div>
+                <div className="min-w-0 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4 shadow-sm">
                   <p className="text-xs text-gray-400 dark:text-gray-500">Fiados / Cta. Cte.</p>
                   <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 mt-0.5">
                     {formatPrecio(resumenActivo?.total_cuenta_corriente || 0)}
                   </p>
                 </div>
-                <div className="col-span-2 sm:col-span-1">
+                <div className="min-w-0 col-span-2 sm:col-span-1 rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50 dark:bg-indigo-950/30 p-4 shadow-sm">
                   <p className="text-xs text-gray-400 dark:text-gray-500">Total ventas turno</p>
                   <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
                     {resumenActivo?.total_ventas || 0} operaciones ({formatPrecio(resumenActivo?.total_facturado || 0)})
@@ -684,7 +636,7 @@ export function CajaPage() {
             </div>
 
             {/* Tarjeta de Movimientos de Caja (Gastos y Entradas directas) */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-6 shadow-md dark:shadow-black/20 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-gray-100 dark:border-gray-700">
                 <div>
                   <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">
@@ -694,7 +646,7 @@ export function CajaPage() {
                     Registrá pagos a proveedores, gastos menores, retiros o reposición de cambio
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
                     size="sm"
                     variant="secondary"
@@ -716,8 +668,11 @@ export function CajaPage() {
 
               {/* Lista de movimientos de la sesión */}
               {movimientosCaja.length === 0 ? (
-                <div className="py-6 text-center text-xs text-gray-400 dark:text-gray-500">
-                  No se registraron gastos ni ingresos directos en este turno.
+                <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 px-4 py-8 text-center">
+                  <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 7h18v14H3V7Zm3-4h12v4M8 12h8M12 9v6" /></svg></span>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Sin movimientos de efectivo adicionales</p>
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">No se registraron gastos ni ingresos directos en este turno.</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Usá Registrar Ingreso para reponer cambio o Registrar Gasto / Egreso cuando saques dinero del cajón.</p>
                 </div>
               ) : (
                 <div className="divide-y divide-gray-100 dark:divide-gray-700 max-h-60 overflow-y-auto">
@@ -777,10 +732,10 @@ export function CajaPage() {
         )
       ) : tabActiva === 'movimientos' ? (
         /* ── PESTAÑA DEDICADA DE MOVIMIENTOS ── */
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-6 shadow-md dark:shadow-black/20 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-gray-100 dark:border-gray-700">
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100">
                   Gastos y Movimientos de Caja
                 </h2>
@@ -799,7 +754,7 @@ export function CajaPage() {
               </p>
             </div>
             {sesionActiva ? (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   size="sm"
                   variant="secondary"
@@ -877,7 +832,7 @@ export function CajaPage() {
         </div>
       ) : (
         /* ── PESTAÑA DEDICADA DE HISTORIAL DE CIERRES ── */
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-6 shadow-md dark:shadow-black/20">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <div>
               <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
@@ -1213,7 +1168,7 @@ export function CajaPage() {
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-4 py-3 rounded-xl bg-gray-100/90 dark:bg-gray-900/70 border border-gray-200 dark:border-gray-700 text-xs sm:text-sm">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-gray-600 dark:text-gray-400 font-medium">
                       Billetes contados:
                     </span>
@@ -1221,7 +1176,7 @@ export function CajaPage() {
                       {totalBilletesContados} un.
                     </span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-gray-600 dark:text-gray-400 font-medium">
                       Total dinero:
                     </span>
