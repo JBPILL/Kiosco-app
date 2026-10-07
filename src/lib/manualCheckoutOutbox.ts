@@ -130,6 +130,20 @@ export class ManualCheckoutOutbox extends Dexie {
     })
   }
 
+  async solicitarCancelacionRemota(entrada: EntradaCheckoutManual, solicitud: SolicitudCancelacionManual): Promise<CobroManualLocal> {
+    // Nunca dejar una entrada remota sin intención de cancelación: podría ser
+    // interpretada por la sincronización como una venta propia por confirmar.
+    return this.transaction('rw', this.cobros, async () => {
+      const existente = await this.cobros.get(entrada.checkoutId)
+      if (existente) {
+        if (firmaManual(existente.entrada) !== firmaManual(leerEntradaCheckoutManual(entrada))) {
+          throw new Error('Conservá la solicitud original del cobro')
+        }
+      } else await this.guardar(entrada, `remoto:${entrada.checkoutId}`)
+      return this.solicitarCancelacion(entrada.checkoutId, solicitud)
+    })
+  }
+
   async confirmarCancelacion(id: string, respuesta: unknown): Promise<ConfirmacionCancelacionManual> {
     return this.transaction('rw', this.cobros, async () => {
       const actual = await this.cobros.get(id)

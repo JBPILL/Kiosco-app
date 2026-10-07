@@ -161,3 +161,29 @@ it('la revisión del comercio incluye pendientes ajenos pero nunca datos de otro
  expect(await outbox.visibles(kid, uid)).toHaveLength(1)
  expect(await outbox.visibles(kid, uid, true)).toHaveLength(2)
 })
+
+it('adopta entrada remota junto con cancelación y conserva ambos tras reinicio', async () => {
+ const solicitud = { motivo: 'Cobro no realizado', resolucion: 'NO_COBRADO' as const, referencia: null }
+ await outbox.solicitarCancelacionRemota(entrada(), solicitud)
+ const nombre = outbox.name
+ outbox.close(); outbox = new ManualCheckoutOutbox(nombre)
+ expect(await outbox.cobros.get(id)).toMatchObject({ entrada: entrada(), cancelacion: solicitud, estado: 'PENDIENTE', ticketClave: `remoto:${id}` })
+ const enviar = vi.fn()
+ await expect(procesarCheckoutManual(entrada(), `remoto:${id}`, { outbox, enviar })).rejects.toThrow(/cancelación pendiente/)
+ expect(enviar).not.toHaveBeenCalled()
+})
+it('una cancelación remota inválida no deja una venta nueva en cola', async () => {
+ await expect(outbox.solicitarCancelacionRemota(entrada(), { motivo: 'x', resolucion: 'NO_COBRADO', referencia: null })).rejects.toThrow()
+ expect(await outbox.cobros.count()).toBe(0)
+})
+it('conserva identidad y recibo locales si la entrada remota ya está en este equipo', async () => {
+ await outbox.guardar(entrada(), 'ticket-original')
+ await outbox.solicitarCancelacionRemota(entrada(), { motivo: 'Cobro no realizado', resolucion: 'NO_COBRADO', referencia: null })
+ expect((await outbox.cobros.get(id))?.ticketClave).toBe('ticket-original')
+ await expect(outbox.solicitarCancelacionRemota({ ...entrada(), notas: 'Otra entrada' }, { motivo: 'Cobro no realizado', resolucion: 'NO_COBRADO', referencia: null })).rejects.toThrow(/original/)
+})
+it('un fallo al guardar intención remota revierte la adopción completa', async () => {
+ vi.spyOn(outbox.cobros, 'put').mockRejectedValue(new Error('Disco lleno'))
+ await expect(outbox.solicitarCancelacionRemota(entrada(), { motivo: 'Cobro no realizado', resolucion: 'NO_COBRADO', referencia: null })).rejects.toThrow('Disco lleno')
+ expect(await outbox.cobros.count()).toBe(0)
+})

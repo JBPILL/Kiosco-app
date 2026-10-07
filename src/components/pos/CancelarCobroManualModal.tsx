@@ -6,8 +6,8 @@ import { useAuthStore } from '../../stores/authStore'
 import type { CobroManualLocal, SolicitudCancelacionManual } from '../../lib/manualCheckoutOutbox'
 import { formatPrecio } from '../../lib/utils'
 
-interface Props { cobro: CobroManualLocal; onClose: () => void; onCancelado: () => void }
-export function CancelarCobroManualModal({ cobro, onClose, onCancelado }: Props) {
+interface Props { cobro: CobroManualLocal; onClose: () => void; onCancelado: () => void; onConfirmar?: (solicitud: SolicitudCancelacionManual) => Promise<unknown> }
+export function CancelarCobroManualModal({ cobro, onClose, onCancelado, onConfirmar }: Props) {
   const [motivo, setMotivo] = useState(cobro.cancelacion?.motivo || '')
   const [resolucion, setResolucion] = useState<SolicitudCancelacionManual['resolucion']>(cobro.cancelacion?.resolucion || 'NO_COBRADO')
   const [referencia, setReferencia] = useState(cobro.cancelacion?.referencia || '')
@@ -22,7 +22,9 @@ export function CancelarCobroManualModal({ cobro, onClose, onCancelado }: Props)
     if (!actor?.activo || actor.rol !== 'DUEÑO' || actor.kiosco_id !== cobro.kioscoId) { setError('Se requiere la sesión del dueño del comercio.'); return }
     setOcupado(true); setError('')
     try {
-      await cancelarCobroManualLocal(cobro.id, { motivo, resolucion, referencia: referencia || null })
+      const solicitud = { motivo, resolucion, referencia: referencia || null }
+      if (onConfirmar) await onConfirmar(solicitud)
+      else await cancelarCobroManualLocal(cobro.id, solicitud)
       const vigente = useAuthStore.getState().usuario
       if (vigente?.id !== actor.id || vigente.kiosco_id !== actor.kiosco_id) return
       onCancelado()

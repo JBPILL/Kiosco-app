@@ -127,6 +127,19 @@ export async function cancelarCobroManualLocal(id: string, solicitud: SolicitudC
   return confirmacion
 }
 
+export async function cancelarCobroManualRemoto(entrada: EntradaCheckoutManual, solicitud: SolicitudCancelacionManual) {
+  validarDuenoCancelacion(entrada)
+  const durable = await outbox.solicitarCancelacionRemota(entrada, solicitud)
+  return cancelarCobroManualLocal(durable.id, solicitud)
+}
+
+export async function recuperarCancelacionManualLocal(id: string) {
+  const cobro = await outbox.cobros.get(id)
+  if (!cobro?.cancelacion) return undefined
+  validarDuenoCancelacion(cobro.entrada)
+  return cobro
+}
+
 function completarTicketCancelado(cobro: import('./manualCheckoutOutbox').CobroManualLocal) {
   const actual = useAuthStore.getState()
   const carrito = useCartStore.getState()

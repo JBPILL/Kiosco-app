@@ -93,6 +93,8 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase_fase_checkout_manual_preparacion_bloqueos.sql', 'utf8'))
   await db.exec(readFileSync('supabase_fase_checkout_manual_consulta_pendientes.sql', 'utf8'))
   await db.exec(readFileSync('supabase_fase_checkout_manual_consulta_pendientes.sql', 'utf8'))
+  await db.exec(readFileSync('supabase_fase_checkout_manual_recuperar_entrada.sql', 'utf8'))
+  await db.exec(readFileSync('supabase_fase_checkout_manual_recuperar_entrada.sql', 'utf8'))
 }, 30000)
 beforeEach(async () => {
   await db.exec(`RESET ROLE; SET request.jwt.claim.role='service_role'; SET request.jwt.claim.sub='${actor}';
@@ -482,4 +484,28 @@ it('el dueño de otro comercio no ve preparados ajenos', async () => {
  await db.exec(`UPDATE usuarios SET kiosco_id='${otroKid}',rol='DUEÑO' WHERE id='${cajero}'`)
  expect(await consultarRemotos(cajero)).toEqual([])
  await db.exec(`RESET ROLE; UPDATE usuarios SET kiosco_id='${kid}',rol='CAJERO' WHERE id='${cajero}'`)
+})
+
+async function recuperarRemoto(authId = actor) {
+ await db.exec(`SET ROLE authenticated; SET request.jwt.claim.role='authenticated'; SET request.jwt.claim.sub='${authId}'`)
+ return (await db.query<{ datos: unknown }>('SELECT public.recuperar_entrada_checkout_manual($1::uuid) AS datos', [venta])).rows[0].datos
+}
+it('recupera exactamente la entrada original sin el snapshot de costos', async () => {
+ await prepararBackend()
+ expect(await recuperarRemoto()).toEqual(entradaBackend())
+})
+it('rechaza recuperación por cajero u otro comercio', async () => {
+ await prepararBackend()
+ await expect(recuperarRemoto(cajero)).rejects.toThrow(/Solo el dueño/)
+ await db.exec(`RESET ROLE; UPDATE usuarios SET rol='DUEÑO',kiosco_id='${otroKid}' WHERE id='${cajero}'`)
+ await expect(recuperarRemoto(cajero)).rejects.toThrow(/no disponible/)
+ await db.exec(`RESET ROLE; UPDATE usuarios SET rol='CAJERO',kiosco_id='${kid}' WHERE id='${cajero}'`)
+})
+it('no recupera una entrada ya cancelada', async () => {
+ await prepararBackend(); await cancelarManual()
+ await expect(recuperarRemoto()).rejects.toThrow(/no disponible/)
+})
+it('no recupera una entrada ya confirmada como pendiente', async () => {
+ await prepararBackend(); await confirmar()
+ await expect(recuperarRemoto()).rejects.toThrow(/no disponible/)
 })
