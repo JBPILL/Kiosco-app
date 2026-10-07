@@ -72,8 +72,9 @@ con un cobro pendiente y recuperación de un cierre confirmado.
 
 Stock/crédito insuficientes, cambios comerciales, caja cerrada y descuentos de
 cajero superiores al 15% quedan pendientes de revisión. No borres la solicitud
-ni cambies su caja, fecha o ID para forzarla. La cancelación auditada, devolución
-del dinero y autorización por PIN son trabajo pendiente del plan.
+ni cambies su caja, fecha o ID para forzarla. La base de cancelación auditada del servidor está implementada en el paso 28.
+Su conexión con la cola local, la devolución manual del dinero y la autorización
+por PIN continúan pendientes; no borres solicitudes para simular cancelaciones.
 
 Las pruebas locales y la compilación son evidencia de código; no sustituyen
 JWT/PostgREST, concurrencia real, impresora y cajón en el comercio.
@@ -98,3 +99,18 @@ Promedio: 3,8/5. Prioridades: conciliación auditada, validación remota y permi
 que retiren el circuito anterior. La entrega es una fase del plan, no su cierre.
 Esta evaluación coincide con el alcance solicitado sólo si se mantiene explícito
 que la activación en producción todavía no está verificada.
+
+
+## Paso 28: cancelación auditada en el servidor
+
+Aplicar `supabase_fase_checkout_manual_cancelacion.sql` después de los pasos 26 y 27 en el proyecto de ensayo. Esta migración no activa Point ni agrega un botón al POS todavía.
+
+La función `cancelar_checkout_manual(entrada, motivo, resolucion, referencia)` exige sesión JWT authenticated de un dueño activo del comercio. Toma la identidad desde `auth.uid()`; no recibe un actor confiable desde el navegador. La entrada conserva el UUID y el cuerpo originales. Solo admite NO_COBRADO o REINTEGRADO; el segundo requiere una referencia del reintegro efectuado manualmente. No mueve dinero, stock, deuda ni llama a Mercado Pago.
+
+La cancelación guarda entrada, motivo, resolución, referencia, dueño y fecha. Repetir la misma solicitud devuelve la misma fecha de confirmación; modificarla se rechaza. El registro es privado y los roles de aplicación no pueden modificarlo directamente. Una venta ya registrada debe revisarse en Reportes, aunque esté anulada o provenga del circuito antiguo.
+
+Preparación, confirmación y cancelación comparten un bloqueo transaccional por UUID. Los triggers rechazan reintentos de un ID cancelado incluso si todavía no existía un snapshot. No reemplaza el bloqueo global de cierre de caja, la conciliación de otros equipos ni el retiro de permisos del circuito antiguo.
+
+Validación local: 44 pruebas PostgreSQL PGlite del circuito completo y compilación. La migración se ejecuta dos veces en la prueba para comprobar reaplicación. Pendiente piloto JWT/PostgREST y concurrencia real en Supabase, además de interfaz y persistencia local de la cancelación.
+
+Autoevaluación: exactitud 4/5 (SQL ejecutado y casos negativos; falta concurrencia remota); completitud 3/5 (servidor listo, interfaz y PIN pendientes); claridad 4/5 (contrato y límites explícitos; pendiente guía de interfaz); acción 4/5 (SQL aplicable en ensayo, sin piloto remoto); concisión 4/5 (migración independiente, documentación de fase). Promedio 3,8/5. Próxima mejora: integrar confirmación durable de cancelación en la cola sin liberar carritos antes del acuse del servidor.

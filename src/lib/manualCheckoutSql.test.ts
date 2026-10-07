@@ -37,6 +37,7 @@ beforeAll(async () => {
   db = new PGlite()
   await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
     CREATE SCHEMA auth;
+    CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
     CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql AS $$ SELECT current_setting('request.jwt.claim.role',true) $$;
     CREATE FUNCTION auth_es_superadmin() RETURNS boolean LANGUAGE sql AS $$ SELECT false $$;
     CREATE FUNCTION auth_es_dueno_o_superadmin() RETURNS boolean LANGUAGE sql AS $$ SELECT true $$;
@@ -82,14 +83,16 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase_fase_checkout_manual.sql', 'utf8'))
   await db.exec(readFileSync('supabase_fase_checkout_manual_backend.sql', 'utf8'))
   await db.exec(readFileSync('supabase_fase_checkout_manual_backend.sql', 'utf8'))
+  await db.exec(readFileSync('supabase_fase_checkout_manual_cancelacion.sql', 'utf8'))
+  await db.exec(readFileSync('supabase_fase_checkout_manual_cancelacion.sql', 'utf8'))
 }, 30000)
 beforeEach(async () => {
-  await db.exec(`RESET ROLE; SET request.jwt.claim.role='service_role';
+  await db.exec(`RESET ROLE; SET request.jwt.claim.role='service_role'; SET request.jwt.claim.sub='${actor}';
     DROP TRIGGER IF EXISTS fallo_ensayo ON movimientos_stock;
     DROP TRIGGER IF EXISTS fallo_ensayo ON movimientos_cuenta_corriente;
     DROP TABLE IF EXISTS point_reservas_credito; DROP TABLE IF EXISTS point_reservas_lotes;
     DROP TABLE IF EXISTS point_reservas_stock; DROP TABLE IF EXISTS point_intentos;
-    DELETE FROM checkout_manual_entradas; DELETE FROM checkout_manuales; DELETE FROM movimientos_cuenta_corriente; DELETE FROM movimientos_stock;
+    DELETE FROM checkout_manual_cancelaciones; DELETE FROM checkout_manual_entradas; DELETE FROM checkout_manuales; DELETE FROM movimientos_cuenta_corriente; DELETE FROM movimientos_stock;
     DELETE FROM pagos_venta; DELETE FROM detalles_venta; DELETE FROM ventas; DELETE FROM lotes_producto;
     DELETE FROM productos WHERE id='${libre}'; UPDATE productos SET kiosco_id='${kid}',stock_actual=10,activo=true,requiere_vencimiento=false,es_pesable=true WHERE id='${producto}';
     UPDATE usuarios SET activo=true,rol='DUEÑO' WHERE id='${actor}'; UPDATE kioscos SET estado_suscripcion='ACTIVO';
@@ -344,4 +347,67 @@ it('la entrada privada verifica perfil, identidad, caja y permisos de tablas', a
   await db.exec('SET ROLE authenticated')
   await expect(prepararBackend()).rejects.toThrow(/permission denied/i)
   await expect(leer('SELECT * FROM checkout_manual_entradas')).rejects.toThrow(/permission denied/i)
+})
+
+async function cancelarManual(entrada: unknown = entradaBackend(), authId = actor, resolucion = 'NO_COBRADO', referencia: string | null = null) {
+  await db.exec(`SET request.jwt.claim.role='authenticated'; SET request.jwt.claim.sub='${authId}';`)
+  return db.query<{ cancelar_checkout_manual: { estado: string; checkout_id: string; cancelado_en: string } }>(
+    'SELECT public.cancelar_checkout_manual($1::jsonb,$2::text,$3::text,$4::text)',
+    [JSON.stringify(entrada), 'Cancelación solicitada en ensayo', resolucion, referencia])
+}
+
+it('cancela un pendiente preparado con auditoría y reintento idempotente', async () => {
+  await prepararBackend()
+  const primero = await cancelarManual()
+  const segundo = await cancelarManual()
+  expect(primero.rows).toEqual(segundo.rows)
+  expect(primero.rows[0].cancelar_checkout_manual.estado).toBe('CANCELADO')
+  expect(await leer('SELECT autorizado_por FROM checkout_manual_cancelaciones')).toEqual([{ autorizado_por: actor }])
+  expect(await leer(`SELECT stock_actual FROM productos WHERE id='${producto}'`)).toEqual([{ stock_actual: '10.000' }])
+  expect(await leer('SELECT id FROM ventas')).toEqual([])
+})
+it('bloquea preparación y confirmación tardías de un ID cancelado incluso sin snapshot previo', async () => {
+  await cancelarManual()
+  await db.exec("SET request.jwt.claim.role='service_role'")
+  await expect(prepararBackend()).rejects.toThrow(/cancelado/)
+  await expect(confirmar()).rejects.toThrow(/cancelado/)
+  expect(await leer('SELECT id FROM ventas')).toEqual([])
+})
+it('deniega cancelación al cajero y a otro comercio', async () => {
+  await expect(cancelarManual(entradaBackend(), cajero)).rejects.toThrow(/Solo el dueño/)
+  await expect(cancelarManual({ ...entradaBackend(), kioscoId: otroKid })).rejects.toThrow(/Comercio no autorizado/)
+})
+it('rechaza entrada modificada y reintegro sin referencia', async () => {
+  await prepararBackend()
+  await expect(cancelarManual({ ...entradaBackend(), notas: 'Otra entrada' })).rejects.toThrow(/otra entrada/)
+  await expect(cancelarManual(entradaBackend(), actor, 'REINTEGRADO')).rejects.toThrow(/referencia/)
+  expect(await leer('SELECT id FROM checkout_manual_cancelaciones')).toEqual([])
+})
+it('permite resolver caja cerrada pero nunca cancelar una venta registrada', async () => {
+  await prepararBackend()
+  await db.exec("UPDATE sesiones_caja SET estado='CERRADA',fecha_cierre=now()")
+  await cancelarManual()
+  expect(await leer('SELECT id FROM checkout_manual_cancelaciones')).toHaveLength(1)
+})
+it('rechaza cancelar una confirmación y preserva sus efectos comerciales', async () => {
+  await confirmar()
+  await expect(cancelarManual()).rejects.toThrow(/revisar la venta en Reportes/)
+  expect(await leer('SELECT id FROM checkout_manual_cancelaciones')).toEqual([])
+  expect(await leer('SELECT id FROM ventas')).toHaveLength(1)
+})
+it('no permite sobrescribir la resolución auditada', async () => {
+  await cancelarManual()
+  await expect(cancelarManual(entradaBackend(), actor, 'REINTEGRADO', 'Devolución manual comprobante 123')).rejects.toThrow(/no puede modificarse/)
+})
+it('restringe el RPC al dueño activo y mantiene el registro privado sin escrituras directas', async () => {
+  await db.exec("UPDATE usuarios SET activo=false WHERE id='" + actor + "'")
+  await expect(cancelarManual()).rejects.toThrow(/Perfil no disponible/)
+  await db.exec("UPDATE usuarios SET activo=true WHERE id='" + actor + "'; SET request.jwt.claim.role='service_role'")
+  await expect(db.query('SELECT public.cancelar_checkout_manual($1::jsonb,$2,$3,NULL)', [JSON.stringify(entradaBackend()), 'Motivo de ensayo', 'NO_COBRADO'])).rejects.toThrow(/sesión del dueño/)
+  await db.exec('SET ROLE authenticated')
+  await expect(db.exec('SELECT * FROM public.checkout_manual_cancelaciones')).rejects.toThrow(/permission denied/)
+  await expect(db.exec('DELETE FROM public.checkout_manual_cancelaciones')).rejects.toThrow(/permission denied/)
+  await db.exec('RESET ROLE; SET ROLE service_role')
+  await expect(db.exec('DELETE FROM public.checkout_manual_cancelaciones')).rejects.toThrow(/permission denied/)
+  await db.exec('RESET ROLE')
 })

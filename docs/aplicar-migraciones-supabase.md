@@ -391,3 +391,11 @@ Seguí [checkout-manual-backend.md](checkout-manual-backend.md) para configurar
 `CHECKOUT_ALLOWED_ORIGINS` y desplegar `checkout-manual`. El SQL y la función
 no se aplicaron remotamente desde Codex. El POS y la cola offline aún requieren
 la siguiente fase de conexión antes de usar este nuevo cierre.
+
+### Paso 28 — cancelaciones de checkout manual
+
+Después de los pasos 26 (`supabase_fase_checkout_manual.sql`) y 27 (`supabase_fase_checkout_manual_backend.sql`), abrí el SQL Editor del proyecto de ensayo, pegá el archivo completo `supabase_fase_checkout_manual_cancelacion.sql` y ejecutalo. Conservá BEGIN/COMMIT. El archivo se puede reaplicar sin borrar auditorías.
+
+El paso instala una tabla privada, la función de cancelación para dueño autenticado y triggers que bloquean reintentos del mismo ID. No requiere secrets ni despliegue adicional de Edge Functions. No ejecuta cancelaciones por sí solo y no activa Point. La interfaz de pendientes aún debe conectarse antes de usar este circuito desde la aplicación; ver `docs/checkout-manual-pos.md`.
+
+No ejecutes el RPC desde SQL Editor como sustituto de una prueba de permisos: requiere JWT authenticated y auth.uid() de un dueño. El piloto debe probar llamadas autenticadas, rechazo de cajero/comercio ajeno, respuesta perdida y carrera real entre confirmar y cancelar. Las pruebas PGlite son evidencia local, no de ese piloto.
