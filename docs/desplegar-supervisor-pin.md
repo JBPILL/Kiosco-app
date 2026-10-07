@@ -2,11 +2,11 @@
 
 ## Estado
 
-`supervisor-pin` incorpora configuración del PIN por el dueño, consulta de existencia y emisión de permisos para descuentos. No está desplegada por el push a GitHub. El backend y la cola del cliente ya transmiten el permiso separado mediante `x-supervisor-autorizacion`; faltan la petición del permiso desde el cliente y la interfaz. Instalar esta función no habilita por sí solo descuentos extraordinarios para el cajero.
+`supervisor-pin` incorpora configuración del PIN por el dueño, consulta de existencia y emisión de permisos para descuentos. El cliente solicita el permiso y la cola lo transmite separado mediante `x-supervisor-autorizacion`. Seguridad y Caja incluye configuración y auditoría; cobros incluye solicitud de PIN y espera visible. El push a GitHub no despliega las funciones ni aplica SQL. La activación requiere completar el ensayo de extremo a extremo.
 
 ## Requisitos
 
-- Proyecto de ensayo con las migraciones de checkout manual y supervisor instaladas en el orden de `docs/sql-pendientes-2026-10-07.md`, hasta el archivo 33.
+- Proyecto de ensayo con las migraciones de checkout manual y supervisor instaladas en el orden de `docs/sql-pendientes-2026-10-07.md`, hasta el archivo 35. El 34 agrega espera progresiva; el 35 habilita auditoría del dueño.
 - Sesión real de Supabase Auth y un único perfil activo asociado a esa identidad.
 - `CHECKOUT_ALLOWED_ORIGINS`: orígenes exactos permitidos, separados por coma.
 - `SUPERVISOR_PIN_PEPPER_VERSION`: identificador de la versión actual, por ejemplo `1`.
@@ -54,6 +54,6 @@ Campos extra, roles o identidades externas se rechazan. La autorización reserva
 
 ## Ensayo necesario
 
-Validar con sesiones reales de dueño y cajero: dueño configura, cajero no configura, estado no revela hash, PIN correcto emite permiso, PIN incorrecto consume intento, después de cinco reservas fallidas o pendientes el siguiente intento se bloquea, otro comercio/operador se rechaza, cambio de PIN invalida permisos anteriores. Después comprobar el consumo en la transacción financiera cuando se conecte el checkout.
+Validar con sesiones reales de dueño y cajero: dueño configura, cajero no configura, estado no revela hash, PIN correcto emite permiso, PIN incorrecto consume intento y exige espera progresiva, después de cinco reservas fallidas o pendientes el siguiente intento se bloquea, otro comercio/operador se rechaza, cambio de PIN invalida permisos anteriores. Comprobar consumo del permiso y confirmación financiera en una misma transacción, recuperación del cobro original y rechazo de permisos vencidos. El dueño debe ver sólo auditoría de su comercio; el cajero no debe poder consultar esa RPC.
 
 Pruebas locales de HTTP/secretos y criptografía realizadas; Deno, JWT/PostgREST remotos y concurrencia real todavía no comprobados. No registrar el cuerpo de la solicitud: contiene el PIN en tránsito HTTPS.

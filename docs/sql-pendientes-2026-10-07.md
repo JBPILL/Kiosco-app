@@ -9,7 +9,7 @@ Esta lista corresponde a una base existente de KioskoPOS, con tablas comerciales
 3. Seguí el orden numerado. Si falla, detenete y compartí el error completo. Si quedó una transacción abortada, ejecutá `ROLLBACK;` antes del reintento.
 4. Anotá los nombres aplicados. Si ya instalaste la versión actual de un archivo, podés omitirlo; no tengo acceso al registro remoto para identificarlo por vos.
 
-Por tus últimos mensajes, electrónica y las fases anteriores ya estaban aplicadas. Para ponerte al día, revisá especialmente **18–33**. La presencia de una tabla no demuestra que tenga la última versión de sus funciones o políticas. Los archivos 29–33 preparan el supervisor; todavía faltan la interfaz y el despliegue de su endpoint. La función está documentada en `docs/desplegar-supervisor-pin.md`.
+Informaste que ya aplicaste los SQL enviados hasta el 33. Los nuevos pendientes son **34 y 35**, incluidos en `artifacts/sql-supervisor-adicionales-2026-10-07.zip`. Aplicá primero 34 y después 35. El 34 contiene la corrección que evalúa los vencimientos después de obtener los bloqueos; reaplicalo si instalaste una versión anterior. La presencia de una tabla no demuestra que tenga la última versión de sus funciones o políticas. La interfaz del supervisor ya está implementada; su despliegue y validación remota siguen pendientes. Ver `docs/desplegar-supervisor-pin.md`.
 
 El ZIP de pendientes contiene **16 SQL (18–33)** y esta guía. La tabla siguiente conserva las referencias anteriores para comprobar dependencias, pero no te indica que vuelvas a ejecutar todos los SQL antiguos. En particular, el archivo 15 histórico recrea una vista con CASCADE: si ya está instalado el rubro, no lo reapliques como parte de esta actualización.
 
@@ -50,8 +50,12 @@ El ZIP de pendientes contiene **16 SQL (18–33)** y esta guía. La tabla siguie
 | 31 | supabase_fase_supervisor_autorizacion_descuento.sql |
 | 32 | supabase_fase_checkout_manual_supervisor.sql |
 | 33 | supabase_fase_checkout_manual_politica_supervisor.sql |
+| 34 | supabase_fase_supervisor_pin_espera.sql |
+| 35 | supabase_fase_supervisor_auditoria_consulta.sql |
 
 El archivo 33 debe ir después del 32 y de las funciones originales de checkout. Si reaplicás esas funciones anteriores, reaplicá el 33 al final para conservar el control de supervisor. No modifiques las decisiones ya almacenadas ni borres las preparaciones pendientes.
+
+El 34 reemplaza las funciones de reserva y finalización del 30. Si reaplicás el 30, ejecutá nuevamente el 34 para conservar la espera progresiva. El 35 habilita la consulta acotada de auditoría del dueño; no concede lectura directa de las tablas privadas.
 
 ## Consulta inicial de sólo lectura
 
@@ -70,6 +74,18 @@ NULL indica que el objeto falta. Esta consulta no certifica toda la instalación
 
 ## Publicación de código
 
-El push a GitHub/Vercel no ejecuta estos SQL ni despliega Edge Functions de Supabase. Las fases de checkout necesitan su backend desplegado y la configuración descrita en `docs/checkout-manual-backend.md`. La nueva versión de ese backend requiere el archivo 33. No actives el circuito transaccional sin validar primero el proyecto de ensayo.
+El push a GitHub/Vercel no ejecuta estos SQL ni despliega Edge Functions de Supabase. Las fases de checkout necesitan su backend desplegado y la configuración descrita en `docs/checkout-manual-backend.md`. Checkout requiere el archivo 33; el circuito completo de supervisor y su auditoría requiere también 34 y 35. No actives el circuito transaccional sin validar primero el proyecto de ensayo.
 
 Point/QR integrados siguen pausados. Sus SQL no están en este paquete. El cobro manual con posnet permanece como acordamos.
+
+## Verificación del paquete adicional
+
+Se comprobó que el ZIP adicional contiene exactamente dos SQL, LEEME y SHA256,
+y que los bytes de ambos SQL coinciden con los originales vigentes del repositorio.
+Esta comprobación valida el empaquetado; no demuestra aplicación en Supabase.
+
+Autoevaluación: exactitud 4 (hashes comprobados; aplicación remota no comprobada),
+completitud 4 (orden y dependencias documentados; ensayo remoto pendiente),
+claridad 4 (se distinguen ambos paquetes; historial largo), utilidad 4 (paquete listo;
+requiere ejecución del usuario), concisión 4 (dos archivos nuevos; guía histórica extensa).
+Promedio 4,0/5. Mejora prioritaria: verificar el circuito con sesiones reales en ensayo.
