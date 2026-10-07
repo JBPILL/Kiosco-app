@@ -1,6 +1,7 @@
 import { Store, Printer, Palette, Sun, Moon } from '../components/config/ConfigIcons'
 import { ModulosComercioSection } from '../components/config/ModulosComercioSection'
 import { SupervisorPinSection } from '../components/config/SupervisorPinSection'
+import { SupervisorAuditSection } from '../components/config/SupervisorAuditSection'
 import { RefreshButton } from '../components/ui/RefreshButton'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -957,6 +958,7 @@ export function ConfigPage() {
           {pestanaActiva === 'SEGURIDAD' && (
             <div className="space-y-6">
               <SupervisorPinSection />
+              <SupervisorAuditSection />
               {/* Tarjeta 1: Arqueo Ciego */}
               <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-4">
                 <div className="flex items-center gap-2">
