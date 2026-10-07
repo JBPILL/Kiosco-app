@@ -9,6 +9,8 @@ import { playScanSound } from '../../lib/sound'
 import { formatPrecio } from '../../lib/utils'
 import type { Producto } from '../../types/database'
 import toast from 'react-hot-toast'
+import { useAuthStore } from '../../stores/authStore'
+import { useCartStore } from '../../stores/cartStore'
 
 interface BarcodeScannerModalProps {
   isOpen: boolean
@@ -40,6 +42,10 @@ export function BarcodeScannerModal({
   const cooldownRef = useRef<{ code: string; time: number }>({ code: '', time: 0 })
   const isStartingRef = useRef(false)
   const isStoppingRef = useRef(false)
+  const abiertoRef = useRef(isOpen)
+  abiertoRef.current = isOpen
+  const generacionRef = useRef(0)
+  const consultasRef = useRef(new Set<string>())
 
   const onProductScannedRef = useRef(onProductScanned)
   const onCloseRef = useRef(onClose)
@@ -56,7 +62,18 @@ export function BarcodeScannerModal({
   // Procesar código leído
   const procesarCodigo = useCallback(async (rawCode: string) => {
     const code = rawCode.trim()
-    if (!code) return
+    if (!code || !abiertoRef.current || consultasRef.current.has(code)) return
+    const contexto = useAuthStore.getState()
+    if (!contexto.usuario?.activo || !contexto.kiosco?.id || contexto.usuario.kiosco_id !== contexto.kiosco.id) return
+    const ticket = useCartStore.getState().tabActivaId
+    const generacion = generacionRef.current
+    const vigente = () => {
+      const actual = useAuthStore.getState()
+      return abiertoRef.current && generacionRef.current === generacion
+        && actual.usuario?.activo && actual.usuario.id === contexto.usuario?.id
+        && actual.usuario.auth_user_id === contexto.usuario?.auth_user_id
+        && actual.kiosco?.id === contexto.kiosco?.id && useCartStore.getState().tabActivaId === ticket
+    }
 
     // Cooldown de 1.8 segundos para el mismo código consecutivo
     const now = Date.now()
@@ -64,15 +81,18 @@ export function BarcodeScannerModal({
       return
     }
     cooldownRef.current = { code, time: now }
+    consultasRef.current.add(code)
 
     try {
       const { data, error } = await supabase
         .from('productos')
         .select('*, categoria:categorias(nombre, color)')
         .eq('activo', true)
+        .eq('kiosco_id', contexto.kiosco.id)
         .eq('codigo_barras', code)
         .maybeSingle()
 
+      if (!vigente()) return
       if (error) throw error
 
       if (data) {
@@ -99,8 +119,12 @@ export function BarcodeScannerModal({
         toast.error(`Código no encontrado: ${code}`)
       }
     } catch (err) {
-      console.error('Error al buscar producto por código de barras:', err)
-      playScanSound('error')
+      if (vigente()) {
+        console.error('Error al buscar producto por código de barras:', err)
+        playScanSound('error')
+      }
+    } finally {
+      consultasRef.current.delete(code)
     }
   }, [])
 
@@ -281,11 +305,12 @@ export function BarcodeScannerModal({
   }
 
   useEffect(() => {
+    generacionRef.current++
     if (isOpen) {
       const t = setTimeout(() => {
         iniciarEscaner()
       }, 150)
-      return () => clearTimeout(t)
+      return () => { clearTimeout(t); generacionRef.current++ }
     } else {
       detenerEscaner()
       setUltimoEscaneo(null)
@@ -441,5 +466,3 @@ export function BarcodeScannerModal({
     </Modal>
   )
 }
-
-

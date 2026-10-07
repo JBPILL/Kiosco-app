@@ -18,7 +18,10 @@ enfoque o lectura en cada modelo. Referencias:
 - https://scanapp.org/html5-qrcode-docs/docs/supported_frameworks
 - https://scanapp.org/html5-qrcode-docs/docs/apis/interfaces/Html5QrcodeCameraScanConfig
 
-Validación local: seis pruebas de tamaño, errores y reintento; build aprobado.
+Validación local: diez pruebas de tamaño, errores, reintento y respuestas tardías;
+build aprobado. Las consultas de ventas filtran el comercio y descartan resultados
+al cerrar, cambiar operador o cambiar ticket. No se procesan consultas simultáneas
+del mismo código; la captura de catálogo acepta sólo una lectura por apertura.
 Pendiente: iPhone Safari/Chrome/Brave, Android Chrome/Samsung Internet, rotación,
 denegación de permisos, cierre durante inicio y teléfonos con múltiples lentes.
 No se ha probado hardware físico en esta fase.

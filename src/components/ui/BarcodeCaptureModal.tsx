@@ -30,6 +30,9 @@ export function BarcodeCaptureModal({
   const scannerRef = useRef<Html5Qrcode | null>(null)
   const isStartingRef = useRef(false)
   const isStoppingRef = useRef(false)
+  const abiertoRef = useRef(isOpen)
+  abiertoRef.current = isOpen
+  const capturadoRef = useRef(false)
 
   const onBarcodeCapturedRef = useRef(onBarcodeCaptured)
   const onCloseRef = useRef(onClose)
@@ -44,7 +47,8 @@ export function BarcodeCaptureModal({
   // Procesar código leído
   const procesarCodigo = useCallback((rawCode: string) => {
     const code = rawCode.trim()
-    if (!code) return
+    if (!code || !abiertoRef.current || capturadoRef.current) return
+    capturadoRef.current = true
 
     playScanSound('success')
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
@@ -227,6 +231,7 @@ export function BarcodeCaptureModal({
 
   useEffect(() => {
     if (isOpen) {
+      capturadoRef.current = false
       const t = setTimeout(() => {
         iniciarEscaner()
       }, 150)
@@ -342,5 +347,3 @@ export function BarcodeCaptureModal({
     </Modal>
   )
 }
-
-
