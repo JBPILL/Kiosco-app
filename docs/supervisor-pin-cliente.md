@@ -13,7 +13,11 @@ El formulario del dueño está integrado en Seguridad y Caja. Usa campos ocultos
 confirmación de 4 a 6 dígitos y limpia ambos campos después de cada envío.
 Cuatro pruebas del componente cubren rol, ceros iniciales, confirmación y errores.
 
-Pendiente: formulario de autorización del cajero, pruebas del cliente,
+La cola de pendientes ofrece autorización para descuentos del operador original,
+sin cancelación en curso. El modal limpia el PIN después de cada intento y guarda
+el permiso antes de reintentar la solicitud original. No genera otra venta.
+
+Pendiente: autorización antes del cobro físico en PaymentModal, pruebas del cliente,
 prueba real de Edge Functions y validación del flujo completo en navegador.
 
 ## Autoevaluación de esta fase

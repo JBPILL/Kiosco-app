@@ -1,4 +1,5 @@
 import { CancelarCobroManualModal } from './CancelarCobroManualModal'
+import { AutorizarDescuentoManualModal } from './AutorizarDescuentoManualModal'
 import { CobrosManualesRemotos } from './CobrosManualesRemotos'
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
@@ -22,6 +23,7 @@ function Contenido({ kioscoId, usuarioId, onVerTicket }: { kioscoId: string; usu
   const online = useOnlineStatus()
   const [cobros, setCobros] = useState<CobroManualLocal[]>([])
   const [cancelar, setCancelar] = useState<CobroManualLocal | null>(null)
+  const [autorizar, setAutorizar] = useState<CobroManualLocal | null>(null)
   const esDueno = useAuthStore().usuario?.rol === 'DUEÑO'
   const [error, setError] = useState('')
   const [ocupado, setOcupado] = useState(false)
@@ -68,5 +70,7 @@ function Contenido({ kioscoId, usuarioId, onVerTicket }: { kioscoId: string; usu
     {error && <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
     <div className="mt-3 max-h-36 overflow-y-auto space-y-2">{cobros.map(c => <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2"><div><p className="text-sm font-semibold">Ticket {c.id.slice(0, 8).toUpperCase()} · {formatPrecio(c.entrada.totalEsperado)}</p><p className="text-xs text-gray-500 dark:text-gray-400">{c.estado === 'CONFIRMADO' ? 'Confirmado · comprobante por recuperar' : c.cancelacion ? 'Cancelación pendiente de confirmación' : 'Pendiente de confirmación'}{c.usuarioId !== usuarioId ? ' · Otro operador: revisión del dueño' : ''} · {new Date(c.entrada.fechaHora).toLocaleString('es-AR')}</p></div><div className="flex flex-wrap gap-2">{esDueno && c.estado === 'PENDIENTE' && <Button size="sm" variant="danger" disabled={ocupado || !online} onClick={() => setCancelar(c)}>{c.cancelacion ? 'Revisar cancelación' : 'Cancelar pendiente'}</Button>}<Button size="sm" variant="secondary" disabled={!c.recibo || c.usuarioId !== usuarioId || ocupado || Boolean(c.cancelacion)} onClick={() => void ver(c)}>Ver comprobante</Button></div></div>)}</div>
     {cancelar && <CancelarCobroManualModal key={cancelar.id} cobro={cancelar} onClose={() => setCancelar(null)} onCancelado={() => { setCancelar(null); toast.success('Cancelación confirmada') }} />}
+    {cobros.filter(c => c.estado === 'PENDIENTE' && !c.cancelacion && c.usuarioId === usuarioId && c.entrada.tipoAjuste.startsWith('DESCUENTO')).map(c => <Button key={`autorizar-${c.id}`} size="sm" variant="secondary" disabled={ocupado || !online} onClick={() => setAutorizar(c)}>Autorizar descuento · {c.id.slice(0, 8).toUpperCase()}</Button>)}
+    {autorizar && <AutorizarDescuentoManualModal key={autorizar.id} cobro={autorizar} onClose={() => setAutorizar(null)} onAutorizado={() => { setAutorizar(null); toast.success('Permiso guardado; reintentando el cobro original'); void sincronizar() }} />}
   </section>
 }

@@ -16,7 +16,7 @@ function observar(filas: unknown[]) {
   } })
 }
 const pendiente = { usuarioId: 'u1', kioscoId: 'k1', id: 'venta-1', ticketClave: 'tab-1', estado: 'PENDIENTE', recibo,
-  entrada: { fechaHora: recibo.fecha, totalEsperado: 100 } }
+  entrada: { fechaHora: recibo.fecha, totalEsperado: 100, tipoAjuste: 'NINGUNO' } }
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.auth.mockReturnValue({ usuario: { id: 'u1', kiosco_id: 'k1' }, kiosco: { id: 'k1' } })
@@ -24,6 +24,15 @@ beforeEach(() => {
   mocks.reclamar.mockResolvedValue(null)
   mocks.sincronizar.mockResolvedValue({ exitosas: 0, fallidas: 1 })
   observar([pendiente])
+})
+
+it('ofrece autorización sólo para descuentos pendientes del operador original', async () => {
+  observar([{ ...pendiente, entrada: { ...pendiente.entrada, tipoAjuste: 'DESCUENTO_PORCENTAJE' } },
+    { ...pendiente, id: 'otro', usuarioId: 'u2', entrada: { ...pendiente.entrada, tipoAjuste: 'DESCUENTO_PORCENTAJE' } }])
+  render(<CobrosManualesPendientes onVerTicket={vi.fn()} />)
+  const botones = await screen.findAllByRole('button', { name: /Autorizar descuento/ })
+  expect(botones).toHaveLength(1)
+  expect((botones[0] as HTMLButtonElement).disabled).toBe(true)
 })
 
 it('muestra el pendiente offline y recupera su comprobante sin volver a cobrar', async () => {
