@@ -9,6 +9,7 @@ function reiniciarCarrito() {
   const tabId = 'tab-test'
   useCartStore.setState({
     items: [],
+    cobrosBloqueados: {},
     tipoAjuste: 'NINGUNO',
     valorAjuste: 0,
     tabs: [{ id: tabId, nombre: 'Ticket 1', items: [], tipoAjuste: 'NINGUNO', valorAjuste: 0 }],
@@ -23,6 +24,41 @@ function reiniciarCarrito() {
 }
 
 const cart = () => useCartStore.getState()
+
+it('un ticket con cobro guardado conserva artículos y ajuste hasta recuperar el cierre', () => {
+  reiniciarCarrito()
+  cart().agregarProducto(crearProducto(), 2)
+  cart().aplicarAjuste('DESCUENTO_FIJO', 10)
+  const tab = cart().tabActivaId
+  cart().bloquearTabPorCobro(tab, 'cobro-1')
+  cart().actualizarCantidad('prod-1', 8)
+  cart().quitarProducto('prod-1')
+  cart().vaciarCarrito()
+  cart().agregarItemLibre('Otro concepto', 50)
+  cart().quitarAjuste()
+  cart().cerrarTab(tab)
+  expect(cart().items).toHaveLength(1)
+  expect(cart().items[0].cantidad).toBe(2)
+  expect(cart().tipoAjuste).toBe('DESCUENTO_FIJO')
+  expect(cart().suspenderVentaActual()).toBe(false)
+  cart().completarCobroTab(tab)
+  expect(cart().items).toEqual([])
+  expect(cart().tabActivaId).not.toBe(tab)
+})
+
+it('recuperar el cierre de otra pestaña no borra el ticket activo', () => {
+  reiniciarCarrito()
+  cart().agregarProducto(crearProducto(), 1)
+  const primera = cart().tabActivaId
+  cart().bloquearTabPorCobro(primera, 'cobro-1')
+  cart().crearNuevaTab()
+  cart().agregarProducto(crearProducto({ id: 'otro' }), 3)
+  const activa = cart().tabActivaId
+  cart().completarCobroTab(primera)
+  expect(cart().tabActivaId).toBe(activa)
+  expect(cart().items[0].cantidad).toBe(3)
+  expect(cart().tabs.some(t => t.id === primera)).toBe(false)
+})
 
 it('cada venta de la última pestaña obtiene una identidad nueva y conserva su nombre', () => {
   reiniciarCarrito()

@@ -6,8 +6,9 @@ Esta fase agrega `checkout-manual`, una Edge Function que verifica el JWT,
 recotiza contra el catálogo del servidor y llama al cierre transaccional privado.
 No cobra en un posnet ni necesita credenciales de Mercado Pago.
 
-El POS y la cola offline todavía usan el circuito anterior. Desplegar esta función
-no cambia ese circuito. La conexión de ambos es la siguiente fase de seguridad.
+El POS y la cola offline ahora tienen una conexión opcional a esta función.
+Desplegarla por sí sola no cambia el circuito: la activación del frontend y sus
+límites están documentados en [checkout-manual-pos.md](checkout-manual-pos.md).
 
 ## Aplicar en el proyecto de ensayo
 
@@ -62,7 +63,7 @@ frontend que dependa de esta función sin comprobar el despliegue en ensayo.
 El cuerpo está definido en `src/types/checkoutManual.ts`, versión 1, con IDs
 estables de venta y pagos, fecha original, ticket y receta esperados.
 
-| Respuesta | Tratamiento requerido en el frontend pendiente |
+| Respuesta | Tratamiento requerido en el frontend |
 | --- | --- |
 | 200 | Validar el resultado y cerrar una sola vez; no descontar stock nuevamente al recuperar un cierre |
 | 400 | Conservar la solicitud y revisar su formato |
@@ -81,16 +82,16 @@ identidad, permisos, cierres y reintentos. Las pruebas del backend cubren
 recotización, conflictos, recuperación, descuento, validación y respuestas HTTP.
 Deno comprueba los imports y tipos de la Edge Function.
 
-Falta verificar JWT/PostgREST y concurrencia real en Supabase de ensayo,
-y conectar el POS y la cola offline a esta función. Esta entrega no demuestra
-que el circuito de cobro en producción ya sea transaccional.
+Falta verificar JWT/PostgREST y concurrencia real en Supabase de ensayo.
+La conexión opcional del POS y su cola está implementada en la fase siguiente.
+Esto no demuestra que el circuito de cobro en producción ya sea transaccional.
 
 Validación local de esta fase: suite completa de **866 pruebas en 95 archivos**
 aprobada; `deno check supabase/functions/checkout-manual/index.ts` aprobado.
 Compilación `npm run build` aprobada, sin errores TypeScript. Vite mantiene
 la advertencia existente por tamaño de algunos chunks.
 
-Evaluación de la entrega: precisión 4/5 (falta JWT remoto); completitud 3/5
+Evaluación histórica de esta fase de backend: precisión 4/5 (falta JWT remoto); completitud 3/5
 (backend preparado, POS y cola sin conexión); claridad 4/5 (contrato y orden
 explícitos, falta el flujo completo); accionabilidad 4/5 (SQL y comandos listos,
 requieren ejecución en ensayo); concisión 4/5 (guía breve, contrato separado).

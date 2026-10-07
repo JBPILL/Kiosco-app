@@ -3,9 +3,10 @@
 ## Alcance de esta fase
 
 Se incorpora `ManualCheckoutOutbox`, una base IndexedDB independiente de la cola
-antigua, y un cliente autenticado para `checkout-manual`. El POS y
-`offlineSyncStore` todavía no los llaman: esta fase prepara su reemplazo sin
-activar un backend que puede no estar desplegado.
+antigua, y un cliente autenticado para `checkout-manual`. Esta documentación
+describe su fase inicial. La conexión opcional del POS y `offlineSyncStore` ya
+está implementada; consultá [checkout-manual-pos.md](checkout-manual-pos.md)
+para activarla en ensayo y conocer sus límites.
 
 No hay un SQL adicional para esta fase. El backend requiere los pasos 26 y 27
 y la Edge Function descrita en [checkout-manual-backend.md](checkout-manual-backend.md).
@@ -27,14 +28,14 @@ y la Edge Function descrita en [checkout-manual-backend.md](checkout-manual-back
 - Los resultados exigen identidad, total, fecha, conjunto físico de productos y
   saldo coherentes. Se rechazan campos adicionales, incluido el costo privado.
 
-## Conexión pendiente del POS
+## Criterios de conexión del POS
 
 `cerrarCobroManualLocal` debe recibir una entrada comercial congelada y una
 `ticketClave` única durante **toda la vida de esa venta**, incluso al reabrir el
 modal. El carrito ahora renueva el ID de la última pestaña al completar una
 venta, conservando su nombre. Esto evita reutilizar la identidad de un ticket
-cerrado para el siguiente cobro. Falta persistir su asociación con el cobro
-pendiente y recuperarla en la interfaz después de recargar el navegador.
+cerrado para el siguiente cobro. La fase de conexión persiste su asociación con
+el cobro y ofrece recuperación desde el panel de pendientes después de recargar.
 
 Antes de crear una nueva entrada, el POS debe consultar
 `recuperarCobroManualLocal` y ofrecer continuar la original si existe. No debe
@@ -43,11 +44,12 @@ un cobro ya realizado. Un conflicto requiere conciliación explícita.
 
 La confirmación almacenada es el stock del momento de ese cierre. Para recobrar
 un cierre viejo se recarga el inventario vigente; no se resta nuevamente su
-cantidad. Impresión, cajón y emisión fiscal se ejecutarán una sola vez, después
-de confirmar, con tratamiento separado de sus fallas.
+cantidad. La fase de conexión reclama una sola presentación automática; no
+garantiza una impresión física única. El cajón y la emisión fiscal no se repiten
+al sincronizar; los comprobantes provisionales quedan identificados.
 
-Todavía falta integrar el estado pendiente en las pestañas del carrito, su
-recuperación visual y el cierre offline provisional. La cola antigua no contiene
+La fase de conexión agrega el bloqueo del carrito, recuperación visual y
+comprobante offline provisional. La cola antigua no contiene
 recetas ni cotización completas; sus registros requieren conciliación, no una
 conversión automática que suponga esos datos.
 

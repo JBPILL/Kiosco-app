@@ -28,6 +28,9 @@ export interface CarritoTab {
 }
 
 interface CartState {
+  cobrosBloqueados: Record<string, string>
+  bloquearTabPorCobro: (tabId: string, cobroId: string) => void
+  completarCobroTab: (tabId: string) => void
   // Estado del carrito activo
   items: ItemCarrito[]
   tipoAjuste: TipoAjuste
@@ -145,7 +148,20 @@ const TAB_INICIAL: CarritoTab = {
   valorAjuste: 0,
 }
 
+function cobroActualBloqueado(state: CartState, avisar = true): boolean {
+  if (!state.cobrosBloqueados[state.tabActivaId]) return false
+  if (avisar) toast.error('Este ticket tiene un cobro guardado. Recuperá la solicitud original antes de modificarlo.', { id: 'cobro-congelado' })
+  return true
+}
+
 export const useCartStore = create<CartState>((set, get) => ({
+  cobrosBloqueados: {},
+  bloquearTabPorCobro: (tabId, cobroId) => set(s => ({ cobrosBloqueados: { ...s.cobrosBloqueados, [tabId]: cobroId } })),
+  completarCobroTab: (tabId) => {
+    set(s => ({ cobrosBloqueados: Object.fromEntries(Object.entries(s.cobrosBloqueados).filter(([id]) => id !== tabId)) }))
+    if (get().tabActivaId === tabId) get().completarVentaTabActiva()
+    else if (get().tabs.some(t => t.id === tabId)) get().cerrarTab(tabId, false)
+  },
   items: [],
   tipoAjuste: 'NINGUNO',
   valorAjuste: 0,
@@ -217,6 +233,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   cerrarTab: (targetId: string, revertirEnvases = true) => {
+    if (get().cobrosBloqueados[targetId]) { toast.error('Recuperá el cobro pendiente antes de cerrar este ticket'); return }
     const state = get()
     if (revertirEnvases) {
       const tabCerrada = state.tabs.find((t) => t.id === targetId)
@@ -264,6 +281,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   completarVentaTabActiva: () => {
+    if (cobroActualBloqueado(get())) return
     const state = get()
     if (state.tabs.length > 1) {
       get().cerrarTab(state.tabActivaId, false)
@@ -286,6 +304,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   agregarProducto: (producto: Producto, cantidad: number = 1) => {
+    if (cobroActualBloqueado(get())) return
     let cantAgregar = cantidad > 0 ? cantidad : 1
     const tieneStockLimitado = !producto.es_pesable && producto.stock_actual > 0 && producto.stock_actual !== 99999
 
@@ -365,6 +384,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   toggleEnvaseItem: (productoId: string) => {
+    if (cobroActualBloqueado(get())) return
     set((state) => {
       const nuevos = state.items.map((it) => {
         if (it.producto.id !== productoId || !it.producto.es_retornable) return it
@@ -383,6 +403,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   agregarDevolucionEnvase: (nombreEnvase: string, precioUnitario: number, cantidad = 1, tipoEnvaseId?: string) => {
+    if (cobroActualBloqueado(get())) return
     const cant = Math.max(1, Math.round(cantidad))
     const precio = Math.max(0, Math.round(precioUnitario))
     const desc = `Devolución ${nombreEnvase}`
@@ -425,6 +446,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   agregarItemLibre: (descripcion: string, precio: number, cantidad = 1) => {
+    if (cobroActualBloqueado(get())) return
     const desc = descripcion.trim() || 'Varios'
     const cant = Math.max(1, Math.round(cantidad))
     const precioUnitario = Math.max(0, Math.round(precio))
@@ -463,6 +485,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   quitarProducto: (productoId: string) => {
+    if (cobroActualBloqueado(get())) return
     const state = get()
     const itemTarget = state.items.find((it) => it.producto.id === productoId)
     if (itemTarget && itemTarget.es_devolucion_envase && itemTarget.tipo_envase_id) {
@@ -478,6 +501,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   actualizarCantidad: (productoId: string, cantidad: number) => {
+    if (cobroActualBloqueado(get())) return
     if (cantidad <= 0) {
       get().quitarProducto(productoId)
       return
@@ -552,6 +576,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   vaciarCarrito: (revertirEnvases = true) => {
+    if (cobroActualBloqueado(get())) return
     const state = get()
     if (revertirEnvases) {
       revertirStockEnvasesDeItems(state.items)
@@ -569,6 +594,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   aplicarAjuste: (tipo: TipoAjuste, valor: number) => {
+    if (cobroActualBloqueado(get())) return
     set({
       tipoAjuste: tipo,
       valorAjuste: Math.max(0, valor),
@@ -576,13 +602,13 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   quitarAjuste: () =>
-    set({
+    !cobroActualBloqueado(get()) && set({
       tipoAjuste: 'NINGUNO',
       valorAjuste: 0,
     }),
 
   recalcularPromociones: () =>
-    set((state) => ({
+    !cobroActualBloqueado(get(), false) && set((state) => ({
       items: evaluarConPromociones(state.items),
     })),
 
@@ -590,6 +616,7 @@ export const useCartStore = create<CartState>((set, get) => ({
     get().items.reduce((acc, it) => acc + (it.descuento_promo || 0), 0),
 
   suspenderVentaActual: (nota?: string) => {
+    if (cobroActualBloqueado(get())) return false
     const state = get()
     const { items, tipoAjuste, valorAjuste, totalMonto } = state
     if (items.length === 0) return false
@@ -623,6 +650,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   recuperarVenta: (id: string) => {
+    if (cobroActualBloqueado(get())) return
     const state = get()
     const venta = state.ventasEnEspera.find((v) => v.id === id)
     if (!venta) return

@@ -16,7 +16,7 @@ function entrada() {
     pagos: [{ id: '70000000-0000-0000-0000-000000000001', medio: 'EFECTIVO', montoCentavos: 10000, referencia: null }] })
 }
 function estado() {
-  return { usuario: { id: uid, auth_user_id: authId, kiosco_id: kid, activo: true, rol: 'CAJERO' }, kiosco: { id: kid } }
+  return { usuario: { id: uid, auth_user_id: authId, kiosco_id: kid, activo: true, rol: 'CAJERO' }, kiosco: { id: kid, estado_suscripcion: 'ACTIVO' } }
 }
 beforeEach(() => {
   vi.clearAllMocks()

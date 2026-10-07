@@ -11,6 +11,7 @@ import { ProductSearch } from '../components/pos/ProductSearch'
 import { FavoritesGrid } from '../components/pos/FavoritesGrid'
 import { CartPanel } from '../components/pos/CartPanel'
 import { PaymentModal } from '../components/pos/PaymentModal'
+import { CobrosManualesPendientes } from '../components/pos/CobrosManualesPendientes'
 import { TicketReceiptModal, type TicketData } from '../components/pos/TicketReceiptModal'
 import { abrirCajonDineroDirecto, getAperturaAutomaticaCajon } from '../lib/escposPrinter'
 import { BarcodeScannerModal } from '../components/pos/BarcodeScannerModal'
@@ -173,6 +174,11 @@ export function POSPage() {
       cargarPorCategoria(categoriaActiva)
     }
   }, [cargarFavoritos, categoriaActiva, cargarPorCategoria])
+
+  useEffect(() => {
+    window.addEventListener('kiosko-manual-checkout-confirmado', refrescarProductosVista)
+    return () => window.removeEventListener('kiosko-manual-checkout-confirmado', refrescarProductosVista)
+  }, [refrescarProductosVista])
 
   useRealtimeSync(usuario?.kiosco_id || kiosco?.id)
 
@@ -558,6 +564,7 @@ export function POSPage() {
 
   return (
     <div className="w-full h-full min-w-0 flex flex-col gap-2.5 pb-28 lg:pb-0 overflow-hidden">
+      <CobrosManualesPendientes onVerTicket={ticket => { setTicketReciente(ticket); setTicketModalOpen(true); refrescarProductosVista() }} />
       {/* Banner de advertencia solo si la caja está cerrada */}
       {!sesionActiva && (
         <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-lg text-amber-800 dark:text-amber-300 text-xs flex-shrink-0">

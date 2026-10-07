@@ -379,6 +379,10 @@ remotamente desde Codex.
 
 ## Paso 27: autenticación y cotización del cierre manual
 
+La conexión opcional del frontend y su activación en ensayo están explicadas en
+[checkout-manual-pos.md](checkout-manual-pos.md). No agrega otro SQL; requiere
+los pasos 26 y 27 y la Edge Function desplegada en el mismo proyecto.
+
 Con el paso 26 aplicado, ejecutá completo
 `supabase_fase_checkout_manual_backend.sql` en ensayo. Es reaplicable y conserva
 el primer snapshot comercial autorizado en una tabla privada. No activa Point.

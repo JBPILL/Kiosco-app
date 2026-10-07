@@ -19,6 +19,8 @@ import { useOfflineSyncStore } from '../../stores/offlineSyncStore'
 import type { TipoDocumentoAFIP } from '../../types/afip'
 import toast from 'react-hot-toast'
 import { distribuirTotalVenta } from '../../lib/distribuirTotalVenta'
+import { checkoutManualTransaccionalActivo } from '../../lib/manualCheckoutCart'
+import { ejecutarCobroManual, recuperarFlujoCobroManual } from '../../lib/manualCheckoutFlow'
 
 export interface LineaPagoMixto {
   id: string
@@ -47,9 +49,13 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
     subtotalMonto,
     montoAjuste,
     tipoAjuste,
+    valorAjuste,
     descripcionAjuste,
     completarVentaTabActiva,
+    cobrosBloqueados,
+    tabActivaId,
   } = useCartStore()
+  const cobroGuardado = checkoutManualTransaccionalActivo() && Boolean(cobrosBloqueados[tabActivaId])
 
   const {
     clientes,
@@ -227,13 +233,25 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
     : true
 
   const confirmarVenta = async () => {
-    if (procesandoRef.current || !puedeConfirmar) return
+    if (procesandoRef.current || (!cobroGuardado && !puedeConfirmar)) return
     procesandoRef.current = true
     setProcesando(true)
     let ventaCreadaId: string | null = null
     let registrarVentaEnModoOffline: (() => Promise<void>) | null = null
 
     try {
+      if (cobroGuardado) {
+        const { usuario, kiosco } = useAuthStore.getState()
+        if (!usuario?.id || !kiosco?.id) throw new Error('Recuperá la sesión original')
+        const flujo = await recuperarFlujoCobroManual(kiosco.id, usuario.id, tabActivaId)
+        useCartStore.getState().completarCobroTab(tabActivaId)
+        resetForm()
+        onClose()
+        if (flujo.recibo) onVentaCompletada(flujo.recibo)
+        if (!flujo.pendiente) window.dispatchEvent(new Event('kiosko-manual-checkout-confirmado'))
+        toast.success(flujo.pendiente ? 'Cobro guardado, pendiente de confirmación. No vuelvas a cobrar.' : 'Cobro original confirmado')
+        return
+      }
       const ventaId = uuidv4()
       const ahora = new Date().toISOString()
       const sesionActiva = useCajaStore.getState().sesionActiva
@@ -343,6 +361,67 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       })
       const metadataPromos = Object.keys(promosMap).length > 0 ? `[PROMOS:${JSON.stringify(promosMap)}]` : ''
       const notasParaGuardar = [notasFinal, metadataPromos].filter(Boolean).join(' ') || null
+
+      if (checkoutManualTransaccionalActivo()) {
+        const ticketClave = useCartStore.getState().tabActivaId
+        try {
+          if (!usuario?.id) throw new Error('La sesión del operador no está disponible')
+          const reciboNuevo: TicketData = {
+            ventaId, fecha: ahora, total, subtotal,
+            items: items.map(it => ({ descripcion: `${it.producto.descripcion}${it.sin_envase ? ' (Sin envase)' : ''}`,
+              cantidad: it.cantidad, precioUnitario: it.producto.precio_venta + (it.sin_envase ? (it.precio_envase_unitario || it.producto.precio_envase || 0) : 0),
+              subtotal: it.subtotal, descuentoPromo: it.descuento_promo,
+              promoNombre: it.promo_nombre ? formatearPromoTicket(it.promo_nombre) : undefined })),
+            ajuste: tieneAjuste ? { descripcion: descAjuste || 'Ajuste', monto: ajuste, esDescuento: tipoAjuste.startsWith('DESCUENTO') } : null,
+            medioPago: esPagoMixto ? 'Pago Mixto' : medioPago,
+            pagos: esPagoMixto ? pagosMixtos.map(p => ({ medioPago: p.medio_pago, monto: Math.round(p.monto) })) : [{ medioPago, monto: total }],
+            pagaCon: !esPagoMixto && medioPago === 'EFECTIVO' ? (pagaCon === '' ? total : pagaConNum) : undefined,
+            vuelto: !esPagoMixto && medioPago === 'EFECTIVO' ? (pagaCon === '' ? 0 : vuelto) : undefined,
+            kioscoNombre: kiosco?.nombre, kioscoDireccion: kiosco?.direccion, kioscoTelefono: kiosco?.telefono,
+            cajeroNombre: usuario.nombre, clienteNombre: clienteSeleccionado?.nombre, clienteTelefono: clienteSeleccionado?.telefono,
+            notas: notasFinal,
+          }
+          const flujo = await ejecutarCobroManual({ checkoutId: ventaId, kioscoId, usuarioId: usuario.id,
+            sesionCajaId: sesionActiva.id, fechaHora: ahora, clienteId: clienteSeleccionadoId || null,
+            notas: notasParaGuardar, items, componentes: useComboStore.getState().itemsCombo,
+            tipoAjuste, valorAjuste, total,
+            pagos: esPagoMixto ? pagosMixtos.map(p => ({ id: p.id, medio: p.medio_pago, montoCentavos: Math.round(p.monto) * 100, referencia: referencia || null }))
+              : [{ id: uuidv4(), medio: medioPago, montoCentavos: total * 100, referencia: referencia || null }],
+          }, ticketClave, reciboNuevo)
+          if (flujo.recibo && emitirFiscal) {
+            if (flujo.pendiente || flujo.recuperado) {
+              toast('Emití la factura desde Tickets Emitidos después de verificar la confirmación de esta venta.', { icon: '⚠️', duration: 6000 })
+            } else {
+              try {
+                const factura = await emitirFacturaVenta({ ventaId: flujo.ventaId, total: flujo.recibo.total,
+                  tipoDocCliente: tipoDocReceptor, nroDocCliente: tipoDocReceptor === 99 ? '0' : nroDocReceptor.trim(),
+                  nombreCliente: clienteSeleccionado?.nombre })
+                if (factura) flujo.recibo.afip = { tipoComprobante: factura.tipo_comprobante, tipoComprobanteNombre: `Factura ${factura.letra}`,
+                  letra: factura.letra, puntoVenta: factura.punto_venta, nroComprobante: factura.nro_comprobante,
+                  cae: factura.cae, vtoCae: factura.vto_cae, qrUrl: factura.qr_url, cuitEmisor: factura.cuit_emisor,
+                  condicionIva: factura.condicion_iva, iibb: factura.iibb, inicioActividades: factura.inicio_actividades,
+                  tipoDocCliente: factura.tipo_doc_cliente, nroDocCliente: factura.nro_doc_cliente || undefined }
+              } catch { toast.error('Venta confirmada; ARCA requiere revisión desde Tickets Emitidos.') }
+            }
+          }
+          const actual = useAuthStore.getState()
+          if (actual.usuario?.id !== usuario.id || actual.kiosco?.id !== kioscoId) {
+            throw new Error('La sesión cambió. Recuperá la venta con el operador original.')
+          }
+          useCartStore.getState().completarCobroTab(ticketClave)
+          resetForm()
+          onClose()
+          if (flujo.recibo) onVentaCompletada(flujo.recibo)
+          toast.success(flujo.pendiente ? 'Cobro guardado en este equipo, pendiente de confirmación. No vuelvas a cobrar.' : 'Venta confirmada')
+          if (!flujo.pendiente) {
+            window.dispatchEvent(new Event('kiosko-manual-checkout-confirmado'))
+            void useCajaStore.getState().cargarResumenSesion(sesionActiva.id).catch(() => undefined)
+          }
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : 'Conservá el cobro original y revisá su confirmación.', { duration: 7000 })
+        }
+        return
+      }
 
       // Advertencia en consola/log si algún producto tiene stock insuficiente
       const productosSinStock = items.filter(
@@ -1000,14 +1079,15 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           fullWidth
           variant="success"
           onClick={confirmarVenta}
-          disabled={!puedeConfirmar}
+          disabled={!cobroGuardado && !puedeConfirmar}
           loading={procesando}
         >
-          {emitirFiscal ? 'Confirmar y Facturar ARCA' : 'Confirmar y Cobrar'}
+          {cobroGuardado ? 'Recuperar cobro guardado' : emitirFiscal ? 'Confirmar y Facturar ARCA' : 'Confirmar y Cobrar'}
         </Button>
       }
     >
       <div className="space-y-3">
+        {cobroGuardado && <p role="status" className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm text-amber-800 dark:text-amber-300">Este ticket ya tiene un cobro guardado. Se recuperarán los importes, medios de pago y cliente originales. Los cambios en este formulario no los reemplazan. No vuelvas a cobrar; la factura se emite desde Tickets Emitidos después de confirmar.</p>}
         {/* Total y Desglose */}
         <div className="py-2 px-3 bg-indigo-50/80 dark:bg-indigo-900/30 rounded-xl space-y-0.5 border border-indigo-200 dark:border-indigo-800/60">
           {tieneAjuste && (

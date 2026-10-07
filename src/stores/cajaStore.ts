@@ -13,6 +13,8 @@ import type {
 import toast from 'react-hot-toast'
 import { useOfflineSyncStore } from './offlineSyncStore'
 import { crearRespaldoCierreLocal, guardarRespaldoCierreLocal } from '../lib/backupCierreLocal'
+import { checkoutManualTransaccionalActivo } from '../lib/manualCheckoutCart'
+import { hayCobrosManualesPendientes } from '../lib/manualCheckoutClient'
 
 interface CajaState {
   sesionActiva: (SesionCaja & { usuario?: Usuario }) | null
@@ -561,6 +563,10 @@ export const useCajaStore = create<CajaState>((set, get) => ({
 
     set({ cargando: true })
     try {
+      if (checkoutManualTransaccionalActivo() && await hayCobrosManualesPendientes(sesion.kiosco_id, sesion.id)) {
+        toast.error('Hay cobros manuales pendientes de confirmación. Sincronizalos antes de cerrar esta caja; no vuelvas a cobrar.')
+        return false
+      }
       const resumen = await get().cargarResumenSesion(sesion.id)
       const montoFinalSistema = resumen?.efectivo_esperado_en_caja ?? sesion.monto_inicial
       const diferencia = montoDeclarado - montoFinalSistema

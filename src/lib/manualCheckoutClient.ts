@@ -3,13 +3,15 @@ import { useAuthStore } from '../stores/authStore'
 import { leerEntradaCheckoutManual } from '../../supabase/functions/_shared/manualCheckoutRequest'
 import { ManualCheckoutOutbox, procesarCheckoutManual } from './manualCheckoutOutbox'
 import type { EntradaCheckoutManual, ResultadoCheckoutManual } from '../types/checkoutManual'
+import type { TicketData } from '../components/pos/TicketReceiptModal'
+import { liveQuery } from 'dexie'
 
 const outbox = new ManualCheckoutOutbox()
 
 function validarContextoLocal(entrada: EntradaCheckoutManual) {
   const { usuario, kiosco } = useAuthStore.getState()
   if (!usuario?.activo || usuario.id !== entrada.usuarioId || usuario.kiosco_id !== entrada.kioscoId
-    || kiosco?.id !== entrada.kioscoId || !['DUEÑO', 'CAJERO'].includes(usuario.rol)) {
+    || kiosco?.id !== entrada.kioscoId || kiosco.estado_suscripcion !== 'ACTIVO' || !['DUEÑO', 'CAJERO'].includes(usuario.rol)) {
     throw new Error('Recuperá la sesión original antes de sincronizar este cobro')
   }
   return usuario
@@ -37,6 +39,25 @@ export async function cerrarCobroManualLocal(entradaSinValidar: EntradaCheckoutM
 
 export function recuperarCobroManualLocal(kioscoId: string, usuarioId: string, ticketClave: string) {
   return outbox.recuperarTicket(kioscoId, usuarioId, ticketClave)
+}
+
+export async function guardarCobroManualLocal(entrada: EntradaCheckoutManual, ticketClave: string, recibo: TicketData) {
+  validarContextoLocal(entrada)
+  return outbox.guardar(entrada, ticketClave, recibo)
+}
+
+export function reclamarComprobanteManual(id: string, permitirPendiente = false) {
+  return outbox.reclamarPresentacion(id, permitirPendiente)
+}
+
+export function observarCobrosManualesLocales(kioscoId: string, usuarioId: string) {
+  return liveQuery(() => outbox.cobros.where('[kioscoId+usuarioId+visibilidad]')
+    .anyOf([[kioscoId, usuarioId, 'PENDIENTE'], [kioscoId, usuarioId, 'RECUPERAR']]).toArray())
+}
+
+export async function hayCobrosManualesPendientes(kioscoId: string, sesionId: string): Promise<boolean> {
+  return (await outbox.cobros.where('estado').equals('PENDIENTE').toArray())
+    .some(c => c.kioscoId === kioscoId && c.entrada.sesionCajaId === sesionId)
 }
 
 export async function sincronizarCobrosManualesLocales(kioscoId: string, usuarioId: string): Promise<{ exitosas: number; fallidas: number }> {

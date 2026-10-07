@@ -1,7 +1,9 @@
 import 'fake-indexeddb/auto'
+import Dexie from 'dexie'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ManualCheckoutOutbox, procesarCheckoutManual } from './manualCheckoutOutbox'
 import { leerEntradaCheckoutManual } from '../../supabase/functions/_shared/manualCheckoutRequest'
+import type { TicketData } from '../components/pos/TicketReceiptModal'
 
 const kid = '10000000-0000-0000-0000-000000000001'
 const uid = '20000000-0000-0000-0000-000000000001'
@@ -22,6 +24,19 @@ function resultado() {
 let outbox: ManualCheckoutOutbox
 beforeEach(() => { outbox = new ManualCheckoutOutbox(`Cobros-test-${crypto.randomUUID()}`) })
 afterEach(async () => { vi.restoreAllMocks(); await outbox.delete() })
+
+it('la actualización desde versión 1 conserva los cobros y los hace visibles', async () => {
+  const nombre = outbox.name
+  outbox.close()
+  const anterior = new Dexie(nombre)
+  anterior.version(1).stores({ cobros: 'id,&[kioscoId+usuarioId+ticketClave],[kioscoId+usuarioId],estado' })
+  await anterior.table('cobros').add({ id, kioscoId: kid, usuarioId: uid, ticketClave: 'ticket-1',
+    entrada: entrada(), estado: 'PENDIENTE', resultado: null, ultimoError: null })
+  anterior.close()
+  outbox = new ManualCheckoutOutbox(nombre)
+  expect(await outbox.pendientes(kid, uid)).toHaveLength(1)
+  expect((await outbox.recuperarTicket(kid, uid, 'ticket-1'))?.entrada).toEqual(entrada())
+})
 
 it('persiste antes de enviar y recupera la confirmación sin otra llamada', async () => {
   const enviar = vi.fn(async () => {
@@ -95,4 +110,17 @@ it('un fallo tardío de otra pestaña no borra la confirmación', async () => {
   await outbox.registrarFallo(id)
   expect(await outbox.recuperarTicket(kid, uid, 'ticket-1')).toMatchObject({ estado: 'CONFIRMADO', ultimoError: null })
   await expect(outbox.confirmar(id, { ...resultado(), stock: [{ producto_id: producto, stock_actual: 8 }] })).rejects.toThrow(/contradictoria/)
+})
+
+it('sólo una pestaña reclama la presentación automática y el pendiente conserva el marcador offline', async () => {
+  const recibo: TicketData = { ventaId: id, fecha: entrada().fechaHora, total: 100, subtotal: 100,
+    medioPago: 'EFECTIVO', items: [{ descripcion: 'Producto', cantidad: 1, precioUnitario: 100, subtotal: 100 }] }
+  await outbox.guardar(entrada(), 'ticket-1', recibo)
+  await expect(outbox.reclamarPresentacion(id)).rejects.toThrow(/pendiente/)
+  const reclamados = await Promise.all([outbox.reclamarPresentacion(id, true), outbox.reclamarPresentacion(id, true)])
+  expect(reclamados.filter(Boolean)).toHaveLength(1)
+  expect(reclamados.find(Boolean)?.notas).toContain('[GUARDADO OFFLINE]')
+  await outbox.confirmar(id, resultado())
+  expect(await outbox.recuperarTicket(kid, uid, 'ticket-1')).toMatchObject({ visibilidad: 'ARCHIVADO' })
+  expect(await outbox.reclamarPresentacion(id)).toBeNull()
 })

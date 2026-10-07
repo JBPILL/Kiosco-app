@@ -4,6 +4,9 @@ import { useClienteStore } from './clienteStore'
 import { useComboStore } from './comboStore'
 import toast from 'react-hot-toast'
 import { v5 as uuidv5 } from 'uuid'
+import { checkoutManualTransaccionalActivo } from '../lib/manualCheckoutCart'
+import { sincronizarCobrosManualesLocales } from '../lib/manualCheckoutClient'
+import { useAuthStore } from './authStore'
 
 export interface DetalleVentaOffline {
   id: string
@@ -108,6 +111,15 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
     set({ sincronizando: true })  // fijar inmediatamente (síncrono, antes del primer await)
     let toastId: string | undefined
     try {
+      if (checkoutManualTransaccionalActivo()) {
+        const antigua = getLocalCola(kioscoId, true)
+        const usuario = useAuthStore.getState().usuario
+        if (antigua.length) toast.error('Hay ventas de la cola anterior que requieren conciliación. No se convertirán ni descontarán automáticamente.')
+        if (!usuario?.id || usuario.kiosco_id !== kioscoId || !navigator.onLine) return { exitosas: 0, fallidas: antigua.length }
+        const resultado = await sincronizarCobrosManualesLocales(kioscoId, usuario.id)
+        if (resultado.exitosas) window.dispatchEvent(new Event('kiosko-manual-checkout-confirmado'))
+        return { exitosas: resultado.exitosas, fallidas: resultado.fallidas + antigua.length }
+      }
       const pendientes = getLocalCola(kioscoId, true)
       if (pendientes.length === 0) {
         set({ sincronizando: false })

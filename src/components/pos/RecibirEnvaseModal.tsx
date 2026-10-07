@@ -52,6 +52,11 @@ export function RecibirEnvaseModal({ isOpen, onClose }: RecibirEnvaseModalProps)
   // Opción 1: Sumar crédito a favor en el ticket actual
   const handleAgregarAlTicket = (e: React.FormEvent) => {
     e.preventDefault()
+    const carrito = useCartStore.getState()
+    if (carrito.cobrosBloqueados[carrito.tabActivaId]) {
+      toast.error('Este ticket tiene un cobro guardado. No agregues otra recepción antes de recuperar el original.')
+      return
+    }
     if (!tipoSeleccionado || precioUnitario <= 0) {
       toast.error('Seleccioná un tipo de envase con precio configurado')
       return
