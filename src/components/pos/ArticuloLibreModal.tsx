@@ -1,4 +1,3 @@
-import { ModalGuide } from '../ui/ModalGuide'
 import { useEffect, useState } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
@@ -55,7 +54,7 @@ export function ArticuloLibreModal({ isOpen, onClose, descripcionInicial }: Arti
   return (
     <Modal isOpen={isOpen} onClose={handleCerrar} title="Cobro de Artículo Libre / Varios" size="md">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <ModalGuide titulo="Un concepto rápido para esta venta">Agregá un servicio o artículo sin crearlo en el catálogo. Se incorpora al ticket y no descuenta stock; el cobro se confirma al finalizar la venta.</ModalGuide>
+
         <section className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 p-4 space-y-4 shadow-sm">
 
         {/* Concepto o descripción */}

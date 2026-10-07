@@ -113,3 +113,5 @@ Promedio: 4/5. Mejora prioritaria: revisar el panel en navegador a ancho de escr
 - Artículo libre: secciones de concepto/precio y cantidad, montos rápidos con aria-pressed y vista previa del total, sin modificar el manejador de alta ni el descuento de stock.
 - Validación: 29 pruebas de POS y tres de artículo libre; compilación correcta. Sin inspección visual en navegador ni verificación fiscal remota.
 - Autoevaluación: exactitud 4/5 (pruebas y compilación, falta piloto); completitud 4/5 (tres ventanas, sin verificación visual); claridad 4/5 (guías y preview, falta aceptación); acción 4/5 (publicable, sin revisión remota); concisión 4/5 (guía reutilizada, POSPage aún extensa). Promedio 4/5. Mejora prioritaria: revisar las tres ventanas a distintos anchos en navegador.
+
+Ajuste solicitado: se retiran las guías explicativas de las tres ventanas del POS para recuperar espacio vertical; se conservan tarjetas, controles y vista previa del total. 32 pruebas seleccionadas correctas. Autoevaluación: 4/5 en exactitud, completitud, claridad, acción y concisión; sin revisión visual en navegador.

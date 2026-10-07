@@ -1,4 +1,3 @@
-import { ModalGuide } from '../ui/ModalGuide'
 import { RefreshButton } from '../ui/RefreshButton'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Modal } from '../ui/Modal'
@@ -208,7 +207,7 @@ export function HistorialTicketsModal({
     <>
       <Modal isOpen={isOpen} onClose={onClose} title="Historial de Comprobantes y Tickets" size="xl">
         <div className="space-y-4">
-          <ModalGuide titulo="Encontrá y revisá tus comprobantes">Buscá por ticket, cliente o artículo. Ver / Reimprimir recupera el comprobante original; Hacer Devolución abre el circuito de devolución. Usá Facturar ARCA cuando corresponda emitir la factura.</ModalGuide>
+
           {/* Fila 1: Buscador amplio + Botón Actualizar destacado */}
           <div className="flex items-center gap-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 p-3">
             <div className="flex-1">

@@ -1,4 +1,3 @@
-import { ModalGuide } from '../components/ui/ModalGuide'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -951,7 +950,7 @@ export function POSPage() {
         size="lg"
       >
         <div className="space-y-3">
-          <ModalGuide titulo="Combos y descuentos, cada uno con su acción">Usá <strong>+ Cargar al Ticket</strong> para agregar los productos de un combo en sus cantidades exactas. Las otras promociones se aplican automáticamente cuando el ticket cumple sus condiciones.</ModalGuide>
+
           <div className="flex flex-wrap gap-2 text-xs"><span className="rounded-xl bg-indigo-50 dark:bg-indigo-950/40 px-3 py-2 font-semibold text-indigo-700 dark:text-indigo-300">{promociones.filter((p) => p.activo).length} reglas habilitadas</span><span className="rounded-xl bg-teal-50 dark:bg-teal-950/40 px-3 py-2 font-semibold text-teal-700 dark:text-teal-300">{promociones.filter((p) => p.activo && p.tipo === 'COMBO').length} combos</span></div>
 
           <div className="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1">
