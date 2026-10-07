@@ -87,6 +87,8 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase_fase_checkout_manual_cancelacion.sql', 'utf8'))
   await db.exec(readFileSync('supabase_fase_checkout_manual_cierre_caja.sql', 'utf8'))
   await db.exec(readFileSync('supabase_fase_checkout_manual_cierre_caja.sql', 'utf8'))
+  await db.exec(readFileSync('supabase_fase_checkout_manual_orden_bloqueos.sql', 'utf8'))
+  await db.exec(readFileSync('supabase_fase_checkout_manual_orden_bloqueos.sql', 'utf8'))
 }, 30000)
 beforeEach(async () => {
   await db.exec(`RESET ROLE; SET request.jwt.claim.role='service_role'; SET request.jwt.claim.sub='${actor}';
@@ -427,4 +429,12 @@ it('permite cerrar luego de confirmación transaccional y rechaza nuevas prepara
  await db.exec("UPDATE sesiones_caja SET estado='CERRADA',fecha_cierre=now()")
  await expect(prepararBackend()).rejects.toThrow(/Caja original no disponible/)
  expect(await leer('SELECT estado FROM sesiones_caja')).toEqual([{ estado: 'CERRADA' }])
+})
+
+it('toma el bloqueo del checkout antes del bloqueo de caja al cancelar', async () => {
+ const filas = await leer("SELECT pg_get_functiondef('public.cancelar_checkout_manual(jsonb,text,text,text)'::regprocedure) AS definicion")
+ const definicion = String((filas[0] as { definicion: string }).definicion)
+ expect(definicion.indexOf('PERFORM pg_advisory_xact_lock')).toBeGreaterThan(-1)
+ expect(definicion.indexOf('PERFORM pg_advisory_xact_lock')).toBeLessThan(definicion.indexOf('PERFORM 1 FROM public.sesiones_caja'))
+ expect(definicion.match(/PERFORM pg_advisory_xact_lock/g)).toHaveLength(1)
 })
