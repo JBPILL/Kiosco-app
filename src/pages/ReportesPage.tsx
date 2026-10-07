@@ -607,7 +607,6 @@ export function ReportesPage() {
 
             {/* Navegación por fecha y Exportar */}
             <div className="flex items-center gap-2 flex-wrap">
-              <RefreshButton refreshing={cargando} onClick={() => void cargarDatos()} label="Actualizar ventas diarias" />
               <Button size="sm" variant="secondary" onClick={() => cambiarFecha(-1)}>
                 &lt; Anterior
               </Button>
@@ -634,17 +633,20 @@ export function ReportesPage() {
                   Hoy
                 </Button>
               )}
+              <div className="inline-flex shrink-0 items-center gap-2">
               <Button
                 size="sm"
                 variant="secondary"
                 onClick={handleExportarVentasDia}
                 disabled={ventas.length === 0}
-                className="text-xs inline-flex items-center gap-1.5"
+                className="h-10 text-xs inline-flex items-center gap-1.5"
                 title="Descargar las ventas de este día en formato Excel corporativo (.xlsx)"
               >
                 <IconExportar />
                 <span>Exportar Día</span>
               </Button>
+              <RefreshButton refreshing={cargando} onClick={() => void cargarDatos()} label="Actualizar ventas diarias" />
+              </div>
             </div>
           </div>
 
