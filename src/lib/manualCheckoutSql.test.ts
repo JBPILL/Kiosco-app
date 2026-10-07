@@ -89,6 +89,8 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase_fase_checkout_manual_cierre_caja.sql', 'utf8'))
   await db.exec(readFileSync('supabase_fase_checkout_manual_orden_bloqueos.sql', 'utf8'))
   await db.exec(readFileSync('supabase_fase_checkout_manual_orden_bloqueos.sql', 'utf8'))
+  await db.exec(readFileSync('supabase_fase_checkout_manual_preparacion_bloqueos.sql', 'utf8'))
+  await db.exec(readFileSync('supabase_fase_checkout_manual_preparacion_bloqueos.sql', 'utf8'))
 }, 30000)
 beforeEach(async () => {
   await db.exec(`RESET ROLE; SET request.jwt.claim.role='service_role'; SET request.jwt.claim.sub='${actor}';
@@ -436,5 +438,15 @@ it('toma el bloqueo del checkout antes del bloqueo de caja al cancelar', async (
  const definicion = String((filas[0] as { definicion: string }).definicion)
  expect(definicion.indexOf('PERFORM pg_advisory_xact_lock')).toBeGreaterThan(-1)
  expect(definicion.indexOf('PERFORM pg_advisory_xact_lock')).toBeLessThan(definicion.indexOf('PERFORM 1 FROM public.sesiones_caja'))
+ expect(definicion.match(/PERFORM pg_advisory_xact_lock/g)).toHaveLength(1)
+})
+
+it('toma el bloqueo del checkout antes de caja e inserción al preparar', async () => {
+ const filas = await leer("SELECT pg_get_functiondef('public.preparar_checkout_manual(uuid,jsonb,jsonb)'::regprocedure) AS definicion")
+ const definicion = String((filas[0] as { definicion: string }).definicion)
+ const bloqueo = definicion.indexOf('PERFORM pg_advisory_xact_lock')
+ expect(bloqueo).toBeGreaterThan(-1)
+ expect(bloqueo).toBeLessThan(definicion.indexOf('PERFORM 1 FROM public.sesiones_caja'))
+ expect(bloqueo).toBeLessThan(definicion.indexOf('INSERT INTO public.checkout_manual_entradas'))
  expect(definicion.match(/PERFORM pg_advisory_xact_lock/g)).toHaveLength(1)
 })
