@@ -1,6 +1,7 @@
+import { RefreshButton } from '../components/ui/RefreshButton'
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Smartphone, Wrench, ShieldCheck, RefreshCw } from '../components/electronica/ElectronicaIconos'
+import { Smartphone, Wrench, ShieldCheck } from '../components/electronica/ElectronicaIconos'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { ReparacionModal } from '../components/electronica/ReparacionModal'
@@ -86,7 +87,7 @@ function ElectronicaContenido({ identidad, kioscoId }: { identidad: string; kios
   }
   const cambiarUnidad = (cambios: Partial<RegistroUnidad>) => { setUnidad(prev => ({ ...prev, ...cambios })); setError('') }
   return <div className="space-y-6 p-4 md:p-6 text-gray-900 dark:text-gray-100">
-    <header className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">Electrónica y reparaciones</h1><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Unidades vendidas, garantías y seguimiento de órdenes de servicio.</p></div><Button variant="secondary" size="sm" loading={cargando} disabled={buscando || guardando} onClick={() => void actualizar()}><RefreshCw size={16} />Actualizar</Button></header>
+    <header className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">Electrónica y reparaciones</h1><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Unidades vendidas, garantías y seguimiento de órdenes de servicio.</p></div><RefreshButton refreshing={cargando} disabled={buscando || guardando} onClick={() => void actualizar()} /></header>
     <div className="grid gap-3 sm:grid-cols-3">{[
       { icono: Smartphone, valor: propias.length, texto: 'Unidades registradas', color: 'text-indigo-600 dark:text-indigo-400', fondo: 'bg-indigo-50 dark:bg-indigo-900/30', descripcion: 'Series e IMEI vinculados a ventas' },
       { icono: Wrench, valor: pendientes, texto: 'Reparaciones abiertas', color: 'text-amber-600 dark:text-amber-400', fondo: 'bg-amber-50 dark:bg-amber-900/30', descripcion: 'Órdenes con seguimiento pendiente' },

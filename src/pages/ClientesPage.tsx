@@ -1,3 +1,4 @@
+import { IndicatorCard } from '../components/ui/IndicatorCard'
 import { useState, useEffect, useCallback } from 'react'
 import { useClienteStore } from '../stores/clienteStore'
 import { useCajaStore } from '../stores/cajaStore'
@@ -236,61 +237,16 @@ export function ClientesPage() {
       </div>
 
       {/* Tarjetas de Métricas Globales */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-        {/* Tarjeta 1: Total Clientes */}
-        <div className="p-4 sm:p-5 rounded-2xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xs flex flex-col justify-between transition-all hover:border-gray-300 dark:hover:border-gray-600">
-          <div>
-            <p className="text-xs sm:text-sm font-semibold text-gray-500 dark:text-gray-400">
-              Total Clientes
-            </p>
-            <p className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-gray-100 mt-1 tracking-tight">
-              {totalClientes}
-            </p>
-          </div>
-          <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-700/80 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 font-medium">
-            <span>Al día: {clientes.length - clientesConDeuda}</span>
-            <span>{clientesConDeuda > 0 ? `${clientesConDeuda} con deuda` : 'Todos al día'}</span>
-          </div>
-        </div>
-
-        {/* Tarjeta 2: Deuda en Calle */}
-        <div className="p-4 sm:p-5 rounded-2xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xs flex flex-col justify-between transition-all hover:border-gray-300 dark:hover:border-gray-600">
-          <div>
-            <p className="text-xs sm:text-sm font-semibold text-gray-500 dark:text-gray-400">
-              Deuda en Calle
-            </p>
-            <p className="text-2xl sm:text-3xl font-black text-red-600 dark:text-red-400 mt-1 tracking-tight truncate">
-              {formatPrecio(totalDeudaGlobal)}
-            </p>
-          </div>
-          <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-700/80 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 font-medium">
-            <span>Total fiado en compras</span>
-            <span>Por cobrar</span>
-          </div>
-        </div>
-
-        {/* Tarjeta 3: Con Deuda */}
-        <div className="p-4 sm:p-5 rounded-2xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xs flex flex-col justify-between transition-all hover:border-gray-300 dark:hover:border-gray-600">
-          <div>
-            <p className="text-xs sm:text-sm font-semibold text-gray-500 dark:text-gray-400">
-              Con Deuda
-            </p>
-            <p className="text-2xl sm:text-3xl font-black text-amber-600 dark:text-amber-400 mt-1 tracking-tight">
-              {clientesConDeuda}
-            </p>
-          </div>
-          <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-700/80 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 font-medium">
-            <span>{totalClientes > 0 ? `${Math.round((clientesConDeuda / totalClientes) * 100)}% de la cartera` : '0%'}</span>
-            <span>{clientesConDeuda > 0 ? 'Con saldo pendiente' : 'Al día'}</span>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <IndicatorCard label="Total Clientes" valor={totalClientes} icono="usuarios" detalle="Clientes registrados en el comercio" pie={<div className="flex justify-between gap-2"><span>Al día: {clientes.length - clientesConDeuda}</span><span>{clientesConDeuda > 0 ? `${clientesConDeuda} con deuda` : 'Todos al día'}</span></div>} />
+        <IndicatorCard label="Deuda en Calle" valor={formatPrecio(totalDeudaGlobal)} icono="dinero" tono="rose" detalle="Saldo de cuenta corriente pendiente de cobro" pie="Registrá cada cobranza para mantener los saldos actualizados." />
+        <IndicatorCard label="Con Deuda" valor={clientesConDeuda} icono="alerta" tono="amber" detalle={totalClientes > 0 ? `${Math.round((clientesConDeuda / totalClientes) * 100)}% de la cartera` : 'Sin saldos pendientes'} pie="Filtrá por clientes con deuda para organizar las cobranzas." />
       </div>
-
       {/* Contenedor Principal: Búsqueda, Filtros y Lista */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border-2 border-gray-200 dark:border-gray-700 p-4 sm:p-6 space-y-4 shadow-xs">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 space-y-4 shadow-md dark:shadow-black/20">
         {/* Barra superior de filtros */}
-        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-          <div className="flex-1 flex items-center gap-2 max-w-xl">
+        <div className="flex flex-col xl:flex-row gap-3 items-stretch xl:items-center justify-between">
+          <div className="min-w-0 flex-1 flex flex-wrap sm:flex-nowrap items-center gap-2 xl:max-w-xl">
             <input
               type="text"
               placeholder="Buscar por nombre, DNI o teléfono..."
@@ -307,7 +263,7 @@ export function ClientesPage() {
             </Button>
           </div>
 
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               onClick={() => setFiltroEstado('TODOS')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all border-2 cursor-pointer ${

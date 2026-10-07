@@ -18,6 +18,10 @@ it('distingue un artículo sin ventas de uno con más de noventa días de inacti
   responder('producto_costos.select', { data: [{ producto_id: 'p1', precio_costo: 10 }], error: null })
   render(<MemoryRouter><RotacionTab /></MemoryRouter>)
   expect(await screen.findByText('Sin ventas registradas')).toBeTruthy()
+  const tabla = screen.getByRole('table')
+  expect(tabla.className).toContain('table-fixed')
+  expect(tabla.className).not.toContain('min-w-[')
+  expect(screen.getByRole('button', { name: 'Actualizar rotación' }).textContent).toBe('')
 })
 it('consulta costos protegidos de productos e historial sin pedirlos en el join público', async () => {
   responder('productos.select', { data: [{ id: 'p1', descripcion: 'Producto', precio_costo: 0, precio_venta: 20, stock_actual: 2, activo: true }], error: null })

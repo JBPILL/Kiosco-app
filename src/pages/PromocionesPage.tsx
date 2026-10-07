@@ -1,3 +1,4 @@
+import { IndicatorCard } from '../components/ui/IndicatorCard'
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
@@ -340,60 +341,17 @@ export function PromocionesPage() {
       </div>
 
       {/* Tarjetas de Métricas */}
-      <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 sm:gap-4">
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
-          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-            Total Reglas
-          </p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-1">
-            {totalPromos}
-          </p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
-          <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
-            Activas Ahora
-          </p>
-          <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-            {totalActivas}
-          </p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
-          <p className="text-xs font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-wider">
-            Combos
-          </p>
-          <p className="text-2xl font-bold text-teal-600 dark:text-teal-400 mt-1">
-            {totalCombos}
-          </p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
-          <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-            NxM (2x1 / 3x2)
-          </p>
-          <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">
-            {totalNxM}
-          </p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
-          <p className="text-xs font-semibold text-purple-600 dark:text-purple-400 uppercase tracking-wider">
-            Por Volumen
-          </p>
-          <p className="text-2xl font-bold text-purple-600 dark:text-purple-400 mt-1">
-            {totalVolumen}
-          </p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
-          <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
-            % Descuento
-          </p>
-          <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">
-            {totalPorcentaje}
-          </p>
-        </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-6 gap-4">
+        <IndicatorCard label="Total Reglas" valor={totalPromos} icono="oferta" detalle="Promociones configuradas" />
+        <IndicatorCard label="Activas Ahora" valor={totalActivas} icono="check" tono="emerald" detalle="Reglas habilitadas; revisá fechas y días" />
+        <IndicatorCard label="Combos" valor={totalCombos} icono="caja" tono="teal" detalle="Productos vendidos en conjunto" />
+        <IndicatorCard label="NxM (2x1 / 3x2)" valor={totalNxM} icono="oferta" detalle="Llevá varias unidades y pagá menos" />
+        <IndicatorCard label="Por Volumen" valor={totalVolumen} icono="capas" tono="purple" detalle="Precio especial por cantidad" />
+        <IndicatorCard label="% Descuento" valor={totalPorcentaje} icono="porcentaje" tono="amber" detalle="Rebaja porcentual del precio" />
       </div>
-
       {/* Barra de Búsqueda y Filtros */}
-      <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs space-y-3">
-        <div className="flex flex-col sm:flex-row gap-3">
+      <div className="bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md dark:shadow-black/20 space-y-3">
+        <div className="flex flex-col xl:flex-row gap-3">
           <div className="flex-1">
             <SearchInput
               value={busqueda}
@@ -402,7 +360,7 @@ export function PromocionesPage() {
               placeholder="Buscar por nombre, producto o categoría..."
             />
           </div>
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 flex-wrap sm:flex-nowrap">
+          <div className="flex items-center gap-2 flex-wrap">
             {/* Filtro estado */}
             <select
               value={filtroEstado}
@@ -464,7 +422,7 @@ export function PromocionesPage() {
             return (
               <div
                 key={promo.id}
-                className={`relative flex flex-col justify-between p-3.5 sm:p-4 rounded-xl border transition-all ${
+                className={`relative flex flex-col justify-between p-3.5 sm:p-4 rounded-2xl border shadow-md dark:shadow-black/20 transition-all ${
                   promo.activo
                     ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-xs hover:border-indigo-300 dark:hover:border-indigo-700'
                     : 'bg-gray-50 dark:bg-gray-900/60 border-gray-200 dark:border-gray-800 opacity-75'

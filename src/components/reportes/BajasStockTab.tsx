@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../stores/authStore'
 import { formatPrecio, getFechaLocal } from '../../lib/utils'
 import { ETIQUETAS_BAJAS, validarReporteBajas, type ReporteBajas } from '../../lib/stockLossReport'
-import { Button } from '../ui/Button'
+import { RefreshButton } from '../ui/RefreshButton'
 import { Input } from '../ui/Input'
 import { Link } from 'react-router-dom'
 import { IconoBajas } from './BajasStockIconos'
@@ -59,16 +59,16 @@ export function BajasStockTab() {
   const estimacion = reporte?.por_motivo.reduce((total, fila) => total + (fila.estimacion ?? 0), 0) ?? 0
   return (
     <section className="space-y-5 min-w-0" aria-label="Bajas de inventario del período">
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 sm:p-5 shadow-md dark:shadow-black/20">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 sm:p-5 shadow-md dark:shadow-black/20">
         <div className="min-w-0">
           <span className="mb-2 inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-indigo-600 dark:text-indigo-300"><IconoBajas tipo="inventario" size={13} />Control de inventario</span>
           <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100">Bajas de inventario</h2>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">Incluye todos los movimientos del período, por día argentino. Estimación de gestión; no modifica el resultado fiscal.</p>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="w-40"><Input label="Desde" aria-label="Desde" type="date" value={desde} onChange={(e) => setDesde(e.target.value)} /></div>
-          <div className="w-40"><Input label="Hasta" aria-label="Hasta" type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} /></div>
-          <Button variant="secondary" size="sm" disabled={cargando} onClick={() => setRevision((valor) => valor + 1)}><IconoBajas tipo="actualizar" size={15} />Actualizar</Button>
+        <div className="grid w-full lg:w-auto lg:shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2.5rem] items-end gap-2 sm:gap-3">
+          <div className="min-w-0 lg:w-36"><Input label="Desde" aria-label="Desde" type="date" className="h-10 min-w-0 px-2 text-xs sm:text-sm sm:px-3.5" value={desde} onChange={(e) => setDesde(e.target.value)} /></div>
+          <div className="min-w-0 lg:w-36"><Input label="Hasta" aria-label="Hasta" type="date" className="h-10 min-w-0 px-2 text-xs sm:text-sm sm:px-3.5" value={hasta} onChange={(e) => setHasta(e.target.value)} /></div>
+          <RefreshButton refreshing={cargando} onClick={() => setRevision((valor) => valor + 1)} />
         </div>
       </div>
       {cargando && <p role="status" className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-8 text-center text-sm text-gray-500 dark:text-gray-400">Cargando bajas...</p>}

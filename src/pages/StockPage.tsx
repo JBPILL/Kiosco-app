@@ -1,3 +1,5 @@
+import { IndicatorCard } from '../components/ui/IndicatorCard'
+import { RefreshButton } from '../components/ui/RefreshButton'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatFecha, formatPrecio, getCachedProductos, saveCachedProductos, clearCachedProductos } from '../lib/utils'
@@ -588,87 +590,17 @@ export function StockPage() {
             <span>Conteo Físico</span>
           </Button>
 
-          <button
-            type="button"
-            onClick={handleSincronizar}
-            title="Sincronizar stock con el servidor (limpia la caché local)"
-            className="inline-flex items-center justify-center p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all cursor-pointer shadow-2xs shrink-0"
-          >
-            <svg
-              className={`w-4 h-4 ${sincronizando || cargando ? 'animate-spin text-indigo-600' : ''}`}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3" />
-            </svg>
-          </button>
+          <RefreshButton refreshing={sincronizando || cargando} onClick={handleSincronizar} label="Actualizar stock" />
         </div>
       </div>
 
       {/* Cuadrícula de Métricas Rápidas (KPIs) */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {/* KPI 1: Total Artículos */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
-          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Total Productos</p>
-          <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 mt-1">
-            {metricas.total}
-          </p>
-          <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
-            {metricas.unidadesTotales} unidades en el negocio
-          </p>
-        </div>
-
-        {/* KPI 2: Stock Óptimo */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
-          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Stock suficiente</p>
-          <p className="text-xl sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-            {metricas.optimos}
-          </p>
-          <p className="text-[11px] text-emerald-600/80 dark:text-emerald-400/80 mt-0.5">
-            Bien abastecido
-          </p>
-        </div>
-
-        {/* KPI 3: Stock Bajo / Reposición */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Por agotarse</p>
-            {metricas.cantBajoStock > 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-md font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300">
-                Alerta
-              </span>
-            )}
-          </div>
-          <p
-            className={`text-xl sm:text-2xl font-bold mt-1 ${
-              metricas.cantBajoStock > 0
-                ? 'text-amber-600 dark:text-amber-400'
-                : 'text-gray-900 dark:text-gray-100'
-            }`}
-          >
-            {metricas.cantBajoStock}
-          </p>
-          <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
-            {metricas.cantBajoStock === 1 ? '1 artículo para reponer' : `${metricas.cantBajoStock} artículos para reponer`}
-          </p>
-        </div>
-
-        {/* KPI 4: Valorización de Inventario */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs">
-          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Plata invertida en mercadería</p>
-          <p className="text-xl sm:text-2xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">
-            {formatPrecio(metricas.valorInventario)}
-          </p>
-          <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
-            Costo total de compra
-          </p>
-        </div>
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        <IndicatorCard label="Total Productos" valor={metricas.total} icono="caja" detalle={`${metricas.unidadesTotales} unidades en el negocio`} />
+        <IndicatorCard label="Stock suficiente" valor={metricas.optimos} icono="check" tono="emerald" detalle="Artículos por encima del mínimo configurado" />
+        <IndicatorCard label="Por agotarse" valor={metricas.cantBajoStock} icono="alerta" tono="amber" detalle={metricas.cantBajoStock === 1 ? '1 artículo para reponer' : `${metricas.cantBajoStock} artículos para reponer`} />
+        <IndicatorCard label="Plata invertida en mercadería" valor={formatPrecio(metricas.valorInventario)} icono="dinero" detalle="Valuación del stock al costo de compra" />
       </div>
-
       {/* Panel de Alertas de Stock Bajo / Reposición Sugerida */}
       {metricas.cantBajoStock > 0 && (
         <div className="bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-xl p-4 shadow-xs">
@@ -773,7 +705,7 @@ export function StockPage() {
 
       {vistaPrincipal === 'MOVIMIENTOS' ? (
         /* Historial de Movimientos de Stock */
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md dark:shadow-black/20 overflow-hidden">
           {/* Barra superior de control: Pestañas, Buscador y Exportación */}
           <div className="p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col xl:flex-row xl:items-center justify-between gap-3 bg-gray-50/50 dark:bg-gray-900/30">
             {/* Pestañas de filtrado por Tipo */}
@@ -874,24 +806,7 @@ export function StockPage() {
               </Button>
 
 
-              <button
-                type="button"
-                onClick={handleSincronizar}
-                title="Sincronizar stock con el servidor (limpia la caché local)"
-                className="inline-flex items-center justify-center p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all cursor-pointer shadow-2xs shrink-0"
-              >
-                <svg
-                  className={`w-4 h-4 ${sincronizando || cargando ? 'animate-spin text-indigo-600' : ''}`}
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3" />
-                </svg>
-              </button>
+
             </div>
           </div>
 
@@ -1116,7 +1031,7 @@ export function StockPage() {
           </div>
 
           {/* Tabla de Lotes */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs overflow-hidden">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md dark:shadow-black/20 overflow-hidden">
             <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-gray-50/50 dark:bg-gray-900/30">
               <div className="flex items-center gap-1.5 flex-wrap">
                 {(['TODOS', 'VENCIDOS', 'CRITICOS', 'PROXIMOS', 'VIGENTES'] as const).map((fil) => (

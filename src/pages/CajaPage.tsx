@@ -1,3 +1,4 @@
+import { RefreshButton } from '../components/ui/RefreshButton'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/authStore'
@@ -480,24 +481,7 @@ export function CajaPage() {
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={handleSincronizar}
-            title="Sincronizar caja con el servidor"
-            className="inline-flex items-center justify-center p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all cursor-pointer shadow-2xs shrink-0"
-          >
-            <svg
-              className={`w-4 h-4 ${sincronizando || cargando ? 'animate-spin text-indigo-600' : ''}`}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3" />
-            </svg>
-          </button>
+          <RefreshButton refreshing={sincronizando || cargando} onClick={handleSincronizar} label="Actualizar caja" />
         </div>
       </div>
 
@@ -903,25 +887,7 @@ export function CajaPage() {
                 Auditoría histórica de arqueos de caja, diferencias y firmas de cajero
               </p>
             </div>
-            <button
-              type="button"
-              onClick={cargarHistorial}
-              disabled={cargandoHistorial}
-              title="Actualizar historial de cierres"
-              className="inline-flex items-center justify-center p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all cursor-pointer shadow-2xs shrink-0"
-            >
-              <svg
-                className={`w-4 h-4 ${cargandoHistorial ? 'animate-spin text-indigo-600' : ''}`}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3" />
-              </svg>
-            </button>
+            <RefreshButton refreshing={cargandoHistorial} onClick={cargarHistorial} label="Actualizar historial de cierres" />
           </div>
 
           {cargandoHistorial ? (

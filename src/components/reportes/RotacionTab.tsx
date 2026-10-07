@@ -13,6 +13,7 @@ import { exportarRotacionExcel } from '../../lib/exportUtils'
 import { formatPrecio, formatFecha, getCachedProductos, getFechaLocal } from '../../lib/utils'
 import { IconExportar } from '../ui/Icons'
 import { Button } from '../ui/Button'
+import { RefreshButton } from '../ui/RefreshButton'
 import { Modal } from '../ui/Modal'
 import { SearchInput } from '../ui/SearchInput'
 import type { Producto } from '../../types/database'
@@ -259,28 +260,28 @@ export function RotacionTab() {
     switch (segmento) {
       case 'ACTIVA':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold whitespace-nowrap bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[10px] font-semibold whitespace-normal leading-relaxed bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
             Activa (0-30d)
           </span>
         )
       case 'ALERTA':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold whitespace-nowrap bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[10px] font-semibold whitespace-normal leading-relaxed bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
             Alerta (31-60d)
           </span>
         )
       case 'ESTANCADO':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold whitespace-nowrap bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400 border border-orange-200 dark:border-orange-800/60">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[10px] font-semibold whitespace-normal leading-relaxed bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400 border border-orange-200 dark:border-orange-800/60">
             <span className="w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0" />
             Estancado (61-90d)
           </span>
         )
       case 'MUERTO':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold whitespace-nowrap bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[10px] font-semibold whitespace-normal leading-relaxed bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60">
             <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
             {nuncaVendido ? 'Sin ventas registradas' : 'Stock Muerto (>90d)'}
           </span>
@@ -293,7 +294,7 @@ export function RotacionTab() {
       {/* 1. Header con KPIs Ejecutivos */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* KPI 1: Capital Inmovilizado */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-rose-200 dark:border-rose-900/60 shadow-xs flex flex-col justify-between">
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-rose-200 dark:border-rose-900/60 shadow-md dark:shadow-black/20 flex flex-col justify-between">
           <div className="flex items-center justify-between gap-2 min-h-[26px]">
             <span className="text-xs font-semibold uppercase tracking-wider text-rose-600 dark:text-rose-400 truncate">
               Capital Inmovilizado (&gt;30d)
@@ -313,7 +314,7 @@ export function RotacionTab() {
         </div>
 
         {/* KPI 2: Artículos en Riesgo */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs flex flex-col justify-between">
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md dark:shadow-black/20 flex flex-col justify-between">
           <div className="flex items-center justify-between gap-2 min-h-[26px]">
             <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">
               Artículos Inmovilizados
@@ -334,7 +335,7 @@ export function RotacionTab() {
         </div>
 
         {/* KPI 3: Índice de Rotación */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/60 shadow-xs flex flex-col justify-between">
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/60 shadow-md dark:shadow-black/20 flex flex-col justify-between">
           <div className="flex items-center justify-between gap-2 min-h-[26px]">
             <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 truncate">
               Índice de Rotación (90d)
@@ -354,7 +355,7 @@ export function RotacionTab() {
         </div>
 
         {/* KPI 4: Capital Total Inventario */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs flex flex-col justify-between">
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md dark:shadow-black/20 flex flex-col justify-between">
           <div className="flex items-center justify-between gap-2 min-h-[26px]">
             <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">
               Inventario Total a Costo
@@ -378,7 +379,7 @@ export function RotacionTab() {
       <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs space-y-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Segmented Control de Filtros */}
-          <div className="flex items-center flex-nowrap overflow-x-auto scrollbar-hide max-w-full bg-gray-100 dark:bg-gray-800/90 p-1 rounded-xl border border-gray-200 dark:border-gray-700 self-start md:self-auto gap-1">
+          <div className="flex flex-wrap items-center max-w-full bg-gray-100 dark:bg-gray-800/90 p-1 rounded-xl border border-gray-200 dark:border-gray-700 self-start md:self-auto gap-1">
             <button
               type="button"
               onClick={() => setFiltroSegmento('TODOS')}
@@ -457,6 +458,7 @@ export function RotacionTab() {
 
           {/* Exportar Excel */}
           <div className="flex items-center gap-2">
+            <RefreshButton refreshing={cargando} onClick={() => void cargarDatos()} label="Actualizar rotación" />
             <Button
               size="sm"
               variant="secondary"
@@ -483,7 +485,7 @@ export function RotacionTab() {
       </div>
 
       {/* 3. Tabla de Productos con Rotación y Acciones */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xs overflow-hidden">
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md dark:shadow-black/20 overflow-hidden">
         {cargando ? (
           <div className="py-16 text-center text-gray-500 dark:text-gray-400">
             <div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto mb-3" />
@@ -499,63 +501,62 @@ export function RotacionTab() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1120px] text-left text-xs sm:text-sm [&_th]:align-middle [&_td]:align-middle [&_td:not(:first-child)]:whitespace-nowrap [&_th:not(:first-child)]:whitespace-nowrap">
-              <thead className="bg-gray-50 dark:bg-gray-900/60 text-gray-600 dark:text-gray-400 uppercase text-[11px] font-bold border-b border-gray-200 dark:border-gray-700">
+          <div className="w-full min-w-0">
+            <table className="block lg:table w-full table-fixed text-left text-xs [&_th]:align-middle [&_td]:align-middle [&_td]:break-words">
+              <thead className="hidden lg:table-header-group bg-gray-50 dark:bg-gray-900/60 text-gray-600 dark:text-gray-400 uppercase text-[10px] font-bold border-b border-gray-200 dark:border-gray-700">
                 <tr>
-                  <th className="px-4 py-3">Artículo</th>
+                  <th className="px-4 py-3 w-[24%]">Artículo</th>
                   <th className="px-3 py-3 text-right">Stock</th>
-                  <th className="px-3 py-3 text-right">Costo Unit.</th>
-                  <th className="px-3 py-3 text-right">Precio Vta</th>
+                  <th className="px-3 py-3 text-right">Costo / Precio</th>
                   <th className="px-3 py-3 text-right font-black text-rose-600 dark:text-rose-400">
                     Capital Inmov.
                   </th>
-                  <th className="px-3 py-3 text-center">Sin Movimiento</th>
-                  <th className="px-3 py-3 text-center">Última Venta</th>
-                  <th className="px-3 py-3 text-center whitespace-nowrap">Estado</th>
-                  <th className="px-4 py-3 text-center">Acciones</th>
+                  <th className="px-3 py-3 text-center">Movimiento / Última venta</th>
+                  <th className="px-3 py-3 text-center w-[17%]">Estado</th>
+                  <th className="px-4 py-3 text-center w-[12%]">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
+              <tbody className="block lg:table-row-group divide-y divide-gray-100 dark:divide-gray-700/60">
                 {itemsFiltrados.map((it) => {
                   return (
                     <tr
                       key={it.producto.id}
-                      className="hover:bg-gray-50/80 dark:hover:bg-gray-700/40 transition-colors"
+                      className="grid grid-cols-2 sm:grid-cols-3 lg:table-row hover:bg-gray-50/80 dark:hover:bg-gray-700/40 transition-colors"
                     >
-                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
-                        <div className="w-64 xl:w-80 truncate" title={it.producto.descripcion}>
+                      <td className="block lg:table-cell col-span-2 sm:col-span-3 px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
+                        <div className="leading-relaxed break-words" title={it.producto.descripcion}>
                           {it.producto.descripcion}
                         </div>
-                        <div className="text-[11px] text-gray-400 font-mono">
+                        <div className="text-[10px] text-gray-400 font-mono break-all mt-1">
                           {it.producto.codigo_barras || 'Sin código'}
                         </div>
                       </td>
-                      <td className="px-3 py-3 text-right font-semibold text-gray-800 dark:text-gray-200">
+                      <td className="block lg:table-cell px-3 py-3 lg:text-right font-semibold text-gray-800 dark:text-gray-200">
+                        <span className="block lg:hidden mb-1 text-[10px] font-normal text-gray-500">Stock</span>
                         {it.stock} {it.producto.es_pesable ? it.producto.unidad_medida || 'KG' : 'u.'}
                       </td>
-                      <td className="px-3 py-3 text-right text-gray-500 dark:text-gray-400">
-                        {formatPrecio(it.precioCosto)}
+                      <td className="block lg:table-cell px-3 py-3 lg:text-right text-gray-800 dark:text-gray-200 tabular-nums">
+                        <span className="block lg:hidden mb-1 text-[10px] text-gray-500">Costo / Precio</span>
+                        <span className="block text-gray-500 dark:text-gray-400" title="Costo unitario">{formatPrecio(it.precioCosto)}</span>
+                        <span className="block mt-1 font-semibold" title="Precio de venta">{formatPrecio(it.precioVenta)}</span>
                       </td>
-                      <td className="px-3 py-3 text-right text-gray-800 dark:text-gray-200">
-                        {formatPrecio(it.precioVenta)}
-                      </td>
-                      <td className="px-3 py-3 text-right font-bold text-rose-600 dark:text-rose-400">
+                      <td className="block lg:table-cell px-3 py-3 lg:text-right font-bold text-rose-600 dark:text-rose-400 tabular-nums">
+                        <span className="block lg:hidden mb-1 text-[10px] font-normal text-gray-500">Capital inmovilizado</span>
                         {formatPrecio(it.capitalInmovilizado)}
                       </td>
-                      <td className="px-3 py-3 text-center font-mono font-semibold text-gray-700 dark:text-gray-300">
-                        {it.diasSinMovimiento} días
-                      </td>
-                      <td className="px-3 py-3 text-center text-xs text-gray-500 dark:text-gray-400">
-                        {it.ultimaVentaFecha ? formatFecha(it.ultimaVentaFecha) : (
+                      <td className="block lg:table-cell px-3 py-3 lg:text-center text-xs text-gray-500 dark:text-gray-400">
+                        <span className="block lg:hidden mb-1 text-[10px]">Movimiento / Última venta</span>
+                        <span className="block font-semibold text-gray-700 dark:text-gray-300">{it.diasSinMovimiento} días</span>
+                        <span className="block mt-1 text-[10px]">{it.ultimaVentaFecha ? formatFecha(it.ultimaVentaFecha) : (
                           <span className="text-rose-500 font-semibold">Nunca vendido</span>
-                        )}
+                        )}</span>
                       </td>
-                      <td className="px-3 py-3 text-center whitespace-nowrap">
+                      <td className="block lg:table-cell px-3 py-3 lg:text-center">
+                        <span className="block lg:hidden mb-1 text-[10px] text-gray-500">Estado</span>
                         {getBadgeSegmento(it.segmento, !it.ultimaVentaFecha)}
                       </td>
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
+                      <td className="block lg:table-cell px-3 py-3 lg:text-center">
+                        <div className="flex flex-wrap items-center lg:justify-center gap-1.5">
                           <button
                             type="button"
                             onClick={() => handleAbrirLiquidar(it)}
