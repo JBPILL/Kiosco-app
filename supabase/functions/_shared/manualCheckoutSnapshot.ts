@@ -2,6 +2,7 @@ import type { EntradaCheckoutManual, RegistroCheckoutManual, ResultadoCheckoutMa
 import type { CotizacionPoint } from './pointQuote.ts'
 import { distribuirTotalVenta } from '../../../src/lib/distribuirTotalVenta.ts'
 import { camposManual, fechaManual, firmaManual, leerEntradaCheckoutManual, numeroManual, objetoManual, uuidManual } from './manualCheckoutRequest.ts'
+import { leerPoliticaDescuentoSupervisor } from '../../../src/lib/supervisorDiscountPolicy.ts'
 
 export async function idDetalleManual(checkoutId: string, lineaId: string): Promise<string> {
   const buffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`checkout-manual:${checkoutId}:${lineaId}`))
@@ -38,8 +39,13 @@ function booleano(value: unknown): boolean {
 
 export async function leerRegistroManual(value: unknown, esperado: EntradaCheckoutManual): Promise<RegistroCheckoutManual> {
   const registro = objetoManual(value)
-  camposManual(registro, 'requiere_supervisor' in registro ? ['entrada', 'snapshot', 'requiere_supervisor'] : ['entrada', 'snapshot'])
+  const tienePolitica = 'politica_umbral' in registro || 'politica_revision' in registro
+  camposManual(registro, tienePolitica ? ['entrada', 'snapshot', 'requiere_supervisor', 'politica_umbral', 'politica_revision']
+    : 'requiere_supervisor' in registro ? ['entrada', 'snapshot', 'requiere_supervisor'] : ['entrada', 'snapshot'])
+  const politicaSupervisor = !tienePolitica || (registro.politica_umbral === null && registro.politica_revision === null) ? null
+    : leerPoliticaDescuentoSupervisor({ umbralPorcentaje: registro.politica_umbral, revision: registro.politica_revision })
   const requiereSupervisor = registro.requiere_supervisor == null ? null : booleano(registro.requiere_supervisor)
+  if (politicaSupervisor && requiereSupervisor === null) throw new Error('Decisión de supervisor incompleta')
   const entrada = leerEntradaCheckoutManual(registro.entrada)
   if (firmaManual(entrada) !== firmaManual(esperado)) throw new Error('El checkout no coincide con la solicitud original')
   const snap = objetoManual(registro.snapshot)
@@ -80,7 +86,7 @@ export async function leerRegistroManual(value: unknown, esperado: EntradaChecko
   }))
   const pagos = entrada.pagos.map(p => ({ id: p.id, medio_pago: p.medio, monto: p.montoCentavos / 100, referencia: p.referencia }))
   if (firmaManual(snap.pagos) !== firmaManual(pagos)) throw new Error('Pagos del snapshot inconsistentes')
-  return { entrada, requiereSupervisor, snapshot: { version: 1, id: entrada.checkoutId, kiosco_id: entrada.kioscoId, usuario_id: entrada.usuarioId,
+  return { entrada, requiereSupervisor, politicaSupervisor, snapshot: { version: 1, id: entrada.checkoutId, kiosco_id: entrada.kioscoId, usuario_id: entrada.usuarioId,
     sesion_caja_id: entrada.sesionCajaId, fecha_hora: entrada.fechaHora, total: entrada.totalEsperado,
     notas: entrada.notas, cliente_id: entrada.clienteId, detalles, pagos } }
 }

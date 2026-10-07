@@ -55,6 +55,7 @@ export interface ResultadoCheckoutManual {
 }
 
 export interface RegistroCheckoutManual {
+  politicaSupervisor?: { umbralPorcentaje: number; revision: number } | null
   requiereSupervisor: boolean | null
   entrada: EntradaCheckoutManual
   snapshot: SnapshotCheckoutManual

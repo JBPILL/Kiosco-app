@@ -8,8 +8,15 @@ export function crearBackendCheckoutManual(admin: SupabaseClient): Omit<ManualCh
   const comercial = crearBackendCotizacionPoint(admin)
   return {
     ahora: comercial.ahora, autenticar: comercial.autenticar,
+    cargarPolitica: async contexto => {
+      const { data, error } = await admin.from('supervisor_politicas').select('umbral_descuento,revision')
+        .eq('kiosco_id', contexto.kiosco.id).maybeSingle()
+      if (error) throw new Error('No se pudo consultar la política de descuento')
+      return data ? { umbralPorcentaje: Number(data.umbral_descuento), revision: Number(data.revision) }
+        : { umbralPorcentaje: 15, revision: 0 }
+    },
     buscar: async (contexto, entrada) => {
-      const { data, error } = await admin.from('checkout_manual_entradas').select('entrada,snapshot,requiere_supervisor')
+      const { data, error } = await admin.from('checkout_manual_entradas').select('entrada,snapshot,requiere_supervisor,politica_umbral,politica_revision')
         .eq('id', entrada.checkoutId).eq('kiosco_id', contexto.kiosco.id).maybeSingle()
       if (error) throw new Error('No se pudo recuperar el checkout')
       return data
@@ -21,9 +28,10 @@ export function crearBackendCheckoutManual(admin: SupabaseClient): Omit<ManualCh
         lineas: entrada.lineas, pagos: [] })
       return { ...datos, componentes: datos.componentes || [] }
     },
-    preparar: async (contexto, entrada, snapshot, requiereSupervisor) => {
+    preparar: async (contexto, entrada, snapshot, requiereSupervisor, politica) => {
       const { data, error } = await admin.rpc('preparar_checkout_manual', {
         p_actor_auth_id: contexto.authUserId, p_entrada: entrada, p_snapshot: snapshot, p_requiere_supervisor: requiereSupervisor,
+        p_umbral_porcentaje: politica.umbralPorcentaje, p_politica_revision: politica.revision,
       })
       if (error || !data) throw new Error('No se confirmó la preparación del checkout')
       return data

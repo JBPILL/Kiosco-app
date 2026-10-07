@@ -626,3 +626,32 @@ it('una preparación existente no permite reemplazar la decisión ni acceder dir
  await db.exec('RESET ROLE')
  expect((await confirmarAutorizado(datos)).rows[0].datos.total).toBe(200)
 })
+
+it('congela política vigente, rechaza cotización obsoleta y conserva decisión al cambiar umbral', async () => {
+  await db.exec(readFileSync('supabase_fase_supervisor_politica_descuento.sql','utf8'))
+  const migracion = readFileSync('supabase_fase_checkout_manual_politica_congelada.sql','utf8')
+  await db.exec(migracion); await db.exec(migracion)
+  await db.exec(`INSERT INTO supervisor_politicas VALUES('${kid}',25,1,clock_timestamp(),'${actor}');
+    UPDATE sesiones_caja SET usuario_id='${cajero}' WHERE id='${caja}'`)
+  const snapshot = solicitud(); snapshot.usuario_id = cajero; snapshot.total = 200
+  snapshot.detalles[0].precio_unitario = 80; snapshot.detalles[0].subtotal = 200; snapshot.pagos[0].monto = 200
+  const entrada = { ...entradaBackend(), usuarioId: cajero, tipoAjuste: 'DESCUENTO_PORCENTAJE', valorAjuste: 20,
+    totalEsperado: 200, subtotalesEsperados: [200], pagos: [{ ...entradaBackend().pagos[0], montoCentavos: 20000 }] }
+  const preparar = (umbral: number, revision: number, requiere = false) => db.query<{ datos: Record<string, unknown> }>(
+    'SELECT preparar_checkout_manual($1::uuid,$2::jsonb,$3::jsonb,$4::boolean,$5::numeric,$6::bigint) AS datos',
+    [cajero,JSON.stringify(entrada),JSON.stringify(snapshot),requiere,umbral,revision])
+  await db.exec('SET ROLE service_role')
+  await expect(preparar(15,0)).rejects.toThrow(/política cambió/)
+  await expect(preparar(25,1,true)).rejects.toThrow(/inconsistente/)
+  await expect(prepararBackend(entrada,snapshot,cajero)).rejects.toThrow(/permission denied/)
+  const original = (await preparar(25,1)).rows[0].datos
+  expect(original).toMatchObject({ requiere_supervisor: false, politica_umbral: 25, politica_revision: 1 })
+  await db.exec(`RESET ROLE; UPDATE supervisor_politicas SET umbral_descuento=5,revision=2 WHERE kiosco_id='${kid}'; SET ROLE service_role`)
+  expect((await preparar(5,2)).rows[0].datos).toEqual(original)
+  expect((await confirmar(snapshot,cajero)).rows[0].confirmar_venta_manual.total).toBe(200)
+  expect((await confirmar(snapshot,cajero)).rows[0].confirmar_venta_manual.total).toBe(200)
+  await db.exec('RESET ROLE')
+  expect(await leer('SELECT politica_umbral,politica_revision,requiere_supervisor FROM checkout_manual_entradas'))
+    .toEqual([{ politica_umbral: '25.00', politica_revision: 1, requiere_supervisor: false }])
+  expect(await leer('SELECT saldo_deudor FROM clientes')).toEqual([{ saldo_deudor: '200.00' }])
+})

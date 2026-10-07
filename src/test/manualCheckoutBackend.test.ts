@@ -23,6 +23,7 @@ function entrada() {
 }
 function dependencias(): ManualCheckoutDependencies {
   return { ahora: () => new Date('2026-10-07T12:01:00Z'),
+    cargarPolitica: vi.fn(async () => ({ umbralPorcentaje: 15, revision: 0 })),
     buscar: vi.fn(async () => null),
     cargarDatos: vi.fn(async () => ({ productos: [crearProducto({ id: product, kiosco_id: kid, precio_venta: 100 })],
       componentes: [], promociones: [], envases: [], cliente: null })),
@@ -56,6 +57,36 @@ it('cotiza con el catálogo del servidor y sólo después prepara y confirma', a
   expect(snapshot.detalles[0]).toMatchObject({ producto_id: product, subtotal: 100, precio_unitario: 100 })
   expect(snapshot.detalles[0].id).not.toBe(product)
   expect(JSON.stringify(snapshot)).not.toContain('precio_costo')
+})
+
+it('usa el umbral del comercio y congela su revisión en la preparación', async () => {
+  const deps = dependencias()
+  deps.cargarPolitica = vi.fn(async () => ({ umbralPorcentaje: 25, revision: 3 }))
+  const datos = entrada()
+  datos.tipoAjuste = 'DESCUENTO_PORCENTAJE'; datos.valorAjuste = 20
+  datos.totalEsperado = 80; datos.subtotalesEsperados = [80]; datos.pagos[0].montoCentavos = 8000
+  deps.preparar = vi.fn(async (_c, solicitud, snapshot, requiere, politica) => ({ entrada: solicitud, snapshot, requiere_supervisor: requiere,
+    politica_umbral: politica.umbralPorcentaje, politica_revision: politica.revision }))
+  await cerrarCheckoutManual(contexto('CAJERO'), datos, deps)
+  expect(vi.mocked(deps.preparar).mock.calls[0].slice(3)).toEqual([false, { umbralPorcentaje: 25, revision: 3 }])
+  const preparado = await vi.mocked(deps.preparar).mock.results[0].value
+  deps.buscar = vi.fn(async () => preparado)
+  deps.cargarPolitica = vi.fn(async () => { throw new Error('No consultar la política nueva') })
+  await cerrarCheckoutManual(contexto('CAJERO'), datos, deps)
+  expect(deps.cargarPolitica).not.toHaveBeenCalled()
+})
+
+it('un umbral menor exige supervisor antes de preparar y una política inválida no confirma', async () => {
+  const deps = dependencias()
+  deps.cargarPolitica = vi.fn(async () => ({ umbralPorcentaje: 5, revision: 1 }))
+  const datos = entrada()
+  datos.tipoAjuste = 'DESCUENTO_PORCENTAJE'; datos.valorAjuste = 10
+  datos.totalEsperado = 90; datos.subtotalesEsperados = [90]; datos.pagos[0].montoCentavos = 9000
+  await expect(cerrarCheckoutManual(contexto('CAJERO'), datos, deps)).rejects.toThrow(/supervisor/)
+  expect(deps.preparar).not.toHaveBeenCalled()
+  deps.cargarPolitica = vi.fn(async () => ({ umbralPorcentaje: 101, revision: 1 }))
+  await expect(cerrarCheckoutManual(contexto(), datos, deps)).rejects.toThrow(/Política/)
+  expect(deps.confirmar).not.toHaveBeenCalled()
 })
 
 it('si el precio cambió, rechaza el importe anterior sin registrar una venta diferente', async () => {
