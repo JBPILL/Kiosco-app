@@ -1,4 +1,4 @@
-import { cuadroEscaneoMovil, errorCamaraMovil, puedeReintentarCamara } from '../../lib/mobileCameraScanner'
+import { cuadroEscaneoMovil, errorCamaraMovil, iniciarVistaCamaraIOS, puedeReintentarCamara } from '../../lib/mobileCameraScanner'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import { Modal } from './Modal'
@@ -28,6 +28,7 @@ export function BarcodeCaptureModal({
   const [codigoManual, setCodigoManual] = useState('')
 
   const scannerRef = useRef<Html5Qrcode | null>(null)
+  const limpiarVistaCamaraRef = useRef<(() => void) | null>(null)
   const isStartingRef = useRef(false)
   const isStoppingRef = useRef(false)
   const abiertoRef = useRef(isOpen)
@@ -62,6 +63,8 @@ export function BarcodeCaptureModal({
   const detenerEscaner = useCallback(async () => {
     if (isStoppingRef.current) return
     isStoppingRef.current = true
+    limpiarVistaCamaraRef.current?.()
+    limpiarVistaCamaraRef.current = null
     const scanner = scannerRef.current
     scannerRef.current = null
 
@@ -89,6 +92,8 @@ export function BarcodeCaptureModal({
 
     try {
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error('CAMERA_UNAVAILABLE')
+      limpiarVistaCamaraRef.current?.()
+      limpiarVistaCamaraRef.current = null
       if (scannerRef.current?.isScanning) {
         await scannerRef.current.stop()
       }
@@ -159,6 +164,7 @@ export function BarcodeCaptureModal({
         scanner.clear()
         return
       }
+      limpiarVistaCamaraRef.current = iniciarVistaCamaraIOS(el)
       const activeDeviceId = scanner.getRunningTrackSettings().deviceId
       if (activeDeviceId) setCamaraActualId(activeDeviceId)
 
