@@ -50,3 +50,11 @@ it('reserva el resumen de diferencias del historial al dueño', async () => {
   expect(await screen.findByText('Control de cierre')).toBeTruthy()
   expect(screen.queryByText('Con diferencias')).toBeNull()
 })
+
+it('conserva los ingresos y egresos en Turno Actual sin pestaña duplicada', () => {
+  render(<CajaPage />)
+  expect(screen.queryByRole('button', { name: /Entradas y Retiros/ })).toBeNull()
+  expect(screen.getByRole('button', { name: '+ Registrar Ingreso' })).toBeTruthy()
+  expect(screen.getByRole('button', { name: '- Registrar Gasto / Egreso' })).toBeTruthy()
+  expect(screen.queryByText(/Ver todos los movimientos en su pestaña/)).toBeNull()
+})

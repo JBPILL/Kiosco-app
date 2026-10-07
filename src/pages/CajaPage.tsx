@@ -70,7 +70,7 @@ export function CajaPage() {
   } = useCajaStore()
 
   const esDueno = usuario?.rol === 'DUEÑO'
-  const [tabActiva, setTabActiva] = useState<'turno' | 'movimientos' | 'historial'>('turno')
+  const [tabActiva, setTabActiva] = useState<'turno' | 'historial'>('turno')
 
   useEffect(() => {
     cargarArqueoCiegoConfig()
@@ -460,17 +460,6 @@ export function CajaPage() {
             </button>
             <button
               type="button"
-              onClick={() => setTabActiva('movimientos')}
-              className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                tabActiva === 'movimientos'
-                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-gray-700/60'
-              }`}
-            >
-              Entradas y Retiros ({movimientosCaja.length})
-            </button>
-            <button
-              type="button"
               onClick={() => setTabActiva('historial')}
               className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                 tabActiva === 'historial'
@@ -716,120 +705,9 @@ export function CajaPage() {
                 </div>
               )}
 
-              {movimientosCaja.length > 5 && (
-                <div className="pt-2 text-right">
-                  <button
-                    type="button"
-                    onClick={() => setTabActiva('movimientos')}
-                    className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-                  >
-                    Ver todos los movimientos en su pestaña ({movimientosCaja.length}) →
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         )
-      ) : tabActiva === 'movimientos' ? (
-        /* ── PESTAÑA DEDICADA DE MOVIMIENTOS ── */
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-6 shadow-md dark:shadow-black/20 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-gray-100 dark:border-gray-700">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100">
-                  Gastos y Movimientos de Caja
-                </h2>
-                {sesionActiva ? (
-                  <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400">
-                    Turno en curso
-                  </span>
-                ) : (
-                  <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
-                    Caja Cerrada
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                Registrá pagos a proveedores, gastos menores, retiros o reposición de cambio
-              </p>
-            </div>
-            {sesionActiva ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => handleAbrirModalMovimiento('INGRESO')}
-                  className="text-xs text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
-                >
-                  + Registrar Ingreso
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => handleAbrirModalMovimiento('EGRESO')}
-                  className="text-xs text-red-700 dark:text-red-400 border-red-300 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-950/30"
-                >
-                  - Registrar Gasto / Egreso
-                </Button>
-              </div>
-            ) : (
-              <Button
-                size="sm"
-                variant="primary"
-                onClick={() => setTabActiva('turno')}
-              >
-                Abrir turno para registrar
-              </Button>
-            )}
-          </div>
-
-          {/* Lista de movimientos de la sesión */}
-          {movimientosCaja.length === 0 ? (
-            <div className="py-12 text-center text-xs text-gray-400 dark:text-gray-500">
-              No se registraron gastos ni ingresos directos en este turno.
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-100 dark:divide-gray-700">
-              {movimientosCaja.map((mov) => (
-                <div key={mov.id} className="py-3 flex items-center justify-between text-xs sm:text-sm">
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`px-2.5 py-1 rounded-md font-semibold text-xs ${
-                        mov.tipo === 'INGRESO'
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400'
-                          : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
-                      }`}
-                    >
-                      {mov.tipo === 'INGRESO' ? 'Ingreso' : 'Egreso'}
-                    </span>
-                    <div>
-                      <span className="font-semibold text-gray-800 dark:text-gray-200 text-sm">
-                        {formatMotivoMovimiento(mov.motivo)}
-                      </span>
-                      {mov.descripcion && (
-                        <span className="text-gray-500 dark:text-gray-400 ml-2">
-                          — {mov.descripcion}
-                        </span>
-                      )}
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                        {formatFecha(mov.fecha_hora)}
-                      </p>
-                    </div>
-                  </div>
-                  <div
-                    className={`font-bold text-base ${
-                      mov.tipo === 'INGRESO'
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-red-600 dark:text-red-400'
-                    }`}
-                  >
-                    {mov.tipo === 'INGRESO' ? '+' : '-'}{formatPrecio(mov.monto)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       ) : (
         /* ── PESTAÑA DEDICADA DE HISTORIAL DE CIERRES ── */
         <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-6 shadow-md dark:shadow-black/20">
