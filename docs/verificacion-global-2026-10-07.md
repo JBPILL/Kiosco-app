@@ -2,6 +2,13 @@
 
 ## Resultado reproducible
 
+Actualización tras integrar PIN y escritura atómica del permiso: `npm run test`
+aprobó **1115 pruebas en 118 archivos**, sin fallos, en 89,03 segundos. La primera
+ejecución detectó dos mocks de sesión obsoletos en recuperación de PaymentModal;
+se corrigieron para admitir el selector reactivo y se repitió la suite completa.
+`npm run build` también aprobó. Se mantiene el aviso conocido de paquetes grandes.
+Esta ejecución no verifica navegador, hardware, JWT/PostgREST ni SQL remoto.
+
 Sobre el código del commit `82998d0`, `npm run test` terminó con **984 pruebas aprobadas en 110 archivos**, sin fallos, en 80,89 segundos. La compilación `npm run build` de esa fase también aprobó; conserva el aviso de paquetes mayores de 500 kB. Esta evidencia es local y no demuestra el estado del despliegue ni del SQL remoto.
 
 La suite incluye los módulos de cobro manual, cancelación durable, conciliación, caja, respaldo/restauración, stock, reportes y multirrubro. El conteo original de 352 pruebas es histórico: no describe esta versión. Una suite verde tampoco prueba requisitos que aún no tienen implementación o cobertura.
@@ -10,7 +17,7 @@ La suite incluye los módulos de cobro manual, cancelación durable, conciliaci�
 
 | Requisito del plan revisado | Evidencia actual y trabajo pendiente |
 | --- | --- |
-| Seguridad del supervisor | No hay `SupervisorPinModal` ni servicio de PIN en el código. El backend rechaza descuentos extraordinarios del cajero; falta aprobación vinculada a la acción, hash, límites de intentos y auditoría. |
+| Seguridad del supervisor | Backend con hash y pepper versionado, límites persistentes, auditoría y permiso de descuento vinculado al cuerpo original. Formularios de dueño/cajero y cola durable integrados. Faltan espera progresiva, retención de auditoría, otras acciones protegidas y validación remota/en navegador. |
 | Cobro manual y cancelación entre equipos | SQL y cola local cubiertos por pruebas. Falta instalar/verificar las migraciones con JWT/PostgREST reales y piloto concurrente con dos equipos. |
 | Seguridad de costos y permisos | Hay migraciones y pruebas SQL locales. Falta auditar todas las políticas efectivamente instaladas y retirar vías de escritura antiguas cuando corresponda. |
 | Respaldo integral | Hay respaldo ampliado, restauración y copia local al cierre con pruebas. Falta restauración comprobada en comercio de ensayo con conteos y saldos reales. |
@@ -22,7 +29,10 @@ La suite incluye los módulos de cobro manual, cancelación durable, conciliaci�
 
 ## Próxima implementación
 
-Completar autorización de supervisor del plan de seguridad. Debe comprobarse en servidor y vincularse a la operación; un desbloqueo visual o un rol enviado por el navegador no satisface el requisito. La validación remota y los pilotos siguen siendo puertas independientes.
+Completar las acciones protegidas restantes y la espera progresiva del supervisor.
+El descuento ya usa autorización de servidor vinculada a la entrada original;
+la validación remota, las interacciones en navegador y los pilotos siguen siendo
+puertas independientes. Ver `docs/supervisor-pin-cliente.md`.
 
 ## Autoevaluación
 

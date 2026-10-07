@@ -12,7 +12,10 @@ vi.mock('../../stores/cartStore', () => {
     cobrosBloqueados: { 'tab-original': 'venta-original' }, completarCobroTab: mocks.completar }
   return { useCartStore: Object.assign(() => state, { getState: () => state }) }
 })
-vi.mock('../../stores/authStore', () => ({ useAuthStore: { getState: () => ({ usuario: { id: 'operador' }, kiosco: { id: 'comercio' } }) } }))
+vi.mock('../../stores/authStore', () => {
+  const getState = () => ({ usuario: { id: 'operador' }, kiosco: { id: 'comercio' } })
+  return { useAuthStore: Object.assign((selector: (state: ReturnType<typeof getState>) => unknown) => selector(getState()), { getState }) }
+})
 vi.mock('../../stores/cajaStore', () => ({ useCajaStore: { getState: () => ({ sesionActiva: null }) } }))
 vi.mock('../../stores/clienteStore', () => ({ useClienteStore: () => ({ clientes: [], cargarClientes: mocks.cargar }) }))
 vi.mock('../../stores/afipStore', () => ({ useAFIPStore: () => ({ config: null, cargarConfiguracion: mocks.cargar, emitirFacturaVenta: mocks.factura }) }))
