@@ -86,3 +86,8 @@ it('no persiste permisos malformados', async () => {
   await expect(autorizarDescuentoSupervisor(entrada(), '1234')).rejects.toThrow(/inválido/)
   expect(mocks.guardar).not.toHaveBeenCalled()
 })
+it('transmite fecha pública de bloqueo sin persistir permiso', async () => {
+  mocks.invoke.mockResolvedValue({ data: null, error: { context: new Response(JSON.stringify({ estado: 'BLOQUEADO', reintentarEn: '2026-10-07T12:00:00Z' }), { status: 429 }) } })
+  await expect(autorizarDescuentoSupervisor(entrada(), '1234')).rejects.toMatchObject({ name: 'SupervisorPinBloqueado', reintentarEn: '2026-10-07T12:00:00.000Z' })
+  expect(mocks.guardar).not.toHaveBeenCalled()
+})

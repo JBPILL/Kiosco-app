@@ -5,6 +5,7 @@ import { Button } from '../ui/Button'
 import { autorizarDescuentoSupervisor } from '../../lib/supervisorPinClient'
 import type { CobroManualLocal } from '../../lib/manualCheckoutOutbox'
 import { formatPrecio } from '../../lib/utils'
+import { SupervisorPinBloqueado } from '../../lib/supervisorPinBlocked'
 
 export function AutorizarDescuentoManualModal({ cobro, onClose, onAutorizado }: {
   cobro: CobroManualLocal; onClose: () => void; onAutorizado: () => void
@@ -25,8 +26,8 @@ export function AutorizarDescuentoManualModal({ cobro, onClose, onAutorizado }: 
     try {
       await autorizarDescuentoSupervisor(cobro.entrada, pin)
       if (vigente.current) onAutorizado()
-    } catch {
-      if (vigente.current) setError('No se pudo autorizar. Revisá el PIN, la sesión y la conexión.')
+    } catch (causa) {
+      if (vigente.current) setError(causa instanceof SupervisorPinBloqueado ? causa.message : 'No se pudo autorizar. Revisá el PIN, la sesión y la conexión.')
     } finally {
       enviando.current = false
       if (vigente.current) { setPin(''); setOcupado(false) }

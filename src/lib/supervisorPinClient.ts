@@ -4,6 +4,7 @@ import { leerEntradaCheckoutManual } from '../../supabase/functions/_shared/manu
 import { guardarAutorizacionCobroManual } from './manualCheckoutClient'
 import { leerPermisoSupervisorManual } from './manualCheckoutSupervisorPermission'
 import type { EntradaCheckoutManual } from '../types/checkoutManual'
+import { leerBloqueoSupervisor } from './supervisorPinBlocked'
 
 function contextoSupervisor() {
   const { usuario, kiosco } = useAuthStore.getState()
@@ -38,7 +39,12 @@ async function solicitar(cuerpo: Record<string, unknown>): Promise<Record<string
   })
   comprobarSesion()
   // No inspeccionar mensajes arbitrarios del servidor ni reproducir el cuerpo.
-  if (respuesta.error) throw new Error('No se pudo confirmar la operación de supervisor')
+  if (respuesta.error) {
+    const bloqueo = await leerBloqueoSupervisor(respuesta.error)
+    comprobarSesion()
+    if (bloqueo) throw bloqueo
+    throw new Error('No se pudo confirmar la operación de supervisor')
+  }
   const valor: unknown = respuesta.data
   if (!valor || typeof valor !== 'object' || Array.isArray(valor)) throw new Error('Respuesta de supervisor inválida')
   return valor as Record<string, unknown>
