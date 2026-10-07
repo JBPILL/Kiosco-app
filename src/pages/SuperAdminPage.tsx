@@ -1056,6 +1056,8 @@ export function SuperAdminPage() {
                       ) : (
                         <span className="text-xs px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 border border-blue-300 dark:border-blue-800 text-blue-800 dark:text-blue-300 font-bold">
                           {k.rubro === 'PETSHOP_VETERINARIA' ? 'Pet Shop / Veterinaria'
+                            : k.rubro === 'DIETETICA' ? 'Dietética / Almacén Natural'
+                            : k.rubro === 'BAZAR' ? 'Bazar / Regalería'
                             : k.rubro === 'ELECTRONICA_CELULARES' ? 'Electrónica / Celulares' : 'Kiosco / Minimercado'}
                         </span>
                       )}
@@ -1600,6 +1602,8 @@ export function SuperAdminPage() {
                   <option value="KIOSCO">Kiosco / Minimercado / Almacén</option>
                   <option value="FOTOCOPIADORA_LIBRERIA">Fotocopiadora / Librería / Centro de Copiado</option>
                   <option value="PETSHOP_VETERINARIA">Pet Shop / Veterinaria</option>
+                  <option value="DIETETICA">Dietética / Almacén Natural</option>
+                  <option value="BAZAR">Bazar / Regalería</option>
                   <option value="ELECTRONICA_CELULARES">Electrónica / Celulares</option>
                   <option value="GENERAL">Comercio General / Retail</option>
                 </select>
@@ -1972,6 +1976,8 @@ export function SuperAdminPage() {
                     <option value="KIOSCO">Kiosco / Minimercado / Almacén</option>
                     <option value="FOTOCOPIADORA_LIBRERIA">Fotocopiadora / Librería / Centro de Copiado</option>
                     <option value="PETSHOP_VETERINARIA">Pet Shop / Veterinaria</option>
+                    <option value="DIETETICA">Dietética / Almacén Natural</option>
+                    <option value="BAZAR">Bazar / Regalería</option>
                     <option value="ELECTRONICA_CELULARES">Electrónica / Celulares</option>
                     <option value="GENERAL">Comercio General / Retail</option>
                   </select>

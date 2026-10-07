@@ -13,6 +13,11 @@ beforeEach(() => { vi.restoreAllMocks(); localStorage.clear() })
 it('valida configuración segura y saldos exactamente iguales a las colecciones', () => {
   expect(validarAmpliacionBackup(ampliacion(), clientes, proveedores)).toEqual(ampliacion())
 })
+it.each(['DIETETICA', 'BAZAR'])('acepta configuración del nuevo rubro %s', (rubro) => {
+  const datos = ampliacion()
+  datos.configuracion_comercio.rubro = rubro
+  expect(validarAmpliacionBackup(datos, clientes, proveedores).configuracion_comercio.rubro).toBe(rubro)
+})
 it('rechaza extensiones, credenciales y campos anidados desconocidos', () => {
   for (const configuracion of [{ certificado_crt: 'secret' }, { equipos_comercio: { token: 'secret' } },
     { capacidades_operativas: { clínica: true } }, { afip_habilitado: 'true' }]) {

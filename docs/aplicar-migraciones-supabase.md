@@ -352,3 +352,15 @@ optativa, sólo del mismo comercio; no habilita equipos ni facturación automát
 Seguí [respaldo-ampliado.md](respaldo-ampliado.md). Revisá la política de arqueo
 ciego si la columna no existía antes. Esta migración no se ejecutó remotamente
 desde Codex.
+
+## Paso 25: Dietética y Bazar
+
+Ejecutá `supabase_fase_dietetica_bazar.sql` después del paso 22. Actualiza los
+defaults del trigger para incluir Dietética con balanza y vencimientos, y Bazar
+sin envases, pesaje ni lotes. No cambia los rubros ni preferencias actuales al
+aplicar el archivo; sólo actúa ante un cambio posterior de rubro.
+
+Seguí [dietetica-bazar.md](dietetica-bazar.md) para importar los catálogos propios.
+Los artículos comienzan inactivos, sin precios ni stock. La configuración ampliada
+de respaldo 4.0 también reconoce los nuevos rubros. El SQL no se ejecutó
+remotamente desde Codex.

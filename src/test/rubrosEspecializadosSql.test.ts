@@ -7,12 +7,15 @@ import type { RubroComercio } from '../types/database'
 
 const db = new PGlite()
 const migration = readFileSync(new URL('../../supabase_fase_rubros_especializados.sql', import.meta.url), 'utf8')
+const extension = readFileSync(new URL('../../supabase_fase_dietetica_bazar.sql', import.meta.url), 'utf8')
 beforeAll(async () => {
   await db.exec(`CREATE TABLE public.kioscos (
     id text PRIMARY KEY, rubro varchar(50), capacidades_operativas jsonb
   ); INSERT INTO public.kioscos VALUES ('local', 'KIOSCO', '{"envases":false,"personalizado":true}');`)
   await db.exec(migration)
   await db.exec(migration)
+  await db.exec(extension)
+  await db.exec(extension)
 })
 afterAll(async () => { await db.close() })
 
@@ -23,7 +26,7 @@ it('reaplicar SQL y guardar el mismo rubro conserva preferencias', async () => {
 })
 
 it('cada cambio real aplica las mismas capacidades que el frontend', async () => {
-  const rubros: RubroComercio[] = ['PETSHOP_VETERINARIA', 'ELECTRONICA_CELULARES', 'GENERAL', 'FOTOCOPIADORA_LIBRERIA', 'KIOSCO']
+  const rubros: RubroComercio[] = ['PETSHOP_VETERINARIA', 'ELECTRONICA_CELULARES', 'DIETETICA', 'BAZAR', 'GENERAL', 'FOTOCOPIADORA_LIBRERIA', 'KIOSCO']
   for (const rubro of rubros) {
     await db.query('UPDATE public.kioscos SET rubro = $1 WHERE id = $2', [rubro, 'local'])
     const { rows } = await db.query<{ capacidades_operativas: object }>('SELECT capacidades_operativas FROM public.kioscos')

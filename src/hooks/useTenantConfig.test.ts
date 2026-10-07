@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { capacidadesPorDefecto } from './useTenantConfig'
 
 describe('capacidadesPorDefecto', () => {
+  it('dietética usa balanza y lotes; bazar no habilita módulos de kiosco', () => {
+    expect(capacidadesPorDefecto('DIETETICA')).toEqual({ envases: false, balanza: true, vencimientos: true, serviciosRapidos: false })
+    expect(capacidadesPorDefecto('BAZAR')).toEqual({ envases: false, balanza: false, vencimientos: false, serviciosRapidos: false })
+  })
   it('habilita pesables y vencimientos en veterinaria sin envases ni copiado', () => {
     expect(capacidadesPorDefecto('PETSHOP_VETERINARIA')).toEqual({ envases: false, balanza: true, vencimientos: true, serviciosRapidos: false })
     expect(capacidadesPorDefecto('ELECTRONICA_CELULARES')).toEqual({ envases: false, balanza: false, vencimientos: false, serviciosRapidos: false })

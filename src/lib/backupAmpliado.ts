@@ -84,7 +84,7 @@ export function validarAmpliacionBackup(valor: unknown, clientes: unknown[], pro
   const configuracion = objeto(datos.configuracion_comercio)
   if (typeof configuracion.nombre !== 'string' || !configuracion.nombre.trim()
     || typeof configuracion.rubro !== 'string'
-    || !['KIOSCO', 'GENERAL', 'FOTOCOPIADORA_LIBRERIA', 'PETSHOP_VETERINARIA', 'ELECTRONICA_CELULARES'].includes(configuracion.rubro)) throw new Error('La configuración del respaldo está incompleta')
+    || !['KIOSCO', 'GENERAL', 'FOTOCOPIADORA_LIBRERIA', 'PETSHOP_VETERINARIA', 'ELECTRONICA_CELULARES', 'DIETETICA', 'BAZAR'].includes(configuracion.rubro)) throw new Error('La configuración del respaldo está incompleta')
   const { capacidades_operativas, equipos_comercio, ...simples } = configuracion
   const segura = escalares(simples, TEXTOS_CONFIG, BOOLEANOS_CONFIG, NUMEROS_CONFIG)
   if (capacidades_operativas !== undefined) {
