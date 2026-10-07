@@ -1,10 +1,10 @@
 import { beforeEach, expect, it, vi } from 'vitest'
-import { cerrarCobroManualLocal, enviarCheckoutManual } from './manualCheckoutClient'
+import { cerrarCobroManualLocal, enviarCheckoutManual, enviarCancelacionCheckoutManual } from './manualCheckoutClient'
 import { leerEntradaCheckoutManual } from '../../supabase/functions/_shared/manualCheckoutRequest'
 
-const mocks = vi.hoisted(() => ({ getState: vi.fn(), getSession: vi.fn(), invoke: vi.fn() }))
+const mocks = vi.hoisted(() => ({ getState: vi.fn(), getSession: vi.fn(), invoke: vi.fn(), rpc: vi.fn() }))
 vi.mock('../stores/authStore', () => ({ useAuthStore: { getState: mocks.getState } }))
-vi.mock('./supabase', () => ({ supabase: { auth: { getSession: mocks.getSession }, functions: { invoke: mocks.invoke } } }))
+vi.mock('./supabase', () => ({ supabase: { rpc: mocks.rpc, auth: { getSession: mocks.getSession }, functions: { invoke: mocks.invoke } } }))
 const kid = '10000000-0000-0000-0000-000000000001'
 const uid = '20000000-0000-0000-0000-000000000001'
 const authId = '30000000-0000-0000-0000-000000000001'
@@ -59,4 +59,23 @@ it('también exige el contexto original para recuperar un cobro local', async ()
   mocks.getState.mockReturnValue({ usuario: null, kiosco: null })
   await expect(cerrarCobroManualLocal(entrada(), 'ticket-1')).rejects.toThrow(/sesión original/)
   expect(mocks.invoke).not.toHaveBeenCalled()
+})
+
+it('solo el dueño del comercio puede enviar cancelación y nunca pasa un actor al RPC', async () => {
+ const solicitud = { motivo: 'Cobro no realizado', resolucion: 'NO_COBRADO' as const, referencia: null }
+ await expect(enviarCancelacionCheckoutManual(entrada(), solicitud)).rejects.toThrow(/dueño/)
+ expect(mocks.rpc).not.toHaveBeenCalled()
+ const actual = estado(); actual.usuario.rol = 'DUEÑO'; mocks.getState.mockReturnValue(actual)
+ mocks.rpc.mockResolvedValue({ data: { estado: 'CANCELADO' }, error: null })
+ await enviarCancelacionCheckoutManual(entrada(), solicitud)
+ expect(mocks.rpc).toHaveBeenCalledWith('cancelar_checkout_manual', {
+  p_entrada: entrada(), p_motivo: solicitud.motivo, p_resolucion: 'NO_COBRADO', p_referencia: null,
+ })
+ expect(mocks.invoke).not.toHaveBeenCalled()
+})
+it('conserva la solicitud ante error de cancelación sin divulgar detalles internos', async () => {
+ const actual = estado(); actual.usuario.rol = 'DUEÑO'; mocks.getState.mockReturnValue(actual)
+ mocks.rpc.mockResolvedValue({ data: null, error: new Error('SECRET_SQL') })
+ await expect(enviarCancelacionCheckoutManual(entrada(), { motivo: 'Cobro no realizado', resolucion: 'NO_COBRADO', referencia: null })).rejects.toThrow(/Cancelación sin confirmar/)
+ expect(mocks.rpc).toHaveBeenCalledOnce()
 })

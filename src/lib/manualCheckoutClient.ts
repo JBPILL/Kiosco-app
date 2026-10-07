@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { useAuthStore } from '../stores/authStore'
 import { leerEntradaCheckoutManual } from '../../supabase/functions/_shared/manualCheckoutRequest'
+import type { SolicitudCancelacionManual } from './manualCheckoutOutbox'
 import { ManualCheckoutOutbox, procesarCheckoutManual } from './manualCheckoutOutbox'
 import type { EntradaCheckoutManual, ResultadoCheckoutManual } from '../types/checkoutManual'
 import type { TicketData } from '../components/pos/TicketReceiptModal'
@@ -66,9 +67,44 @@ export async function sincronizarCobrosManualesLocales(kioscoId: string, usuario
   let fallidas = 0
   for (const cobro of pendientes) {
     try {
-      await cerrarCobroManualLocal(cobro.entrada, cobro.ticketClave)
+      if (cobro.cancelacion) await cancelarCobroManualLocal(cobro.id, cobro.cancelacion)
+      else await cerrarCobroManualLocal(cobro.entrada, cobro.ticketClave)
       exitosas++
     } catch { fallidas++ }
   }
   return { exitosas, fallidas }
+}
+
+function validarDuenoCancelacion(entrada: EntradaCheckoutManual) {
+  const { usuario, kiosco } = useAuthStore.getState()
+  if (!usuario?.activo || usuario.rol !== 'DUEÑO' || usuario.kiosco_id !== entrada.kioscoId || kiosco?.id !== entrada.kioscoId) {
+    throw new Error('Se requiere el dueño del comercio para cancelar el cobro')
+  }
+  return usuario
+}
+
+export async function enviarCancelacionCheckoutManual(entrada: EntradaCheckoutManual, solicitud: SolicitudCancelacionManual): Promise<unknown> {
+  const usuario = validarDuenoCancelacion(entrada)
+  const { data, error } = await supabase.auth.getSession()
+  if (error || !data.session?.access_token || data.session.user.id !== usuario.auth_user_id) {
+    throw new Error('No se pudo verificar la sesión del dueño')
+  }
+  // Volver a comprobar el contexto después de obtener el JWT evita usar una sesión cambiada.
+  if (validarDuenoCancelacion(entrada).id !== usuario.id) throw new Error('La sesión del dueño cambió')
+  const { data: resultado, error: fallo } = await supabase.rpc('cancelar_checkout_manual', {
+    p_entrada: entrada, p_motivo: solicitud.motivo, p_resolucion: solicitud.resolucion, p_referencia: solicitud.referencia,
+  })
+  if (fallo) throw new Error('Cancelación sin confirmar. Conservá la solicitud original y revisá si la venta existe en Reportes.')
+  return resultado
+}
+
+export async function cancelarCobroManualLocal(id: string, solicitud: SolicitudCancelacionManual) {
+  const original = await outbox.cobros.get(id)
+  if (!original) throw new Error('No se encontró el cobro original')
+  validarDuenoCancelacion(original.entrada)
+  const durable = await outbox.solicitarCancelacion(id, solicitud)
+  if (durable.estado === 'CANCELADO' && durable.cancelacionConfirmada) return durable.cancelacionConfirmada
+  if (!durable.cancelacion) throw new Error('No se encontró la cancelación original')
+  const respuesta = await enviarCancelacionCheckoutManual(durable.entrada, durable.cancelacion)
+  return outbox.confirmarCancelacion(id, respuesta)
 }

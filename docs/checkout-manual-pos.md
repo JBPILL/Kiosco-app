@@ -114,3 +114,13 @@ Preparación, confirmación y cancelación comparten un bloqueo transaccional po
 Validación local: 44 pruebas PostgreSQL PGlite del circuito completo y compilación. La migración se ejecuta dos veces en la prueba para comprobar reaplicación. Pendiente piloto JWT/PostgREST y concurrencia real en Supabase, además de interfaz y persistencia local de la cancelación.
 
 Autoevaluación: exactitud 4/5 (SQL ejecutado y casos negativos; falta concurrencia remota); completitud 3/5 (servidor listo, interfaz y PIN pendientes); claridad 4/5 (contrato y límites explícitos; pendiente guía de interfaz); acción 4/5 (SQL aplicable en ensayo, sin piloto remoto); concisión 4/5 (migración independiente, documentación de fase). Promedio 3,8/5. Próxima mejora: integrar confirmación durable de cancelación en la cola sin liberar carritos antes del acuse del servidor.
+
+## Cola local de cancelación — conexión con el paso 28
+
+La cola guarda motivo, resolución y referencia antes de llamar al RPC. Una cancelación sin respuesta sigue en PENDIENTE y bloquea la confirmación normal, la impresión provisional y el cierre local de caja. No cambia de UUID ni se convierte en venta nueva. Solo un acuse CANCELADO del ID, comercio y resolución originales con fecha válida archiva la solicitud; la auditoría se conserva. Una confirmación de venta que ganó la carrera conserva CONFIRMADO y obliga a revisar Reportes.
+
+El cliente exige dueño activo del mismo comercio y JWT de ese dueño. El servidor continúa siendo la autoridad de permisos. La sincronización reintenta el cuerpo durable de cancelación en lugar de enviarlo al cierre de ventas. No hay botón de cancelación aún: falta formulario de autorización/PIN, recuperación de cobros de otros operadores y piloto remoto. No se habilita Point ni se devuelve dinero automáticamente.
+
+Validación: 82 casos entre cliente, outbox, flujo y SQL (81 en suite conjunta, más el caso nuevo de carrera validado con toda la suite de outbox); compilación correcta. No requiere SQL adicional al paso 28 ya entregado.
+
+Autoevaluación: exactitud 4/5 (pruebas y compilación; falta JWT/concurrencia remota); completitud 3/5 (persistencia y RPC listos, formulario/PIN pendientes); claridad 4/5 (estado documentado, falta interfaz); acción 4/5 (código disponible, sin uso desde botón); concisión 4/5 (reutiliza outbox, archivo creció). Promedio 3,8/5. Siguiente mejora: conectar el formulario y la recuperación del dueño, conservando bloqueo hasta el acuse.
