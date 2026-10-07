@@ -9,7 +9,7 @@ import type { DatosReparacion, EstadoReparacion, ReparacionElectronica } from '.
 import { useElectronicaContexto, useSolicitudElectronica } from './useElectronicaContexto'
 
 interface Props { anterior?: ReparacionElectronica; identidad: string; onClose: () => void }
-const campo = 'w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-3 text-sm'
+const campo = 'w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3.5 py-2.5 text-sm font-medium text-gray-900 dark:text-gray-100 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all'
 
 export function ReparacionModal({ anterior, identidad, onClose }: Props) {
   const { guardarReparacion } = useElectronicaStore()
@@ -54,7 +54,8 @@ export function ReparacionModal({ anterior, identidad, onClose }: Props) {
     <p className="mb-4 rounded-xl bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">No registres PIN, contraseñas ni claves del dispositivo. Pedí únicamente datos necesarios para el servicio.</p>
     <form className="space-y-4" onSubmit={e => { e.preventDefault(); void guardar() }}>
       <fieldset disabled={guardando || terminal} className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 p-4 shadow-sm grid gap-3 sm:grid-cols-2">
+          <h3 className="sm:col-span-2 text-sm font-bold">Cliente y equipo</h3>
           <Input label="Nombre del cliente" aria-label="Nombre del cliente" maxLength={160} value={datos.cliente_nombre} onChange={e => cambiar('cliente_nombre', e.target.value)} />
           <Input label="Contacto" aria-label="Contacto" maxLength={120} value={datos.cliente_contacto ?? ''} onChange={e => cambiar('cliente_contacto', e.target.value)} />
           <Input label="Equipo y modelo" aria-label="Equipo y modelo" maxLength={160} value={datos.equipo} onChange={e => cambiar('equipo', e.target.value)} />
@@ -69,7 +70,7 @@ export function ReparacionModal({ anterior, identidad, onClose }: Props) {
       </fieldset>
       <p className="text-xs text-gray-500">El presupuesto es informativo y no está cobrado. Registrá el cobro por el circuito habitual de ventas.</p>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-      <div className="flex justify-end gap-2"><Button type="button" variant="secondary" disabled={guardando} onClick={onClose}>Cancelar</Button><Button type="submit" loading={guardando} disabled={terminal}>Guardar reparación</Button></div>
+      <div className="flex flex-wrap justify-end gap-2 border-t border-gray-200 dark:border-gray-700 pt-4"><Button size="sm" type="button" variant="secondary" disabled={guardando} onClick={onClose}>Cancelar</Button><Button size="sm" type="submit" loading={guardando} disabled={terminal}>Guardar reparación</Button></div>
     </form>
   </Modal>
 }

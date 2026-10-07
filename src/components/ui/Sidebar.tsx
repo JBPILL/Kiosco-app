@@ -14,12 +14,12 @@ const menuItems = [
   { path: '/',          label: 'Punto de Venta', roles: ['DUEÑO', 'CAJERO'] },
   { path: '/caja',      label: 'Caja y Turno',   roles: ['DUEÑO', 'CAJERO'] },
   { path: '/clientes',  label: 'Clientes',       roles: ['DUEÑO', 'CAJERO'] },
+  { path: '/electronica', label: 'Electrónica y reparaciones', roles: ['DUEÑO'] },
   { path: '/catalogo',  label: 'Catálogo',       roles: ['DUEÑO'] },
   { path: '/promociones', label: 'Promociones',  roles: ['DUEÑO'] },
   { path: '/stock',     label: 'Stock',          roles: ['DUEÑO'] },
   { path: '/proveedores', label: 'Proveedores',  roles: ['DUEÑO'] },
   { path: '/reportes',  label: 'Reportes',       roles: ['DUEÑO', 'VISOR'] },
-  { path: '/electronica', label: 'Electrónica y reparaciones', roles: ['DUEÑO'] },
 ]
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
