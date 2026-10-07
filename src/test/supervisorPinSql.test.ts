@@ -19,9 +19,11 @@ beforeAll(async () => {
  await db.exec(readFileSync('supabase_fase_supervisor_pin_privado.sql', 'utf8'))
  await db.exec(readFileSync('supabase_fase_supervisor_pin_intentos.sql', 'utf8'))
  await db.exec(readFileSync('supabase_fase_supervisor_pin_intentos.sql', 'utf8'))
+ await db.exec(readFileSync('supabase_fase_supervisor_autorizacion_descuento.sql', 'utf8'))
+ await db.exec(readFileSync('supabase_fase_supervisor_autorizacion_descuento.sql', 'utf8'))
 }, 30000)
 beforeEach(async () => {
- await db.exec(`RESET ROLE; SET request.jwt.claim.role='service_role'; DELETE FROM supervisor_pin_intentos; DELETE FROM supervisor_pin_limites; DELETE FROM supervisor_pin_config_auditoria; DELETE FROM supervisor_pin_secretos; UPDATE usuarios SET activo=true;`)
+ await db.exec(`RESET ROLE; SET request.jwt.claim.role='service_role'; DELETE FROM supervisor_autorizaciones; DELETE FROM supervisor_pin_intentos; DELETE FROM supervisor_pin_limites; DELETE FROM supervisor_pin_config_auditoria; DELETE FROM supervisor_pin_secretos; UPDATE usuarios SET activo=true;`)
 })
 afterAll(async () => { await db.close() })
 async function configurar(actor = dueno, datos: unknown = hash) {
@@ -115,4 +117,62 @@ it('anon y cliente autenticado no reservan, finalizan ni leen intentos privados'
   await expect(db.query('SELECT * FROM supervisor_pin_intentos')).rejects.toThrow(/permission denied/)
   await db.exec('RESET ROLE')
  }
+})
+
+function operacion() {
+ return { version: 1, checkoutId: '30000000-0000-0000-0000-000000000001', kioscoId: kid, usuarioId: cajero,
+ sesionCajaId: '40000000-0000-0000-0000-000000000001', fechaHora: '2026-10-07T12:00:00Z', clienteId: null, notas: null,
+ tipoAjuste: 'DESCUENTO_PORCENTAJE', valorAjuste: 20, totalEsperado: 80, subtotalesEsperados: [100], componentesEsperados: [], lineas: [], pagos: [] }
+}
+async function reservarOperacion(datos: unknown = operacion()) {
+ return (await db.query<{ datos: Reserva }>('SELECT reservar_intento_pin_supervisor($1::uuid,$2,$3::jsonb) AS datos',[cajero,'DESCUENTO',JSON.stringify(datos)])).rows[0].datos
+}
+async function emitir(intentoId: string) {
+ return (await db.query<{ datos: { autorizacion_id: string; vence_en: string } }>('SELECT emitir_autorizacion_supervisor($1::uuid,$2::uuid) AS datos',[cajero,intentoId])).rows[0].datos
+}
+async function consumir(id: string, datos: unknown = operacion(), actor = cajero) {
+ return db.query('SELECT consumir_autorizacion_supervisor($1::uuid,$2::uuid,$3,$4::jsonb)',[actor,id,'DESCUENTO',JSON.stringify(datos)])
+}
+async function permiso() { await configurar(); const reserva = await reservarOperacion(); await finalizar(reserva.id,true); return emitir(reserva.id) }
+it('emite permiso ligado al cuerpo original y recupera el mismo sin renovar plazo', async () => {
+ await configurar(); const reserva = await reservarOperacion(); await finalizar(reserva.id,true)
+ const primero = await emitir(reserva.id)
+ expect(await emitir(reserva.id)).toEqual(primero)
+ expect((await db.query<{ solicitud: unknown }>('SELECT solicitud FROM supervisor_autorizaciones')).rows[0].solicitud).toEqual(operacion())
+})
+it('no emite desde un PIN fallido ni una reserva sin operación', async () => {
+ await configurar(); const fallida = await reservarOperacion(); await finalizar(fallida.id,false)
+ await expect(emitir(fallida.id)).rejects.toThrow(/no autorizada/)
+ const sinOperacion = await reservar(); await finalizar(sinOperacion.id,true)
+ await expect(emitir(sinOperacion.id)).rejects.toThrow(/no autorizada/)
+})
+it('consume una sola vez y rechaza cambios de importe, actor u operación', async () => {
+ const actual = await permiso()
+ await expect(consumir(actual.autorizacion_id,{ ...operacion(), totalEsperado: 70 })).rejects.toThrow(/no corresponde/)
+ await expect(consumir(actual.autorizacion_id,operacion(),dueno)).rejects.toThrow(/no corresponde/)
+ await expect(consumir(actual.autorizacion_id,{ ...operacion(), checkoutId: dueno })).rejects.toThrow(/no corresponde/)
+ await consumir(actual.autorizacion_id)
+ await expect(consumir(actual.autorizacion_id)).rejects.toThrow(/consumido/)
+})
+it('el rollback financiero revierte consumo del permiso', async () => {
+ const actual = await permiso()
+ await db.exec('BEGIN'); await consumir(actual.autorizacion_id); await db.exec('ROLLBACK')
+ expect((await db.query<{ consumido_en: unknown }>('SELECT consumido_en FROM supervisor_autorizaciones')).rows[0].consumido_en).toBeNull()
+ await consumir(actual.autorizacion_id)
+})
+it('PIN cambiado o permiso vencido no permiten consumir', async () => {
+ const actual = await permiso(); await configurar()
+ await expect(consumir(actual.autorizacion_id)).rejects.toThrow(/PIN modificado/)
+ await db.exec("UPDATE supervisor_autorizaciones SET vence_en=now()-interval '1 second'")
+ await expect(consumir(actual.autorizacion_id)).rejects.toThrow(/vencido/)
+})
+it('rechaza cuerpo de otro operador y campos ajenos al contrato', async () => {
+ await configurar()
+ await expect(reservarOperacion({ ...operacion(), usuarioId: dueno })).rejects.toThrow(/no autorizada/)
+ await expect(reservarOperacion({ ...operacion(), pin: 'NO_GUARDAR' })).rejects.toThrow(/Operación inválida/)
+})
+it('el backend no puede consumir directamente fuera de la función financiera', async () => {
+ const actual = await permiso()
+ await db.exec('SET ROLE service_role')
+ await expect(consumir(actual.autorizacion_id)).rejects.toThrow(/permission denied/)
 })

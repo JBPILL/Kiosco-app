@@ -41,3 +41,19 @@ Evidencia de esta fase: 31 pruebas en tres archivos cubren criptografía, permis
 Siguiente trabajo: espera progresiva además de la ventana fija, retención de auditoría, backend con JWT y permisos efímeros ligados a acciones, consumo transaccional y UI. No hay endpoint público del PIN activo ni despliegue remoto realizado.
 
 Autoevaluación: precisión 4/5 (protocolo y SQL comprobados; concurrencia real pendiente), completitud 3/5 (límites persistentes listos; permisos/UI y espera progresiva pendientes), claridad 4/5 (política explícita; sin pantalla aún), utilidad 4/5 (verificador conectable al backend; entorno remoto pendiente), concisión 4/5 (funciones acotadas; documentación por fases acumulada). Promedio 3,8. Mejora prioritaria: aprobación ligada a acción e integración del servidor. El usuario debería coincidir con que este avance todavía no activa el supervisor completo.
+
+## Permisos ligados a descuentos
+
+`supabase_fase_supervisor_autorizacion_descuento.sql` vincula la reserva de PIN a la entrada original del checkout antes de comparar el código. La operación permitida en esta fase es DESCUENTO, porcentual o fijo. El comercio y operador deben corresponder al perfil activo de la identidad autenticada; los campos ajenos al contrato se rechazan.
+
+Una verificación válida y reciente permite emitir un permiso privado por dos minutos, ligado al intento, identidad, comercio, revisión del PIN, acción y cuerpo JSON original. Recuperar la respuesta perdida devuelve el mismo ID y plazo; no renueva el permiso. Cambiar importe, operador, ID de checkout u otro campo impide consumirlo. Cambiar el PIN invalida permisos anteriores. Consumirlo dos veces se rechaza.
+
+El consumo no está concedido directamente a service_role ni al navegador: deberá ejecutarse desde la función financiera SECURITY DEFINER dentro de su transacción. La prueba verifica rollback del consumo, pero la integración con la venta todavía falta. No se debe consumir mediante una llamada separada y luego intentar guardar la venta.
+
+`supervisorDiscountAuthorization.ts` conecta lectura estricta de la entrada, reserva ligada al cuerpo, verificación limitada y emisión. Sólo devuelve estado, identificador del permiso y vencimiento. La identidad del actor deberá proceder del JWT verificado por el futuro endpoint. Un PIN válido con emisión fallida no se comunica como autorización concedida.
+
+Evidencia: 41 pruebas enfocadas en cuatro archivos, incluidas criptografía real, SQL, consumo único, caducidad, revisión, identidad, entrada cambiada y rollback. La migración se reaplica dos veces. Compilación correcta. No se activó ningún endpoint ni se aplicó SQL remoto.
+
+Siguiente paso: integrar consumo en cierre de venta, backend HTTP con JWT y formulario/modal de supervisor. Después extender acciones de anulación, precio y cajón, y añadir espera progresiva. Los descuentos extraordinarios del cajero siguen bloqueados en la aplicación actual.
+
+Autoevaluación: precisión 4/5 (contratos y rollback comprobados; concurrencia remota pendiente), completitud 3/5 (permiso ligado a descuento listo; integración financiera/UI pendiente), claridad 4/5 (estado explícito; sin pantalla aún), utilidad 4/5 (módulo backend y SQL ejecutables; despliegue pendiente), concisión 4/5 (acciones acotadas; documentación acumulada extensa). Promedio 3,8. Mejora prioritaria: consumir permiso en la misma transacción que confirma la venta. El usuario debería coincidir con que la función de supervisor aún no está operativa para el cajero.
