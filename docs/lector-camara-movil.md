@@ -47,6 +47,14 @@ getUserMedia, límite de frames, recuperación ante error y limpieza del canvas.
 La compatibilidad física sigue pendiente; no se afirma que el reporte esté
 resuelto en el dispositivo del usuario hasta probar la versión publicada.
 
+Regresión de reapertura: dos pruebas reprodujeron que ventas y catálogo perdían
+la solicitud de inicio si el modal se reabría mientras el inicio anterior seguía
+pendiente. Ahora conservan una única solicitud pendiente y la ejecutan después
+de liberar la instancia anterior. Cerrar o desmontar cancela esa solicitud.
+Cuatro pruebas de ciclo verifican reapertura y desmontaje en ambos lectores;
+17 pruebas enfocadas y compilación aprobadas. Estas pruebas simulan el escáner:
+la reproducción del congelamiento original en un teléfono sigue pendiente.
+
 Autoevaluación: exactitud 4 (configuración contrastada con biblioteca instalada;
 falta hardware), completitud 3 (mejoras de ambos lectores; falta matriz física),
 claridad 4 (límites explícitos), utilidad 4 (entrada manual y errores accionables),

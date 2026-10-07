@@ -30,6 +30,7 @@ export function BarcodeCaptureModal({
   const scannerRef = useRef<Html5Qrcode | null>(null)
   const limpiarVistaCamaraRef = useRef<(() => void) | null>(null)
   const isStartingRef = useRef(false)
+  const reinicioPendienteRef = useRef<{ cameraId?: string } | null>(null)
   const isStoppingRef = useRef(false)
   const abiertoRef = useRef(isOpen)
   abiertoRef.current = isOpen
@@ -63,6 +64,7 @@ export function BarcodeCaptureModal({
   const detenerEscaner = useCallback(async () => {
     if (isStoppingRef.current) return
     isStoppingRef.current = true
+    reinicioPendienteRef.current = null
     limpiarVistaCamaraRef.current?.()
     limpiarVistaCamaraRef.current = null
     const scanner = scannerRef.current
@@ -84,8 +86,12 @@ export function BarcodeCaptureModal({
   }, [])
 
   // Iniciar el escáner
-  const iniciarEscaner = useCallback(async (cameraId?: string) => {
-    if (isStartingRef.current) return
+  const iniciarEscaner = useCallback(async (cameraId?: string): Promise<void> => {
+    if (!abiertoRef.current) return
+    if (isStartingRef.current) {
+      reinicioPendienteRef.current = { cameraId }
+      return
+    }
     isStartingRef.current = true
     setIniciando(true)
     setErrorCamara(null)
@@ -104,6 +110,7 @@ export function BarcodeCaptureModal({
         scannerRef.current = null
       }
 
+      if (!abiertoRef.current) return
       const el = document.getElementById(elementId)
       if (!el) {
         setIniciando(false)
@@ -205,6 +212,9 @@ export function BarcodeCaptureModal({
       setIniciando(false)
     } finally {
       isStartingRef.current = false
+      const pendiente = reinicioPendienteRef.current
+      reinicioPendienteRef.current = null
+      if (pendiente && abiertoRef.current) void iniciarEscaner(pendiente.cameraId)
     }
   }, [procesarCodigo, camaraActualId])
 
@@ -253,7 +263,9 @@ export function BarcodeCaptureModal({
 
   // Limpiar al desmontar
   useEffect(() => {
+    abiertoRef.current = isOpen
     return () => {
+      abiertoRef.current = false
       detenerEscaner()
     }
   }, [detenerEscaner])
