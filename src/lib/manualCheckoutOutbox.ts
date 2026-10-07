@@ -79,6 +79,15 @@ export class ManualCheckoutOutbox extends Dexie {
       .filter(c => c.estado === 'PENDIENTE')
   }
 
+  async visibles(kioscoId: string, usuarioId: string, revisarComercio = false): Promise<CobroManualLocal[]> {
+    const propios = await this.cobros.where('[kioscoId+usuarioId+visibilidad]')
+      .anyOf([[kioscoId, usuarioId, 'PENDIENTE'], [kioscoId, usuarioId, 'RECUPERAR']]).toArray()
+    if (!revisarComercio) return propios
+    const ajenos = (await this.cobros.where('estado').equals('PENDIENTE').toArray())
+      .filter(c => c.kioscoId === kioscoId && c.usuarioId !== usuarioId)
+    return [...propios, ...ajenos]
+  }
+
   async recuperarTicket(kioscoId: string, usuarioId: string, ticketClave: string): Promise<CobroManualLocal | undefined> {
     return this.cobros.where('[kioscoId+usuarioId+ticketClave]').equals([kioscoId, usuarioId, ticketClave]).first()
   }

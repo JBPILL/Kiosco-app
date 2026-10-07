@@ -152,3 +152,12 @@ it('conserva la confirmación que ganó la carrera y rechaza un acuse posterior 
   await expect(outbox.confirmarCancelacion(id, { estado: 'CANCELADO', checkout_id: id, kiosco_id: kid, resolucion: 'NO_COBRADO', cancelado_en: '2026-10-07T15:00:00Z' })).rejects.toThrow(/Reportes/)
   expect((await outbox.recuperarTicket(kid, uid, 'ticket-carrera'))?.estado).toBe('CONFIRMADO')
 })
+
+it('la revisión del comercio incluye pendientes ajenos pero nunca datos de otro comercio', async () => {
+ await outbox.guardar(entrada(), 'propio')
+ const otro = { ...entrada(), checkoutId: '40000000-0000-0000-0000-000000000002', usuarioId: '20000000-0000-0000-0000-000000000002' }
+ await outbox.guardar(otro, 'otro-operador')
+ await outbox.guardar({ ...otro, checkoutId: '40000000-0000-0000-0000-000000000003', kioscoId: '10000000-0000-0000-0000-000000000002' }, 'otro-comercio')
+ expect(await outbox.visibles(kid, uid)).toHaveLength(1)
+ expect(await outbox.visibles(kid, uid, true)).toHaveLength(2)
+})

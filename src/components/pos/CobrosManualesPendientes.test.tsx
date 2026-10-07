@@ -15,7 +15,7 @@ function observar(filas: unknown[]) {
     return { unsubscribe: vi.fn() }
   } })
 }
-const pendiente = { id: 'venta-1', ticketClave: 'tab-1', estado: 'PENDIENTE', recibo,
+const pendiente = { usuarioId: 'u1', kioscoId: 'k1', id: 'venta-1', ticketClave: 'tab-1', estado: 'PENDIENTE', recibo,
   entrada: { fechaHora: recibo.fecha, totalEsperado: 100 } }
 beforeEach(() => {
   vi.clearAllMocks()
@@ -63,4 +63,13 @@ it('no presenta el comprobante si cambia la sesión durante la recuperación', a
 it('reserva la cancelación del pendiente al dueño y requiere conexión', async () => {
   render(<CobrosManualesPendientes onVerTicket={vi.fn()} />)
   expect(screen.queryByRole('button', { name: 'Cancelar pendiente' })).toBeNull()
+})
+
+it('el dueño puede revisar un pendiente ajeno sin recuperar su comprobante', async () => {
+ mocks.auth.mockReturnValue({ usuario: { id: 'u1', kiosco_id: 'k1', rol: 'DUEÑO', activo: true }, kiosco: { id: 'k1' } })
+ observar([{ ...pendiente, usuarioId: 'u2' }])
+ render(<CobrosManualesPendientes onVerTicket={vi.fn()} />)
+ expect(await screen.findByText(/Otro operador: revisión del dueño/)).toBeTruthy()
+ expect((screen.getByRole('button', { name: 'Ver comprobante' }) as HTMLButtonElement).disabled).toBe(true)
+ expect(screen.getByRole('button', { name: 'Cancelar pendiente' })).toBeTruthy()
 })

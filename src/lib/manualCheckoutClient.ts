@@ -52,9 +52,18 @@ export function reclamarComprobanteManual(id: string, permitirPendiente = false)
   return outbox.reclamarPresentacion(id, permitirPendiente)
 }
 
+function contextoCola(kioscoId: string, usuarioId: string) {
+  const { usuario, kiosco } = useAuthStore.getState()
+  if (!usuario?.activo || usuario.id !== usuarioId || usuario.kiosco_id !== kioscoId || kiosco?.id !== kioscoId) return null
+  return usuario
+}
+
 export function observarCobrosManualesLocales(kioscoId: string, usuarioId: string) {
-  return liveQuery(() => outbox.cobros.where('[kioscoId+usuarioId+visibilidad]')
-    .anyOf([[kioscoId, usuarioId, 'PENDIENTE'], [kioscoId, usuarioId, 'RECUPERAR']]).toArray())
+  return liveQuery(async () => {
+    const usuario = contextoCola(kioscoId, usuarioId)
+    if (!usuario) return []
+    return outbox.visibles(kioscoId, usuarioId, usuario.rol === 'DUEÑO')
+  })
 }
 
 export async function hayCobrosManualesPendientes(kioscoId: string, sesionId: string): Promise<boolean> {
@@ -63,7 +72,10 @@ export async function hayCobrosManualesPendientes(kioscoId: string, sesionId: st
 }
 
 export async function sincronizarCobrosManualesLocales(kioscoId: string, usuarioId: string): Promise<{ exitosas: number; fallidas: number }> {
-  const pendientes = await outbox.pendientes(kioscoId, usuarioId)
+  const usuario = contextoCola(kioscoId, usuarioId)
+  if (!usuario) throw new Error('La sesión cambió; recuperá el operador original')
+  const pendientes = (await outbox.visibles(kioscoId, usuarioId, usuario.rol === 'DUEÑO'))
+    .filter(c => c.estado === 'PENDIENTE' && (c.usuarioId === usuarioId || Boolean(c.cancelacion)))
   let exitosas = 0
   let fallidas = 0
   for (const cobro of pendientes) {
