@@ -1,3 +1,4 @@
+import { CancelarCobroManualModal } from './CancelarCobroManualModal'
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Button } from '../ui/Button'
@@ -19,6 +20,8 @@ export function CobrosManualesPendientes({ onVerTicket }: { onVerTicket: (ticket
 function Contenido({ kioscoId, usuarioId, onVerTicket }: { kioscoId: string; usuarioId: string; onVerTicket: (ticket: TicketData) => void }) {
   const online = useOnlineStatus()
   const [cobros, setCobros] = useState<CobroManualLocal[]>([])
+  const [cancelar, setCancelar] = useState<CobroManualLocal | null>(null)
+  const esDueno = useAuthStore().usuario?.rol === 'DUEÑO'
   const [error, setError] = useState('')
   const [ocupado, setOcupado] = useState(false)
   const ocupadoRef = useRef(false)
@@ -62,6 +65,7 @@ function Contenido({ kioscoId, usuarioId, onVerTicket }: { kioscoId: string; usu
   return <section className="shrink-0 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 p-4 shadow-sm">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-sm font-bold text-amber-800 dark:text-amber-300">Cobros guardados en este equipo</h2><p className="mt-1 text-xs text-gray-600 dark:text-gray-400">Conservan el ticket original. No vuelvas a cobrar al cliente.</p></div><Button size="sm" variant="secondary" loading={ocupado} disabled={!online} onClick={() => void sincronizar()}>Reintentar pendientes</Button></div>
     {error && <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
-    <div className="mt-3 max-h-36 overflow-y-auto space-y-2">{cobros.map(c => <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2"><div><p className="text-sm font-semibold">Ticket {c.id.slice(0, 8).toUpperCase()} · {formatPrecio(c.entrada.totalEsperado)}</p><p className="text-xs text-gray-500 dark:text-gray-400">{c.estado === 'CONFIRMADO' ? 'Confirmado · comprobante por recuperar' : 'Pendiente de confirmación'} · {new Date(c.entrada.fechaHora).toLocaleString('es-AR')}</p></div><Button size="sm" variant="secondary" disabled={!c.recibo || ocupado} onClick={() => void ver(c)}>Ver comprobante</Button></div>)}</div>
+    <div className="mt-3 max-h-36 overflow-y-auto space-y-2">{cobros.map(c => <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2"><div><p className="text-sm font-semibold">Ticket {c.id.slice(0, 8).toUpperCase()} · {formatPrecio(c.entrada.totalEsperado)}</p><p className="text-xs text-gray-500 dark:text-gray-400">{c.estado === 'CONFIRMADO' ? 'Confirmado · comprobante por recuperar' : c.cancelacion ? 'Cancelación pendiente de confirmación' : 'Pendiente de confirmación'} · {new Date(c.entrada.fechaHora).toLocaleString('es-AR')}</p></div><div className="flex flex-wrap gap-2">{esDueno && c.estado === 'PENDIENTE' && <Button size="sm" variant="danger" disabled={ocupado || !online} onClick={() => setCancelar(c)}>{c.cancelacion ? 'Revisar cancelación' : 'Cancelar pendiente'}</Button>}<Button size="sm" variant="secondary" disabled={!c.recibo || ocupado || Boolean(c.cancelacion)} onClick={() => void ver(c)}>Ver comprobante</Button></div></div>)}</div>
+    {cancelar && <CancelarCobroManualModal key={cancelar.id} cobro={cancelar} onClose={() => setCancelar(null)} onCancelado={() => { setCancelar(null); toast.success('Cancelación confirmada') }} />}
   </section>
 }

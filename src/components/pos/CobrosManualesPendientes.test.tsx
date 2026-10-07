@@ -60,3 +60,7 @@ it('no presenta el comprobante si cambia la sesión durante la recuperación', a
   expect(ver).not.toHaveBeenCalled()
   expect(mocks.completar).not.toHaveBeenCalled()
 })
+it('reserva la cancelación del pendiente al dueño y requiere conexión', async () => {
+  render(<CobrosManualesPendientes onVerTicket={vi.fn()} />)
+  expect(screen.queryByRole('button', { name: 'Cancelar pendiente' })).toBeNull()
+})

@@ -124,3 +124,11 @@ El cliente exige dueño activo del mismo comercio y JWT de ese dueño. El servid
 Validación: 82 casos entre cliente, outbox, flujo y SQL (81 en suite conjunta, más el caso nuevo de carrera validado con toda la suite de outbox); compilación correcta. No requiere SQL adicional al paso 28 ya entregado.
 
 Autoevaluación: exactitud 4/5 (pruebas y compilación; falta JWT/concurrencia remota); completitud 3/5 (persistencia y RPC listos, formulario/PIN pendientes); claridad 4/5 (estado documentado, falta interfaz); acción 4/5 (código disponible, sin uso desde botón); concisión 4/5 (reutiliza outbox, archivo creció). Promedio 3,8/5. Siguiente mejora: conectar el formulario y la recuperación del dueño, conservando bloqueo hasta el acuse.
+
+## Formulario de cancelación del dueño
+
+El panel de pendientes ofrece Cancelar pendiente únicamente al dueño. Requiere conexión, motivo y declaración expresa de NO_COBRADO o REINTEGRADO; el reintegro exige referencia y debe haberse realizado manualmente. Un reintento conserva los campos del cuerpo ya guardado. Un error deja el modal abierto y no completa el carrito. El acuse válido libera solamente el ticket bloqueado por ese mismo ID y bajo el operador/comercio original.
+
+No implementa PIN de supervisor: el dueño utiliza su propia sesión autenticada y el servidor comprueba su rol. La cola todavía muestra únicamente cobros del operador original; la revisión de otros operadores y de otros equipos queda pendiente junto a las autorizaciones críticas de cajero por PIN. No habilita Point ni efectúa reintegros automáticos. Requiere el paso 28 en ensayo; no agrega SQL nuevo.
+
+Validación: pruebas de formulario (éxito/declaración y error), panel y cliente, más compilación. Sin piloto remoto JWT/PostgREST ni inspección visual. Autoevaluación: exactitud 4/5 (pruebas locales; falta piloto), completitud 3/5 (formulario dueño listo, PIN y otros operadores pendientes), claridad 4/5 (declaración explícita, falta lectura real), acción 4/5 (botón disponible con flag previo, requiere SQL28), concisión 4/5 (modal separado, circuito aún distribuido). Promedio 3,8/5. Próxima mejora: autorización de supervisor en servidor y recuperación del dueño entre operadores.

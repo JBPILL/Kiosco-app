@@ -1,3 +1,4 @@
+import { useCartStore } from '../stores/cartStore'
 import { supabase } from './supabase'
 import { useAuthStore } from '../stores/authStore'
 import { leerEntradaCheckoutManual } from '../../supabase/functions/_shared/manualCheckoutRequest'
@@ -103,8 +104,20 @@ export async function cancelarCobroManualLocal(id: string, solicitud: SolicitudC
   if (!original) throw new Error('No se encontró el cobro original')
   validarDuenoCancelacion(original.entrada)
   const durable = await outbox.solicitarCancelacion(id, solicitud)
-  if (durable.estado === 'CANCELADO' && durable.cancelacionConfirmada) return durable.cancelacionConfirmada
+  if (durable.estado === 'CANCELADO' && durable.cancelacionConfirmada) {
+    completarTicketCancelado(durable)
+    return durable.cancelacionConfirmada
+  }
   if (!durable.cancelacion) throw new Error('No se encontró la cancelación original')
   const respuesta = await enviarCancelacionCheckoutManual(durable.entrada, durable.cancelacion)
-  return outbox.confirmarCancelacion(id, respuesta)
+  const confirmacion = await outbox.confirmarCancelacion(id, respuesta)
+  completarTicketCancelado(durable)
+  return confirmacion
+}
+
+function completarTicketCancelado(cobro: import('./manualCheckoutOutbox').CobroManualLocal) {
+  const actual = useAuthStore.getState()
+  const carrito = useCartStore.getState()
+  if (actual.usuario?.id === cobro.usuarioId && actual.kiosco?.id === cobro.kioscoId
+    && carrito.cobrosBloqueados[cobro.ticketClave] === cobro.id) carrito.completarCobroTab(cobro.ticketClave)
 }
