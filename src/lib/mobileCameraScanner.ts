@@ -53,7 +53,6 @@ export function iniciarVistaCamaraIOS(contenedor: HTMLElement): () => void {
   }
 
   const opacidadOriginal = video.style.opacity
-  video.style.opacity = '0'
   let frameId = 0
   let activo = true
 
@@ -61,7 +60,7 @@ export function iniciarVistaCamaraIOS(contenedor: HTMLElement): () => void {
     if (!activo) return
     const ancho = contenedor.clientWidth
     const alto = contenedor.clientHeight
-    if (ancho > 0 && alto > 0 && video.videoWidth > 0 && video.videoHeight > 0) {
+    if (video.readyState >= 2 && ancho > 0 && alto > 0 && video.videoWidth > 0 && video.videoHeight > 0) {
       const escala = Math.max(ancho / video.videoWidth, alto / video.videoHeight)
       const anchoFuente = ancho / escala
       const altoFuente = alto / escala
@@ -74,7 +73,14 @@ export function iniciarVistaCamaraIOS(contenedor: HTMLElement): () => void {
         lienzo.width = anchoLienzo
         lienzo.height = altoLienzo
       }
-      contexto.drawImage(video, xFuente, yFuente, anchoFuente, altoFuente, 0, 0, lienzo.width, lienzo.height)
+      try {
+        contexto.drawImage(video, xFuente, yFuente, anchoFuente, altoFuente, 0, 0, lienzo.width, lienzo.height)
+        // Ocultar el video sólo cuando ya existe un frame visible de reemplazo.
+        video.style.opacity = '0'
+      } catch {
+        // Una pista puede quedarse sin frames al rotar o volver del segundo plano.
+        video.style.opacity = opacidadOriginal
+      }
     }
     frameId = window.requestAnimationFrame(dibujar)
   }

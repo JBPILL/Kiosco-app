@@ -29,6 +29,12 @@ Pendiente: iPhone Safari/Chrome/Brave, Android Chrome/Samsung Internet, rotació
 denegación de permisos, cierre durante inicio y teléfonos con múltiples lentes.
 No se ha probado hardware físico en esta fase.
 
+Revisión del visor iOS: el reemplazo por canvas espera a que el video tenga
+frames disponibles antes de ocultarlo. Si dibujar un frame falla durante una
+rotación o al volver del segundo plano, restaura el video y continúa intentando;
+un error aislado ya no interrumpe permanentemente el visor. Ambos lectores usan
+el mismo helper y liberan el canvas al detener la cámara.
+
 Autoevaluación: exactitud 4 (configuración contrastada con biblioteca instalada;
 falta hardware), completitud 3 (mejoras de ambos lectores; falta matriz física),
 claridad 4 (límites explícitos), utilidad 4 (entrada manual y errores accionables),
