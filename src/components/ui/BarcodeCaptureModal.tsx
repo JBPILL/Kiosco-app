@@ -1,4 +1,4 @@
-import { cuadroEscaneoMovil, errorCamaraMovil, iniciarVistaCamaraIOS, puedeReintentarCamara } from '../../lib/mobileCameraScanner'
+import { cuadroEscaneoMovil, errorCamaraMovil, iniciarVistaCamaraIOS, listarCamarasAutorizadas, puedeReintentarCamara } from '../../lib/mobileCameraScanner'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import { Modal } from './Modal'
@@ -89,6 +89,8 @@ export function BarcodeCaptureModal({
     isStartingRef.current = true
     setIniciando(true)
     setErrorCamara(null)
+    setAntorchaEncendida(false)
+    setSoportaAntorcha(false)
 
     try {
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error('CAMERA_UNAVAILABLE')
@@ -174,9 +176,10 @@ export function BarcodeCaptureModal({
 
       // Enumerar cámaras una vez concedidos los permisos
       try {
-        const devices = await Html5Qrcode.getCameras()
+        const devices = await listarCamarasAutorizadas()
+        if (scannerRef.current !== scanner || !abiertoRef.current) return
         if (devices && devices.length > 0) {
-          setCamaras(devices.map((d) => ({ id: d.id, label: d.label || `Cámara ${d.id}` })))
+          setCamaras(devices)
           if (!activeDeviceId && !cameraId && !camaraActualId && devices.length === 1) {
             setCamaraActualId(devices[0].id)
           }

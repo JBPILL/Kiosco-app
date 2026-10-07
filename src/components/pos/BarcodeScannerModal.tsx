@@ -1,4 +1,4 @@
-import { cuadroEscaneoMovil, errorCamaraMovil, iniciarVistaCamaraIOS, puedeReintentarCamara } from '../../lib/mobileCameraScanner'
+import { cuadroEscaneoMovil, errorCamaraMovil, iniciarVistaCamaraIOS, listarCamarasAutorizadas, puedeReintentarCamara } from '../../lib/mobileCameraScanner'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import { Modal } from '../ui/Modal'
@@ -160,6 +160,8 @@ export function BarcodeScannerModal({
     isStartingRef.current = true
     setIniciando(true)
     setErrorCamara(null)
+    setAntorchaEncendida(false)
+    setSoportaAntorcha(false)
 
     try {
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error('CAMERA_UNAVAILABLE')
@@ -246,9 +248,10 @@ export function BarcodeScannerModal({
 
       // Enumerar cámaras una vez concedidos los permisos
       try {
-        const devices = await Html5Qrcode.getCameras()
+        const devices = await listarCamarasAutorizadas()
+        if (scannerRef.current !== scanner || !abiertoRef.current) return
         if (devices && devices.length > 0) {
-          setCamaras(devices.map((d) => ({ id: d.id, label: d.label || `Cámara ${d.id}` })))
+          setCamaras(devices)
           if (!activeDeviceId && !cameraId && !camaraActualId && devices.length === 1) {
             setCamaraActualId(devices[0].id)
           }
@@ -335,13 +338,22 @@ export function BarcodeScannerModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Escanear Código de Barras"
+      title="Lector de cámara"
       size="md"
       zIndex="z-[60]"
     >
-      <div className="space-y-4">
+      <div className="space-y-3">
         {/* Contenedor del visor de la cámara */}
-        <div className="relative rounded-2xl overflow-hidden bg-black aspect-[4/3] flex items-center justify-center border border-gray-700 shadow-inner">
+        <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-slate-50 dark:bg-gray-900/40 p-2 shadow-sm">
+        <div className="mb-2 flex items-center justify-between gap-2 px-1">
+          <span role="status" className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">{errorCamara ? 'Cámara no disponible' : iniciando ? 'Conectando…' : 'Cámara activa'}</span>
+          <div className="flex gap-2">
+            {soportaAntorcha && <button type="button" onClick={toggleAntorcha} disabled={iniciando} aria-pressed={antorchaEncendida} className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-xs font-semibold dark:text-gray-200">{antorchaEncendida ? 'Apagar luz' : 'Luz'}</button>}
+            {camaras.length > 1 && <button type="button" onClick={cambiarCamara} disabled={iniciando} className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-xs font-semibold dark:text-gray-200">Cambiar</button>}
+            <button type="button" onClick={() => iniciarEscaner(camaraActualId ?? undefined)} disabled={iniciando} aria-label="Reiniciar cámara" className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-xs font-semibold dark:text-gray-200">↻</button>
+          </div>
+        </div>
+        <div className="relative rounded-xl overflow-hidden bg-black aspect-[4/3] max-h-[38dvh] flex items-center justify-center border border-gray-700 shadow-inner">
           {iniciando && !errorCamara && (
             <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-gray-900/80 text-white gap-2">
               <div className="w-8 h-8 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin" />
@@ -361,36 +373,7 @@ export function BarcodeScannerModal({
           {/* Elemento donde html5-qrcode renderiza el video */}
           <div id={elementId} className="w-full h-full object-cover" />
 
-          {/* Controles flotantes en la cámara */}
-          {!iniciando && !errorCamara && (
-            <div className="absolute top-3 right-3 flex items-center gap-1.5 z-20">
-              {soportaAntorcha && (
-                <button
-                  type="button"
-                  onClick={toggleAntorcha}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors backdrop-blur-md ${
-                    antorchaEncendida
-                      ? 'bg-amber-400 text-gray-950 shadow-md'
-                      : 'bg-black/50 text-white hover:bg-black/70'
-                  }`}
-                  title="Linterna"
-                >
-                  {antorchaEncendida ? 'Luz: ON' : 'Luz'}
-                </button>
-              )}
-
-              {camaras.length > 1 && (
-                <button
-                  type="button"
-                  onClick={cambiarCamara}
-                  className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-black/50 hover:bg-black/70 text-white backdrop-blur-md transition-colors"
-                  title="Cambiar cámara"
-                >
-                  Girar
-                </button>
-              )}
-            </div>
-          )}
+        </div>
         </div>
 
         {/* Banner de último resultado escaneado */}
@@ -430,11 +413,12 @@ export function BarcodeScannerModal({
         {/* Opciones y entrada manual */}
         <div className="space-y-3 pt-1 border-t border-gray-200 dark:border-gray-700">
           {/* Toggle de Modo Continuo */}
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
-              Modo continuo (seguir escaneando productos)
+          <div className="flex items-center justify-between rounded-xl border border-gray-200 dark:border-gray-700 bg-slate-50 dark:bg-gray-900/40 px-3 py-2.5">
+            <label htmlFor="camara-modo-continuo" className="text-xs font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
+              Escaneo continuo
             </label>
             <input
+              id="camara-modo-continuo"
               type="checkbox"
               checked={modoContinuo}
               onChange={(e) => setModoContinuo(e.target.checked)}
@@ -444,9 +428,10 @@ export function BarcodeScannerModal({
 
           {/* Fallback de entrada manual */}
           <form onSubmit={handleBuscarManual} className="flex gap-2">
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <Input
                 placeholder="Ingresar código numérico a mano..."
+                aria-label="Código manual"
                 value={codigoManual}
                 onChange={(e) => setCodigoManual(e.target.value)}
                 disabled={buscandoManual}

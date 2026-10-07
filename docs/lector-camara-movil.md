@@ -29,11 +29,23 @@ Pendiente: iPhone Safari/Chrome/Brave, Android Chrome/Samsung Internet, rotació
 denegación de permisos, cierre durante inicio y teléfonos con múltiples lentes.
 No se ha probado hardware físico en esta fase.
 
-Revisión del visor iOS: el reemplazo por canvas espera a que el video tenga
-frames disponibles antes de ocultarlo. Si dibujar un frame falla durante una
-rotación o al volver del segundo plano, restaura el video y continúa intentando;
-un error aislado ya no interrumpe permanentemente el visor. Ambos lectores usan
-el mismo helper y liberan el canvas al detener la cámara.
+Revisión tras reporte de congelamiento: `Html5Qrcode.getCameras()` abre un segundo
+stream mediante getUserMedia para enumerar dispositivos y lo detiene después
+(código instalado: camera/retriever.js). Ambos lectores ahora usan directamente
+enumerateDevices después de obtener permiso, sin abrir otra cámara. Se descartan
+resultados de enumeración si el lector se cerró o cambió mientras esperaba.
+Esta interferencia es una causa probable del reporte; falta reproducir en iPhone.
+
+El canvas iOS mantiene el video nativo visible debajo, limita el dibujo a 10 fps
+y 640 píxeles de ancho, omite trabajo en segundo plano y continúa ante un frame
+interrumpido. Ambos lectores liberan el ciclo al detener la cámara. El modal de
+ventas tiene visor compacto, controles fuera de la imagen, reinicio y selector
+de escaneo continuo accesible. No incluye bloques explicativos largos.
+
+Validación de esta revisión: 13 pruebas enfocadas, incluidas enumeración sin
+getUserMedia, límite de frames, recuperación ante error y limpieza del canvas.
+La compatibilidad física sigue pendiente; no se afirma que el reporte esté
+resuelto en el dispositivo del usuario hasta probar la versión publicada.
 
 Autoevaluación: exactitud 4 (configuración contrastada con biblioteca instalada;
 falta hardware), completitud 3 (mejoras de ambos lectores; falta matriz física),

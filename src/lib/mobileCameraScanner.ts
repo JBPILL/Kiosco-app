@@ -21,6 +21,14 @@ export function puedeReintentarCamara(error: unknown): boolean {
   return !/NotAllowedError|PermissionDenied|Permission|denied|NotReadableError|TrackStartError/i.test(`${nombre} ${texto}`)
 }
 
+/** Enumerar después del permiso, sin abrir un segundo stream que interrumpa iOS. */
+export async function listarCamarasAutorizadas(): Promise<Array<{ id: string; label: string }>> {
+  if (!navigator.mediaDevices?.enumerateDevices) return []
+  const dispositivos = await navigator.mediaDevices.enumerateDevices()
+  return dispositivos.filter(dispositivo => dispositivo.kind === 'videoinput' && dispositivo.deviceId)
+    .map((dispositivo, indice) => ({ id: dispositivo.deviceId, label: dispositivo.label || `Cámara ${indice + 1}` }))
+}
+
 /**
  * iOS puede iniciar getUserMedia y decodificar correctamente, pero dejar negro
  * el elemento <video> de html5-qrcode. Pintar sus frames en un canvas visible
@@ -52,12 +60,15 @@ export function iniciarVistaCamaraIOS(contenedor: HTMLElement): () => void {
     return () => {}
   }
 
-  const opacidadOriginal = video.style.opacity
   let frameId = 0
   let activo = true
+  let ultimoFrame = -Infinity
 
-  const dibujar = () => {
+  const dibujar = (tiempo: number) => {
     if (!activo) return
+    frameId = window.requestAnimationFrame(dibujar)
+    if (document.hidden || tiempo - ultimoFrame < 100) return
+    ultimoFrame = tiempo
     const ancho = contenedor.clientWidth
     const alto = contenedor.clientHeight
     if (video.readyState >= 2 && ancho > 0 && alto > 0 && video.videoWidth > 0 && video.videoHeight > 0) {
@@ -66,7 +77,7 @@ export function iniciarVistaCamaraIOS(contenedor: HTMLElement): () => void {
       const altoFuente = alto / escala
       const xFuente = (video.videoWidth - anchoFuente) / 2
       const yFuente = (video.videoHeight - altoFuente) / 2
-      const ratio = Math.min(window.devicePixelRatio || 1, 2)
+      const ratio = Math.min(1, 640 / ancho)
       const anchoLienzo = Math.round(ancho * ratio)
       const altoLienzo = Math.round(alto * ratio)
       if (lienzo.width !== anchoLienzo || lienzo.height !== altoLienzo) {
@@ -75,21 +86,16 @@ export function iniciarVistaCamaraIOS(contenedor: HTMLElement): () => void {
       }
       try {
         contexto.drawImage(video, xFuente, yFuente, anchoFuente, altoFuente, 0, 0, lienzo.width, lienzo.height)
-        // Ocultar el video sólo cuando ya existe un frame visible de reemplazo.
-        video.style.opacity = '0'
       } catch {
-        // Una pista puede quedarse sin frames al rotar o volver del segundo plano.
-        video.style.opacity = opacidadOriginal
+        // Mantener el video nativo visible debajo; un fallo aislado no corta el ciclo.
       }
     }
-    frameId = window.requestAnimationFrame(dibujar)
   }
 
   frameId = window.requestAnimationFrame(dibujar)
   return () => {
     activo = false
     window.cancelAnimationFrame(frameId)
-    video.style.opacity = opacidadOriginal
     lienzo.remove()
   }
 }
