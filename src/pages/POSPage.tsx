@@ -1,3 +1,4 @@
+import { ModalGuide } from '../components/ui/ModalGuide'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -950,9 +951,8 @@ export function POSPage() {
         size="lg"
       >
         <div className="space-y-3">
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Hacé clic en <strong>+ Cargar al Ticket</strong> para agregar los productos de un combo en sus cantidades exactas, o revisá las promociones que se descuentan automáticamente al cobrar.
-          </p>
+          <ModalGuide titulo="Combos y descuentos, cada uno con su acción">Usá <strong>+ Cargar al Ticket</strong> para agregar los productos de un combo en sus cantidades exactas. Las otras promociones se aplican automáticamente cuando el ticket cumple sus condiciones.</ModalGuide>
+          <div className="flex flex-wrap gap-2 text-xs"><span className="rounded-xl bg-indigo-50 dark:bg-indigo-950/40 px-3 py-2 font-semibold text-indigo-700 dark:text-indigo-300">{promociones.filter((p) => p.activo).length} reglas habilitadas</span><span className="rounded-xl bg-teal-50 dark:bg-teal-950/40 px-3 py-2 font-semibold text-teal-700 dark:text-teal-300">{promociones.filter((p) => p.activo && p.tipo === 'COMBO').length} combos</span></div>
 
           <div className="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1">
             {promociones.filter((p) => p.activo).length === 0 ? (
@@ -982,10 +982,10 @@ export function POSPage() {
                   return (
                     <div
                       key={promo.id}
-                      className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs"
+                      className="p-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md dark:shadow-black/20"
                     >
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
                           <span
                             className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
                               esCombo
@@ -995,7 +995,7 @@ export function POSPage() {
                           >
                             {esCombo ? 'Combo Pack' : promo.tipo}
                           </span>
-                          <h4 className="text-xs font-bold text-gray-900 dark:text-gray-100 truncate">
+                          <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100 leading-snug [overflow-wrap:anywhere]">
                             {promo.nombre}
                           </h4>
                         </div>
@@ -1040,7 +1040,7 @@ export function POSPage() {
                           </>
                         ) : (
                           <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                            Descuento automático
+                            Aplicación automática
                           </span>
                         )}
                       </div>

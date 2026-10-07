@@ -1,3 +1,4 @@
+import { ModalGuide } from '../ui/ModalGuide'
 import { RefreshButton } from '../ui/RefreshButton'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Modal } from '../ui/Modal'
@@ -207,8 +208,9 @@ export function HistorialTicketsModal({
     <>
       <Modal isOpen={isOpen} onClose={onClose} title="Historial de Comprobantes y Tickets" size="xl">
         <div className="space-y-4">
+          <ModalGuide titulo="Encontrá y revisá tus comprobantes">Buscá por ticket, cliente o artículo. Ver / Reimprimir recupera el comprobante original; Hacer Devolución abre el circuito de devolución. Usá Facturar ARCA cuando corresponda emitir la factura.</ModalGuide>
           {/* Fila 1: Buscador amplio + Botón Actualizar destacado */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 p-3">
             <div className="flex-1">
               <SearchInput
                 placeholder="Buscar por N° ticket (ej: BACFC93B), cliente o artículo..."
@@ -230,6 +232,7 @@ export function HistorialTicketsModal({
                 <button
                   key={m.valor}
                   type="button"
+                  aria-pressed={filtroMedio === m.valor}
                   onClick={() => setFiltroMedio(m.valor)}
                   className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
                     filtroMedio === m.valor
@@ -285,7 +288,7 @@ export function HistorialTicketsModal({
                 return (
                   <div
                     key={v.id}
-                    className={`p-3.5 rounded-xl border transition-all space-y-2.5 ${
+                    className={`p-4 rounded-2xl border transition-all space-y-3 shadow-md dark:shadow-black/20 ${
                       esAnulada
                         ? 'border-red-200 dark:border-red-900/40 bg-red-50/20 dark:bg-red-950/15 opacity-75'
                         : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800/90 hover:border-indigo-400 dark:hover:border-indigo-500 shadow-xs'
@@ -333,7 +336,7 @@ export function HistorialTicketsModal({
 
                       <div className="text-left sm:text-right">
                         <span
-                          className={`font-mono font-black text-lg ${
+                          className={`font-extrabold tabular-nums text-xl ${
                             esAnulada
                               ? 'text-gray-400 dark:text-gray-500 line-through'
                               : 'text-gray-900 dark:text-gray-100'
@@ -362,12 +365,12 @@ export function HistorialTicketsModal({
                     </div>
 
                     {/* Botones de acción inferiores */}
-                    <div className="flex items-center justify-between pt-1 border-t border-gray-100 dark:border-gray-800">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-gray-100 dark:border-gray-800">
                       <div className="text-[11px] text-gray-400">
                         {v.notas ? <span className="italic">Nota: {v.notas}</span> : <span>Venta en mostrador</span>}
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         {/* Botón Facturar ARCA si no fue facturada aún y no está anulada */}
                         {!esAnulada && !v.afip_cae && (
                           <button

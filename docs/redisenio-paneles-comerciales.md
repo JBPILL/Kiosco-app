@@ -104,3 +104,12 @@ Promedio: 4/5. Mejora prioritaria: revisar el panel en navegador a ancho de escr
 - Ticket con artículos en tarjetas, controles de cantidad más amplios y título Venta actual. Se conserva el resumen y el cobro al pie del panel, además del flujo móvil.
 - Validación: 29 pruebas del POS y dos pruebas nuevas del componente real FavoritesGrid (selección/teclado y bloqueo sin stock); compilación correcta. No se realizó inspección visual en navegador ni piloto con periféricos.
 - Autoevaluación: exactitud 4/5 (pruebas y compilación, falta piloto); completitud 4/5 (maqueta aplicada y módulos conservados, falta inspección en tamaños reales); claridad 4/5 (jerarquía de búsqueda/precios/ticket, pendiente aceptación estética); acción 4/5 (publicación lista, falta comprobar despliegue); concisión 4/5 (estilos locales e íconos SVG, páginas aún extensas). Promedio 4/5. Mejora prioritaria: revisar el POS en notebooks y con todos los servicios habilitados.
+
+## Ventanas del POS: tickets, promociones y artículo libre
+
+- Guía visual compartida ModalGuide con ícono, fondo y texto didáctico.
+- Historial: búsqueda en tarjeta, filtros seleccionados accesibles, comprobantes con sombras, importes en fuente consistente y acciones adaptables.
+- Promociones: guía de combos frente a aplicación automática, contadores de reglas habilitadas/combos, tarjetas con sombras y nombres completos. Los contadores indican activo, no vigencia temporal; se conserva la evaluación comercial existente.
+- Artículo libre: secciones de concepto/precio y cantidad, montos rápidos con aria-pressed y vista previa del total, sin modificar el manejador de alta ni el descuento de stock.
+- Validación: 29 pruebas de POS y tres de artículo libre; compilación correcta. Sin inspección visual en navegador ni verificación fiscal remota.
+- Autoevaluación: exactitud 4/5 (pruebas y compilación, falta piloto); completitud 4/5 (tres ventanas, sin verificación visual); claridad 4/5 (guías y preview, falta aceptación); acción 4/5 (publicable, sin revisión remota); concisión 4/5 (guía reutilizada, POSPage aún extensa). Promedio 4/5. Mejora prioritaria: revisar las tres ventanas a distintos anchos en navegador.

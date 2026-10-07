@@ -28,3 +28,10 @@ it('actualiza el concepto al elegir otro acceso rápido', () => {
   rerender(<ArticuloLibreModal isOpen onClose={() => undefined} descripcionInicial="Anillado" />)
   expect(screen.getByDisplayValue('Anillado')).toBeTruthy()
 })
+it('muestra el total antes de agregar el servicio al ticket', () => {
+  render(<ArticuloLibreModal isOpen onClose={() => undefined} descripcionInicial="Anillado" />)
+  fireEvent.change(screen.getByRole('textbox', { name: 'Precio unitario en pesos' }), { target: { value: '150' } })
+  fireEvent.change(screen.getByRole('spinbutton', { name: 'Cantidad de unidades' }), { target: { value: '3' } })
+  expect(screen.getByRole('status').textContent).toContain('450')
+  expect(useCartStore.getState().items).toHaveLength(0)
+})

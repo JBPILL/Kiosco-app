@@ -1,3 +1,4 @@
+import { ModalGuide } from '../ui/ModalGuide'
 import { useEffect, useState } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
@@ -54,9 +55,8 @@ export function ArticuloLibreModal({ isOpen, onClose, descripcionInicial }: Arti
   return (
     <Modal isOpen={isOpen} onClose={handleCerrar} title="Cobro de Artículo Libre / Varios" size="md">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <p className="text-xs text-gray-600 dark:text-gray-400">
-          Agregá un concepto rápido al ticket sin necesidad de crearlo previamente en el catálogo.
-        </p>
+        <ModalGuide titulo="Un concepto rápido para esta venta">Agregá un servicio o artículo sin crearlo en el catálogo. Se incorpora al ticket y no descuenta stock; el cobro se confirma al finalizar la venta.</ModalGuide>
+        <section className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 p-4 space-y-4 shadow-sm">
 
         {/* Concepto o descripción */}
         <div className="space-y-1.5">
@@ -64,6 +64,7 @@ export function ArticuloLibreModal({ isOpen, onClose, descripcionInicial }: Arti
             Concepto o descripción *
           </label>
           <input
+            aria-label="Concepto o descripción"
             type="text"
             value={descripcion}
             onChange={(e) => setDescripcion(e.target.value)}
@@ -83,6 +84,7 @@ export function ArticuloLibreModal({ isOpen, onClose, descripcionInicial }: Arti
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base font-bold text-gray-400">$</span>
             <input
               type="text"
+              aria-label="Precio unitario en pesos"
               inputMode="numeric"
               pattern="[0-9]*"
               value={precio}
@@ -101,6 +103,7 @@ export function ArticuloLibreModal({ isOpen, onClose, descripcionInicial }: Arti
                 <button
                   key={m}
                   type="button"
+                  aria-pressed={estaSeleccionado}
                   onClick={() => setPrecio(m.toString())}
                   className={`w-full py-2 px-2 text-xs sm:text-sm font-bold rounded-xl border transition-all cursor-pointer text-center flex items-center justify-center min-h-[42px] select-none active:scale-95 ${
                     estaSeleccionado
@@ -115,6 +118,8 @@ export function ArticuloLibreModal({ isOpen, onClose, descripcionInicial }: Arti
           </div>
         </div>
 
+        </section>
+        <section className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 p-4 shadow-sm">
         {/* Cantidad con stepper amplio y números nítidos */}
         <div className="space-y-1.5">
           <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
@@ -130,6 +135,7 @@ export function ArticuloLibreModal({ isOpen, onClose, descripcionInicial }: Arti
             </button>
             <input
               type="number"
+              aria-label="Cantidad de unidades"
               min="1"
               value={cantidad}
               onChange={(e) => setCantidad(e.target.value.replace(/[^0-9]/g, '') || '1')}
@@ -145,6 +151,11 @@ export function ArticuloLibreModal({ isOpen, onClose, descripcionInicial }: Arti
           </div>
         </div>
 
+        </section>
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/30 p-4 shadow-sm">
+          <div><p className="text-sm font-bold text-emerald-800 dark:text-emerald-300">Total a agregar al ticket</p><p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">{parseInt(cantidad.replace(/[^0-9]/g, ''), 10) || 1} unidad(es) × {formatPrecio(precioNum)}</p></div>
+          <output aria-live="polite" className="text-xl font-extrabold tabular-nums text-emerald-700 dark:text-emerald-300">{formatPrecio(precioNum * (parseInt(cantidad.replace(/[^0-9]/g, ''), 10) || 1))}</output>
+        </div>
         {/* Botones de acción consistentes */}
         <div className="flex flex-col sm:flex-row gap-2.5 pt-3 border-t border-gray-200 dark:border-gray-700">
           <Button
