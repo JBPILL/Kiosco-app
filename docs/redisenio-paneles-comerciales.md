@@ -79,3 +79,12 @@ Siguiente mejora: inspeccionar pantallas grandes y pequeñas con datos del comer
 | Concisión | 4/5 | Reutiliza IndicatorCard y elimina un control duplicado; CajaPage sigue siendo extenso. |
 
 Promedio: 4/5. Mejora prioritaria: revisar el panel en navegador a ancho de escritorio y móvil. La aceptación estética final corresponde al usuario.
+
+## Catálogo e Historial de Cierres — 7 de octubre de 2026
+
+- Catálogo con cuatro indicadores de la lista cargada, herramientas agrupadas sin carrusel horizontal, tarjetas con sombras, sección de artículos y ayudas en estados vacíos. Se conservan las acciones y los filtros.
+- Gestión de categorías informa aria-expanded; los filtros de categoría y proveedor tienen nombres accesibles.
+- Historial con indicadores de cierres cargados y efectivo declarado; las diferencias y su resumen siguen limitados al dueño. Guía para interpretar sobrantes/faltantes y acción Ver detalle.
+- El historial reutiliza el refresco global, que recarga el historial además del turno actual.
+- Validación: 23 pruebas seleccionadas en cinco archivos y compilación correctas. No se inspeccionó el diseño en navegador.
+- Autoevaluación: exactitud 4/5 (compila y pruebas correctas, sin piloto remoto); completitud 4/5 (ambos paneles adaptados, falta validación visual); claridad 4/5 (ayudas y títulos, pendiente lectura del usuario); acción 4/5 (publicación preparada, falta revisar despliegue); concisión 4/5 (componentes reutilizados, páginas todavía extensas). Promedio 4/5. Mejora prioritaria: revisión visual en escritorio y móvil; aceptación estética pendiente del usuario.

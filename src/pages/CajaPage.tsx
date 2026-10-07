@@ -842,7 +842,16 @@ export function CajaPage() {
                 Auditoría histórica de arqueos de caja, diferencias y firmas de cajero
               </p>
             </div>
-            <RefreshButton refreshing={cargandoHistorial} onClick={cargarHistorial} label="Actualizar historial de cierres" />
+
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+            <IndicatorCard label="Cierres cargados" valor={historial.length} detalle="Últimos 20 turnos cerrados disponibles" icono="caja" />
+            <IndicatorCard label="Efectivo declarado" valor={formatPrecio(historial.reduce((total, item) => total + (item.monto_final_declarado || 0), 0))} detalle="Suma de los conteos declarados en estos cierres" icono="dinero" tono="teal" />
+            {esDueno ? <IndicatorCard label="Con diferencias" valor={historial.filter((item) => item.diferencia != null && item.diferencia !== 0).length} detalle="Cierres cuyo conteo difiere del importe esperado" icono="alerta" tono="amber" /> : <IndicatorCard label="Control de cierre" valor="Registrado" detalle="El detalle de diferencias se reserva al dueño" icono="check" tono="emerald" />}
+          </div>
+          <div className="mb-5 rounded-xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50 dark:bg-indigo-950/30 p-4 text-xs leading-relaxed text-indigo-700 dark:text-indigo-300">
+            {esDueno ? 'Exacto: el conteo coincide con el sistema. Una diferencia positiva indica sobrante y una negativa, faltante. Abrí el detalle para revisar cada arqueo.' : 'Consultá el efectivo declarado y el detalle de los turnos cerrados. Los importes esperados y las diferencias son visibles únicamente para el dueño.'}
           </div>
 
           {cargandoHistorial ? (
@@ -852,9 +861,9 @@ export function CajaPage() {
               Aún no se registraron cierres de caja en el sistema.
             </p>
           ) : (
-            <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+            <div className="border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
+                <table className="w-full text-left text-sm tabular-nums">
                   <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400">
                     <tr>
                       <th className="px-4 py-3 font-medium">Cierre</th>
@@ -914,7 +923,7 @@ export function CajaPage() {
                               variant="ghost"
                               onClick={() => setSesionDetalle(item)}
                             >
-                              Ver
+                              Ver detalle
                             </Button>
                           </td>
                         </tr>

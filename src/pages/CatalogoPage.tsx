@@ -1,3 +1,4 @@
+import { IndicatorCard } from '../components/ui/IndicatorCard'
 import { useState } from 'react'
 import { useProducts } from '../hooks/useProducts'
 import { CategoryManager } from '../components/catalogo/CategoryManager'
@@ -81,19 +82,27 @@ export function CatalogoPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-3.5">
-      <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 sm:gap-4">
+    <div className="max-w-7xl mx-auto space-y-6">
+      <div className="space-y-6">
         <div className="shrink-0">
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">Catálogo de Productos</h1>
-          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">Administrá tus productos, precios y categorías</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">Catálogo de Productos</h1>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">Organizá los artículos del comercio, sus precios, categorías y accesos rápidos de venta</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <IndicatorCard label="Productos del catálogo" valor={productos.length} detalle="Artículos disponibles en la lista cargada" icono="caja" />
+          <IndicatorCard label="Categorías" valor={categorias.length} detalle="Grupos para organizar la búsqueda en el punto de venta" icono="capas" tono="teal" />
+          <IndicatorCard label="Favoritos" valor={productos.filter((p) => p.es_favorito).length} detalle="Accesos rápidos para los artículos más usados" icono="oferta" tono="purple" />
+          <IndicatorCard label="Sin existencias" valor={productos.filter((p) => p.stock_actual <= 0).length} detalle="Artículos de la lista con stock en cero o negativo" icono="alerta" tono="amber" />
         </div>
         {/* Barra unificada de herramientas y acciones */}
-        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 max-w-full py-0.5">
-          <div className="flex items-center flex-nowrap bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1 shrink-0 overflow-x-auto scrollbar-hide">
+        <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 sm:p-5 shadow-md dark:shadow-black/20">
+          <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">Herramientas del catálogo</h2>
+          <p className="mt-1 mb-4 text-xs leading-relaxed text-gray-500 dark:text-gray-400">Actualizá precios, prepará etiquetas o intercambiá listas con Excel. Para modificar un artículo individual, usá Editar en el listado.</p>
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setAumentoOpen(true)}
-              className="h-8 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center justify-center"
+              className="min-h-10 px-3 text-xs sm:text-sm font-semibold rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/30 transition-all text-gray-700 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-300 shadow-sm cursor-pointer whitespace-nowrap inline-flex items-center justify-center"
             >
               Subir Precios en %
             </button>
@@ -101,7 +110,7 @@ export function CatalogoPage() {
               <button
                 type="button"
                 onClick={() => setEnvasesOpen(true)}
-                className="h-8 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center justify-center"
+                className="min-h-10 px-3 text-xs sm:text-sm font-semibold rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/30 transition-all text-gray-700 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-300 shadow-sm cursor-pointer whitespace-nowrap inline-flex items-center justify-center"
               >
                 Precios de Envases
               </button>
@@ -109,7 +118,7 @@ export function CatalogoPage() {
             <button
               type="button"
               onClick={() => setEtiquetasOpen(true)}
-              className="h-8 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center justify-center"
+              className="min-h-10 px-3 text-xs sm:text-sm font-semibold rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/30 transition-all text-gray-700 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-300 shadow-sm cursor-pointer whitespace-nowrap inline-flex items-center justify-center"
               title="Imprimir etiquetas de góndola y códigos de barras"
             >
               Etiquetas de Precios
@@ -117,7 +126,7 @@ export function CatalogoPage() {
             <button
               type="button"
               onClick={() => setImportarOpen(true)}
-              className="h-8 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center justify-center gap-1.5"
+              className="min-h-10 px-3 text-xs sm:text-sm font-semibold rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/30 transition-all text-gray-700 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-300 shadow-sm cursor-pointer whitespace-nowrap inline-flex items-center justify-center gap-1.5"
               title="Importar lista de precios o catálogo desde archivo Excel (.xlsx) o CSV"
             >
               <IconImportar />
@@ -141,7 +150,7 @@ export function CatalogoPage() {
                 }
               }}
               disabled={exportando}
-              className="h-8 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center justify-center gap-1.5"
+              className="min-h-10 px-3 text-xs sm:text-sm font-semibold rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/30 transition-all text-gray-700 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-300 shadow-sm cursor-pointer whitespace-nowrap inline-flex items-center justify-center gap-1.5"
               title="Descargar catálogo completo valorizado en Excel (.xlsx)"
             >
               <IconExportar />
@@ -150,7 +159,7 @@ export function CatalogoPage() {
             <button
               type="button"
               onClick={() => setSiembraOpen(true)}
-              className="h-8 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xs cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center justify-center"
+              className="min-h-10 px-3 text-xs sm:text-sm font-semibold rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/30 transition-all text-gray-700 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-300 shadow-sm cursor-pointer whitespace-nowrap inline-flex items-center justify-center"
               title={
                 esFotocopiadora
                   ? 'Cargar catálogo precargado de librería, fotocopias y papelería con precios sugeridos'
@@ -169,9 +178,11 @@ export function CatalogoPage() {
       </div>
 
       {/* Gestión de categorías colapsable */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md dark:shadow-black/20 overflow-hidden">
         <button
           type="button"
+          aria-expanded={categoriasOpen}
+          aria-controls="catalogo-categorias"
           onClick={() => setCategoriasOpen((o) => !o)}
           className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-100/70 dark:hover:bg-gray-700/60 hover:text-gray-900 dark:hover:text-gray-100 transition-colors cursor-pointer"
         >
@@ -179,7 +190,7 @@ export function CatalogoPage() {
           <span className="text-gray-400 text-xs">{categoriasOpen ? '▲ Ocultar' : '▼ Ver'}</span>
         </button>
         {categoriasOpen && (
-          <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700 pt-3">
+          <div id="catalogo-categorias" className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700 pt-3">
             <CategoryManager
               categorias={categorias}
               onCrear={crearCategoria}
@@ -191,7 +202,12 @@ export function CatalogoPage() {
       </div>
 
       {/* Tabla y lista de productos */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 sm:p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md dark:shadow-black/20 p-3 sm:p-4">
+        <div className="mb-5 border-b border-gray-100 dark:border-gray-700 pb-4">
+          <span className="inline-flex rounded-lg bg-indigo-50 dark:bg-indigo-900/30 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-indigo-600 dark:text-indigo-300">Gestión de artículos</span>
+          <h2 className="mt-2 text-lg font-bold text-gray-900 dark:text-gray-100">Productos y precios</h2>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Buscá por nombre o código, filtrá por categoría o proveedor y marcá tus favoritos.</p>
+        </div>
         <ProductTable
           productos={productos}
           categorias={categorias}

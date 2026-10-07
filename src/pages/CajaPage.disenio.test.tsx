@@ -1,4 +1,4 @@
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { CajaPage } from './CajaPage'
 
@@ -32,4 +32,21 @@ it('mantiene ocultos el efectivo de ventas y el esperado para el cajero en modo 
   expect(screen.getByText('Modo Ciego')).toBeTruthy()
   expect(screen.queryByText(/12.345/)).toBeNull()
   expect(screen.queryByText(/22.345/)).toBeNull()
+})
+
+it('presenta el historial con indicadores y conserva un único refresco global', async () => {
+  render(<CajaPage />)
+  fireEvent.click(screen.getByRole('button', { name: /Historial de Cierres/ }))
+  expect(await screen.findByText('Cierres cargados')).toBeTruthy()
+  expect(screen.getByText(/Una diferencia positiva indica sobrante/)).toBeTruthy()
+  expect(screen.getAllByRole('article')).toHaveLength(3)
+  expect(screen.queryByRole('button', { name: 'Actualizar historial de cierres' })).toBeNull()
+})
+
+it('reserva el resumen de diferencias del historial al dueño', async () => {
+  mocks.rol = 'CAJERO'
+  render(<CajaPage />)
+  fireEvent.click(screen.getByRole('button', { name: /Historial de Cierres/ }))
+  expect(await screen.findByText('Control de cierre')).toBeTruthy()
+  expect(screen.queryByText('Con diferencias')).toBeNull()
 })

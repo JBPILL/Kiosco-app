@@ -176,7 +176,7 @@ export function ProductTable({
   return (
     <div>
       {/* Barra de búsqueda y filtros compacta */}
-      <div className="flex flex-col sm:flex-row gap-2.5 mb-3.5">
+      <div className="flex flex-col xl:flex-row gap-3 mb-5 rounded-xl bg-gray-50 dark:bg-gray-900/30 p-3 border border-gray-100 dark:border-gray-700">
         <div className="flex-1">
           <SearchInput
             placeholder="Buscar por nombre o código..."
@@ -188,6 +188,7 @@ export function ProductTable({
         <div className="flex flex-wrap items-center gap-2">
           <select
             className="flex-1 sm:flex-initial rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-xs sm:text-sm focus:border-indigo-500 min-h-[36px]"
+            aria-label="Filtrar por categoría"
             value={categoriaFiltro || ''}
             onChange={(e) => onCategoriaChange(e.target.value || null)}
           >
@@ -200,6 +201,7 @@ export function ProductTable({
 
           <select
             className="flex-1 sm:flex-initial rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-xs sm:text-sm focus:border-indigo-500 min-h-[36px]"
+            aria-label="Filtrar por proveedor"
             value={proveedorFiltro || ''}
             onChange={(e) => setProveedorFiltro(e.target.value || null)}
           >
@@ -248,7 +250,8 @@ export function ProductTable({
           <span className="text-xs">Cargando productos...</span>
         </div>
       ) : productosFiltradosYOrdenados.length === 0 ? (
-        <div className="text-center py-10 text-gray-500 dark:text-gray-400 text-sm">
+        <div className="text-center px-4 py-12 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 text-gray-500 dark:text-gray-400 text-sm">
+          <span className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 7 12 2l9 5v10l-9 5-9-5V7Zm0 0 9 5 9-5M12 12v10" /></svg></span>
           <p className="font-medium text-gray-700 dark:text-gray-300">
             {categoriaFiltro === '__SIN_CATEGORIA__'
               ? 'No hay productos huérfanos sin categoría.'
@@ -260,6 +263,7 @@ export function ProductTable({
               ? 'No se encontraron productos coincidentes con la búsqueda.'
               : 'No hay productos en el catálogo.'}
           </p>
+          <p className="mt-2 text-xs">{busqueda || categoriaFiltro || proveedorFiltro ? 'Probá otra búsqueda o limpiá los filtros para ampliar el listado.' : 'Creá tu primer producto o importá una lista desde las herramientas del catálogo.'}</p>
           {(busqueda || categoriaFiltro || proveedorFiltro) && (
             <div className="flex items-center justify-center gap-2 mt-3">
               <button
@@ -282,7 +286,7 @@ export function ProductTable({
       ) : (
         <>
           {/* VISTA MOBILE: Lista compacta tipo tarjeta (igual a StockPage) */}
-          <div className="divide-y divide-gray-100 dark:divide-gray-700 sm:hidden">
+          <div className="space-y-3 sm:hidden">
             {productosFiltradosYOrdenados.map((prod) => {
               const nivel = nivelStock(prod.stock_actual, prod.stock_minimo)
               return (
@@ -377,7 +381,7 @@ export function ProductTable({
           </div>
 
           {/* VISTA DESKTOP: Tabla limpia y fluida */}
-          <div className="hidden sm:block overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 shadow-2xs">
+          <div className="hidden sm:block overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xs">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
                 <tr>
