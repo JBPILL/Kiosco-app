@@ -1,4 +1,5 @@
 import { CancelarCobroManualModal } from './CancelarCobroManualModal'
+import { CobrosManualesRemotos } from './CobrosManualesRemotos'
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Button } from '../ui/Button'
@@ -14,7 +15,7 @@ import type { TicketData } from './TicketReceiptModal'
 export function CobrosManualesPendientes({ onVerTicket }: { onVerTicket: (ticket: TicketData) => void }) {
   const { usuario, kiosco } = useAuthStore()
   if (!checkoutManualTransaccionalActivo() || !usuario?.id || kiosco?.id !== usuario.kiosco_id) return null
-  return <Contenido key={`${kiosco.id}/${usuario.id}`} kioscoId={kiosco.id} usuarioId={usuario.id} onVerTicket={onVerTicket} />
+  return <><Contenido key={`${kiosco.id}/${usuario.id}`} kioscoId={kiosco.id} usuarioId={usuario.id} onVerTicket={onVerTicket} />{usuario.activo && usuario.rol === 'DUEÑO' && <CobrosManualesRemotos key={`${kiosco.id}/${usuario.id}`} kioscoId={kiosco.id} />}</>
 }
 
 function Contenido({ kioscoId, usuarioId, onVerTicket }: { kioscoId: string; usuarioId: string; onVerTicket: (ticket: TicketData) => void }) {

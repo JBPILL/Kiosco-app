@@ -91,6 +91,8 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase_fase_checkout_manual_orden_bloqueos.sql', 'utf8'))
   await db.exec(readFileSync('supabase_fase_checkout_manual_preparacion_bloqueos.sql', 'utf8'))
   await db.exec(readFileSync('supabase_fase_checkout_manual_preparacion_bloqueos.sql', 'utf8'))
+  await db.exec(readFileSync('supabase_fase_checkout_manual_consulta_pendientes.sql', 'utf8'))
+  await db.exec(readFileSync('supabase_fase_checkout_manual_consulta_pendientes.sql', 'utf8'))
 }, 30000)
 beforeEach(async () => {
   await db.exec(`RESET ROLE; SET request.jwt.claim.role='service_role'; SET request.jwt.claim.sub='${actor}';
@@ -449,4 +451,35 @@ it('toma el bloqueo del checkout antes de caja e inserción al preparar', async 
  expect(bloqueo).toBeLessThan(definicion.indexOf('PERFORM 1 FROM public.sesiones_caja'))
  expect(bloqueo).toBeLessThan(definicion.indexOf('INSERT INTO public.checkout_manual_entradas'))
  expect(definicion.match(/PERFORM pg_advisory_xact_lock/g)).toHaveLength(1)
+})
+
+async function consultarRemotos(authId = actor, despues: string | null = null, limite = 50) {
+ await db.exec(`SET ROLE authenticated; SET request.jwt.claim.role='authenticated'; SET request.jwt.claim.sub='${authId}'`)
+ return (await db.query<{ datos: Array<Record<string, unknown>> }>('SELECT public.consultar_checkouts_manuales_pendientes($1::uuid,$2::integer) AS datos', [despues, limite])).rows[0].datos
+}
+it('el dueño consulta metadatos preparados sin exponer snapshot ni costos', async () => {
+ await prepararBackend()
+ const filas = await consultarRemotos()
+ expect(filas).toEqual([{ id: venta, kioscoId: kid, usuarioId: actor, sesionCajaId: caja, fechaHora: entradaBackend().fechaHora, total: 250 }])
+ expect(await consultarRemotos(actor, venta)).toEqual([])
+})
+it('la consulta remota excluye cancelados', async () => {
+ await prepararBackend(); await cancelarManual()
+ expect(await consultarRemotos()).toEqual([])
+})
+it('la consulta remota excluye ventas confirmadas', async () => {
+ await prepararBackend(); await confirmar()
+ expect(await consultarRemotos()).toEqual([])
+})
+it('rechaza consulta de cajero, perfil inactivo y límite inválido', async () => {
+ await expect(consultarRemotos(cajero)).rejects.toThrow(/Solo el dueño/)
+ await expect(consultarRemotos(actor, null, 101)).rejects.toThrow(/Límite inválido/)
+ await db.exec(`RESET ROLE; UPDATE usuarios SET activo=false WHERE id='${actor}'`)
+ await expect(consultarRemotos()).rejects.toThrow(/Perfil no disponible/)
+})
+it('el dueño de otro comercio no ve preparados ajenos', async () => {
+ await prepararBackend()
+ await db.exec(`UPDATE usuarios SET kiosco_id='${otroKid}',rol='DUEÑO' WHERE id='${cajero}'`)
+ expect(await consultarRemotos(cajero)).toEqual([])
+ await db.exec(`RESET ROLE; UPDATE usuarios SET kiosco_id='${kid}',rol='CAJERO' WHERE id='${cajero}'`)
 })
