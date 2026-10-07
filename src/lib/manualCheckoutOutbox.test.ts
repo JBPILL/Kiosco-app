@@ -187,3 +187,30 @@ it('un fallo al guardar intención remota revierte la adopción completa', async
  await expect(outbox.solicitarCancelacionRemota(entrada(), { motivo: 'Cobro no realizado', resolucion: 'NO_COBRADO', referencia: null })).rejects.toThrow('Disco lleno')
  expect(await outbox.cobros.count()).toBe(0)
 })
+
+function cancelacionRemota() {
+ return { entrada: entrada(), cancelacion: { motivo: 'Cobro no realizado', resolucion: 'NO_COBRADO', referencia: null }, confirmacion: { estado: 'CANCELADO', checkout_id: id, kiosco_id: kid, resolucion: 'NO_COBRADO', cancelado_en: '2026-10-07T15:00:00Z' } }
+}
+it('concilia cancelación remota y archiva sin confirmar una venta', async () => {
+ await outbox.guardar(entrada(), 'original')
+ const conciliado = await outbox.conciliarCancelacionRemota(id, cancelacionRemota())
+ expect(conciliado.estado).toBe('CANCELADO')
+ expect((await outbox.cobros.get(id))?.visibilidad).toBe('ARCHIVADO')
+ expect((await outbox.cobros.get(id))?.resultado).toBeNull()
+})
+it('un acuse remoto inválido revierte toda la conciliación', async () => {
+ await outbox.guardar(entrada(), 'original')
+ const datos = cancelacionRemota(); datos.confirmacion.kiosco_id = uid
+ await expect(outbox.conciliarCancelacionRemota(id, datos)).rejects.toThrow(/inválida/)
+ expect(await outbox.cobros.get(id)).toMatchObject({ estado: 'PENDIENTE', resultado: null })
+ expect((await outbox.cobros.get(id))?.cancelacion).toBeUndefined()
+})
+it('rechaza otra entrada, ventas confirmadas y solicitudes de cancelación contradictorias', async () => {
+ await outbox.guardar(entrada(), 'original')
+ const datos = cancelacionRemota(); datos.entrada.notas = 'Cambio'
+ await expect(outbox.conciliarCancelacionRemota(id, datos)).rejects.toThrow(/original/)
+ await outbox.solicitarCancelacion(id, { motivo: 'Otro motivo anterior', resolucion: 'NO_COBRADO', referencia: null })
+ await expect(outbox.conciliarCancelacionRemota(id, cancelacionRemota())).rejects.toThrow(/original/)
+ await outbox.confirmar(id, resultado())
+ await expect(outbox.conciliarCancelacionRemota(id, cancelacionRemota())).rejects.toThrow(/Reportes/)
+})

@@ -165,6 +165,27 @@ export class ManualCheckoutOutbox extends Dexie {
     })
   }
 
+  async conciliarCancelacionRemota(id: string, respuesta: unknown): Promise<CobroManualLocal> {
+    if (!respuesta || typeof respuesta !== 'object') throw new Error('Conciliación inválida')
+    const datos = respuesta as Record<string, unknown>
+    const entrada = leerEntradaCheckoutManual(datos.entrada)
+    if (!datos.cancelacion || typeof datos.cancelacion !== 'object') throw new Error('Cancelación inválida')
+    const solicitud = datos.cancelacion as Record<string, unknown>
+    if (typeof solicitud.motivo !== 'string' || !['NO_COBRADO', 'REINTEGRADO'].includes(String(solicitud.resolucion))
+      || (solicitud.referencia !== null && typeof solicitud.referencia !== 'string')) throw new Error('Cancelación inválida')
+    const cancelacion: SolicitudCancelacionManual = { motivo: solicitud.motivo,
+      resolucion: solicitud.resolucion as SolicitudCancelacionManual['resolucion'], referencia: solicitud.referencia as string | null }
+    return this.transaction('rw', this.cobros, async () => {
+      const actual = await this.cobros.get(id)
+      if (!actual || entrada.checkoutId !== id || firmaManual(actual.entrada) !== firmaManual(entrada)) {
+        throw new Error('La entrada original no coincide')
+      }
+      await this.solicitarCancelacion(id, cancelacion)
+      const confirmacion = await this.confirmarCancelacion(id, datos.confirmacion)
+      return { ...actual, cancelacion, cancelacionConfirmada: confirmacion, estado: 'CANCELADO', visibilidad: 'ARCHIVADO', ultimoError: null }
+    })
+  }
+
   async registrarFallo(id: string): Promise<void> {
     await this.transaction('rw', this.cobros, async () => {
       const actual = await this.cobros.get(id)

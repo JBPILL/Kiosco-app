@@ -1,10 +1,13 @@
+import 'fake-indexeddb/auto'
 import { beforeEach, expect, it, vi } from 'vitest'
-import { cerrarCobroManualLocal, enviarCheckoutManual, enviarCancelacionCheckoutManual } from './manualCheckoutClient'
+import { cerrarCobroManualLocal, enviarCheckoutManual, enviarCancelacionCheckoutManual, consultarCancelacionManual, guardarCobroManualLocal, sincronizarCobrosManualesLocales } from './manualCheckoutClient'
+import { ManualCheckoutOutbox } from './manualCheckoutOutbox'
 import { leerEntradaCheckoutManual } from '../../supabase/functions/_shared/manualCheckoutRequest'
 
-const mocks = vi.hoisted(() => ({ getState: vi.fn(), getSession: vi.fn(), invoke: vi.fn(), rpc: vi.fn() }))
+const mocks = vi.hoisted(() => ({ getState: vi.fn(), getSession: vi.fn(), invoke: vi.fn(), rpc: vi.fn(), completar: vi.fn(), cart: vi.fn() }))
 vi.mock('../stores/authStore', () => ({ useAuthStore: { getState: mocks.getState } }))
 vi.mock('./supabase', () => ({ supabase: { rpc: mocks.rpc, auth: { getSession: mocks.getSession }, functions: { invoke: mocks.invoke } } }))
+vi.mock('../stores/cartStore', () => ({ useCartStore: { getState: mocks.cart } }))
 const kid = '10000000-0000-0000-0000-000000000001'
 const uid = '20000000-0000-0000-0000-000000000001'
 const authId = '30000000-0000-0000-0000-000000000001'
@@ -18,11 +21,14 @@ function entrada() {
 function estado() {
   return { usuario: { id: uid, auth_user_id: authId, kiosco_id: kid, activo: true, rol: 'CAJERO' }, kiosco: { id: kid, estado_suscripcion: 'ACTIVO' } }
 }
-beforeEach(() => {
+beforeEach(async () => {
+  const cola = new ManualCheckoutOutbox()
+  await cola.cobros.clear(); cola.close()
   vi.clearAllMocks()
   mocks.getState.mockReturnValue(estado())
   mocks.getSession.mockResolvedValue({ data: { session: { access_token: 'SESSION_TOKEN', user: { id: authId } } }, error: null })
   mocks.invoke.mockResolvedValue({ data: { venta_id: entrada().checkoutId }, error: null })
+  mocks.cart.mockReturnValue({ cobrosBloqueados: { 'ticket-original': entrada().checkoutId }, completarCobroTab: mocks.completar })
 })
 
 it('envía sólo el cuerpo comercial y el JWT de la sesión actual', async () => {
@@ -78,4 +84,54 @@ it('conserva la solicitud ante error de cancelación sin divulgar detalles inter
  mocks.rpc.mockResolvedValue({ data: null, error: new Error('SECRET_SQL') })
  await expect(enviarCancelacionCheckoutManual(entrada(), { motivo: 'Cobro no realizado', resolucion: 'NO_COBRADO', referencia: null })).rejects.toThrow(/Cancelación sin confirmar/)
  expect(mocks.rpc).toHaveBeenCalledOnce()
+})
+it('el operador original consulta con el cuerpo comercial sin actor forjado', async () => {
+ mocks.rpc.mockResolvedValue({ data: null, error: null })
+ expect(await consultarCancelacionManual(entrada())).toBeNull()
+ expect(mocks.rpc).toHaveBeenCalledWith('consultar_cancelacion_checkout_manual', { p_entrada: entrada() })
+ expect(mocks.invoke).not.toHaveBeenCalled()
+})
+it('rechaza consulta de otro cajero y descarta una respuesta tras cambiar sesión', async () => {
+ const otro = estado(); otro.usuario.id = kid; mocks.getState.mockReturnValue(otro)
+ await expect(consultarCancelacionManual(entrada())).rejects.toThrow(/no autorizada/)
+ expect(mocks.rpc).not.toHaveBeenCalled()
+ mocks.getState.mockReturnValue(estado())
+ mocks.rpc.mockImplementationOnce(async () => { mocks.getState.mockReturnValue(otro); return { data: {}, error: null } })
+ await expect(consultarCancelacionManual(entrada())).rejects.toThrow(/no autorizada/)
+})
+it('una falla de consulta no libera el cobro ni divulga el mensaje SQL', async () => {
+ mocks.rpc.mockResolvedValue({ data: null, error: new Error('SECRET_SQL') })
+ await expect(consultarCancelacionManual(entrada())).rejects.toThrow('Conciliación sin confirmar')
+ expect(mocks.invoke).not.toHaveBeenCalled()
+})
+async function guardarOriginal() {
+ const datos = entrada()
+ await guardarCobroManualLocal(datos, 'ticket-original', { ventaId: datos.checkoutId, fecha: datos.fechaHora,
+  total: 100, subtotal: 100, medioPago: 'EFECTIVO', items: [] })
+ return datos
+}
+it('la sincronización concilia cancelación remota y libera sólo el ticket original sin enviar venta', async () => {
+ const datos = await guardarOriginal()
+ mocks.rpc.mockResolvedValue({ error: null, data: { entrada: datos,
+  cancelacion: { motivo: 'No se cobró la venta', resolucion: 'NO_COBRADO', referencia: null },
+  confirmacion: { estado: 'CANCELADO', checkout_id: datos.checkoutId, kiosco_id: kid, resolucion: 'NO_COBRADO', cancelado_en: datos.fechaHora } } })
+ expect(await sincronizarCobrosManualesLocales(kid, uid)).toEqual({ exitosas: 1, fallidas: 0 })
+ expect(mocks.completar).toHaveBeenCalledWith('ticket-original')
+ expect(mocks.invoke).not.toHaveBeenCalled()
+ const cola = new ManualCheckoutOutbox()
+ expect((await cola.cobros.get(datos.checkoutId))?.estado).toBe('CANCELADO'); cola.close()
+ mocks.completar.mockClear(); mocks.rpc.mockClear()
+ expect(await sincronizarCobrosManualesLocales(kid, uid)).toEqual({ exitosas: 0, fallidas: 0 })
+ expect(mocks.completar).toHaveBeenCalledWith('ticket-original')
+ expect(mocks.rpc).not.toHaveBeenCalled()
+})
+it('acuse remoto inválido conserva cola y bloqueo del ticket original', async () => {
+ const datos = await guardarOriginal()
+ mocks.rpc.mockResolvedValue({ error: null, data: { entrada: datos,
+  cancelacion: { motivo: 'No se cobró la venta', resolucion: 'NO_COBRADO', referencia: null },
+  confirmacion: { estado: 'CANCELADO', checkout_id: datos.checkoutId, kiosco_id: uid, resolucion: 'NO_COBRADO', cancelado_en: datos.fechaHora } } })
+ expect(await sincronizarCobrosManualesLocales(kid, uid)).toEqual({ exitosas: 0, fallidas: 1 })
+ expect(mocks.completar).not.toHaveBeenCalled(); expect(mocks.invoke).not.toHaveBeenCalled()
+ const cola = new ManualCheckoutOutbox()
+ expect((await cola.cobros.get(datos.checkoutId))?.estado).toBe('PENDIENTE'); cola.close()
 })

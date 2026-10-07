@@ -95,6 +95,8 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase_fase_checkout_manual_consulta_pendientes.sql', 'utf8'))
   await db.exec(readFileSync('supabase_fase_checkout_manual_recuperar_entrada.sql', 'utf8'))
   await db.exec(readFileSync('supabase_fase_checkout_manual_recuperar_entrada.sql', 'utf8'))
+  await db.exec(readFileSync('supabase_fase_checkout_manual_conciliar_cancelacion.sql', 'utf8'))
+  await db.exec(readFileSync('supabase_fase_checkout_manual_conciliar_cancelacion.sql', 'utf8'))
 }, 30000)
 beforeEach(async () => {
   await db.exec(`RESET ROLE; SET request.jwt.claim.role='service_role'; SET request.jwt.claim.sub='${actor}';
@@ -508,4 +510,27 @@ it('no recupera una entrada ya cancelada', async () => {
 it('no recupera una entrada ya confirmada como pendiente', async () => {
  await prepararBackend(); await confirmar()
  await expect(recuperarRemoto()).rejects.toThrow(/no disponible/)
+})
+
+async function consultarCancelacionSql(entrada: unknown = entradaBackend(), authId = actor) {
+ await db.exec(`SET ROLE authenticated; SET request.jwt.claim.role='authenticated'; SET request.jwt.claim.sub='${authId}'`)
+ return (await db.query<{ datos: unknown }>('SELECT public.consultar_cancelacion_checkout_manual($1::jsonb) AS datos', [JSON.stringify(entrada)])).rows[0].datos
+}
+it('consulta cancelación registrada con entrada y acuse originales', async () => {
+ await prepararBackend(); await cancelarManual()
+ expect(await consultarCancelacionSql()).toMatchObject({ entrada: entradaBackend(), cancelacion: { motivo: 'Cancelación solicitada en ensayo', resolucion: 'NO_COBRADO', referencia: null }, confirmacion: { estado: 'CANCELADO', checkout_id: venta, kiosco_id: kid } })
+})
+it('una cancelación ausente no se interpreta como confirmación', async () => {
+ expect(await consultarCancelacionSql()).toBeNull()
+})
+it('rechaza cuerpo cambiado y cajero de otro operador', async () => {
+ await cancelarManual()
+ await expect(consultarCancelacionSql({ ...entradaBackend(), notas: 'Cambio' })).rejects.toThrow(/original no coincide/)
+ await expect(consultarCancelacionSql(entradaBackend(), cajero)).rejects.toThrow(/no autorizada/)
+})
+it('el cajero original puede consultar una cancelación del dueño', async () => {
+ await db.exec(`UPDATE sesiones_caja SET usuario_id='${cajero}' WHERE id='${caja}'`)
+ const entrada = { ...entradaBackend(), usuarioId: cajero }
+ await cancelarManual(entrada)
+ expect(await consultarCancelacionSql(entrada, cajero)).toMatchObject({ entrada, confirmacion: { estado: 'CANCELADO' } })
 })

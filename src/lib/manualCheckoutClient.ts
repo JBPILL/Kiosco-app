@@ -74,18 +74,54 @@ export async function hayCobrosManualesPendientes(kioscoId: string, sesionId: st
 export async function sincronizarCobrosManualesLocales(kioscoId: string, usuarioId: string): Promise<{ exitosas: number; fallidas: number }> {
   const usuario = contextoCola(kioscoId, usuarioId)
   if (!usuario) throw new Error('La sesión cambió; recuperá el operador original')
+  // Si la sesión cambió después de archivar pero antes de liberar el carrito,
+  // recuperar la liberación a partir del acuse durable, sin reenviar la venta.
+  const idsBloqueados = [...new Set(Object.values(useCartStore.getState().cobrosBloqueados))]
+  for (const cobro of await outbox.cobros.bulkGet(idsBloqueados)) {
+    if (cobro?.estado === 'CANCELADO' && cobro.kioscoId === kioscoId && cobro.usuarioId === usuarioId && cobro.cancelacionConfirmada) {
+      await outbox.confirmarCancelacion(cobro.id, cobro.cancelacionConfirmada)
+      completarTicketCancelado(cobro)
+    }
+  }
   const pendientes = (await outbox.visibles(kioscoId, usuarioId, usuario.rol === 'DUEÑO'))
     .filter(c => c.estado === 'PENDIENTE' && (c.usuarioId === usuarioId || Boolean(c.cancelacion)))
   let exitosas = 0
   let fallidas = 0
   for (const cobro of pendientes) {
     try {
+      if (await conciliarCancelacionManualLocal(cobro.id)) { exitosas++; continue }
       if (cobro.cancelacion) await cancelarCobroManualLocal(cobro.id, cobro.cancelacion)
       else await cerrarCobroManualLocal(cobro.entrada, cobro.ticketClave)
       exitosas++
     } catch { fallidas++ }
   }
   return { exitosas, fallidas }
+}
+
+export async function consultarCancelacionManual(entrada: EntradaCheckoutManual): Promise<unknown> {
+  function validar() {
+    const { usuario, kiosco } = useAuthStore.getState()
+    if (!usuario?.activo || usuario.kiosco_id !== entrada.kioscoId || kiosco?.id !== entrada.kioscoId
+      || !['DUEÑO', 'CAJERO'].includes(usuario.rol) || (usuario.rol === 'CAJERO' && usuario.id !== entrada.usuarioId)) {
+      throw new Error('Sesión no autorizada para conciliar')
+    }
+    return usuario
+  }
+  const usuario = validar()
+  const { data, error } = await supabase.rpc('consultar_cancelacion_checkout_manual', { p_entrada: entrada })
+  const actual = validar()
+  if (actual.id !== usuario.id || actual.auth_user_id !== usuario.auth_user_id || error) throw new Error('Conciliación sin confirmar')
+  return data
+}
+
+export async function conciliarCancelacionManualLocal(id: string): Promise<boolean> {
+  const original = await outbox.cobros.get(id)
+  if (!original || original.estado !== 'PENDIENTE') return false
+  const respuesta = await consultarCancelacionManual(original.entrada)
+  if (respuesta === null) return false
+  const cobro = await outbox.conciliarCancelacionRemota(id, respuesta)
+  completarTicketCancelado(cobro)
+  return true
 }
 
 function validarDuenoCancelacion(entrada: EntradaCheckoutManual) {
