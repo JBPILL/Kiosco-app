@@ -23,6 +23,8 @@ BEGIN
   SELECT * INTO v_global FROM public.supervisor_pin_limites WHERE clave=v_clave_global FOR UPDATE;
   INSERT INTO public.supervisor_pin_limites(clave,ventana) VALUES(v_clave_actor,v_ahora) ON CONFLICT DO NOTHING;
   SELECT * INTO v_local FROM public.supervisor_pin_limites WHERE clave=v_clave_actor FOR UPDATE;
+  -- Una espera por bloqueos no conserva el reloj anterior a la espera.
+  v_ahora:=clock_timestamp();
   IF v_global.ventana+interval '15 minutes'<=v_ahora THEN
     UPDATE public.supervisor_pin_limites SET ventana=v_ahora,intentos=0,reintentar_en=NULL WHERE clave=v_clave_global RETURNING * INTO v_global;
   END IF;
@@ -63,11 +65,12 @@ BEGIN
     RETURN jsonb_build_object('estado','FINALIZADO','valido',v_intento.valido);
   END IF;
   SELECT revision INTO v_revision FROM public.supervisor_pin_secretos WHERE kiosco_id=v_intento.kiosco_id FOR SHARE;
-  v_valido:=p_valido AND v_intento.vence_en>v_ahora AND v_revision IS NOT DISTINCT FROM v_intento.revision AND v_revision IS NOT NULL;
   v_clave_global:=v_intento.kiosco_id::text||':comercio';
   v_clave_actor:=v_intento.kiosco_id::text||':actor:'||p_actor_auth_id::text;
   PERFORM 1 FROM public.supervisor_pin_limites WHERE clave=v_clave_global FOR UPDATE;
   PERFORM 1 FROM public.supervisor_pin_limites WHERE clave=v_clave_actor FOR UPDATE;
+  v_ahora:=clock_timestamp();
+  v_valido:=p_valido AND v_intento.vence_en>v_ahora AND v_revision IS NOT DISTINCT FROM v_intento.revision AND v_revision IS NOT NULL;
   IF v_valido THEN
     UPDATE public.supervisor_pin_limites SET reintentar_en=NULL
       WHERE clave=v_clave_actor AND ventana=v_intento.ventana_actor

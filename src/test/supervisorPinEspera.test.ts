@@ -53,3 +53,25 @@ it('una reserva abandonada conserva espera y el cliente no puede borrarla', asyn
   await db.exec("SET ROLE authenticated; SET request.jwt.claim.role='authenticated'")
   await expect(db.exec('UPDATE supervisor_pin_limites SET reintentar_en=NULL')).rejects.toThrow(/permission denied/)
 })
+it('no libera límites ni espera con una verificación que terminó vencida', async () => {
+  const primero = await reservar()
+  await db.query("UPDATE supervisor_pin_intentos SET vence_en=clock_timestamp()-interval '1 second' WHERE id=$1::uuid", [primero.id])
+  const respuesta = (await db.query<{ datos: { valido: boolean } }>('SELECT finalizar_intento_pin_supervisor($1::uuid,$2::uuid,true) AS datos', [actor, primero.id])).rows[0].datos
+  expect(respuesta.valido).toBe(false)
+  expect((await reservar()).estado).toBe('BLOQUEADO')
+})
+it('éxito de una reserva anterior no borra espera de otra posterior', async () => {
+  const primero = await reservar()
+  await db.exec("UPDATE supervisor_pin_limites SET reintentar_en=clock_timestamp()-interval '1 second'")
+  expect((await reservar()).estado).toBe('RESERVADO')
+  await db.query('SELECT finalizar_intento_pin_supervisor($1::uuid,$2::uuid,true)', [actor, primero.id])
+  expect((await reservar()).estado).toBe('BLOQUEADO')
+})
+it('mantiene el tope de cinco intentos aunque hayan transcurrido las esperas cortas', async () => {
+  for (let index=0; index<5; index++) {
+    await db.exec("UPDATE supervisor_pin_limites SET reintentar_en=clock_timestamp()-interval '1 second'")
+    expect((await reservar()).estado).toBe('RESERVADO')
+  }
+  await db.exec("UPDATE supervisor_pin_limites SET reintentar_en=clock_timestamp()-interval '1 second'")
+  expect((await reservar()).estado).toBe('BLOQUEADO')
+})
