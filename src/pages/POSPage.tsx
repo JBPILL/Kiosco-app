@@ -588,7 +588,7 @@ export function POSPage() {
   )
 
   return (
-    <div className="w-full h-full min-w-0 flex flex-col gap-2.5 pb-28 lg:pb-0 overflow-hidden">
+    <div className="w-full h-full min-w-0 flex flex-col gap-2.5 pb-[calc(80px+env(safe-area-inset-bottom))] lg:pb-0 overflow-hidden">
       <CobrosManualesPendientes onVerTicket={ticket => { setTicketReciente(ticket); setTicketModalOpen(true); refrescarProductosVista() }} />
       <header className="flex shrink-0 items-center justify-between gap-3 px-1 py-1">
         <div className="flex min-w-0 items-center gap-3"><span className="hidden sm:flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-indigo-500 shadow-sm"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 8h18l-2 12H5L3 8ZM8 8l4-6 4 6M8 12v5M12 12v5M16 12v5" /></svg></span><div><h1 className="text-lg sm:text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100">Punto de Venta</h1><p className="hidden sm:block text-xs text-gray-500 dark:text-gray-400">Buscá, agregá y cobrá desde un solo lugar</p></div></div>
@@ -766,7 +766,7 @@ export function POSPage() {
 
       {/* ── BARRA INFERIOR DE COBRO PARA CELULARES (iPhone y Android) ── */}
       {cantItems > 0 && (
-        <div className="fixed bottom-[calc(56px+env(safe-area-inset-bottom))] left-0 right-0 p-2.5 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-700 shadow-xl lg:hidden z-30 animate-in slide-in-from-bottom-2 duration-150">
+        <div className="fixed bottom-0 left-0 right-0 p-2.5 pb-[max(10px,env(safe-area-inset-bottom))] bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-700 shadow-xl lg:hidden z-30 animate-in slide-in-from-bottom-2 duration-150">
           <div className="flex items-center justify-between gap-3 max-w-md mx-auto">
             <button
               onClick={() => setCartModalOpen(true)}

@@ -362,11 +362,7 @@ export function MainLayout() {
 
         {/* Área de contenido con scroll suave */}
         <main
-          className={`flex-1 min-w-0 overflow-y-auto p-3 sm:p-4 lg:p-4 xl:p-5 bg-gray-50 dark:bg-gray-900 ${
-            (usuario?.es_superadmin && !usuario.kiosco_id) || usuario?.rol === 'VISOR'
-              ? 'pb-[max(16px,env(safe-area-inset-bottom))]'
-              : 'pb-[max(80px,calc(64px+env(safe-area-inset-bottom)))] lg:pb-[max(16px,env(safe-area-inset-bottom))]'
-          }`}
+          className="flex-1 min-w-0 overflow-y-auto p-3 sm:p-4 lg:p-4 xl:p-5 bg-gray-50 dark:bg-gray-900 pb-[max(16px,env(safe-area-inset-bottom))]"
         >
           <Suspense
             fallback={
@@ -382,72 +378,9 @@ export function MainLayout() {
           </Suspense>
         </main>
 
-        {/* Barra de Navegación Inferior para Celulares (solo para locales comerciales y no visores) */}
-        {(!usuario?.es_superadmin || !!usuario.kiosco_id) && usuario?.rol !== 'VISOR' && (
-          <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-700 z-20 pb-[env(safe-area-inset-bottom)] shadow-lg">
-            <div className="grid grid-cols-4 h-14 max-w-md mx-auto">
-            <NavLink
-              to="/"
-              className={({ isActive }) =>
-                `flex flex-col items-center justify-center text-[11px] font-medium transition-colors ${
-                  isActive
-                    ? 'text-indigo-600 dark:text-indigo-400 font-bold'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
-                }`
-              }
-            >
-              <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-              <span>Ventas</span>
-            </NavLink>
 
-            <NavLink
-              to="/caja"
-              className={({ isActive }) =>
-                `flex flex-col items-center justify-center text-[11px] font-medium transition-colors ${
-                  isActive
-                    ? 'text-indigo-600 dark:text-indigo-400 font-bold'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
-                }`
-              }
-            >
-              <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-              <span>Caja</span>
-            </NavLink>
-
-            <NavLink
-              to="/clientes"
-              className={({ isActive }) =>
-                `flex flex-col items-center justify-center text-[11px] font-medium transition-colors ${
-                  isActive
-                    ? 'text-indigo-600 dark:text-indigo-400 font-bold'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
-                }`
-              }
-            >
-              <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-              <span>Clientes</span>
-            </NavLink>
-
-            <button
-              type="button"
-              onClick={() => setSidebarOpen(true)}
-              className="flex flex-col items-center justify-center text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
-            >
-              <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-              <span>Menú</span>
-            </button>
-          </div>
-        </nav>
-      )}
     </div>
     </div>
   )
 }
+
