@@ -1,3 +1,5 @@
+import { IndicatorCard } from '../components/ui/IndicatorCard'
+import { RefreshButton } from '../components/ui/RefreshButton'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/authStore'
@@ -597,14 +599,15 @@ export function ReportesPage() {
       ) : (
         <div className="space-y-6">
           {/* Header con selector de fecha */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 sm:p-5 shadow-md dark:shadow-black/20">
             <div>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Ventas por Jornada</h2>
+              <span className="mb-2 inline-flex rounded-lg bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-indigo-600 dark:text-indigo-300">Control diario</span><h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Ventas por Jornada</h2>
               <p className="text-xs text-gray-500 dark:text-gray-400">Auditoría de tickets y comprobantes del día</p>
             </div>
 
             {/* Navegación por fecha y Exportar */}
             <div className="flex items-center gap-2 flex-wrap">
+              <RefreshButton refreshing={cargando} onClick={() => void cargarDatos()} label="Actualizar ventas diarias" />
               <Button size="sm" variant="secondary" onClick={() => cambiarFecha(-1)}>
                 &lt; Anterior
               </Button>
@@ -612,7 +615,7 @@ export function ReportesPage() {
                 type="date"
                 value={fecha}
                 onChange={(e) => setFecha(e.target.value)}
-                className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm font-medium text-gray-900 dark:text-gray-100"
+                aria-label="Fecha de ventas" className="h-10 min-w-0 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 text-sm font-medium text-gray-900 dark:text-gray-100"
               />
               <Button
                 size="sm"
@@ -654,80 +657,16 @@ export function ReportesPage() {
         <>
           {/* Tarjetas resumen */}
           {resumen && (
-            <div className={`grid grid-cols-1 ${esDueno ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'} gap-4`}>
-              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Total facturado</p>
-                <p className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-1">
-                  {formatPrecio(resumen.totalVentas)}
-                </p>
-                {resumen.totalDevoluciones !== undefined && resumen.totalDevoluciones > 0 && (
-                  <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
-                    Deducidos {formatPrecio(resumen.totalDevoluciones)} en devoluciones
-                  </p>
-                )}
-              </div>
-
-              {esDueno && (
-                <div className={`rounded-xl border-2 p-4 flex flex-col justify-between shadow-2xs ${
-                  resumen.gananciaBruta < 0
-                    ? 'bg-rose-50/70 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800'
-                    : 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800'
-                }`}>
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <p className={`text-xs font-bold uppercase tracking-wider ${
-                        resumen.gananciaBruta < 0
-                          ? 'text-rose-800 dark:text-rose-300'
-                          : 'text-emerald-800 dark:text-emerald-300'
-                      }`}>
-                        {resumen.gananciaBruta < 0 ? 'Pérdida Neta' : 'Ganancia Bruta'}
-                      </p>
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
-                        resumen.gananciaBruta < 0
-                          ? 'bg-rose-100 dark:bg-rose-900 border-rose-300 dark:border-rose-700 text-rose-800 dark:text-rose-300'
-                          : 'bg-emerald-100 dark:bg-emerald-900 border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300'
-                      }`}>
-                        Solo Dueño
-                      </span>
-                    </div>
-                    <p className={`text-2xl font-black mt-1 ${
-                      resumen.gananciaBruta < 0
-                        ? 'text-rose-700 dark:text-rose-400'
-                        : 'text-emerald-700 dark:text-emerald-300'
-                    }`}>
-                      {resumen.gananciaBruta < 0
-                        ? `-${formatPrecio(Math.abs(resumen.gananciaBruta))}`
-                        : formatPrecio(resumen.gananciaBruta)}
-                    </p>
-                  </div>
-                  <div className={`mt-1 flex items-center justify-between text-xs font-medium ${
-                    resumen.gananciaBruta < 0
-                      ? 'text-rose-800/90 dark:text-rose-300/90'
-                      : 'text-emerald-800/90 dark:text-emerald-300/90'
-                  }`}>
-                    <span>Margen: <strong>{resumen.margenPorcentaje.toFixed(1)}%</strong></span>
-                    <span className="opacity-80">Costo: {formatPrecio(resumen.totalCosto)}</span>
-                  </div>
-                </div>
-              )}
-
-              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Ventas completadas</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-1">{resumen.cantidadVentas}</p>
-                <p className="text-[11px] text-gray-400 mt-0.5">Tickets emitidos en el día</p>
-              </div>
-
-              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Ticket promedio</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-1">{formatPrecio(resumen.ventaPromedio)}</p>
-                <p className="text-[11px] text-gray-400 mt-0.5">Promedio por cliente</p>
-              </div>
+            <div className={`grid grid-cols-1 sm:grid-cols-2 ${esDueno ? 'xl:grid-cols-4' : 'xl:grid-cols-3'} gap-4`}>
+              <IndicatorCard label="Total facturado" valor={formatPrecio(resumen.totalVentas)} icono="dinero" detalle="Importe neto de ventas de la jornada" pie={resumen.totalDevoluciones !== undefined && resumen.totalDevoluciones > 0 ? `Deducidos ${formatPrecio(resumen.totalDevoluciones)} en devoluciones` : undefined} />
+              {esDueno && <IndicatorCard label={resumen.gananciaBruta < 0 ? 'Pérdida Neta' : 'Ganancia Bruta'} valor={resumen.gananciaBruta < 0 ? `-${formatPrecio(Math.abs(resumen.gananciaBruta))}` : formatPrecio(resumen.gananciaBruta)} icono="rotacion" tono={resumen.gananciaBruta < 0 ? 'rose' : 'emerald'} detalle="Solo Dueño · ventas menos costo de mercadería" pie={<div className="flex flex-wrap justify-between gap-2"><span>Margen: <strong>{resumen.margenPorcentaje.toFixed(1)}%</strong></span><span>Costo: {formatPrecio(resumen.totalCosto)}</span></div>} />}
+              <IndicatorCard label="Ventas completadas" valor={resumen.cantidadVentas} icono="check" tono="emerald" detalle="Tickets emitidos en el día" />
+              <IndicatorCard label="Ticket promedio" valor={formatPrecio(resumen.ventaPromedio)} icono="oferta" tono="purple" detalle="Promedio por venta completada" />
             </div>
           )}
-
           {/* Desglose por medio de pago */}
           {resumen && resumen.porMedioPago.length > 0 && (
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 shadow-md dark:shadow-black/20">
               <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">Desglose por medio de pago</h3>
               <div className="space-y-2">
                 {resumen.porMedioPago.map((mp) => (
@@ -744,10 +683,10 @@ export function ReportesPage() {
           )}
 
           {/* Lista de ventas */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 shadow-md dark:shadow-black/20">
             <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">Ventas del día</h3>
             {ventas.length === 0 ? (
-              <p className="text-center text-gray-400 dark:text-gray-500 py-8">No hay ventas registradas en esta fecha</p>
+              <div className="flex flex-col items-center gap-3 py-8 text-center"><span className="rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 p-4 text-indigo-500"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3ZM9 7h6M9 11h6M9 15h3" /></svg></span><p className="font-semibold text-gray-900 dark:text-gray-100">No hay ventas registradas en esta fecha</p><p className="max-w-md text-xs leading-relaxed text-gray-500 dark:text-gray-400">Elegí otra jornada o usá Anterior para revisar tickets. Los indicadores corresponden únicamente al día seleccionado.</p></div>
             ) : (
               <div className="space-y-2">
                 {ventas.map((venta) => {

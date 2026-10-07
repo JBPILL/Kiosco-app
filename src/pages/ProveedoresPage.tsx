@@ -1,3 +1,4 @@
+import { IndicatorCard } from '../components/ui/IndicatorCard'
 import { useState, useEffect, useMemo } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useProveedorStore } from '../stores/proveedorStore'
@@ -957,7 +958,7 @@ export function ProveedoresPage() {
         </div>
 
         {/* Pestañas de navegación compactas y sin desborde */}
-        <div className="flex items-center flex-nowrap overflow-x-auto scrollbar-hide max-w-full bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 shrink-0 self-start xl:self-auto gap-1">
+        <div className="flex flex-wrap items-center max-w-full bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 shrink-0 self-start xl:self-auto gap-1">
           <button
             type="button"
             onClick={() => setTabActiva('directorio')}
@@ -1009,44 +1010,19 @@ export function ProveedoresPage() {
       </div>
 
       {/* Tarjetas de métricas rápidas */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Proveedores Registrados</p>
-          <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 mt-0.5">
-            {totalProveedores}
-          </p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Cuentas por Pagar (Deuda)</p>
-          <p
-            className={`text-xl sm:text-2xl font-bold mt-0.5 ${
-              totalDeudaProveedores > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-900 dark:text-gray-100'
-            }`}
-          >
-            {formatPrecio(totalDeudaProveedores)}
-          </p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Compras Recibidas</p>
-          <p className="text-xl sm:text-2xl font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
-            {formatPrecio(totalComprasRecibidas)}
-          </p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Pagos Emitidos</p>
-          <p className="text-xl sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
-            {formatPrecio(totalPagosRealizados)}
-          </p>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <IndicatorCard label="Proveedores Registrados" valor={totalProveedores} icono="usuarios" detalle="Contactos disponibles para compras y pagos" />
+        <IndicatorCard label="Cuentas por Pagar (Deuda)" valor={formatPrecio(totalDeudaProveedores)} icono="alerta" tono="amber" detalle="Saldo pendiente con tus proveedores" />
+        <IndicatorCard label="Compras Recibidas" valor={formatPrecio(totalComprasRecibidas)} icono="caja" detalle="Importe de compras registradas como recibidas" />
+        <IndicatorCard label="Pagos Emitidos" valor={formatPrecio(totalPagosRealizados)} icono="dinero" tono="emerald" detalle="Pagos registrados, sin incluir anulados" />
       </div>
-
       {/* ─────────────────────────────────────────────────────────────
           TAB 1: DIRECTORIO DE PROVEEDORES
           ───────────────────────────────────────────────────────────── */}
       {tabActiva === 'directorio' && (
         <div className="space-y-3">
-          <div className="flex flex-col sm:flex-row gap-2 justify-between items-stretch sm:items-center bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700">
-            <div className="flex flex-1 gap-2 items-center">
+          <div className="flex flex-col xl:flex-row gap-3 justify-between items-stretch xl:items-center bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md dark:shadow-black/20">
+            <div className="flex flex-1 flex-wrap gap-3 items-center min-w-0">
               <div className="relative flex-1 max-w-md">
                 <input
                   type="text"
@@ -1078,10 +1054,11 @@ export function ProveedoresPage() {
               Cargando directorio de proveedores...
             </div>
           ) : proveedoresFiltrados.length === 0 ? (
-            <div className="bg-white dark:bg-gray-800 p-8 rounded-xl border border-gray-200 dark:border-gray-700 text-center">
+            <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl border border-gray-200 dark:border-gray-700 text-center shadow-md dark:shadow-black/20">
+              <span className="mb-3 inline-flex rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 p-4 text-indigo-500"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8M17 4a4 4 0 0 1 0 7M22 21v-2a4 4 0 0 0-3-4" /></svg></span>
               <p className="text-gray-600 dark:text-gray-300 font-medium">No se encontraron proveedores</p>
               <p className="text-xs text-gray-400 mt-1">
-                {busquedaDir ? 'Probá con otra búsqueda' : 'Registrá a tu primer proveedor para organizar compras y remitos'}
+                {busquedaDir || filtroDeuda !== 'TODOS' ? 'Probá con otra búsqueda o cambiá el filtro de deuda' : 'Registrá a tu primer proveedor para organizar compras y remitos'}
               </p>
               <Button onClick={handleNuevoProveedor} size="sm" className="mt-3">
                 Crear Proveedor
@@ -1096,7 +1073,7 @@ export function ProveedoresPage() {
                 return (
                   <div
                     key={p.id}
-                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex flex-col justify-between hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors"
+                    className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-md dark:shadow-black/20 flex flex-col justify-between hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors"
                   >
                     <div>
                       <div className="flex justify-between items-start">
@@ -1231,7 +1208,7 @@ export function ProveedoresPage() {
         <div className="space-y-4">
 
           {/* ── Selector de modo ── */}
-          <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1 self-start">
+          <div className="flex flex-wrap bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1 self-start">
             <button
               type="button"
               onClick={() => setModoCompra('rapida')}
@@ -1258,7 +1235,8 @@ export function ProveedoresPage() {
 
           {/* ── Modo Carga Rápida ── */}
           {modoCompra === 'rapida' && (
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-4 max-w-md">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] items-start">
+            <div className="bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md dark:shadow-black/20 space-y-4">
               <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700 pb-2">
                 Carga Rápida de Compra
               </h2>
@@ -1270,7 +1248,7 @@ export function ProveedoresPage() {
                 <select
                   value={compraProveedorId}
                   onChange={(e) => setCompraProveedorId(e.target.value)}
-                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  className="w-full py-2.5 px-3.5 text-sm font-medium rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                 >
                   <option value="">-- Seleccionar Proveedor --</option>
                   {proveedores.map((prov) => (
@@ -1292,7 +1270,7 @@ export function ProveedoresPage() {
                   placeholder="Ej: 15000"
                   value={cargaRapidaTotal}
                   onChange={(e) => setCargaRapidaTotal(e.target.value)}
-                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  className="w-full py-2.5 px-3.5 text-sm font-medium rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                 />
               </div>
 
@@ -1303,7 +1281,7 @@ export function ProveedoresPage() {
                 <select
                   value={cargaRapidaMedio}
                   onChange={(e) => setCargaRapidaMedio(e.target.value as MedioPagoCompra)}
-                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  className="w-full py-2.5 px-3.5 text-sm font-medium rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                 >
                   <option value="EFECTIVO">Efectivo (pagado de caja)</option>
                   <option value="TRANSFERENCIA">Transferencia bancaria (pagado)</option>
@@ -1320,7 +1298,7 @@ export function ProveedoresPage() {
                   placeholder="Ej: Remito 0492, mercadería general"
                   value={cargaRapidaNotas}
                   onChange={(e) => setCargaRapidaNotas(e.target.value)}
-                  className="w-full py-2 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  className="w-full py-2.5 px-3.5 text-sm font-medium rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                 />
               </div>
 
@@ -1333,13 +1311,22 @@ export function ProveedoresPage() {
                 Registrar Compra
               </Button>
             </div>
+            <aside className="rounded-2xl border border-indigo-200 dark:border-indigo-800/50 bg-indigo-50 dark:bg-indigo-950/20 p-5 shadow-sm space-y-4">
+              <span className="inline-flex rounded-lg bg-indigo-100 dark:bg-indigo-900/50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Guía de compra</span>
+              <h3 className="font-bold text-gray-900 dark:text-gray-100">Elegí cómo registrar la mercadería</h3>
+              <p className="text-sm leading-relaxed text-gray-600 dark:text-gray-400"><strong>Carga rápida:</strong> registra el importe y su pago o deuda. Al no detallar productos, no aumenta el stock.</p>
+              <p className="text-sm leading-relaxed text-gray-600 dark:text-gray-400"><strong>Detallada por producto:</strong> permite ingresar cantidades y costos para recibir mercadería y actualizar el inventario.</p>
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 text-xs leading-relaxed text-gray-600 dark:text-gray-400"><strong className="block mb-1 text-gray-900 dark:text-gray-100">¿Cómo impacta el pago?</strong>El efectivo se registra como salida de caja. La transferencia se registra como pagada. Si queda a deber, aumenta la cuenta corriente del proveedor.</div>
+              {!proveedores.length && <Button variant="secondary" size="sm" onClick={handleNuevoProveedor}>Crear proveedor para comenzar</Button>}
+            </aside>
+            </div>
           )}
 
           {/* ── Modo Detallado (original) ── */}
           {modoCompra === 'detallada' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5 items-start">
           <div className="lg:col-span-1 space-y-3">
-            <div className="bg-white dark:bg-gray-800 p-3.5 rounded-xl border border-gray-200 dark:border-gray-700 space-y-2.5">
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md dark:shadow-black/20 space-y-2.5">
               <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700 pb-1.5">
                 Datos del Comprobante
               </h2>
@@ -1447,7 +1434,7 @@ export function ProveedoresPage() {
             </div>
 
             {/* Panel de Búsqueda y Escáner de Productos */}
-            <div className="bg-white dark:bg-gray-800 p-3.5 rounded-xl border border-gray-200 dark:border-gray-700 space-y-2.5">
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md dark:shadow-black/20 space-y-2.5">
               <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 pb-1.5">
                 <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
                   Buscar o Escanear Producto
@@ -1618,7 +1605,7 @@ export function ProveedoresPage() {
 
           {/* Columna Derecha: Tabla de Renglones Recibidos */}
           <div className="lg:col-span-2 space-y-3">
-            <div className="bg-white dark:bg-gray-800 p-3.5 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col justify-between min-h-[360px]">
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md dark:shadow-black/20 flex flex-col justify-between min-h-[360px]">
               <div>
                 <div className="flex flex-wrap justify-between items-center gap-2 border-b border-gray-200 dark:border-gray-700 pb-2 mb-3">
                   <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
@@ -1777,7 +1764,7 @@ export function ProveedoresPage() {
           ───────────────────────────────────────────────────────────── */}
       {tabActiva === 'historial' && (
         <div className="space-y-3">
-          <div className="flex flex-col sm:flex-row gap-2 justify-between items-stretch sm:items-center bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700">
+          <div className="flex flex-col xl:flex-row gap-3 justify-between items-stretch xl:items-center bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md dark:shadow-black/20">
             <div className="relative flex-1 max-w-md">
               <input
                 type="text"
@@ -1794,7 +1781,7 @@ export function ProveedoresPage() {
               Cargando historial de compras...
             </div>
           ) : comprasFiltradas.length === 0 ? (
-            <div className="bg-white dark:bg-gray-800 p-8 rounded-xl border border-gray-200 dark:border-gray-700 text-center">
+            <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl border border-gray-200 dark:border-gray-700 text-center shadow-md dark:shadow-black/20">
               <p className="text-gray-600 dark:text-gray-300 font-medium">No hay compras registradas</p>
               <p className="text-xs text-gray-400 mt-1">
                 {busquedaHistorial
@@ -1803,7 +1790,7 @@ export function ProveedoresPage() {
               </p>
             </div>
           ) : (
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-x-auto">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md dark:shadow-black/20 overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400">
@@ -1887,7 +1874,7 @@ export function ProveedoresPage() {
           ───────────────────────────────────────────────────────────── */}
       {tabActiva === 'pagos' && (
         <div className="space-y-3">
-          <div className="flex flex-col sm:flex-row gap-2 justify-between items-stretch sm:items-center bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700">
+          <div className="flex flex-col xl:flex-row gap-3 justify-between items-stretch xl:items-center bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md dark:shadow-black/20">
             <div className="relative flex-1 max-w-md">
               <input
                 type="text"
@@ -1904,7 +1891,7 @@ export function ProveedoresPage() {
               Cargando historial de pagos...
             </div>
           ) : pagosFiltrados.length === 0 ? (
-            <div className="bg-white dark:bg-gray-800 p-8 rounded-xl border border-gray-200 dark:border-gray-700 text-center">
+            <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl border border-gray-200 dark:border-gray-700 text-center shadow-md dark:shadow-black/20">
               <p className="text-gray-600 dark:text-gray-300 font-medium">No hay pagos registrados</p>
               <p className="text-xs text-gray-400 mt-1">
                 {busquedaPagos
@@ -1913,7 +1900,7 @@ export function ProveedoresPage() {
               </p>
             </div>
           ) : (
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-x-auto">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md dark:shadow-black/20 overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400">

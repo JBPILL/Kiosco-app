@@ -39,3 +39,22 @@ aprobada. Vite conserva el aviso existente de tamaño de chunks.
 
 Promedio 4/5. Mejora siguiente: revisar anchos y zoom con el navegador del comercio.
 La evaluación no equivale a confirmar un despliegue Vercel ni a una prueba visual.
+
+## Proveedores y Ventas Diarias
+
+Proveedores incorpora las tarjetas compartidas, sombras y bordes consistentes
+en directorio, recepción e historial. La carga rápida ocupa una tarjeta junto
+a una guía sobre stock, pago y deuda; el acceso para crear un proveedor conserva
+el formulario existente. Los filtros y pestañas pueden acomodarse en varias filas.
+
+Ventas Diarias incorpora encabezado con distintivo, fecha accesible, refresco
+animado, tarjetas compartidas y estado vacío con ayuda. La ganancia y los costos
+siguen visibles sólo para el dueño; las fórmulas y acciones de tickets se conservan.
+
+Validación de esta ampliación: 26 pruebas aprobadas en los dos archivos de interfaz
+de Proveedores y Reportes; compilación TypeScript/Vite aprobada. No requiere SQL.
+Evaluación: precisión 4/5 (falta revisión visual real), completitud 4/5 (paneles y
+carga rápida cubiertos, falta navegador), claridad 4/5 (ayudas y etiquetas,
+pendiente lectura con zoom), accionabilidad 4/5 (integrado, depende de despliegue),
+concisión 4/5 (guía contextual sin agregar pasos al registro). Promedio 4/5.
+Siguiente mejora: inspeccionar pantallas grandes y pequeñas con datos del comercio.
