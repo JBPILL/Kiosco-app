@@ -25,6 +25,40 @@ let outbox: ManualCheckoutOutbox
 beforeEach(() => { outbox = new ManualCheckoutOutbox(`Cobros-test-${crypto.randomUUID()}`) })
 afterEach(async () => { vi.restoreAllMocks(); await outbox.delete() })
 
+it('guarda y recupera el permiso sin alterar la entrada ni guardar PIN', async () => {
+ const datos = entrada(); datos.tipoAjuste = 'DESCUENTO_FIJO'; datos.valorAjuste = 20
+ const permiso = { autorizacionId: uid, venceEn: new Date(Date.now()+120000).toISOString() }
+ await outbox.guardar(datos,'original')
+ await outbox.guardarAutorizacionSupervisor(datos,permiso)
+ outbox.close(); outbox = new ManualCheckoutOutbox(outbox.name)
+ expect(await outbox.recuperarTicket(kid,uid,'original')).toMatchObject({ entrada: datos, autorizacionSupervisor: permiso, estado: 'PENDIENTE' })
+ await expect(outbox.guardarAutorizacionSupervisor(datos,{ ...permiso, pin: '0042' })).rejects.toThrow(/inválido/)
+ expect((await outbox.cobros.get(id))?.autorizacionSupervisor).toEqual(permiso)
+})
+
+it('no concede permiso a otro cuerpo, una venta confirmada ni una cancelación pendiente', async () => {
+ const datos = entrada(); datos.tipoAjuste = 'DESCUENTO_FIJO'; datos.valorAjuste = 20
+ const permiso = { autorizacionId: uid, venceEn: '2026-10-07T15:00:00Z' }
+ await outbox.guardar(datos,'original')
+ await expect(outbox.guardarAutorizacionSupervisor({ ...datos, notas: 'Cambio' },permiso)).rejects.toThrow(/original/)
+ await outbox.solicitarCancelacion(id,{ motivo: 'Sin cobro',resolucion: 'NO_COBRADO',referencia: null })
+ await expect(outbox.guardarAutorizacionSupervisor(datos,permiso)).rejects.toThrow(/no admite/)
+ await outbox.confirmar(id,resultado())
+ await expect(outbox.guardarAutorizacionSupervisor(datos,permiso)).rejects.toThrow(/no admite/)
+})
+
+it('rechaza permisos malformados y entradas sin guardar sin crear un cobro nuevo', async () => {
+ const datos = entrada(); datos.tipoAjuste = 'DESCUENTO_FIJO'; datos.valorAjuste = 20
+ const permiso = { autorizacionId: uid,venceEn: '2026-10-07T15:00:00Z' }
+ await expect(outbox.guardarAutorizacionSupervisor(datos,permiso)).rejects.toThrow(/original/)
+ expect(await outbox.cobros.count()).toBe(0)
+ await outbox.guardar(datos,'original')
+ for (const valor of [null, { ...permiso,autorizacionId: '0042' }, { ...permiso,venceEn: 'invalid' }]) {
+  await expect(outbox.guardarAutorizacionSupervisor(datos,valor)).rejects.toThrow(/inválido/)
+ }
+ expect((await outbox.cobros.get(id))?.autorizacionSupervisor).toBeUndefined()
+})
+
 it('la actualización desde versión 1 conserva los cobros y los hace visibles', async () => {
   const nombre = outbox.name
   outbox.close()

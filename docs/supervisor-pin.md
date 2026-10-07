@@ -99,3 +99,25 @@ Pruebas locales de HTTP y secretos cubren estas fronteras con criptografía real
 Siguiente paso: conectar el permiso al checkout, conservarlo junto a la entrada inmutable y presentar formulario de dueño y modal de cajero. Permanecen pendientes espera progresiva, retención, otras acciones protegidas y piloto remoto.
 
 Autoevaluación: precisión 4/5 (HTTP y secretos probados; Deno/adaptador remoto pendiente), completitud 3/5 (endpoint escrito; conexión checkout/UI pendiente), claridad 4/5 (contrato y despliegue documentados; sin pantalla aún), utilidad 4/5 (función preparada; requiere secretos e instalación), concisión 4/5 (tres acciones acotadas; guía técnica separada). Promedio 3,8. Mejora prioritaria: conectar el permiso al cobro sin cambiar el cuerpo original. No se considera habilitado el supervisor ni terminado el plan.
+
+## Permiso en el backend de checkout
+
+El handler `checkout-manual` acepta `x-supervisor-autorizacion` como UUID separado del cuerpo comercial inmutable. No admite PIN ni identidades en ese encabezado. La cotización sigue verificando precios, promociones, recetas y crédito en el servidor antes de preparar; la presencia del UUID no prueba autorización. La función SQL verifica y consume el permiso al confirmar.
+
+Para cajeros, una decisión protegida (porcentaje extraordinario, fijo protegido o fijo antiguo sin decisión) llama exclusivamente al RPC autorizado. El error no habilita un fallback al cierre ordinario. Al recuperar una preparación existente puede llamar sin permiso: el SQL devuelve una confirmación ya existente, o rechaza la venta todavía pendiente. Así una respuesta perdida no obliga a cobrar nuevamente ni a emitir otro permiso para una venta confirmada.
+
+Sólo los errores SQL conocidos de permiso ausente, vencido/consumido o PIN modificado se traducen a SUPERVISOR_REQUERIDO. Otros fallos conservan CIERRE_NO_CONFIRMADO sin filtrar texto SQL. La aprobación y el cierre permanecen transacciones distintas, pero el consumo y los efectos financieros comparten la transacción del cierre.
+
+Pruebas de backend cubren header malformado, cuerpo conservado, ambos descuentos, recuperación sin recotizar y fallo sin fallback; la suite SQL cubre consumo/reversión/confirmación. Falta transmitir y conservar el permiso en la cola del frontend y agregar el formulario/modal. No se desplegaron las funciones ni se agregaron SQL en esta fase.
+
+Autoevaluación: precisión 4/5 (coordinador y SQL comprobados; Deno y JWT remotos pendientes), completitud 3/5 (backend conectado; cola e interfaz pendientes), claridad 4/5 (permiso separado del cuerpo; documentación extensa), utilidad 4/5 (handler listo para integración; requiere despliegue), concisión 4/5 (campo separado y callback; alias de errores acotados). Promedio 3,8. Mejora prioritaria: guardar el permiso con la entrada local y conectarlo al modal de cajero. El plan general sigue activo.
+
+## Permiso durable en el cliente
+
+La cola Dexie conserva únicamente identificador y fecha de vencimiento del permiso, separados de la entrada. No guarda PIN, hash ni pepper. El guardado exige el mismo cuerpo original, un cobro pendiente y ninguna cancelación solicitada; no crea un checkout nuevo ni modifica importes. Renovar el permiso conserva la misma solicitud. No requiere cambio de índices o versión de Dexie.
+
+El envío lee el permiso durable y agrega `x-supervisor-autorizacion` al request de checkout. Comprueba nuevamente el operador después de obtener el JWT y leer la cola para evitar usar una sesión cambiada. Un permiso con fecha local vencida también puede viajar: el reloj del cliente no decide el resultado y el servidor puede recuperar una venta ya confirmada. Si la venta sigue pendiente, el servidor rechaza el permiso vencido.
+
+Pruebas nuevas cubren persistencia/reapertura, cuerpo cambiado, cancelación, confirmación, entrada inexistente, formato de permiso, header separado y cambio de sesión durante el envío. No hay aprobación visual por tener un UUID local: el SQL continúa siendo la autoridad. Falta el servicio del cliente para solicitar el permiso, el formulario del dueño y el modal del cajero. No se agrega SQL ni se activa Point.
+
+Autoevaluación: precisión 4/5 (cola y envío probados; piloto real pendiente), completitud 3/5 (permiso durable conectado; interfaz y petición de PIN pendientes), claridad 4/5 (datos separados; documentación acumulada), utilidad 4/5 (base de recuperación lista; despliegue pendiente), concisión 4/5 (campo sin índice nuevo; validación compartida). Promedio 3,8. Mejora prioritaria: conectar el servicio de supervisor con el formulario/modal. El plan general permanece incompleto.

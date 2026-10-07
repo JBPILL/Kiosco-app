@@ -13,7 +13,7 @@ export async function recibirCheckoutManual(request: Request, deps: ManualChecko
   const origin = request.headers.get('origin')
   if (origin && !deps.origins.includes(origin)) return new Response('Origen no autorizado', { status: 403 })
   const headers: Record<string, string> = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', Vary: 'Origin',
-    'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' }
+    'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info, x-supervisor-autorizacion', 'Access-Control-Allow-Methods': 'POST, OPTIONS' }
   if (origin) headers['Access-Control-Allow-Origin'] = origin
   const responder = (status: number, codigo: string, error: string) => new Response(JSON.stringify({ codigo, error }), { status, headers })
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers })
@@ -24,11 +24,15 @@ export async function recibirCheckoutManual(request: Request, deps: ManualChecko
   try { contexto = await deps.autenticar(authorization.slice(7)) }
   catch { return responder(503, 'AUTENTICACION_NO_DISPONIBLE', 'No se pudo verificar la sesión') }
   if (!contexto) return responder(401, 'SESION_INVALIDA', 'Sesión inválida')
+  const permiso = request.headers.get('x-supervisor-autorizacion')
+  if (permiso !== null && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(permiso)) {
+    return responder(400, 'PERMISO_INVALIDO', 'Identificador de autorización inválido')
+  }
   let entrada: EntradaCheckoutManual
   try { entrada = leerEntradaCheckoutManual(await leerCuerpo(request)) }
   catch { return responder(400, 'ENTRADA_INVALIDA', 'Solicitud de cobro inválida') }
   try {
-    const resultado = await cerrarCheckoutManual(contexto, entrada, deps)
+    const resultado = await cerrarCheckoutManual(contexto, entrada, deps, permiso?.toLowerCase() || null)
     return new Response(JSON.stringify(resultado), { status: 200, headers })
   } catch (error) {
     const mensaje = error instanceof Error ? error.message : ''

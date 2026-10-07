@@ -2,7 +2,7 @@
 
 ## Estado
 
-`supervisor-pin` incorpora configuración del PIN por el dueño, consulta de existencia y emisión de permisos para descuentos. No está desplegada por el push a GitHub. La interfaz y el envío del permiso al checkout todavía están pendientes: instalar esta función no habilita por sí solo descuentos extraordinarios para el cajero.
+`supervisor-pin` incorpora configuración del PIN por el dueño, consulta de existencia y emisión de permisos para descuentos. No está desplegada por el push a GitHub. El backend y la cola del cliente ya transmiten el permiso separado mediante `x-supervisor-autorizacion`; faltan la petición del permiso desde el cliente y la interfaz. Instalar esta función no habilita por sí solo descuentos extraordinarios para el cajero.
 
 ## Requisitos
 

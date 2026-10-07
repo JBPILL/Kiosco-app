@@ -18,16 +18,14 @@ export interface ManualCheckoutDependencies {
   }>
   preparar: (contexto: ContextoCheckoutManual, entrada: EntradaCheckoutManual, snapshot: SnapshotCheckoutManual, requiereSupervisor: boolean) => Promise<unknown>
   confirmar: (contexto: ContextoCheckoutManual, snapshot: SnapshotCheckoutManual) => Promise<unknown>
+  confirmarAutorizado?: (contexto: ContextoCheckoutManual, entrada: EntradaCheckoutManual, snapshot: SnapshotCheckoutManual, autorizacionId: string | null) => Promise<unknown>
 }
 
 export async function cerrarCheckoutManual(contexto: ContextoCheckoutManual, entrada: EntradaCheckoutManual,
-  deps: ManualCheckoutDependencies): Promise<ResultadoCheckoutManual> {
+  deps: ManualCheckoutDependencies, autorizacionId: string | null = null): Promise<ResultadoCheckoutManual> {
   const permisos = autorizarCotizacionPoint(contexto.authUserId, contexto.usuario, contexto.kiosco)
   if (permisos.kioscoId !== entrada.kioscoId || (contexto.usuario.rol === 'CAJERO' && permisos.usuarioId !== entrada.usuarioId)) throw new Error('Cobro no autorizado')
   if (Date.parse(entrada.fechaHora) > deps.ahora().getTime() + 300000) throw new Error('Fecha no autorizada')
-  // La preparación existente no concede al cajero permisos del dueño que la creó.
-  if (contexto.usuario.rol === 'CAJERO' && entrada.tipoAjuste === 'DESCUENTO_PORCENTAJE'
-    && entrada.valorAjuste > 15) throw new Error('Se requiere autorización de supervisor')
   let registro = await deps.buscar(contexto, entrada)
   if (!registro) {
     const datos = await deps.cargarDatos(contexto, entrada)
@@ -36,7 +34,9 @@ export async function cerrarCheckoutManual(contexto: ContextoCheckoutManual, ent
     const base = ajusteCarrito(ticket.items, 'DESCUENTO_PORCENTAJE', 100)
     const requiereSupervisor = (entrada.tipoAjuste === 'DESCUENTO_PORCENTAJE' && entrada.valorAjuste > 15)
       || (entrada.tipoAjuste === 'DESCUENTO_FIJO' && ticket.ajuste > base * 0.15)
-    if (contexto.usuario.rol === 'CAJERO' && requiereSupervisor) throw new Error('Se requiere autorización de supervisor')
+    if (contexto.usuario.rol === 'CAJERO' && requiereSupervisor && (!autorizacionId || !deps.confirmarAutorizado)) {
+      throw new Error('Se requiere autorización de supervisor')
+    }
     const reparto = distribuirTotalVenta(ticket.items.map(i => i.subtotal), ticket.total)
     const combos = new Set(ticket.items.filter(i => i.producto.es_combo).map(i => i.producto.id))
     const receta = datos.componentes.filter(c => combos.has(c.combo_producto_id)).map(c => ({
@@ -51,8 +51,12 @@ export async function cerrarCheckoutManual(contexto: ContextoCheckoutManual, ent
   }
   const congelado = await leerRegistroManual(registro, entrada)
   if (contexto.usuario.rol === 'CAJERO' && (congelado.requiereSupervisor === true
+    || (entrada.tipoAjuste === 'DESCUENTO_PORCENTAJE' && entrada.valorAjuste > 15)
     || (entrada.tipoAjuste === 'DESCUENTO_FIJO' && congelado.requiereSupervisor === null))) {
-    throw new Error('Se requiere autorización de supervisor')
+    if (!deps.confirmarAutorizado) throw new Error('Se requiere autorización de supervisor')
+    // El SQL recupera confirmaciones existentes incluso sin permiso; si aún no hay
+    // venta, exige y consume el permiso dentro de la transacción financiera.
+    return leerResultadoManual(await deps.confirmarAutorizado(contexto, congelado.entrada, congelado.snapshot, autorizacionId), congelado.snapshot)
   }
   return leerResultadoManual(await deps.confirmar(contexto, congelado.snapshot), congelado.snapshot)
 }

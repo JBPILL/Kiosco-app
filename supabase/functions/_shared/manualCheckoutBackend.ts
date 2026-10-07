@@ -2,6 +2,7 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.116.
 import type { ManualCheckoutHttpDependencies } from './manualCheckoutHttp.ts'
 import { crearBackendCotizacionPoint } from './pointQuoteBackend.ts'
 import { autorizarCotizacionPoint } from './pointQuoteAuthorization.ts'
+import { requiereRenovarPermisoManual } from './manualCheckoutSupervisorError.ts'
 
 export function crearBackendCheckoutManual(admin: SupabaseClient): Omit<ManualCheckoutHttpDependencies, 'origins'> {
   const comercial = crearBackendCotizacionPoint(admin)
@@ -30,6 +31,16 @@ export function crearBackendCheckoutManual(admin: SupabaseClient): Omit<ManualCh
     confirmar: async (contexto, snapshot) => {
       const { data, error } = await admin.rpc('confirmar_venta_manual', { p_actor_auth_id: contexto.authUserId, p_solicitud: snapshot })
       if (error || !data) throw new Error('No se confirmó el cierre del checkout')
+      return data
+    },
+    confirmarAutorizado: async (contexto, entrada, snapshot, autorizacionId) => {
+      const { data, error } = await admin.rpc('confirmar_venta_manual_autorizada', {
+        p_actor_auth_id: contexto.authUserId, p_entrada: entrada, p_snapshot: snapshot, p_autorizacion_id: autorizacionId,
+      })
+      if (error || !data) {
+        if (requiereRenovarPermisoManual(error)) throw new Error('Se requiere autorización de supervisor')
+        throw new Error('No se confirmó el cierre autorizado del checkout')
+      }
       return data
     },
   }

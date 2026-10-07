@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, expect, it, vi } from 'vitest'
-import { cerrarCobroManualLocal, enviarCheckoutManual, enviarCancelacionCheckoutManual, consultarCancelacionManual, guardarCobroManualLocal, sincronizarCobrosManualesLocales } from './manualCheckoutClient'
+import { cerrarCobroManualLocal, enviarCheckoutManual, enviarCancelacionCheckoutManual, consultarCancelacionManual, guardarCobroManualLocal, guardarAutorizacionCobroManual, sincronizarCobrosManualesLocales } from './manualCheckoutClient'
 import { ManualCheckoutOutbox } from './manualCheckoutOutbox'
 import { leerEntradaCheckoutManual } from '../../supabase/functions/_shared/manualCheckoutRequest'
 
@@ -36,6 +36,26 @@ it('envía sólo el cuerpo comercial y el JWT de la sesión actual', async () =>
   expect(mocks.invoke).toHaveBeenCalledWith('checkout-manual', {
     body: entrada(), headers: { Authorization: 'Bearer SESSION_TOKEN' },
   })
+})
+
+it('recupera permiso durable y lo envía como header separado incluso al recuperar una respuesta perdida', async () => {
+ const datos = entrada(); datos.tipoAjuste = 'DESCUENTO_FIJO'; datos.valorAjuste = 20
+ const cola = new ManualCheckoutOutbox(); await cola.guardar(datos,'original'); cola.close()
+ const permiso = { autorizacionId: kid, venceEn: '2000-01-01T12:00:00Z' }
+ // La fecha local no decide si la venta ya fue confirmada en el servidor.
+ await guardarAutorizacionCobroManual(datos,permiso)
+ await enviarCheckoutManual(datos)
+ expect(mocks.invoke).toHaveBeenCalledWith('checkout-manual',{ body: datos,
+ headers: { Authorization: 'Bearer SESSION_TOKEN', 'x-supervisor-autorizacion': kid } })
+})
+
+it('no envía al cambiar la sesión mientras obtiene el JWT', async () => {
+ mocks.getSession.mockImplementation(async () => {
+  mocks.getState.mockReturnValue({ ...estado(),usuario: { ...estado().usuario,auth_user_id: kid } })
+  return { data: { session: { access_token: 'SESSION_TOKEN',user: { id: authId } } },error: null }
+ })
+ await expect(enviarCheckoutManual(entrada())).rejects.toThrow(/sesión original cambió/)
+ expect(mocks.invoke).not.toHaveBeenCalled()
 })
 
 it.each(['usuario', 'comercio', 'inactivo', 'visor'])('impide enviar con contexto %s incorrecto', async caso => {

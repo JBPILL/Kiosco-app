@@ -1,7 +1,8 @@
 import { useCartStore } from '../stores/cartStore'
 import { supabase } from './supabase'
 import { useAuthStore } from '../stores/authStore'
-import { leerEntradaCheckoutManual } from '../../supabase/functions/_shared/manualCheckoutRequest'
+import { firmaManual, leerEntradaCheckoutManual } from '../../supabase/functions/_shared/manualCheckoutRequest'
+import { leerPermisoSupervisorManual } from './manualCheckoutSupervisorPermission'
 import type { SolicitudCancelacionManual } from './manualCheckoutOutbox'
 import { ManualCheckoutOutbox, procesarCheckoutManual } from './manualCheckoutOutbox'
 import type { EntradaCheckoutManual, ResultadoCheckoutManual } from '../types/checkoutManual'
@@ -26,8 +27,16 @@ export async function enviarCheckoutManual(entradaSinValidar: EntradaCheckoutMan
   if (error || !data.session?.access_token || data.session.user.id !== usuario.auth_user_id) {
     throw new Error('No se pudo verificar la sesión original')
   }
+  const cobro = await outbox.cobros.get(entrada.checkoutId)
+  if (cobro && firmaManual(cobro.entrada) !== firmaManual(entrada)) throw new Error('La entrada original no coincide')
+  const headers: Record<string, string> = { Authorization: `Bearer ${data.session.access_token}` }
+  if (cobro?.autorizacionSupervisor) {
+    headers['x-supervisor-autorizacion'] = leerPermisoSupervisorManual(cobro.autorizacionSupervisor).autorizacionId
+  }
+  const actual = validarContextoLocal(entrada)
+  if (actual.id !== usuario.id || actual.auth_user_id !== usuario.auth_user_id) throw new Error('La sesión original cambió')
   const { data: resultado, error: errorCierre } = await supabase.functions.invoke('checkout-manual', {
-    body: entrada, headers: { Authorization: `Bearer ${data.session.access_token}` },
+    body: entrada, headers,
   })
   if (errorCierre) throw new Error('El servidor no confirmó el cierre. Conservá el cobro original; no vuelvas a cobrar al cliente.')
   return resultado
@@ -41,6 +50,11 @@ export async function cerrarCobroManualLocal(entradaSinValidar: EntradaCheckoutM
 
 export function recuperarCobroManualLocal(kioscoId: string, usuarioId: string, ticketClave: string) {
   return outbox.recuperarTicket(kioscoId, usuarioId, ticketClave)
+}
+
+export async function guardarAutorizacionCobroManual(entrada: EntradaCheckoutManual, permiso: unknown): Promise<void> {
+  validarContextoLocal(entrada)
+  await outbox.guardarAutorizacionSupervisor(entrada, permiso)
 }
 
 export async function guardarCobroManualLocal(entrada: EntradaCheckoutManual, ticketClave: string, recibo: TicketData) {

@@ -5,6 +5,7 @@ import { cerrarCheckoutManual } from '../../supabase/functions/_shared/manualChe
 import type { ManualCheckoutDependencies } from '../../supabase/functions/_shared/manualCheckout'
 import { fechaManual, leerEntradaCheckoutManual } from '../../supabase/functions/_shared/manualCheckoutRequest'
 import { recibirCheckoutManual } from '../../supabase/functions/_shared/manualCheckoutHttp'
+import { requiereRenovarPermisoManual } from '../../supabase/functions/_shared/manualCheckoutSupervisorError'
 
 const kid = '10000000-0000-0000-0000-000000000001'
 const uid = '20000000-0000-0000-0000-000000000001'
@@ -125,7 +126,7 @@ it('una preparación creada por el dueño no concede al cajero un descuento porc
   vi.mocked(deps.confirmar).mockClear()
   await expect(cerrarCheckoutManual(contexto('CAJERO'), datos, deps)).rejects.toThrow(/supervisor/i)
   expect(deps.confirmar).not.toHaveBeenCalled()
-  expect(deps.buscar).not.toHaveBeenCalled()
+  expect(deps.buscar).toHaveBeenCalledOnce()
   await cerrarCheckoutManual(contexto(), datos, deps)
   expect(deps.confirmar).toHaveBeenCalledOnce()
 })
@@ -143,6 +144,58 @@ it('un descuento fijo mayor a 15% no evita el control del cajero', async () => {
   datos.tipoAjuste = 'DESCUENTO_FIJO'; datos.valorAjuste = 16
   datos.totalEsperado = 84; datos.subtotalesEsperados = [84]; datos.pagos[0].montoCentavos = 8400
   await expect(cerrarCheckoutManual(contexto('CAJERO'), datos, dependencias())).rejects.toThrow(/supervisor/i)
+})
+
+it.each(['DESCUENTO_PORCENTAJE', 'DESCUENTO_FIJO'] as const)('envía el permiso separado de la entrada original para %s', async tipo => {
+  const d = dependencias(); const datos = entrada()
+  datos.tipoAjuste = tipo; datos.valorAjuste = 20; datos.totalEsperado = 80
+  datos.subtotalesEsperados = [80]; datos.pagos[0].montoCentavos = 8000
+  d.confirmarAutorizado = vi.fn(async (_ctx, _entrada, snapshot) => ({ venta_id: id, kiosco_id: kid,
+    fecha_hora: snapshot.fecha_hora, total: 80, stock: [{ producto_id: product, stock_actual: 9 }], saldo_cliente: null }))
+  expect((await cerrarCheckoutManual(contexto('CAJERO'),datos,d,id)).total).toBe(80)
+  expect(d.confirmar).not.toHaveBeenCalled()
+  expect(d.confirmarAutorizado).toHaveBeenCalledWith(contexto('CAJERO'),datos,expect.objectContaining({ total: 80 }),id)
+  expect(vi.mocked(d.preparar).mock.calls[0][3]).toBe(true)
+  expect(datos).not.toHaveProperty('autorizacionId')
+  const snapshot = vi.mocked(d.preparar).mock.calls[0][2]
+  d.buscar = async () => ({ entrada: datos, snapshot, requiere_supervisor: true })
+  vi.mocked(d.cargarDatos).mockClear()
+  await cerrarCheckoutManual(contexto('CAJERO'),datos,d)
+  expect(d.confirmarAutorizado).toHaveBeenLastCalledWith(contexto('CAJERO'),datos,snapshot,null)
+  expect(d.cargarDatos).not.toHaveBeenCalled()
+})
+
+it('un fallo de permiso en cierre protegido no deriva al RPC ordinario', async () => {
+  const d = dependencias(); const datos = entrada()
+  datos.tipoAjuste = 'DESCUENTO_FIJO'; datos.valorAjuste = 20
+  datos.totalEsperado = 80; datos.subtotalesEsperados = [80]; datos.pagos[0].montoCentavos = 8000
+  d.confirmarAutorizado = async () => { throw new Error('Permiso vencido') }
+  await expect(cerrarCheckoutManual(contexto('CAJERO'),datos,d,id)).rejects.toThrow(/vencido/)
+  expect(d.confirmar).not.toHaveBeenCalled()
+})
+
+it('HTTP valida y transmite el encabezado de autorización sin modificar el cuerpo', async () => {
+  const d = httpDeps(); d.autenticar = vi.fn(async () => contexto('CAJERO'))
+  const datos = entrada(); datos.tipoAjuste = 'DESCUENTO_PORCENTAJE'; datos.valorAjuste = 20
+  datos.totalEsperado = 80; datos.subtotalesEsperados = [80]; datos.pagos[0].montoCentavos = 8000
+  const autorizado = vi.fn(async (_ctx: unknown, _entrada: unknown, snapshot: { fecha_hora: string }) => ({ venta_id: id,
+    kiosco_id: kid, fecha_hora: snapshot.fecha_hora, total: 80, stock: [{ producto_id: product, stock_actual: 9 }], saldo_cliente: null }))
+  const depsConPermiso = { ...d, confirmarAutorizado: autorizado }
+  const req = peticion(datos); req.headers.set('x-supervisor-autorizacion',id)
+  expect((await recibirCheckoutManual(req,depsConPermiso)).status).toBe(200)
+  expect(autorizado.mock.calls[0][1]).toEqual(datos)
+  const malo = peticion(datos); malo.headers.set('x-supervisor-autorizacion','PIN-0042')
+  expect((await recibirCheckoutManual(malo,depsConPermiso)).status).toBe(400)
+  expect(autorizado).toHaveBeenCalledOnce()
+})
+
+it('traduce únicamente los errores SQL conocidos de permiso a renovación de supervisor', () => {
+  for (const message of ['Permiso no corresponde a la operación', 'Permiso vencido o consumido', 'PIN modificado']) {
+    expect(requiereRenovarPermisoManual({ code: 'P0001', message })).toBe(true)
+  }
+  expect(requiereRenovarPermisoManual(null)).toBe(false)
+  expect(requiereRenovarPermisoManual({ code: '42501', message: 'Se requiere servidor autorizado' })).toBe(false)
+  expect(requiereRenovarPermisoManual({ code: 'P0001', message: 'SECRET_SQL_SUPERVISOR' })).toBe(false)
 })
 
 it.each([false, true, null])('recupera la decisión original de descuento fijo: %s', async requiereSupervisor => {

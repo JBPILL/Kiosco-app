@@ -4,6 +4,8 @@ import type { EntradaCheckoutManual, ResultadoCheckoutManual } from '../types/ch
 import { firmaManual, leerEntradaCheckoutManual } from '../../supabase/functions/_shared/manualCheckoutRequest'
 import { validarResultadoCheckout } from './manualCheckoutResult'
 import type { TicketData } from '../components/pos/TicketReceiptModal'
+import { leerPermisoSupervisorManual } from './manualCheckoutSupervisorPermission'
+import type { PermisoSupervisorManual } from './manualCheckoutSupervisorPermission'
 
 export interface SolicitudCancelacionManual {
   motivo: string
@@ -27,6 +29,7 @@ export interface CobroManualLocal {
   estado: 'PENDIENTE' | 'CONFIRMADO' | 'CANCELADO'
   cancelacion?: SolicitudCancelacionManual
   cancelacionConfirmada?: ConfirmacionCancelacionManual
+  autorizacionSupervisor?: PermisoSupervisorManual
   resultado: ResultadoCheckoutManual | null
   ultimoError: string | null
   recibo?: TicketData
@@ -71,6 +74,18 @@ export class ManualCheckoutOutbox extends Dexie {
       }
       await this.cobros.add(cobro)
       return cobro
+    })
+  }
+
+  async guardarAutorizacionSupervisor(entradaSinValidar: EntradaCheckoutManual, permisoSinValidar: unknown): Promise<void> {
+    const entrada = leerEntradaCheckoutManual(entradaSinValidar)
+    const permiso = leerPermisoSupervisorManual(permisoSinValidar)
+    if (!entrada.tipoAjuste.startsWith('DESCUENTO')) throw new Error('El cobro no solicita un descuento')
+    await this.transaction('rw', this.cobros, async () => {
+      const actual = await this.cobros.get(entrada.checkoutId)
+      if (!actual || firmaManual(actual.entrada) !== firmaManual(entrada)) throw new Error('La entrada original no coincide')
+      if (actual.estado !== 'PENDIENTE' || actual.cancelacion) throw new Error('El cobro no admite otra autorización')
+      await this.cobros.put({ ...actual, autorizacionSupervisor: permiso })
     })
   }
 
