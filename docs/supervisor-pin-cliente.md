@@ -17,7 +17,12 @@ La cola de pendientes ofrece autorización para descuentos del operador original
 sin cancelación en curso. El modal limpia el PIN después de cada intento y guarda
 el permiso antes de reintentar la solicitud original. No genera otra venta.
 
-Pendiente: autorización antes del cobro físico en PaymentModal, pruebas del cliente,
+El cliente cuenta con pruebas de identidad JWT, cambios de sesión durante las
+esperas, confirmación de PIN, autorización ligada a la entrada original,
+respuestas malformadas y privacidad de errores. Estas pruebas usan transporte
+simulado; no prueban un despliegue de Supabase.
+
+Pendiente: autorización antes del cobro físico en PaymentModal,
 prueba real de Edge Functions y validación del flujo completo en navegador.
 
 ## Autoevaluación de esta fase

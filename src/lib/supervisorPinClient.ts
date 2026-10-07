@@ -15,7 +15,7 @@ function contextoSupervisor() {
 }
 
 function validarPin(pin: string): void {
-  if (!/^[0-9]{4,6}$/.test(pin)) throw new Error('Ingresá un PIN de 4 a 6 dígitos')
+  if (typeof pin !== 'string' || !/^[0-9]{4,6}$/.test(pin)) throw new Error('Ingresá un PIN de 4 a 6 dígitos')
 }
 
 /** El PIN sólo viaja al servidor; nunca se persiste ni se incluye en errores. */
