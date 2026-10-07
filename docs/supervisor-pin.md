@@ -57,3 +57,15 @@ Evidencia: 41 pruebas enfocadas en cuatro archivos, incluidas criptografía real
 Siguiente paso: integrar consumo en cierre de venta, backend HTTP con JWT y formulario/modal de supervisor. Después extender acciones de anulación, precio y cajón, y añadir espera progresiva. Los descuentos extraordinarios del cajero siguen bloqueados en la aplicación actual.
 
 Autoevaluación: precisión 4/5 (contratos y rollback comprobados; concurrencia remota pendiente), completitud 3/5 (permiso ligado a descuento listo; integración financiera/UI pendiente), claridad 4/5 (estado explícito; sin pantalla aún), utilidad 4/5 (módulo backend y SQL ejecutables; despliegue pendiente), concisión 4/5 (acciones acotadas; documentación acumulada extensa). Promedio 3,8. Mejora prioritaria: consumir permiso en la misma transacción que confirma la venta. El usuario debería coincidir con que la función de supervisor aún no está operativa para el cajero.
+
+## Consumo dentro de la venta
+
+`supabase_fase_checkout_manual_supervisor.sql` incorpora `confirmar_venta_manual_autorizada`: exige la entrada y snapshot originales preparados, consume el permiso de descuento y confirma la venta en la misma transacción. Un error de stock u otra validación financiera revierte también el consumo, permitiendo reintentar con el mismo permiso vigente. Toma el bloqueo del checkout antes de leer la preparación, siguiendo el orden del circuito existente.
+
+Una venta ya confirmada recupera el resultado mediante las verificaciones del RPC original, sin exigir otro permiso ni repetir efectos. El navegador no puede ejecutar esta función; sólo el servidor de cobro tiene permiso. El consumo privado sigue sin ejecución directa para service_role.
+
+Evidencia: 97 pruebas aprobadas en cuatro archivos. Los casos nuevos cubren venta con descuento, rollback por stock insuficiente y reintento, recuperación de confirmación sin permiso nuevo, snapshot cambiado, permiso ausente o vencido y ejecución con roles SQL. Las migraciones se reaplican en PGlite. No se comprobó concurrencia con conexiones reales ni se aplicó esta migración en Supabase remoto.
+
+La Edge Function y la interfaz todavía no usan este RPC. Los descuentos extraordinarios del cajero siguen bloqueados. La siguiente integración debe impedir que una preparación que requiere supervisor se confirme por el circuito ordinario; no basta con elegir el RPC según un dato opcional del navegador. Después faltan endpoint con JWT, configuración de PIN, modal compacto, otras acciones protegidas y espera progresiva.
+
+Autoevaluación: precisión 4/5 (transacción y roles comprobados; concurrencia real pendiente), completitud 3/5 (consumo financiero listo; conexión HTTP/UI pendiente), claridad 4/5 (límites explícitos; documentación acumulada extensa), utilidad 4/5 (RPC ejecutable; requiere instalación e integración), concisión 4/5 (función acotada; registro por fases extenso). Promedio 3,8. Mejora prioritaria: conectar el servidor sin permitir eludir la autorización mediante la confirmación ordinaria. Esta fase todavía no habilita el supervisor para el cajero.

@@ -97,6 +97,10 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase_fase_checkout_manual_recuperar_entrada.sql', 'utf8'))
   await db.exec(readFileSync('supabase_fase_checkout_manual_conciliar_cancelacion.sql', 'utf8'))
   await db.exec(readFileSync('supabase_fase_checkout_manual_conciliar_cancelacion.sql', 'utf8'))
+  for (const archivo of ['supabase_fase_supervisor_pin_privado.sql', 'supabase_fase_supervisor_pin_intentos.sql', 'supabase_fase_supervisor_autorizacion_descuento.sql', 'supabase_fase_checkout_manual_supervisor.sql']) {
+    await db.exec(readFileSync(archivo, 'utf8'))
+    await db.exec(readFileSync(archivo, 'utf8'))
+  }
 }, 30000)
 beforeEach(async () => {
   await db.exec(`RESET ROLE; SET request.jwt.claim.role='service_role'; SET request.jwt.claim.sub='${actor}';
@@ -104,7 +108,7 @@ beforeEach(async () => {
     DROP TRIGGER IF EXISTS fallo_ensayo ON movimientos_cuenta_corriente;
     DROP TABLE IF EXISTS point_reservas_credito; DROP TABLE IF EXISTS point_reservas_lotes;
     DROP TABLE IF EXISTS point_reservas_stock; DROP TABLE IF EXISTS point_intentos;
-    DELETE FROM checkout_manual_cancelaciones; DELETE FROM checkout_manual_entradas; DELETE FROM checkout_manuales; DELETE FROM movimientos_cuenta_corriente; DELETE FROM movimientos_stock;
+    DELETE FROM supervisor_autorizaciones; DELETE FROM supervisor_pin_intentos; DELETE FROM supervisor_pin_limites; DELETE FROM supervisor_pin_config_auditoria; DELETE FROM supervisor_pin_secretos; DELETE FROM checkout_manual_cancelaciones; DELETE FROM checkout_manual_entradas; DELETE FROM checkout_manuales; DELETE FROM movimientos_cuenta_corriente; DELETE FROM movimientos_stock;
     DELETE FROM pagos_venta; DELETE FROM detalles_venta; DELETE FROM ventas; DELETE FROM lotes_producto;
     DELETE FROM productos WHERE id='${libre}'; UPDATE productos SET kiosco_id='${kid}',stock_actual=10,activo=true,requiere_vencimiento=false,es_pesable=true WHERE id='${producto}';
     UPDATE usuarios SET activo=true,rol='DUEÑO' WHERE id='${actor}'; UPDATE kioscos SET estado_suscripcion='ACTIVO';
@@ -533,4 +537,65 @@ it('el cajero original puede consultar una cancelación del dueño', async () =>
  const entrada = { ...entradaBackend(), usuarioId: cajero }
  await cancelarManual(entrada)
  expect(await consultarCancelacionSql(entrada, cajero)).toMatchObject({ entrada, confirmacion: { estado: 'CANCELADO' } })
+})
+
+async function descuentoPreparado() {
+ await db.exec(`UPDATE sesiones_caja SET usuario_id='${cajero}' WHERE id='${caja}'`)
+ const snapshot = solicitud(); snapshot.usuario_id = cajero; snapshot.total = 200
+ snapshot.detalles[0].precio_unitario = 80; snapshot.detalles[0].subtotal = 200; snapshot.pagos[0].monto = 200
+ const entrada = { ...entradaBackend(), usuarioId: cajero, tipoAjuste: 'DESCUENTO_PORCENTAJE', valorAjuste: 20,
+ totalEsperado: 200, subtotalesEsperados: [200], pagos: [{ ...entradaBackend().pagos[0], montoCentavos: 20000 }] }
+ await prepararBackend(entrada,snapshot,cajero)
+ const hash = { version: 1, algoritmo: 'PBKDF2-SHA256', iteraciones: 600000, sal: 'a'.repeat(32), hash: 'b'.repeat(64), pepperVersion: '1' }
+ await db.query('SELECT configurar_hash_pin_supervisor($1::uuid,$2::jsonb)',[actor,JSON.stringify(hash)])
+ const reservado = (await db.query<{ datos: { id: string } }>('SELECT reservar_intento_pin_supervisor($1::uuid,$2,$3::jsonb) AS datos',[cajero,'DESCUENTO',JSON.stringify(entrada)])).rows[0].datos
+ // La verificación criptográfica se prueba separadamente con WebCrypto real.
+ await db.query('SELECT finalizar_intento_pin_supervisor($1::uuid,$2::uuid,true)',[cajero,reservado.id])
+ const permiso = (await db.query<{ datos: { autorizacion_id: string } }>('SELECT emitir_autorizacion_supervisor($1::uuid,$2::uuid) AS datos',[cajero,reservado.id])).rows[0].datos
+ return { entrada, snapshot, permisoId: permiso.autorizacion_id }
+}
+async function confirmarAutorizado(datos: Awaited<ReturnType<typeof descuentoPreparado>>, permisoId: string | null = datos.permisoId) {
+ return db.query<{ datos: { venta_id: string; total: number } }>('SELECT confirmar_venta_manual_autorizada($1::uuid,$2::jsonb,$3::jsonb,$4::uuid) AS datos', [cajero,JSON.stringify(datos.entrada),JSON.stringify(datos.snapshot),permisoId])
+}
+it('consume autorización y confirma venta, stock y deuda en una sola transacción', async () => {
+ const datos = await descuentoPreparado()
+ expect((await confirmarAutorizado(datos)).rows[0].datos).toMatchObject({ venta_id: venta, total: 200 })
+ expect(await leer(`SELECT stock_actual FROM productos WHERE id='${producto}'`)).toEqual([{ stock_actual: '7.500' }])
+ expect(await leer('SELECT saldo_deudor FROM clientes')).toEqual([{ saldo_deudor: '200.00' }])
+ expect((await leer('SELECT consumido_en FROM supervisor_autorizaciones'))[0]).not.toMatchObject({ consumido_en: null })
+})
+it('si falla stock revierte consumo y todos los efectos y permite reintento con el mismo permiso', async () => {
+ const datos = await descuentoPreparado()
+ await db.exec(`UPDATE productos SET stock_actual=0 WHERE id='${producto}'`)
+ await expect(confirmarAutorizado(datos)).rejects.toThrow(/Stock disponible insuficiente/)
+ expect(await leer('SELECT consumido_en FROM supervisor_autorizaciones')).toEqual([{ consumido_en: null }])
+ expect(await leer('SELECT id FROM ventas')).toEqual([])
+ expect(await leer('SELECT saldo_deudor FROM clientes')).toEqual([{ saldo_deudor: '0.00' }])
+ await db.exec(`UPDATE productos SET stock_actual=10 WHERE id='${producto}'`)
+ expect((await confirmarAutorizado(datos)).rows[0].datos.total).toBe(200)
+})
+it('recupera cierre confirmado sin permiso nuevo incluso si el anterior venció', async () => {
+ const datos = await descuentoPreparado(); const primero = await confirmarAutorizado(datos)
+ await db.exec("UPDATE supervisor_autorizaciones SET vence_en=now()-interval '1 second'")
+ expect((await confirmarAutorizado(datos,null)).rows).toEqual(primero.rows)
+ expect(await leer('SELECT saldo_deudor FROM clientes')).toEqual([{ saldo_deudor: '200.00' }])
+})
+it('rechaza snapshot cambiado y permiso ausente sin registrar venta ni consumir', async () => {
+ const datos = await descuentoPreparado()
+ await expect(confirmarAutorizado({ ...datos, snapshot: { ...datos.snapshot, total: 199 } })).rejects.toThrow(/cotización original/)
+ await expect(confirmarAutorizado(datos,null)).rejects.toThrow(/Permiso no corresponde/)
+ expect(await leer('SELECT consumido_en FROM supervisor_autorizaciones')).toEqual([{ consumido_en: null }])
+ expect(await leer('SELECT id FROM ventas')).toEqual([])
+})
+
+it('permiso vencido no registra venta y sólo el servicio ejecuta el cierre autorizado', async () => {
+ const datos = await descuentoPreparado()
+ await db.exec("UPDATE supervisor_autorizaciones SET vence_en=now()-interval '1 second'")
+ await expect(confirmarAutorizado(datos)).rejects.toThrow(/vencido/)
+ expect(await leer('SELECT id FROM ventas')).toEqual([])
+ await db.exec("SET ROLE authenticated; SET request.jwt.claim.role='authenticated'")
+ await expect(confirmarAutorizado(datos)).rejects.toThrow(/permission denied/)
+ await db.exec("RESET ROLE; SET request.jwt.claim.role='service_role'; UPDATE supervisor_autorizaciones SET vence_en=now()+interval '2 minutes'; SET ROLE service_role")
+ expect((await confirmarAutorizado(datos)).rows[0].datos.total).toBe(200)
+ await db.exec('RESET ROLE')
 })
