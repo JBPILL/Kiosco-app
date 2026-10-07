@@ -1,5 +1,10 @@
 # Cierre manual transaccional: servidor preparado
 
+El backend autenticado ya está implementado en el paso 27. Consultá
+[checkout-manual-backend.md](checkout-manual-backend.md) para instalarlo.
+La descripción siguiente registra el alcance original del paso 26; el POS y
+la cola offline siguen pendientes de conexión.
+
 ## Estado de la fase
 
 `supabase_fase_checkout_manual.sql` agrega una RPC privada y un registro durable

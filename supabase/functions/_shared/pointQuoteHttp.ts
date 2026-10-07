@@ -18,7 +18,7 @@ export interface PointQuoteHttpDependencies {
     => Promise<{ orderId: string; estadoPersistido: string; total: number; montoPointCentavos: number }>
 }
 
-async function leerCuerpo(request: Request): Promise<unknown> {
+export async function leerCuerpo(request: Request): Promise<unknown> {
   if (!request.body) throw new Error('Cuerpo vacío')
   const reader = request.body.getReader()
   const decoder = new TextDecoder()

@@ -80,6 +80,8 @@ beforeAll(async () => {
   }
   await db.exec(readFileSync('supabase_fase_checkout_manual.sql', 'utf8'))
   await db.exec(readFileSync('supabase_fase_checkout_manual.sql', 'utf8'))
+  await db.exec(readFileSync('supabase_fase_checkout_manual_backend.sql', 'utf8'))
+  await db.exec(readFileSync('supabase_fase_checkout_manual_backend.sql', 'utf8'))
 }, 30000)
 beforeEach(async () => {
   await db.exec(`RESET ROLE; SET request.jwt.claim.role='service_role';
@@ -87,7 +89,7 @@ beforeEach(async () => {
     DROP TRIGGER IF EXISTS fallo_ensayo ON movimientos_cuenta_corriente;
     DROP TABLE IF EXISTS point_reservas_credito; DROP TABLE IF EXISTS point_reservas_lotes;
     DROP TABLE IF EXISTS point_reservas_stock; DROP TABLE IF EXISTS point_intentos;
-    DELETE FROM checkout_manuales; DELETE FROM movimientos_cuenta_corriente; DELETE FROM movimientos_stock;
+    DELETE FROM checkout_manual_entradas; DELETE FROM checkout_manuales; DELETE FROM movimientos_cuenta_corriente; DELETE FROM movimientos_stock;
     DELETE FROM pagos_venta; DELETE FROM detalles_venta; DELETE FROM ventas; DELETE FROM lotes_producto;
     DELETE FROM productos WHERE id='${libre}'; UPDATE productos SET kiosco_id='${kid}',stock_actual=10,activo=true,requiere_vencimiento=false,es_pesable=true WHERE id='${producto}';
     UPDATE usuarios SET activo=true,rol='DUEÑO' WHERE id='${actor}'; UPDATE kioscos SET estado_suscripcion='ACTIVO';
@@ -313,4 +315,33 @@ it('salta cantidades FEFO retenidas por Point y conserva el remanente de ese lot
   await confirmar()
   expect(await leer('SELECT cantidad_actual FROM lotes_producto ORDER BY id')).toEqual([{ cantidad_actual: '1.500' }, { cantidad_actual: '1.000' }])
   expect(await leer('SELECT estado FROM point_intentos')).toEqual([{ estado: 'PENDIENTE' }])
+})
+
+function entradaBackend() {
+  const s = solicitud()
+  return { version: 1, checkoutId: s.id, kioscoId: s.kiosco_id, usuarioId: s.usuario_id, sesionCajaId: s.sesion_caja_id,
+    fechaHora: s.fecha_hora, clienteId: s.cliente_id, notas: s.notas, tipoAjuste: 'NINGUNO', valorAjuste: 0,
+    totalEsperado: s.total, subtotalesEsperados: [250], componentesEsperados: [],
+    lineas: [{ tipo: 'PRODUCTO', id: detalle, productoId: producto, cantidad: 2.5, sinEnvase: false }],
+    pagos: [{ id: pago, medio: 'CUENTA_CORRIENTE', montoCentavos: 25000, referencia: null }] }
+}
+async function prepararBackend(entrada: unknown = entradaBackend(), snapshot: unknown = solicitud(), authId = actor) {
+  return db.query<{ preparar_checkout_manual: { entrada: unknown; snapshot: unknown } }>(
+    'SELECT preparar_checkout_manual($1::uuid,$2::jsonb,$3::jsonb)', [authId, JSON.stringify(entrada), JSON.stringify(snapshot)])
+}
+it('la preparación durable conserva el primer snapshot y rechaza otra entrada', async () => {
+  const primero = await prepararBackend()
+  const cambiado = solicitud()
+  cambiado.detalles[0].precio_unitario = 99
+  expect((await prepararBackend(entradaBackend(), cambiado)).rows).toEqual(primero.rows)
+  await expect(prepararBackend({ ...entradaBackend(), notas: 'Otra' }, { ...solicitud(), notas: 'Otra' })).rejects.toThrow(/identificador/i)
+  expect(await leer('SELECT count(*)::int AS cantidad FROM ventas')).toEqual([{ cantidad: 0 }])
+})
+it('la entrada privada verifica perfil, identidad, caja y permisos de tablas', async () => {
+  await expect(prepararBackend(entradaBackend(), { ...solicitud(), id: producto })).rejects.toThrow(/identidad/i)
+  await db.exec("UPDATE sesiones_caja SET estado='CERRADA'")
+  await expect(prepararBackend()).rejects.toThrow(/caja/i)
+  await db.exec('SET ROLE authenticated')
+  await expect(prepararBackend()).rejects.toThrow(/permission denied/i)
+  await expect(leer('SELECT * FROM checkout_manual_entradas')).rejects.toThrow(/permission denied/i)
 })

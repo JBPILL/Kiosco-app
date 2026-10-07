@@ -376,3 +376,14 @@ Seguí [checkout-manual-servidor.md](checkout-manual-servidor.md). Esta preparac
 todavía no cambia el cobro manual ni la cola offline: falta conectarlos al backend
 autenticado. No amplíes los permisos de la RPC al frontend. El SQL no se ejecutó
 remotamente desde Codex.
+
+## Paso 27: autenticación y cotización del cierre manual
+
+Con el paso 26 aplicado, ejecutá completo
+`supabase_fase_checkout_manual_backend.sql` en ensayo. Es reaplicable y conserva
+el primer snapshot comercial autorizado en una tabla privada. No activa Point.
+
+Seguí [checkout-manual-backend.md](checkout-manual-backend.md) para configurar
+`CHECKOUT_ALLOWED_ORIGINS` y desplegar `checkout-manual`. El SQL y la función
+no se aplicaron remotamente desde Codex. El POS y la cola offline aún requieren
+la siguiente fase de conexión antes de usar este nuevo cierre.

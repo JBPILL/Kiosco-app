@@ -68,6 +68,20 @@ export function cotizarPoint(
   lineas: LineaCotizacionPoint[], tipoAjuste: TipoAjuste, valorAjuste: number,
   datos: DatosCotizacionPoint,
 ): CotizacionPoint {
+  return cotizarTicketComercial(lineas, tipoAjuste, valorAjuste, datos, false)
+}
+
+export function cotizarVentaManual(
+  lineas: LineaCotizacionPoint[], tipoAjuste: TipoAjuste, valorAjuste: number,
+  datos: DatosCotizacionPoint,
+): CotizacionPoint {
+  return cotizarTicketComercial(lineas, tipoAjuste, valorAjuste, datos, true)
+}
+
+function cotizarTicketComercial(
+  lineas: LineaCotizacionPoint[], tipoAjuste: TipoAjuste, valorAjuste: number,
+  datos: DatosCotizacionPoint, permitirCero: boolean,
+): CotizacionPoint {
   if (!datos.kioscoId || lineas.length === 0 || lineas.length > 500) throw new Error('Ticket inválido')
   const tipos: TipoAjuste[] = ['NINGUNO', 'DESCUENTO_PORCENTAJE', 'DESCUENTO_FIJO', 'RECARGO_PORCENTAJE', 'RECARGO_FIJO']
   if (!tipos.includes(tipoAjuste)) throw new Error('Ajuste inválido')
@@ -120,7 +134,7 @@ export function cotizarPoint(
   const evaluados = evaluarCarritoPromociones(items, datos.promociones, contextoPromocionesArgentina(datos.fecha))
   const total = totalCarrito(evaluados, tipoAjuste, valorAjuste)
   const montoCentavos = total * 100
-  if (!Number.isSafeInteger(montoCentavos) || montoCentavos <= 0 || total > 9999999999) throw new Error('Total Point inválido')
+  if (!Number.isSafeInteger(montoCentavos) || (permitirCero ? montoCentavos < 0 : montoCentavos <= 0) || total > 9999999999) throw new Error(permitirCero ? 'Total manual inválido' : 'Total Point inválido')
   // Comprobar el detalle antes de enviar una orden: un pago no debe llegar al
   // cierre con una base no distribuible o importes fuera de NUMERIC(12,2).
   const subtotales = distribuirTotalVenta(evaluados.map((item) => item.subtotal), total)
