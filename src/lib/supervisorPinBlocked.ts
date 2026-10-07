@@ -1,7 +1,9 @@
 export class SupervisorPinBloqueado extends Error {
-  constructor(readonly reintentarEn: string) {
+  readonly reintentarEn: string
+  constructor(reintentarEn: string) {
     super(`Esperá hasta las ${new Date(reintentarEn).toLocaleTimeString('es-AR')} para volver a ingresar el PIN.`)
     this.name = 'SupervisorPinBloqueado'
+    this.reintentarEn = reintentarEn
   }
 }
 
