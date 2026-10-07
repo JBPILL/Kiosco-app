@@ -22,6 +22,9 @@ Validación local: diez pruebas de tamaño, errores, reintento y respuestas tard
 build aprobado. Las consultas de ventas filtran el comercio y descartan resultados
 al cerrar, cambiar operador o cambiar ticket. No se procesan consultas simultáneas
 del mismo código; la captura de catálogo acepta sólo una lectura por apertura.
+Cuando el navegador indica desconexión, ventas usa el catálogo local del comercio
+con código exacto y único, activo y sin costos. Avisa que utilizó datos guardados;
+no confirma stock/precio de servidor ni concede autorización de cobro offline.
 Pendiente: iPhone Safari/Chrome/Brave, Android Chrome/Samsung Internet, rotación,
 denegación de permisos, cierre durante inicio y teléfonos con múltiples lentes.
 No se ha probado hardware físico en esta fase.

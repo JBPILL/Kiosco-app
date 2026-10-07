@@ -6,7 +6,8 @@ import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { supabase } from '../../lib/supabase'
 import { playScanSound } from '../../lib/sound'
-import { formatPrecio } from '../../lib/utils'
+import { formatPrecio, getCachedProductos } from '../../lib/utils'
+import { buscarCodigoCamaraLocal } from '../../lib/cameraBarcodeCache'
 import type { Producto } from '../../types/database'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../../stores/authStore'
@@ -84,13 +85,13 @@ export function BarcodeScannerModal({
     consultasRef.current.add(code)
 
     try {
-      const { data, error } = await supabase
-        .from('productos')
-        .select('*, categoria:categorias(nombre, color)')
-        .eq('activo', true)
-        .eq('kiosco_id', contexto.kiosco.id)
-        .eq('codigo_barras', code)
-        .maybeSingle()
+      const sinConexion = !navigator.onLine
+      const { data, error } = sinConexion
+        ? { data: buscarCodigoCamaraLocal(getCachedProductos(contexto.kiosco.id), contexto.kiosco.id, code), error: null }
+        : await supabase.from('productos')
+          .select('*, categoria:categorias(nombre, color)')
+          .eq('activo', true).eq('kiosco_id', contexto.kiosco.id)
+          .eq('codigo_barras', code).maybeSingle()
 
       if (!vigente()) return
       if (error) throw error
@@ -104,7 +105,7 @@ export function BarcodeScannerModal({
           codigo: code,
           exito: true,
         })
-        toast.success(`${data.descripcion} agregado al ticket`)
+        toast.success(`${data.descripcion} agregado al ticket${sinConexion ? ' · catálogo guardado sin conexión' : ''}`)
         onProductScannedRef.current(data)
 
         if (!modoContinuoRef.current) {
