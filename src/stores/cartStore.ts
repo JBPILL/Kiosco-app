@@ -269,8 +269,12 @@ export const useCartStore = create<CartState>((set, get) => ({
       get().cerrarTab(state.tabActivaId, false)
     } else {
       get().vaciarCarrito(false)
+      // La identidad de una venta cerrada no debe reutilizarse para otro cobro.
+      const nuevoId = uuidv4()
       set((s) => ({
-        tabs: s.tabs.map((t) => (/^Ticket\s+\d+$/i.test(t.nombre) ? { ...t, nombre: 'Ticket 1' } : t)),
+        tabActivaId: nuevoId,
+        tabs: s.tabs.map((t) => ({ ...t, id: nuevoId,
+          nombre: /^Ticket\s+\d+$/i.test(t.nombre) ? 'Ticket 1' : t.nombre })),
       }))
     }
   },

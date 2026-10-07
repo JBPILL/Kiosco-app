@@ -24,6 +24,18 @@ function reiniciarCarrito() {
 
 const cart = () => useCartStore.getState()
 
+it('cada venta de la última pestaña obtiene una identidad nueva y conserva su nombre', () => {
+  reiniciarCarrito()
+  const anterior = cart().tabActivaId
+  cart().renombrarTab(anterior, 'Mostrador')
+  cart().agregarProducto(crearProducto(), 1)
+  cart().completarVentaTabActiva()
+  expect(cart().tabActivaId).not.toBe(anterior)
+  expect(cart().tabs[0].id).toBe(cart().tabActivaId)
+  expect(cart().tabs[0].nombre).toBe('Mostrador')
+  expect(cart().items).toEqual([])
+})
+
 describe('cartStore: productos y cantidades', () => {
   beforeEach(reiniciarCarrito)
 
