@@ -1,10 +1,25 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render as renderUI, screen, waitFor } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { useAuthStore } from '../../stores/authStore'
 
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }))
 vi.mock('../../lib/supabase', () => ({ supabase: { rpc } }))
 import { BajasStockTab } from './BajasStockTab'
+
+function render(ui: ReactElement) {
+  return renderUI(<MemoryRouter>{ui}</MemoryRouter>)
+}
+
+it('orienta al usuario cuando no hay bajas y ofrece acceso a Stock', async () => {
+  render(<BajasStockTab />)
+  await screen.findByText('No hay bajas registradas en este período.')
+  expect(screen.getByRole('link', { name: 'Ir a Stock' }).getAttribute('href')).toBe('/stock')
+  expect(screen.getByRole('heading', { name: 'Cómo interpretar este reporte' })).toBeTruthy()
+  expect(screen.getByText('Movimientos, no unidades')).toBeTruthy()
+  expect(screen.getByText('Costo del momento')).toBeTruthy()
+})
 
 beforeEach(() => {
   rpc.mockReset().mockResolvedValue({ data: { movimientos: 0, por_motivo: [] }, error: null })

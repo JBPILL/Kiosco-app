@@ -11,7 +11,7 @@ let errorServidor: string | null = null
 vi.mock('../stores/authStore', () => ({ useAuthStore: Object.assign(() => auth, { getState: () => auth }) }))
 vi.mock('../stores/electronicaStore', () => ({ useElectronicaStore: () => ({ ...mocks, unidades, reparaciones, cargando: false, error: errorServidor }) }))
 vi.mock('react-hot-toast', () => ({ default: { success: mocks.success } }))
-vi.mock('../components/ui/Modal', () => ({ Modal: ({ children, title }: { children: ReactNode; title: string }) => <div role="dialog" aria-label={title}>{children}</div> }))
+vi.mock('../components/ui/Modal', () => ({ Modal: ({ children, title, footer }: { children: ReactNode; title: string; footer?: ReactNode }) => <div role="dialog" aria-label={title}>{children}{footer}</div> }))
 import { ElectronicaPage } from './ElectronicaPage'
 
 const detalle = '10000000-0000-0000-0000-000000000001'
@@ -110,8 +110,8 @@ it('marca una venta anulada y conserva la información como registro interno', (
 it('nueva reparación reintenta sin falso éxito y cambia UUID al cambiar datos', async () => {
   mocks.guardarReparacion.mockRejectedValue(new Error('Servidor rechazó'))
   render(<ElectronicaPage />); abrirNuevaReparacion()
-  expect(screen.getByText(/No registres PIN/)).toBeTruthy()
-  expect(screen.getByText(/no está cobrado/)).toBeTruthy()
+  expect(screen.getByText(/No ingreses PIN/)).toBeTruthy()
+  expect(screen.getByText(/no realiza un cobro/)).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Guardar reparación' }))
   await screen.findByText('Servidor rechazó')
   const solicitud = mocks.guardarReparacion.mock.calls[0][1]
