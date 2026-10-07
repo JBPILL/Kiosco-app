@@ -1,3 +1,4 @@
+import { cuadroEscaneoMovil, errorCamaraMovil, puedeReintentarCamara } from '../../lib/mobileCameraScanner'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import { Modal } from '../ui/Modal'
@@ -133,6 +134,7 @@ export function BarcodeScannerModal({
     setErrorCamara(null)
 
     try {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error('CAMERA_UNAVAILABLE')
       // Detener escáner previo si está corriendo
       if (scannerRef.current?.isScanning) {
         await scannerRef.current.stop()
@@ -168,15 +170,8 @@ export function BarcodeScannerModal({
       scannerRef.current = scanner
 
       const scanConfig = {
-        fps: 20,
-        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-          const width = Math.floor(Math.min(viewfinderWidth * 0.88, 420))
-          const height = Math.floor(Math.min(viewfinderHeight * 0.65, 260))
-          return {
-            width: Math.max(width, 250),
-            height: Math.max(height, 160),
-          }
-        },
+        fps: 10,
+        qrbox: cuadroEscaneoMovil,
       }
 
       const targetCamera = cameraId ? cameraId : { facingMode: 'environment' }
@@ -186,18 +181,18 @@ export function BarcodeScannerModal({
           targetCamera,
           scanConfig,
           (decodedText) => {
-            procesarCodigo(decodedText)
+            if (scannerRef.current === scanner) void procesarCodigo(decodedText)
           },
           () => {}
         )
       } catch (firstErr) {
         console.warn('Fallo al iniciar cámara con targetCamera, intentando user/default:', firstErr)
-        if (!cameraId) {
+        if (!cameraId && puedeReintentarCamara(firstErr)) {
           await scanner.start(
             { facingMode: 'user' },
-            scanConfig,
+            { ...scanConfig, videoConstraints: {} },
             (decodedText) => {
-              procesarCodigo(decodedText)
+              if (scannerRef.current === scanner) void procesarCodigo(decodedText)
             },
             () => {}
           )
@@ -205,6 +200,14 @@ export function BarcodeScannerModal({
           throw firstErr
         }
       }
+
+      if (scannerRef.current !== scanner) {
+        if (scanner.isScanning) await scanner.stop()
+        scanner.clear()
+        return
+      }
+      const activeDeviceId = scanner.getRunningTrackSettings().deviceId
+      if (activeDeviceId) setCamaraActualId(activeDeviceId)
 
       if (typeof targetCamera === 'string') {
         setCamaraActualId(targetCamera)
@@ -215,7 +218,7 @@ export function BarcodeScannerModal({
         const devices = await Html5Qrcode.getCameras()
         if (devices && devices.length > 0) {
           setCamaras(devices.map((d) => ({ id: d.id, label: d.label || `Cámara ${d.id}` })))
-          if (!cameraId && !camaraActualId) {
+          if (!activeDeviceId && !cameraId && !camaraActualId && devices.length === 1) {
             setCamaraActualId(devices[0].id)
           }
         }
@@ -236,12 +239,7 @@ export function BarcodeScannerModal({
       setIniciando(false)
     } catch (err: unknown) {
       console.error('Error al inicializar cámara:', err)
-      const msg = err instanceof Error ? err.message : String(err)
-      if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
-        setErrorCamara('Permiso de cámara denegado. Habilitá la cámara en la configuración de tu navegador.')
-      } else {
-        setErrorCamara('No se pudo acceder a la cámara. Verificá que no esté en uso por otra aplicación.')
-      }
+      setErrorCamara(errorCamaraMovil(err))
       setIniciando(false)
     } finally {
       isStartingRef.current = false
@@ -443,3 +441,5 @@ export function BarcodeScannerModal({
     </Modal>
   )
 }
+
+
