@@ -246,6 +246,7 @@ export function ProductSearch({ onSelect, onOpenScanner, onCodigoNoEncontrado }:
       <div className="flex-1 min-w-0 relative">
         <SearchInput
           ref={inputRef}
+          data-pos-search="true"
           placeholder="Escribí el nombre del producto o pasá el código de barras..."
           value={query}
           onChange={(e) => {

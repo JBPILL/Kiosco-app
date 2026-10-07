@@ -687,7 +687,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
           type="button"
           onClick={() => crearNuevaTab()}
           className="px-2 py-1 text-xs font-bold rounded-lg text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors cursor-pointer"
-          title="Abrir nueva venta en paralelo [+]"
+          title="Abrir nueva venta en paralelo (Alt + N)"
         >
           +
         </button>
@@ -707,7 +707,7 @@ export function CartPanel({ onCobrar }: CartPanelProps) {
                 }
               }}
               className="text-amber-600 dark:text-amber-400 hover:text-amber-700 font-semibold cursor-pointer transition-colors"
-              title="Pausar esta venta para atender a otro cliente y recuperarla luego (F6)"
+              title="Guardar esta venta en espera (Alt + G)"
             >
               Pausar
             </button>

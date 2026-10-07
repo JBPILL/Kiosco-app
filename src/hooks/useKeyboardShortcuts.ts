@@ -1,94 +1,33 @@
 import { useEffect } from 'react'
+import { esCampoEditable, ignorarAtajoGlobal, POS_SHORTCUTS } from '../lib/keyboardShortcuts'
+import type { KeyboardShortcutsHandlers } from '../lib/keyboardShortcuts'
 
-interface KeyboardShortcutsHandlers {
-  onFocusSearch?: () => void
-  onFocusTicket?: () => void
-  onCobrar?: () => void
-  onVentasEnEspera?: () => void
-  onOpenScanner?: () => void
-  onOpenHelp?: () => void
-  onRetiroCaja?: () => void
-  onEscape?: () => void
-}
-
-/**
- * Atajos de teclado para Punto de Venta (POS) en PC de escritorio
- */
-export function useKeyboardShortcuts(
-  handlers: KeyboardShortcutsHandlers,
-  enabled: boolean = true
-) {
+export function useKeyboardShortcuts(handlers: KeyboardShortcutsHandlers, enabled = true) {
   useEffect(() => {
     if (!enabled) return
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null
-      const isInput = target && (
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.tagName === 'SELECT' ||
-        target.isContentEditable
-      )
-
-      // F1: Ayuda de atajos
-      if (e.key === 'F1') {
-        e.preventDefault()
-        handlers.onOpenHelp?.()
-        return
-      }
-
-      // F2 o Ctrl+B o Barra si se enfoca búsqueda
-      if (e.key === 'F2' || ((e.ctrlKey || e.altKey) && e.key.toLowerCase() === 'b')) {
-        e.preventDefault()
-        handlers.onFocusSearch?.()
-        return
-      }
-
-      // F6 o Alt + T: Enfocar el Ticket de venta
-      if (e.key === 'F6' || (e.altKey && e.key.toLowerCase() === 't')) {
-        e.preventDefault()
-        handlers.onFocusTicket?.()
-        return
-      }
-
-      // Barra espaciadora (sin estar en un input), F4 o Ctrl+Enter: Cobrar ticket
-      if ((e.code === 'Space' && !isInput) || e.key === 'F4' || (e.ctrlKey && e.key === 'Enter')) {
-        e.preventDefault()
-        handlers.onCobrar?.()
-        return
-      }
-
-      // F8: Ventas en espera
-      if (e.key === 'F8') {
-        e.preventDefault()
-        handlers.onVentasEnEspera?.()
-        return
-      }
-
-      // Alt + S o F3: Escáner de cámara
-      if ((e.altKey && e.key.toLowerCase() === 's') || e.key === 'F3') {
-        e.preventDefault()
-        handlers.onOpenScanner?.()
-        return
-      }
-
-      // Alt + E o F9: Retiro rápido de efectivo / Sangría de caja
-      if ((e.altKey && e.key.toLowerCase() === 'e') || e.key === 'F9') {
-        e.preventDefault()
-        handlers.onRetiroCaja?.()
-        return
-      }
-
-      // Escape: Cerrar modales o cancelar
-      if (e.key === 'Escape') {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (ignorarAtajoGlobal(event)) return
+      const editable = esCampoEditable(event.target)
+      const shortcut = POS_SHORTCUTS.find(s => s.tecla.toLowerCase() === event.key.toLowerCase()
+        && Boolean(s.alt) === event.altKey && Boolean(s.ctrl) === event.ctrlKey && !event.shiftKey)
+      if (shortcut) {
+        // Buscar puede recuperar el foco desde un campo; las demás acciones esperan a salir de él.
+        const buscadorPOS = event.target instanceof HTMLElement && Boolean(event.target.closest('[data-pos-search="true"]'))
+        if (editable && !buscadorPOS && shortcut.action !== 'onFocusSearch' && shortcut.action !== 'onOpenHelp') return
+        const handler = handlers[shortcut.action]
+        if (!handler) return
+        event.preventDefault()
+        handler()
+      } else if (event.code === 'Space' && !editable && !event.altKey && !event.ctrlKey && !event.shiftKey
+        && !(event.target instanceof HTMLElement && event.target.closest('button,a,[role="button"],summary'))) {
+        if (!handlers.onCobrar) return
+        event.preventDefault()
+        handlers.onCobrar()
+      } else if (event.key === 'Escape' && !event.altKey && !event.ctrlKey && !event.shiftKey) {
         handlers.onEscape?.()
-        return
       }
     }
-
     window.addEventListener('keydown', handleKeyDown)
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-    }
+    return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handlers, enabled])
 }

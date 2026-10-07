@@ -4,6 +4,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { usePwaStore } from '../../stores/pwaStore'
 import { KeyboardShortcutsModal } from '../pos/KeyboardShortcutsModal'
 import { AlPasoLogo } from './AlPasoLogo'
+import { esCampoEditable, ignorarAtajoGlobal } from '../../lib/keyboardShortcuts'
 
 interface SidebarProps {
   isOpen: boolean
@@ -106,15 +107,17 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // Atajos globales: Alt+M o F10 para enfocar menú, y Alt+1..7 para navegación directa
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (ignorarAtajoGlobal(e)) return
       // F1: Abrir modal de atajos de teclado
-      if (e.key === 'F1') {
+      if (e.key === 'F1' && !e.ctrlKey && !e.altKey && !e.shiftKey) {
         e.preventDefault()
         setModalShortcutsOpen(true)
         return
       }
 
+      if (esCampoEditable(e.target)) return
       // Alt + M o F10: Enfocar el menú lateral
-      if ((e.altKey && e.key.toLowerCase() === 'm') || e.key === 'F10') {
+      if (!e.shiftKey && !e.ctrlKey && ((e.altKey && e.key.toLowerCase() === 'm') || (!e.altKey && e.key === 'F10'))) {
         e.preventDefault()
         const activeIdx = itemsVisibles.findIndex((item) => item.path === location.pathname)
         const targetIdx = activeIdx >= 0 ? activeIdx : 0

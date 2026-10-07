@@ -513,9 +513,17 @@ export function POSPage() {
     setPaymentOpen(true)
   }
 
+  const cambiarTicketConTeclado = (direccion: -1 | 1) => {
+    const carrito = useCartStore.getState()
+    const indice = carrito.tabs.findIndex(tab => tab.id === carrito.tabActivaId)
+    if (indice < 0 || carrito.tabs.length < 2) return
+    carrito.cambiarTab(carrito.tabs[(indice + direccion + carrito.tabs.length) % carrito.tabs.length].id)
+    window.dispatchEvent(new CustomEvent('pos-focus-search'))
+  }
+
   useBarcodeGun({
     onScan: handleBarcodeGunScan,
-    enabled: !paymentOpen && !cartModalOpen && !modalScannerOpen && !modalEsperaOpen && !ticketModalOpen && !modalBalanzaOpen && !modalDevolucionOpen && !modalTicketsOpen && !modalEnvaseOpen && !modalRetiroOpen && !modalAltaRapidaOpen,
+    enabled: !paymentOpen && !cartModalOpen && !modalScannerOpen && !modalEsperaOpen && !ticketModalOpen && !modalBalanzaOpen && !modalDevolucionOpen && !modalTicketsOpen && !modalEnvaseOpen && !modalRetiroOpen && !modalAltaRapidaOpen && !modalLibreOpen && !modalPromosOpen && !modalShortcutsOpen,
   })
 
   // Atajos de teclado para PC de escritorio
@@ -543,6 +551,23 @@ export function POSPage() {
       },
       onRetiroCaja: () => {
         setModalRetiroOpen((prev) => !prev)
+      },
+      onCobroManual: () => { setDescripcionLibreInicial(undefined); setModalLibreOpen(true) },
+      onPromociones: () => {
+        const kid = usuario?.kiosco_id || kiosco?.id
+        if (kid) cargarPromociones(kid)
+        setModalPromosOpen(true)
+      },
+      onHistorialTickets: () => setModalTicketsOpen(true),
+      onRecibirEnvases: tieneEnvases ? () => setModalEnvaseOpen(true) : undefined,
+      onNuevoTicket: () => {
+        useCartStore.getState().crearNuevaTab()
+        window.dispatchEvent(new CustomEvent('pos-focus-search'))
+      },
+      onTicketAnterior: () => cambiarTicketConTeclado(-1),
+      onTicketSiguiente: () => cambiarTicketConTeclado(1),
+      onPausarTicket: () => {
+        if (useCartStore.getState().suspenderVentaActual()) toast.success('Venta guardada en espera')
       },
       onEscape: () => {
         if (modalAltaRapidaOpen) setModalAltaRapidaOpen(false)
@@ -607,7 +632,7 @@ export function POSPage() {
                   setModalLibreOpen(true)
                 }}
                 className="min-h-10 px-3 flex items-center gap-1 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-sm cursor-pointer"
-                title="Cobrar concepto o monto manual sin código (fotocopias, golosinas sueltas, etc.)"
+                title="Cobro manual / servicio (F7)"
               >
                 <span className="text-sm font-bold leading-none">+</span>
                 <span>Cobro Manual</span>
@@ -635,7 +660,7 @@ export function POSPage() {
                   setModalPromosOpen(true)
                 }}
                 className="min-h-10 px-3 flex items-center gap-1.5 rounded-xl border border-teal-300 dark:border-teal-700 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 dark:hover:bg-teal-900/60 text-teal-800 dark:text-teal-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-sm cursor-pointer"
-                title="Ver combos armados y ofertas vigentes"
+                title="Combos y ofertas (Alt + P)"
               >
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 3h9l9 9-9 9-9-9V3ZM7 7h.01" /></svg><span>Combos y Ofertas</span>
                 {promociones.filter((p) => p.activo).length > 0 && (
@@ -648,7 +673,7 @@ export function POSPage() {
                 type="button"
                 onClick={() => setModalTicketsOpen(true)}
                 className="min-h-10 px-3 flex items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-sm cursor-pointer"
-                title="Ver tickets emitidos, reimprimir comprobantes y devoluciones"
+                title="Tickets emitidos y reimpresión (Alt + H)"
               >
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M6 3h12v18H6V3ZM9 7h6M9 11h6M9 15h4" /></svg><span>Tickets Emitidos</span>
               </button>
@@ -657,7 +682,7 @@ export function POSPage() {
                   type="button"
                   onClick={() => setModalEnvaseOpen(true)}
                   className="min-h-10 px-3 flex items-center gap-1.5 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-emerald-50/80 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-sm cursor-pointer"
-                  title="Registrar botellas o envases vacíos que entrega el cliente"
+                  title="Recibir envases (Alt + R)"
                 >
                   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M9 2h6v5l3 4v10H6V11l3-4V2ZM6 13h12" /></svg><span>Recepción Envases</span>
                 </button>
