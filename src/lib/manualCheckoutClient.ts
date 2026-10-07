@@ -3,6 +3,7 @@ import { supabase } from './supabase'
 import { useAuthStore } from '../stores/authStore'
 import { firmaManual, leerEntradaCheckoutManual } from '../../supabase/functions/_shared/manualCheckoutRequest'
 import { leerPermisoSupervisorManual } from './manualCheckoutSupervisorPermission'
+import type { PermisoSupervisorManual } from './manualCheckoutSupervisorPermission'
 import type { SolicitudCancelacionManual } from './manualCheckoutOutbox'
 import { ManualCheckoutOutbox, procesarCheckoutManual } from './manualCheckoutOutbox'
 import type { EntradaCheckoutManual, ResultadoCheckoutManual } from '../types/checkoutManual'
@@ -57,9 +58,9 @@ export async function guardarAutorizacionCobroManual(entrada: EntradaCheckoutMan
   await outbox.guardarAutorizacionSupervisor(entrada, permiso)
 }
 
-export async function guardarCobroManualLocal(entrada: EntradaCheckoutManual, ticketClave: string, recibo: TicketData) {
+export async function guardarCobroManualLocal(entrada: EntradaCheckoutManual, ticketClave: string, recibo: TicketData, permiso?: PermisoSupervisorManual) {
   validarContextoLocal(entrada)
-  return outbox.guardar(entrada, ticketClave, recibo)
+  return outbox.guardar(entrada, ticketClave, recibo, permiso)
 }
 
 export function reclamarComprobanteManual(id: string, permitirPendiente = false) {

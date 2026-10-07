@@ -25,6 +25,28 @@ let outbox: ManualCheckoutOutbox
 beforeEach(() => { outbox = new ManualCheckoutOutbox(`Cobros-test-${crypto.randomUUID()}`) })
 afterEach(async () => { vi.restoreAllMocks(); await outbox.delete() })
 
+it('archiva cobro y permiso en una sola escritura durable', async () => {
+  const datos = { ...entrada(), tipoAjuste: 'DESCUENTO_FIJO' as const, valorAjuste: 20 }
+  const permiso = { autorizacionId: uid, venceEn: '2026-10-07T12:02:00.000Z' }
+  await outbox.guardar(datos, 'original', undefined, permiso)
+  outbox.close(); outbox = new ManualCheckoutOutbox(outbox.name)
+  expect(await outbox.cobros.get(id)).toMatchObject({ entrada: datos, autorizacionSupervisor: permiso })
+})
+
+it('permiso inválido no deja una solicitud parcialmente guardada', async () => {
+  const datos = { ...entrada(), tipoAjuste: 'DESCUENTO_FIJO' as const, valorAjuste: 20 }
+  await expect(outbox.guardar(datos, 'original', undefined, { autorizacionId: 'incorrecto', venceEn: 'ayer' })).rejects.toThrow(/inválido/)
+  expect(await outbox.cobros.get(id)).toBeUndefined()
+})
+
+it('comprobante inválido revierte también el permiso de una solicitud nueva', async () => {
+  const datos = { ...entrada(), tipoAjuste: 'DESCUENTO_FIJO' as const, valorAjuste: 20 }
+  const permiso = { autorizacionId: uid, venceEn: '2026-10-07T12:02:00.000Z' }
+  const recibo: TicketData = { ventaId: uid, fecha: datos.fechaHora, total: 100, subtotal: 100, medioPago: 'EFECTIVO', items: [] }
+  await expect(outbox.guardar(datos, 'original', recibo, permiso)).rejects.toThrow(/comprobante/)
+  expect(await outbox.cobros.get(id)).toBeUndefined()
+})
+
 it('guarda y recupera el permiso sin alterar la entrada ni guardar PIN', async () => {
  const datos = entrada(); datos.tipoAjuste = 'DESCUENTO_FIJO'; datos.valorAjuste = 20
  const permiso = { autorizacionId: uid, venceEn: new Date(Date.now()+120000).toISOString() }

@@ -41,8 +41,8 @@ it('autoriza descuento del cajero antes de archivar y guarda permiso antes del c
   await ejecutarCobroManual(actual, 'tab-1', recibo, '0012')
   expect(mocks.permiso).toHaveBeenCalledWith(crearEntradaCobroManual(actual), '0012')
   expect(mocks.permiso.mock.invocationCallOrder[0]).toBeLessThan(mocks.guardar.mock.invocationCallOrder[0])
-  expect(mocks.guardarPermiso).toHaveBeenCalledWith(crearEntradaCobroManual(actual), permiso)
-  expect(mocks.guardarPermiso.mock.invocationCallOrder[0]).toBeLessThan(mocks.cerrar.mock.invocationCallOrder[0])
+  expect(mocks.guardar).toHaveBeenCalledWith(crearEntradaCobroManual(actual), 'tab-1', recibo, permiso)
+  expect(mocks.guardar.mock.invocationCallOrder[0]).toBeLessThan(mocks.cerrar.mock.invocationCallOrder[0])
 })
 
 it('PIN rechazado no archiva ni bloquea ni confirma una venta', async () => {

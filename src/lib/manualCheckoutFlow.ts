@@ -5,7 +5,6 @@ import { cerrarCobroManualLocal, guardarCobroManualLocal, reclamarComprobanteMan
 import { useCartStore } from '../stores/cartStore'
 import { useAuthStore } from '../stores/authStore'
 import { solicitarPermisoDescuentoSupervisor } from './supervisorPinClient'
-import { guardarAutorizacionCobroManual } from './manualCheckoutClient'
 import { ajusteCarrito } from './carritoImportes'
 
 export interface ResultadoFlujoManual {
@@ -43,8 +42,8 @@ export async function ejecutarCobroManual(datos: DatosCobroManual, ticketClave: 
         > ajusteCarrito(datos.items, 'DESCUENTO_PORCENTAJE', 100) * 0.15))
   // Autorizar antes de archivar una solicitud de cobro; un PIN fallido no bloquea el carrito.
   const permiso = requiereSupervisor ? await solicitarPermisoDescuentoSupervisor(entrada, pinSupervisor ?? '') : null
-  await guardarCobroManualLocal(entrada, ticketClave, recibo)
-  if (permiso) await guardarAutorizacionCobroManual(entrada, permiso)
+  if (permiso) await guardarCobroManualLocal(entrada, ticketClave, recibo, permiso)
+  else await guardarCobroManualLocal(entrada, ticketClave, recibo)
   useCartStore.getState().bloquearTabPorCobro(ticketClave, entrada.checkoutId)
   // El cobro físico ya se hizo manualmente. Sin red queda como solicitud provisional.
   const pendiente = !navigator.onLine && original?.estado !== 'CONFIRMADO'

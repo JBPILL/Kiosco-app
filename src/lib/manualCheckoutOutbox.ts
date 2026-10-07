@@ -48,8 +48,10 @@ export class ManualCheckoutOutbox extends Dexie {
       }))
   }
 
-  async guardar(entradaSinValidar: EntradaCheckoutManual, ticketClave: string, recibo?: TicketData): Promise<CobroManualLocal> {
+  async guardar(entradaSinValidar: EntradaCheckoutManual, ticketClave: string, recibo?: TicketData, permisoSinValidar?: PermisoSupervisorManual): Promise<CobroManualLocal> {
     const entrada = leerEntradaCheckoutManual(entradaSinValidar)
+    const permiso = permisoSinValidar === undefined ? undefined : leerPermisoSupervisorManual(permisoSinValidar)
+    if (permiso && !entrada.tipoAjuste.startsWith('DESCUENTO')) throw new Error('El cobro no solicita un descuento')
     if (!ticketClave.trim() || ticketClave.length > 160) throw new Error('Identidad del ticket inválida')
     return this.transaction('rw', this.cobros, async () => {
       const anterior = await this.cobros.get(entrada.checkoutId)
@@ -58,6 +60,9 @@ export class ManualCheckoutOutbox extends Dexie {
         if (anterior.ticketClave !== ticketClave || firmaManual(anterior.entrada) !== firmaManual(entrada)) {
           throw new Error('El cobro guardado no coincide; conservá la solicitud original')
         }
+        if (permiso && firmaManual(anterior.autorizacionSupervisor) !== firmaManual(permiso)) {
+          throw new Error('Conservá el permiso del cobro original; revisá la autorización desde pendientes')
+        }
         return anterior
       }
       const porTicket = await this.cobros.where('[kioscoId+usuarioId+ticketClave]')
@@ -65,6 +70,7 @@ export class ManualCheckoutOutbox extends Dexie {
       if (porTicket) throw new Error('Este ticket ya tiene un cobro guardado; recuperá su identificador original')
       const cobro: CobroManualLocal = { id: entrada.checkoutId, kioscoId: entrada.kioscoId, usuarioId: entrada.usuarioId,
         ticketClave, entrada, estado: 'PENDIENTE', visibilidad: 'PENDIENTE', resultado: null, ultimoError: null }
+      if (permiso) cobro.autorizacionSupervisor = permiso
       if (recibo) {
         if (recibo.ventaId !== entrada.checkoutId || recibo.total !== entrada.totalEsperado || recibo.fecha !== entrada.fechaHora) {
           throw new Error('El comprobante no corresponde al cobro original')

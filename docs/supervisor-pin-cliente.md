@@ -26,6 +26,9 @@ PaymentModal solicita PIN para descuentos de cajeros mayores al 15%, calculados
 sobre mercadería sin depósitos. El flujo pide permiso antes de archivar y
 bloquear una solicitud nueva; los cobros ya archivados se recuperan sin cambiar
 su cuerpo. Esto no controla el momento en que el cajero cobra en el posnet físico.
+El cobro, comprobante y permiso inicial se archivan en una transacción de Dexie;
+no queda un cobro nuevo si falla la validación de su permiso o comprobante.
+La reautorización de pendientes usa la operación específica existente.
 
 Pendiente: validar interacción de PaymentModal en navegador,
 prueba real de Edge Functions y validación del flujo completo en navegador.
@@ -34,11 +37,11 @@ prueba real de Edge Functions y validación del flujo completo en navegador.
 
 | Criterio | Nota | Evidencia y mejora pendiente |
 |---|---|---|
-| Exactitud | 4 | Contrato contrastado con supervisorPinHttp; falta ejecución remota. |
-| Completitud | 3 | Servicio implementado; faltan formularios y pruebas específicas. |
+| Exactitud | 4 | Contrato contrastado con supervisorPinHttp y 76 pruebas locales; falta ejecución remota. |
+| Completitud | 3 | Formularios y escritura atómica implementados; faltan despliegue y prueba completa en navegador. |
 | Claridad | 4 | Funciones separadas por acción; falta documentación visual del flujo. |
-| Utilidad | 3 | Permiso conectado a la cola; aún no accesible desde la interfaz. |
+| Utilidad | 4 | Configuración, autorización y cola conectadas; requiere activar el flujo transaccional y desplegar Edge Functions. |
 | Concisión | 4 | Un módulo sin persistencia de PIN; revisar extracción de contexto compartido al integrar UI. |
 
-Promedio: 3,6/5. Prioridad siguiente: pruebas de sesión y respuestas, formularios
-compactos y prueba del cobro protegido. Esta fase no completa el plan general.
+Promedio: 3,8/5. Prioridad siguiente: prueba de navegador y validación remota del
+cobro protegido. Esta fase no completa el plan general.
