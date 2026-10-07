@@ -5,9 +5,10 @@ import { crearItem, crearProducto } from '../test/factories'
 import type { DatosCobroManual } from './manualCheckoutCart'
 import type { TicketData } from '../components/pos/TicketReceiptModal'
 
-const mocks = vi.hoisted(() => ({ recuperar: vi.fn(), guardar: vi.fn(), cerrar: vi.fn(), reclamar: vi.fn(), bloquear: vi.fn(), auth: vi.fn() }))
+const mocks = vi.hoisted(() => ({ recuperar: vi.fn(), guardar: vi.fn(), cerrar: vi.fn(), reclamar: vi.fn(), bloquear: vi.fn(), auth: vi.fn(), permiso: vi.fn(), guardarPermiso: vi.fn() }))
+vi.mock('./supervisorPinClient', () => ({ solicitarPermisoDescuentoSupervisor: mocks.permiso }))
 vi.mock('./manualCheckoutClient', () => ({ recuperarCobroManualLocal: mocks.recuperar, guardarCobroManualLocal: mocks.guardar,
-  cerrarCobroManualLocal: mocks.cerrar, reclamarComprobanteManual: mocks.reclamar }))
+  cerrarCobroManualLocal: mocks.cerrar, reclamarComprobanteManual: mocks.reclamar, guardarAutorizacionCobroManual: mocks.guardarPermiso }))
 vi.mock('../stores/cartStore', () => ({ useCartStore: { getState: () => ({ bloquearTabPorCobro: mocks.bloquear }) } }))
 vi.mock('../stores/authStore', () => ({ useAuthStore: { getState: mocks.auth } }))
 const kid = '10000000-0000-0000-0000-000000000001'
@@ -30,6 +31,27 @@ beforeEach(() => {
   mocks.cerrar.mockResolvedValue({ venta_id: ventaId })
   mocks.reclamar.mockResolvedValue(recibo)
   mocks.auth.mockReturnValue({ usuario: { id: uid }, kiosco: { id: kid } })
+})
+
+it('autoriza descuento del cajero antes de archivar y guarda permiso antes del cierre', async () => {
+  mocks.auth.mockReturnValue({ usuario: { id: uid, rol: 'CAJERO' }, kiosco: { id: kid } })
+  const permiso = { autorizacionId: kid, venceEn: '2026-10-07T12:02:00Z' }
+  mocks.permiso.mockResolvedValue(permiso)
+  const actual = { ...datos(), tipoAjuste: 'DESCUENTO_PORCENTAJE' as const, valorAjuste: 20 }
+  await ejecutarCobroManual(actual, 'tab-1', recibo, '0012')
+  expect(mocks.permiso).toHaveBeenCalledWith(crearEntradaCobroManual(actual), '0012')
+  expect(mocks.permiso.mock.invocationCallOrder[0]).toBeLessThan(mocks.guardar.mock.invocationCallOrder[0])
+  expect(mocks.guardarPermiso).toHaveBeenCalledWith(crearEntradaCobroManual(actual), permiso)
+  expect(mocks.guardarPermiso.mock.invocationCallOrder[0]).toBeLessThan(mocks.cerrar.mock.invocationCallOrder[0])
+})
+
+it('PIN rechazado no archiva ni bloquea ni confirma una venta', async () => {
+  mocks.auth.mockReturnValue({ usuario: { id: uid, rol: 'CAJERO' }, kiosco: { id: kid } })
+  mocks.permiso.mockRejectedValue(new Error('PIN incorrecto'))
+  await expect(ejecutarCobroManual({ ...datos(), tipoAjuste: 'DESCUENTO_PORCENTAJE', valorAjuste: 20 }, 'tab-1', recibo, '1234')).rejects.toThrow(/PIN/)
+  expect(mocks.guardar).not.toHaveBeenCalled()
+  expect(mocks.bloquear).not.toHaveBeenCalled()
+  expect(mocks.cerrar).not.toHaveBeenCalled()
 })
 
 it('proyecta el carrito sin costos y conserva receta por unidad', () => {

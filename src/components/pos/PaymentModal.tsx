@@ -21,6 +21,7 @@ import toast from 'react-hot-toast'
 import { distribuirTotalVenta } from '../../lib/distribuirTotalVenta'
 import { checkoutManualTransaccionalActivo } from '../../lib/manualCheckoutCart'
 import { ejecutarCobroManual, recuperarFlujoCobroManual } from '../../lib/manualCheckoutFlow'
+import { ajusteCarrito } from '../../lib/carritoImportes'
 
 export interface LineaPagoMixto {
   id: string
@@ -82,6 +83,12 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   const [referencia, setReferencia] = useState('')
   const [procesando, setProcesando] = useState(false)
   const procesandoRef = useRef(false)
+  const [pinSupervisor, setPinSupervisor] = useState('')
+  const operador = useAuthStore(state => state.usuario)
+  const requierePinSupervisor = checkoutManualTransaccionalActivo() && !cobroGuardado && operador?.rol === 'CAJERO'
+    && ((tipoAjuste === 'DESCUENTO_PORCENTAJE' && valorAjuste > 15)
+      || (tipoAjuste === 'DESCUENTO_FIJO' && ajusteCarrito(items, tipoAjuste, valorAjuste) > ajusteCarrito(items, 'DESCUENTO_PORCENTAJE', 100) * 0.15))
+  useEffect(() => { setPinSupervisor('') }, [isOpen, tabActivaId, operador?.id])
 
   // ── Estados para Pago Mixto / Dividido ─────────────────────────────────────
   const [esPagoMixto, setEsPagoMixto] = useState<boolean>(false)
@@ -387,7 +394,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             tipoAjuste, valorAjuste, total,
             pagos: esPagoMixto ? pagosMixtos.map(p => ({ id: p.id, medio: p.medio_pago, montoCentavos: Math.round(p.monto) * 100, referencia: referencia || null }))
               : [{ id: uuidv4(), medio: medioPago, montoCentavos: total * 100, referencia: referencia || null }],
-          }, ticketClave, reciboNuevo)
+          }, ticketClave, reciboNuevo, pinSupervisor)
           if (flujo.recibo && emitirFiscal) {
             if (flujo.pendiente || flujo.recuperado) {
               toast('Emití la factura desde Tickets Emitidos después de verificar la confirmación de esta venta.', { icon: '⚠️', duration: 6000 })
@@ -420,6 +427,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
         } catch (err) {
           toast.error(err instanceof Error ? err.message : 'Conservá el cobro original y revisá su confirmación.', { duration: 7000 })
         }
+        setPinSupervisor('')
         return
       }
 
@@ -1087,6 +1095,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       }
     >
       <div className="space-y-3">
+        {requierePinSupervisor && <label className="block text-xs font-semibold dark:text-gray-200">PIN del supervisor (descuento mayor al 15%)<input aria-label="PIN del supervisor" type="password" inputMode="numeric" autoComplete="off" maxLength={6} value={pinSupervisor} disabled={procesando} onChange={event => setPinSupervisor(event.target.value)} className="mt-1.5 w-full rounded-xl border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-900/50 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500/30" /></label>}
         {cobroGuardado && <p role="status" className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm text-amber-800 dark:text-amber-300">Este ticket ya tiene un cobro guardado. Se recuperarán los importes, medios de pago y cliente originales. Los cambios en este formulario no los reemplazan. No vuelvas a cobrar; la factura se emite desde Tickets Emitidos después de confirmar.</p>}
         {/* Total y Desglose */}
         <div className="py-2 px-3 bg-indigo-50/80 dark:bg-indigo-900/30 rounded-xl space-y-0.5 border border-indigo-200 dark:border-indigo-800/60">

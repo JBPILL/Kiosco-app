@@ -4,6 +4,9 @@ import type { DatosCobroManual } from './manualCheckoutCart'
 import { cerrarCobroManualLocal, guardarCobroManualLocal, reclamarComprobanteManual, recuperarCobroManualLocal } from './manualCheckoutClient'
 import { useCartStore } from '../stores/cartStore'
 import { useAuthStore } from '../stores/authStore'
+import { solicitarPermisoDescuentoSupervisor } from './supervisorPinClient'
+import { guardarAutorizacionCobroManual } from './manualCheckoutClient'
+import { ajusteCarrito } from './carritoImportes'
 
 export interface ResultadoFlujoManual {
   ventaId: string
@@ -28,13 +31,20 @@ export async function recuperarFlujoCobroManual(kioscoId: string, usuarioId: str
 }
 
 export async function ejecutarCobroManual(datos: DatosCobroManual, ticketClave: string,
-  reciboNuevo: TicketData): Promise<ResultadoFlujoManual> {
+  reciboNuevo: TicketData, pinSupervisor?: string): Promise<ResultadoFlujoManual> {
   const original = await recuperarCobroManualLocal(datos.kioscoId, datos.usuarioId, ticketClave)
   const entrada = original?.entrada ?? crearEntradaCobroManual(datos)
   if (original && !original.recibo) throw new Error('El cobro original requiere revisión de su comprobante')
   const recibo = original?.recibo ?? reciboNuevo
   if (!recibo) throw new Error('No se encontró el comprobante original')
+  const requiereSupervisor = !original && useAuthStore.getState().usuario?.rol === 'CAJERO'
+    && ((datos.tipoAjuste === 'DESCUENTO_PORCENTAJE' && datos.valorAjuste > 15)
+      || (datos.tipoAjuste === 'DESCUENTO_FIJO' && ajusteCarrito(datos.items, datos.tipoAjuste, datos.valorAjuste)
+        > ajusteCarrito(datos.items, 'DESCUENTO_PORCENTAJE', 100) * 0.15))
+  // Autorizar antes de archivar una solicitud de cobro; un PIN fallido no bloquea el carrito.
+  const permiso = requiereSupervisor ? await solicitarPermisoDescuentoSupervisor(entrada, pinSupervisor ?? '') : null
   await guardarCobroManualLocal(entrada, ticketClave, recibo)
+  if (permiso) await guardarAutorizacionCobroManual(entrada, permiso)
   useCartStore.getState().bloquearTabPorCobro(ticketClave, entrada.checkoutId)
   // El cobro físico ya se hizo manualmente. Sin red queda como solicitud provisional.
   const pendiente = !navigator.onLine && original?.estado !== 'CONFIRMADO'

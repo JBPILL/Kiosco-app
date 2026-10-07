@@ -22,7 +22,12 @@ esperas, confirmación de PIN, autorización ligada a la entrada original,
 respuestas malformadas y privacidad de errores. Estas pruebas usan transporte
 simulado; no prueban un despliegue de Supabase.
 
-Pendiente: autorización antes del cobro físico en PaymentModal,
+PaymentModal solicita PIN para descuentos de cajeros mayores al 15%, calculados
+sobre mercadería sin depósitos. El flujo pide permiso antes de archivar y
+bloquear una solicitud nueva; los cobros ya archivados se recuperan sin cambiar
+su cuerpo. Esto no controla el momento en que el cajero cobra en el posnet físico.
+
+Pendiente: validar interacción de PaymentModal en navegador,
 prueba real de Edge Functions y validación del flujo completo en navegador.
 
 ## Autoevaluación de esta fase

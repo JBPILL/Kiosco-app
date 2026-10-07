@@ -62,7 +62,7 @@ export async function configurarPinSupervisor(pin: string, repetirPin: string): 
   }
 }
 
-export async function autorizarDescuentoSupervisor(entradaSinValidar: EntradaCheckoutManual, pin: string): Promise<void> {
+export async function solicitarPermisoDescuentoSupervisor(entradaSinValidar: EntradaCheckoutManual, pin: string) {
   validarPin(pin)
   const entrada = leerEntradaCheckoutManual(entradaSinValidar)
   const { usuario, kiosco } = contextoSupervisor()
@@ -75,6 +75,11 @@ export async function autorizarDescuentoSupervisor(entradaSinValidar: EntradaChe
   if (resultado.estado !== 'AUTORIZADO' || Object.keys(resultado).length !== 3) {
     throw new Error('No se pudo confirmar la autorización')
   }
-  const permiso = leerPermisoSupervisorManual({ autorizacionId: resultado.autorizacionId, venceEn: resultado.venceEn })
+  return leerPermisoSupervisorManual({ autorizacionId: resultado.autorizacionId, venceEn: resultado.venceEn })
+}
+
+export async function autorizarDescuentoSupervisor(entradaSinValidar: EntradaCheckoutManual, pin: string): Promise<void> {
+  const entrada = leerEntradaCheckoutManual(entradaSinValidar)
+  const permiso = await solicitarPermisoDescuentoSupervisor(entrada, pin)
   await guardarAutorizacionCobroManual(entrada, permiso)
 }
