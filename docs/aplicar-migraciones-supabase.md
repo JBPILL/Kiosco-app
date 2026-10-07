@@ -329,3 +329,14 @@ No modifica productos ni configura pagos Point.
 Seguí [catalogos-rubros-especializados.md](catalogos-rubros-especializados.md)
 para seleccionar el rubro e importar artículos comerciales inactivos. El SQL
 de esta etapa no se aplicó remotamente desde Codex.
+
+## Paso 23: gestión comercial de electrónica
+
+Ejecutá `supabase_fase_electronica.sql` después del paso 22 y las fases de
+seguridad de perfiles y roles. Requiere las tablas existentes de ventas,
+detalles y productos. Es reaplicable y no modifica ventas, stock, pagos ni caja.
+Agrega registros de unidades y garantías internas, órdenes de reparación,
+solicitudes privadas de reintento y RPC con permisos de dueño por comercio.
+
+Seguí [electronica-comercial.md](electronica-comercial.md) para usar la página
+y conocer el alcance de esta entrega. El SQL no se aplicó remotamente desde Codex.

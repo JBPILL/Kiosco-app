@@ -21,6 +21,7 @@ const ConfigPage = lazy(() => import('./pages/ConfigPage').then((m) => ({ defaul
 const ClientesPage = lazy(() => import('./pages/ClientesPage').then((m) => ({ default: m.ClientesPage })))
 const SuperAdminPage = lazy(() => import('./pages/SuperAdminPage').then((m) => ({ default: m.SuperAdminPage })))
 const SoportePage = lazy(() => import('./pages/SoportePage').then((m) => ({ default: m.SoportePage })))
+const ElectronicaPage = lazy(() => import('./pages/ElectronicaPage').then((m) => ({ default: m.ElectronicaPage })))
 
 function PageLoadingFallback() {
   return (
@@ -129,6 +130,7 @@ function App() {
                 />
 
                 {/* Rutas exclusivas para Dueño */}
+                <Route path="/electronica" element={<RutaProtegida rolesPermitidos={['DUEÑO']}><ElectronicaPage /></RutaProtegida>} />
                 <Route
                   path="/catalogo"
                   element={

@@ -19,12 +19,13 @@ const menuItems = [
   { path: '/stock',     label: 'Stock',          roles: ['DUEÑO'] },
   { path: '/proveedores', label: 'Proveedores',  roles: ['DUEÑO'] },
   { path: '/reportes',  label: 'Reportes',       roles: ['DUEÑO', 'VISOR'] },
+  { path: '/electronica', label: 'Electrónica y reparaciones', roles: ['DUEÑO'] },
 ]
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { usuario, logout } = useAuthStore()
+  const { usuario, kiosco, logout } = useAuthStore()
   const { puedeInstalar, estaInstalado, instalarApp } = usePwaStore()
   const [modalShortcutsOpen, setModalShortcutsOpen] = useState(false)
   const itemRefs = useRef<(HTMLAnchorElement | null)[]>([])
@@ -37,7 +38,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         { path: '/admin', label: 'Panel Super-Admin', roles: ['DUEÑO', 'CAJERO', 'VISOR'], esAdmin: true },
       ]
     }
-    const items = menuItems.filter((item) => item.roles.includes(usuario.rol))
+    const items = menuItems.filter((item) => item.roles.includes(usuario.rol)
+      && (item.path !== '/electronica' || (kiosco?.rubro === 'ELECTRONICA_CELULARES' && kiosco.id === usuario.kiosco_id)))
     if (usuario.es_superadmin) {
       return [
         { path: '/admin', label: 'Panel Super-Admin', roles: ['DUEÑO', 'CAJERO', 'VISOR'], esAdmin: true },
@@ -45,7 +47,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       ]
     }
     return items
-  }, [usuario])
+  }, [usuario, kiosco])
 
   // Enfocar el elemento principal de la pantalla activa (ej: buscador de POS)
   const focusMainScreen = () => {
