@@ -114,6 +114,22 @@ it('rechaza el comercio o usuario de otra sesión antes de leer el catálogo', a
   await expect(cerrarCheckoutManual(contexto('CAJERO'), datos, deps)).rejects.toThrow(/autorizado/i)
 })
 
+it('una preparación creada por el dueño no concede al cajero un descuento porcentual extraordinario', async () => {
+  const deps = dependencias()
+  const datos = entrada()
+  datos.tipoAjuste = 'DESCUENTO_PORCENTAJE'; datos.valorAjuste = 20
+  datos.totalEsperado = 80; datos.subtotalesEsperados = [80]; datos.pagos[0].montoCentavos = 8000
+  await cerrarCheckoutManual(contexto(), datos, deps)
+  const snapshot = vi.mocked(deps.preparar).mock.calls[0][2]
+  deps.buscar = vi.fn(async () => ({ entrada: datos, snapshot }))
+  vi.mocked(deps.confirmar).mockClear()
+  await expect(cerrarCheckoutManual(contexto('CAJERO'), datos, deps)).rejects.toThrow(/supervisor/i)
+  expect(deps.confirmar).not.toHaveBeenCalled()
+  expect(deps.buscar).not.toHaveBeenCalled()
+  await cerrarCheckoutManual(contexto(), datos, deps)
+  expect(deps.confirmar).toHaveBeenCalledOnce()
+})
+
 it('acepta total cero en manual manteniendo los comprobantes de stock', async () => {
   const deps = dependencias()
   const datos = entrada()
