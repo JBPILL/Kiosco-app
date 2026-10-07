@@ -1601,7 +1601,7 @@ export function ConfigPage() {
                         Respaldo operativo (JSON)
                       </h3>
                       <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                        Guardá productos, categorías, clientes, proveedores, promociones y lotes en una copia coherente. Incluye costos; el historial de ventas y caja requiere un respaldo adicional.
+                        Guardá productos, categorías, clientes, proveedores, promociones y lotes junto con configuración y saldos comerciales. Incluye costos y preferencias de este equipo; el historial de ventas y caja requiere un respaldo adicional.
                       </p>
                     </div>
                     <label className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-xs font-semibold text-gray-700 dark:text-gray-300 cursor-pointer">

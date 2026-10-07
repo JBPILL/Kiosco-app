@@ -40,6 +40,8 @@ export function RestaurarBackupModal({
   const [requiereClave, setRequiereClave] = useState(false)
   const [claveCifrado, setClaveCifrado] = useState('')
   const [descifrando, setDescifrando] = useState(false)
+  const [recuperarConfiguracion, setRecuperarConfiguracion] = useState(false)
+  const [recuperarPreferencias, setRecuperarPreferencias] = useState(false)
 
   const resetearEstado = () => {
     setArchivoCargado(null)
@@ -129,6 +131,8 @@ export function RestaurarBackupModal({
     } finally {
       setClaveCifrado('')
       setDescifrando(false)
+    setRecuperarConfiguracion(false)
+    setRecuperarPreferencias(false)
     }
   }
 
@@ -163,7 +167,7 @@ export function RestaurarBackupModal({
     try {
       const resultado = await restaurarBackupIntegral(backupData, modo, kioscoId, (prog) => {
         setProgreso(prog)
-      })
+      }, { restaurarConfiguracion: recuperarConfiguracion, restaurarPreferencias: recuperarPreferencias })
 
       if (resultado.ok && resultado.resumen) {
         setResumenExito(resultado.resumen)
@@ -393,6 +397,12 @@ export function RestaurarBackupModal({
             <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
               2. Modo de Restauración
             </p>
+
+            {backupData.version === '4.0' && backupData.kiosco.id === kioscoId && <div className="space-y-2 text-xs">
+              <label className="flex items-center gap-2"><input type="checkbox" disabled={restaurando} checked={recuperarConfiguracion} onChange={e => setRecuperarConfiguracion(e.target.checked)} />Recuperar datos del comercio y configuración fiscal pública</label>
+              {backupData.preferencias_equipo && <label className="flex items-center gap-2"><input type="checkbox" disabled={restaurando} checked={recuperarPreferencias} onChange={e => setRecuperarPreferencias(e.target.checked)} />Recuperar ancho de papel en este equipo</label>}
+              <p className="text-gray-500">La apertura automática queda desactivada. Esta copia no conecta impresoras ni activa facturación. Los certificados, claves y numeración fiscal actuales se conservan.</p>
+            </div>}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Opción 1: Fusión Inteligente */}

@@ -12,10 +12,11 @@ import { cifrarBackupJson } from './backupCrypto'
 import { identidadRestaurada } from './backupIdentity'
 import { leerColeccionPorId } from './backupPagination'
 import { registrarDescargaRespaldoExterno } from './externalBackupReminder'
+import { validarAmpliacionBackup, capturarPreferenciasEquipo, restaurarPreferenciasEquipo, type BackupAmpliacion } from './backupAmpliado'
 import type { Categoria, Proveedor, Cliente, Producto } from '../types/database'
 
 export interface BackupData {
-  version: '2.0' | '3.0'
+  version: '2.0' | '3.0' | '4.0'
   app: 'KioskoApp'
   exportDate: string
   kiosco: {
@@ -36,11 +37,16 @@ export interface BackupData {
   proveedores: any[]
   promociones: any[]
   lotes_producto: any[]
+  configuracion_comercio?: BackupAmpliacion['configuracion_comercio']
+  saldos_snapshot?: BackupAmpliacion['saldos_snapshot']
+  preferencias_equipo?: BackupAmpliacion['preferencias_equipo']
   contenido: {
     colecciones: string[]
     incluyeVentas: false
     incluyeMovimientosCaja: false
     incluyeCredenciales: false
+    incluyeConfiguracion?: boolean
+    incluyeSaldos?: boolean
   }
 }
 
@@ -126,7 +132,7 @@ export async function generarBackupIntegral(
   }
 
   try {
-    const { data, error } = await supabase.rpc('generar_snapshot_backup', { p_kiosco_id: kioscoId })
+    const { data, error } = await supabase.rpc('generar_snapshot_backup_ampliado', { p_kiosco_id: kioscoId })
     if (error) {
       if (error.code === 'PGRST202' || error.code === '42883') {
         throw new Error('El servicio de respaldo todavía no está habilitado. Contactá al administrador.')
@@ -135,7 +141,7 @@ export async function generarBackupIntegral(
     }
 
     const validacion = validarBackupJSON(JSON.stringify(data ?? null), kioscoId)
-    if (!validacion.valido || !validacion.datos || validacion.datos.version !== '3.0') {
+    if (!validacion.valido || !validacion.datos || validacion.datos.version !== '4.0') {
       throw new Error(validacion.mensaje || 'El servidor devolvió un respaldo incompleto o incompatible.')
     }
     if (!validacion.esMismoKiosco) {
@@ -150,11 +156,13 @@ export async function generarBackupIntegral(
     if (
       recibido.contenido?.incluyeCredenciales !== false ||
       recibido.contenido.incluyeVentas !== false ||
-      recibido.contenido.incluyeMovimientosCaja !== false
+      recibido.contenido.incluyeMovimientosCaja !== false ||
+      recibido.contenido.incluyeConfiguracion !== true || recibido.contenido.incluyeSaldos !== true
     ) {
       throw new Error('El alcance del respaldo recibido no corresponde al formato esperado.')
     }
 
+    backupPayload.preferencias_equipo = capturarPreferenciasEquipo(kioscoId)
     const jsonStr = JSON.stringify(backupPayload, null, 2)
     const contenidoDescarga = opciones.claveCifrado
       ? await cifrarBackupJson(jsonStr, opciones.claveCifrado)
@@ -212,11 +220,11 @@ export function validarBackupJSON(contenidoTexto: string, kioscoActualId?: strin
   }
 
   const version = parsed.version || '2.0'
-  if (version !== '2.0' && version !== '3.0') {
+  if (version !== '2.0' && version !== '3.0' && version !== '4.0') {
     return { valido: false, mensaje: `La versión de backup ${String(version)} no es compatible.`, advertencias, esMismoKiosco: false }
   }
 
-  if (version === '3.0') {
+  if (version === '3.0' || version === '4.0') {
     const coleccionesRequeridas = ['productos', 'categorias', 'clientes', 'proveedores', 'promociones', 'lotes_producto']
     const incompletas = coleccionesRequeridas.filter((coleccion) => !Array.isArray(parsed[coleccion]))
     if (incompletas.length > 0 || !parsed.kiosco?.id || !parsed.exportDate) {
@@ -227,6 +235,15 @@ export function validarBackupJSON(contenidoTexto: string, kioscoActualId?: strin
         esMismoKiosco: false,
       }
     }
+  }
+
+  let ampliacion: BackupAmpliacion | undefined
+  if (version === '4.0') {
+    try { ampliacion = validarAmpliacionBackup({ configuracion_comercio: parsed.configuracion_comercio, saldos_snapshot: parsed.saldos_snapshot, preferencias_equipo: parsed.preferencias_equipo }, parsed.clientes, parsed.proveedores) }
+    catch (error: unknown) {
+      return { valido: false, mensaje: error instanceof Error ? error.message : 'El respaldo ampliado está incompleto', advertencias, esMismoKiosco: false }
+    }
+    advertencias.push('Los saldos son una foto de la fecha del respaldo. Los saldos de clientes y proveedores existentes se conservan al restaurar.')
   }
 
   // Comprobar colecciones esenciales
@@ -282,6 +299,7 @@ export function validarBackupJSON(contenidoTexto: string, kioscoActualId?: strin
     proveedores: Array.isArray(parsed.proveedores) ? parsed.proveedores : [],
     promociones: Array.isArray(parsed.promociones) ? parsed.promociones : [],
     lotes_producto: Array.isArray(parsed.lotes_producto) ? parsed.lotes_producto : [],
+    ...ampliacion,
     contenido: {
       colecciones: Array.isArray(parsed.contenido?.colecciones)
         ? parsed.contenido.colecciones.filter((item: unknown): item is string => typeof item === 'string')
@@ -289,6 +307,7 @@ export function validarBackupJSON(contenidoTexto: string, kioscoActualId?: strin
       incluyeVentas: false,
       incluyeMovimientosCaja: false,
       incluyeCredenciales: false,
+      ...(version === '4.0' ? { incluyeConfiguracion: true, incluyeSaldos: true } : {}),
     },
   }
 
@@ -307,7 +326,8 @@ export async function restaurarBackupIntegral(
   backupData: BackupData,
   modo: ModoRestauracion,
   kioscoId: string,
-  onProgreso?: (progreso: ProgresoRestauracion) => void
+  onProgreso?: (progreso: ProgresoRestauracion) => void,
+  opciones: { restaurarConfiguracion?: boolean; restaurarPreferencias?: boolean } = {},
 ): Promise<ResultadoRestauracion> {
   if (!kioscoId) {
     return { ok: false, mensaje: 'ID de comercio no especificado para la restauración.' }
@@ -349,6 +369,9 @@ export async function restaurarBackupIntegral(
   }
 
   try {
+    if (backupData.version === '4.0') validarAmpliacionBackup({ configuracion_comercio: backupData.configuracion_comercio, saldos_snapshot: backupData.saldos_snapshot, preferencias_equipo: backupData.preferencias_equipo }, backupData.clientes, backupData.proveedores)
+    if ((opciones.restaurarConfiguracion || opciones.restaurarPreferencias)
+      && (backupData.version !== '4.0' || backupData.kiosco.id !== kioscoId)) throw new Error('La configuración sólo se recupera desde una copia 4.0 del mismo comercio')
     // ─────────────────────────────────────────────────────────────
     // PASO 1: CATEGORÍAS (Mapeo Nombre/ID -> ID Actual)
     // ─────────────────────────────────────────────────────────────
@@ -842,6 +865,27 @@ export async function restaurarBackupIntegral(
     // ─────────────────────────────────────────────────────────────
     reportar('FINALIZANDO', 'Finalizando Restauración', 98, 'Limpiando cachés locales del sistema...')
 
+    if (resumen.errores.length === 0 && (opciones.restaurarConfiguracion || opciones.restaurarPreferencias)) {
+      try {
+        if (backupData.version !== '4.0' || backupData.kiosco.id !== kioscoId) throw new Error('La configuración sólo se recupera desde una copia 4.0 del mismo comercio')
+        const ampliado = validarAmpliacionBackup({ configuracion_comercio: backupData.configuracion_comercio, saldos_snapshot: backupData.saldos_snapshot, preferencias_equipo: backupData.preferencias_equipo }, backupData.clientes, backupData.proveedores)
+        if (opciones.restaurarConfiguracion) {
+          const campos = ['rubro', 'nombre', 'direccion', 'telefono', 'cuit', 'iibb', 'inicio_actividades', 'condicion_iva', 'afip_punto_venta', 'afip_alicuota_iva', 'arqueo_ciego_obligatorio']
+          const configuracion = Object.fromEntries(campos.filter(campo => campo in ampliado.configuracion_comercio)
+            .map(campo => [campo, ampliado.configuracion_comercio[campo]]))
+          const { data, error } = await supabase.rpc('restaurar_configuracion_backup', { p_kiosco_id: kioscoId, p_configuracion: configuracion })
+          if (error || !data || typeof data !== 'object' || Array.isArray(data)
+            || Object.entries(configuracion).some(([campo, valor]) => data[campo] !== valor)) throw new Error('El servidor no confirmó la restauración de la configuración')
+        }
+        if (opciones.restaurarPreferencias) {
+          if (!ampliado.preferencias_equipo) throw new Error('La copia no contiene preferencias de este equipo')
+          const { useAuthStore } = await import('../stores/authStore')
+          const usuarioActual = useAuthStore.getState().usuario
+          if (usuarioActual?.rol !== 'DUEÑO' || usuarioActual.kiosco_id !== kioscoId) throw new Error('Cambió el comercio activo; no se aplicaron preferencias a este equipo')
+          restaurarPreferenciasEquipo(ampliado.preferencias_equipo)
+        }
+      } catch (error: unknown) { resumen.errores.push(error instanceof Error ? error.message : 'No se pudo recuperar la configuración') }
+    }
     const completa = resumen.errores.length === 0
     reportar('FINALIZANDO', completa ? 'Completado' : 'Restauración incompleta', 100,
       completa ? 'Restauración integral finalizada con éxito.' : 'Se aplicaron cambios, pero quedaron registros sin recuperar.')

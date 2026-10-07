@@ -13,12 +13,13 @@ vi.mock('./exportUtils', () => ({
 
 function snapshot(): BackupData {
   return {
-    app: 'KioskoApp', version: '3.0', exportDate: '2026-10-05T15:00:00.000Z',
+    app: 'KioskoApp', version: '4.0', exportDate: '2026-10-05T15:00:00.000Z',
     kiosco: { id: 'k1', nombre: 'Comercio' },
     productos: Array.from({ length: 1502 }, (_, i) => ({ id: `p${i}`, kiosco_id: 'k1', descripcion: `Producto ${i}`, precio_costo: 12, precio_venta: 24, stock_actual: 5 })),
     categorias: [], clientes: [], proveedores: [], promociones: [], lotes_producto: [],
+    configuracion_comercio: { nombre: 'Comercio', rubro: 'KIOSCO' }, saldos_snapshot: { clientes: [], proveedores: [] },
     estadisticas: { totalProductos: 1502, totalCategorias: 0, totalClientes: 0, totalProveedores: 0, totalPromociones: 0, totalLotes: 0 },
-    contenido: { colecciones: ['productos', 'categorias', 'clientes', 'proveedores', 'promociones', 'lotes_producto'], incluyeVentas: false, incluyeMovimientosCaja: false, incluyeCredenciales: false },
+    contenido: { colecciones: ['productos', 'categorias', 'clientes', 'proveedores', 'promociones', 'lotes_producto'], incluyeVentas: false, incluyeMovimientosCaja: false, incluyeCredenciales: false, incluyeConfiguracion: true, incluyeSaldos: true },
   }
 }
 
@@ -36,7 +37,7 @@ describe('descarga del snapshot integral', () => {
     const resultado = await generarBackupIntegral('k1', 'Comercio')
     expect(resultado.ok).toBe(true)
     expect(leerDescargaRespaldoExterno('k1')?.formato).toBe('JSON')
-    expect(mocks.rpc).toHaveBeenCalledWith('generar_snapshot_backup', { p_kiosco_id: 'k1' })
+    expect(mocks.rpc).toHaveBeenCalledWith('generar_snapshot_backup_ampliado', { p_kiosco_id: 'k1' })
     expect(mocks.consultar).not.toHaveBeenCalled()
     const datos = JSON.parse(mocks.descargar.mock.calls[0][0] as string)
     expect(datos.productos).toHaveLength(1502)

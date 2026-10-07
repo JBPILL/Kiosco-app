@@ -340,3 +340,15 @@ solicitudes privadas de reintento y RPC con permisos de dueño por comercio.
 
 Seguí [electronica-comercial.md](electronica-comercial.md) para usar la página
 y conocer el alcance de esta entrega. El SQL no se aplicó remotamente desde Codex.
+
+## Paso 24: respaldo operativo ampliado
+
+Ejecutá `supabase_fase_backup_ampliado.sql` después de las fases de respaldo
+integral, fiscal y configuración multirrubro. Conserva la RPC antigua y agrega
+el formato 4.0 con configuración pública, alícuota y snapshot de saldos.
+La nueva descarga requiere esta migración. La recuperación de configuración es
+optativa, sólo del mismo comercio; no habilita equipos ni facturación automática.
+
+Seguí [respaldo-ampliado.md](respaldo-ampliado.md). Revisá la política de arqueo
+ciego si la columna no existía antes. Esta migración no se ejecutó remotamente
+desde Codex.
