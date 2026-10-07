@@ -85,6 +85,8 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase_fase_checkout_manual_backend.sql', 'utf8'))
   await db.exec(readFileSync('supabase_fase_checkout_manual_cancelacion.sql', 'utf8'))
   await db.exec(readFileSync('supabase_fase_checkout_manual_cancelacion.sql', 'utf8'))
+  await db.exec(readFileSync('supabase_fase_checkout_manual_cierre_caja.sql', 'utf8'))
+  await db.exec(readFileSync('supabase_fase_checkout_manual_cierre_caja.sql', 'utf8'))
 }, 30000)
 beforeEach(async () => {
   await db.exec(`RESET ROLE; SET request.jwt.claim.role='service_role'; SET request.jwt.claim.sub='${actor}';
@@ -385,8 +387,9 @@ it('rechaza entrada modificada y reintegro sin referencia', async () => {
 })
 it('permite resolver caja cerrada pero nunca cancelar una venta registrada', async () => {
   await prepararBackend()
-  await db.exec("UPDATE sesiones_caja SET estado='CERRADA',fecha_cierre=now()")
+  await expect(db.exec("UPDATE sesiones_caja SET estado='CERRADA',fecha_cierre=now()")).rejects.toThrow(/CHECKOUT_MANUAL_PENDIENTE/)
   await cancelarManual()
+  await db.exec("UPDATE sesiones_caja SET estado='CERRADA',fecha_cierre=now()")
   expect(await leer('SELECT id FROM checkout_manual_cancelaciones')).toHaveLength(1)
 })
 it('rechaza cancelar una confirmación y preserva sus efectos comerciales', async () => {
@@ -410,4 +413,18 @@ it('restringe el RPC al dueño activo y mantiene el registro privado sin escritu
   await db.exec('RESET ROLE; SET ROLE service_role')
   await expect(db.exec('DELETE FROM public.checkout_manual_cancelaciones')).rejects.toThrow(/permission denied/)
   await db.exec('RESET ROLE')
+})
+
+it('el servidor bloquea fecha de cierre e identidad mientras existe una preparación pendiente', async () => {
+ await prepararBackend()
+ await expect(db.exec('UPDATE sesiones_caja SET fecha_cierre=now()')).rejects.toThrow(/CHECKOUT_MANUAL_PENDIENTE/)
+ await expect(db.exec(`UPDATE sesiones_caja SET usuario_id='${cajero}'`)).rejects.toThrow(/CHECKOUT_MANUAL_PENDIENTE/)
+ expect(await leer('SELECT estado FROM sesiones_caja')).toEqual([{ estado: 'ABIERTA' }])
+})
+it('permite cerrar luego de confirmación transaccional y rechaza nuevas preparaciones', async () => {
+ await prepararBackend()
+ await confirmar()
+ await db.exec("UPDATE sesiones_caja SET estado='CERRADA',fecha_cierre=now()")
+ await expect(prepararBackend()).rejects.toThrow(/Caja original no disponible/)
+ expect(await leer('SELECT estado FROM sesiones_caja')).toEqual([{ estado: 'CERRADA' }])
 })

@@ -64,6 +64,11 @@ function cierreBloqueadoPorPoint(error: unknown): boolean {
     && typeof error.message === 'string' && error.message.includes('POINT_COBRO_PENDIENTE:')
 }
 
+function cierreBloqueadoPorManual(error: unknown): boolean {
+  return !!error && typeof error === 'object' && 'message' in error
+    && typeof error.message === 'string' && error.message.includes('CHECKOUT_MANUAL_PENDIENTE:')
+}
+
 function getPendientes(sesionId: string): MovimientoCaja[] {
   if (typeof window === 'undefined') return []
   try {
@@ -163,6 +168,9 @@ export const useCajaStore = create<CajaState>((set, get) => ({
             set({ sesionActiva: null, resumenActivo: null, movimientosCaja: [] })
             return
           } catch (e) {
+            if (cierreBloqueadoPorManual(e)) {
+              toast.error('El cierre pendiente no pudo sincronizarse: conciliá los cobros manuales del servidor. La caja sigue abierta.')
+            }
             if (cierreBloqueadoPorPoint(e)) {
               toast.error('El cierre pendiente no pudo sincronizarse: conciliá los cobros Point. La caja sigue abierta.')
             }
@@ -595,6 +603,10 @@ export const useCajaStore = create<CajaState>((set, get) => ({
         }
         cierreRemoto = true
       } catch (errDb) {
+        if (cierreBloqueadoPorManual(errDb)) {
+          toast.error('Hay cobros manuales pendientes en el servidor. Conciliá esos tickets antes de cerrar la caja.')
+          return false
+        }
         if (cierreBloqueadoPorPoint(errDb)) {
           toast.error('Hay cobros Point pendientes. Conciliá esos pagos antes de cerrar la caja.')
           return false

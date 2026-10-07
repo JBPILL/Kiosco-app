@@ -140,3 +140,15 @@ El dueño activo del comercio puede ver pendientes locales de otros operadores. 
 La sincronización solo confirma ventas propias. Para pendientes ajenos del mismo comercio, reintenta exclusivamente cancelaciones ya solicitadas por el dueño y guardadas con su cuerpo original. El formulario de cancelación sigue comprobando dueño/JWT en cliente y servidor. No libera carritos de otra sesión ni modifica el usuario original.
 
 Validación: 35 pruebas de panel, cliente y outbox más compilación. Pendiente revisión entre equipos, consulta remota autenticada, PIN de supervisor y bloqueo global de cierre. Autoevaluación: exactitud 4/5 (aislamiento local probado, falta piloto); completitud 3/5 (entre operadores en este equipo, entre equipos pendiente); claridad 4/5 (origen ajeno marcado, sin validación visual); acción 4/5 (publicación lista, falta piloto); concisión 4/5 (consulta reutilizada, permisos distribuidos). Promedio 3,8/5. Próxima mejora: base de autorización de supervisor y coordinación remota.
+
+## Paso 29: cierre de caja con pendientes preparados en servidor
+
+`supabase_fase_checkout_manual_cierre_caja.sql` agrega el control de cierre después de los pasos 26–28. No activa Point. Una sesión no puede cerrarse, recibir fecha de cierre ni cambiar de comercio/operador mientras tenga entradas preparadas sin confirmación transaccional o cancelación auditada correspondiente. Las ventas confirmadas o anuladas del circuito manual resuelven su entrada; un registro incompleto no permite cerrar.
+
+La preparación conserva el bloqueo compartido de la sesión hasta guardar su snapshot; la confirmación toma el bloqueo de sesión y el cierre se comprueba mediante trigger en la misma fila. El índice por comercio/caja reduce la consulta de pendientes. El piloto de concurrencia entre conexiones PostgreSQL reales permanece pendiente.
+
+Caja muestra el motivo del rechazo y mantiene la sesión abierta; no convierte el rechazo de negocio en un cierre offline. Un cierre offline previo que encuentra pendientes en servidor sigue sin confirmarse.
+
+Límite explícito: el servidor no conoce las solicitudes todavía offline de otros equipos. Esta fase no prueba ni resuelve esa coordinación, ni implementa la consulta remota de pendientes del dueño. Tampoco reemplaza el retiro de permisos del circuito antiguo.
+
+Validación: 46 pruebas SQL y 11 pruebas de store Caja correctas, compilación correcta. Autoevaluación: exactitud 4/5 (SQL real local, falta concurrencia remota); completitud 3/5 (bloqueo de preparados resuelto, offline entre equipos pendiente); claridad 4/5 (mensaje específico, falta piloto de cajero); acción 4/5 (migración y cliente listos, instalación remota no confirmada); concisión 4/5 (trigger independiente, circuito previo aún extenso). Promedio 3,8/5. Próxima mejora: consulta autenticada de los pendientes remotos y pruebas de carrera.

@@ -72,6 +72,14 @@ describe('cajaStore.registrarMovimientoCaja', () => {
     expect(leerPendientes()).toHaveLength(0)
   })
 
+  it('conserva la caja y no encola un cierre con checkout manual pendiente en servidor', async () => {
+    db.updateError = { code: 'P0001', message: 'CHECKOUT_MANUAL_PENDIENTE: conciliá los cobros' }
+    expect(await useCajaStore.getState().cerrarCaja(1000)).toBe(false)
+    expect(useCajaStore.getState().sesionActiva?.id).toBe(SESION_ID)
+    expect(localStorage.getItem(`kioskopos_cierre_offline_${SESION_ID}`)).toBeNull()
+    expect(useCajaStore.getState().cargando).toBe(false)
+  })
+
   it('conserva la caja y no encola un cierre que Point rechaza', async () => {
     db.updateError = { code: 'P0001', message: 'POINT_COBRO_PENDIENTE: conciliá los cobros' }
     expect(await useCajaStore.getState().cerrarCaja(1000)).toBe(false)
