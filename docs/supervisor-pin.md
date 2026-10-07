@@ -2,7 +2,16 @@
 
 ## Estado de esta fase
 
-Base de almacenamiento y derivación implementada. **No habilita aprobación de acciones ni incorpora todavía un endpoint público o formulario.** Los descuentos extraordinarios del cajero continúan rechazados. Falta límite de intentos, espera progresiva, aprobación con vencimiento vinculada al cuerpo original y consumo transaccional al ejecutar cada acción.
+Estado actual: almacenamiento privado, endpoint autenticado, formularios, límites
+persistentes, espera progresiva y permisos de descuento vinculados a la entrada
+original están implementados. Su consumo se integra en la transacción financiera.
+Seguridad y Caja incluye consulta de auditoría del dueño. El despliegue y ensayo
+con sesiones reales siguen pendientes; el push no activa el backend remoto.
+El umbral permanece fijo en 15%: falta hacerlo configurable con autorización del
+dueño. También quedan otras acciones sensibles y la política de retención.
+Ver `docs/desplegar-supervisor-pin.md`, `docs/supervisor-pin-espera.md` y
+`docs/supervisor-auditoria.md`. Las secciones siguientes conservan evidencia
+histórica de cada fase y no describen por sí solas el estado actual completo.
 
 ## PIN y secretos
 
