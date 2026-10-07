@@ -105,14 +105,14 @@ export function EquiposComercioSection({ value, onChange }: Props) {
     }
   }
   return (
-    <fieldset className="pt-3 border-t border-gray-100 dark:border-gray-700/80 space-y-4">
-      <legend className="text-xs font-bold text-gray-700 dark:text-gray-300">Equipos del comercio</legend>
+    <fieldset className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 sm:p-6 shadow-md dark:shadow-black/20 space-y-4">
+      <legend className="px-2 text-base font-bold text-gray-900 dark:text-gray-100">Equipos del comercio</legend>
       <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
         Los dispositivos autorizados completan automáticamente los campos vacíos. Los datos que escribiste se conservan. Guardá los cambios del comercio para registrarlos.
       </p>
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         {grupos.map((grupo, indice) => (
-          <div key={grupo.titulo} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 p-4 space-y-4">
+          <div key={grupo.titulo} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 p-4 space-y-4 shadow-sm">
             <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">{grupo.titulo}</h3>
             <span className={`inline-flex rounded-lg px-2 py-1 text-xs font-semibold ${indice === 0 && detectados.impresora || indice === 1 && detectados.lector
               ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'

@@ -88,3 +88,11 @@ Promedio: 4/5. Mejora prioritaria: revisar el panel en navegador a ancho de escr
 - El historial reutiliza el refresco global, que recarga el historial además del turno actual.
 - Validación: 23 pruebas seleccionadas en cinco archivos y compilación correctas. No se inspeccionó el diseño en navegador.
 - Autoevaluación: exactitud 4/5 (compila y pruebas correctas, sin piloto remoto); completitud 4/5 (ambos paneles adaptados, falta validación visual); claridad 4/5 (ayudas y títulos, pendiente lectura del usuario); acción 4/5 (publicación preparada, falta revisar despliegue); concisión 4/5 (componentes reutilizados, páginas todavía extensas). Promedio 4/5. Mejora prioritaria: revisión visual en escritorio y móvil; aceptación estética pendiente del usuario.
+
+## Negocio y Apariencia — 7 de octubre de 2026
+
+- Formulario dividido visualmente en identificación, módulos, equipos y tickets; un único formulario conserva el guardado original.
+- Módulos extraídos a ModulosComercioSection con íconos SVG locales, descripciones, estado y actualización inmutable. No se agregaron dependencias.
+- Tema y ancho de ticket informan su selección con aria-pressed. Tema, equipos y accesibilidad comparten bordes y sombras del diseño actual.
+- Validación: cuatro pruebas de módulos/equipos y compilación correctas. Sin inspección visual en navegador ni prueba física de impresión.
+- Autoevaluación: exactitud 4/5 (compilación y pruebas, falta hardware); completitud 4/5 (secciones solicitadas, falta revisión visual); claridad 4/5 (descripciones y estados, falta feedback del usuario); acción 4/5 (código publicable, sin inspección remota); concisión 4/5 (módulos reutilizables, ConfigPage todavía extensa). Promedio 4/5. Mejora prioritaria: revisar en navegador los tamaños reales y confirmar aceptación estética.

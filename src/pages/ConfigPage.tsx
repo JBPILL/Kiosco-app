@@ -1,3 +1,5 @@
+import { Store, Printer, Palette, Sun, Moon } from '../components/config/ConfigIcons'
+import { ModulosComercioSection } from '../components/config/ModulosComercioSection'
 import { RefreshButton } from '../components/ui/RefreshButton'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -771,8 +773,9 @@ export function ConfigPage() {
           {pestanaActiva === 'GENERAL' && (
             <div className="space-y-6">
               {/* Datos del Kiosco */}
-              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-4">
-                <div className="flex items-center gap-2">
+              <div className="space-y-5">
+                <div className="flex items-center gap-3 rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50 dark:bg-indigo-950/30 p-5">
+                  <span className="rounded-xl bg-white dark:bg-gray-800 p-3 text-indigo-600 dark:text-indigo-300 shadow-sm"><Store size={24} aria-hidden="true" /></span>
                   <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300">
                     Identificación
                   </span>
@@ -780,11 +783,12 @@ export function ConfigPage() {
                     Datos del Negocio
                   </h2>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Información oficial del local que se imprime en los tickets de venta y comprobantes.
-                </p>
 
-                <form onSubmit={handleGuardarKiosco} className="space-y-4">
+
+                <form onSubmit={handleGuardarKiosco} className="space-y-5">
+                  <section aria-label="Identificación del comercio" className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 sm:p-6 shadow-md dark:shadow-black/20 space-y-4">
+                  <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">Información del local</h3>
+                  <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">Estos datos identifican al comercio en los tickets y comprobantes. Revisá el nombre, la dirección y el contacto antes de guardar.</p>
                   <Input
                     label="Nombre del Kiosco / Comercio *"
                     placeholder="Ej: Kiosco Central"
@@ -808,31 +812,14 @@ export function ConfigPage() {
                     />
                   </div>
 
-                  <fieldset className="pt-3 border-t border-gray-100 dark:border-gray-700/80 space-y-2">
-                    <legend className="text-xs font-bold text-gray-700 dark:text-gray-300">Módulos operativos de este comercio</legend>
-                    <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">El rubro sugiere una configuración inicial; activá cada capacidad que use tu negocio. Los productos existentes se conservan.</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {([
-                        ['envases', 'Envases retornables'],
-                        ['balanza', 'Lectura de balanza y códigos de peso'],
-                        ['vencimientos', 'Lotes y vencimientos'],
-                        ['serviciosRapidos', 'Servicios rápidos'],
-                      ] as const).map(([key, label]) => (
-                        <label key={key} className={`flex items-center gap-3 rounded-xl border p-3 text-xs font-semibold cursor-pointer transition-colors ${capacidadesOperativas[key]
-                          ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300'
-                          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
-                          <input className="h-4 w-4 shrink-0 accent-indigo-600 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500" type="checkbox" checked={capacidadesOperativas[key]} onChange={(e) => setCapacidadesOperativas((actual) => ({ ...actual, [key]: e.target.checked }))} />
-                          {label}
-                        </label>
-                      ))}
-                    </div>
-                    <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">Los productos marcados como pesables siempre permiten ingresar el peso manualmente, aunque la lectura de balanza esté desactivada.</p>
-                  </fieldset>
-                  
+                  </section>
+                  <ModulosComercioSection value={capacidadesOperativas} onChange={setCapacidadesOperativas} />
+
                   <EquiposComercioSection value={equiposComercio} onChange={setEquiposComercio} />
 
                   {/* Selector de Ancho de Ticket Térmico Predeterminado */}
-                  <div className="pt-2 border-t border-gray-100 dark:border-gray-700/80 space-y-2">
+                  <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 sm:p-6 shadow-md dark:shadow-black/20 space-y-4">
+                    <div className="flex items-center gap-3"><span className="rounded-xl bg-teal-50 dark:bg-teal-900/30 p-2.5 text-teal-600 dark:text-teal-300"><Printer size={22} aria-hidden="true" /></span><h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Tickets e impresión</h2></div>
                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
                       Impresora térmica de este puesto
                     </label>
@@ -865,9 +852,10 @@ export function ConfigPage() {
                     <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
                       Ancho Predeterminado de Comprobantes Térmicos
                     </label>
-                    <div className="grid grid-cols-2 gap-3 max-w-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
                       <button
                         type="button"
+                        aria-pressed={anchoImpresora === '58mm'}
                         onClick={() => handleCambiarAnchoImpresora('58mm')}
                         className={`p-2.5 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2 ${
                           anchoImpresora === '58mm'
@@ -880,6 +868,7 @@ export function ConfigPage() {
                       </button>
                       <button
                         type="button"
+                        aria-pressed={anchoImpresora === '80mm'}
                         onClick={() => handleCambiarAnchoImpresora('80mm')}
                         className={`p-2.5 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2 ${
                           anchoImpresora === '80mm'
@@ -896,7 +885,8 @@ export function ConfigPage() {
                     </p>
                   </div>
 
-                  <div className="pt-2 flex justify-end">
+                  <div className="rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50 dark:bg-indigo-950/30 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <p className="text-xs text-indigo-700 dark:text-indigo-300">Guardá los datos del local, los módulos y el registro de equipos con este botón.</p>
                     <Button type="submit" variant="primary" loading={guardandoKiosco} className="shadow-xs">
                       Guardar Cambios del Comercio
                     </Button>
@@ -905,8 +895,9 @@ export function ConfigPage() {
               </div>
 
               {/* Apariencia / Modo Oscuro */}
-              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-4">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-md dark:shadow-black/20 space-y-4">
                 <div className="flex items-center gap-2">
+                  <Palette size={24} className="text-purple-500" aria-hidden="true" />
                   <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300">
                     Interfaz Visual
                   </span>
@@ -918,9 +909,10 @@ export function ConfigPage() {
                   Alterná entre tema claro y tema oscuro según la iluminación de tu local comercial.
                 </p>
 
-                <div className="grid grid-cols-2 gap-3 max-w-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
                   <button
                     type="button"
+                    aria-pressed={tema === 'light'}
                     onClick={() => tema !== 'light' && toggleTema()}
                     className={`p-3 rounded-xl border text-center font-bold text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-center gap-2 ${
                       tema === 'light'
@@ -928,12 +920,13 @@ export function ConfigPage() {
                         : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
                     }`}
                   >
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                    <Sun size={24} className="text-amber-500" aria-hidden="true" />
                     <span>Modo Claro</span>
                   </button>
 
                   <button
                     type="button"
+                    aria-pressed={tema === 'dark'}
                     onClick={() => tema !== 'dark' && toggleTema()}
                     className={`p-3 rounded-xl border text-center font-bold text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-center gap-2 ${
                       tema === 'dark'
@@ -941,7 +934,7 @@ export function ConfigPage() {
                         : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
                     }`}
                   >
-                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-400" />
+                    <Moon size={24} className="text-indigo-400" aria-hidden="true" />
                     <span>Modo Oscuro</span>
                   </button>
                 </div>
