@@ -17,6 +17,11 @@ remoto ni garantiza concurrencia entre pestañas.
 
 ## Contrato que debe cumplir la integración
 
+La preparación del servidor está en `supabase_fase_checkout_manual.sql` y
+[checkout-manual-servidor.md](checkout-manual-servidor.md). La nueva RPC privada
+todavía no reemplaza los dos caminos del frontend ni valida sus precios mediante
+un backend autenticado. Esa conexión y la conciliación visible siguen pendientes.
+
 1. Un RPC autenticado guarda venta, conceptos virtuales, detalles, pagos, consumo
    físico, lotes FEFO, kardex con costos privados y deuda en una transacción.
    Validar comercio, usuario y permiso en servidor; el cliente no elige otra cuenta.

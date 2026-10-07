@@ -364,3 +364,15 @@ Seguí [dietetica-bazar.md](dietetica-bazar.md) para importar los catálogos pro
 Los artículos comienzan inactivos, sin precios ni stock. La configuración ampliada
 de respaldo 4.0 también reconoce los nuevos rubros. El SQL no se ejecutó
 remotamente desde Codex.
+
+## Paso 26: preparación del cierre manual transaccional
+
+Ejecutá `supabase_fase_checkout_manual.sql` en ensayo después de las tablas de
+combos, lotes, cuenta corriente y las fases de costos privados. Es reaplicable y
+agrega una RPC accesible sólo al servidor y un registro privado de reintentos.
+No requiere cuentas de Mercado Pago ni activa Point.
+
+Seguí [checkout-manual-servidor.md](checkout-manual-servidor.md). Esta preparación
+todavía no cambia el cobro manual ni la cola offline: falta conectarlos al backend
+autenticado. No amplíes los permisos de la RPC al frontend. El SQL no se ejecutó
+remotamente desde Codex.
