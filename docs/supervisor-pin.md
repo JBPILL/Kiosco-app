@@ -27,3 +27,17 @@ Siguiente fase: reserva de intentos y bloqueos persistentes antes de comparar el
 ## Autoevaluación
 
 Precisión 4/5: WebCrypto contrastado con Node y SQL ejecutado; falta entorno Deno remoto. Completitud 3/5: almacenamiento listo; autorización y límites pendientes. Claridad 4/5: fronteras explícitas; interfaz pendiente. Utilidad 4/5: base ejecutable para backend; no habilita el flujo aún. Concisión 4/5: funciones pequeñas; documentación conserva detalles de operación. Promedio 3,8/5. Mejora prioritaria: límite de intentos y permisos ligados a acciones. La evaluación no presenta esta base como el sistema completo de supervisor.
+
+## Reservas y límites persistentes
+
+La migración `supabase_fase_supervisor_pin_intentos.sql` agrega contadores privados por comercio y operador, junto con reservas auditadas. Sólo el backend puede reservar/finalizar. No se guarda el PIN ni el pepper en la reserva. Las reservas pendientes y fallidas cuentan: máximo cinco por operador y diez por comercio en ventanas de 15 minutos basadas en el reloj del servidor. Una reserva vence en 30 segundos. El éxito libera sólo su cupo y una sola vez, sin reducir los fallos anteriores. Una respuesta perdida o un fallo del gestor de secretos conserva el consumo de intento.
+
+Todas las operaciones bloquean primero el contador del comercio y después el del operador. La finalización exige el mismo actor activo y revisión del PIN; una reserva vencida o anterior a un cambio de PIN se registra como inválida. El resultado final no puede reescribirse por reintentos. La migración es reaplicable sin reiniciar contadores.
+
+`supervisorPinVerification.ts` conecta reserva, recuperación del pepper según versión, comparación criptográfica y finalización mediante dependencias del servidor. El resultado SQL prevalece si la reserva caducó o cambió el PIN. El módulo sólo devuelve estado e identificador; no entrega hash o pepper al cliente y todavía no concede permisos para realizar acciones.
+
+Evidencia de esta fase: 31 pruebas en tres archivos cubren criptografía, permisos, límites por operador/comercio, ventanas, caducidad, revisión, finalización idempotente y fallos de secretos. PGlite usa una conexión: falta concurrencia PostgreSQL real. Compilación correcta.
+
+Siguiente trabajo: espera progresiva además de la ventana fija, retención de auditoría, backend con JWT y permisos efímeros ligados a acciones, consumo transaccional y UI. No hay endpoint público del PIN activo ni despliegue remoto realizado.
+
+Autoevaluación: precisión 4/5 (protocolo y SQL comprobados; concurrencia real pendiente), completitud 3/5 (límites persistentes listos; permisos/UI y espera progresiva pendientes), claridad 4/5 (política explícita; sin pantalla aún), utilidad 4/5 (verificador conectable al backend; entorno remoto pendiente), concisión 4/5 (funciones acotadas; documentación por fases acumulada). Promedio 3,8. Mejora prioritaria: aprobación ligada a acción e integración del servidor. El usuario debería coincidir con que este avance todavía no activa el supervisor completo.
