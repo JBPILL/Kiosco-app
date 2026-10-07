@@ -8,7 +8,7 @@ export function crearBackendCheckoutManual(admin: SupabaseClient): Omit<ManualCh
   return {
     ahora: comercial.ahora, autenticar: comercial.autenticar,
     buscar: async (contexto, entrada) => {
-      const { data, error } = await admin.from('checkout_manual_entradas').select('entrada,snapshot')
+      const { data, error } = await admin.from('checkout_manual_entradas').select('entrada,snapshot,requiere_supervisor')
         .eq('id', entrada.checkoutId).eq('kiosco_id', contexto.kiosco.id).maybeSingle()
       if (error) throw new Error('No se pudo recuperar el checkout')
       return data
@@ -20,9 +20,9 @@ export function crearBackendCheckoutManual(admin: SupabaseClient): Omit<ManualCh
         lineas: entrada.lineas, pagos: [] })
       return { ...datos, componentes: datos.componentes || [] }
     },
-    preparar: async (contexto, entrada, snapshot) => {
+    preparar: async (contexto, entrada, snapshot, requiereSupervisor) => {
       const { data, error } = await admin.rpc('preparar_checkout_manual', {
-        p_actor_auth_id: contexto.authUserId, p_entrada: entrada, p_snapshot: snapshot,
+        p_actor_auth_id: contexto.authUserId, p_entrada: entrada, p_snapshot: snapshot, p_requiere_supervisor: requiereSupervisor,
       })
       if (error || !data) throw new Error('No se confirmó la preparación del checkout')
       return data

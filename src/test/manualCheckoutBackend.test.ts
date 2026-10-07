@@ -25,7 +25,7 @@ function dependencias(): ManualCheckoutDependencies {
     buscar: vi.fn(async () => null),
     cargarDatos: vi.fn(async () => ({ productos: [crearProducto({ id: product, kiosco_id: kid, precio_venta: 100 })],
       componentes: [], promociones: [], envases: [], cliente: null })),
-    preparar: vi.fn(async (_contexto, solicitud, snapshot) => ({ entrada: solicitud, snapshot })),
+    preparar: vi.fn(async (_contexto, solicitud, snapshot, requiereSupervisor) => ({ entrada: solicitud, snapshot, requiere_supervisor: requiereSupervisor })),
     confirmar: vi.fn(async (_contexto, snapshot) => ({ venta_id: id, kiosco_id: kid, fecha_hora: snapshot.fecha_hora,
       total: snapshot.total, stock: [{ producto_id: product, stock_actual: 9 }], saldo_cliente: null })),
   }
@@ -143,6 +143,33 @@ it('un descuento fijo mayor a 15% no evita el control del cajero', async () => {
   datos.tipoAjuste = 'DESCUENTO_FIJO'; datos.valorAjuste = 16
   datos.totalEsperado = 84; datos.subtotalesEsperados = [84]; datos.pagos[0].montoCentavos = 8400
   await expect(cerrarCheckoutManual(contexto('CAJERO'), datos, dependencias())).rejects.toThrow(/supervisor/i)
+})
+
+it.each([false, true, null])('recupera la decisión original de descuento fijo: %s', async requiereSupervisor => {
+  const datos = entrada()
+  datos.tipoAjuste = 'DESCUENTO_FIJO'; datos.valorAjuste = 10
+  datos.totalEsperado = 90; datos.subtotalesEsperados = [90]; datos.pagos[0].montoCentavos = 9000
+  const deps = dependencias()
+  await cerrarCheckoutManual(contexto(), datos, deps)
+  const snapshot = vi.mocked(deps.preparar).mock.calls[0][2]
+  expect(vi.mocked(deps.preparar).mock.calls[0][3]).toBe(false)
+  deps.buscar = async () => ({ entrada: datos, snapshot, requiere_supervisor: requiereSupervisor })
+  vi.mocked(deps.confirmar).mockClear(); vi.mocked(deps.cargarDatos).mockClear()
+  if (requiereSupervisor === false) await cerrarCheckoutManual(contexto('CAJERO'), datos, deps)
+  else await expect(cerrarCheckoutManual(contexto('CAJERO'), datos, deps)).rejects.toThrow(/supervisor/i)
+  expect(deps.confirmar).toHaveBeenCalledTimes(requiereSupervisor === false ? 1 : 0)
+  expect(deps.cargarDatos).not.toHaveBeenCalled()
+})
+
+it('persiste el control del descuento fijo excluyendo depósitos de envases de la base', async () => {
+  const datos = entrada(); const deps = dependencias()
+  datos.lineas[0] = { tipo: 'PRODUCTO', id: line, productoId: product, cantidad: 1, sinEnvase: true }
+  datos.tipoAjuste = 'DESCUENTO_FIJO'; datos.valorAjuste = 20
+  datos.totalEsperado = 180; datos.subtotalesEsperados = [180]; datos.pagos[0].montoCentavos = 18000
+  deps.cargarDatos = async () => ({ productos: [crearProducto({ id: product, kiosco_id: kid, precio_venta: 100,
+    es_retornable: true, precio_envase: 100 })], componentes: [], promociones: [], envases: [], cliente: null })
+  await cerrarCheckoutManual(contexto(), datos, deps)
+  expect(vi.mocked(deps.preparar).mock.calls[0][3]).toBe(true)
 })
 
 it('no confirma una receta cambiada ni respuestas con stock ajeno o incompleto', async () => {

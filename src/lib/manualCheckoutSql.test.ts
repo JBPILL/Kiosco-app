@@ -97,7 +97,7 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase_fase_checkout_manual_recuperar_entrada.sql', 'utf8'))
   await db.exec(readFileSync('supabase_fase_checkout_manual_conciliar_cancelacion.sql', 'utf8'))
   await db.exec(readFileSync('supabase_fase_checkout_manual_conciliar_cancelacion.sql', 'utf8'))
-  for (const archivo of ['supabase_fase_supervisor_pin_privado.sql', 'supabase_fase_supervisor_pin_intentos.sql', 'supabase_fase_supervisor_autorizacion_descuento.sql', 'supabase_fase_checkout_manual_supervisor.sql']) {
+  for (const archivo of ['supabase_fase_supervisor_pin_privado.sql', 'supabase_fase_supervisor_pin_intentos.sql', 'supabase_fase_supervisor_autorizacion_descuento.sql', 'supabase_fase_checkout_manual_supervisor.sql', 'supabase_fase_checkout_manual_politica_supervisor.sql']) {
     await db.exec(readFileSync(archivo, 'utf8'))
     await db.exec(readFileSync(archivo, 'utf8'))
   }
@@ -598,4 +598,31 @@ it('permiso vencido no registra venta y sólo el servicio ejecuta el cierre auto
  await db.exec("RESET ROLE; SET request.jwt.claim.role='service_role'; UPDATE supervisor_autorizaciones SET vence_en=now()+interval '2 minutes'; SET ROLE service_role")
  expect((await confirmarAutorizado(datos)).rows[0].datos.total).toBe(200)
  await db.exec('RESET ROLE')
+})
+
+it.each([true, false, null])('SQL aplica la decisión original de descuento fijo (%s) al confirmar como cajero', async requiere => {
+ await db.exec(`UPDATE sesiones_caja SET usuario_id='${cajero}' WHERE id='${caja}'`)
+ const snapshot = solicitud(); snapshot.usuario_id = cajero; snapshot.total = 240
+ snapshot.detalles[0].precio_unitario = 96; snapshot.detalles[0].subtotal = 240; snapshot.pagos[0].monto = 240
+ const entrada = { ...entradaBackend(), usuarioId: cajero, tipoAjuste: 'DESCUENTO_FIJO', valorAjuste: 10,
+ totalEsperado: 240, subtotalesEsperados: [240], pagos: [{ ...entradaBackend().pagos[0], montoCentavos: 24000 }] }
+ if (requiere === null) await prepararBackend(entrada,snapshot,actor)
+ else await db.query('SELECT preparar_checkout_manual($1::uuid,$2::jsonb,$3::jsonb,$4::boolean)',[actor,JSON.stringify(entrada),JSON.stringify(snapshot),requiere])
+ if (requiere === false) expect((await confirmar(snapshot,cajero)).rows[0].confirmar_venta_manual.total).toBe(240)
+ else {
+   await expect(confirmar(snapshot,cajero)).rejects.toThrow(/supervisor/)
+   expect(await leer('SELECT id FROM ventas')).toEqual([])
+   expect((await confirmar(snapshot,actor)).rows[0].confirmar_venta_manual.total).toBe(240)
+ }
+})
+
+it('una preparación existente no permite reemplazar la decisión ni acceder directamente al cierre interno', async () => {
+ const datos = await descuentoPreparado()
+ await db.query('SELECT preparar_checkout_manual($1::uuid,$2::jsonb,$3::jsonb,false)',[actor,JSON.stringify(datos.entrada),JSON.stringify(datos.snapshot)])
+ expect(await leer('SELECT requiere_supervisor FROM checkout_manual_entradas')).toEqual([{ requiere_supervisor: null }])
+ await expect(confirmar(datos.snapshot,cajero)).rejects.toThrow(/supervisor/)
+ await db.exec('SET ROLE service_role')
+ await expect(db.query('SELECT confirmar_venta_manual_interna_supervisor($1::uuid,$2::jsonb)',[cajero,JSON.stringify(datos.snapshot)])).rejects.toThrow(/permission denied/)
+ await db.exec('RESET ROLE')
+ expect((await confirmarAutorizado(datos)).rows[0].datos.total).toBe(200)
 })

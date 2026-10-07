@@ -16,7 +16,7 @@ export interface ManualCheckoutDependencies {
     productos: DatosCotizacionPoint['productos']; componentes: NonNullable<DatosCotizacionPoint['componentes']>;
     promociones: DatosCotizacionPoint['promociones']; envases: DatosCotizacionPoint['envases']; cliente: Cliente | null
   }>
-  preparar: (contexto: ContextoCheckoutManual, entrada: EntradaCheckoutManual, snapshot: SnapshotCheckoutManual) => Promise<unknown>
+  preparar: (contexto: ContextoCheckoutManual, entrada: EntradaCheckoutManual, snapshot: SnapshotCheckoutManual, requiereSupervisor: boolean) => Promise<unknown>
   confirmar: (contexto: ContextoCheckoutManual, snapshot: SnapshotCheckoutManual) => Promise<unknown>
 }
 
@@ -33,10 +33,10 @@ export async function cerrarCheckoutManual(contexto: ContextoCheckoutManual, ent
     const datos = await deps.cargarDatos(contexto, entrada)
     const ticket = cotizarVentaManual(entrada.lineas, entrada.tipoAjuste, entrada.valorAjuste,
       { ...datos, kioscoId: permisos.kioscoId, permiteServicios: true, permiteAjustes: true, fecha: new Date(entrada.fechaHora) })
-    if (contexto.usuario.rol === 'CAJERO' && entrada.tipoAjuste.startsWith('DESCUENTO')) {
-      const base = ajusteCarrito(ticket.items, 'DESCUENTO_PORCENTAJE', 100)
-      if (entrada.tipoAjuste === 'DESCUENTO_FIJO' && ticket.ajuste > base * 0.15) throw new Error('Se requiere autorización de supervisor')
-    }
+    const base = ajusteCarrito(ticket.items, 'DESCUENTO_PORCENTAJE', 100)
+    const requiereSupervisor = (entrada.tipoAjuste === 'DESCUENTO_PORCENTAJE' && entrada.valorAjuste > 15)
+      || (entrada.tipoAjuste === 'DESCUENTO_FIJO' && ticket.ajuste > base * 0.15)
+    if (contexto.usuario.rol === 'CAJERO' && requiereSupervisor) throw new Error('Se requiere autorización de supervisor')
     const reparto = distribuirTotalVenta(ticket.items.map(i => i.subtotal), ticket.total)
     const combos = new Set(ticket.items.filter(i => i.producto.es_combo).map(i => i.producto.id))
     const receta = datos.componentes.filter(c => combos.has(c.combo_producto_id)).map(c => ({
@@ -47,8 +47,12 @@ export async function cerrarCheckoutManual(contexto: ContextoCheckoutManual, ent
     const credito = entrada.pagos.filter(p => p.medio === 'CUENTA_CORRIENTE').reduce((a, b) => a + b.montoCentavos, 0)
     validarCreditoCotizacionPoint(permisos.kioscoId, entrada.clienteId, datos.cliente, credito)
     const snapshot = await construirSnapshotManual(entrada, ticket)
-    registro = await deps.preparar(contexto, entrada, snapshot)
+    registro = await deps.preparar(contexto, entrada, snapshot, requiereSupervisor)
   }
   const congelado = await leerRegistroManual(registro, entrada)
+  if (contexto.usuario.rol === 'CAJERO' && (congelado.requiereSupervisor === true
+    || (entrada.tipoAjuste === 'DESCUENTO_FIJO' && congelado.requiereSupervisor === null))) {
+    throw new Error('Se requiere autorización de supervisor')
+  }
   return leerResultadoManual(await deps.confirmar(contexto, congelado.snapshot), congelado.snapshot)
 }

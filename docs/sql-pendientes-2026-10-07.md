@@ -1,0 +1,75 @@
+# SQL de actualización — 7 de octubre de 2026
+
+Esta lista corresponde a una base existente de KioskoPOS, con tablas comerciales, caja, cuenta corriente, combos, lotes y columnas fiscales ya instaladas. No es un instalador para una base vacía. Los SQL históricos de creación, limpieza de demos y variantes de reparación no forman parte del paquete.
+
+## Cómo aplicarlos
+
+1. Abrí el proyecto de ensayo correcto en Supabase y guardá un respaldo de la base.
+2. Abrí SQL Editor. Copiá un archivo completo y ejecutá Run; conservá BEGIN/COMMIT.
+3. Seguí el orden numerado. Si falla, detenete y compartí el error completo. Si quedó una transacción abortada, ejecutá `ROLLBACK;` antes del reintento.
+4. Anotá los nombres aplicados. Si ya instalaste la versión actual de un archivo, podés omitirlo; no tengo acceso al registro remoto para identificarlo por vos.
+
+Por tus últimos mensajes, electrónica y las fases anteriores ya estaban aplicadas. Para ponerte al día, revisá especialmente **18–33**. La presencia de una tabla no demuestra que tenga la última versión de sus funciones o políticas. Los archivos 29–33 preparan el supervisor; todavía falta la interfaz y el endpoint público.
+
+El ZIP de pendientes contiene **16 SQL (18–33)** y esta guía. La tabla siguiente conserva las referencias anteriores para comprobar dependencias, pero no te indica que vuelvas a ejecutar todos los SQL antiguos. En particular, el archivo 15 histórico recrea una vista con CASCADE: si ya está instalado el rubro, no lo reapliques como parte de esta actualización.
+
+## Orden completo de las mejoras
+
+| Nº | Archivo |
+| --- | --- |
+| 01 | supabase_seguridad_roles_rls.sql |
+| 02 | supabase_fase_seguridad_perfiles.sql |
+| 03 | supabase_fase_seguridad_costos_privados.sql |
+| 04 | supabase_fase_auditoria_anulaciones.sql |
+| 05 | supabase_fase_auditoria_precios.sql |
+| 06 | supabase_fase_backup_integral.sql |
+| 07 | supabase_fase_mermas_trazables.sql |
+| 08 | supabase_fase_capacidades_multirrubro.sql |
+| 09 | supabase_fase_stock_idempotente.sql |
+| 10 | supabase_fase_costos_movimientos_privados.sql |
+| 11 | supabase_fase_reporte_bajas_stock.sql |
+| 12 | supabase_fase_equipos_comercio.sql |
+| 13 | supabase_fase_envases_precios_compartidos.sql |
+| 14 | supabase_fase_seguridad_combos.sql |
+| 15 | supabase_rubro_fotocopiadora.sql |
+| 16 | supabase_fase_rubros_especializados.sql |
+| 17 | supabase_fase_electronica.sql |
+| 18 | supabase_fase_backup_ampliado.sql |
+| 19 | supabase_fase_dietetica_bazar.sql |
+| 20 | supabase_fase_checkout_manual.sql |
+| 21 | supabase_fase_checkout_manual_backend.sql |
+| 22 | supabase_fase_checkout_manual_cancelacion.sql |
+| 23 | supabase_fase_checkout_manual_cierre_caja.sql |
+| 24 | supabase_fase_checkout_manual_orden_bloqueos.sql |
+| 25 | supabase_fase_checkout_manual_preparacion_bloqueos.sql |
+| 26 | supabase_fase_checkout_manual_consulta_pendientes.sql |
+| 27 | supabase_fase_checkout_manual_recuperar_entrada.sql |
+| 28 | supabase_fase_checkout_manual_conciliar_cancelacion.sql |
+| 29 | supabase_fase_supervisor_pin_privado.sql |
+| 30 | supabase_fase_supervisor_pin_intentos.sql |
+| 31 | supabase_fase_supervisor_autorizacion_descuento.sql |
+| 32 | supabase_fase_checkout_manual_supervisor.sql |
+| 33 | supabase_fase_checkout_manual_politica_supervisor.sql |
+
+El archivo 33 debe ir después del 32 y de las funciones originales de checkout. Si reaplicás esas funciones anteriores, reaplicá el 33 al final para conservar el control de supervisor. No modifiques las decisiones ya almacenadas ni borres las preparaciones pendientes.
+
+## Consulta inicial de sólo lectura
+
+```sql
+SELECT nombre, to_regclass('public.' || nombre) AS objeto
+FROM unnest(ARRAY[
+  'kioscos','usuarios','productos','clientes','proveedores','ventas',
+  'sesiones_caja','combo_items','lotes_producto','movimientos_stock',
+  'producto_costos','movimiento_stock_costos','electronica_unidades',
+  'checkout_manuales','checkout_manual_entradas','checkout_manual_cancelaciones',
+  'supervisor_pin_secretos','supervisor_pin_intentos','supervisor_autorizaciones'
+]) AS nombre;
+```
+
+NULL indica que el objeto falta. Esta consulta no certifica toda la instalación. Las comprobaciones de roles y políticas están en `docs/aplicar-migraciones-supabase.md`; probar JWT reales y concurrencia remota sigue pendiente.
+
+## Publicación de código
+
+El push a GitHub/Vercel no ejecuta estos SQL ni despliega Edge Functions de Supabase. Las fases de checkout necesitan su backend desplegado y la configuración descrita en `docs/checkout-manual-backend.md`. La nueva versión de ese backend requiere el archivo 33. No actives el circuito transaccional sin validar primero el proyecto de ensayo.
+
+Point/QR integrados siguen pausados. Sus SQL no están en este paquete. El cobro manual con posnet permanece como acordamos.

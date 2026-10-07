@@ -38,7 +38,8 @@ function booleano(value: unknown): boolean {
 
 export async function leerRegistroManual(value: unknown, esperado: EntradaCheckoutManual): Promise<RegistroCheckoutManual> {
   const registro = objetoManual(value)
-  camposManual(registro, ['entrada', 'snapshot'])
+  camposManual(registro, 'requiere_supervisor' in registro ? ['entrada', 'snapshot', 'requiere_supervisor'] : ['entrada', 'snapshot'])
+  const requiereSupervisor = registro.requiere_supervisor == null ? null : booleano(registro.requiere_supervisor)
   const entrada = leerEntradaCheckoutManual(registro.entrada)
   if (firmaManual(entrada) !== firmaManual(esperado)) throw new Error('El checkout no coincide con la solicitud original')
   const snap = objetoManual(registro.snapshot)
@@ -79,7 +80,7 @@ export async function leerRegistroManual(value: unknown, esperado: EntradaChecko
   }))
   const pagos = entrada.pagos.map(p => ({ id: p.id, medio_pago: p.medio, monto: p.montoCentavos / 100, referencia: p.referencia }))
   if (firmaManual(snap.pagos) !== firmaManual(pagos)) throw new Error('Pagos del snapshot inconsistentes')
-  return { entrada, snapshot: { version: 1, id: entrada.checkoutId, kiosco_id: entrada.kioscoId, usuario_id: entrada.usuarioId,
+  return { entrada, requiereSupervisor, snapshot: { version: 1, id: entrada.checkoutId, kiosco_id: entrada.kioscoId, usuario_id: entrada.usuarioId,
     sesion_caja_id: entrada.sesionCajaId, fecha_hora: entrada.fechaHora, total: entrada.totalEsperado,
     notas: entrada.notas, cliente_id: entrada.clienteId, detalles, pagos } }
 }

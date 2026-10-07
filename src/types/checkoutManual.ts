@@ -55,6 +55,7 @@ export interface ResultadoCheckoutManual {
 }
 
 export interface RegistroCheckoutManual {
+  requiereSupervisor: boolean | null
   entrada: EntradaCheckoutManual
   snapshot: SnapshotCheckoutManual
 }
