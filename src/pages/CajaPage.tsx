@@ -1,4 +1,6 @@
 import { IndicatorCard } from '../components/ui/IndicatorCard'
+import { CobrosManualesRemotos } from '../components/pos/CobrosManualesRemotos'
+import { checkoutManualTransaccionalActivo } from '../lib/manualCheckoutCart'
 import { RefreshButton } from '../components/ui/RefreshButton'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
@@ -475,6 +477,13 @@ export function CajaPage() {
         </div>
       </div>
 
+      {checkoutManualTransaccionalActivo() && usuario?.activo && usuario.rol === 'DUEÑO'
+        && kiosco?.id === usuario.kiosco_id && (
+          <details className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+            <summary className="cursor-pointer text-sm font-semibold text-gray-700 dark:text-gray-200">Revisar cobros pendientes del servidor</summary>
+            <div className="mt-3"><CobrosManualesRemotos key={`${kiosco.id}/${usuario.id}`} kioscoId={kiosco.id} /></div>
+          </details>
+        )}
       {cargando ? (
         <div className="text-center py-12">
           <div className="animate-spin h-8 w-8 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto" />
