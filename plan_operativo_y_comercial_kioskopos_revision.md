@@ -50,6 +50,10 @@ cumplir la puerta de aceptación correspondiente.
 
 ## Registro de tareas realizadas
 
+- [x] Resumen de restauración muestra las colecciones comprobadas en servidor
+  (productos, lotes, promociones y recetas), sin afirmar comprobaciones omitidas
+  o fallidas. 43 pruebas dirigidas aprobadas. Suite global anterior: `eafbdd9`.
+
 - [x] Validación global sobre `eafbdd9`: 1.448 pruebas/151 archivos aprobados
   en 141,44 segundos y build con código 0. Incluye las nuevas comprobaciones de
   restauración; no sustituye aceptación JWT, ensayo aislado ni hardware.

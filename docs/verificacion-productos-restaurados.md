@@ -12,7 +12,10 @@ y actividad) y las promociones (relaciones, condiciones, importes, fechas, días
 y componentes). Las estructuras JSON se comparan por contenido, sin depender
 del orden de claves de los objetos. Una copia sólo de promociones también
 requiere la lectura final. El resumen incluye cantidades verificadas de lotes
-y promociones; el formulario conserva su indicador de productos.
+y promociones. El formulario muestra cada colección cuya comparación final
+terminó, incluidas recetas de combos y cantidades cero. Si una comparación falla,
+no presenta las siguientes como comprobadas. Los formatos antiguos sin lectura
+final no muestran este apartado.
 
 Las recetas recuperadas mediante `restaurar_combo_backup` se vuelven a comparar
 con el snapshot final por ID de producto destino y cantidad de cada componente.
@@ -23,7 +26,7 @@ La confirmación inicial del RPC por número de componentes no sustituye esta le
 Una lectura fallida, un snapshot inválido o una diferencia genera un resultado de
 restauración incompleta. Las escrituras anteriores se conservan; no hay rollback
 de toda la recuperación. Los errores indican el campo distinto sin incluir costos
-ni importes privados. El formulario informa la cantidad de productos verificados.
+ni importes privados. El formulario informa las cantidades verificadas.
 
 La comparación verifica el estado leído en ese momento. No impide cambios
 posteriores de otro usuario. Tampoco certifica balances, historial contable,
@@ -45,6 +48,9 @@ promociones. Son pruebas locales con servidor simulado, no una restauración rea
 
 Ampliación de recetas: 69 pruebas dirigidas en esos dos archivos aprobadas,
 incluyendo RPC inicialmente exitoso y snapshot final con cantidad alterada.
+
+Resumen de interfaz: 43 pruebas dirigidas en dos archivos aprobadas; tres cubren
+conteos completos/cero, comprobación parcial y formatos sin verificación final.
 
 Pasaron 98 pruebas en ocho archivos de respaldo. Pruebas de diferencias en
 precios, costos, stock y tipo de producto; registros
