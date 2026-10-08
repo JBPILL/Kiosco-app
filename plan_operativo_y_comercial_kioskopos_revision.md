@@ -50,6 +50,9 @@ cumplir la puerta de aceptación correspondiente.
 
 ## Registro de tareas realizadas
 
+- [x] Verificador de recetas rechaza duplicados y cantidades esperadas inválidas,
+  incluso si coinciden con la respuesta. 76 pruebas dirigidas aprobadas.
+
 - [x] Resumen de restauración muestra las colecciones comprobadas en servidor
   (productos, lotes, promociones y recetas), sin afirmar comprobaciones omitidas
   o fallidas. 43 pruebas dirigidas aprobadas. Suite global anterior: `eafbdd9`.

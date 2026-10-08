@@ -20,17 +20,29 @@ export function verificarCombosBackup(esperados: readonly ComboEsperadoBackup[],
   for (const valor of recibidos) {
     if (!valor || typeof valor !== 'object' || Array.isArray(valor)) throw new Error('Producto de combo inválido.')
     const fila = valor as Record<string, unknown>
-    if (typeof fila.id !== 'string' || productos.has(fila.id)) throw new Error('Identificadores de combos inválidos.')
+    if (typeof fila.id !== 'string' || !fila.id.trim() || productos.has(fila.id)) throw new Error('Identificadores de combos inválidos.')
     productos.set(fila.id, fila)
   }
+  const combos = new Set<string>()
   for (const esperado of esperados) {
+    if (!esperado.id.trim() || combos.has(esperado.id)) throw new Error('Identificadores esperados de combos inválidos.')
+    combos.add(esperado.id)
+    const componentesEsperados = new Set<string>()
+    for (const item of esperado.componentes) {
+      if (!item.componente_producto_id.trim() || item.componente_producto_id === esperado.id
+        || componentesEsperados.has(item.componente_producto_id) || !Number.isFinite(item.cantidad)
+        || item.cantidad < 0.001 || item.cantidad > 999999 || Number(item.cantidad.toFixed(3)) !== item.cantidad) {
+        throw new Error('Componente esperado inválido.')
+      }
+      componentesEsperados.add(item.componente_producto_id)
+    }
     const receta = productos.get(esperado.id)?.componentes_combo
     if (!Array.isArray(receta) || receta.length !== esperado.componentes.length) throw new Error('La restauración no conservó la receta de un combo.')
     const cantidades = new Map<string, number>()
     for (const valor of receta) {
       if (!valor || typeof valor !== 'object' || Array.isArray(valor)) throw new Error('Componente persistido inválido.')
       const item = valor as Record<string, unknown>
-      if (typeof item.componente_producto_id !== 'string' || typeof item.cantidad !== 'number'
+      if (typeof item.componente_producto_id !== 'string' || !item.componente_producto_id.trim() || typeof item.cantidad !== 'number'
         || !Number.isFinite(item.cantidad) || cantidades.has(item.componente_producto_id)) throw new Error('Componente persistido inválido.')
       cantidades.set(item.componente_producto_id, item.cantidad)
     }

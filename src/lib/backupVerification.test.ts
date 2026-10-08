@@ -21,6 +21,15 @@ it.each([undefined, [], [componentes[0], componentes[0]], [{ ...componentes[0], 
 it('verifica eliminación de receta al convertir combo en físico', () => {
   expect(verificarCombosBackup([{ id: 'pack', componentes: [] }], [{ id: 'pack', componentes_combo: [] }])).toBe(1)
 })
+it.each([0, -1, NaN, Infinity, 1000000, 0.0001])('rechaza cantidad esperada inválida incluso coincidente %s', cantidad => {
+  const componentes = [{ componente_producto_id: 'a', cantidad }]
+  expect(() => verificarCombosBackup([{ id: 'pack', componentes }], [{ id: 'pack', componentes_combo: componentes }])).toThrow('esperado')
+})
+it('rechaza duplicados esperados aunque sus cantidades coincidan', () => {
+  const duplicados = [componentes[0], componentes[0]]
+  expect(() => verificarCombosBackup([{ id: 'pack', componentes: duplicados }], [{ id: 'pack', componentes_combo: componentes }])).toThrow('esperado')
+  expect(() => verificarCombosBackup([{ id: 'pack', componentes }, { id: 'pack', componentes }], [{ id: 'pack', componentes_combo: componentes }])).toThrow('Identificadores esperados')
+})
 it('compara relaciones JSON sin depender del orden de claves', () => {
   expect(verificarPromocionesBackup(promosEsperadas, [{ ...promocion,
     items_combo: [{ cantidad: 2, producto_id: 'destino' }] }])).toBe(1)

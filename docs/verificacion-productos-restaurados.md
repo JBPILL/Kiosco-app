@@ -22,6 +22,9 @@ con el snapshot final por ID de producto destino y cantidad de cada componente.
 El orden no importa; faltantes, duplicados o cantidades diferentes bloquean el
 reemplazo. La conversión de combo a físico debe dejar una receta vacía.
 La confirmación inicial del RPC por número de componentes no sustituye esta lectura.
+El verificador también rechaza recetas esperadas duplicadas, autorreferencias y
+cantidades fuera de rango o precisión: un dato corrupto no se certifica por
+coincidir con otro dato igualmente corrupto. 76 pruebas dirigidas aprobadas.
 
 Una lectura fallida, un snapshot inválido o una diferencia genera un resultado de
 restauración incompleta. Las escrituras anteriores se conservan; no hay rollback
