@@ -205,6 +205,21 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.anular_venta_atomica(uuid,text,uuid) FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.anular_venta_atomica(uuid,text,uuid) TO authenticated;
+-- La RPC ya repone receta/lotes y registra kardex. El trigger legado hacía una
+-- segunda reposición al cambiar estado; retirarlo en esta misma transacción.
+DO $$
+BEGIN
+  IF EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='public.ventas'::regclass
+    AND tgname='trg_devolver_stock_anulacion' AND NOT tgisinternal) THEN
+    IF NOT EXISTS(SELECT 1 FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid
+      JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE t.tgrelid='public.ventas'::regclass AND t.tgname='trg_devolver_stock_anulacion'
+        AND n.nspname='public' AND p.proname='fn_devolver_stock_anulacion') THEN
+      RAISE EXCEPTION 'El trigger legado tiene otra función; revisar antes de retirarlo.';
+    END IF;
+    DROP TRIGGER trg_devolver_stock_anulacion ON public.ventas;
+  END IF;
+END $$;
 CREATE OR REPLACE FUNCTION public.proteger_anulacion_atomica() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 BEGIN

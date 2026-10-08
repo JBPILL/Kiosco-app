@@ -47,6 +47,7 @@ beforeAll(async () => {
 })
 beforeEach(async () => {
   await db.exec(`RESET ROLE; DROP TRIGGER IF EXISTS reposicion_legacy ON ventas;
+    DROP TRIGGER IF EXISTS trg_devolver_stock_anulacion ON ventas;
     DROP TRIGGER IF EXISTS fallo ON movimientos_cuenta_corriente;
     DROP TRIGGER IF EXISTS omitir_auditoria ON auditoria_operaciones;
     DELETE FROM auditoria_operaciones; DELETE FROM anulaciones_venta_atomicas; DELETE FROM devoluciones_venta;
@@ -106,6 +107,28 @@ it('diagnóstico de duplicación enumera movimientos y triggers sin cambiar stoc
   expect(rows[0].diagnostico_stock_anulacion.movimientos_relacionados).toHaveLength(2)
   expect(rows[0].diagnostico_stock_anulacion.triggers_ventas.length).toBeGreaterThan(0)
   expect(await estado()).toEqual({estado:'COMPLETADA',stock:'6',saldo:'300',lote:'0',anulaciones:0})
+})
+it('la migración retira únicamente el trigger legado conocido y no duplica la reposición', async () => {
+  await db.exec(`CREATE OR REPLACE FUNCTION fn_devolver_stock_anulacion() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+    IF NEW.estado='ANULADA' AND OLD.estado='COMPLETADA' THEN
+      UPDATE productos SET stock_actual=stock_actual+4 WHERE id='${producto}';
+      INSERT INTO movimientos_stock(kiosco_id,producto_id,tipo,cantidad,motivo,notas)
+        VALUES(NEW.kiosco_id,'${producto}','INGRESO',4,'DEVOLUCION','Devolución por anulación de venta '||NEW.id::text);
+    END IF; RETURN NEW; END $$;
+    CREATE TRIGGER trg_devolver_stock_anulacion AFTER UPDATE ON ventas FOR EACH ROW EXECUTE FUNCTION fn_devolver_stock_anulacion();`)
+  const sql=readFileSync('supabase_fase_anulacion_venta_atomica.sql','utf8')
+  await db.exec(sql); await db.exec(sql)
+  expect((await db.query("SELECT tgname FROM pg_trigger WHERE tgrelid='ventas'::regclass AND tgname='trg_devolver_stock_anulacion'")).rows).toHaveLength(0)
+  await anular()
+  expect(await estado()).toEqual({estado:'ANULADA',stock:'10',saldo:'150',lote:'3',anulaciones:1})
+  expect((await db.query("SELECT sum(cantidad) cantidad FROM movimientos_stock WHERE tipo='INGRESO'")).rows).toEqual([{cantidad:'4'}])
+})
+it('no retira un trigger con el mismo nombre si apunta a otra función', async () => {
+  await db.exec(`CREATE OR REPLACE FUNCTION otro_trigger_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;
+    CREATE TRIGGER trg_devolver_stock_anulacion AFTER UPDATE ON ventas FOR EACH ROW EXECUTE FUNCTION otro_trigger_test();`)
+  await expect(db.exec(readFileSync('supabase_fase_anulacion_venta_atomica.sql','utf8'))).rejects.toThrow('otra función')
+  await db.exec('ROLLBACK')
+  expect((await db.query("SELECT tgname FROM pg_trigger WHERE tgrelid='ventas'::regclass AND tgname='trg_devolver_stock_anulacion'")).rows).toHaveLength(1)
 })
 it('reintegra desde otra caja cuando la original está cerrada', async () => {
   await db.exec(`UPDATE sesiones_caja SET estado='CERRADA',fecha_cierre=now() WHERE id='${caja}'`)

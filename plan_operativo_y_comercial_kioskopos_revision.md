@@ -22,7 +22,7 @@ cumplir la puerta de aceptación correspondiente.
 | P02 | 1 · Seguridad | Comprobar permisos con sesiones reales | Probar API/PostgREST con JWT de cajero, dueño y otro comercio: costos privados, cambios/anulación de ventas y escritura directa. No ampliar permisos para obtener un resultado verde. |
 | P03 | 1 · Seguridad | Aceptar operativamente el paso 52 | Catálogo remoto confirmado; falta demostrar INSERT directo rechazado para cajero y checkout por backend funcionando después de instalarlo. |
 | P04 | 1 · Seguridad | Completar pruebas de supervisor | Rechazo de PIN incorrecto y venta con PIN correcto ya informados; faltan concurrencia, espera/límites de intentos, permiso ligado a solicitud original y usos restantes en el piloto. |
-| P05 | 1 · Seguridad | Cerrar aceptación de anulación atómica | Caso efectivo/caja original abierta confirmado; faltan pago mixto, fiado, caja original cerrada, lotes y reintento concurrente en Supabase real. |
+| P05 | 1 · Seguridad | Cerrar aceptación de anulación atómica | Diagnóstico remoto confirma trigger antiguo que duplicó reposición: aplicar fase actualizada y conciliar la unidad extra antes de aceptar el caso efectivo. También faltan pago mixto, fiado, caja original cerrada, lotes y reintento concurrente en Supabase real. |
 | P06 | 1 · Seguridad | Implementar devolución parcial transaccional y conciliación antigua | Auditoría y corrección del fallo de lectura previa realizadas; contrato por detalle y cálculos SQL históricos preparados. Falta conectar formulario y backend atómico/idempotente, bloqueos, stock/lotes históricos, reintegro, auditoría y permisos; comprobar concurrencia. Conciliar tickets antiguos sin inventar snapshots. |
 | P07 | 1 · Auditoría | Definir retención y operación de auditorías | Establecer responsables, acceso, conservación y comprobación remota de precio, descuento, anulación y apertura manual del cajón. |
 | P08 | Checkout | Validar pérdida de conexión y dos equipos | Ensayar preparación, confirmación, cancelación y respuesta perdida sin duplicar venta, pago, stock o deuda. |
@@ -51,6 +51,12 @@ cumplir la puerta de aceptación correspondiente.
   El cobro manual con posnet continúa siendo una ruta independiente.
 
 ## Registro de tareas realizadas
+
+- [x] Causa remota del duplicado identificada: trigger legado de reposición
+  coexistía con RPC atómica. Migración retira sólo el trigger conocido y se
+  preparó conciliación específica, compensatoria/auditada y repetible sin doble
+  descuento. 100 pruebas de anulación y ocho de conciliación aprobadas;
+  aplicación remota y aceptación del stock corregido aún pendientes (P05).
 
 - [x] Protección de anulación detecta reposición adicional durante el cambio
   de estado y revierte la transacción. Regresión con trigger antiguo que duplica
