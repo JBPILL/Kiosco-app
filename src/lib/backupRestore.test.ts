@@ -47,6 +47,25 @@ beforeEach(() => { vi.clearAllMocks(); writes.length = 0; payloads.length = 0; s
 afterEach(() => vi.unstubAllEnvs())
 
 describe('restauración y errores parciales', () => {
+  it.each(['categorias', 'proveedores'] as const)('no guarda productos si falla el alta en %s', async tabla => {
+    setup({ [`${tabla}:insert`]: [failure()] })
+    const datos = backup({
+      [tabla]: [{ id: 'parent', nombre: 'Nuevo' }],
+      productos: [{ id: 'p1', descripcion: 'Producto', [tabla === 'categorias' ? 'categoria_id' : 'proveedor_id']: 'parent' }],
+    })
+    const result = await restaurarBackupIntegral(datos, 'FUSION', 'k1')
+    expect(result.ok).toBe(false)
+    expect(writes).not.toContain('productos:insert')
+  })
+  it('no usa el ID original de un producto cuya actualización falló para restaurar un lote', async () => {
+    const producto = { id: 'p1', descripcion: 'Producto', activo: true }
+    setup({ 'productos:select': [success([producto]), success([])], 'productos:update': [failure()] })
+    const result = await restaurarBackupIntegral(backup({ productos: [producto],
+      lotes_producto: [{ id: 'l1', producto_id: 'p1', fecha_vencimiento: '2027-01-01' }],
+    }), 'FUSION', 'k1')
+    expect(result.ok).toBe(false)
+    expect(writes).not.toContain('lotes_producto:insert')
+  })
   it('las altas con auditoría activa no persisten un motivo transitorio', async () => {
     vi.stubEnv('VITE_AUDITORIA_MOTIVO_PRECIO', 'true')
     setup({ 'productos:select': [success([])], 'productos:insert': [success([{ id: 'nuevo' }])] })

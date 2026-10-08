@@ -11,6 +11,9 @@ function copia() {
 }
 
 describe('relaciones del respaldo', () => {
+  it('rechaza combos físicos cuya estructura no puede restaurarse', () => {
+    expect(() => validarRelacionesBackup({ ...copia(), productos: [{ id: 'p1', es_combo: true }] })).toThrow('componentes')
+  })
   it('acepta una copia coherente sin modificarla', () => {
     const datos = copia()
     const original = JSON.stringify(datos)

@@ -43,6 +43,9 @@ export function validarRelacionesBackup(datos: ColeccionesRelacionadasBackup): v
     }
   }
   for (const producto of filas.get('productos') || []) {
+    if (producto.es_combo === true) {
+      throw new Error('El respaldo contiene combos físicos. Esta versión no recupera sus componentes; usá una restauración PostgreSQL verificada.')
+    }
     referencia(producto.categoria_id,'categorias','productos')
     referencia(producto.proveedor_id,'proveedores','productos')
   }
