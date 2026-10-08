@@ -5,7 +5,7 @@
 El lanzador `scripts/iniciar-kioskopos-kiosco.ps1` abre la URL de producción en Edge a pantalla completa. Pasale la URL real del comercio:
 
 ```powershell
-.scripts\iniciar-kioskopos-kiosco.ps1 -Url https://pos.tu-dominio.com
+.\scripts\iniciar-kioskopos-kiosco.ps1 -Url https://pos.tu-dominio.com
 ```
 
 El script rechaza HTTP y no abre el servidor Vite de desarrollo. Antes, instalá Edge, publicá la aplicación por HTTPS y verificá que el terminal y su red tengan hora correcta y conectividad estable.
@@ -17,6 +17,13 @@ Edge kiosk se ejecuta en sesión InPrivate. KioskoPOS guarda la preferencia loca
 Microsoft documenta el lanzamiento de Edge con `--kiosk <URL> --edge-kiosk-type=fullscreen --no-first-run` y la asignación del navegador como aplicación de quiosco [en su guía de Edge kiosk](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-configure-kiosk-mode) y [la guía de Windows Assigned Access](https://learn.microsoft.com/en-us/windows/configuration/assigned-access/quickstart-kiosk).
 
 ## Impresora y cajón
+
+El lanzador rechaza también HTTPS en localhost/loopback, nombres `.localhost`,
+el puerto de desarrollo 5173 y URLs con usuario/contraseña. Diez pruebas
+ejecutan PowerShell con detección de Edge y lanzamiento simulados: validan
+rechazos, argumentos y falta del navegador sin abrir ventanas reales.
+Build aprobado. Sigue pendiente probar el puesto físico, persistencia,
+reinicio y periféricos; no se instalaron políticas de Windows desde esta sesión.
 
 1. Iniciá sesión en KioskoPOS y abrí Configuración desde la sesión de administración.
 2. Elegí la impresora Web Serial para ese puesto y ejecutá **Imprimir prueba**.

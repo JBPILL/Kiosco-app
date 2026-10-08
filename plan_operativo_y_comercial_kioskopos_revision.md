@@ -1,8 +1,98 @@
 # KioskoPOS — revisión del plan operativo y comercial
 
-**Estado:** propuesta revisada contra el código disponible el 05/10/2026. Este documento actualiza prioridades y criterios técnicos; no implica que las funciones ya estén implementadas.
+**Estado actualizado: 08/10/2026.** Implementación en curso. El registro siguiente
+es el resumen vigente; la evaluación original del 05/10 y las notas de avance
+del final se conservan como historial. Sus conteos y menciones de publicación
+pendiente describen aquella ejecución, no el estado actual.
 
-## Evaluación
+## Registro de tareas pendientes
+
+Una tarea pendiente puede requerir desarrollo, aplicación SQL, aceptación
+remota o prueba física. Una implementación local no cierra su fase hasta
+cumplir la puerta de aceptación correspondiente.
+
+| ID | Fase | Tarea pendiente | Qué falta para cerrarla |
+| --- | --- | --- | --- |
+| P01 | 0 · Producto | Definir entrega comercial y puestos soportados | Registrar SaaS/licencia, versiones de Windows/navegador, modelos de periféricos y responsables de soporte/credenciales. |
+| P02 | 1 · Seguridad | Comprobar permisos con sesiones reales | Probar API/PostgREST con JWT de cajero, dueño y otro comercio: costos privados, cambios/anulación de ventas y escritura directa. No ampliar permisos para obtener un resultado verde. |
+| P03 | 1 · Seguridad | Aceptar operativamente el paso 52 | Catálogo remoto confirmado; falta demostrar INSERT directo rechazado para cajero y checkout por backend funcionando después de instalarlo. |
+| P04 | 1 · Seguridad | Completar pruebas de supervisor | Rechazo de PIN incorrecto y venta con PIN correcto ya informados; faltan concurrencia, espera/límites de intentos, permiso ligado a solicitud original y usos restantes en el piloto. |
+| P05 | 1 · Seguridad | Cerrar aceptación de anulación atómica | Caso efectivo/caja original abierta confirmado; faltan pago mixto, fiado, caja original cerrada, lotes y reintento concurrente en Supabase real. |
+| P06 | 1 · Seguridad | Revisar devoluciones y conciliación antigua | Auditar rutas restantes de devolución parcial y conciliar tickets/colas antiguos sin snapshot suficiente. No reconstruir autorizaciones ni recetas con valores actuales. |
+| P07 | 1 · Auditoría | Definir retención y operación de auditorías | Establecer responsables, acceso, conservación y comprobación remota de precio, descuento, anulación y apertura manual del cajón. |
+| P08 | Checkout | Validar pérdida de conexión y dos equipos | Ensayar preparación, confirmación, cancelación y respuesta perdida sin duplicar venta, pago, stock o deuda. |
+| P09 | Checkout | Recuperar solicitudes cuando se pierde la copia local | Completar recuperación autorizada desde servidor; el panel de revisión no equivale a recuperación universal ni a una nueva venta. |
+| P10 | 2 · Periféricos | Validar impresoras y cajón físicos | Matriz por modelo/COM/USB: permiso denegado, desconexión, reimpresión, pago mixto y pulso único sólo tras efectivo confirmado. |
+| P11 | 2 · Periféricos | Completar canal por driver de Windows | Implementar despliegue controlado y comprobar impresión real; Web Serial existente no acredita ese canal. |
+| P12 | 2 · Periféricos | Probar lector, balanza y cámara móvil | Ensayar dispositivos reales, Safari/iOS, cancelar/reabrir, permisos y entrada manual de peso. |
+| P13 | 3 · Respaldo | Confirmar migraciones de respaldo vigentes | Verificar snapshot/configuración y pasos 49–50 de relaciones/combos en el entorno de ensayo/remoto. Git push no aplica SQL. |
+| P14 | 3 · Respaldo | Restaurar una copia real en entorno aislado | Exportar, descifrar, importar y comparar conteos, relaciones, saldos, costos privados, configuración y recetas. No ensayar sobre el comercio operativo. |
+| P15 | 3 · Respaldo | Completar respaldo de base y recuperación | Probar pg_dump/pg_restore real y Storage; cubrir historial de ventas/caja y módulos excluidos del JSON operativo. |
+| P16 | 3 · Respaldo | Automatizar copias externas y retención | Definir destino, cifrado, programación, rotación y alertas; copia IndexedDB y recordatorio no sustituyen esta estrategia. |
+| P17 | 3 · Respaldo | Comprobar fallos de almacenamiento y cierre | Piloto con cuota agotada, perfil borrado, descarga fallida y cierre pendiente; el respaldo no debe alterar la caja. |
+| P18 | 4 · Mermas | Validar operaciones remotas concurrentes | Comprobar FEFO, lote específico, costos históricos, idempotencia, cancelación y conciliación de stock contra kardex. |
+| P19 | 4 · Mermas | Aceptar reporte de bajas completo | Comparar período argentino y costos conocidos/desconocidos con datos reales; conservar distinción de estimación a costo frente a contabilidad fiscal. |
+| P20 | 5 · Multirrubro | Pilotar capacidades por rubro | Cambio de rubro con datos existentes y combinaciones de pesables, envases, lotes y servicios sin pérdida de atributos. |
+| P21 | 5 · Multirrubro | Aceptar circuitos comerciales especializados | Verificar servicios, dietética/bazar y electrónica con usuarios reales, importación, reportes y continuidad offline. |
+| P22 | 7 · Escritorio/quiosco | Preparar entrega de instalación lista para usar | Definir PWA/instalador soportado, acceso directo, configuración inicial, arranque, actualización y procedimiento de soporte. |
+| P23 | 7 · Escritorio/quiosco | Resolver persistencia y recuperación del puesto | Edge kiosk usa InPrivate: probar login, permisos y cobros pendientes tras cierre/reinicio; decidir perfil/despliegue compatible antes de activarlo. |
+| P24 | 7 · Escritorio/quiosco | Probar Windows administrado en piloto | Assigned Access/salida de emergencia, cierre inesperado, reconexión, pantalla y recuperación. El lanzador no bloquea Windows ni relanza Edge. |
+| P25 | Calidad | Repetir suite completa tras cambios posteriores | Última suite completa: 1.372 pruebas/147 archivos en la revisión anterior a los últimos diagnósticos. Las pruebas dirigidas posteriores no son una nueva validación global. |
+
+### Trabajo pausado por decisión del usuario
+
+- **Point y QR integrados (fase 6):** no activar ni desplegar como parte del
+  trabajo actual. Si se retoma, requiere cuenta/terminal elegible, sandbox,
+  backend, secretos, webhook, conciliación y aceptación de estados inciertos.
+  El cobro manual con posnet continúa siendo una ruta independiente.
+
+## Registro de tareas realizadas
+
+Las casillas marcadas indican entregables implementados o evidencia recibida,
+no aceptación completa de toda la fase. Los enlaces llevan al detalle de
+alcance, instalación y limitaciones.
+
+| Hecho | Entregable realizado | Evidencia y alcance |
+| --- | --- | --- |
+| [x] | Costos privados y protección de perfiles | Migraciones/consultas que separan costos del acceso de cajeros y protegen rol e identidad. [Guía de seguridad](docs/verificacion-seguridad-postgresql.md). API con JWT real pendiente (P02). |
+| [x] | Auditoría de precios y motivo de cambio | Funciones, guardado y consulta de auditoría implementados. [Motivo de precio](docs/motivo-cambio-precio.md), [consulta comercial](docs/auditoria-comercial-consulta.md). |
+| [x] | PIN de supervisor y umbral configurable | Backend, espera progresiva, auditoría y política congelada en checkout. [Política](docs/supervisor-politica-descuento.md), [espera](docs/supervisor-pin-espera.md). |
+| [x] | Venta de Lucía autorizada en caja compartida | Evidencia del usuario: ef754442…, $2.240, umbral 15, requiere supervisor y cierre confirmado, pagos $2.240. PIN incorrecto rechazado; correcto aceptado. [Aceptación remota](docs/aceptacion-remota-checkout-2026-10-08.md). |
+| [x] | Recuperación del pendiente EBF2345B | Evidencia recibida: $3.020, COMPLETADA, cierre confirmado y sin cancelación; conservar identificador, no volver a cobrar. [Registro](docs/aceptacion-remota-checkout-2026-10-08.md). |
+| [x] | Checkout transaccional y cola de solicitudes | Preparación/cierre idempotente, caja compartida, recuperación y cancelación implementados y probados localmente. [Servidor](docs/checkout-manual-servidor.md), [cola](docs/checkout-manual-cola-local.md). |
+| [x] | Restricciones de escritura de ventas, pasos 47–48 | Protección de tickets preparados y revocación de escritura anónima, incluidos permisos por columna. Diagnósticos remotos aportados por el usuario; aceptación JWT pendiente. [Inmutabilidad](docs/checkout-manual-inmutabilidad.md). |
+| [x] | Bloqueo de INSERT directo del cajero, paso 52 | Migración y diagnóstico publicados. Usuario confirmó `paso_52_instalado=true`, RLS y política correcta en ventas/detalles/pagos. [Guía](docs/ventas-cajero-solo-backend.md). |
+| [x] | Anulación atómica, paso 51 | Restitución histórica de stock/lotes/costos, cuenta corriente, reintegro e idempotencia con auditoría única. [Detalle](docs/anulacion-venta-atomica.md). |
+| [x] | Anulación remota de EF754442 | Usuario confirmó ANULADA, registro atómico, una auditoría, pagos $2.240 conservados, cantidades restituidas y cero egresos adicionales en caja original abierta. No acredita los demás casos (P05). |
+| [x] | Diseño de tickets interno y ARCA | Estructura de supermercado compartida, cantidad/precio/importe y promociones; botones Facturar/Ver/Reimprimir/Devolución separados. [Comprobantes](docs/redisenio-comprobantes-2026-10-08.md). Impresión física pendiente. |
+| [x] | Panel de pendientes remotos discreto | Revisión plegada en Caja para dueño; aviso de cobros locales sólo cuando existen pendientes. Recuperación universal pendiente (P09). |
+| [x] | Selección de impresora y cajón separados | Prueba sin pulso, apertura automática opt-in tras efectivo confirmado y apertura manual auditada. [Cajón](docs/apertura-manual-cajon.md). Hardware pendiente. |
+| [x] | Mejoras del lector por cámara | Implementación y regresiones locales de apertura/cierre y fallback. [Lector móvil](docs/lector-camara-movil.md). Dispositivos reales pendientes. |
+| [x] | Respaldo operativo 4.0 y cifrado | Snapshot, configuración pública, validación, compatibilidad 2/3 y cifrado; excluye secretos y no incluye todo el historial. [Alcance](docs/respaldo-ampliado.md). |
+| [x] | Restauración de relaciones y combos | Snapshot de componentes y recuperación validada, reglas de cantidad, verificación final de productos antes de reemplazo. [Combos](docs/respaldo-relaciones-y-combos.md), [productos](docs/verificacion-productos-restaurados.md). Ensayo real pendiente. |
+| [x] | Respaldo local al cierre y recordatorio externo | Copia por sesión en IndexedDB y marca de exportación externa. [Cierre](docs/respaldo-arqueo-cierre-local.md), [recordatorio](docs/recordatorio-respaldo-externo.md). No sustituye copia externa. |
+| [x] | Script de respaldo PostgreSQL Windows | Archivo custom, comprobación pg_restore, SHA256 y manejo de credenciales/errores; pruebas con comandos simulados. [Guía](docs/respaldo-postgresql-windows.md). Dump/restore real pendiente. |
+| [x] | Mermas, FEFO e idempotencia de stock | Operaciones transaccionales, motivos, lote y costo histórico privado; pendientes consultables/reintentables. [Verificación](docs/verificacion-mermas-postgresql.md). |
+| [x] | Reporte de bajas por período | Agregación SQL autorizada, costos desconocidos diferenciados y fechas argentinas. [Reporte](docs/verificacion-resumen-bajas-stock.md). |
+| [x] | Capacidades multirrubro y pesables | Preferencias independientes y preservación de atributos; ingreso de peso aunque balanza esté desactivada. [Pesables](docs/verificacion-multirrubro-pesables.md). |
+| [x] | Servicios y pantallas por rubro | Circuitos y catálogos implementados; servicios offline conservan concepto. [Servicios](docs/verificacion-servicios-y-diseno-reportes.md), [offline](docs/verificacion-servicios-offline.md), [electrónica](docs/electronica-comercial.md). Piloto pendiente. |
+| [x] | Lanzador HTTPS para Edge y guía de quiosco | Validación de URL y parámetros; rechazo de localhost/puerto Vite/credenciales con diez pruebas Windows sin abrir Edge. [Guía](docs/despliegue-kiosco-windows.md). Instalación física pendiente. |
+| [x] | Publicación de entregables en Git | Cambios anteriores publicados en `origin/master`; cada commit conserva su evidencia local. Publicación Git no aplica SQL ni prueba el despliegue Vercel. |
+
+### Registro de verificaciones
+
+- **Suite completa anterior:** 1.372 pruebas aprobadas en 147 archivos,
+  registrada en `6bcffab`. Los cambios posteriores requieren otra suite global.
+- **Anulación/checkout:** 116 pruebas dirigidas y build aprobados antes de
+  publicar `686fa24`.
+- **Diagnóstico paso 52:** 17 pruebas dirigidas y build aprobados antes de
+  publicar `fda6ca4`; resultado remoto positivo recibido del usuario después.
+- **Lanzador Windows:** diez pruebas de PowerShell aprobadas sin abrir un
+  navegador real. No equivalen a una prueba de kiosk o periféricos.
+- **Límite general:** el plan sigue abierto. Las migraciones confirmadas por
+  catálogo no sustituyen JWT/API, restauración aislada, concurrencia ni hardware.
+
+## Evaluación original — 05/10/2026
 
 El plan original cubre problemas reales del mostrador y tiene una buena intención de activación voluntaria. Sin embargo, mezcla mejoras de UX con cambios de seguridad y pagos que requieren backend, da por existentes capacidades no verificadas, y pone tareas grandes en plazos de 1–3 días sin contemplar migraciones, pruebas en hardware ni despliegue.
 
@@ -99,7 +189,10 @@ No fijar días calendario todavía. Estimar cada fase después de descubrir migr
 
 La dirección general es buena, pero el plan original no debe ejecutarse tal cual. Recomiendo aprobar primero descubrimiento y seguridad; aprovechar los módulos existentes; corregir el diseño de MP, PIN, quiosco y backups; y dividir el alcance por puertas de aceptación verificables. El orden pone primero protección de datos y continuidad de caja, deja pagos integrados como iniciativa dependiente de backend/proveedor y pospone multirrubro hasta tener un modelo flexible de capacidades.
 
-## Avance de implementación secuencial
+## Historial de implementación secuencial
+
+Estas notas conservan las verificaciones y pendientes de cada momento. Para el
+estado vigente, consultar los dos registros del inicio del documento.
 
 El trabajo posterior sobre el checkout añadió estas piezas, sin afirmar que ya estén activas en producción:
 

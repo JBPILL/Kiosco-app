@@ -37,8 +37,13 @@ de la Edge Function; conservar las comprobaciones operativas del paso 4.
 
 PGlite verifica los tres INSERT directos con políticas permisivas existentes,
 su rechazo para cajero y la conservación de permisos del dueño. La integración
-del checkout real confirma y reintenta con esta política aplicada. Falta
-aplicación y comprobación remota; la fase de seguridad sigue abierta.
+del checkout real confirma y reintenta con esta política aplicada. La
+aceptación operativa remota sigue pendiente; la fase de seguridad permanece abierta.
+
+Evidencia remota recibida del usuario: `paso_52_instalado=true` y las tres
+tablas con `rls_habilitado=true` y `politica_correcta=true`. Confirma la
+instalación del catálogo. Sigue pendiente la comprobación operativa con JWT
+de cajero y venta por backend; no equivale a esa prueba.
 
 El diagnóstico se ejecutó sobre el catálogo PostgreSQL de PGlite: detecta
 RLS deshabilitado, política ausente y una condición reemplazada por `true` en
