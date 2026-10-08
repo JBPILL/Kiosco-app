@@ -40,6 +40,20 @@ it('presenta el umbral vigente en el pedido de PIN del cajero', async () => {
   expect(screen.getByLabelText('PIN del supervisor')).toBeTruthy()
 })
 
+it('con el circuito antiguo muestra PIN y bloquea el descuento protegido sin escribir la venta', async () => {
+  vi.stubEnv('VITE_CHECKOUT_MANUAL_TRANSACCIONAL', 'false')
+  mocks.guardado = false; mocks.rol = 'CAJERO'; mocks.tipoAjuste = 'DESCUENTO_PORCENTAJE'; mocks.valorAjuste = 20
+  mocks.politica.mockResolvedValue({ umbralPorcentaje: 15, revision: 1 })
+  render(<PaymentModal isOpen onClose={vi.fn()} onVentaCompletada={vi.fn()} />)
+  expect(await screen.findByLabelText('PIN del supervisor')).toBeTruthy()
+  expect(screen.getByRole('alert').textContent).toContain('Habilitá el cobro transaccional')
+  const boton = screen.getByRole('button', { name: 'Confirmar y Cobrar' })
+  expect((boton as HTMLButtonElement).disabled).toBe(true)
+  fireEvent.click(boton)
+  expect(mocks.from).not.toHaveBeenCalled()
+  expect(mocks.nuevo).not.toHaveBeenCalled()
+})
+
 it('no pide PIN para descuento inferior al umbral configurado y muestra fallo de consulta', async () => {
   mocks.guardado = false; mocks.rol = 'CAJERO'; mocks.tipoAjuste = 'DESCUENTO_PORCENTAJE'; mocks.valorAjuste = 20
   mocks.politica.mockResolvedValueOnce({ umbralPorcentaje: 25, revision: 2 })

@@ -94,7 +94,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   const esperaPin = useSupervisorPinWait(reintentarPinEn)
   const operador = useAuthStore(state => state.usuario)
   useEffect(() => { setReintentarPinEn(null) }, [operador?.id, operador?.auth_user_id, operador?.kiosco_id])
-  const necesitaPolitica = isOpen && checkoutManualTransaccionalActivo() && !cobroGuardado && operador?.rol === 'CAJERO'
+  const necesitaPolitica = isOpen && !cobroGuardado && operador?.rol === 'CAJERO'
     && tipoAjuste.startsWith('DESCUENTO') && valorAjuste > 0
   const politicaSupervisor = useSupervisorPolicy(necesitaPolitica, JSON.stringify([operador?.id, operador?.auth_user_id, operador?.kiosco_id, operador?.rol, operador?.activo, tabActivaId]))
   const politicaNoDisponible = necesitaPolitica && !politicaSupervisor.politica
@@ -102,6 +102,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   const requierePinSupervisor = necesitaPolitica && umbralSupervisor !== undefined
     && ((tipoAjuste === 'DESCUENTO_PORCENTAJE' && valorAjuste > umbralSupervisor)
       || (tipoAjuste === 'DESCUENTO_FIJO' && ajusteCarrito(items, tipoAjuste, valorAjuste) > ajusteCarrito(items, 'DESCUENTO_PORCENTAJE', 100) * umbralSupervisor / 100))
+  const faltaCheckoutSeguro = requierePinSupervisor && !checkoutManualTransaccionalActivo()
   useEffect(() => { setPinSupervisor('') }, [isOpen, tabActivaId, operador?.id, operador?.auth_user_id, operador?.kiosco_id, politicaSupervisor.politica?.revision])
 
   // ── Estados para Pago Mixto / Dividido ─────────────────────────────────────
@@ -254,7 +255,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
     : true
 
   const confirmarVenta = async () => {
-    if (procesandoRef.current || (!cobroGuardado && (!puedeConfirmar || politicaNoDisponible || (requierePinSupervisor && esperaPin > 0)))) return
+    if (procesandoRef.current || (!cobroGuardado && (!puedeConfirmar || politicaNoDisponible || faltaCheckoutSeguro || (requierePinSupervisor && esperaPin > 0)))) return
     procesandoRef.current = true
     setProcesando(true)
     let ventaCreadaId: string | null = null
@@ -1107,7 +1108,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           fullWidth
           variant="success"
           onClick={confirmarVenta}
-          disabled={!cobroGuardado && (!puedeConfirmar || politicaNoDisponible || (requierePinSupervisor && esperaPin > 0))}
+          disabled={!cobroGuardado && (!puedeConfirmar || politicaNoDisponible || faltaCheckoutSeguro || (requierePinSupervisor && esperaPin > 0))}
           loading={procesando}
         >
           {cobroGuardado ? 'Recuperar cobro guardado' : emitirFiscal ? 'Confirmar y Facturar ARCA' : 'Confirmar y Cobrar'}
@@ -1115,6 +1116,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       }
     >
       <div className="space-y-3">
+        {faltaCheckoutSeguro && <p role="alert" className="text-xs font-semibold text-red-600 dark:text-red-300">Este descuento necesita autorización. Habilitá el cobro transaccional en el despliegue para continuar.</p>}
         {requierePinSupervisor && esperaPin > 0 && <p role="status" className="text-xs font-semibold text-amber-600 dark:text-amber-300">Podés reintentar el PIN en {esperaPin} s</p>}
         {politicaNoDisponible && <div className="flex items-center justify-between gap-2 text-xs text-amber-600 dark:text-amber-300"><span role="status">{politicaSupervisor.error ? 'No se pudo verificar el umbral de descuento' : 'Verificando descuento…'}</span><RefreshButton label="Reintentar política de descuento" refreshing={politicaSupervisor.cargando} onClick={politicaSupervisor.reintentar} /></div>}
         {requierePinSupervisor && <label className="block text-xs font-semibold dark:text-gray-200">PIN del supervisor (descuento mayor al {umbralSupervisor}%)<input aria-label="PIN del supervisor" type="password" inputMode="numeric" autoComplete="off" maxLength={6} value={pinSupervisor} disabled={procesando} onChange={event => setPinSupervisor(event.target.value)} className="mt-1.5 w-full rounded-xl border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-900/50 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500/30" /></label>}
