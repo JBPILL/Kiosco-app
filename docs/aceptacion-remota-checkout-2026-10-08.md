@@ -53,6 +53,16 @@ contenido. Seis regresiones cubren esos cambios; 13 pruebas dirigidas de lectura
 de pendientes y su panel pasaron. Esto no añade una acción de confirmación
 cuando se perdió la copia local; esa parte de P09 permanece pendiente.
 
+La integración PostgreSQL ahora recorre preparación del cajero, recuperación
+de la entrada por dueño, confirmación privada con identidad real del dueño y
+reintento. Verifica vendedor original conservado, stock 7,5 tras descontar 2,5,
+saldo deudor 250, un pago y un movimiento de cuenta corriente. Las 76 pruebas
+SQL del archivo pasaron. La lectura de metadatos sigue siendo authenticated;
+el cierre se ejecuta como service_role y la inspección posterior como propietario
+del entorno de prueba. No se conceden lecturas directas al rol de servicio para
+facilitar esa inspección. Falta conectar la acción explícita al panel y probarla
+con JWT real antes de cerrar P09.
+
 Autoevaluación: precisión 4 (aserciones de contexto y resultado local);
 completitud 3 (falta el circuito de confirmación remota y su piloto);
 claridad 4 (alcance separado de recuperación completa); acción 4 (protección

@@ -582,6 +582,27 @@ it('recupera exactamente la entrada original sin el snapshot de costos', async (
  await prepararBackend()
  expect(await recuperarRemoto()).toEqual(entradaBackend())
 })
+it('el dueño recupera un preparado del cajero y lo confirma dos veces sin duplicar stock ni fiado', async () => {
+ await db.exec(`UPDATE sesiones_caja SET usuario_id='${cajero}'`)
+ const original = { ...entradaBackend(), usuarioId: cajero }
+ const congelado = { ...solicitud(), usuario_id: cajero }
+ await prepararBackend(original, congelado, cajero)
+ expect(await recuperarRemoto()).toEqual(original)
+ // El navegador sólo recupera entrada; el backend conserva el snapshot original.
+ await db.exec('RESET ROLE')
+ const registro = (await db.query<{ snapshot: unknown }>(
+   'SELECT snapshot FROM checkout_manual_entradas WHERE id=$1', [venta])).rows[0]
+ await db.exec("SET request.jwt.claim.role='service_role'; SET ROLE service_role")
+ const primero = await confirmar(registro.snapshot, actor)
+ const segundo = await confirmar(registro.snapshot, actor)
+ expect(segundo.rows).toEqual(primero.rows)
+ await db.exec('RESET ROLE')
+ expect(await leer('SELECT id,usuario_id,total FROM ventas')).toEqual([{ id: venta, usuario_id: cajero, total: '250.00' }])
+ expect(await leer(`SELECT stock_actual FROM productos WHERE id='${producto}'`)).toEqual([{ stock_actual: '7.500' }])
+ expect(await leer('SELECT saldo_deudor FROM clientes')).toEqual([{ saldo_deudor: '250.00' }])
+ expect(await leer('SELECT count(*)::int AS cantidad FROM pagos_venta')).toEqual([{ cantidad: 1 }])
+ expect(await leer('SELECT count(*)::int AS cantidad FROM movimientos_cuenta_corriente')).toEqual([{ cantidad: 1 }])
+})
 it('rechaza recuperación por cajero u otro comercio', async () => {
  await prepararBackend()
  await expect(recuperarRemoto(cajero)).rejects.toThrow(/Solo el dueño/)
