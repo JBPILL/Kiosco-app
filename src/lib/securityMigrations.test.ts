@@ -338,6 +338,26 @@ describe('migraciones de seguridad en PostgreSQL', () => {
     })
   })
 
+  it.each(['sin-sesion', 'sin-perfil', 'inactivo', 'sin-comercio', 'anon', 'service_role'])('consulta comercial rechaza identidad %s', async caso => {
+    await conVenta(async () => {
+      await instalarConsultaComercial()
+      if (caso === 'inactivo') {
+        await db.exec('RESET ROLE;')
+        await db.query('UPDATE public.usuarios SET activo = false WHERE id = $1', [propietario])
+        await sesion(propietario)
+      } else if (caso === 'sin-comercio') {
+        await sesion(superadmin)
+      } else if (caso === 'sin-perfil') {
+        await sesion('00000000-0000-0000-0000-000000000099')
+      } else if (caso === 'sin-sesion') {
+        await db.exec("SET request.jwt.claim.sub = '';")
+      } else {
+        await db.exec(`RESET ROLE; SET request.jwt.claim.role = '${caso}'; SET ROLE ${caso};`)
+      }
+      await expect(db.query('SELECT * FROM public.consultar_auditoria_comercial(50)')).rejects.toMatchObject({ code: '42501' })
+    })
+  })
+
   it.each([null, 0, 101])('consulta comercial rechaza límite %s', async limite => {
     await conVenta(async () => {
       await instalarConsultaComercial()
