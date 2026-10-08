@@ -6,6 +6,7 @@ import type { ManualCheckoutDependencies } from '../../supabase/functions/_share
 import { fechaManual, leerEntradaCheckoutManual } from '../../supabase/functions/_shared/manualCheckoutRequest'
 import { recibirCheckoutManual } from '../../supabase/functions/_shared/manualCheckoutHttp'
 import { requiereRenovarPermisoManual } from '../../supabase/functions/_shared/manualCheckoutSupervisorError'
+import { crearBackendCheckoutManual } from '../../supabase/functions/_shared/manualCheckoutBackend'
 
 const kid = '10000000-0000-0000-0000-000000000001'
 const uid = '20000000-0000-0000-0000-000000000001'
@@ -39,6 +40,18 @@ function contexto(rol: 'DUEÑO' | 'CAJERO' = 'DUEÑO') {
 }
 beforeEach(() => { vi.restoreAllMocks(); vi.stubGlobal('crypto', webcrypto) })
 afterEach(() => { vi.unstubAllGlobals() })
+
+it.each([true,false])('el adaptador usa recuperación auditada sólo cuando el dueño confirma otro vendedor=%s', async otro => {
+  const rpc = vi.fn(async () => ({ data: { confirmado: true }, error: null }))
+  const admin = { rpc } as unknown as Parameters<typeof crearBackendCheckoutManual>[0]
+  const backend = crearBackendCheckoutManual(admin)
+  const snapshot = { version: 1 as const, id, kiosco_id: kid, usuario_id: otro ? product : uid,
+    sesion_caja_id: box, fecha_hora: entrada().fechaHora, total: 100, notas: null, cliente_id: null, detalles: [], pagos: [] }
+  await backend.confirmar(contexto(),snapshot)
+  expect(rpc).toHaveBeenCalledWith(otro ? 'confirmar_checkout_recuperado' : 'confirmar_venta_manual', {
+    p_actor_auth_id: uid, p_solicitud: snapshot,
+  })
+})
 
 it('diagnostica un registro inválido sin confirmar ni revelar su contenido', async () => {
   const log = vi.spyOn(console, 'error').mockImplementation(() => {})

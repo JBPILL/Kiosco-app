@@ -582,7 +582,21 @@ it('recupera exactamente la entrada original sin el snapshot de costos', async (
  await prepararBackend()
  expect(await recuperarRemoto()).toEqual(entradaBackend())
 })
-it('el dueño recupera un preparado del cajero y lo confirma dos veces sin duplicar stock ni fiado', async () => {
+it.each([false,true])('recuperación del dueño es idempotente y atómica con auditoría fallida=%s', async falloAuditoria => {
+ await db.exec('BEGIN')
+ try {
+ const migracion = readFileSync('supabase_fase_checkout_recuperacion_auditada.sql','utf8').replace(/^\s*(BEGIN|COMMIT);\s*$/gm,'')
+ await db.exec(migracion)
+ await db.exec('GRANT INSERT(actor_auth_id),UPDATE(actor_auth_id) ON checkout_recuperaciones TO PUBLIC')
+ await db.exec(migracion)
+ expect(await leer(`SELECT rolname AS rol,has_function_privilege(oid,'confirmar_checkout_recuperado(uuid,jsonb)','EXECUTE') AS ejecuta,
+   has_table_privilege(oid,'checkout_recuperaciones','INSERT,UPDATE,DELETE') AS escribe,
+   has_any_column_privilege(oid,'checkout_recuperaciones','INSERT,UPDATE') AS escribe_columnas
+   FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role') ORDER BY rolname`)).toEqual([
+   { rol:'anon',ejecuta:false,escribe:false,escribe_columnas:false },
+   { rol:'authenticated',ejecuta:false,escribe:false,escribe_columnas:false },
+   { rol:'service_role',ejecuta:true,escribe:false,escribe_columnas:false },
+ ])
  await db.exec(`UPDATE sesiones_caja SET usuario_id='${cajero}'`)
  const original = { ...entradaBackend(), usuarioId: cajero }
  const congelado = { ...solicitud(), usuario_id: cajero }
@@ -593,8 +607,28 @@ it('el dueño recupera un preparado del cajero y lo confirma dos veces sin dupli
  const registro = (await db.query<{ snapshot: unknown }>(
    'SELECT snapshot FROM checkout_manual_entradas WHERE id=$1', [venta])).rows[0]
  await db.exec("SET request.jwt.claim.role='service_role'; SET ROLE service_role")
- const primero = await confirmar(registro.snapshot, actor)
- const segundo = await confirmar(registro.snapshot, actor)
+ await db.exec('SAVEPOINT rechazo_recuperacion')
+ await expect(db.query('SELECT confirmar_checkout_recuperado($1::uuid,$2::jsonb)',[cajero,JSON.stringify(registro.snapshot)]))
+   .rejects.toThrow(/Solo el dueño/)
+ await db.exec('ROLLBACK TO SAVEPOINT rechazo_recuperacion')
+ await expect(db.query('SELECT confirmar_checkout_recuperado($1::uuid,$2::jsonb)',[actor,JSON.stringify({ ...(registro.snapshot as object),total: 999 })]))
+   .rejects.toThrow(/preparación original/)
+ await db.exec('ROLLBACK TO SAVEPOINT rechazo_recuperacion')
+ if (falloAuditoria) {
+   await db.exec(`RESET ROLE;
+     CREATE FUNCTION bloquear_auditoria_prueba() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$;
+     CREATE TRIGGER bloquear_auditoria_prueba BEFORE INSERT ON checkout_recuperaciones
+       FOR EACH ROW EXECUTE FUNCTION bloquear_auditoria_prueba(); SET ROLE service_role; SAVEPOINT fallo_auditoria;`)
+   await expect(db.query('SELECT confirmar_checkout_recuperado($1::uuid,$2::jsonb)',[actor,JSON.stringify(registro.snapshot)]))
+     .rejects.toThrow(/auditoría de recuperación/)
+   await db.exec('ROLLBACK TO SAVEPOINT fallo_auditoria; RESET ROLE')
+   expect(await leer('SELECT count(*)::int AS cantidad FROM ventas')).toEqual([{ cantidad: 0 }])
+   expect(await leer(`SELECT stock_actual FROM productos WHERE id='${producto}'`)).toEqual([{ stock_actual: '10.000' }])
+   expect(await leer('SELECT saldo_deudor FROM clientes')).toEqual([{ saldo_deudor: '0.00' }])
+   return
+ }
+ const primero = await db.query('SELECT confirmar_checkout_recuperado($1::uuid,$2::jsonb)', [actor,JSON.stringify(registro.snapshot)])
+ const segundo = await db.query('SELECT confirmar_checkout_recuperado($1::uuid,$2::jsonb)', [actor,JSON.stringify(registro.snapshot)])
  expect(segundo.rows).toEqual(primero.rows)
  await db.exec('RESET ROLE')
  expect(await leer('SELECT id,usuario_id,total FROM ventas')).toEqual([{ id: venta, usuario_id: cajero, total: '250.00' }])
@@ -602,6 +636,9 @@ it('el dueño recupera un preparado del cajero y lo confirma dos veces sin dupli
  expect(await leer('SELECT saldo_deudor FROM clientes')).toEqual([{ saldo_deudor: '250.00' }])
  expect(await leer('SELECT count(*)::int AS cantidad FROM pagos_venta')).toEqual([{ cantidad: 1 }])
  expect(await leer('SELECT count(*)::int AS cantidad FROM movimientos_cuenta_corriente')).toEqual([{ cantidad: 1 }])
+ expect(await leer('SELECT actor_auth_id,actor_usuario_id,vendedor_original_id,cierre_preexistente FROM checkout_recuperaciones')).toEqual([
+   { actor_auth_id: actor, actor_usuario_id: actor, vendedor_original_id: cajero, cierre_preexistente: false }])
+ } finally { await db.exec('ROLLBACK; RESET ROLE') }
 })
 it('rechaza recuperación por cajero u otro comercio', async () => {
  await prepararBackend()

@@ -12,6 +12,28 @@ No se invoca un proveedor de pago ni se crea un identificador nuevo.
 
 ## Requisitos y errores
 
+### Auditoría del dueño — paso 53
+
+Instalar `supabase_fase_checkout_recuperacion_auditada.sql` completo antes de
+desplegar la versión actualizada de la Edge Function `checkout-manual`.
+El adaptador utiliza `confirmar_checkout_recuperado` cuando un dueño confirma
+la solicitud de otro vendedor. La RPC es privada, ejecutable sólo por servicio,
+y valida dueño activo, comercio y snapshot original antes de cerrar.
+
+`checkout_recuperaciones` conserva venta, comercio, identidad autenticada y
+perfil del dueño, vendedor original, fecha y si el cierre ya existía antes de
+la recuperación. No se atribuye al dueño un cierre previo del cajero. Cada
+par venta/dueño se registra una vez; reintentar conserva la primera auditoría.
+La tabla sólo permite lectura al dueño/superadmin del comercio, sin escritura
+directa de anon, authenticated o service_role. La inserción de auditoría y el
+cierre financiero pertenecen a la misma transacción.
+
+Si falta el paso 53, el nuevo backend no confirma recuperaciones de otro
+vendedor; conserva la solicitud y comunica incertidumbre. No usar una ruta
+sin auditoría como fallback. Las ventas ordinarias del operador original siguen
+usando su cierre existente. Si el dueño es el vendedor original, la identidad
+ya coincide y se utiliza ese circuito ordinario.
+
 - RPC de recuperación y Edge Function `checkout-manual` instaladas, con las
   migraciones de caja compartida, autorización y cancelación vigentes.
 - Dueño activo del mismo comercio y suscripción activa. La identidad se
@@ -29,6 +51,13 @@ No se invoca un proveedor de pago ni se crea un identificador nuevo.
   el caso; no trasladarla a otra caja o recrear el ticket.
 
 ## Evidencia
+
+Auditoría del paso 53: 113 pruebas dirigidas en dos archivos aprobadas. Cubren
+revocación de escritura de tabla/columnas, acceso privado a la RPC, rechazo
+de cajero o snapshot alterado, reintento con un único registro y rollback
+financiero ante fallo de auditoría. El adaptador real selecciona la RPC auditada
+para dueño que recupera a otro operador y conserva la ruta ordinaria para el
+vendedor original. SQL y Edge actualizados aún no aplicados remotamente.
 
 92 pruebas dirigidas en tres archivos y build aprobados. Incluyen preparación
 del cajero, lectura por dueño, cierre privado y reintento en PostgreSQL local;

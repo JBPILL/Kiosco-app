@@ -38,7 +38,9 @@ export function crearBackendCheckoutManual(admin: SupabaseClient): Omit<ManualCh
       return data
     },
     confirmar: async (contexto, snapshot) => {
-      const { data, error } = await admin.rpc('confirmar_venta_manual', { p_actor_auth_id: contexto.authUserId, p_solicitud: snapshot })
+      const funcion = contexto.usuario.rol === 'DUEÑO' && contexto.usuario.id !== snapshot.usuario_id
+        ? 'confirmar_checkout_recuperado' : 'confirmar_venta_manual'
+      const { data, error } = await admin.rpc(funcion, { p_actor_auth_id: contexto.authUserId, p_solicitud: snapshot })
       if (error || !data) { registrarFalloCheckout('CONFIRMAR', error); throw new Error('No se confirmó el cierre del checkout') }
       return data
     },
