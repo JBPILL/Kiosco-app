@@ -26,7 +26,7 @@ cumplir la puerta de aceptación correspondiente.
 | P08 | Checkout | Validar pérdida de conexión y dos equipos | Ensayar preparación, confirmación, cancelación y respuesta perdida sin duplicar venta, pago, stock o deuda. |
 | P09 | Checkout | Aceptar recuperación sin copia local | Aplicar el paso 53 antes de desplegar `checkout-manual`. Acción del dueño implementada en Caja y Turno; probar en navegador/Supabase con JWT real, respuesta perdida, cancelación concurrente y operador/caja originales. No crear otra venta ni volver a cobrar. |
 | P10 | 2 · Periféricos | Validar impresoras y cajón físicos | Matriz por modelo/COM/USB: permiso denegado, desconexión, reimpresión, pago mixto y pulso único sólo tras efectivo confirmado. |
-| P11 | 2 · Periféricos | Completar canal por driver de Windows | Implementar despliegue controlado y comprobar impresión real; Web Serial existente no acredita ese canal. |
+| P11 | 2 · Periféricos | Completar canal por driver de Windows | Diálogo del navegador ya disponible con window.print y ajuste de contenedores para ticket largo. Configurar despliegue controlado y comprobar driver, márgenes, paginación y salida real; no hay confirmación ni impresión silenciosa. |
 | P12 | 2 · Periféricos | Probar lector, balanza y cámara móvil | Ensayar dispositivos reales, Safari/iOS, cancelar/reabrir, permisos y entrada manual de peso. |
 | P13 | 3 · Respaldo | Confirmar migraciones de respaldo vigentes | Verificar snapshot/configuración y pasos 49–50 de relaciones/combos en el entorno de ensayo/remoto. Git push no aplica SQL. |
 | P14 | 3 · Respaldo | Restaurar una copia real en entorno aislado | Control final de productos y lotes implementado. Exportar, descifrar, importar y comparar conteos, demás relaciones, saldos, costos privados, configuración y recetas. No ensayar sobre el comercio operativo. |
@@ -49,6 +49,10 @@ cumplir la puerta de aceptación correspondiente.
   El cobro manual con posnet continúa siendo una ruta independiente.
 
 ## Registro de tareas realizadas
+
+- [x] Impresión manual libera límites de altura/recorte de la vista previa y
+  máximo de ancho del ticket, restaurando contenedores al finalizar. Dos pruebas
+  DOM aprobadas; impresión de tickets largos con driver real pendiente (P11).
 
 - [x] Diagnóstico paso 53 contrastado con la migración real y su reaplicación:
   permiso PUBLIC por columna detectado y eliminado. 77 pruebas SQL aprobadas;

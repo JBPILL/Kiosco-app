@@ -18,6 +18,15 @@ Microsoft documenta el lanzamiento de Edge con `--kiosk <URL> --edge-kiosk-type=
 
 ## Impresora y cajón
 
+**Canal por driver:** el botón Imprimir Ticket abre el diálogo del navegador
+mediante `window.print()`, donde se selecciona la impresora instalada en Windows.
+No hay impresión silenciosa ni confirmación de que el papel salió. El ticket
+interno y ARCA comparten esta ruta. Durante beforeprint se libera altura y
+recorte de los contenedores de vista previa; afterprint/desmontaje los restaura.
+También se quita el máximo de ancho usado en pantalla. Dos pruebas DOM cubren
+marcado/restauración de ancestros; falta comprobar paginación y márgenes reales
+con navegador, driver y tickets largos en papel de 58/80 mm.
+
 El lanzador rechaza también HTTPS en localhost/loopback, nombres `.localhost`,
 el puerto de desarrollo 5173 y URLs con usuario/contraseña. Diez pruebas
 ejecutan PowerShell con detección de Edge y lanzamiento simulados: validan

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal } from '../ui/Modal'
+import { prepararContenedoresImpresion } from '../../lib/ticketPrintAncestors'
 import { formatPrecio, formatFecha, formatNumero, formatearPromoTicket } from '../../lib/utils'
 import { generarImagenQRAFIP } from '../../lib/afipQR'
 import { imprimirTicketEscPosDirecto, isWebSerialSupported } from '../../lib/escposPrinter'
@@ -126,6 +127,24 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
       setQrDataUrl('')
     }
   }, [ticket?.afip?.qrUrl])
+
+  useEffect(() => {
+    if (!isOpen || !ticket) return
+    let limpiar: (() => void) | undefined
+    const antes = () => {
+      limpiar?.()
+      const elemento = document.getElementById('printable-ticket')
+      if (elemento) limpiar = prepararContenedoresImpresion(elemento)
+    }
+    const despues = () => { limpiar?.(); limpiar = undefined }
+    window.addEventListener('beforeprint', antes)
+    window.addEventListener('afterprint', despues)
+    return () => {
+      window.removeEventListener('beforeprint', antes)
+      window.removeEventListener('afterprint', despues)
+      despues()
+    }
+  }, [isOpen, ticket])
 
   if (!ticket) return null
 
@@ -615,6 +634,15 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
       {/* Estilos aislados para impresión térmica */}
       <style>{`
         @media print {
+          .ticket-print-ancestor {
+            overflow: visible !important;
+            height: auto !important;
+            max-height: none !important;
+            position: static !important;
+            transform: none !important;
+            filter: none !important;
+            backdrop-filter: none !important;
+          }
           body * {
             visibility: hidden !important;
           }
@@ -626,6 +654,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
             left: 0 !important;
             top: 0 !important;
             width: ${anchoPapel} !important;
+            max-width: none !important;
             margin: 0 !important;
             padding: 4mm !important;
             box-shadow: none !important;
