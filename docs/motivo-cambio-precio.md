@@ -54,7 +54,17 @@ venta offline pendiente y no escribe cabecera ni pagos. Se consultan únicamente
 campos públicos; no se utiliza stock ni costo para esta comprobación.
 26 pruebas del verificador, cola y recuperación de cobro aprobaron esta fase.
 
-Falta comprobar sincronización de altas locales y recuperar conflictos en UI;
+Las altas locales se sincronizan mediante INSERT, nunca mediante sobrescritura.
+Un ID duplicado sólo se acepta después de confirmar comercio, nombre, precio y
+estado activo. Si no coincide, conserva el alta pendiente y muestra conflicto.
+Los cambios de comercio descartan la respuesta tardía y un bloqueo por alta
+evita envíos simultáneos desde el mismo hook. Un alta rechazada por permisos no
+se convierte en producto offline; únicamente los fallos de transporte permiten
+conservar el borrador local. Once pruebas de useProducts aprobaron estos casos,
+incluida recuperación de respuesta perdida con precio remoto diferente y
+protección del ID/comercio generados frente a campos adicionales del llamador.
+
+Falta completar la regresión, empaquetado y ensayo coordinado;
 comprobar rechazo sin actualizar caché; actualizar el paquete y coordinar la
 aplicación con el despliegue. No se considera terminada la función completa.
 

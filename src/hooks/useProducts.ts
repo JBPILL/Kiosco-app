@@ -124,6 +124,9 @@ function mensajeDeError(error: unknown): string {
 export function useProducts() {
   const { usuario, kiosco } = useAuthStore()
   const kioscoId = usuario?.kiosco_id || kiosco?.id
+  const comercioActualRef = useRef(kioscoId)
+  comercioActualRef.current = kioscoId
+  const altasSincronizandoRef = useRef(new Set<string>())
   const idsBorradosRef = useRef<Set<string>>(new Set())
 
   const getCacheKeyCategorias = useCallback(() => {
@@ -216,6 +219,7 @@ export function useProducts() {
     }
 
     const { data, error } = await query
+    if (comercioActualRef.current !== currentKioscoId) return
 
     if (error) {
       const cachedList = getCachedProductos(currentKioscoId)
@@ -266,9 +270,13 @@ export function useProducts() {
         const merged = cleanData.map((item) => {
           const local = localMap.get(item.id)
           if (!local) return item
+          if (local._local_offline && local.precio_venta !== item.precio_venta) {
+            toast.error(`El precio de "${item.descripcion}" cambió en el servidor. Se conserva el precio del catálogo.`)
+          }
           return {
             ...local,
             ...item,
+            _local_offline: false,
             es_retornable:
               item.es_retornable !== undefined && item.es_retornable !== null
                 ? Boolean(item.es_retornable)
@@ -318,17 +326,39 @@ export function useProducts() {
           ;(async () => {
             try {
               for (const prodOffline of soloLocales) {
-                const { _local_offline, categoria, proveedor, ...datosDB } = prodOffline as any
-                const { ok } = await ejecutarOperacionSupabaseSegura(datosDB, (d) =>
-                  supabase.from('productos').upsert(d, { onConflict: 'id' })
-                )
-                if (ok) {
-                  setProductos((curr) => {
-                    const actualizados = curr.map((p) => (p.id === prodOffline.id ? { ...p, _local_offline: false } : p))
-                    guardarProductosEnCache(actualizados)
-                    return actualizados
-                  })
-                }
+                if (comercioActualRef.current !== currentKioscoId) return
+                const claveAlta = `${currentKioscoId}:${prodOffline.id}`
+                if (altasSincronizandoRef.current.has(claveAlta)) continue
+                altasSincronizandoRef.current.add(claveAlta)
+                try {
+                  const { _local_offline, categoria, proveedor, ...datosDB } = prodOffline
+                  const resultado = await ejecutarOperacionSupabaseSegura(datosDB, (d) =>
+                    supabase.from('productos').insert(d)
+                  )
+                  if (comercioActualRef.current !== currentKioscoId) return
+                  if (!resultado.ok && resultado.error?.code !== '23505') {
+                    toast.error(`No se pudo sincronizar "${prodOffline.descripcion}". Sigue pendiente.`)
+                    continue
+                  }
+                  const { data: confirmados, error: errorConfirmacion } = await supabase.from('productos')
+                    .select('id,kiosco_id,descripcion,precio_venta,activo').eq('id', prodOffline.id).eq('kiosco_id', currentKioscoId)
+                  if (comercioActualRef.current !== currentKioscoId) return
+                  const confirmado = Array.isArray(confirmados) && confirmados.length === 1 ? confirmados[0] : null
+                  if (!errorConfirmacion && confirmado?.id === prodOffline.id && confirmado.kiosco_id === currentKioscoId
+                    && confirmado.activo === true && confirmado.descripcion === prodOffline.descripcion
+                    && Number(confirmado.precio_venta) === prodOffline.precio_venta) {
+                    setProductos((curr) => {
+                      if (comercioActualRef.current !== currentKioscoId) return curr
+                      const actualizados = curr.map((p) => (p.id === prodOffline.id ? { ...p, _local_offline: false } : p))
+                      guardarProductosEnCache(actualizados)
+                      return actualizados
+                    })
+                  } else {
+                    toast.error(`Hay un conflicto al sincronizar "${prodOffline.descripcion}". Revisá el catálogo; el alta sigue pendiente.`)
+                  }
+                } catch {
+                  if (comercioActualRef.current === currentKioscoId) toast.error(`No se pudo sincronizar "${prodOffline.descripcion}". Sigue pendiente.`)
+                } finally { altasSincronizandoRef.current.delete(claveAlta) }
               }
             } catch (errSync) {
               console.warn('Aviso al sincronizar productos locales offline:', errSync)
@@ -456,13 +486,17 @@ export function useProducts() {
     const nuevoId = uuidv4()
     const now = new Date().toISOString()
     const kioscoId = usuario?.kiosco_id || kiosco?.id || ''
+    if (!kioscoId) {
+      toast.error('No hay un comercio activo para crear el producto.')
+      return null
+    }
     const payload: Producto = {
+      ...producto,
       id: nuevoId,
       kiosco_id: kioscoId,
       activo: true,
       fecha_creacion: now,
       fecha_actualizacion: now,
-      ...producto,
     }
 
     let insertadoEnSupabase = false
@@ -470,8 +504,18 @@ export function useProducts() {
       const res = await ejecutarOperacionSupabaseSegura(payload, (datos) =>
         supabase.from('productos').insert(datos)
       )
+      if (comercioActualRef.current !== kioscoId) return null
+      if (!res.ok && !esErrorDeRed(res.error)) {
+        toast.error(`No se pudo crear el producto: ${mensajeDeError(res.error)}`)
+        return null
+      }
       insertadoEnSupabase = res.ok
     } catch (e) {
+      if (comercioActualRef.current !== kioscoId) return null
+      if (!esErrorDeRed(e)) {
+        toast.error(`No se pudo crear el producto: ${mensajeDeError(e)}`)
+        return null
+      }
       console.warn('Fallo de red al crear producto:', e)
     }
 

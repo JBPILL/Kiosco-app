@@ -2,9 +2,9 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import toast from 'react-hot-toast'
 import type { Producto } from '../types/database'
-import { getCachedProductos } from '../lib/utils'
+import { getCachedProductos, saveCachedProductos } from '../lib/utils'
 import { leerCostosProtegidosLocales } from '../lib/productCostAccess'
-import { db, resetDb, responder } from '../test/supabaseMock'
+import { db, encolar, resetDb, responder } from '../test/supabaseMock'
 import { useProducts } from './useProducts'
 
 const sesion = vi.hoisted(() => ({
@@ -35,6 +35,61 @@ beforeEach(() => {
 })
 
 describe('useProducts: guardar cambios respetando autorización', () => {
+  it('un alta sin red conserva borrador y no permite reemplazar ID ni comercio del contexto', async () => {
+    const { result } = renderHook(() => useProducts())
+    await waitFor(() => expect(result.current.productos).toHaveLength(1))
+    db.lanzar.add('productos.insert')
+    let creado: Producto | null = null
+    const datos = { ...producto, id: 'falso', kiosco_id: 'otro', codigo_barras: 'nuevo' }
+    await act(async () => { creado = await result.current.crearProducto(datos) })
+    expect(creado).toEqual(expect.objectContaining({ kiosco_id: 'k1', _local_offline: true }))
+    expect(creado).not.toEqual(expect.objectContaining({ id: 'falso' }))
+  })
+
+  it('recupera el precio confirmado del servidor y avisa si difiere del borrador', async () => {
+    saveCachedProductos([{ ...producto, _local_offline: true }], 'k1')
+    responder('productos.select', { data: [{ ...producto, precio_venta: 500 }], error: null })
+    const { result } = renderHook(() => useProducts())
+    await waitFor(() => expect(result.current.productos[0]?.precio_venta).toBe(500))
+    expect(result.current.productos[0]?._local_offline).toBe(false)
+    expect(db.llamadas.filter(llamada => llamada.op === 'insert' || llamada.op === 'update')).toHaveLength(0)
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('cambió en el servidor'))
+  })
+  it('no convierte un alta rechazada en un producto offline', async () => {
+    const { result } = renderHook(() => useProducts())
+    await waitFor(() => expect(result.current.productos).toHaveLength(1))
+    responder('productos.insert', { error: { code: '42501', message: 'Permiso denegado' } })
+    let creado: Producto | null = producto
+    await act(async () => { creado = await result.current.crearProducto({ ...producto, codigo_barras: 'nuevo', descripcion: 'Otro' }) })
+    expect(creado).toBeNull()
+    expect(result.current.productos).toHaveLength(1)
+    expect(getCachedProductos('k1')).toHaveLength(1)
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it.each([false, true])('sincroniza alta por inserción y confirma duplicado=%s sin sobrescribir', async duplicado => {
+    const local = { ...producto, id: 'local', codigo_barras: 'local', _local_offline: true }
+    saveCachedProductos([local], 'k1')
+    encolar('productos.select', { data: [], error: null }, { data: [local], error: null })
+    responder('productos.insert', { error: duplicado ? { code: '23505', message: 'Duplicado' } : null })
+    const { result } = renderHook(() => useProducts())
+    await waitFor(() => expect(result.current.productos.find(p => p.id === 'local')?._local_offline).toBe(false))
+    expect(db.llamadas.filter(llamada => llamada.op === 'insert')).toHaveLength(1)
+    expect(db.llamadas.filter(llamada => llamada.op === 'update')).toHaveLength(0)
+    expect(getCachedProductos('k1')[0]?._local_offline).toBe(false)
+  })
+
+  it('conserva pendiente un ID duplicado cuyo precio cambió', async () => {
+    const local = { ...producto, id: 'local', codigo_barras: 'local', _local_offline: true }
+    saveCachedProductos([local], 'k1')
+    encolar('productos.select', { data: [], error: null }, { data: [{ ...local, precio_venta: 500 }], error: null })
+    responder('productos.insert', { error: { code: '23505', message: 'Duplicado' } })
+    const { result } = renderHook(() => useProducts())
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('conflicto')))
+    expect(result.current.productos[0]?._local_offline).toBe(true)
+    expect(result.current.productos[0]?.precio_venta).toBe(200)
+    expect(db.llamadas.filter(llamada => llamada.op === 'update')).toHaveLength(0)
+  })
   it.each(['esquema', 'red'])('no altera caché ni elimina motivo ante fallo de %s', async fallo => {
     const { result } = renderHook(() => useProducts())
     await waitFor(() => expect(result.current.productos[0]?.precio_venta).toBe(200))
