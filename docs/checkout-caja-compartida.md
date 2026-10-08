@@ -1,5 +1,17 @@
 # Checkout manual en caja compartida
 
+## Verificación adicional
+
+Se ejecutaron dos pruebas SQL locales. La segunda instala y ejecuta la función
+real `preparar_checkout_manual` con los validadores del checkout. Comprueba
+preparación de cajero distinto del titular, persistencia del vendedor sin
+cambiar titular, rechazo de caja cerrada, apertura posterior al cobro, caja de
+otro comercio y vendedor inactivo; los rechazos no crean entradas. El cierre
+financiero completo y la autorización con PIN siguen pendientes de integración
+SQL y aceptación remota. Las otras dos funciones de la migración se representan
+con cuerpos reducidos en esta prueba, por lo que no se infiere su validación
+financiera a partir de este resultado.
+
 La consulta remota aportada por el usuario confirmó la venta
 `34916fd3-385b-4866-a39b-6ed2123f5fe8`, por $3.020, realizada por Lucía
 en la sesión abierta por Pedro. El checkout nuevo rechazaba esa combinación
