@@ -2,7 +2,14 @@
 
 ## Resultado reproducible
 
-Verificación actual sobre el código de `bb77177`: `npm run test` aprobó
+Sobre el código de `8591815`, `npm run test` aprobó **1202 pruebas en 131
+archivos**, sin fallos, en **104,35 segundos**. Incluye el umbral configurable,
+su política congelada en el checkout, la auditoría de cambios y los casos de
+cierre/reapertura de cámara. `npm run build` sobre ese mismo código terminó
+con código 0 en la fase anterior, con el aviso conocido de chunks grandes.
+Esta regresión no sustituye las comprobaciones remotas ni la matriz física.
+
+Verificación anterior sobre el código de `bb77177`: `npm run test` aprobó
 **1159 pruebas en 126 archivos**, sin fallos, en **117,05 segundos**.
 `npm run build` también terminó con código 0. Incluye las mejoras del lector
 móvil, espera progresiva y aislamiento de auditoría del supervisor. Conserva el
