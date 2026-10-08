@@ -6,7 +6,8 @@ El paso 36, `supabase_fase_supervisor_politica_descuento.sql`, incorpora
 almacenamiento privado de una política y sus cambios. El paso 37,
 `supabase_fase_checkout_manual_politica_congelada.sql`, y el servidor actualizado
 leen esa política y congelan umbral, revisión y decisión al preparar el cobro.
-**Todavía falta el formulario y su consulta en el cliente**. El frontend conserva
+Seguridad y Caja incluye formulario del dueño con consulta y guardado autenticados.
+**Todavía falta usar la política en el formulario de cobro**. Ese formulario conserva
 la regla de 15%; no activar ni desplegar esta fase como circuito completo aún.
 
 El dueño activo configura un porcentaje entre 0 y 100 con hasta dos decimales.
@@ -18,8 +19,8 @@ Las tablas no conceden escritura directa a clientes ni al servidor de cotizació
 
 ## Integración pendiente
 
-1. Conectar configuración exclusiva del dueño y consulta para el formulario de
-   cobro. Una política local desactualizada no debe permitir saltar la aprobación.
+1. Conectar consulta para el formulario de cobro. Una política local desactualizada
+   no debe permitir saltar la aprobación.
 2. Ampliar la consulta de auditoría para incluir cambios de política y validar
    sesiones reales, concurrencia y reintentos antes de activar.
 
@@ -50,6 +51,12 @@ como terminada hasta integrar y comprobar el circuito completo.
 
 ## Evidencia local
 
+Configuración: 20 pruebas enfocadas de cliente, UI y SQL aprobadas. Se verifica
+sesión Auth antes y después de la RPC, rol dueño al modificar, respuesta estricta,
+valor confirmado coincidente, cambio de comercio durante guardado y error de
+consulta sin valor predeterminado engañoso. La tarjeta es compacta y usa el botón
+de actualización común. No hay verificación visual en navegador todavía.
+
 114 pruebas enfocadas aprobadas en tres archivos: backend, funciones financieras
 SQL y política comercial. La prueba SQL de integración ejecuta las funciones
 reales de preparación/confirmación y reaplica 37 dos veces. Comprueba rechazo de
@@ -61,7 +68,7 @@ rechazo de escritura directa. No hay comprobación remota de JWT/PostgREST ni
 concurrencia entre conexiones reales.
 
 Autoevaluación: precisión 4 (reglas SQL probadas; falta instancia remota),
-completitud 3 (servidor y política congelada listos; cliente pendiente), claridad 4
+completitud 3 (servidor y configuración listos; formulario de cobro pendiente), claridad 4
 (estado y dependencias explícitos), utilidad 4 (RPC aplicables; no cambia cobro
 aún en cliente), concisión 4 (dos migraciones; conserva pasos de integración). Promedio 3,8/5.
-Prioridad siguiente: integrar consulta y configuración del cliente antes de activar.
+Prioridad siguiente: integrar consulta en cobro y flujo de autorización antes de activar.
