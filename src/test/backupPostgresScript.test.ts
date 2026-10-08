@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSy
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { expect, it } from 'vitest'
 
 const windows = process.platform === 'win32'
@@ -38,7 +39,8 @@ function ejecutar(modo: string, conexion = uri) {
     const result = spawnSync('powershell',['-NoProfile','-ExecutionPolicy','Bypass','-File',runner],{ encoding:'utf8',timeout:30_000 })
     const files = existsSync(out) ? readdirSync(out) : []
     const content = files.filter(f=>f.endsWith('.dump')).map(f=>readFileSync(join(out,f),'utf8'))
-    return { status:result.status, output:result.stdout+result.stderr, files, content }
+    const manifests = files.filter(f=>f.endsWith('.sha256')).map(f=>readFileSync(join(out,f),'utf8'))
+    return { status:result.status, output:result.stdout+result.stderr, files, content, manifests }
   } finally {
     const target = resolve(root)
     if (dirname(target)!==resolve(tmpdir()) || !basename(target).startsWith('kiosko-backup-test-')) throw new Error('Directorio de prueba inesperado')
@@ -49,7 +51,9 @@ function ejecutar(modo: string, conexion = uri) {
 it.skipIf(!windows)('confirma sólo un archivo validado y restaura entorno sin exponer contraseña', () => {
   const result = ejecutar('ok')
   expect(result.status,result.output).toBe(0)
-  expect(result.files).toHaveLength(1)
+  expect(result.files).toHaveLength(2)
+  const archivo = result.files.find(f=>f.endsWith('.dump'))!
+  expect(result.manifests).toEqual([`${createHash('sha256').update('archive-fixture').digest('hex').toUpperCase()}  ${archivo}\r\n`])
   expect(result.content).toEqual(['archive-fixture'])
   expect(result.output).toContain('SHA256:')
   expect(result.output).toContain('ENV:previous-host:previous-password:previous-service')

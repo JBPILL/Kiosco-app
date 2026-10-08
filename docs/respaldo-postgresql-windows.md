@@ -21,6 +21,21 @@ por Git; eso no cifra ni protege el contenido frente a otros usuarios.
 
 ## Comportamiento
 
+El script guarda un manifiesto `.dump.sha256` junto a cada nueva copia. Conservar
+ambos fuera del equipo. Antes del ensayo, ejecutar:
+
+```powershell
+.\scripts\verificar-respaldo-postgresql.ps1 -Archivo D:\CopiasProtegidas\copia.dump
+```
+
+Devuelve 0 si contenido y nombre coinciden; 1 si falta archivo/manifiesto o no
+coinciden. No conecta a ninguna base ni restaura datos. El hash detecta daño si
+el manifiesto se conserva confiable; no autentica el origen ni protege frente a
+un atacante capaz de cambiar ambos archivos. Las copias anteriores sin manifiesto
+no pasan este control. No generar uno nuevo para ocultar una diferencia.
+14 pruebas Windows aprobaron generación y verificación (copia alterada,
+manifiesto ausente, malformado o nombre diferente), con herramientas de dump simuladas.
+
 - Usa pg_dump custom con esquema y datos, sin prompt de contraseña.
 - No pasa la URI ni la contraseña en argumentos del proceso.
 - Aísla las variables libpq de conexión y restaura el entorno al terminar.

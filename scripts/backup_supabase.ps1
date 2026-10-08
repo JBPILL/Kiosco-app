@@ -85,6 +85,7 @@ try {
     }
     Move-Item -LiteralPath $backupPartial -Destination $backupFinal
     $backupPartial = $null
+    [IO.File]::WriteAllText($backupFinal + '.sha256', $backupHash + '  ' + [IO.Path]::GetFileName($backupFinal) + [Environment]::NewLine, [Text.Encoding]::ASCII)
     Write-Host "Archivo PostgreSQL validado: $backupFinal"
     Write-Host "SHA256: $backupHash"
     Write-Host 'Contiene datos sensibles y no está cifrado. Guardar una copia protegida fuera del equipo.'

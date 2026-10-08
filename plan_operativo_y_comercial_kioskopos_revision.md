@@ -50,6 +50,10 @@ cumplir la puerta de aceptación correspondiente.
 
 ## Registro de tareas realizadas
 
+- [x] Respaldo PostgreSQL conserva manifiesto SHA256 y comprobador local antes
+  del ensayo de recuperación. 14 pruebas Windows aprobadas; no sustituye
+  dump/restore real, cifrado ni almacenamiento externo confiable (P15–P16).
+
 - [x] Impresión manual libera límites de altura/recorte de la vista previa y
   máximo de ancho del ticket, restaurando contenedores al finalizar. Dos pruebas
   DOM aprobadas; impresión de tickets largos con driver real pendiente (P11).
