@@ -17,6 +17,16 @@ export async function solicitarAperturaManualCajon(motivo: string): Promise<{ ok
     if (error || data !== solicitud) return { ok: false, mensaje: 'No se pudo autorizar la apertura. Verificá la conexión y la migración.' }
     if (!actual?.activo || actual.rol !== 'DUEÑO' || actual.id !== actor.id || actual.auth_user_id !== actor.auth_user_id || actual.kiosco_id !== actor.kiosco_id) return { ok: false, mensaje: 'La sesión cambió; no se envió el pulso.' }
     const resultado = await abrirCajonDineroDirecto()
+    let registroConfirmado = false
+    try {
+      const registro = await supabase.rpc('registrar_resultado_apertura_cajon', {
+        p_solicitud: solicitud, p_resultado: resultado.ok ? 'PULSO_ENVIADO' : 'ERROR_TRANSPORTE',
+      })
+      registroConfirmado = !registro.error && typeof registro.data === 'string' && registro.data.length > 0
+    } catch { /* El fallo de auditoría no debe repetir el pulso. */ }
+    if (!registroConfirmado) return { ok: resultado.ok, mensaje: resultado.ok
+      ? 'Pulso enviado; no se confirmó el registro del resultado. Comprobá el cajón; no repitas la apertura.'
+      : 'Error de transporte; no se confirmó el registro del resultado. Comprobá el cajón antes de reintentar.' }
     return resultado.ok ? { ok: true, mensaje: 'Pulso enviado. Comprobá la apertura del cajón.' } : { ok: false, mensaje: 'Solicitud registrada; no se pudo enviar el pulso a la impresora.' }
   } catch {
     return { ok: false, mensaje: 'No se completó la apertura. Comprobá el cajón antes de reintentar.' }
