@@ -13,6 +13,7 @@ import { identidadRestaurada } from './backupIdentity'
 import { leerColeccionPorId } from './backupPagination'
 import { registrarDescargaRespaldoExterno } from './externalBackupReminder'
 import { validarAmpliacionBackup, capturarPreferenciasEquipo, restaurarPreferenciasEquipo, type BackupAmpliacion } from './backupAmpliado'
+import { auditoriaMotivoPrecioActiva, validarMotivoCambioPrecio } from './priceChangeAudit'
 import type { Categoria, Proveedor, Cliente, Producto } from '../types/database'
 
 export interface BackupData {
@@ -327,10 +328,16 @@ export async function restaurarBackupIntegral(
   modo: ModoRestauracion,
   kioscoId: string,
   onProgreso?: (progreso: ProgresoRestauracion) => void,
-  opciones: { restaurarConfiguracion?: boolean; restaurarPreferencias?: boolean } = {},
+  opciones: { restaurarConfiguracion?: boolean; restaurarPreferencias?: boolean; motivoCambioPrecio?: string } = {},
 ): Promise<ResultadoRestauracion> {
   if (!kioscoId) {
     return { ok: false, mensaje: 'ID de comercio no especificado para la restauración.' }
+  }
+
+  let motivoPrecio: string | undefined
+  if (auditoriaMotivoPrecioActiva()) {
+    try { motivoPrecio = validarMotivoCambioPrecio(opciones.motivoCambioPrecio) }
+    catch (error) { return { ok: false, mensaje: error instanceof Error ? error.message : 'Motivo inválido.' } }
   }
 
   const resumen: ResumenRestauracion = {
@@ -700,6 +707,7 @@ export async function restaurarBackupIntegral(
                 .from('productos')
                 .update({
                   ...datosProducto,
+                  ...(motivoPrecio ? { motivo_cambio_precio: motivoPrecio } : {}),
                   fecha_actualizacion: new Date().toISOString(),
                 })
                 .eq('id', prodExistente.id)

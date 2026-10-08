@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { restaurarBackupIntegral, validarBackupJSON } from './backupUtils'
 
 const mock = vi.hoisted(() => ({ from: vi.fn(), clear: vi.fn() }))
@@ -44,8 +44,26 @@ function backup(collections: Record<string, unknown[]> = {}) {
 }
 
 beforeEach(() => { vi.clearAllMocks(); writes.length = 0; payloads.length = 0; setup({}) })
+afterEach(() => vi.unstubAllEnvs())
 
 describe('restauración y errores parciales', () => {
+  it('no escribe si falta motivo con auditoría activada', async () => {
+    vi.stubEnv('VITE_AUDITORIA_MOTIVO_PRECIO', 'true')
+    const result = await restaurarBackupIntegral(backup(), 'FUSION', 'k1')
+    expect(result.ok).toBe(false)
+    expect(writes).toEqual([])
+    expect(result.mensaje).toContain('motivo')
+  })
+
+  it('envía motivo en actualizaciones', async () => {
+    vi.stubEnv('VITE_AUDITORIA_MOTIVO_PRECIO', 'true')
+    setup({ 'productos:select': [success([{ id: 'p2', descripcion: 'Dos', activo: true }]), success([])],
+      'productos:update': [success([{ id: 'p2' }])] })
+    const result = await restaurarBackupIntegral(backup({ productos: [{ id: 'old', descripcion: 'Dos' }] }), 'FUSION', 'k1', undefined,
+      { motivoCambioPrecio: '  Recuperación de lista anterior  ' })
+    expect(result.ok).toBe(true)
+    expect(payloads).toContainEqual(expect.objectContaining({ motivo_cambio_precio: 'Recuperación de lista anterior' }))
+  })
   it('encuentra productos existentes en páginas posteriores aunque la primera sea corta', async () => {
     setup({ 'productos:select': [
       success([{ id: 'p1', descripcion: 'Uno', activo: true }]),

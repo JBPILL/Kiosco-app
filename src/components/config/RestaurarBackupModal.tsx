@@ -12,6 +12,7 @@ import {
 import { formatFecha } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import { descifrarBackupJson, esBackupCifrado } from '../../lib/backupCrypto'
+import { auditoriaMotivoPrecioActiva, validarMotivoCambioPrecio } from '../../lib/priceChangeAudit'
 
 interface RestaurarBackupModalProps {
   isOpen: boolean
@@ -42,8 +43,10 @@ export function RestaurarBackupModal({
   const [descifrando, setDescifrando] = useState(false)
   const [recuperarConfiguracion, setRecuperarConfiguracion] = useState(false)
   const [recuperarPreferencias, setRecuperarPreferencias] = useState(false)
+  const [motivoPrecio, setMotivoPrecio] = useState('')
 
   const resetearEstado = () => {
+    setMotivoPrecio('')
     setArchivoCargado(null)
     setBackupData(null)
     setAdvertencias([])
@@ -153,6 +156,10 @@ export function RestaurarBackupModal({
 
   const handleEjecutarRestauracion = async () => {
     if (!backupData || restaurando) return
+    if (auditoriaMotivoPrecioActiva()) {
+      try { validarMotivoCambioPrecio(motivoPrecio) }
+      catch (error) { toast.error(error instanceof Error ? error.message : 'Motivo inválido.'); return }
+    }
 
     if (modo === 'REEMPLAZO') {
       const confirma = confirm(
@@ -167,7 +174,7 @@ export function RestaurarBackupModal({
     try {
       const resultado = await restaurarBackupIntegral(backupData, modo, kioscoId, (prog) => {
         setProgreso(prog)
-      }, { restaurarConfiguracion: recuperarConfiguracion, restaurarPreferencias: recuperarPreferencias })
+      }, { restaurarConfiguracion: recuperarConfiguracion, restaurarPreferencias: recuperarPreferencias, motivoCambioPrecio: motivoPrecio })
 
       if (resultado.ok && resultado.resumen) {
         setResumenExito(resultado.resumen)
@@ -392,6 +399,9 @@ export function RestaurarBackupModal({
         </div>
 
         {/* Bloque 2: Modo de Restauración */}
+        {auditoriaMotivoPrecioActiva() && <input aria-label="Motivo del cambio de precio" placeholder="Motivo de la restauración de precios"
+          maxLength={300} value={motivoPrecio} onChange={e => setMotivoPrecio(e.target.value)} disabled={restaurando}
+          className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-transparent px-3.5 py-2.5 text-sm" />}
         {backupData && !resumenExito && (
           <div className="space-y-3 bg-gray-50/60 dark:bg-gray-800/40 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700">
             <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">

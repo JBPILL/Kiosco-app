@@ -8,6 +8,7 @@ import type { Categoria } from '../../types/database'
 import toast from 'react-hot-toast'
 import { v4 as uuidv4 } from 'uuid'
 import { IconImportar } from '../ui/Icons'
+import { auditoriaMotivoPrecioActiva, validarMotivoCambioPrecio } from '../../lib/priceChangeAudit'
 
 interface ProductoImportRow {
   codigo_barras: string | null
@@ -203,6 +204,7 @@ export function ImportarCatalogoModal({
   const [procesando, setProcesando] = useState(false)
   const [progresoTexto, setProgresoTexto] = useState('')
   const [errorParsing, setErrorParsing] = useState<string | null>(null)
+  const [motivoPrecio, setMotivoPrecio] = useState('')
 
   const limpiarEstado = () => {
     setArchivo(null)
@@ -214,6 +216,7 @@ export function ImportarCatalogoModal({
 
   const handleCerrar = () => {
     if (procesando) return
+    setMotivoPrecio('')
     limpiarEstado()
     onClose()
   }
@@ -614,6 +617,10 @@ export function ImportarCatalogoModal({
   // Confirmar e importar productos / ejecutar rollback a la base de datos
   const handleImportar = async () => {
     if (procesando) return
+    if (auditoriaMotivoPrecioActiva() && actualizarExistentes) {
+      try { validarMotivoCambioPrecio(motivoPrecio) }
+      catch (error) { toast.error(error instanceof Error ? error.message : 'Motivo inválido.'); return }
+    }
     const kioscoId = usuario?.kiosco_id
     if (!kioscoId) {
       toast.error('No tenés un comercio activo identificado')
@@ -695,6 +702,7 @@ export function ImportarCatalogoModal({
       const idsAfectados = new Set<string>()
       let insertadosCount = 0
       let actualizadosCount = 0
+      let erroresGuardado = 0
       const productosParaInsertar: any[] = []
       const movimientosStockParaInsertar: any[] = []
 
@@ -719,6 +727,7 @@ export function ImportarCatalogoModal({
           idsAfectados.add(existente.id)
 
           const updatePayload: Record<string, any> = {
+            ...(auditoriaMotivoPrecioActiva() ? { motivo_cambio_precio: motivoPrecio.trim() } : {}),
             codigo_barras: barcode || existente.codigo_barras,
             descripcion: row.descripcion,
             categoria_id: catId,
@@ -742,6 +751,7 @@ export function ImportarCatalogoModal({
             .eq('id', existente.id)
 
           if (updErr) {
+            erroresGuardado++
             console.error('Error actualizando producto existente en importación:', existente.id, updErr)
             continue
           }
@@ -826,6 +836,7 @@ export function ImportarCatalogoModal({
               if (!singleErr) {
                 insertadosCount++
               } else {
+                erroresGuardado++
                 console.error('Error insertando producto individual:', prod.descripcion, singleErr)
               }
             }
@@ -850,12 +861,13 @@ export function ImportarCatalogoModal({
 
       // 6. Si se activó "Rollback Completo", dar de baja productos no presentes en el backup
       let desactivadosCount = 0
-      if (modoRollback && productosExistentes) {
+      if (modoRollback && productosExistentes && erroresGuardado === 0) {
         setProgresoTexto('Aplicando rollback estricto...')
         const huerfanos = productosExistentes.filter((p) => !idsAfectados.has(p.id) && p.activo !== false)
         for (const p of huerfanos) {
-          await supabase.from('productos').update({ activo: false, fecha_actualizacion: ahora }).eq('id', p.id)
-          desactivadosCount++
+          const { error } = await supabase.from('productos').update({ activo: false, fecha_actualizacion: ahora }).eq('id', p.id)
+          if (error) erroresGuardado++
+          else desactivadosCount++
         }
       }
 
@@ -875,6 +887,11 @@ export function ImportarCatalogoModal({
         ? `Rollback exitoso: ${actualizadosCount} actualizados, ${insertadosCount} creados, ${desactivadosCount} dados de baja.`
         : `Restauración completada: ${insertadosCount} creados, ${actualizadosCount} actualizados.`
 
+      if (erroresGuardado > 0) {
+        toast.error(`Importación parcial: ${erroresGuardado} productos no se guardaron. Revisá los datos y reintentá.`, { duration: 6000 })
+        await onImportCompletado()
+        return
+      }
       toast.success(mensajeExito, { duration: 6000 })
 
       await onImportCompletado()
@@ -918,6 +935,9 @@ export function ImportarCatalogoModal({
         </div>
 
         {/* Selector de modo: Fusión vs Rollback */}
+        {auditoriaMotivoPrecioActiva() && actualizarExistentes && <input aria-label="Motivo del cambio de precio" placeholder="Motivo de la importación de precios"
+          maxLength={300} value={motivoPrecio} onChange={e => setMotivoPrecio(e.target.value)} disabled={procesando}
+          className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-transparent px-3.5 py-2.5 text-sm" />}
         <div className="p-3.5 bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700 rounded-xl space-y-2">
           <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
             Modalidad de Restauración
