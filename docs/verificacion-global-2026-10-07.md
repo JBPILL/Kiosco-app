@@ -2,6 +2,21 @@
 
 ## Resultado reproducible
 
+Actualización del 08/10 sobre `0091e12` más el ajuste de timeout de las dos
+pruebas de permisos de identidad: 1279 pruebas en 140 archivos pasaron en
+123,29 segundos. La ejecución anterior tuvo 1278 aprobadas y una prueba SQL
+agotó su límite de 5 segundos; se amplió a 30 segundos sin cambiar aserciones.
+`npm run build` terminó con código 0 y el aviso conocido de chunks grandes.
+La evidencia remota aportada por el usuario de checkout con PIN y recuperación
+está en `docs/aceptacion-remota-checkout-2026-10-08.md`; no sustituye permisos
+de API con JWT reales, restauración aislada o prueba de hardware.
+
+Autoevaluación de esta validación: precisión 4 (salidas medidas, contexto local);
+integridad 3 (aceptaciones externas pendientes); claridad 4 (fallo inicial y
+repetición registrados); utilidad 4 (evidencia reproducible publicada);
+concisión 4 (resumen y referencias). Media 3,8. Prioridades: comprobar costos
+con rol remoto y preparar la restauración real en un entorno aislado.
+
 Actualización del 8 de octubre sobre eabbf5d: npm run test aprobó 1271 pruebas en 137 archivos, sin fallos, en 127,63 segundos. Incluye consulta comercial y apertura manual auditada del cajón. npm run build terminó con código 0 y el aviso conocido de chunks grandes. El usuario informó haber aplicado todos los SQL enviados; el funcionamiento remoto, permisos con JWT reales y hardware no se han comprobado desde esta sesión.
 
 

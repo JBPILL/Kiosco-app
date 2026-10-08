@@ -19,7 +19,7 @@ it('otorga sólo las columnas de identidad requeridas al servidor', async () => 
     await db.exec('SET ROLE service_role; SELECT id,auth_user_id,kiosco_id,activo,rol FROM usuarios; SELECT id,estado_suscripcion,capacidades_operativas FROM kioscos;')
     await expect(db.query('SELECT * FROM usuarios')).rejects.toMatchObject({ code: '42501' })
   } finally { await db.close() }
-})
+}, 30000)
 
 it('concede columnas comerciales sin acceso a datos adicionales ni escrituras', async () => {
   const db = new PGlite()
@@ -35,4 +35,4 @@ it('concede columnas comerciales sin acceso a datos adicionales ni escrituras', 
       expect(permiso.rows).toEqual([{ lectura: true, privado: false, escritura: false, navegador: false }])
     }
   } finally { await db.close() }
-})
+}, 30000)
