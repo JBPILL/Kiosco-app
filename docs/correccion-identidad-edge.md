@@ -27,4 +27,3 @@ genérico para errores sin código); utilidad 4 (despliegue concreto necesario);
 concisión 4 (un único punto de captura adicional). Media 3,8. Prioridad: obtener
 la etapa del próximo fallo remoto y corregir su causa. El usuario todavía no
 puede considerar resuelto el cierre.
-
