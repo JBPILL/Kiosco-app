@@ -21,7 +21,7 @@ cumplir la puerta de aceptación correspondiente.
 | P03 | 1 · Seguridad | Aceptar operativamente el paso 52 | Catálogo remoto confirmado; falta demostrar INSERT directo rechazado para cajero y checkout por backend funcionando después de instalarlo. |
 | P04 | 1 · Seguridad | Completar pruebas de supervisor | Rechazo de PIN incorrecto y venta con PIN correcto ya informados; faltan concurrencia, espera/límites de intentos, permiso ligado a solicitud original y usos restantes en el piloto. |
 | P05 | 1 · Seguridad | Cerrar aceptación de anulación atómica | Caso efectivo/caja original abierta confirmado; faltan pago mixto, fiado, caja original cerrada, lotes y reintento concurrente en Supabase real. |
-| P06 | 1 · Seguridad | Revisar devoluciones y conciliación antigua | Auditar rutas restantes de devolución parcial y conciliar tickets/colas antiguos sin snapshot suficiente. No reconstruir autorizaciones ni recetas con valores actuales. |
+| P06 | 1 · Seguridad | Implementar devolución parcial transaccional y conciliación antigua | Auditoría local realizada: escrituras separadas, lectura previa falla abierta, reintegro puede fallar sin impedir éxito y receta actual. Sustituir por backend atómico/idempotente con datos históricos, permisos y aceptación concurrente. Conciliar tickets antiguos sin inventar snapshots. |
 | P07 | 1 · Auditoría | Definir retención y operación de auditorías | Establecer responsables, acceso, conservación y comprobación remota de precio, descuento, anulación y apertura manual del cajón. |
 | P08 | Checkout | Validar pérdida de conexión y dos equipos | Ensayar preparación, confirmación, cancelación y respuesta perdida sin duplicar venta, pago, stock o deuda. |
 | P09 | Checkout | Aceptar recuperación sin copia local | Aplicar el paso 53 antes de desplegar `checkout-manual`. Acción del dueño implementada en Caja y Turno; probar en navegador/Supabase con JWT real, respuesta perdida, cancelación concurrente y operador/caja originales. No crear otra venta ni volver a cobrar. |
@@ -49,6 +49,10 @@ cumplir la puerta de aceptación correspondiente.
   El cobro manual con posnet continúa siendo una ruta independiente.
 
 ## Registro de tareas realizadas
+
+- [x] Auditoría de devolución parcial identifica límites de validación,
+  persistencia, reintegro y compensación. [Hallazgos](docs/auditoria-devolucion-parcial.md).
+  Implementación transaccional y permisos remotos permanecen pendientes (P06).
 
 - [x] Respaldo PostgreSQL conserva manifiesto SHA256 y comprobador local antes
   del ensayo de recuperación. 14 pruebas Windows aprobadas; no sustituye
