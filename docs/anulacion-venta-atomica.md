@@ -8,6 +8,13 @@ anulaciones, costos privados de movimientos y devoluciones. Desplegar el fronten
 `anular_venta_atomica`. Sin esta función la pantalla rechaza la operación;
 no utiliza escrituras parciales como alternativa.
 
+Después, ejecutar `sql_verificar_anulacion_atomica.sql` y conservar su resultado:
+los seis triggers deben existir y estar habilitados; los tres indicadores de
+`version_actual` deben ser `true`; ningún rol debe escribir en el registro
+privado. Sólo `authenticated` debe ejecutar la RPC pública; ningún rol de
+aplicación debe ejecutar directamente las funciones de trigger.
+Esta consulta sólo lee el catálogo y no anula ventas.
+
 ## Garantías y alcance
 
 - El servidor exige un único perfil de dueño activo y el comercio activo.

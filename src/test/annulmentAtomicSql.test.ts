@@ -117,6 +117,35 @@ it('mantiene privadas las escrituras y bloquea ejecución anónima', async () =>
   expect((await db.query(`SELECT has_function_privilege('anon','anular_venta_atomica(uuid,text,uuid)','EXECUTE') ejecutar,
     has_table_privilege('authenticated','anulaciones_venta_atomicas','INSERT') escribir`)).rows).toEqual([{ ejecutar:false,escribir:false }])
 })
+it('el diagnóstico de despliegue detecta la versión actual y sus triggers', async () => {
+  const lectura = readFileSync('sql_verificar_anulacion_atomica.sql','utf8')
+  const { rows } = await db.query<{ diagnostico_anulacion: {
+    version_actual: Record<string, boolean>;
+    triggers: { existe:boolean; habilitado:boolean }[];
+    registro_privado: { puede_insertar:boolean; puede_actualizar:boolean; puede_borrar:boolean }[];
+  } }>(lectura)
+  const resultado = rows[0].diagnostico_anulacion
+  expect(resultado.version_actual).toEqual({ conserva_costo_original:true, exige_auditoria:true, registro_con_rls:true })
+  expect(resultado.triggers).toHaveLength(6)
+  expect(resultado.triggers.every(trigger => trigger.existe && trigger.habilitado)).toBe(true)
+  expect(resultado.registro_privado.every(rol => !rol.puede_insertar && !rol.puede_actualizar && !rol.puede_borrar)).toBe(true)
+  expect(await estado()).toMatchObject({ estado:'COMPLETADA',stock:'6' })
+})
+it('el diagnóstico señala una RPC ausente y un trigger deshabilitado', async () => {
+  await db.exec('BEGIN')
+  try {
+    await db.exec(`DROP FUNCTION anular_venta_atomica(uuid,text,uuid);
+      ALTER TABLE pagos_venta DISABLE TRIGGER trg_pagos_venta_anulada;`)
+    const { rows } = await db.query<{ diagnostico_anulacion: {
+      version_actual: { conserva_costo_original:boolean; exige_auditoria:boolean };
+      triggers: { trigger:string; habilitado:boolean }[];
+    } }>(readFileSync('sql_verificar_anulacion_atomica.sql','utf8'))
+    expect(rows[0].diagnostico_anulacion.version_actual).toMatchObject({ conserva_costo_original:false, exige_auditoria:false })
+    expect(rows[0].diagnostico_anulacion.triggers.find(trigger => trigger.trigger==='trg_pagos_venta_anulada')?.habilitado).toBe(false)
+  } finally {
+    await db.exec('ROLLBACK')
+  }
+})
 it('conserva cabecera, pagos y detalles después de anular', async () => {
   await db.query('INSERT INTO detalles_venta VALUES($1,2)',[venta])
   await anular()
