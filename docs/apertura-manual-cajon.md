@@ -9,3 +9,5 @@ Integración pendiente: campo de motivo, espera de autorización antes del pulso
 Evidencia: securityMigrations.test.ts aprobó 45 pruebas, incluida reaplicación SQL41, motivo normalizado, actor, reintento único y rechazo al cajero. No se validó API remota ni concurrencia real.
 
 Evaluación: exactitud 4 (SQL ejecutado, hardware pendiente), completitud 3 (base parcial, interfaz y resultado pendientes), claridad 4 (solicitud distinguida del resultado físico), acción 3 (integración pendiente), concisión 4 (RPC acotada). Promedio 3,6. Prioridades: completar interfaz y resultado, ampliar rechazos y concurrencia, piloto remoto. El estado parcial debe mantenerse visible para el usuario.
+
+Avance del cliente: acción integrada en Configuración → Seguridad y Caja para dueño activo. manualDrawer.ts solicita SQL41 antes del pulso, comprueba identidad después de la respuesta y bloquea solicitudes concurrentes en la pestaña. Cinco pruebas del flujo aprobadas. El resultado local distingue pulso enviado de apertura física. Persistir el resultado del transporte y mostrar solicitudes en la consulta comercial siguen pendientes; no hay validación hardware ni remota.
