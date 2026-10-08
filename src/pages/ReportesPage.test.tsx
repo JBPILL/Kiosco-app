@@ -2,9 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { db, encolar, llamadasA, resetDb, responder } from '../test/supabaseMock'
+import { db, llamadasA, resetDb, responder } from '../test/supabaseMock'
 
-vi.mock('../lib/supabase', async () => (await import('../test/supabaseMock')).crearModuloSupabase())
+const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }))
+vi.mock('../lib/supabase', async () => {
+  const modulo = (await import('../test/supabaseMock')).crearModuloSupabase()
+  return { ...modulo, supabase: { ...modulo.supabase, rpc } }
+})
 vi.mock('../components/reportes/BalanceContableTab', () => ({ BalanceContableTab: () => <div>balance-tab</div> }))
 vi.mock('../components/reportes/RotacionTab', () => ({ RotacionTab: () => <div>rotacion-tab</div> }))
 vi.mock('../components/reportes/BajasStockTab', () => ({ BajasStockTab: () => <div>bajas-tab</div> }))
@@ -65,6 +69,12 @@ const cajaOriginal = useCajaStore.getState().registrarMovimientoCaja
 beforeEach(() => {
   localStorage.clear()
   resetDb()
+  rpc.mockReset()
+  rpc.mockImplementation(async (_nombre: string, args: { p_venta_id: string }) => ({
+    data: { venta_id: args.p_venta_id, kiosco_id: KIOSCO, estado: 'ANULADA', stock: [] }, error: null,
+  }))
+  vi.spyOn(useClienteStore.getState(), 'cargarClientes').mockResolvedValue([])
+  vi.spyOn(useCajaStore.getState(), 'cargarMovimientosSesion').mockResolvedValue([])
   vi.clearAllMocks()
   useAuthStore.setState({ usuario: { id: 'u1', nombre: 'Dueño', rol: 'DUEÑO', kiosco_id: KIOSCO } as never, kiosco: null })
   useCajaStore.setState({ sesionActiva: null, registrarMovimientoCaja: cajaOriginal })
@@ -216,158 +226,83 @@ describe('ReportesPage: resumen diario', () => {
 })
 
 describe('ReportesPage: anulación de venta', () => {
-  async function abrirConfirmacion(v: ReturnType<typeof venta>) {
-    responder('ventas.select', { data: [v], error: null })
+  async function abrirConfirmacion() {
+    responder('ventas.select', { data: [venta({ id: 'v1', total: 200 })], error: null })
     await abrirVentasDiarias()
     fireEvent.click(screen.getByText('Completada'))
     fireEvent.click(screen.getByText('Anular venta'))
-    fireEvent.change(screen.getByPlaceholderText('Ej.: venta duplicada, error en los productos...'), { target: { value: 'Anulación solicitada por el dueño' } })
-  }
-
-  const sesionAbierta = { id: 's1', estado: 'ABIERTA', fecha_cierre: null } as never
-
-  it('repone stock, registra movimiento y egreso de caja por el efectivo', async () => {
-    const registrar = vi.fn().mockResolvedValue(undefined)
-    useCajaStore.setState({ sesionActiva: sesionAbierta, registrarMovimientoCaja: registrar })
-    responder('productos.select', { data: { id: 'a', stock_actual: 10, descripcion: 'A', es_combo: false }, error: null })
-
-    await abrirConfirmacion(venta({ id: 'abcdef123456', total: 200, detalles: [detalle('a', 2, 50)] }))
-    fireEvent.change(screen.getByPlaceholderText('Ej.: venta duplicada, error en los productos...'), { target: { value: 'Error de carga duplicada' } })
-    fireEvent.click(screen.getByText('Sí, anular venta'))
-
-    await waitFor(() => expect(toast.success).toHaveBeenCalled())
-    expect(llamadasA('ventas', 'update')[0].payload).toMatchObject({ estado: 'ANULADA', motivo_anulacion: 'Error de carga duplicada' })
-    expect((llamadasA('productos', 'update')[0].payload as { stock_actual: number }).stock_actual).toBe(12)
-    expect(llamadasA('movimientos_stock', 'insert')[0].payload).toMatchObject({
-      producto_id: 'a',
-      tipo: 'INGRESO',
-      cantidad: 2,
-      motivo: 'DEVOLUCION',
+    fireEvent.change(screen.getByPlaceholderText('Ej.: venta duplicada, error en los productos...'), {
+      target: { value: 'Error de carga duplicada' },
     })
-    expect(useLoteStore.getState().restituirStockLote).toHaveBeenCalledWith('a', 2, KIOSCO)
-    expect(registrar).toHaveBeenCalledWith('EGRESO', 'DEVOLUCION_VENTA', 200, expect.stringContaining('#ABCDEF12'))
+  }
+  function confirmar() { fireEvent.click(screen.getByText('Sí, anular venta')) }
+  function sinEscriturasParciales() {
+    expect(db.llamadas.filter(llamada => ['insert', 'update', 'delete'].includes(llamada.op))).toHaveLength(0)
+    expect(useLoteStore.getState().restituirStockLote).not.toHaveBeenCalled()
+  }
+  it('confirma con una RPC e invalida la copia de stock sin escribir tablas', async () => {
+    localStorage.setItem(`kiosko_cache_productos_${KIOSCO}`, '[]')
+    await abrirConfirmacion(); confirmar()
+    await waitFor(() => expect(toast.success).toHaveBeenCalled())
+    expect(rpc).toHaveBeenCalledExactlyOnceWith('anular_venta_atomica', {
+      p_venta_id: 'v1', p_motivo: 'Error de carga duplicada', p_sesion_reintegro: null,
+    })
+    expect(localStorage.getItem(`kiosko_cache_productos_${KIOSCO}`)).toBeNull()
+    expect(useClienteStore.getState().cargarClientes).toHaveBeenCalledTimes(1)
+    sinEscriturasParciales()
   })
-
-  it('no anula una venta que ya tiene devoluciones parciales', async () => {
-    encolar(
-      'devoluciones_venta.select',
-      { data: [], error: null }, // carga inicial del reporte
-      { data: [{ id: 'd1', monto_total: 50 }], error: null } // chequeo previo a anular
-    )
-
-    await abrirConfirmacion(venta({ id: 'v1', total: 200, detalles: [detalle('a', 2, 50)] }))
-    fireEvent.change(screen.getByPlaceholderText('Ej.: venta duplicada, error en los productos...'), { target: { value: 'Error de carga' } })
-    fireEvent.click(screen.getByText('Sí, anular venta'))
-
-    await waitFor(() => expect(toast.error).toHaveBeenCalled())
-    expect(llamadasA('ventas', 'update')).toHaveLength(0)
-    expect(llamadasA('productos', 'update')).toHaveLength(0)
+  it.each(['La venta ya tiene devoluciones parciales.', 'Seleccioná una caja abierta para el reintegro.', 'Esta venta requiere conciliación.'])
+  ('conserva el diálogo ante rechazo: %s', async mensaje => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    rpc.mockResolvedValue({ data: null, error: { message: mensaje } })
+    await abrirConfirmacion(); confirmar()
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(mensaje))
+    expect(screen.getByText('Confirmar anulación de venta')).toBeTruthy()
+    expect(toast.success).not.toHaveBeenCalled()
+    sinEscriturasParciales()
   })
-
-  it('requiere un motivo suficiente antes de enviar la anulación', async () => {
-    await abrirConfirmacion(venta({ id: 'v1', total: 200 }))
+  it('no envía motivos demasiado breves', async () => {
+    await abrirConfirmacion()
     fireEvent.change(screen.getByPlaceholderText('Ej.: venta duplicada, error en los productos...'), { target: { value: 'no' } })
-    fireEvent.click(screen.getByText('Sí, anular venta'))
-
-    expect(llamadasA('ventas', 'update')).toHaveLength(0)
+    confirmar()
+    expect(rpc).not.toHaveBeenCalled()
     expect(toast.error).toHaveBeenCalledWith('Escribí un motivo de al menos 5 caracteres para auditar la anulación.')
   })
-
-  it('en un combo repone los componentes y no el combo', async () => {
-    useComboStore.setState({
-      itemsCombo: [{ id: 'i1', kiosco_id: KIOSCO, combo_producto_id: 'combo', componente_producto_id: 'ron', cantidad: 2 }] as never,
-    })
-    encolar(
-      'productos.select',
-      { data: { id: 'combo', stock_actual: 0, descripcion: 'Combo', es_combo: true }, error: null },
-      { data: { id: 'ron', stock_actual: 10, descripcion: 'Ron' }, error: null }
-    )
-
-    await abrirConfirmacion(
-      venta({ id: 'v1', total: 300, pagos: [{ medio_pago: 'MERCADOPAGO', monto: 300 }], detalles: [detalle('combo', 3, 0)] })
-    )
-    fireEvent.click(screen.getByText('Sí, anular venta'))
-
+  it('envía la caja actual sólo cuando el dueño la elige', async () => {
+    useCajaStore.setState({ sesionActiva: { id: 's1', estado: 'ABIERTA', fecha_cierre: null } as never })
+    await abrirConfirmacion()
+    fireEvent.click(screen.getByRole('checkbox'))
+    confirmar()
     await waitFor(() => expect(toast.success).toHaveBeenCalled())
-    const updates = llamadasA('productos', 'update')
-    expect(updates).toHaveLength(1)
-    expect((updates[0].payload as { stock_actual: number }).stock_actual).toBe(16) // 10 + 2*3
-    expect(useLoteStore.getState().restituirStockLote).toHaveBeenCalledWith('ron', 6, KIOSCO)
+    expect(rpc).toHaveBeenCalledWith('anular_venta_atomica', expect.objectContaining({ p_sesion_reintegro: 's1' }))
+    sinEscriturasParciales()
   })
-
-  it('no repone stock de devoluciones de envase ni de líneas sin precio', async () => {
-    await abrirConfirmacion(
-      venta({
-        id: 'v1',
-        total: 100,
-        pagos: [{ medio_pago: 'MERCADOPAGO', monto: 100 }],
-        detalles: [detalle('env', 1, 0, 100, { es_devolucion_envase: true }), detalle('regalo', 1, 0, 0)],
-      })
-    )
-    fireEvent.click(screen.getByText('Sí, anular venta'))
-
+  it('mantiene la confirmación si falla la recarga local', async () => {
+    vi.mocked(useClienteStore.getState().cargarClientes).mockRejectedValue(new Error('offline'))
+    await abrirConfirmacion(); confirmar()
     await waitFor(() => expect(toast.success).toHaveBeenCalled())
-    expect(llamadasA('productos', 'update')).toHaveLength(0)
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('La venta quedó anulada'))
+    sinEscriturasParciales()
   })
-
-  it('revierte la deuda del cliente cuando se pagó en cuenta corriente', async () => {
-    const revertir = vi.fn().mockResolvedValue(undefined)
-    useClienteStore.setState({ revertirCargoVenta: revertir } as never)
-
-    await abrirConfirmacion(venta({ id: 'v9', total: 400, pagos: [{ medio_pago: 'CUENTA_CORRIENTE', monto: 400 }] }))
-    fireEvent.click(screen.getByText('Sí, anular venta'))
-
-    await waitFor(() => expect(revertir).toHaveBeenCalledWith('v9', 400))
-  })
-
-  it('sin sesión abierta registra el egreso en la última sesión abierta de la base', async () => {
-    encolar('sesiones_caja.select', { data: { id: 'sX', estado: 'ABIERTA', fecha_cierre: null }, error: null })
-
-    await abrirConfirmacion(venta({ id: 'v1', total: 250 }))
-    fireEvent.click(screen.getByText('Sí, anular venta'))
-
-    await waitFor(() => expect(toast.success).toHaveBeenCalled())
-    expect(llamadasA('movimientos_caja', 'insert')[0].payload).toMatchObject({
-      sesion_caja_id: 'sX',
-      tipo: 'EGRESO',
-      motivo: 'DEVOLUCION_VENTA',
-      monto: 250,
-    })
-  })
-
-  it('sin ninguna sesión abierta no toca arqueos cerrados y avisa', async () => {
-    await abrirConfirmacion(venta({ id: 'v1', total: 250 }))
-    fireEvent.click(screen.getByText('Sí, anular venta'))
-
-    await waitFor(() => expect(toast.success).toHaveBeenCalled())
-    expect(llamadasA('movimientos_caja', 'insert')).toHaveLength(0)
-    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('No hay ninguna sesión de caja abierta'), expect.anything())
-  })
-
-  it('si falla el update de la venta no repone stock ni toca la caja', async () => {
+  it('permite reintentar la misma venta tras una respuesta incierta', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    const registrar = vi.fn()
-    useCajaStore.setState({ sesionActiva: sesionAbierta, registrarMovimientoCaja: registrar })
-    responder('ventas.update', { error: { message: 'RLS' } })
-
-    await abrirConfirmacion(venta({ id: 'v1', total: 200, detalles: [detalle('a', 2, 50)] }))
-    fireEvent.click(screen.getByText('Sí, anular venta'))
-
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('No se pudo anular la venta'))
-    expect(llamadasA('productos', 'update')).toHaveLength(0)
-    expect(registrar).not.toHaveBeenCalled()
-    expect(db.llamadas.some((l) => l.tabla === 'movimientos_stock')).toBe(false)
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'timeout' } })
+    await abrirConfirmacion(); confirmar()
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('timeout'))
+    confirmar()
+    await waitFor(() => expect(toast.success).toHaveBeenCalled())
+    expect(rpc).toHaveBeenCalledTimes(2)
+    expect(rpc.mock.calls[0]).toEqual(rpc.mock.calls[1])
+    sinEscriturasParciales()
   })
-
-  it('cancelar cierra el diálogo sin modificar nada', async () => {
-    await abrirConfirmacion(venta({ id: 'v1', total: 200 }))
+  it('cancelar no envía operaciones', async () => {
+    await abrirConfirmacion()
     fireEvent.click(screen.getByText('Cancelar'))
-
     expect(screen.queryByText('Confirmar anulación de venta')).toBeNull()
-    expect(llamadasA('ventas', 'update')).toHaveLength(0)
+    expect(rpc).not.toHaveBeenCalled()
+    sinEscriturasParciales()
   })
 })
-
 describe('ReportesPage - Pestaña Rotación y Stock Inmovilizado', () => {
   it('muestra la pestaña de rotación para DUEÑO y permite seleccionarla', async () => {
     useAuthStore.setState({

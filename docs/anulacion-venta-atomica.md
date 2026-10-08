@@ -56,6 +56,11 @@ Las pruebas PGlite ejecutan la migración real dos veces, verifican recetas
 históricas, restitución de lotes, pagos mixtos, auditoría, reintentos,
 autorización, caja cerrada y rollback ante errores u omisiones de triggers.
 Las pruebas del cliente verifican una única RPC, rechazos y respuestas inválidas.
+Las pruebas de Reportes verifican confirmación, cancelación, motivo mínimo,
+rechazos del servidor, elección explícita de caja, reintento con la misma
+identidad y fallos de recarga local después de confirmar. Se reemplazaron las
+expectativas antiguas de escrituras parciales: la pantalla no debe modificar
+directamente ventas, stock, lotes, deuda ni caja.
 La integración ejecuta el cierre real y luego anula/reintenta: verifica saldo,
 stock, lotes FEFO originales, una sola auditoría y costo histórico después de
 cambiar el costo vigente. Si ya se ejecutó la fase 51, volver a ejecutar su
@@ -63,6 +68,11 @@ archivo actualizado para incorporar esta conservación de costo.
 Falta aplicar la migración en el proyecto remoto y comprobar una operación de
 prueba autorizada allí. Las ventas antiguas sin snapshot permanecen pendientes
 de un procedimiento de conciliación; esta fase no acredita su recuperación.
+
+Validación local del 08/10/2026: suite completa con 1372 pruebas aprobadas en
+147 archivos y `npm run build` correcto. El build conserva el aviso de bundle
+mayor de 500 kB. Este resultado no reemplaza la prueba funcional remota ni las
+validaciones físicas de periféricos y recuperación previstas en el plan.
 
 ## Autoevaluación
 
