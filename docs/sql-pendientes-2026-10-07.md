@@ -114,3 +114,5 @@ requiere ejecución del usuario), concisión 4 (dos archivos nuevos; guía hist�
 Promedio 4,0/5. Mejora prioritaria: verificar el circuito con sesiones reales en ensayo.
 
 El 40 permite consultar cambios de precio y anulaciones en Seguridad y Caja; requiere 04 y 05. Ver docs/auditoria-comercial-consulta.md. Validación remota pendiente.
+
+Paquete 40–43: artifacts/sql-auditoria-cajon-2026-10-08.zip. Incluye cuatro SQL en orden, LEEME y SHA256. Se verificó la lectura del ZIP y la identidad de bytes con los archivos fuente; aplicación remota pendiente.

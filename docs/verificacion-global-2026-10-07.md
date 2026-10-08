@@ -2,6 +2,9 @@
 
 ## Resultado reproducible
 
+Actualización del 8 de octubre sobre eabbf5d: npm run test aprobó 1271 pruebas en 137 archivos, sin fallos, en 127,63 segundos. Incluye consulta comercial y apertura manual auditada del cajón. npm run build terminó con código 0 y el aviso conocido de chunks grandes. El usuario informó haber aplicado todos los SQL enviados; el funcionamiento remoto, permisos con JWT reales y hardware no se han comprobado desde esta sesión.
+
+
 Actualización del 8 de octubre: sobre `013a5fb`, `npm run test` aprobó **1238
 pruebas en 134 archivos**, sin fallos, en **103,41 segundos**. Incluye los motivos
 de precio, importación/restauración/siembra y recuperación de artículos libres
