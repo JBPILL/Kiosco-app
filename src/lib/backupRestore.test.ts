@@ -84,7 +84,7 @@ describe('restauración y errores parciales', () => {
   })
   it('no escribe productos si una página posterior no pudo leerse', async () => {
     setup({ 'productos:select': [success([{ id: 'p1', descripcion: 'Uno', activo: true }]), failure()] })
-    const result = await restaurarBackupIntegral(backup({ productos: [{ descripcion: 'Nuevo' }] }), 'FUSION', 'k1')
+    const result = await restaurarBackupIntegral(backup({ productos: [{ id: 'p1', descripcion: 'Nuevo' }] }), 'FUSION', 'k1')
     expect(result.ok).toBe(false)
     expect(writes).toEqual([])
   })
@@ -101,13 +101,14 @@ describe('restauración y errores parciales', () => {
   it('repetir el lote actualiza cantidades sin insertar otro lote', async () => {
     const product = { id: 'p1', descripcion: 'Producto', activo: true }
     setup({ 'productos:select': [success([product]), success([]), success([product]), success([])],
+      'productos:update': [success([{ id: 'p1' }]), success([{ id: 'p1' }])],
       'lotes_producto:select': [success(null), success({ id: 'l1' })],
       'lotes_producto:insert': [success({ id: 'l1' })], 'lotes_producto:update': [success({ id: 'l1' })] })
-    const data = backup({ lotes_producto: [{ id: 'l1', producto_id: 'p1', fecha_vencimiento: '2027-01-01', cantidad_actual: 3 }] })
+    const data = backup({ productos: [product], lotes_producto: [{ id: 'l1', producto_id: 'p1', fecha_vencimiento: '2027-01-01', cantidad_actual: 3 }] })
     expect((await restaurarBackupIntegral(data, 'FUSION', 'k1')).ok).toBe(true)
     expect((await restaurarBackupIntegral(data, 'FUSION', 'k1')).ok).toBe(true)
-    expect(writes).toEqual(['lotes_producto:insert', 'lotes_producto:update'])
-    expect(payloads[1]).toMatchObject({ cantidad_actual: 3, producto_id: 'p1' })
+    expect(writes.filter(write => write.startsWith('lotes_producto:'))).toEqual(['lotes_producto:insert', 'lotes_producto:update'])
+    expect(payloads).toContainEqual(expect.objectContaining({ cantidad_actual: 3, producto_id: 'p1' }))
   })
   it('informa un rechazo de la promoción y no la cuenta', async () => {
     setup({ 'promociones:select': [success(null)], 'promociones:insert': [failure()] })
@@ -149,19 +150,19 @@ describe('restauración y errores parciales', () => {
   })
   it('informa clientes rechazados', async () => {
     setup({ 'clientes:select': [success([{ id: 'c1', nombre: 'Cliente' }])], 'clientes:update': [failure()] })
-    const result = await restaurarBackupIntegral(backup({ clientes: [{ nombre: 'Cliente' }] }), 'FUSION', 'k1')
+    const result = await restaurarBackupIntegral(backup({ clientes: [{ id: 'c1', nombre: 'Cliente' }] }), 'FUSION', 'k1')
     expect(result.ok).toBe(false)
     expect(result.resumen?.clientesActualizados).toBe(0)
   })
   it('informa promociones rechazadas', async () => {
     setup({ 'promociones:insert': [failure()] })
-    const result = await restaurarBackupIntegral(backup({ promociones: [{ nombre: 'Oferta' }] }), 'FUSION', 'k1')
+    const result = await restaurarBackupIntegral(backup({ promociones: [{ id: 'o1', nombre: 'Oferta' }] }), 'FUSION', 'k1')
     expect(result.ok).toBe(false)
     expect(result.resumen?.errores.join()).toContain('Oferta')
   })
   it('espera a recuperar promociones antes de desactivar artículos', async () => {
     setup({ 'productos:select': [success([{ id: 'p1', descripcion: 'Existente', activo: true }])], 'promociones:insert': [failure()] })
-    const result = await restaurarBackupIntegral(backup({ promociones: [{ nombre: 'Oferta' }] }), 'REEMPLAZO', 'k1')
+    const result = await restaurarBackupIntegral(backup({ promociones: [{ id: 'o1', nombre: 'Oferta' }] }), 'REEMPLAZO', 'k1')
     expect(result.ok).toBe(false)
     expect(writes).not.toContain('productos:update')
   })
@@ -179,13 +180,16 @@ describe('restauración y errores parciales', () => {
     expect(result.resumen?.productosDesactivados).toBe(0)
   })
   it('informa lotes huérfanos', async () => {
-    const result = await restaurarBackupIntegral(backup({ lotes_producto: [{ producto_id: 'ausente', fecha_vencimiento: '2027-01-01' }] }), 'FUSION', 'k1')
+    const datos = backup()
+    datos.lotes_producto = [{ id: 'l1', producto_id: 'ausente', fecha_vencimiento: '2027-01-01' }]
+    const result = await restaurarBackupIntegral(datos, 'FUSION', 'k1')
+    expect(mock.from).not.toHaveBeenCalled()
     expect(result.ok).toBe(false)
     expect(result.resumen?.errores.join()).toContain('producto')
   })
   it('limpia el catálogo local también si una lectura falla después de escribir', async () => {
     setup({ 'categorias:insert': [success({ id: 'cat1' })], 'proveedores:select': [failure()] })
-    const result = await restaurarBackupIntegral(backup({ categorias: [{ nombre: 'Nueva' }] }), 'FUSION', 'k1')
+    const result = await restaurarBackupIntegral(backup({ categorias: [{ id: 'c1', nombre: 'Nueva' }] }), 'FUSION', 'k1')
     expect(result.ok).toBe(false)
     expect(result.resumen?.categoriasCreadas).toBe(1)
     expect(mock.clear).toHaveBeenCalledWith('k1')

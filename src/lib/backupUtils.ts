@@ -14,6 +14,7 @@ import { leerColeccionPorId } from './backupPagination'
 import { registrarDescargaRespaldoExterno } from './externalBackupReminder'
 import { validarAmpliacionBackup, capturarPreferenciasEquipo, restaurarPreferenciasEquipo, type BackupAmpliacion } from './backupAmpliado'
 import { auditoriaMotivoPrecioActiva, validarMotivoCambioPrecio } from './priceChangeAudit'
+import { validarRelacionesBackup } from './backupRelations'
 import type { Categoria, Proveedor, Cliente, Producto } from '../types/database'
 
 export interface BackupData {
@@ -239,6 +240,12 @@ export function validarBackupJSON(contenidoTexto: string, kioscoActualId?: strin
   }
 
   let ampliacion: BackupAmpliacion | undefined
+  if (version === '3.0' || version === '4.0') {
+    try { validarRelacionesBackup(parsed) }
+    catch (error: unknown) {
+      return { valido: false, mensaje: error instanceof Error ? error.message : 'Relaciones del respaldo inválidas', advertencias, esMismoKiosco: false }
+    }
+  }
   if (version === '4.0') {
     try { ampliacion = validarAmpliacionBackup({ configuracion_comercio: parsed.configuracion_comercio, saldos_snapshot: parsed.saldos_snapshot, preferencias_equipo: parsed.preferencias_equipo }, parsed.clientes, parsed.proveedores) }
     catch (error: unknown) {
@@ -376,6 +383,7 @@ export async function restaurarBackupIntegral(
   }
 
   try {
+    if (backupData.version === '3.0' || backupData.version === '4.0') validarRelacionesBackup(backupData)
     if (backupData.version === '4.0') validarAmpliacionBackup({ configuracion_comercio: backupData.configuracion_comercio, saldos_snapshot: backupData.saldos_snapshot, preferencias_equipo: backupData.preferencias_equipo }, backupData.clientes, backupData.proveedores)
     if ((opciones.restaurarConfiguracion || opciones.restaurarPreferencias)
       && (backupData.version !== '4.0' || backupData.kiosco.id !== kioscoId)) throw new Error('La configuración sólo se recupera desde una copia 4.0 del mismo comercio')
@@ -676,6 +684,8 @@ export async function restaurarBackupIntegral(
             if (prod.proveedor_id) {
               proveedorIdFinal = mapaProveedoresPorIdOriginal.get(prod.proveedor_id) || null
             }
+            if (prod.categoria_id && !categoriaIdFinal) throw new Error('No se pudo recuperar la categoría del producto.')
+            if (prod.proveedor_id && !proveedorIdFinal) throw new Error('No se pudo recuperar el proveedor del producto.')
 
             // Buscar si ya existe por código o descripción
             const prodExistente =
@@ -819,9 +829,9 @@ export async function restaurarBackupIntegral(
         continue
       }
 
-      // Resolver ID del producto: si venía con ID original mapeado, o directo si coincide
+      // Usar únicamente el producto cuya restauración quedó confirmada.
       const prodIdFinal =
-        (lote.producto_id ? mapaProductosIdOriginal.get(lote.producto_id) : null) || lote.producto_id
+        lote.producto_id ? mapaProductosIdOriginal.get(lote.producto_id) : undefined
 
       // Si no existe el producto en el kiosco destino, omitir para evitar fallo de clave foránea FK
       if (!prodIdFinal || (!idsExistentes.has(prodIdFinal) && !idsProcesadosEnBackup.has(prodIdFinal))) {
