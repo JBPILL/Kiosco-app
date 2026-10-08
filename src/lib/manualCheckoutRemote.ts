@@ -16,11 +16,12 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function recuperarEntradaRemota(cobro: CobroManualRemoto): Promise<EntradaCheckoutManual> {
   const usuario = useAuthStore.getState().usuario
-  if (!usuario?.activo || usuario.rol !== 'DUEÑO' || usuario.kiosco_id !== cobro.kioscoId
+  if (!usuario?.activo || !usuario.auth_user_id || usuario.rol !== 'DUEÑO' || usuario.kiosco_id !== cobro.kioscoId
     || useAuthStore.getState().kiosco?.id !== cobro.kioscoId) throw new Error('Se requiere sesión del dueño')
   const { data, error } = await supabase.rpc('recuperar_entrada_checkout_manual', { p_id: cobro.id })
   const actual = useAuthStore.getState()
-  if (error || actual.usuario?.id !== usuario.id || !actual.usuario.activo || actual.usuario.rol !== 'DUEÑO'
+  if (error || actual.usuario?.id !== usuario.id || actual.usuario.auth_user_id !== usuario.auth_user_id
+    || !actual.usuario.activo || actual.usuario.rol !== 'DUEÑO'
     || actual.usuario.kiosco_id !== cobro.kioscoId || actual.kiosco?.id !== cobro.kioscoId) throw new Error('Pendiente no disponible')
   const entrada = leerEntradaCheckoutManual(data)
   if (entrada.checkoutId !== cobro.id || entrada.kioscoId !== cobro.kioscoId || entrada.usuarioId !== cobro.usuarioId

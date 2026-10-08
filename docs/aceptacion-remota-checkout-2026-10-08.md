@@ -43,3 +43,17 @@ para dueño. Cobros locales pendientes mantienen su aviso en Punto de Venta.
 La confirmación remota desde una copia perdida no tiene acción dedicada aún;
 el panel ofrece revisión de cancelación. No interpretar una lista vacía como
 prueba de ausencia de toda solicitud sin consultar estado financiero.
+
+## Recuperación y cambio de sesión
+
+La lectura de la entrada original exige identidad de autenticación del dueño
+y vuelve a comprobarla después de la RPC, además del perfil, rol, actividad y
+comercio. Una respuesta tardía de otra sesión se descarta antes de procesar su
+contenido. Seis regresiones cubren esos cambios; 13 pruebas dirigidas de lectura
+de pendientes y su panel pasaron. Esto no añade una acción de confirmación
+cuando se perdió la copia local; esa parte de P09 permanece pendiente.
+
+Autoevaluación: precisión 4 (aserciones de contexto y resultado local);
+completitud 3 (falta el circuito de confirmación remota y su piloto);
+claridad 4 (alcance separado de recuperación completa); acción 4 (protección
+implementada, piloto pendiente); concisión 4 (resumen con límites explícitos).

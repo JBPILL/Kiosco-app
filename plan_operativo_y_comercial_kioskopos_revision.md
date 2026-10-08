@@ -65,6 +65,7 @@ alcance, instalación y limitaciones.
 | [x] | Anulación remota de EF754442 | Usuario confirmó ANULADA, registro atómico, una auditoría, pagos $2.240 conservados, cantidades restituidas y cero egresos adicionales en caja original abierta. No acredita los demás casos (P05). |
 | [x] | Diseño de tickets interno y ARCA | Estructura de supermercado compartida, cantidad/precio/importe y promociones; botones Facturar/Ver/Reimprimir/Devolución separados. [Comprobantes](docs/redisenio-comprobantes-2026-10-08.md). Impresión física pendiente. |
 | [x] | Panel de pendientes remotos discreto | Revisión plegada en Caja para dueño; aviso de cobros locales sólo cuando existen pendientes. Recuperación universal pendiente (P09). |
+| [x] | Identidad estable al recuperar entradas remotas | Rechaza dueño sin identidad de autenticación y descarta respuesta si cambian identidad, perfil, rol, actividad o comercio durante la consulta. Seis regresiones nuevas; P09 permanece abierto porque esta protección no agrega confirmación remota desde una copia local perdida. |
 | [x] | Selección de impresora y cajón separados | Prueba sin pulso, apertura automática opt-in tras efectivo confirmado y apertura manual auditada. [Cajón](docs/apertura-manual-cajon.md). Hardware pendiente. |
 | [x] | Mejoras del lector por cámara | Implementación y regresiones locales de apertura/cierre y fallback. [Lector móvil](docs/lector-camara-movil.md). Dispositivos reales pendientes. |
 | [x] | Respaldo operativo 4.0 y cifrado | Snapshot, configuración pública, validación, compatibilidad 2/3 y cifrado; excluye secretos y no incluye todo el historial. [Alcance](docs/respaldo-ampliado.md). |
@@ -92,6 +93,9 @@ alcance, instalación y limitaciones.
   publicar `fda6ca4`; resultado remoto positivo recibido del usuario después.
 - **Lanzador Windows:** diez pruebas de PowerShell aprobadas sin abrir un
   navegador real. No equivalen a una prueba de kiosk o periféricos.
+- **Recuperación remota:** 13 pruebas dirigidas en tres archivos aprobadas
+  después de la suite completa, incluidas seis de cambio de sesión. Repetir
+  validación global cuando se complete el siguiente circuito de recuperación.
 - **Límite general:** el plan sigue abierto. Las migraciones confirmadas por
   catálogo no sustituyen JWT/API, restauración aislada, concurrencia ni hardware.
 
