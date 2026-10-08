@@ -180,6 +180,18 @@ it('revierte stock y lotes si falta el costo histórico privado', async () => {
   await expect(anular()).rejects.toThrow('Costo histórico')
   expect(await estado()).toEqual({ estado:'COMPLETADA',stock:'6',saldo:'300',lote:'0',anulaciones:0 })
 })
+it('la comprobación del ticket exige las cantidades del snapshot aunque falten todos los movimientos', async () => {
+  const consulta = readFileSync('sql_comprobar_anulacion_venta.sql','utf8')
+    .replace('ef754442-ec79-480c-844e-4091d1ff71ea',venta)
+  await anular()
+  const confirmado = await db.query<{ estado:string; registro_atomico:boolean; auditorias:number;
+    cantidades_restituidas:boolean; egresos_caja:number; pagos_conservados:string }>(consulta)
+  expect(confirmado.rows[0]).toMatchObject({ estado:'ANULADA',registro_atomico:true,
+    auditorias:1,cantidades_restituidas:true,egresos_caja:0,pagos_conservados:'250' })
+  await db.exec('DELETE FROM movimientos_stock')
+  const incompleto = await db.query<{ cantidades_restituidas:boolean }>(consulta)
+  expect(incompleto.rows[0].cantidades_restituidas).toBe(false)
+})
 it('revierte la anulación si un trigger omite su auditoría', async () => {
   await db.exec(`CREATE OR REPLACE FUNCTION omitir_auditoria_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$;
     CREATE TRIGGER omitir_auditoria BEFORE INSERT ON auditoria_operaciones FOR EACH ROW EXECUTE FUNCTION omitir_auditoria_test();`)

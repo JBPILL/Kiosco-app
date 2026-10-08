@@ -19,8 +19,7 @@ La migración también revoca permisos por columna del registro privado y
 rechaza permisos de escritura heredados que todavía permanezcan. El diagnóstico
 del proyecto compartido el 08/10/2026 confirmó los seis triggers habilitados,
 las tres marcas de versión y la ausencia de escritura por tabla y columna en
-los tres roles. Es evidencia del catálogo remoto; la prueba funcional desde
-Reportes todavía está pendiente.
+los tres roles. La prueba funcional desde Reportes se documenta a continuación.
 
 La captura posterior del 08/10/2026 muestra confirmación de anulación de
 $2.240 y estado «Anulada» en Reportes. Para verificar los registros de esa
@@ -28,6 +27,15 @@ operación, ejecutar `sql_comprobar_anulacion_venta.sql` (sólo lectura): se esp
 registro atómico, una auditoría, pagos conservados por el total original y
 cantidades restituidas. Con caja original abierta se esperan cero egresos
 adicionales por anulación. La captura sola no prueba los saldos de inventario.
+
+El resultado SQL recibido confirma para `ef754442-ec79-480c-844e-4091d1ff71ea`:
+estado ANULADA, total y pagos conservados $2.240, motivo «venta duplicada», actor
+Pedro, registro atómico, una auditoría, cantidades restituidas y cero egresos
+adicionales. La sesión original es `5e117713-3dd4-46f5-b8bf-e331647ac8f3` y el
+efectivo reintegrado es $2.240. Quedan por probar remotamente caja original
+cerrada, crédito, combos y concurrencia; los casos locales no reemplazan esos
+pilotos. La consulta se reforzó además contra el snapshot para detectar la
+ausencia simultánea de salidas y restituciones.
 
 ## Garantías y alcance
 
@@ -72,18 +80,18 @@ La integración ejecuta el cierre real y luego anula/reintenta: verifica saldo,
 stock, lotes FEFO originales, una sola auditoría y costo histórico después de
 cambiar el costo vigente. Si ya se ejecutó la fase 51, volver a ejecutar su
 archivo actualizado para incorporar esta conservación de costo.
-Falta aplicar la migración en el proyecto remoto y comprobar una operación de
-prueba autorizada allí. Las ventas antiguas sin snapshot permanecen pendientes
+El catálogo remoto y una operación de efectivo tienen evidencia recibida del
+usuario. Las ventas antiguas sin snapshot permanecen pendientes
 de un procedimiento de conciliación; esta fase no acredita su recuperación.
 
 Validación local del 08/10/2026: suite completa con 1372 pruebas aprobadas en
 147 archivos y `npm run build` correcto. El build conserva el aviso de bundle
-mayor de 500 kB. Este resultado no reemplaza la prueba funcional remota ni las
+mayor de 500 kB. Este resultado no reemplaza los casos remotos pendientes ni las
 validaciones físicas de periféricos y recuperación previstas en el plan.
 
 ## Autoevaluación
 
 Se aplicó la skill agent-self-evaluation: precisión 4 (pruebas locales reales,
-sin ejecución remota); completitud 3 (conciliación legacy y prueba remota
-pendientes); claridad 4 (reglas de caja explícitas); acción 4 (SQL y contrato
+con evidencia remota de una venta); completitud 3 (conciliación legacy y otros
+casos remotos pendientes); claridad 4 (reglas de caja explícitas); acción 4 (SQL y contrato
 listos); concisión 4 (una RPC reemplaza las escrituras parciales).
