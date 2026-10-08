@@ -175,32 +175,23 @@ export function construirBufferEscPos(ticket: TicketData, anchoPapel: '58mm' | '
   appendBytes(CMD_ALIGN_LEFT)
   appendTexto(separador)
   appendBytes(CMD_BOLD_ON)
-  appendTexto(formatearLineaDosColumnas('CANT  PRODUCTO', 'SUBTOTAL', anchoCols))
+  appendTexto(formatearLineaDosColumnas('ARTICULO', 'IMPORTE', anchoCols))
   appendBytes(CMD_BOLD_OFF)
   appendTexto(separador)
 
   const colMontoAncho = anchoPapel === '58mm' ? 9 : 11
-  const espacioDesc = anchoCols - colMontoAncho - 1
 
   ticket.items.forEach((it) => {
-    const cantStr = it.cantidad % 1 === 0 ? `${it.cantidad}x ` : `${it.cantidad.toFixed(3)}kg `
-    const descConCant = `${cantStr}${it.descripcion}`
     const montoFijo = formatearMontoFijo(it.subtotal, colMontoAncho)
-
-    const lineas = dividirTextoEnLineas(descConCant, espacioDesc)
-    const primeraLinea = lineas[0].padEnd(espacioDesc, ' ')
-    appendTexto(`${primeraLinea} ${montoFijo}`)
-
-    for (let l = 1; l < lineas.length; l++) {
-      appendTexto(lineas[l])
-    }
-
-    if (it.cantidad > 1) {
-      appendTexto(`  ($ ${Math.round(it.precioUnitario).toLocaleString('es-AR')} c/u)`)
-    }
+    dividirTextoEnLineas(it.descripcion.toUpperCase(), anchoCols).forEach((linea) => appendTexto(linea))
+    appendTexto(formatearLineaDosColumnas(
+      `${it.cantidad} x $ ${Math.round(it.precioUnitario).toLocaleString('es-AR')}`,
+      montoFijo,
+      anchoCols,
+    ))
 
     if (it.promoNombre) {
-      appendTexto(`  * ${formatearPromoTicket(it.promoNombre)}`)
+      appendTexto(`PROMO: ${formatearPromoTicket(it.promoNombre)}`)
     }
   })
 

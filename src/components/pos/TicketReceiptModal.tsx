@@ -446,6 +446,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
                   <div className="pt-1 text-[10px] text-gray-600">
                     <p className="font-bold">Ticket #{ticket.ventaId.slice(0, 8).toUpperCase()}</p>
                     <p>{formatFecha(ticket.fecha)}</p>
+                    {ticket.cajeroNombre && <p>Cajero: {ticket.cajeroNombre}</p>}
                   </div>
                 </div>
               )}
@@ -453,7 +454,7 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
               {/* Detalle de productos con ajuste de texto sin cortes y columna de montos alineada */}
               <div className="py-2 border-b border-dashed border-gray-400 space-y-2 font-mono text-gray-950">
                 <div className="flex justify-between font-bold text-[10px] uppercase text-gray-500 pb-0.5 border-b border-dotted border-gray-200">
-                  <span>Artículo</span>
+                  <span>Descripción / cant. × precio</span>
                   <span className="shrink-0 text-right">Importe</span>
                 </div>
                 {ticket.items.map((it, idx) => (

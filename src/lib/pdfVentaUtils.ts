@@ -53,7 +53,7 @@ export async function crearDocumentoPDFVenta(
     const charPerLine = es58 ? 20 : 28
     const lineas = Math.ceil(desc.length / charPerLine) || 1
     altoMm += lineas * 3.4
-    if (it.cantidad > 1) altoMm += 3.2
+    altoMm += 3.2
     if (it.promoNombre) altoMm += 3.2
   }
 
@@ -195,13 +195,13 @@ export async function crearDocumentoPDFVenta(
   const colSubWidth = es58 ? 16 : 20
   const xRight = pageWidth - margin
   const xSubLeft = xRight - colSubWidth
-  const colDescWidth = xSubLeft - margin - 1.5
+  const contentWidth = pageWidth - margin * 2
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(7)
   doc.setTextColor(colorGris[0], colorGris[1], colorGris[2])
-  doc.text('CANT / ARTÍCULO', margin, y)
-  doc.text('SUBTOTAL', xRight, y, { align: 'right' })
+  doc.text('ARTÍCULO', margin, y)
+  doc.text('IMPORTE', xRight, y, { align: 'right' })
   y += 3.8
 
   doc.setFont('helvetica', 'normal')
@@ -209,37 +209,30 @@ export async function crearDocumentoPDFVenta(
   doc.setFontSize(7.2)
 
   for (const it of items) {
-    const cantStr = it.cantidad % 1 === 0 ? `${it.cantidad}x ` : `${it.cantidad} kg x `
-    const descCompleta = `${cantStr}${it.descripcion}`
+    const descCompleta = it.descripcion.toUpperCase()
 
     // División en múltiples líneas según el ancho disponible para evitar truncamiento
-    const lineasDesc = doc.splitTextToSize(descCompleta, colDescWidth)
+    const lineasDesc = doc.splitTextToSize(descCompleta, contentWidth)
     doc.text(lineasDesc[0] || '', margin, y)
-
-    const signo = it.subtotal < 0 ? '-$' : '$'
-    const numSubStr = formatNumero(Math.abs(it.subtotal))
-    doc.text(signo, xSubLeft, y)
-    doc.text(numSubStr, xRight, y, { align: 'right' })
 
     for (let l = 1; l < lineasDesc.length; l++) {
       y += 3.1
       doc.text(lineasDesc[l], margin, y)
     }
 
-    if (it.cantidad > 1) {
-      y += 2.9
-      doc.setFontSize(6.2)
-      doc.setTextColor(colorGris[0], colorGris[1], colorGris[2])
-      doc.text(`($ ${formatNumero(it.precioUnitario)} c/u)`, margin, y)
-      doc.setFontSize(7.2)
-      doc.setTextColor(colorOscuro[0], colorOscuro[1], colorOscuro[2])
-    }
+    y += 3.1
+    doc.setFontSize(6.2)
+    doc.text(`${formatNumero(it.cantidad)} x $ ${formatNumero(it.precioUnitario)}`, margin, y)
+    doc.setFont('helvetica', 'bold')
+    doc.text(`${it.subtotal < 0 ? '-$' : '$'} ${formatNumero(Math.abs(it.subtotal))}`, xRight, y, { align: 'right' })
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.2)
 
     if (it.promoNombre) {
       y += 2.9
       doc.setFontSize(6.2)
-      doc.setTextColor(16, 120, 60) // Verde sutil
-      doc.text(`  [${formatearPromoTicket(it.promoNombre)}]`, margin, y)
+      doc.setTextColor(colorGris[0], colorGris[1], colorGris[2])
+      doc.text(`PROMO: ${formatearPromoTicket(it.promoNombre)}`, margin, y)
       doc.setFontSize(7.2)
       doc.setTextColor(colorOscuro[0], colorOscuro[1], colorOscuro[2])
     }
