@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '../../lib/supabase'
+import { auditoriaMotivoPrecioActiva } from '../../lib/priceChangeAudit'
+import { verificarArticulosLibres } from '../../lib/freeArticleIdentity'
 import { useCartStore } from '../../stores/cartStore'
 import { useCajaStore } from '../../stores/cajaStore'
 import { useAuthStore } from '../../stores/authStore'
@@ -668,11 +670,15 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             fecha_creacion: ahora,
             fecha_actualizacion: ahora,
           })),
-          { onConflict: 'id' }
+          { onConflict: 'id', ignoreDuplicates: true }
         )
         if (errorLibres) {
+          if (auditoriaMotivoPrecioActiva()) throw errorLibres
           console.warn('Aviso al persistir artículos libres en catálogo:', errorLibres)
         }
+        if (auditoriaMotivoPrecioActiva()) await verificarArticulosLibres(kioscoId, itemsLibres.map(it => ({
+          id: it.producto.id, descripcion: it.producto.descripcion, precio_venta: Math.max(0, it.producto.precio_venta),
+        })))
       }
 
       // 2. Insertar detalles de venta

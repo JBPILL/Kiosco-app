@@ -7,6 +7,8 @@ import { v5 as uuidv5 } from 'uuid'
 import { checkoutManualTransaccionalActivo } from '../lib/manualCheckoutCart'
 import { sincronizarCobrosManualesLocales } from '../lib/manualCheckoutClient'
 import { useAuthStore } from './authStore'
+import { auditoriaMotivoPrecioActiva } from '../lib/priceChangeAudit'
+import { verificarArticulosLibres } from '../lib/freeArticleIdentity'
 
 export interface DetalleVentaOffline {
   id: string
@@ -155,9 +157,13 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
                 fecha_creacion: v.fecha_hora,
                 fecha_actualizacion: v.fecha_hora,
               })),
-              { onConflict: 'id' }
+              { onConflict: 'id', ignoreDuplicates: true }
             )
             if (error) throw error
+            if (auditoriaMotivoPrecioActiva()) await verificarArticulosLibres(v.kiosco_id, articulosLibres.map(detalle => ({
+              id: detalle.producto_id, descripcion: detalle.articulo_libre!.descripcion,
+              precio_venta: Math.max(0, detalle.articulo_libre!.precio_venta),
+            })))
           }
           // 1. Insertar cabecera de venta
           const { error: errVenta } = await supabase.from('ventas').insert({

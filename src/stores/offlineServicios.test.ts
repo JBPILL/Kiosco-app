@@ -2,11 +2,12 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useOfflineSyncStore, type VentaOfflinePendiente } from './offlineSyncStore'
 
 const db = vi.hoisted(() => ({ llamadas: [] as string[], fallarProducto: false,
+  conflictoServicio: false,
   perderRespuestaPago: false, pagos: new Map<string, unknown>() }))
 vi.mock('../lib/supabase', () => ({
   supabase: {
     from: (tabla: string) => ({
-      upsert: (datos: unknown) => {
+      upsert: (datos: unknown, opciones: unknown) => {
         db.llamadas.push(`${tabla}:upsert`)
         if (tabla === 'pagos_venta') {
           for (const pago of datos as Array<{ id: string }>) db.pagos.set(pago.id, pago)
@@ -17,21 +18,31 @@ vi.mock('../lib/supabase', () => ({
         expect(datos).toEqual([expect.objectContaining({
           id: 'servicio', kiosco_id: 'k1', descripcion: 'Fotocopias', activo: false,
         })])
+        expect(opciones).toEqual({ onConflict: 'id', ignoreDuplicates: true })
         return Promise.resolve({ error: db.fallarProducto ? { message: 'Sin conexión' } : null })
       },
       insert: () => {
         db.llamadas.push(`${tabla}:insert`)
         return Promise.resolve({ error: null })
       },
-      select: () => { throw new Error('Un servicio no debe consultar stock') },
+      select: (campos: string) => {
+        expect(campos).toBe('id,kiosco_id,descripcion,precio_venta,activo')
+        db.llamadas.push(`${tabla}:select`)
+        return { eq: () => ({ in: async () => ({ error: null, data: [{
+          id: 'servicio', kiosco_id: 'k1', descripcion: 'Fotocopias', activo: false,
+          precio_venta: db.conflictoServicio ? 200 : 150,
+        }] }) }) }
+      },
     }),
   },
 }))
 
 beforeEach(() => {
+  vi.stubEnv('VITE_AUDITORIA_MOTIVO_PRECIO', 'false')
   localStorage.clear()
   db.llamadas = []
   db.fallarProducto = false
+  db.conflictoServicio = false
   db.perderRespuestaPago = false
   db.pagos.clear()
   useOfflineSyncStore.setState({ cola: [], sincronizando: false, ultimaSincronizacion: null })
@@ -47,7 +58,20 @@ const venta: VentaOfflinePendiente = {
   pagos: [{ medio_pago: 'EFECTIVO', monto: 150 }],
 }
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs() })
+
+it.each([false, true])('auditoría activa verifica identidad y conserva cola ante conflicto=%s', async conflicto => {
+  vi.stubEnv('VITE_AUDITORIA_MOTIVO_PRECIO', 'true')
+  db.conflictoServicio = conflicto
+  useOfflineSyncStore.getState().encolarVenta(venta)
+  expect(await useOfflineSyncStore.getState().sincronizarCola('k1')).toEqual(conflicto
+    ? { exitosas: 0, fallidas: 1 } : { exitosas: 1, fallidas: 0 })
+  expect(db.llamadas.slice(0, 2)).toEqual(['productos:upsert', 'productos:select'])
+  if (conflicto) {
+    expect(db.llamadas).toHaveLength(2)
+    expect(useOfflineSyncStore.getState().cargarCola('k1')).toEqual([venta])
+  }
+})
 
 it('no confirma una venta offline cuando el almacenamiento está lleno', () => {
   vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('Lleno', 'QuotaExceededError') })

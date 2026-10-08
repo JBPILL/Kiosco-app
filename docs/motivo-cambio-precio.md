@@ -46,10 +46,15 @@ rollback ante rechazo y altas sin motivo transitorio.
 
 Revisión de rutas secundarias: altas rápidas y desde Proveedores son inserciones;
 envases y combos no escriben precio de venta en productos. Sincronización local
-y artículos libres todavía usan upsert por ID; falta comprobar recuperación y
-colisiones con la migración activa antes de activar y distribuirla.
+y productos creados offline todavía requieren comprobación de colisiones.
+Los artículos libres de cobro y cola offline ahora ignoran duplicados al insertar,
+sin cambiar precios existentes. Con la auditoría activa verifican ID, comercio,
+nombre, precio y estado inactivo antes de continuar. Un conflicto mantiene la
+venta offline pendiente y no escribe cabecera ni pagos. Se consultan únicamente
+campos públicos; no se utiliza stock ni costo para esta comprobación.
+26 pruebas del verificador, cola y recuperación de cobro aprobaron esta fase.
 
-Falta comprobar las rutas offline y la recuperación;
+Falta comprobar sincronización de altas locales y recuperar conflictos en UI;
 comprobar rechazo sin actualizar caché; actualizar el paquete y coordinar la
 aplicación con el despliegue. No se considera terminada la función completa.
 
