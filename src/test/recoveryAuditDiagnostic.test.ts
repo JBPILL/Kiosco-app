@@ -13,13 +13,22 @@ it('informa objetos ausentes sin fallar', async () => {
   } finally { await db.close() }
 })
 
-it.each([false,true])('detecta concesión de escritura por columna: %s', async conceder => {
+it.each([
+  ['', ''],
+  ['GRANT UPDATE(venta_id) ON checkout_recuperaciones TO authenticated', 'sin_escritura_directa'],
+  ['GRANT SELECT(venta_id) ON checkout_recuperaciones TO anon', 'sin_lectura_roles_no_previstos'],
+  ['GRANT SELECT ON checkout_recuperaciones TO service_role', 'sin_lectura_roles_no_previstos'],
+  ['CREATE POLICY abierta ON checkout_recuperaciones FOR SELECT TO authenticated USING(true)', 'sin_politicas_lectura_adicionales'],
+  ['GRANT EXECUTE ON FUNCTION confirmar_checkout_recuperado(uuid,jsonb) TO PUBLIC', 'navegador_no_ejecuta'],
+  ['ALTER TABLE checkout_recuperaciones DISABLE ROW LEVEL SECURITY', 'rls_habilitado'],
+])('detecta alteración del catálogo: %s', async (alteracion, control) => {
   const db = new PGlite()
   try {
     await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
       CREATE FUNCTION auth_user_kiosco_id() RETURNS uuid LANGUAGE sql AS 'SELECT NULL::uuid';
       CREATE FUNCTION auth_es_dueno_o_superadmin() RETURNS boolean LANGUAGE sql AS 'SELECT false';
       CREATE TABLE checkout_recuperaciones(venta_id uuid,kiosco_id uuid);
+      GRANT SELECT ON checkout_recuperaciones TO authenticated;
       ALTER TABLE checkout_recuperaciones ENABLE ROW LEVEL SECURITY;
       CREATE POLICY checkout_recuperacion_dueno ON checkout_recuperaciones FOR SELECT TO authenticated
         USING(kiosco_id=auth_user_kiosco_id() AND auth_es_dueno_o_superadmin());
@@ -27,13 +36,9 @@ it.each([false,true])('detecta concesión de escritura por columna: %s', async c
         SECURITY DEFINER SET search_path=pg_catalog,public AS 'SELECT $2';
       REVOKE ALL ON FUNCTION confirmar_checkout_recuperado(uuid,jsonb) FROM PUBLIC;
       GRANT EXECUTE ON FUNCTION confirmar_checkout_recuperado(uuid,jsonb) TO service_role;`)
-    if (conceder) await db.exec('GRANT UPDATE(venta_id) ON checkout_recuperaciones TO authenticated')
+    if (alteracion) await db.exec(alteracion)
     const { rows } = await db.query<{ diagnostico_recuperacion_auditada: Record<string, boolean> }>(consulta)
     const valores = rows[0].diagnostico_recuperacion_auditada
-    expect(valores.sin_escritura_directa).toBe(!conceder)
-    expect(valores.politica_lectura_correcta).toBe(true)
-    expect(valores.search_path_correcto).toBe(true)
-    expect(valores.navegador_no_ejecuta).toBe(true)
-    expect(valores.servidor_puede_ejecutar).toBe(true)
+    for (const [nombre, valor] of Object.entries(valores)) expect(valor, nombre).toBe(nombre !== control)
   } finally { await db.close() }
 })

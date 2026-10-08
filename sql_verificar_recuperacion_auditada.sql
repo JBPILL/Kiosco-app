@@ -5,10 +5,19 @@ WITH objetos AS (
 ), controles AS (
   SELECT
     o.tabla IS NOT NULL AS tabla_presente,
+    (SELECT count(*)=3 FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role')) AS roles_presentes,
     coalesce(c.relrowsecurity,false) AS rls_habilitado,
     o.funcion IS NOT NULL AS funcion_presente,
     coalesce(f.prosecdef,false) AS ejecuta_como_propietario,
     coalesce(f.proconfig @> ARRAY['search_path=pg_catalog, public'],false) AS search_path_correcto,
+    EXISTS (SELECT 1 FROM pg_roles r WHERE r.rolname='authenticated'
+      AND has_table_privilege(r.oid,o.tabla,'SELECT')) AS lectura_authenticated,
+    NOT EXISTS (SELECT 1 FROM pg_roles r WHERE r.rolname IN ('anon','service_role')
+      AND (has_table_privilege(r.oid,o.tabla,'SELECT') OR has_any_column_privilege(r.oid,o.tabla,'SELECT')))
+      AND o.tabla IS NOT NULL AS sin_lectura_roles_no_previstos,
+    NOT EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid=o.tabla
+      AND p.polcmd IN ('r','*') AND p.polname<>'checkout_recuperacion_dueno')
+      AND o.tabla IS NOT NULL AS sin_politicas_lectura_adicionales,
     NOT EXISTS (
       SELECT 1 FROM pg_roles r WHERE r.rolname IN ('anon','authenticated','service_role')
       AND (has_table_privilege(r.oid,o.tabla,'INSERT,UPDATE,DELETE')

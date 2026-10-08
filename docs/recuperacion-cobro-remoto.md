@@ -7,12 +7,18 @@ Después de aplicar `supabase_fase_checkout_recuperacion_auditada.sql`, ejecutar
 lectura y devuelve booleanos: tabla, RLS, función, contexto del propietario,
 search_path, ausencia de escritura directa (incluidos permisos por columna),
 ejecución del servidor, bloqueo del navegador y política de lectura esperada.
+También exige los tres roles, SELECT para authenticated, ausencia de lectura
+para anon/service_role (incluidos permisos por columna) y ninguna política
+adicional de SELECT/ALL. Una política adicional se señala para revisión aunque
+sea restrictiva: el diagnóstico compara la instalación prevista, no evalúa toda
+su lógica de autorización.
 Los controles deben ser `true`; un `false` requiere revisar la instalación.
 
-Este diagnóstico no certifica el cuerpo de la función, políticas adicionales,
+Este diagnóstico no certifica el cuerpo de la función ni el de sus auxiliares,
 JWT, despliegue de `checkout-manual` ni una recuperación real. No debe usarse
-como aprobación global del paso 53. Se probó localmente con objetos ausentes,
-catálogo esperado y concesión indebida por columna: tres pruebas aprobadas.
+como aprobación global del paso 53. Las pruebas locales incluyen objetos ausentes,
+catálogo esperado, permisos por columna, política abierta, EXECUTE público y RLS
+desactivado.
 
 ## Operación
 
