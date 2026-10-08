@@ -99,3 +99,24 @@ it.each(['detalles_venta','pagos_venta'])('protege filas anteriores y conserva r
   await db.exec("SET test.dueno='true'")
   expect((await db.query(`DELETE FROM ${tabla} WHERE id='50000000-0000-0000-0000-000000000001' RETURNING id`)).rows).toHaveLength(1)
 })
+
+it('entrega permisos, políticas y funciones juntos en el diagnóstico de sólo lectura', async () => {
+  const diagnostico = readFileSync('sql_auditar_rutas_escritura_ventas.sql','utf8')
+    .replace('BEGIN TRANSACTION READ ONLY;','').replace('ROLLBACK;','')
+  await db.exec('RESET ROLE; BEGIN TRANSACTION READ ONLY')
+  try {
+    const resultado = await db.query<{ diagnostico_completo: {
+      permisos_tablas: Array<{ tabla: string; existe: boolean }>;
+      politicas_rls: Array<{ politica: string }>;
+      funciones: Array<{ funcion: string }>;
+    } }>(diagnostico)
+    expect(resultado.rows).toHaveLength(1)
+    expect(resultado.rows[0].diagnostico_completo.permisos_tablas).toHaveLength(15)
+    expect(resultado.rows[0].diagnostico_completo.politicas_rls).toEqual(expect.arrayContaining([
+      expect.objectContaining({ politica:'checkout_manual_inmutable_update' }),
+    ]))
+    expect(resultado.rows[0].diagnostico_completo.funciones).toEqual(expect.arrayContaining([
+      expect.objectContaining({ funcion:'venta_checkout_manual_protegida(uuid)' }),
+    ]))
+  } finally { await db.exec('ROLLBACK') }
+})

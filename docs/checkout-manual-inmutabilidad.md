@@ -28,7 +28,8 @@ su respuesta al comercio autenticado o superadmin.
 
 ## Verificación local
 
-- 10 pruebas ejecutan la migración real dos veces en PostgreSQL/PGlite.
+- 11 pruebas ejecutan la migración real dos veces en PostgreSQL/PGlite e
+  inspeccionan el diagnóstico unificado de permisos, políticas y funciones.
 - Rechazo de inserciones y traslado de artículos/pagos hacia ticket protegido.
 - UPDATE y DELETE del cajero no encuentran filas protegidas; lectura conservada.
 - Conservación de operaciones de dueño y ejecución de backend privado de prueba.
@@ -39,12 +40,16 @@ su respuesta al comercio autenticado o superadmin.
 - `npm run build` aprobado; persiste el aviso previo de tamaño de bundle.
 
 El esquema de prueba es reducido y sus políticas permisivas son deliberadamente
-amplias para comprobar la restricción. La función de backend es una fixture,
-no una prueba integral del cierre real bajo esta migración.
+amplias para comprobar la restricción. Además, manualCheckoutSql.test.ts aplica
+la migración a las funciones reales de cierre, ejecuta como service_role dos
+confirmaciones idénticas y comprueba un solo cargo, stock 7,500 y deuda 250.
+Después cambia a authenticated y verifica que el cajero no modifica cabecera ni
+pagos, ni borra detalles. 83 pruebas aprobadas en esos dos archivos.
 
 ## Pendientes
 
-No aplicada remotamente. Validar JWT/PostgREST reales en base aislada, reimpresión,
+El usuario informó que aplicó la migración 47. Falta inspeccionar el catálogo
+remoto actualizado y validar JWT/PostgREST reales en base aislada, reimpresión,
 anulación del dueño y recuperación tras caída de red. UPDATE/DELETE bloqueados
 por RLS pueden devolver cero filas en lugar de error; eso no es confirmación de
 una modificación exitosa.

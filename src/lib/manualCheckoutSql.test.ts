@@ -101,6 +101,7 @@ beforeAll(async () => {
     await db.exec(readFileSync(archivo, 'utf8'))
     await db.exec(readFileSync(archivo, 'utf8'))
   }
+  await db.exec(readFileSync('supabase_fase_checkout_manual_inmutabilidad.sql', 'utf8'))
 }, 30000)
 beforeEach(async () => {
   await db.exec(`RESET ROLE; SET request.jwt.claim.role='service_role'; SET request.jwt.claim.sub='${actor}';
@@ -133,6 +134,30 @@ it('confirma todo una sola vez y devuelve stock sin costos privados', async () =
   expect(await leer('SELECT precio_costo FROM movimiento_stock_costos')).toEqual([{ precio_costo: '40.00' }, { precio_costo: '40.00' }])
   expect(JSON.stringify(primera.rows)).not.toContain('precio_costo')
   expect(await leer('SELECT fecha_hora FROM ventas')).toEqual([{ fecha_hora: new Date('2026-10-06T12:00:00Z') }])
+})
+
+it('el cierre privado real conserva stock, crédito y reintento con RLS restrictiva aplicada', async () => {
+  await db.exec(`BEGIN;
+    CREATE OR REPLACE FUNCTION auth_es_dueno_o_superadmin() RETURNS boolean LANGUAGE sql AS $$ SELECT false $$;
+    GRANT SELECT,INSERT,UPDATE,DELETE ON ventas,detalles_venta,pagos_venta TO authenticated;
+    CREATE POLICY ensayo_permisivo ON ventas FOR ALL TO authenticated USING(true) WITH CHECK(true);
+    CREATE POLICY ensayo_permisivo ON detalles_venta FOR ALL TO authenticated USING(true) WITH CHECK(true);
+    CREATE POLICY ensayo_permisivo ON pagos_venta FOR ALL TO authenticated USING(true) WITH CHECK(true);
+    SET ROLE service_role;`)
+  try {
+    await confirmar()
+    await confirmar()
+    await db.exec(`RESET ROLE; SET request.jwt.claim.role='authenticated';
+      SET request.jwt.claim.sub='${cajero}'; SET ROLE authenticated`)
+    expect(await leer(`UPDATE pagos_venta SET monto=1 WHERE venta_id='${venta}' RETURNING id`)).toHaveLength(0)
+    expect(await leer(`DELETE FROM detalles_venta WHERE venta_id='${venta}' RETURNING id`)).toHaveLength(0)
+    expect(await leer(`UPDATE ventas SET total=1 WHERE id='${venta}' RETURNING id`)).toHaveLength(0)
+    expect(await leer(`SELECT total FROM ventas WHERE id='${venta}'`)).toEqual([{ total:'250.00' }])
+    await db.exec('RESET ROLE')
+    expect(await leer(`SELECT stock_actual FROM productos WHERE id='${producto}'`)).toEqual([{ stock_actual:'7.500' }])
+    expect(await leer(`SELECT saldo_deudor FROM clientes WHERE id='${cliente}'`)).toEqual([{ saldo_deudor:'250.00' }])
+    expect(await leer('SELECT count(*)::int AS cantidad FROM movimientos_cuenta_corriente')).toEqual([{ cantidad:1 }])
+  } finally { await db.exec('ROLLBACK; RESET ROLE') }
 })
 it('rechaza otra solicitud con la misma identidad y una venta luego anulada', async () => {
   await confirmar()

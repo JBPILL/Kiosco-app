@@ -21,6 +21,8 @@ Ejecutar `sql_auditar_rutas_escritura_ventas.sql` en SQL Editor. Entrega:
 3. Firmas completas de funciones de ventas/checkout, permisos de ejecución,
    SECURITY DEFINER y configuración de sesión.
 
+El resultado es una única fila JSON `diagnostico_completo` con las tres secciones,
+para evitar que el editor muestre únicamente la última consulta de funciones.
 La transacción es de sólo lectura. Los resultados no contienen tickets,
 clientes, costos ni credenciales. Si falla, ejecutar ROLLBACK.
 
@@ -39,8 +41,9 @@ acceso a consulta/recuperación/cancelación, cuyos archivos locales exigen due�
 activo y comercio. El cuerpo de esas funciones remotas no se inspeccionó.
 Faltan los resultados de permisos de tablas y políticas RLS del mismo diagnóstico.
 
-Preparado y revisado contra nombres de tablas locales. No ejecutado en Supabase.
-No se revocaron permisos ni se modificaron ventas. Falta recibir el inventario,
+El diagnóstico unificado se ejecutó en PostgreSQL/PGlite: entrega una fila con
+las tres secciones y reconoce las políticas restrictivas. Falta ejecutarlo en
+Supabase en su formato actualizado. No modifica permisos ni ventas. Falta recibir el inventario,
 coordinar la migración del flujo anterior y demostrar rechazo de llamadas
 directas sin autorización, preservando recuperación y cobros offline.
 
