@@ -140,6 +140,7 @@ it.each([false, true])('anula un cierre real con FEFO y crédito (combo=%s) sin 
       componentes: [{ producto_id: producto, cantidad: 2 }],
     }
     await confirmar(datos)
+    await db.exec(`UPDATE producto_costos SET precio_costo=99 WHERE producto_id='${producto}'`)
     // La restitución debe usar la composición vendida aunque cambie el catálogo.
     await db.exec('UPDATE combo_items SET cantidad=99')
     await db.exec("SET request.jwt.claim.role='authenticated'; SET ROLE authenticated")
@@ -152,6 +153,8 @@ it.each([false, true])('anula un cierre real con FEFO y crédito (combo=%s) sin 
     expect(await leer('SELECT estado FROM ventas')).toEqual([{ estado:'ANULADA' }])
     expect(await leer("SELECT count(*)::int cantidad FROM movimientos_stock WHERE tipo='INGRESO'")).toEqual([{ cantidad:esCombo ? 1 : 2 }])
     expect(await leer('SELECT count(*)::int cantidad FROM auditoria_operaciones')).toEqual([{ cantidad:1 }])
+    expect(await leer(`SELECT DISTINCT c.precio_costo FROM movimiento_stock_costos c
+      JOIN movimientos_stock m ON m.id=c.movimiento_id WHERE m.tipo='INGRESO'`)).toEqual([{ precio_costo:'40.00' }])
   } finally {
     await db.exec('ROLLBACK; RESET ROLE')
   }

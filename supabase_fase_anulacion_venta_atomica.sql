@@ -22,6 +22,7 @@ DECLARE actor public.usuarios%ROWTYPE; v public.ventas%ROWTYPE; op public.checko
   fisicos jsonb; efectivo numeric; credito numeric; saldo numeric; caja_destino uuid; original_abierta boolean;
   v_cliente_id uuid; resultado jsonb; v_motivo text:=btrim(p_motivo); nuevo_stock numeric;
   esperado numeric; lote_anterior numeric; lote_despues numeric; filas integer;
+  movimiento_nuevo uuid; costo_original numeric; costo_restituido numeric;
 BEGIN
   BEGIN
     SELECT * INTO STRICT actor FROM public.usuarios WHERE auth_user_id=auth.uid() AND activo FOR SHARE;
@@ -111,6 +112,9 @@ BEGIN
   FOR registro IN SELECT * FROM public.movimientos_stock WHERE kiosco_id=v.kiosco_id AND tipo='EGRESO'
     AND motivo='VENTA' AND notas='Checkout manual '||v.id::text ORDER BY lote_producto_id,id LOOP
     IF registro.cantidad<=0 THEN RAISE EXCEPTION 'Salida histórica inválida.' USING ERRCODE='22023'; END IF;
+    SELECT precio_costo INTO costo_original FROM public.movimiento_stock_costos
+      WHERE movimiento_id=registro.id AND kiosco_id=v.kiosco_id;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Costo histórico no disponible; requiere conciliación.'; END IF;
     IF registro.lote_producto_id IS NOT NULL THEN
       SELECT cantidad_actual INTO lote_anterior FROM public.lotes_producto WHERE id=registro.lote_producto_id
         AND producto_id=registro.producto_id AND kiosco_id=v.kiosco_id FOR UPDATE;
@@ -123,9 +127,16 @@ BEGIN
     END IF;
     INSERT INTO public.movimientos_stock(kiosco_id,producto_id,tipo,cantidad,motivo,notas,usuario_id,fecha,lote_producto_id)
       VALUES(v.kiosco_id,registro.producto_id,'INGRESO',registro.cantidad,'DEVOLUCION','Anulación atómica '||v.id::text,
-        actor.id,now(),registro.lote_producto_id);
+        actor.id,now(),registro.lote_producto_id) RETURNING id INTO movimiento_nuevo;
     GET DIAGNOSTICS filas=ROW_COUNT;
     IF filas<>1 THEN RAISE EXCEPTION 'No se confirmó el movimiento de stock.'; END IF;
+    -- El trigger general captura el costo vigente; esta reversión conserva el original.
+    UPDATE public.movimiento_stock_costos SET precio_costo=costo_original
+      WHERE movimiento_id=movimiento_nuevo AND kiosco_id=v.kiosco_id
+      RETURNING precio_costo INTO costo_restituido;
+    IF NOT FOUND OR costo_restituido IS DISTINCT FROM costo_original THEN
+      RAISE EXCEPTION 'No se confirmó el costo histórico de la restitución.';
+    END IF;
   END LOOP;
   IF credito>0 THEN
     SELECT saldo_deudor INTO saldo FROM public.clientes WHERE id=v_cliente_id AND kiosco_id=v.kiosco_id FOR UPDATE;

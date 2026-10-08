@@ -30,6 +30,10 @@ beforeAll(async () => {
     CREATE TABLE devoluciones_venta(id uuid DEFAULT gen_random_uuid(),venta_id uuid,kiosco_id uuid);
     CREATE TABLE movimientos_stock(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),kiosco_id uuid,producto_id uuid,tipo text,
       cantidad numeric,motivo text,notas text,usuario_id uuid,fecha timestamptz,lote_producto_id uuid);
+    CREATE TABLE movimiento_stock_costos(movimiento_id uuid PRIMARY KEY REFERENCES movimientos_stock ON DELETE CASCADE,kiosco_id uuid,precio_costo numeric);
+    CREATE FUNCTION costo_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      INSERT INTO movimiento_stock_costos VALUES(NEW.id,NEW.kiosco_id,40); RETURN NEW; END $$;
+    CREATE TRIGGER costo_test AFTER INSERT ON movimientos_stock FOR EACH ROW EXECUTE FUNCTION costo_test();
     CREATE TABLE clientes(id uuid PRIMARY KEY,kiosco_id uuid,saldo_deudor numeric);
     CREATE TABLE movimientos_cuenta_corriente(cliente_id uuid,kiosco_id uuid,venta_id uuid,tipo text,monto numeric,
       saldo_resultante numeric,usuario_id uuid,notas text,fecha_hora timestamptz);
@@ -115,6 +119,11 @@ it('rechaza un perfil inactivo sin alterar la venta', async () => {
   await db.exec('UPDATE usuarios SET activo=false')
   await expect(anular()).rejects.toThrow('dueño activo')
   expect(await estado()).toMatchObject({ estado:'COMPLETADA', stock:'6' })
+})
+it('revierte stock y lotes si falta el costo histórico privado', async () => {
+  await db.exec('DELETE FROM movimiento_stock_costos')
+  await expect(anular()).rejects.toThrow('Costo histórico')
+  expect(await estado()).toEqual({ estado:'COMPLETADA',stock:'6',saldo:'300',lote:'0',anulaciones:0 })
 })
 it('preserva un lote retenido que todavía tenía existencias', async () => {
   await db.exec('UPDATE lotes_producto SET cantidad_actual=2,activo=false')
