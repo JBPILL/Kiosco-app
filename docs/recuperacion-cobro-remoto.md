@@ -20,6 +20,13 @@ como aprobación global del paso 53. Las pruebas locales incluyen objetos ausent
 catálogo esperado, permisos por columna, política abierta, EXECUTE público y RLS
 desactivado.
 
+También se ejecutó el diagnóstico contra la migración real del paso 53 dentro
+de las pruebas de checkout: todos los controles pasan, una concesión PUBLIC por
+columna hace fallar escritura directa y la reaplicación de la migración corrige
+el permiso. Pasaron las 77 pruebas SQL del archivo, incluidas recuperación
+idempotente y reversión ante fallo de auditoría. Esto sigue siendo PostgreSQL
+local en memoria, no evidencia de instalación en Supabase.
+
 ## Operación
 
 El dueño puede abrir **Caja y Turno → Revisar cobros pendientes del servidor →

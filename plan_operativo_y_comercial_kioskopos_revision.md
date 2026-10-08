@@ -50,6 +50,10 @@ cumplir la puerta de aceptación correspondiente.
 
 ## Registro de tareas realizadas
 
+- [x] Diagnóstico paso 53 contrastado con la migración real y su reaplicación:
+  permiso PUBLIC por columna detectado y eliminado. 77 pruebas SQL aprobadas;
+  aceptación remota de instalación y recuperación sigue abierta (P09).
+
 - [x] Diagnóstico de catálogo del paso 53, sólo lectura: objetos, RLS, contexto,
   permisos por tabla/columna, roles y políticas adicionales. Ocho pruebas PostgreSQL locales y build
   aprobados; resultado remoto aún pendiente y no sustituye recuperación JWT.

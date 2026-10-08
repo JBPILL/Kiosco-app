@@ -587,8 +587,13 @@ it.each([false,true])('recuperación del dueño es idempotente y atómica con au
  try {
  const migracion = readFileSync('supabase_fase_checkout_recuperacion_auditada.sql','utf8').replace(/^\s*(BEGIN|COMMIT);\s*$/gm,'')
  await db.exec(migracion)
+ const diagnosticoSql = readFileSync('sql_verificar_recuperacion_auditada.sql','utf8')
+ const diagnosticar = async () => (await db.query<{ diagnostico_recuperacion_auditada: Record<string, boolean> }>(diagnosticoSql)).rows[0].diagnostico_recuperacion_auditada
+ expect(Object.values(await diagnosticar()).every(Boolean)).toBe(true)
  await db.exec('GRANT INSERT(actor_auth_id),UPDATE(actor_auth_id) ON checkout_recuperaciones TO PUBLIC')
+ expect((await diagnosticar()).sin_escritura_directa).toBe(false)
  await db.exec(migracion)
+ expect(Object.values(await diagnosticar()).every(Boolean)).toBe(true)
  expect(await leer(`SELECT rolname AS rol,has_function_privilege(oid,'confirmar_checkout_recuperado(uuid,jsonb)','EXECUTE') AS ejecuta,
    has_table_privilege(oid,'checkout_recuperaciones','INSERT,UPDATE,DELETE') AS escribe,
    has_any_column_privilege(oid,'checkout_recuperaciones','INSERT,UPDATE') AS escribe_columnas
