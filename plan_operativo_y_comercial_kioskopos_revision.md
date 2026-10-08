@@ -50,6 +50,10 @@ cumplir la puerta de aceptación correspondiente.
 
 ## Registro de tareas realizadas
 
+- [x] Devolución parcial bloquea entrada inválida/duplicada y falla de lectura
+  de devoluciones anteriores antes de escribir. Doce pruebas del store aprobadas;
+  atomicidad, cálculo autoritativo y permisos backend siguen pendientes (P06).
+
 - [x] Auditoría de devolución parcial identifica límites de validación,
   persistencia, reintegro y compensación. [Hallazgos](docs/auditoria-devolucion-parcial.md).
   Implementación transaccional y permisos remotos permanecen pendientes (P06).

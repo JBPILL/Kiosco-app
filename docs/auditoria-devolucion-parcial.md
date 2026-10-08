@@ -15,7 +15,17 @@ no se inspeccionó catálogo remoto ni se ejecutó una devolución sobre producc
 | Compensación | Catch final elimina detalles/cabecera. | No revierte los movimientos, stock o saldo que se hubieran aplicado. |
 | RLS base | `supabase_devoluciones.sql` crea políticas FOR ALL USING(true) WITH CHECK(true). | La migración base no aísla comercio/rol. El permiso efectivo requiere diagnóstico remoto: no se deduce sólo del archivo. |
 
-## Requisitos del reemplazo transaccional
+## Controles previos corregidos después de la auditoría
+
+El store ahora rechaza comercio distinto, total inválido, cantidades no finitas,
+precios inválidos, productos ajenos y productos repetidos en una entrada.
+Un error, excepción o respuesta no válida al consultar devoluciones anteriores
+impide todas las escrituras. Doce pruebas del store con Supabase simulado
+comprueban ese bloqueo. Estos controles no convierten el navegador en una
+frontera de autorización ni resuelven concurrencia/atomicidad: los hallazgos
+anteriores describen la revisión inicial y el backend transaccional sigue abierto.
+
+## Requisitos del reemplazo transaccional (pendientes)
 
 1. Identidad autenticada verificada, comercio y permiso de devolución en servidor;
    ningún rol/precio/costo o saldo enviado por navegador decide autorización.

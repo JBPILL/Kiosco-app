@@ -302,10 +302,21 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
       return { success: false, error: 'No se seleccionaron productos para devolver' }
     }
 
+    if (!kioscoId || venta.kiosco_id !== kioscoId || !Number.isFinite(venta.total) || venta.total < 0) {
+      return { success: false, error: 'El ticket no pertenece al comercio o tiene un total inválido' }
+    }
+
+    const productosSeleccionados = new Set<string>()
     for (const it of itemsADevolver) {
-      if (typeof it.cantidad !== 'number' || isNaN(it.cantidad) || it.cantidad <= 0) {
+      if (typeof it.cantidad !== 'number' || !Number.isFinite(it.cantidad) || it.cantidad <= 0) {
         return { success: false, error: 'Todos los productos a devolver deben tener una cantidad mayor a 0' }
       }
+      if (!Number.isFinite(it.precioUnitario) || it.precioUnitario < 0
+        || productosSeleccionados.has(it.productoId)
+        || !venta.detalles.some(detalle => detalle.producto_id === it.productoId)) {
+        return { success: false, error: 'Seleccioná cada producto del ticket una sola vez y con un precio válido' }
+      }
+      productosSeleccionados.add(it.productoId)
     }
 
     if (venta.estado === 'ANULADA') {
@@ -335,6 +346,10 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
       0
     )
 
+    if (!Number.isFinite(montoTotal) || !Number.isFinite(subtotalOriginal)) {
+      return { success: false, error: 'No se pudo calcular un importe de devolución válido' }
+    }
+
     // BUG-DEV-01: Si el monto calculado es $0 (ej: venta con 100% de descuento),
     // no tiene sentido económico procesar una devolución monetaria de $0, salvo cambio directo físico ('OTRO')
     if (montoTotal <= 0 && metodoReintegro !== 'OTRO') {
@@ -352,6 +367,10 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
         .from('devoluciones_venta')
         .select('id, monto_total, detalles:detalles_devolucion(producto_id, cantidad)')
         .eq('venta_id', venta.id)
+
+      if (devCheckErr || !Array.isArray(devExistentes)) {
+        return { success: false, error: 'No se pudieron comprobar las devoluciones anteriores. Reintentá antes de reintegrar dinero o stock.' }
+      }
 
       if (!devCheckErr && devExistentes) {
         totalYaDevueltoPrevio = devExistentes.reduce((s, d) => s + (d.monto_total || 0), 0)
@@ -381,6 +400,7 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
       }
     } catch (checkErr) {
       console.warn('Advertencia al verificar devoluciones previas:', checkErr)
+      return { success: false, error: 'No se pudieron comprobar las devoluciones anteriores. Reintentá antes de reintegrar dinero o stock.' }
     }
 
     const devolucionId = uuidv4()
