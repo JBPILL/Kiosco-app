@@ -48,7 +48,7 @@ export function crearBackendCotizacionPoint(admin: SupabaseClient): Omit<PointQu
         .filter((id) => !conocidos.has(id)))
       const promociones: Promocion[] = []
       for (let desde = 0; ; desde += 500) {
-        const { data, error } = await admin.from('promociones').select('*')
+        const { data, error } = await admin.from('promociones').select('id,kiosco_id,nombre,tipo,producto_id,categoria_id,cantidad_minima,cantidad_paga,precio_unitario_promo,descuento_porcentaje,precio_combo,items_combo,dias_semana,fecha_inicio,fecha_fin,activo')
           .eq('kiosco_id', permisos.kioscoId).eq('activo', true).order('id').range(desde, desde + 499)
         if (error || !data || desde >= 10000) throw new Error('Promociones no disponibles')
         promociones.push(...data as Promocion[])
@@ -65,7 +65,7 @@ export function crearBackendCotizacionPoint(admin: SupabaseClient): Omit<PointQu
       }
       let cliente: Cliente | null = null
       if (solicitud.clienteId) {
-        const { data, error } = await admin.from('clientes').select('*')
+        const { data, error } = await admin.from('clientes').select('id,kiosco_id,activo,saldo_deudor,limite_credito')
           .eq('kiosco_id', permisos.kioscoId).eq('id', solicitud.clienteId).maybeSingle()
         if (error) throw new Error('Cliente no disponible')
         cliente = data as Cliente | null

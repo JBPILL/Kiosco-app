@@ -20,3 +20,19 @@ it('otorga sólo las columnas de identidad requeridas al servidor', async () => 
     await expect(db.query('SELECT * FROM usuarios')).rejects.toMatchObject({ code: '42501' })
   } finally { await db.close() }
 })
+
+it('concede columnas comerciales sin acceso a datos adicionales ni escrituras', async () => {
+  const db = new PGlite()
+  try {
+    await db.exec('CREATE ROLE service_role; CREATE ROLE authenticated;')
+    const sql = readFileSync('supabase_fase_lectura_catalogo_checkout.sql','utf8')
+    const grants = [...sql.matchAll(/GRANT SELECT \(([^)]+)\)\s+ON public\.(\w+) TO service_role;/g)]
+    expect(grants).toHaveLength(5)
+    for (const grant of grants) await db.exec(`CREATE TABLE ${grant[2]} (${grant[1].split(',').map(c => `${c.trim()} text`).join(',')}, dato_privado text);`)
+    await db.exec(sql); await db.exec(sql)
+    for (const grant of grants) {
+      const permiso = await db.query(`SELECT has_column_privilege('service_role',$1,'id','SELECT') AS lectura, has_column_privilege('service_role',$1,'dato_privado','SELECT') AS privado, has_table_privilege('service_role',$1,'UPDATE') AS escritura, has_column_privilege('authenticated',$1,'id','SELECT') AS navegador`, [grant[2]])
+      expect(permiso.rows).toEqual([{ lectura: true, privado: false, escritura: false, navegador: false }])
+    }
+  } finally { await db.close() }
+})
