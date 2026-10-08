@@ -47,6 +47,20 @@ beforeEach(() => { vi.clearAllMocks(); mock.rpc.mockReset(); writes.length = 0; 
 afterEach(() => vi.unstubAllEnvs())
 
 describe('restauración y errores parciales', () => {
+  it.each([false, true])('verifica respaldo 4.0 sólo de promociones: alterado=%s', async alterar => {
+    setup({ 'promociones:select': [success(null)], 'promociones:insert': [success({ id: 'promo' })] })
+    const datos = backup({ promociones: [{ id: 'promo', nombre: 'Oferta', tipo: 'PORCENTAJE', descuento_porcentaje: 20 }] })
+    datos.version = '4.0'; datos.configuracion_comercio = { rubro: 'KIOSCO', nombre: 'Local' }
+    datos.saldos_snapshot = { clientes: [], proveedores: [] }
+    mock.rpc.mockImplementation(() => Promise.resolve({ data: { ...datos,
+      promociones: [{ ...payloads[0], descuento_porcentaje: alterar ? 10 : 20 }],
+    }, error: null }))
+    const resultado = await restaurarBackupIntegral(datos, 'FUSION', 'k1')
+    expect(resultado.ok).toBe(!alterar)
+    expect(resultado.resumen?.promocionesVerificadas).toBe(alterar ? undefined : 1)
+    if (alterar) expect(resultado.resumen?.errores.join()).toContain('descuento_porcentaje')
+    expect(mock.rpc).toHaveBeenCalledWith('generar_snapshot_backup_ampliado', { p_kiosco_id: 'k1' })
+  })
   it.each([false, true])('verifica lote persistido y evita reemplazo ante diferencia: %s', async alterar => {
     setup({ 'productos:select': [success([{ id: 'fuera-copia', descripcion: 'Otro', activo: true }]), success([])],
       'productos:insert': [success({ id: 'nuevo' })], 'lotes_producto:select': [success(null)],

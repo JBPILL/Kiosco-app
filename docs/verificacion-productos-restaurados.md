@@ -7,6 +7,13 @@ valores persistidos de los productos restaurados: costo, precio, stock, mínimo,
 categoría, proveedor, descripción, código y atributos operativos incluidos.
 El tipo físico/virtual se compara cuando figura explícitamente en la copia.
 
+También se comparan los lotes (producto destino, número, vencimiento, cantidades
+y actividad) y las promociones (relaciones, condiciones, importes, fechas, días
+y componentes). Las estructuras JSON se comparan por contenido, sin depender
+del orden de claves de los objetos. Una copia sólo de promociones también
+requiere la lectura final. El resumen incluye cantidades verificadas de lotes
+y promociones; el formulario conserva su indicador de productos.
+
 Una lectura fallida, un snapshot inválido o una diferencia genera un resultado de
 restauración incompleta. Las escrituras anteriores se conservan; no hay rollback
 de toda la recuperación. Los errores indican el campo distinto sin incluir costos
@@ -25,6 +32,10 @@ el historial de cuenta corriente.
 También se corrigió el mínimo de stock ausente: se utiliza 5, evitando enviar NaN.
 
 ## Evidencia y autoevaluación
+
+Ampliación del 08/10/2026: 60 pruebas dirigidas en dos archivos aprobadas.
+Incluye diferencias persistidas, lote con producto remapeado y copias sólo de
+promociones. Son pruebas locales con servidor simulado, no una restauración real.
 
 Pasaron 98 pruebas en ocho archivos de respaldo. Pruebas de diferencias en
 precios, costos, stock y tipo de producto; registros

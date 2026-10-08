@@ -50,6 +50,10 @@ cumplir la puerta de aceptación correspondiente.
 
 ## Registro de tareas realizadas
 
+- [x] Verificación persistida de promociones 4.0: condiciones, descuentos,
+  relaciones y componentes JSON. Incluye copias sólo de promociones.
+  60 pruebas dirigidas aprobadas; restauración real aún pendiente (P14).
+
 - [x] Verificación persistida de lotes en respaldos 4.0: producto destino,
   vencimiento, número, cantidades y actividad. Una diferencia evita la
   desactivación del modo Reemplazo. 51 pruebas dirigidas y build aprobados.

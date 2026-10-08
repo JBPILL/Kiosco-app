@@ -15,7 +15,7 @@ import { registrarDescargaRespaldoExterno } from './externalBackupReminder'
 import { validarAmpliacionBackup, capturarPreferenciasEquipo, restaurarPreferenciasEquipo, type BackupAmpliacion } from './backupAmpliado'
 import { auditoriaMotivoPrecioActiva, validarMotivoCambioPrecio } from './priceChangeAudit'
 import { validarRelacionesBackup } from './backupRelations'
-import { verificarProductosBackup, verificarLotesBackup, type ProductoEsperadoBackup } from './backupVerification'
+import { verificarProductosBackup, verificarLotesBackup, verificarPromocionesBackup, type ProductoEsperadoBackup, type PromocionEsperadaBackup } from './backupVerification'
 import type { Categoria, Proveedor, Cliente, Producto } from '../types/database'
 
 export interface BackupData {
@@ -73,6 +73,7 @@ export interface ProgresoRestauracion {
 }
 
 export interface ResumenRestauracion {
+  promocionesVerificadas?: number
   lotesVerificados?: number
   productosVerificados?: number
   categoriasCreadas: number
@@ -814,6 +815,7 @@ export async function restaurarBackupIntegral(
       }
     }
     const promocionesBackup = backupData.promociones || []
+    const promocionesEsperadas: PromocionEsperadaBackup[] = []
 
     for (let i = 0; i < promocionesBackup.length; i++) {
       const promo = promocionesBackup[i]
@@ -832,7 +834,7 @@ export async function restaurarBackupIntegral(
           if (!producto) throw new Error('No se recuperó un componente del combo.')
           return { producto_id: producto, cantidad: item.cantidad }
         }) : null
-        await guardarRegistroRestaurado('promociones', backupData.kiosco.id, kioscoId, promo.id, {
+        const campos = {
           nombre: promo.nombre.trim(),
           tipo: promo.tipo,
           producto_id: productoId || null,
@@ -847,7 +849,9 @@ export async function restaurarBackupIntegral(
           activo: promo.activo !== false,
           fecha_inicio: promo.fecha_inicio || null,
           fecha_fin: promo.fecha_fin || null,
-        })
+        }
+        const id = await guardarRegistroRestaurado('promociones', backupData.kiosco.id, kioscoId, promo.id, campos)
+        promocionesEsperadas.push({ id, campos })
         resumen.promocionesRestauradas++
       } catch (error: unknown) {
         resumen.errores.push(`Promoción "${promo.nombre}": ${error instanceof Error ? error.message : 'Error inesperado.'}`)
@@ -895,7 +899,7 @@ export async function restaurarBackupIntegral(
       }
     }
 
-    if (resumen.errores.length === 0 && backupData.version === '4.0' && (productosEsperados.size > 0 || lotesEsperados.length > 0)) {
+    if (resumen.errores.length === 0 && backupData.version === '4.0' && (productosEsperados.size > 0 || lotesEsperados.length > 0 || promocionesEsperadas.length > 0)) {
       try {
         reportar('FINALIZANDO', 'Verificando Restauración', 94, 'Comparando productos, stock y lotes con el servidor...')
         const { data, error } = await supabase.rpc('generar_snapshot_backup_ampliado', { p_kiosco_id: kioscoId })
@@ -907,6 +911,7 @@ export async function restaurarBackupIntegral(
         resumen.productosVerificados = verificarProductosBackup(
           [...productosEsperados].map(([id, campos]) => ({ id,campos })),verificacion.datos.productos)
         resumen.lotesVerificados = verificarLotesBackup(lotesEsperados, verificacion.datos.lotes_producto)
+        resumen.promocionesVerificadas = verificarPromocionesBackup(promocionesEsperadas, verificacion.datos.promociones)
       } catch (error: unknown) {
         resumen.errores.push(error instanceof Error ? error.message : 'No se pudo verificar la restauración.')
       }
