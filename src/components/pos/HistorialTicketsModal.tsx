@@ -364,12 +364,14 @@ export function HistorialTicketsModal({
                     </div>
 
                     {/* Botones de acción inferiores */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-gray-100 dark:border-gray-800">
-                      <div className="text-[11px] text-gray-400">
-                        {v.notas ? <span className="italic">Nota: {v.notas}</span> : <span>Venta en mostrador</span>}
+                    <div className="space-y-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+                      <div className="text-[11px] text-gray-400 break-words">
+                        {v.notas?.replace(/\[PROMOS:[\s\S]*?\]/g, '').trim()
+                          ? <span className="italic">Nota: {v.notas.replace(/\[PROMOS:[\s\S]*?\]/g, '').trim()}</span>
+                          : <span>Venta en mostrador</span>}
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="grid grid-cols-1 min-[420px]:grid-cols-3 gap-2 [&>button]:min-h-10 [&>button]:justify-center [&>button]:text-center [&>button]:leading-tight">
                         {/* Botón Facturar ARCA si no fue facturada aún y no está anulada */}
                         {!esAnulada && !v.afip_cae && (
                           <button

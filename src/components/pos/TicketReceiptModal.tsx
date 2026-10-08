@@ -451,31 +451,25 @@ export function TicketReceiptModal({ isOpen, onClose, ticket }: TicketReceiptMod
               )}
 
               {/* Detalle de productos con ajuste de texto sin cortes y columna de montos alineada */}
-              <div className="py-2 border-b border-dashed border-gray-400 space-y-1.5">
+              <div className="py-2 border-b border-dashed border-gray-400 space-y-2 font-mono text-gray-950">
                 <div className="flex justify-between font-bold text-[10px] uppercase text-gray-500 pb-0.5 border-b border-dotted border-gray-200">
-                  <span>Cant / Artículo</span>
-                  <span className="w-[80px] shrink-0 text-right">Subtotal</span>
+                  <span>Artículo</span>
+                  <span className="shrink-0 text-right">Importe</span>
                 </div>
                 {ticket.items.map((it, idx) => (
                   <div key={idx} className="space-y-0.5 text-[11px]">
-                    <div className="flex justify-between items-start gap-2">
-                      <div className="min-w-0 flex-1 break-words pr-1">
-                        <span className="font-bold text-gray-950">{it.cantidad % 1 === 0 ? `${it.cantidad}x ` : `${it.cantidad} kg x `}</span>
-                        <span className="text-gray-900">{it.descripcion}</span>
-                        {it.cantidad > 1 && (
-                          <span className="text-[10px] text-gray-500 block">
-                            ($ {formatNumero(it.precioUnitario)} c/u)
-                          </span>
-                        )}
-                      </div>
-                      <div className="w-[80px] shrink-0 flex justify-between items-baseline font-bold tabular-nums text-gray-950">
-                        <span>{it.subtotal < 0 ? '-$' : '$'}</span>
-                        <span className="text-right">{formatNumero(Math.abs(it.subtotal))}</span>
-                      </div>
+                    <div className="break-words uppercase leading-tight">{it.descripcion}</div>
+                    <div className="flex justify-between items-baseline gap-2 tabular-nums leading-tight">
+                      <span className="text-[10px]">
+                        {formatNumero(it.cantidad)} × $ {formatNumero(it.precioUnitario)}
+                      </span>
+                      <span className="shrink-0 font-bold whitespace-nowrap">
+                        {it.subtotal < 0 ? '-$' : '$'} {formatNumero(Math.abs(it.subtotal))}
+                      </span>
                     </div>
                     {it.promoNombre && (
-                      <div className="text-[9px] text-emerald-800 font-semibold pl-2">
-                        🏷️ {formatearPromoTicket(it.promoNombre)}
+                      <div className="text-[9px] text-gray-700 uppercase leading-tight">
+                        Promo: {formatearPromoTicket(it.promoNombre)}
                       </div>
                     )}
                   </div>
