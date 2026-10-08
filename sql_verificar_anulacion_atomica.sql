@@ -32,7 +32,9 @@ SELECT jsonb_build_object(
     'rol',rol,'existe',to_regclass('public.anulaciones_venta_atomicas') IS NOT NULL,
     'puede_insertar',coalesce(has_table_privilege(rol,to_regclass('public.anulaciones_venta_atomicas'),'INSERT'),false),
     'puede_actualizar',coalesce(has_table_privilege(rol,to_regclass('public.anulaciones_venta_atomicas'),'UPDATE'),false),
-    'puede_borrar',coalesce(has_table_privilege(rol,to_regclass('public.anulaciones_venta_atomicas'),'DELETE'),false)
+    'puede_borrar',coalesce(has_table_privilege(rol,to_regclass('public.anulaciones_venta_atomicas'),'DELETE'),false),
+    'puede_insertar_columnas',coalesce(has_any_column_privilege(rol,to_regclass('public.anulaciones_venta_atomicas'),'INSERT'),false),
+    'puede_actualizar_columnas',coalesce(has_any_column_privilege(rol,to_regclass('public.anulaciones_venta_atomicas'),'UPDATE'),false)
   ) ORDER BY rol) FROM roles),
   'triggers', (SELECT jsonb_agg(jsonb_build_object(
     'tabla',e.tabla,'trigger',e.nombre,'existe',t.oid IS NOT NULL,

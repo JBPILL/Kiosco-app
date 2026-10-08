@@ -146,6 +146,18 @@ it('el diagnóstico señala una RPC ausente y un trigger deshabilitado', async (
     await db.exec('ROLLBACK')
   }
 })
+it('detecta permisos por columna y la migración los revoca al reaplicarse', async () => {
+  await db.exec('GRANT INSERT(venta_id),UPDATE(motivo) ON anulaciones_venta_atomicas TO anon')
+  const diagnostico = await db.query<{ diagnostico_anulacion: {
+    registro_privado: { rol:string; puede_insertar_columnas:boolean; puede_actualizar_columnas:boolean }[];
+  } }>(readFileSync('sql_verificar_anulacion_atomica.sql','utf8'))
+  expect(diagnostico.rows[0].diagnostico_anulacion.registro_privado.find(rol => rol.rol==='anon'))
+    .toMatchObject({ puede_insertar_columnas:true, puede_actualizar_columnas:true })
+  await db.exec(readFileSync('supabase_fase_anulacion_venta_atomica.sql','utf8'))
+  expect((await db.query(`SELECT has_any_column_privilege('anon','anulaciones_venta_atomicas','INSERT') insertar,
+    has_any_column_privilege('anon','anulaciones_venta_atomicas','UPDATE') actualizar`)).rows)
+    .toEqual([{ insertar:false, actualizar:false }])
+})
 it('conserva cabecera, pagos y detalles después de anular', async () => {
   await db.query('INSERT INTO detalles_venta VALUES($1,2)',[venta])
   await anular()

@@ -15,6 +15,13 @@ privado. Sólo `authenticated` debe ejecutar la RPC pública; ningún rol de
 aplicación debe ejecutar directamente las funciones de trigger.
 Esta consulta sólo lee el catálogo y no anula ventas.
 
+La migración también revoca permisos por columna del registro privado y
+rechaza permisos de escritura heredados que todavía permanezcan. El diagnóstico
+del proyecto compartido el 08/10/2026 confirmó los seis triggers habilitados,
+las tres marcas de versión y la ausencia de escritura por tabla y columna en
+los tres roles. Es evidencia del catálogo remoto; la prueba funcional desde
+Reportes todavía está pendiente.
+
 ## Garantías y alcance
 
 - El servidor exige un único perfil de dueño activo y el comercio activo.

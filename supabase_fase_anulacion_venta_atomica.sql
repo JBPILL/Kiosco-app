@@ -10,6 +10,23 @@ CREATE TABLE IF NOT EXISTS public.anulaciones_venta_atomicas (
 );
 ALTER TABLE public.anulaciones_venta_atomicas ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.anulaciones_venta_atomicas FROM PUBLIC,anon,authenticated,service_role;
+DO $$
+DECLARE columnas text; rol text;
+BEGIN
+  SELECT string_agg(quote_ident(attname),',' ORDER BY attnum) INTO columnas
+    FROM pg_attribute WHERE attrelid='public.anulaciones_venta_atomicas'::regclass
+      AND attnum>0 AND NOT attisdropped;
+  EXECUTE format('REVOKE INSERT (%s), UPDATE (%s), SELECT (%s), REFERENCES (%s)
+    ON TABLE public.anulaciones_venta_atomicas FROM PUBLIC,anon,authenticated,service_role',
+    columnas,columnas,columnas,columnas);
+  FOREACH rol IN ARRAY ARRAY['anon','authenticated','service_role'] LOOP
+    IF has_table_privilege(rol,'public.anulaciones_venta_atomicas','INSERT,UPDATE,DELETE')
+      OR has_any_column_privilege(rol,'public.anulaciones_venta_atomicas','INSERT,UPDATE') THEN
+      RAISE EXCEPTION 'El rol % conserva escritura heredada en anulaciones; revisar membresías.',rol;
+    END IF;
+  END LOOP;
+END;
+$$;
 GRANT SELECT ON public.anulaciones_venta_atomicas TO authenticated;
 DROP POLICY IF EXISTS anulaciones_atomicas_dueno ON public.anulaciones_venta_atomicas;
 CREATE POLICY anulaciones_atomicas_dueno ON public.anulaciones_venta_atomicas FOR SELECT TO authenticated
