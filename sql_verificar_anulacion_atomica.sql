@@ -45,6 +45,13 @@ SELECT jsonb_build_object(
   'version_actual',jsonb_build_object(
     'conserva_costo_original',coalesce((SELECT definicion LIKE '%SET precio_costo=costo_original%' FROM operacion),false),
     'exige_auditoria',coalesce((SELECT definicion LIKE '%No se confirmó la anulación y su auditoría.%' FROM operacion),false),
-    'registro_con_rls',coalesce((SELECT relrowsecurity FROM pg_class WHERE oid=to_regclass('public.anulaciones_venta_atomicas')),false)
+    'registro_con_rls',coalesce((SELECT relrowsecurity FROM pg_class WHERE oid=to_regclass('public.anulaciones_venta_atomicas')),false),
+    'detecta_reposicion_adicional',coalesce((SELECT
+      definicion LIKE '%Se detectó una reposición adicional al anular%'
+      AND definicion LIKE '%p.stock_actual IS DISTINCT FROM%'
+      AND definicion LIKE '%IS DISTINCT FROM ingresos_antes%' FROM operacion),false),
+    'sin_trigger_legado',to_regclass('public.ventas') IS NOT NULL AND NOT EXISTS(
+      SELECT 1 FROM pg_trigger WHERE tgrelid=to_regclass('public.ventas')
+        AND tgname='trg_devolver_stock_anulacion' AND NOT tgisinternal)
   )
 ) AS diagnostico_anulacion;

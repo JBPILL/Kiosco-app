@@ -52,6 +52,10 @@ cumplir la puerta de aceptación correspondiente.
 
 ## Registro de tareas realizadas
 
+- [x] Diagnóstico de anulación detecta protección contra reposición adicional
+  y ausencia del trigger legado, incluso deshabilitado. 109 pruebas SQL de
+  anulación/checkout/conciliación aprobadas. Resultado remoto todavía pendiente.
+
 - [x] Causa remota del duplicado identificada: trigger legado de reposición
   coexistía con RPC atómica. Migración retira sólo el trigger conocido y se
   preparó conciliación específica, compensatoria/auditada y repetible sin doble

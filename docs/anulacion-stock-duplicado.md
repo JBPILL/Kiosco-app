@@ -36,6 +36,14 @@ No cambia venta, pagos ni la auditoría original de anulación. Ocho pruebas
 PostgreSQL cubren compensación, reintento, condiciones cambiadas y rollback de
 auditoría. Aplicación remota y comprobación final todavía pendientes.
 
+Después de aplicar la migración y conciliación, ejecutar la consulta de sólo
+lectura `sql_verificar_anulacion_atomica.sql`. En `version_actual` se esperan
+`detecta_reposicion_adicional: true` y `sin_trigger_legado: true`, además de los
+controles previos. El segundo exige ausencia del trigger, incluso si estaba
+deshabilitado; el primero identifica la definición esperada de la RPC en catálogo.
+Estos valores no prueban una devolución funcional ni la conciliación histórica:
+también conservar el resultado stock 17/conciliaciones 1 y revisar el kardex.
+
 ## Diagnóstico remoto, sólo lectura
 
 Ejecutar `sql_diagnosticar_stock_anulacion_duplicado.sql` en Supabase SQL Editor

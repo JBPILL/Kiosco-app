@@ -172,11 +172,20 @@ it('el diagnóstico de despliegue detecta la versión actual y sus triggers', as
     registro_privado: { puede_insertar:boolean; puede_actualizar:boolean; puede_borrar:boolean }[];
   } }>(lectura)
   const resultado = rows[0].diagnostico_anulacion
-  expect(resultado.version_actual).toEqual({ conserva_costo_original:true, exige_auditoria:true, registro_con_rls:true })
+  expect(resultado.version_actual).toEqual({ conserva_costo_original:true, exige_auditoria:true, registro_con_rls:true,
+    detecta_reposicion_adicional:true,sin_trigger_legado:true })
   expect(resultado.triggers).toHaveLength(6)
   expect(resultado.triggers.every(trigger => trigger.existe && trigger.habilitado)).toBe(true)
   expect(resultado.registro_privado.every(rol => !rol.puede_insertar && !rol.puede_actualizar && !rol.puede_borrar)).toBe(true)
   expect(await estado()).toMatchObject({ estado:'COMPLETADA',stock:'6' })
+})
+it('el diagnóstico detecta el trigger legado aunque esté deshabilitado', async () => {
+  await db.exec(`CREATE OR REPLACE FUNCTION legado_diagnostico_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;
+    CREATE TRIGGER trg_devolver_stock_anulacion AFTER UPDATE ON ventas FOR EACH ROW EXECUTE FUNCTION legado_diagnostico_test();
+    ALTER TABLE ventas DISABLE TRIGGER trg_devolver_stock_anulacion;`)
+  const {rows}=await db.query<{diagnostico_anulacion:{version_actual:{sin_trigger_legado:boolean}}}>(
+    readFileSync('sql_verificar_anulacion_atomica.sql','utf8'))
+  expect(rows[0].diagnostico_anulacion.version_actual.sin_trigger_legado).toBe(false)
 })
 it('el diagnóstico señala una RPC ausente y un trigger deshabilitado', async () => {
   await db.exec('BEGIN')
@@ -184,10 +193,11 @@ it('el diagnóstico señala una RPC ausente y un trigger deshabilitado', async (
     await db.exec(`DROP FUNCTION anular_venta_atomica(uuid,text,uuid);
       ALTER TABLE pagos_venta DISABLE TRIGGER trg_pagos_venta_anulada;`)
     const { rows } = await db.query<{ diagnostico_anulacion: {
-      version_actual: { conserva_costo_original:boolean; exige_auditoria:boolean };
+      version_actual: { conserva_costo_original:boolean; exige_auditoria:boolean; detecta_reposicion_adicional:boolean };
       triggers: { trigger:string; habilitado:boolean }[];
     } }>(readFileSync('sql_verificar_anulacion_atomica.sql','utf8'))
-    expect(rows[0].diagnostico_anulacion.version_actual).toMatchObject({ conserva_costo_original:false, exige_auditoria:false })
+    expect(rows[0].diagnostico_anulacion.version_actual).toMatchObject({ conserva_costo_original:false, exige_auditoria:false,
+      detecta_reposicion_adicional:false })
     expect(rows[0].diagnostico_anulacion.triggers.find(trigger => trigger.trigger==='trg_pagos_venta_anulada')?.habilitado).toBe(false)
   } finally {
     await db.exec('ROLLBACK')
