@@ -7,7 +7,9 @@ pendiente describen aquella ejecución, no el estado actual.
 
 ## Registro de tareas pendientes
 
-**Última revisión del código: `eafbdd9`.** Este apartado registra trabajo abierto;
+**Última actualización del registro: 08/10/2026, código `98318b6`.** La última
+suite global corresponde a `eafbdd9`; los avances posteriores tienen validaciones
+dirigidas, detalladas en tareas realizadas. Este apartado registra trabajo abierto;
 el siguiente reúne entregables realizados. Actualizar ambos al cerrar cada tarea.
 
 Una tarea pendiente puede requerir desarrollo, aplicación SQL, aceptación
@@ -21,7 +23,7 @@ cumplir la puerta de aceptación correspondiente.
 | P03 | 1 · Seguridad | Aceptar operativamente el paso 52 | Catálogo remoto confirmado; falta demostrar INSERT directo rechazado para cajero y checkout por backend funcionando después de instalarlo. |
 | P04 | 1 · Seguridad | Completar pruebas de supervisor | Rechazo de PIN incorrecto y venta con PIN correcto ya informados; faltan concurrencia, espera/límites de intentos, permiso ligado a solicitud original y usos restantes en el piloto. |
 | P05 | 1 · Seguridad | Cerrar aceptación de anulación atómica | Caso efectivo/caja original abierta confirmado; faltan pago mixto, fiado, caja original cerrada, lotes y reintento concurrente en Supabase real. |
-| P06 | 1 · Seguridad | Implementar devolución parcial transaccional y conciliación antigua | Auditoría local realizada: escrituras separadas, lectura previa falla abierta, reintegro puede fallar sin impedir éxito y receta actual. Sustituir por backend atómico/idempotente con datos históricos, permisos y aceptación concurrente. Conciliar tickets antiguos sin inventar snapshots. |
+| P06 | 1 · Seguridad | Implementar devolución parcial transaccional y conciliación antigua | Auditoría y corrección del fallo de lectura previa realizadas; contrato por detalle y cálculos SQL históricos preparados. Falta conectar formulario y backend atómico/idempotente, bloqueos, stock/lotes históricos, reintegro, auditoría y permisos; comprobar concurrencia. Conciliar tickets antiguos sin inventar snapshots. |
 | P07 | 1 · Auditoría | Definir retención y operación de auditorías | Establecer responsables, acceso, conservación y comprobación remota de precio, descuento, anulación y apertura manual del cajón. |
 | P08 | Checkout | Validar pérdida de conexión y dos equipos | Ensayar preparación, confirmación, cancelación y respuesta perdida sin duplicar venta, pago, stock o deuda. |
 | P09 | Checkout | Aceptar recuperación sin copia local | Aplicar el paso 53 antes de desplegar `checkout-manual`. Acción del dueño implementada en Caja y Turno; probar en navegador/Supabase con JWT real, respuesta perdida, cancelación concurrente y operador/caja originales. No crear otra venta ni volver a cobrar. |
@@ -29,7 +31,7 @@ cumplir la puerta de aceptación correspondiente.
 | P11 | 2 · Periféricos | Completar canal por driver de Windows | Diálogo del navegador ya disponible con window.print y ajuste de contenedores para ticket largo. Configurar despliegue controlado y comprobar driver, márgenes, paginación y salida real; no hay confirmación ni impresión silenciosa. |
 | P12 | 2 · Periféricos | Probar lector, balanza y cámara móvil | Ensayar dispositivos reales, Safari/iOS, cancelar/reabrir, permisos y entrada manual de peso. |
 | P13 | 3 · Respaldo | Confirmar migraciones de respaldo vigentes | Verificar snapshot/configuración y pasos 49–50 de relaciones/combos en el entorno de ensayo/remoto. Git push no aplica SQL. |
-| P14 | 3 · Respaldo | Restaurar una copia real en entorno aislado | Control final de productos y lotes implementado. Exportar, descifrar, importar y comparar conteos, demás relaciones, saldos, costos privados, configuración y recetas. No ensayar sobre el comercio operativo. |
+| P14 | 3 · Respaldo | Restaurar una copia real en entorno aislado | Control final de productos, lotes, promociones y recetas implementado. Exportar, descifrar, importar y comparar conteos, demás relaciones, saldos, costos privados y configuración. No ensayar sobre el comercio operativo. |
 | P15 | 3 · Respaldo | Completar respaldo de base y recuperación | Probar pg_dump/pg_restore real y Storage; cubrir historial de ventas/caja y módulos excluidos del JSON operativo. |
 | P16 | 3 · Respaldo | Automatizar copias externas y retención | Definir destino, cifrado, programación, rotación y alertas; copia IndexedDB y recordatorio no sustituyen esta estrategia. |
 | P17 | 3 · Respaldo | Comprobar fallos de almacenamiento y cierre | Piloto con cuota agotada, perfil borrado, descarga fallida y cierre pendiente; el respaldo no debe alterar la caja. |
@@ -40,6 +42,7 @@ cumplir la puerta de aceptación correspondiente.
 | P22 | 7 · Escritorio/quiosco | Preparar entrega de instalación lista para usar | Definir PWA/instalador soportado, acceso directo, configuración inicial, arranque, actualización y procedimiento de soporte. |
 | P23 | 7 · Escritorio/quiosco | Resolver persistencia y recuperación del puesto | Edge kiosk usa InPrivate: probar login, permisos y cobros pendientes tras cierre/reinicio; decidir perfil/despliegue compatible antes de activarlo. |
 | P24 | 7 · Escritorio/quiosco | Probar Windows administrado en piloto | Assigned Access/salida de emergencia, cierre inesperado, reconexión, pantalla y recuperación. El lanzador no bloquea Windows ni relanza Edge. |
+| P25 | Verificación | Repetir suite global tras los avances recientes | Última suite completa aprobada en `eafbdd9`; ejecutar nuevamente al integrar los siguientes cambios y registrar revisión, resultados y build. Las pruebas dirigidas posteriores no equivalen a una nueva suite global. |
 
 ### Trabajo pausado por decisión del usuario
 
