@@ -52,6 +52,11 @@ cumplir la puerta de aceptación correspondiente.
 
 ## Registro de tareas realizadas
 
+- [x] Cálculo privado de reintegros por detalle original integra importe neto
+  histórico y cantidades previas; mantiene separadas líneas del mismo producto.
+  29 pruebas PostgreSQL aprobadas. Bloqueos, persistencia y efectos atómicos
+  siguen pendientes de integración en P06.
+
 - [x] Diagnóstico de permisos de devolución parcial preparado: tablas, RLS,
   permisos efectivos por tabla/columna y políticas completas. Prueba PostgreSQL
   aprobada; ejecución remota y reemplazo transaccional pendientes (P06).

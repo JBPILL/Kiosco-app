@@ -65,6 +65,15 @@ confirmada ni prueba de tratamiento fiscal de comprobantes ARCA.
 
 ### Implementación y aceptación restantes
 
+La base privada ahora incluye `preparar_reintegros_historicos`: relaciona la
+selección con IDs de detalles históricos, distribuye el total neto y descuenta
+cantidades previas por detalle. Dos líneas del mismo producto mantienen sus
+importes y límites separados. Rechaza detalles ajenos/repetidos, cantidades
+inválidas y acumulados inconsistentes. Las tres funciones suman 29 pruebas
+PostgreSQL aprobadas, incluida reaplicación y ejecución API revocada.
+El llamador debe obtener snapshot y acumulados confirmados bajo bloqueo;
+la función no consulta tablas ni sustituye autorización, auditoría o transacción.
+
 Existe un contrato compartido en `supabase/functions/_shared/partialReturnRequest.ts`
 para la futura ruta: UUID de solicitud/venta, caja de reintegro cuando corresponde,
 medio, motivo, notas y cantidades por ID de detalle. Rechaza campos extra de

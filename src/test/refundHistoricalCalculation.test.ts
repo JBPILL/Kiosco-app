@@ -10,6 +10,39 @@ beforeAll(async () => {
   await db.exec(sql); await db.exec(sql)
 })
 afterAll(async () => { await db.close() })
+const preparar = async (total: number, detalles: unknown, items: unknown, previos: unknown = []) =>
+  (await db.query<{ plan: unknown }>('SELECT preparar_reintegros_historicos($1::numeric,$2::jsonb,$3::jsonb,$4::jsonb) AS plan',
+    [total, JSON.stringify(detalles), JSON.stringify(items), JSON.stringify(previos)])).rows[0].plan
+it('calcula por detalle original aunque dos líneas compartan producto', async () => {
+  const detalles = [{ id: 'a', producto_id: 'p', cantidad: 1, subtotal: 100 }, { id: 'b', producto_id: 'p', cantidad: 2, subtotal: 200 }]
+  const items = [{ detalleId: 'b', cantidad: 1 }, { detalleId: 'a', cantidad: 1 }]
+  expect(await preparar(240, detalles, items)).toEqual([
+    { detalle_id: 'a', cantidad: 1, importe: 80 }, { detalle_id: 'b', cantidad: 1, importe: 80 },
+  ])
+})
+it('calcula el siguiente centavo desde cantidades previas confirmadas', async () => {
+  expect(await preparar(1, [{ id: 'a', cantidad: 3, subtotal: 1 }], [{ detalleId: 'a', cantidad: 1 }], [{ detalle_id: 'a', cantidad: 1 }]))
+    .toEqual([{ detalle_id: 'a', cantidad: 1, importe: 0.34 }])
+})
+it.each([
+  { items: [{ detalleId: 'x', cantidad: 1 }] },
+  { items: [{ detalleId: 'a', cantidad: 1 }, { detalleId: 'a', cantidad: 1 }] },
+  { items: [{ detalleId: 'a', cantidad: '1' }] },
+  { items: [{ detalleId: 'a', cantidad: 2 }] },
+  { items: [] },
+  { items: [{ detalleId: 'a', cantidad: 1 }], previos: [{ detalle_id: 'a', cantidad: 1 }] },
+  { items: [{ detalleId: 'a', cantidad: 1 }], previos: [{ detalle_id: 'x', cantidad: 1 }] },
+  { items: [{ detalleId: 'a', cantidad: 1 }], previos: [{ detalle_id: 'a', cantidad: 0 }, { detalle_id: 'a', cantidad: 0 }] },
+])('rechaza detalles o cantidades sin historia consistente %j', async ({ items, previos }) => {
+  await expect(preparar(100, [{ id: 'a', cantidad: 1, subtotal: 100 }], items, previos ?? [])).rejects.toThrow()
+})
+it('mantiene el plan histórico privado para todos los roles API', async () => {
+  const { rows } = await db.query<{ ejecuta: boolean }>(`SELECT has_function_privilege(oid,
+    'preparar_reintegros_historicos(numeric,jsonb,jsonb,jsonb)','EXECUTE') AS ejecuta
+    FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role')`)
+  expect(rows).toHaveLength(3)
+  expect(rows.every(r => !r.ejecuta)).toBe(true)
+})
 const calcular = async (cantidad: string, importe: string, previa: string, nueva: string) =>
   (await db.query<{ monto: string }>('SELECT calcular_reintegro_detalle_historico($1::numeric,$2::numeric,$3::numeric,$4::numeric) AS monto', [cantidad, importe, previa, nueva])).rows[0].monto
 const distribuir = async (total: number, detalles: unknown) => (await db.query<{ importes: unknown }>(

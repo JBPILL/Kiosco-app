@@ -50,4 +50,58 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.distribuir_importes_historicos_devolucion(numeric,jsonb)
   FROM PUBLIC,anon,authenticated,service_role;
+-- El llamador obtiene historia y cantidades previas bajo bloqueo de la venta.
+-- Esta función no autentica, no lee tablas y no confirma efectos financieros.
+CREATE OR REPLACE FUNCTION public.preparar_reintegros_historicos(
+  p_total numeric,p_detalles jsonb,p_items jsonb,p_previos jsonb
+) RETURNS jsonb LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public AS $$
+DECLARE d jsonb; item jsonb; anterior jsonb; netos jsonb; original jsonb;
+  ids text[]:=ARRAY[]::text[]; solicitados text[]:=ARRAY[]::text[];
+  previos_ids text[]:=ARRAY[]::text[]; cantidad numeric; previa numeric; importe numeric;
+  resultado jsonb:='[]'::jsonb;
+BEGIN
+  IF jsonb_typeof(p_detalles) IS DISTINCT FROM 'array'
+    OR jsonb_typeof(p_items) IS DISTINCT FROM 'array'
+    OR jsonb_typeof(p_previos) IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'Historia de devolución inválida';
+  END IF;
+  IF jsonb_array_length(p_items) NOT BETWEEN 1 AND 500 OR jsonb_array_length(p_previos)>500 THEN
+    RAISE EXCEPTION 'Historia de devolución inválida';
+  END IF;
+  netos:=public.distribuir_importes_historicos_devolucion(p_total,p_detalles);
+  FOR d IN SELECT value FROM jsonb_array_elements(p_detalles) LOOP
+    IF jsonb_typeof(d->'cantidad') IS DISTINCT FROM 'number' THEN RAISE EXCEPTION 'Historia de devolución inválida'; END IF;
+    cantidad:=(d->>'cantidad')::numeric;
+    IF cantidad<=0 OR cantidad>999999 OR round(cantidad,3)<>cantidad THEN RAISE EXCEPTION 'Historia de devolución inválida'; END IF;
+    ids:=array_append(ids,d->>'id');
+  END LOOP;
+  FOR anterior IN SELECT value FROM jsonb_array_elements(p_previos) LOOP
+    IF jsonb_typeof(anterior) IS DISTINCT FROM 'object'
+      OR jsonb_typeof(anterior->'detalle_id') IS DISTINCT FROM 'string'
+      OR NOT (anterior->>'detalle_id')=ANY(ids)
+      OR (anterior->>'detalle_id')=ANY(previos_ids)
+      OR jsonb_typeof(anterior->'cantidad') IS DISTINCT FROM 'number' THEN RAISE EXCEPTION 'Historia de devolución inválida'; END IF;
+    previa:=(anterior->>'cantidad')::numeric;
+    SELECT value INTO original FROM jsonb_array_elements(p_detalles) WHERE value->>'id'=anterior->>'detalle_id';
+    IF previa<0 OR previa>(original->>'cantidad')::numeric OR round(previa,3)<>previa THEN RAISE EXCEPTION 'Historia de devolución inválida'; END IF;
+    previos_ids:=array_append(previos_ids,anterior->>'detalle_id');
+  END LOOP;
+  FOR item IN SELECT value FROM jsonb_array_elements(p_items) ORDER BY value->>'detalleId' COLLATE "C" LOOP
+    IF jsonb_typeof(item) IS DISTINCT FROM 'object'
+      OR jsonb_typeof(item->'detalleId') IS DISTINCT FROM 'string'
+      OR NOT (item->>'detalleId')=ANY(ids)
+      OR (item->>'detalleId')=ANY(solicitados)
+      OR jsonb_typeof(item->'cantidad') IS DISTINCT FROM 'number' THEN RAISE EXCEPTION 'Historia de devolución inválida'; END IF;
+    solicitados:=array_append(solicitados,item->>'detalleId');
+    SELECT value INTO original FROM jsonb_array_elements(p_detalles) WHERE value->>'id'=item->>'detalleId';
+    SELECT (value->>'importe_neto')::numeric INTO importe FROM jsonb_array_elements(netos) WHERE value->>'detalle_id'=item->>'detalleId';
+    SELECT coalesce(sum((value->>'cantidad')::numeric),0) INTO previa FROM jsonb_array_elements(p_previos) WHERE value->>'detalle_id'=item->>'detalleId';
+    cantidad:=(item->>'cantidad')::numeric;
+    importe:=public.calcular_reintegro_detalle_historico((original->>'cantidad')::numeric,importe,previa,cantidad);
+    resultado:=resultado||jsonb_build_array(jsonb_build_object('detalle_id',item->>'detalleId','cantidad',cantidad,'importe',importe));
+  END LOOP;
+  RETURN resultado;
+END $$;
+REVOKE ALL ON FUNCTION public.preparar_reintegros_historicos(numeric,jsonb,jsonb,jsonb)
+  FROM PUBLIC,anon,authenticated,service_role;
 COMMIT;
