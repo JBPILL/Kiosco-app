@@ -3,7 +3,7 @@ import { RefreshButton } from '../components/ui/RefreshButton'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/authStore'
-import { formatPrecio, formatFecha, labelMedioPago, getFechaLocal, getLimitesISODia, getCachedProductos, saveCachedProductos } from '../lib/utils'
+import { formatPrecio, formatFecha, labelMedioPago, getFechaLocal, getLimitesISODia, clearCachedProductos } from '../lib/utils'
 import { exportarVentasExcel } from '../lib/exportUtils'
 import { IconExportar } from '../components/ui/Icons'
 import { Button } from '../components/ui/Button'
@@ -279,16 +279,14 @@ export function ReportesPage() {
       const kioscoId = usuario?.kiosco_id
       if (!kioscoId) throw new Error('No se identificó el comercio activo.')
       const sesion = useCajaStore.getState().sesionActiva
-      const resultado = await anularVentaAtomica(
+      await anularVentaAtomica(
         ventaParaAnular.id, kioscoId, motivoAnulacion,
         usarCajaActual ? sesion?.id ?? null : null,
       )
-      // Usar valores absolutos confirmados evita sumar stock otra vez al reintentar.
+      // Un reintento puede devolver una confirmación anterior a otras ventas.
+      // Invalidar la copia obliga al catálogo a obtener stock vigente del servidor.
       try {
-        const stocks = new Map(resultado.stock.map(row => [row.producto_id, row.stock_actual]))
-        saveCachedProductos(getCachedProductos(kioscoId).map(producto => ({
-          ...producto, stock_actual: stocks.get(producto.id) ?? producto.stock_actual,
-        })), kioscoId)
+        clearCachedProductos(kioscoId)
         await useClienteStore.getState().cargarClientes()
         if (sesion) await useCajaStore.getState().cargarMovimientosSesion(sesion.id)
       } catch {

@@ -123,6 +123,40 @@ beforeEach(async () => {
 })
 afterAll(async () => { await db?.close() })
 
+it.each([false, true])('anula un cierre real con FEFO y crédito (combo=%s) sin duplicar restituciones', async esCombo => {
+  await db.exec('BEGIN')
+  try {
+    await db.exec(`CREATE FUNCTION auth_user_rol() RETURNS text LANGUAGE sql AS $$
+      SELECT rol FROM usuarios WHERE auth_user_id=auth.uid() AND activo $$;
+      CREATE TABLE devoluciones_venta(id uuid DEFAULT gen_random_uuid(),venta_id uuid,kiosco_id uuid);
+      CREATE TABLE movimientos_caja(kiosco_id uuid,sesion_caja_id uuid,usuario_id uuid,
+        tipo text,motivo text,monto numeric,descripcion text,fecha_hora timestamptz);`)
+    for (const archivo of ['supabase_fase_auditoria_anulaciones.sql', 'supabase_fase_anulacion_venta_atomica.sql']) {
+      await db.exec(readFileSync(archivo, 'utf8').replace(/^\s*(BEGIN|COMMIT);\s*$/gm, ''))
+    }
+    const datos = solicitud()
+    if (esCombo) datos.detalles[0] = {
+      ...datos.detalles[0], producto_id: combo, cantidad: 1,
+      componentes: [{ producto_id: producto, cantidad: 2 }],
+    }
+    await confirmar(datos)
+    // La restitución debe usar la composición vendida aunque cambie el catálogo.
+    await db.exec('UPDATE combo_items SET cantidad=99')
+    await db.exec("SET request.jwt.claim.role='authenticated'; SET ROLE authenticated")
+    const primera = await db.query('SELECT anular_venta_atomica($1,$2,null) resultado', [venta, 'Error de carga comprobado'])
+    expect((await db.query('SELECT anular_venta_atomica($1,$2,null) resultado', [venta, 'Error de carga comprobado'])).rows).toEqual(primera.rows)
+    await db.exec('RESET ROLE')
+    expect(await leer(`SELECT stock_actual FROM productos WHERE id='${producto}'`)).toEqual([{ stock_actual: '10.000' }])
+    expect(await leer('SELECT saldo_deudor FROM clientes')).toEqual([{ saldo_deudor: '0.00' }])
+    expect(await leer('SELECT cantidad_actual FROM lotes_producto ORDER BY id')).toEqual([{ cantidad_actual:'2.000' }, { cantidad_actual:'3.000' }])
+    expect(await leer('SELECT estado FROM ventas')).toEqual([{ estado:'ANULADA' }])
+    expect(await leer("SELECT count(*)::int cantidad FROM movimientos_stock WHERE tipo='INGRESO'")).toEqual([{ cantidad:esCombo ? 1 : 2 }])
+    expect(await leer('SELECT count(*)::int cantidad FROM auditoria_operaciones')).toEqual([{ cantidad:1 }])
+  } finally {
+    await db.exec('ROLLBACK; RESET ROLE')
+  }
+})
+
 it('confirma todo una sola vez y devuelve stock sin costos privados', async () => {
   const primera = await confirmar()
   expect(primera.rows[0].confirmar_venta_manual).toMatchObject({ venta_id: venta, total: 250,

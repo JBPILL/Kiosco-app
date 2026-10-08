@@ -25,8 +25,9 @@ no utiliza escrituras parciales como alternativa.
 - La anulación contable no devuelve dinero automáticamente en tarjetas,
   transferencias ni Mercado Pago. El reintegro externo debe realizarse y
   verificarse por su medio original.
-- La caché recibe stock absoluto confirmado; los errores de recarga local se
-  informan como tales después de la confirmación del servidor.
+- Se invalida la caché para obtener stock vigente al volver al catálogo: un
+  reintento devuelve la primera confirmación y podría ser anterior a otras
+  ventas. Los errores de recarga local se informan después de la confirmación.
 
 ## Evidencia y pendientes
 
@@ -34,6 +35,8 @@ Las pruebas PGlite ejecutan la migración real dos veces, verifican recetas
 históricas, restitución de lotes, pagos mixtos, auditoría, reintentos,
 autorización, caja cerrada y rollback ante errores u omisiones de triggers.
 Las pruebas del cliente verifican una única RPC, rechazos y respuestas inválidas.
+La integración ejecuta el cierre real y luego anula/reintenta: verifica saldo,
+stock, dos lotes FEFO originales y una sola auditoría.
 Falta aplicar la migración en el proyecto remoto y comprobar una operación de
 prueba autorizada allí. Las ventas antiguas sin snapshot permanecen pendientes
 de un procedimiento de conciliación; esta fase no acredita su recuperación.
