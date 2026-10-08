@@ -358,6 +358,22 @@ describe('migraciones de seguridad en PostgreSQL', () => {
     })
   })
 
+  it('solicitud manual de cajón conserva actor, motivo y un único registro en reintentos', async () => {
+    await conVenta(async () => {
+      await db.exec('RESET ROLE;')
+      const sql = readFileSync('supabase_fase_apertura_manual_cajon.sql', 'utf8').replace(/^BEGIN;$/m, '').replace(/^COMMIT;$/m, '')
+      await db.exec(sql)
+      await db.exec(sql)
+      await sesion(propietario)
+      const solicitud = '40000000-0000-0000-0000-000000000001'
+      await db.query('SELECT public.solicitar_apertura_manual_cajon($1,$2)', [solicitud, '  Reponer cambio  '])
+      await db.query('SELECT public.solicitar_apertura_manual_cajon($1,$2)', [solicitud, 'Reponer cambio'])
+      expect((await db.query('SELECT actor_auth_id,motivo,accion FROM public.auditoria_operaciones WHERE id=$1', [solicitud])).rows).toEqual([{ actor_auth_id: propietario, motivo: 'Reponer cambio', accion: 'CAJON_APERTURA_SOLICITADA' }])
+      await sesion(cajero)
+      await expect(db.query('SELECT public.solicitar_apertura_manual_cajon($1,$2)', [solicitud, 'Reponer cambio'])).rejects.toMatchObject({ code: '42501' })
+    })
+  })
+
   it.each([null, 0, 101])('consulta comercial rechaza límite %s', async limite => {
     await conVenta(async () => {
       await instalarConsultaComercial()
