@@ -111,4 +111,3 @@ requiere ejecución del usuario), concisión 4 (dos archivos nuevos; guía hist�
 Promedio 4,0/5. Mejora prioritaria: verificar el circuito con sesiones reales en ensayo.
 
 El 40 permite consultar cambios de precio y anulaciones en Seguridad y Caja; requiere 04 y 05. Ver docs/auditoria-comercial-consulta.md. Validación remota pendiente.
-
