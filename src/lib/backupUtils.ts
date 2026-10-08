@@ -15,7 +15,7 @@ import { registrarDescargaRespaldoExterno } from './externalBackupReminder'
 import { validarAmpliacionBackup, capturarPreferenciasEquipo, restaurarPreferenciasEquipo, type BackupAmpliacion } from './backupAmpliado'
 import { auditoriaMotivoPrecioActiva, validarMotivoCambioPrecio } from './priceChangeAudit'
 import { validarRelacionesBackup } from './backupRelations'
-import { verificarProductosBackup, type ProductoEsperadoBackup } from './backupVerification'
+import { verificarProductosBackup, verificarLotesBackup, type ProductoEsperadoBackup } from './backupVerification'
 import type { Categoria, Proveedor, Cliente, Producto } from '../types/database'
 
 export interface BackupData {
@@ -73,6 +73,7 @@ export interface ProgresoRestauracion {
 }
 
 export interface ResumenRestauracion {
+  lotesVerificados?: number
   productosVerificados?: number
   categoriasCreadas: number
   categoriasReutilizadas: number
@@ -109,7 +110,7 @@ function idsConfirmados(datos: unknown): Set<string> {
 async function guardarRegistroRestaurado(
   tabla: 'promociones' | 'lotes_producto', origen: string, kioscoId: string,
   idOriginal: string, campos: Record<string, unknown>,
-): Promise<void> {
+): Promise<string> {
   const id = await identidadRestaurada(origen, kioscoId, tabla, idOriginal)
   const { data: existente, error: errorLectura } = await supabase.from(tabla)
     .select('id').eq('kiosco_id', kioscoId).eq('id', id).maybeSingle()
@@ -121,6 +122,7 @@ async function guardarRegistroRestaurado(
   const { data: confirmado, error } = await consulta.select('id').single()
   if (error) throw new Error(error.message)
   if (confirmado?.id !== id) throw new Error('El servidor no confirmó el registro restaurado.')
+  return id
 }
 
 /**
@@ -857,6 +859,7 @@ export async function restaurarBackupIntegral(
     // ─────────────────────────────────────────────────────────────
     reportar('LOTES', 'Restaurando Lotes de Vencimiento', 90, 'Restaurando fechas de caducidad...')
     const lotesBackup = backupData.lotes_producto || []
+    const lotesEsperados: ProductoEsperadoBackup[] = []
 
     for (let i = 0; i < lotesBackup.length; i++) {
       const lote = lotesBackup[i]
@@ -876,23 +879,25 @@ export async function restaurarBackupIntegral(
       }
 
       try {
-        await guardarRegistroRestaurado('lotes_producto', backupData.kiosco.id, kioscoId, lote.id, {
+        const campos = {
           producto_id: prodIdFinal,
           numero_lote: lote.numero_lote || null,
           fecha_vencimiento: lote.fecha_vencimiento,
           cantidad_inicial: Number(lote.cantidad_inicial) || 0,
           cantidad_actual: Number(lote.cantidad_actual) || 0,
           activo: lote.activo !== false,
-        })
+        }
+        const id = await guardarRegistroRestaurado('lotes_producto', backupData.kiosco.id, kioscoId, lote.id, campos)
+        lotesEsperados.push({ id, campos })
         resumen.lotesRestaurados++
       } catch (error: unknown) {
         resumen.errores.push(`Lote ${i + 1}: ${error instanceof Error ? error.message : 'Error inesperado.'}`)
       }
     }
 
-    if (resumen.errores.length === 0 && backupData.version === '4.0' && productosEsperados.size > 0) {
+    if (resumen.errores.length === 0 && backupData.version === '4.0' && (productosEsperados.size > 0 || lotesEsperados.length > 0)) {
       try {
-        reportar('FINALIZANDO', 'Verificando Restauración', 85, 'Comparando precios y stock con el servidor...')
+        reportar('FINALIZANDO', 'Verificando Restauración', 94, 'Comparando productos, stock y lotes con el servidor...')
         const { data, error } = await supabase.rpc('generar_snapshot_backup_ampliado', { p_kiosco_id: kioscoId })
         if (error) throw new Error('No se pudo verificar el catálogo restaurado en el servidor.')
         const verificacion = validarBackupJSON(JSON.stringify(data),kioscoId)
@@ -901,6 +906,7 @@ export async function restaurarBackupIntegral(
         }
         resumen.productosVerificados = verificarProductosBackup(
           [...productosEsperados].map(([id, campos]) => ({ id,campos })),verificacion.datos.productos)
+        resumen.lotesVerificados = verificarLotesBackup(lotesEsperados, verificacion.datos.lotes_producto)
       } catch (error: unknown) {
         resumen.errores.push(error instanceof Error ? error.message : 'No se pudo verificar la restauración.')
       }

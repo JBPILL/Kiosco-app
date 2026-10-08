@@ -47,6 +47,25 @@ beforeEach(() => { vi.clearAllMocks(); mock.rpc.mockReset(); writes.length = 0; 
 afterEach(() => vi.unstubAllEnvs())
 
 describe('restauración y errores parciales', () => {
+  it.each([false, true])('verifica lote persistido y evita reemplazo ante diferencia: %s', async alterar => {
+    setup({ 'productos:select': [success([{ id: 'fuera-copia', descripcion: 'Otro', activo: true }]), success([])],
+      'productos:insert': [success({ id: 'nuevo' })], 'lotes_producto:select': [success(null)],
+      'lotes_producto:insert': [success({ id: 'l1' })] })
+    const datos = backup({ productos: [{ id: 'original', descripcion: 'Producto' }],
+      lotes_producto: [{ id: 'l1', producto_id: 'original', fecha_vencimiento: '2027-01-01', cantidad_inicial: 10, cantidad_actual: 3.5 }] })
+    datos.version = '4.0'; datos.configuracion_comercio = { rubro: 'KIOSCO', nombre: 'Local' }
+    datos.saldos_snapshot = { clientes: [], proveedores: [] }
+    mock.rpc.mockImplementation(() => Promise.resolve({ data: { ...datos,
+      productos: [{ ...payloads[0], id: 'nuevo' }],
+      lotes_producto: [{ ...payloads[1], cantidad_actual: alterar ? 0 : 3.5 }],
+    }, error: null }))
+    const resultado = await restaurarBackupIntegral(datos, alterar ? 'REEMPLAZO' : 'FUSION', 'k1')
+    expect(resultado.ok).toBe(!alterar)
+    expect(resultado.resumen?.lotesVerificados).toBe(alterar ? undefined : 1)
+    if (alterar) expect(resultado.resumen?.errores.join()).toContain('cantidad_actual')
+    expect(payloads[1].producto_id).toBe('nuevo')
+    expect(writes).toEqual(['productos:insert', 'lotes_producto:insert'])
+  })
   it.each([false,true])('verifica el catálogo 4.0 y detecta diferencia persistida: %s', async alterar => {
     setup({ 'productos:insert': [success({ id: 'nuevo' })], 'productos:select': [
       success(alterar ? [{ id:'fuera-copia',descripcion:'Otro',activo:true }] : []), success([]),

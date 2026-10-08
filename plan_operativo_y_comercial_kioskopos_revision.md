@@ -7,6 +7,9 @@ pendiente describen aquella ejecución, no el estado actual.
 
 ## Registro de tareas pendientes
 
+**Última revisión del código: `7694a0d`.** Este apartado registra trabajo abierto;
+el siguiente reúne entregables realizados. Actualizar ambos al cerrar cada tarea.
+
 Una tarea pendiente puede requerir desarrollo, aplicación SQL, aceptación
 remota o prueba física. Una implementación local no cierra su fase hasta
 cumplir la puerta de aceptación correspondiente.
@@ -21,12 +24,12 @@ cumplir la puerta de aceptación correspondiente.
 | P06 | 1 · Seguridad | Revisar devoluciones y conciliación antigua | Auditar rutas restantes de devolución parcial y conciliar tickets/colas antiguos sin snapshot suficiente. No reconstruir autorizaciones ni recetas con valores actuales. |
 | P07 | 1 · Auditoría | Definir retención y operación de auditorías | Establecer responsables, acceso, conservación y comprobación remota de precio, descuento, anulación y apertura manual del cajón. |
 | P08 | Checkout | Validar pérdida de conexión y dos equipos | Ensayar preparación, confirmación, cancelación y respuesta perdida sin duplicar venta, pago, stock o deuda. |
-| P09 | Checkout | Aceptar recuperación sin copia local | Acción del dueño implementada en Caja y Turno; probar en navegador/Supabase con JWT real, respuesta perdida, cancelación concurrente y operador/caja originales. No crear otra venta ni volver a cobrar. |
+| P09 | Checkout | Aceptar recuperación sin copia local | Aplicar el paso 53 antes de desplegar `checkout-manual`. Acción del dueño implementada en Caja y Turno; probar en navegador/Supabase con JWT real, respuesta perdida, cancelación concurrente y operador/caja originales. No crear otra venta ni volver a cobrar. |
 | P10 | 2 · Periféricos | Validar impresoras y cajón físicos | Matriz por modelo/COM/USB: permiso denegado, desconexión, reimpresión, pago mixto y pulso único sólo tras efectivo confirmado. |
 | P11 | 2 · Periféricos | Completar canal por driver de Windows | Implementar despliegue controlado y comprobar impresión real; Web Serial existente no acredita ese canal. |
 | P12 | 2 · Periféricos | Probar lector, balanza y cámara móvil | Ensayar dispositivos reales, Safari/iOS, cancelar/reabrir, permisos y entrada manual de peso. |
 | P13 | 3 · Respaldo | Confirmar migraciones de respaldo vigentes | Verificar snapshot/configuración y pasos 49–50 de relaciones/combos en el entorno de ensayo/remoto. Git push no aplica SQL. |
-| P14 | 3 · Respaldo | Restaurar una copia real en entorno aislado | Exportar, descifrar, importar y comparar conteos, relaciones, saldos, costos privados, configuración y recetas. No ensayar sobre el comercio operativo. |
+| P14 | 3 · Respaldo | Restaurar una copia real en entorno aislado | Control final de productos y lotes implementado. Exportar, descifrar, importar y comparar conteos, demás relaciones, saldos, costos privados, configuración y recetas. No ensayar sobre el comercio operativo. |
 | P15 | 3 · Respaldo | Completar respaldo de base y recuperación | Probar pg_dump/pg_restore real y Storage; cubrir historial de ventas/caja y módulos excluidos del JSON operativo. |
 | P16 | 3 · Respaldo | Automatizar copias externas y retención | Definir destino, cifrado, programación, rotación y alertas; copia IndexedDB y recordatorio no sustituyen esta estrategia. |
 | P17 | 3 · Respaldo | Comprobar fallos de almacenamiento y cierre | Piloto con cuota agotada, perfil borrado, descarga fallida y cierre pendiente; el respaldo no debe alterar la caja. |
@@ -46,6 +49,11 @@ cumplir la puerta de aceptación correspondiente.
   El cobro manual con posnet continúa siendo una ruta independiente.
 
 ## Registro de tareas realizadas
+
+- [x] Verificación persistida de lotes en respaldos 4.0: producto destino,
+  vencimiento, número, cantidades y actividad. Una diferencia evita la
+  desactivación del modo Reemplazo. 51 pruebas dirigidas y build aprobados.
+  Las escrituras anteriores no se revierten: el ensayo aislado sigue pendiente.
 
 Las casillas marcadas indican entregables implementados o evidencia recibida,
 no aceptación completa de toda la fase. Los enlaces llevan al detalle de
@@ -86,9 +94,16 @@ alcance, instalación y limitaciones.
 
 ### Registro de verificaciones
 
-- **Suite completa vigente:** 1.386 pruebas aprobadas en 148 archivos sobre
+- **Última suite completa registrada:** 1.386 pruebas aprobadas en 148 archivos sobre
   `e9079de`, en 120,76 segundos; compilación aprobada. P25 cerrado para esta
   revisión. Repetir la suite al introducir nuevos cambios de código.
+- **Cambios posteriores a esa suite:** recuperación desde Caja, auditoría del
+  paso 53 y comprobador API de costos tienen pruebas dirigidas y build aprobados.
+  No se ha registrado una nueva suite completa sobre `7694a0d`.
+- **Comprobador API de costos:** 13 pruebas con HTTP simulado y build aprobados;
+  la ejecución con JWT real sigue pendiente.
+- **Auditoría de recuperación (paso 53):** 113 pruebas dirigidas en dos archivos
+  y build aprobados; aplicación SQL y despliegue Edge todavía sin confirmar.
 - **Suite completa anterior:** 1.372 pruebas/147 archivos en `6bcffab`,
   conservada como evidencia histórica.
 - **Anulación/checkout:** 116 pruebas dirigidas y build aprobados antes de
