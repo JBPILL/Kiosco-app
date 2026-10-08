@@ -52,6 +52,10 @@ cumplir la puerta de aceptación correspondiente.
 
 ## Registro de tareas realizadas
 
+- [x] Diagnóstico de permisos de devolución parcial preparado: tablas, RLS,
+  permisos efectivos por tabla/columna y políticas completas. Prueba PostgreSQL
+  aprobada; ejecución remota y reemplazo transaccional pendientes (P06).
+
 - [x] Comprobación global de `95f71ba`: build aprobado; 1.510 pruebas aprobadas
   y siete agotaron el tiempo de arranque PostgreSQL. El diagnóstico ahora usa
   entorno Node y límite explícito de 30 segundos; ocho casos dirigidos aprobaron

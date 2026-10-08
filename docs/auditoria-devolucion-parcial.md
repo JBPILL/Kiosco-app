@@ -27,6 +27,18 @@ anteriores describen la revisión inicial y el backend transaccional sigue abier
 
 ## Requisitos del reemplazo transaccional (pendientes)
 
+### Comprobación remota de permisos actuales
+
+Ejecutar el contenido de `sql_auditar_devoluciones_parciales.sql` en el SQL Editor
+del proyecto de ensayo y conservar el JSON `diagnostico_devoluciones`. Es una
+consulta de sólo lectura: informa existencia/RLS de ambas tablas, permisos
+efectivos INSERT/UPDATE/DELETE por tabla y INSERT/UPDATE por columna para los
+tres roles API, y todas las políticas con roles, expresiones y carácter permisivo.
+Incluye permisos heredados de PUBLIC. Una prueba PostgreSQL comprueba tablas
+ausentes, política abierta, RLS deshabilitado, permisos por tabla/columna y su
+revocación. No determina autorización de filas sin JWT real ni revoca permisos.
+El bloqueo de escrituras se aplicará junto con el reemplazo operativo, no antes.
+
 ### Base de cálculo implementada, todavía sin conexión al circuito
 
 `supabase_fase_devolucion_calculo_historico.sql` define una función privada que
