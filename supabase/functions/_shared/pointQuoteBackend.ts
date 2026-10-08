@@ -8,7 +8,7 @@ export function crearBackendCotizacionPoint(admin: SupabaseClient): Omit<PointQu
     autenticar: async (token) => {
       const { data: auth, error: authError } = await admin.auth.getUser(token)
       if (authError || !auth.user) return null
-      const { data: perfil, error } = await admin.from('usuarios').select('*')
+      const { data: perfil, error } = await admin.from('usuarios').select('id,auth_user_id,kiosco_id,activo,rol')
         .eq('auth_user_id', auth.user.id).eq('activo', true).maybeSingle()
       if (error || !perfil?.kiosco_id) return null
       const { data: comercio, error: errorComercio } = await admin.from('kioscos')
