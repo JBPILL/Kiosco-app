@@ -22,7 +22,11 @@ anon debe tener false en las cinco columnas de escritura. Probar cobro y
 reimpresión con sesión válida. SELECT con privilegio no garantiza filas visibles;
 RLS continúa gobernando esa lectura.
 
-No aplicado remotamente por el agente. Las inserciones de ventas anteriores
+El usuario compartió un diagnóstico posterior con las cinco columnas de
+escritura de anon en false para las cinco tablas y nueve políticas restrictivas
+conservadas. Esa evidencia confirma los permisos de catálogo del paso 48;
+no sustituye una prueba HTTP con JWT real. No aplicado por el agente.
+Las inserciones de ventas anteriores
 para cajeros siguen pendientes de migración al cierre autorizado.
 
 Autoevaluación: exactitud 4/5 (PostgreSQL local, falta API remota), completitud
