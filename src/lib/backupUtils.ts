@@ -383,6 +383,9 @@ export async function restaurarBackupIntegral(
   }
 
   try {
+    if (backupData.version === '2.0' && backupData.productos.some(prod => prod.es_combo === true)) {
+      throw new Error('La copia 2.0 no permite recuperar componentes de combos. Generá una copia nueva.')
+    }
     if (backupData.version === '3.0' || backupData.version === '4.0') validarRelacionesBackup(backupData)
     if (backupData.version === '4.0') validarAmpliacionBackup({ configuracion_comercio: backupData.configuracion_comercio, saldos_snapshot: backupData.saldos_snapshot, preferencias_equipo: backupData.preferencias_equipo }, backupData.clientes, backupData.proveedores)
     if ((opciones.restaurarConfiguracion || opciones.restaurarPreferencias)
@@ -640,8 +643,8 @@ export async function restaurarBackupIntegral(
     // ─────────────────────────────────────────────────────────────
     reportar('PRODUCTOS', 'Restaurando Catálogo de Productos', 35, 'Cargando catálogo existente...')
 
-    const prodsExistentes = await leerColeccionPorId<Pick<Producto, 'id' | 'codigo_barras' | 'descripcion' | 'activo'>>((ultimoId) => {
-      const consulta = supabase.from('productos').select('id, codigo_barras, descripcion, activo')
+    const prodsExistentes = await leerColeccionPorId<Pick<Producto, 'id' | 'codigo_barras' | 'descripcion' | 'activo' | 'es_combo'>>((ultimoId) => {
+      const consulta = supabase.from('productos').select('id, codigo_barras, descripcion, activo, es_combo')
         .eq('kiosco_id', kioscoId).order('id').limit(500)
       return ultimoId ? consulta.gt('id', ultimoId) : consulta
     }, 'productos')
@@ -650,9 +653,11 @@ export async function restaurarBackupIntegral(
     const mapaProdsPorDesc = new Map<string, any>()
     const mapaProductosIdOriginal = new Map<string, string>()
     const idsExistentes = new Set<string>()
+    const combosExistentes = new Set<string>()
 
     prodsExistentes?.forEach((p) => {
       idsExistentes.add(p.id)
+      if (p.es_combo === true) combosExistentes.add(p.id)
       if (p.codigo_barras) mapaProdsPorCodigo.set(p.codigo_barras.trim().toLowerCase(), p)
       mapaProdsPorDesc.set(p.descripcion.trim().toLowerCase(), p)
     })
@@ -775,6 +780,30 @@ export async function restaurarBackupIntegral(
     // PASO 5: PROMOCIONES Y COMBOS
     // ─────────────────────────────────────────────────────────────
     reportar('PROMOCIONES', 'Restaurando Promociones y Combos', 80, 'Restaurando promociones comerciales...')
+    // Los componentes se recuperan después de confirmar todos los productos.
+    // Primero se convierten los físicos para permitir reutilizar un antiguo combo como componente.
+    const productosConComponentes = productosBackup.filter(prod => Array.isArray(prod.componentes_combo)
+      && (prod.es_combo === true || combosExistentes.has(mapaProductosIdOriginal.get(prod.id) || '')))
+      .sort((a, b) => Number(a.es_combo === true) - Number(b.es_combo === true))
+    for (const prod of productosConComponentes) {
+      try {
+        const idDestino = mapaProductosIdOriginal.get(prod.id)
+        if (!idDestino) throw new Error('No se confirmó el producto del combo.')
+        const componentes = (prod.componentes_combo as Array<{ componente_producto_id: string; cantidad: number }>).map(item => {
+          const id = mapaProductosIdOriginal.get(item.componente_producto_id)
+          if (!id) throw new Error('No se confirmó un componente del combo.')
+          return { componente_producto_id: id, cantidad: item.cantidad }
+        })
+        const { data, error } = await supabase.rpc('restaurar_combo_backup', {
+          p_kiosco_id: kioscoId, p_producto_id: idDestino, p_es_combo: prod.es_combo === true, p_componentes: componentes,
+        })
+        if (error) throw new Error(error.message)
+        if (data?.producto_id !== idDestino || data.es_combo !== (prod.es_combo === true)
+          || data.componentes !== componentes.length) throw new Error('El servidor no confirmó los componentes del combo.')
+      } catch (error: unknown) {
+        resumen.errores.push(`Combo "${prod.descripcion || 'S/N'}": ${error instanceof Error ? error.message : 'No se pudo recuperar.'}`)
+      }
+    }
     const promocionesBackup = backupData.promociones || []
 
     for (let i = 0; i < promocionesBackup.length; i++) {
@@ -932,6 +961,7 @@ export async function restaurarBackupIntegral(
       localStorage.removeItem(`kiosko_cache_categorias_${kioscoId}`)
       localStorage.removeItem('kiosko_cache_productos')
       localStorage.removeItem(`kiosko_cache_productos_${kioscoId}`)
+      localStorage.removeItem(`kiosko_combos_${kioscoId}`)
     } catch (error: unknown) {
       console.warn('Aviso limpiando caché local:', error)
     }

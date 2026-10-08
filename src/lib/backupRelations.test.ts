@@ -14,6 +14,22 @@ describe('relaciones del respaldo', () => {
   it('rechaza combos físicos cuya estructura no puede restaurarse', () => {
     expect(() => validarRelacionesBackup({ ...copia(), productos: [{ id: 'p1', es_combo: true }] })).toThrow('componentes')
   })
+  it('acepta un combo completo con cantidades fraccionarias', () => {
+    expect(() => validarRelacionesBackup({ ...copia(), productos: [
+      { id: 'p1' }, { id: 'pack', es_combo: true, componentes_combo: [{ componente_producto_id: 'p1', cantidad: 0.5 }] },
+    ] })).not.toThrow()
+  })
+  it.each([0,-1,Infinity,'2'])('rechaza la cantidad de componente %s', cantidad => {
+    expect(() => validarRelacionesBackup({ ...copia(), productos: [
+      { id: 'p1' }, { id: 'pack', es_combo: true, componentes_combo: [{ componente_producto_id: 'p1', cantidad }] },
+    ] })).toThrow('cantidad')
+  })
+  it('rechaza combos anidados', () => {
+    expect(() => validarRelacionesBackup({ ...copia(), productos: [
+      { id: 'p1' }, { id: 'pack', es_combo: true, componentes_combo: [{ componente_producto_id: 'p1', cantidad: 1 }] },
+      { id: 'pack2', es_combo: true, componentes_combo: [{ componente_producto_id: 'pack', cantidad: 1 }] },
+    ] })).toThrow('referencia')
+  })
   it('acepta una copia coherente sin modificarla', () => {
     const datos = copia()
     const original = JSON.stringify(datos)

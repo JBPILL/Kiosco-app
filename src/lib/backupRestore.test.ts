@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { restaurarBackupIntegral, validarBackupJSON } from './backupUtils'
 
-const mock = vi.hoisted(() => ({ from: vi.fn(), clear: vi.fn() }))
-vi.mock('./supabase', () => ({ supabase: { from: mock.from } }))
+const mock = vi.hoisted(() => ({ from: vi.fn(), clear: vi.fn(), rpc: vi.fn() }))
+vi.mock('./supabase', () => ({ supabase: { from: mock.from, rpc: mock.rpc } }))
 vi.mock('./utils', () => ({ clearCachedProductos: mock.clear }))
 
 interface Response { data: unknown; error: { message: string } | null }
@@ -47,6 +47,53 @@ beforeEach(() => { vi.clearAllMocks(); writes.length = 0; payloads.length = 0; s
 afterEach(() => vi.unstubAllEnvs())
 
 describe('restauración y errores parciales', () => {
+  it('convierte primero un combo antiguo a físico antes de usarlo como componente', async () => {
+    setup({ 'productos:select': [success([
+      { id: 'dest-pack', descripcion: 'Pack', es_combo: false },
+      { id: 'dest-fisico', descripcion: 'Unidad', es_combo: true },
+    ]), success([])], 'productos:update': [success([{ id: 'dest-pack' }]), success([{ id: 'dest-fisico' }])] })
+    mock.rpc.mockImplementation((_nombre: string, entrada: { p_producto_id: string; p_es_combo: boolean; p_componentes: unknown[] }) =>
+      Promise.resolve({ data: { producto_id: entrada.p_producto_id, es_combo: entrada.p_es_combo, componentes: entrada.p_componentes.length }, error: null }))
+    const datos = backup({ productos: [
+      { id: 'pack', descripcion: 'Pack', es_combo: true, componentes_combo: [{ componente_producto_id: 'fisico', cantidad: 2 }] },
+      { id: 'fisico', descripcion: 'Unidad', es_combo: false, componentes_combo: [] },
+    ] })
+    expect((await restaurarBackupIntegral(datos, 'FUSION', 'k1')).ok).toBe(true)
+    expect(mock.rpc.mock.calls.map(call => call[1].p_producto_id)).toEqual(['dest-fisico','dest-pack'])
+  })
+  it('no recupera un combo si falló la recuperación de su componente', async () => {
+    setup({ 'productos:insert': [success({ id: 'nuevo-combo' }), failure()] })
+    const datos = backup({ productos: [
+      { id: 'combo', descripcion: 'Pack', es_combo: true, componentes_combo: [{ componente_producto_id: 'fisico', cantidad: 3 }] },
+      { id: 'fisico', descripcion: 'Unidad' },
+    ] })
+    const resultado = await restaurarBackupIntegral(datos, 'FUSION', 'k1')
+    expect(resultado.ok).toBe(false)
+    expect(mock.rpc).not.toHaveBeenCalled()
+  })
+  it('remapea componentes y espera confirmación de la composición', async () => {
+    setup({ 'productos:insert': [success({ id: 'nuevo-combo' }), success({ id: 'nuevo-fisico' })] })
+    mock.rpc.mockResolvedValue({ data: { producto_id: 'nuevo-combo', es_combo: true, componentes: 1 }, error: null })
+    const datos = backup({ productos: [
+      { id: 'combo', descripcion: 'Pack', es_combo: true, componentes_combo: [{ componente_producto_id: 'fisico', cantidad: 3 }] },
+      { id: 'fisico', descripcion: 'Unidad' },
+    ] })
+    expect((await restaurarBackupIntegral(datos, 'FUSION', 'k1')).ok).toBe(true)
+    expect(mock.rpc).toHaveBeenCalledWith('restaurar_combo_backup', { p_kiosco_id: 'k1', p_producto_id: 'nuevo-combo', p_es_combo: true,
+      p_componentes: [{ componente_producto_id: 'nuevo-fisico', cantidad: 3 }] })
+  })
+  it('informa una composición no confirmada y no desactiva otros productos', async () => {
+    setup({ 'productos:insert': [success({ id: 'nuevo-combo' }), success({ id: 'nuevo-fisico' })] })
+    mock.rpc.mockResolvedValue({ data: null, error: null })
+    const datos = backup({ productos: [
+      { id: 'combo', descripcion: 'Pack', es_combo: true, componentes_combo: [{ componente_producto_id: 'fisico', cantidad: 3 }] },
+      { id: 'fisico', descripcion: 'Unidad' },
+    ] })
+    const resultado = await restaurarBackupIntegral(datos, 'REEMPLAZO', 'k1')
+    expect(resultado.ok).toBe(false)
+    expect(resultado.resumen?.errores.join()).toContain('componentes')
+    expect(writes).not.toContain('productos:update')
+  })
   it.each(['categorias', 'proveedores'] as const)('no guarda productos si falla el alta en %s', async tabla => {
     setup({ [`${tabla}:insert`]: [failure()] })
     const datos = backup({

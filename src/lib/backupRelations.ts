@@ -42,9 +42,26 @@ export function validarRelacionesBackup(datos: ColeccionesRelacionadasBackup): v
       throw new Error(`${origen}: referencia a ${destino} ausente de la copia.`)
     }
   }
+  const productosVirtuales = new Set((filas.get('productos') || []).filter(p => p.es_combo === true).map(p => p.id))
   for (const producto of filas.get('productos') || []) {
-    if (producto.es_combo === true) {
-      throw new Error('El respaldo contiene combos físicos. Esta versión no recupera sus componentes; usá una restauración PostgreSQL verificada.')
+    if (producto.es_combo === true && !Array.isArray(producto.componentes_combo)) {
+      throw new Error('El respaldo contiene combos sin sus componentes. Generá una copia nueva con el servicio de respaldo actualizado.')
+    }
+    if (producto.componentes_combo !== undefined) {
+      if (!Array.isArray(producto.componentes_combo) || producto.componentes_combo.length > 1000
+        || (producto.es_combo === true && producto.componentes_combo.length === 0)
+        || (producto.es_combo !== true && producto.componentes_combo.length !== 0)) throw new Error('productos: estructura del combo inválida.')
+      const componentes = new Set<string>()
+      for (const valor of producto.componentes_combo) {
+        const item = registro(valor,'componentes_combo')
+        referencia(item.componente_producto_id,'productos','componentes_combo',true)
+        const id = item.componente_producto_id as string
+        if (id === producto.id || componentes.has(id)
+          || productosVirtuales.has(id)
+          || typeof item.cantidad !== 'number' || !Number.isFinite(item.cantidad)
+          || item.cantidad <= 0 || item.cantidad > 1_000_000_000) throw new Error('componentes_combo: cantidad o referencia inválida.')
+        componentes.add(id)
+      }
     }
     referencia(producto.categoria_id,'categorias','productos')
     referencia(producto.proveedor_id,'proveedores','productos')
