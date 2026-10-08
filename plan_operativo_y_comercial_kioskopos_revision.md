@@ -7,7 +7,7 @@ pendiente describen aquella ejecución, no el estado actual.
 
 ## Registro de tareas pendientes
 
-**Última revisión del código: `7694a0d`.** Este apartado registra trabajo abierto;
+**Última revisión del código: `eafbdd9`.** Este apartado registra trabajo abierto;
 el siguiente reúne entregables realizados. Actualizar ambos al cerrar cada tarea.
 
 Una tarea pendiente puede requerir desarrollo, aplicación SQL, aceptación
@@ -49,6 +49,10 @@ cumplir la puerta de aceptación correspondiente.
   El cobro manual con posnet continúa siendo una ruta independiente.
 
 ## Registro de tareas realizadas
+
+- [x] Validación global sobre `eafbdd9`: 1.448 pruebas/151 archivos aprobados
+  en 141,44 segundos y build con código 0. Incluye las nuevas comprobaciones de
+  restauración; no sustituye aceptación JWT, ensayo aislado ni hardware.
 
 - [x] Comparación final de recetas de combos recuperados: IDs destino,
   cantidades y eliminación de receta al convertir a físico. 69 pruebas
@@ -102,12 +106,11 @@ alcance, instalación y limitaciones.
 
 ### Registro de verificaciones
 
-- **Última suite completa registrada:** 1.386 pruebas aprobadas en 148 archivos sobre
-  `e9079de`, en 120,76 segundos; compilación aprobada. P25 cerrado para esta
-  revisión. Repetir la suite al introducir nuevos cambios de código.
-- **Cambios posteriores a esa suite:** recuperación desde Caja, auditoría del
-  paso 53 y comprobador API de costos tienen pruebas dirigidas y build aprobados.
-  No se ha registrado una nueva suite completa sobre `7694a0d`.
+- **Última suite completa registrada:** 1.448 pruebas aprobadas en 151 archivos
+  sobre `eafbdd9`, en 141,44 segundos; compilación aprobada. Incluye recuperación
+  desde Caja, auditoría del paso 53, comprobador API de costos y controles finales
+  de lotes, promociones y recetas. Repetir al introducir cambios de código.
+- **Suite anterior:** 1.386 pruebas/148 archivos sobre `e9079de`, 120,76 segundos.
 - **Comprobador API de costos:** 13 pruebas con HTTP simulado y build aprobados;
   la ejecución con JWT real sigue pendiente.
 - **Auditoría de recuperación (paso 53):** 113 pruebas dirigidas en dos archivos
