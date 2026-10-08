@@ -1,7 +1,8 @@
 -- Paso 47: proteger frente a cajeros la cabecera, artículos y pagos preparados.
 -- Requiere checkout manual/backend y helpers de seguridad por comercio.
 -- Las funciones SECURITY DEFINER del cierre siguen escribiendo como propietario.
--- Conserva permisos del dueño; SELECT y políticas de ventas anteriores no cambian.
+-- Conserva permisos del dueño y SELECT. También restringe UPDATE/DELETE del
+-- cajero en cabeceras, artículos y pagos anteriores; INSERT offline se conserva.
 BEGIN;
 DO $$ BEGIN
   IF to_regclass('public.checkout_manual_entradas') IS NULL
@@ -36,8 +37,11 @@ BEGIN
   FOREACH tabla IN ARRAY ARRAY['ventas','detalles_venta','pagos_venta'] LOOP
     columna:=CASE WHEN tabla='ventas' THEN 'id' ELSE 'venta_id' END;
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',tabla);
-    condicion:=format('(public.auth_es_dueno_o_superadmin() OR NOT public.venta_checkout_manual_protegida(%I))',columna);
     FOREACH operacion IN ARRAY ARRAY['INSERT','UPDATE','DELETE'] LOOP
+      condicion:=CASE WHEN operacion<>'INSERT'
+        THEN '(public.auth_es_dueno_o_superadmin())'
+        ELSE format('(public.auth_es_dueno_o_superadmin() OR NOT public.venta_checkout_manual_protegida(%I))',columna)
+      END;
       nombre:='checkout_manual_inmutable_'||lower(operacion);
       EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I',nombre,tabla);
       EXECUTE format('CREATE POLICY %I ON public.%I AS RESTRICTIVE FOR %s TO authenticated %s %s',

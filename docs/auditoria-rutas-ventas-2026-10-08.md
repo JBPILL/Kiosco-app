@@ -31,6 +31,14 @@ con intentos de escritura y anulación en una base aislada.
 
 ## Estado
 
+El usuario compartió el resultado remoto de funciones: anon y authenticated
+no pueden preparar ni confirmar el cobro manual. Service_role ejecuta la
+preparación de seis argumentos y las confirmaciones públicas del backend;
+no ejecuta los helpers internos ni sobrecargas anteriores. Authenticated tiene
+acceso a consulta/recuperación/cancelación, cuyos archivos locales exigen dueño
+activo y comercio. El cuerpo de esas funciones remotas no se inspeccionó.
+Faltan los resultados de permisos de tablas y políticas RLS del mismo diagnóstico.
+
 Preparado y revisado contra nombres de tablas locales. No ejecutado en Supabase.
 No se revocaron permisos ni se modificaron ventas. Falta recibir el inventario,
 coordinar la migración del flujo anterior y demostrar rechazo de llamadas

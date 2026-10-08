@@ -58,12 +58,12 @@ it.each([
   expect((await db.query(`SELECT * FROM ${tabla}`)).rows).toHaveLength(2)
   expect((await db.query(`UPDATE ${tabla} SET ${valor}=999 WHERE ${columna}='${venta}' RETURNING id`)).rows).toHaveLength(0)
   expect((await db.query(`DELETE FROM ${tabla} WHERE ${columna}='${venta}' RETURNING id`)).rows).toHaveLength(0)
-  expect((await db.query(`UPDATE ${tabla} SET ${valor}=60 WHERE ${columna}='${anterior}' RETURNING id`)).rows).toHaveLength(1)
+  expect((await db.query(`UPDATE ${tabla} SET ${valor}=60 WHERE ${columna}='${anterior}' RETURNING id`)).rows).toHaveLength(0)
 })
 
 it.each(['detalles_venta','pagos_venta'])('rechaza agregar o mover filas a una venta protegida en %s', async (tabla) => {
   await expect(db.exec(`INSERT INTO ${tabla}(id,venta_id) VALUES (gen_random_uuid(),'${venta}')`)).rejects.toThrow(/row-level security/)
-  await expect(db.exec(`UPDATE ${tabla} SET venta_id='${venta}' WHERE id='${anterior}'`)).rejects.toThrow(/row-level security/)
+  expect((await db.query(`UPDATE ${tabla} SET venta_id='${venta}' WHERE id='${anterior}' RETURNING id`)).rows).toHaveLength(0)
 })
 
 it('impide insertar cabecera preparada y conserva operaciones del dueño', async () => {
@@ -89,4 +89,13 @@ it('permite escritura del backend privado sin conceder ejecución al cajero', as
   await expect(db.exec(`SELECT cierre_backend_prueba('${venta}')`)).rejects.toThrow(/permission denied/)
   await db.exec(`RESET ROLE; SET ROLE service_role; SELECT cierre_backend_prueba('${venta}'); RESET ROLE`)
   expect((await db.query<{ monto: string }>(`SELECT monto FROM pagos_venta WHERE venta_id='${venta}'`)).rows[0].monto).toBe('100')
+})
+
+it.each(['detalles_venta','pagos_venta'])('protege filas anteriores y conserva reintento offline sin reemplazo en %s', async (tabla) => {
+  expect((await db.query(`DELETE FROM ${tabla} WHERE venta_id='${anterior}' RETURNING id`)).rows).toHaveLength(0)
+  await db.exec(`INSERT INTO ${tabla}(id,venta_id) VALUES ('${anterior}','${anterior}') ON CONFLICT(id) DO NOTHING`)
+  expect((await db.query(`SELECT id FROM ${tabla} WHERE venta_id='${anterior}'`)).rows).toHaveLength(1)
+  await db.exec(`INSERT INTO ${tabla}(id,venta_id) VALUES ('50000000-0000-0000-0000-000000000001','${anterior}')`)
+  await db.exec("SET test.dueno='true'")
+  expect((await db.query(`DELETE FROM ${tabla} WHERE id='50000000-0000-0000-0000-000000000001' RETURNING id`)).rows).toHaveLength(1)
 })
