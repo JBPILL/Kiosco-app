@@ -161,8 +161,16 @@ BEGIN
     'saldo_cliente',saldo,'reintegro_efectivo',efectivo,'sesion_reintegro',caja_destino);
   INSERT INTO public.anulaciones_venta_atomicas(venta_id,kiosco_id,actor_auth_id,motivo,resultado)
     VALUES(v.id,v.kiosco_id,auth.uid(),v_motivo,resultado);
+  GET DIAGNOSTICS filas=ROW_COUNT;
+  IF filas<>1 THEN RAISE EXCEPTION 'No se confirmó el registro de anulación.'; END IF;
   UPDATE public.ventas SET estado='ANULADA',motivo_anulacion=v_motivo WHERE id=v.id;
-  IF NOT EXISTS(SELECT 1 FROM public.ventas WHERE id=v.id AND estado='ANULADA') THEN RAISE EXCEPTION 'No se confirmó la anulación.'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.ventas WHERE id=v.id AND estado='ANULADA'
+    AND motivo_anulacion=v_motivo AND anulada_por=actor.id AND anulada_en IS NOT NULL)
+    OR (SELECT count(*) FROM public.auditoria_operaciones WHERE kiosco_id=v.kiosco_id
+      AND entidad='ventas' AND entidad_id=v.id AND accion='VENTA_ANULADA'
+      AND actor_auth_id=auth.uid() AND usuario_id=actor.id AND motivo=v_motivo)<>1 THEN
+    RAISE EXCEPTION 'No se confirmó la anulación y su auditoría.';
+  END IF;
   RETURN resultado;
 END;
 $$;
@@ -171,6 +179,10 @@ GRANT EXECUTE ON FUNCTION public.anular_venta_atomica(uuid,text,uuid) TO authent
 CREATE OR REPLACE FUNCTION public.proteger_anulacion_atomica() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 BEGIN
+  IF OLD.estado='ANULADA' AND
+    (to_jsonb(NEW)-'anulada_por') IS DISTINCT FROM (to_jsonb(OLD)-'anulada_por') THEN
+    RAISE EXCEPTION 'La venta anulada es inmutable.' USING ERRCODE='42501';
+  END IF;
   IF NEW.estado='ANULADA' AND OLD.estado IS DISTINCT FROM 'ANULADA' AND NOT EXISTS(
     SELECT 1 FROM public.anulaciones_venta_atomicas WHERE venta_id=OLD.id AND kiosco_id=OLD.kiosco_id AND actor_auth_id=auth.uid()) THEN
     RAISE EXCEPTION 'Usá la operación de anulación atómica.' USING ERRCODE='42501';
@@ -181,6 +193,28 @@ $$;
 REVOKE ALL ON FUNCTION public.proteger_anulacion_atomica() FROM PUBLIC,anon,authenticated,service_role;
 DROP TRIGGER IF EXISTS trg_proteger_anulacion_atomica ON public.ventas;
 CREATE TRIGGER trg_proteger_anulacion_atomica BEFORE UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION public.proteger_anulacion_atomica();
+CREATE OR REPLACE FUNCTION public.proteger_lineas_venta_anulada() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+DECLARE original uuid; destino uuid;
+BEGIN
+  IF TG_OP<>'INSERT' THEN original:=OLD.venta_id; END IF;
+  IF TG_OP<>'DELETE' THEN destino:=NEW.venta_id; END IF;
+  -- Serializar con la anulación antes de decidir si la escritura está permitida.
+  PERFORM 1 FROM public.ventas WHERE id IN(original,destino) ORDER BY id FOR UPDATE;
+  IF EXISTS(SELECT 1 FROM public.ventas WHERE id IN(original,destino) AND estado='ANULADA') THEN
+    RAISE EXCEPTION 'Los detalles y pagos de una venta anulada son inmutables.' USING ERRCODE='42501';
+  END IF;
+  IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.proteger_lineas_venta_anulada() FROM PUBLIC,anon,authenticated,service_role;
+DROP TRIGGER IF EXISTS trg_lineas_venta_anulada ON public.detalles_venta;
+CREATE TRIGGER trg_lineas_venta_anulada BEFORE INSERT OR UPDATE OR DELETE ON public.detalles_venta
+  FOR EACH ROW EXECUTE FUNCTION public.proteger_lineas_venta_anulada();
+DROP TRIGGER IF EXISTS trg_pagos_venta_anulada ON public.pagos_venta;
+CREATE TRIGGER trg_pagos_venta_anulada BEFORE INSERT OR UPDATE OR DELETE ON public.pagos_venta
+  FOR EACH ROW EXECUTE FUNCTION public.proteger_lineas_venta_anulada();
 -- Evita que una devolución aparezca entre la comprobación y el commit de anulación.
 CREATE OR REPLACE FUNCTION public.proteger_devolucion_venta_vigente() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$

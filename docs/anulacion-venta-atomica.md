@@ -16,6 +16,9 @@ no utiliza escrituras parciales como alternativa.
 - Stock, lotes, cuenta corriente, caja, estado y auditoría se confirman juntos.
   Un error revierte toda la operación. Reintentar la misma venta devuelve la
   primera confirmación sin repetir reintegros.
+- La cabecera, los detalles y los pagos de una venta anulada son inmutables.
+  La operación verifica también que la auditoría se haya guardado con el actor
+  y el motivo originales; si un trigger la omite, revierte todo.
 - Cada ingreso por restitución conserva el costo privado congelado de su
   salida original, aunque el costo del producto haya cambiado. Si falta ese
   registro histórico se revierte toda la anulación y se exige conciliación.

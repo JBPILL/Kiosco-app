@@ -27,6 +27,7 @@ beforeAll(async () => {
     CREATE TABLE combo_items(combo_producto_id uuid,componente_producto_id uuid,cantidad numeric);
     CREATE TABLE lotes_producto(id uuid PRIMARY KEY,producto_id uuid,kiosco_id uuid,cantidad_actual numeric,activo boolean);
     CREATE TABLE pagos_venta(venta_id uuid,medio_pago text,monto numeric);
+    CREATE TABLE detalles_venta(venta_id uuid,cantidad numeric);
     CREATE TABLE devoluciones_venta(id uuid DEFAULT gen_random_uuid(),venta_id uuid,kiosco_id uuid);
     CREATE TABLE movimientos_stock(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),kiosco_id uuid,producto_id uuid,tipo text,
       cantidad numeric,motivo text,notas text,usuario_id uuid,fecha timestamptz,lote_producto_id uuid);
@@ -46,8 +47,9 @@ beforeAll(async () => {
 })
 beforeEach(async () => {
   await db.exec(`RESET ROLE; DROP TRIGGER IF EXISTS fallo ON movimientos_cuenta_corriente;
+    DROP TRIGGER IF EXISTS omitir_auditoria ON auditoria_operaciones;
     DELETE FROM auditoria_operaciones; DELETE FROM anulaciones_venta_atomicas; DELETE FROM devoluciones_venta;
-    DELETE FROM ventas; DELETE FROM checkout_manuales; DELETE FROM productos; DELETE FROM lotes_producto;
+    DELETE FROM ventas; DELETE FROM detalles_venta; DELETE FROM checkout_manuales; DELETE FROM productos; DELETE FROM lotes_producto;
     DELETE FROM pagos_venta; DELETE FROM movimientos_stock; DELETE FROM movimientos_cuenta_corriente; DELETE FROM movimientos_caja; DELETE FROM clientes; DELETE FROM sesiones_caja;
     UPDATE usuarios SET activo=true,rol='DUEÑO',kiosco_id='${kid}'; UPDATE kioscos SET estado_suscripcion='ACTIVO';
     INSERT INTO sesiones_caja VALUES('${caja}','${kid}','ABIERTA',null),('${otraCaja}','${kid}','ABIERTA',null);
@@ -115,6 +117,18 @@ it('mantiene privadas las escrituras y bloquea ejecución anónima', async () =>
   expect((await db.query(`SELECT has_function_privilege('anon','anular_venta_atomica(uuid,text,uuid)','EXECUTE') ejecutar,
     has_table_privilege('authenticated','anulaciones_venta_atomicas','INSERT') escribir`)).rows).toEqual([{ ejecutar:false,escribir:false }])
 })
+it('conserva cabecera, pagos y detalles después de anular', async () => {
+  await db.query('INSERT INTO detalles_venta VALUES($1,2)',[venta])
+  await anular()
+  await expect(db.exec('UPDATE ventas SET total=999')).rejects.toThrow('inmutable')
+  await expect(db.exec("UPDATE ventas SET motivo_anulacion='Otro motivo'")).rejects.toThrow('inmutable')
+  await expect(db.exec('UPDATE pagos_venta SET monto=999')).rejects.toThrow('inmutables')
+  await expect(db.exec('DELETE FROM pagos_venta')).rejects.toThrow('inmutables')
+  await expect(db.query("INSERT INTO pagos_venta VALUES($1,'EFECTIVO',1)",[venta])).rejects.toThrow('inmutables')
+  await expect(db.exec('UPDATE detalles_venta SET cantidad=99')).rejects.toThrow('inmutables')
+  await expect(db.exec('DELETE FROM detalles_venta')).rejects.toThrow('inmutables')
+  expect((await db.query('SELECT total FROM ventas')).rows).toEqual([{ total:'250' }])
+})
 it('rechaza un perfil inactivo sin alterar la venta', async () => {
   await db.exec('UPDATE usuarios SET activo=false')
   await expect(anular()).rejects.toThrow('dueño activo')
@@ -123,6 +137,12 @@ it('rechaza un perfil inactivo sin alterar la venta', async () => {
 it('revierte stock y lotes si falta el costo histórico privado', async () => {
   await db.exec('DELETE FROM movimiento_stock_costos')
   await expect(anular()).rejects.toThrow('Costo histórico')
+  expect(await estado()).toEqual({ estado:'COMPLETADA',stock:'6',saldo:'300',lote:'0',anulaciones:0 })
+})
+it('revierte la anulación si un trigger omite su auditoría', async () => {
+  await db.exec(`CREATE OR REPLACE FUNCTION omitir_auditoria_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$;
+    CREATE TRIGGER omitir_auditoria BEFORE INSERT ON auditoria_operaciones FOR EACH ROW EXECUTE FUNCTION omitir_auditoria_test();`)
+  await expect(anular()).rejects.toThrow('auditoría')
   expect(await estado()).toEqual({ estado:'COMPLETADA',stock:'6',saldo:'300',lote:'0',anulaciones:0 })
 })
 it('preserva un lote retenido que todavía tenía existencias', async () => {
