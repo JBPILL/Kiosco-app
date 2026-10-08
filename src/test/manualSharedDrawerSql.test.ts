@@ -7,6 +7,7 @@ it('modifica sólo la titularidad, conserva comercio y bloqueos y admite reaplic
   const db = new PGlite()
   try {
     await db.exec(`
+      CREATE ROLE service_role; CREATE ROLE authenticated;
       CREATE TABLE sesiones_caja(id uuid,kiosco_id uuid,usuario_id uuid,estado text);
       CREATE FUNCTION preparar_checkout_manual(a uuid,b jsonb,c jsonb) RETURNS boolean LANGUAGE plpgsql AS $$
       DECLARE v_caja uuid:=a; v_kid uuid:=(b->>'kid')::uuid; v_uid uuid:=(b->>'uid')::uuid;
@@ -22,6 +23,15 @@ it('modifica sólo la titularidad, conserva comercio y bloqueos y admite reaplic
     const sql = readFileSync('supabase_fase_checkout_manual_caja_compartida.sql', 'utf8')
     await db.exec(sql)
     await db.exec(sql)
+    await db.exec(`CREATE FUNCTION preparar_checkout_manual(uuid,jsonb,jsonb,boolean,numeric,bigint) RETURNS void LANGUAGE sql AS $$ SELECT $$;
+      CREATE FUNCTION confirmar_venta_manual_autorizada(uuid,jsonb,jsonb,uuid) RETURNS void LANGUAGE sql AS $$ SELECT $$;
+      REVOKE ALL ON FUNCTION confirmar_venta_manual_interna_supervisor(uuid,jsonb) FROM PUBLIC;`)
+    const verificacion = readFileSync('sql_verificar_checkout_caja_compartida.sql', 'utf8')
+    const estado = (await db.query<{ correcto: boolean }>(verificacion)).rows
+    expect(estado).toHaveLength(6)
+    expect(estado.every(fila => fila.correcto)).toBe(true)
+    await db.exec('GRANT EXECUTE ON FUNCTION confirmar_venta_manual_interna_supervisor(uuid,jsonb) TO authenticated')
+    expect((await db.query<{ correcto: boolean }>(verificacion)).rows.at(-1)?.correcto).toBe(false)
     const entrada = { kid: '20000000-0000-0000-0000-000000000001', uid: '30000000-0000-0000-0000-000000000002' }
     const caja = '10000000-0000-0000-0000-000000000001'
     for (const funcion of ['preparar_checkout_manual', 'confirmar_venta_manual_interna_supervisor']) {

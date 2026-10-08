@@ -9,7 +9,7 @@ Esta lista corresponde a una base existente de KioskoPOS, con tablas comerciales
 3. Seguí el orden numerado. Si falla, detenete y compartí el error completo. Si quedó una transacción abortada, ejecutá `ROLLBACK;` antes del reintento.
 4. Anotá los nombres aplicados. Si ya instalaste la versión actual de un archivo, podés omitirlo; no tengo acceso al registro remoto para identificarlo por vos.
 
-Informaste que ya aplicaste los SQL enviados hasta el 33. Los nuevos pendientes son **34 y 35**, incluidos en `artifacts/sql-supervisor-adicionales-2026-10-07.zip`. Aplicá primero 34 y después 35. El 34 contiene la corrección que evalúa los vencimientos después de obtener los bloqueos; reaplicalo si instalaste una versión anterior. La presencia de una tabla no demuestra que tenga la última versión de sus funciones o políticas. La interfaz del supervisor ya está implementada; su despliegue y validación remota siguen pendientes. Ver `docs/desplegar-supervisor-pin.md`.
+Actualización del 08/10: el usuario informó que aplicó los SQL enviados y confirmó el éxito de la migración de caja compartida (46). No hay un registro remoto completo inspeccionado por el agente. Esta tabla es el orden de referencia, no una instrucción de reaplicar todo. Verificá funciones y privilegios antes de deducir que una fase está instalada. El guardado de PIN fue confirmado por el usuario; el cobro completo con cajero, caja compartida y PIN sigue pendiente de aceptación remota.
 
 El ZIP de pendientes contiene **16 SQL (18–33)** y esta guía. La tabla siguiente conserva las referencias anteriores para comprobar dependencias, pero no te indica que vuelvas a ejecutar todos los SQL antiguos. En particular, el archivo 15 histórico recrea una vista con CASCADE: si ya está instalado el rubro, no lo reapliques como parte de esta actualización.
 
@@ -60,6 +60,18 @@ El ZIP de pendientes contiene **16 SQL (18–33)** y esta guía. La tabla siguie
 | 41 | supabase_fase_apertura_manual_cajon.sql |
 | 42 | supabase_fase_resultado_apertura_cajon.sql |
 | 43 | supabase_fase_consulta_auditoria_cajon.sql |
+| 44 | supabase_fase_lectura_identidad_edge.sql |
+| 45 | supabase_fase_lectura_catalogo_checkout.sql |
+| 46 | supabase_fase_checkout_manual_caja_compartida.sql |
+
+44 y 45 conceden al servidor las columnas necesarias para verificar identidad y
+cotizar sin incluir costos ni datos personales del cliente. El backend debe usar
+las consultas explícitas actuales. El 46 permite separar vendedor y titular del
+turno; aplicarlo al final si se reinstalan las funciones antiguas de checkout.
+No cambia ventas existentes ni exige un nuevo despliegue de Edge Functions.
+La consulta `sql_verificar_checkout_caja_compartida.sql` comprueba los tres
+predicados y privilegios de ejecución sin ejecutar cobros. Un resultado correcto
+no certifica todo el checkout, RLS ni una venta con PIN.
 
 El archivo 33 debe ir después del 32 y de las funciones originales de checkout. Si reaplicás esas funciones anteriores, reaplicá el 33 al final para conservar el control de supervisor. No modifiques las decisiones ya almacenadas ni borres las preparaciones pendientes.
 
