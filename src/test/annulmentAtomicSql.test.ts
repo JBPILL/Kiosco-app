@@ -23,7 +23,7 @@ beforeAll(async () => {
     CREATE TABLE sesiones_caja(id uuid PRIMARY KEY,kiosco_id uuid,estado text,fecha_cierre timestamptz);
     CREATE TABLE ventas(id uuid PRIMARY KEY,kiosco_id uuid REFERENCES kioscos,estado text,total numeric,sesion_caja_id uuid,afip_cae text);
     CREATE TABLE checkout_manuales(id uuid PRIMARY KEY,kiosco_id uuid,venta_id uuid,solicitud jsonb,resultado jsonb);
-    CREATE TABLE productos(id uuid PRIMARY KEY,kiosco_id uuid,stock_actual numeric,fecha_actualizacion timestamptz);
+    CREATE TABLE productos(id uuid PRIMARY KEY,kiosco_id uuid,stock_actual numeric,fecha_actualizacion timestamptz,descripcion text DEFAULT 'Ensayo');
     CREATE TABLE combo_items(combo_producto_id uuid,componente_producto_id uuid,cantidad numeric);
     CREATE TABLE lotes_producto(id uuid PRIMARY KEY,producto_id uuid,kiosco_id uuid,cantidad_actual numeric,activo boolean);
     CREATE TABLE pagos_venta(venta_id uuid,medio_pago text,monto numeric);
@@ -46,7 +46,8 @@ beforeAll(async () => {
   await db.exec(sql); await db.exec(sql)
 })
 beforeEach(async () => {
-  await db.exec(`RESET ROLE; DROP TRIGGER IF EXISTS fallo ON movimientos_cuenta_corriente;
+  await db.exec(`RESET ROLE; DROP TRIGGER IF EXISTS reposicion_legacy ON ventas;
+    DROP TRIGGER IF EXISTS fallo ON movimientos_cuenta_corriente;
     DROP TRIGGER IF EXISTS omitir_auditoria ON auditoria_operaciones;
     DELETE FROM auditoria_operaciones; DELETE FROM anulaciones_venta_atomicas; DELETE FROM devoluciones_venta;
     DELETE FROM ventas; DELETE FROM detalles_venta; DELETE FROM checkout_manuales; DELETE FROM productos; DELETE FROM lotes_producto;
@@ -82,6 +83,29 @@ it('recupera receta y lotes históricos, deuda y auditoría una sola vez', async
   expect(await estado()).toEqual({ estado:'ANULADA',stock:'10',saldo:'150',lote:'3',anulaciones:1 })
   expect((await db.query('SELECT accion,actor_auth_id FROM auditoria_operaciones')).rows).toEqual([{ accion:'VENTA_ANULADA',actor_auth_id:uid }])
   expect((await db.query('SELECT * FROM movimientos_caja')).rows).toHaveLength(0)
+})
+it.each([true,false])('revierte anulación si un trigger antiguo duplica el movimiento (repone stock: %s)', async repone => {
+  await db.exec(`CREATE OR REPLACE FUNCTION reposicion_legacy_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+    IF NEW.estado='ANULADA' AND OLD.estado IS DISTINCT FROM 'ANULADA' THEN
+      ${repone ? `UPDATE productos SET stock_actual=stock_actual+4 WHERE id='${producto}';` : ''}
+      INSERT INTO movimientos_stock(kiosco_id,producto_id,tipo,cantidad,motivo,notas)
+        VALUES(NEW.kiosco_id,'${producto}','INGRESO',4,'DEVOLUCION','Devolución por anulación de venta '||NEW.id::text);
+    END IF;
+    RETURN NEW;
+  END $$;
+  CREATE TRIGGER reposicion_legacy AFTER UPDATE ON ventas FOR EACH ROW EXECUTE FUNCTION reposicion_legacy_test();`)
+  await expect(anular()).rejects.toThrow('reposición adicional')
+  expect(await estado()).toEqual({estado:'COMPLETADA',stock:'6',saldo:'300',lote:'0',anulaciones:0})
+  expect((await db.query("SELECT * FROM movimientos_stock WHERE tipo='INGRESO'")).rows).toHaveLength(0)
+  expect((await db.query('SELECT * FROM auditoria_operaciones')).rows).toHaveLength(0)
+})
+it('diagnóstico de duplicación enumera movimientos y triggers sin cambiar stock', async () => {
+  const consulta=readFileSync('sql_diagnosticar_stock_anulacion_duplicado.sql','utf8')
+    .replace('ef754442-ec79-480c-844e-4091d1ff71ea',venta)
+  const {rows}=await db.query<{diagnostico_stock_anulacion:{movimientos_relacionados:unknown[];triggers_ventas:unknown[]}}>(consulta)
+  expect(rows[0].diagnostico_stock_anulacion.movimientos_relacionados).toHaveLength(2)
+  expect(rows[0].diagnostico_stock_anulacion.triggers_ventas.length).toBeGreaterThan(0)
+  expect(await estado()).toEqual({estado:'COMPLETADA',stock:'6',saldo:'300',lote:'0',anulaciones:0})
 })
 it('reintegra desde otra caja cuando la original está cerrada', async () => {
   await db.exec(`UPDATE sesiones_caja SET estado='CERRADA',fecha_cierre=now() WHERE id='${caja}'`)

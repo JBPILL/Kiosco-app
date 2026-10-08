@@ -40,6 +40,7 @@ DECLARE actor public.usuarios%ROWTYPE; v public.ventas%ROWTYPE; op public.checko
   v_cliente_id uuid; resultado jsonb; v_motivo text:=btrim(p_motivo); nuevo_stock numeric;
   esperado numeric; lote_anterior numeric; lote_despues numeric; filas integer;
   movimiento_nuevo uuid; costo_original numeric; costo_restituido numeric;
+  ingresos_antes bigint;
 BEGIN
   BEGIN
     SELECT * INTO STRICT actor FROM public.usuarios WHERE auth_user_id=auth.uid() AND activo FOR SHARE;
@@ -180,7 +181,18 @@ BEGIN
     VALUES(v.id,v.kiosco_id,auth.uid(),v_motivo,resultado);
   GET DIAGNOSTICS filas=ROW_COUNT;
   IF filas<>1 THEN RAISE EXCEPTION 'No se confirmó el registro de anulación.'; END IF;
+  SELECT count(*) INTO ingresos_antes FROM public.movimientos_stock
+    WHERE kiosco_id=v.kiosco_id AND tipo='INGRESO' AND strpos(coalesce(notas,''),v.id::text)>0;
   UPDATE public.ventas SET estado='ANULADA',motivo_anulacion=v_motivo WHERE id=v.id;
+  -- Un trigger antiguo puede volver a reponer al cambiar estado. Revisar después
+  -- del UPDATE evita confirmar stock/registro duplicados y revierte toda la TX.
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(stocks) e
+      LEFT JOIN public.productos p ON p.id=(e->>'producto_id')::uuid AND p.kiosco_id=v.kiosco_id
+      WHERE p.stock_actual IS DISTINCT FROM (e->>'stock_actual')::numeric)
+    OR (SELECT count(*) FROM public.movimientos_stock WHERE kiosco_id=v.kiosco_id AND tipo='INGRESO'
+      AND strpos(coalesce(notas,''),v.id::text)>0) IS DISTINCT FROM ingresos_antes THEN
+    RAISE EXCEPTION 'Se detectó una reposición adicional al anular; revisar triggers antiguos.' USING ERRCODE='22023';
+  END IF;
   IF NOT EXISTS(SELECT 1 FROM public.ventas WHERE id=v.id AND estado='ANULADA'
     AND motivo_anulacion=v_motivo AND anulada_por=actor.id AND anulada_en IS NOT NULL)
     OR (SELECT count(*) FROM public.auditoria_operaciones WHERE kiosco_id=v.kiosco_id

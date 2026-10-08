@@ -52,6 +52,12 @@ cumplir la puerta de aceptación correspondiente.
 
 ## Registro de tareas realizadas
 
+- [x] Protección de anulación detecta reposición adicional durante el cambio
+  de estado y revierte la transacción. Regresión con trigger antiguo que duplica
+  stock o sólo movimiento: 98 pruebas SQL aprobadas, incluido diagnóstico de
+  movimientos/triggers de sólo lectura. Aplicación remota y
+  conciliación del duplicado informado por el usuario todavía pendientes (P05).
+
 - [x] Catálogo remoto de devoluciones recibido: RLS habilitado y políticas
   FOR ALL para authenticated por comercio; grants de escritura anon/authenticated.
   Sin política anon en el resultado: no prueba escritura anónima efectiva.
