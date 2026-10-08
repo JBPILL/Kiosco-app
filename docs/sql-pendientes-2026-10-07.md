@@ -54,17 +54,21 @@ El ZIP de pendientes contiene **16 SQL (18–33)** y esta guía. La tabla siguie
 | 35 | supabase_fase_supervisor_auditoria_consulta.sql |
 | 36 | supabase_fase_supervisor_politica_descuento.sql |
 | 37 | supabase_fase_checkout_manual_politica_congelada.sql |
+| 38 | supabase_fase_supervisor_auditoria_politica.sql |
 
 El archivo 33 debe ir después del 32 y de las funciones originales de checkout. Si reaplicás esas funciones anteriores, reaplicá el 33 al final para conservar el control de supervisor. No modifiques las decisiones ya almacenadas ni borres las preparaciones pendientes.
 
 El 34 reemplaza las funciones de reserva y finalización del 30. Si reaplicás el 30, ejecutá nuevamente el 34 para conservar la espera progresiva. El 35 habilita la consulta acotada de auditoría del dueño; no concede lectura directa de las tablas privadas.
 
-36 y 37 se entregan por separado y no están en ninguno de los dos ZIP. El 36
+36–38 están en `artifacts/sql-politica-descuentos-2026-10-07.zip`, con guía y
+SHA256 verificados contra los originales. No están en los dos ZIP anteriores. El 36
 agrega la política privada y su auditoría; el 37 congela su revisión en el cobro.
 Configuración y formulario de cobro ya usan la política; falta ensayo remoto.
 **No aplicar 37 aisladamente con checkout antiguo
 activo**, porque revoca su preparador: requiere despliegue coordinado del backend
 nuevo y ensayo. Ver `docs/supervisor-politica-descuento.md` antes de instalarlo.
+El 38 amplía la consulta de auditoría con valores anterior/nuevo del umbral;
+si reaplicás el 35, ejecutá nuevamente el 38 para conservar estos eventos.
 
 ## Consulta inicial de sólo lectura
 

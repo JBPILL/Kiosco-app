@@ -24,7 +24,7 @@ La suite incluye los módulos de cobro manual, cancelación durable, conciliaci�
 
 | Requisito del plan revisado | Evidencia actual y trabajo pendiente |
 | --- | --- |
-| Seguridad del supervisor | Backend con hash y pepper versionado, límites persistentes, espera progresiva, consulta de auditoría del dueño y permiso de descuento vinculado al cuerpo original. Formularios de dueño/cajero y cola durable integrados. Falta umbral configurable (actualmente 15% fijo), retención de auditoría, otras acciones protegidas y validación remota/en navegador. |
+| Seguridad del supervisor | Backend con hash y pepper versionado, límites persistentes, espera progresiva, auditoría del dueño y permiso de descuento vinculado al cuerpo original. Umbral configurable integrado en Configuración, cobro y servidor con política congelada; cambios visibles en auditoría (SQL 36–38). Faltan retención, otras acciones protegidas y validación remota/en navegador. |
 | Cobro manual y cancelación entre equipos | SQL y cola local cubiertos por pruebas. Falta instalar/verificar las migraciones con JWT/PostgREST reales y piloto concurrente con dos equipos. |
 | Seguridad de costos y permisos | Hay migraciones y pruebas SQL locales. Falta auditar todas las políticas efectivamente instaladas y retirar vías de escritura antiguas cuando corresponda. |
 | Respaldo integral | Hay respaldo ampliado, restauración y copia local al cierre con pruebas. Falta restauración comprobada en comercio de ensayo con conteos y saldos reales. |
@@ -36,7 +36,8 @@ La suite incluye los módulos de cobro manual, cancelación durable, conciliaci�
 
 ## Próxima implementación
 
-Completar el umbral configurable y las acciones protegidas restantes del supervisor.
+Completar las acciones protegidas restantes del supervisor y validar el umbral
+configurable con despliegue coordinado en ensayo.
 El descuento ya usa autorización de servidor vinculada a la entrada original;
 la validación remota, las interacciones en navegador y los pilotos siguen siendo
 puertas independientes. Ver `docs/supervisor-pin-cliente.md`.

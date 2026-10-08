@@ -54,3 +54,14 @@ it('rechaza respuestas con campos privados en lugar de mostrarlas', async () => 
   expect(await screen.findByRole('alert')).toBeTruthy()
   expect(screen.queryByText('Intento de PIN')).toBeNull()
 })
+it('presenta porcentajes anterior y nuevo de la política comercial', async () => {
+  mocks.rpc.mockResolvedValue({ data: [{ id: 'e1', fecha: '2026-10-07T12:00:00Z', evento: 'POLITICA_DESCUENTO', resultado: 'CONFIGURADO', accion: 'UMBRAL 15.00 -> 10.25', actor_auth_id: 'a1', revision: 1 }], error: null })
+  render(<SupervisorAuditSection />)
+  expect(await screen.findByText('Umbral: 15% → 10,25%')).toBeTruthy()
+})
+it('no muestra datos arbitrarios enviados como detalle de política', async () => {
+  mocks.rpc.mockResolvedValue({ data: [{ id: 'e1', fecha: '2026-10-07T12:00:00Z', evento: 'POLITICA_DESCUENTO', resultado: 'CONFIGURADO', accion: 'SECRET_SQL', actor_auth_id: 'a1', revision: 1 }], error: null })
+  render(<SupervisorAuditSection />)
+  expect(await screen.findByRole('alert')).toBeTruthy()
+  expect(screen.queryByText('SECRET_SQL')).toBeNull()
+})

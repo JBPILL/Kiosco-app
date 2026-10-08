@@ -16,13 +16,14 @@ beforeAll(async () => {
     CREATE TABLE usuarios(id uuid PRIMARY KEY,auth_user_id uuid,kiosco_id uuid REFERENCES kioscos,activo boolean,rol text);
     INSERT INTO kioscos VALUES('${kid}'),('${otroKid}');
     INSERT INTO usuarios VALUES('${dueno}','${dueno}','${kid}',true,'DUEÑO'),('${cajero}','${cajero}','${kid}',true,'CAJERO');`)
-  for (const archivo of ['supabase_fase_supervisor_pin_privado.sql', 'supabase_fase_supervisor_pin_intentos.sql', 'supabase_fase_supervisor_autorizacion_descuento.sql', 'supabase_fase_supervisor_auditoria_consulta.sql', 'supabase_fase_supervisor_auditoria_consulta.sql']) {
+  for (const archivo of ['supabase_fase_supervisor_pin_privado.sql', 'supabase_fase_supervisor_pin_intentos.sql', 'supabase_fase_supervisor_autorizacion_descuento.sql', 'supabase_fase_supervisor_auditoria_consulta.sql', 'supabase_fase_supervisor_politica_descuento.sql', 'supabase_fase_supervisor_auditoria_politica.sql', 'supabase_fase_supervisor_auditoria_politica.sql']) {
     await db.exec(readFileSync(archivo, 'utf8'))
   }
 }, 30000)
 beforeEach(async () => {
   await db.exec(`RESET ROLE; SET request.jwt.claim.role='authenticated'; SET request.jwt.claim.sub='${dueno}'; UPDATE usuarios SET activo=true;
     DELETE FROM supervisor_pin_config_auditoria;
+    DELETE FROM supervisor_politica_auditoria;
     INSERT INTO supervisor_pin_config_auditoria(kiosco_id,revision,actor_auth_id) VALUES('${kid}',1,'${dueno}'),('${otroKid}',2,'${cajero}');`)
 })
 afterAll(async () => { await db.close() })
@@ -48,4 +49,12 @@ it('sin identidad y como anónimo no puede consultar', async () => {
   await expect(db.query('SELECT * FROM consultar_auditoria_supervisor()')).rejects.toThrow(/Sesión/)
   await db.exec('SET ROLE anon')
   await expect(db.query('SELECT * FROM consultar_auditoria_supervisor()')).rejects.toThrow(/permission denied/)
+})
+it('incluye cambios de política propios con ambos valores y oculta el comercio ajeno', async () => {
+  await db.exec(`INSERT INTO supervisor_politica_auditoria(kiosco_id,actor_auth_id,umbral_anterior,umbral_nuevo,revision)
+    VALUES('${kid}','${dueno}',15,10.25,1),('${otroKid}','${cajero}',15,50,1); SET ROLE authenticated`)
+  const filas = (await db.query<Record<string, unknown>>('SELECT * FROM consultar_auditoria_supervisor()')).rows
+  expect(filas).toHaveLength(2)
+  expect(filas.find(fila => fila.evento === 'POLITICA_DESCUENTO')).toMatchObject({ resultado: 'CONFIGURADO', accion: 'UMBRAL 15.00 -> 10.25', actor_auth_id: dueno, revision: 1 })
+  await expect(db.query('SELECT * FROM supervisor_politica_auditoria')).rejects.toThrow(/permission denied/)
 })

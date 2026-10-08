@@ -6,6 +6,11 @@ import { RefreshButton } from '../ui/RefreshButton'
 interface EventoSupervisor {
   id: string; fecha: string; evento: string; resultado: string; accion: string; actor_auth_id: string; revision: number
 }
+function detallePolitica(accion: string): string | null {
+  const valores = /^UMBRAL (\d{1,3}(?:\.\d{1,2})?) -> (\d{1,3}(?:\.\d{1,2})?)$/.exec(accion)
+  if (!valores || Number(valores[1]) > 100 || Number(valores[2]) > 100) return null
+  return `Umbral: ${Number(valores[1]).toLocaleString('es-AR')}% → ${Number(valores[2]).toLocaleString('es-AR')}%`
+}
 function leerEventos(datos: unknown): EventoSupervisor[] {
   if (!Array.isArray(datos) || datos.length > 50) throw new Error('Auditoría inválida')
   return datos.map((valor: unknown) => {
@@ -13,12 +18,13 @@ function leerEventos(datos: unknown): EventoSupervisor[] {
     const fila = valor as Record<string, unknown>
     if (Object.keys(fila).length !== 7 || !['id','fecha','evento','resultado','accion','actor_auth_id'].every(k => typeof fila[k] === 'string')
       || !Number.isFinite(Date.parse(String(fila.fecha))) || !Number.isSafeInteger(fila.revision) || Number(fila.revision) < 1
-      || !['INTENTO_PIN','CONFIGURACION_PIN','PERMISO'].includes(String(fila.evento))
+      || !['INTENTO_PIN','CONFIGURACION_PIN','PERMISO','POLITICA_DESCUENTO'].includes(String(fila.evento))
       || !['VALIDO','INVALIDO','VENCIDO','PENDIENTE','CONFIGURADO','CONSUMIDO','VIGENTE'].includes(String(fila.resultado))) throw new Error('Evento inválido')
+    if (fila.evento === 'POLITICA_DESCUENTO' && (fila.resultado !== 'CONFIGURADO' || !detallePolitica(String(fila.accion)))) throw new Error('Política inválida')
     return fila as unknown as EventoSupervisor
   })
 }
-const etiquetas: Record<string, string> = { INTENTO_PIN: 'Intento de PIN', CONFIGURACION_PIN: 'Configuración del PIN', PERMISO: 'Permiso de descuento',
+const etiquetas: Record<string, string> = { INTENTO_PIN: 'Intento de PIN', CONFIGURACION_PIN: 'Configuración del PIN', PERMISO: 'Permiso de descuento', POLITICA_DESCUENTO: 'Política de descuento',
   VALIDO: 'PIN válido', INVALIDO: 'PIN rechazado', VENCIDO: 'Vencido', PENDIENTE: 'Pendiente', CONFIGURADO: 'Guardado', CONSUMIDO: 'Utilizado', VIGENTE: 'Vigente' }
 
 export function SupervisorAuditSection() {
@@ -57,6 +63,7 @@ export function SupervisorAuditSection() {
     {corresponde && !error && !cargando && !eventos.length && <p className="mt-3 text-xs text-gray-500">Sin eventos registrados</p>}
     <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">{(corresponde ? eventos : []).map(fila => <article key={`${fila.evento}/${fila.id}`} className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
       <div className="flex flex-wrap justify-between gap-2 text-xs"><span className="font-semibold dark:text-gray-200">{etiquetas[fila.evento]}</span><span className="text-indigo-600 dark:text-indigo-300">{etiquetas[fila.resultado]}</span></div>
+      {fila.evento === 'POLITICA_DESCUENTO' && <p className="mt-1 text-xs dark:text-gray-300">{detallePolitica(fila.accion)}</p>}
       <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{new Date(fila.fecha).toLocaleString('es-AR')} · Actor {fila.actor_auth_id.slice(0, 8)} · Revisión {fila.revision}</p>
     </article>)}</div>
   </section>

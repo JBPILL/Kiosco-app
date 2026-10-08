@@ -21,8 +21,12 @@ Las tablas no conceden escritura directa a clientes ni al servidor de cotizació
 
 ## Integración pendiente
 
-1. Ampliar la consulta de auditoría para incluir cambios de política y validar
-   sesiones reales, concurrencia y reintentos antes de activar.
+1. Validar sesiones reales, concurrencia y reintentos antes de activar.
+
+El paso 38 amplía la auditoría visible del dueño con los porcentajes anterior y
+nuevo, actor y revisión. Los pasos 36–38 están reunidos en
+`artifacts/sql-politica-descuentos-2026-10-07.zip`; sus hashes se comprobaron contra
+los archivos vigentes del repositorio. Verificar el paquete no aplica sus SQL.
 
 Los cobros guardados se recuperan sin consultar una política nueva ni reconstruir
 su solicitud. Un descuento nuevo del cajero sin conexión no se archiva ni se
@@ -81,7 +85,7 @@ rechazo de escritura directa. No hay comprobación remota de JWT/PostgREST ni
 concurrencia entre conexiones reales.
 
 Autoevaluación: precisión 4 (reglas SQL probadas; falta instancia remota),
-completitud 3 (circuito local integrado; auditoría UI y validación remota pendientes), claridad 4
+completitud 3 (circuito local y auditoría integrados; validación remota pendiente), claridad 4
 (estado y dependencias explícitos), utilidad 4 (RPC aplicables; no cambia cobro
 aún en cliente), concisión 4 (dos migraciones; conserva pasos de integración). Promedio 3,8/5.
-Prioridad siguiente: ampliar auditoría UI y validar despliegue coordinado en ensayo.
+Prioridad siguiente: validar despliegue coordinado en ensayo.
