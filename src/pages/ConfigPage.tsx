@@ -1,6 +1,7 @@
 import { Store, Printer, Palette, Sun, Moon } from '../components/config/ConfigIcons'
 import { ModulosComercioSection } from '../components/config/ModulosComercioSection'
 import { SupervisorPinSection } from '../components/config/SupervisorPinSection'
+import { CommercialAuditSection } from '../components/config/CommercialAuditSection'
 import { SupervisorAuditSection } from '../components/config/SupervisorAuditSection'
 import { SupervisorPolicySection } from '../components/config/SupervisorPolicySection'
 import { RefreshButton } from '../components/ui/RefreshButton'
@@ -961,6 +962,7 @@ export function ConfigPage() {
               <SupervisorPinSection />
               <SupervisorPolicySection />
               <SupervisorAuditSection />
+              <CommercialAuditSection />
               {/* Tarjeta 1: Arqueo Ciego */}
               <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-4">
                 <div className="flex items-center gap-2">
@@ -2007,3 +2009,4 @@ export function ConfigPage() {
     </div>
   )
 }
+

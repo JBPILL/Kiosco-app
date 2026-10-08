@@ -28,6 +28,13 @@ describe('migraciones de seguridad en PostgreSQL', () => {
     try { await verificar() } finally { await db.exec('ROLLBACK; RESET ROLE;') }
   }
 
+  const instalarConsultaComercial = async () => {
+    await db.exec('RESET ROLE;')
+    const sql = readFileSync('supabase_fase_auditoria_comercial_consulta.sql', 'utf8')
+    await db.exec(sql.replace(/^BEGIN;$/m, '').replace(/^COMMIT;$/m, ''))
+    await sesion(propietario)
+  }
+
   beforeAll(async () => {
     db = new PGlite()
     await db.exec(`
@@ -309,6 +316,32 @@ describe('migraciones de seguridad en PostgreSQL', () => {
     await conVenta(async () => {
       await db.exec(`UPDATE public.productos SET precio_venta = 0 WHERE id = '${productoInicial}';`)
       expect((await db.query('SELECT id FROM public.auditoria_operaciones')).rows).toEqual([])
+    })
+  })
+
+  it('consulta comercial devuelve sólo eventos propios y campos públicos acotados', async () => {
+    await conVenta(async () => {
+      await instalarConsultaComercial()
+      await instalarConsultaComercial()
+      await db.exec(`UPDATE public.productos SET precio_venta = 900 WHERE id = '${productoInicial}';`)
+      await db.exec('RESET ROLE;')
+      await db.query(`UPDATE public.auditoria_operaciones SET detalles = detalles || '{"token":"secreto","precio_costo":999}'::jsonb`)
+      await db.query(`INSERT INTO public.auditoria_operaciones (kiosco_id,accion,entidad,entidad_id,motivo) VALUES ($1,'VENTA_ANULADA','ventas',$2,'Ajeno'), ($3,'OTRA','productos',$4,'Excluir')`, [otroKiosco, venta, kiosco, productoInicial])
+      await sesion(propietario)
+      const filas = (await db.query<{ accion: string; detalles: unknown }>('SELECT * FROM public.consultar_auditoria_comercial(50)')).rows
+      expect(filas).toHaveLength(1)
+      expect(filas[0].accion).toBe('PRECIO_VENTA_MODIFICADO')
+      expect(filas[0].detalles).toEqual({ precio_anterior: 0, precio_nuevo: 900 })
+      expect(Object.keys(filas[0])).toHaveLength(9)
+      await sesion(cajero)
+      await expect(db.query('SELECT * FROM public.consultar_auditoria_comercial(50)')).rejects.toMatchObject({ code: '42501' })
+    })
+  })
+
+  it.each([null, 0, 101])('consulta comercial rechaza límite %s', async limite => {
+    await conVenta(async () => {
+      await instalarConsultaComercial()
+      await expect(db.query('SELECT * FROM public.consultar_auditoria_comercial($1)', [limite])).rejects.toMatchObject({ code: '22023' })
     })
   })
 

@@ -56,6 +56,7 @@ El ZIP de pendientes contiene **16 SQL (18–33)** y esta guía. La tabla siguie
 | 37 | supabase_fase_checkout_manual_politica_congelada.sql |
 | 38 | supabase_fase_supervisor_auditoria_politica.sql |
 | 39 | supabase_fase_motivo_cambio_precio.sql |
+| 40 | supabase_fase_auditoria_comercial_consulta.sql |
 
 El archivo 33 debe ir después del 32 y de las funciones originales de checkout. Si reaplicás esas funciones anteriores, reaplicá el 33 al final para conservar el control de supervisor. No modifiques las decisiones ya almacenadas ni borres las preparaciones pendientes.
 
@@ -108,3 +109,6 @@ completitud 4 (orden y dependencias documentados; ensayo remoto pendiente),
 claridad 4 (se distinguen ambos paquetes; historial largo), utilidad 4 (paquete listo;
 requiere ejecución del usuario), concisión 4 (dos archivos nuevos; guía histórica extensa).
 Promedio 4,0/5. Mejora prioritaria: verificar el circuito con sesiones reales en ensayo.
+
+El 40 permite consultar cambios de precio y anulaciones en Seguridad y Caja; requiere 04 y 05. Ver docs/auditoria-comercial-consulta.md. Validación remota pendiente.
+
