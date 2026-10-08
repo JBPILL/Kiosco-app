@@ -1,7 +1,7 @@
 # Justificación del cambio de precio — implementación en curso
 
 `supabase_fase_motivo_cambio_precio.sql` es la base de servidor de esta fase.
-**No instalar todavía:** los formularios e importadores actuales no envían
+**No instalar todavía:** importadores y restauración aún no envían
 `motivo_cambio_precio`. Aplicarla ahora rechazaría sus cambios de precio.
 No se incluye en los paquetes SQL destinados al comercio.
 
@@ -24,14 +24,21 @@ Incluye instalación repetida, motivo recortado y descartado, falta de motivo
 en un segundo cambio, texto vacío/corto/largo y denegación del cajero.
 Son pruebas PostgreSQL local con identidad emulada, sin JWT/PostgREST remoto.
 
-Falta integrar ProductForm, aumentos masivos, importación y restauración;
+ProductForm y aumentos masivos ya incluyen un campo compacto y validación del
+motivo, bajo `VITE_AUDITORIA_MOTIVO_PRECIO=true` (desactivado por defecto).
+No activar esa variable todavía. Un fallo de esquema no puede eliminar el
+motivo para reintentar; un cambio justificado sin confirmación por red conserva
+el precio anterior en UI/caché. El motivo no se copia a la caché de productos.
+44 pruebas en cuatro archivos aprobaron esta integración y el SQL.
+
+Falta integrar importación y restauración;
 comprobar rechazo sin actualizar caché; actualizar el paquete y coordinar la
 aplicación con el despliegue. No se considera terminada la función completa.
 
 ## Autoevaluación
 
 Exactitud 4/5: pruebas SQL locales; falta esquema remoto. Completitud 3/5:
-contrato de servidor implementado; faltan todas las rutas de cliente indicadas.
+contrato de servidor y dos formularios implementados; faltan importación y restauración.
 Claridad 4/5: requisito de coordinación explícito; falta guía final de instalación.
 Utilidad 4/5: auditoría transaccional probada; aún no utilizable desde interfaz.
 Concisión 4/5: reutiliza el trigger existente; queda documentación de transición.

@@ -83,6 +83,8 @@ async function ejecutarOperacionSupabaseSegura(
       msg.includes('column') ||
       msg.includes('schema cache')
     ) {
+      // Nunca quitar la justificación para acomodar un esquema antiguo.
+      if ('motivo_cambio_precio' in datos) return { ok: false, error }
       const matchPgrst = error.message.match(/Could not find the '([^']+)' column/i)
       const matchPg = error.message.match(/column [^.]*\.?([a-zA-Z0-9_]+) does not exist/i)
       const col = matchPgrst?.[1] || matchPg?.[1]
@@ -499,7 +501,7 @@ export function useProducts() {
   }
 
   // Actualizar producto
-  const actualizarProducto = async (id: string, cambios: Partial<Producto>) => {
+  const actualizarProducto = async (id: string, cambios: Partial<Producto> & { motivo_cambio_precio?: string }) => {
     const codigoBarrasLimpio = cambios.codigo_barras?.trim()
     if (codigoBarrasLimpio) {
       const yaExiste = productos.some(
@@ -533,7 +535,15 @@ export function useProducts() {
         return false
       }
       sincronizado = resultado.ok
+      if (!sincronizado && cambios.motivo_cambio_precio !== undefined) {
+        toast.error('No se confirmó el cambio de precio. Reintentá cuando haya conexión.')
+        return false
+      }
     } catch (error) {
+      if (cambios.motivo_cambio_precio !== undefined) {
+        toast.error('No se confirmó el cambio de precio. Reintentá cuando haya conexión.')
+        return false
+      }
       if (!esErrorDeRed(error)) {
         toast.error(`No se pudo actualizar el producto: ${mensajeDeError(error)}`)
         return false
@@ -551,8 +561,9 @@ export function useProducts() {
     }
 
     // Actualizar UI y caché de forma inmutable.
+    const { motivo_cambio_precio: _motivoTransitorio, ...cambiosLocales } = cambiosCompletos
     setProductos((prev) => {
-      const actualizados = prev.map((p) => (p.id === id ? { ...p, ...cambiosCompletos } : p))
+      const actualizados = prev.map((p) => (p.id === id ? { ...p, ...cambiosLocales } : p))
       guardarProductosEnCache(actualizados)
       return actualizados
     })

@@ -7,6 +7,7 @@ import { useAuthStore } from '../../stores/authStore'
 import type { Producto, Categoria } from '../../types/database'
 import { useProveedorStore } from '../../stores/proveedorStore'
 import toast from 'react-hot-toast'
+import { auditoriaMotivoPrecioActiva } from '../../lib/priceChangeAudit'
 
 interface AumentoPreciosModalProps {
   isOpen: boolean
@@ -34,9 +35,11 @@ export function AumentoPreciosModal({
   const [tipoPrecio, setTipoPrecio] = useState<'VENTA' | 'COSTO_Y_VENTA'>('VENTA')
   const [redondeo, setRedondeo] = useState<TipoRedondeo>('100')
   const [procesando, setProcesando] = useState(false)
+  const [motivoPrecio, setMotivoPrecio] = useState('')
 
   useEffect(() => {
     if (isOpen) {
+      setMotivoPrecio('')
       cargarProveedores()
       setPorcentaje(10)
       setPorcentajeInput('10')
@@ -116,6 +119,10 @@ export function AumentoPreciosModal({
 
   const handleAplicar = async () => {
     if (procesando) return
+    if (auditoriaMotivoPrecioActiva() && (motivoPrecio.trim().length < 5 || motivoPrecio.trim().length > 300)) {
+      toast.error('Indicá un motivo de cambio de precio de 5 a 300 caracteres')
+      return
+    }
     if (productosAfectados.length === 0) {
       toast.error('No hay productos que cumplan con el criterio seleccionado')
       return
@@ -158,6 +165,7 @@ export function AumentoPreciosModal({
             if (!upd) return
 
             const updates: Record<string, any> = {
+              ...(auditoriaMotivoPrecioActiva() ? { motivo_cambio_precio: motivoPrecio.trim() } : {}),
               precio_venta: upd.precio_venta,
               fecha_actualizacion: ahora,
             }
@@ -269,6 +277,9 @@ export function AumentoPreciosModal({
           </div>
         </div>
 
+        {auditoriaMotivoPrecioActiva() && <input aria-label="Motivo del cambio de precio" placeholder="Motivo del cambio de precio" maxLength={300}
+          value={motivoPrecio} onChange={e => setMotivoPrecio(e.target.value)} disabled={procesando}
+          className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-transparent px-3.5 py-2.5 text-sm" />}
         {/* Selector de Criterio: Categoría / Proveedor / Todo el Catálogo */}
         <div className="space-y-1.5">
           <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">

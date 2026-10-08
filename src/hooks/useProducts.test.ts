@@ -35,6 +35,18 @@ beforeEach(() => {
 })
 
 describe('useProducts: guardar cambios respetando autorización', () => {
+  it.each(['esquema', 'red'])('no altera caché ni elimina motivo ante fallo de %s', async fallo => {
+    const { result } = renderHook(() => useProducts())
+    await waitFor(() => expect(result.current.productos[0]?.precio_venta).toBe(200))
+    if (fallo === 'red') db.lanzar.add('productos.update')
+    else responder('productos.update', { error: { code: 'PGRST204', message: "Could not find the 'motivo_cambio_precio' column" } })
+    let guardado = true
+    await act(async () => { guardado = await result.current.actualizarProducto('p1', { precio_venta: 350, motivo_cambio_precio: 'Lista nueva' }) })
+    expect(guardado).toBe(false)
+    expect(result.current.productos[0]?.precio_venta).toBe(200)
+    expect(getCachedProductos('k1')[0]?.precio_venta).toBe(200)
+    expect(toast.success).not.toHaveBeenCalled()
+  })
   it('un rechazo de servidor conserva catálogo y costo local y no informa éxito', async () => {
     const { result } = renderHook(() => useProducts())
     await waitFor(() => expect(result.current.productos[0]?.precio_costo).toBe(100))

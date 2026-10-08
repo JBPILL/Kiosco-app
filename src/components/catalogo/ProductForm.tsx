@@ -10,6 +10,7 @@ import { useEnvasesStore } from '../../stores/envasesStore'
 import { useProveedorStore } from '../../stores/proveedorStore'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import toast from 'react-hot-toast'
+import { auditoriaMotivoPrecioActiva } from '../../lib/priceChangeAudit'
 
 interface ProductFormProps {
   isOpen: boolean
@@ -20,6 +21,7 @@ interface ProductFormProps {
 }
 
 export interface ProductFormData {
+  motivo_cambio_precio?: string
   descripcion: string
   precio_costo: number
   precio_venta: number
@@ -80,12 +82,14 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
     proveedor_id: null,
   })
   const [guardando, setGuardando] = useState(false)
+  const [motivoPrecio, setMotivoPrecio] = useState('')
   const [scannerCamaraOpen, setScannerCamaraOpen] = useState(false)
   const { tiposEnvases, cargarTiposEnvases } = useEnvasesStore()
   const { proveedores, cargarProveedores } = useProveedorStore()
 
   useEffect(() => {
     if (isOpen) {
+      setMotivoPrecio('')
       cargarProveedores()
       if (tieneEnvases) {
         cargarTiposEnvases()
@@ -162,6 +166,11 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
     }
 
     const costoNum = parseFloat(form.precio_costo) || 0
+    const cambiaPrecio = auditoriaMotivoPrecioActiva() && producto && ventaNum !== producto.precio_venta
+    if (cambiaPrecio && (motivoPrecio.trim().length < 5 || motivoPrecio.trim().length > 300)) {
+      toast.error('Indicá un motivo de cambio de precio de 5 a 300 caracteres')
+      return
+    }
     if (costoNum < 0) {
       toast.error('El precio de costo no puede ser negativo')
       return
@@ -190,6 +199,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
       descripcion: descripcionLimpia,
       precio_costo: costoNum,
       precio_venta: ventaNum,
+      ...(cambiaPrecio ? { motivo_cambio_precio: motivoPrecio.trim() } : {}),
       stock_actual: stockActualNum,
       stock_minimo: stockMinimoNum,
       categoria_id: form.categoria_id,
@@ -315,6 +325,11 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
               </div>
             </div>
 
+            {auditoriaMotivoPrecioActiva() && producto && ventaNum !== producto.precio_venta && (
+              <input aria-label="Motivo del cambio de precio" placeholder="Motivo del cambio de precio" maxLength={300}
+                value={motivoPrecio} onChange={e => setMotivoPrecio(e.target.value)}
+                className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-transparent px-3.5 py-2.5 text-sm" />
+            )}
             {/* Indicador de margen en tiempo real */}
             {costoNum > 0 && ventaNum > 0 && (
               <div className={`text-xs font-semibold px-3 py-2 rounded-lg flex items-center justify-between border ${

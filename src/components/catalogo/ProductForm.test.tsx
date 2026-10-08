@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { crearProducto } from '../../test/factories'
 
 const { cargar, tenant } = vi.hoisted(() => ({
@@ -11,6 +11,20 @@ vi.mock('../../stores/envasesStore', () => ({ useEnvasesStore: () => ({ tiposEnv
 vi.mock('../../stores/proveedorStore', () => ({ useProveedorStore: () => ({ proveedores: [], cargarProveedores: cargar }) }))
 vi.mock('../ui/BarcodeCaptureModal', () => ({ BarcodeCaptureModal: () => null }))
 import { ProductForm } from './ProductForm'
+afterEach(() => vi.unstubAllEnvs())
+
+it('exige y envía un motivo al modificar el precio', async () => {
+  vi.stubEnv('VITE_AUDITORIA_MOTIVO_PRECIO', 'true')
+  const guardar = vi.fn().mockResolvedValue(true)
+  render(<ProductForm isOpen categorias={[]} onClose={() => undefined} onGuardar={guardar}
+    producto={crearProducto({ precio_venta: 12345 })} />)
+  fireEvent.change(screen.getByDisplayValue('12345'), { target: { value: '12500' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar Cambios' }))
+  expect(guardar).not.toHaveBeenCalled()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Motivo del cambio de precio' }), { target: { value: '  Nueva lista  ' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar Cambios' }))
+  await waitFor(() => expect(guardar).toHaveBeenCalledWith(expect.objectContaining({ precio_venta: 12500, motivo_cambio_precio: 'Nueva lista' })))
+})
 
 it('editar un pesable con módulos desactivados conserva unidad, PLU y stock fraccionario', async () => {
   const guardar = vi.fn().mockResolvedValue(true)
