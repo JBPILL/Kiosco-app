@@ -50,6 +50,10 @@ cumplir la puerta de aceptación correspondiente.
 
 ## Registro de tareas realizadas
 
+- [x] Diagnóstico de catálogo del paso 53, sólo lectura: objetos, RLS, contexto,
+  permisos y política esperada. Tres pruebas PostgreSQL locales y build
+  aprobados; resultado remoto aún pendiente y no sustituye recuperación JWT.
+
 - [x] Verificador de recetas rechaza duplicados y cantidades esperadas inválidas,
   incluso si coinciden con la respuesta. 76 pruebas dirigidas aprobadas.
 
