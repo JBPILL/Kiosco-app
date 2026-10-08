@@ -63,6 +63,7 @@ El ZIP de pendientes contiene **16 SQL (18–33)** y esta guía. La tabla siguie
 | 44 | supabase_fase_lectura_identidad_edge.sql |
 | 45 | supabase_fase_lectura_catalogo_checkout.sql |
 | 46 | supabase_fase_checkout_manual_caja_compartida.sql |
+| 47 | supabase_fase_checkout_manual_inmutabilidad.sql |
 
 44 y 45 conceden al servidor las columnas necesarias para verificar identidad y
 cotizar sin incluir costos ni datos personales del cliente. El backend debe usar
