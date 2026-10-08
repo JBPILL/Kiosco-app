@@ -1,9 +1,9 @@
 # Justificación del cambio de precio — implementación en curso
 
 `supabase_fase_motivo_cambio_precio.sql` es la base de servidor de esta fase.
-**No instalar todavía:** falta revisar todas las escrituras secundarias y
-comprobar el despliegue coordinado. La función sigue desactivada por defecto.
-No se incluye en los paquetes SQL destinados al comercio.
+Preparado para **ensayo coordinado**, con la función desactivada por defecto.
+No aplicar aisladamente con el cliente antiguo. Ver `docs/aplicar-motivo-precio.md`
+y el paquete `artifacts/sql-motivo-precio-2026-10-08.zip`.
 
 La migración conserva la autorización del dueño y la auditoría de actor,
 entidad, fecha y valores anterior/nuevo. Exige un motivo de 5 a 300 caracteres
@@ -26,7 +26,7 @@ Son pruebas PostgreSQL local con identidad emulada, sin JWT/PostgREST remoto.
 
 ProductForm y aumentos masivos ya incluyen un campo compacto y validación del
 motivo, bajo `VITE_AUDITORIA_MOTIVO_PRECIO=true` (desactivado por defecto).
-No activar esa variable todavía. Un fallo de esquema no puede eliminar el
+Activar sólo en el ensayo coordinado. Un fallo de esquema no puede eliminar el
 motivo para reintentar; un cambio justificado sin confirmación por red conserva
 el precio anterior en UI/caché. El motivo no se copia a la caché de productos.
 44 pruebas en cuatro archivos aprobaron esta integración y el SQL.
@@ -45,8 +45,8 @@ de la lectura, lo conserva en lugar de sobrescribirlo sin justificación.
 rollback ante rechazo y altas sin motivo transitorio.
 
 Revisión de rutas secundarias: altas rápidas y desde Proveedores son inserciones;
-envases y combos no escriben precio de venta en productos. Sincronización local
-y productos creados offline todavía requieren comprobación de colisiones.
+envases y combos no escriben precio de venta en productos. Las comprobaciones
+de colisiones de la sincronización local se detallan abajo.
 Los artículos libres de cobro y cola offline ahora ignoran duplicados al insertar,
 sin cambiar precios existentes. Con la auditoría activa verifican ID, comercio,
 nombre, precio y estado inactivo antes de continuar. Un conflicto mantiene la
@@ -64,15 +64,15 @@ conservar el borrador local. Once pruebas de useProducts aprobaron estos casos,
 incluida recuperación de respuesta perdida con precio remoto diferente y
 protección del ID/comercio generados frente a campos adicionales del llamador.
 
-Falta completar la regresión, empaquetado y ensayo coordinado;
-comprobar rechazo sin actualizar caché; actualizar el paquete y coordinar la
-aplicación con el despliegue. No se considera terminada la función completa.
+Regresión sobre `013a5fb`: 1238 pruebas en 134 archivos aprobadas. Compilación
+aprobada. Falta aplicar el SQL y completar el ensayo coordinado con identidades
+reales. No se considera aceptada en producción ni terminado el plan general.
 
 ## Autoevaluación
 
 Exactitud 4/5: pruebas SQL locales; falta esquema remoto. Completitud 3/5:
-contrato de servidor y cuatro rutas implementados; falta revisión de escrituras secundarias y piloto remoto.
-Claridad 4/5: requisito de coordinación explícito; falta guía final de instalación.
-Utilidad 4/5: auditoría transaccional probada; aún no utilizable desde interfaz.
+contrato y rutas de cliente implementados; falta piloto remoto y aceptación en producción.
+Claridad 4/5: coordinación y guía explícitas; falta registro de aplicación remota.
+Utilidad 4/5: paquete listo para ensayo; requiere despliegue coordinado del usuario.
 Concisión 4/5: reutiliza el trigger existente; queda documentación de transición.
-Promedio 3,8/5. Prioridad: integrar las rutas de escritura antes de distribuir SQL.
+Promedio 3,8/5. Prioridad: comprobar las rutas con JWT reales en ensayo.

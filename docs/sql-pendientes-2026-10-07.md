@@ -55,6 +55,7 @@ El ZIP de pendientes contiene **16 SQL (18–33)** y esta guía. La tabla siguie
 | 36 | supabase_fase_supervisor_politica_descuento.sql |
 | 37 | supabase_fase_checkout_manual_politica_congelada.sql |
 | 38 | supabase_fase_supervisor_auditoria_politica.sql |
+| 39 | supabase_fase_motivo_cambio_precio.sql |
 
 El archivo 33 debe ir después del 32 y de las funciones originales de checkout. Si reaplicás esas funciones anteriores, reaplicá el 33 al final para conservar el control de supervisor. No modifiques las decisiones ya almacenadas ni borres las preparaciones pendientes.
 
@@ -71,6 +72,11 @@ El 38 amplía la consulta de auditoría con valores anterior/nuevo del umbral;
 si reaplicás el 35, ejecutá nuevamente el 38 para conservar estos eventos.
 
 ## Consulta inicial de sólo lectura
+
+El 39 está en `artifacts/sql-motivo-precio-2026-10-08.zip`. Exige motivo específico
+para cambiar precios. Requiere 01–05 y despliegue de cliente coordinado con
+`VITE_AUDITORIA_MOTIVO_PRECIO=true`; no se aplica aisladamente al cliente antiguo.
+Ver `docs/aplicar-motivo-precio.md`. No activa la integración Point.
 
 ```sql
 SELECT nombre, to_regclass('public.' || nombre) AS objeto

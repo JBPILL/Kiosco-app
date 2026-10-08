@@ -2,6 +2,13 @@
 
 ## Resultado reproducible
 
+Actualización del 8 de octubre: sobre `013a5fb`, `npm run test` aprobó **1238
+pruebas en 134 archivos**, sin fallos, en **103,41 segundos**. Incluye los motivos
+de precio, importación/restauración/siembra y recuperación de artículos libres
+y altas offline. La compilación de esa revisión también aprobó; se conserva el
+aviso de chunks grandes. SQL 39 y la activación coordinada siguen pendientes
+de aplicación y piloto remotos.
+
 Sobre el código de `8591815`, `npm run test` aprobó **1202 pruebas en 131
 archivos**, sin fallos, en **104,35 segundos**. Incluye el umbral configurable,
 su política congelada en el checkout, la auditoría de cambios y los casos de
