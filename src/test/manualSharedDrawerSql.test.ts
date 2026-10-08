@@ -79,8 +79,8 @@ it('prepara con la función real para cajero y conserva identidad, fecha y aisla
       fecha_hora: entrada.fechaHora, total: 100, notas: null, cliente_id: null, detalles: [], pagos: [] }
     const preparar = () => db.query('SELECT preparar_checkout_manual($1::uuid,$2::jsonb,$3::jsonb)', [vendedor, entrada, snapshot])
     await expect(preparar()).resolves.toBeTruthy()
-    expect((await db.query('SELECT usuario_id FROM checkout_manual_entradas')).rows[0].usuario_id).toBe(vendedor)
-    expect((await db.query('SELECT usuario_id FROM sesiones_caja')).rows[0].usuario_id).toBe(titular)
+    expect((await db.query<{ usuario_id: string }>('SELECT usuario_id FROM checkout_manual_entradas')).rows[0].usuario_id).toBe(vendedor)
+    expect((await db.query<{ usuario_id: string }>('SELECT usuario_id FROM sesiones_caja')).rows[0].usuario_id).toBe(titular)
     await db.exec('DELETE FROM checkout_manual_entradas')
     await db.exec("UPDATE sesiones_caja SET estado='CERRADA'")
     await expect(preparar()).rejects.toThrow('Caja original no disponible')
