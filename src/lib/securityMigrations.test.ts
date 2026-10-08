@@ -311,4 +311,41 @@ describe('migraciones de seguridad en PostgreSQL', () => {
       expect((await db.query('SELECT id FROM public.auditoria_operaciones')).rows).toEqual([])
     })
   })
+
+  it('guarda la justificación específica sin conservarla para otro cambio', async () => {
+    await conVenta(async () => {
+      const sql = readFileSync('supabase_fase_motivo_cambio_precio.sql', 'utf8')
+      // La migración se instala fuera del rol de cliente, dentro de la transacción de prueba.
+      await db.exec('RESET ROLE;')
+      await db.exec(sql.replace(/^BEGIN;$/m, '').replace(/^COMMIT;$/m, ''))
+      await db.exec(sql.replace(/^BEGIN;$/m, '').replace(/^COMMIT;$/m, ''))
+      await sesion(propietario)
+      await db.exec(`UPDATE public.productos SET precio_venta = 900, motivo_cambio_precio = '  Nueva lista del proveedor  ' WHERE id = '${productoInicial}';`)
+      expect((await db.query('SELECT motivo FROM public.auditoria_operaciones')).rows).toEqual([{ motivo: 'Nueva lista del proveedor' }])
+      expect((await db.query('SELECT motivo_cambio_precio FROM public.productos')).rows).toEqual([{ motivo_cambio_precio: null }])
+      await expect(db.exec(`UPDATE public.productos SET precio_venta = 1000 WHERE id = '${productoInicial}';`)).rejects.toMatchObject({ code: '22023' })
+    })
+  })
+
+  it.each(['', '    ', 'abcd', 'x'.repeat(301)])('rechaza justificación inválida sin cambiar precio: %s', async motivo => {
+    await sesion(propietario)
+    await db.exec('BEGIN; RESET ROLE;')
+    try {
+      const sql = readFileSync('supabase_fase_motivo_cambio_precio.sql', 'utf8')
+      await db.exec(sql.replace(/^BEGIN;$/m, '').replace(/^COMMIT;$/m, ''))
+      await sesion(propietario)
+      await expect(db.query(`UPDATE public.productos SET precio_venta = 900, motivo_cambio_precio = $1 WHERE id = $2`, [motivo, productoInicial])).rejects.toMatchObject({ code: '22023' })
+    } finally { await db.exec('ROLLBACK; RESET ROLE;') }
+  })
+
+  it('la justificación no concede permiso al cajero', async () => {
+    await sesion(propietario)
+    await db.exec('BEGIN; RESET ROLE;')
+    try {
+      const sql = readFileSync('supabase_fase_motivo_cambio_precio.sql', 'utf8')
+      await db.exec(sql.replace(/^BEGIN;$/m, '').replace(/^COMMIT;$/m, ''))
+      await sesion(cajero)
+      await expect(db.exec(`UPDATE public.productos SET precio_venta = 900, motivo_cambio_precio = 'Nueva lista del proveedor' WHERE id = '${productoInicial}'`)).rejects.toMatchObject({ code: '42501' })
+    } finally { await db.exec('ROLLBACK; RESET ROLE;') }
+  })
 })
