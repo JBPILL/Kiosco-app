@@ -60,3 +60,18 @@ falta hardware), completitud 3 (mejoras de ambos lectores; falta matriz física)
 claridad 4 (límites explícitos), utilidad 4 (entrada manual y errores accionables),
 concisión 4 (helper compartido; queda duplicación de ciclo de cámara).
 Promedio: 3,8/5. Prioridad siguiente: probar cámaras reales y flujo de cierre.
+
+### Cierre durante un inicio fallido
+
+Ambos lectores descartan el fallo de una instancia cerrada antes de intentar
+otra cámara. También liberan un inicio exitoso que termina después del cierre.
+Seis pruebas de ciclo pasan: reapertura, desmontaje y fallo tardío después de
+cerrar, en Ventas y Catálogo. La compilación continúa como puerta de publicación.
+
+Autoevaluación de esta corrección: exactitud 4/5 (regresión simulada comprobada;
+falta dispositivo físico), completitud 4/5 (ambos lectores cubiertos; falta
+validación móvil), claridad 4/5 (comportamiento documentado; falta captura real),
+utilidad 4/5 (evita reapertura involuntaria; falta confirmar el reporte original),
+concisión 4/5 (guardas pequeñas; persiste duplicación entre lectores).
+Promedio: 4,0/5. Siguiente comprobación: cerrar durante una solicitud de permiso
+en iPhone y Android y confirmar que la cámara permanece apagada.

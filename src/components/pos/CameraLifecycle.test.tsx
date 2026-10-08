@@ -28,6 +28,23 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals() })
 
+it.each(['ventas', 'catálogo'])('no abre otra cámara en %s si falla el inicio después de cerrar', async tipo => {
+  let rechazar: (error: Error) => void = () => {}
+  mocks.start.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rechazar = reject }))
+  const ventana = (abierta: boolean) => tipo === 'ventas'
+    ? <BarcodeScannerModal isOpen={abierta} onClose={vi.fn()} onProductScanned={vi.fn()} />
+    : <BarcodeCaptureModal isOpen={abierta} onClose={vi.fn()} onBarcodeCaptured={vi.fn()} />
+  const vista = render(ventana(true))
+  await act(async () => { await vi.advanceTimersByTimeAsync(150) })
+  expect(mocks.start).toHaveBeenCalledTimes(1)
+  vista.rerender(ventana(false))
+  await act(async () => { rechazar(new Error('OverconstrainedError')) })
+  expect(mocks.start).toHaveBeenCalledTimes(1)
+  vista.rerender(ventana(true))
+  await act(async () => { await vi.advanceTimersByTimeAsync(150) })
+  expect(mocks.start).toHaveBeenCalledTimes(2)
+})
+
 it.each(['ventas', 'catálogo'])('reanuda %s al reabrir durante un inicio pendiente', async tipo => {
   let resolver = () => {}
   mocks.start.mockImplementationOnce(() => new Promise<void>(resolve => { resolver = resolve }))

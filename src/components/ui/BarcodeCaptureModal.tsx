@@ -153,6 +153,7 @@ export function BarcodeCaptureModal({
           () => {}
         )
       } catch (firstErr) {
+        if (!abiertoRef.current || scannerRef.current !== scanner) return
         console.warn('Fallo al iniciar cámara con targetCamera, intentando user/default:', firstErr)
         if (!cameraId && puedeReintentarCamara(firstErr)) {
           await scanner.start(
@@ -168,7 +169,7 @@ export function BarcodeCaptureModal({
         }
       }
 
-      if (scannerRef.current !== scanner) {
+      if (!abiertoRef.current || scannerRef.current !== scanner) {
         if (scanner.isScanning) await scanner.stop()
         scanner.clear()
         return
