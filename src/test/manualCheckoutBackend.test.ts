@@ -40,6 +40,26 @@ function contexto(rol: 'DUEÑO' | 'CAJERO' = 'DUEÑO') {
 beforeEach(() => { vi.restoreAllMocks(); vi.stubGlobal('crypto', webcrypto) })
 afterEach(() => { vi.unstubAllGlobals() })
 
+it('diagnostica un registro inválido sin confirmar ni revelar su contenido', async () => {
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const deps = dependencias()
+  deps.buscar = vi.fn(async () => ({ privado: 'PIN_SECRETO' }))
+  await expect(cerrarCheckoutManual(contexto(), entrada(), deps)).rejects.toThrow()
+  expect(log).toHaveBeenCalledWith('CHECKOUT_DIAGNOSTICO', { etapa: 'VALIDAR_REGISTRO', codigo: 'SIN_CODIGO' })
+  expect(deps.confirmar).not.toHaveBeenCalled()
+  expect(JSON.stringify(log.mock.calls)).not.toContain('PIN_SECRETO')
+})
+
+it('distingue una respuesta inválida de un fallo al ejecutar el cierre', async () => {
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const deps = dependencias()
+  deps.confirmar = vi.fn(async () => ({ privado: 'TOKEN_SECRETO' }))
+  await expect(cerrarCheckoutManual(contexto(), entrada(), deps)).rejects.toThrow()
+  expect(deps.confirmar).toHaveBeenCalledOnce()
+  expect(log).toHaveBeenCalledWith('CHECKOUT_DIAGNOSTICO', { etapa: 'VALIDAR_RESULTADO', codigo: 'SIN_CODIGO' })
+  expect(JSON.stringify(log.mock.calls)).not.toContain('TOKEN_SECRETO')
+})
+
 it('rechaza fechas inexistentes sin normalizarlas a otro día', () => {
   for (const fecha of ['2026-02-29T12:00:00Z', '2026-04-31T12:00:00-03:00', '2026-10-07T24:00:00Z']) {
     expect(() => fechaManual(fecha)).toThrow(/Fecha/)
