@@ -102,6 +102,7 @@ beforeAll(async () => {
     await db.exec(readFileSync(archivo, 'utf8'))
   }
   await db.exec(readFileSync('supabase_fase_checkout_manual_inmutabilidad.sql', 'utf8'))
+  await db.exec(readFileSync('supabase_fase_ventas_sin_escritura_anonima.sql', 'utf8'))
 }, 30000)
 beforeEach(async () => {
   await db.exec(`RESET ROLE; SET request.jwt.claim.role='service_role'; SET request.jwt.claim.sub='${actor}';

@@ -36,6 +36,11 @@ beforeAll(async () => {
   `)
   await db.exec(sql)
   await db.exec(sql)
+  await db.exec(`GRANT SELECT,INSERT,UPDATE,DELETE ON ventas,detalles_venta,pagos_venta TO anon;
+    GRANT INSERT(total),UPDATE(total) ON ventas TO PUBLIC;`)
+  const sinAnon = readFileSync('supabase_fase_ventas_sin_escritura_anonima.sql','utf8')
+  await db.exec(sinAnon)
+  await db.exec(sinAnon)
 }, 30_000)
 
 beforeEach(async () => {
@@ -119,4 +124,21 @@ it('entrega permisos, políticas y funciones juntos en el diagnóstico de sólo 
       expect.objectContaining({ funcion:'venta_checkout_manual_protegida(uuid)' }),
     ]))
   } finally { await db.exec('ROLLBACK') }
+})
+
+it.each(['ventas','detalles_venta','pagos_venta'])('revoca escritura anónima de tabla y columnas sin quitar permisos autenticados en %s', async (tabla) => {
+  await db.exec('RESET ROLE')
+  const permisos = await db.query<{ inserta: boolean; actualiza: boolean; borra: boolean;
+    inserta_columnas: boolean; actualiza_columnas: boolean; lee: boolean; autenticado: boolean }>(`
+    SELECT has_table_privilege('anon',$1,'INSERT') AS inserta,
+      has_table_privilege('anon',$1,'UPDATE') AS actualiza,
+      has_table_privilege('anon',$1,'DELETE') AS borra,
+      has_any_column_privilege('anon',$1,'INSERT') AS inserta_columnas,
+      has_any_column_privilege('anon',$1,'UPDATE') AS actualiza_columnas,
+      has_table_privilege('anon',$1,'SELECT') AS lee,
+      has_table_privilege('authenticated',$1,'INSERT') AS autenticado`,[tabla])
+  expect(permisos.rows[0]).toEqual({ inserta:false,actualiza:false,borra:false,
+    inserta_columnas:false,actualiza_columnas:false,lee:true,autenticado:true })
+  await db.exec('SET ROLE anon')
+  await expect(db.exec(`DELETE FROM ${tabla}`)).rejects.toThrow(/permission denied/)
 })

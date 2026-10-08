@@ -39,11 +39,21 @@ preparación de seis argumentos y las confirmaciones públicas del backend;
 no ejecuta los helpers internos ni sobrecargas anteriores. Authenticated tiene
 acceso a consulta/recuperación/cancelación, cuyos archivos locales exigen dueño
 activo y comercio. El cuerpo de esas funciones remotas no se inspeccionó.
-Faltan los resultados de permisos de tablas y políticas RLS del mismo diagnóstico.
+Después el usuario compartió el diagnóstico completo: las cinco tablas tienen
+RLS habilitado y existen las nueve políticas RESTRICTIVE del paso 47 con dueño
+en UPDATE/DELETE. Conviven políticas anteriores PUBLIC y authenticated. Anon
+conserva INSERT/UPDATE/DELETE en ventas, detalles y pagos, incluidos permisos
+efectivos por columna. Eso no prueba que atraviese RLS, pero es privilegio
+innecesario; el paso 48 revoca esas concesiones sin cambiar SELECT.
+
+Service_role no tiene DML directo sobre estas tablas. Las funciones privadas
+del cierre escriben como propietario; no conceder DML adicional para corregir
+un diagnóstico que ya coincide con el diseño del backend.
 
 El diagnóstico unificado se ejecutó en PostgreSQL/PGlite: entrega una fila con
-las tres secciones y reconoce las políticas restrictivas. Falta ejecutarlo en
-Supabase en su formato actualizado. No modifica permisos ni ventas. Falta recibir el inventario,
+las tres secciones y reconoce las políticas restrictivas. El inventario de
+Supabase fue recibido como resultado pegado por el usuario, sin
+una conexión directa inspeccionada por el agente. La consulta no modifica permisos ni ventas. Falta
 coordinar la migración del flujo anterior y demostrar rechazo de llamadas
 directas sin autorización, preservando recuperación y cobros offline.
 
