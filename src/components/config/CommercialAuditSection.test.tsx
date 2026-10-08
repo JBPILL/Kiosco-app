@@ -57,3 +57,31 @@ it('descarta una respuesta anterior al cambiar de comercio', async () => {
   await act(async () => { resolver({ data: [{ id: 'viejo' }], error: null }) })
   expect(screen.queryByRole('alert')).toBeNull()
 })
+
+it('muestra una anulación histórica sin atribuirla a una cuenta inexistente', async () => {
+  mocks.rpc.mockResolvedValue({ data: [{ id: 'e1', fecha: '2026-10-08T12:00:00Z', accion: 'VENTA_ANULADA', entidad: 'ventas', entidad_id: 'v1', motivo: null, actor_auth_id: null, actor_rol: null, detalles: {} }], error: null })
+  render(<CommercialAuditSection />)
+  expect(await screen.findByText('Venta anulada')).toBeTruthy()
+  expect(screen.getByText('Sin motivo registrado')).toBeTruthy()
+  expect(screen.getByText(/No registrado/)).toBeTruthy()
+})
+it('informa carga sin anunciar ausencia de eventos mientras espera', async () => {
+  let resolver: (respuesta: { data: unknown[]; error: null }) => void = () => {}
+  mocks.rpc.mockImplementationOnce(() => new Promise(resolve => { resolver = resolve }))
+  render(<CommercialAuditSection />)
+  expect(screen.getByRole('status').textContent).toBe('Consultando auditoría…')
+  expect(screen.queryByText('Sin eventos registrados')).toBeNull()
+  await act(async () => { resolver({ data: [], error: null }) })
+  expect(screen.queryByRole('status')).toBeNull()
+  expect(screen.getByText('Sin eventos registrados')).toBeTruthy()
+})
+it('no permite que una respuesta pendiente reaparezca después de pasar a cajero', async () => {
+  let resolver: (respuesta: { data: unknown[]; error: null }) => void = () => {}
+  mocks.rpc.mockImplementationOnce(() => new Promise(resolve => { resolver = resolve }))
+  const vista = render(<CommercialAuditSection />)
+  mocks.rol = 'CAJERO'
+  vista.rerender(<CommercialAuditSection />)
+  await act(async () => { resolver({ data: [{ id: 'anterior' }], error: null }) })
+  expect(vista.container.innerHTML).toBe('')
+  expect(mocks.rpc).toHaveBeenCalledTimes(1)
+})

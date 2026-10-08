@@ -16,6 +16,6 @@ La ausencia de la migración o un fallo de red se presenta como error, no como a
 
 ## Evidencia local y evaluación
 
-45 pruebas aprobadas en los archivos CommercialAuditSection.test.tsx y securityMigrations.test.ts: permisos, límite, reaplicación, aislamiento, campos permitidos, errores y respuesta tardía. No acreditan un piloto real en Supabase.
+48 pruebas aprobadas en los archivos CommercialAuditSection.test.tsx y securityMigrations.test.ts: permisos, límite, reaplicación, aislamiento, campos permitidos, errores, carga accesible, anulaciones históricas y respuestas tardías tras cambios de comercio o rol. No acreditan un piloto real en Supabase.
 
 Evaluación: exactitud 4 (pruebas locales, falta piloto remoto); completitud 3 (consulta implementada, exportación y retención pendientes); claridad 4 (tarjeta compacta, actor mostrado por ID parcial); acción 4 (SQL y pasos de ensayo disponibles, aplicación remota pendiente); concisión 4 (lista limitada, sin filtros). Promedio 3,8. Mejoras prioritarias: piloto con JWT reales, retención y exportación, nombres de actores autorizados. La evaluación refleja los límites visibles para el usuario.

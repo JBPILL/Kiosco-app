@@ -55,15 +55,16 @@ export function CommercialAuditSection() {
   }, [usuario?.id, usuario?.auth_user_id, usuario?.kiosco_id, usuario?.rol, usuario?.activo, recarga])
   if (usuario?.rol !== 'DUEÑO' || !usuario.activo) return null
   const corresponde = contextoResultado === contexto
-  return <section className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 sm:p-6 shadow-xs">
+  return <section aria-busy={cargando} className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 sm:p-6 shadow-xs">
     <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-bold dark:text-gray-100">Auditoría comercial</h2><RefreshButton refreshing={cargando} label="Actualizar auditoría" onClick={() => setRecarga(valor => valor + 1)} /></div>
     {corresponde && error && <p role="alert" className="mt-3 text-xs text-red-600 dark:text-red-400">{error}</p>}
+    {corresponde && cargando && <p role="status" className="mt-3 text-xs text-gray-500">Consultando auditoría…</p>}
     {corresponde && !error && !cargando && !eventos.length && <p className="mt-3 text-xs text-gray-500">Sin eventos registrados</p>}
     <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">{(corresponde ? eventos : []).map(fila => <article key={fila.id} className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
       <div className="flex flex-wrap justify-between gap-2 text-xs"><span className="font-semibold dark:text-gray-200">{fila.accion === 'VENTA_ANULADA' ? 'Venta anulada' : 'Cambio de precio'}</span><span className="text-indigo-600 dark:text-indigo-300">{fila.entidad_id.slice(0, 8)}</span></div>
       {fila.accion === 'PRECIO_VENTA_MODIFICADO' && <p className="mt-1 text-xs dark:text-gray-300">{moneda(fila.detalles.precio_anterior)} → {moneda(fila.detalles.precio_nuevo)}</p>}
       <p className="mt-1 text-xs dark:text-gray-300">{fila.motivo || 'Sin motivo registrado'}</p>
-      <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{new Date(fila.fecha).toLocaleString('es-AR')} · Actor {fila.actor_auth_id?.slice(0, 8) || 'Mantenimiento'} · {fila.actor_rol || 'Sin rol registrado'}</p>
+      <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{new Date(fila.fecha).toLocaleString('es-AR')} · Actor {fila.actor_auth_id?.slice(0, 8) || 'No registrado'} · {fila.actor_rol || 'Sin rol registrado'}</p>
     </article>)}</div>
   </section>
 }
