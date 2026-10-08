@@ -50,6 +50,10 @@ cumplir la puerta de aceptación correspondiente.
 
 ## Registro de tareas realizadas
 
+- [x] Comparación final de recetas de combos recuperados: IDs destino,
+  cantidades y eliminación de receta al convertir a físico. 69 pruebas
+  dirigidas aprobadas; aceptación de restauración real pendiente (P14).
+
 - [x] Verificación persistida de promociones 4.0: condiciones, descuentos,
   relaciones y componentes JSON. Incluye copias sólo de promociones.
   60 pruebas dirigidas aprobadas; restauración real aún pendiente (P14).

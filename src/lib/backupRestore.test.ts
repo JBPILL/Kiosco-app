@@ -47,6 +47,25 @@ beforeEach(() => { vi.clearAllMocks(); mock.rpc.mockReset(); writes.length = 0; 
 afterEach(() => vi.unstubAllEnvs())
 
 describe('restauración y errores parciales', () => {
+  it.each([false, true])('comprueba receta final aunque RPC confirme cantidad de componentes: %s', async alterar => {
+    setup({ 'productos:insert': [success({ id: 'dest-unidad' }), success({ id: 'dest-pack' })] })
+    const datos = backup({ productos: [
+      { id: 'unidad', descripcion: 'Unidad', es_combo: false, componentes_combo: [] },
+      { id: 'pack', descripcion: 'Pack', es_combo: true, componentes_combo: [{ componente_producto_id: 'unidad', cantidad: 2 }] },
+    ] })
+    datos.version = '4.0'; datos.configuracion_comercio = { rubro: 'KIOSCO', nombre: 'Local' }
+    datos.saldos_snapshot = { clientes: [], proveedores: [] }
+    mock.rpc.mockImplementation((nombre: string) => Promise.resolve({ data: nombre === 'restaurar_combo_backup'
+      ? { producto_id: 'dest-pack', es_combo: true, componentes: 1 }
+      : { ...datos, productos: [
+        { ...payloads[0], id: 'dest-unidad', es_combo: false, componentes_combo: [] },
+        { ...payloads[1], id: 'dest-pack', es_combo: true, componentes_combo: [{ componente_producto_id: 'dest-unidad', cantidad: alterar ? 3 : 2 }] },
+      ] }, error: null }))
+    const resultado = await restaurarBackupIntegral(datos, 'REEMPLAZO', 'k1')
+    expect(resultado.ok).toBe(!alterar)
+    expect(resultado.resumen?.combosVerificados).toBe(alterar ? undefined : 1)
+    if (alterar) expect(resultado.resumen?.errores.join()).toContain('componentes o cantidades')
+  })
   it.each([false, true])('verifica respaldo 4.0 sólo de promociones: alterado=%s', async alterar => {
     setup({ 'promociones:select': [success(null)], 'promociones:insert': [success({ id: 'promo' })] })
     const datos = backup({ promociones: [{ id: 'promo', nombre: 'Oferta', tipo: 'PORCENTAJE', descuento_porcentaje: 20 }] })

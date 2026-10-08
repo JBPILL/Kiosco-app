@@ -8,6 +8,39 @@ export interface PromocionEsperadaBackup {
   campos: Record<string, unknown>
 }
 
+export interface ComboEsperadoBackup {
+  id: string
+  componentes: readonly { componente_producto_id: string; cantidad: number }[]
+}
+
+/** La receta es un conjunto de componentes; el orden del snapshot no importa. */
+export function verificarCombosBackup(esperados: readonly ComboEsperadoBackup[], recibidos: unknown): number {
+  if (!Array.isArray(recibidos)) throw new Error('No se recibió el catálogo para verificar combos.')
+  const productos = new Map<string, Record<string, unknown>>()
+  for (const valor of recibidos) {
+    if (!valor || typeof valor !== 'object' || Array.isArray(valor)) throw new Error('Producto de combo inválido.')
+    const fila = valor as Record<string, unknown>
+    if (typeof fila.id !== 'string' || productos.has(fila.id)) throw new Error('Identificadores de combos inválidos.')
+    productos.set(fila.id, fila)
+  }
+  for (const esperado of esperados) {
+    const receta = productos.get(esperado.id)?.componentes_combo
+    if (!Array.isArray(receta) || receta.length !== esperado.componentes.length) throw new Error('La restauración no conservó la receta de un combo.')
+    const cantidades = new Map<string, number>()
+    for (const valor of receta) {
+      if (!valor || typeof valor !== 'object' || Array.isArray(valor)) throw new Error('Componente persistido inválido.')
+      const item = valor as Record<string, unknown>
+      if (typeof item.componente_producto_id !== 'string' || typeof item.cantidad !== 'number'
+        || !Number.isFinite(item.cantidad) || cantidades.has(item.componente_producto_id)) throw new Error('Componente persistido inválido.')
+      cantidades.set(item.componente_producto_id, item.cantidad)
+    }
+    if (esperado.componentes.some(item => cantidades.get(item.componente_producto_id) !== item.cantidad)) {
+      throw new Error('La restauración no conservó los componentes o cantidades de un combo.')
+    }
+  }
+  return esperados.length
+}
+
 function valoresIguales(esperado: unknown, recibido: unknown): boolean {
   if (esperado === recibido) return true
   if (Array.isArray(esperado)) return Array.isArray(recibido) && esperado.length === recibido.length

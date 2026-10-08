@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { verificarProductosBackup, verificarLotesBackup, verificarPromocionesBackup } from './backupVerification'
+import { verificarProductosBackup, verificarLotesBackup, verificarPromocionesBackup, verificarCombosBackup } from './backupVerification'
 const esperado = [{ id: 'destino', campos: { precio_costo: 10, precio_venta: 20, stock_actual: 3.5, es_combo: true } }]
 const producto = { id: 'destino', precio_costo: 10, precio_venta: 20, stock_actual: 3.5, es_combo: true }
 const lote = { id: 'lote-destino', producto_id: 'producto-destino', numero_lote: null,
@@ -10,6 +10,17 @@ const promocion = { id: 'promo', producto_id: 'destino', categoria_id: null,
   items_combo: [{ producto_id: 'destino', cantidad: 2 }], dias_semana: [1, 3], descuento_porcentaje: 20 }
 const { id: idPromo, ...camposPromo } = promocion
 const promosEsperadas = [{ id: idPromo, campos: camposPromo }]
+const componentes = [{ componente_producto_id: 'a', cantidad: 2 }, { componente_producto_id: 'b', cantidad: 0.5 }]
+it('verifica recetas por ID remapeado independientemente de orden', () => {
+  expect(verificarCombosBackup([{ id: 'pack', componentes }], [{ id: 'pack', componentes_combo: [...componentes].reverse() }])).toBe(1)
+})
+it.each([undefined, [], [componentes[0], componentes[0]], [{ ...componentes[0], cantidad: 3 }, componentes[1]],
+  [{ ...componentes[0], componente_producto_id: 'otro' }, componentes[1]]])('rechaza receta persistida diferente %j', receta => {
+  expect(() => verificarCombosBackup([{ id: 'pack', componentes }], [{ id: 'pack', componentes_combo: receta }])).toThrow()
+})
+it('verifica eliminación de receta al convertir combo en físico', () => {
+  expect(verificarCombosBackup([{ id: 'pack', componentes: [] }], [{ id: 'pack', componentes_combo: [] }])).toBe(1)
+})
 it('compara relaciones JSON sin depender del orden de claves', () => {
   expect(verificarPromocionesBackup(promosEsperadas, [{ ...promocion,
     items_combo: [{ cantidad: 2, producto_id: 'destino' }] }])).toBe(1)

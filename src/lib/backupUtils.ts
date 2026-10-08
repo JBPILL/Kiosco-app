@@ -15,7 +15,7 @@ import { registrarDescargaRespaldoExterno } from './externalBackupReminder'
 import { validarAmpliacionBackup, capturarPreferenciasEquipo, restaurarPreferenciasEquipo, type BackupAmpliacion } from './backupAmpliado'
 import { auditoriaMotivoPrecioActiva, validarMotivoCambioPrecio } from './priceChangeAudit'
 import { validarRelacionesBackup } from './backupRelations'
-import { verificarProductosBackup, verificarLotesBackup, verificarPromocionesBackup, type ProductoEsperadoBackup, type PromocionEsperadaBackup } from './backupVerification'
+import { verificarProductosBackup, verificarLotesBackup, verificarPromocionesBackup, verificarCombosBackup, type ComboEsperadoBackup, type ProductoEsperadoBackup, type PromocionEsperadaBackup } from './backupVerification'
 import type { Categoria, Proveedor, Cliente, Producto } from '../types/database'
 
 export interface BackupData {
@@ -73,6 +73,7 @@ export interface ProgresoRestauracion {
 }
 
 export interface ResumenRestauracion {
+  combosVerificados?: number
   promocionesVerificadas?: number
   lotesVerificados?: number
   productosVerificados?: number
@@ -789,6 +790,7 @@ export async function restaurarBackupIntegral(
     // ─────────────────────────────────────────────────────────────
     reportar('PROMOCIONES', 'Restaurando Promociones y Combos', 80, 'Restaurando promociones comerciales...')
     // Los componentes se recuperan después de confirmar todos los productos.
+    const combosEsperados: ComboEsperadoBackup[] = []
     // Primero se convierten los físicos para permitir reutilizar un antiguo combo como componente.
     const productosConComponentes = productosBackup.filter(prod => Array.isArray(prod.componentes_combo)
       && (prod.es_combo === true || combosExistentes.has(mapaProductosIdOriginal.get(prod.id) || '')))
@@ -809,6 +811,7 @@ export async function restaurarBackupIntegral(
         if (data?.producto_id !== idDestino || data.es_combo !== (prod.es_combo === true)
           || data.componentes !== componentes.length) throw new Error('El servidor no confirmó los componentes del combo.')
         const esperado = productosEsperados.get(idDestino)
+        combosEsperados.push({ id: idDestino, componentes })
         if (esperado) productosEsperados.set(idDestino,{ ...esperado, es_combo: prod.es_combo === true })
       } catch (error: unknown) {
         resumen.errores.push(`Combo "${prod.descripcion || 'S/N'}": ${error instanceof Error ? error.message : 'No se pudo recuperar.'}`)
@@ -912,6 +915,7 @@ export async function restaurarBackupIntegral(
           [...productosEsperados].map(([id, campos]) => ({ id,campos })),verificacion.datos.productos)
         resumen.lotesVerificados = verificarLotesBackup(lotesEsperados, verificacion.datos.lotes_producto)
         resumen.promocionesVerificadas = verificarPromocionesBackup(promocionesEsperadas, verificacion.datos.promociones)
+        resumen.combosVerificados = verificarCombosBackup(combosEsperados, verificacion.datos.productos)
       } catch (error: unknown) {
         resumen.errores.push(error instanceof Error ? error.message : 'No se pudo verificar la restauración.')
       }
