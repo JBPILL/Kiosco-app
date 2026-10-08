@@ -515,6 +515,12 @@ export function RestaurarBackupModal({
               </div>
             )}
 
+            {resumenExito.productosVerificados !== undefined && (
+              <p className="text-xs text-emerald-800 dark:text-emerald-300">
+                Precios y stock comprobados en el servidor: {resumenExito.productosVerificados} productos.
+              </p>
+            )}
+
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
               <div className="p-2 bg-white dark:bg-gray-900 rounded-lg border border-emerald-200 dark:border-emerald-800 text-center">
                 <span className="text-[10px] text-gray-400 block">Prods. Creados</span>

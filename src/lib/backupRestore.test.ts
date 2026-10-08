@@ -43,10 +43,37 @@ function backup(collections: Record<string, unknown[]> = {}) {
   }), 'k1').datos!
 }
 
-beforeEach(() => { vi.clearAllMocks(); writes.length = 0; payloads.length = 0; setup({}) })
+beforeEach(() => { vi.clearAllMocks(); mock.rpc.mockReset(); writes.length = 0; payloads.length = 0; setup({}) })
 afterEach(() => vi.unstubAllEnvs())
 
 describe('restauración y errores parciales', () => {
+  it.each([false,true])('verifica el catálogo 4.0 y detecta diferencia persistida: %s', async alterar => {
+    setup({ 'productos:insert': [success({ id: 'nuevo' })], 'productos:select': [
+      success(alterar ? [{ id:'fuera-copia',descripcion:'Otro',activo:true }] : []), success([]),
+    ] })
+    const datos = backup({ productos: [{ id: 'original', descripcion: 'Producto', precio_costo: 10, precio_venta: 20, stock_actual: 3.5 }] })
+    datos.version = '4.0'
+    datos.configuracion_comercio = { rubro: 'KIOSCO', nombre: 'Local' }
+    datos.saldos_snapshot = { clientes: [], proveedores: [] }
+    mock.rpc.mockImplementation(() => Promise.resolve({ data: { ...datos,
+      productos: [{ ...payloads[0],id:'nuevo', stock_actual: alterar ? 0 : 3.5 }],
+    }, error:null }))
+    const resultado = await restaurarBackupIntegral(datos, alterar ? 'REEMPLAZO' : 'FUSION', 'k1')
+    expect(resultado.ok).toBe(!alterar)
+    expect(resultado.resumen?.productosVerificados).toBe(alterar ? undefined : 1)
+    if (alterar) expect(resultado.resumen?.errores.join()).toContain('stock_actual')
+    expect(mock.rpc).toHaveBeenCalledWith('generar_snapshot_backup_ampliado',{ p_kiosco_id:'k1' })
+    expect(writes).toEqual(['productos:insert'])
+  })
+  it('no declara éxito 4.0 si no se puede leer la verificación final', async () => {
+    setup({ 'productos:insert': [success({ id: 'nuevo' })] })
+    const datos = backup({ productos: [{ id: 'original', descripcion: 'Producto' }] })
+    datos.version = '4.0'; datos.configuracion_comercio = { rubro: 'KIOSCO', nombre: 'Local' }
+    datos.saldos_snapshot = { clientes: [], proveedores: [] }
+    mock.rpc.mockResolvedValue({ data:null,error:{ message:'Sin conexión' } })
+    expect((await restaurarBackupIntegral(datos,'FUSION','k1')).ok).toBe(false)
+    expect(writes).toEqual(['productos:insert'])
+  })
   it('convierte primero un combo antiguo a físico antes de usarlo como componente', async () => {
     setup({ 'productos:select': [success([
       { id: 'dest-pack', descripcion: 'Pack', es_combo: false },

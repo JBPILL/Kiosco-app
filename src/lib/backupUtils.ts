@@ -15,6 +15,7 @@ import { registrarDescargaRespaldoExterno } from './externalBackupReminder'
 import { validarAmpliacionBackup, capturarPreferenciasEquipo, restaurarPreferenciasEquipo, type BackupAmpliacion } from './backupAmpliado'
 import { auditoriaMotivoPrecioActiva, validarMotivoCambioPrecio } from './priceChangeAudit'
 import { validarRelacionesBackup } from './backupRelations'
+import { verificarProductosBackup, type ProductoEsperadoBackup } from './backupVerification'
 import type { Categoria, Proveedor, Cliente, Producto } from '../types/database'
 
 export interface BackupData {
@@ -72,6 +73,7 @@ export interface ProgresoRestauracion {
 }
 
 export interface ResumenRestauracion {
+  productosVerificados?: number
   categoriasCreadas: number
   categoriasReutilizadas: number
   proveedoresCreados: number
@@ -652,6 +654,7 @@ export async function restaurarBackupIntegral(
     const mapaProdsPorCodigo = new Map<string, any>()
     const mapaProdsPorDesc = new Map<string, any>()
     const mapaProductosIdOriginal = new Map<string, string>()
+    const productosEsperados = new Map<string, ProductoEsperadoBackup['campos']>()
     const idsExistentes = new Set<string>()
     const combosExistentes = new Set<string>()
 
@@ -702,7 +705,7 @@ export async function restaurarBackupIntegral(
               precio_costo: Number(prod.precio_costo) || 0,
               precio_venta: Number(prod.precio_venta) || 0,
               stock_actual: Number(prod.stock_actual) || 0,
-              stock_minimo: Number(prod.stock_minimo) ?? 5,
+              stock_minimo: prod.stock_minimo != null && Number.isFinite(Number(prod.stock_minimo)) ? Number(prod.stock_minimo) : 5,
               categoria_id: categoriaIdFinal,
               proveedor_id: proveedorIdFinal,
               codigo_barras: prod.codigo_barras ? prod.codigo_barras.trim() : null,
@@ -733,6 +736,7 @@ export async function restaurarBackupIntegral(
                 idsProcesadosEnBackup.add(prodExistente.id)
                 if (prod.id) mapaProductosIdOriginal.set(prod.id, prodExistente.id)
                 resumen.productosActualizados++
+                productosEsperados.set(prodExistente.id, { ...datosProducto, ...(typeof prod.es_combo === 'boolean' ? { es_combo: prod.es_combo } : {}) })
               } else {
                 resumen.errores.push(`Producto "${prod.descripcion}": ${errUpd?.message || 'El servidor no confirmó la actualización.'}`)
               }
@@ -755,6 +759,7 @@ export async function restaurarBackupIntegral(
                 if (codeNorm) mapaProdsPorCodigo.set(codeNorm, prodNuevo)
                 if (descNorm) mapaProdsPorDesc.set(descNorm, prodNuevo)
                 resumen.productosCreados++
+                productosEsperados.set(prodNuevo.id, { ...datosProducto, ...(typeof prod.es_combo === 'boolean' ? { es_combo: prod.es_combo } : {}) })
               } else {
                 resumen.errores.push(`Producto "${prod.descripcion}": ${errIns?.message || 'El servidor no confirmó el registro creado.'}`)
               }
@@ -800,6 +805,8 @@ export async function restaurarBackupIntegral(
         if (error) throw new Error(error.message)
         if (data?.producto_id !== idDestino || data.es_combo !== (prod.es_combo === true)
           || data.componentes !== componentes.length) throw new Error('El servidor no confirmó los componentes del combo.')
+        const esperado = productosEsperados.get(idDestino)
+        if (esperado) productosEsperados.set(idDestino,{ ...esperado, es_combo: prod.es_combo === true })
       } catch (error: unknown) {
         resumen.errores.push(`Combo "${prod.descripcion || 'S/N'}": ${error instanceof Error ? error.message : 'No se pudo recuperar.'}`)
       }
@@ -880,6 +887,22 @@ export async function restaurarBackupIntegral(
         resumen.lotesRestaurados++
       } catch (error: unknown) {
         resumen.errores.push(`Lote ${i + 1}: ${error instanceof Error ? error.message : 'Error inesperado.'}`)
+      }
+    }
+
+    if (resumen.errores.length === 0 && backupData.version === '4.0' && productosEsperados.size > 0) {
+      try {
+        reportar('FINALIZANDO', 'Verificando Restauración', 85, 'Comparando precios y stock con el servidor...')
+        const { data, error } = await supabase.rpc('generar_snapshot_backup_ampliado', { p_kiosco_id: kioscoId })
+        if (error) throw new Error('No se pudo verificar el catálogo restaurado en el servidor.')
+        const verificacion = validarBackupJSON(JSON.stringify(data),kioscoId)
+        if (!verificacion.valido || !verificacion.esMismoKiosco || verificacion.datos?.version !== '4.0') {
+          throw new Error('El servidor no devolvió un respaldo válido del comercio para verificar.')
+        }
+        resumen.productosVerificados = verificarProductosBackup(
+          [...productosEsperados].map(([id, campos]) => ({ id,campos })),verificacion.datos.productos)
+      } catch (error: unknown) {
+        resumen.errores.push(error instanceof Error ? error.message : 'No se pudo verificar la restauración.')
       }
     }
 
