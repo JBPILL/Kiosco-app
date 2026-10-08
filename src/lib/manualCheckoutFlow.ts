@@ -6,6 +6,7 @@ import { useCartStore } from '../stores/cartStore'
 import { useAuthStore } from '../stores/authStore'
 import { solicitarPermisoDescuentoSupervisor } from './supervisorPinClient'
 import { ajusteCarrito } from './carritoImportes'
+import { consultarPoliticaSupervisor } from './supervisorPolicyClient'
 
 export interface ResultadoFlujoManual {
   ventaId: string
@@ -36,10 +37,13 @@ export async function ejecutarCobroManual(datos: DatosCobroManual, ticketClave: 
   if (original && !original.recibo) throw new Error('El cobro original requiere revisión de su comprobante')
   const recibo = original?.recibo ?? reciboNuevo
   if (!recibo) throw new Error('No se encontró el comprobante original')
-  const requiereSupervisor = !original && useAuthStore.getState().usuario?.rol === 'CAJERO'
-    && ((datos.tipoAjuste === 'DESCUENTO_PORCENTAJE' && datos.valorAjuste > 15)
+  const necesitaPolitica = !original && useAuthStore.getState().usuario?.rol === 'CAJERO'
+    && datos.tipoAjuste.startsWith('DESCUENTO') && datos.valorAjuste > 0
+  const politica = necesitaPolitica ? await consultarPoliticaSupervisor() : null
+  const requiereSupervisor = politica !== null
+    && ((datos.tipoAjuste === 'DESCUENTO_PORCENTAJE' && datos.valorAjuste > politica.umbralPorcentaje)
       || (datos.tipoAjuste === 'DESCUENTO_FIJO' && ajusteCarrito(datos.items, datos.tipoAjuste, datos.valorAjuste)
-        > ajusteCarrito(datos.items, 'DESCUENTO_PORCENTAJE', 100) * 0.15))
+        > ajusteCarrito(datos.items, 'DESCUENTO_PORCENTAJE', 100) * politica.umbralPorcentaje / 100))
   // Autorizar antes de archivar una solicitud de cobro; un PIN fallido no bloquea el carrito.
   const permiso = requiereSupervisor ? await solicitarPermisoDescuentoSupervisor(entrada, pinSupervisor ?? '') : null
   if (permiso) await guardarCobroManualLocal(entrada, ticketClave, recibo, permiso)

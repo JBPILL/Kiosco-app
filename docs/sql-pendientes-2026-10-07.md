@@ -61,8 +61,8 @@ El 34 reemplaza las funciones de reserva y finalización del 30. Si reaplicás e
 
 36 y 37 se entregan por separado y no están en ninguno de los dos ZIP. El 36
 agrega la política privada y su auditoría; el 37 congela su revisión en el cobro.
-Falta integrar la política en el formulario de cobro; Configuración ya permite
-consultarla y guardarla. **No aplicar 37 aisladamente con checkout antiguo
+Configuración y formulario de cobro ya usan la política; falta ensayo remoto.
+**No aplicar 37 aisladamente con checkout antiguo
 activo**, porque revoca su preparador: requiere despliegue coordinado del backend
 nuevo y ensayo. Ver `docs/supervisor-politica-descuento.md` antes de instalarlo.
 

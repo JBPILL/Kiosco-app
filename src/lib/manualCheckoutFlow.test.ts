@@ -5,7 +5,8 @@ import { crearItem, crearProducto } from '../test/factories'
 import type { DatosCobroManual } from './manualCheckoutCart'
 import type { TicketData } from '../components/pos/TicketReceiptModal'
 
-const mocks = vi.hoisted(() => ({ recuperar: vi.fn(), guardar: vi.fn(), cerrar: vi.fn(), reclamar: vi.fn(), bloquear: vi.fn(), auth: vi.fn(), permiso: vi.fn(), guardarPermiso: vi.fn() }))
+const mocks = vi.hoisted(() => ({ recuperar: vi.fn(), guardar: vi.fn(), cerrar: vi.fn(), reclamar: vi.fn(), bloquear: vi.fn(), auth: vi.fn(), permiso: vi.fn(), guardarPermiso: vi.fn(), politica: vi.fn() }))
+vi.mock('./supervisorPolicyClient', () => ({ consultarPoliticaSupervisor: mocks.politica }))
 vi.mock('./supervisorPinClient', () => ({ solicitarPermisoDescuentoSupervisor: mocks.permiso }))
 vi.mock('./manualCheckoutClient', () => ({ recuperarCobroManualLocal: mocks.recuperar, guardarCobroManualLocal: mocks.guardar,
   cerrarCobroManualLocal: mocks.cerrar, reclamarComprobanteManual: mocks.reclamar, guardarAutorizacionCobroManual: mocks.guardarPermiso }))
@@ -27,6 +28,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
   mocks.recuperar.mockResolvedValue(undefined)
+  mocks.politica.mockReset().mockResolvedValue({ umbralPorcentaje: 15, revision: 0 })
   mocks.guardar.mockResolvedValue({})
   mocks.cerrar.mockResolvedValue({ venta_id: ventaId })
   mocks.reclamar.mockResolvedValue(recibo)
@@ -54,6 +56,21 @@ it('PIN rechazado no archiva ni bloquea ni confirma una venta', async () => {
   expect(mocks.cerrar).not.toHaveBeenCalled()
 })
 
+it.each([[5,10,true],[25,20,false],[10,10,false]])('consulta umbral %s antes de archivar descuento %s', async (umbral, descuento, requiere) => {
+  mocks.auth.mockReturnValue({ usuario: { id: uid, rol: 'CAJERO' }, kiosco: { id: kid } })
+  mocks.politica.mockResolvedValue({ umbralPorcentaje: umbral, revision: 2 })
+  mocks.permiso.mockResolvedValue({ autorizacionId: kid, venceEn: '2026-10-07T12:02:00Z' })
+  await ejecutarCobroManual({ ...datos(), tipoAjuste: 'DESCUENTO_PORCENTAJE', valorAjuste: descuento }, 'tab-1', recibo, '1234')
+  expect(mocks.permiso).toHaveBeenCalledTimes(requiere ? 1 : 0)
+  expect(mocks.politica.mock.invocationCallOrder[0]).toBeLessThan(mocks.guardar.mock.invocationCallOrder[0])
+})
+it('política desconocida no archiva, bloquea ni confirma el descuento del cajero', async () => {
+  mocks.auth.mockReturnValue({ usuario: { id: uid, rol: 'CAJERO' }, kiosco: { id: kid } })
+  mocks.politica.mockRejectedValue(new Error('No se pudo consultar'))
+  await expect(ejecutarCobroManual({ ...datos(), tipoAjuste: 'DESCUENTO_PORCENTAJE', valorAjuste: 10 }, 'tab-1', recibo)).rejects.toThrow(/consultar/)
+  expect(mocks.guardar).not.toHaveBeenCalled(); expect(mocks.bloquear).not.toHaveBeenCalled(); expect(mocks.cerrar).not.toHaveBeenCalled()
+})
+
 it('proyecta el carrito sin costos y conserva receta por unidad', () => {
   const actual = datos()
   actual.items[0].producto.es_combo = true
@@ -74,12 +91,14 @@ it('persiste y bloquea antes de enviar, y reclama el comprobante después de con
 })
 
 it('recupera cuerpo y comprobante originales aunque cambien los datos del modal', async () => {
+  mocks.auth.mockReturnValue({ usuario: { id: uid, rol: 'CAJERO' }, kiosco: { id: kid } })
   const original = crearEntradaCobroManual(datos())
   mocks.recuperar.mockResolvedValue({ entrada: original, recibo, estado: 'PENDIENTE' })
   const nuevos = { ...datos(), checkoutId: uid, total: 1 }
   expect((await ejecutarCobroManual(nuevos, 'tab-1', { ...recibo, total: 1 })).recuperado).toBe(true)
   expect(mocks.guardar).toHaveBeenCalledWith(original, 'tab-1', recibo)
   expect(mocks.cerrar).toHaveBeenCalledWith(original, 'tab-1')
+  expect(mocks.politica).not.toHaveBeenCalled()
 })
 
 it('recupera directamente sin reconstruir pagos ni exigir datos de una caja nueva', async () => {

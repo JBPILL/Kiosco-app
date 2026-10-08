@@ -3,17 +3,18 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { PaymentModal } from './PaymentModal'
 
 const mocks = vi.hoisted(() => ({ recuperar: vi.fn(), nuevo: vi.fn(), completar: vi.fn(),
-  from: vi.fn(), cargar: vi.fn(), factura: vi.fn() }))
+  from: vi.fn(), cargar: vi.fn(), factura: vi.fn(), politica: vi.fn(), guardado: true, rol: '', tipoAjuste: 'NINGUNO', valorAjuste: 0 }))
+vi.mock('../../lib/supervisorPolicyClient', () => ({ consultarPoliticaSupervisor: mocks.politica }))
 vi.mock('../../lib/supabase', () => ({ supabase: { from: mocks.from } }))
 vi.mock('../../lib/manualCheckoutFlow', () => ({ recuperarFlujoCobroManual: mocks.recuperar, ejecutarCobroManual: mocks.nuevo }))
 vi.mock('../../stores/cartStore', () => {
-  const state = { items: [], totalMonto: () => 100, subtotalMonto: () => 100, montoAjuste: () => 0,
-    tipoAjuste: 'NINGUNO', valorAjuste: 0, descripcionAjuste: () => '', tabActivaId: 'tab-original',
-    cobrosBloqueados: { 'tab-original': 'venta-original' }, completarCobroTab: mocks.completar }
-  return { useCartStore: Object.assign(() => state, { getState: () => state }) }
+  const state = () => ({ items: [], totalMonto: () => 100, subtotalMonto: () => 100, montoAjuste: () => 0,
+    tipoAjuste: mocks.tipoAjuste, valorAjuste: mocks.valorAjuste, descripcionAjuste: () => '', tabActivaId: 'tab-original',
+    cobrosBloqueados: mocks.guardado ? { 'tab-original': 'venta-original' } : {}, completarCobroTab: mocks.completar })
+  return { useCartStore: Object.assign(state, { getState: state }) }
 })
 vi.mock('../../stores/authStore', () => {
-  const getState = () => ({ usuario: { id: 'operador' }, kiosco: { id: 'comercio' } })
+  const getState = () => ({ usuario: { id: 'operador', rol: mocks.rol }, kiosco: { id: 'comercio' } })
   return { useAuthStore: Object.assign((selector: (state: ReturnType<typeof getState>) => unknown) => selector(getState()), { getState }) }
 })
 vi.mock('../../stores/cajaStore', () => ({ useCajaStore: { getState: () => ({ sesionActiva: null }) } }))
@@ -25,10 +26,32 @@ vi.mock('../../stores/offlineSyncStore', () => ({ useOfflineSyncStore: {} }))
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.guardado = true; mocks.rol = ''; mocks.tipoAjuste = 'NINGUNO'; mocks.valorAjuste = 0
+  mocks.politica.mockReset().mockResolvedValue({ umbralPorcentaje: 5, revision: 1 })
   vi.stubEnv('VITE_CHECKOUT_MANUAL_TRANSACCIONAL', 'true')
   mocks.recuperar.mockResolvedValue({ ventaId: 'venta-original', recibo: null, pendiente: false, recuperado: true })
 })
 afterEach(() => vi.unstubAllEnvs())
+
+it('presenta el umbral vigente en el pedido de PIN del cajero', async () => {
+  mocks.guardado = false; mocks.rol = 'CAJERO'; mocks.tipoAjuste = 'DESCUENTO_PORCENTAJE'; mocks.valorAjuste = 10
+  render(<PaymentModal isOpen onClose={vi.fn()} onVentaCompletada={vi.fn()} />)
+  expect(await screen.findByText('PIN del supervisor (descuento mayor al 5%)')).toBeTruthy()
+  expect(screen.getByLabelText('PIN del supervisor')).toBeTruthy()
+})
+
+it('no pide PIN para descuento inferior al umbral configurado y muestra fallo de consulta', async () => {
+  mocks.guardado = false; mocks.rol = 'CAJERO'; mocks.tipoAjuste = 'DESCUENTO_PORCENTAJE'; mocks.valorAjuste = 20
+  mocks.politica.mockResolvedValueOnce({ umbralPorcentaje: 25, revision: 2 })
+  const vista = render(<PaymentModal isOpen onClose={vi.fn()} onVentaCompletada={vi.fn()} />)
+  await waitFor(() => expect(screen.queryByText('Verificando descuento…')).toBeNull())
+  expect(screen.queryByLabelText('PIN del supervisor')).toBeNull()
+  vista.unmount()
+  mocks.politica.mockRejectedValueOnce(new Error('SECRET'))
+  render(<PaymentModal isOpen onClose={vi.fn()} onVentaCompletada={vi.fn()} />)
+  expect(await screen.findByText('No se pudo verificar el umbral de descuento')).toBeTruthy()
+  expect(screen.queryByText('SECRET')).toBeNull()
+})
 
 it('recupera el cobro congelado aunque cambie el pago y la caja ya no esté abierta', async () => {
   const onClose = vi.fn()

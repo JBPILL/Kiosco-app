@@ -24,6 +24,8 @@ import { ejecutarCobroManual, recuperarFlujoCobroManual } from '../../lib/manual
 import { ajusteCarrito } from '../../lib/carritoImportes'
 import { SupervisorPinBloqueado } from '../../lib/supervisorPinBlocked'
 import { useSupervisorPinWait } from '../../hooks/useSupervisorPinWait'
+import { useSupervisorPolicy } from '../../hooks/useSupervisorPolicy'
+import { RefreshButton } from '../ui/RefreshButton'
 
 export interface LineaPagoMixto {
   id: string
@@ -90,10 +92,15 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   const esperaPin = useSupervisorPinWait(reintentarPinEn)
   const operador = useAuthStore(state => state.usuario)
   useEffect(() => { setReintentarPinEn(null) }, [operador?.id, operador?.auth_user_id, operador?.kiosco_id])
-  const requierePinSupervisor = checkoutManualTransaccionalActivo() && !cobroGuardado && operador?.rol === 'CAJERO'
-    && ((tipoAjuste === 'DESCUENTO_PORCENTAJE' && valorAjuste > 15)
-      || (tipoAjuste === 'DESCUENTO_FIJO' && ajusteCarrito(items, tipoAjuste, valorAjuste) > ajusteCarrito(items, 'DESCUENTO_PORCENTAJE', 100) * 0.15))
-  useEffect(() => { setPinSupervisor('') }, [isOpen, tabActivaId, operador?.id])
+  const necesitaPolitica = isOpen && checkoutManualTransaccionalActivo() && !cobroGuardado && operador?.rol === 'CAJERO'
+    && tipoAjuste.startsWith('DESCUENTO') && valorAjuste > 0
+  const politicaSupervisor = useSupervisorPolicy(necesitaPolitica, JSON.stringify([operador?.id, operador?.auth_user_id, operador?.kiosco_id, operador?.rol, operador?.activo, tabActivaId]))
+  const politicaNoDisponible = necesitaPolitica && !politicaSupervisor.politica
+  const umbralSupervisor = politicaSupervisor.politica?.umbralPorcentaje
+  const requierePinSupervisor = necesitaPolitica && umbralSupervisor !== undefined
+    && ((tipoAjuste === 'DESCUENTO_PORCENTAJE' && valorAjuste > umbralSupervisor)
+      || (tipoAjuste === 'DESCUENTO_FIJO' && ajusteCarrito(items, tipoAjuste, valorAjuste) > ajusteCarrito(items, 'DESCUENTO_PORCENTAJE', 100) * umbralSupervisor / 100))
+  useEffect(() => { setPinSupervisor('') }, [isOpen, tabActivaId, operador?.id, operador?.auth_user_id, operador?.kiosco_id, politicaSupervisor.politica?.revision])
 
   // ── Estados para Pago Mixto / Dividido ─────────────────────────────────────
   const [esPagoMixto, setEsPagoMixto] = useState<boolean>(false)
@@ -245,7 +252,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
     : true
 
   const confirmarVenta = async () => {
-    if (procesandoRef.current || (!cobroGuardado && (!puedeConfirmar || (requierePinSupervisor && esperaPin > 0)))) return
+    if (procesandoRef.current || (!cobroGuardado && (!puedeConfirmar || politicaNoDisponible || (requierePinSupervisor && esperaPin > 0)))) return
     procesandoRef.current = true
     setProcesando(true)
     let ventaCreadaId: string | null = null
@@ -431,6 +438,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           }
         } catch (err) {
           if (err instanceof SupervisorPinBloqueado) setReintentarPinEn(err.reintentarEn)
+          else if (necesitaPolitica) politicaSupervisor.reintentar()
           toast.error(err instanceof Error ? err.message : 'Conservá el cobro original y revisá su confirmación.', { duration: 7000 })
         }
         setPinSupervisor('')
@@ -1093,7 +1101,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
           fullWidth
           variant="success"
           onClick={confirmarVenta}
-          disabled={!cobroGuardado && (!puedeConfirmar || (requierePinSupervisor && esperaPin > 0))}
+          disabled={!cobroGuardado && (!puedeConfirmar || politicaNoDisponible || (requierePinSupervisor && esperaPin > 0))}
           loading={procesando}
         >
           {cobroGuardado ? 'Recuperar cobro guardado' : emitirFiscal ? 'Confirmar y Facturar ARCA' : 'Confirmar y Cobrar'}
@@ -1102,7 +1110,8 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
     >
       <div className="space-y-3">
         {requierePinSupervisor && esperaPin > 0 && <p role="status" className="text-xs font-semibold text-amber-600 dark:text-amber-300">Podés reintentar el PIN en {esperaPin} s</p>}
-        {requierePinSupervisor && <label className="block text-xs font-semibold dark:text-gray-200">PIN del supervisor (descuento mayor al 15%)<input aria-label="PIN del supervisor" type="password" inputMode="numeric" autoComplete="off" maxLength={6} value={pinSupervisor} disabled={procesando} onChange={event => setPinSupervisor(event.target.value)} className="mt-1.5 w-full rounded-xl border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-900/50 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500/30" /></label>}
+        {politicaNoDisponible && <div className="flex items-center justify-between gap-2 text-xs text-amber-600 dark:text-amber-300"><span role="status">{politicaSupervisor.error ? 'No se pudo verificar el umbral de descuento' : 'Verificando descuento…'}</span><RefreshButton label="Reintentar política de descuento" refreshing={politicaSupervisor.cargando} onClick={politicaSupervisor.reintentar} /></div>}
+        {requierePinSupervisor && <label className="block text-xs font-semibold dark:text-gray-200">PIN del supervisor (descuento mayor al {umbralSupervisor}%)<input aria-label="PIN del supervisor" type="password" inputMode="numeric" autoComplete="off" maxLength={6} value={pinSupervisor} disabled={procesando} onChange={event => setPinSupervisor(event.target.value)} className="mt-1.5 w-full rounded-xl border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-900/50 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500/30" /></label>}
         {cobroGuardado && <p role="status" className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm text-amber-800 dark:text-amber-300">Este ticket ya tiene un cobro guardado. Se recuperarán los importes, medios de pago y cliente originales. Los cambios en este formulario no los reemplazan. No vuelvas a cobrar; la factura se emite desde Tickets Emitidos después de confirmar.</p>}
         {/* Total y Desglose */}
         <div className="py-2 px-3 bg-indigo-50/80 dark:bg-indigo-900/30 rounded-xl space-y-0.5 border border-indigo-200 dark:border-indigo-800/60">

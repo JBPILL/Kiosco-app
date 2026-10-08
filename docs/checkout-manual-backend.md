@@ -12,9 +12,10 @@ límites están documentados en [checkout-manual-pos.md](checkout-manual-pos.md)
 
 ## Aplicar en el proyecto de ensayo
 
-1. Con los SQL anteriores aplicados, ejecutá completo
-   `supabase_fase_checkout_manual_backend.sql` en SQL Editor. Requiere el paso 26,
-   `supabase_fase_checkout_manual.sql`. Es reaplicable.
+1. Seguí `docs/sql-pendientes-2026-10-07.md` hasta el paso 37 para el backend
+   actual. Requiere la política privada del paso 36. El 37 revoca los preparadores
+   antiguos: coordiná SQL y despliegue del nuevo backend en ensayo, sin usar un
+   backend antiguo entre ambos pasos. Ver `docs/supervisor-politica-descuento.md`.
 2. Desde la carpeta del repositorio, configurá los orígenes permitidos:
 
    ```powershell

@@ -7,8 +7,10 @@ almacenamiento privado de una política y sus cambios. El paso 37,
 `supabase_fase_checkout_manual_politica_congelada.sql`, y el servidor actualizado
 leen esa política y congelan umbral, revisión y decisión al preparar el cobro.
 Seguridad y Caja incluye formulario del dueño con consulta y guardado autenticados.
-**Todavía falta usar la política en el formulario de cobro**. Ese formulario conserva
-la regla de 15%; no activar ni desplegar esta fase como circuito completo aún.
+El formulario de cobro consulta la política para descuentos nuevos del cajero,
+presenta el umbral vigente y bloquea confirmación mientras no pueda verificarlo.
+El flujo vuelve a consultar antes de archivar y pedir permiso. **Falta validar el
+circuito completo con SQL y Edge desplegados en ensayo** antes de activar.
 
 El dueño activo configura un porcentaje entre 0 y 100 con hasta dos decimales.
 La identidad y el comercio se resuelven desde auth.uid(), sin parámetros de actor
@@ -19,10 +21,15 @@ Las tablas no conceden escritura directa a clientes ni al servidor de cotizació
 
 ## Integración pendiente
 
-1. Conectar consulta para el formulario de cobro. Una política local desactualizada
-   no debe permitir saltar la aprobación.
-2. Ampliar la consulta de auditoría para incluir cambios de política y validar
+1. Ampliar la consulta de auditoría para incluir cambios de política y validar
    sesiones reales, concurrencia y reintentos antes de activar.
+
+Los cobros guardados se recuperan sin consultar una política nueva ni reconstruir
+su solicitud. Un descuento nuevo del cajero sin conexión no se archiva ni se
+confirma porque no puede verificar el umbral; el carrito permanece disponible.
+Los cobros sin descuento mantienen el circuito provisional existente. Después de
+un error de autorización, el modal actualiza la política para reflejar posibles
+cambios realizados mientras permanecía abierto.
 
 ## Preparación de servidor y orden de despliegue
 
@@ -41,7 +48,7 @@ sin decisión conocida. Recuperar una confirmación no repite efectos financiero
 El paso 37 revoca la ejecución directa de preparadores antiguos de tres/cuatro
 argumentos al servicio; el nuevo backend usa seis. **No aplicar 37 aisladamente
 si hay un checkout transaccional antiguo activo**: requiere una ventana coordinada
-de SQL y despliegue del nuevo checkout-manual, después de completar el cliente y
+   de SQL y despliegue del nuevo checkout-manual, después de validar el cliente y
 validar ensayo. Reaplicar funciones anteriores puede restaurar accesos antiguos;
 volver a aplicar 37 al final. Point permanece pausado.
 
@@ -50,6 +57,12 @@ aplicar la misma política a la solicitud original. No habilitar esta funcionali
 como terminada hasta integrar y comprobar el circuito completo.
 
 ## Evidencia local
+
+Cobro: 59 pruebas enfocadas en cinco archivos aprobadas, incluidas interfaz real
+del PaymentModal, hook, cliente, flujo y backend. Verifican umbral inferior/superior
+al 15%, igualdad exacta, fallo sin archivar, respuesta tardía, texto dinámico del
+PIN y recuperación sin consulta nueva. La compilación pasa. Esto no sustituye
+prueba visual ni sesiones reales contra el backend desplegado.
 
 Configuración: 20 pruebas enfocadas de cliente, UI y SQL aprobadas. Se verifica
 sesión Auth antes y después de la RPC, rol dueño al modificar, respuesta estricta,
@@ -68,7 +81,7 @@ rechazo de escritura directa. No hay comprobación remota de JWT/PostgREST ni
 concurrencia entre conexiones reales.
 
 Autoevaluación: precisión 4 (reglas SQL probadas; falta instancia remota),
-completitud 3 (servidor y configuración listos; formulario de cobro pendiente), claridad 4
+completitud 3 (circuito local integrado; auditoría UI y validación remota pendientes), claridad 4
 (estado y dependencias explícitos), utilidad 4 (RPC aplicables; no cambia cobro
 aún en cliente), concisión 4 (dos migraciones; conserva pasos de integración). Promedio 3,8/5.
-Prioridad siguiente: integrar consulta en cobro y flujo de autorización antes de activar.
+Prioridad siguiente: ampliar auditoría UI y validar despliegue coordinado en ensayo.
