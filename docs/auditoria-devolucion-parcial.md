@@ -42,6 +42,15 @@ de cada detalle. Debe distribuir previamente descuentos globales conservando
 exactamente el total cobrado; el subtotal bruto no sustituye ese importe neto.
 La función no lee ni autoriza una venta, no audita ni repone stock/caja/deuda.
 
+La misma base incluye `distribuir_importes_historicos_devolucion`: reparte el
+total neto por subtotales históricos mediante diferencias acumuladas redondeadas
+y orden estable por ID de detalle. Conserva el total aunque cambie el orden de
+entrada. Rechaza IDs repetidos, subtotales negativos o datos insuficientes.
+Dieciocho pruebas locales aprobaron ambos cálculos; roles API no pueden
+ejecutarlos. El futuro backend debe proporcionar estos datos desde el checkout
+persistido, nunca desde importes del navegador. No constituye todavía devolución
+confirmada ni prueba de tratamiento fiscal de comprobantes ARCA.
+
 ### Implementación y aceptación restantes
 
 1. Identidad autenticada verificada, comercio y permiso de devolución en servidor;

@@ -50,6 +50,10 @@ cumplir la puerta de aceptación correspondiente.
 
 ## Registro de tareas realizadas
 
+- [x] Distribución SQL privada del importe neto histórico por detalle, con
+  redondeo acumulado, conservación del total y orden estable. Dieciocho pruebas
+  locales de cálculo aprobadas; integración transaccional pendiente (P06).
+
 - [x] Base SQL privada para cálculo acumulado de reintegro histórico sin exceso
   por redondeo. Doce pruebas PostgreSQL aprobadas. Falta integrar autorización,
   importes netos históricos, bloqueos y efectos atómicos: P06 sigue abierto.
