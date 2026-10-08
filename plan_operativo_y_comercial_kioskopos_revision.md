@@ -50,6 +50,10 @@ cumplir la puerta de aceptación correspondiente.
 
 ## Registro de tareas realizadas
 
+- [x] Contrato compartido de devolución por detalle original y UUID estable,
+  sin precios/importe/actor enviados por cliente. Catorce pruebas del parser
+  aprobadas. Ruta backend y conexión al formulario todavía pendientes (P06).
+
 - [x] Distribución SQL privada del importe neto histórico por detalle, con
   redondeo acumulado, conservación del total y orden estable. Dieciocho pruebas
   locales de cálculo aprobadas; integración transaccional pendiente (P06).

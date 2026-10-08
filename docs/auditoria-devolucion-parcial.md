@@ -53,6 +53,14 @@ confirmada ni prueba de tratamiento fiscal de comprobantes ARCA.
 
 ### Implementación y aceptación restantes
 
+Existe un contrato compartido en `supabase/functions/_shared/partialReturnRequest.ts`
+para la futura ruta: UUID de solicitud/venta, caja de reintegro cuando corresponde,
+medio, motivo, notas y cantidades por ID de detalle. Rechaza campos extra de
+precio, importe, usuario, cliente o comercio, además de duplicados y cantidades
+inválidas. Catorce pruebas aprobaron el parser. No está conectado al store ni a
+una Edge Function; la autenticación, persistencia del ID y ejecución atómica
+siguen pendientes. El parser no demuestra pertenencia del detalle a la venta.
+
 1. Identidad autenticada verificada, comercio y permiso de devolución en servidor;
    ningún rol/precio/costo o saldo enviado por navegador decide autorización.
 2. Identificador estable de solicitud, snapshot de entrada y resultado guardado
