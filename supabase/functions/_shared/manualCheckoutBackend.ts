@@ -47,6 +47,7 @@ export function crearBackendCheckoutManual(admin: SupabaseClient): Omit<ManualCh
         p_actor_auth_id: contexto.authUserId, p_entrada: entrada, p_snapshot: snapshot, p_autorizacion_id: autorizacionId,
       })
       if (error || !data) {
+        registrarFalloCheckout('CONFIRMAR_AUTORIZADO', error)
         if (requiereRenovarPermisoManual(error)) throw new Error('Se requiere autorización de supervisor')
         throw new Error('No se confirmó el cierre autorizado del checkout')
       }
