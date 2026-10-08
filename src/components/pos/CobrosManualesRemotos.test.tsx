@@ -1,12 +1,13 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-const mocks = vi.hoisted(() => ({ consultar: vi.fn(), recuperar: vi.fn(), durable: vi.fn(), cancelar: vi.fn(), online: true }))
+const mocks = vi.hoisted(() => ({ consultar: vi.fn(), recuperar: vi.fn(), durable: vi.fn(), cancelar: vi.fn(), confirmar: vi.fn(), online: true }))
+vi.mock('../../lib/manualCheckoutOwnerRecovery', () => ({ confirmarEntradaPorDueno: mocks.confirmar }))
 vi.mock('../../lib/manualCheckoutRemote', () => ({ consultarPendientesRemotos: mocks.consultar, recuperarEntradaRemota: mocks.recuperar }))
 vi.mock('../../lib/manualCheckoutClient', () => ({ cancelarCobroManualRemoto: mocks.cancelar, recuperarCancelacionManualLocal: mocks.durable }))
 vi.mock('../../stores/authStore', () => ({ useAuthStore: { getState: () => ({ usuario: { id: 'dueño', kiosco_id: 'comercio', activo: true, rol: 'DUEÑO' } }) } }))
 vi.mock('../../hooks/useOnlineStatus', () => ({ useOnlineStatus: () => mocks.online }))
 import { CobrosManualesRemotos } from './CobrosManualesRemotos'
-afterEach(() => { cleanup(); mocks.consultar.mockReset(); mocks.recuperar.mockReset(); mocks.durable.mockReset(); mocks.cancelar.mockReset(); mocks.online = true })
+afterEach(() => { cleanup(); mocks.consultar.mockReset(); mocks.recuperar.mockReset(); mocks.durable.mockReset(); mocks.cancelar.mockReset(); mocks.confirmar.mockReset(); mocks.online = true })
 it('consulta al entrar y actualiza con el botón de icono', async () => {
  mocks.consultar.mockResolvedValue([])
  render(<CobrosManualesRemotos kioscoId="comercio" />)
@@ -44,6 +45,32 @@ it('no consulta al servidor sin conexión', () => {
  render(<CobrosManualesRemotos kioscoId="comercio" />)
  expect(mocks.consultar).not.toHaveBeenCalled()
  expect((screen.getByRole('button', { name: 'Actualizar pendientes del servidor' }) as HTMLButtonElement).disabled).toBe(true)
+})
+it('conecta recuperación con entrada original y actualiza la revisión tras confirmar', async () => {
+ const fila = { id: 'checkout-remoto', kioscoId: 'comercio', usuarioId: 'operador', sesionCajaId: 'caja', total: 100, fechaHora: '2026-10-07T12:00:00Z' }
+ const entrada = { checkoutId: fila.id, kioscoId: fila.kioscoId, totalEsperado: 100, pagos: [{ id: 'pago', medio: 'EFECTIVO', montoCentavos: 10000 }] }
+ mocks.consultar.mockResolvedValueOnce([fila]).mockResolvedValue([])
+ mocks.recuperar.mockResolvedValue(entrada); mocks.durable.mockResolvedValue(undefined); mocks.confirmar.mockResolvedValue(undefined)
+ render(<CobrosManualesRemotos kioscoId="comercio" />)
+ const recuperar = await screen.findByRole('button', { name: 'Recuperar cobro' })
+ await waitFor(() => expect((recuperar as HTMLButtonElement).disabled).toBe(false))
+ fireEvent.click(recuperar)
+ fireEvent.click(await screen.findByRole('checkbox'))
+ fireEvent.click(screen.getByRole('button', { name: 'Confirmar cobro original' }))
+ await waitFor(() => expect(mocks.confirmar).toHaveBeenCalledWith(entrada))
+ await waitFor(() => expect(mocks.consultar).toHaveBeenCalledTimes(2))
+ expect(mocks.cancelar).not.toHaveBeenCalled()
+})
+it('no abre recuperación si hay una cancelación local en curso', async () => {
+ mocks.consultar.mockResolvedValue([{ id: 'checkout', kioscoId: 'comercio', usuarioId: 'operador', sesionCajaId: 'caja', total: 100, fechaHora: '2026-10-07T12:00:00Z' }])
+ mocks.recuperar.mockResolvedValue({}); mocks.durable.mockResolvedValue({ cancelacion: {} })
+ render(<CobrosManualesRemotos kioscoId="comercio" />)
+ const boton = await screen.findByRole('button', { name: 'Recuperar cobro' })
+ await waitFor(() => expect((boton as HTMLButtonElement).disabled).toBe(false))
+ fireEvent.click(boton)
+ expect((await screen.findByRole('alert')).textContent).toContain('cancelaciones pendientes')
+ expect(screen.queryByRole('button', { name: 'Confirmar cobro original' })).toBeNull()
+ expect(mocks.confirmar).not.toHaveBeenCalled()
 })
 it('pagina por identificador y reinicia la revisión completa al actualizar', async () => {
  const filas = Array.from({ length: 50 }, (_, i) => ({ id: `id-${i}`, usuarioId: 'operador', sesionCajaId: 'caja', total: 100, fechaHora: '2026-10-07T12:00:00Z' }))

@@ -36,7 +36,7 @@ Esta protección del formulario no es una frontera de seguridad para llamadas
 directas. Verificar RLS y revocar rutas críticas anteriores de manera coordinada
 sigue siendo un requisito antes de declarar completo el plan de seguridad.
 
-## Interfaz
+## Interfaz — evidencia anterior a la recuperación conectada
 
 Desde `0091e12`, pendientes remotos se revisan en Caja y Turno, plegados y sólo
 para dueño. Cobros locales pendientes mantienen su aviso en Punto de Venta.
@@ -60,8 +60,8 @@ saldo deudor 250, un pago y un movimiento de cuenta corriente. Las 76 pruebas
 SQL del archivo pasaron. La lectura de metadatos sigue siendo authenticated;
 el cierre se ejecuta como service_role y la inspección posterior como propietario
 del entorno de prueba. No se conceden lecturas directas al rol de servicio para
-facilitar esa inspección. Falta conectar la acción explícita al panel y probarla
-con JWT real antes de cerrar P09.
+facilitar esa inspección. La acción ya está conectada al panel; falta probarla
+con JWT real antes de cerrar P09. Ver [guía de recuperación](recuperacion-cobro-remoto.md).
 
 Autoevaluación: precisión 4 (aserciones de contexto y resultado local);
 completitud 3 (falta el circuito de confirmación remota y su piloto);
