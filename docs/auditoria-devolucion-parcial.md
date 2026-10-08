@@ -27,6 +27,23 @@ anteriores describen la revisión inicial y el backend transaccional sigue abier
 
 ## Requisitos del reemplazo transaccional (pendientes)
 
+### Base de cálculo implementada, todavía sin conexión al circuito
+
+`supabase_fase_devolucion_calculo_historico.sql` define una función privada que
+calcula diferencia de importe acumulado redondeado a centavos. Un artículo de
+$1 dividido en tres devoluciones reintegra $0,33, $0,34 y $0,33. Valida finitud,
+precisión monetaria/de cantidades y límite original. Doce pruebas PostgreSQL
+locales aprobaron cálculo, pesables, valores inválidos y ejecución API revocada.
+
+No aplicar esta función como reemplazo de la devolución existente: aún no hay
+RPC transaccional conectada. El futuro llamador debe bloquear venta/devoluciones,
+obtener cantidades previas del registro confirmado y usar importe neto histórico
+de cada detalle. Debe distribuir previamente descuentos globales conservando
+exactamente el total cobrado; el subtotal bruto no sustituye ese importe neto.
+La función no lee ni autoriza una venta, no audita ni repone stock/caja/deuda.
+
+### Implementación y aceptación restantes
+
 1. Identidad autenticada verificada, comercio y permiso de devolución en servidor;
    ningún rol/precio/costo o saldo enviado por navegador decide autorización.
 2. Identificador estable de solicitud, snapshot de entrada y resultado guardado

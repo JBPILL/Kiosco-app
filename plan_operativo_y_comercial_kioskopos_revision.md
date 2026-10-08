@@ -50,6 +50,10 @@ cumplir la puerta de aceptación correspondiente.
 
 ## Registro de tareas realizadas
 
+- [x] Base SQL privada para cálculo acumulado de reintegro histórico sin exceso
+  por redondeo. Doce pruebas PostgreSQL aprobadas. Falta integrar autorización,
+  importes netos históricos, bloqueos y efectos atómicos: P06 sigue abierto.
+
 - [x] Devolución parcial bloquea entrada inválida/duplicada y falla de lectura
   de devoluciones anteriores antes de escribir. Doce pruebas del store aprobadas;
   atomicidad, cálculo autoritativo y permisos backend siguen pendientes (P06).
