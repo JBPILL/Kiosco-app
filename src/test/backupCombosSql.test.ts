@@ -21,21 +21,21 @@ beforeAll(async () => {
     CREATE TABLE usuarios(auth_user_id uuid,kiosco_id uuid,rol text,activo boolean);
     CREATE FUNCTION auth_es_dueno_o_superadmin() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT EXISTS(SELECT 1 FROM usuarios WHERE auth_user_id=auth.uid() AND activo AND rol='DUEÑO') $$;
     CREATE FUNCTION auth_user_kiosco_id() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT kiosco_id FROM usuarios WHERE auth_user_id=auth.uid() AND activo LIMIT 1 $$;
-    CREATE TABLE productos(id uuid PRIMARY KEY,kiosco_id uuid,es_combo boolean DEFAULT false);
+    CREATE TABLE productos(id uuid PRIMARY KEY,kiosco_id uuid,es_combo boolean DEFAULT false,es_pesable boolean DEFAULT false);
     CREATE TABLE combo_items(id uuid PRIMARY KEY,kiosco_id uuid,combo_producto_id uuid REFERENCES productos(id),componente_producto_id uuid REFERENCES productos(id),cantidad numeric);
     CREATE TABLE producto_costos(producto_id uuid,kiosco_id uuid,precio_costo numeric);
     CREATE TABLE categorias(id uuid,kiosco_id uuid); CREATE TABLE clientes(id uuid,kiosco_id uuid);
     CREATE TABLE proveedores(id uuid,kiosco_id uuid); CREATE TABLE promociones(id uuid,kiosco_id uuid); CREATE TABLE lotes_producto(id uuid,kiosco_id uuid);
     INSERT INTO kioscos VALUES('${kid}','Local','ACTIVO'),('${otroKid}','Otro','ACTIVO');
     INSERT INTO usuarios VALUES('${uid}','${kid}','DUEÑO',true);
-    INSERT INTO productos VALUES('${combo}','${kid}',false),('${fisico}','${kid}',false),('${ajeno}','${otroKid}',false);
+    INSERT INTO productos(id,kiosco_id,es_combo) VALUES('${combo}','${kid}',false),('${fisico}','${kid}',false),('${ajeno}','${otroKid}',false);
     SELECT set_config('test.uid','${uid}',false),set_config('test.role','authenticated',false);`)
   await db.exec(sql); await db.exec(sql)
   await db.exec(snapshotSql); await db.exec(snapshotSql)
 })
 beforeEach(async () => {
   await db.exec(`RESET ROLE; UPDATE usuarios SET rol='DUEÑO',activo=true; DELETE FROM combo_items;
-    UPDATE productos SET es_combo=false; UPDATE kioscos SET estado_suscripcion='ACTIVO';`)
+    UPDATE productos SET es_combo=false,es_pesable=false; UPDATE kioscos SET estado_suscripcion='ACTIVO';`)
 })
 afterAll(async () => db.close())
 const items = (id = fisico, cantidad = 2) => [{ componente_producto_id: id, cantidad }]
@@ -58,10 +58,16 @@ it('rechaza cajero, usuario inactivo y comercio suspendido', async () => {
 })
 it('conserva la composición original ante entradas inválidas', async () => {
   await restore()
-  for (const entrada of [items(ajeno),items(combo),items(fisico,0),items(fisico,-1),[...items(),...items()],[],{},[{ cantidad:2 }]]) {
+  for (const entrada of [items(ajeno),items(combo),items(fisico,0),items(fisico,-1),items(fisico,0.0001),items(fisico,1000000),[...items(),...items()],[],{},[{ cantidad:2 }]]) {
     await expect(restore(entrada)).rejects.toThrow()
     expect((await db.query('SELECT * FROM combo_items')).rows).toHaveLength(1)
   }
+})
+it('admite fracciones de tres decimales únicamente en productos pesables', async () => {
+  await expect(restore(items(fisico,0.5))).rejects.toThrow('fracciones')
+  await db.exec(`UPDATE productos SET es_pesable=true WHERE id='${fisico}'`)
+  await restore(items(fisico,0.125))
+  await expect(restore(items(fisico,0.1255))).rejects.toThrow('Cantidades')
 })
 it('rechaza componentes virtuales y elimina componentes al convertir a físico', async () => {
   await db.exec(`UPDATE productos SET es_combo=true WHERE id='${fisico}'`)

@@ -16,10 +16,10 @@ describe('relaciones del respaldo', () => {
   })
   it('acepta un combo completo con cantidades fraccionarias', () => {
     expect(() => validarRelacionesBackup({ ...copia(), productos: [
-      { id: 'p1' }, { id: 'pack', es_combo: true, componentes_combo: [{ componente_producto_id: 'p1', cantidad: 0.5 }] },
+      { id: 'p1', es_pesable: true }, { id: 'pack', es_combo: true, componentes_combo: [{ componente_producto_id: 'p1', cantidad: 0.5 }] },
     ] })).not.toThrow()
   })
-  it.each([0,-1,Infinity,'2'])('rechaza la cantidad de componente %s', cantidad => {
+  it.each([0,-1,Infinity,'2',0.5,0.0001,1000000])('rechaza la cantidad de componente %s', cantidad => {
     expect(() => validarRelacionesBackup({ ...copia(), productos: [
       { id: 'p1' }, { id: 'pack', es_combo: true, componentes_combo: [{ componente_producto_id: 'p1', cantidad }] },
     ] })).toThrow('cantidad')

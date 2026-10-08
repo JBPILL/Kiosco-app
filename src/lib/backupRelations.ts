@@ -43,12 +43,13 @@ export function validarRelacionesBackup(datos: ColeccionesRelacionadasBackup): v
     }
   }
   const productosVirtuales = new Set((filas.get('productos') || []).filter(p => p.es_combo === true).map(p => p.id))
+  const productosPesables = new Set((filas.get('productos') || []).filter(p => p.es_pesable === true).map(p => p.id))
   for (const producto of filas.get('productos') || []) {
     if (producto.es_combo === true && !Array.isArray(producto.componentes_combo)) {
       throw new Error('El respaldo contiene combos sin sus componentes. Generá una copia nueva con el servicio de respaldo actualizado.')
     }
     if (producto.componentes_combo !== undefined) {
-      if (!Array.isArray(producto.componentes_combo) || producto.componentes_combo.length > 1000
+      if (!Array.isArray(producto.componentes_combo) || producto.componentes_combo.length > 500
         || (producto.es_combo === true && producto.componentes_combo.length === 0)
         || (producto.es_combo !== true && producto.componentes_combo.length !== 0)) throw new Error('productos: estructura del combo inválida.')
       const componentes = new Set<string>()
@@ -59,7 +60,9 @@ export function validarRelacionesBackup(datos: ColeccionesRelacionadasBackup): v
         if (id === producto.id || componentes.has(id)
           || productosVirtuales.has(id)
           || typeof item.cantidad !== 'number' || !Number.isFinite(item.cantidad)
-          || item.cantidad <= 0 || item.cantidad > 1_000_000_000) throw new Error('componentes_combo: cantidad o referencia inválida.')
+          || item.cantidad < 0.001 || item.cantidad > 999999
+          || Number(item.cantidad.toFixed(3)) !== item.cantidad
+          || (!productosPesables.has(id) && !Number.isInteger(item.cantidad))) throw new Error('componentes_combo: cantidad o referencia inválida.')
         componentes.add(id)
       }
     }

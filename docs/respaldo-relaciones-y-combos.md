@@ -11,6 +11,8 @@ Después de las fases de respaldo integral y ampliado, aplicar en Supabase SQL E
   componentes, accesible únicamente al dueño activo del comercio.
 
 El push a GitHub no aplica estas migraciones. Su aplicación remota está pendiente.
+Si ya aplicaste la 50, ejecutá nuevamente su archivo vigente: se alinearon los
+límites de receta con el cobro transaccional.
 Una copia nueva debe contener los componentes de cada producto con `es_combo=true`.
 Las copias 3.0/4.0 antiguas con combos sin componentes se rechazan explícitamente.
 La recuperación de combos desde 2.0 no está permitida.
@@ -20,8 +22,9 @@ La recuperación de combos desde 2.0 no está permitida.
 Las copias 3.0 y 4.0 se validan al leer el archivo y antes de restaurar.
 Se rechazan identificadores ausentes o duplicados, registros de otro comercio y
 referencias a categorías, proveedores, productos o componentes ausentes.
-Los combos físicos exigen entre 1 y 1000 componentes únicos, cantidades positivas
-y finitas, sin referencias a sí mismos ni a otros productos virtuales.
+Los combos físicos exigen entre 1 y 500 componentes únicos, cantidades entre
+0,001 y 999999 con hasta tres decimales, sin referencias a sí mismos ni a otros
+productos virtuales. Los componentes no pesables requieren unidades enteras.
 
 Si falla la creación de una categoría o proveedor, no se guarda el producto
 dependiente sin esa relación. Los lotes y componentes sólo usan identificadores
@@ -46,11 +49,23 @@ Las copias 2.0 no tienen todas las garantías de relaciones de 3.0/4.0.
 4. Probar como cajero y con componentes de otro comercio: debe rechazarse.
 5. Conservar evidencia de la restauración completa, incluyendo saldos y costos.
 
-Pasaron 88 pruebas en siete archivos de respaldo. Las pruebas locales incluyen
+Pasaron 175 pruebas en nueve archivos de respaldo y cobro transaccional.
+Las pruebas locales incluyen
 PostgreSQL en PGlite, denegación por rol,
 usuario inactivo, comercio suspendido, productos ajenos, cantidades inválidas,
 reintentos, remapeo y reversión ante un fallo de inserción.
 No se ha realizado una restauración remota ni un piloto de ventas del pack.
+Se probó la secuencia recuperar composición → confirmar venta → reintentar en
+PostgreSQL local: consume los componentes una sola vez y conserva el stock virtual.
+
+## Anulación: brecha pendiente
+
+La ruta actual de `ReportesPage.tsx` repone combos con su composición vigente
+en el navegador. Si la receta cambió después de vender, puede devolver cantidades
+distintas de las vendidas. También aplica estado, stock, deuda y caja por etapas.
+La prueba de venta restaurada no certifica esa ruta. La anulación debe migrar a
+una operación del servidor que use la composición histórica de la venta,
+revierte todos los efectos o ninguno y admite reintentos sin duplicar reintegros.
 
 ## Autoevaluación
 

@@ -19,7 +19,7 @@ BEGIN
     RAISE EXCEPTION 'Componentes inválidos.' USING ERRCODE='22023';
   END IF;
   cantidad_items := jsonb_array_length(p_componentes);
-  IF cantidad_items>1000 OR (p_es_combo AND cantidad_items=0) OR (NOT p_es_combo AND cantidad_items<>0) THEN
+  IF cantidad_items>500 OR (p_es_combo AND cantidad_items=0) OR (NOT p_es_combo AND cantidad_items<>0) THEN
     RAISE EXCEPTION 'Cantidad de componentes incompatible.' USING ERRCODE='22023';
   END IF;
   IF EXISTS(SELECT 1 FROM jsonb_array_elements(p_componentes) e WHERE
@@ -28,7 +28,8 @@ BEGIN
     RAISE EXCEPTION 'Componente inválido.' USING ERRCODE='22023';
   END IF;
   IF EXISTS(SELECT 1 FROM jsonb_array_elements(p_componentes) e WHERE
-    (e->>'cantidad')::numeric<=0 OR (e->>'cantidad')::numeric>1000000000
+    (e->>'cantidad')::numeric<0.001 OR (e->>'cantidad')::numeric>999999
+    OR (e->>'cantidad')::numeric<>round((e->>'cantidad')::numeric,3)
     OR (e->>'componente_producto_id')::uuid=p_producto_id)
   OR (SELECT count(DISTINCT (e->>'componente_producto_id')::uuid) FROM jsonb_array_elements(p_componentes) e)<>cantidad_items THEN
     RAISE EXCEPTION 'Cantidades o referencias inválidas.' USING ERRCODE='22023';
@@ -42,6 +43,11 @@ BEGIN
     SELECT 1 FROM public.productos p WHERE p.id=(e->>'componente_producto_id')::uuid
       AND p.kiosco_id=p_kiosco_id AND NOT COALESCE(p.es_combo,false))) THEN
     RAISE EXCEPTION 'Producto ausente, ajeno o componente virtual.' USING ERRCODE='22023';
+  END IF;
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(p_componentes) e JOIN public.productos p
+    ON p.id=(e->>'componente_producto_id')::uuid AND p.kiosco_id=p_kiosco_id
+    WHERE NOT COALESCE(p.es_pesable,false) AND (e->>'cantidad')::numeric<>trunc((e->>'cantidad')::numeric)) THEN
+    RAISE EXCEPTION 'Un componente por unidad no permite fracciones.' USING ERRCODE='22023';
   END IF;
   -- Activar un producto referenciado tampoco puede crear anidamientos inconsistentes.
   IF p_es_combo AND EXISTS(SELECT 1 FROM public.combo_items WHERE componente_producto_id=p_producto_id) THEN

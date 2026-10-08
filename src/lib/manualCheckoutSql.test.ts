@@ -103,6 +103,7 @@ beforeAll(async () => {
   }
   await db.exec(readFileSync('supabase_fase_checkout_manual_inmutabilidad.sql', 'utf8'))
   await db.exec(readFileSync('supabase_fase_ventas_sin_escritura_anonima.sql', 'utf8'))
+  await db.exec(readFileSync('supabase_fase_restaurar_combos_backup.sql', 'utf8'))
 }, 30000)
 beforeEach(async () => {
   await db.exec(`RESET ROLE; SET request.jwt.claim.role='service_role'; SET request.jwt.claim.sub='${actor}';
@@ -184,6 +185,21 @@ it('un combo consume componentes físicos con receta congelada y nunca su stock 
   await confirmar(datos)
   expect(await leer(`SELECT stock_actual FROM productos WHERE id='${producto}'`)).toEqual([{ stock_actual: '8.000' }])
   expect(await leer(`SELECT stock_actual FROM productos WHERE id='${combo}'`)).toEqual([{ stock_actual: '0.000' }])
+})
+it('un combo recuperado se vende y reintenta consumiendo su composición restaurada una sola vez', async () => {
+  await db.exec("SET request.jwt.claim.role='authenticated'; SET ROLE authenticated")
+  await db.query('SELECT restaurar_combo_backup($1,$2,true,$3::jsonb)',[kid,combo,
+    JSON.stringify([{ componente_producto_id: producto,cantidad:3 }])])
+  await db.exec("RESET ROLE; SET request.jwt.claim.role='service_role'; SET ROLE service_role")
+  const datos = solicitud()
+  datos.detalles[0] = { ...datos.detalles[0], producto_id:combo,cantidad:1,
+    componentes:[{ producto_id:producto,cantidad:3 }] }
+  await confirmar(datos); await confirmar(datos)
+  await db.exec('RESET ROLE')
+  expect(await leer(`SELECT stock_actual FROM productos WHERE id='${producto}'`)).toEqual([{ stock_actual:'7.000' }])
+  expect(await leer(`SELECT stock_actual FROM productos WHERE id='${combo}'`)).toEqual([{ stock_actual:'0.000' }])
+  expect(await leer('SELECT count(*)::int cantidad FROM ventas')).toEqual([{ cantidad:1 }])
+  expect(await leer('SELECT sum(monto) total FROM pagos_venta')).toEqual([{ total:'250.00' }])
 })
 it('receta alterada queda en conflicto y no cambia stock', async () => {
   const datos = solicitud()
