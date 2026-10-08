@@ -1,8 +1,11 @@
+// @vitest-environment node
 import { readFileSync } from 'node:fs'
 import { PGlite } from '@electric-sql/pglite'
 import { expect, it } from 'vitest'
 
 const consulta = readFileSync('sql_verificar_recuperacion_auditada.sql', 'utf8')
+// Cada caso inicia PostgreSQL WASM; permitir el arranque bajo carga de la suite.
+const timeoutPostgres = 30_000
 
 it('informa objetos ausentes sin fallar', async () => {
   const db = new PGlite()
@@ -11,7 +14,7 @@ it('informa objetos ausentes sin fallar', async () => {
     expect(rows[0].diagnostico_recuperacion_auditada.tabla_presente).toBe(false)
     expect(rows[0].diagnostico_recuperacion_auditada.funcion_presente).toBe(false)
   } finally { await db.close() }
-})
+}, timeoutPostgres)
 
 it.each([
   ['', ''],
@@ -41,4 +44,4 @@ it.each([
     const valores = rows[0].diagnostico_recuperacion_auditada
     for (const [nombre, valor] of Object.entries(valores)) expect(valor, nombre).toBe(nombre !== control)
   } finally { await db.close() }
-})
+}, timeoutPostgres)

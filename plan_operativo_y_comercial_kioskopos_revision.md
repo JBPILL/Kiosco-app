@@ -42,7 +42,6 @@ cumplir la puerta de aceptación correspondiente.
 | P22 | 7 · Escritorio/quiosco | Preparar entrega de instalación lista para usar | Definir PWA/instalador soportado, acceso directo, configuración inicial, arranque, actualización y procedimiento de soporte. |
 | P23 | 7 · Escritorio/quiosco | Resolver persistencia y recuperación del puesto | Edge kiosk usa InPrivate: probar login, permisos y cobros pendientes tras cierre/reinicio; decidir perfil/despliegue compatible antes de activarlo. |
 | P24 | 7 · Escritorio/quiosco | Probar Windows administrado en piloto | Assigned Access/salida de emergencia, cierre inesperado, reconexión, pantalla y recuperación. El lanzador no bloquea Windows ni relanza Edge. |
-| P25 | Verificación | Repetir suite global tras los avances recientes | Última suite completa aprobada en `eafbdd9`; ejecutar nuevamente al integrar los siguientes cambios y registrar revisión, resultados y build. Las pruebas dirigidas posteriores no equivalen a una nueva suite global. |
 
 ### Trabajo pausado por decisión del usuario
 
@@ -52,6 +51,13 @@ cumplir la puerta de aceptación correspondiente.
   El cobro manual con posnet continúa siendo una ruta independiente.
 
 ## Registro de tareas realizadas
+
+- [x] Comprobación global de `95f71ba`: build aprobado; 1.510 pruebas aprobadas
+  y siete agotaron el tiempo de arranque PostgreSQL. El diagnóstico ahora usa
+  entorno Node y límite explícito de 30 segundos; ocho casos dirigidos aprobaron
+  en 15,78 segundos. Repetición global con este ajuste: **1.517 pruebas en 158
+  archivos aprobadas**, 173,79 segundos, código 0; build también código 0.
+  P25 cerrado para esta revisión local. No acredita aceptación remota ni física.
 
 - [x] Contrato compartido de devolución por detalle original y UUID estable,
   sin precios/importe/actor enviados por cliente. Catorce pruebas del parser
