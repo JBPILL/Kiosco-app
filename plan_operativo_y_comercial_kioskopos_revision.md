@@ -52,6 +52,15 @@ cumplir la puerta de aceptación correspondiente.
 
 ## Registro de tareas realizadas
 
+- [x] Catálogo remoto de devoluciones recibido: RLS habilitado y políticas
+  FOR ALL para authenticated por comercio; grants de escritura anon/authenticated.
+  Sin política anon en el resultado: no prueba escritura anónima efectiva.
+  Revocación de ruta directa e integración backend siguen abiertas (P06).
+
+- [x] Base privada de confirmaciones de devolución con solicitud/resultado,
+  identidad coherente, venta/comercio y UUID único preparada. Nueve pruebas
+  PostgreSQL aprobadas. No aplicada ni conectada: no cierra atomicidad (P06).
+
 - [x] Cálculo privado de reintegros por detalle original integra importe neto
   histórico y cantidades previas; mantiene separadas líneas del mismo producto.
   29 pruebas PostgreSQL aprobadas. Bloqueos, persistencia y efectos atómicos

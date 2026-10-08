@@ -39,6 +39,27 @@ ausentes, política abierta, RLS deshabilitado, permisos por tabla/columna y su
 revocación. No determina autorización de filas sin JWT real ni revoca permisos.
 El bloqueo de escrituras se aplicará junto con el reemplazo operativo, no antes.
 
+Resultado remoto recibido del usuario el 08/10/2026: ambas tablas presentes con
+RLS habilitado. `anon` y `authenticated` tienen permisos de escritura por tabla
+y columnas; `service_role` no. Cada tabla presenta una política permisiva `FOR
+ALL` para `authenticated`, filtrada por el comercio asociado a `auth.uid()`.
+No aparece política para `anon`: los grants por sí solos no prueban escritura
+anónima de filas. El resultado confirma la ruta de escritura directa del navegador
+a nivel de catálogo, no atomicidad ni una prueba con JWT real. El reemplazo debe
+mantener lectura por comercio y revocar escrituras directas al activar su RPC.
+
+### Registro privado de confirmaciones preparado
+
+`supabase_fase_devolucion_registro_privado.sql` prepara un registro con UUID único,
+venta/comercio ligados por FK compuesta, actor autenticado, solicitud y resultado
+confirmado. Valida que las identidades JSON coincidan con sus columnas. Revoca
+acceso API por tabla y columna y comprueba permisos heredados; no crea una ruta
+de escritura pública. Nueve pruebas PostgreSQL aprobaron reaplicación, duplicados,
+identidades incompatibles, comercio ajeno, rollback y rechazo de escritura API.
+La futura RPC insertará este registro dentro de la misma transacción de efectos;
+la tabla sola no implementa reintentos, autenticación ni devolución atómica.
+No aplicar esta base como sustituto del flujo actual: RPC e integración pendientes.
+
 ### Base de cálculo implementada, todavía sin conexión al circuito
 
 `supabase_fase_devolucion_calculo_historico.sql` define una función privada que
