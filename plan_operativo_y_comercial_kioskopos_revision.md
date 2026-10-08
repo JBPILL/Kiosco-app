@@ -54,6 +54,7 @@ alcance, instalación y limitaciones.
 | Hecho | Entregable realizado | Evidencia y alcance |
 | --- | --- | --- |
 | [x] | Costos privados y protección de perfiles | Migraciones/consultas que separan costos del acceso de cajeros y protegen rol e identidad. [Guía de seguridad](docs/verificacion-seguridad-postgresql.md). API con JWT real pendiente (P02). |
+| [x] | Herramienta de lectura de costos por API | GET con identidad Auth verificada, perfil CAJERO/comercio esperado, control de filas privadas y paginación del costo público. [Guía](docs/comprobar-costos-api-cajero.md). Pruebas HTTP simuladas; ejecución real pendiente (P02). |
 | [x] | Auditoría de precios y motivo de cambio | Funciones, guardado y consulta de auditoría implementados. [Motivo de precio](docs/motivo-cambio-precio.md), [consulta comercial](docs/auditoria-comercial-consulta.md). |
 | [x] | PIN de supervisor y umbral configurable | Backend, espera progresiva, auditoría y política congelada en checkout. [Política](docs/supervisor-politica-descuento.md), [espera](docs/supervisor-pin-espera.md). |
 | [x] | Venta de Lucía autorizada en caja compartida | Evidencia del usuario: ef754442…, $2.240, umbral 15, requiere supervisor y cierre confirmado, pagos $2.240. PIN incorrecto rechazado; correcto aceptado. [Aceptación remota](docs/aceptacion-remota-checkout-2026-10-08.md). |
