@@ -61,6 +61,9 @@ it.each(['ventas','detalles_venta','pagos_venta'])('paso 52 impide crear ventas 
     await db.exec(`CREATE FUNCTION confirmar_venta_manual(uuid,jsonb) RETURNS void LANGUAGE sql AS $$ SELECT $$;`)
     const migracion = readFileSync('supabase_fase_ventas_cajero_solo_backend.sql','utf8').replace(/^\s*(BEGIN|COMMIT);\s*$/gm,'')
     await db.exec(migracion); await db.exec(migracion)
+    const diagnosticoSql = readFileSync('sql_verificar_ventas_cajero_solo_backend.sql', 'utf8')
+    const instalado = await db.query<{ diagnostico_cajero_backend: { paso_52_instalado: boolean } }>(diagnosticoSql)
+    expect(instalado.rows[0].diagnostico_cajero_backend.paso_52_instalado).toBe(true)
     await db.exec('SET ROLE authenticated')
     const id='50000000-0000-0000-0000-000000000001'
     const insertar=tabla==='ventas'
@@ -72,6 +75,17 @@ it.each(['ventas','detalles_venta','pagos_venta'])('paso 52 impide crear ventas 
     await db.exec("SET test.dueno='true'")
     await db.exec(insertar)
     expect((await db.query(`SELECT id FROM ${tabla} WHERE id='${id}'`)).rows).toHaveLength(1)
+    await db.exec(`RESET ROLE; ALTER TABLE ${tabla} DISABLE ROW LEVEL SECURITY`)
+    const deshabilitado = await db.query<{ diagnostico_cajero_backend: { paso_52_instalado: boolean } }>(diagnosticoSql)
+    expect(deshabilitado.rows[0].diagnostico_cajero_backend.paso_52_instalado).toBe(false)
+    await db.exec(`ALTER TABLE ${tabla} ENABLE ROW LEVEL SECURITY;
+      DROP POLICY ventas_cajero_solo_backend_insert ON ${tabla}`)
+    const ausente = await db.query<{ diagnostico_cajero_backend: { paso_52_instalado: boolean } }>(diagnosticoSql)
+    expect(ausente.rows[0].diagnostico_cajero_backend.paso_52_instalado).toBe(false)
+    await db.exec(`CREATE POLICY ventas_cajero_solo_backend_insert ON ${tabla}
+      AS RESTRICTIVE FOR INSERT TO authenticated WITH CHECK(true)`)
+    const permisiva = await db.query<{ diagnostico_cajero_backend: { paso_52_instalado: boolean } }>(diagnosticoSql)
+    expect(permisiva.rows[0].diagnostico_cajero_backend.paso_52_instalado).toBe(false)
   } finally { await db.exec('ROLLBACK; RESET ROLE') }
 })
 

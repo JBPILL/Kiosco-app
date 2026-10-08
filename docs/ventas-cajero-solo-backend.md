@@ -28,10 +28,22 @@ y corregir el despliegue del backend antes de volver a intentar.
 
 ## Validación
 
+Después de aplicar el paso 52, ejecutar `sql_verificar_ventas_cajero_solo_backend.sql`
+en el SQL Editor. `paso_52_instalado` debe ser `true`: revisa las tres tablas,
+RLS habilitado y la política INSERT restrictiva para authenticated con la
+condición de dueño/superadmin. Un resultado false identifica la tabla pendiente.
+Este diagnóstico de catálogo no comprueba la identidad JWT ni el funcionamiento
+de la Edge Function; conservar las comprobaciones operativas del paso 4.
+
 PGlite verifica los tres INSERT directos con políticas permisivas existentes,
 su rechazo para cajero y la conservación de permisos del dueño. La integración
 del checkout real confirma y reintenta con esta política aplicada. Falta
 aplicación y comprobación remota; la fase de seguridad sigue abierta.
+
+El diagnóstico se ejecutó sobre el catálogo PostgreSQL de PGlite: detecta
+RLS deshabilitado, política ausente y una condición reemplazada por `true` en
+cualquiera de las tres tablas. Las 17 pruebas del archivo de inmutabilidad
+pasaron; build aprobado. No se ejecutó esta consulta en Supabase remoto.
 
 Autoevaluación (skill agent-self-evaluation): precisión 4 por evidencia SQL
 local; completitud 3 por despliegue remoto pendiente; claridad 4 por orden de
