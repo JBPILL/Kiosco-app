@@ -15,11 +15,11 @@ import { BajasStockTab } from '../components/reportes/BajasStockTab'
 import { ExternalBackupReminder } from '../components/config/ExternalBackupReminder'
 import { useClienteStore } from '../stores/clienteStore'
 import { useCajaStore } from '../stores/cajaStore'
-import { useComboStore } from '../stores/comboStore'
-import { useLoteStore } from '../stores/loteStore'
+import { anularVentaAtomica } from '../lib/annulmentClient'
+
 import { cargarCostosProtegidos } from '../lib/productCostAccess'
 import { ventaToTicketData } from '../lib/ticketUtils'
-import type { Producto } from '../types/database'
+
 import toast from 'react-hot-toast'
 
 interface ResumenDiario {
@@ -69,6 +69,7 @@ export function ReportesPage() {
   const [ventaExpandida, setVentaExpandida] = useState<string | null>(null)
   const [ventaParaAnular, setVentaParaAnular] = useState<VentaResumen | null>(null)
   const [motivoAnulacion, setMotivoAnulacion] = useState('')
+  const [usarCajaActual, setUsarCajaActual] = useState(false)
   const [anulando, setAnulando] = useState(false)
   const [ticketParaImprimir, setTicketParaImprimir] = useState<TicketData | null>(null)
 
@@ -275,231 +276,32 @@ export function ReportesPage() {
     setAnulando(true)
 
     try {
-      // 0. Proteger contra anulación de ventas que ya tienen devoluciones parciales
-      const { data: devsPrevias } = await supabase
-        .from('devoluciones_venta')
-        .select('id, monto_total')
-        .eq('venta_id', ventaParaAnular.id)
-
-      if (devsPrevias && devsPrevias.length > 0) {
-        toast.error(
-          'Esta venta posee devoluciones parciales registradas. No puede anularse en su totalidad para no duplicar reintegros de dinero ni alterar el stock.',
-          { duration: 6000 }
-        )
-        setVentaParaAnular(null)
-        setAnulando(false)
-        return
-      }
-
-      const ahora = new Date().toISOString()
       const kioscoId = usuario?.kiosco_id
-
-      // 1. Cambiar estado de la venta a ANULADA
-      const { error } = await supabase
-        .from('ventas')
-        .update({ estado: 'ANULADA', motivo_anulacion: motivoAnulacion.trim() })
-        .eq('id', ventaParaAnular.id)
-
-      if (error) throw error
-
-      // 2. Reincorporar stock de cada producto y registrar INGRESO por DEVOLUCION
-      for (const det of ventaParaAnular.detalles) {
-        if (det.es_devolucion_envase || (det.producto as any)?.activo === false || (det.precio_unitario || 0) <= 0) continue
-
-        const prodId = det.producto_id || det.producto?.id
-        if (!prodId) continue
-
-        try {
-          // Consultar el stock actual en base de datos y si es combo
-          const { data: prodData } = await supabase
-            .from('productos')
-            .select('id, stock_actual, descripcion, es_combo')
-            .eq('id', prodId)
-            .maybeSingle()
-
-          if (!prodData) continue
-
-          if (prodData.es_combo) {
-            // Si es un combo, restituir el stock físico de sus componentes individuales
-            const componentes = useComboStore.getState().obtenerComponentesDeCombo(prodData.id)
-            for (const comp of componentes) {
-              const cantRestituir = comp.cantidad * det.cantidad
-              const { data: compProd } = await supabase
-                .from('productos')
-                .select('id, stock_actual, descripcion')
-                .eq('id', comp.componente_producto_id)
-                .maybeSingle()
-
-              if (compProd) {
-                const nuevoStockComp = Number(((compProd.stock_actual || 0) + cantRestituir).toFixed(3))
-                await supabase
-                  .from('productos')
-                  .update({
-                    stock_actual: nuevoStockComp,
-                    fecha_actualizacion: ahora,
-                  })
-                  .eq('id', compProd.id)
-
-                if (kioscoId) {
-                  await supabase.from('movimientos_stock').insert({
-                    kiosco_id: kioscoId,
-                    producto_id: compProd.id,
-                    tipo: 'INGRESO',
-                    cantidad: cantRestituir,
-                    motivo: 'DEVOLUCION',
-                    notas: `Devolución Combo #${ventaParaAnular.id.slice(0, 8).toUpperCase()} - ${prodData.descripcion}`,
-                    usuario_id: usuario?.id || null,
-                    fecha: ahora,
-                  })
-                }
-
-                try {
-                  await useLoteStore.getState().restituirStockLote(compProd.id, cantRestituir, kioscoId || undefined)
-                } catch (errLote) {
-                  console.warn(`Error al reponer lote de componente ${compProd.id}:`, errLote)
-                }
-              }
-            }
-          } else {
-            const stockActual = prodData?.stock_actual ?? det.producto?.stock_actual ?? 0
-            const nuevoStock = Math.round((stockActual + det.cantidad) * 1000) / 1000
-
-            await supabase
-              .from('productos')
-              .update({
-                stock_actual: nuevoStock,
-                fecha_actualizacion: ahora,
-              })
-              .eq('id', prodId)
-
-            if (kioscoId) {
-              await supabase.from('movimientos_stock').insert({
-                kiosco_id: kioscoId,
-                producto_id: prodId,
-                tipo: 'INGRESO',
-                cantidad: det.cantidad,
-                motivo: 'DEVOLUCION',
-                notas: `Devolución por anulación de Venta #${ventaParaAnular.id.slice(0, 8).toUpperCase()}`,
-                usuario_id: usuario?.id || null,
-                fecha: ahora,
-              })
-            }
-
-            try {
-              await useLoteStore.getState().restituirStockLote(prodId, det.cantidad, kioscoId || undefined)
-            } catch (errLote) {
-              console.warn(`Error al reponer lote de producto ${prodId}:`, errLote)
-            }
-          }
-        } catch (errStock) {
-          console.warn(`Error al reponer stock de producto ${prodId}:`, errStock)
-        }
-      }
-
-      // Actualizar la caché local de productos asegurando coherencia multi-inquilino
+      if (!kioscoId) throw new Error('No se identificó el comercio activo.')
+      const sesion = useCajaStore.getState().sesionActiva
+      const resultado = await anularVentaAtomica(
+        ventaParaAnular.id, kioscoId, motivoAnulacion,
+        usarCajaActual ? sesion?.id ?? null : null,
+      )
+      // Usar valores absolutos confirmados evita sumar stock otra vez al reintentar.
       try {
-        const prodList: Producto[] = getCachedProductos(kioscoId)
-        if (prodList && prodList.length > 0) {
-          const cantidadesMap = new Map<string, number>()
-
-          for (const det of ventaParaAnular.detalles) {
-            if (det.es_devolucion_envase || (det.producto as any)?.activo === false || (det.precio_unitario || 0) <= 0) continue
-
-            const pId = det.producto_id || det.producto?.id
-            if (!pId) continue
-
-            const prod = prodList.find((p) => p.id === pId)
-            if (prod?.es_combo) {
-              const componentes = useComboStore.getState().obtenerComponentesDeCombo(prod.id)
-              for (const comp of componentes) {
-                const actual = cantidadesMap.get(comp.componente_producto_id) || 0
-                cantidadesMap.set(comp.componente_producto_id, actual + comp.cantidad * det.cantidad)
-              }
-            } else {
-              cantidadesMap.set(pId, (cantidadesMap.get(pId) || 0) + det.cantidad)
-            }
-          }
-
-          const actualizados = prodList.map((p) => {
-            const devuelto = cantidadesMap.get(p.id)
-            if (devuelto !== undefined) {
-              const st = Math.round(((p.stock_actual || 0) + devuelto) * 1000) / 1000
-              return { ...p, stock_actual: st, fecha_actualizacion: ahora }
-            }
-            return p
-          })
-          saveCachedProductos(actualizados, kioscoId)
-        }
-      } catch (errCache) {
-        console.warn('Error al actualizar caché local tras anulación:', errCache)
+        const stocks = new Map(resultado.stock.map(row => [row.producto_id, row.stock_actual]))
+        saveCachedProductos(getCachedProductos(kioscoId).map(producto => ({
+          ...producto, stock_actual: stocks.get(producto.id) ?? producto.stock_actual,
+        })), kioscoId)
+        await useClienteStore.getState().cargarClientes()
+        if (sesion) await useCajaStore.getState().cargarMovimientosSesion(sesion.id)
+      } catch {
+        toast.error('La venta quedó anulada; recargá la pantalla para actualizar los datos locales.')
       }
-
-      // 3. Si la venta tuvo pagos en CUENTA_CORRIENTE, revertir el total adeudado
-      const montoTotalCC = (ventaParaAnular.pagos || [])
-        .filter((p) => p.medio_pago === 'CUENTA_CORRIENTE')
-        .reduce((sum, p) => sum + (Number(p.monto) || 0), 0)
-      if (montoTotalCC > 0) {
-        await useClienteStore.getState().revertirCargoVenta(ventaParaAnular.id, montoTotalCC)
-      }
-
-      // 4. Si la venta tuvo pagos en EFECTIVO, asentar el egreso compensatorio en caja SOLO si hay sesión abierta
-      const montoTotalEf = (ventaParaAnular.pagos || [])
-        .filter((p) => p.medio_pago === 'EFECTIVO')
-        .reduce((sum, p) => sum + (Number(p.monto) || 0), 0)
-      if (montoTotalEf > 0) {
-        const sesionActiva = useCajaStore.getState().sesionActiva
-        const descMov = `Reintegro en efectivo por anulación de Venta #${ventaParaAnular.id.slice(0, 8).toUpperCase()}`
-        if (sesionActiva && !sesionActiva.fecha_cierre && sesionActiva.estado === 'ABIERTA') {
-          try {
-            await useCajaStore.getState().registrarMovimientoCaja(
-              'EGRESO',
-              'DEVOLUCION_VENTA',
-              montoTotalEf,
-              descMov
-            )
-          } catch (errCaja) {
-            console.warn('Error registrando egreso de caja en sesión activa:', errCaja)
-          }
-        } else if (kioscoId) {
-          // Buscar última sesión abierta si no hay sesión activa en el store
-          const { data: ultSesion } = await supabase
-            .from('sesiones_caja')
-            .select('id, estado, fecha_cierre')
-            .eq('kiosco_id', kioscoId)
-            .is('fecha_cierre', null)
-            .eq('estado', 'ABIERTA')
-            .order('fecha_apertura', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-            
-          if (ultSesion) {
-            try {
-              await supabase.from('movimientos_caja').insert({
-                kiosco_id: kioscoId,
-                sesion_caja_id: ultSesion.id,
-                usuario_id: usuario?.id || null,
-                tipo: 'EGRESO',
-                motivo: 'DEVOLUCION_VENTA',
-                monto: montoTotalEf,
-                descripcion: descMov,
-                fecha_hora: ahora,
-              })
-            } catch (errCaja) {
-              console.warn('Error registrando egreso compensatorio en Supabase:', errCaja)
-            }
-          } else {
-            toast.error('No hay ninguna sesión de caja abierta. Omitiendo movimiento de egreso de caja para no alterar arqueos cerrados.', { duration: 6000 })
-          }
-        }
-      }
-
       toast.success('Venta anulada. Stock reincorporado y balance actualizado.')
       setVentaParaAnular(null)
       setMotivoAnulacion('')
+      setUsarCajaActual(false)
       await cargarDatos()
     } catch (err) {
       console.error('Error al anular venta:', err)
-      toast.error('No se pudo anular la venta')
+      toast.error(err instanceof Error ? err.message : 'No se confirmó la anulación. Reintentá con la misma venta.')
     } finally {
       setAnulando(false)
     }
@@ -797,6 +599,7 @@ export function ReportesPage() {
                                   variant="danger"
                                   onClick={() => {
                                     setMotivoAnulacion('')
+                                    setUsarCajaActual(false)
                                     setVentaParaAnular(venta)
                                   }}
                                 >
@@ -844,7 +647,7 @@ export function ReportesPage() {
               value={motivoAnulacion}
               onChange={(e) => setMotivoAnulacion(e.target.value)}
               minLength={5}
-              maxLength={500}
+              maxLength={300}
               rows={3}
               disabled={anulando}
               placeholder="Ej.: venta duplicada, error en los productos..."
@@ -852,6 +655,15 @@ export function ReportesPage() {
               required
             />
           </label>
+          <label className="flex gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input type="checkbox" checked={usarCajaActual} disabled={anulando}
+              onChange={event => setUsarCajaActual(event.target.checked)} />
+            Reintegrar efectivo desde la caja actual si la caja original está cerrada.
+          </label>
+          <p className="text-xs text-gray-500">
+            Con la caja original abierta, el reintegro corresponde a esa caja. Los pagos
+            electrónicos requieren además devolver el dinero por su medio original.
+          </p>
           <div className="flex gap-2 pt-2">
             <Button
               variant="danger"
