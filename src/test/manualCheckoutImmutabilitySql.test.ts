@@ -55,6 +55,26 @@ beforeEach(async () => {
 })
 afterAll(async () => { await db?.close() })
 
+it.each(['ventas','detalles_venta','pagos_venta'])('paso 52 impide crear ventas sin preparación por el cajero en %s', async tabla => {
+  await db.exec('RESET ROLE; BEGIN')
+  try {
+    await db.exec(`CREATE FUNCTION confirmar_venta_manual(uuid,jsonb) RETURNS void LANGUAGE sql AS $$ SELECT $$;`)
+    const migracion = readFileSync('supabase_fase_ventas_cajero_solo_backend.sql','utf8').replace(/^\s*(BEGIN|COMMIT);\s*$/gm,'')
+    await db.exec(migracion); await db.exec(migracion)
+    await db.exec('SET ROLE authenticated')
+    const id='50000000-0000-0000-0000-000000000001'
+    const insertar=tabla==='ventas'
+      ? `INSERT INTO ventas VALUES('${id}','${comercio}',1)`
+      : `INSERT INTO ${tabla} VALUES('${id}','${anterior}',999)`
+    await db.exec('SAVEPOINT rechazo_cajero')
+    await expect(db.exec(insertar)).rejects.toThrow(/row-level security/)
+    await db.exec('ROLLBACK TO SAVEPOINT rechazo_cajero')
+    await db.exec("SET test.dueno='true'")
+    await db.exec(insertar)
+    expect((await db.query(`SELECT id FROM ${tabla} WHERE id='${id}'`)).rows).toHaveLength(1)
+  } finally { await db.exec('ROLLBACK; RESET ROLE') }
+})
+
 it.each([
   ['ventas','id','total'],
   ['detalles_venta','venta_id','cantidad'],

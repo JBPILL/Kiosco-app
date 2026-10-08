@@ -184,6 +184,9 @@ it('el cierre privado real conserva stock, crédito y reintento con RLS restrict
     CREATE POLICY ensayo_permisivo ON pagos_venta FOR ALL TO authenticated USING(true) WITH CHECK(true);
     SET ROLE service_role;`)
   try {
+    await db.exec('RESET ROLE')
+    await db.exec(readFileSync('supabase_fase_ventas_cajero_solo_backend.sql','utf8').replace(/^\s*(BEGIN|COMMIT);\s*$/gm,''))
+    await db.exec('SET ROLE service_role')
     await confirmar()
     await confirmar()
     await db.exec(`RESET ROLE; SET request.jwt.claim.role='authenticated';

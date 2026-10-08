@@ -22,6 +22,13 @@ las tres marcas de versión y la ausencia de escritura por tabla y columna en
 los tres roles. Es evidencia del catálogo remoto; la prueba funcional desde
 Reportes todavía está pendiente.
 
+La captura posterior del 08/10/2026 muestra confirmación de anulación de
+$2.240 y estado «Anulada» en Reportes. Para verificar los registros de esa
+operación, ejecutar `sql_comprobar_anulacion_venta.sql` (sólo lectura): se espera
+registro atómico, una auditoría, pagos conservados por el total original y
+cantidades restituidas. Con caja original abierta se esperan cero egresos
+adicionales por anulación. La captura sola no prueba los saldos de inventario.
+
 ## Garantías y alcance
 
 - El servidor exige un único perfil de dueño activo y el comercio activo.
