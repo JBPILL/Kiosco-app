@@ -1,10 +1,11 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { crearProducto } from '../../test/factories'
 import type { Producto } from '../../types/database'
 import type { ReactNode } from 'react'
 
 const mocks = vi.hoisted(() => ({
+  plantilla: true, actualizar: vi.fn(),
   from: vi.fn(), cacheLeer: vi.fn(), cacheGuardar: vi.fn(), success: vi.fn(), error: vi.fn(), info: vi.fn(),
 }))
 vi.mock('../../lib/supabase', () => ({ supabase: { from: mocks.from } }))
@@ -12,7 +13,7 @@ vi.mock('../../lib/utils', () => ({ getCachedProductos: mocks.cacheLeer, saveCac
 vi.mock('../../stores/authStore', () => ({ useAuthStore: () => ({ usuario: { kiosco_id: 'local' } }) }))
 vi.mock('../../hooks/useTenantConfig', () => ({ useTenantConfig: () => ({ rubro: 'PETSHOP_VETERINARIA', tipoComercioLabel: 'Veterinaria', esFotocopiadora: false }) }))
 vi.mock('../../data/catalogosPorRubro', () => ({
-  esCatalogoPlantilla: () => true,
+  esCatalogoPlantilla: () => mocks.plantilla,
   obtenerCatalogoPorRubro: () => articulos,
 }))
 vi.mock('../ui/Modal', () => ({ Modal: ({ children }: { children: ReactNode }) => <div>{children}</div> }))
@@ -25,7 +26,7 @@ const articulos = Array.from({ length: 45 }, (_, i) => ({
   ...(i === 1 ? { es_pesable: true, requiere_vencimiento: true, dias_alerta_vencimiento: 30 } : {}),
 }))
 let cache: Producto[]
-let existentes: Array<{ codigo_barras: string }>
+let existentes: Array<{ codigo_barras: string; id?: string }>
 let errorLectura: boolean
 let errorCategorias: boolean
 let errorCrearCategoria: boolean
@@ -35,6 +36,7 @@ let lotes: Array<{ filas: Array<Record<string, unknown>>; opciones: unknown }>
 let omitidoPorCarrera: boolean
 
 beforeEach(() => {
+  mocks.plantilla = true
   vi.clearAllMocks()
   cache = []; existentes = []; errorLectura = false; errorCategorias = false; errorCrearCategoria = false
   categoriaExiste = true; falloLote = -1; lotes = []; omitidoPorCarrera = false
@@ -45,7 +47,13 @@ beforeEach(() => {
       ? { data: existentes, error: errorLectura ? new Error('Sin lectura') : null }
       : { data: categoriaExiste ? [{ id: 'cat', nombre: 'Mascotas' }] : [], error: errorCategorias ? new Error('Sin categorías') : null } }),
     insert: (filas: Array<Record<string, unknown>>) => ({ select: async () => ({ data: filas, error: errorCrearCategoria ? new Error('Sin escritura de categorías') : null }) }),
-    upsert: (filas: Array<Record<string, unknown>>, opciones: unknown) => {
+    update: (campos: Record<string, unknown>) => {
+      mocks.actualizar(campos)
+      const consulta = { eq: () => consulta, select: async () => ({ data: [crearProducto({ id: 'existente', ...campos })], error: null }) }
+      return consulta
+    },
+    upsert: (valor: Array<Record<string, unknown>> | Record<string, unknown>, opciones: unknown) => {
+      const filas = Array.isArray(valor) ? valor : [valor]
       const numero = lotes.length
       lotes.push({ filas, opciones })
       return { select: async () => ({
@@ -54,6 +62,24 @@ beforeEach(() => {
       }) }
     },
   }))
+})
+afterEach(() => vi.unstubAllEnvs())
+
+it('actualiza un existente con motivo y separa altas que conservan conflictos concurrentes', async () => {
+  vi.stubEnv('VITE_AUDITORIA_MOTIVO_PRECIO', 'true')
+  mocks.plantilla = false
+  existentes = [{ id: 'existente', codigo_barras: 'VET-TEST-0' }]
+  abrir(false)
+  fireEvent.click(screen.getByRole('checkbox', { name: /Omitir códigos/ }))
+  fireEvent.click(screen.getByRole('button', { name: /Sembrar 45 Productos/ }))
+  expect(mocks.actualizar).not.toHaveBeenCalled()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Motivo del cambio de precio' }), { target: { value: '  Renovación de catálogo  ' } })
+  fireEvent.click(screen.getByRole('button', { name: /Sembrar 45 Productos/ }))
+  await waitFor(() => expect(mocks.success).toHaveBeenCalled())
+  expect(mocks.actualizar).toHaveBeenCalledWith(expect.objectContaining({ motivo_cambio_precio: 'Renovación de catálogo' }))
+  expect(mocks.actualizar.mock.calls[0][0]).not.toHaveProperty('id')
+  expect(lotes.every(lote => (lote.opciones as { ignoreDuplicates: boolean }).ignoreDuplicates)).toBe(true)
+  expect(lotes.every(lote => lote.filas.every(fila => !('motivo_cambio_precio' in fila)))).toBe(true)
 })
 
 function abrir(ejecutar = true) {

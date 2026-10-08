@@ -10,6 +10,7 @@ import { useTenantConfig } from '../../hooks/useTenantConfig'
 import type { Categoria, Producto } from '../../types/database'
 import { v4 as uuidv4 } from 'uuid'
 import toast from 'react-hot-toast'
+import { auditoriaMotivoPrecioActiva, validarMotivoCambioPrecio } from '../../lib/priceChangeAudit'
 
 interface SiembraCatalogoModalProps {
   isOpen: boolean
@@ -50,6 +51,8 @@ export function SiembraCatalogoModal({
   const [margenGananciaPct, setMargenGananciaPct] = useState<number>(60)
   const [usarPreciosSugeridos, setUsarPreciosSugeridos] = useState<boolean>(true)
   const [omitirExistentes, setOmitirExistentes] = useState<boolean>(true)
+  const [motivoPrecio, setMotivoPrecio] = useState('')
+  useEffect(() => { setMotivoPrecio('') }, [isOpen])
   const [stockInicialDefault, setStockInicialDefault] = useState<number>(10)
 
   const [procesando, setProcesando] = useState(false)
@@ -95,6 +98,10 @@ export function SiembraCatalogoModal({
   }
 
   const handleEjecutarSiembra = async () => {
+    if (auditoriaMotivoPrecioActiva() && !plantilla && !omitirExistentes) {
+      try { validarMotivoCambioPrecio(motivoPrecio) }
+      catch (error) { toast.error(error instanceof Error ? error.message : 'Motivo inválido.'); return }
+    }
     if (!kioscoId) {
       toast.error('No se encontró un comercio activo identificado')
       return
@@ -220,8 +227,7 @@ export function SiembraCatalogoModal({
         setProgreso(porcentajeLote)
         setMensajeEstado(`Insertando lote ${i + 1} de ${totalLotes} (${insertadosTotal + chunk.length} productos)...`)
 
-        const { data: persistidos, error: errChunk } = await supabase.from('productos').upsert(
-          chunk.map((item) => ({
+        const payload = chunk.map((item) => ({
             id: item.id,
             kiosco_id: item.kiosco_id,
             codigo_barras: item.codigo_barras,
@@ -236,10 +242,28 @@ export function SiembraCatalogoModal({
             ...(plantilla ? { requiere_vencimiento: item.requiere_vencimiento ?? false, dias_alerta_vencimiento: item.dias_alerta_vencimiento ?? 30 } : {}),
             es_favorito: item.es_favorito,
             activo: item.activo,
-          })),
-          { onConflict: 'kiosco_id,codigo_barras', ignoreDuplicates: plantilla || omitirExistentes }
-        ).select()
-        if (errChunk || !persistidos) throw new Error(`No se pudo guardar el lote ${i + 1}`)
+          }))
+        let persistidos: Producto[]
+        if (auditoriaMotivoPrecioActiva() && !plantilla && !omitirExistentes) {
+          persistidos = []
+          for (const fila of payload) {
+            const codigo = fila.codigo_barras?.trim().toLowerCase()
+            const existente = codigo ? prodsActuales.find(p => p.codigo_barras?.trim().toLowerCase() === codigo) : undefined
+            const { id: _idNuevo, kiosco_id: _comercio, ...campos } = fila
+            const consulta = existente
+              ? supabase.from('productos').update({ ...campos, motivo_cambio_precio: motivoPrecio.trim() })
+                .eq('id', existente.id).eq('kiosco_id', kioscoId)
+              : supabase.from('productos').upsert(fila, { onConflict: 'kiosco_id,codigo_barras', ignoreDuplicates: true })
+            const { data, error } = await consulta.select()
+            if (error || !data || (existente && data.length !== 1)) throw new Error(`No se pudo guardar el lote ${i + 1}`)
+            persistidos.push(...data as Producto[])
+          }
+        } else {
+          const { data, error } = await supabase.from('productos').upsert(payload,
+            { onConflict: 'kiosco_id,codigo_barras', ignoreDuplicates: plantilla || omitirExistentes }).select()
+          if (error || !data) throw new Error(`No se pudo guardar el lote ${i + 1}`)
+          persistidos = data as Producto[]
+        }
         insertadosTotal += persistidos.length
         // Cada lote confirmado permanece disponible incluso si el siguiente falla.
         const mapaFinal = new Map(getCachedProductos(kioscoId).map(p => [p.id, p]))
@@ -431,6 +455,10 @@ export function SiembraCatalogoModal({
             </div>}
 
             {/* Opciones de stock e idempotencia */}
+            {auditoriaMotivoPrecioActiva() && !plantilla && !omitirExistentes && <input aria-label="Motivo del cambio de precio"
+              placeholder="Motivo de actualización del catálogo" maxLength={300} value={motivoPrecio}
+              onChange={e => setMotivoPrecio(e.target.value)} disabled={procesando}
+              className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-transparent px-3.5 py-2.5 text-sm" />}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               {!plantilla && <div className="bg-gray-50 dark:bg-gray-700/30 p-3 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-1">
                 <label className="font-semibold text-gray-700 dark:text-gray-300 block">

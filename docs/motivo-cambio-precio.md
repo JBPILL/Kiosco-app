@@ -37,7 +37,19 @@ motivo al actualizar productos existentes. Importación no anuncia éxito comple
 ante rechazos y omite bajas de rollback si fallaron productos anteriores.
 24 pruebas de importación/restauración aprobaron; compilación aprobada.
 
-Falta revisar escrituras secundarias, completar pruebas de altas y rollback;
+La siembra también separa las altas de las actualizaciones cuando se activa la
+auditoría: pide motivo al sobrescribir, conserva el ID existente y usa inserción
+que ignora conflictos para códigos nuevos. Si otro equipo creó un código después
+de la lectura, lo conserva en lugar de sobrescribirlo sin justificación.
+33 pruebas de siembra/importación/restauración aprobaron, incluidas bajas de
+rollback ante rechazo y altas sin motivo transitorio.
+
+Revisión de rutas secundarias: altas rápidas y desde Proveedores son inserciones;
+envases y combos no escriben precio de venta en productos. Sincronización local
+y artículos libres todavía usan upsert por ID; falta comprobar recuperación y
+colisiones con la migración activa antes de activar y distribuirla.
+
+Falta comprobar las rutas offline y la recuperación;
 comprobar rechazo sin actualizar caché; actualizar el paquete y coordinar la
 aplicación con el despliegue. No se considera terminada la función completa.
 

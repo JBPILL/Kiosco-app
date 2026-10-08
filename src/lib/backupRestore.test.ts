@@ -47,6 +47,14 @@ beforeEach(() => { vi.clearAllMocks(); writes.length = 0; payloads.length = 0; s
 afterEach(() => vi.unstubAllEnvs())
 
 describe('restauración y errores parciales', () => {
+  it('las altas con auditoría activa no persisten un motivo transitorio', async () => {
+    vi.stubEnv('VITE_AUDITORIA_MOTIVO_PRECIO', 'true')
+    setup({ 'productos:select': [success([])], 'productos:insert': [success([{ id: 'nuevo' }])] })
+    await restaurarBackupIntegral(backup({ productos: [{ id: 'old', descripcion: 'Nuevo', precio_venta: 100 }] }), 'FUSION', 'k1', undefined,
+      { motivoCambioPrecio: 'Recuperación del catálogo' })
+    expect(writes).toContain('productos:insert')
+    expect(payloads.every(payload => !('motivo_cambio_precio' in payload))).toBe(true)
+  })
   it('no escribe si falta motivo con auditoría activada', async () => {
     vi.stubEnv('VITE_AUDITORIA_MOTIVO_PRECIO', 'true')
     const result = await restaurarBackupIntegral(backup(), 'FUSION', 'k1')
