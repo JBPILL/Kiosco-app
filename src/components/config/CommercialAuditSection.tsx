@@ -20,11 +20,16 @@ function leerEventos(datos: unknown): EventoComercial[] {
     const detalles = fila.detalles as Record<string, unknown>
     if (fila.accion === 'PRECIO_VENTA_MODIFICADO' && fila.entidad === 'productos') {
       if (Object.keys(detalles).length !== 2 || !['precio_anterior','precio_nuevo'].every(k => typeof detalles[k] === 'number' && Number.isFinite(detalles[k]) && Number(detalles[k]) >= 0)) throw new Error('Precios inválidos')
-    } else if (fila.accion !== 'VENTA_ANULADA' || fila.entidad !== 'ventas' || Object.keys(detalles).length !== 0) throw new Error('Acción inválida')
+    } else if (fila.accion === 'CAJON_RESULTADO_DECLARADO' && fila.entidad === 'solicitudes_cajon') {
+      if (Object.keys(detalles).length !== 2 || detalles.origen !== 'NAVEGADOR' || !['PULSO_ENVIADO','ERROR_TRANSPORTE','NO_ENVIADO'].includes(String(detalles.resultado))) throw new Error('Resultado inválido')
+    } else if (!((fila.accion === 'VENTA_ANULADA' && fila.entidad === 'ventas')
+      || (fila.accion === 'CAJON_APERTURA_SOLICITADA' && fila.entidad === 'kioscos')) || Object.keys(detalles).length !== 0) throw new Error('Acción inválida')
     return fila as unknown as EventoComercial
   })
 }
 const moneda = (valor: unknown) => Number(valor).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })
+const acciones: Record<string, string> = { VENTA_ANULADA: 'Venta anulada', PRECIO_VENTA_MODIFICADO: 'Cambio de precio', CAJON_APERTURA_SOLICITADA: 'Solicitud de apertura de cajón', CAJON_RESULTADO_DECLARADO: 'Resultado declarado del cajón' }
+const resultados: Record<string, string> = { PULSO_ENVIADO: 'El navegador informó pulso enviado', ERROR_TRANSPORTE: 'El navegador informó error de transporte', NO_ENVIADO: 'El navegador informó pulso no enviado' }
 export function CommercialAuditSection() {
   const usuario = useAuthStore(state => state.usuario)
   const [eventos, setEventos] = useState<EventoComercial[]>([])
@@ -61,7 +66,8 @@ export function CommercialAuditSection() {
     {corresponde && cargando && <p role="status" className="mt-3 text-xs text-gray-500">Consultando auditoría…</p>}
     {corresponde && !error && !cargando && !eventos.length && <p className="mt-3 text-xs text-gray-500">Sin eventos registrados</p>}
     <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">{(corresponde ? eventos : []).map(fila => <article key={fila.id} className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
-      <div className="flex flex-wrap justify-between gap-2 text-xs"><span className="font-semibold dark:text-gray-200">{fila.accion === 'VENTA_ANULADA' ? 'Venta anulada' : 'Cambio de precio'}</span><span className="text-indigo-600 dark:text-indigo-300">{fila.entidad_id.slice(0, 8)}</span></div>
+      <div className="flex flex-wrap justify-between gap-2 text-xs"><span className="font-semibold dark:text-gray-200">{acciones[fila.accion]}</span><span className="text-indigo-600 dark:text-indigo-300">{fila.entidad_id.slice(0, 8)}</span></div>
+      {fila.accion === 'CAJON_RESULTADO_DECLARADO' && <p className="mt-1 text-xs dark:text-gray-300">{resultados[String(fila.detalles.resultado)]}</p>}
       {fila.accion === 'PRECIO_VENTA_MODIFICADO' && <p className="mt-1 text-xs dark:text-gray-300">{moneda(fila.detalles.precio_anterior)} → {moneda(fila.detalles.precio_nuevo)}</p>}
       <p className="mt-1 text-xs dark:text-gray-300">{fila.motivo || 'Sin motivo registrado'}</p>
       <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{new Date(fila.fecha).toLocaleString('es-AR')} · Actor {fila.actor_auth_id?.slice(0, 8) || 'No registrado'} · {fila.actor_rol || 'Sin rol registrado'}</p>

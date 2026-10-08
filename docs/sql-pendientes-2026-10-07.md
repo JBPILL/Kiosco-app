@@ -57,6 +57,9 @@ El ZIP de pendientes contiene **16 SQL (18–33)** y esta guía. La tabla siguie
 | 38 | supabase_fase_supervisor_auditoria_politica.sql |
 | 39 | supabase_fase_motivo_cambio_precio.sql |
 | 40 | supabase_fase_auditoria_comercial_consulta.sql |
+| 41 | supabase_fase_apertura_manual_cajon.sql |
+| 42 | supabase_fase_resultado_apertura_cajon.sql |
+| 43 | supabase_fase_consulta_auditoria_cajon.sql |
 
 El archivo 33 debe ir después del 32 y de las funciones originales de checkout. Si reaplicás esas funciones anteriores, reaplicá el 33 al final para conservar el control de supervisor. No modifiques las decisiones ya almacenadas ni borres las preparaciones pendientes.
 

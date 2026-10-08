@@ -85,3 +85,10 @@ it('no permite que una respuesta pendiente reaparezca después de pasar a cajero
   expect(vista.container.innerHTML).toBe('')
   expect(mocks.rpc).toHaveBeenCalledTimes(1)
 })
+
+it('presenta el resultado del cajón como declaración del navegador', async () => {
+  mocks.rpc.mockResolvedValue({ data: [{ id: 'e1', fecha: '2026-10-08T12:00:00Z', accion: 'CAJON_RESULTADO_DECLARADO', entidad: 'solicitudes_cajon', entidad_id: 's1', motivo: 'Reponer cambio', actor_auth_id: 'a1', actor_rol: 'DUEÑO', detalles: { resultado: 'PULSO_ENVIADO', origen: 'NAVEGADOR' } }], error: null })
+  render(<CommercialAuditSection />)
+  expect(await screen.findByText('El navegador informó pulso enviado')).toBeTruthy()
+  expect(screen.getByText('Resultado declarado del cajón')).toBeTruthy()
+})

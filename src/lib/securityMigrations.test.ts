@@ -376,6 +376,12 @@ describe('migraciones de seguridad en PostgreSQL', () => {
       const resultado2 = await db.query('SELECT public.registrar_resultado_apertura_cajon($1,$2) AS id', [solicitud, 'PULSO_ENVIADO'])
       expect(resultado2.rows).toEqual(resultado1.rows)
       expect((await db.query("SELECT detalles FROM public.auditoria_operaciones WHERE accion='CAJON_RESULTADO_DECLARADO' AND entidad_id=$1", [solicitud])).rows).toEqual([{ detalles: { resultado: 'PULSO_ENVIADO', origen: 'NAVEGADOR' } }])
+      await db.exec('RESET ROLE;')
+      await db.exec(readFileSync('supabase_fase_consulta_auditoria_cajon.sql', 'utf8').replace(/^BEGIN;$/m, '').replace(/^COMMIT;$/m, ''))
+      await sesion(propietario)
+      const eventosCajon = (await db.query<{ accion: string }>('SELECT * FROM public.consultar_auditoria_comercial(50)')).rows
+      expect(eventosCajon.map(fila => fila.accion)).toContain('CAJON_APERTURA_SOLICITADA')
+      expect(eventosCajon.map(fila => fila.accion)).toContain('CAJON_RESULTADO_DECLARADO')
       await sesion(cajero)
       await expect(db.query('SELECT public.solicitar_apertura_manual_cajon($1,$2)', [solicitud, 'Reponer cambio'])).rejects.toMatchObject({ code: '42501' })
     })
