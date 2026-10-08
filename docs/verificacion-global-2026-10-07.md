@@ -2,6 +2,17 @@
 
 ## Resultado reproducible
 
+Actualización del 08/10/2026 sobre `e9079de`: `npm run test` terminó con código
+0, **1.386 pruebas aprobadas en 148 archivos**, en **120,76 segundos**.
+`npm run build` también terminó con código 0; conserva el aviso existente de
+chunks mayores a 500 kB. Incluye las regresiones de anulación atómica, RLS del
+paso 52, su diagnóstico y el lanzador de Windows. Los procesos de validación
+terminaron; no quedan pruebas ni build en curso de esta ejecución.
+
+El usuario confirmó el catálogo remoto del paso 52 y una anulación en caja
+original abierta. Las pruebas locales no sustituyen aceptación JWT/PostgREST,
+restauración aislada, concurrencia real ni periféricos. El plan sigue activo.
+
 Actualización del 08/10 sobre `0091e12` más el ajuste de timeout de las dos
 pruebas de permisos de identidad: 1279 pruebas en 140 archivos pasaron en
 123,29 segundos. La ejecución anterior tuvo 1278 aprobadas y una prueba SQL

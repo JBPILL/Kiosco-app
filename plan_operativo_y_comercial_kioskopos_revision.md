@@ -37,7 +37,6 @@ cumplir la puerta de aceptación correspondiente.
 | P22 | 7 · Escritorio/quiosco | Preparar entrega de instalación lista para usar | Definir PWA/instalador soportado, acceso directo, configuración inicial, arranque, actualización y procedimiento de soporte. |
 | P23 | 7 · Escritorio/quiosco | Resolver persistencia y recuperación del puesto | Edge kiosk usa InPrivate: probar login, permisos y cobros pendientes tras cierre/reinicio; decidir perfil/despliegue compatible antes de activarlo. |
 | P24 | 7 · Escritorio/quiosco | Probar Windows administrado en piloto | Assigned Access/salida de emergencia, cierre inesperado, reconexión, pantalla y recuperación. El lanzador no bloquea Windows ni relanza Edge. |
-| P25 | Calidad | Repetir suite completa tras cambios posteriores | Última suite completa: 1.372 pruebas/147 archivos en la revisión anterior a los últimos diagnósticos. Las pruebas dirigidas posteriores no son una nueva validación global. |
 
 ### Trabajo pausado por decisión del usuario
 
@@ -78,11 +77,15 @@ alcance, instalación y limitaciones.
 | [x] | Servicios y pantallas por rubro | Circuitos y catálogos implementados; servicios offline conservan concepto. [Servicios](docs/verificacion-servicios-y-diseno-reportes.md), [offline](docs/verificacion-servicios-offline.md), [electrónica](docs/electronica-comercial.md). Piloto pendiente. |
 | [x] | Lanzador HTTPS para Edge y guía de quiosco | Validación de URL y parámetros; rechazo de localhost/puerto Vite/credenciales con diez pruebas Windows sin abrir Edge. [Guía](docs/despliegue-kiosco-windows.md). Instalación física pendiente. |
 | [x] | Publicación de entregables en Git | Cambios anteriores publicados en `origin/master`; cada commit conserva su evidencia local. Publicación Git no aplica SQL ni prueba el despliegue Vercel. |
+| [x] | P25 · Validación global sobre e9079de | `npm run test`: 1.386 pruebas/148 archivos aprobados en 120,76 s; `npm run build`: código 0. Se mantiene el aviso de chunks mayores a 500 kB. No acredita pruebas remotas ni físicas. |
 
 ### Registro de verificaciones
 
-- **Suite completa anterior:** 1.372 pruebas aprobadas en 147 archivos,
-  registrada en `6bcffab`. Los cambios posteriores requieren otra suite global.
+- **Suite completa vigente:** 1.386 pruebas aprobadas en 148 archivos sobre
+  `e9079de`, en 120,76 segundos; compilación aprobada. P25 cerrado para esta
+  revisión. Repetir la suite al introducir nuevos cambios de código.
+- **Suite completa anterior:** 1.372 pruebas/147 archivos en `6bcffab`,
+  conservada como evidencia histórica.
 - **Anulación/checkout:** 116 pruebas dirigidas y build aprobados antes de
   publicar `686fa24`.
 - **Diagnóstico paso 52:** 17 pruebas dirigidas y build aprobados antes de
