@@ -1,3 +1,4 @@
+import { moduleTabsClassName, moduleTabClassName, moduleTabActiveClassName, moduleTabInactiveClassName } from '../components/ui/moduleTabStyles'
 import { IndicatorCard } from '../components/ui/IndicatorCard'
 import { RefreshButton } from '../components/ui/RefreshButton'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
@@ -657,14 +658,14 @@ export function StockPage() {
 
       {/* Selector de Vista Principal: Movimientos vs. Lotes y Vencimientos */}
       {tieneVencimientos && (
-        <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 overflow-x-auto scrollbar-hide max-w-full flex-nowrap">
+        <div className={moduleTabsClassName}>
           <button
             type="button"
             onClick={() => setVistaPrincipal('MOVIMIENTOS')}
-            className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+            className={`${moduleTabClassName} ${
               vistaPrincipal === 'MOVIMIENTOS'
-                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                ? moduleTabActiveClassName
+                : moduleTabInactiveClassName
             }`}
           >
             Entradas y Salidas de Mercadería
@@ -672,10 +673,10 @@ export function StockPage() {
           <button
             type="button"
             onClick={() => setVistaPrincipal('VENCIMIENTOS')}
-            className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shrink-0 ${
+            className={`${moduleTabClassName} ${
               vistaPrincipal === 'VENCIMIENTOS'
-                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                ? moduleTabActiveClassName
+                : moduleTabInactiveClassName
             }`}
           >
             <span>Fechas de Vencimiento</span>

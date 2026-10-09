@@ -1,3 +1,4 @@
+import { moduleTabsClassName, moduleTabClassName, moduleTabActiveClassName, moduleTabInactiveClassName } from '../components/ui/moduleTabStyles'
 import { IndicatorCard } from '../components/ui/IndicatorCard'
 import { RefreshButton } from '../components/ui/RefreshButton'
 import { useState, useEffect, useCallback } from 'react'
@@ -338,14 +339,14 @@ export function ReportesPage() {
         </div>
 
         {/* Selector de Pestañas */}
-        <div className="flex w-full min-w-0 flex-wrap items-center gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700">
+        <div className={moduleTabsClassName}>
           <button
             type="button"
             onClick={() => setTabActiva('balance')}
-            className={`px-3 sm:px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 ${
+            className={`${moduleTabClassName} ${
               tabActiva === 'balance'
-                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                ? moduleTabActiveClassName
+                : moduleTabInactiveClassName
             }`}
           >
             Balance Contable
@@ -353,10 +354,10 @@ export function ReportesPage() {
           <button
             type="button"
             onClick={() => setTabActiva('ventas')}
-            className={`px-3 sm:px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 ${
+            className={`${moduleTabClassName} ${
               tabActiva === 'ventas'
-                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                ? moduleTabActiveClassName
+                : moduleTabInactiveClassName
             }`}
           >
             Ventas Diarias
@@ -365,10 +366,10 @@ export function ReportesPage() {
             <button
               type="button"
               onClick={() => setTabActiva('rotacion')}
-              className={`px-3 sm:px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 ${
+              className={`${moduleTabClassName} ${
                 tabActiva === 'rotacion'
-                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                  ? moduleTabActiveClassName
+                  : moduleTabInactiveClassName
               }`}
             >
               Rotación y Stock Inmovilizado
@@ -378,10 +379,10 @@ export function ReportesPage() {
             <button
               type="button"
               onClick={() => setTabActiva('bajas')}
-              className={`px-3 sm:px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 ${
+              className={`${moduleTabClassName} ${
                 tabActiva === 'bajas'
-                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                  ? moduleTabActiveClassName
+                  : moduleTabInactiveClassName
               }`}
             >
               Bajas de Inventario

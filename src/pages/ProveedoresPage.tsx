@@ -1,3 +1,4 @@
+import { moduleTabsClassName, moduleTabClassName, moduleTabActiveClassName, moduleTabInactiveClassName } from '../components/ui/moduleTabStyles'
 import { IndicatorCard } from '../components/ui/IndicatorCard'
 import { useState, useEffect, useMemo } from 'react'
 import { useLocation } from 'react-router-dom'
@@ -959,14 +960,14 @@ export function ProveedoresPage() {
 
       </div>
       {/* Categorías del módulo */}
-        <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 overflow-x-auto scrollbar-hide">
+        <div className={moduleTabsClassName}>
           <button
             type="button"
             onClick={() => setTabActiva('directorio')}
-            className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+            className={`${moduleTabClassName} ${
               tabActiva === 'directorio'
-                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                ? moduleTabActiveClassName
+                : moduleTabInactiveClassName
             }`}
           >
             Directorio ({totalProveedores})
@@ -975,10 +976,10 @@ export function ProveedoresPage() {
             type="button"
             onClick={() => setTabActiva('nueva_compra')}
             title="Cargar nueva compra o remito de proveedor"
-            className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+            className={`${moduleTabClassName} ${
               tabActiva === 'nueva_compra'
-                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                ? moduleTabActiveClassName
+                : moduleTabInactiveClassName
             }`}
           >
             Nueva Compra
@@ -987,10 +988,10 @@ export function ProveedoresPage() {
             type="button"
             onClick={() => setTabActiva('historial')}
             title="Historial de comprobantes y remitos"
-            className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+            className={`${moduleTabClassName} ${
               tabActiva === 'historial'
-                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                ? moduleTabActiveClassName
+                : moduleTabInactiveClassName
             }`}
           >
             Compras ({compras.length})
@@ -999,10 +1000,10 @@ export function ProveedoresPage() {
             type="button"
             onClick={() => setTabActiva('pagos')}
             title="Historial de pagos a proveedores y recibos"
-            className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+            className={`${moduleTabClassName} ${
               tabActiva === 'pagos'
-                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                ? moduleTabActiveClassName
+                : moduleTabInactiveClassName
             }`}
           >
             Pagos ({pagos.length})

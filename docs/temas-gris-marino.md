@@ -43,8 +43,11 @@ Los secundarios también tienen una superficie más clara para distinguirse
 de las tarjetas, conservando sus bordes y estados de interacción.
 En claro, las acciones sin fondo sólido usan texto oscuro independiente del
 color pastel del botón; se redujo ligeramente la luminosidad de los fondos.
-Caja y Turno y Proveedores usan categorías subrayadas debajo del encabezado,
-como Stock. Stock conserva un solo Conteo Físico y ubica Actualizar junto a
+Reportes, Caja y Turno, Proveedores y Stock comparten la barra de categorías
+agrupadas de Balance Contable, con fondo, borde y pestaña activa resaltada.
+Los estilos comunes se definen en `src/components/ui/moduleTabStyles.ts`;
+las categorías se distribuyen en varias filas cuando falta ancho.
+Stock conserva un solo Conteo Físico y ubica Actualizar junto a
 las acciones del historial de movimientos.
 Hover y chips neutros usan un escalón azul más claro. En claro se armonizan los fondos
 indigo/blue/violet y avisos de estado con crema, y se oscurecen los textos de

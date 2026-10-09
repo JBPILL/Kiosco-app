@@ -1,3 +1,4 @@
+import { moduleTabsClassName, moduleTabClassName, moduleTabActiveClassName, moduleTabInactiveClassName } from '../components/ui/moduleTabStyles'
 import { IndicatorCard } from '../components/ui/IndicatorCard'
 import { CobrosManualesRemotos } from '../components/pos/CobrosManualesRemotos'
 import { checkoutManualTransaccionalActivo } from '../lib/manualCheckoutCart'
@@ -449,14 +450,14 @@ export function CajaPage() {
       </div>
       <div className="flex items-center gap-3 min-w-0">
           {/* Pestañas de navegación ordenadas estilo Proveedores */}
-          <div className="flex flex-1 items-center gap-2 border-b border-gray-200 dark:border-gray-700 overflow-x-auto scrollbar-hide min-w-0">
+          <div className={moduleTabsClassName}>
             <button
               type="button"
               onClick={() => setTabActiva('turno')}
-              className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+              className={`${moduleTabClassName} ${
                 tabActiva === 'turno'
-                  ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-gray-700/60'
+                  ? moduleTabActiveClassName
+                  : moduleTabInactiveClassName
               }`}
             >
               Turno Actual
@@ -464,10 +465,10 @@ export function CajaPage() {
             <button
               type="button"
               onClick={() => setTabActiva('historial')}
-              className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+              className={`${moduleTabClassName} ${
                 tabActiva === 'historial'
-                  ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-gray-700/60'
+                  ? moduleTabActiveClassName
+                  : moduleTabInactiveClassName
               }`}
             >
               Historial de Cierres ({historial.length})
