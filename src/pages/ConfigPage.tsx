@@ -1,5 +1,5 @@
 import { moduleTabsClassName, moduleTabClassName, moduleTabActiveClassName, moduleTabInactiveClassName } from '../components/ui/moduleTabStyles'
-import { Store, Printer, Palette, Sun, Moon } from '../components/config/ConfigIcons'
+import { Store, Printer, Palette, Sun, Moon, ShieldCheck, EyeOff } from '../components/config/ConfigIcons'
 import { ModulosComercioSection } from '../components/config/ModulosComercioSection'
 import { SupervisorPinSection } from '../components/config/SupervisorPinSection'
 import { ManualDrawerSection } from '../components/config/ManualDrawerSection'
@@ -67,6 +67,19 @@ export function ConfigPage() {
   const [cifrarBackupIntegral, setCifrarBackupIntegral] = useState(false)
   const [claveBackupIntegral, setClaveBackupIntegral] = useState('')
   const [confirmacionClaveBackupIntegral, setConfirmacionClaveBackupIntegral] = useState('')
+
+  // Control unificado de refresco para la pestaña de Seguridad y Caja
+  const [recargaSeguridad, setRecargaSeguridad] = useState(0)
+  const [cargandoSeguridad, setCargandoSeguridad] = useState(false)
+
+  const handleRefrescarSeguridad = () => {
+    setCargandoSeguridad(true)
+    setRecargaSeguridad((v) => v + 1)
+    setTimeout(() => {
+      setCargandoSeguridad(false)
+      toast.success('Auditoría y políticas de seguridad actualizadas')
+    }, 600)
+  }
 
   useEffect(() => {
     cargarConfigAdmin()
@@ -961,24 +974,74 @@ export function ConfigPage() {
           {/* PESTAÑA: SEGURIDAD Y CONTROL DE CAJA */}
           {pestanaActiva === 'SEGURIDAD' && (
             <div className="space-y-6">
-              <SupervisorPinSection />
-              <SupervisorPolicySection />
-              <SupervisorAuditSection />
-              <CommercialAuditSection />
+              {/* Cabecera unificada con botón de refresco único */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-r from-indigo-50/80 via-white to-purple-50/60 dark:from-indigo-950/30 dark:via-gray-800 dark:to-purple-950/20 p-5 shadow-xs">
+                <div className="flex items-center gap-3.5">
+                  <span className="rounded-xl bg-indigo-600 text-white p-3 shadow-md shadow-indigo-500/20 shrink-0">
+                    <ShieldCheck size={24} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                        Seguridad & Auditoría
+                      </span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500">• Control centralizado</span>
+                    </div>
+                    <h2 className="text-base font-bold text-gray-900 dark:text-gray-100 mt-0.5">
+                      Seguridad y Control de Caja
+                    </h2>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Supervisión de credenciales, límites de descuento a cajeros y registros de eventos críticos.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    loading={cargandoSeguridad}
+                    onClick={handleRefrescarSeguridad}
+                    className="rounded-xl font-bold shadow-xs flex items-center gap-2 py-2 px-3.5"
+                  >
+                    <svg
+                      className={`h-4 w-4 text-indigo-600 dark:text-indigo-400 ${cargandoSeguridad ? 'animate-spin' : ''}`}
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M21 3v6h-6M3 21v-6h6M3 10a9 9 0 0 1 15-5l3 4M21 14a9 9 0 0 1-15 5l-3-4" />
+                    </svg>
+                    <span>Actualizar seguridad</span>
+                  </Button>
+                </div>
+              </div>
+
+              <SupervisorPinSection recargaTrigger={recargaSeguridad} />
+              <SupervisorPolicySection recargaTrigger={recargaSeguridad} mostrarBotonRefresco={false} />
+              <SupervisorAuditSection recargaTrigger={recargaSeguridad} mostrarBotonRefresco={false} />
+              <CommercialAuditSection recargaTrigger={recargaSeguridad} mostrarBotonRefresco={false} />
               <ManualDrawerSection />
               {/* Tarjeta 1: Arqueo Ciego */}
               <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-4">
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300">
-                    Seguridad Operativa
+                <div className="flex items-center gap-3 pb-3 border-b border-gray-100 dark:border-gray-700/60">
+                  <span className="rounded-xl bg-amber-50 dark:bg-amber-950/40 p-2.5 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-900/50">
+                    <EyeOff size={20} aria-hidden="true" />
                   </span>
-                  <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                    Políticas de Turno y Control de Efectivo
-                  </h2>
+                  <div>
+                    <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                      Políticas de Turno y Control de Efectivo
+                    </h2>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Reglas de control y auditoría financiera aplicables a los cajeros del comercio.
+                    </p>
+                  </div>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Reglas de control y auditoría financiera aplicables a los cajeros del comercio.
-                </p>
 
                 <div className="p-4 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
                   <div className="space-y-1">

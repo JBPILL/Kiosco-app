@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 /backups/
+/recordings/
 *.local
 
 # Editor directories and files
@@ -23,3 +24,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local upstream RTK checkout; integration instructions are versioned separately.
+/tools/rtk/
