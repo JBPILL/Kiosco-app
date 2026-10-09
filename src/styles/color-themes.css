@@ -71,9 +71,9 @@
   --color-gray-400: #8fa8c6;
   --color-gray-500: #718eae;
   --color-gray-600: #40658a;
-  --color-gray-700: #23476d;
+  --color-gray-700: #3b5d80;
   --color-gray-800: #183b63;
-  --color-gray-900: #09111b;
+  --color-gray-900: #0e2033;
   --color-gray-950: #09111b;
   --color-slate-50: #edf3fc;
   --color-slate-100: #d9e5f4;
@@ -82,10 +82,22 @@
   --color-slate-400: #8fa8c6;
   --color-slate-500: #718eae;
   --color-slate-600: #40658a;
-  --color-slate-700: #23476d;
+  --color-slate-700: #3b5d80;
   --color-slate-800: #183b63;
-  --color-slate-900: #09111b;
+  --color-slate-900: #0e2033;
   --color-slate-950: #09111b;
+  /* Acciones y selecciones en azul, a juego con los modales. */
+  --color-indigo-50: #edf5fc;
+  --color-indigo-100: #d6e8f7;
+  --color-indigo-200: #b7d5ee;
+  --color-indigo-300: #98c4e8;
+  --color-indigo-400: #84b8e2;
+  --color-indigo-500: #4e8ab9;
+  --color-indigo-600: #2d6394;
+  --color-indigo-700: #26547e;
+  --color-indigo-800: #204568;
+  --color-indigo-900: #173650;
+  --color-indigo-950: #102538;
 }
 
 @layer base {
@@ -154,15 +166,18 @@
   }
 }
 
-/* Los marcos son oscuros; el cuerpo de las ventanas mantiene el azul de tarjeta. */
+/* Escalones de profundidad y separadores visibles entre superficies. */
 :root.dark .modal-header,
 :root.dark .modal-footer {
-  background-color: #09111b;
-  border-color: #09111b;
+  background-color: #112b46;
+  border-color: #3b5d80;
 }
 
-:root.dark .modal-container,
-:root.dark [class~="dark:border-gray-700"],
-:root.dark [class~="dark:border-slate-700"] {
-  border-color: #09111b;
+:root.dark .modal-container {
+  border-color: #52789e;
+  box-shadow: 0 24px 70px rgb(0 0 0 / 45%);
+}
+
+:root.dark aside {
+  box-shadow: 4px 0 18px rgb(0 0 0 / 22%);
 }
