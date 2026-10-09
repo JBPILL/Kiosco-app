@@ -13,7 +13,7 @@ apagado y refuerza el componente azul del tema oscuro.
 | Subpanel / hover / separadores | #d1c7b5 | #3b5d80 |
 | Cabecera / pie de modal | #d1c7b5 | #112b46 |
 | Borde de ventana | #bfb39e | #52789e |
-| Botón principal | #614c78 | #2d6394 |
+| Botón principal | #365e70 | #32618a |
 | Texto principal | #2b2721 | #edf3fc |
 | Texto secundario | #4d453a | #a4bad5 |
 
@@ -32,6 +32,12 @@ tarjetas y cuerpos de modal usan el azul. El fondo y las cabeceras tienen tonos
 intermedios, con bordes azules visibles y sombra para separar las ventanas.
 Los botones principales y las selecciones usan azules coordinados con los
 modales; las acciones de peligro y éxito conservan sus colores semánticos.
+La paleta completa de controles está en `src/styles/button-colors.css`:
+azul petróleo en claro, azul acero en oscuro, verde salvia para confirmar,
+rojo arcilla para acciones destructivas y ocre para advertencias. Cubre botones
+compartidos, botones propios de cada pantalla y enlaces, incluidos iconos,
+bordes, fondos suaves, hover y estados activos mediante tokens locales.
+Los controles deshabilitados mantienen su opacidad y bloqueo existentes.
 Hover y chips neutros usan un escalón azul más claro. En claro se armonizan los fondos
 indigo/blue/violet y avisos de estado con crema, y se oscurecen los textos de
 acción para reducir los acentos intensos. Los meses sin ventas tienen una pista
