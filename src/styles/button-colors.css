@@ -6,10 +6,10 @@
   --action-primary-200: #b8c6c4;
   --action-primary-300: #93abaa;
   --action-primary-400: #708e92;
-  --action-primary-500: #527480;
-  --action-primary-600: #365e70;
-  --action-primary-700: #2d5060;
-  --action-primary-800: #263f4c;
+  --action-primary-500: #91b4c3;
+  --action-primary-600: #a8c6d1;
+  --action-primary-700: #96b7c5;
+  --action-primary-800: #86a8b8;
   --action-primary-900: #20343e;
   --action-primary-950: #17252c;
   --action-success-50: #e0e5d8;
@@ -17,10 +17,10 @@
   --action-success-200: #b0c6aa;
   --action-success-300: #8aab87;
   --action-success-400: #658c6c;
-  --action-success-500: #49775a;
-  --action-success-600: #356349;
-  --action-success-700: #2d543e;
-  --action-success-800: #294534;
+  --action-success-500: #91b69a;
+  --action-success-600: #abc8ae;
+  --action-success-700: #99ba9d;
+  --action-success-800: #89aa8e;
   --action-success-900: #24392d;
   --action-success-950: #18271f;
   --action-danger-50: #eaded4;
@@ -28,10 +28,10 @@
   --action-danger-200: #ccaa9d;
   --action-danger-300: #b88b7b;
   --action-danger-400: #a76d60;
-  --action-danger-500: #99584c;
-  --action-danger-600: #88483e;
-  --action-danger-700: #743d35;
-  --action-danger-800: #60352e;
+  --action-danger-500: #c39385;
+  --action-danger-600: #d5aa9d;
+  --action-danger-700: #c6998b;
+  --action-danger-800: #b8897d;
   --action-danger-900: #4d2e28;
   --action-danger-950: #321f1b;
   --action-warning-50: #e9e0cc;
@@ -39,10 +39,10 @@
   --action-warning-200: #ccb68c;
   --action-warning-300: #b69c6d;
   --action-warning-400: #a08651;
-  --action-warning-500: #8c713d;
-  --action-warning-600: #79602f;
-  --action-warning-700: #665027;
-  --action-warning-800: #544225;
+  --action-warning-500: #c3ad78;
+  --action-warning-600: #d4c18f;
+  --action-warning-700: #c5b17e;
+  --action-warning-800: #b6a16d;
   --action-warning-900: #443722;
   --action-warning-950: #2d2518;
   --color-white: #fff8eb;
@@ -54,10 +54,10 @@
   --action-primary-200: #bdd4e8;
   --action-primary-300: #a1c1dd;
   --action-primary-400: #8aaecf;
-  --action-primary-500: #426d93;
-  --action-primary-600: #32618a;
-  --action-primary-700: #294f73;
-  --action-primary-800: #21425f;
+  --action-primary-500: #71a0c6;
+  --action-primary-600: #8db6d7;
+  --action-primary-700: #7ba7cb;
+  --action-primary-800: #6b98bf;
   --action-primary-900: #17344e;
   --action-primary-950: #102639;
   --action-success-50: #edf5f0;
@@ -65,10 +65,10 @@
   --action-success-200: #b2d2c4;
   --action-success-300: #94bda9;
   --action-success-400: #7aaf98;
-  --action-success-500: #41755f;
-  --action-success-600: #356c59;
-  --action-success-700: #2b594b;
-  --action-success-800: #22493f;
+  --action-success-500: #77ab91;
+  --action-success-600: #94c1a9;
+  --action-success-700: #83b39b;
+  --action-success-800: #72a48c;
   --action-success-900: #193b34;
   --action-success-950: #112c29;
   --action-danger-50: #faf0ee;
@@ -76,10 +76,10 @@
   --action-danger-200: #dfbfba;
   --action-danger-300: #d0a39e;
   --action-danger-400: #c28c87;
-  --action-danger-500: #975e5a;
-  --action-danger-600: #8c514e;
-  --action-danger-700: #754340;
-  --action-danger-800: #603936;
+  --action-danger-500: #bf8e87;
+  --action-danger-600: #d1a49d;
+  --action-danger-700: #c3968f;
+  --action-danger-800: #b48882;
   --action-danger-900: #472e30;
   --action-danger-950: #30232a;
   --action-warning-50: #f6f0e3;
@@ -87,10 +87,10 @@
   --action-warning-200: #d9c69f;
   --action-warning-300: #cbb588;
   --action-warning-400: #bba173;
-  --action-warning-500: #8b7044;
-  --action-warning-600: #82683f;
-  --action-warning-700: #6b5535;
-  --action-warning-800: #55452f;
+  --action-warning-500: #bca26d;
+  --action-warning-600: #cfb985;
+  --action-warning-700: #c0aa76;
+  --action-warning-800: #b19b69;
   --action-warning-900: #3d352b;
   --action-warning-950: #29282a;
   --color-white: #edf3fc;
@@ -272,5 +272,86 @@
   --color-lime-800: var(--action-warning-800);
   --color-lime-900: var(--action-warning-900);
   --color-lime-950: var(--action-warning-950);
+}
+
+
+
+/* Los botones de fondo claro usan texto oscuro para mantener la legibilidad. */
+:root :is(button, a, [role="button"], input[type="button"], input[type="submit"]):is([class~="bg-indigo-500"],
+  [class~="bg-indigo-600"],
+  [class~="bg-indigo-700"],
+  [class~="bg-indigo-800"],
+  [class~="bg-blue-500"],
+  [class~="bg-blue-600"],
+  [class~="bg-blue-700"],
+  [class~="bg-blue-800"],
+  [class~="bg-sky-500"],
+  [class~="bg-sky-600"],
+  [class~="bg-sky-700"],
+  [class~="bg-sky-800"],
+  [class~="bg-violet-500"],
+  [class~="bg-violet-600"],
+  [class~="bg-violet-700"],
+  [class~="bg-violet-800"],
+  [class~="bg-purple-500"],
+  [class~="bg-purple-600"],
+  [class~="bg-purple-700"],
+  [class~="bg-purple-800"],
+  [class~="bg-emerald-500"],
+  [class~="bg-emerald-600"],
+  [class~="bg-emerald-700"],
+  [class~="bg-emerald-800"],
+  [class~="bg-green-500"],
+  [class~="bg-green-600"],
+  [class~="bg-green-700"],
+  [class~="bg-green-800"],
+  [class~="bg-teal-500"],
+  [class~="bg-teal-600"],
+  [class~="bg-teal-700"],
+  [class~="bg-teal-800"],
+  [class~="bg-cyan-500"],
+  [class~="bg-cyan-600"],
+  [class~="bg-cyan-700"],
+  [class~="bg-cyan-800"],
+  [class~="bg-red-500"],
+  [class~="bg-red-600"],
+  [class~="bg-red-700"],
+  [class~="bg-red-800"],
+  [class~="bg-rose-500"],
+  [class~="bg-rose-600"],
+  [class~="bg-rose-700"],
+  [class~="bg-rose-800"],
+  [class~="bg-pink-500"],
+  [class~="bg-pink-600"],
+  [class~="bg-pink-700"],
+  [class~="bg-pink-800"],
+  [class~="bg-amber-500"],
+  [class~="bg-amber-600"],
+  [class~="bg-amber-700"],
+  [class~="bg-amber-800"],
+  [class~="bg-orange-500"],
+  [class~="bg-orange-600"],
+  [class~="bg-orange-700"],
+  [class~="bg-orange-800"],
+  [class~="bg-yellow-500"],
+  [class~="bg-yellow-600"],
+  [class~="bg-yellow-700"],
+  [class~="bg-yellow-800"],
+  [class~="bg-lime-500"],
+  [class~="bg-lime-600"],
+  [class~="bg-lime-700"],
+  [class~="bg-lime-800"]) {
+  --color-white: #142b3a;
+}
+
+:root:not(.dark) :is(button, a, [role="button"]) {
+  --color-gray-100: #eee8dc;
+  --color-gray-200: #e2d9c9;
+  --color-gray-300: #c5b69d;
+}
+:root.dark :is(button, a, [role="button"]) {
+  --color-gray-800: #254b70;
+  --color-gray-700: #375f85;
+  --color-gray-600: #4a7297;
 }
 

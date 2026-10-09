@@ -13,7 +13,7 @@ apagado y refuerza el componente azul del tema oscuro.
 | Subpanel / hover / separadores | #d1c7b5 | #3b5d80 |
 | Cabecera / pie de modal | #d1c7b5 | #112b46 |
 | Borde de ventana | #bfb39e | #52789e |
-| Botón principal | #365e70 | #32618a |
+| Botón principal | #a8c6d1 | #8db6d7 |
 | Texto principal | #2b2721 | #edf3fc |
 | Texto secundario | #4d453a | #a4bad5 |
 
@@ -38,6 +38,9 @@ rojo arcilla para acciones destructivas y ocre para advertencias. Cubre botones
 compartidos, botones propios de cada pantalla y enlaces, incluidos iconos,
 bordes, fondos suaves, hover y estados activos mediante tokens locales.
 Los controles deshabilitados mantienen su opacidad y bloqueo existentes.
+Los botones sólidos ahora usan fondos más claros y texto oscuro (#142b3a).
+Los secundarios también tienen una superficie más clara para distinguirse
+de las tarjetas, conservando sus bordes y estados de interacción.
 Hover y chips neutros usan un escalón azul más claro. En claro se armonizan los fondos
 indigo/blue/violet y avisos de estado con crema, y se oscurecen los textos de
 acción para reducir los acentos intensos. Los meses sin ventas tienen una pista
