@@ -11,17 +11,46 @@ import { usePwaStore } from './stores/pwaStore'
 import { SingleInstanceGuard } from './components/ui/SingleInstanceGuard'
 import { ErrorBoundary } from './components/ui/ErrorBoundary'
 
+// Carga diferida con auto-recuperación ante despliegues de nuevas versiones
+function lazyConReintento<T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T }>
+) {
+  return lazy(async () => {
+    const reloadKey = 'kiosko_chunk_reload_done'
+    try {
+      const componente = await factory()
+      sessionStorage.removeItem(reloadKey)
+      return componente
+    } catch (error: unknown) {
+      const msg = String((error as Error)?.message || '')
+      const esErrorDeChunk =
+        msg.includes('text/html') ||
+        msg.includes('MIME type') ||
+        msg.includes('Failed to fetch dynamically imported module') ||
+        msg.includes('Importing a module script failed') ||
+        (error as Error)?.name === 'ChunkLoadError'
+
+      if (esErrorDeChunk && sessionStorage.getItem(reloadKey) !== 'true') {
+        sessionStorage.setItem(reloadKey, 'true')
+        window.location.reload()
+        return new Promise<{ default: T }>(() => {})
+      }
+      throw error
+    }
+  })
+}
+
 // Carga diferida (Code Splitting) para módulos secundarios y administrativos
-const CatalogoPage = lazy(() => import('./pages/CatalogoPage').then((m) => ({ default: m.CatalogoPage })))
-const PromocionesPage = lazy(() => import('./pages/PromocionesPage').then((m) => ({ default: m.PromocionesPage })))
-const ReportesPage = lazy(() => import('./pages/ReportesPage').then((m) => ({ default: m.ReportesPage })))
-const StockPage = lazy(() => import('./pages/StockPage').then((m) => ({ default: m.StockPage })))
-const ProveedoresPage = lazy(() => import('./pages/ProveedoresPage').then((m) => ({ default: m.ProveedoresPage })))
-const ConfigPage = lazy(() => import('./pages/ConfigPage').then((m) => ({ default: m.ConfigPage })))
-const ClientesPage = lazy(() => import('./pages/ClientesPage').then((m) => ({ default: m.ClientesPage })))
-const SuperAdminPage = lazy(() => import('./pages/SuperAdminPage').then((m) => ({ default: m.SuperAdminPage })))
-const SoportePage = lazy(() => import('./pages/SoportePage').then((m) => ({ default: m.SoportePage })))
-const ElectronicaPage = lazy(() => import('./pages/ElectronicaPage').then((m) => ({ default: m.ElectronicaPage })))
+const CatalogoPage = lazyConReintento(() => import('./pages/CatalogoPage').then((m) => ({ default: m.CatalogoPage })))
+const PromocionesPage = lazyConReintento(() => import('./pages/PromocionesPage').then((m) => ({ default: m.PromocionesPage })))
+const ReportesPage = lazyConReintento(() => import('./pages/ReportesPage').then((m) => ({ default: m.ReportesPage })))
+const StockPage = lazyConReintento(() => import('./pages/StockPage').then((m) => ({ default: m.StockPage })))
+const ProveedoresPage = lazyConReintento(() => import('./pages/ProveedoresPage').then((m) => ({ default: m.ProveedoresPage })))
+const ConfigPage = lazyConReintento(() => import('./pages/ConfigPage').then((m) => ({ default: m.ConfigPage })))
+const ClientesPage = lazyConReintento(() => import('./pages/ClientesPage').then((m) => ({ default: m.ClientesPage })))
+const SuperAdminPage = lazyConReintento(() => import('./pages/SuperAdminPage').then((m) => ({ default: m.SuperAdminPage })))
+const SoportePage = lazyConReintento(() => import('./pages/SoportePage').then((m) => ({ default: m.SoportePage })))
+const ElectronicaPage = lazyConReintento(() => import('./pages/ElectronicaPage').then((m) => ({ default: m.ElectronicaPage })))
 
 function PageLoadingFallback() {
   return (
