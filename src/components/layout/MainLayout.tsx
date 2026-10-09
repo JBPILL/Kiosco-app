@@ -199,7 +199,7 @@ export function MainLayout() {
       {/* Contenido principal */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {/* Header mobile adaptado a la Dynamic Island / notch de iPhone */}
-        <header className="lg:hidden flex items-center justify-between px-4 pt-[max(12px,env(safe-area-inset-top))] pb-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-xs flex-shrink-0 z-20">
+        <header className="lg:hidden flex flex-wrap gap-2 items-center justify-between px-3 pt-[max(12px,env(safe-area-inset-top))] pb-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-xs flex-shrink-0 z-20">
           <div className="flex items-center gap-2.5">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -214,7 +214,7 @@ export function MainLayout() {
           </div>
 
           {/* Accesos rápidos visibles en la barra superior móvil */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
             {usuario?.rol === 'VISOR' ? (
               <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300">
                 Auditoría / Reportes
@@ -229,7 +229,7 @@ export function MainLayout() {
                   <NavLink
                     to="/admin"
                     className={({ isActive }) =>
-                      `px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                      `px-2 py-2 rounded-lg text-xs font-semibold transition-all ${
                         isActive
                           ? 'bg-indigo-600 text-white shadow-xs'
                           : 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200'
@@ -240,21 +240,32 @@ export function MainLayout() {
                   </NavLink>
                 )}
                 <NavLink
-                  to="/clientes"
+                  to="/"
+                  end
                   className={({ isActive }) =>
-                    `px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                      isActive
-                        ? 'bg-indigo-600 text-white shadow-xs'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                    }`
+                    `px-2 py-2 rounded-lg text-xs font-semibold transition-all ${isActive
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`
                   }
                 >
-                  Clientes
+                  POS
                 </NavLink>
+                {usuario?.rol === 'DUEÑO' && (
+                  <NavLink
+                    to="/catalogo"
+                    className={({ isActive }) =>
+                      `px-2 py-2 rounded-lg text-xs font-semibold transition-all ${isActive
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`
+                    }
+                  >
+                    Catálogo
+                  </NavLink>
+                )}
                 <NavLink
                   to="/caja"
                   className={({ isActive }) =>
-                    `px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                    `px-2 py-2 rounded-lg text-xs font-semibold transition-all ${
                       isActive
                         ? 'bg-indigo-600 text-white shadow-xs'
                         : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'

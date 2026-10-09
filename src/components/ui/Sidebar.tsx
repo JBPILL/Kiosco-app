@@ -153,14 +153,14 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       {/* Sidebar con soporte para Dynamic Island y Home Indicator de iOS */}
       <aside
         className={`
-          fixed top-0 left-0 z-50 h-screen w-72 max-w-[85vw] bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700
+          fixed top-0 left-0 z-50 h-dvh max-h-dvh w-72 max-w-[85vw] bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700
           transform transition-transform duration-200 ease-in-out flex flex-col overflow-hidden
-          lg:translate-x-0 lg:static lg:z-auto lg:w-56 xl:w-64 shadow-2xl lg:shadow-xs
+          lg:translate-x-0 lg:static lg:z-auto lg:h-full lg:max-h-none lg:w-56 xl:w-64 shadow-2xl lg:shadow-xs
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
         {/* Logo / Encabezado */}
-        <div className="px-4 pt-3 pb-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+        <div className="px-4 pt-[max(12px,env(safe-area-inset-top))] pb-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div className="flex items-center justify-between">
             <AlPasoLogo size="sm" />
             <button
@@ -182,7 +182,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         </div>
 
         {/* Navegación con soporte para flechitas de teclado */}
-        <nav className="px-2 py-2 flex-1 overflow-y-auto space-y-0.5" role="menu" aria-label="Menú principal">
+        <nav className="px-2 py-2 flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-0.5" role="menu" aria-label="Menú principal">
           {itemsVisibles.map((item, index) => (
             <NavLink
               key={item.path}
@@ -209,7 +209,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         </nav>
 
         {/* Acciones del Sistema: Configuración, Atajos [F1] y Soporte (solo para comercios, oculto en modo Super-Admin) */}
-        {!usuario?.es_superadmin && (
+        {!(usuario?.es_superadmin && !usuario.kiosco_id) && (
           <div className="px-2 py-1.5 border-t border-gray-200 dark:border-gray-700 flex-shrink-0 space-y-0.5">
             {usuario?.rol === 'DUEÑO' && (
               <NavLink
@@ -277,7 +277,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         )}
 
         {/* Cerrar sesión */}
-        <div className="px-2 pt-1 pb-2 border-t border-gray-100 dark:border-gray-700/50 flex-shrink-0">
+        <div className="px-2 pt-1 pb-[max(8px,env(safe-area-inset-bottom))] border-t border-gray-100 dark:border-gray-700/50 flex-shrink-0">
           <button
             onClick={logout}
             onKeyDown={(e) => {
