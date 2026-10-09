@@ -1,16 +1,17 @@
-# Modo claro gris y modo oscuro azul marino
+# Modo claro gris neutro y modo oscuro azul oscuro
 
 Paletas compartidas en `src/styles/color-themes.css`, importadas por
-`src/index.css`. Reemplazan la variante crema previa.
+`src/index.css`. Reemplazan la variante crema y la primera variante azul marino.
+La segunda revisión usa grises sin matiz azulado y azul oscuro más luminoso.
 
 | Superficie | Claro | Oscuro |
 | --- | --- | --- |
-| Fondo | #eceef1 | #101d35 |
-| Panel | #f9fafb | #182b49 |
-| Subpanel / hover | #e3e6eb | #2a4265 |
-| Borde | #d5dae2 | #2a4265 |
-| Texto principal | #1d2735 | #edf3fc |
-| Texto secundario | #4d596b | #a4b8d5 |
+| Fondo | #e5e5e5 | #132d4c |
+| Panel | #f4f4f4 | #1b3c61 |
+| Subpanel / hover | #dadada | #2a507a |
+| Borde | #cccccc | #2a507a |
+| Texto principal | #222222 | #eef5ff |
+| Texto secundario | #4d4d4d | #a0c0e8 |
 
 Los tokens gray/slate cubren las utilidades de Tailwind, sus opacidades y
 estados. Toast, foco de teclado, selección y scroll también usan la paleta.

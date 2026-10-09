@@ -50,9 +50,9 @@ export function AppToaster() {
           borderRadius: '12px',
           padding: '12px 16px',
           fontSize: '14px',
-          background: tema === 'dark' ? '#182b49' : '#f9fafb',
-          color: tema === 'dark' ? '#edf3fc' : '#1d2735',
-          border: tema === 'dark' ? '1px solid #2a4265' : '1px solid #b5becb',
+          background: tema === 'dark' ? '#1b3c61' : '#f4f4f4',
+          color: tema === 'dark' ? '#eef5ff' : '#222222',
+          border: tema === 'dark' ? '1px solid #2a507a' : '1px solid #b0b0b0',
           boxShadow:
             tema === 'dark'
               ? '0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4)'
