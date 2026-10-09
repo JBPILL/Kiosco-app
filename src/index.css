@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./styles/cream-theme.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -127,114 +128,6 @@ input, button {
 }
 
 /* ==========================================================================
-   Realce de tono, bordes y sombras en Modo Claro
-   Brinda presencia, contraste y definición a todas las tarjetas y recuadros del sistema.
-   ========================================================================== */
-
-/* Fondo base del lienzo para resaltar las tarjetas y recuadros en modo claro */
-:root:not(.dark) body,
-:root:not(.dark) main {
-  background-color: #f4f6f8; /* Tono de fondo sutil que hace resaltar las tarjetas blancas limpiamente */
-}
-
-/* Bordes con mayor definición y contraste en modo claro */
-:root:not(.dark) .border-gray-200,
-:root:not(.dark) [class*="border-gray-200"] {
-  border-color: #cbd5e1; /* slate-300: línea nítida, moderna y agradable */
-}
-
-:root:not(.dark) .border-gray-100,
-:root:not(.dark) [class*="border-gray-100"] {
-  border-color: #e2e8f0; /* slate-200 */
-}
-
-:root:not(.dark) .border-gray-300,
-:root:not(.dark) [class*="border-gray-300"] {
-  border-color: #94a3b8; /* slate-400 */
-}
-
-/* Sombreado elegante en todas las secciones, contenedores y tarjetas estándar en modo claro */
-:root:not(.dark) .bg-white.border:not(.shadow-2xl):not(.shadow-xl):not([role="dialog"]),
-:root:not(.dark) .rounded-lg.border:not(.shadow-2xl):not(.shadow-xl):not([role="dialog"]),
-:root:not(.dark) .rounded-xl.border:not(.shadow-2xl):not(.shadow-xl):not([role="dialog"]),
-:root:not(.dark) .rounded-2xl.border:not(.shadow-2xl):not(.shadow-xl):not([role="dialog"]) {
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.07), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
-}
-
-/* ==========================================================================
-   Modales y Ventanas Emergentes en Modo Claro
-   Bordes nítidos, relieve tridimensional, ring perimetral de definición
-   y barra de título definida para máxima comodidad y contraste visual.
-   ========================================================================== */
-:root:not(.dark) [role="dialog"],
-:root:not(.dark) .modal-container,
-:root:not(.dark) .shadow-2xl {
-  box-shadow:
-    0 25px 50px -12px rgba(15, 23, 42, 0.32),
-    0 12px 24px -8px rgba(15, 23, 42, 0.2),
-    0 0 0 1px rgba(15, 23, 42, 0.14) !important;
-}
-
-:root:not(.dark) .modal-header {
-  background-color: #f1f5f9;
-  border-bottom-color: #cbd5e1;
-}
-
-/* Tono de recuadros internos, métricas y subpaneles en modo claro */
-:root:not(.dark) .bg-gray-50,
-:root:not(.dark) [class*="bg-gray-50"] {
-  background-color: #f8fafc; /* slate-50 */
-}
-
-/* Cuando un recuadro o tarjeta con fondo gris está dentro de un contenedor blanco (bg-white),
-   se le da un tono ligeramente más contrastado (#f1f5f9) para que resalte con relieve y presencia */
-:root:not(.dark) .bg-white .bg-gray-50,
-:root:not(.dark) .bg-white [class*="bg-gray-50"],
-:root:not(.dark) [class*="bg-white"] .bg-gray-50,
-:root:not(.dark) [class*="bg-white"] [class*="bg-gray-50"] {
-  background-color: #f1f5f9; /* slate-100: excelente contraste sobre blanco puro */
-}
-
-/* Cabeceras de tablas (thead) en modo claro: delimitadas y nítidas */
-:root:not(.dark) thead.bg-gray-50,
-:root:not(.dark) thead[class*="bg-gray-50"] {
-  background-color: #f1f5f9;
-  border-bottom-color: #cbd5e1;
-}
-
-/* Menú lateral (Sidebar) con límite bien definido */
-:root:not(.dark) aside {
-  box-shadow: 2px 0 8px -2px rgba(0, 0, 0, 0.07);
-  border-right-color: #cbd5e1;
-}
-
-/* Barra superior móvil (Header) */
-:root:not(.dark) header {
-  box-shadow: 0 2px 6px -1px rgba(0, 0, 0, 0.06);
-  border-bottom-color: #cbd5e1;
-}
-
-/* Barra inferior móvil (Bottom Navigation) */
-:root:not(.dark) nav.fixed.bottom-0 {
-  box-shadow: 0 -4px 12px -2px rgba(0, 0, 0, 0.08);
-  border-top-color: #cbd5e1;
-}
-
-/* Efecto hover con relieve en botones que son tarjetas/chips */
-:root:not(.dark) button.bg-white.border:hover,
-:root:not(.dark) button.rounded-xl.border:hover,
-:root:not(.dark) button.rounded-lg.border:hover {
-  box-shadow: 0 3px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
-}
-
-/* Inputs y Selects */
-:root:not(.dark) input.bg-white,
-:root:not(.dark) select.bg-white,
-:root:not(.dark) textarea.bg-white {
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
-}
-
-/* ==========================================================================
    Estilos personalizados de barras de desplazamiento (Scrollbars)
    Diseño delgado, redondeado y 100% integrado a los modos Claro y Oscuro
    ========================================================================== */
@@ -251,7 +144,7 @@ html:not(.dark) {
 /* Regla estándar CSS (Firefox, Chrome 121+, Edge 121+, Safari 17.4+) */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-color: var(--color-gray-300) transparent;
 }
 
 html.dark *,
@@ -286,14 +179,14 @@ html.dark *,
 
 /* Thumb en Modo Claro */
 ::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1;
+  background-color: var(--color-gray-300);
   border-radius: 9999px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: #94a3b8;
+  background-color: var(--color-gray-400);
 }
 
 /* Thumb en Modo Oscuro (se integra armónicamente con los tonos oscuros del sistema) */

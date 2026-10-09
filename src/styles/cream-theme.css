@@ -1,0 +1,83 @@
+/* Paleta compartida del modo claro: superficies cálidas con jerarquía legible.
+   Los tokens alimentan todas las utilidades Tailwind, incluidos hover y opacidad. */
+:root:not(.dark) {
+  --color-white: #fffaf1;
+  --color-gray-50: #f6f0e4;
+  --color-gray-100: #eee5d5;
+  --color-gray-200: #e2d6c2;
+  --color-gray-300: #c9b99f;
+  --color-gray-400: #756550;
+  --color-gray-500: #70614f;
+  --color-gray-600: #655745;
+  --color-gray-700: #514536;
+  --color-gray-800: #40362c;
+  --color-gray-900: #302a24;
+  --color-gray-950: #201c18;
+  --color-slate-50: #f8f3e9;
+  --color-slate-100: #eee5d5;
+  --color-slate-200: #e2d6c2;
+  --color-slate-300: #c9b99f;
+  --color-slate-400: #756550;
+  --color-slate-500: #70614f;
+  --color-slate-600: #655745;
+  --color-slate-700: #514536;
+  --color-slate-800: #40362c;
+  --color-slate-900: #302a24;
+  --color-slate-950: #201c18;
+}
+
+@layer base {
+  :root:not(.dark) {
+    accent-color: #4f46e5;
+  }
+
+  :root:not(.dark) input::placeholder,
+  :root:not(.dark) textarea::placeholder {
+    color: #796a57;
+    opacity: 1;
+  }
+
+  :root:not(.dark) ::selection {
+    background: #ded4f4;
+    color: #302a24;
+  }
+
+}
+
+:root:not(.dark) :focus-visible {
+  outline: 2px solid #6554b3;
+  outline-offset: 3px;
+}
+
+/* Relieve suave, sin bordes fríos ni sombras negras intensas. */
+:root:not(.dark) aside,
+:root:not(.dark) header {
+  box-shadow: 0 2px 10px rgb(81 69 54 / 6%);
+}
+
+:root:not(.dark) .modal-header,
+:root:not(.dark) .modal-footer {
+  background-color: #eee5d5;
+  border-color: #d6c8b4;
+}
+
+:root:not(.dark) [role="dialog"] {
+  box-shadow: 0 20px 65px rgb(48 42 36 / 22%);
+}
+
+/* El papel no hereda el color crema de la interfaz, ni siquiera al exportar. */
+#printable-ticket,
+#printable-cierre,
+#printable-pago-ticket,
+#printable-etiquetas,
+[data-receipt-paper] {
+  --color-white: #ffffff;
+  background-color: #ffffff;
+  color: #111827;
+}
+
+@media print {
+  :root:not(.dark) {
+    --color-white: #ffffff;
+  }
+}
