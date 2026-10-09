@@ -26,7 +26,6 @@ import { prepararMovimientoStock } from '../lib/stockOperation'
 import { MovimientosPendientes } from '../components/stock/MovimientosPendientes'
 import { adjuntarCostosHistoricos } from '../lib/movementCostAccess'
 import { presentarMovimientoStock } from '../lib/stockMovementDisplay'
-import { ResumenBajasStock } from '../components/stock/ResumenBajasStock'
 
 export function StockPage() {
   const { usuario, kiosco } = useAuthStore()
@@ -793,14 +792,6 @@ export function StockPage() {
               <RefreshButton refreshing={sincronizando || cargando} onClick={handleSincronizar} label="Actualizar stock" />
             </div>
           </div>
-
-          {!cargando && (
-            <ResumenBajasStock
-              movimientos={movimientosFiltrados}
-              autorizado={usuario?.rol === 'DUEÑO' || Boolean(usuario?.es_superadmin)}
-              hayMas={hayMasMovimientos}
-            />
-          )}
 
           {/* Lista de Movimientos */}
           {cargando ? (
