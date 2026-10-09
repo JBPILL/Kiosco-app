@@ -29,15 +29,6 @@ if (document.fullscreenEnabled) {
   document.addEventListener('touchstart', activarPantallaCompleta, { once: true })
 }
 
-// ── Recuperación ante nueva versión desplegada (evita errores MIME/chunk obsoleto) ──
-window.addEventListener('vite:preloadError', () => {
-  const key = 'kiosko_vite_preload_reload'
-  if (sessionStorage.getItem(key) !== 'true') {
-    sessionStorage.setItem(key, 'true')
-    window.location.reload()
-  }
-})
-
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

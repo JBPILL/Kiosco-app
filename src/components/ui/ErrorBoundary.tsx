@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { Button } from './Button'
+import { useCartStore } from '../../stores/cartStore'
 
 interface Props {
   children: ReactNode
@@ -33,32 +34,19 @@ export class ErrorBoundary extends Component<Props, State> {
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('ErrorBoundary capturó un error no controlado:', error, errorInfo)
 
-    const msg = error?.message || ''
-    const esErrorDeVersion =
-      msg.includes('text/html') ||
-      msg.includes('MIME type') ||
-      msg.includes('Failed to fetch dynamically imported module') ||
-      msg.includes('Importing a module script failed') ||
-      error?.name === 'ChunkLoadError'
-
-    if (esErrorDeVersion) {
-      const reloadKey = 'kiosko_version_mismatch_reload'
-      const yaRecargo = sessionStorage.getItem(reloadKey) === 'true'
-      if (!yaRecargo) {
-        sessionStorage.setItem(reloadKey, 'true')
-        window.location.reload()
-      }
-    }
   }
 
   private handleRecargar = () => {
-    sessionStorage.removeItem('kiosko_version_mismatch_reload')
+    const carrito = useCartStore.getState()
+    if ((carrito.items.length > 0 || carrito.tabs.some(tab => tab.items.length > 0))
+      && !window.confirm('Hay tickets en preparación. Recargar descartará esos borradores. Volvé al punto de venta y pausá los tickets antes de actualizar. ¿Recargar de todos modos?')) return
     window.location.reload()
   }
 
   private handleIrACaja = () => {
-    sessionStorage.removeItem('kiosko_version_mismatch_reload')
-    window.location.href = '/caja'
+    // Reiniciar React sin recargar conserva stores y tickets en memoria.
+    window.history.replaceState(null, '', '/')
+    this.setState({ hasError: false, error: null, esErrorDeVersion: false })
   }
 
   public render() {
@@ -81,8 +69,8 @@ export class ErrorBoundary extends Component<Props, State> {
               </h2>
               <p className="text-xs text-gray-400 mt-1 leading-relaxed">
                 {esErrorDeVersion
-                  ? 'Se desplegó una nueva versión de KioscoPOS. Recargá la pantalla para continuar con las últimas mejoras.'
-                  : 'Tus datos de ventas, turnos de caja y operaciones se encuentran seguros y guardados.'}
+                  ? 'No se pudo cargar un módulo. Puede deberse a una actualización o a la conexión. Volvé al punto de venta y pausá los tickets antes de actualizar.'
+                  : 'No se pudo mostrar esta pantalla. Volvé al punto de venta para revisar tus tickets antes de recargar.'}
               </p>
             </div>
             {this.state.error && !esErrorDeVersion && (
@@ -101,7 +89,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 {esErrorDeVersion ? 'Actualizar a la nueva versión' : 'Recargar pantalla'}
               </Button>
               <Button variant="secondary" size="sm" onClick={this.handleIrACaja} className="w-full">
-                Ir al panel de Caja
+                Volver al punto de venta
               </Button>
             </div>
           </div>

@@ -30,10 +30,27 @@
         } catch(e) {}
       })();
     </script>
+    <script>
+      // Funciona incluso si el módulo inicial no llegó a ejecutar React.
+      window.addEventListener('error', function(event) {
+        if (!event.target || event.target.tagName !== 'SCRIPT' || event.target.type !== 'module') return;
+        var root = document.getElementById('root');
+        if (!root || root.childElementCount) return;
+        var panel = document.createElement('section');
+        panel.style.cssText = 'padding:32px;color:#fff;background:#111827;font:16px system-ui;min-height:100vh';
+        var message = document.createElement('p');
+        message.textContent = 'No se pudo iniciar la aplicación. Revisá la conexión y volvé a intentar. No vuelvas a cobrar una operación pendiente.';
+        var button = document.createElement('button');
+        button.textContent = 'Reintentar carga';
+        button.onclick = function() { window.location.assign(window.location.href); };
+        panel.append(message, button);
+        root.append(panel);
+      }, true);
+    </script>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script id="app-entry" type="module" src="/src/main.tsx"></script>
     <script>
       // Manejo de Service Worker para PWA y soporte Offline
       if ('serviceWorker' in navigator) {
@@ -47,14 +64,7 @@
             });
           } else {
             // En producción, preview o despliegue HTTPS: registrar Service Worker para modo offline y PWA
-            let refreshing = false;
-            navigator.serviceWorker.addEventListener('controllerchange', () => {
-              if (!refreshing) {
-                refreshing = true;
-                window.location.reload();
-              }
-            });
-
+            // Actualizar el controlador no debe descartar tickets abiertos.
             navigator.serviceWorker.register('/sw.js')
               .then((reg) => {
                 console.log('AlPaso POS PWA Service Worker registrado:', reg.scope);
