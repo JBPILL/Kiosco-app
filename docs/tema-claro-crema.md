@@ -1,5 +1,8 @@
 # Tema claro crema
 
+> Registro histórico. La variante crema fue reemplazada a pedido del usuario
+> por las paletas gris y azul marino de `temas-gris-marino.md`.
+
 Actualización del 09/10/2026. Paleta compartida en
 `src/styles/cream-theme.css`, importada desde `src/index.css`.
 

@@ -1,0 +1,118 @@
+/* Paletas compartidas: gris suave en modo claro y azul marino en modo oscuro.
+   Los tokens alimentan todas las utilidades Tailwind, incluidos hover y opacidad. */
+:root:not(.dark) {
+  --color-white: #f9fafb;
+  --color-gray-50: #eceef1;
+  --color-gray-100: #e3e6eb;
+  --color-gray-200: #d5dae2;
+  --color-gray-300: #b5becb;
+  --color-gray-400: #677385;
+  --color-gray-500: #5e6a7c;
+  --color-gray-600: #4d596b;
+  --color-gray-700: #3b4657;
+  --color-gray-800: #293444;
+  --color-gray-900: #1d2735;
+  --color-gray-950: #101824;
+  --color-slate-50: #f0f2f5;
+  --color-slate-100: #e3e6eb;
+  --color-slate-200: #d5dae2;
+  --color-slate-300: #b5becb;
+  --color-slate-400: #677385;
+  --color-slate-500: #5e6a7c;
+  --color-slate-600: #4d596b;
+  --color-slate-700: #3b4657;
+  --color-slate-800: #293444;
+  --color-slate-900: #1d2735;
+  --color-slate-950: #101824;
+}
+
+:root.dark {
+  --color-gray-50: #edf3fc;
+  --color-gray-100: #dce7f7;
+  --color-gray-200: #c2d1e7;
+  --color-gray-300: #a4b8d5;
+  --color-gray-400: #8ba3c6;
+  --color-gray-500: #6882aa;
+  --color-gray-600: #48648c;
+  --color-gray-700: #2a4265;
+  --color-gray-800: #182b49;
+  --color-gray-900: #101d35;
+  --color-gray-950: #091224;
+  --color-slate-50: #edf3fc;
+  --color-slate-100: #dce7f7;
+  --color-slate-200: #c2d1e7;
+  --color-slate-300: #a4b8d5;
+  --color-slate-400: #8ba3c6;
+  --color-slate-500: #6882aa;
+  --color-slate-600: #48648c;
+  --color-slate-700: #2a4265;
+  --color-slate-800: #182b49;
+  --color-slate-900: #101d35;
+  --color-slate-950: #091224;
+}
+
+@layer base {
+  :root:not(.dark) {
+    accent-color: #4f46e5;
+  }
+
+  :root:not(.dark) input::placeholder,
+  :root:not(.dark) textarea::placeholder {
+    color: #5e6a7c;
+    opacity: 1;
+  }
+
+  :root:not(.dark) ::selection {
+    background: #dbe4f2;
+    color: #1d2735;
+  }
+
+}
+
+:root:not(.dark) :focus-visible {
+  outline: 2px solid #45648e;
+  outline-offset: 3px;
+}
+
+/* Relieve suave para separar superficies sin bordes intensos. */
+:root:not(.dark) aside,
+:root:not(.dark) header {
+  box-shadow: 0 2px 10px rgb(29 39 53 / 6%);
+}
+
+:root:not(.dark) .modal-header,
+:root:not(.dark) .modal-footer {
+  background-color: #e3e6eb;
+  border-color: #b5becb;
+}
+
+:root:not(.dark) [role="dialog"] {
+  box-shadow: 0 20px 65px rgb(16 24 36 / 22%);
+}
+
+/* El papel conserva su fondo blanco al imprimir y exportar. */
+#printable-ticket,
+#printable-cierre,
+#printable-pago-ticket,
+#printable-etiquetas,
+[data-receipt-paper] {
+  --color-white: #ffffff;
+  background-color: #ffffff;
+  color: #111827;
+}
+
+:root.dark :focus-visible {
+  outline: 2px solid #8ba3c6;
+  outline-offset: 3px;
+}
+
+:root.dark ::selection {
+  background: #48648c;
+  color: #edf3fc;
+}
+
+@media print {
+  :root:not(.dark) {
+    --color-white: #ffffff;
+  }
+}
