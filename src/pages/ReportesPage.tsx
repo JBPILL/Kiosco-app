@@ -400,9 +400,10 @@ export function ReportesPage() {
         <div className="space-y-6">
           {/* Header con selector de fecha */}
           <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 sm:p-5 shadow-md dark:shadow-black/20">
-            <div>
-              <span className="mb-2 inline-flex rounded-lg bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-indigo-600 dark:text-indigo-300">Control diario</span><h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Ventas por Jornada</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Auditoría de tickets y comprobantes del día</p>
+            <div className="min-w-0 space-y-1.5">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300">Control diario</p>
+              <h2 className="text-lg sm:text-xl font-bold leading-tight text-gray-900 dark:text-gray-100">Ventas por Jornada</h2>
+              <p className="text-xs sm:text-sm leading-relaxed text-gray-500 dark:text-gray-400">Auditoría de tickets y comprobantes del día</p>
             </div>
 
             {/* Navegación por fecha y Exportar */}

@@ -155,7 +155,7 @@ export function FavoritesGrid({ productos, onSelect }: FavoritesGridProps) {
             <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 group-focus:text-indigo-950 dark:group-focus:text-white line-clamp-3 leading-snug min-h-[32px]">
               {prod.descripcion}
             </span>
-            <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400 group-focus:text-emerald-700 dark:group-focus:text-emerald-300 mt-1">
+            <span className="text-sm font-extrabold text-black dark:text-[#ffffff] mt-1">
               {formatPrecio(prod.precio_venta)}
             </span>
 
