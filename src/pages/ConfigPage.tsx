@@ -70,16 +70,6 @@ export function ConfigPage() {
 
   // Control unificado de refresco para la pestaña de Seguridad y Caja
   const [recargaSeguridad, setRecargaSeguridad] = useState(0)
-  const [cargandoSeguridad, setCargandoSeguridad] = useState(false)
-
-  const handleRefrescarSeguridad = () => {
-    setCargandoSeguridad(true)
-    setRecargaSeguridad((v) => v + 1)
-    setTimeout(() => {
-      setCargandoSeguridad(false)
-      toast.success('Auditoría y políticas de seguridad actualizadas')
-    }, 600)
-  }
 
   useEffect(() => {
     cargarConfigAdmin()
@@ -169,6 +159,9 @@ export function ConfigPage() {
   const cargarDatos = useCallback(async () => {
     if (!kioscoId) return
     setCargando(true)
+    setRecargaSeguridad((v) => v + 1)
+    cargarConfigAdmin()
+    cargarArqueoCiegoConfig()
 
     try {
       // 1. Cargar datos del Kiosco
@@ -233,7 +226,7 @@ export function ConfigPage() {
     } finally {
       setCargando(false)
     }
-  }, [kioscoId])
+  }, [kioscoId, cargarConfigAdmin, cargarArqueoCiegoConfig])
 
   useEffect(() => {
     cargarDatos()
@@ -791,170 +784,359 @@ export function ConfigPage() {
           {/* PESTAÑA: GENERAL Y LOCAL */}
           {pestanaActiva === 'GENERAL' && (
             <div className="space-y-6">
-              {/* Datos del Kiosco */}
-              <div className="space-y-5">
-                <div className="flex items-center gap-3 rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50 dark:bg-indigo-950/30 p-5">
-                  <span className="rounded-xl bg-white dark:bg-gray-800 p-3 text-indigo-600 dark:text-indigo-300 shadow-sm"><Store size={24} aria-hidden="true" /></span>
-                  <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300">
-                    Identificación
+              {/* Cabecera unificada: Negocio y Apariencia */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-r from-indigo-50/80 via-white to-purple-50/60 dark:from-indigo-950/30 dark:via-gray-800 dark:to-purple-950/20 p-5 shadow-xs">
+                <div className="flex items-center gap-3.5">
+                  <span className="rounded-xl bg-indigo-600 text-white p-3 shadow-md shadow-indigo-500/20 shrink-0">
+                    <Store size={24} aria-hidden="true" />
                   </span>
-                  <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                    Datos del Negocio
-                  </h2>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                        Negocio & Apariencia
+                      </span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500">• Identificación y Visual</span>
+                    </div>
+                    <h2 className="text-base font-bold text-gray-900 dark:text-gray-100 mt-0.5">
+                      Identificación del Comercio y Estilo
+                    </h2>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Información del local, equipamiento del puesto, tickets térmicos y tema visual de la pantalla.
+                    </p>
+                  </div>
                 </div>
-
-
-                <form onSubmit={handleGuardarKiosco} className="space-y-5">
-                  <section aria-label="Identificación del comercio" className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 sm:p-6 shadow-md dark:shadow-black/20 space-y-4">
-                  <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">Información del local</h3>
-                  <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">Estos datos identifican al comercio en los tickets y comprobantes. Revisá el nombre, la dirección y el contacto antes de guardar.</p>
-                  <Input
-                    label="Nombre del Kiosco / Comercio *"
-                    placeholder="Ej: Kiosco Central"
-                    value={nombreKiosco}
-                    onChange={(e) => setNombreKiosco(e.target.value)}
-                    required
-                  />
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <Input
-                      label="Dirección del Local"
-                      placeholder="Ej: Av. San Martín 1234"
-                      value={direccion}
-                      onChange={(e) => setDireccion(e.target.value)}
-                    />
-                    <Input
-                      label="Teléfono de Contacto"
-                      placeholder="Ej: 11-2345-6789"
-                      value={telefono}
-                      onChange={(e) => setTelefono(e.target.value)}
-                    />
-                  </div>
-
-                  </section>
-                  <ModulosComercioSection value={capacidadesOperativas} onChange={setCapacidadesOperativas} />
-
-                  <EquiposComercioSection value={equiposComercio} onChange={setEquiposComercio} />
-
-                  {/* Selector de Ancho de Ticket Térmico Predeterminado */}
-                  <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 sm:p-6 shadow-md dark:shadow-black/20 space-y-4">
-                    <div className="flex items-center gap-3"><span className="rounded-xl bg-teal-50 dark:bg-teal-900/30 p-2.5 text-teal-600 dark:text-teal-300"><Printer size={22} aria-hidden="true" /></span><h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Tickets e impresión</h2></div>
-                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
-                      Impresora térmica de este puesto
-                    </label>
-                    <div className="flex flex-wrap gap-3">
-                      <Button type="button" size="sm" className="rounded-xl font-semibold py-2.5 shadow-xs" variant="secondary" loading={configurandoImpresora} disabled={!isWebSerialSupported()} onClick={handleConfigurarImpresora}>
-                        Seleccionar impresora
-                      </Button>
-                      <Button type="button" size="sm" className="rounded-xl font-semibold py-2.5 shadow-xs" variant="secondary" loading={probandoImpresora} disabled={!isWebSerialSupported()} onClick={handleProbarImpresora}>
-                        Imprimir prueba
-                      </Button>
-                    </div>
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                      Seleccioná el puerto acá, antes de cobrar. La prueba no abre el cajón. Requiere Chrome o Edge en un origen seguro.
-                    </p>
-                    <label className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 text-xs font-semibold text-gray-700 dark:text-gray-300 cursor-pointer">
-                      <input
-                        className="h-4 w-4 shrink-0 accent-indigo-600 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
-                        type="checkbox"
-                        checked={abrirCajonEnEfectivo}
-                        onChange={(e) => {
-                          setAbrirCajonEnEfectivo(e.target.checked)
-                          setAperturaAutomaticaCajon(e.target.checked)
-                        }}
-                      />
-                      Abrir cajón automáticamente después de confirmar un pago en efectivo
-                    </label>
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                      Solo se activa si el pago confirmado incluye efectivo. Un error de hardware no cancela la venta ni reintenta la apertura.
-                    </p>
-                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
-                      Ancho Predeterminado de Comprobantes Térmicos
-                    </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
-                      <button
-                        type="button"
-                        aria-pressed={anchoImpresora === '58mm'}
-                        onClick={() => handleCambiarAnchoImpresora('58mm')}
-                        className={`p-2.5 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                          anchoImpresora === '58mm'
-                            ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-500/30 shadow-xs'
-                            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                        }`}
-                      >
-                        <span className="w-2 h-2 rounded-full bg-indigo-500" />
-                        <span>58 mm (Estándar Kiosco)</span>
-                      </button>
-                      <button
-                        type="button"
-                        aria-pressed={anchoImpresora === '80mm'}
-                        onClick={() => handleCambiarAnchoImpresora('80mm')}
-                        className={`p-2.5 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                          anchoImpresora === '80mm'
-                            ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-500/30 shadow-xs'
-                            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                        }`}
-                      >
-                        <span className="w-2 h-2 rounded-full bg-indigo-500" />
-                        <span>80 mm (Comandera Ancha)</span>
-                      </button>
-                    </div>
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                      Define los milímetros de impresión predeterminados para los tickets de venta y los arqueos de caja Z en pantalla y en PDF.
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50 dark:bg-indigo-950/30 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <p className="text-xs text-indigo-700 dark:text-indigo-300">Guardá los datos del local, los módulos y el registro de equipos con este botón.</p>
-                    <Button type="submit" variant="primary" loading={guardandoKiosco} className="shadow-xs">
-                      Guardar Cambios del Comercio
-                    </Button>
-                  </div>
-                </form>
               </div>
 
-              {/* Apariencia / Modo Oscuro */}
-              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-md dark:shadow-black/20 space-y-4">
-                <div className="flex items-center gap-2">
-                  <Palette size={24} className="text-purple-500" aria-hidden="true" />
-                  <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300">
+              {/* Formulario de Configuración del Local */}
+              <form onSubmit={handleGuardarKiosco} className="space-y-6">
+                {/* Tarjeta 1: Información del Local */}
+                <section aria-label="Identificación del comercio" className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 sm:p-6 shadow-xs space-y-5">
+                  <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-700/60">
+                    <div className="flex items-center gap-3">
+                      <span className="rounded-xl bg-blue-50 dark:bg-blue-950/40 p-2.5 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/50">
+                        <Store size={20} aria-hidden="true" />
+                      </span>
+                      <div>
+                        <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                          Información del Local
+                        </h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Estos datos identifican al comercio en los tickets y comprobantes impresos.
+                        </p>
+                      </div>
+                    </div>
+                    <span className="hidden sm:inline-flex px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-gray-100 dark:bg-gray-700/60 text-gray-600 dark:text-gray-300">
+                      Impresión y Tickets
+                    </span>
+                  </div>
+
+                  <div className="space-y-4">
+                    <Input
+                      label="Nombre del Kiosco / Comercio *"
+                      placeholder="Ej: Kiosco Central"
+                      value={nombreKiosco}
+                      onChange={(e) => setNombreKiosco(e.target.value)}
+                      required
+                    />
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <Input
+                        label="Dirección del Local"
+                        placeholder="Ej: Av. San Martín 1234"
+                        value={direccion}
+                        onChange={(e) => setDireccion(e.target.value)}
+                      />
+                      <Input
+                        label="Teléfono de Contacto"
+                        placeholder="Ej: 11-2345-6789"
+                        value={telefono}
+                        onChange={(e) => setTelefono(e.target.value)}
+                      />
+                    </div>
+
+                    {/* Vista previa en vivo del encabezado del ticket */}
+                    <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/40 p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 flex items-center gap-1.5">
+                          <Printer size={13} aria-hidden="true" />
+                          Vista previa en encabezado de ticket
+                        </span>
+                        <span className="text-[10px] text-gray-400 font-mono">Papel {anchoImpresora}</span>
+                      </div>
+                      <div className="text-center font-mono py-2.5 px-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-2xs max-w-sm mx-auto space-y-1">
+                        <p className="font-bold text-sm text-gray-900 dark:text-gray-100 uppercase tracking-wide truncate">
+                          {nombreKiosco.trim() || 'NOMBRE DE TU COMERCIO'}
+                        </p>
+                        {direccion.trim() && (
+                          <p className="text-xs text-gray-600 dark:text-gray-400 truncate">
+                            {direccion.trim()}
+                          </p>
+                        )}
+                        {telefono.trim() && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Tel: {telefono.trim()}
+                          </p>
+                        )}
+                        <p className="text-[10px] text-gray-400 dark:text-gray-500 pt-1 border-t border-dashed border-gray-200 dark:border-gray-700 mt-1">
+                          --------------------------------
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Tarjeta 2: Capacidades y Módulos Operativos */}
+                <ModulosComercioSection value={capacidadesOperativas} onChange={setCapacidadesOperativas} />
+
+                {/* Tarjeta 3: Equipamiento del Puesto POS */}
+                <EquiposComercioSection value={equiposComercio} onChange={setEquiposComercio} />
+
+                {/* Tarjeta 4: Tickets e Impresión Térmica */}
+                <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 sm:p-6 shadow-xs space-y-5">
+                  <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-700/60">
+                    <div className="flex items-center gap-3">
+                      <span className="rounded-xl bg-teal-50 dark:bg-teal-950/40 p-2.5 text-teal-600 dark:text-teal-300 border border-teal-100 dark:border-teal-900/50">
+                        <Printer size={20} aria-hidden="true" />
+                      </span>
+                      <div>
+                        <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                          Tickets e Impresión Térmica
+                        </h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Configuración de la impresora ESC/POS en este puesto, cajón monedero y ancho de comprobantes.
+                        </p>
+                      </div>
+                    </div>
+                    <span className="hidden sm:inline-flex px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border border-teal-200/50 dark:border-teal-900/50">
+                      Hardware ESC/POS
+                    </span>
+                  </div>
+
+                  <div className="space-y-4">
+                    {/* Conexión de Impresora */}
+                    <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-700/80 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <div>
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
+                            Impresora térmica de este puesto
+                          </h4>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            {isWebSerialSupported()
+                              ? 'Conexión directa por puerto serie / USB compatible.'
+                              : 'Requiere Chrome o Edge en un origen seguro (HTTPS o localhost) para WebSerial.'}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2.5 flex-wrap shrink-0">
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="rounded-xl font-semibold shadow-xs"
+                            variant="secondary"
+                            loading={configurandoImpresora}
+                            disabled={!isWebSerialSupported()}
+                            onClick={handleConfigurarImpresora}
+                          >
+                            Seleccionar impresora
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="rounded-xl font-semibold shadow-xs"
+                            variant="secondary"
+                            loading={probandoImpresora}
+                            disabled={!isWebSerialSupported()}
+                            onClick={handleProbarImpresora}
+                          >
+                            Imprimir prueba
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                        Seleccioná el puerto antes de cobrar. La impresión de prueba emite una tira de diagnóstico sin abrir el cajón monedero.
+                      </p>
+                    </div>
+
+                    {/* Apertura Automática de Cajón */}
+                    <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <p className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                          Apertura automática de cajón monedero
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Dispara el pulso eléctrico (pin 2/5 RJ11) hacia el cajón automáticamente tras confirmar pagos en efectivo.
+                        </p>
+                        <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                          Solo se activa si la venta incluye efectivo. Si la impresora está desconectada, la venta no se detiene.
+                        </p>
+                      </div>
+                      <label className="flex items-center gap-2.5 shrink-0 cursor-pointer self-start sm:self-center">
+                        <input
+                          type="checkbox"
+                          checked={abrirCajonEnEfectivo}
+                          onChange={(e) => {
+                            setAbrirCajonEnEfectivo(e.target.checked)
+                            setAperturaAutomaticaCajon(e.target.checked)
+                          }}
+                          className="h-4 w-4 rounded accent-indigo-600 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
+                        />
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${
+                          abrirCajonEnEfectivo
+                            ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                            : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                        }`}>
+                          {abrirCajonEnEfectivo ? 'Habilitado' : 'Desactivado'}
+                        </span>
+                      </label>
+                    </div>
+
+                    {/* Selector de Ancho de Ticket */}
+                    <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-700/80 space-y-3">
+                      <div>
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
+                          Ancho predeterminado de comprobantes térmicos
+                        </h4>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                          Define el formato para tickets de mostrador, comprobantes y arqueos de caja Z.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
+                        <button
+                          type="button"
+                          aria-pressed={anchoImpresora === '58mm'}
+                          onClick={() => handleCambiarAnchoImpresora('58mm')}
+                          className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
+                            anchoImpresora === '58mm'
+                              ? 'border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 ring-2 ring-indigo-500/30 shadow-xs'
+                              : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                          }`}
+                        >
+                          <div className="space-y-0.5">
+                            <span className="block font-bold text-xs sm:text-sm">58 mm (Estándar Kiosco)</span>
+                            <span className="block text-[11px] text-gray-500 dark:text-gray-400">32 columnas • Rollos estándar</span>
+                          </div>
+                          <span className={`w-3 h-3 rounded-full shrink-0 border-2 ${
+                            anchoImpresora === '58mm'
+                              ? 'border-indigo-600 bg-indigo-600'
+                              : 'border-gray-300 dark:border-gray-600 bg-transparent'
+                          }`} />
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={anchoImpresora === '80mm'}
+                          onClick={() => handleCambiarAnchoImpresora('80mm')}
+                          className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
+                            anchoImpresora === '80mm'
+                              ? 'border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 ring-2 ring-indigo-500/30 shadow-xs'
+                              : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                          }`}
+                        >
+                          <div className="space-y-0.5">
+                            <span className="block font-bold text-xs sm:text-sm">80 mm (Comandera Ancha)</span>
+                            <span className="block text-[11px] text-gray-500 dark:text-gray-400">48 columnas • Mayor detalle</span>
+                          </div>
+                          <span className={`w-3 h-3 rounded-full shrink-0 border-2 ${
+                            anchoImpresora === '80mm'
+                              ? 'border-indigo-600 bg-indigo-600'
+                              : 'border-gray-300 dark:border-gray-600 bg-transparent'
+                          }`} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Barra de Guardado */}
+                <div className="rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-r from-indigo-50/90 via-white to-purple-50/60 dark:from-indigo-950/40 dark:via-gray-800 dark:to-purple-950/20 p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-xs">
+                  <div>
+                    <p className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                      ¿Listo para aplicar los cambios?
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Guardá los datos del local, los módulos operativos y el equipamiento del puesto.
+                    </p>
+                  </div>
+                  <Button type="submit" variant="primary" loading={guardandoKiosco} className="shadow-xs shrink-0 font-bold px-6">
+                    Guardar Cambios del Comercio
+                  </Button>
+                </div>
+              </form>
+
+              {/* Tarjeta 5: Apariencia / Modo Claro y Oscuro */}
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-5">
+                <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-700/60">
+                  <div className="flex items-center gap-3">
+                    <span className="rounded-xl bg-purple-50 dark:bg-purple-950/40 p-2.5 text-purple-600 dark:text-purple-400 border border-purple-100 dark:border-purple-900/50">
+                      <Palette size={20} aria-hidden="true" />
+                    </span>
+                    <div>
+                      <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                        Tema y Modo de Visualización
+                      </h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Personalizá el contraste y la iluminación según el ambiente de tu local comercial.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="hidden sm:inline-flex px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/50 dark:border-purple-900/50">
                     Interfaz Visual
                   </span>
-                  <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                    Tema y Modo de Visualización
-                  </h2>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Alterná entre tema claro y tema oscuro según la iluminación de tu local comercial.
-                </p>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
                   <button
                     type="button"
                     aria-pressed={tema === 'light'}
                     onClick={() => tema !== 'light' && toggleTema()}
-                    className={`p-3 rounded-xl border text-center font-bold text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                    className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
                       tema === 'light'
-                        ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-500/30 shadow-xs'
-                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        ? 'border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 ring-2 ring-indigo-500/30 shadow-xs'
+                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
                     }`}
                   >
-                    <Sun size={24} className="text-amber-500" aria-hidden="true" />
-                    <span>Modo Claro</span>
+                    <div className="flex items-center gap-3">
+                      <span className="rounded-lg bg-amber-100 dark:bg-amber-900/50 p-2 text-amber-600 dark:text-amber-300">
+                        <Sun size={20} aria-hidden="true" />
+                      </span>
+                      <div>
+                        <span className="block font-bold text-xs sm:text-sm">Modo Claro</span>
+                        <span className="block text-[11px] text-gray-500 dark:text-gray-400">Alto contraste y nitidez</span>
+                      </div>
+                    </div>
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
+                      tema === 'light'
+                        ? 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300'
+                        : 'text-gray-400 dark:text-gray-500'
+                    }`}>
+                      {tema === 'light' ? 'Activo' : 'Elegir'}
+                    </span>
                   </button>
 
                   <button
                     type="button"
                     aria-pressed={tema === 'dark'}
                     onClick={() => tema !== 'dark' && toggleTema()}
-                    className={`p-3 rounded-xl border text-center font-bold text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                    className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
                       tema === 'dark'
-                        ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-500/30 shadow-xs'
-                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        ? 'border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 ring-2 ring-indigo-500/30 shadow-xs'
+                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
                     }`}
                   >
-                    <Moon size={24} className="text-indigo-400" aria-hidden="true" />
-                    <span>Modo Oscuro</span>
+                    <div className="flex items-center gap-3">
+                      <span className="rounded-lg bg-indigo-100 dark:bg-indigo-900/50 p-2 text-indigo-600 dark:text-indigo-300">
+                        <Moon size={20} aria-hidden="true" />
+                      </span>
+                      <div>
+                        <span className="block font-bold text-xs sm:text-sm">Modo Oscuro</span>
+                        <span className="block text-[11px] text-gray-500 dark:text-gray-400">Descanso visual y noche</span>
+                      </div>
+                    </div>
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
+                      tema === 'dark'
+                        ? 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300'
+                        : 'text-gray-400 dark:text-gray-500'
+                    }`}>
+                      {tema === 'dark' ? 'Activo' : 'Elegir'}
+                    </span>
                   </button>
                 </div>
               </div>
@@ -994,31 +1176,6 @@ export function ConfigPage() {
                       Supervisión de credenciales, límites de descuento a cajeros y registros de eventos críticos.
                     </p>
                   </div>
-                </div>
-
-                <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    loading={cargandoSeguridad}
-                    onClick={handleRefrescarSeguridad}
-                    className="rounded-xl font-bold shadow-xs flex items-center gap-2 py-2 px-3.5"
-                  >
-                    <svg
-                      className={`h-4 w-4 text-indigo-600 dark:text-indigo-400 ${cargandoSeguridad ? 'animate-spin' : ''}`}
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M21 3v6h-6M3 21v-6h6M3 10a9 9 0 0 1 15-5l3 4M21 14a9 9 0 0 1-15 5l-3-4" />
-                    </svg>
-                    <span>Actualizar seguridad</span>
-                  </Button>
                 </div>
               </div>
 
