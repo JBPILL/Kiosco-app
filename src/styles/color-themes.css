@@ -1,54 +1,54 @@
-/* Paletas compartidas: gris neutro en modo claro y azul oscuro en modo oscuro.
+/* Paletas compartidas: crema tenue en modo claro y azul profundo en modo oscuro.
    Los tokens alimentan todas las utilidades Tailwind, incluidos hover y opacidad. */
 :root:not(.dark) {
-  --color-white: #f4f4f4;
-  --color-gray-50: #e5e5e5;
-  --color-gray-100: #dadada;
-  --color-gray-200: #cccccc;
-  --color-gray-300: #b0b0b0;
-  --color-gray-400: #656565;
-  --color-gray-500: #5c5c5c;
-  --color-gray-600: #4d4d4d;
-  --color-gray-700: #3d3d3d;
-  --color-gray-800: #2e2e2e;
-  --color-gray-900: #222222;
-  --color-gray-950: #161616;
-  --color-slate-50: #ebebeb;
-  --color-slate-100: #dadada;
-  --color-slate-200: #cccccc;
-  --color-slate-300: #b0b0b0;
-  --color-slate-400: #656565;
-  --color-slate-500: #5c5c5c;
-  --color-slate-600: #4d4d4d;
-  --color-slate-700: #3d3d3d;
-  --color-slate-800: #2e2e2e;
-  --color-slate-900: #222222;
-  --color-slate-950: #161616;
+  --color-white: #e9e2d4;
+  --color-gray-50: #dcd4c4;
+  --color-gray-100: #d1c7b5;
+  --color-gray-200: #bfb39e;
+  --color-gray-300: #a99a82;
+  --color-gray-400: #655c4e;
+  --color-gray-500: #5b5245;
+  --color-gray-600: #4d453a;
+  --color-gray-700: #40392f;
+  --color-gray-800: #352f28;
+  --color-gray-900: #2b2721;
+  --color-gray-950: #1c1915;
+  --color-slate-50: #e1d9ca;
+  --color-slate-100: #d1c7b5;
+  --color-slate-200: #bfb39e;
+  --color-slate-300: #a99a82;
+  --color-slate-400: #655c4e;
+  --color-slate-500: #5b5245;
+  --color-slate-600: #4d453a;
+  --color-slate-700: #40392f;
+  --color-slate-800: #352f28;
+  --color-slate-900: #2b2721;
+  --color-slate-950: #1c1915;
 }
 
 :root.dark {
-  --color-gray-50: #eef5ff;
-  --color-gray-100: #dbeaff;
-  --color-gray-200: #bdd5f4;
-  --color-gray-300: #a0c0e8;
-  --color-gray-400: #89aedc;
-  --color-gray-500: #688fc0;
-  --color-gray-600: #416d9f;
-  --color-gray-700: #2a507a;
-  --color-gray-800: #1b3c61;
-  --color-gray-900: #132d4c;
-  --color-gray-950: #0d2038;
-  --color-slate-50: #eef5ff;
-  --color-slate-100: #dbeaff;
-  --color-slate-200: #bdd5f4;
-  --color-slate-300: #a0c0e8;
-  --color-slate-400: #89aedc;
-  --color-slate-500: #688fc0;
-  --color-slate-600: #416d9f;
-  --color-slate-700: #2a507a;
-  --color-slate-800: #1b3c61;
-  --color-slate-900: #132d4c;
-  --color-slate-950: #0d2038;
+  --color-gray-50: #eff5ff;
+  --color-gray-100: #dfebff;
+  --color-gray-200: #c3d9ff;
+  --color-gray-300: #a8c7f5;
+  --color-gray-400: #92b7ed;
+  --color-gray-500: #7199d2;
+  --color-gray-600: #4776b5;
+  --color-gray-700: #2c5694;
+  --color-gray-800: #193f79;
+  --color-gray-900: #123164;
+  --color-gray-950: #0d234c;
+  --color-slate-50: #eff5ff;
+  --color-slate-100: #dfebff;
+  --color-slate-200: #c3d9ff;
+  --color-slate-300: #a8c7f5;
+  --color-slate-400: #92b7ed;
+  --color-slate-500: #7199d2;
+  --color-slate-600: #4776b5;
+  --color-slate-700: #2c5694;
+  --color-slate-800: #193f79;
+  --color-slate-900: #123164;
+  --color-slate-950: #0d234c;
 }
 
 @layer base {
@@ -58,19 +58,19 @@
 
   :root:not(.dark) input::placeholder,
   :root:not(.dark) textarea::placeholder {
-    color: #5c5c5c;
+    color: #5b5245;
     opacity: 1;
   }
 
   :root:not(.dark) ::selection {
-    background: #d6d6d6;
-    color: #222222;
+    background: #c9bda7;
+    color: #2b2721;
   }
 
 }
 
 :root:not(.dark) :focus-visible {
-  outline: 2px solid #535353;
+  outline: 2px solid #66583f;
   outline-offset: 3px;
 }
 
@@ -82,8 +82,8 @@
 
 :root:not(.dark) .modal-header,
 :root:not(.dark) .modal-footer {
-  background-color: #dadada;
-  border-color: #b0b0b0;
+  background-color: #d1c7b5;
+  border-color: #a99a82;
 }
 
 :root:not(.dark) [role="dialog"] {
@@ -102,13 +102,13 @@
 }
 
 :root.dark :focus-visible {
-  outline: 2px solid #89aedc;
+  outline: 2px solid #92b7ed;
   outline-offset: 3px;
 }
 
 :root.dark ::selection {
-  background: #416d9f;
-  color: #eef5ff;
+  background: #4776b5;
+  color: #eff5ff;
 }
 
 @media print {
