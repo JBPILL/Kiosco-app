@@ -199,7 +199,7 @@ export function MainLayout() {
       {/* Contenido principal */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {/* Header mobile adaptado a la Dynamic Island / notch de iPhone */}
-        <header className="lg:hidden flex flex-wrap gap-2 items-center justify-between px-3 pt-[max(12px,env(safe-area-inset-top))] pb-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-xs flex-shrink-0 z-20">
+        <header className="lg:hidden flex flex-wrap gap-2 items-center justify-between px-3 pt-[max(12px,env(safe-area-inset-top))] pb-3 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-700 shadow-xs flex-shrink-0 z-20">
           <div className="flex items-center gap-2.5">
             <button
               onClick={() => setSidebarOpen(true)}

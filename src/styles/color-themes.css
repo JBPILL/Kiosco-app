@@ -24,36 +24,73 @@
   --color-slate-800: #352f28;
   --color-slate-900: #2b2721;
   --color-slate-950: #1c1915;
+  /* Acentos mates: fondos de información y selección integrados al crema. */
+  --color-indigo-50: #e7e1da;
+  --color-indigo-100: #dcd4d4;
+  --color-indigo-200: #c8bdcc;
+  --color-indigo-300: #a99ab8;
+  --color-indigo-400: #847196;
+  --color-indigo-500: #715b87;
+  --color-indigo-600: #614c78;
+  --color-indigo-700: #513f65;
+  --color-indigo-800: #433452;
+  --color-indigo-900: #372b43;
+  --color-blue-50: #e1dfd8;
+  --color-blue-100: #d2d8d6;
+  --color-blue-200: #b8c8cd;
+  --color-blue-600: #365e7b;
+  --color-blue-700: #2d4f67;
+  --color-violet-50: #e6dfda;
+  --color-violet-100: #dcd2d7;
+  --color-violet-600: #6a4d7d;
+  --color-purple-50: #e6dfda;
+  --color-purple-100: #dcd2d7;
+  --color-purple-600: #6e4e7c;
+  --color-emerald-50: #dfe5d8;
+  --color-emerald-100: #d0ddcb;
+  --color-emerald-500: #2f735a;
+  --color-emerald-600: #22644f;
+  --color-emerald-700: #20553f;
+  --color-teal-50: #dce4da;
+  --color-teal-100: #cadbd0;
+  --color-teal-600: #28675f;
+  --color-teal-700: #23554f;
+  --color-amber-50: #e9dfc6;
+  --color-amber-100: #dfd1ac;
+  --color-amber-600: #8c5c1b;
+  --color-red-50: #eadbd2;
+  --color-red-100: #e0c7bd;
+  --color-red-600: #a83f39;
 }
 
 :root.dark {
-  --color-gray-50: #eff5ff;
-  --color-gray-100: #dfebff;
-  --color-gray-200: #c3d9ff;
-  --color-gray-300: #a8c7f5;
-  --color-gray-400: #92b7ed;
-  --color-gray-500: #7199d2;
-  --color-gray-600: #4776b5;
-  --color-gray-700: #2c5694;
-  --color-gray-800: #193f79;
-  --color-gray-900: #123164;
-  --color-gray-950: #0d234c;
-  --color-slate-50: #eff5ff;
-  --color-slate-100: #dfebff;
-  --color-slate-200: #c3d9ff;
-  --color-slate-300: #a8c7f5;
-  --color-slate-400: #92b7ed;
-  --color-slate-500: #7199d2;
-  --color-slate-600: #4776b5;
-  --color-slate-700: #2c5694;
-  --color-slate-800: #193f79;
-  --color-slate-900: #123164;
-  --color-slate-950: #0d234c;
+  --color-gray-50: #edf3fc;
+  --color-gray-100: #d9e5f4;
+  --color-gray-200: #becfe5;
+  --color-gray-300: #a4bad5;
+  --color-gray-400: #8fa8c6;
+  --color-gray-500: #718eae;
+  --color-gray-600: #40658a;
+  --color-gray-700: #23476d;
+  --color-gray-800: #183b63;
+  --color-gray-900: #09111b;
+  --color-gray-950: #09111b;
+  --color-slate-50: #edf3fc;
+  --color-slate-100: #d9e5f4;
+  --color-slate-200: #becfe5;
+  --color-slate-300: #a4bad5;
+  --color-slate-400: #8fa8c6;
+  --color-slate-500: #718eae;
+  --color-slate-600: #40658a;
+  --color-slate-700: #23476d;
+  --color-slate-800: #183b63;
+  --color-slate-900: #09111b;
+  --color-slate-950: #09111b;
 }
 
 @layer base {
   :root:not(.dark) {
-    accent-color: #4f46e5;
+    accent-color: var(--color-indigo-600);
   }
 
   :root:not(.dark) input::placeholder,
@@ -69,7 +106,7 @@
 
 }
 
-:root:not(.dark) :focus-visible {
+:root:not(.dark) :focus-visible:not(input):not(select):not(textarea) {
   outline: 2px solid #66583f;
   outline-offset: 3px;
 }
@@ -101,18 +138,31 @@
   color: #111827;
 }
 
-:root.dark :focus-visible {
-  outline: 2px solid #92b7ed;
+:root.dark :focus-visible:not(input):not(select):not(textarea) {
+  outline: 2px solid #8fa8c6;
   outline-offset: 3px;
 }
 
 :root.dark ::selection {
-  background: #4776b5;
-  color: #eff5ff;
+  background: #40658a;
+  color: #edf3fc;
 }
 
 @media print {
   :root:not(.dark) {
     --color-white: #ffffff;
   }
+}
+
+/* Los marcos son oscuros; el cuerpo de las ventanas mantiene el azul de tarjeta. */
+:root.dark .modal-header,
+:root.dark .modal-footer {
+  background-color: #09111b;
+  border-color: #09111b;
+}
+
+:root.dark .modal-container,
+:root.dark [class~="dark:border-gray-700"],
+:root.dark [class~="dark:border-slate-700"] {
+  border-color: #09111b;
 }

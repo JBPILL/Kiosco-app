@@ -1153,7 +1153,7 @@ export function BalanceContableTab() {
                         </span>
 
                         {/* Pista / Track de la barra con altura fija para compatibilidad total con WebKit/iOS */}
-                        <div className="w-full relative h-36 sm:h-[148px] bg-gray-100/90 dark:bg-gray-800/80 rounded-t-lg p-0.5 overflow-hidden border border-transparent group-hover:border-indigo-300 dark:group-hover:border-indigo-500/40 transition-colors">
+                        <div className={`w-full relative h-36 sm:h-[148px] rounded-t-lg p-0.5 overflow-hidden border border-transparent group-hover:border-indigo-300 dark:group-hover:border-indigo-500/40 transition-colors ${m.totalVentas > 0 ? 'bg-gray-100/90 dark:bg-gray-800/80' : 'bg-gray-50/30 dark:bg-gray-900/30'}`}>
                           <div
                             style={{ height: `${porcentaje}%`, minHeight: m.totalVentas > 0 ? '8px' : '0px' }}
                             className={`absolute bottom-0 left-0 right-0 rounded-t-md transition-all duration-300 flex items-center justify-center ${
