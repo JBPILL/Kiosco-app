@@ -578,20 +578,6 @@ export function StockPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <Button
-            type="button"
-            variant="teal"
-            size="sm"
-            onClick={() => setModalAuditoriaOpen(true)}
-            className="text-xs font-semibold shadow-2xs"
-            title="Toma de inventario físico y recuento con pistola de código de barras"
-          >
-            <span>Conteo Físico</span>
-          </Button>
-
-          <RefreshButton refreshing={sincronizando || cargando} onClick={handleSincronizar} label="Actualizar stock" />
-        </div>
       </div>
 
       {/* Cuadrícula de Métricas Rápidas (KPIs) */}
@@ -804,9 +790,7 @@ export function StockPage() {
                 <IconExportar />
                 <span>{exportando ? 'Exportando...' : 'Exportar Excel'}</span>
               </Button>
-
-
-
+              <RefreshButton refreshing={sincronizando || cargando} onClick={handleSincronizar} label="Actualizar stock" />
             </div>
           </div>
 

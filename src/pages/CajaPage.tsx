@@ -446,16 +446,17 @@ export function CajaPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start lg:self-auto">
+      </div>
+      <div className="flex items-center gap-3 min-w-0">
           {/* Pestañas de navegación ordenadas estilo Proveedores */}
-          <div className="flex items-center flex-nowrap overflow-x-auto scrollbar-hide max-w-full bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 gap-1">
+          <div className="flex flex-1 items-center gap-2 border-b border-gray-200 dark:border-gray-700 overflow-x-auto scrollbar-hide min-w-0">
             <button
               type="button"
               onClick={() => setTabActiva('turno')}
-              className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+              className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                 tabActiva === 'turno'
-                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-gray-700/60'
+                  ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-gray-700/60'
               }`}
             >
               Turno Actual
@@ -463,10 +464,10 @@ export function CajaPage() {
             <button
               type="button"
               onClick={() => setTabActiva('historial')}
-              className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+              className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                 tabActiva === 'historial'
-                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-gray-700/60'
+                  ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                  : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-gray-700/60'
               }`}
             >
               Historial de Cierres ({historial.length})
@@ -474,7 +475,6 @@ export function CajaPage() {
           </div>
 
           <RefreshButton refreshing={sincronizando || cargando} onClick={handleSincronizar} label="Actualizar caja" />
-        </div>
       </div>
 
       {checkoutManualTransaccionalActivo() && usuario?.activo && usuario.rol === 'DUEÑO'

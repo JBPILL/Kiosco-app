@@ -957,15 +957,16 @@ export function ProveedoresPage() {
           </p>
         </div>
 
-        {/* Pestañas de navegación compactas y sin desborde */}
-        <div className="flex flex-wrap items-center max-w-full bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 shrink-0 self-start xl:self-auto gap-1">
+      </div>
+      {/* Categorías del módulo */}
+        <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 overflow-x-auto scrollbar-hide">
           <button
             type="button"
             onClick={() => setTabActiva('directorio')}
-            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+            className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
               tabActiva === 'directorio'
-                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
             }`}
           >
             Directorio ({totalProveedores})
@@ -974,10 +975,10 @@ export function ProveedoresPage() {
             type="button"
             onClick={() => setTabActiva('nueva_compra')}
             title="Cargar nueva compra o remito de proveedor"
-            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+            className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
               tabActiva === 'nueva_compra'
-                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
             }`}
           >
             Nueva Compra
@@ -986,10 +987,10 @@ export function ProveedoresPage() {
             type="button"
             onClick={() => setTabActiva('historial')}
             title="Historial de comprobantes y remitos"
-            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+            className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
               tabActiva === 'historial'
-                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
             }`}
           >
             Compras ({compras.length})
@@ -998,16 +999,15 @@ export function ProveedoresPage() {
             type="button"
             onClick={() => setTabActiva('pagos')}
             title="Historial de pagos a proveedores y recibos"
-            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+            className={`pb-3 px-3 text-sm font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
               tabActiva === 'pagos'
-                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
             }`}
           >
             Pagos ({pagos.length})
           </button>
         </div>
-      </div>
 
       {/* Tarjetas de métricas rápidas */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">

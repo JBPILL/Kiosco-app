@@ -7,9 +7,9 @@
   --action-primary-300: #93abaa;
   --action-primary-400: #708e92;
   --action-primary-500: #91b4c3;
-  --action-primary-600: #a8c6d1;
-  --action-primary-700: #96b7c5;
-  --action-primary-800: #86a8b8;
+  --action-primary-600: #94b4c2;
+  --action-primary-700: #83a5b5;
+  --action-primary-800: #7497a7;
   --action-primary-900: #20343e;
   --action-primary-950: #17252c;
   --action-success-50: #e0e5d8;
@@ -18,9 +18,9 @@
   --action-success-300: #8aab87;
   --action-success-400: #658c6c;
   --action-success-500: #91b69a;
-  --action-success-600: #abc8ae;
-  --action-success-700: #99ba9d;
-  --action-success-800: #89aa8e;
+  --action-success-600: #98b79c;
+  --action-success-700: #87a88c;
+  --action-success-800: #789b7e;
   --action-success-900: #24392d;
   --action-success-950: #18271f;
   --action-danger-50: #eaded4;
@@ -29,9 +29,9 @@
   --action-danger-300: #b88b7b;
   --action-danger-400: #a76d60;
   --action-danger-500: #c39385;
-  --action-danger-600: #d5aa9d;
-  --action-danger-700: #c6998b;
-  --action-danger-800: #b8897d;
+  --action-danger-600: #c49689;
+  --action-danger-700: #b58679;
+  --action-danger-800: #a7796d;
   --action-danger-900: #4d2e28;
   --action-danger-950: #321f1b;
   --action-warning-50: #e9e0cc;
@@ -40,9 +40,9 @@
   --action-warning-300: #b69c6d;
   --action-warning-400: #a08651;
   --action-warning-500: #c3ad78;
-  --action-warning-600: #d4c18f;
-  --action-warning-700: #c5b17e;
-  --action-warning-800: #b6a16d;
+  --action-warning-600: #c1ac78;
+  --action-warning-700: #b29d68;
+  --action-warning-800: #a48e5b;
   --action-warning-900: #443722;
   --action-warning-950: #2d2518;
   --color-white: #fff8eb;
@@ -355,3 +355,10 @@
   --color-gray-600: #4a7297;
 }
 
+
+
+/* Texto de acciones sin fondo sólido: contraste sobre crema. */
+:root:not(.dark) :is(button, a, [role="button"]):is([class~="text-indigo-500"], [class~="text-indigo-600"], [class~="text-indigo-700"], [class~="text-indigo-800"], [class~="text-blue-500"], [class~="text-blue-600"], [class~="text-blue-700"], [class~="text-blue-800"], [class~="text-sky-500"], [class~="text-sky-600"], [class~="text-sky-700"], [class~="text-sky-800"], [class~="text-violet-500"], [class~="text-violet-600"], [class~="text-violet-700"], [class~="text-violet-800"], [class~="text-purple-500"], [class~="text-purple-600"], [class~="text-purple-700"], [class~="text-purple-800"]) { color: #36576b; }
+:root:not(.dark) :is(button, a, [role="button"]):is([class~="text-emerald-500"], [class~="text-emerald-600"], [class~="text-emerald-700"], [class~="text-emerald-800"], [class~="text-green-500"], [class~="text-green-600"], [class~="text-green-700"], [class~="text-green-800"], [class~="text-teal-500"], [class~="text-teal-600"], [class~="text-teal-700"], [class~="text-teal-800"], [class~="text-cyan-500"], [class~="text-cyan-600"], [class~="text-cyan-700"], [class~="text-cyan-800"]) { color: #365d46; }
+:root:not(.dark) :is(button, a, [role="button"]):is([class~="text-red-500"], [class~="text-red-600"], [class~="text-red-700"], [class~="text-red-800"], [class~="text-rose-500"], [class~="text-rose-600"], [class~="text-rose-700"], [class~="text-rose-800"], [class~="text-pink-500"], [class~="text-pink-600"], [class~="text-pink-700"], [class~="text-pink-800"]) { color: #793e35; }
+:root:not(.dark) :is(button, a, [role="button"]):is([class~="text-amber-500"], [class~="text-amber-600"], [class~="text-amber-700"], [class~="text-amber-800"], [class~="text-orange-500"], [class~="text-orange-600"], [class~="text-orange-700"], [class~="text-orange-800"], [class~="text-yellow-500"], [class~="text-yellow-600"], [class~="text-yellow-700"], [class~="text-yellow-800"], [class~="text-lime-500"], [class~="text-lime-600"], [class~="text-lime-700"], [class~="text-lime-800"]) { color: #695222; }
