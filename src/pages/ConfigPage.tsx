@@ -50,7 +50,7 @@ import toast from 'react-hot-toast'
 export function ConfigPage() {
   const [parametros] = useSearchParams()
   const { usuario } = useAuthStore()
-  const { tema, toggleTema } = useThemeStore()
+  const { tema, setTema } = useThemeStore()
   const { config: configAdmin, cargarConfig: cargarConfigAdmin } = useConfigAdminStore()
   const { puedeInstalar, estaInstalado, instalarApp } = usePwaStore()
   const { arqueoCiegoObligatorio, cargarArqueoCiegoConfig, guardarArqueoCiegoConfig } = useCajaStore()
@@ -1086,7 +1086,7 @@ export function ConfigPage() {
                   <button
                     type="button"
                     aria-pressed={tema === 'light'}
-                    onClick={() => tema !== 'light' && toggleTema()}
+                    onClick={() => tema !== 'light' && setTema('light')}
                     className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
                       tema === 'light'
                         ? 'border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 ring-2 ring-indigo-500/30 shadow-xs'
@@ -1114,7 +1114,7 @@ export function ConfigPage() {
                   <button
                     type="button"
                     aria-pressed={tema === 'dark'}
-                    onClick={() => tema !== 'dark' && toggleTema()}
+                    onClick={() => tema !== 'dark' && setTema('dark')}
                     className={`p-4 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
                       tema === 'dark'
                         ? 'border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 ring-2 ring-indigo-500/30 shadow-xs'

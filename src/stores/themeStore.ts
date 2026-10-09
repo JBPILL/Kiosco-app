@@ -16,7 +16,8 @@ function getInitialTheme(): Theme {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
-function applyTheme(tema: Theme) {
+function applyThemeDirect(tema: Theme) {
+  if (typeof document === 'undefined') return
   const root = document.documentElement
   if (tema === 'dark') {
     root.classList.add('dark')
@@ -26,22 +27,59 @@ function applyTheme(tema: Theme) {
   localStorage.setItem('kioskopos-theme', tema)
 }
 
-export const useThemeStore = create<ThemeState>((set) => {
-  // Aplicar tema inicial
+/**
+ * Aplica el cambio de tema de forma fluida utilizando View Transitions API
+ * (GPU-accelerated snapshot crossfade en Chrome, Edge y navegadores modernos)
+ * con fallback a CSS transition de clase temporal para evitar freeze del main thread.
+ */
+function cambiarTemaConTransicion(tema: Theme, onActualizarEstado: () => void) {
+  if (typeof document === 'undefined') {
+    applyThemeDirect(tema)
+    onActualizarEstado()
+    return
+  }
+
+  const root = document.documentElement
+  const doc = document as unknown as { startViewTransition?: (cb: () => void) => { finished: Promise<void> } }
+
+  // 1. Si el navegador soporta View Transitions (Chrome 111+, Edge, Safari 18+),
+  // se ejecuta una transición nativa acelerada por GPU de 60/120 fps.
+  if (typeof doc.startViewTransition === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    doc.startViewTransition(() => {
+      applyThemeDirect(tema)
+      onActualizarEstado()
+    })
+    return
+  }
+
+  // 2. Fallback: activar clase temporal 'theme-transition' durante la animación
+  // y retirarla al terminar para no sobrecargar el árbol DOM de forma permanente.
+  root.classList.add('theme-transition')
+  applyThemeDirect(tema)
+  onActualizarEstado()
+  window.setTimeout(() => {
+    root.classList.remove('theme-transition')
+  }, 350)
+}
+
+export const useThemeStore = create<ThemeState>((set, get) => {
+  // Aplicar tema inicial de inmediato sin animación
   const initial = getInitialTheme()
-  applyTheme(initial)
+  applyThemeDirect(initial)
 
   return {
     tema: initial,
-    toggleTema: () =>
-      set((state) => {
-        const nuevo: Theme = state.tema === 'light' ? 'dark' : 'light'
-        applyTheme(nuevo)
-        return { tema: nuevo }
-      }),
+    toggleTema: () => {
+      const nuevo: Theme = get().tema === 'light' ? 'dark' : 'light'
+      cambiarTemaConTransicion(nuevo, () => {
+        set({ tema: nuevo })
+      })
+    },
     setTema: (tema: Theme) => {
-      applyTheme(tema)
-      set({ tema })
+      if (get().tema === tema) return
+      cambiarTemaConTransicion(tema, () => {
+        set({ tema })
+      })
     },
   }
 })

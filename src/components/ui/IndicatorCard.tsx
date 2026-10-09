@@ -31,9 +31,32 @@ interface IndicatorCardProps {
 }
 
 export function IndicatorCard({ label, valor, detalle, icono, tono = 'indigo', pie }: IndicatorCardProps) {
-  return <article className="min-w-0 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 sm:p-5 shadow-md dark:shadow-black/20 flex flex-col">
-    <div className="flex items-start justify-between gap-2"><p className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 leading-relaxed">{label}</p><span className={`shrink-0 rounded-xl p-2 ${tonos[tono]}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[icono]} /></svg></span></div>
-    <p className="mt-3 text-2xl sm:text-3xl font-extrabold tracking-tight tabular-nums text-gray-900 dark:text-gray-100 [overflow-wrap:anywhere]">{valor}</p>
+  const valorTexto = typeof valor === 'string' ? valor.trim() : typeof valor === 'number' ? String(valor) : ''
+  const largo = valorTexto.length
+
+  const tamanoValor = largo >= 12
+    ? 'text-lg sm:text-xl xl:text-lg 2xl:text-xl'
+    : largo >= 8
+      ? 'text-xl sm:text-2xl xl:text-[1.35rem] 2xl:text-2xl'
+      : 'text-2xl sm:text-3xl xl:text-2xl 2xl:text-3xl'
+
+  return <article className="min-w-0 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 sm:p-5 xl:p-4 2xl:p-5 shadow-md dark:shadow-black/20 flex flex-col justify-between">
+    <div className="flex items-start justify-between gap-2">
+      <p className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 leading-relaxed truncate" title={label}>
+        {label}
+      </p>
+      <span className={`shrink-0 rounded-xl p-2 ${tonos[tono]}`}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d={paths[icono]} />
+        </svg>
+      </span>
+    </div>
+    <p
+      className={`mt-3 ${tamanoValor} font-extrabold tracking-tight tabular-nums text-gray-900 dark:text-gray-100 whitespace-nowrap select-all`}
+      title={valorTexto || undefined}
+    >
+      {valor}
+    </p>
     <p className="mt-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{detalle}</p>
     {pie && <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 text-[11px] text-gray-500 dark:text-gray-400">{pie}</div>}
   </article>

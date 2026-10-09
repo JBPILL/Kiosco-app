@@ -123,9 +123,38 @@ input, button {
   padding-bottom: max(16px, env(safe-area-inset-bottom));
 }
 
-/* Transición suave al cambiar de tema o tamaño de fuente */
-* {
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, font-size 0.15s ease;
+/* ==========================================================================
+   Transición fluida y suave de temas (Claro / Oscuro)
+   Usa View Transitions API acelerado por GPU con animación fluida y fallback
+   ========================================================================== */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.3s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              color 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              fill 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              stroke 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  transition-delay: 0s !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none !important;
+  }
+  html.theme-transition,
+  html.theme-transition * {
+    transition: none !important;
+  }
 }
 
 /* ==========================================================================

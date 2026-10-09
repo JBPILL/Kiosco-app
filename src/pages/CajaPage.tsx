@@ -587,7 +587,7 @@ export function CajaPage() {
                 <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">Efectivo del cajón</h2>
                 <p className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">El fondo inicial y los ingresos suman; los retiros y gastos descuentan efectivo.</p>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 pt-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 pt-4">
                 <IndicatorCard label="Plata de inicio" valor={formatPrecio(sesionActiva.monto_inicial)} detalle="Fondo para dar vuelto al abrir el turno" icono="caja" />
                 <IndicatorCard label="Ventas en efectivo" valor={!modoCiegoEfectivo ? formatPrecio(resumenActivo?.total_efectivo || 0) : '••••••'} detalle={modoCiegoEfectivo ? 'Importe oculto durante el arqueo ciego' : 'Cobros en efectivo registrados en ventas'} icono="dinero" tono="emerald" />
                 <IndicatorCard label="Entradas de plata" valor={`+${formatPrecio(resumenActivo?.total_ingresos_extra || 0)}`} detalle="Aportes y reposiciones de cambio" icono="rotacion" tono="teal" />
