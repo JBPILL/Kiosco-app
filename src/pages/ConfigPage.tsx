@@ -1,3 +1,4 @@
+import { moduleTabsClassName, moduleTabClassName, moduleTabActiveClassName, moduleTabInactiveClassName } from '../components/ui/moduleTabStyles'
 import { Store, Printer, Palette, Sun, Moon } from '../components/config/ConfigIcons'
 import { ModulosComercioSection } from '../components/config/ModulosComercioSection'
 import { SupervisorPinSection } from '../components/config/SupervisorPinSection'
@@ -670,14 +671,14 @@ export function ConfigPage() {
       </div>
 
       {/* Selector de Pestañas de Configuración */}
-      <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 pb-2 overflow-x-auto">
+      <div className={moduleTabsClassName}>
         <button
           type="button"
           onClick={() => setPestanaActiva('GENERAL')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+          className={`${moduleTabClassName} ${
             pestanaActiva === 'GENERAL'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              ? moduleTabActiveClassName
+              : moduleTabInactiveClassName
           }`}
         >
           <span>Negocio y Apariencia</span>
@@ -686,10 +687,10 @@ export function ConfigPage() {
         <button
           type="button"
           onClick={() => setPestanaActiva('FISCAL')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+          className={`${moduleTabClassName} ${
             pestanaActiva === 'FISCAL'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              ? moduleTabActiveClassName
+              : moduleTabInactiveClassName
           }`}
         >
           <span>Facturación ARCA</span>
@@ -698,10 +699,10 @@ export function ConfigPage() {
         <button
           type="button"
           onClick={() => setPestanaActiva('SEGURIDAD')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+          className={`${moduleTabClassName} ${
             pestanaActiva === 'SEGURIDAD'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              ? moduleTabActiveClassName
+              : moduleTabInactiveClassName
           }`}
         >
           <span>Seguridad y Caja</span>
@@ -713,17 +714,17 @@ export function ConfigPage() {
         <button
           type="button"
           onClick={() => setPestanaActiva('USUARIOS')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+          className={`${moduleTabClassName} ${
             pestanaActiva === 'USUARIOS'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              ? moduleTabActiveClassName
+              : moduleTabInactiveClassName
           }`}
         >
           <span>Equipo y Usuarios</span>
           <span
             className={`text-xs px-2 py-0.2 rounded-full font-semibold ${
               pestanaActiva === 'USUARIOS'
-                ? 'bg-white/20 text-white'
+                ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-200'
                 : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
             }`}
           >
@@ -734,10 +735,10 @@ export function ConfigPage() {
         <button
           type="button"
           onClick={() => setPestanaActiva('SUSCRIPCION')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+          className={`${moduleTabClassName} ${
             pestanaActiva === 'SUSCRIPCION'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              ? moduleTabActiveClassName
+              : moduleTabInactiveClassName
           }`}
         >
           <span>Suscripción</span>
@@ -755,10 +756,10 @@ export function ConfigPage() {
         <button
           type="button"
           onClick={() => setPestanaActiva('BACKUP')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+          className={`${moduleTabClassName} ${
             pestanaActiva === 'BACKUP'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+              ? moduleTabActiveClassName
+              : moduleTabInactiveClassName
           }`}
         >
           <span>Backups y App</span>
