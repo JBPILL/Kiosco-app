@@ -16,6 +16,20 @@ function getInitialTheme(): Theme {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
+function updateThemeColorMeta(tema: Theme) {
+  if (typeof document === 'undefined') return
+  const color = tema === 'dark' ? '#0e2033' : '#dcd4c4'
+  const metas = document.querySelectorAll('meta[name="theme-color"]')
+  if (metas.length > 0) {
+    metas.forEach((meta) => meta.setAttribute('content', color))
+  } else {
+    const meta = document.createElement('meta')
+    meta.name = 'theme-color'
+    meta.content = color
+    document.head.appendChild(meta)
+  }
+}
+
 function applyThemeDirect(tema: Theme) {
   if (typeof document === 'undefined') return
   const root = document.documentElement
@@ -24,6 +38,7 @@ function applyThemeDirect(tema: Theme) {
   } else {
     root.classList.remove('dark')
   }
+  updateThemeColorMeta(tema)
   localStorage.setItem('kioskopos-theme', tema)
 }
 

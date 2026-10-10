@@ -193,17 +193,17 @@ export function MainLayout() {
   }
 
   return (
-    <div className="h-full flex overflow-hidden">
+    <div className="h-full flex overflow-hidden bg-gray-50 dark:bg-gray-900">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Contenido principal */}
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {/* Header mobile adaptado a la Dynamic Island / notch de iPhone */}
-        <header className="lg:hidden flex flex-wrap gap-2 items-center justify-between px-3 pt-[max(12px,env(safe-area-inset-top))] pb-3 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-700 shadow-xs flex-shrink-0 z-20">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-gray-50 dark:bg-gray-900">
+        {/* Header mobile adaptado a la Dynamic Island / notch de iPhone con color de fondo idéntico al de la computadora */}
+        <header className="lg:hidden flex flex-wrap gap-2 items-center justify-between px-3 pt-[max(12px,env(safe-area-inset-top))] pb-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700/80 shadow-xs flex-shrink-0 z-20">
           <div className="flex items-center gap-2.5">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="p-2 -ml-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 active:scale-95 transition-transform"
+              className="p-2 -ml-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 active:scale-95 transition-transform cursor-pointer"
               aria-label="Abrir menú"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -232,7 +232,7 @@ export function MainLayout() {
                       `px-2 py-2 rounded-lg text-xs font-semibold transition-all ${
                         isActive
                           ? 'bg-indigo-600 text-white shadow-xs'
-                          : 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200'
+                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
                       }`
                     }
                   >
@@ -245,7 +245,7 @@ export function MainLayout() {
                   className={({ isActive }) =>
                     `px-2 py-2 rounded-lg text-xs font-semibold transition-all ${isActive
                       ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`
+                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'}`
                   }
                 >
                   POS
@@ -256,7 +256,7 @@ export function MainLayout() {
                     className={({ isActive }) =>
                       `px-2 py-2 rounded-lg text-xs font-semibold transition-all ${isActive
                         ? 'bg-indigo-600 text-white shadow-xs'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`
+                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'}`
                     }
                   >
                     Catálogo
@@ -268,7 +268,7 @@ export function MainLayout() {
                     `px-2 py-2 rounded-lg text-xs font-semibold transition-all ${
                       isActive
                         ? 'bg-indigo-600 text-white shadow-xs'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
                     }`
                   }
                 >

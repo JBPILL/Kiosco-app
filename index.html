@@ -6,7 +6,9 @@
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#4f46e5" />
+    <meta name="theme-color" content="#0e2033" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#dcd4c4" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0e2033" />
     <meta name="description" content="AlPaso POS - Sistema ágil de punto de venta y gestión comercial para kioscos y comercios" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -24,9 +26,15 @@
           var saved = localStorage.getItem('alpaso-pos-font-size');
           if (saved) document.documentElement.setAttribute('data-font-size', saved);
           var theme = localStorage.getItem('kioskopos-theme');
-          if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          var isDark = theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (isDark) {
             document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
           }
+          var themeColor = isDark ? '#0e2033' : '#dcd4c4';
+          var metas = document.querySelectorAll('meta[name="theme-color"]');
+          metas.forEach(function(m) { m.setAttribute('content', themeColor); });
         } catch(e) {}
       })();
     </script>
