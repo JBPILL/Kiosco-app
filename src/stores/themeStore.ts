@@ -13,7 +13,7 @@ function getInitialTheme(): Theme {
   if (typeof window === 'undefined') return 'light'
   const saved = localStorage.getItem('kioskopos-theme') as Theme | null
   if (saved === 'dark' || saved === 'light') return saved
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
 function updateThemeColorMeta(tema: Theme) {
@@ -59,7 +59,8 @@ function cambiarTemaConTransicion(tema: Theme, onActualizarEstado: () => void) {
 
   // 1. Si el navegador soporta View Transitions (Chrome 111+, Edge, Safari 18+),
   // se ejecuta una transición nativa acelerada por GPU de 60/120 fps.
-  if (typeof doc.startViewTransition === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  const prefiereMenosMovimiento = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (typeof doc.startViewTransition === 'function' && !prefiereMenosMovimiento) {
     doc.startViewTransition(() => {
       applyThemeDirect(tema)
       onActualizarEstado()

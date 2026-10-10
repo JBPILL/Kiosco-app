@@ -2,6 +2,7 @@ import { useState, useEffect, Suspense } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { Sidebar } from '../ui/Sidebar'
 import { AlPasoLogo } from '../ui/AlPasoLogo'
+import { ThemeToggle } from '../ui/ThemeToggle'
 import { useAuthStore } from '../../stores/authStore'
 import { useConfigAdminStore, formatearLinkWhatsApp } from '../../stores/configAdminStore'
 import { useOfflineSyncStore } from '../../stores/offlineSyncStore'
@@ -200,7 +201,7 @@ export function MainLayout() {
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-gray-50 dark:bg-gray-900">
         {/* Header mobile adaptado a la Dynamic Island / notch de iPhone con color de fondo idéntico al de la computadora */}
         <header className="lg:hidden flex flex-wrap gap-2 items-center justify-between px-3 pt-[max(12px,env(safe-area-inset-top))] pb-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700/80 shadow-xs flex-shrink-0 z-20">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2 sm:gap-2.5">
             <button
               onClick={() => setSidebarOpen(true)}
               className="p-2 -ml-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 active:scale-95 transition-transform cursor-pointer"
@@ -211,6 +212,7 @@ export function MainLayout() {
               </svg>
             </button>
             <AlPasoLogo size="sm" />
+            <ThemeToggle variant="mobile" />
           </div>
 
           {/* Accesos rápidos visibles en la barra superior móvil */}

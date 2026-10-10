@@ -31,6 +31,7 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { playScanSound } from '../lib/sound'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
+import { ThemeToggle } from '../components/ui/ThemeToggle'
 import type { Producto, Categoria } from '../types/database'
 import { useDevolucionStore, type VentaConDetalles } from '../stores/devolucionStore'
 import { useRealtimeSync, registrarToqueLocal, type KioskoProductsUpdatedDetail } from '../hooks/useRealtimeSync'
@@ -591,7 +592,20 @@ export function POSPage() {
     <div className={`w-full h-full min-w-0 flex flex-col gap-2.5 ${cantItems > 0 ? 'pb-[calc(80px+env(safe-area-inset-bottom))]' : 'pb-0'} lg:pb-0 overflow-hidden`}>
       <CobrosManualesPendientes onVerTicket={ticket => { setTicketReciente(ticket); setTicketModalOpen(true); refrescarProductosVista() }} />
       <header className="flex shrink-0 items-center justify-between gap-3 px-1 py-1">
-        <div className="flex min-w-0 items-center gap-3"><span className="hidden sm:flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-indigo-500 shadow-sm"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 8h18l-2 12H5L3 8ZM8 8l4-6 4 6M8 12v5M12 12v5M16 12v5" /></svg></span><div><h1 className="text-lg sm:text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100">Punto de Venta</h1><p className="hidden sm:block text-xs text-gray-500 dark:text-gray-400">Buscá, agregá y cobrá desde un solo lugar</p></div></div>
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="hidden sm:flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-indigo-500 shadow-sm">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+              <path d="M3 8h18l-2 12H5L3 8ZM8 8l4-6 4 6M8 12v5M12 12v5M16 12v5" />
+            </svg>
+          </span>
+          <div>
+            <h1 className="text-lg sm:text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100">Punto de Venta</h1>
+            <div className="hidden sm:flex items-center gap-2.5 mt-0.5">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Buscá, agregá y cobrá desde un solo lugar</p>
+              <ThemeToggle variant="desktop" />
+            </div>
+          </div>
+        </div>
         {sesionActiva && <span className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300"><span className="h-2 w-2 rounded-full bg-emerald-500" />Turno abierto</span>}
       </header>
       {/* Banner de advertencia solo si la caja está cerrada */}

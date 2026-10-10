@@ -4,6 +4,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { usePwaStore } from '../../stores/pwaStore'
 import { KeyboardShortcutsModal } from '../pos/KeyboardShortcutsModal'
 import { AlPasoLogo } from './AlPasoLogo'
+import { ThemeToggle } from './ThemeToggle'
 import { esCampoEditable, ignorarAtajoGlobal } from '../../lib/keyboardShortcuts'
 
 interface SidebarProps {
@@ -162,7 +163,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         {/* Logo / Encabezado */}
         <div className="px-4 pt-[max(12px,env(safe-area-inset-top))] pb-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div className="flex items-center justify-between">
-            <AlPasoLogo size="sm" />
+            <div className="flex items-center gap-2">
+              <AlPasoLogo size="sm" />
+              <ThemeToggle variant="mobile" className="lg:hidden" />
+            </div>
             <button
               onClick={onClose}
               className="lg:hidden p-1.5 -mr-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg"
