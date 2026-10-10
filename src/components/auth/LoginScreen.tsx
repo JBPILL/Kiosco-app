@@ -306,6 +306,62 @@ export function LoginScreen() {
             >
               {estaBloqueado ? `Bloqueado (${segundosRestantes}s)` : 'Ingresar'}
             </Button>
+
+            {/* Accesos rápidos de demostración */}
+            <div className="mt-5 pt-4 border-t border-gray-100 dark:border-gray-700/60">
+              <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 mb-2 text-center uppercase tracking-wider">
+                Comercios de Demostración
+              </p>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('kiosco.don.pedro@gmail.com')
+                    setPassword('DonPedro2026!')
+                  }}
+                  className="p-2 rounded-lg text-left border border-gray-200 dark:border-gray-700 hover:border-indigo-400 dark:hover:border-indigo-600 bg-gray-50/70 hover:bg-indigo-50/50 dark:bg-gray-800/80 dark:hover:bg-indigo-950/30 transition-all text-xs cursor-pointer group"
+                >
+                  <p className="font-bold text-gray-800 dark:text-gray-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">🍬 Kiosco</p>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">Don Pedro</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('libreria.sol.demo@gmail.com')
+                    setPassword('LibreriaSol2026!')
+                  }}
+                  className="p-2 rounded-lg text-left border border-gray-200 dark:border-gray-700 hover:border-indigo-400 dark:hover:border-indigo-600 bg-gray-50/70 hover:bg-indigo-50/50 dark:bg-gray-800/80 dark:hover:bg-indigo-950/30 transition-all text-xs cursor-pointer group"
+                >
+                  <p className="font-bold text-gray-800 dark:text-gray-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">📚 Librería</p>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">Papelera Sol</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('veterinaria.huellas.demo@gmail.com')
+                    setPassword('VeterinariaHuellas2026!')
+                  }}
+                  className="p-2 rounded-lg text-left border border-gray-200 dark:border-gray-700 hover:border-indigo-400 dark:hover:border-indigo-600 bg-gray-50/70 hover:bg-indigo-50/50 dark:bg-gray-800/80 dark:hover:bg-indigo-950/30 transition-all text-xs cursor-pointer group"
+                >
+                  <p className="font-bold text-gray-800 dark:text-gray-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">🐾 Veterinaria</p>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">Pet Shop Huellas</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('bazar.prisma.demo@gmail.com')
+                    setPassword('BazarPrisma2026!')
+                  }}
+                  className="p-2 rounded-lg text-left border border-gray-200 dark:border-gray-700 hover:border-indigo-400 dark:hover:border-indigo-600 bg-gray-50/70 hover:bg-indigo-50/50 dark:bg-gray-800/80 dark:hover:bg-indigo-950/30 transition-all text-xs cursor-pointer group"
+                >
+                  <p className="font-bold text-gray-800 dark:text-gray-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">🍳 Bazar</p>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">Hogar Prisma</p>
+                </button>
+              </div>
+            </div>
           </form>
         )}
 
