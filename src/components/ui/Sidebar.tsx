@@ -165,7 +165,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <AlPasoLogo size="sm" />
-              <ThemeToggle variant="mobile" className="lg:hidden" />
+              <ThemeToggle size="sm" className="lg:hidden" />
             </div>
             <button
               onClick={onClose}

@@ -602,7 +602,7 @@ export function POSPage() {
             <h1 className="text-lg sm:text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100">Punto de Venta</h1>
             <div className="hidden sm:flex items-center gap-2.5 mt-0.5">
               <p className="text-xs text-gray-500 dark:text-gray-400">Buscá, agregá y cobrá desde un solo lugar</p>
-              <ThemeToggle variant="desktop" />
+              <ThemeToggle size="sm" />
             </div>
           </div>
         </div>

@@ -3,42 +3,46 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { ThemeToggle } from './ThemeToggle'
 import { useThemeStore } from '../../stores/themeStore'
 
-describe('ThemeToggle Component', () => {
+describe('ThemeToggle Component (Minimalista)', () => {
   beforeEach(() => {
     // Restablecer a modo claro para consistencia
     useThemeStore.setState({ tema: 'light' })
   })
 
-  it('renderiza correctamente en variante desktop y muestra "Modo Claro"', () => {
-    render(<ThemeToggle variant="desktop" />)
+  it('renderiza como un botón minimalista sin texto', () => {
+    render(<ThemeToggle />)
 
     const button = screen.getByRole('button', { name: /cambiar a modo oscuro/i })
     expect(button).toBeTruthy()
-    expect(screen.getByText('Modo Claro')).toBeTruthy()
+    // No debe contener texto plano dentro del botón
+    expect(button.textContent).toBe('')
   })
 
-  it('renderiza correctamente en variante mobile', () => {
-    render(<ThemeToggle variant="mobile" />)
+  it('incluye iconos dinámicos para sol y luna', () => {
+    const { container } = render(<ThemeToggle />)
 
-    const button = screen.getByRole('button', { name: /cambiar a modo oscuro/i })
-    expect(button).toBeTruthy()
-    expect(screen.getByText('Claro')).toBeTruthy()
+    // Debe contener los 2 SVG dinámicos (sol y luna)
+    const svgs = container.querySelectorAll('svg')
+    expect(svgs.length).toBe(2)
   })
 
-  it('alterna dinámicamente entre modo claro y oscuro al hacer click', () => {
-    render(<ThemeToggle variant="desktop" />)
+  it('alterna dinámicamente entre sol y luna sin texto al hacer click', () => {
+    render(<ThemeToggle />)
 
     const button = screen.getByRole('button')
-    expect(screen.getByText('Modo Claro')).toBeTruthy()
+    expect(button.getAttribute('aria-label')).toBe('Cambiar a Modo Oscuro')
+    expect(button.getAttribute('title')).toBe('Cambiar a Modo Oscuro')
 
     // Alternar a modo oscuro
     fireEvent.click(button)
-    expect(screen.getByText('Modo Oscuro')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /cambiar a modo claro/i })).toBeTruthy()
+    expect(button.getAttribute('aria-label')).toBe('Cambiar a Modo Claro')
+    expect(button.getAttribute('title')).toBe('Cambiar a Modo Claro')
+    expect(button.textContent).toBe('')
 
     // Alternar de regreso a modo claro
     fireEvent.click(button)
-    expect(screen.getByText('Modo Claro')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /cambiar a modo oscuro/i })).toBeTruthy()
+    expect(button.getAttribute('aria-label')).toBe('Cambiar a Modo Oscuro')
+    expect(button.getAttribute('title')).toBe('Cambiar a Modo Oscuro')
+    expect(button.textContent).toBe('')
   })
 })

@@ -212,7 +212,7 @@ export function MainLayout() {
               </svg>
             </button>
             <AlPasoLogo size="sm" />
-            <ThemeToggle variant="mobile" />
+            <ThemeToggle size="sm" />
           </div>
 
           {/* Accesos rápidos visibles en la barra superior móvil */}

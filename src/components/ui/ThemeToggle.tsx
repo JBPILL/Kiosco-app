@@ -2,22 +2,26 @@ import React from 'react'
 import { useThemeStore } from '../../stores/themeStore'
 
 interface ThemeToggleProps {
-  variant?: 'desktop' | 'mobile'
+  size?: 'sm' | 'md'
   className?: string
 }
 
 /**
- * Botón dinámico y visible para alternar entre Modo Claro y Modo Oscuro.
- * - En Desktop: se ubica al lado del texto "Buscá, agregá y cobrá desde un solo lugar" en el POS.
- * - En Celular: se ubica al lado del nombre del sistema ("AlPaso POS") en la barra superior móvil.
- * Cuenta con animación suave (GPU View Transitions API), icono giratorio e indicador de switch.
+ * Botón minimalista para alternar entre Modo Claro y Modo Oscuro:
+ * - Diseño compacto tipo squircle idéntico al botón del Punto de Venta.
+ * - Iconos dinámicos de Sol ☀️ y Luna 🌙 con transición suave de rotación y escala.
+ * - Sin texto, completamente limpio y minimalista.
+ * - Accesible con título y aria-label dinámicos según el estado.
  */
 export const ThemeToggle: React.FC<ThemeToggleProps> = ({
-  variant = 'desktop',
+  size = 'sm',
   className = '',
 }) => {
   const { tema, toggleTema } = useThemeStore()
   const esOscuro = tema === 'dark'
+
+  const dimensiones = size === 'md' ? 'h-8 w-8 rounded-xl' : 'h-7 w-7 rounded-lg sm:rounded-xl'
+  const iconSize = size === 'md' ? 'w-4.5 h-4.5' : 'w-4 h-4'
 
   return (
     <button
@@ -26,79 +30,61 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
       title={esOscuro ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
       aria-label={esOscuro ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
       className={`
-        group relative inline-flex items-center transition-all duration-200 cursor-pointer select-none
-        active:scale-95 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/40
-        ${
-          esOscuro
-            ? 'bg-slate-800/90 hover:bg-slate-700/90 text-indigo-300 border-slate-700/90 shadow-2xs shadow-indigo-950/30'
-            : 'bg-amber-50 hover:bg-amber-100/90 text-amber-900 border-amber-200/90 shadow-2xs shadow-amber-500/10'
-        }
-        border
-        ${
-          variant === 'mobile'
-            ? 'px-2 py-1 gap-1.5 rounded-full'
-            : 'px-2.5 py-0.5 gap-2 rounded-full'
-        }
+        group relative inline-flex items-center justify-center shrink-0
+        ${dimensiones}
+        border border-gray-200 dark:border-gray-700
+        bg-white dark:bg-gray-800
+        hover:bg-gray-50 dark:hover:bg-gray-700/60
+        hover:border-amber-300 dark:hover:border-indigo-500
+        shadow-xs
+        transition-all duration-200 cursor-pointer select-none
+        active:scale-90 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/40
         ${className}
       `}
     >
-      {/* Icono animado: Sol o Luna */}
-      <span className="relative flex items-center justify-center shrink-0">
-        {esOscuro ? (
-          <svg
-            className="w-3.5 h-3.5 text-indigo-400 transition-transform duration-300 group-hover:-rotate-12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M21 13A9 9 0 0 1 11 3 9 9 0 1 0 21 13Z" />
-          </svg>
-        ) : (
-          <svg
-            className="w-3.5 h-3.5 text-amber-500 transition-transform duration-300 group-hover:rotate-45"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <circle cx="12" cy="12" r="4" />
-            <path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5l1.5 1.5M5 19l1.5-1.5M17.5 6.5l1.5-1.5" />
-          </svg>
-        )}
-      </span>
-
-      {/* Texto descriptivo del modo actual */}
-      {variant === 'desktop' ? (
-        <span className="text-[11px] font-semibold tracking-tight text-gray-700 dark:text-gray-200 whitespace-nowrap">
-          {esOscuro ? 'Modo Oscuro' : 'Modo Claro'}
-        </span>
-      ) : (
-        <span className="hidden min-[400px]:inline text-[10px] font-bold tracking-tight text-amber-900 dark:text-indigo-200 whitespace-nowrap">
-          {esOscuro ? 'Oscuro' : 'Claro'}
-        </span>
-      )}
-
-      {/* Cápsula interactiva tipo toggle switch con thumb deslizante */}
-      <span
-        aria-hidden="true"
-        className={`
-          relative flex items-center w-6 h-3.5 rounded-full p-0.5 transition-colors duration-200 shrink-0
-          ${esOscuro ? 'bg-indigo-900/90' : 'bg-amber-200/90'}
-        `}
-      >
-        <span
+      <span className={`relative ${iconSize} flex items-center justify-center`}>
+        {/* Sol dinámico (visible en modo claro) */}
+        <svg
           className={`
-            w-2.5 h-2.5 rounded-full shadow-2xs transition-transform duration-200 ease-out
-            ${esOscuro ? 'translate-x-2.5 bg-indigo-300' : 'translate-x-0 bg-white'}
+            ${iconSize} text-amber-500 absolute inset-0 transition-all duration-300 ease-out
+            ${
+              esOscuro
+                ? 'rotate-90 scale-0 opacity-0 pointer-events-none'
+                : 'rotate-0 scale-100 opacity-100 group-hover:rotate-45'
+            }
           `}
-        />
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5l1.5 1.5M5 19l1.5-1.5M17.5 6.5l1.5-1.5" />
+        </svg>
+
+        {/* Luna dinámica (visible en modo oscuro) */}
+        <svg
+          className={`
+            ${iconSize} text-indigo-400 absolute inset-0 transition-all duration-300 ease-out
+            ${
+              esOscuro
+                ? 'rotate-0 scale-100 opacity-100 group-hover:-rotate-12'
+                : '-rotate-90 scale-0 opacity-0 pointer-events-none'
+            }
+          `}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
       </span>
     </button>
   )
