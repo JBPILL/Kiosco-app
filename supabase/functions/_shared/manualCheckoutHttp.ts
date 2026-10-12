@@ -1,11 +1,12 @@
 import type { ManualCheckoutDependencies, ContextoCheckoutManual } from './manualCheckout.ts'
 import { cerrarCheckoutManual } from './manualCheckout.ts'
-import { leerEntradaCheckoutManual } from './manualCheckoutRequest.ts'
+import { contieneDevolucionEnvase, leerEntradaCheckoutManual } from './manualCheckoutRequest.ts'
 import { leerCuerpo } from './pointQuoteHttp.ts'
 import type { EntradaCheckoutManual } from '../../../src/types/checkoutManual.ts'
 
 export interface ManualCheckoutHttpDependencies extends ManualCheckoutDependencies {
   origins: string[]
+  pilotStrictScope?: boolean
   autenticar: (token: string) => Promise<ContextoCheckoutManual | null>
 }
 
@@ -28,8 +29,14 @@ export async function recibirCheckoutManual(request: Request, deps: ManualChecko
   if (permiso !== null && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(permiso)) {
     return responder(400, 'PERMISO_INVALIDO', 'Identificador de autorización inválido')
   }
+  let cuerpo: unknown
+  try { cuerpo = await leerCuerpo(request) }
+  catch { return responder(400, 'ENTRADA_INVALIDA', 'Solicitud de cobro inválida') }
+  if (deps.pilotStrictScope && contieneDevolucionEnvase(cuerpo)) {
+    return responder(422, 'ENVASE_FUERA_DE_ALCANCE', 'Las devoluciones de envases están fuera del alcance del piloto.')
+  }
   let entrada: EntradaCheckoutManual
-  try { entrada = leerEntradaCheckoutManual(await leerCuerpo(request)) }
+  try { entrada = leerEntradaCheckoutManual(cuerpo) }
   catch { return responder(400, 'ENTRADA_INVALIDA', 'Solicitud de cobro inválida') }
   try {
     const resultado = await cerrarCheckoutManual(contexto, entrada, deps, permiso?.toLowerCase() || null)

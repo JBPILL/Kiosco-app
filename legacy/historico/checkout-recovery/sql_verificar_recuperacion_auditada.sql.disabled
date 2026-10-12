@@ -1,3 +1,6 @@
+-- HISTÓRICO - NO APLICAR como parte del contrato vigente.
+-- Diagnóstico de sólo lectura para la propuesta descartada del paso 53.
+-- La RPC confirmar_checkout_recuperado fue descartada; el contrato vigente usa confirmar_venta_manual.
 -- Sólo lectura: catálogo del paso 53. No prueba JWT, código Edge ni atomicidad.
 WITH objetos AS (
   SELECT to_regclass('public.checkout_recuperaciones') AS tabla,

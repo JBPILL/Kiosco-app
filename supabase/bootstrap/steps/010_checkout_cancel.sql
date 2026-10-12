@@ -1,0 +1,106 @@
+-- Paso 28: cancelación auditada del checkout manual pendiente.
+-- Aplicar después de los pasos 26 y 27. No activa Point ni cancela ventas existentes.
+BEGIN;
+CREATE TABLE IF NOT EXISTS public.checkout_manual_cancelaciones (
+  id uuid PRIMARY KEY,
+  kiosco_id uuid NOT NULL REFERENCES public.kioscos(id),
+  usuario_id uuid NOT NULL REFERENCES public.usuarios(id),
+  entrada jsonb NOT NULL,
+  motivo text NOT NULL CHECK (length(motivo) BETWEEN 5 AND 1000),
+  resolucion text NOT NULL CHECK (resolucion IN ('NO_COBRADO','REINTEGRADO')),
+  referencia text,
+  autorizado_por uuid NOT NULL REFERENCES public.usuarios(id),
+  autorizado_por_auth_id uuid NOT NULL,
+  creado_en timestamptz NOT NULL DEFAULT now(),
+  CHECK (resolucion <> 'REINTEGRADO' OR length(trim(coalesce(referencia,''))) BETWEEN 5 AND 500)
+);
+ALTER TABLE public.checkout_manual_cancelaciones ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.checkout_manual_cancelaciones FROM PUBLIC,anon,authenticated,service_role;
+GRANT SELECT ON public.checkout_manual_cancelaciones TO service_role;
+DROP POLICY IF EXISTS checkout_manual_cancelaciones_servidor ON public.checkout_manual_cancelaciones;
+CREATE POLICY checkout_manual_cancelaciones_servidor ON public.checkout_manual_cancelaciones
+  FOR SELECT TO service_role USING(true);
+
+-- Serializa una cancelación con preparación y confirmación, incluyendo IDs todavía
+-- no presentados al servidor. ON CONFLICT también ejecuta el trigger BEFORE INSERT.
+CREATE OR REPLACE FUNCTION public.proteger_checkout_manual_cancelado()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtextextended('checkout-manual:'||NEW.id::text,0));
+  IF EXISTS(SELECT 1 FROM public.checkout_manual_cancelaciones WHERE id=NEW.id) THEN
+    RAISE EXCEPTION 'El checkout fue cancelado; no se puede confirmar ni preparar de nuevo';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.proteger_checkout_manual_cancelado() FROM PUBLIC,anon,authenticated,service_role;
+DROP TRIGGER IF EXISTS trg_proteger_checkout_manual_cancelado ON public.checkout_manual_entradas;
+CREATE TRIGGER trg_proteger_checkout_manual_cancelado BEFORE INSERT OR UPDATE ON public.checkout_manual_entradas
+  FOR EACH ROW EXECUTE FUNCTION public.proteger_checkout_manual_cancelado();
+DROP TRIGGER IF EXISTS trg_proteger_checkout_manual_cancelado ON public.checkout_manuales;
+CREATE TRIGGER trg_proteger_checkout_manual_cancelado BEFORE INSERT OR UPDATE ON public.checkout_manuales
+  FOR EACH ROW EXECUTE FUNCTION public.proteger_checkout_manual_cancelado();
+
+CREATE OR REPLACE FUNCTION public.cancelar_checkout_manual(p_entrada jsonb,p_motivo text,p_resolucion text,p_referencia text DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+DECLARE
+  v_actor public.usuarios%ROWTYPE; v_preparado public.checkout_manual_entradas%ROWTYPE;
+  v_cancelado public.checkout_manual_cancelaciones%ROWTYPE;
+  v_id uuid; v_kid uuid; v_uid uuid; v_caja uuid;
+  v_motivo text:=trim(p_motivo); v_referencia text:=nullif(trim(p_referencia),'');
+BEGIN
+  IF NOT coalesce(auth.role()='authenticated',false) OR auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Se requiere una sesión del dueño' USING ERRCODE='42501';
+  END IF;
+  BEGIN
+    SELECT * INTO STRICT v_actor FROM public.usuarios WHERE auth_user_id=auth.uid() AND activo FOR SHARE;
+  EXCEPTION WHEN NO_DATA_FOUND OR TOO_MANY_ROWS THEN
+    RAISE EXCEPTION 'Perfil no disponible' USING ERRCODE='42501';
+  END;
+  IF v_actor.rol IS DISTINCT FROM 'DUEÑO' THEN RAISE EXCEPTION 'Solo el dueño puede cancelar' USING ERRCODE='42501'; END IF;
+  IF p_entrada IS NULL OR octet_length(p_entrada::text)>200000 THEN RAISE EXCEPTION 'Entrada inválida'; END IF;
+  PERFORM public.checkout_objeto(p_entrada,ARRAY['version','checkoutId','kioscoId','usuarioId','sesionCajaId','fechaHora','clienteId','notas',
+    'tipoAjuste','valorAjuste','totalEsperado','subtotalesEsperados','componentesEsperados','lineas','pagos']);
+  IF p_entrada->'version' IS DISTINCT FROM '1'::jsonb THEN RAISE EXCEPTION 'Versión inválida'; END IF;
+  v_id:=public.checkout_uuid(p_entrada->'checkoutId'); v_kid:=public.checkout_uuid(p_entrada->'kioscoId');
+  v_uid:=public.checkout_uuid(p_entrada->'usuarioId'); v_caja:=public.checkout_uuid(p_entrada->'sesionCajaId');
+  IF v_actor.kiosco_id IS DISTINCT FROM v_kid THEN RAISE EXCEPTION 'Comercio no autorizado' USING ERRCODE='42501'; END IF;
+  IF v_motivo IS NULL OR length(v_motivo) NOT BETWEEN 5 AND 1000
+    OR p_resolucion IS NULL OR p_resolucion NOT IN ('NO_COBRADO','REINTEGRADO')
+    OR length(coalesce(v_referencia,''))>500
+    OR (p_resolucion='REINTEGRADO' AND length(coalesce(v_referencia,''))<5) THEN
+    RAISE EXCEPTION 'Indicar motivo, resolución y referencia del reintegro cuando corresponda';
+  END IF;
+  PERFORM 1 FROM public.usuarios WHERE id=v_uid AND kiosco_id=v_kid FOR SHARE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Usuario original no disponible'; END IF;
+  PERFORM 1 FROM public.sesiones_caja WHERE id=v_caja AND kiosco_id=v_kid AND usuario_id=v_uid FOR SHARE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Caja original no disponible'; END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended('checkout-manual:'||v_id::text,0));
+  SELECT * INTO v_preparado FROM public.checkout_manual_entradas WHERE id=v_id;
+  IF FOUND AND (v_preparado.kiosco_id IS DISTINCT FROM v_kid OR v_preparado.usuario_id IS DISTINCT FROM v_uid
+    OR v_preparado.entrada IS DISTINCT FROM p_entrada) THEN RAISE EXCEPTION 'El identificador corresponde a otra entrada'; END IF;
+  -- Una venta confirmada o proveniente del circuito anterior requiere revisión y
+  -- anulación por el circuito de Reportes. Nunca declarar cancelado un ID vendido.
+  IF EXISTS(SELECT 1 FROM public.checkout_manuales WHERE id=v_id)
+    OR EXISTS(SELECT 1 FROM public.ventas WHERE id=v_id) THEN
+    RAISE EXCEPTION 'Checkout registrado: revisar la venta en Reportes antes de conciliar';
+  END IF;
+  SELECT * INTO v_cancelado FROM public.checkout_manual_cancelaciones WHERE id=v_id;
+  IF FOUND THEN
+    IF v_cancelado.kiosco_id IS DISTINCT FROM v_kid OR v_cancelado.entrada IS DISTINCT FROM p_entrada
+      OR v_cancelado.motivo IS DISTINCT FROM v_motivo OR v_cancelado.resolucion IS DISTINCT FROM p_resolucion
+      OR v_cancelado.referencia IS DISTINCT FROM v_referencia THEN
+      RAISE EXCEPTION 'La cancelación original no puede modificarse';
+    END IF;
+  ELSE
+    INSERT INTO public.checkout_manual_cancelaciones(id,kiosco_id,usuario_id,entrada,motivo,resolucion,referencia,autorizado_por,autorizado_por_auth_id)
+      VALUES(v_id,v_kid,v_uid,p_entrada,v_motivo,p_resolucion,v_referencia,v_actor.id,auth.uid()) RETURNING * INTO v_cancelado;
+  END IF;
+  RETURN jsonb_build_object('estado','CANCELADO','checkout_id',v_cancelado.id,'kiosco_id',v_cancelado.kiosco_id,
+    'resolucion',v_cancelado.resolucion,'cancelado_en',v_cancelado.creado_en);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.cancelar_checkout_manual(jsonb,text,text,text) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.cancelar_checkout_manual(jsonb,text,text,text) TO authenticated;
+NOTIFY pgrst,'reload schema';
+COMMIT;

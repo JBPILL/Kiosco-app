@@ -55,6 +55,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.unstubAllEnvs()
 })
 
 describe('afipStore.cargarConfiguracion', () => {
@@ -175,6 +176,15 @@ describe('afipStore.guardarConfiguracion', () => {
 })
 
 describe('afipStore.emitirFacturaVenta', () => {
+  it('el piloto estricto bloquea la emisión desde cualquier caller', async () => {
+    vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'true')
+    useAFIPStore.setState({ config: config({ certificado_crt: 'CERTIFICADO_TEST', clave_privada_key: 'CLAVE_TEST' }) })
+
+    expect(await useAFIPStore.getState().emitirFacturaVenta({ ventaId: 'v-piloto', total: 1000 })).toBeNull()
+    expect(invocacionesA('afip-wsfe')).toHaveLength(0)
+    expect(llamadasA('ventas', 'update')).toHaveLength(0)
+  })
+
   it('no emite si la facturación está deshabilitada', async () => {
     useAFIPStore.setState({ config: config({ habilitado: false }) })
 

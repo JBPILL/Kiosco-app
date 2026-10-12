@@ -11,5 +11,6 @@ serve(async (request: Request) => {
   return recibirCheckoutManual(request, {
     ...crearBackendCheckoutManual(admin),
     origins: (Deno.env.get('CHECKOUT_ALLOWED_ORIGINS') || '').split(',').map(s => s.trim()).filter(Boolean),
+    pilotStrictScope: Deno.env.get('KIOSKO_PILOT_STRICT_SCOPE') === 'true',
   })
 })

@@ -21,16 +21,11 @@ aleatoria de al menos 32 caracteres. Conservá la configuración privada de cuen
 `POINT_ACCOUNTS_JSON` y los secretos de webhook de las fases anteriores.
 No copies claves en archivos del repositorio ni variables `VITE_*`.
 
-Desde la carpeta del proyecto, con Supabase CLI autenticada:
-
-```powershell
-supabase functions deploy point-process --project-ref TU_PROJECT_REF --no-verify-jwt
-supabase functions deploy point-dispatch --project-ref TU_PROJECT_REF --no-verify-jwt
-```
-
-Estas dos funciones comprueban su propio `Authorization: Bearer POINT_WORKER_SECRET`.
-La opción desactiva la validación JWT de la puerta de entrada para esa clave privada;
-no la uses para desplegar otras funciones indiscriminadamente.
+**Despliegue suspendido.** `point-process` y `point-dispatch` esperan un bearer
+`POINT_WORKER_SECRET`, que no satisface por sí mismo la validación JWT de la
+puerta de entrada. No despliegues ni actives el programador descrito abajo hasta
+que se defina y revise un contrato compatible con JWT. No reduzcas la validación
+JWT para habilitarlo. Point está fuera del piloto de checkout.
 
 ## 3. Guardar los datos del programador en Vault
 

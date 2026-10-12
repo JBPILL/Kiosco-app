@@ -1,3 +1,7 @@
+-- HISTÓRICO - NO APLICAR.
+-- La RPC confirmar_checkout_recuperado fue descartada.
+-- El contrato vigente usa confirmar_venta_manual.
+-- El contenido se conserva únicamente como referencia documental.
 -- Paso 53. Instalar antes de desplegar checkout-manual actualizado.
 BEGIN;
 CREATE TABLE IF NOT EXISTS public.checkout_recuperaciones (

@@ -49,6 +49,7 @@ beforeEach(async () => {
   await db.exec(`RESET ROLE; DROP TRIGGER IF EXISTS reposicion_legacy ON ventas;
     DROP TRIGGER IF EXISTS trg_devolver_stock_anulacion ON ventas;
     DROP TRIGGER IF EXISTS fallo ON movimientos_cuenta_corriente;
+    DROP TRIGGER IF EXISTS fallo_caja ON movimientos_caja;
     DROP TRIGGER IF EXISTS omitir_auditoria ON auditoria_operaciones;
     DELETE FROM auditoria_operaciones; DELETE FROM anulaciones_venta_atomicas; DELETE FROM devoluciones_venta;
     DELETE FROM ventas; DELETE FROM detalles_venta; DELETE FROM checkout_manuales; DELETE FROM productos; DELETE FROM lotes_producto;
@@ -83,7 +84,68 @@ it('recupera receta y lotes históricos, deuda y auditoría una sola vez', async
   await db.exec('RESET ROLE')
   expect(await estado()).toEqual({ estado:'ANULADA',stock:'10',saldo:'150',lote:'3',anulaciones:1 })
   expect((await db.query('SELECT accion,actor_auth_id FROM auditoria_operaciones')).rows).toEqual([{ accion:'VENTA_ANULADA',actor_auth_id:uid }])
+  expect((await db.query<{ tipo:string;monto:string }>("SELECT tipo,monto FROM movimientos_cuenta_corriente ORDER BY tipo")).rows)
+    .toEqual([{ tipo:'ABONO_PAGO',monto:'150' },{ tipo:'CARGO_VENTA',monto:'150' }])
+  expect((await db.query<{ medio_pago:string;monto:string }>('SELECT medio_pago,monto FROM pagos_venta ORDER BY medio_pago')).rows)
+    .toEqual([{ medio_pago:'CUENTA_CORRIENTE',monto:'150' },{ medio_pago:'EFECTIVO',monto:'100' }])
+  expect((await db.query<{ tipo:string;cantidad:string }>("SELECT tipo,cantidad FROM movimientos_stock ORDER BY tipo,cantidad")).rows)
+    .toEqual([{ tipo:'EGRESO',cantidad:'1' },{ tipo:'EGRESO',cantidad:'3' },{ tipo:'INGRESO',cantidad:'1' },{ tipo:'INGRESO',cantidad:'3' }])
   expect((await db.query('SELECT * FROM movimientos_caja')).rows).toHaveLength(0)
+})
+it('resuelve dos solicitudes simultáneas con el mismo resultado y una sola compensación', async () => {
+  await db.exec('SET ROLE authenticated')
+  const resultados=await Promise.all([anular(),anular()])
+  expect(resultados[0].rows).toEqual(resultados[1].rows)
+  await db.exec('RESET ROLE')
+  expect(await estado()).toEqual({ estado:'ANULADA',stock:'10',saldo:'150',lote:'3',anulaciones:1 })
+  expect((await db.query<{ total:number }>("SELECT count(*)::int total FROM movimientos_stock WHERE tipo='INGRESO'")).rows[0].total).toBe(2)
+  expect((await db.query<{ total:number }>("SELECT count(*)::int total FROM movimientos_cuenta_corriente WHERE tipo='ABONO_PAGO'")).rows[0].total).toBe(1)
+  expect((await db.query<{ total:number }>('SELECT count(*)::int total FROM movimientos_caja')).rows[0].total).toBe(0)
+  expect((await db.query<{ total:number }>("SELECT count(*)::int total FROM auditoria_operaciones WHERE accion='VENTA_ANULADA'")).rows[0].total).toBe(1)
+})
+it('anular A después de una venta B compensa sobre el stock vigente y repone el lote de A', async () => {
+  const ventaB='40000000-0000-0000-0000-000000000002'
+  const loteB='70000000-0000-0000-0000-000000000002'
+  const solicitudB={ total:20,cliente_id:null,pagos:[{ medio_pago:'EFECTIVO',monto:20 }],
+    detalles:[{ producto_id:producto,cantidad:2,es_devolucion_envase:false,articulo_libre:null,componentes:[] }] }
+  await db.exec(`UPDATE productos SET stock_actual=4 WHERE id='${producto}';
+    INSERT INTO lotes_producto VALUES('${loteB}','${producto}','${kid}',3,true);
+    INSERT INTO ventas(id,kiosco_id,estado,total,sesion_caja_id) VALUES('${ventaB}','${kid}','COMPLETADA',20,'${caja}');
+    INSERT INTO pagos_venta VALUES('${ventaB}','EFECTIVO',20);
+    INSERT INTO movimientos_stock(kiosco_id,producto_id,tipo,cantidad,motivo,notas,lote_producto_id)
+      VALUES('${kid}','${producto}','EGRESO',2,'VENTA','Checkout manual ${ventaB}','${loteB}');`)
+  await db.query('INSERT INTO checkout_manuales VALUES($1,$2,$1,$3::jsonb,$4::jsonb)',
+    [ventaB,kid,JSON.stringify(solicitudB),JSON.stringify({ venta_id:ventaB })])
+  await anular()
+  expect((await db.query<{ stock_actual:string }>(`SELECT stock_actual FROM productos WHERE id=$1`,[producto])).rows).toEqual([{ stock_actual:'8' }])
+  expect((await db.query<{ id:string;cantidad_actual:string }>('SELECT id,cantidad_actual FROM lotes_producto ORDER BY id')).rows)
+    .toEqual([{ id:lote,cantidad_actual:'3' },{ id:loteB,cantidad_actual:'3' }])
+  expect((await db.query<{ estado:string }>('SELECT estado FROM ventas WHERE id=$1',[ventaB])).rows).toEqual([{ estado:'COMPLETADA' }])
+  expect((await db.query<{ total:number }>("SELECT count(*)::int total FROM movimientos_stock WHERE tipo='INGRESO'")).rows[0].total).toBe(2)
+})
+it('restituye cantidades pesables numeric sin perder precisión decimal', async () => {
+  await db.exec(`UPDATE checkout_manuales SET solicitud=jsonb_set(solicitud,'{detalles,0,cantidad}','1.25'::jsonb);
+    UPDATE movimientos_stock SET cantidad=1.5 WHERE lote_producto_id='${lote}';
+    UPDATE movimientos_stock SET cantidad=1 WHERE lote_producto_id IS NULL;`)
+  await anular()
+  expect(await estado()).toEqual({ estado:'ANULADA',stock:'8.50',saldo:'150',lote:'1.5',anulaciones:1 })
+  expect((await db.query<{ cantidad:string }>("SELECT sum(cantidad) cantidad FROM movimientos_stock WHERE tipo='INGRESO'")).rows)
+    .toEqual([{ cantidad:'2.5' }])
+})
+it('BLOCKED_BY_BUSINESS_RULE: caracteriza el saldo actual si la deuda recibió un abono posterior', async () => {
+  // Caracterización del SQL actual, no regla de negocio: con saldo previo 300,
+  // un abono posterior de 100 lo deja en 200; la RPC descuenta el cargo original completo.
+  await db.exec(`UPDATE clientes SET saldo_deudor=300 WHERE id='${cliente}';
+    UPDATE clientes SET saldo_deudor=saldo_deudor-100 WHERE id='${cliente}';
+    INSERT INTO movimientos_cuenta_corriente(cliente_id,kiosco_id,venta_id,tipo,monto,saldo_resultante)
+      VALUES('${cliente}','${kid}',NULL,'ABONO_PAGO',100,200);`)
+  expect((await db.query('SELECT saldo_deudor FROM clientes WHERE id=$1',[cliente])).rows)
+    .toEqual([{ saldo_deudor:'200' }])
+  await anular()
+  expect((await db.query('SELECT saldo_deudor FROM clientes WHERE id=$1',[cliente])).rows)
+    .toEqual([{ saldo_deudor:'50' }])
+  expect((await db.query('SELECT tipo,monto FROM movimientos_cuenta_corriente WHERE venta_id=$1 ORDER BY tipo',[venta])).rows)
+    .toEqual([{ tipo:'ABONO_PAGO',monto:'150' },{ tipo:'CARGO_VENTA',monto:'150' }])
 })
 it.each([true,false])('revierte anulación si un trigger antiguo duplica el movimiento (repone stock: %s)', async repone => {
   await db.exec(`CREATE OR REPLACE FUNCTION reposicion_legacy_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
@@ -136,6 +198,19 @@ it('reintegra desde otra caja cuando la original está cerrada', async () => {
   await anular(otraCaja); await anular(otraCaja)
   expect((await db.query('SELECT monto,sesion_caja_id FROM movimientos_caja')).rows).toEqual([{ monto:'100',sesion_caja_id:otraCaja }])
 })
+it('revierte toda la compensación si falla el egreso de la caja de reintegro', async () => {
+  await db.exec(`UPDATE sesiones_caja SET estado='CERRADA',fecha_cierre=now() WHERE id='${caja}';
+    CREATE OR REPLACE FUNCTION fallo_caja_test() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN RAISE EXCEPTION 'FALLO_CAJA'; END $$;
+    CREATE TRIGGER fallo_caja BEFORE INSERT ON movimientos_caja FOR EACH ROW EXECUTE FUNCTION fallo_caja_test();`)
+  await expect(anular(otraCaja)).rejects.toThrow('FALLO_CAJA')
+  expect(await estado()).toEqual({ estado:'COMPLETADA',stock:'6',saldo:'300',lote:'0',anulaciones:0 })
+  expect((await db.query('SELECT * FROM movimientos_caja')).rows).toHaveLength(0)
+  expect((await db.query("SELECT * FROM movimientos_stock WHERE tipo='INGRESO'")).rows).toHaveLength(0)
+  expect((await db.query("SELECT * FROM movimientos_cuenta_corriente WHERE tipo='ABONO_PAGO'")).rows).toHaveLength(0)
+  expect((await db.query('SELECT * FROM auditoria_operaciones')).rows).toHaveLength(0)
+  expect((await db.query('SELECT estado FROM sesiones_caja WHERE id=$1',[caja])).rows).toEqual([{ estado:'CERRADA' }])
+})
 it('revierte todo si falla una operación posterior al stock', async () => {
   await db.exec(`CREATE FUNCTION fallo_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.tipo='ABONO_PAGO' THEN RAISE EXCEPTION 'FALLO'; END IF; RETURN NEW; END $$;
     CREATE TRIGGER fallo BEFORE INSERT ON movimientos_cuenta_corriente FOR EACH ROW EXECUTE FUNCTION fallo_test();`)
@@ -160,9 +235,17 @@ it('impide anulación directa y devoluciones posteriores a la anulación', async
   await anular()
   await expect(db.query('INSERT INTO devoluciones_venta(venta_id,kiosco_id) VALUES($1,$2)',[venta,kid])).rejects.toThrow('no admite')
 })
-it('mantiene privadas las escrituras y bloquea ejecución anónima', async () => {
-  expect((await db.query(`SELECT has_function_privilege('anon','anular_venta_atomica(uuid,text,uuid)','EXECUTE') ejecutar,
-    has_table_privilege('authenticated','anulaciones_venta_atomicas','INSERT') escribir`)).rows).toEqual([{ ejecutar:false,escribir:false }])
+it('protege la RPC y los helpers con SECURITY DEFINER y grants mínimos para el flujo UI autenticado', async () => {
+  const permisos=await db.query<{ security_definer:boolean;configuracion:string[];public_ejecuta:boolean;anon_ejecuta:boolean;
+    authenticated_ejecuta:boolean;helper_authenticated:boolean;tabla_escribible:boolean }>(`SELECT p.prosecdef security_definer,p.proconfig configuracion,
+      EXISTS(SELECT 1 FROM aclexplode(p.proacl) acl WHERE acl.grantee=0 AND acl.privilege_type='EXECUTE') public_ejecuta,
+      has_function_privilege('anon',p.oid,'EXECUTE') anon_ejecuta,
+      has_function_privilege('authenticated',p.oid,'EXECUTE') authenticated_ejecuta,
+      has_function_privilege('authenticated','proteger_anulacion_atomica()','EXECUTE') helper_authenticated,
+      has_table_privilege('authenticated','anulaciones_venta_atomicas','INSERT') tabla_escribible
+      FROM pg_proc p WHERE p.oid='anular_venta_atomica(uuid,text,uuid)'::regprocedure`)
+  expect(permisos.rows[0]).toMatchObject({ security_definer:true,configuracion:['search_path=pg_catalog, public'],
+    public_ejecuta:false,anon_ejecuta:false,authenticated_ejecuta:true,helper_authenticated:false,tabla_escribible:false })
 })
 it('el diagnóstico de despliegue detecta la versión actual y sus triggers', async () => {
   const lectura = readFileSync('sql_verificar_anulacion_atomica.sql','utf8')
@@ -178,6 +261,24 @@ it('el diagnóstico de despliegue detecta la versión actual y sus triggers', as
   expect(resultado.triggers.every(trigger => trigger.existe && trigger.habilitado)).toBe(true)
   expect(resultado.registro_privado.every(rol => !rol.puede_insertar && !rol.puede_actualizar && !rol.puede_borrar)).toBe(true)
   expect(await estado()).toMatchObject({ estado:'COMPLETADA',stock:'6' })
+})
+it('el preflight de catálogo es ejecutable localmente y devuelve metadata de la RPC sin cambiar datos', async () => {
+  const consulta=readFileSync('sql_preflight_anulacion_atomica_solo_lectura.sql','utf8')
+  const { rows }=await db.query<{ preflight_anulacion_atomica: {
+    funciones:{ nombre:string;existe:boolean;owner:string;security_definer:boolean;configuracion:string[];
+      public_execute:boolean;permisos:Record<string,boolean> }[];
+    tablas:{ tabla:string;existe:boolean;rls:boolean }[];
+    triggers:{ tabla:string;trigger:string;habilitado:boolean }[];
+  } }>(consulta)
+  const reporte=rows[0].preflight_anulacion_atomica
+  const rpc=reporte.funciones.find(funcion => funcion.nombre==='public.anular_venta_atomica')
+  expect(rpc).toMatchObject({ existe:true,owner:'postgres',security_definer:true,
+    configuracion:['search_path=pg_catalog, public'],public_execute:false,
+    permisos:{ anon:false,authenticated:true } })
+  expect(reporte.tablas.find(tabla => tabla.tabla==='anulaciones_venta_atomicas'))
+    .toMatchObject({ existe:true,rls:true })
+  expect(reporte.triggers.some(trigger => trigger.tabla==='ventas' && trigger.habilitado)).toBe(true)
+  expect(await estado()).toMatchObject({ estado:'COMPLETADA',stock:'6',saldo:'300',anulaciones:0 })
 })
 it('el diagnóstico detecta el trigger legado aunque esté deshabilitado', async () => {
   await db.exec(`CREATE OR REPLACE FUNCTION legado_diagnostico_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;

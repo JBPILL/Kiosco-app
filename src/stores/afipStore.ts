@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuthStore } from './authStore'
 import { construirURLQRAFIP } from '../lib/afipQR'
 import { getFechaLocal } from '../lib/utils'
+import { ERROR_FACTURACION_FUERA_DE_ALCANCE, kioskoPilotStrictScopeActivo } from '../lib/kioskPilotScope'
 import type {
   ConfiguracionAFIP,
   ComprobanteAFIPResult,
@@ -219,6 +220,10 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
     nroDocCliente = '0',
     nombreCliente,
   }) => {
+    if (kioskoPilotStrictScopeActivo()) {
+      toast.error(ERROR_FACTURACION_FUERA_DE_ALCANCE)
+      return null
+    }
     const usuario = useAuthStore.getState().usuario
     const kiosco = useAuthStore.getState().kiosco
     const kioscoId = usuario?.kiosco_id || kiosco?.id

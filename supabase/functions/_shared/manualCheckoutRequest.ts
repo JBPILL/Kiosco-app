@@ -43,6 +43,17 @@ export function firmaManual(value: unknown): string {
   })
 }
 
+export function contieneDevolucionEnvase(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const solicitud = value as Record<string, unknown>
+  const lineas = Array.isArray(solicitud.lineas) ? solicitud.lineas : []
+  const detalles = Array.isArray(solicitud.detalles) ? solicitud.detalles : []
+  return [...lineas, ...detalles].some((linea) => Boolean(linea && typeof linea === 'object' && !Array.isArray(linea)
+    && ((linea as Record<string, unknown>).tipo === 'DEVOLUCION_ENVASE'
+      || (linea as Record<string, unknown>).es_devolucion_envase === true
+      || (linea as Record<string, unknown>).esDevolucionEnvase === true)))
+}
+
 export function leerEntradaCheckoutManual(value: unknown): EntradaCheckoutManual {
   const obj = objetoManual(value)
   camposManual(obj, ['version', 'checkoutId', 'kioscoId', 'usuarioId', 'sesionCajaId', 'fechaHora', 'clienteId', 'notas',

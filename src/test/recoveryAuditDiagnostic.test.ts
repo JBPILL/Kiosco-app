@@ -1,47 +1,34 @@
 // @vitest-environment node
-import { readFileSync } from 'node:fs'
-import { PGlite } from '@electric-sql/pglite'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import { expect, it } from 'vitest'
 
-const consulta = readFileSync('sql_verificar_recuperacion_auditada.sql', 'utf8')
-// Cada caso inicia PostgreSQL WASM; permitir el arranque bajo carga de la suite.
-const timeoutPostgres = 30_000
+const raiz = process.cwd()
+const migracionHistorica = join(raiz, 'legacy/historico/checkout-recovery/supabase_fase_checkout_recuperacion_auditada.sql.disabled')
+const diagnosticoHistorico = join(raiz, 'legacy/historico/checkout-recovery/sql_verificar_recuperacion_auditada.sql.disabled')
+const rpcDescartada = ['confirmar_checkout', 'recuperado'].join('_')
 
-it('informa objetos ausentes sin fallar', async () => {
-  const db = new PGlite()
-  try {
-    const { rows } = await db.query<{ diagnostico_recuperacion_auditada: Record<string, boolean> }>(consulta)
-    expect(rows[0].diagnostico_recuperacion_auditada.tabla_presente).toBe(false)
-    expect(rows[0].diagnostico_recuperacion_auditada.funcion_presente).toBe(false)
-  } finally { await db.close() }
-}, timeoutPostgres)
+function archivos(base: string, incluir: (ruta: string) => boolean): string[] {
+  return readdirSync(base, { withFileTypes: true }).flatMap(entrada => {
+    const ruta = join(base, entrada.name)
+    return entrada.isDirectory() ? archivos(ruta, incluir) : incluir(ruta) ? [ruta] : []
+  })
+}
 
-it.each([
-  ['', ''],
-  ['GRANT UPDATE(venta_id) ON checkout_recuperaciones TO authenticated', 'sin_escritura_directa'],
-  ['GRANT SELECT(venta_id) ON checkout_recuperaciones TO anon', 'sin_lectura_roles_no_previstos'],
-  ['GRANT SELECT ON checkout_recuperaciones TO service_role', 'sin_lectura_roles_no_previstos'],
-  ['CREATE POLICY abierta ON checkout_recuperaciones FOR SELECT TO authenticated USING(true)', 'sin_politicas_lectura_adicionales'],
-  ['GRANT EXECUTE ON FUNCTION confirmar_checkout_recuperado(uuid,jsonb) TO PUBLIC', 'navegador_no_ejecuta'],
-  ['ALTER TABLE checkout_recuperaciones DISABLE ROW LEVEL SECURITY', 'rls_habilitado'],
-])('detecta alteración del catálogo: %s', async (alteracion, control) => {
-  const db = new PGlite()
-  try {
-    await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
-      CREATE FUNCTION auth_user_kiosco_id() RETURNS uuid LANGUAGE sql AS 'SELECT NULL::uuid';
-      CREATE FUNCTION auth_es_dueno_o_superadmin() RETURNS boolean LANGUAGE sql AS 'SELECT false';
-      CREATE TABLE checkout_recuperaciones(venta_id uuid,kiosco_id uuid);
-      GRANT SELECT ON checkout_recuperaciones TO authenticated;
-      ALTER TABLE checkout_recuperaciones ENABLE ROW LEVEL SECURITY;
-      CREATE POLICY checkout_recuperacion_dueno ON checkout_recuperaciones FOR SELECT TO authenticated
-        USING(kiosco_id=auth_user_kiosco_id() AND auth_es_dueno_o_superadmin());
-      CREATE FUNCTION confirmar_checkout_recuperado(uuid,jsonb) RETURNS jsonb LANGUAGE sql
-        SECURITY DEFINER SET search_path=pg_catalog,public AS 'SELECT $2';
-      REVOKE ALL ON FUNCTION confirmar_checkout_recuperado(uuid,jsonb) FROM PUBLIC;
-      GRANT EXECUTE ON FUNCTION confirmar_checkout_recuperado(uuid,jsonb) TO service_role;`)
-    if (alteracion) await db.exec(alteracion)
-    const { rows } = await db.query<{ diagnostico_recuperacion_auditada: Record<string, boolean> }>(consulta)
-    const valores = rows[0].diagnostico_recuperacion_auditada
-    for (const [nombre, valor] of Object.entries(valores)) expect(valor, nombre).toBe(nombre !== control)
-  } finally { await db.close() }
-}, timeoutPostgres)
+it('conserva la propuesta descartada sólo como SQL histórico deshabilitado', () => {
+  expect(migracionHistorica.endsWith('.sql.disabled')).toBe(true)
+  expect(diagnosticoHistorico.endsWith('.sql.disabled')).toBe(true)
+  expect(readFileSync(migracionHistorica, 'utf8').slice(0, 180)).toContain('HISTÓRICO - NO APLICAR')
+  expect(readFileSync(diagnosticoHistorico, 'utf8').slice(0, 220)).toContain('HISTÓRICO - NO APLICAR')
+})
+
+it('el runtime y el bootstrap activos no contienen la RPC descartada', () => {
+  const activos = [
+    ...archivos(join(raiz, 'supabase/functions'), ruta => ruta.endsWith('.ts')),
+    ...archivos(join(raiz, 'supabase/bootstrap'), ruta => ruta.endsWith('.sql')),
+    ...archivos(join(raiz, 'src'), ruta => /\.(ts|tsx)$/.test(ruta) && !/\.(test|spec)\.(ts|tsx)$/.test(ruta)),
+  ]
+  const encontrados = activos.filter(ruta => readFileSync(ruta, 'utf8').includes(rpcDescartada))
+    .map(ruta => relative(raiz, ruta))
+  expect(encontrados).toEqual([])
+})

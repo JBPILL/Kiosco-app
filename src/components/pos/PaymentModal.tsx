@@ -28,6 +28,7 @@ import { SupervisorPinBloqueado } from '../../lib/supervisorPinBlocked'
 import { useSupervisorPinWait } from '../../hooks/useSupervisorPinWait'
 import { useSupervisorPolicy } from '../../hooks/useSupervisorPolicy'
 import { RefreshButton } from '../ui/RefreshButton'
+import { ejecutarCheckoutConAlcanceFiscal, errorCheckoutFueraDeAlcance, kioskoPilotStrictScopeActivo } from '../../lib/kioskPilotScope'
 
 export interface LineaPagoMixto {
   id: string
@@ -256,6 +257,12 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
 
   const confirmarVenta = async () => {
     if (procesandoRef.current || (!cobroGuardado && (!puedeConfirmar || politicaNoDisponible || faltaCheckoutSeguro || (requierePinSupervisor && esperaPin > 0)))) return
+    const modoPilotoEstricto = kioskoPilotStrictScopeActivo()
+    const errorAlcance = errorCheckoutFueraDeAlcance(modoPilotoEstricto, emitirFiscal, items)
+    if (errorAlcance) {
+      toast.error(errorAlcance)
+      return
+    }
     procesandoRef.current = true
     setProcesando(true)
     let ventaCreadaId: string | null = null
@@ -403,29 +410,31 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
             cajeroNombre: usuario.nombre, clienteNombre: clienteSeleccionado?.nombre, clienteTelefono: clienteSeleccionado?.telefono,
             notas: notasFinal,
           }
-          const flujo = await ejecutarCobroManual({ checkoutId: ventaId, kioscoId, usuarioId: usuario.id,
-            sesionCajaId: sesionActiva.id, fechaHora: ahora, clienteId: clienteSeleccionadoId || null,
-            notas: notasParaGuardar, items, componentes: useComboStore.getState().itemsCombo,
-            tipoAjuste, valorAjuste, total,
-            pagos: esPagoMixto ? pagosMixtos.map(p => ({ id: p.id, medio: p.medio_pago, montoCentavos: Math.round(p.monto) * 100, referencia: referencia || null }))
-              : [{ id: uuidv4(), medio: medioPago, montoCentavos: total * 100, referencia: referencia || null }],
-          }, ticketClave, reciboNuevo, pinSupervisor)
-          if (flujo.recibo && emitirFiscal) {
-            if (flujo.pendiente || flujo.recuperado) {
-              toast('Emití la factura desde Tickets Emitidos después de verificar la confirmación de esta venta.', { icon: '⚠️', duration: 6000 })
-            } else {
-              try {
-                const factura = await emitirFacturaVenta({ ventaId: flujo.ventaId, total: flujo.recibo.total,
-                  tipoDocCliente: tipoDocReceptor, nroDocCliente: tipoDocReceptor === 99 ? '0' : nroDocReceptor.trim(),
-                  nombreCliente: clienteSeleccionado?.nombre })
-                if (factura) flujo.recibo.afip = { tipoComprobante: factura.tipo_comprobante, tipoComprobanteNombre: `Factura ${factura.letra}`,
-                  letra: factura.letra, puntoVenta: factura.punto_venta, nroComprobante: factura.nro_comprobante,
-                  cae: factura.cae, vtoCae: factura.vto_cae, qrUrl: factura.qr_url, cuitEmisor: factura.cuit_emisor,
-                  condicionIva: factura.condicion_iva, iibb: factura.iibb, inicioActividades: factura.inicio_actividades,
-                  tipoDocCliente: factura.tipo_doc_cliente, nroDocCliente: factura.nro_doc_cliente || undefined }
-              } catch { toast.error('Venta confirmada; ARCA requiere revisión desde Tickets Emitidos.') }
-            }
-          }
+          const flujo = await ejecutarCheckoutConAlcanceFiscal(modoPilotoEstricto, emitirFiscal,
+            () => ejecutarCobroManual({ checkoutId: ventaId, kioscoId, usuarioId: usuario.id,
+              sesionCajaId: sesionActiva.id, fechaHora: ahora, clienteId: clienteSeleccionadoId || null,
+              notas: notasParaGuardar, items, componentes: useComboStore.getState().itemsCombo,
+              tipoAjuste, valorAjuste, total,
+              pagos: esPagoMixto ? pagosMixtos.map(p => ({ id: p.id, medio: p.medio_pago, montoCentavos: Math.round(p.monto) * 100, referencia: referencia || null }))
+                : [{ id: uuidv4(), medio: medioPago, montoCentavos: total * 100, referencia: referencia || null }],
+            }, ticketClave, reciboNuevo, pinSupervisor), async resultado => {
+              const recibo = resultado.recibo
+              if (!recibo) return
+              if (resultado.pendiente || resultado.recuperado) {
+                toast('Emití la factura desde Tickets Emitidos después de verificar la confirmación de esta venta.', { icon: '⚠️', duration: 6000 })
+              } else {
+                try {
+                  const factura = await emitirFacturaVenta({ ventaId: resultado.ventaId, total: recibo.total,
+                    tipoDocCliente: tipoDocReceptor, nroDocCliente: tipoDocReceptor === 99 ? '0' : nroDocReceptor.trim(),
+                    nombreCliente: clienteSeleccionado?.nombre })
+                  if (factura) recibo.afip = { tipoComprobante: factura.tipo_comprobante, tipoComprobanteNombre: `Factura ${factura.letra}`,
+                    letra: factura.letra, puntoVenta: factura.punto_venta, nroComprobante: factura.nro_comprobante,
+                    cae: factura.cae, vtoCae: factura.vto_cae, qrUrl: factura.qr_url, cuitEmisor: factura.cuit_emisor,
+                    condicionIva: factura.condicion_iva, iibb: factura.iibb, inicioActividades: factura.inicio_actividades,
+                    tipoDocCliente: factura.tipo_doc_cliente, nroDocCliente: factura.nro_doc_cliente || undefined }
+                } catch { toast.error('Venta confirmada; ARCA requiere revisión desde Tickets Emitidos.') }
+              }
+            })
           const actual = useAuthStore.getState()
           if (actual.usuario?.id !== usuario.id || actual.kiosco?.id !== kioscoId) {
             throw new Error('La sesión cambió. Recuperá la venta con el operador original.')
@@ -856,7 +865,7 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
       // 5b. Si ARCA está habilitado y se solicitó factura electrónica, emitirla
       let afipTicketData: TicketData['afip'] = undefined
 
-      if (emitirFiscal && afipConfig?.habilitado) {
+      if (emitirFiscal && afipConfig?.habilitado && !modoPilotoEstricto) {
         try {
           const resAFIP = await emitirFacturaVenta({
             ventaId,

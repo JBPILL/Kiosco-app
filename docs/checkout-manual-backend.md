@@ -28,13 +28,12 @@ límites están documentados en [checkout-manual-pos.md](checkout-manual-pos.md)
 3. Desplegá la función:
 
    ```powershell
-   supabase functions deploy checkout-manual --project-ref TU_PROJECT_REF --no-verify-jwt
+   supabase functions deploy checkout-manual --project-ref TU_PROJECT_REF
    ```
 
-   La función verifica el token de sesión con `auth.getUser` y exige un perfil
-   activo del comercio. `--no-verify-jwt` omite la verificación del gateway;
-   no elimina la autenticación implementada en la función. Las peticiones de
-   preflight no requieren sesión; los cobros sí.
+   `supabase/config.toml` exige `verify_jwt = true`; además, la función verifica
+   el token de sesión con `auth.getUser` y exige un perfil activo del comercio.
+   Las peticiones de preflight no requieren sesión; los cobros sí.
 
 Supabase proporciona `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` al backend.
 No copies la clave de servicio a Vercel ni al navegador. No hacen falta

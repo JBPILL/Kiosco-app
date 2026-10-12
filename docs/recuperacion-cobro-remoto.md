@@ -1,10 +1,13 @@
 # Recuperar un cobro sin copia local
 
-## Comprobación de instalación del paso 53
+## Diagnóstico histórico del paso 53
 
-Después de aplicar `supabase_fase_checkout_recuperacion_auditada.sql`, ejecutar
-`sql_verificar_recuperacion_auditada.sql` en el SQL Editor de Supabase. Es sólo
-lectura y devuelve booleanos: tabla, RLS, función, contexto del propietario,
+Esta sección describe la propuesta histórica de auditoría de recuperaciones.
+No forma parte del contrato del piloto de staging y no se debe aplicar allí.
+
+El archivo `legacy/historico/checkout-recovery/sql_verificar_recuperacion_auditada.sql.disabled`
+sólo diagnostica esa propuesta histórica. No ejecutar su migración asociada ni
+usar este diagnóstico como requisito para el piloto. Devuelve booleanos: tabla, RLS, función, contexto del propietario,
 search_path, ausencia de escritura directa (incluidos permisos por columna),
 ejecución del servidor, bloqueo del navegador y política de lectura esperada.
 También exige los tres roles, SELECT para authenticated, ausencia de lectura
@@ -39,32 +42,27 @@ verificado del dueño. Conserva UUID, vendedor, caja, fecha, descuento y pagos;
 el servidor recupera el snapshot congelado y confirma de forma idempotente.
 No se invoca un proveedor de pago ni se crea un identificador nuevo.
 
-## Requisitos y errores
+## Requisitos y errores del flujo actual
 
-### Auditoría del dueño — paso 53
+### Recuperación por el dueño
 
-Instalar `supabase_fase_checkout_recuperacion_auditada.sql` completo antes de
-desplegar la versión actualizada de la Edge Function `checkout-manual`.
-El adaptador utiliza `confirmar_checkout_recuperado` cuando un dueño confirma
-la solicitud de otro vendedor. La RPC es privada, ejecutable sólo por servicio,
-y valida dueño activo, comercio y snapshot original antes de cerrar.
+Para el baseline del piloto, el adaptador usa `confirmar_venta_manual` también
+cuando el dueño recupera un checkout de otro vendedor. El actor se toma de la
+sesión autenticada y el snapshot conserva el `usuario_id` original. La propuesta
+`legacy/historico/checkout-recovery/supabase_fase_checkout_recuperacion_auditada.sql.disabled`
+es histórica y no se debe aplicar al staging de este piloto; su RPC adicional
+no forma parte del contrato.
 
-`checkout_recuperaciones` conserva venta, comercio, identidad autenticada y
-perfil del dueño, vendedor original, fecha y si el cierre ya existía antes de
-la recuperación. No se atribuye al dueño un cierre previo del cajero. Cada
-par venta/dueño se registra una vez; reintentar conserva la primera auditoría.
-La tabla sólo permite lectura al dueño/superadmin del comercio, sin escritura
-directa de anon, authenticated o service_role. La inserción de auditoría y el
-cierre financiero pertenecen a la misma transacción.
+La propuesta histórica incluía `checkout_recuperaciones` para auditar la
+recuperación del dueño. Esa tabla y su RPC no se requieren para el baseline del
+piloto y no deben considerarse instaladas.
 
-Si falta el paso 53, el nuevo backend no confirma recuperaciones de otro
-vendedor; conserva la solicitud y comunica incertidumbre. No usar una ruta
-sin auditoría como fallback. Las ventas ordinarias del operador original siguen
-usando su cierre existente. Si el dueño es el vendedor original, la identidad
-ya coincide y se utiliza ese circuito ordinario.
+La confirmación actual usa `confirmar_venta_manual` con el actor autenticado;
+el snapshot conserva el `usuario_id` original. La autorización y las reglas de
+cierre se validan en el backend. Los reintentos mantienen el checkout original.
 
-- RPC de recuperación y Edge Function `checkout-manual` instaladas, con las
-  migraciones de caja compartida, autorización y cancelación vigentes.
+- Edge Function `checkout-manual` y RPC `confirmar_venta_manual` instaladas,
+  con las migraciones de caja compartida, autorización y cancelación vigentes.
 - Dueño activo del mismo comercio y suscripción activa. La identidad se
   comprueba antes y después de consultar sesión y después del envío.
 - Si hay cancelación local durable, resolverla antes; el formulario no se abre.
@@ -81,12 +79,11 @@ ya coincide y se utiliza ese circuito ordinario.
 
 ## Evidencia
 
-Auditoría del paso 53: 113 pruebas dirigidas en dos archivos aprobadas. Cubren
+Evidencia histórica de la propuesta del paso 53: 113 pruebas dirigidas en dos archivos aprobadas. Cubren
 revocación de escritura de tabla/columnas, acceso privado a la RPC, rechazo
 de cajero o snapshot alterado, reintento con un único registro y rollback
-financiero ante fallo de auditoría. El adaptador real selecciona la RPC auditada
-para dueño que recupera a otro operador y conserva la ruta ordinaria para el
-vendedor original. SQL y Edge actualizados aún no aplicados remotamente.
+financiero ante fallo de auditoría. El adaptador que seleccionaba la RPC
+auditada pertenece a esa propuesta y ya no es el contrato del piloto.
 
 92 pruebas dirigidas en tres archivos y build aprobados. Incluyen preparación
 del cajero, lectura por dueño, cierre privado y reintento en PostgreSQL local;

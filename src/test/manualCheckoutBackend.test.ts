@@ -5,6 +5,7 @@ import { cerrarCheckoutManual } from '../../supabase/functions/_shared/manualChe
 import type { ManualCheckoutDependencies } from '../../supabase/functions/_shared/manualCheckout'
 import { fechaManual, leerEntradaCheckoutManual } from '../../supabase/functions/_shared/manualCheckoutRequest'
 import { recibirCheckoutManual } from '../../supabase/functions/_shared/manualCheckoutHttp'
+import type { ManualCheckoutHttpDependencies } from '../../supabase/functions/_shared/manualCheckoutHttp'
 import { requiereRenovarPermisoManual } from '../../supabase/functions/_shared/manualCheckoutSupervisorError'
 import { crearBackendCheckoutManual } from '../../supabase/functions/_shared/manualCheckoutBackend'
 
@@ -41,15 +42,28 @@ function contexto(rol: 'DUEÑO' | 'CAJERO' = 'DUEÑO') {
 beforeEach(() => { vi.restoreAllMocks(); vi.stubGlobal('crypto', webcrypto) })
 afterEach(() => { vi.unstubAllGlobals() })
 
-it.each([true,false])('el adaptador usa recuperación auditada sólo cuando el dueño confirma otro vendedor=%s', async otro => {
+it.each([true,false])('la confirmación normal usa la RPC compatible y conserva el vendedor original=%s', async otro => {
   const rpc = vi.fn(async () => ({ data: { confirmado: true }, error: null }))
   const admin = { rpc } as unknown as Parameters<typeof crearBackendCheckoutManual>[0]
   const backend = crearBackendCheckoutManual(admin)
   const snapshot = { version: 1 as const, id, kiosco_id: kid, usuario_id: otro ? product : uid,
     sesion_caja_id: box, fecha_hora: entrada().fechaHora, total: 100, notas: null, cliente_id: null, detalles: [], pagos: [] }
   await backend.confirmar(contexto(),snapshot)
-  expect(rpc).toHaveBeenCalledWith(otro ? 'confirmar_checkout_recuperado' : 'confirmar_venta_manual', {
+  expect(rpc).toHaveBeenCalledWith('confirmar_venta_manual', {
     p_actor_auth_id: uid, p_solicitud: snapshot,
+  })
+  expect(snapshot.usuario_id).toBe(otro ? product : uid)
+})
+
+it('la confirmación autorizada conserva la RPC de supervisor', async () => {
+  const rpc = vi.fn(async () => ({ data: { confirmado: true }, error: null }))
+  const backend = crearBackendCheckoutManual({ rpc } as unknown as Parameters<typeof crearBackendCheckoutManual>[0])
+  const snapshot = { version: 1 as const, id, kiosco_id: kid, usuario_id: uid,
+    sesion_caja_id: box, fecha_hora: entrada().fechaHora, total: 100, notas: null, cliente_id: null, detalles: [], pagos: [] }
+  const solicitud = entrada()
+  await backend.confirmarAutorizado?.(contexto('CAJERO'), solicitud, snapshot, id)
+  expect(rpc).toHaveBeenCalledWith('confirmar_venta_manual_autorizada', {
+    p_actor_auth_id: uid, p_entrada: solicitud, p_snapshot: snapshot, p_autorizacion_id: id,
   })
 })
 
@@ -317,7 +331,9 @@ function peticion(payload: unknown = entrada(), token = 'jwt-validado', origin =
   return new Request('https://functions.example/checkout-manual', { method: 'POST', headers: {
     authorization: `Bearer ${token}`, origin }, body: JSON.stringify(payload) })
 }
-function httpDeps() { return { ...dependencias(), origins: ['https://pos.example'], autenticar: vi.fn(async () => contexto()) } }
+function httpDeps(): ManualCheckoutHttpDependencies {
+  return { ...dependencias(), origins: ['https://pos.example'], autenticar: vi.fn(async () => contexto()) }
+}
 
 it('HTTP requiere sesión, origen autorizado y un cuerpo limitado antes de consultar datos', async () => {
   const deps = httpDeps()
@@ -346,9 +362,50 @@ it('HTTP distingue revisión comercial, permiso del cajero y error de autenticac
   const datos = entrada()
   datos.totalEsperado = 99; datos.subtotalesEsperados = [99]; datos.pagos[0].montoCentavos = 9900
   expect((await recibirCheckoutManual(peticion(datos), deps)).status).toBe(422)
-  deps.autenticar = vi.fn(async () => contexto('CAJERO'))
+  const autenticar = vi.fn(async () => contexto('CAJERO'))
+  deps.autenticar = autenticar
   datos.tipoAjuste = 'DESCUENTO_PORCENTAJE'; datos.valorAjuste = 99
   expect((await recibirCheckoutManual(peticion(datos), deps)).status).toBe(403)
-  deps.autenticar.mockRejectedValue(new Error('SECRET_AUTH'))
+  autenticar.mockRejectedValue(new Error('SECRET_AUTH'))
   expect((await recibirCheckoutManual(peticion(), deps)).status).toBe(503)
+})
+
+it.each([
+  (datos: ReturnType<typeof entrada>) => ({ ...datos, lineas: [{ tipo: 'DEVOLUCION_ENVASE', id: line, envaseId: product, cantidad: 1 }] }),
+  (datos: ReturnType<typeof entrada>) => ({ ...datos, lineas: [{ ...datos.lineas[0], es_devolucion_envase: true }] }),
+])('el modo estricto rechaza devoluciones de envase antes de cotizar o preparar', async construir => {
+  const deps = httpDeps()
+  deps.pilotStrictScope = true
+  const respuesta = await recibirCheckoutManual(peticion(construir(entrada())), deps)
+  expect(respuesta.status).toBe(422)
+  expect(await respuesta.json()).toMatchObject({ codigo: 'ENVASE_FUERA_DE_ALCANCE', error: expect.stringContaining('fuera del alcance') })
+  expect(deps.cargarDatos).not.toHaveBeenCalled()
+  expect(deps.preparar).not.toHaveBeenCalled()
+  expect(deps.confirmar).not.toHaveBeenCalled()
+})
+
+it('el modo estricto permite una venta normal', async () => {
+  const deps = httpDeps()
+  deps.pilotStrictScope = true
+  expect((await recibirCheckoutManual(peticion(), deps)).status).toBe(200)
+  expect(deps.preparar).toHaveBeenCalledOnce()
+  expect(deps.confirmar).toHaveBeenCalledOnce()
+})
+
+it('fuera del modo estricto conserva el flujo de venta con devolución de envase', async () => {
+  const deps = httpDeps()
+  const idLineaDevolucion = '60000000-0000-0000-0000-000000000002'
+  const idEnvase = '80000000-0000-0000-0000-000000000001'
+  const datos = { ...entrada(), totalEsperado: 100, subtotalesEsperados: [200, -100],
+    lineas: [
+      { tipo: 'PRODUCTO' as const, id: line, productoId: product, cantidad: 1, sinEnvase: false },
+      { tipo: 'DEVOLUCION_ENVASE' as const, id: idLineaDevolucion, envaseId: idEnvase, cantidad: 1 },
+    ], pagos: [{ id: pay, medio: 'EFECTIVO' as const, montoCentavos: 10000, referencia: null }] }
+  deps.cargarDatos = vi.fn(async () => ({ productos: [crearProducto({ id: product, kiosco_id: kid, precio_venta: 200 })],
+    componentes: [], promociones: [], envases: [{ id: idEnvase, kioscoId: kid, nombre: 'Envase TEST', precio: 100 }], cliente: null }))
+  const respuesta = await recibirCheckoutManual(peticion(datos), deps)
+  expect(respuesta.status).toBe(200)
+  expect(deps.cargarDatos).toHaveBeenCalledOnce()
+  expect(deps.preparar).toHaveBeenCalledOnce()
+  expect(deps.confirmar).toHaveBeenCalledOnce()
 })
