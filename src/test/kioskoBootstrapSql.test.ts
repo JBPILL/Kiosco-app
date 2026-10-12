@@ -60,6 +60,22 @@ it('creates the pilot schema and resolves physical combos to combo_items', async
   }
 })
 
+it('defines exactly one productos categoria foreign key to categorias', async () => {
+  const { rows } = await db.query<{ constraint_count: number; delete_action: string | null }>(`
+    SELECT count(*)::int AS constraint_count,
+      max(c.confdeltype)::text AS delete_action
+    FROM pg_constraint c
+    WHERE c.contype = 'f'
+      AND c.conrelid = 'public.productos'::regclass
+      AND c.confrelid = 'public.categorias'::regclass
+      AND c.conkey = ARRAY[(
+        SELECT attnum FROM pg_attribute
+        WHERE attrelid = 'public.productos'::regclass AND attname = 'categoria_id'
+      )]::smallint[]
+  `)
+  expect(rows[0]).toEqual({ constraint_count: 1, delete_action: 'n' })
+})
+
 it('keeps checkout and annulment RPC privileges separated', async () => {
   const { rows } = await db.query<{
     service_confirm: boolean

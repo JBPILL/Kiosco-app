@@ -57,8 +57,7 @@ CREATE TABLE public.productos (
   activo boolean NOT NULL DEFAULT true,
   fecha_creacion timestamptz NOT NULL DEFAULT now(),
   fecha_actualizacion timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (id,kiosco_id),
-  FOREIGN KEY (categoria_id) REFERENCES public.categorias(id) ON DELETE SET NULL
+  UNIQUE (id,kiosco_id)
 );
 CREATE INDEX productos_kiosco_activo_idx ON public.productos(kiosco_id,activo);
 CREATE INDEX productos_plu_idx ON public.productos(kiosco_id,plu_balanza) WHERE plu_balanza IS NOT NULL;

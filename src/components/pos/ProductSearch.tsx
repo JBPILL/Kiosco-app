@@ -22,6 +22,7 @@ export function ProductSearch({ onSelect, onOpenScanner, onCodigoNoEncontrado }:
   const [query, setQuery] = useState('')
   const [resultados, setResultados] = useState<Producto[]>([])
   const [mostrarResultados, setMostrarResultados] = useState(false)
+  const [errorBusqueda, setErrorBusqueda] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -51,6 +52,7 @@ export function ProductSearch({ onSelect, onOpenScanner, onCodigoNoEncontrado }:
     if (!texto.trim()) {
       setResultados([])
       setMostrarResultados(false)
+      setErrorBusqueda(false)
       return
     }
 
@@ -74,6 +76,7 @@ export function ProductSearch({ onSelect, onOpenScanner, onCodigoNoEncontrado }:
         setResultados(matches)
         setSelectedIndex(0)
         setMostrarResultados(true)
+        setErrorBusqueda(false)
         return
       }
     }
@@ -84,6 +87,7 @@ export function ProductSearch({ onSelect, onOpenScanner, onCodigoNoEncontrado }:
     if (!qSanitized) {
       setResultados([])
       setMostrarResultados(false)
+      setErrorBusqueda(false)
       return
     }
 
@@ -98,8 +102,22 @@ export function ProductSearch({ onSelect, onOpenScanner, onCodigoNoEncontrado }:
       querySupa = querySupa.eq('kiosco_id', kioscoId)
     }
 
-    const { data } = await querySupa
+    let data: Producto[] | null
+    try {
+      const result = await querySupa
+      if (result.error) {
+        toast.error('No se pudieron buscar productos. Revisá tu conexión e intentá nuevamente.')
+        setErrorBusqueda(true)
+        return
+      }
+      data = result.data
+    } catch {
+      toast.error('No se pudieron buscar productos. Revisá tu conexión e intentá nuevamente.')
+      setErrorBusqueda(true)
+      return
+    }
 
+    setErrorBusqueda(false)
     setResultados(data || [])
     setSelectedIndex(0)
     setMostrarResultados(true)
@@ -133,6 +151,7 @@ export function ProductSearch({ onSelect, onOpenScanner, onCodigoNoEncontrado }:
     setQuery('')
     setResultados([])
     setMostrarResultados(false)
+    setErrorBusqueda(false)
     inputRef.current?.focus()
   }
 
@@ -209,7 +228,21 @@ export function ProductSearch({ onSelect, onOpenScanner, onCodigoNoEncontrado }:
           queryDirecta = queryDirecta.eq('kiosco_id', kioscoId)
         }
 
-        const { data: supaMatches } = await queryDirecta
+        let supaMatches: Producto[] | null
+        try {
+          const result = await queryDirecta
+          if (result.error) {
+            toast.error('No se pudo verificar el código del producto. Revisá tu conexión e intentá nuevamente.')
+            setErrorBusqueda(true)
+            return
+          }
+          supaMatches = result.data
+        } catch {
+          toast.error('No se pudo verificar el código del producto. Revisá tu conexión e intentá nuevamente.')
+          setErrorBusqueda(true)
+          return
+        }
+        setErrorBusqueda(false)
         if (supaMatches && supaMatches.length > 0) {
           seleccionar(supaMatches[0])
           return
@@ -252,6 +285,7 @@ export function ProductSearch({ onSelect, onOpenScanner, onCodigoNoEncontrado }:
           onChange={(e) => {
             setQuery(e.target.value)
             setMostrarResultados(true)
+            setErrorBusqueda(false)
           }}
           onFocus={() => query.length >= 2 && setMostrarResultados(true)}
           onKeyDown={handleKeyDown}
@@ -326,7 +360,7 @@ export function ProductSearch({ onSelect, onOpenScanner, onCodigoNoEncontrado }:
         </div>
       )}
 
-      {mostrarResultados && query.length >= 2 && resultados.length === 0 && (
+      {mostrarResultados && !errorBusqueda && query.length >= 2 && resultados.length === 0 && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg z-30 p-4 text-center text-gray-500 dark:text-gray-400 text-sm">
           No se encontró "{query}"
         </div>
