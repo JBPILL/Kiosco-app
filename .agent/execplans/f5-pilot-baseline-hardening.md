@@ -33,8 +33,8 @@ Completar la migración F5 en pasos locales y con gates: bloquear referencias co
 - [x] F5.2B — PASS: guardas strict/legacy, pruebas focalizadas 15/15, suite 173 archivos / 1.599 tests excluyendo la deuda indicada, build y diff-check aprobados. Sin escrituras remotas ni commit.
 - [x] F5.2C — PASS: strict scope omite la vista no presente y conserva cálculo manual; flag false conserva consulta legacy. 13 pruebas focalizadas, suite 173 archivos / 1.601 tests, build y diff-check aprobados.
 - [x] F5.3 — PASS: inventario F5 separado de 325 entradas locales ajenas; index vacío; sin referencias al proyecto viejo en `src`; `.env.local` sólo declara URL y publishable key de staging; archivos de checkout manual sin cambios frente a HEAD; recursos fuera de alcance no consultados en strict scope.
-- [ ] F5.4 — preparación y publicación en staging tras gate.
+- [x] F5.4 — PASS: commit `ff094a3` en `origin/master`; staging responde HTTP 200 y sirve los bundles de F5.2B, incluidos el aviso comercial y la pestaña de Configuración.
 
 ## Resultado final
 
-F5.2B, F5.2C y F5.3 aprobaron sus gates. F5.4 sigue pendiente de revisión staged, commit, push y verificación exclusiva en staging.
+F5.2B, F5.2C, F5.3 y F5.4 aprobaron sus gates. El smoke test consultó sólo recursos públicos del frontend staging; no se escribieron datos remotos ni se tocó el proyecto Supabase viejo. El checkout manual transaccional y los 325 elementos locales no F5 se preservaron.
