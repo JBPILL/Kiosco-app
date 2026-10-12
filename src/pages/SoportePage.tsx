@@ -103,7 +103,8 @@ export function SoportePage() {
     setEstadoNube('VERIFICANDO')
     try {
       const inicio = Date.now()
-      const { error } = await supabase.from('planes').select('id').limit(1)
+      if (!usuario?.id) throw new Error('No se encontró el perfil del usuario actual.')
+      const { error } = await supabase.from('usuarios').select('id').eq('id', usuario.id).limit(1).maybeSingle()
       const latencia = Date.now() - inicio
       if (error) throw error
       setEstadoNube('CONECTADO')

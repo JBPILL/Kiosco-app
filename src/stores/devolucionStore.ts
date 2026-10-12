@@ -18,6 +18,7 @@ import type {
   Cliente,
 } from '../types/database'
 import toast from 'react-hot-toast'
+import { errorDevolucionFueraDeAlcance, kioskoPilotStrictScopeActivo } from '../lib/kioskPilotScope'
 
 export type VentaConDetalles = Venta & {
   detalles: (DetalleVenta & { producto?: Producto })[]
@@ -286,6 +287,9 @@ export const useDevolucionStore = create<DevolucionState>((set, get) => ({
   },
 
   procesarDevolucion: async (params) => {
+    const errorFueraDeAlcance = errorDevolucionFueraDeAlcance(kioskoPilotStrictScopeActivo())
+    if (errorFueraDeAlcance) return { success: false, error: errorFueraDeAlcance }
+
     const {
       venta,
       itemsADevolver,

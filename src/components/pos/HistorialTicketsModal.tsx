@@ -11,6 +11,7 @@ import { ventaToTicketData } from '../../lib/ticketUtils'
 import { useAFIPStore, validarCUIT } from '../../stores/afipStore'
 import type { TipoDocumentoAFIP } from '../../types/afip'
 import toast from 'react-hot-toast'
+import { errorDevolucionFueraDeAlcance, kioskoPilotStrictScopeActivo } from '../../lib/kioskPilotScope'
 
 interface HistorialTicketsModalProps {
   isOpen: boolean
@@ -35,6 +36,7 @@ export function HistorialTicketsModal({
   const { usuario, kiosco } = useAuthStore()
   const { obtenerUltimasVentas } = useDevolucionStore()
   const { emitirFacturaVenta, config: afipConfig, cargarConfiguracion } = useAFIPStore()
+  const devolucionHabilitada = !errorDevolucionFueraDeAlcance(kioskoPilotStrictScopeActivo())
 
   const [ventas, setVentas] = useState<VentaConDetalles[]>([])
   const [cargando, setCargando] = useState(false)
@@ -415,7 +417,7 @@ export function HistorialTicketsModal({
                           <span>Ver / Reimprimir</span>
                         </button>
 
-                        {!esAnulada && onIniciarDevolucion && (
+                        {devolucionHabilitada && !esAnulada && onIniciarDevolucion && (
                           <button
                             type="button"
                             onClick={() => {

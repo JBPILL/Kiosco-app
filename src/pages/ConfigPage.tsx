@@ -45,9 +45,12 @@ import { getAnchoTicketGuardado, guardarAnchoTicket, type AnchoPapelTicket } fro
 import { configurarImpresoraSerial, probarImpresoraSerial, isWebSerialSupported, getAperturaAutomaticaCajon, setAperturaAutomaticaCajon } from '../lib/escposPrinter'
 import { capacidadesPorDefecto } from '../hooks/useTenantConfig'
 import type { CapacidadesOperativas } from '../types/database'
+import { kioskoPilotStrictScopeActivo, mensajeRecursosComercialesFueraDeAlcance } from '../lib/kioskPilotScope'
 import toast from 'react-hot-toast'
 
 export function ConfigPage() {
+  const modoEstricto = kioskoPilotStrictScopeActivo()
+  const mensajeComercialFueraDeAlcance = mensajeRecursosComercialesFueraDeAlcance(modoEstricto)
   const [parametros] = useSearchParams()
   const { usuario } = useAuthStore()
   const { tema, setTema } = useThemeStore()
@@ -164,6 +167,7 @@ export function ConfigPage() {
     cargarArqueoCiegoConfig()
 
     try {
+      setSuscripcion(null)
       // 1. Cargar datos del Kiosco
       const { data: kioscoData } = await supabase
         .from('kioscos')
@@ -180,17 +184,19 @@ export function ConfigPage() {
         setCapacidadesOperativas({ ...capacidadesPorDefecto(kioscoData.rubro), ...(kioscoData.capacidades_operativas || {}) })
       }
 
-      // 2. Cargar suscripción del Kiosco con datos de plan
-      const { data: subData } = await supabase
-        .from('suscripciones')
-        .select('*, plan:planes(*)')
-        .eq('kiosco_id', kioscoId)
-        .order('fecha_vencimiento', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+      // La administración comercial no forma parte del baseline del piloto estricto.
+      if (!modoEstricto) {
+        const { data: subData } = await supabase
+          .from('suscripciones')
+          .select('*, plan:planes(*)')
+          .eq('kiosco_id', kioscoId)
+          .order('fecha_vencimiento', { ascending: false })
+          .limit(1)
+          .maybeSingle()
 
-      if (subData) {
-        setSuscripcion(subData as Suscripcion)
+        if (subData) {
+          setSuscripcion(subData as Suscripcion)
+        }
       }
 
       // 3. Cargar usuarios del Kiosco
@@ -226,7 +232,7 @@ export function ConfigPage() {
     } finally {
       setCargando(false)
     }
-  }, [kioscoId, cargarConfigAdmin, cargarArqueoCiegoConfig])
+  }, [kioscoId, modoEstricto, cargarConfigAdmin, cargarArqueoCiegoConfig])
 
   useEffect(() => {
     cargarDatos()
@@ -747,8 +753,8 @@ export function ConfigPage() {
               : moduleTabInactiveClassName
           }`}
         >
-          <span>Suscripción</span>
-          <span
+          <span>{modoEstricto ? 'Administración comercial' : 'Suscripción'}</span>
+          {!modoEstricto && <span
             className={`text-xs px-2 py-0.2 rounded-full font-semibold ${
               estadoEfectivo === 'ACTIVO'
                 ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300'
@@ -756,7 +762,7 @@ export function ConfigPage() {
             }`}
           >
             {estadoEfectivo === 'ACTIVO' ? 'Al día' : 'Atención'}
-          </span>
+          </span>}
         </button>
 
         <button
@@ -1560,6 +1566,12 @@ export function ConfigPage() {
 
           {/* PESTAÑA: SUSCRIPCIÓN Y COBERTURA */}
           {pestanaActiva === 'SUSCRIPCION' && (
+            modoEstricto ? (
+              <div className="bg-amber-50 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-800/60 p-5 sm:p-6" role="status">
+                <h2 className="text-sm font-bold text-amber-900 dark:text-amber-200">Administración comercial fuera del piloto</h2>
+                <p className="text-sm text-amber-800 dark:text-amber-300 mt-2">{mensajeComercialFueraDeAlcance}</p>
+              </div>
+            ) : (
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-5">
               <div className="flex items-center gap-2">
                 <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-indigo-100 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-300">
@@ -1749,6 +1761,7 @@ export function ConfigPage() {
                 </div>
               )}
             </div>
+            )
           )}
 
           {/* PESTAÑA: COPIAS DE SEGURIDAD Y PWA */}

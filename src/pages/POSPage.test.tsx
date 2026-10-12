@@ -117,6 +117,7 @@ async function escanear(code: string) {
 }
 
 beforeEach(() => {
+  vi.unstubAllEnvs()
   localStorage.clear()
   resetDb()
   vi.clearAllMocks()
@@ -327,6 +328,7 @@ describe('POSPage: pistola de códigos de barras', () => {
 
 describe('POSPage: comprobantes escaneados', () => {
   it('un ticket válido abre el modal de devolución', async () => {
+    vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'false')
     mocks.buscarVenta.mockResolvedValue({ id: 'abcdef1234567890' })
     await montar()
 
@@ -334,6 +336,18 @@ describe('POSPage: comprobantes escaneados', () => {
 
     expect(mocks.buscarVenta).toHaveBeenCalledWith('T-abcdef12', KIOSCO)
     expect(screen.getByTestId('devolucion').getAttribute('data-venta')).toBe('abcdef1234567890')
+  })
+
+  it('en modo piloto estricto no busca ni abre la devolución al escanear un ticket', async () => {
+    vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'true')
+    mocks.buscarVenta.mockResolvedValue({ id: 'abcdef1234567890' })
+    await montar()
+
+    await escanear('T-abcdef12')
+
+    expect(mocks.buscarVenta).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('devolucion')).toBeNull()
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('piloto estricto'))
   })
 
   it('un ticket inexistente avisa y no abre devolución', async () => {

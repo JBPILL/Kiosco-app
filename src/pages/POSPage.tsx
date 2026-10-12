@@ -37,6 +37,7 @@ import { useDevolucionStore, type VentaConDetalles } from '../stores/devolucionS
 import { useRealtimeSync, registrarToqueLocal, type KioskoProductsUpdatedDetail } from '../hooks/useRealtimeSync'
 import { useTenantConfig } from '../hooks/useTenantConfig'
 import toast from 'react-hot-toast'
+import { errorDevolucionFueraDeAlcance, kioskoPilotStrictScopeActivo } from '../lib/kioskPilotScope'
 
 export function POSPage() {
   const navigate = useNavigate()
@@ -352,6 +353,13 @@ export function POSPage() {
 
       // 0. Comprobar si el código escaneado corresponde a un comprobante (Ticket de venta o Cierre de caja)
       if (/^t-[a-f0-9]{4,36}$/i.test(codeTrim) || /^ticket-[a-f0-9-]+$/i.test(codeTrim)) {
+        const errorFueraDeAlcance = errorDevolucionFueraDeAlcance(kioskoPilotStrictScopeActivo())
+        if (errorFueraDeAlcance) {
+          playScanSound('warning')
+          toast.error(errorFueraDeAlcance)
+          return
+        }
+
         playScanSound()
         const ventaCandidata = await buscarVentaParaDevolucion(codeTrim, kid)
         if (ventaCandidata) {
@@ -976,6 +984,11 @@ export function POSPage() {
         isOpen={modalTicketsOpen}
         onClose={() => setModalTicketsOpen(false)}
         onIniciarDevolucion={(v) => {
+          const errorFueraDeAlcance = errorDevolucionFueraDeAlcance(kioskoPilotStrictScopeActivo())
+          if (errorFueraDeAlcance) {
+            toast.error(errorFueraDeAlcance)
+            return
+          }
           setVentaParaDevolver(v)
           setModalDevolucionOpen(true)
         }}

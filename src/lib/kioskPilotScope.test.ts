@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ERROR_FACTURACION_FUERA_DE_ALCANCE, ERROR_ENVASE_FUERA_DE_ALCANCE,
-  ejecutarCheckoutConAlcanceFiscal, errorCheckoutFueraDeAlcance } from './kioskPilotScope'
+  ERROR_DEVOLUCIONES_FUERA_DE_ALCANCE, ejecutarCheckoutConAlcanceFiscal,
+  errorCheckoutFueraDeAlcance, errorDevolucionFueraDeAlcance } from './kioskPilotScope'
 
 describe('alcance estricto del piloto KioskoPOS', () => {
   it('rechaza facturación antes de iniciar el checkout y no invoca el emisor', async () => {
@@ -34,5 +35,10 @@ describe('alcance estricto del piloto KioskoPOS', () => {
     await expect(ejecutarCheckoutConAlcanceFiscal(true, false, checkout, emitirFactura)).resolves.toBe('venta-confirmada')
     expect(checkout).toHaveBeenCalledOnce()
     expect(emitirFactura).not.toHaveBeenCalled()
+  })
+
+  it('centraliza el bloqueo de devoluciones solo en modo estricto', () => {
+    expect(errorDevolucionFueraDeAlcance(true)).toBe(ERROR_DEVOLUCIONES_FUERA_DE_ALCANCE)
+    expect(errorDevolucionFueraDeAlcance(false)).toBeNull()
   })
 })

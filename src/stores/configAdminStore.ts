@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { kioskoPilotStrictScopeActivo, mensajeRecursosComercialesFueraDeAlcance } from '../lib/kioskPilotScope'
 
 export interface ConfiguracionAdmin {
   whatsapp_soporte: string
@@ -76,6 +77,12 @@ export const useConfigAdminStore = create<ConfigAdminState>((set, get) => ({
   error: null,
 
   cargarConfig: async () => {
+    if (kioskoPilotStrictScopeActivo()) {
+      const actual = get().config
+      set({ cargando: false, error: null })
+      return actual
+    }
+
     set({ cargando: true, error: null })
     try {
       // 1. Intentar cargar desde tabla dedicada 'configuracion_admin'
@@ -130,6 +137,13 @@ export const useConfigAdminStore = create<ConfigAdminState>((set, get) => ({
   },
 
   guardarConfig: async (nuevaConfig: Partial<ConfiguracionAdmin>) => {
+    const mensajeFueraDeAlcance = mensajeRecursosComercialesFueraDeAlcance()
+    if (mensajeFueraDeAlcance) {
+      set({ guardando: false, error: mensajeFueraDeAlcance })
+      toast.error(mensajeFueraDeAlcance)
+      return false
+    }
+
     set({ guardando: true, error: null })
     const configFusionada: ConfiguracionAdmin = {
       ...get().config,

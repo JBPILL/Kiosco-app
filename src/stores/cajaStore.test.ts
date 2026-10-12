@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MovimientoCaja } from '../types/database'
 
 type Resultado = { data?: unknown; error: { code?: string; message: string } | null }
@@ -9,6 +9,10 @@ const db = vi.hoisted(() => ({
   updateError: null as { code?: string; message: string } | null,
   remoto: [] as unknown[],
   inserts: [] as Record<string, unknown>[],
+  tablas: [] as string[],
+  sesionResumen: null as unknown,
+  ventasResumen: [] as unknown[],
+  vistaResumen: null as unknown,
 }))
 
 vi.mock('../lib/supabase', () => ({
@@ -17,8 +21,14 @@ vi.mock('../lib/supabase', () => ({
   createUnauthenticatedClient: () => ({}),
   supabase: {
     from: (tabla: string) => {
-      const resultado = (): Resultado =>
-        tabla === 'movimientos_caja' ? { data: db.remoto, error: null } : { data: null, error: db.updateError }
+      db.tablas.push(tabla)
+      const resultado = (): Resultado => {
+        if (tabla === 'movimientos_caja') return { data: db.remoto, error: null }
+        if (tabla === 'sesiones_caja') return { data: db.sesionResumen, error: null }
+        if (tabla === 'ventas') return { data: db.ventasResumen, error: null }
+        if (tabla === 'v_resumen_caja') return { data: db.vistaResumen, error: null }
+        return { data: null, error: db.updateError }
+      }
       const chain: Record<string, unknown> = {}
       for (const metodo of ['select', 'eq', 'order', 'limit', 'maybeSingle']) {
         chain[metodo] = () => chain
@@ -48,12 +58,17 @@ function leerPendientes(): MovimientoCaja[] {
 
 describe('cajaStore.registrarMovimientoCaja', () => {
   beforeEach(() => {
+    vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'false')
     localStorage.clear()
     db.insertResult = { error: null }
     db.insertThrows = false
     db.updateError = null
     db.remoto = []
     db.inserts = []
+    db.tablas = []
+    db.sesionResumen = null
+    db.ventasResumen = []
+    db.vistaResumen = null
     useAuthStore.setState({ usuario: { id: 'u1', nombre: 'Cajero', kiosco_id: 'k1' } as never })
     useCajaStore.setState({
       sesionActiva: { id: SESION_ID, kiosco_id: 'k1', usuario_id: 'u1', estado: 'ABIERTA', fecha_cierre: null, monto_inicial: 1000 } as never,
@@ -62,6 +77,7 @@ describe('cajaStore.registrarMovimientoCaja', () => {
       cargando: false,
     })
   })
+  afterEach(() => vi.unstubAllEnvs())
 
   it('registra el movimiento y no deja pendientes cuando Supabase confirma', async () => {
     const ok = await useCajaStore.getState().registrarMovimientoCaja('EGRESO', 'OTRO' as never, 500, ' Hielo ')
@@ -167,5 +183,48 @@ describe('cajaStore.registrarMovimientoCaja', () => {
 
     expect(ok).toBe(false)
     expect(db.inserts).toHaveLength(0)
+  })
+})
+
+describe('cajaStore.cargarResumenSesion en alcance del piloto', () => {
+  beforeEach(() => {
+    vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'true')
+    db.tablas = []
+    db.remoto = []
+    db.sesionResumen = {
+      id: SESION_ID, kiosco_id: 'k1', usuario_id: 'u1', fecha_apertura: '2026-10-12T10:00:00Z',
+      fecha_cierre: null, monto_inicial: 1000, usuario: { nombre: 'Cajero' },
+    }
+    db.ventasResumen = [{ id: 'v1', total: 500, pagos: [{ medio_pago: 'EFECTIVO', monto: 500 }] }]
+    db.vistaResumen = null
+    useCajaStore.setState({
+      sesionActiva: null,
+      resumenActivo: null,
+      cargarMovimientosSesion: vi.fn(async () => []),
+    })
+  })
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('en strict scope omite la vista ausente y calcula el resumen manual', async () => {
+    const resumen = await useCajaStore.getState().cargarResumenSesion(SESION_ID)
+
+    expect(db.tablas).not.toContain('v_resumen_caja')
+    expect(db.tablas).toContain('sesiones_caja')
+    expect(db.tablas).toContain('ventas')
+    expect(resumen).toMatchObject({ total_ventas: 1, total_facturado: 500, total_efectivo: 500, efectivo_esperado_en_caja: 1500 })
+  })
+
+  it('con flag false conserva la consulta legacy a la vista', async () => {
+    vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'false')
+    db.vistaResumen = {
+      sesion_caja_id: SESION_ID, kiosco_id: 'k1', usuario_id: 'u1', nombre_cajero: 'Cajero',
+      fecha_apertura: '2026-10-12T10:00:00Z', fecha_cierre: null, monto_inicial: 1000,
+      total_ventas: 0, total_facturado: 0, total_efectivo: 0, total_mercadopago: 0,
+      total_transferencia: 0, total_tarjeta: 0, total_cuenta_corriente: 0,
+    }
+
+    await useCajaStore.getState().cargarResumenSesion(SESION_ID)
+
+    expect(db.tablas).toContain('v_resumen_caja')
   })
 })

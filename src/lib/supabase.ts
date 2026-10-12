@@ -1,21 +1,25 @@
 import { createClient } from '@supabase/supabase-js'
 
-export const supabaseUrl = (
+const supabaseUrl =
   import.meta.env.VITE_SUPABASE_URL ||
   import.meta.env.SUPABASE_URL ||
-  import.meta.env.NEXT_PUBLIC_SUPABASE_URL ||
-  'https://wlqujnwxrmksheubfrha.supabase.co'
-) as string
+  import.meta.env.NEXT_PUBLIC_SUPABASE_URL
 
-export const supabaseAnonKey = (
-  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+const supabaseAnonKey =
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  import.meta.env.VITE_SUPABASE_ANON_KEY ||
   import.meta.env.SUPABASE_PUBLISHABLE_KEY ||
   import.meta.env.SUPABASE_ANON_KEY ||
   import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-  import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  'sb_publishable_KahvHYMRzFtEPOp0aADHFw_iuSFxp-_'
-) as string
+  import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error(
+    'Configuración de Supabase ausente: definí VITE_SUPABASE_URL y VITE_SUPABASE_PUBLISHABLE_KEY.'
+  )
+}
+
+export { supabaseUrl, supabaseAnonKey }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
@@ -25,7 +29,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
  */
 export function createUnauthenticatedClient() {
   return createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
   })
 }
-

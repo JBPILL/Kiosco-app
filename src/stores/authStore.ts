@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import type { Usuario, Kiosco, Suscripcion } from '../types/database'
+import { kioskoPilotStrictScopeActivo } from '../lib/kioskPilotScope'
 
 export function calcularDiasRestantes(fechaVencimientoStr?: string | null): number | null {
   if (!fechaVencimientoStr) return null
@@ -118,6 +119,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       let kioscoData: Kiosco | null = null
       let subData: Suscripcion | null = null
       let dias: number | null = null
+      const modoEstricto = kioskoPilotStrictScopeActivo()
 
       if (usuario.kiosco_id) {
         const { data: kData } = await supabase
@@ -128,17 +130,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
         kioscoData = (kData as Kiosco) || null
 
-        // 4. Traer suscripción más reciente
-        const { data: sData } = await supabase
-          .from('suscripciones')
-          .select('*, plan:planes(*)')
-          .eq('kiosco_id', usuario.kiosco_id)
-          .order('fecha_vencimiento', { ascending: false })
-          .limit(1)
-          .maybeSingle()
+        if (!modoEstricto) {
+          // 4. Traer suscripción más reciente (solo fuera del alcance estricto)
+          const { data: sData } = await supabase
+            .from('suscripciones')
+            .select('*, plan:planes(*)')
+            .eq('kiosco_id', usuario.kiosco_id)
+            .order('fecha_vencimiento', { ascending: false })
+            .limit(1)
+            .maybeSingle()
 
-        subData = (sData as Suscripcion) || null
-        dias = calcularDiasRestantes(subData?.fecha_vencimiento)
+          subData = (sData as Suscripcion) || null
+          dias = calcularDiasRestantes(subData?.fecha_vencimiento)
+        }
       }
 
       set({
@@ -253,6 +257,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       let kioscoData: Kiosco | null = null
       let subData: Suscripcion | null = null
       let dias: number | null = null
+      const modoEstricto = kioskoPilotStrictScopeActivo()
 
       if (usuario.kiosco_id) {
         const { data: kData } = await supabase
@@ -263,16 +268,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
         kioscoData = (kData as Kiosco) || null
 
-        const { data: sData } = await supabase
-          .from('suscripciones')
-          .select('*, plan:planes(*)')
-          .eq('kiosco_id', usuario.kiosco_id)
-          .order('fecha_vencimiento', { ascending: false })
-          .limit(1)
-          .maybeSingle()
+        if (!modoEstricto) {
+          const { data: sData } = await supabase
+            .from('suscripciones')
+            .select('*, plan:planes(*)')
+            .eq('kiosco_id', usuario.kiosco_id)
+            .order('fecha_vencimiento', { ascending: false })
+            .limit(1)
+            .maybeSingle()
 
-        subData = (sData as Suscripcion) || null
-        dias = calcularDiasRestantes(subData?.fecha_vencimiento)
+          subData = (sData as Suscripcion) || null
+          dias = calcularDiasRestantes(subData?.fecha_vencimiento)
+        }
       }
 
       set({
@@ -292,22 +299,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!usuario?.kiosco_id) return
 
     try {
+      const modoEstricto = kioskoPilotStrictScopeActivo()
       const { data: kData } = await supabase
         .from('kioscos')
         .select('*')
         .eq('id', usuario.kiosco_id)
         .maybeSingle()
 
-      const { data: sData } = await supabase
-        .from('suscripciones')
-        .select('*, plan:planes(*)')
-        .eq('kiosco_id', usuario.kiosco_id)
-        .order('fecha_vencimiento', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+      let subData: Suscripcion | null = null
+      let dias: number | null = null
+      if (!modoEstricto) {
+        const { data: sData } = await supabase
+          .from('suscripciones')
+          .select('*, plan:planes(*)')
+          .eq('kiosco_id', usuario.kiosco_id)
+          .order('fecha_vencimiento', { ascending: false })
+          .limit(1)
+          .maybeSingle()
 
-      const subData = (sData as Suscripcion) || null
-      const dias = calcularDiasRestantes(subData?.fecha_vencimiento)
+        subData = (sData as Suscripcion) || null
+        dias = calcularDiasRestantes(subData?.fecha_vencimiento)
+      }
 
       set({
         kiosco: (kData as Kiosco) || null,

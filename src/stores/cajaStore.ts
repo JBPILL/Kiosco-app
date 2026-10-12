@@ -15,6 +15,7 @@ import { useOfflineSyncStore } from './offlineSyncStore'
 import { crearRespaldoCierreLocal, guardarRespaldoCierreLocal } from '../lib/backupCierreLocal'
 import { checkoutManualTransaccionalActivo } from '../lib/manualCheckoutCart'
 import { hayCobrosManualesPendientes } from '../lib/manualCheckoutClient'
+import { kioskoPilotStrictScopeActivo } from '../lib/kioskPilotScope'
 
 interface CajaState {
   sesionActiva: (SesionCaja & { usuario?: Usuario }) | null
@@ -379,12 +380,18 @@ export const useCajaStore = create<CajaState>((set, get) => ({
         else if (m.tipo === 'EGRESO') totalEgresos += m.monto
       }
 
-      // Intentar cargar desde la vista v_resumen_caja
-      const { data: resumenView, error: viewError } = await supabase
-        .from('v_resumen_caja')
-        .select('*')
-        .eq('sesion_caja_id', targetId)
-        .maybeSingle()
+      // La vista aún no existe en el baseline staging; el piloto usa el cálculo manual.
+      let resumenView: (ResumenCaja & { total_cta_cte?: number }) | null = null
+      let viewError: { message: string } | null = null
+      if (!kioskoPilotStrictScopeActivo()) {
+        const resultadoVista = await supabase
+          .from('v_resumen_caja')
+          .select('*')
+          .eq('sesion_caja_id', targetId)
+          .maybeSingle()
+        resumenView = resultadoVista.data as (ResumenCaja & { total_cta_cte?: number }) | null
+        viewError = resultadoVista.error
+      }
 
       if (!viewError && resumenView) {
         let totalCC = (resumenView as any).total_cuenta_corriente ?? (resumenView as any).total_cta_cte

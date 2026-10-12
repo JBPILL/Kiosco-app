@@ -8,6 +8,7 @@ import { useConfigAdminStore, formatearLinkWhatsApp } from '../../stores/configA
 import { useOfflineSyncStore } from '../../stores/offlineSyncStore'
 import { useOnlineStatus } from '../../hooks/useOnlineStatus'
 import { formatPrecio } from '../../lib/utils'
+import { kioskoPilotStrictScopeActivo } from '../../lib/kioskPilotScope'
 import toast from 'react-hot-toast'
 
 export function MainLayout() {
@@ -49,7 +50,7 @@ export function MainLayout() {
   // Bloqueo total si venció el período de prueba / cobertura o si fue suspendido manualmente
   const estaVencido = diasRestantes !== null && diasRestantes < 0
   const estaSuspendido = kiosco?.estado_suscripcion === 'SUSPENDIDO'
-  const debeBloquearPantalla = !usuario?.es_superadmin && (estaSuspendido || estaVencido)
+  const debeBloquearPantalla = !kioskoPilotStrictScopeActivo() && !usuario?.es_superadmin && (estaSuspendido || estaVencido)
 
   if (debeBloquearPantalla && kiosco) {
     const titulo = esPlanPrueba
