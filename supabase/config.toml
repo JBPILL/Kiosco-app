@@ -3,3 +3,6 @@ verify_jwt = true
 
 [functions.supervisor-pin]
 verify_jwt = true
+
+[functions.provision-user]
+verify_jwt = true
