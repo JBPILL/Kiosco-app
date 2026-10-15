@@ -27,3 +27,9 @@ dist-ssr
 
 # Local upstream RTK checkout; integration instructions are versioned separately.
 /tools/rtk/
+
+.vercel
+.env*
+!.env.example
+/supabase/.temp/
+/supabase/.branches/
