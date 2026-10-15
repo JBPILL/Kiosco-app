@@ -1,0 +1,33 @@
+{
+  "contractVersion": "F6.2D-C3A-1",
+  "classificationSchemaVersion": "F6.2D-C3C-2",
+  "baselineStatus": null,
+  "classificationStatus": "PENDING_MANUAL_REVIEW",
+  "reviewedBlocks": [],
+  "block03Counts": {},
+  "block11Sha256": null,
+  "tables": {
+    "kioscos": {"candidateIds": [], "includeIds": [], "exclude": {}},
+    "usuarios": {"candidateIds": [], "includeIds": [], "exclude": {}},
+    "categorias": {"candidateIds": [], "includeIds": [], "exclude": {}},
+    "productos": {"candidateIds": [], "includeIds": [], "exclude": {}},
+    "producto_costos": {"candidateIds": [], "includeIds": [], "exclude": {}},
+    "combo_items": {"candidateIds": [], "includeIds": [], "exclude": {}},
+    "promociones": {"candidateIds": [], "includeIds": [], "exclude": {}},
+    "lotes_producto": {"candidateIds": [], "includeIds": [], "exclude": {}},
+    "sesiones_caja": {"candidateIds": [], "includeIds": [], "exclude": {}},
+    "ventas": {"candidateIds": [], "includeIds": [], "exclude": {}},
+    "detalles_venta": {"candidateIds": [], "includeIds": [], "exclude": {}},
+    "pagos_venta": {"candidateIds": [], "includeIds": [], "exclude": {}},
+    "movimientos_stock": {"candidateIds": [], "includeIds": [], "exclude": {}},
+    "movimiento_stock_costos": {"candidateIds": [], "includeIds": [], "exclude": {}},
+    "movimientos_caja": {"candidateIds": [], "includeIds": [], "exclude": {}},
+    "clientes": {"candidateIds": [], "includeIds": [], "exclude": {}},
+    "movimientos_cuenta_corriente": {"candidateIds": [], "includeIds": [], "exclude": {}},
+    "proveedores": {"candidateIds": [], "includeIds": [], "exclude": {}},
+    "compras_proveedor": {"candidateIds": [], "includeIds": [], "exclude": {}},
+    "detalles_compra": {"candidateIds": [], "includeIds": [], "exclude": {}},
+    "pagos_proveedor": {"candidateIds": [], "includeIds": [], "exclude": {}}
+  },
+  "notes": "Template only. Do not use until blocks 03-11 have been reviewed and every selected candidate UUID has an explicit include/exclude disposition. Exclusions require a reason and note."
+}
