@@ -376,6 +376,22 @@ export function ConfigPage() {
 
     setCreandoUsuario(true)
     try {
+      if (modoEstricto) {
+        if (authUserIdManual.trim()) throw new Error('En modo piloto no se admite vincular un Auth ID manualmente.')
+        if (!nuevoEmail.trim() || !nuevoPassword.trim()) throw new Error('Ingresá email y contraseña para crear la cuenta segura.')
+        const { data, error } = await supabase.functions.invoke('provision-user', { body: {
+          action: 'create_staff', email: nuevoEmail.trim(), password: nuevoPassword,
+          nombre: nuevoNombre.trim(), rol: nuevoRol,
+        } })
+        if (error) throw error
+        if (!data?.usuario?.id) throw new Error('El servidor no confirmó el perfil del usuario.')
+        toast.success('Usuario creado con credenciales de acceso activas')
+        setModalUsuarioOpen(false)
+        setNuevoNombre(''); setNuevoEmail(''); setNuevoPassword(''); setAuthUserIdManual('')
+        setMostrarAvanzadoAuth(false); setNuevoRol('CAJERO')
+        cargarDatos()
+        return
+      }
       let authUserId: string | null = authUserIdManual.trim() || null
 
       // Si se proporcionó email y contraseña, intentar crear credencial en Supabase Auth
@@ -442,6 +458,18 @@ export function ConfigPage() {
 
     setGuardandoClave(true)
     try {
+      if (modoEstricto) {
+        const { data, error } = await supabase.functions.invoke('provision-user', { body: {
+          action: 'link_credentials', usuarioId: usuarioParaClave.id,
+          email: asignarEmail.trim(), password: asignarPassword,
+        } })
+        if (error) throw error
+        if (!data?.usuario?.id) throw new Error('El servidor no confirmó la vinculación de credenciales.')
+        toast.success(`Clave asignada correctamente a ${usuarioParaClave.nombre}`)
+        setUsuarioParaClave(null); setAsignarEmail(''); setAsignarPassword('')
+        cargarDatos()
+        return
+      }
       const tempClient = createUnauthenticatedClient()
       const { data: authData, error: authError } = await tempClient.auth.signUp({
         email: asignarEmail.trim(),

@@ -16,6 +16,7 @@ import { crearRespaldoCierreLocal, guardarRespaldoCierreLocal } from '../lib/bac
 import { checkoutManualTransaccionalActivo } from '../lib/manualCheckoutCart'
 import { hayCobrosManualesPendientes } from '../lib/manualCheckoutClient'
 import { kioskoPilotStrictScopeActivo } from '../lib/kioskPilotScope'
+import { confirmarOperacionPendiente, obtenerIdOperacionPendiente } from '../lib/operationIdempotency'
 
 interface CajaState {
   sesionActiva: (SesionCaja & { usuario?: Usuario }) | null
@@ -93,6 +94,13 @@ function savePendientes(sesionId: string, pendientes: MovimientoCaja[]) {
 
 async function insertarMovimiento(m: MovimientoCaja): Promise<boolean> {
   try {
+    if (kioskoPilotStrictScopeActivo()) {
+      const { error } = await supabase.rpc('registrar_movimiento_caja_transaccional', {
+        p_operacion_id: m.id, p_sesion_caja_id: m.sesion_caja_id, p_tipo: m.tipo, p_motivo: m.motivo,
+        p_monto: m.monto, p_descripcion: m.descripcion,
+      })
+      return !error
+    }
     const { error } = await supabase.from('movimientos_caja').insert({
       id: m.id,
       kiosco_id: m.kiosco_id,
@@ -158,11 +166,17 @@ export const useCajaStore = create<CajaState>((set, get) => ({
         if (cierrePendiente) {
           try {
             const cierreObj = JSON.parse(cierrePendiente)
-            const { data: confirmacion, error: errCierre } = await supabase.from('sesiones_caja')
-              .update(cierreObj).eq('id', data.id).eq('kiosco_id', usuario.kiosco_id)
-              .eq('estado', 'ABIERTA').select('id')
+            const cierreRequest = { sesion: data.id, monto_declarado: cierreObj.monto_final_declarado }
+            const cierreId = obtenerIdOperacionPendiente(`cierre_caja_${usuario.kiosco_id}`, cierreRequest)
+            const { data: confirmacion, error: errCierre } = kioskoPilotStrictScopeActivo()
+              ? await supabase.rpc('cerrar_sesion_caja_transaccional', {
+                p_operacion_id: cierreId, p_sesion_caja_id: data.id, p_monto_declarado: cierreObj.monto_final_declarado,
+              })
+              : await supabase.from('sesiones_caja').update(cierreObj).eq('id', data.id)
+                .eq('kiosco_id', usuario.kiosco_id).eq('estado', 'ABIERTA').select('id')
             if (errCierre) throw errCierre
-            if (!Array.isArray(confirmacion) || confirmacion.length !== 1 || confirmacion[0].id !== data.id) {
+            if (kioskoPilotStrictScopeActivo() && confirmacion) confirmarOperacionPendiente(`cierre_caja_${usuario.kiosco_id}`, cierreRequest)
+            if (!kioskoPilotStrictScopeActivo() && (!Array.isArray(confirmacion) || confirmacion.length !== 1 || confirmacion[0].id !== data.id)) {
               throw new Error('El servidor no confirmó el cierre pendiente')
             }
             localStorage.removeItem(`kioskopos_cierre_offline_${data.id}`)
@@ -210,6 +224,26 @@ export const useCajaStore = create<CajaState>((set, get) => ({
 
     set({ cargando: true })
     try {
+      if (kioskoPilotStrictScopeActivo()) {
+        const solicitud = { montoInicial: Math.max(0, montoInicial) }
+        const scope = `apertura_caja_${usuario.kiosco_id}`
+        const operacionId = obtenerIdOperacionPendiente(scope, solicitud)
+        const { data, error } = await supabase.rpc('abrir_sesion_caja_transaccional', {
+          p_operacion_id: operacionId, p_monto_inicial: solicitud.montoInicial,
+        })
+        if (error || !data) throw error || new Error('El servidor no confirmó la apertura')
+        confirmarOperacionPendiente(scope, solicitud)
+        const sesion = { ...data, usuario: { id: usuario.id, nombre: usuario.nombre, rol: usuario.rol } } as SesionCaja & { usuario?: Usuario }
+        set({ sesionActiva: sesion, movimientosCaja: [], resumenActivo: {
+          sesion_caja_id: data.id, kiosco_id: data.kiosco_id, usuario_id: data.usuario_id,
+          nombre_cajero: usuario.nombre, fecha_apertura: data.fecha_apertura, fecha_cierre: null,
+          monto_inicial: data.monto_inicial, total_ventas: 0, total_facturado: 0, total_efectivo: 0,
+          total_mercadopago: 0, total_transferencia: 0, total_tarjeta: 0, total_cuenta_corriente: 0,
+          total_ingresos_extra: 0, total_egresos: 0, efectivo_esperado_en_caja: data.monto_inicial,
+        } })
+        toast.success('Caja abierta correctamente')
+        return true
+      }
       // Validar si ya existe una sesión ABIERTA en la base de datos para este kiosco
       const { data: sesionExistente } = await supabase
         .from('sesiones_caja')
@@ -334,6 +368,25 @@ export const useCajaStore = create<CajaState>((set, get) => ({
       descripcion: descripcion.trim(),
       fecha_hora: new Date().toISOString(),
       usuario: { id: usuario.id, nombre: usuario.nombre } as Usuario,
+    }
+
+    if (kioskoPilotStrictScopeActivo()) {
+      const solicitud = { sesion: sesion.id, tipo, motivo, monto, descripcion: descripcion.trim() }
+      const operationScope = `movimiento_caja_${usuario.kiosco_id}`
+      const operacionId = obtenerIdOperacionPendiente(operationScope, solicitud)
+      const movimiento = { ...nuevoMovimiento, id: operacionId }
+      set({ cargando: true })
+      try {
+        const sincronizado = await insertarMovimiento(movimiento)
+        if (!sincronizado) { toast.error('El servidor no confirmó el movimiento; la caja no se modificó.'); return false }
+        confirmarOperacionPendiente(operationScope, solicitud)
+        const actuales = getLocalMovimientos(sesion.id)
+        const actualizados = [movimiento, ...actuales.filter(m => m.id !== operacionId)]
+        saveLocalMovimientos(sesion.id, actualizados); set({ movimientosCaja: actualizados })
+        await get().cargarResumenSesion(sesion.id)
+        toast.success(tipo === 'INGRESO' ? 'Ingreso registrado en caja' : 'Gasto registrado en caja')
+        return true
+      } finally { set({ cargando: false }) }
     }
 
     const actuales = getLocalMovimientos(sesion.id)
@@ -586,6 +639,28 @@ export const useCajaStore = create<CajaState>((set, get) => ({
       const montoFinalSistema = resumen?.efectivo_esperado_en_caja ?? sesion.monto_inicial
       const diferencia = montoDeclarado - montoFinalSistema
       const ahora = new Date().toISOString()
+      if (kioskoPilotStrictScopeActivo()) {
+        const solicitud = { sesion: sesion.id, monto_declarado: montoDeclarado }
+        const scope = `cierre_caja_${sesion.kiosco_id}`
+        const operacionId = obtenerIdOperacionPendiente(scope, solicitud)
+        const { data, error } = await supabase.rpc('cerrar_sesion_caja_transaccional', {
+          p_operacion_id: operacionId, p_sesion_caja_id: sesion.id, p_monto_declarado: montoDeclarado,
+        })
+        if (error || !data) {
+          if (cierreBloqueadoPorManual(error)) toast.error('Hay cobros manuales pendientes en el servidor. Conciliá esos tickets antes de cerrar la caja.')
+          else toast.error(error?.message || 'No se pudo confirmar el cierre de caja; la sesión sigue abierta.')
+          return false
+        }
+        confirmarOperacionPendiente(scope, solicitud)
+        const cierreRemoto = true
+        const respaldo = crearRespaldoCierreLocal({ ...sesion, fecha_cierre: data.fecha_cierre || ahora,
+          monto_final_declarado: Number(data.monto_final_declarado), monto_final_sistema: Number(data.monto_final_sistema),
+          diferencia: Number(data.diferencia), estado: 'CERRADA' }, resumen, get().movimientosCaja, cierreRemoto)
+        void guardarRespaldoCierreLocal(respaldo).catch(() => toast.error('El arqueo se registró, pero falló su copia local. Descargá un respaldo externo.'))
+        set({ sesionActiva: null, resumenActivo: null, movimientosCaja: [] })
+        toast.success('Caja cerrada y arqueo completado')
+        return true
+      }
       let cierreRemoto = false
 
       try {

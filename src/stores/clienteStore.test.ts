@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import toast from 'react-hot-toast'
 import type { Cliente, MovimientoCuentaCorriente } from '../types/database'
 import { db, encolar, llamadasA, resetDb, responder } from '../test/supabaseMock'
@@ -43,6 +43,7 @@ function saldoEnStore(id: string) {
 }
 
 beforeEach(() => {
+  vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'false')
   localStorage.clear()
   resetDb()
   vi.clearAllMocks()
@@ -50,6 +51,7 @@ beforeEach(() => {
   useCajaStore.setState({ sesionActiva: null, registrarMovimientoCaja: registrarMovimientoOriginal })
   useClienteStore.setState({ clientes: [], cargando: false })
 })
+afterEach(() => vi.unstubAllEnvs())
 
 describe('clienteStore.cargarClientes', () => {
   it('devuelve [] sin kiosco identificado', async () => {
@@ -220,6 +222,20 @@ describe('clienteStore.imputarCargoVenta', () => {
     expect(mov).toMatchObject({ tipo: 'CARGO_VENTA', monto: 250, saldo_resultante: 350, venta_id: 'venta-1' })
     expect(llamadasA('movimientos_cuenta_corriente', 'insert')).toHaveLength(1)
     expect(llamadasA('clientes', 'update')[0].payload).toEqual({ saldo_deudor: 350 })
+  })
+
+  it('usa sólo la RPC transaccional para el cargo en strict scope', async () => {
+    vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'true')
+    db.respuestasRpc.set('registrar_movimiento_cuenta_corriente_transaccional', {
+      data: { movimiento_id: 'mov-1', saldo_deudor: 350 }, error: null,
+    })
+
+    expect(await useClienteStore.getState().imputarCargoVenta('c1', 'venta-1', 250)).toBe(true)
+
+    expect(db.rpcs.filter(call => call.nombre === 'registrar_movimiento_cuenta_corriente_transaccional')).toHaveLength(1)
+    expect(llamadasA('movimientos_cuenta_corriente', 'insert')).toHaveLength(0)
+    expect(llamadasA('clientes', 'update')).toHaveLength(0)
+    expect(saldoEnStore('c1')).toBe(350)
   })
 
   it('usa el saldo fresco de la base y no el que tiene en memoria (concurrencia multi-puesto)', async () => {

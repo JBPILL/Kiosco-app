@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '../lib/supabase'
 import type { LoteProducto } from '../types/database'
+import { kioskoPilotStrictScopeActivo } from '../lib/kioskPilotScope'
+import { confirmarOperacionPendiente, obtenerIdOperacionPendiente } from '../lib/operationIdempotency'
 
 interface LoteState {
   lotes: LoteProducto[]
@@ -105,6 +107,9 @@ export const useLoteStore = create<LoteState>((set, get) => ({
   },
 
   crearLote: async (datos) => {
+    if (kioskoPilotStrictScopeActivo()) {
+      throw new Error('En el piloto estricto los lotes se crean mediante un ingreso de stock confirmado.')
+    }
     const nuevoLote: LoteProducto = {
       id: uuidv4(),
       kiosco_id: datos.kiosco_id,
@@ -149,6 +154,24 @@ export const useLoteStore = create<LoteState>((set, get) => ({
 
   descontarStockFEFO: async (productoId: string, cantidad: number) => {
     if (cantidad <= 0) return []
+
+    if (kioskoPilotStrictScopeActivo() && navigator.onLine) {
+      const solicitud = { producto_id: productoId, tipo: 'EGRESO', cantidad, motivo: 'VENTA' }
+      const operacionId = obtenerIdOperacionPendiente('stock-fefo', solicitud)
+      const { error } = await supabase.rpc('registrar_movimiento_stock_idempotente', {
+        p_operacion_id: operacionId,
+        p_producto_id: productoId,
+        p_tipo: 'EGRESO',
+        p_cantidad: cantidad,
+        p_motivo: 'VENTA',
+        p_notas: null,
+        p_fecha_vencimiento: null,
+        p_numero_lote: null,
+        p_lote_id: null,
+      })
+      if (error) throw error
+      confirmarOperacionPendiente('stock-fefo', solicitud)
+    }
 
     // 1. Filtrar lotes activos de este producto con stock > 0
     const lotesProducto = get().lotes
@@ -208,8 +231,9 @@ export const useLoteStore = create<LoteState>((set, get) => ({
       const kioscoId = primerModificado?.kiosco_id || lotesProducto[0]?.kiosco_id
       guardarLotesLocales(actualizados, kioscoId)
 
-      // Actualizar en Supabase en segundo plano
-      if (navigator.onLine) {
+      // El RPC estricto ya actualizó stock y lotes de forma atómica.
+      // El sync directo sólo permanece en el flujo legacy.
+      if (navigator.onLine && !kioskoPilotStrictScopeActivo()) {
         for (const [, mod] of lotesModificados) {
           Promise.resolve(
             supabase
@@ -228,6 +252,9 @@ export const useLoteStore = create<LoteState>((set, get) => ({
   },
 
   restituirStockLote: async (productoId: string, cantidad: number, kioscoId?: string | null) => {
+    if (kioskoPilotStrictScopeActivo()) {
+      throw new Error('Las restituciones de lotes están deshabilitadas en el piloto estricto.')
+    }
     if (cantidad <= 0) return false
 
     // Buscar lotes de este producto ordenados por fecha de vencimiento DESC (restituir al lote más lejano)
@@ -267,6 +294,9 @@ export const useLoteStore = create<LoteState>((set, get) => ({
   },
 
   darDeBajaLote: async (loteId: string) => {
+    if (kioskoPilotStrictScopeActivo()) {
+      throw new Error('La baja directa de lotes está deshabilitada en el piloto estricto.')
+    }
     const lote = get().lotes.find((l) => l.id === loteId)
     if (!lote) return null
 

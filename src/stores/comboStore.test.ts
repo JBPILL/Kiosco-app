@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import toast from 'react-hot-toast'
 import type { ItemCombo } from '../types/database'
-import { db, encolar, llamadasA, resetDb, responder } from '../test/supabaseMock'
+import { db, encolar, llamadasA, resetDb, responder, responderRpc } from '../test/supabaseMock'
 import { crearProducto } from '../test/factories'
 
 vi.mock('../lib/supabase', async () => (await import('../test/supabaseMock')).crearModuloSupabase())
@@ -30,8 +30,10 @@ beforeEach(() => {
   localStorage.clear()
   resetDb()
   vi.clearAllMocks()
+  vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'false')
   useComboStore.setState({ itemsCombo: [], cargando: false })
 })
+afterEach(() => vi.unstubAllEnvs())
 
 describe('comboStore.cargarCombos', () => {
   it('muestra la caché local de inmediato aunque no haya kiosco', async () => {
@@ -87,6 +89,15 @@ describe('comboStore.guardarComponentes', () => {
     { componente_producto_id: 'ron', cantidad: 2 },
     { componente_producto_id: 'cola', cantidad: 3 },
   ]
+
+  it('strict usa la RPC idempotente y no ejecuta DML browser', async () => {
+    vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'true')
+    responderRpc('guardar_combo_transaccional', { data: { producto_id: 'combo', componentes: 2 }, error: null })
+    const ok = await useComboStore.getState().guardarComponentes('combo', componentes, KIOSCO)
+    expect(ok).toBe(true)
+    expect(db.rpcs).toContainEqual(expect.objectContaining({ nombre: 'guardar_combo_transaccional' }))
+    expect(db.llamadas.filter(call => call.op !== 'select')).toEqual([])
+  })
 
   it('reemplaza los componentes del combo sin tocar los de otros combos', async () => {
     useComboStore.setState({

@@ -27,6 +27,7 @@ const producto: Producto = {
 beforeEach(() => {
   resetDb()
   vi.clearAllMocks()
+  vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'false')
   localStorage.clear()
   sesion.usuario.rol = 'DUEÑO'
   responder('productos.select', { data: [producto], error: null })

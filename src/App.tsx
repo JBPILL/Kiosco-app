@@ -10,7 +10,6 @@ import { CajaPage } from './pages/CajaPage'
 import { usePwaStore } from './stores/pwaStore'
 import { SingleInstanceGuard } from './components/ui/SingleInstanceGuard'
 import { ErrorBoundary } from './components/ui/ErrorBoundary'
-import { kioskoPilotStrictScopeActivo, mensajeRecursosComercialesFueraDeAlcance } from './lib/kioskPilotScope'
 
 // Carga diferida (Code Splitting) para módulos secundarios y administrativos
 const CatalogoPage = lazy(() => import('./pages/CatalogoPage').then((m) => ({ default: m.CatalogoPage })))
@@ -59,15 +58,6 @@ function RutaSuperAdmin({ children }: { children: React.ReactNode }) {
   const { usuario } = useAuthStore()
   if (!usuario || !usuario.es_superadmin) {
     return <Navigate to="/" replace />
-  }
-  const mensajeFueraDeAlcance = mensajeRecursosComercialesFueraDeAlcance(kioskoPilotStrictScopeActivo())
-  if (mensajeFueraDeAlcance) {
-    return (
-      <div className="mx-auto max-w-3xl p-6" role="status">
-        <h1 className="text-xl font-semibold">Administración fuera del piloto</h1>
-        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{mensajeFueraDeAlcance}</p>
-      </div>
-    )
   }
   return <>{children}</>
 }

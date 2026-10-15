@@ -9,6 +9,8 @@ import type {
   MedioPago,
 } from '../types/database'
 import toast from 'react-hot-toast'
+import { confirmarOperacionPendiente, obtenerIdOperacionPendiente } from '../lib/operationIdempotency'
+import { kioskoPilotStrictScopeActivo } from '../lib/kioskPilotScope'
 
 interface ClienteState {
   clientes: Cliente[]
@@ -313,6 +315,27 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
       return false
     }
 
+    if (kioskoPilotStrictScopeActivo()) {
+      const scope = `cc_venta_${usuario.kiosco_id}`
+      const solicitud = { clienteId, ventaId, tipo: 'CARGO_VENTA', monto, medio: 'CUENTA_CORRIENTE', notas: notas || 'Venta a cuenta corriente' }
+      const operacionId = obtenerIdOperacionPendiente(scope, solicitud)
+      const { data, error } = await supabase.rpc('registrar_movimiento_cuenta_corriente_transaccional', {
+        p_operacion_id: operacionId, p_cliente_id: clienteId, p_venta_id: ventaId, p_tipo: 'CARGO_VENTA',
+        p_monto: monto, p_medio_pago: 'CUENTA_CORRIENTE', p_notas: solicitud.notas, p_sesion_caja_id: null,
+      })
+      if (error || !data) { toast.error(error?.message || 'No se pudo registrar el cargo del cliente'); return false }
+      confirmarOperacionPendiente(scope, solicitud)
+      const actualizados = get().clientes.map(c => c.id === clienteId ? { ...c, saldo_deudor: Number(data.saldo_deudor) } : c)
+      saveLocalClientes(usuario.kiosco_id, actualizados); set({ clientes: actualizados })
+      const movimiento: MovimientoCuentaCorriente = {
+        id: data.movimiento_id, cliente_id: clienteId, kiosco_id: usuario.kiosco_id, venta_id: ventaId,
+        tipo: 'CARGO_VENTA', monto, medio_pago: 'CUENTA_CORRIENTE', saldo_resultante: Number(data.saldo_deudor),
+        notas: solicitud.notas, fecha_hora: new Date().toISOString(), usuario_id: usuario.id,
+      }
+      saveLocalMovimientosCC(clienteId, [movimiento, ...getLocalMovimientosCC(clienteId)])
+      return true
+    }
+
     // BUG-21: Consultar saldo fresco en base de datos para evitar Lost Updates por concurrencia
     let saldoBase = cliente.saldo_deudor || 0
     try {
@@ -417,6 +440,28 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
         return false
       }
 
+      if (kioskoPilotStrictScopeActivo()) {
+        const scope = `cc_reversion_${usuario.kiosco_id}`
+        const solicitud = { clienteId, ventaId, tipo: 'ABONO_PAGO', monto, notas: notas || `Reversión por anulación de Venta #${ventaId.slice(0, 8).toUpperCase()}` }
+        const operacionId = obtenerIdOperacionPendiente(scope, solicitud)
+        const { data, error } = await supabase.rpc('registrar_movimiento_cuenta_corriente_transaccional', {
+          p_operacion_id: operacionId, p_cliente_id: clienteId, p_venta_id: ventaId, p_tipo: 'ABONO_PAGO',
+          p_monto: monto, p_medio_pago: 'CUENTA_CORRIENTE', p_notas: solicitud.notas, p_sesion_caja_id: null,
+        })
+        if (error || !data) { toast.error(error?.message || 'No se pudo revertir el cargo del cliente'); return false }
+        confirmarOperacionPendiente(scope, solicitud)
+        const actualizados = get().clientes.map(c => c.id === clienteId ? { ...c, saldo_deudor: Number(data.saldo_deudor) } : c)
+        saveLocalClientes(usuario.kiosco_id, actualizados); set({ clientes: actualizados })
+        const movimiento: MovimientoCuentaCorriente = {
+          id: data.movimiento_id, cliente_id: clienteId, kiosco_id: usuario.kiosco_id, venta_id: ventaId,
+          tipo: 'ABONO_PAGO', monto, medio_pago: 'CUENTA_CORRIENTE', saldo_resultante: Number(data.saldo_deudor),
+          notas: solicitud.notas, fecha_hora: new Date().toISOString(), usuario_id: usuario.id,
+        }
+        saveLocalMovimientosCC(clienteId, [movimiento, ...getLocalMovimientosCC(clienteId)])
+        toast.success('Deuda de cuenta corriente revertida en la ficha del cliente')
+        return true
+      }
+
       const cliente = get().clientes.find((c) => c.id === clienteId)
       // BUG-21: Consultar saldo fresco en base de datos para evitar Lost Updates por concurrencia
       let saldoBase = cliente?.saldo_deudor ?? 0
@@ -503,6 +548,35 @@ export const useClienteStore = create<ClienteState>((set, get) => ({
     if (!Number.isFinite(monto) || monto <= 0) {
       toast.error('El importe del abono debe ser mayor a $0')
       return false
+    }
+
+    if (kioskoPilotStrictScopeActivo()) {
+      const sesionCajaId = medioPago === 'EFECTIVO' && impactarEnCaja ? useCajaStore.getState().sesionActiva?.id ?? null : null
+      if (medioPago === 'EFECTIVO' && impactarEnCaja && !sesionCajaId) {
+        toast.error('Abrí la caja antes de registrar un abono en efectivo')
+        return false
+      }
+      const scope = `cc_abono_${usuario.kiosco_id}`
+      const solicitud = { clienteId, monto, medioPago, notas: notas?.trim() || `Abono recibido (${medioPago})`, sesionCajaId }
+      const operacionId = obtenerIdOperacionPendiente(scope, solicitud)
+      const { data, error } = await supabase.rpc('registrar_movimiento_cuenta_corriente_transaccional', {
+        p_operacion_id: operacionId, p_cliente_id: clienteId, p_venta_id: null, p_tipo: 'ABONO_PAGO',
+        p_monto: monto, p_medio_pago: medioPago, p_notas: solicitud.notas, p_sesion_caja_id: sesionCajaId,
+      })
+      if (error || !data) { toast.error(error?.message || 'No se pudo registrar el abono'); return false }
+      confirmarOperacionPendiente(scope, solicitud)
+      const saldo = Number(data.saldo_deudor)
+      const actualizados = get().clientes.map(c => c.id === clienteId ? { ...c, saldo_deudor: saldo } : c)
+      saveLocalClientes(usuario.kiosco_id, actualizados); set({ clientes: actualizados })
+      const movimiento: MovimientoCuentaCorriente = {
+        id: data.movimiento_id, cliente_id: clienteId, kiosco_id: usuario.kiosco_id, venta_id: null,
+        tipo: 'ABONO_PAGO', monto, medio_pago: medioPago, saldo_resultante: saldo, notas: solicitud.notas,
+        fecha_hora: new Date().toISOString(), usuario_id: usuario.id,
+      }
+      saveLocalMovimientosCC(clienteId, [movimiento, ...getLocalMovimientosCC(clienteId)])
+      if (saldo < 0) toast(`El cliente quedó con saldo a favor de $${Math.abs(saldo).toLocaleString('es-AR')}.`, { icon: 'ℹ️' })
+      else toast.success(`Abono de $${monto.toLocaleString('es-AR')} registrado con éxito`)
+      return true
     }
 
     // BUG-21: Consultar saldo fresco en base de datos para evitar Lost Updates por concurrencia

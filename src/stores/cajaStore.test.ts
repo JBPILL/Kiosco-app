@@ -9,6 +9,8 @@ const db = vi.hoisted(() => ({
   updateError: null as { code?: string; message: string } | null,
   remoto: [] as unknown[],
   inserts: [] as Record<string, unknown>[],
+  rpcs: [] as { name: string; args: Record<string, unknown> }[],
+  rpcError: null as { code?: string; message: string } | null,
   tablas: [] as string[],
   sesionResumen: null as unknown,
   ventasResumen: [] as unknown[],
@@ -20,6 +22,10 @@ vi.mock('../lib/supabase', () => ({
   supabaseAnonKey: 'test',
   createUnauthenticatedClient: () => ({}),
   supabase: {
+    rpc: async (name: string, args: Record<string, unknown>) => {
+      db.rpcs.push({ name, args })
+      return { data: { id: args.p_operacion_id }, error: db.rpcError }
+    },
     from: (tabla: string) => {
       db.tablas.push(tabla)
       const resultado = (): Resultado => {
@@ -65,6 +71,8 @@ describe('cajaStore.registrarMovimientoCaja', () => {
     db.updateError = null
     db.remoto = []
     db.inserts = []
+    db.rpcs = []
+    db.rpcError = null
     db.tablas = []
     db.sesionResumen = null
     db.ventasResumen = []
@@ -85,6 +93,18 @@ describe('cajaStore.registrarMovimientoCaja', () => {
     expect(ok).toBe(true)
     expect(db.inserts).toHaveLength(1)
     expect(db.inserts[0]).toMatchObject({ tipo: 'EGRESO', monto: 500, descripcion: 'Hielo' })
+    expect(leerPendientes()).toHaveLength(0)
+  })
+
+  it('usa RPC transaccional y no INSERT browser-side en strict scope', async () => {
+    vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'true')
+
+    const ok = await useCajaStore.getState().registrarMovimientoCaja('EGRESO', 'OTRO' as never, 125, 'Retiro')
+
+    expect(ok).toBe(true)
+    expect(db.rpcs).toHaveLength(1)
+    expect(db.rpcs[0].name).toBe('registrar_movimiento_caja_transaccional')
+    expect(db.inserts).toHaveLength(0)
     expect(leerPendientes()).toHaveLength(0)
   })
 

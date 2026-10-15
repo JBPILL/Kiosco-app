@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '../lib/supabase'
+import { kioskoPilotStrictScopeActivo } from '../lib/kioskPilotScope'
+import { confirmarOperacionPersistida, obtenerOperacionPersistida } from '../lib/operationIdempotency'
 import { useAuthStore } from '../stores/authStore'
 import type { Producto, Categoria } from '../types/database'
 import {
@@ -62,6 +64,16 @@ function filtrarColumnasBase(obj: Record<string, any>): Record<string, any> {
     }
   }
   return base
+}
+
+function prepararDatosProductoStrict(obj: Record<string, unknown>): Record<string, unknown> {
+  const permitidas = [
+    'codigo_barras', 'descripcion', 'precio_costo', 'precio_venta', 'stock_actual', 'stock_minimo',
+    'categoria_id', 'unidad_medida', 'es_pesable', 'plu_balanza', 'es_combo', 'es_retornable',
+    'precio_envase', 'nombre_envase', 'requiere_vencimiento', 'dias_alerta_vencimiento', 'activo', 'es_favorito',
+    'motivo_cambio_precio',
+  ]
+  return Object.fromEntries(permitidas.filter(key => key in obj).map(key => [key, obj[key]]))
 }
 
 async function ejecutarOperacionSupabaseSegura(
@@ -332,12 +344,35 @@ export function useProducts() {
                 altasSincronizandoRef.current.add(claveAlta)
                 try {
                   const { _local_offline, categoria, proveedor, ...datosDB } = prodOffline
-                  const resultado = await ejecutarOperacionSupabaseSegura(datosDB, (d) =>
-                    supabase.from('productos').insert(d)
-                  )
+                  let errorGuardado: unknown = null
+                  if (kioskoPilotStrictScopeActivo()) {
+                    const datosStrict = prepararDatosProductoStrict(datosDB)
+                    if (usuario?.rol !== 'DUEÑO' && !usuario?.es_superadmin) delete datosStrict.precio_costo
+                    const identidad = { kioscoId: currentKioscoId, productoId: prodOffline.id }
+                    const operacion = obtenerOperacionPersistida('catalogo-producto-offline', identidad, datosStrict)
+                    const respuesta = await supabase.rpc('guardar_producto_transaccional', {
+                      p_operacion_id: operacion.id, p_producto_id: prodOffline.id, p_datos: operacion.solicitud,
+                    })
+                    errorGuardado = respuesta.error
+                    if (!respuesta.error) confirmarOperacionPersistida('catalogo-producto-offline', identidad)
+                  } else {
+                    const resultado = await ejecutarOperacionSupabaseSegura(datosDB, (d) =>
+                      supabase.from('productos').insert(d)
+                    )
+                    errorGuardado = resultado.ok || resultado.error?.code === '23505' ? null : resultado.error
+                  }
                   if (comercioActualRef.current !== currentKioscoId) return
-                  if (!resultado.ok && resultado.error?.code !== '23505') {
+                  if (errorGuardado) {
                     toast.error(`No se pudo sincronizar "${prodOffline.descripcion}". Sigue pendiente.`)
+                    continue
+                  }
+                  if (kioskoPilotStrictScopeActivo()) {
+                    setProductos((curr) => {
+                      if (comercioActualRef.current !== currentKioscoId) return curr
+                      const actualizados = curr.map((p) => (p.id === prodOffline.id ? { ...p, _local_offline: false } : p))
+                      guardarProductosEnCache(actualizados)
+                      return actualizados
+                    })
                     continue
                   }
                   const { data: confirmados, error: errorConfirmacion } = await supabase.from('productos')
@@ -499,6 +534,32 @@ export function useProducts() {
       fecha_actualizacion: now,
     }
 
+    if (kioskoPilotStrictScopeActivo()) {
+      const datos = prepararDatosProductoStrict(payload as unknown as Record<string, unknown>)
+      const identidad = { kioscoId, codigo: payload.codigo_barras?.trim().toLowerCase() || payload.descripcion.trim().toLowerCase() }
+      const operacion = obtenerOperacionPersistida('catalogo-producto', identidad, datos)
+      try {
+        const { data, error } = await supabase.rpc('guardar_producto_transaccional', {
+          p_operacion_id: operacion.id, p_producto_id: nuevoId, p_datos: operacion.solicitud,
+        })
+        if (error || !data || typeof data !== 'object') throw error || new Error('El servidor no confirmó el producto')
+        const respuesta = data as { producto: Producto; precio_costo?: number }
+        confirmarOperacionPersistida('catalogo-producto', identidad)
+        const itemFinal = { ...respuesta.producto, precio_costo: respuesta.precio_costo ?? payload.precio_costo }
+        setProductos(prev => {
+          const lista = [itemFinal, ...prev.filter(p => p.id !== itemFinal.id)]
+          guardarProductosEnCache(lista)
+          return lista
+        })
+        toast.success('Producto creado y sincronizado')
+        await cargarProductos()
+        return itemFinal
+      } catch (error) {
+        toast.error(`No se pudo crear el producto: ${mensajeDeError(error)}`)
+        return null
+      }
+    }
+
     let insertadoEnSupabase = false
     try {
       const res = await ejecutarOperacionSupabaseSegura(payload, (datos) =>
@@ -569,6 +630,32 @@ export function useProducts() {
     }
 
     const cambiosCompletos = { ...cambios, fecha_actualizacion: new Date().toISOString() }
+    if (kioskoPilotStrictScopeActivo()) {
+      const { fecha_actualizacion: _fecha, ...cambiosProducto } = cambiosCompletos
+      const datos = prepararDatosProductoStrict(cambiosProducto as Record<string, unknown>)
+      const identidad = { kioscoId, productoId: id }
+      const operacion = obtenerOperacionPersistida('catalogo-producto', identidad, datos)
+      try {
+        const { data, error } = await supabase.rpc('guardar_producto_transaccional', {
+          p_operacion_id: operacion.id, p_producto_id: id, p_datos: operacion.solicitud,
+        })
+        if (error || !data || typeof data !== 'object') throw error || new Error('El servidor no confirmó el producto')
+        confirmarOperacionPersistida('catalogo-producto', identidad)
+        const respuesta = data as { producto: Producto; precio_costo?: number }
+        const cambiosConfirmados = { ...respuesta.producto, precio_costo: respuesta.precio_costo ?? respuesta.producto.precio_costo }
+        setProductos(prev => {
+          const actualizados = prev.map(p => p.id === id ? cambiosConfirmados : p)
+          guardarProductosEnCache(actualizados)
+          return actualizados
+        })
+        toast.success('Producto actualizado')
+        await cargarProductos()
+        return true
+      } catch (error) {
+        toast.error(`No se pudo actualizar el producto: ${mensajeDeError(error)}`)
+        return false
+      }
+    }
     let sincronizado = false
     try {
       const resultado = await ejecutarOperacionSupabaseSegura(cambiosCompletos, (datos) =>
@@ -623,6 +710,23 @@ export function useProducts() {
 
   // Eliminar producto (soft delete y purga definitiva de memoria)
   const eliminarProducto = async (id: string) => {
+    if (kioskoPilotStrictScopeActivo()) {
+      const identidad = { kioscoId, productoId: id, accion: 'desactivar' }
+      const operacion = obtenerOperacionPersistida('catalogo-producto', identidad, { activo: false })
+      const { error } = await supabase.rpc('guardar_producto_transaccional', {
+        p_operacion_id: operacion.id, p_producto_id: id, p_datos: operacion.solicitud,
+      })
+      if (error) { toast.error('No se pudo desactivar el producto'); return false }
+      confirmarOperacionPersistida('catalogo-producto', identidad)
+      setProductos(prev => {
+        const lista = prev.filter(p => p.id !== id)
+        guardarProductosEnCache(lista)
+        return lista
+      })
+      toast.success('Producto eliminado')
+      await cargarProductos()
+      return true
+    }
     idsBorradosRef.current.add(id)
 
     // 1. Purgar inmediatamente del estado local y del caché en localStorage para evitar efecto zombie
@@ -660,15 +764,41 @@ export function useProducts() {
   // Eliminar todos los productos sin categoría asignada (huérfanos) o residuales
   const purgarProductosHuerfanos = async () => {
     const currentKioscoId = usuario?.kiosco_id || kiosco?.id
-    const huerfanos = productos.filter(
-      (p) =>
-        (!p.categoria_id && !p.categoria?.id) ||
-        p.activo === false ||
-        (currentKioscoId && p.kiosco_id && p.kiosco_id !== currentKioscoId)
+    const huerfanos = productos.filter((p) =>
+      (!kioskoPilotStrictScopeActivo() || p.kiosco_id === currentKioscoId) && (
+        (!p.categoria_id && !p.categoria?.id) || p.activo === false ||
+        (!kioskoPilotStrictScopeActivo() && Boolean(currentKioscoId && p.kiosco_id && p.kiosco_id !== currentKioscoId))
+      )
     )
     if (huerfanos.length === 0) {
       toast('No hay productos huérfanos sin categoría.')
       return false
+    }
+
+    if (kioskoPilotStrictScopeActivo()) {
+      const ids = huerfanos.map(p => p.id)
+      for (let i = 0; i < ids.length; i += 100) {
+        const desactivarIds = ids.slice(i, i + 100)
+        const identidad = { kioscoId: currentKioscoId, desactivarIds }
+        const operacion = obtenerOperacionPersistida('catalogo-importacion', identidad, [])
+        const { data, error } = await supabase.rpc('importar_productos_catalogo_transaccional', {
+          p_operacion_id: operacion.id, p_items: [], p_desactivar_ids: desactivarIds,
+        })
+        if (error || !data || typeof data !== 'object' || !(data as { ok?: boolean }).ok) {
+          toast.error('No se pudieron desactivar todos los productos huérfanos')
+          return false
+        }
+        confirmarOperacionPersistida('catalogo-importacion', identidad)
+      }
+      ids.forEach(id => idsBorradosRef.current.add(id))
+      setProductos(prev => {
+        const filtrados = prev.filter(p => !ids.includes(p.id))
+        guardarProductosEnCache(filtrados)
+        return filtrados
+      })
+      toast.success(`${ids.length} producto(s) eliminado(s)`)
+      await cargarProductos()
+      return true
     }
 
     const ids = huerfanos.map((p) => p.id)
@@ -703,6 +833,17 @@ export function useProducts() {
 
   // Toggle favorito
   const toggleFavorito = async (id: string, esFavorito: boolean) => {
+    if (kioskoPilotStrictScopeActivo()) {
+      const identidad = { kioscoId, productoId: id, favorito: !esFavorito }
+      const operacion = obtenerOperacionPersistida('catalogo-producto', identidad, { es_favorito: !esFavorito })
+      const { error } = await supabase.rpc('guardar_producto_transaccional', {
+        p_operacion_id: operacion.id, p_producto_id: id, p_datos: operacion.solicitud,
+      })
+      if (error) { toast.error('Error al actualizar favorito'); return }
+      confirmarOperacionPersistida('catalogo-producto', identidad)
+      await cargarProductos()
+      return
+    }
     const { error } = await supabase
       .from('productos')
       .update({ es_favorito: !esFavorito })
@@ -716,6 +857,18 @@ export function useProducts() {
 
   // CRUD Categorías
   const crearCategoria = async (nombre: string, color: string = '#6366f1') => {
+    if (kioskoPilotStrictScopeActivo()) {
+      const identidad = { kioscoId, nombre: nombre.trim().toLowerCase() }
+      const operacion = obtenerOperacionPersistida('catalogo-categoria', identidad, { nombre, color, orden: categorias.length })
+      const { error } = await supabase.rpc('guardar_categoria_transaccional', {
+        p_operacion_id: operacion.id, p_categoria_id: operacion.id, p_datos: operacion.solicitud,
+      })
+      if (error) { toast.error('Error al crear categoría: ' + error.message); return false }
+      confirmarOperacionPersistida('catalogo-categoria', identidad)
+      toast.success('Categoría creada')
+      await cargarCategorias()
+      return true
+    }
     const payload: Record<string, any> = { nombre, color }
     if (usuario?.kiosco_id) {
       payload.kiosco_id = usuario.kiosco_id
@@ -732,6 +885,18 @@ export function useProducts() {
   }
 
   const actualizarCategoria = async (id: string, nombre: string, color: string) => {
+    if (kioskoPilotStrictScopeActivo()) {
+      const identidad = { kioscoId, categoriaId: id }
+      const operacion = obtenerOperacionPersistida('catalogo-categoria', identidad, { nombre, color, orden: categorias.find(c => c.id === id)?.orden ?? 0 })
+      const { error } = await supabase.rpc('guardar_categoria_transaccional', {
+        p_operacion_id: operacion.id, p_categoria_id: id, p_datos: operacion.solicitud,
+      })
+      if (error) { toast.error('Error al actualizar categoría'); return false }
+      confirmarOperacionPersistida('catalogo-categoria', identidad)
+      toast.success('Categoría actualizada')
+      await cargarCategorias()
+      return true
+    }
     const { error } = await supabase
       .from('categorias')
       .update({ nombre, color })
@@ -746,6 +911,28 @@ export function useProducts() {
   }
 
   const eliminarCategoria = async (id: string, eliminarProductos?: boolean) => {
+    if (kioskoPilotStrictScopeActivo()) {
+      const identidad = { kioscoId, categoriaId: id, eliminarProductos: Boolean(eliminarProductos) }
+      const operacion = obtenerOperacionPersistida('catalogo-categoria-delete', identidad, identidad)
+      const { error } = await supabase.rpc('eliminar_categoria_transaccional', {
+        p_operacion_id: operacion.id, p_categoria_id: id, p_eliminar_productos: Boolean(eliminarProductos),
+      })
+      if (error) { toast.error('Error al eliminar categoría: ' + error.message); return false }
+      confirmarOperacionPersistida('catalogo-categoria-delete', identidad)
+      setCategorias(prev => {
+        const actualizadas = prev.filter(c => c.id !== id)
+        guardarCategoriasEnCache(actualizadas)
+        return actualizadas
+      })
+      if (eliminarProductos) setProductos(prev => {
+        const actualizados = prev.filter(p => p.categoria_id !== id && p.categoria?.id !== id)
+        guardarProductosEnCache(actualizados)
+        return actualizados
+      })
+      await Promise.all([cargarCategorias(), cargarProductos()])
+      toast.success(eliminarProductos ? 'Categoría y productos asociados eliminados' : 'Categoría eliminada')
+      return true
+    }
     try {
       if (eliminarProductos) {
         // 1. Identificar productos a borrar tanto de memoria como de base de datos

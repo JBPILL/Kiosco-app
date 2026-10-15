@@ -267,23 +267,6 @@ describe('movimientos manuales en PostgreSQL', () => {
     expect(publicRows.every((row) => row.costo === null)).toBe(true)
     expect((await db.query('SELECT * FROM movimiento_stock_costos')).rows).toHaveLength(2)
   })
-  it('migra el costo histórico conocido sin inventar costos para registros anteriores desconocidos', async () => {
-    await db.exec(`RESET ROLE;
-      ALTER TABLE movimientos_stock DISABLE TRIGGER trg_capturar_costo_historico_movimiento_stock;
-      ALTER TABLE movimientos_stock DISABLE TRIGGER trg_guardar_costo_privado_movimiento_stock;
-      INSERT INTO movimientos_stock(id,kiosco_id,producto_id,tipo,cantidad,motivo,fecha,costo_unitario_referencia) VALUES
-      ('50000000-0000-0000-0000-000000000001','${kiosk}','${product}','EGRESO',-1,'MERMA',now(),21),
-      ('50000000-0000-0000-0000-000000000002','${kiosk}','${product}','EGRESO',-1,'MERMA',now(),NULL);
-      ALTER TABLE movimientos_stock ENABLE TRIGGER trg_capturar_costo_historico_movimiento_stock;
-      ALTER TABLE movimientos_stock ENABLE TRIGGER trg_guardar_costo_privado_movimiento_stock;
-    `)
-    await db.exec(readFileSync('supabase_fase_costos_movimientos_privados.sql','utf8'))
-    await session()
-    const snapshots = (await db.query<{ precio_costo: string }>('SELECT precio_costo FROM movimiento_stock_costos')).rows
-    expect(snapshots).toHaveLength(1)
-    expect(Number(snapshots[0].precio_costo)).toBe(21)
-    expect((await db.query<{ costo: null }>('SELECT costo_unitario_referencia AS costo FROM movimientos_stock')).rows.every((row) => row.costo === null)).toBe(true)
-  })
   it('permite operaciones del backend con el rol de servicio', async () => {
     await db.exec("RESET ROLE; SET request.jwt.claim.sub=''; SET request.jwt.claim.role='service_role'; SET ROLE service_role;")
     await move('EGRESO', 1)

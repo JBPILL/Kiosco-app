@@ -11,6 +11,8 @@ import type { Categoria, Producto } from '../../types/database'
 import { v4 as uuidv4 } from 'uuid'
 import toast from 'react-hot-toast'
 import { auditoriaMotivoPrecioActiva, validarMotivoCambioPrecio } from '../../lib/priceChangeAudit'
+import { kioskoPilotStrictScopeActivo } from '../../lib/kioskPilotScope'
+import { confirmarOperacionPersistida, obtenerOperacionPersistida } from '../../lib/operationIdempotency'
 
 interface SiembraCatalogoModalProps {
   isOpen: boolean
@@ -159,15 +161,23 @@ export function SiembraCatalogoModal({
           orden: categoriasExistentes.length + i + 1,
         }))
 
-        const { data: catsInsertadas, error: errCats } = await supabase
-          .from('categorias')
-          .insert(payloadCats)
-          .select()
-
-        if (errCats || !catsInsertadas || catsInsertadas.length !== payloadCats.length) throw new Error('No se pudieron crear las categorías')
-        catsInsertadas.forEach((c) => {
-          mapaCategorias.set(c.nombre.toLowerCase().trim(), c.id)
-        })
+        if (kioskoPilotStrictScopeActivo()) {
+          for (const cat of payloadCats) {
+            const identidad = { kioscoId, nombre: cat.nombre.toLowerCase().trim() }
+            const operacion = obtenerOperacionPersistida('catalogo-categoria', identidad, { nombre: cat.nombre, color: cat.color, orden: cat.orden })
+            const { data, error } = await supabase.rpc('guardar_categoria_transaccional', {
+              p_operacion_id: operacion.id, p_categoria_id: operacion.id, p_datos: operacion.solicitud,
+            })
+            if (error || !data || typeof data !== 'object') throw error || new Error('No se pudieron crear las categorías')
+            confirmarOperacionPersistida('catalogo-categoria', identidad)
+            const creada = data as { id: string; nombre: string }
+            mapaCategorias.set(creada.nombre.toLowerCase().trim(), creada.id)
+          }
+        } else {
+          const { data: catsInsertadas, error: errCats } = await supabase.from('categorias').insert(payloadCats).select()
+          if (errCats || !catsInsertadas || catsInsertadas.length !== payloadCats.length) throw new Error('No se pudieron crear las categorías')
+          catsInsertadas.forEach((c) => mapaCategorias.set(c.nombre.toLowerCase().trim(), c.id))
+        }
       }
 
       // 3. Preparar lista de productos finales a insertar
@@ -243,6 +253,35 @@ export function SiembraCatalogoModal({
             es_favorito: item.es_favorito,
             activo: item.activo,
           }))
+        if (kioskoPilotStrictScopeActivo()) {
+          const items = payload.map((item) => {
+            const existente = prodsActuales.find(p => p.codigo_barras?.trim().toLowerCase() === item.codigo_barras?.trim().toLowerCase())
+            const { id: nuevoId, kiosco_id: _kiosco, ...datosBase } = item
+            const datos = {
+              ...datosBase,
+              ...(auditoriaMotivoPrecioActiva() && !plantilla && !omitirExistentes ? { motivo_cambio_precio: motivoPrecio.trim() } : {}),
+            }
+            return { id: existente && !plantilla && !omitirExistentes ? existente.id : nuevoId, datos }
+          })
+          const identidad = { kioscoId, codigos: items.map(item => item.datos.codigo_barras), plantilla, omitirExistentes, categorias: [...categoriasSeleccionadas].sort() }
+          const operacion = obtenerOperacionPersistida('catalogo-siembra', identidad, items)
+          const { data, error } = await supabase.rpc('importar_productos_catalogo_transaccional', {
+            p_operacion_id: operacion.id, p_items: operacion.solicitud, p_desactivar_ids: [],
+          })
+          if (error || !data || typeof data !== 'object') throw error || new Error(`No se pudo guardar el lote ${i + 1}`)
+          const resultado = data as { ok?: boolean; errores?: Array<{ fila: number; error: string }>; productos?: Producto[] }
+          if (!resultado.ok) throw new Error(`No se pudo guardar el lote ${i + 1}: ${resultado.errores?.map(fila => `fila ${fila.fila + 1}: ${fila.error}`).join('; ') || 'sin detalle'}`)
+          confirmarOperacionPersistida('catalogo-siembra', identidad)
+          const persistidos = resultado.productos ?? []
+          insertadosTotal += persistidos.length
+          const mapaFinal = new Map(getCachedProductos(kioscoId).map(p => [p.id, p]))
+          for (const producto of persistidos) {
+            for (const [id, previo] of mapaFinal) if (previo.codigo_barras && previo.codigo_barras === producto.codigo_barras && id !== producto.id) mapaFinal.delete(id)
+            mapaFinal.set(producto.id, producto)
+          }
+          saveCachedProductos(Array.from(mapaFinal.values()), kioscoId)
+          continue
+        }
         let persistidos: Producto[]
         if (auditoriaMotivoPrecioActiva() && !plantilla && !omitirExistentes) {
           persistidos = []

@@ -3,6 +3,8 @@ import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { supabase } from '../../lib/supabase'
+import { kioskoPilotStrictScopeActivo } from '../../lib/kioskPilotScope'
+import { confirmarOperacionPersistida, obtenerOperacionPersistida } from '../../lib/operationIdempotency'
 import { useAuthStore } from '../../stores/authStore'
 import { formatPrecio, getCachedProductos, saveCachedProductos } from '../../lib/utils'
 import { playScanSound } from '../../lib/sound'
@@ -162,6 +164,24 @@ export function AltaRapidaModal({
       // 1. Guardar en Supabase (si hay red)
       let guardadoEnNube = false
       if (kioscoId) {
+        if (kioskoPilotStrictScopeActivo()) {
+          const datos = {
+            codigo_barras: payload.codigo_barras, descripcion: payload.descripcion,
+            precio_venta: payload.precio_venta, stock_actual: payload.stock_actual,
+            stock_minimo: payload.stock_minimo, categoria_id: payload.categoria_id,
+            unidad_medida: payload.unidad_medida, es_pesable: payload.es_pesable, activo: true,
+          }
+          const identidad = { kioscoId, codigo: payload.codigo_barras?.trim().toLowerCase() || payload.descripcion.toLowerCase() }
+          const operacion = obtenerOperacionPersistida('catalogo-alta-rapida', identidad, datos)
+          const { data, error } = await supabase.rpc('guardar_producto_transaccional', {
+            p_operacion_id: operacion.id, p_producto_id: payload.id, p_datos: operacion.solicitud,
+          })
+          if (error || !data || typeof data !== 'object') throw error || new Error('El servidor no confirmó el producto')
+          const respuesta = data as { producto: Producto }
+          Object.assign(payload, respuesta.producto)
+          confirmarOperacionPersistida('catalogo-alta-rapida', identidad)
+          guardadoEnNube = true
+        } else {
         try {
           const { error } = await supabase.from('productos').insert({
             id: payload.id,
@@ -183,6 +203,7 @@ export function AltaRapidaModal({
           }
         } catch (e) {
           console.warn('Fallo de red al insertar producto en Supabase:', e)
+        }
         }
       }
 

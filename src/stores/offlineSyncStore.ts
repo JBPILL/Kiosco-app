@@ -5,6 +5,7 @@ import { useComboStore } from './comboStore'
 import toast from 'react-hot-toast'
 import { v5 as uuidv5 } from 'uuid'
 import { checkoutManualTransaccionalActivo } from '../lib/manualCheckoutCart'
+import { kioskoPilotStrictScopeActivo } from '../lib/kioskPilotScope'
 import { sincronizarCobrosManualesLocales } from '../lib/manualCheckoutClient'
 import { useAuthStore } from './authStore'
 import { auditoriaMotivoPrecioActiva } from '../lib/priceChangeAudit'
@@ -110,6 +111,10 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
   sincronizarCola: async (kioscoId: string) => {
     // BUG-18: Verificar y fijar el semáforo de forma atómica antes de cualquier await
     if (get().sincronizando) return { exitosas: 0, fallidas: 0 }
+    if (kioskoPilotStrictScopeActivo() && !checkoutManualTransaccionalActivo()) {
+      toast.error('La cola antigua requiere habilitar checkout transaccional; no se sincronizarán escrituras legacy.')
+      return { exitosas: 0, fallidas: getLocalCola(kioscoId, true).length }
+    }
     set({ sincronizando: true })  // fijar inmediatamente (síncrono, antes del primer await)
     let toastId: string | undefined
     try {

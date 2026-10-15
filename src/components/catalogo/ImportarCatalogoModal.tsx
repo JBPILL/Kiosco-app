@@ -4,11 +4,13 @@ import { Button } from '../ui/Button'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../stores/authStore'
 import { formatPrecio, saveCachedProductos } from '../../lib/utils'
-import type { Categoria } from '../../types/database'
+import type { Categoria, Producto } from '../../types/database'
 import toast from 'react-hot-toast'
 import { v4 as uuidv4 } from 'uuid'
 import { IconImportar } from '../ui/Icons'
 import { auditoriaMotivoPrecioActiva, validarMotivoCambioPrecio } from '../../lib/priceChangeAudit'
+import { kioskoPilotStrictScopeActivo } from '../../lib/kioskPilotScope'
+import { confirmarOperacionPersistida, obtenerOperacionPersistida } from '../../lib/operationIdempotency'
 
 interface ProductoImportRow {
   codigo_barras: string | null
@@ -671,15 +673,22 @@ export function ImportarCatalogoModal({
           orden: maxOrdenExistente + idx + 1,
         }))
 
-        const { data: catsCreadas, error: catErr } = await supabase
-          .from('categorias')
-          .insert(categoriasPayload)
-          .select('id, nombre')
-
-        if (!catErr && catsCreadas) {
-          catsCreadas.forEach((c) => {
-            mapaCategorias.set(c.nombre.toLowerCase().trim(), c.id)
-          })
+        if (kioskoPilotStrictScopeActivo()) {
+          for (const cat of categoriasPayload) {
+            const identidad = { kioscoId, nombre: cat.nombre.toLowerCase().trim() }
+            const operacion = obtenerOperacionPersistida('catalogo-categoria', identidad, { nombre: cat.nombre, color: cat.color, orden: cat.orden })
+            const { data, error } = await supabase.rpc('guardar_categoria_transaccional', {
+              p_operacion_id: operacion.id, p_categoria_id: operacion.id, p_datos: operacion.solicitud,
+            })
+            if (error || !data || typeof data !== 'object') throw error || new Error('No se pudo crear la categoría')
+            confirmarOperacionPersistida('catalogo-categoria', identidad)
+            const creada = data as { id: string; nombre: string }
+            mapaCategorias.set(creada.nombre.toLowerCase().trim(), creada.id)
+          }
+        } else {
+          const { data: catsCreadas, error: catErr } = await supabase
+            .from('categorias').insert(categoriasPayload).select('id, nombre')
+          if (!catErr && catsCreadas) catsCreadas.forEach((c) => mapaCategorias.set(c.nombre.toLowerCase().trim(), c.id))
         }
       }
 
@@ -704,6 +713,7 @@ export function ImportarCatalogoModal({
       let actualizadosCount = 0
       let erroresGuardado = 0
       const productosParaInsertar: any[] = []
+      const productosParaActualizar: Array<{ id: string; datos: Record<string, unknown> }> = []
       const movimientosStockParaInsertar: any[] = []
 
       // Rastreadores para deduplicar filas dentro del propio archivo importado
@@ -745,15 +755,16 @@ export function ImportarCatalogoModal({
             updatePayload.es_pesable = row.es_pesable
           }
 
-          const { error: updErr } = await supabase
-            .from('productos')
-            .update(updatePayload)
-            .eq('id', existente.id)
-
-          if (updErr) {
-            erroresGuardado++
-            console.error('Error actualizando producto existente en importación:', existente.id, updErr)
-            continue
+          if (kioskoPilotStrictScopeActivo()) {
+            const { fecha_actualizacion: _fecha, ...datos } = updatePayload
+            productosParaActualizar.push({ id: existente.id, datos })
+          } else {
+            const { error: updErr } = await supabase.from('productos').update(updatePayload).eq('id', existente.id)
+            if (updErr) {
+              erroresGuardado++
+              console.error('Error actualizando producto existente en importación:', existente.id, updErr)
+              continue
+            }
           }
 
           const stockAnterior = existente.stock_actual || 0
@@ -823,11 +834,42 @@ export function ImportarCatalogoModal({
       }
 
       // 4. Inserción en lotes de 100 productos con contingencia individual si falla el lote
+      const persistirChunkStrict = async (items: Array<{ id: string; datos: Record<string, unknown> }>, desactivarIds: string[] = []) => {
+        const identidad = { kioscoId, productoIds: items.map(item => item.id), desactivarIds }
+        const operacion = obtenerOperacionPersistida('catalogo-importacion', identidad, items)
+        const { data, error } = await supabase.rpc('importar_productos_catalogo_transaccional', {
+          p_operacion_id: operacion.id, p_items: operacion.solicitud, p_desactivar_ids: desactivarIds,
+        })
+        if (error || !data || typeof data !== 'object') throw error || new Error('El servidor no confirmó el chunk de catálogo')
+        const resultado = data as { ok?: boolean; errores?: Array<{ fila: number; error: string }>; productos?: Producto[]; desactivados?: number }
+        if (!resultado.ok) {
+          const detalle = resultado.errores?.map(fila => `fila ${fila.fila + 1}: ${fila.error}`).join('; ')
+          throw new Error(`Chunk rechazado${detalle ? ` (${detalle})` : ''}`)
+        }
+        confirmarOperacionPersistida('catalogo-importacion', identidad)
+        return resultado
+      }
+
+      if (kioskoPilotStrictScopeActivo()) {
+        for (let i = 0; i < productosParaActualizar.length; i += 100) {
+          const lote = productosParaActualizar.slice(i, i + 100)
+          await persistirChunkStrict(lote)
+        }
+      }
       if (productosParaInsertar.length > 0) {
         setProgresoTexto(`Guardando ${productosParaInsertar.length} productos nuevos...`)
         const LOTE_SIZE = 100
         for (let i = 0; i < productosParaInsertar.length; i += LOTE_SIZE) {
           const lote = productosParaInsertar.slice(i, i + LOTE_SIZE)
+          if (kioskoPilotStrictScopeActivo()) {
+            const items = lote.map((producto) => {
+              const { id, kiosco_id: _kiosco, fecha_creacion: _creado, fecha_actualizacion: _actualizado, ...resto } = producto
+              return { id, datos: resto as Record<string, unknown> }
+            })
+            const resultado = await persistirChunkStrict(items)
+            insertadosCount += resultado.productos?.length ?? lote.length
+            continue
+          }
           const { error: insErr } = await supabase.from('productos').insert(lote)
           if (insErr) {
             console.warn('Lote de inserción falló, procediendo a inserción individual de contingencia...', insErr)
@@ -848,6 +890,7 @@ export function ImportarCatalogoModal({
 
       // 5. Registrar movimientos de stock generados
       if (movimientosStockParaInsertar.length > 0) {
+        if (kioskoPilotStrictScopeActivo()) movimientosStockParaInsertar.length = 0
         const LOTE_SIZE = 100
         for (let i = 0; i < movimientosStockParaInsertar.length; i += LOTE_SIZE) {
           const loteMov = movimientosStockParaInsertar.slice(i, i + LOTE_SIZE)
@@ -864,10 +907,18 @@ export function ImportarCatalogoModal({
       if (modoRollback && productosExistentes && erroresGuardado === 0) {
         setProgresoTexto('Aplicando rollback estricto...')
         const huerfanos = productosExistentes.filter((p) => !idsAfectados.has(p.id) && p.activo !== false)
-        for (const p of huerfanos) {
-          const { error } = await supabase.from('productos').update({ activo: false, fecha_actualizacion: ahora }).eq('id', p.id)
-          if (error) erroresGuardado++
-          else desactivadosCount++
+        if (kioskoPilotStrictScopeActivo()) {
+          const ids = huerfanos.map(p => p.id)
+          for (let i = 0; i < ids.length; i += 100) {
+            const resultado = await persistirChunkStrict([], ids.slice(i, i + 100))
+            desactivadosCount += resultado.desactivados ?? 0
+          }
+        } else {
+          for (const p of huerfanos) {
+            const { error } = await supabase.from('productos').update({ activo: false, fecha_actualizacion: ahora }).eq('id', p.id)
+            if (error) erroresGuardado++
+            else desactivadosCount++
+          }
         }
       }
 

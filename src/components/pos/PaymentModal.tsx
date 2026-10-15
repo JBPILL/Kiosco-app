@@ -258,6 +258,10 @@ export function PaymentModal({ isOpen, onClose, onVentaCompletada }: PaymentModa
   const confirmarVenta = async () => {
     if (procesandoRef.current || (!cobroGuardado && (!puedeConfirmar || politicaNoDisponible || faltaCheckoutSeguro || (requierePinSupervisor && esperaPin > 0)))) return
     const modoPilotoEstricto = kioskoPilotStrictScopeActivo()
+    if (modoPilotoEstricto && !checkoutManualTransaccionalActivo()) {
+      toast.error('El checkout transaccional debe estar habilitado para operar en el piloto estricto.')
+      return
+    }
     const errorAlcance = errorCheckoutFueraDeAlcance(modoPilotoEstricto, emitirFiscal, items)
     if (errorAlcance) {
       toast.error(errorAlcance)

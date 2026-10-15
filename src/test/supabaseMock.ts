@@ -15,6 +15,7 @@ export interface InvocacionFuncion {
   nombre: string
   options?: { body?: unknown }
 }
+export interface InvocacionRpc { nombre: string; args: Record<string, unknown> }
 
 export const db = {
   fijas: new Map<string, Resultado>(),
@@ -23,6 +24,8 @@ export const db = {
   llamadas: [] as Llamada[],
   funciones: new Map<string, Resultado>(),
   invocaciones: [] as InvocacionFuncion[],
+  rpcs: [] as InvocacionRpc[],
+  respuestasRpc: new Map<string, Resultado>(),
 }
 
 export function resetDb() {
@@ -32,6 +35,8 @@ export function resetDb() {
   db.llamadas = []
   db.funciones.clear()
   db.invocaciones = []
+  db.rpcs = []
+  db.respuestasRpc.clear()
 }
 
 /** Respuesta permanente para `tabla.operacion` (ej. 'clientes.update'). */
@@ -42,6 +47,14 @@ export function responder(clave: string, resultado: Resultado) {
 /** Respuesta permanente para supabase.functions.invoke('nombre') */
 export function responderFuncion(nombre: string, resultado: Resultado) {
   db.funciones.set(nombre, resultado)
+}
+
+export function responderRpc(nombre: string, resultado: Resultado) {
+  db.respuestasRpc.set(nombre, resultado)
+}
+
+export function llamadasRpcA(nombre: string): InvocacionRpc[] {
+  return db.rpcs.filter(call => call.nombre === nombre)
 }
 
 export function invocacionesA(nombre: string): InvocacionFuncion[] {
@@ -104,6 +117,11 @@ export function crearModuloSupabase() {
     createUnauthenticatedClient: () => ({}),
     supabase: {
       from: crearConsulta,
+      rpc: async (nombre: string, args: Record<string, unknown> = {}) => {
+        db.rpcs.push({ nombre, args })
+        if (db.lanzar.has(`rpc.${nombre}`)) throw new Error(`supabase caído (rpc.${nombre})`)
+        return db.respuestasRpc.get(nombre) ?? VACIO
+      },
       functions: {
         invoke: async (nombre: string, options?: { body?: unknown }) => {
           db.invocaciones.push({ nombre, options })

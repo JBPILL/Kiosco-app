@@ -5,6 +5,8 @@ import { evaluarCarritoPromociones } from '../lib/promocionesEngine'
 export { evaluarItemPromociones } from '../lib/promocionesEngine'
 import type { Promocion, ItemCarrito } from '../types/database'
 import toast from 'react-hot-toast'
+import { kioskoPilotStrictScopeActivo } from '../lib/kioskPilotScope'
+import { confirmarOperacionPersistida, obtenerOperacionPersistida } from '../lib/operationIdempotency'
 
 interface PromocionState {
   promociones: Promocion[]
@@ -102,6 +104,23 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
       created_at: new Date().toISOString(),
     }
 
+    if (kioskoPilotStrictScopeActivo()) {
+      const { id: _id, created_at: _created, producto: _producto, categoria: _categoria, kiosco_id: _tenant, ...datos } = nuevaPromo
+      const identidad = { kioscoId: nuevaPromo.kiosco_id, nombre: nuevaPromo.nombre.trim().toLowerCase(), tipo: nuevaPromo.tipo }
+      const operacion = obtenerOperacionPersistida('catalogo-promocion-create', identidad, { promocion_id: nuevaPromo.id, datos })
+      const { data, error } = await supabase.rpc('guardar_promocion_transaccional', {
+        p_operacion_id: operacion.id, p_promocion_id: operacion.solicitud.promocion_id,
+        p_datos: operacion.solicitud.datos, p_eliminar: false,
+      })
+      if (error || !data || typeof data !== 'object') { toast.error('No se pudo guardar la promoción'); return false }
+      confirmarOperacionPersistida('catalogo-promocion-create', identidad)
+      const actualizadas = [data as Promocion, ...get().promociones.filter(p => p.id !== (data as Promocion).id)]
+      set({ promociones: actualizadas })
+      guardarPromocionesLocal(actualizadas, nuevaPromo.kiosco_id)
+      toast.success('Promoción creada exitosamente')
+      return true
+    }
+
     // Actualizar estado local inmediatamente
     const actualizadas = [nuevaPromo, ...get().promociones]
     set({ promociones: actualizadas })
@@ -147,6 +166,26 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
       if (cambios.cantidad_paga !== undefined && cambios.cantidad_paga !== null) {
         cambiosNormalizados.cantidad_paga = Math.max(1, Math.min(Number(cambios.cantidad_paga) || 1, min - 1))
       }
+    }
+
+    if (kioskoPilotStrictScopeActivo()) {
+      const allowedKeys: (keyof Promocion)[] = [
+        'nombre','tipo','producto_id','categoria_id','cantidad_minima','cantidad_paga','precio_unitario_promo',
+        'descuento_porcentaje','precio_combo','items_combo','dias_semana','fecha_inicio','fecha_fin','activo',
+      ]
+      const datos = Object.fromEntries(allowedKeys.filter(key => cambiosNormalizados[key] !== undefined).map(key => [key,cambiosNormalizados[key]]))
+      const identidad = { kioscoId, promocionId: id }
+      const operacion = obtenerOperacionPersistida('catalogo-promocion-update', identidad, datos)
+      const { data, error } = await supabase.rpc('guardar_promocion_transaccional', {
+        p_operacion_id: operacion.id, p_promocion_id: id, p_datos: operacion.solicitud, p_eliminar: false,
+      })
+      if (error || !data || typeof data !== 'object') { toast.error('No se pudo actualizar la promoción'); return false }
+      confirmarOperacionPersistida('catalogo-promocion-update', identidad)
+      const actualizadas = get().promociones.map(p => p.id === id ? data as Promocion : p)
+      set({ promociones: actualizadas })
+      guardarPromocionesLocal(actualizadas, kioscoId)
+      toast.success('Promoción actualizada')
+      return true
     }
 
     const actualizadas = get().promociones.map((p) => (p.id === id ? { ...p, ...cambiosNormalizados } : p))
@@ -196,6 +235,21 @@ export const usePromocionStore = create<PromocionState>((set, get) => ({
   eliminarPromocion: async (id: string) => {
     const promoExistente = get().promociones.find((p) => p.id === id)
     const kioscoId = promoExistente?.kiosco_id
+
+    if (kioskoPilotStrictScopeActivo()) {
+      const identidad = { kioscoId, promocionId: id, accion: 'eliminar' }
+      const operacion = obtenerOperacionPersistida('catalogo-promocion-delete', identidad, {})
+      const { error } = await supabase.rpc('guardar_promocion_transaccional', {
+        p_operacion_id: operacion.id, p_promocion_id: id, p_datos: {}, p_eliminar: true,
+      })
+      if (error) { toast.error('No se pudo eliminar la promoción'); return false }
+      confirmarOperacionPersistida('catalogo-promocion-delete', identidad)
+      const actualizadas = get().promociones.filter(p => p.id !== id)
+      set({ promociones: actualizadas })
+      guardarPromocionesLocal(actualizadas, kioscoId)
+      toast.success('Promoción eliminada')
+      return true
+    }
 
     const actualizadas = get().promociones.filter((p) => p.id !== id)
     set({ promociones: actualizadas })

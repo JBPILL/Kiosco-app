@@ -14,6 +14,8 @@ import type {
 } from '../types/database'
 import toast from 'react-hot-toast'
 import { cargarCostosProtegidos } from '../lib/productCostAccess'
+import { confirmarOperacionPendiente, confirmarOperacionPersistida, obtenerIdOperacionPendiente, obtenerOperacionPersistida } from '../lib/operationIdempotency'
+import { kioskoPilotStrictScopeActivo } from '../lib/kioskPilotScope'
 
 interface NuevoProveedorInput {
   nombre: string
@@ -221,6 +223,26 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
       fecha_creacion: new Date().toISOString(),
     }
 
+    if (kioskoPilotStrictScopeActivo()) {
+      const datosRpc = {
+        nombre: nuevoProveedor.nombre, contacto_nombre: nuevoProveedor.contacto_nombre, telefono: nuevoProveedor.telefono,
+        email: nuevoProveedor.email, cuit: nuevoProveedor.cuit, dias_visita: nuevoProveedor.dias_visita,
+        cbu_alias: nuevoProveedor.cbu_alias, activo: true,
+      }
+      const solicitud = { proveedor_id: nuevoProveedor.id, datos: datosRpc }
+      const operacionId = obtenerIdOperacionPendiente('proveedor-guardar', solicitud)
+      const { error } = await supabase.rpc('guardar_proveedor_transaccional', {
+        p_operacion_id: operacionId, p_proveedor_id: nuevoProveedor.id, p_datos: datosRpc,
+      })
+      if (error) { toast.error(`No se pudo guardar el proveedor: ${error.message}`); return null }
+      confirmarOperacionPendiente('proveedor-guardar', solicitud)
+      const actualizados = [...get().proveedores, { ...nuevoProveedor, saldo_pendiente: 0 }].sort((a, b) => a.nombre.localeCompare(b.nombre))
+      saveLocalProveedores(kioscoId, actualizados)
+      set({ proveedores: actualizados })
+      toast.success('Proveedor guardado correctamente')
+      return { ...nuevoProveedor, saldo_pendiente: 0 }
+    }
+
     const actualizados = [...get().proveedores, nuevoProveedor].sort((a, b) =>
       a.nombre.localeCompare(b.nombre)
     )
@@ -238,7 +260,7 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
         cuit: nuevoProveedor.cuit,
         dias_visita: nuevoProveedor.dias_visita,
         cbu_alias: nuevoProveedor.cbu_alias,
-        saldo_pendiente: nuevoProveedor.saldo_pendiente,
+        ...(kioskoPilotStrictScopeActivo() ? {} : { saldo_pendiente: nuevoProveedor.saldo_pendiente }),
         activo: true,
         fecha_creacion: nuevoProveedor.fecha_creacion,
       })
@@ -282,6 +304,29 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
       datos.email = emailLimpio || null
     }
 
+    if (kioskoPilotStrictScopeActivo()) {
+      const actual = get().proveedores.find(p => p.id === id && p.kiosco_id === kioscoId)
+      if (!actual) return false
+      const combinado = { ...actual, ...datos }
+      const datosRpc = {
+        nombre: combinado.nombre, contacto_nombre: combinado.contacto_nombre, telefono: combinado.telefono,
+        email: combinado.email, cuit: combinado.cuit, dias_visita: combinado.dias_visita,
+        cbu_alias: combinado.cbu_alias, activo: combinado.activo,
+      }
+      const solicitud = { proveedor_id: id, datos: datosRpc }
+      const operacionId = obtenerIdOperacionPendiente('proveedor-guardar', solicitud)
+      const { error } = await supabase.rpc('guardar_proveedor_transaccional', {
+        p_operacion_id: operacionId, p_proveedor_id: id, p_datos: datosRpc,
+      })
+      if (error) { toast.error(`No se pudo actualizar el proveedor: ${error.message}`); return false }
+      confirmarOperacionPendiente('proveedor-guardar', solicitud)
+      const actualizados = get().proveedores.map(p => p.id === id ? combinado : p)
+      saveLocalProveedores(kioscoId, actualizados)
+      set({ proveedores: actualizados })
+      toast.success('Proveedor actualizado')
+      return true
+    }
+
     const actualizados = get().proveedores.map((p) =>
       p.id === id ? { ...p, ...datos } : p
     )
@@ -309,6 +354,28 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
   eliminarProveedor: async (id) => {
     const kioscoId = getKioscoId()
     if (!kioscoId) return false
+
+    if (kioskoPilotStrictScopeActivo()) {
+      const actual = get().proveedores.find(p => p.id === id && p.kiosco_id === kioscoId)
+      if (!actual) return false
+      const datosRpc = {
+        nombre: actual.nombre, contacto_nombre: actual.contacto_nombre, telefono: actual.telefono,
+        email: actual.email, cuit: actual.cuit, dias_visita: actual.dias_visita,
+        cbu_alias: actual.cbu_alias, activo: false,
+      }
+      const solicitud = { proveedor_id: id, datos: datosRpc }
+      const operacionId = obtenerIdOperacionPendiente('proveedor-guardar', solicitud)
+      const { error } = await supabase.rpc('guardar_proveedor_transaccional', {
+        p_operacion_id: operacionId, p_proveedor_id: id, p_datos: datosRpc,
+      })
+      if (error) { toast.error(`No se pudo desactivar el proveedor: ${error.message}`); return false }
+      confirmarOperacionPendiente('proveedor-guardar', solicitud)
+      const actualizados = get().proveedores.map(p => p.id === id ? { ...p, activo: false } : p)
+      saveLocalProveedores(kioscoId, actualizados)
+      set({ proveedores: actualizados })
+      toast.success('Proveedor eliminado')
+      return true
+    }
 
     const actualizados = get().proveedores.filter((p) => p.id !== id)
     saveLocalProveedores(kioscoId, actualizados)
@@ -380,6 +447,38 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
   ) => {
     const kioscoId = getKioscoId()
     if (!kioscoId) return null
+
+    if (kioskoPilotStrictScopeActivo()) {
+      const caja = useCajaStore.getState()
+      const sesionCajaId = descontarDeCaja && medioPago === 'EFECTIVO' ? caja.sesionActiva?.id ?? null : null
+      if (descontarDeCaja && medioPago === 'EFECTIVO' && !sesionCajaId) {
+        toast.error('Abrí la caja antes de registrar un pago en efectivo')
+        return null
+      }
+      const solicitud = { proveedor: id, monto, medioPago, sesionCajaId, notas: notas?.trim() || null, comprobanteRef: comprobanteRef?.trim() || null }
+      const operacionId = obtenerIdOperacionPendiente(`pago_proveedor_${kioscoId}`, solicitud)
+      const { data, error } = await supabase.rpc('registrar_pago_proveedor_transaccional', {
+        p_operacion_id: operacionId, p_proveedor_id: id, p_monto: monto, p_medio_pago: medioPago,
+        p_sesion_caja_id: sesionCajaId, p_comprobante_ref: solicitud.comprobanteRef, p_notas: solicitud.notas,
+      })
+      if (error || !data) {
+        toast.error(error?.message || 'No se pudo confirmar el pago del proveedor')
+        return null
+      }
+      confirmarOperacionPendiente(`pago_proveedor_${kioscoId}`, solicitud)
+      const proveedor = get().proveedores.find(p => p.id === id)
+      const pago: PagoProveedor = {
+        id: data.pago_id, kiosco_id: kioscoId, proveedor_id: id, fecha: new Date().toISOString(), monto,
+        medio_pago: medioPago, saldo_anterior: Number(data.saldo_anterior), saldo_nuevo: Number(data.saldo_nuevo),
+        pagado_en_caja: Boolean(sesionCajaId), sesion_caja_id: sesionCajaId, comprobante_ref: solicitud.comprobanteRef,
+        notas: solicitud.notas, proveedor, estado: 'ACTIVO',
+      }
+      const pagos = [pago, ...get().pagos]
+      const proveedores = get().proveedores.map(p => p.id === id ? { ...p, saldo_pendiente: pago.saldo_nuevo } : p)
+      saveLocalPagos(kioscoId, pagos); saveLocalProveedores(kioscoId, proveedores); set({ pagos, proveedores })
+      toast.success(`Pago de $${monto.toLocaleString('es-AR')} registrado correctamente`)
+      return pago
+    }
 
     const proveedor = get().proveedores.find((p) => p.id === id)
     if (!proveedor) {
@@ -498,6 +597,21 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
       return false
     }
 
+    if (kioskoPilotStrictScopeActivo()) {
+      const solicitud = { proveedor: id, nuevoSaldo: Number(nuevoSaldo), motivo: motivo?.trim() || 'Ajuste manual' }
+      const scope = `ajuste_proveedor_${kioscoId}`
+      const operacionId = obtenerIdOperacionPendiente(scope, solicitud)
+      const { data, error } = await supabase.rpc('ajustar_saldo_proveedor_transaccional', {
+        p_operacion_id: operacionId, p_proveedor_id: id, p_nuevo_saldo: solicitud.nuevoSaldo, p_motivo: solicitud.motivo,
+      })
+      if (error || !data) { toast.error(error?.message || 'No se pudo ajustar el saldo'); return false }
+      confirmarOperacionPendiente(scope, solicitud)
+      const actualizados = get().proveedores.map(p => p.id === id ? { ...p, saldo_pendiente: Number(data.saldo_nuevo) } : p)
+      saveLocalProveedores(kioscoId, actualizados); set({ proveedores: actualizados })
+      toast.success(`Saldo ajustado a $${Number(data.saldo_nuevo).toLocaleString('es-AR')}`)
+      return true
+    }
+
     const saldoNumerico = Number((Number(nuevoSaldo) || 0).toFixed(2))
     const actualizados = get().proveedores.map((p) =>
       p.id === id ? { ...p, saldo_pendiente: saldoNumerico } : p
@@ -531,6 +645,22 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
     if (pago.estado === 'ANULADO') {
       toast.error('Este comprobante ya se encuentra anulado')
       return false
+    }
+
+    if (kioskoPilotStrictScopeActivo()) {
+      const scope = `anular_pago_proveedor_${kioscoId}`
+      const solicitud = { pagoId }
+      const operacionId = obtenerIdOperacionPendiente(scope, solicitud)
+      const { data, error } = await supabase.rpc('anular_pago_proveedor_transaccional', {
+        p_operacion_id: operacionId, p_pago_id: pagoId,
+      })
+      if (error || !data) { toast.error(error?.message || 'No se pudo anular el pago'); return false }
+      confirmarOperacionPendiente(scope, solicitud)
+      const pagos = get().pagos.map(p => p.id === pagoId ? { ...p, estado: 'ANULADO' as const } : p)
+      const proveedores = get().proveedores.map(p => p.id === pago.proveedor_id ? { ...p, saldo_pendiente: Number(data.saldo_proveedor) } : p)
+      saveLocalPagos(kioscoId, pagos); saveLocalProveedores(kioscoId, proveedores); set({ pagos, proveedores })
+      toast.success('Pago anulado y saldo de deuda restituido')
+      return true
     }
 
     // 1. Revertir saldo pendiente al proveedor
@@ -683,6 +813,62 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
     if (!tieneDetalles && (!compraInput.total || compraInput.total <= 0)) {
       toast.error('El monto total de la compra debe ser mayor a 0')
       return { success: false, error: 'Monto inválido' }
+    }
+
+    if (kioskoPilotStrictScopeActivo()) {
+      const cajaActual = useCajaStore.getState()
+      const solicitaCaja = Boolean(descontarDeCaja || compraInput.pagado_en_caja)
+      const sesionCajaId = solicitaCaja && compraInput.medio_pago === 'EFECTIVO' ? cajaActual.sesionActiva?.id ?? null : null
+      if (solicitaCaja && compraInput.medio_pago === 'EFECTIVO' && !sesionCajaId) {
+        toast.error('Abrí la caja antes de registrar la compra en efectivo')
+        return { success: false, error: 'Caja cerrada' }
+      }
+      const solicitudNueva = {
+        proveedor: compraInput.proveedor_id, fecha: compraInput.fecha || new Date().toISOString(),
+        comprobante: compraInput.nro_comprobante?.trim() || null, medio: compraInput.medio_pago,
+        caja: Boolean(sesionCajaId), sesion: sesionCajaId, notas: compraInput.notas?.trim() || null,
+        total: compraInput.total,
+        detalles: (compraInput.detalles || []).map(d => ({ producto_id: d.producto_id, cantidad: d.cantidad,
+          precio_costo_unitario: d.precio_costo_unitario })),
+      }
+      const identidad = { ...solicitudNueva, fecha_identidad: compraInput.fecha || null }
+      const scope = `compra_proveedor_${kioscoId}`
+      const operacionPersistida = obtenerOperacionPersistida(scope, identidad, solicitudNueva)
+      const solicitud = operacionPersistida.solicitud
+      const compraId = operacionPersistida.id
+      const { data, error } = await supabase.rpc('registrar_compra_proveedor_transaccional', {
+        p_operacion_id: compraId, p_proveedor_id: solicitud.proveedor, p_fecha: solicitud.fecha,
+        p_nro_comprobante: solicitud.comprobante, p_medio_pago: solicitud.medio, p_pagado_en_caja: solicitud.caja,
+        p_sesion_caja_id: solicitud.sesion, p_notas: solicitud.notas, p_total_declarado: solicitud.total,
+        p_detalles: solicitud.detalles,
+      })
+      if (error || !data) {
+        toast.error(error?.message || 'No se pudo confirmar la compra en el servidor')
+        return { success: false, error: error?.message || 'Compra no confirmada' }
+      }
+      confirmarOperacionPersistida(scope, identidad)
+      const proveedor = get().proveedores.find(p => p.id === solicitud.proveedor)
+      const detalles = (compraInput.detalles || []).map(d => ({ ...d, id: uuidv4(), compra_id: data.compra_id,
+        subtotal: Number((d.cantidad * d.precio_costo_unitario).toFixed(2)) }))
+      const compra: CompraProveedor = {
+        id: data.compra_id, kiosco_id: kioscoId, proveedor_id: solicitud.proveedor, usuario_id: usuario?.id || null,
+        nro_comprobante: solicitud.comprobante, fecha: solicitud.fecha, total: Number(data.total), estado: 'RECIBIDA',
+        medio_pago: compraInput.medio_pago, pagado_en_caja: solicitud.caja, sesion_caja_id: solicitud.sesion,
+        notas: solicitud.notas, proveedor, detalles,
+      }
+      const compras = [compra, ...get().compras]
+      const proveedores = get().proveedores.map(p => p.id === solicitud.proveedor ? { ...p, saldo_pendiente: Number(data.saldo_proveedor) } : p)
+      saveLocalCompras(kioscoId, compras); saveLocalProveedores(kioscoId, proveedores); set({ compras, proveedores })
+      try {
+        const cached = getCachedProductos(kioscoId)
+        const updated = cached.map(p => {
+          const line = solicitud.detalles.find(d => d.producto_id === p.id)
+          return line ? { ...p, stock_actual: Number((p.stock_actual + line.cantidad).toFixed(3)), precio_costo: line.precio_costo_unitario } : p
+        })
+        if (cached.length) saveCachedProductos(updated, kioscoId)
+      } catch { /* cache refresh is non-authoritative */ }
+      toast.success('Compra y stock recibidos exitosamente')
+      return { success: true, id: compra.id }
     }
 
     const caja = useCajaStore.getState()
@@ -872,6 +1058,31 @@ export const useProveedorStore = create<ProveedorState>((set, get) => ({
     if (compra.estado === 'ANULADA') {
       toast.error('La compra ya está anulada')
       return false
+    }
+
+    if (kioskoPilotStrictScopeActivo()) {
+      const scope = `anular_compra_${kioscoId}`
+      const solicitud = { compraId }
+      const operacionId = obtenerIdOperacionPendiente(scope, solicitud)
+      const { data, error } = await supabase.rpc('anular_compra_proveedor_transaccional', {
+        p_operacion_id: operacionId, p_compra_id: compraId,
+      })
+      if (error || !data) { toast.error(error?.message || 'No se pudo anular la compra'); return false }
+      confirmarOperacionPendiente(scope, solicitud)
+      const compras = get().compras.map(c => c.id === compraId ? { ...c, estado: 'ANULADA' as const } : c)
+      const proveedores = get().proveedores.map(p => p.id === compra.proveedor_id ? { ...p, saldo_pendiente: Number(data.saldo_proveedor) } : p)
+      saveLocalCompras(kioscoId, compras); saveLocalProveedores(kioscoId, proveedores); set({ compras, proveedores })
+      const detalles = compra.detalles || await get().cargarDetallesCompra(compraId)
+      try {
+        const cached = getCachedProductos(kioscoId)
+        const updated = cached.map(p => {
+          const line = detalles.find(d => d.producto_id === p.id)
+          return line ? { ...p, stock_actual: Math.max(0, Number((p.stock_actual - line.cantidad).toFixed(3))) } : p
+        })
+        if (cached.length) saveCachedProductos(updated, kioscoId)
+      } catch { /* cache refresh is non-authoritative */ }
+      toast.success('Compra anulada y stock revertido correctamente')
+      return true
     }
 
     // 1. Si era cuenta corriente, revertir saldo del proveedor (BUG-28)

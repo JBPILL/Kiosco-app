@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from '../lib/supabase'
+import { kioskoPilotStrictScopeActivo } from '../lib/kioskPilotScope'
+import { confirmarOperacionPersistida, obtenerOperacionPersistida } from '../lib/operationIdempotency'
 import { useLoteStore } from './loteStore'
 import { getCachedProductos, saveCachedProductos } from '../lib/utils'
 import type { ItemCombo, Producto } from '../types/database'
@@ -101,6 +103,27 @@ export const useComboStore = create<ComboState>((set, get) => ({
       componente_producto_id: c.componente_producto_id,
       cantidad: c.cantidad,
     }))
+
+    if (kioskoPilotStrictScopeActivo()) {
+      const identidad = { kioscoId, comboProductoId }
+      const solicitud = componentes.map(({ componente_producto_id, cantidad }) => ({ componente_producto_id, cantidad }))
+      const operacion = obtenerOperacionPersistida('catalogo-combo', identidad, solicitud)
+      const { error } = await supabase.rpc('guardar_combo_transaccional', {
+        p_operacion_id: operacion.id, p_producto_id: comboProductoId,
+        p_es_combo: operacion.solicitud.length > 0, p_componentes: operacion.solicitud,
+      })
+      if (error) {
+        toast.error('No se pudieron guardar los componentes del combo')
+        return false
+      }
+      confirmarOperacionPersistida('catalogo-combo', identidad)
+      const otros = get().itemsCombo.filter(item => item.combo_producto_id !== comboProductoId)
+      const lista = [...otros, ...nuevosItems]
+      set({ itemsCombo: lista })
+      try { localStorage.setItem(key, JSON.stringify(lista)) } catch { /* cache best effort */ }
+      toast.success('Componentes del combo guardados correctamente')
+      return true
+    }
 
     // 1. Actualización optimista local
     const otrosItems = get().itemsCombo.filter((i) => i.combo_producto_id !== comboProductoId)
@@ -203,6 +226,9 @@ export const useComboStore = create<ComboState>((set, get) => ({
     ventaIdRef?: string,
     fechaVenta?: string  // BUG-04: fecha original de la venta para consistencia en historial
   ) => {
+    if (kioskoPilotStrictScopeActivo()) {
+      throw new Error('En el piloto estricto, el stock de combos se confirma dentro del checkout transaccional.')
+    }
     const componentes = get().itemsCombo.filter((item) => item.combo_producto_id === comboProductoId)
     if (componentes.length === 0) return
 

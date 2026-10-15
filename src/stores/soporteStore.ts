@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { kioskoPilotStrictScopeActivo } from '../lib/kioskPilotScope'
+import { confirmarOperacionPersistida, obtenerOperacionPersistida } from '../lib/operationIdempotency'
 
 export type TipoTicket = 'ERROR' | 'CONSULTA' | 'SUGERENCIA' | 'FACTURACION' | 'URGENTE'
 export type EstadoTicket = 'PENDIENTE' | 'EN_PROCESO' | 'RESUELTO'
@@ -91,6 +93,10 @@ export const useSoporteStore = create<SoporteState>((set, get) => ({
   tablaExiste: true,
 
   cargarTicketsAdmin: async () => {
+    if (kioskoPilotStrictScopeActivo()) {
+      set({ cargando: false, error: 'La administración de soporte está fuera del alcance del piloto.' })
+      return []
+    }
     set({ cargando: true, error: null })
     try {
       const { data, error } = await supabase
@@ -155,6 +161,37 @@ export const useSoporteStore = create<SoporteState>((set, get) => ({
 
   crearTicket: async (payload: CrearTicketPayload) => {
     set({ guardando: true, error: null })
+    if (kioskoPilotStrictScopeActivo()) {
+      const solicitud = {
+        tipo: payload.tipo,
+        modulo: payload.modulo,
+        mensaje: payload.mensaje,
+        datos_diagnostico: payload.datos_diagnostico || {},
+      }
+      const operacion = obtenerOperacionPersistida('soporte-ticket', solicitud, solicitud)
+      try {
+        const { data, error } = await supabase.rpc('crear_ticket_soporte_transaccional', {
+          p_operacion_id: operacion.id,
+          p_tipo: operacion.solicitud.tipo,
+          p_modulo: operacion.solicitud.modulo,
+          p_mensaje: operacion.solicitud.mensaje,
+          p_datos_diagnostico: operacion.solicitud.datos_diagnostico,
+        })
+        if (error || !data || typeof data !== 'object') throw error || new Error('El servidor no confirmó el ticket')
+        const ticket = data as TicketSoporte
+        confirmarOperacionPersistida('soporte-ticket', solicitud)
+        const actualizados = [ticket, ...get().tickets.filter(t => t.id !== ticket.id)]
+        saveLocalTickets(actualizados)
+        set({ tickets: actualizados, guardando: false, tablaExiste: true, error: null })
+        toast.success('Ticket enviado a soporte')
+        return { ok: true, ticket }
+      } catch (error) {
+        const mensaje = error instanceof Error ? error.message : 'No se pudo confirmar el envío del ticket'
+        set({ guardando: false, error: mensaje })
+        toast.error('No se pudo enviar el ticket. Reintentá para consultar el mismo resultado.')
+        return { ok: false }
+      }
+    }
     const nuevoId = crypto.randomUUID ? crypto.randomUUID() : `ticket_${Date.now()}`
     const nuevoTicket: TicketSoporte = {
       id: nuevoId,
@@ -205,6 +242,10 @@ export const useSoporteStore = create<SoporteState>((set, get) => ({
   },
 
   actualizarEstadoTicket: async (id: string, nuevoEstado: EstadoTicket, respuestaAdmin?: string) => {
+    if (kioskoPilotStrictScopeActivo()) {
+      set({ error: 'La administración de tickets está fuera del alcance del piloto.' })
+      return false
+    }
     const ahora = new Date().toISOString()
     const cambios: Partial<TicketSoporte> = {
       estado: nuevoEstado,
@@ -244,6 +285,10 @@ export const useSoporteStore = create<SoporteState>((set, get) => ({
   },
 
   eliminarTicket: async (id: string) => {
+    if (kioskoPilotStrictScopeActivo()) {
+      set({ error: 'La eliminación de tickets está fuera del alcance del piloto.' })
+      return false
+    }
     const filtrados = get().tickets.filter((t) => t.id !== id)
     saveLocalTickets(filtrados)
     set({ tickets: filtrados })
@@ -260,6 +305,7 @@ export const useSoporteStore = create<SoporteState>((set, get) => ({
   },
 
   suscribirRealtimeTickets: () => {
+    if (kioskoPilotStrictScopeActivo()) return () => {}
     try {
       const channelName = 'tickets_soporte_realtime'
 

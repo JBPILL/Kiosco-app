@@ -8,6 +8,8 @@ import type { Producto, Categoria } from '../../types/database'
 import { useProveedorStore } from '../../stores/proveedorStore'
 import toast from 'react-hot-toast'
 import { auditoriaMotivoPrecioActiva } from '../../lib/priceChangeAudit'
+import { kioskoPilotStrictScopeActivo } from '../../lib/kioskPilotScope'
+import { confirmarOperacionPersistida, obtenerOperacionPersistida } from '../../lib/operationIdempotency'
 
 interface AumentoPreciosModalProps {
   isOpen: boolean
@@ -159,6 +161,27 @@ export function AumentoPreciosModal({
       const TAMAÑO_LOTE = 20
       for (let i = 0; i < productosAfectados.length; i += TAMAÑO_LOTE) {
         const lote = productosAfectados.slice(i, i + TAMAÑO_LOTE)
+        if (kioskoPilotStrictScopeActivo()) {
+          const items = lote.flatMap(p => {
+            const upd = nuevosPreciosMap.get(p.id)
+            return upd ? [{ id: p.id, ...upd, ...(auditoriaMotivoPrecioActiva() ? { motivo_cambio_precio: motivoPrecio.trim() } : {}) }] : []
+          })
+          const identidad = { productoIds: items.map(item => item.id), porcentaje, tipoPrecio, redondeo, motivo: motivoPrecio.trim() }
+          const operacion = obtenerOperacionPersistida('catalogo-precios', identidad, items)
+          try {
+            const { error } = await supabase.rpc('actualizar_precios_catalogo_transaccional', {
+              p_operacion_id: operacion.id,
+              p_items: operacion.solicitud,
+              p_motivo: auditoriaMotivoPrecioActiva() ? motivoPrecio.trim() : null,
+            })
+            if (error) throw error
+            confirmarOperacionPersistida('catalogo-precios', identidad)
+            items.forEach(item => { exitosos++; idsExitosos.add(item.id) })
+          } catch (error) {
+            console.error('Error en lote transaccional de precios:', error)
+          }
+          continue
+        }
         await Promise.all(
           lote.map(async (p) => {
             const upd = nuevosPreciosMap.get(p.id)

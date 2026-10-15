@@ -7,6 +7,8 @@ import { getCachedProductos, saveCachedProductos } from '../../lib/utils'
 import { playScanSound } from '../../lib/sound'
 import { useBarcodeGun } from '../../hooks/useBarcodeGun'
 import { useLoteStore } from '../../stores/loteStore'
+import { kioskoPilotStrictScopeActivo } from '../../lib/kioskPilotScope'
+import { confirmarOperacionPendiente, obtenerIdOperacionPendiente } from '../../lib/operationIdempotency'
 import type { Producto } from '../../types/database'
 import toast from 'react-hot-toast'
 
@@ -156,6 +158,27 @@ export function AuditoriaInventarioModal({
     try {
       for (const item of itemsConDiferencia) {
         const delta = Number((item.stockContado - item.stockTeorico).toFixed(3))
+
+        if (kioskoPilotStrictScopeActivo()) {
+          if (!kid) throw new Error('No hay un comercio activo para ajustar el inventario.')
+          const solicitud = { producto_id: item.producto.id, tipo: 'AJUSTE', cantidad: item.stockContado, motivo: 'CONTEO', notas: `Auditoría física de inventario (Teórico: ${item.stockTeorico} → Físico: ${item.stockContado})` }
+          const operacionId = obtenerIdOperacionPendiente('auditoria-stock', solicitud)
+          const { error } = await supabase.rpc('registrar_movimiento_stock_idempotente', {
+            p_operacion_id: operacionId,
+            p_producto_id: item.producto.id,
+            p_tipo: 'AJUSTE',
+            p_cantidad: item.stockContado,
+            p_motivo: 'CONTEO',
+            p_notas: solicitud.notas,
+            p_fecha_vencimiento: null,
+            p_numero_lote: null,
+            p_lote_id: null,
+          })
+          if (error) throw error
+          confirmarOperacionPendiente('auditoria-stock', solicitud)
+          ajustados++
+          continue
+        }
 
         // 1. Actualizar tabla productos
         const { error: errProd } = await supabase

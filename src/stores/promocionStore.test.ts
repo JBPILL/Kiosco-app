@@ -1,7 +1,10 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { evaluarItemPromociones, usePromocionStore } from './promocionStore'
 import { crearItem, crearProducto, crearPromocion } from '../test/factories'
 import { getFechaLocal } from '../lib/utils'
+import { db, resetDb, responder, responderRpc } from '../test/supabaseMock'
+
+vi.mock('../lib/supabase', async () => (await import('../test/supabaseMock')).crearModuloSupabase())
 
 const producto = crearProducto({ id: 'prod-1', precio_venta: 100 })
 
@@ -198,5 +201,33 @@ describe('usePromocionStore.evaluarCarrito', () => {
       .getState()
       .evaluarCarrito([crearItem(dev, 2, { es_devolucion_envase: true, subtotal: -1000 })])
     expect(r[0].subtotal).toBe(-1000)
+  })
+})
+
+describe('usePromocionStore strict write boundary', () => {
+  const promoInput = {
+    kiosco_id: 'k1', nombre: 'Oferta controlada', tipo: 'PORCENTAJE' as const,
+    producto_id: null, categoria_id: null, cantidad_minima: 1, cantidad_paga: null,
+    precio_unitario_promo: null, descuento_porcentaje: 10, precio_combo: null, items_combo: null,
+    dias_semana: null, fecha_inicio: null, fecha_fin: null, activo: true,
+  }
+  beforeEach(() => { resetDb(); vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'false'); usePromocionStore.setState({ promociones: [], cargando: false }) })
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('strict guarda por RPC y no cae a DML browser', async () => {
+    vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'true')
+    responderRpc('guardar_promocion_transaccional', { data: { ...promoInput, id: 'promo-server' }, error: null })
+    const ok = await usePromocionStore.getState().crearPromocion(promoInput)
+    expect(ok).toBe(true)
+    expect(db.rpcs).toContainEqual(expect.objectContaining({ nombre: 'guardar_promocion_transaccional' }))
+    expect(db.llamadas.filter(call => call.op !== 'select')).toEqual([])
+  })
+
+  it('legacy conserva la inserción browser cuando strict está apagado', async () => {
+    responder('promociones.insert', { error: null })
+    const ok = await usePromocionStore.getState().crearPromocion(promoInput)
+    expect(ok).toBe(true)
+    expect(db.rpcs).toHaveLength(0)
+    expect(db.llamadas.some(call => call.tabla === 'promociones' && call.op === 'insert')).toBe(true)
   })
 })

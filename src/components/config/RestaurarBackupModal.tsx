@@ -14,6 +14,7 @@ import { formatFecha } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import { descifrarBackupJson, esBackupCifrado } from '../../lib/backupCrypto'
 import { auditoriaMotivoPrecioActiva, validarMotivoCambioPrecio } from '../../lib/priceChangeAudit'
+import { kioskoPilotStrictScopeActivo } from '../../lib/kioskPilotScope'
 
 interface RestaurarBackupModalProps {
   isOpen: boolean
@@ -157,6 +158,10 @@ export function RestaurarBackupModal({
 
   const handleEjecutarRestauracion = async () => {
     if (!backupData || restaurando) return
+    if (kioskoPilotStrictScopeActivo()) {
+      toast.error('La restauración integral queda fuera del alcance del piloto estricto.')
+      return
+    }
     if (auditoriaMotivoPrecioActiva()) {
       try { validarMotivoCambioPrecio(motivoPrecio) }
       catch (error) { toast.error(error instanceof Error ? error.message : 'Motivo inválido.'); return }
@@ -214,7 +219,7 @@ export function RestaurarBackupModal({
             <Button
               type="button"
               variant="primary"
-              disabled={!backupData || restaurando}
+              disabled={!backupData || restaurando || kioskoPilotStrictScopeActivo()}
               loading={restaurando}
               onClick={handleEjecutarRestauracion}
               className="order-1 sm:order-2 sm:w-2/3 py-2.5 text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
@@ -238,6 +243,7 @@ export function RestaurarBackupModal({
         </div>
       }
     >
+      {kioskoPilotStrictScopeActivo() && <p role="status" className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">La restauración integral modifica varios módulos y está deshabilitada durante el piloto estricto.</p>}
       <div className="space-y-4">
         {/* Banner de Ayuda Rápida / Guía Didáctica */}
         <div className="p-3 bg-indigo-50/70 dark:bg-indigo-950/40 border-2 border-indigo-200 dark:border-indigo-800 rounded-xl flex items-center gap-3 text-xs text-indigo-950 dark:text-indigo-200">
