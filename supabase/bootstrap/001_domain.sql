@@ -15,15 +15,26 @@ CREATE TABLE public.kioscos (
 CREATE TABLE public.usuarios (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   auth_user_id uuid NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
-  kiosco_id uuid NOT NULL REFERENCES public.kioscos(id) ON DELETE CASCADE,
+  kiosco_id uuid REFERENCES public.kioscos(id) ON DELETE CASCADE,
   nombre text NOT NULL,
   email text,
   rol text NOT NULL CHECK (rol IN ('DUEÑO','CAJERO','VISOR')),
   activo boolean NOT NULL DEFAULT true,
   es_superadmin boolean NOT NULL DEFAULT false,
-  fecha_creacion timestamptz NOT NULL DEFAULT now()
+  fecha_creacion timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT usuarios_superadmin_kiosco_scope_check
+    CHECK ((es_superadmin AND kiosco_id IS NULL) OR (NOT es_superadmin AND kiosco_id IS NOT NULL))
 );
-CREATE INDEX usuarios_kiosco_activo_idx ON public.usuarios(kiosco_id,activo);
+CREATE INDEX usuarios_kiosco_activo_idx ON public.usuarios(kiosco_id,activo) WHERE kiosco_id IS NOT NULL;
+
+-- One-time destination initialization state. It starts empty so zero-row
+-- rehearsal remains empty; the operator runner creates the singleton claim.
+CREATE TABLE public.platform_initial_admin_bootstrap_state (
+  singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+  status text NOT NULL CHECK (status IN ('IN_PROGRESS','READY','PASS','TAINTED')),
+  initialized_at timestamptz,
+  CHECK ((status='PASS' AND initialized_at IS NOT NULL) OR (status<>'PASS' AND initialized_at IS NULL))
+);
 
 CREATE TABLE public.categorias (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

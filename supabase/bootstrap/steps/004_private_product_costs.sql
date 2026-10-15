@@ -126,10 +126,6 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_proteger_costo_producto ON public.productos;
-CREATE TRIGGER trg_proteger_costo_producto
-  BEFORE INSERT OR UPDATE OF precio_costo ON public.productos
-  FOR EACH ROW EXECUTE FUNCTION public.proteger_costo_producto();
 REVOKE ALL ON FUNCTION public.proteger_costo_producto() FROM PUBLIC, anon, authenticated;
 
 COMMIT;

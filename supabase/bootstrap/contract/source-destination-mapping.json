@@ -1,0 +1,956 @@
+{
+  "contractVersion": "F6.2D-C1",
+  "status": "MAPPING_PLAN_READY_IMPORT_BLOCKED",
+  "source": "Legacy Supabase, manual read-only inventory F6.2D-B",
+  "destination": "New clean Supabase from hardened F6.2B/F6.2C-L bootstrap",
+  "remoteAccessAllowed": false,
+  "exportEnabled": false,
+  "importEnabled": false,
+  "exportContract": {
+    "version": "F6.2D-C3A-1",
+    "mode": "PRE_CUTOVER_EXPORT",
+    "preCutover": true,
+    "sourceSchema": "public",
+    "classificationFile": "artifacts/f6-2d-legacy-inventory/export/approved-row-ids.json",
+    "authMappingFile": "auth-mapping.json",
+    "evidenceRequiresSeparateApproval": true,
+    "tables": [
+      {"name":"kioscos","key":"id","columns":["id","nombre","direccion","telefono","rubro","capacidades_operativas","equipos_comercio","arqueo_ciego_obligatorio","fecha_creacion"],"disposition":"REQUIRED"},
+      {"name":"usuarios","key":"id","columns":["id","auth_user_id","kiosco_id","nombre","rol","activo","fecha_creacion"],"disposition":"CONDITIONAL","filter":"kiosco_id IS NOT NULL"},
+      {"name":"categorias","key":"id","columns":["id","kiosco_id","nombre","color","orden"],"disposition":"REQUIRED"},
+      {"name":"productos","key":"id","columns":["id","kiosco_id","categoria_id","proveedor_id","codigo_barras","descripcion","precio_venta","stock_actual","stock_minimo","es_favorito","es_pesable","unidad_medida","plu_balanza","es_combo","es_retornable","precio_envase","nombre_envase","requiere_vencimiento","dias_alerta_vencimiento","activo","fecha_creacion","fecha_actualizacion"],"disposition":"REQUIRED"},
+      {"name":"producto_costos","key":"producto_id","columns":["producto_id","kiosco_id","precio_costo","fecha_actualizacion"],"disposition":"REQUIRED"},
+      {"name":"combo_items","key":"id","columns":["id","kiosco_id","combo_producto_id","componente_producto_id","cantidad","created_at"],"disposition":"OPTIONAL"},
+      {"name":"promociones","key":"id","columns":["id","kiosco_id","nombre","tipo","producto_id","categoria_id","cantidad_minima","cantidad_paga","precio_unitario_promo","descuento_porcentaje","precio_combo","items_combo","dias_semana","fecha_inicio","fecha_fin","activo","created_at"],"disposition":"OPTIONAL"},
+      {"name":"lotes_producto","key":"id","columns":["id","kiosco_id","producto_id","numero_lote","fecha_vencimiento","cantidad_inicial","cantidad_actual","fecha_ingreso","activo"],"disposition":"CONDITIONAL"},
+      {"name":"sesiones_caja","key":"id","columns":["id","kiosco_id","usuario_id","fecha_apertura","fecha_cierre","monto_inicial","monto_final_declarado","monto_final_sistema","diferencia","estado"],"disposition":"CLOSED_ONLY","filter":"estado = 'CERRADA' AND fecha_cierre IS NOT NULL"},
+      {"name":"ventas","key":"id","columns":["id","kiosco_id","usuario_id","sesion_caja_id","fecha_hora","total","estado","notas","sincronizado","motivo_anulacion","anulada_por","anulada_en"],"disposition":"COMPATIBLE_HISTORY","filter":"sesion_caja_id IS NULL OR linked session is CERRADA"},
+      {"name":"detalles_venta","key":"id","columns":["id","venta_id","producto_id","cantidad","precio_unitario","subtotal","sin_envase","precio_envase_unitario"],"disposition":"CONDITIONAL"},
+      {"name":"pagos_venta","key":"id","columns":["id","venta_id","medio_pago","monto"],"disposition":"CONDITIONAL"},
+      {"name":"movimientos_stock","key":"id","columns":["id","kiosco_id","producto_id","tipo","cantidad","motivo","notas","usuario_id","fecha","lote_producto_id"],"disposition":"CONDITIONAL","transform":"Source history uses both signed-delta and positive-magnitude EGRESO conventions. For EGRESO, canonical destination cantidad=abs(source cantidad) and delta_stock=-abs(source cantidad); negative source values retain their exact value in delta_stock. INGRESO requires positive source cantidad and maps both cantidad/delta_stock unchanged. AJUSTE remains fail-closed."},
+      {"name":"movimiento_stock_costos","key":"movimiento_id","columns":["movimiento_id","kiosco_id","precio_costo"],"disposition":"CONDITIONAL"},
+      {"name":"movimientos_caja","key":"id","columns":["id","kiosco_id","sesion_caja_id","usuario_id","tipo","motivo","monto","descripcion","fecha_hora"],"disposition":"CLOSED_SESSION_ONLY"},
+      {"name":"checkout_manuales","key":"id","columns":["id","kiosco_id","venta_id","solicitud","resultado","creado_en"],"disposition":"EVIDENCE_ONLY","exportStatus":"EVIDENCE_ONLY_DISABLED","enabled":false},
+      {"name":"anulaciones_venta_atomicas","key":"venta_id","columns":["venta_id","kiosco_id","actor_auth_id","motivo","resultado","creado_en"],"disposition":"EVIDENCE_ONLY","exportStatus":"EVIDENCE_ONLY_DISABLED","enabled":false},
+      {"name":"clientes","key":"id","columns":["id"],"disposition":"EMPTY_DOMAIN","countOnly":true},
+      {"name":"movimientos_cuenta_corriente","key":"id","columns":["id"],"disposition":"EMPTY_DOMAIN","countOnly":true},
+      {"name":"proveedores","key":"id","columns":["id"],"disposition":"EMPTY_DOMAIN","countOnly":true},
+      {"name":"compras_proveedor","key":"id","columns":["id"],"disposition":"EMPTY_DOMAIN","countOnly":true},
+      {"name":"detalles_compra","key":"id","columns":["id"],"disposition":"EMPTY_DOMAIN","countOnly":true},
+      {"name":"pagos_proveedor","key":"id","columns":["id"],"disposition":"EMPTY_DOMAIN","countOnly":true}
+    ],
+    "excludedRelations": ["auth.users","auth.sessions","afip_config","afip_tokens","supervisor_pin_secretos","checkout_manual_entradas","checkout_manual_cancelaciones","devoluciones_venta","envases_compartidos","pagos_suscripcion"],
+    "prohibitedColumnsPattern": "password|encrypted_password|token|secret|private_key|pin_hash|jwt|cae|certificado|afip|arca|point|email|reference",
+    "package": "JSON per table, rows ordered by primary key; stable row-file SHA-256; manifest generated_at is metadata and excluded from content digest"
+  },
+  "baseline": {
+    "block11": "PRE_CUTOVER",
+    "finalBaselineRequired": true,
+    "after": [
+      "write freeze",
+      "OPERATIONAL_CUTOVER_REQUIRED: close/reconcile all source cash sessions and take FINAL_BASELINE.",
+      "DEMO_ONLY_ZERO_ROW_CUTOVER_NOT_APPLICABLE: cash closure and final data delta/export may be waived only after the local fail-closed validator proves every condition in data-migration.json for the reviewed migration set.",
+      "resolve pending operations"
+    ],
+    "cutoverModes": {
+      "OPERATIONAL_CUTOVER_REQUIRED": {
+        "cashClosureRequirement": "CUTOVER_BLOCKER",
+        "finalDataDeltaRequired": true,
+        "finalDataExportRequired": true,
+        "rule": "Freeze writes, close/reconcile source cash sessions, take FINAL_BASELINE, then export the final delta."
+      },
+      "DEMO_ONLY_ZERO_ROW_CUTOVER_NOT_APPLICABLE": {
+        "cashClosureRequirement": "NOT_APPLICABLE_DEMO_ONLY_SOURCE",
+        "finalDataDeltaRequired": false,
+        "finalDataExportRequired": false,
+        "rule": "Only the explicit zero-row demo-only migration set recorded in data-migration.json may use this outcome after local validation. This does not waive destination bootstrap, security, Auth, topology, or smoke-test requirements."
+      }
+    }
+  },
+  "policies": {
+    "businessUUID": "Preserve business UUIDs where target PK allows; collision or malformed UUID blocks.",
+    "auth": "Recreate/invite users and map new Auth UUID explicitly; never copy password hashes, tokens, sessions or secrets.",
+    "nulls": "Preserve NULL only when target permits it; otherwise quarantine. Never silently convert NULL to zero/empty/default.",
+    "defaults": "Apply only target defaults semantically equivalent to source absence; record each application.",
+    "money": "Exact NUMERIC(12,2), tolerance 0.00. producto_costos is the valid current-cost source; do not use productos.precio_costo (aggregate 0.00).",
+    "quantities": "Exact NUMERIC(12,3), no rounding absent approved deterministic rule.",
+    "time": "Preserve instant after source timezone is proven; DATE stays a civil date.",
+    "tenant": "Validate every FK and same-kiosk ownership before accepting a row.",
+    "privacy": "No tokens, password/PIN hashes, secrets, AFIP/CAE payloads or excluded payment credentials in bundles/reports."
+  },
+  "dag": [
+    {
+      "order": 1,
+      "tables": [
+        "kioscos"
+      ],
+      "dependsOn": []
+    },
+    {
+      "order": 2,
+      "tables": [
+        "Auth users (recreated)",
+        "usuarios"
+      ],
+      "dependsOn": [
+        "kioscos",
+        "approved identity mapping"
+      ]
+    },
+    {
+      "order": 3,
+      "tables": [
+        "categorias",
+        "proveedores",
+        "clientes"
+      ],
+      "dependsOn": [
+        "kioscos"
+      ]
+    },
+    {
+      "order": 4,
+      "tables": [
+        "productos"
+      ],
+      "dependsOn": [
+        "kioscos",
+        "categorias",
+        "proveedores"
+      ]
+    },
+    {
+      "order": 5,
+      "tables": [
+        "producto_costos",
+        "combo_items",
+        "promociones",
+        "lotes_producto"
+      ],
+      "dependsOn": [
+        "productos",
+        "categories where applicable"
+      ]
+    },
+    {
+      "order": 6,
+      "tables": [
+        "sesiones_caja (closed only)"
+      ],
+      "dependsOn": [
+        "kioscos",
+        "usuarios"
+      ]
+    },
+    {
+      "order": 7,
+      "tables": [
+        "ventas",
+        "compras_proveedor"
+      ],
+      "dependsOn": [
+        "sesiones_caja",
+        "users",
+        "providers"
+      ]
+    },
+    {
+      "order": 8,
+      "tables": [
+        "detalles_venta",
+        "pagos_venta",
+        "detalles_compra",
+        "pagos_proveedor",
+        "movimientos_stock",
+        "movimientos_caja",
+        "movimientos_cuenta_corriente"
+      ],
+      "dependsOn": [
+        "their parent rows and referenced products/clients"
+      ]
+    },
+    {
+      "order": 9,
+      "tables": [
+        "movimiento_stock_costos",
+        "checkout_manuales evidence",
+        "anulaciones_venta_atomicas evidence"
+      ],
+      "dependsOn": [
+        "historical parent rows"
+      ]
+    }
+  ],
+  "entities": [
+    {
+      "source": "kioscos",
+      "destination": "kioscos",
+      "disposition": "REQUIRED",
+      "columns": [
+        "id→id (preserve)",
+        "nombre→nombre",
+        "direccion→direccion",
+        "telefono→telefono",
+        "rubro→rubro (target allowlist)",
+        "capacidades_operativas→capacidades_operativas (enabled baseline allowlist only)",
+        "equipos_comercio→equipos_comercio (compatible operational subset)",
+        "arqueo_ciego_obligatorio→same",
+        "fecha_creacion→same (timezone proof)"
+      ],
+      "omit": [
+        "AFIP/ARCA secrets/certificates/tokens/CAE",
+        "subscriptions/plans/commercial fields",
+        "out-of-scope capabilities"
+      ],
+      "nullDefault": "Target required identity/config fields must be explicit; no silent defaults.",
+      "dependsOn": [],
+      "order": 1,
+      "reconcile": "4 source kiosks in PRE baseline; exact business ID set/count and allowed fields."
+    },
+    {
+      "source": "usuarios",
+      "destination": "usuarios",
+      "disposition": "CONDITIONAL",
+      "columns": [
+        "id→id (preserve business profile UUID)",
+        "kiosco_id→same (NULL profile quarantined for owner decision)",
+        "nombre→same (restricted PII)",
+        "email→same/private invitation mapping only",
+        "rol→same (DUEÑO/CAJERO/VISOR allowlist; escalate SUPERADMIN)",
+        "activo→same",
+        "fecha_creacion→same (timezone proof)",
+        "old auth_user_id→new auth_user_id via approved one-to-one mapping"
+      ],
+      "omit": [
+        "pin_hash",
+        "password/encrypted_password",
+        "Auth metadata as authorization",
+        "tokens/sessions/secrets"
+      ],
+      "nullDefault": "Target requires kiosk_id and auth_user_id. The single NULL-kiosk profile blocks until explicitly resolved.",
+      "dependsOn": [
+        "kioscos",
+        "recreated Auth user"
+      ],
+      "order": 2,
+      "reconcile": "6 profiles, 6 source Auth links resolve; 9 Auth users without profiles excluded; one NULL kiosk unresolved; exact eligible map/profile counts."
+    },
+    {
+      "source": "auth.users",
+      "destination": "Auth users (recreated by provision-user/invite/reset)",
+      "disposition": "CONDITIONAL",
+      "columns": [
+        "legacy Auth UUID as private mapping key only",
+        "verified identity proof only in restricted operator workflow"
+      ],
+      "omit": [
+        "password hashes",
+        "access/refresh/confirmation/recovery tokens",
+        "sessions",
+        "unprofiled Auth users",
+        "secrets"
+      ],
+      "nullDefault": "Do not automatically create profiles for the 9 Auth users without source profile.",
+      "dependsOn": [
+        "human identity approval",
+        "usuarios business mapping"
+      ],
+      "order": 2,
+      "reconcile": "One-to-one mapping; no duplicate new Auth IDs; no copied hashes/tokens; no orphan destination profile."
+    },
+    {
+      "source": "categorias",
+      "destination": "categorias",
+      "disposition": "REQUIRED",
+      "columns": [
+        "id→id",
+        "kiosco_id→same",
+        "nombre→same (trim only if uniqueness remains)",
+        "color→same",
+        "orden→same"
+      ],
+      "omit": [],
+      "nullDefault": "Target required columns must be supplied or use documented equivalent default.",
+      "dependsOn": [
+        "kioscos"
+      ],
+      "order": 3,
+      "reconcile": "35 PRE rows; exact IDs/count; no duplicate normalized (kiosco,nombre), no orphans."
+    },
+    {
+      "source": "proveedores",
+      "destination": "proveedores",
+      "disposition": "EMPTY_DOMAIN",
+      "columns": [
+        "id,kiosco_id,nombre,contacto_nombre,telefono,email,cuit,dias_visita,cbu_alias,saldo_pendiente,activo,fecha_creacion (schema allowlist only)"
+      ],
+      "omit": [
+        "all rows: source count 0"
+      ],
+      "nullDefault": "No fabricated vendors or opening balances.",
+      "dependsOn": [
+        "kioscos"
+      ],
+      "order": 3,
+      "reconcile": "0 providers/purchases/details/payments in PRE; recheck final baseline."
+    },
+    {
+      "source": "clientes",
+      "destination": "clientes",
+      "disposition": "EMPTY_DOMAIN",
+      "columns": [
+        "id,kiosco_id,nombre,telefono,dni_cuit,direccion,email,limite_credito,saldo_deudor,activo,notas,fecha_creacion (schema allowlist only)"
+      ],
+      "omit": [
+        "all rows: source count 0"
+      ],
+      "nullDefault": "No fabricated clients or opening balances.",
+      "dependsOn": [
+        "kioscos"
+      ],
+      "order": 3,
+      "reconcile": "0 clients and 0 CC movements in PRE and final baseline unless delta reopens scope."
+    },
+    {
+      "source": "productos",
+      "destination": "productos",
+      "disposition": "REQUIRED",
+      "columns": [
+        "id,kiosco_id,categoria_id,proveedor_id,codigo_barras,descripcion,precio_venta,stock_actual,stock_minimo,es_favorito,es_pesable,unidad_medida,plu_balanza,es_combo,es_retornable,precio_envase,nombre_envase,requiere_vencimiento,dias_alerta_vencimiento,activo,fecha_creacion,fecha_actualizacion→same compatible columns"
+      ],
+      "omit": [
+        "source precio_costo (aggregate 0; source cost is producto_costos)",
+        "AFIP/CAE/Point fields",
+        "shared-envase semantics"
+      ],
+      "transform": "Preserve IDs; exact NUMERIC; stock_actual is authoritative final snapshot, never rebuild from kardex. Non-null proveedor_id blocks while providers empty. Validate category/provider same tenant.",
+      "nullDefault": "Preserve NULL where allowed; never fill missing references silently.",
+      "dependsOn": [
+        "kioscos",
+        "categorias",
+        "proveedores"
+      ],
+      "order": 4,
+      "reconcile": "285 PRE rows; stock sum 169617.500 is PRE only; compare exact per kiosk/product final snapshot and FK/cross-tenant counts."
+    },
+    {
+      "source": "producto_costos",
+      "destination": "producto_costos",
+      "disposition": "REQUIRED",
+      "columns": [
+        "producto_id→producto_id",
+        "kiosco_id→same",
+        "precio_costo→same exact NUMERIC(12,2)",
+        "fecha_actualizacion→same (timezone proof)"
+      ],
+      "omit": [
+        "do not synthesize missing product cost row"
+      ],
+      "transform": "Current cost comes only from this table; preserve 284 rows, one product remains without cost unless source delta adds a row.",
+      "nullDefault": "No default row/value for absent record.",
+      "dependsOn": [
+        "productos",
+        "kioscos"
+      ],
+      "order": 5,
+      "reconcile": "284 rows; PRE cost sum 1169130.00; exact ID/value set privately."
+    },
+    {
+      "source": "combo_items",
+      "destination": "combo_items",
+      "disposition": "OPTIONAL",
+      "columns": [
+        "id,kiosco_id,combo_producto_id,componente_producto_id,cantidad,created_at→same"
+      ],
+      "transform": "Preserve UUIDs; positive exact quantity; both products in same kiosk; reject self-reference.",
+      "nullDefault": "No missing required values.",
+      "dependsOn": [
+        "kioscos",
+        "productos"
+      ],
+      "order": 5,
+      "reconcile": "25 PRE rows; exact IDs/recipe quantities; no tenant mismatch."
+    },
+    {
+      "source": "promociones",
+      "destination": "promociones",
+      "disposition": "OPTIONAL",
+      "columns": [
+        "id,kiosco_id,nombre,tipo,producto_id,categoria_id,cantidad_minima,cantidad_paga,precio_unitario_promo,descuento_porcentaje,precio_combo,items_combo,dias_semana,fecha_inicio,fecha_fin,activo,created_at→same"
+      ],
+      "transform": "Target enum/check, FK tenant, JSON shape, numeric range, and day/time semantics validated; reject/quarantine incompatible values.",
+      "nullDefault": "Keep nullable values NULL; defaults only by policy.",
+      "dependsOn": [
+        "kioscos",
+        "categorias",
+        "productos"
+      ],
+      "order": 5,
+      "reconcile": "21 PRE rows; exact IDs/count; normalized hashes after approved transform."
+    },
+    {
+      "source": "lotes_producto",
+      "destination": "lotes_producto",
+      "disposition": "CONDITIONAL",
+      "columns": [
+        "id,kiosco_id,producto_id,numero_lote,fecha_vencimiento,cantidad_inicial,cantidad_actual,fecha_ingreso,activo→same"
+      ],
+      "transform": "Preserve IDs; date remains civil; exact quantities; do not replay lot consumption.",
+      "nullDefault": "Required expiration/date/quantities must exist; missing values block.",
+      "dependsOn": [
+        "kioscos",
+        "productos"
+      ],
+      "order": 5,
+      "reconcile": "1 PRE lot: initial 1.000/current 0.000; exact final row and tenant links."
+    },
+    {
+      "source": "sesiones_caja",
+      "destination": "sesiones_caja",
+      "disposition": "CONDITIONAL",
+      "columns": [
+        "id,kiosco_id,usuario_id,fecha_apertura,fecha_cierre,monto_inicial,monto_final_declarado,monto_final_sistema,diferencia,estado→same"
+      ],
+      "transform": "Only CERRADA with fecha_cierre may migrate. Close/reconcile all 4 open sessions during freeze; destination opens new sessions only after cutover.",
+      "omit": [
+        "ABIERTA state; no session opened at destination from import",
+        "notas_cierre is DESTINATION_ONLY; absent from source projection and omitted/null at destination"
+      ],
+      "nullDefault": "Closed state must satisfy target check; no synthesized close amounts.",
+      "dependsOn": [
+        "kioscos",
+        "usuarios"
+      ],
+      "order": 6,
+      "reconcile": "Operational cutover: all open sessions block until closed/reconciled and FINAL_BASELINE shows zero open. The demo-only zero-row exception may mark this blocker NOT_APPLICABLE_DEMO_ONLY_SOURCE only after the local validator passes every condition recorded for the reviewed set."
+    },
+    {
+      "source": "ventas",
+      "destination": "ventas",
+      "disposition": "REQUIRED",
+      "columns": [
+        "id,kiosco_id,usuario_id,sesion_caja_id,fecha_hora,total,estado,notas,sincronizado,motivo_anulacion,anulada_por,anulada_en→same compatible columns"
+      ],
+      "omit": [
+        "AFIP/ARCA/CAE fields/payloads; unsupported Point payment metadata"
+      ],
+      "transform": "Preserve UUID/status/total. Auth/profile mappings explicit. Only closed sessions. ANULADA sale imported as final history; never call annulment RPC or restock.",
+      "nullDefault": "Maintain NULL where allowed; annulled metadata must satisfy target check; quarantine incompatible history.",
+      "dependsOn": [
+        "kioscos",
+        "usuarios",
+        "sesiones_caja",
+        "productos"
+      ],
+      "order": 7,
+      "reconcile": "28 PRE rows; total 470167.00; one ANULADA 2240.00; exact state totals; no duplicated operational audit."
+    },
+    {
+      "source": "detalles_venta",
+      "destination": "detalles_venta",
+      "disposition": "CONDITIONAL",
+      "columns": [
+        "id,venta_id,producto_id,cantidad,precio_unitario,subtotal,sin_envase,precio_envase_unitario→same"
+      ],
+      "omit": [
+        "es_devolucion_envase/partial-return semantics and shared-envase rows"
+      ],
+      "transform": "Exact amount/quantity; retain compatible deposit fields only after excluding shared-container semantics; affected tickets quarantine if a line is out of scope.",
+      "nullDefault": "No synthetic lines/default prices.",
+      "dependsOn": [
+        "ventas",
+        "productos"
+      ],
+      "order": 8,
+      "reconcile": "118 PRE rows; subtotal 470167.00; exact line counts/totals after classification."
+    },
+    {
+      "source": "pagos_venta",
+      "destination": "pagos_venta",
+      "disposition": "CONDITIONAL",
+      "columns": [
+        "id,venta_id,medio_pago,monto,referencia→same"
+      ],
+      "omit": [
+        "Point/Mercado Pago credentials/tokens/sensitive references"
+      ],
+      "transform": "Keep only supported methods; exact amount; redact sensitive reference under approved privacy policy; never relabel unsupported method.",
+      "nullDefault": "NULL reference remains NULL.",
+      "dependsOn": [
+        "ventas"
+      ],
+      "order": 8,
+      "reconcile": "28 PRE payments / 470167.00; exact count and total by supported method; no sensitive values in report."
+    },
+    {
+      "source": "movimientos_stock",
+      "destination": "movimientos_stock",
+      "disposition": "CONDITIONAL",
+      "columns": [
+        "id,kiosco_id,producto_id,tipo,cantidad,motivo,notas,usuario_id,fecha,lote_producto_id→same plus delta_stock"
+      ],
+      "transform": "PRE_CUTOVER artifact: source writers used two EGRESO forms: legacy direct writers stored signed negative cantidad, while the checkout trigger stores positive magnitude and signs delta_stock negative. Canonicalize target cantidad=abs(source cantidad) and delta_stock=-abs(source cantidad) for EGRESO; this preserves the signed value exactly for negative source rows and derives direction for positive magnitudes using the verified movement type contract. INGRESO requires positive cantidad and maps cantidad/delta_stock unchanged. AJUSTE remains fail-closed. Never replay the business stock RPC.",
+      "omit": [
+        "OUT_OF_SCOPE operaciones_stock state; unsupported types/motives"
+      ],
+      "nullDefault": "Nullable notes/user/lot preserved; do not derive missing sign for AJUSTE.",
+      "dependsOn": [
+        "kioscos",
+        "productos",
+        "usuarios",
+        "lotes_producto"
+      ],
+      "order": 8,
+      "reconcile": "122 PRE rows; source quantity counts/sums remain reported by source type without normalization; canonical target delta is reported separately from per-row values. Observed source: 3 INGRESO positive, 113 EGRESO negative, 6 EGRESO positive, 0 AJUSTE. Reconcile exact canonical delta totals and authoritative stock snapshot separately; never compare the signed raw source quantity sum directly to canonical delta sum."
+    },
+    {
+      "source": "movimiento_stock_costos",
+      "destination": "movimiento_stock_costos",
+      "disposition": "CONDITIONAL",
+      "columns": [
+        "movimiento_id,kiosco_id,precio_costo→same"
+      ],
+      "transform": "Exact existing cost evidence only; no backfill from current product cost.",
+      "omit": [
+        "59 stock movements with no cost row remain absent"
+      ],
+      "nullDefault": "Missing row remains missing; no synthetic NULL row.",
+      "dependsOn": [
+        "movimientos_stock",
+        "kioscos"
+      ],
+      "order": 9,
+      "reconcile": "63 PRE rows; exact IDs/count/value sum after classification; absent 59 remain absent."
+    },
+    {
+      "source": "movimientos_caja",
+      "destination": "movimientos_caja",
+      "disposition": "CONDITIONAL",
+      "columns": [
+        "id,kiosco_id,sesion_caja_id,usuario_id,tipo,motivo,monto,descripcion,fecha_hora→same"
+      ],
+      "transform": "Only closed migrated sessions; exact amounts/instants; ensure sale/purchase cash effects are not replayed.",
+      "nullDefault": "All target required values must exist.",
+      "dependsOn": [
+        "sesiones_caja",
+        "usuarios",
+        "kioscos"
+      ],
+      "order": 8,
+      "reconcile": "Exact count/money by session and type; close formula matches."
+    },
+    {
+      "source": "movimientos_cuenta_corriente",
+      "destination": "movimientos_cuenta_corriente",
+      "disposition": "EMPTY_DOMAIN",
+      "columns": [
+        "id,cliente_id,kiosco_id,venta_id,tipo,monto,medio_pago,saldo_resultante,notas,fecha_hora,usuario_id"
+      ],
+      "omit": [
+        "0 source rows; do not synthesize opening balance"
+      ],
+      "nullDefault": "n/a while empty",
+      "dependsOn": [
+        "clientes",
+        "ventas",
+        "usuarios",
+        "kioscos"
+      ],
+      "order": 8,
+      "reconcile": "0 clients and 0 ledger rows PRE; exact zero after final baseline unless delta reopens scope."
+    },
+    {
+      "source": "compras_proveedor",
+      "destination": "compras_proveedor",
+      "disposition": "EMPTY_DOMAIN",
+      "columns": [
+        "id,kiosco_id,proveedor_id,usuario_id,nro_comprobante,fecha,total,estado,medio_pago,pagado_en_caja,sesion_caja_id,notas,fecha_creacion"
+      ],
+      "omit": [
+        "0 source rows"
+      ],
+      "nullDefault": "n/a while empty",
+      "dependsOn": [
+        "proveedores",
+        "usuarios",
+        "sesiones_caja",
+        "kioscos"
+      ],
+      "order": 7,
+      "reconcile": "0 purchases/details/payments and zero amounts."
+    },
+    {
+      "source": "detalles_compra",
+      "destination": "detalles_compra",
+      "disposition": "EMPTY_DOMAIN",
+      "columns": [
+        "id,compra_id,producto_id,cantidad,precio_costo_unitario,subtotal"
+      ],
+      "omit": [
+        "0 source rows"
+      ],
+      "nullDefault": "n/a while empty",
+      "dependsOn": [
+        "compras_proveedor",
+        "productos"
+      ],
+      "order": 8,
+      "reconcile": "0; no stock/cost trigger effects."
+    },
+    {
+      "source": "pagos_proveedor",
+      "destination": "pagos_proveedor",
+      "disposition": "EMPTY_DOMAIN",
+      "columns": [
+        "id,kiosco_id,proveedor_id,fecha,monto,medio_pago,saldo_anterior,saldo_nuevo,pagado_en_caja,sesion_caja_id,comprobante_ref,notas,estado"
+      ],
+      "omit": [
+        "0 source rows"
+      ],
+      "nullDefault": "n/a while empty",
+      "dependsOn": [
+        "proveedores",
+        "sesiones_caja",
+        "kioscos"
+      ],
+      "order": 8,
+      "reconcile": "0 payments/amount; no fabricated supplier ledger."
+    },
+    {
+      "source": "checkout_manuales",
+      "destination": "checkout_manuales",
+      "disposition": "EVIDENCE_ONLY",
+      "columns": [
+        "id,kiosco_id,venta_id,solicitud,resultado,creado_en (only if coherent and non-replayable)"
+      ],
+      "omit": [
+        "pending states, sensitive/replayable JSON, secrets, unnecessary PII"
+      ],
+      "transform": "Evidence only; never invoke checkout-manual. Requires target trigger/invariant review.",
+      "nullDefault": "Required safe request payload must exist or evidence row is omitted.",
+      "dependsOn": [
+        "kioscos",
+        "ventas"
+      ],
+      "order": 9,
+      "reconcile": "Counts/links only after privacy and semantic approval."
+    },
+    {
+      "source": "anulaciones_venta_atomicas",
+      "destination": "anulaciones_venta_atomicas",
+      "disposition": "EVIDENCE_ONLY",
+      "columns": [
+        "venta_id,kiosco_id,actor_auth_id,motivo,resultado,creado_en (subject to target invariant)"
+      ],
+      "omit": [
+        "never invoke annulment RPC, restock, alter cash/CC, duplicate audit, or trust legacy actor_auth_id"
+      ],
+      "transform": "Preserve sale ANULADA status independently. Evidence row only if actor mapping and hardened target trigger can accept it safely; otherwise omit evidence and retain explicit source evidence outside target per policy.",
+      "nullDefault": "Do not fabricate actor/result/motive.",
+      "dependsOn": [
+        "ventas",
+        "approved Auth map",
+        "kioscos"
+      ],
+      "order": 9,
+      "reconcile": "1 ANULADA sale 2240.00 and one source audit row PRE; preserve status; evidence load is conditional and never replays effects."
+    },
+    {
+      "source": "operaciones_escritura",
+      "destination": null,
+      "disposition": "OMIT",
+      "columns": [],
+      "omit": [
+        "source relation absent; destination idempotency state starts empty"
+      ],
+      "nullDefault": "n/a",
+      "dependsOn": [],
+      "order": null,
+      "reconcile": "structural source absence; no import."
+    },
+    {
+      "source": "movimientos_proveedor",
+      "destination": null,
+      "disposition": "OMIT",
+      "columns": [],
+      "omit": [
+        "source relation absent; do not invent ledger events"
+      ],
+      "nullDefault": "n/a",
+      "dependsOn": [],
+      "order": null,
+      "reconcile": "0 suppliers/purchases/payments; if final delta adds rows, reopen mapping."
+    },
+    {
+      "source": "historial_precios_producto",
+      "destination": null,
+      "disposition": "OMIT",
+      "columns": [],
+      "omit": [
+        "source relation absent; no guessed price history"
+      ],
+      "nullDefault": "n/a",
+      "dependsOn": [],
+      "order": null,
+      "reconcile": "structural absence; no import."
+    },
+    {
+      "source": "AFIP/ARCA/CAE; plans/subscriptions; Mercado Pago/Point; partial returns; shared envases; supervisor secrets/hashes; Auth sessions/tokens; synthetic/F4 data; legacy ACL/RLS/functions",
+      "destination": null,
+      "disposition": "OMIT",
+      "columns": [],
+      "omit": [
+        "explicit out-of-scope"
+      ],
+      "nullDefault": "n/a",
+      "dependsOn": [],
+      "order": null,
+      "reconcile": "classify counts without exporting payloads."
+    }
+  ],
+  "triggerStrategy": {
+    "decision": "C1 selects no destructive trigger action. Do not load history through live business RPCs or disable/drop destination triggers. C2 must design a target-only, non-browser, dedicated migration principal and transaction-scoped import pathway that preserves validation/tenant constraints while suppressing only duplicate operational side effects. Triggers must explicitly support the reviewed import mode, or staging relations plus reviewed promotion logic must prevent repeated stock/cash/audit effects. No such mechanism is implemented or authorized in C1.",
+    "prohibited": [
+      "remote trigger disable/drop",
+      "copy legacy triggers/functions/ACL/RLS",
+      "browser direct DML",
+      "business RPC replay for history",
+      "manual DB patch"
+    ],
+    "c2Gate": "Prove locally against clean bootstrap: rollback, no partial effects, no stock/cash/audit duplication, and required constraints/security remain active."
+  },
+  "keyMetadataContract": {
+    "foreignKey": {
+      "sourceColumns": "string[]",
+      "destinationColumns": "string[]",
+      "compositeOrder": "ordinality"
+    },
+    "primaryKey": {
+      "columns": "string[]",
+      "compositeOrder": "ordinality"
+    },
+    "uniqueKey": {
+      "columns": "string[]",
+      "compositeOrder": "ordinality"
+    }
+  },
+  "reconciliation": {
+    "countsKeysFK": "Exact included counts and PK UUID sets after classification; duplicate PK=0, FK orphan=0, cross-kiosk=0.",
+    "financial": "NUMERIC exact, tolerance 0.00, by kiosk and semantic group.",
+    "stock": "Compare authoritative products.stock_actual per kiosk/product, lots, and compatible signed movement deltas separately; never reconstruct snapshot from old movement sum.",
+    "cost": "284 producto_costos rows, sum 1169130.00 PRE; one missing cost row stays missing. 63 movement-cost rows; 59 absent rows stay absent.",
+    "sales": "Counts/totals headers, lines, payments; state counts/totals; preserve ANULADA history; no annulment replay.",
+    "cash": "Operational cutover requires freeze, cash closure/reconciliation, and a final baseline with zero open sessions; only closed sessions/movements import and destination begins with no open session. The demo-only zero-row exception is limited to the explicit reviewed migration set and waives only cash closure/final data delta/export after local validator PASS.",
+    "emptyDomains": "Customers/CC and providers/purchases/details/payments remain exact zero unless final baseline documents a delta; no fabricated balances.",
+    "auth": "Eligible profiles map one-to-one to recreated Auth identities; exclude 9 profileless Auth users; migrate zero credentials/tokens."
+  },
+  "c2Blockers": [
+    "During authorized freeze, close/reconcile four open source sessions and 14 linked sales; take FINAL_BASELINE afterward.",
+    "Classify fixtures/synthetic/out-of-scope rows and detect partial-return/shared-envase/Point/AFIP-dependent history.",
+    "Design and locally validate the safe historical importer against hardened triggers/RLS/grants.",
+    "Reconfirm source-to-target column compatibility against final bootstrap revision before any export."
+  ],
+  "localSyntheticImportAllowlist": {
+    "kioscos": [
+      "id",
+      "nombre"
+    ],
+    "usuarios": [
+      "id",
+      "auth_user_id",
+      "kiosco_id",
+      "nombre",
+      "rol",
+      "activo"
+    ],
+    "categorias": [
+      "id",
+      "kiosco_id",
+      "nombre",
+      "orden"
+    ],
+    "productos": [
+      "id",
+      "kiosco_id",
+      "categoria_id",
+      "descripcion",
+      "precio_costo",
+      "precio_venta",
+      "stock_actual",
+      "es_combo",
+      "activo"
+    ],
+    "producto_costos": [
+      "producto_id",
+      "kiosco_id",
+      "precio_costo"
+    ],
+    "combo_items": [
+      "id",
+      "kiosco_id",
+      "combo_producto_id",
+      "componente_producto_id",
+      "cantidad"
+    ],
+    "promociones": [
+      "id",
+      "kiosco_id",
+      "nombre",
+      "tipo",
+      "producto_id",
+      "cantidad_minima",
+      "cantidad_paga",
+      "activo"
+    ],
+    "lotes_producto": [
+      "id",
+      "kiosco_id",
+      "producto_id",
+      "numero_lote",
+      "fecha_vencimiento",
+      "cantidad_inicial",
+      "cantidad_actual",
+      "activo"
+    ],
+    "sesiones_caja": [
+      "id",
+      "kiosco_id",
+      "usuario_id",
+      "fecha_apertura",
+      "fecha_cierre",
+      "monto_inicial",
+      "monto_final_declarado",
+      "monto_final_sistema",
+      "diferencia",
+      "estado"
+    ],
+    "ventas": [
+      "id",
+      "kiosco_id",
+      "usuario_id",
+      "sesion_caja_id",
+      "fecha_hora",
+      "total",
+      "estado",
+      "motivo_anulacion",
+      "anulada_por",
+      "anulada_en"
+    ],
+    "detalles_venta": [
+      "id",
+      "venta_id",
+      "producto_id",
+      "cantidad",
+      "precio_unitario",
+      "subtotal"
+    ],
+    "pagos_venta": [
+      "id",
+      "venta_id",
+      "medio_pago",
+      "monto"
+    ],
+    "movimientos_stock": [
+      "id",
+      "kiosco_id",
+      "producto_id",
+      "tipo",
+      "cantidad",
+      "delta_stock",
+      "motivo",
+      "fecha"
+    ],
+    "movimiento_stock_costos": [
+      "movimiento_id",
+      "kiosco_id",
+      "precio_costo"
+    ],
+    "movimientos_caja": [
+      "id",
+      "kiosco_id",
+      "sesion_caja_id",
+      "usuario_id",
+      "tipo",
+      "motivo",
+      "monto",
+      "descripcion",
+      "fecha_hora"
+    ],
+    "checkout_manuales": [
+      "id",
+      "kiosco_id",
+      "solicitud",
+      "resultado",
+      "venta_id"
+    ],
+    "anulaciones_venta_atomicas": [
+      "venta_id",
+      "kiosco_id",
+      "actor_auth_id",
+      "motivo",
+      "resultado"
+    ],
+    "clientes": [
+      "id",
+      "kiosco_id",
+      "nombre"
+    ],
+    "movimientos_cuenta_corriente": [
+      "id",
+      "cliente_id",
+      "kiosco_id",
+      "tipo",
+      "monto",
+      "saldo_resultante"
+    ],
+    "proveedores": [
+      "id",
+      "kiosco_id",
+      "nombre"
+    ],
+    "compras_proveedor": [
+      "id",
+      "kiosco_id",
+      "proveedor_id",
+      "total"
+    ],
+    "detalles_compra": [
+      "id",
+      "compra_id",
+      "producto_id",
+      "cantidad"
+    ],
+    "pagos_proveedor": [
+      "id",
+      "kiosco_id",
+      "proveedor_id",
+      "monto"
+    ]
+  },
+  "localSyntheticOnly": true,
+  "localSyntheticImportOrder": [
+    "kioscos",
+    "usuarios",
+    "categorias",
+    "clientes",
+    "proveedores",
+    "productos",
+    "producto_costos",
+    "combo_items",
+    "promociones",
+    "lotes_producto",
+    "sesiones_caja",
+    "ventas",
+    "compras_proveedor",
+    "detalles_venta",
+    "pagos_venta",
+    "detalles_compra",
+    "pagos_proveedor",
+    "movimientos_stock",
+    "movimiento_stock_costos",
+    "movimientos_caja",
+    "movimientos_cuenta_corriente",
+    "checkout_manuales",
+    "anulaciones_venta_atomicas"
+  ]
+}

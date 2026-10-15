@@ -34,13 +34,6 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.proteger_checkout_manual_cancelado() FROM PUBLIC,anon,authenticated,service_role;
-DROP TRIGGER IF EXISTS trg_proteger_checkout_manual_cancelado ON public.checkout_manual_entradas;
-CREATE TRIGGER trg_proteger_checkout_manual_cancelado BEFORE INSERT OR UPDATE ON public.checkout_manual_entradas
-  FOR EACH ROW EXECUTE FUNCTION public.proteger_checkout_manual_cancelado();
-DROP TRIGGER IF EXISTS trg_proteger_checkout_manual_cancelado ON public.checkout_manuales;
-CREATE TRIGGER trg_proteger_checkout_manual_cancelado BEFORE INSERT OR UPDATE ON public.checkout_manuales
-  FOR EACH ROW EXECUTE FUNCTION public.proteger_checkout_manual_cancelado();
-
 CREATE OR REPLACE FUNCTION public.cancelar_checkout_manual(p_entrada jsonb,p_motivo text,p_resolucion text,p_referencia text DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 DECLARE

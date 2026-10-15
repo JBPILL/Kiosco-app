@@ -10,10 +10,14 @@ Aplicar cada archivo completo, en este orden, sólo en una instancia vacía y de
 
 1. `001_domain.sql`
 2. `002_identity_helpers.sql`
-3. Todos los archivos de `steps/` en orden lexicográfico (`003` a `029`).
-4. `900_final_security.sql` como último paso.
+3. Los módulos `steps/003` a `steps/041` en orden lexicográfico.
+4. Para la validación C2 local solamente, importar la fixture sintética en la ventana que abre `steps/041_catalog_support_write_hardening.sql`.
+5. `steps/042_post_import_triggers.sql` instala los mismos triggers operativos sólo después de cargar el historial.
+6. `900_final_security.sql` como último SQL de instalación; luego ejecutar `postflight.sql`.
 
-La secuencia tiene transacciones por módulo. No conectar un frontend ni crear fixtures durante la instalación; las tablas quedan con RLS habilitado y sin acceso API mientras se monta el paquete. Si falla cualquier paso, detenerse: no reanudar sobre el esquema parcial ni convertirlo en una migración incremental. Usar una instancia vacía nueva o restaurar el proyecto de ensayo bajo un procedimiento administrativo explícito.
+La secuencia canónica completa y sus checksums están en `manifest.json`. La única ventana de importación local está entre `steps/041_catalog_support_write_hardening.sql` y `steps/042_post_import_triggers.sql`; no se deshabilita, elimina ni altera el estado de ningún trigger. Las definiciones de funciones se instalan antes; los triggers operativos se crean después de la historia. Esta ventana sólo admite el fixture sintético indicado en `scripts/f6-2d-migration.mjs`, en Supabase local aislado y sobre base vacía. No es un canal habilitado para importar datos reales.
+
+La secuencia tiene transacciones por módulo. No conectar un frontend durante instalación/importación. Si falla cualquier paso, detenerse y descartar/restablecer solamente la instancia Supabase local; no reanudar sobre el esquema parcial ni convertirlo en migración incremental. `preflight.sql` debe confirmar base vacía antes de empezar y `postflight.sql` debe aprobar después del hardening.
 
 `auth.users`, `auth.uid()`, `auth.role()` y los roles `anon`, `authenticated`, `service_role`, `postgres` son prerequisitos administrados por Supabase. No se crean ni reemplazan aquí. No hace falta una extensión de PostgreSQL adicional para este alcance; se usan tipos y funciones core disponibles en PostgreSQL moderno.
 
@@ -107,3 +111,33 @@ Procedimiento pendiente para validación real: disponer de un PostgreSQL local d
 **SEGURIDAD_BASELINE=PENDIENTE** (revisión estática aplicada; falta validar ACL/ownership/RLS en PostgreSQL Supabase real).
 
 No autorizar aún la instalación remota en `acoyfwwmhaeruciyedri`. No conectar ni tocar `wlqujnwxrmksheubfrha`.
+
+## F6.2B — contrato local de dependencias de la aplicación
+
+`contract/out-of-scope.json` clasifica los recursos excluidos bajo strict pilot. `src/test/backendContract.test.ts` extrae las dependencias literales de `src/` (relaciones, RPC, Edge Functions y Auth), resuelve los pocos usos dinámicos mediante un mapa cerrado y las compara con las definiciones del bootstrap y las exclusiones. No se detectaron buckets de Storage. `contract/write-access.json` registra el modo de escritura por flujo.
+
+Las tablas de proveedores/compras/pagos y soporte están en `steps/030_application_relations.sql`. Los pasos posteriores agregan stock idempotente, auditoría de cajón/supervisor, electrónica, reportes, backup y restauración de combos. Los recursos comerciales, fiscales, Point, envases compartidos, devoluciones parciales y `v_resumen_caja` no se consumen bajo el perfil estricto declarado.
+
+**El contrato todavía no está completo para habilitar toda la aplicación.** El bootstrap mantiene sin DML directo los libros sensibles. `proveedorStore` escribe una compra, sus detalles, stock, saldo del proveedor y caja con múltiples peticiones; `cajaStore` escribe sesiones/movimientos desde navegador; `clienteStore` separa cambio de saldo y movimiento de cuenta corriente; hay escrituras de stock directas fuera de las RPC idempotentes; y el alta Auth crea primero la identidad y luego el perfil desde el cliente. Estas rutas necesitan RPC transaccionales y callers adaptados, o guards que las deshabiliten hasta tenerlos. El SQL mantiene sin grants DML `compras_proveedor`, `detalles_compra`, `pagos_proveedor`, `movimientos_stock`, sesiones/caja, cuenta corriente y perfiles. Por esto el paquete no se puede conectar aún a todas las pantallas que siguen habilitadas.
+
+### Orden, checksums y pre/postflight
+
+`manifest.json` fija el perfil `ONE_SHOT_EMPTY_DB`, el orden completo de los 43 archivos SQL y SHA-256 por archivo: 41 archivos pre-import y 2 archivos post-import (`steps/042_post_import_triggers.sql` y `900_final_security.sql`). Para comprobarlo localmente:
+
+```text
+node supabase/bootstrap/verify-manifest.mjs --check
+```
+
+Antes de una futura instalación, configurar el entorno libpq (`PGHOST`, `PGPORT`, `PGUSER`, `PGDATABASE`, `PGPASSWORD`, `PGSSLMODE`) fuera de la línea de comandos; suministrar `F6_EXPECTED_PROJECT_REF` (opcional) y `F6_ACTUAL_PROJECT_REF` (ref observado del destino). Después ejecutar `--preflight`, que exige base vacía y `current_user=postgres`. El preflight compara los refs que le entrega el operador; no obtiene independientemente el project ref del servidor.
+
+Para C2-L, el único comando one-shot es `node scripts/f6-2d-migration.mjs IMPORT_LOCAL --target local`. El orquestador ejecuta preflight, los 41 archivos pre-import, importa la fixture sintética, reconcilia antes de triggers, aplica 042 y verifica los 15 triggers esperados, aplica 900, ejecuta postflight y reconcilia de nuevo. Para F6.3A existe además `IMPORT_ZERO_ROW_PACKAGE_LOCAL --target local --package <directorio>`: requiere antes el PASS de `VALIDATE_DEMO_ONLY_ZERO_ROW_CUTOVER`, valida íntegramente el paquete real aprobado y acepta sólo 0 filas de negocio y 0 Auth mappings. Su ventana de importación es un no-op explícito (no ejecuta INSERT); luego reconcilia que las 42 tablas contractuales y Auth estén vacías, verifica RLS, DML API denegado y PUBLIC EXECUTE revocado, instala 042/900 y repite la reconciliación. Este modo es local-only y no habilita importación de paquetes con datos. La metadata FK se normaliza como arrays ordenados `sourceColumns`/`destinationColumns`; el SQL castea los nombres de catálogo a `text[]` para que el driver PostgreSQL no los devuelva como `name[]` textual. `VALIDATE_ONLY` valida el contrato estructural y la reconciliación rechaza metadatos FK con tipos o longitudes inválidas. Si falla la reconciliación pre-trigger, se detiene antes de 042 y 900; se debe descartar/restablecer solamente el stack Supabase local antes de repetir. Los marcadores `PASS` y el resumen JSON dejan evidencia de cada gate. `IMPORT_LOCAL` además exige `F6_LOCAL_DATABASE_URL`, destino `local`, host loopback, puerto 54322, base `postgres`, usuario `postgres` y checkout sin vínculo remoto.
+
+Para una instalación manual de validación distinta de C2, aplicar cada archivo listado en `manifest.json`, en ese orden y completo; detenerse ante el primer error y descartar/restaurar la instancia de ensayo. Ejecutar `--postflight` al final para validar estructura, RLS, RPC esenciales y la frontera de escritura directa. `preflight.sql` y `postflight.sql` son checks, no migraciones.
+
+### F6.3B — bootstrap remoto futuro
+
+`docs/f6-3b-production-bootstrap.md` describe el runner separado de producción. `PLAN_PRODUCTION_BOOTSTRAP` es offline. `PRODUCTION_BOOTSTRAP_REMOTE` exige la variable segura `F6_PRODUCTION_DATABASE_URL`, `--enable-production-bootstrap` y `--confirm-target-ref`; bloquea legacy/staging, hosts/ref no coincidentes, TLS inseguro y cualquier paquete con filas. El importador local permanece loopback-only. Un fallo tras comenzar SQL deja `TAINTED_BOOTSTRAP`; se debe recrear el destino mediante un gate aparte, nunca reanudar ni reparar incrementalmente.
+
+Validación local disponible: `src/test/kioskoBootstrapSql.test.ts` ejecuta el orden completo con PGlite, verifica relaciones/RLS, ACL seleccionadas y pre/postflight. **No sustituye Supabase/PostgreSQL real**; ownership, concurrencia, comportamiento Auth, Realtime, Edge Function y seguridad efectiva siguen pendientes en una instancia desechable autorizada.
+
+El baseline incluye `platform_initial_admin_bootstrap_state` como tabla destino-only vacía, clasificada en `data-migration.json.reinitialize`. La seguridad final habilita RLS y revoca incluso el acceso de `service_role` a esa tabla; sólo el operador conectado como `postgres` puede gestionar su estado. Tras el bootstrap zero-row, `scripts/f6-3b-initial-platform-admin.mjs` prepara en un rehearsal local el SuperAdmin global (`rol=VISOR`, `es_superadmin=true`, kiosco NULL) y el primer Dueño. No ejecutar el runner contra un proyecto hosted sin un gate posterior explícito.

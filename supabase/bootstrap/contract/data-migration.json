@@ -1,0 +1,487 @@
+{
+  "contractVersion": "F6.2D-2",
+  "status": "MAPPING_PLAN_READY_IMPORT_BLOCKED",
+  "sourceOfTruth": [
+    "supabase/bootstrap/manifest.json",
+    "supabase/bootstrap/contract/README.md",
+    "supabase/bootstrap/contract/write-access.json",
+    "docs/f6-2d-data-migration-contract.md"
+  ],
+  "remoteAccessAllowed": false,
+  "liveImportEnabled": false,
+  "authTokensMigrated": false,
+  "c3b1SemanticReview": {
+    "status": "LOCAL_SEMANTICS_CLOSED",
+    "legacyStock": {
+      "probe": {
+        "INGRESO": {
+          "rows": 3,
+          "sum": "3.000",
+          "positive": 3
+        },
+        "EGRESO": {
+          "rows": 119,
+          "sum": "-160.000",
+          "negative": 113,
+          "positive": 6,
+          "min": "-8.000",
+          "max": "1.000"
+        },
+        "AJUSTE": {
+          "rows": 0
+        }
+      },
+      "historicalNet": "-157.000",
+      "rule": "Source EGRESO has two documented encodings: direct historical writers store signed negative deltas; checkout-trigger rows store positive magnitude and negative delta. Canonicalize destination cantidad=abs(source cantidad) and delta_stock=-abs(source cantidad) for EGRESO. Negative values retain their exact signed value as delta; positive values are treated as magnitude per the verified trigger contract. INGRESO must be positive and maps unchanged. AJUSTE remains fail-closed.",
+      "destinationCompatibility": "This canonical shape satisfies destination cantidad magnitude and EGRESO negative-delta constraints. Reconcile source signed quantities separately from canonical target deltas."
+    },
+    "payments": {
+      "observed": {
+        "EFECTIVO": 21,
+        "MERCADOPAGO": 2,
+        "TARJETA": 2,
+        "TRANSFERENCIA": 3
+      },
+      "unexpected": 0,
+      "mapping": "Identity; no value conversion."
+    },
+    "timestamps": {
+      "sourceTimezone": "UTC",
+      "instants": "timestamptz serialized as ISO 8601 UTC Z with six fractional digits retained",
+      "dates": "date serialized as YYYY-MM-DD without timezone"
+    },
+    "numeric": "PostgreSQL NUMERIC values remain exact decimal strings through JSON; JS Number values are rejected.",
+    "nullKioskProfile": "Exclude/quarantine; do not infer a kiosk assignment.",
+    "evidence": {
+      "checkout_manuales": "EVIDENCE_ONLY_DISABLED; omit from export",
+      "anulaciones_venta_atomicas": "EVIDENCE_ONLY_DISABLED; omit from export",
+      "rawJsonPayloadsExported": false
+    }
+  },
+  "tables": [
+    {
+      "name": "kioscos",
+      "order": 1,
+      "class": "REQUIRED",
+      "reason": "business identity",
+      "disposition": "REQUIRED"
+    },
+    {
+      "name": "usuarios",
+      "order": 2,
+      "class": "REQUIRED",
+      "reason": "Preserve business ID; recreate Auth link; one NULL kiosk profile unresolved.",
+      "disposition": "CONDITIONAL"
+    },
+    {
+      "name": "categorias",
+      "order": 3,
+      "class": "OPTIONAL",
+      "reason": "catalog hierarchy",
+      "disposition": "REQUIRED"
+    },
+    {
+      "name": "proveedores",
+      "order": 3,
+      "class": "REQUIRED_IF_PURCHASES",
+      "reason": "Source count 0; recheck final baseline.",
+      "disposition": "EMPTY_DOMAIN"
+    },
+    {
+      "name": "clientes",
+      "order": 3,
+      "class": "OPTIONAL",
+      "reason": "Source count 0; no opening balances.",
+      "disposition": "EMPTY_DOMAIN"
+    },
+    {
+      "name": "productos",
+      "order": 4,
+      "class": "REQUIRED",
+      "reason": "catalog and stock snapshot; depends on category/provider",
+      "disposition": "REQUIRED"
+    },
+    {
+      "name": "combo_items",
+      "order": 5,
+      "class": "OPTIONAL",
+      "reason": "physical combo recipe",
+      "disposition": "OPTIONAL"
+    },
+    {
+      "name": "promociones",
+      "order": 5,
+      "class": "OPTIONAL",
+      "reason": "compatible catalog promotions",
+      "disposition": "OPTIONAL"
+    },
+    {
+      "name": "producto_costos",
+      "order": 5,
+      "class": "REQUIRED_IF_COSTS_USED",
+      "reason": "current cost snapshot",
+      "disposition": "REQUIRED"
+    },
+    {
+      "name": "lotes_producto",
+      "order": 5,
+      "class": "REQUIRED_IF_LOTS_USED",
+      "reason": "inventory lots",
+      "disposition": "CONDITIONAL"
+    },
+    {
+      "name": "sesiones_caja",
+      "order": 5,
+      "class": "REQUIRED_CLOSED_ONLY",
+      "reason": "Operational migrations require closed sessions; only the exact reviewed demo-only zero-row set may mark open-session blockers not applicable after the cutover validator passes.",
+      "disposition": "CONDITIONAL"
+    },
+    {
+      "name": "operaciones_escritura",
+      "order": 5,
+      "class": "CONDITIONAL_LEDGER_SUPPORT",
+      "reason": "Source relation absent; destination idempotency state is transient and starts empty.",
+      "disposition": "OMIT"
+    },
+    {
+      "name": "ventas",
+      "order": 6,
+      "class": "REQUIRED_COMPATIBLE_HISTORY",
+      "reason": "sale headers",
+      "disposition": "REQUIRED"
+    },
+    {
+      "name": "compras_proveedor",
+      "order": 6,
+      "class": "REQUIRED_COMPATIBLE_HISTORY",
+      "reason": "purchase headers",
+      "disposition": "EMPTY_DOMAIN"
+    },
+    {
+      "name": "detalles_venta",
+      "order": 7,
+      "class": "REQUIRED_WITH_SALE",
+      "reason": "sale lines",
+      "disposition": "CONDITIONAL"
+    },
+    {
+      "name": "pagos_venta",
+      "order": 7,
+      "class": "REQUIRED_WITH_SALE",
+      "reason": "sale tenders",
+      "disposition": "CONDITIONAL"
+    },
+    {
+      "name": "movimientos_stock",
+      "order": 7,
+      "class": "REQUIRED_COMPATIBLE_HISTORY",
+      "reason": "Canonicalize both legacy EGRESO encodings to positive destination magnitude and negative signed delta; keep raw-source quantity aggregates separate from canonical delta reconciliation.",
+      "disposition": "CONDITIONAL"
+    },
+    {
+      "name": "movimientos_caja",
+      "order": 7,
+      "class": "REQUIRED_CLOSED_SESSION_ONLY",
+      "reason": "cash ledger of closed sessions",
+      "disposition": "CONDITIONAL"
+    },
+    {
+      "name": "detalles_compra",
+      "order": 7,
+      "class": "REQUIRED_WITH_PURCHASE",
+      "reason": "purchase lines",
+      "disposition": "EMPTY_DOMAIN"
+    },
+    {
+      "name": "pagos_proveedor",
+      "order": 7,
+      "class": "REQUIRED_COMPATIBLE_HISTORY",
+      "reason": "supplier payments",
+      "disposition": "EMPTY_DOMAIN"
+    },
+    {
+      "name": "movimiento_stock_costos",
+      "order": 8,
+      "class": "OPTIONAL_COMPATIBLE",
+      "reason": "cost snapshot attached to stock event",
+      "disposition": "CONDITIONAL"
+    },
+    {
+      "name": "movimientos_proveedor",
+      "order": 8,
+      "class": "REQUIRED_IF_LEDGER_COMPATIBLE",
+      "reason": "Source relation absent; provider/purchase/payment dataset is empty; do not synthesize.",
+      "disposition": "OMIT"
+    },
+    {
+      "name": "historial_precios_producto",
+      "order": 8,
+      "class": "OPTIONAL_COMPATIBLE",
+      "reason": "Source relation absent; do not guess historical prices.",
+      "disposition": "OMIT"
+    },
+    {
+      "name": "movimientos_cuenta_corriente",
+      "order": 8,
+      "class": "REQUIRED_IF_CREDIT_HISTORY",
+      "reason": "customer account ledger",
+      "disposition": "EMPTY_DOMAIN"
+    },
+    {
+      "name": "checkout_manuales",
+      "order": 9,
+      "class": "CONDITIONAL_AUDIT_EVIDENCE",
+      "reason": "Only reviewed non-replayable evidence; never invoke checkout.",
+      "disposition": "EVIDENCE_ONLY"
+    },
+    {
+      "name": "anulaciones_venta_atomicas",
+      "order": 9,
+      "class": "CONDITIONAL_AUDIT_EVIDENCE",
+      "reason": "Only reviewed evidence; preserve final sale status; never replay annulment.",
+      "disposition": "EVIDENCE_ONLY"
+    }
+  ],
+  "excludeOrReinitialize": [
+    "auth sessions and tokens",
+    "fixtures F4A/F4B and synthetic accounts/data",
+    "subscriptions, plans, commercial admin",
+    "ARCA/CAE and Mercado Pago/Point out of current contract",
+    "partial returns and shared packaging out of scope",
+    "open cash sessions",
+    "pending checkout, cancellation, stock and drawer operations",
+    "checkout_manual_entradas",
+    "checkout_manual_cancelaciones",
+    "operaciones_stock",
+    "supervisor_autorizaciones",
+    "supervisor_pin_config_auditoria",
+    "supervisor_pin_intentos",
+    "supervisor_pin_limites",
+    "supervisor_pin_secretos",
+    "supervisor_politica_auditoria",
+    "auditoria_operaciones (unless separately approved)",
+    "tickets_soporte (unless separately approved)",
+    "historial_precios_producto unless its source operation ledger is exactly traceable",
+    "supervisor PIN secrets, attempts, authorizations and credentials",
+    "support tickets and operational/security audit unless separately approved",
+    "electronica_unidades",
+    "electronica_reparaciones",
+    "electronica_solicitudes",
+    "devoluciones_venta"
+  ],
+  "reinitialize": [
+    "platform_initial_admin_bootstrap_state",
+    "supervisor_politicas"
+  ],
+  "excludedTables": [
+    "auditoria_operaciones",
+    "checkout_manual_cancelaciones",
+    "checkout_manual_entradas",
+    "devoluciones_venta",
+    "electronica_reparaciones",
+    "electronica_solicitudes",
+    "electronica_unidades",
+    "operaciones_stock",
+    "supervisor_autorizaciones",
+    "supervisor_pin_config_auditoria",
+    "supervisor_pin_intentos",
+    "supervisor_pin_limites",
+    "supervisor_pin_secretos",
+    "supervisor_politica_auditoria",
+    "tickets_soporte"
+  ],
+  "requiresLegacyInventory": true,
+  "executionPrerequisites": [
+    "FINAL_BASELINE/cash closure is required for OPERATIONAL_CUTOVER_REQUIRED; the reviewed demo-only zero-row set uses the guarded exception in cutoverPolicy only after local validation.",
+    "explicit resolution of profile with NULL kiosk_id",
+    "row classification for fixtures/synthetic/out-of-scope histories",
+    "verified enum/payment/timezone/currency/rounding semantics",
+    "validated non-destructive local historical importer for hardened bootstrap",
+    "approved Auth mapping and evidence privacy/invariants",
+    "source-to-target schema recheck against final bootstrap"
+  ],
+  "mappingFile": "supabase/bootstrap/contract/source-destination-mapping.json",
+  "legacyInventoryStatus": "COMPLETE_READ_ONLY_PRE_CUTOVER",
+  "baselineStatus": "PRE_CUTOVER_FINAL_BASELINE_REQUIRED",
+  "openCashSessionsAtInventory": 4,
+  "profileWithNullKioscoId": 1,
+  "remoteExportImportEnabled": false,
+  "legacyPreCutoverBaseline": {
+    "kioscos": 4,
+    "usuarios": 6,
+    "authUserLinksValid": 6,
+    "authUsersWithoutProfile": 9,
+    "profilesKioscoExisting": 5,
+    "profilesKioscoNull": 1,
+    "profilesKioscoMissing": 0,
+    "categorias": 35,
+    "productos": 285,
+    "productoCostos": 284,
+    "productoCostosSum": "1169130.00",
+    "productosPrecioCostoSum": "0.00",
+    "productosPrecioVentaSum": "1983850.00",
+    "stockSnapshotSum": "169617.500",
+    "movimientosStock": 122,
+    "movementStockHistoricalNet": "-157.000",
+    "movimientoStockCostos": 63,
+    "movimientosStockWithoutCost": 59,
+    "clientes": 0,
+    "movimientosCuentaCorriente": 0,
+    "proveedores": 0,
+    "comprasProveedor": 0,
+    "detallesCompra": 0,
+    "pagosProveedor": 0,
+    "ventas": 28,
+    "detallesVenta": 118,
+    "pagosVenta": 28,
+    "ventasTotal": "470167.00",
+    "ventaAnuladaCount": 1,
+    "ventaAnuladaTotal": "2240.00",
+    "sesionesCajaTotal": 7,
+    "sesionesCajaClosed": 3,
+    "sesionesCajaOpen": 4,
+    "ventasLinkedToOpenCash": 14
+  },
+  "localSyntheticValidation": {
+    "contract": "F6.2D-C2",
+    "status": "BLOCKED_LOCAL_STACK_UNREACHABLE_FROM_EXEC_ENVIRONMENT",
+    "fixture": "supabase/bootstrap/fixtures/f6-2d-c2-synthetic.json",
+    "sourceDataIncluded": false,
+    "realExportImportEnabled": false,
+    "requiresExplicitTarget": "local",
+    "allowedDatabaseHost": "127.0.0.1:54322",
+    "importWindowAfter": "steps/041_catalog_support_write_hardening.sql",
+    "postImportFiles": [
+      "steps/042_post_import_triggers.sql",
+      "900_final_security.sql"
+    ],
+    "auth": "Synthetic auth.users UUID placeholders only; no Auth API, passwords, hashes, tokens, or sessions.",
+    "nullKioskProfile": "REJECT_AND_QUARANTINE; target usuarios.kiosco_id is NOT NULL. Fixture negative example is not imported.",
+    "failureRecovery": "Stop on first failure. Reset only the isolated local Supabase stack and restart from empty preflight; do not patch a partial database.",
+    "blockingEvidence": {
+      "cli": "npx --offline supabase status failed with ENOTCACHED; Docker and psql executables are not present in this shell.",
+      "database": "Read-only connection attempt to 127.0.0.1:54322 (including elevated execution) terminated unexpectedly before SQL.",
+      "effects": "No SQL was sent, no local DB writes were made, and no remote project was contacted."
+    }
+  },
+  "cutoverPolicy": {
+    "version": "F6.2D-C3D-4",
+    "modes": {
+      "OPERATIONAL_CUTOVER_REQUIRED": {
+        "cashClosureRequirement": "CUTOVER_BLOCKER",
+        "finalDataDeltaRequired": true,
+        "finalDataExportRequired": true,
+        "operationalCashClosureRequired": true
+      },
+      "DEMO_ONLY_ZERO_ROW_CUTOVER_NOT_APPLICABLE": {
+        "cashClosureRequirement": "NOT_APPLICABLE_DEMO_ONLY_SOURCE",
+        "finalDataDeltaRequired": false,
+        "finalDataExportRequired": false,
+        "operationalCashClosureRequired": false
+      }
+    },
+    "exceptionScope": {
+      "coveredBlockers": [
+        "sesiones_caja_abiertas",
+        "ventas_ligadas_a_sesiones_caja_abiertas",
+        "movimientos_caja_ligados_a_sesiones_caja_abiertas"
+      ],
+      "otherDomainsCovered": false,
+      "stillRequired": [
+        "clean destination preparation",
+        "bootstrap schema",
+        "security validation",
+        "new Auth configuration",
+        "Vercel/Supabase topology resolution",
+        "smoke tests"
+      ]
+    },
+    "requiredConditions": [
+      "all candidate kiosks explicitly EXCLUDE",
+      "INCLUDE=0",
+      "UNRESOLVED=0",
+      "classificationStatus=APPROVED",
+      "complete candidate coverage",
+      "approved provenance for every kiosk exclusion",
+      "reconciled valid PRE_CUTOVER package",
+      "total_migrable_rows=0",
+      "all blockers belong exclusively to EXCLUDE kiosks",
+      "no migrable dependent rows",
+      "0 orphan and 0 cross-kiosk on relationships used",
+      "source schema fingerprint and reviewed checksums still match"
+    ],
+    "reviewedMigrationSet": {
+      "status": "VALIDATED_NOT_APPLICABLE_DEMO_ONLY_SOURCE",
+      "decisionIfAllConditionsPass": "NOT_APPLICABLE_DEMO_ONLY_SOURCE",
+      "classificationSchemaVersion": "F6.2D-C3C-2",
+      "exportContractVersion": "F6.2D-C3A-1",
+      "candidateGroups": 23,
+      "candidatePositions": 942,
+      "distinctCandidateIds": 595,
+      "sourceKiosks": 4,
+      "include": 0,
+      "exclude": 942,
+      "unresolved": 0,
+      "totalMigrableRows": 0,
+      "exclusionReasonCounts": {
+        "EXACT_SIGNATURE": 242,
+        "MANUAL_OWNER_CONFIRMED_DEMO": 2,
+        "MANUAL_OWNER_CONFIRMED_DEMO_CASCADE": 698
+      },
+      "blockers": {
+        "openSessions": 4,
+        "linkedSales": 14,
+        "linkedCashMovements": 1
+      },
+      "relationshipEvidence": {
+        "foreignKeyCount": 52,
+        "orphanCount": 0,
+        "crossKioskCount": 0,
+        "blockersBelongToExcludedKiosks": true,
+        "noMigrableDependentRows": true,
+        "verifiedBlockerForeignKeys": [
+          "ventas.sesion_caja_id -> sesiones_caja.id",
+          "movimientos_caja.sesion_caja_id -> sesiones_caja.id"
+        ],
+        "reviewBasis": "Owner-confirmed demo-only tenant attribution reconciled to the reviewed read-only FK and enrichment outputs; output hashes below are pinned."
+      },
+      "approvedArtifactSha256": {
+        "approvedRowIds": "cf055448718f83215cf5c3d1de4f0fb9ef5b9aa7c5d235e18e11648d735dd802",
+        "candidateDraft": "810699fbba449d7fc98f36e0f90f8fd613da2506e36b3835e88abbc477a1f8f0",
+        "baseline": "86465e249fc09f07e409b47296ace68cc4f630524539ccb301ccb15e1df9403a",
+        "packageManifest": "4e9f8e9ea9b407d4d2812af1fc8827f3e22fdf3baf9f9d9fd99be1c38a7b0eff",
+        "foreignKeyInventory": "a924d02549fc81fc232d35ca75cfe8da33409368aa4e0afdcd673666726367e4",
+        "candidateEnrichment": "c960d5a24797c1b133a5257ddd9a83a1171a77c09a3c6418b03efd9381e87559",
+        "foreignKeySql": "6fe302770984b3241213843333a1faedd0e6afbd47d876995269c05ce9c39f2f",
+        "candidateEnrichmentSql": "2da2a371d3e9165a837b19fda612660f6b068bfc7b6d8c370932777ae77d3d66"
+      },
+      "packageContentSha256": "da95c160e8f2afaf727a5069a8e2e2b9896a2048c4aa8bb0559bc25ddd01ecaa",
+      "sourceSchemaFingerprint": "d1b0bc135d6369c89b39e6d566df8a0169c5c5704df9b13edbf38bf8e3f6a81d",
+      "block03Sha256": "932949ba8d8d03a217c43308663754bc93045321d471de5d614ba0f4ac3d512f",
+      "block11Sha256": "6af95327429ba488e946993033ef660144165fdebc28cd58bf5f43255da41cfc",
+      "artifactPaths": {
+        "approvedRowIds": "approved-row-ids.json",
+        "candidateDraft": "c3a-candidates.json",
+        "baseline": "baseline-reviewed.json",
+        "packageManifest": "pre-cutover-export/manifest.json",
+        "foreignKeyInventory": "c3c3-fk-inventory-output.txt",
+        "candidateEnrichment": "c3c5-enrichment-output.txt",
+        "foreignKeySql": "c3c3-fk-inventory-read-only.sql",
+        "candidateEnrichmentSql": "c3c5-enrichment-read-only.sql"
+      },
+      "localValidation": {
+        "validator": "VALIDATE_DEMO_ONLY_ZERO_ROW_CUTOVER",
+        "validatedOn": "2026-10-13",
+        "cutoverClass": "DEMO_ONLY_ZERO_ROW_CUTOVER_NOT_APPLICABLE",
+        "failedConditions": [],
+        "blockers": {
+          "openSessions": 4,
+          "linkedSales": 14,
+          "linkedCashMovements": 1
+        },
+        "finalDataDeltaRequired": false,
+        "finalDataExportRequired": false
+      }
+    }
+  }
+}

@@ -1,0 +1,295 @@
+{
+  "kind": "F6.2D-C2_SYNTHETIC_ONLY",
+  "authMapping": [
+    {
+      "legacy_business_user_id": "f6100000-0000-0000-0000-000000000001",
+      "destination_auth_user_id": "f6200000-0000-0000-0000-000000000001",
+      "profile_id": "f6300000-0000-0000-0000-000000000001",
+      "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+      "role": "DUEÑO"
+    }
+  ],
+  "authUsers": [
+    {
+      "id": "f6200000-0000-0000-0000-000000000001"
+    }
+  ],
+  "tables": {
+    "kioscos": [
+      {
+        "id": "f6400000-0000-0000-0000-000000000001",
+        "nombre": "F6 synthetic kiosk 1"
+      },
+      {
+        "id": "f6400000-0000-0000-0000-000000000002",
+        "nombre": "F6 synthetic kiosk 2"
+      },
+      {
+        "id": "f6400000-0000-0000-0000-000000000003",
+        "nombre": "F6 synthetic kiosk 3"
+      },
+      {
+        "id": "f6400000-0000-0000-0000-000000000004",
+        "nombre": "F6 synthetic kiosk 4"
+      }
+    ],
+    "usuarios": [
+      {
+        "id": "f6300000-0000-0000-0000-000000000001",
+        "auth_user_id": "f6200000-0000-0000-0000-000000000001",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "nombre": "Synthetic owner",
+        "rol": "DUEÑO",
+        "activo": true
+      }
+    ],
+    "categorias": [
+      {
+        "id": "f6500000-0000-0000-0000-000000000001",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "nombre": "Synthetic category",
+        "orden": 1
+      }
+    ],
+    "clientes": [],
+    "proveedores": [],
+    "productos": [
+      {
+        "id": "f6600000-0000-0000-0000-000000000001",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "categoria_id": "f6500000-0000-0000-0000-000000000001",
+        "descripcion": "Synthetic product with cost",
+        "precio_costo": "0.00",
+        "precio_venta": "10.00",
+        "stock_actual": "9.000",
+        "activo": true
+      },
+      {
+        "id": "f6600000-0000-0000-0000-000000000002",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "categoria_id": "f6500000-0000-0000-0000-000000000001",
+        "descripcion": "Synthetic product without cost",
+        "precio_costo": "0.00",
+        "precio_venta": "2.00",
+        "stock_actual": "2.000",
+        "activo": true
+      },
+      {
+        "id": "f6600000-0000-0000-0000-000000000003",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "categoria_id": "f6500000-0000-0000-0000-000000000001",
+        "descripcion": "Synthetic combo",
+        "precio_costo": "0.00",
+        "precio_venta": "14.00",
+        "stock_actual": "0.000",
+        "es_combo": true,
+        "activo": true
+      },
+      {
+        "id": "f6600000-0000-0000-0000-000000000004",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "categoria_id": "f6500000-0000-0000-0000-000000000001",
+        "descripcion": "Synthetic combo component",
+        "precio_costo": "0.00",
+        "precio_venta": "7.00",
+        "stock_actual": "10.000",
+        "activo": true
+      }
+    ],
+    "producto_costos": [
+      {
+        "producto_id": "f6600000-0000-0000-0000-000000000001",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "precio_costo": "4.25"
+      },
+      {
+        "producto_id": "f6600000-0000-0000-0000-000000000003",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "precio_costo": "6.00"
+      },
+      {
+        "producto_id": "f6600000-0000-0000-0000-000000000004",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "precio_costo": "3.00"
+      }
+    ],
+    "combo_items": [
+      {
+        "id": "f6700000-0000-0000-0000-000000000001",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "combo_producto_id": "f6600000-0000-0000-0000-000000000003",
+        "componente_producto_id": "f6600000-0000-0000-0000-000000000004",
+        "cantidad": "2.000"
+      }
+    ],
+    "promociones": [
+      {
+        "id": "f6800000-0000-0000-0000-000000000001",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "nombre": "Synthetic promotion",
+        "tipo": "NXM",
+        "producto_id": "f6600000-0000-0000-0000-000000000001",
+        "cantidad_minima": "2.000",
+        "cantidad_paga": "1.000",
+        "activo": true
+      }
+    ],
+    "lotes_producto": [
+      {
+        "id": "f6900000-0000-0000-0000-000000000001",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "producto_id": "f6600000-0000-0000-0000-000000000001",
+        "numero_lote": "SYN-EMPTY",
+        "fecha_vencimiento": "2027-01-01",
+        "cantidad_inicial": "2.000",
+        "cantidad_actual": "0.000",
+        "activo": false
+      }
+    ],
+    "sesiones_caja": [
+      {
+        "id": "f6a00000-0000-0000-0000-000000000001",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "usuario_id": "f6300000-0000-0000-0000-000000000001",
+        "fecha_apertura": "2026-10-01T08:00:00Z",
+        "fecha_cierre": "2026-10-01T17:00:00Z",
+        "monto_inicial": "100.00",
+        "monto_final_declarado": "108.00",
+        "monto_final_sistema": "108.00",
+        "diferencia": "0.00",
+        "estado": "CERRADA"
+      }
+    ],
+    "ventas": [
+      {
+        "id": "f6b00000-0000-0000-0000-000000000001",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "usuario_id": "f6300000-0000-0000-0000-000000000001",
+        "sesion_caja_id": "f6a00000-0000-0000-0000-000000000001",
+        "fecha_hora": "2026-10-01T10:00:00Z",
+        "total": "10.00",
+        "estado": "COMPLETADA"
+      },
+      {
+        "id": "f6b00000-0000-0000-0000-000000000002",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "usuario_id": "f6300000-0000-0000-0000-000000000001",
+        "sesion_caja_id": "f6a00000-0000-0000-0000-000000000001",
+        "fecha_hora": "2026-10-01T11:00:00Z",
+        "total": "2.00",
+        "estado": "ANULADA",
+        "motivo_anulacion": "Synthetic historical annulment",
+        "anulada_por": "f6300000-0000-0000-0000-000000000001",
+        "anulada_en": "2026-10-01T11:30:00Z"
+      }
+    ],
+    "compras_proveedor": [],
+    "detalles_venta": [
+      {
+        "id": "f6c00000-0000-0000-0000-000000000001",
+        "venta_id": "f6b00000-0000-0000-0000-000000000001",
+        "producto_id": "f6600000-0000-0000-0000-000000000001",
+        "cantidad": "1.000",
+        "precio_unitario": "10.00",
+        "subtotal": "10.00"
+      },
+      {
+        "id": "f6c00000-0000-0000-0000-000000000002",
+        "venta_id": "f6b00000-0000-0000-0000-000000000002",
+        "producto_id": "f6600000-0000-0000-0000-000000000002",
+        "cantidad": "1.000",
+        "precio_unitario": "2.00",
+        "subtotal": "2.00"
+      }
+    ],
+    "pagos_venta": [
+      {
+        "id": "f6d00000-0000-0000-0000-000000000001",
+        "venta_id": "f6b00000-0000-0000-0000-000000000001",
+        "medio_pago": "EFECTIVO",
+        "monto": "10.00"
+      },
+      {
+        "id": "f6d00000-0000-0000-0000-000000000002",
+        "venta_id": "f6b00000-0000-0000-0000-000000000002",
+        "medio_pago": "EFECTIVO",
+        "monto": "2.00"
+      }
+    ],
+    "detalles_compra": [],
+    "pagos_proveedor": [],
+    "movimientos_stock": [
+      {
+        "id": "f6e00000-0000-0000-0000-000000000001",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "producto_id": "f6600000-0000-0000-0000-000000000001",
+        "tipo": "EGRESO",
+        "cantidad": "1.000",
+        "delta_stock": "-1.000",
+        "motivo": "AJUSTE_HISTORICO",
+        "fecha": "2026-10-01T09:00:00Z"
+      },
+      {
+        "id": "f6e00000-0000-0000-0000-000000000002",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "producto_id": "f6600000-0000-0000-0000-000000000002",
+        "tipo": "INGRESO",
+        "cantidad": "3.000",
+        "delta_stock": "3.000",
+        "motivo": "AJUSTE_HISTORICO",
+        "fecha": "2026-10-01T09:05:00Z"
+      }
+    ],
+    "movimiento_stock_costos": [
+      {
+        "movimiento_id": "f6e00000-0000-0000-0000-000000000001",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "precio_costo": "4.25"
+      }
+    ],
+    "movimientos_caja": [
+      {
+        "id": "f6f00000-0000-0000-0000-000000000001",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "sesion_caja_id": "f6a00000-0000-0000-0000-000000000001",
+        "usuario_id": "f6300000-0000-0000-0000-000000000001",
+        "tipo": "EGRESO",
+        "motivo": "ANULACION_HISTORICA",
+        "monto": "2.00",
+        "descripcion": "Synthetic historical annulment refund",
+        "fecha_hora": "2026-10-01T09:10:00Z"
+      }
+    ],
+    "movimientos_cuenta_corriente": [],
+    "checkout_manuales": [
+      {
+        "id": "f6b00000-0000-0000-0000-000000000001",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "solicitud": {
+          "evidence_only": true
+        },
+        "resultado": {
+          "evidence_only": true
+        },
+        "venta_id": "f6b00000-0000-0000-0000-000000000001"
+      }
+    ],
+    "anulaciones_venta_atomicas": [
+      {
+        "venta_id": "f6b00000-0000-0000-0000-000000000002",
+        "kiosco_id": "f6400000-0000-0000-0000-000000000001",
+        "actor_auth_id": "f6200000-0000-0000-0000-000000000001",
+        "motivo": "Synthetic historical annulment",
+        "resultado": {
+          "evidence_only": true
+        }
+      }
+    ]
+  },
+  "rejectedExamples": {
+    "nullKioskProfile": {
+      "kiosco_id": null,
+      "reason": "Target usuarios.kiosco_id is NOT NULL; real source case remains quarantined pending owner decision."
+    }
+  }
+}

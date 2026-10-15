@@ -26,8 +26,5 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.proteger_cierre_caja_checkout_manual() FROM PUBLIC,anon,authenticated,service_role;
-DROP TRIGGER IF EXISTS proteger_cierre_checkout_manual ON public.sesiones_caja;
-CREATE TRIGGER proteger_cierre_checkout_manual BEFORE UPDATE OF estado,fecha_cierre,kiosco_id,usuario_id ON public.sesiones_caja
-  FOR EACH ROW EXECUTE FUNCTION public.proteger_cierre_caja_checkout_manual();
 NOTIFY pgrst,'reload schema';
 COMMIT;

@@ -1,0 +1,184 @@
+{
+  "version": 2,
+  "profile": "ONE_SHOT_EMPTY_DB",
+  "expectedProjectRef": null,
+  "importWindowAfter": "steps/041_catalog_support_write_hardening.sql",
+  "postImportFiles": [
+    "steps/042_post_import_triggers.sql",
+    "900_final_security.sql"
+  ],
+  "files": [
+    {
+      "path": "001_domain.sql",
+      "sha256": "32f10803cb34cc8737f6d3cfdfbea7e6c4bfc31fee5f2065eab4fca7776f4def"
+    },
+    {
+      "path": "002_identity_helpers.sql",
+      "sha256": "76f7ab62cc7074ef34ecef36c08d3626b3b2e816a1bd6450ea396e23da9bfc01"
+    },
+    {
+      "path": "steps/003_profile_integrity.sql",
+      "sha256": "b581a82da5111fe3bfb4c9ae05be02e097801614308cf48b18bda61ac1474d65"
+    },
+    {
+      "path": "steps/004_private_product_costs.sql",
+      "sha256": "5bd12a406d8dbaf202610b0755112689afb196a4e04f110ae03a2701b2a58271"
+    },
+    {
+      "path": "steps/005_stock_history.sql",
+      "sha256": "f45564f6099dad7b96cc84f0f8c0cce4e92389bc6347f8d3ef76e477705b6d18"
+    },
+    {
+      "path": "steps/006_private_stock_costs.sql",
+      "sha256": "2a258e699a5cc348991369d98ea9911a4bdacb6ba6ae60d7791e8fdb6f7f6a48"
+    },
+    {
+      "path": "steps/007_annulment_audit.sql",
+      "sha256": "7cd4dc7203c76cdfcc0209c40203675305e3ae0ba0fdbbd53ee97f37bbf7f1af"
+    },
+    {
+      "path": "steps/008_checkout_core.sql",
+      "sha256": "d74fd02257043c9236dc3481e8267a4d80827c98b67a3d083c550532dcf527d3"
+    },
+    {
+      "path": "steps/009_checkout_backend.sql",
+      "sha256": "3bc645b530e759148aec01dbc266b6b2735871597f1f22091264ef67bff6aa84"
+    },
+    {
+      "path": "steps/010_checkout_cancel.sql",
+      "sha256": "bcb19feb584f5126ac6290dae0197a5635044ec40c53fbebb4e43cb66150e40c"
+    },
+    {
+      "path": "steps/011_checkout_cash_close_guard.sql",
+      "sha256": "00907793043a9147209798599901ea8c5c8f094a7790b5ad61323b909cc6b6bd"
+    },
+    {
+      "path": "steps/012_checkout_lock_order.sql",
+      "sha256": "476035e5762e8489bc5ce99e7dde541f8ef0b0d56557765d1479533d287338ac"
+    },
+    {
+      "path": "steps/013_checkout_prepare_lock.sql",
+      "sha256": "de4eb238113de3ee0eb8468f0a8e5d4690ef7d2b654c1c1dab0b37a569eff42b"
+    },
+    {
+      "path": "steps/014_checkout_pending_query.sql",
+      "sha256": "3b82fe81834746cd1bb3208ee9f43225e204af85ab0866d0b7cee3282968a217"
+    },
+    {
+      "path": "steps/015_checkout_recover_entry.sql",
+      "sha256": "a7605a4bbb3efcee7e0c30f9933e613248307f6ef0184cd74cd25d3460d952ac"
+    },
+    {
+      "path": "steps/016_checkout_cancel_reconcile.sql",
+      "sha256": "d7b99ca330c0e87173ec58de4ea1b249aaa66203c043ffc1b67a6cb3c5d77662"
+    },
+    {
+      "path": "steps/017_supervisor_pin_private.sql",
+      "sha256": "1e5e7d6725644dd7a967095ed6a7fbd7628a3dce42a87d3a4e0cbdd15db0b4ba"
+    },
+    {
+      "path": "steps/018_supervisor_pin_attempts.sql",
+      "sha256": "64b9cd0c44ed1ddedee65a7fe8097b85b5dc278e4e57c4546e6745bb6eac6f4c"
+    },
+    {
+      "path": "steps/019_supervisor_discount_authorization.sql",
+      "sha256": "be45e3af2f348fa072bea70868c39a49f7d6b5b986bbe05bdd133fc90490f6b7"
+    },
+    {
+      "path": "steps/020_checkout_supervisor.sql",
+      "sha256": "dd7131b907568c98abb8ff295eb8ed3203e8ab39aa7aa73618ae4ba7a8642157"
+    },
+    {
+      "path": "steps/021_checkout_supervisor_policy.sql",
+      "sha256": "adb4d5f95333d3eb78461d3e868fe9ab41cb1c829c538c50347450c43fff04ce"
+    },
+    {
+      "path": "steps/022_supervisor_discount_policy.sql",
+      "sha256": "a7b22d89404aa30bedb5550bd1954bb4a56eab77a8f9f4f17f3372f136b53a1f"
+    },
+    {
+      "path": "steps/023_supervisor_pin_wait.sql",
+      "sha256": "911c4f4ef87fff48017223d9d5f35b06bfe07b03d413924645ce189f39c41b6f"
+    },
+    {
+      "path": "steps/024_checkout_frozen_policy.sql",
+      "sha256": "ddec067866b5e7a394f95aa2d741b85a7be25e94567acf243363d59e1e65ccbc"
+    },
+    {
+      "path": "steps/025_checkout_shared_cash.sql",
+      "sha256": "957e20288ccfda1abb67a9c42bb6595941c3e8ab7e0241f450db4f7e3cf48033"
+    },
+    {
+      "path": "steps/026_edge_identity_reads.sql",
+      "sha256": "2e392ab0a64b432f4e0a85774dbde2bf15baafa20e9605e67ef491b5ce454733"
+    },
+    {
+      "path": "steps/027_edge_catalog_reads.sql",
+      "sha256": "c816c4394457e66269265edb76c986df392bbc1a8866ab43ab2b74583d895e94"
+    },
+    {
+      "path": "steps/028_checkout_immutability.sql",
+      "sha256": "a61751aeb449ef701c80f5fb41d3c3b20047a2be84b82df558696b1ba680adfe"
+    },
+    {
+      "path": "steps/029_atomic_annulment.sql",
+      "sha256": "2e0df86eeff9155b9805f2df9ad7dda4b57bb056b7fe169dd33a885407d340b5"
+    },
+    {
+      "path": "steps/030_application_relations.sql",
+      "sha256": "88b4cfc4c0b81baeb766e413097d0726f608dddb3a4e40ce1437112cbdcd220c"
+    },
+    {
+      "path": "steps/031_stock_idempotency.sql",
+      "sha256": "22af953f57b1371498542cd6b5b19903fa167393160bf6796d93a4ad3a1f970d"
+    },
+    {
+      "path": "steps/032_cash_drawer_request.sql",
+      "sha256": "a33f81e7a12affe402315d4ad60723c152940337de04c98247caead6823e4ab0"
+    },
+    {
+      "path": "steps/033_cash_drawer_result.sql",
+      "sha256": "f2ae222bfcfcaa4eb9062ae35962b5fdd01c0281ea2221f8006b6a4f5c31cfc1"
+    },
+    {
+      "path": "steps/034_supervisor_audit.sql",
+      "sha256": "7b7b3d3e3666823cfeed3813015c34d2c6d482d1648687e68d6f9df02820c050"
+    },
+    {
+      "path": "steps/035_electronics.sql",
+      "sha256": "a7b1beb0350b1b6ad2f5c8fdf1c4e630ee626bce74bc25230bb5dfaeaee5ce8f"
+    },
+    {
+      "path": "steps/036_stock_loss_report.sql",
+      "sha256": "c45f5a712cb6602510187e7c90724a2ad0e9a9c554e5741b5ef2c33c55c358f9"
+    },
+    {
+      "path": "steps/037_backup_combo_restore.sql",
+      "sha256": "a660541b25110e6dc281f56aeaf81ac2c6cb537bef6d74081bcbe4cd28a64130"
+    },
+    {
+      "path": "steps/038_backup_compatible.sql",
+      "sha256": "212c00be2d021dc86eeae5b99b610b21038f94e6c00dcdba8c9aecddc0894cfb"
+    },
+    {
+      "path": "steps/039_combo_backup_restore.sql",
+      "sha256": "27e111ac794490d95c6b1aeaf39dc831278d1ab82c2ff1713c54f8fb887a4b8e"
+    },
+    {
+      "path": "steps/040_transactional_write_hardening.sql",
+      "sha256": "e3aa887fc56f1b9cb4da82842ef8319dacee9cfdd34dfb8be8290db3d2be64b9"
+    },
+    {
+      "path": "steps/041_catalog_support_write_hardening.sql",
+      "sha256": "76091a052c1862173546b3fe1111d9ce2e89a4a936472222c5192a8a7e8ee42e"
+    },
+    {
+      "path": "steps/042_post_import_triggers.sql",
+      "sha256": "ac08af97b86f62971c2bb86770a4529f0999bc2586c43eea3d43f66cdb22436a"
+    },
+    {
+      "path": "900_final_security.sql",
+      "sha256": "db3adc68df0c6fdde45a2ca7320dda6bc1065f582e4b55876d7875e5be18f4d2"
+    }
+  ]
+}

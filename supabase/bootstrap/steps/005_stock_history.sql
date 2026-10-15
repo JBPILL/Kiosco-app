@@ -49,12 +49,6 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_normalizar_movimiento_stock ON public.movimientos_stock;
-CREATE TRIGGER trg_normalizar_movimiento_stock
-  BEFORE INSERT OR UPDATE ON public.movimientos_stock
-  FOR EACH ROW
-  EXECUTE FUNCTION public.normalizar_movimiento_stock();
-
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM public.movimientos_stock WHERE delta_stock IS NULL) THEN
@@ -110,18 +104,6 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_capturar_costo_historico_movimiento_stock ON public.movimientos_stock;
-CREATE TRIGGER trg_capturar_costo_historico_movimiento_stock
-  BEFORE INSERT
-  ON public.movimientos_stock
-  FOR EACH ROW
-  EXECUTE FUNCTION public.capturar_costo_historico_movimiento_stock();
-DROP TRIGGER IF EXISTS trg_inmutar_costo_historico_movimiento_stock ON public.movimientos_stock;
-CREATE TRIGGER trg_inmutar_costo_historico_movimiento_stock
-  BEFORE UPDATE OF costo_unitario_referencia
-  ON public.movimientos_stock
-  FOR EACH ROW
-  EXECUTE FUNCTION public.capturar_costo_historico_movimiento_stock();
 REVOKE ALL ON FUNCTION public.capturar_costo_historico_movimiento_stock() FROM PUBLIC, anon, authenticated;
 
 COMMENT ON COLUMN public.movimientos_stock.costo_unitario_referencia IS

@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "strictPilotFlag": "VITE_KIOSKO_PILOT_STRICT_SCOPE=true",
+  "transactionalCheckoutFlag": "VITE_CHECKOUT_MANUAL_TRANSACCIONAL=true",
+  "outOfScope": {
+    "relations": {
+      "planes": "commercial-admin module is blocked in strict pilot",
+      "v_resumen_caja": "strict pilot uses the manual fallback and never queries the optional view",
+      "suscripciones": "commercial subscription module is blocked in strict pilot",
+      "pagos_suscripcion": "commercial subscription module is blocked in strict pilot",
+      "configuracion_admin": "global commercial administration is blocked in strict pilot",
+      "v_admin_kioscos": "superadmin commercial panel is blocked in strict pilot",
+      "cajas": "superadmin kiosk deletion workflow is blocked in strict pilot",
+      "configuracion_afip": "fiscal configuration is out of pilot scope",
+      "envases_tipos_comercio": "shared returnable packaging is out of pilot scope",
+      "detalles_devolucion": "partial returns are out of pilot scope"
+    },
+    "rpcs": {
+      "fn_renovar_suscripcion": "commercial subscriptions are blocked in strict pilot",
+      "admin_eliminar_kiosco": "commercial superadmin is blocked in strict pilot",
+      "fn_eliminar_kiosco": "commercial superadmin is blocked in strict pilot",
+      "guardar_precios_envases": "shared returnable packaging is out of pilot scope",
+      "decrementar_stock": "legacy checkout path is disabled when transactional checkout flag is true",
+      "consultar_auditoria_comercial": "commercial administration audit is blocked in strict pilot"
+    },
+    "edgeFunctions": {
+      "afip-wsfe": "ARCA/CAE is out of pilot scope"
+    }
+  },
+  "dynamicDependencies": {
+    "src/stores/electronicaStore.ts": {
+      "relations": ["electronica_unidades", "electronica_reparaciones"],
+      "reason": "tabla is the typed ElectronicaStore relation selector"
+    },
+    "src/lib/backupUtils.ts": {
+      "relations": ["promociones", "lotes_producto"],
+      "reason": "tabla is a closed union in guardarRegistroRestaurado"
+    },
+    "src/lib/supervisorPolicyClient.ts": {
+      "rpcs": ["consultar_politica_descuento_supervisor", "configurar_politica_descuento_supervisor"],
+      "reason": "nombre is selected only by exported fixed wrappers"
+    }
+  },
+  "auth": [
+    "signInWithPassword", "signUp", "signOut", "getSession", "onAuthStateChange", "resetPasswordForEmail", "updateUser"
+  ],
+  "storageBuckets": []
+}

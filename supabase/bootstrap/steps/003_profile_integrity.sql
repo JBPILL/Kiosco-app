@@ -70,10 +70,6 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_proteger_privilegios_usuario ON public.usuarios;
-CREATE TRIGGER trg_proteger_privilegios_usuario
-  BEFORE INSERT OR UPDATE OR DELETE ON public.usuarios
-  FOR EACH ROW EXECUTE FUNCTION public.proteger_privilegios_usuario();
 REVOKE ALL ON FUNCTION public.proteger_privilegios_usuario() FROM PUBLIC, anon, authenticated;
 
 COMMIT;

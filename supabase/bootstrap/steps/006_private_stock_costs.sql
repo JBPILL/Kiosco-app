@@ -16,7 +16,6 @@ INSERT INTO public.movimiento_stock_costos(movimiento_id,kiosco_id,precio_costo)
   SELECT id,kiosco_id,costo_unitario_referencia FROM public.movimientos_stock
   WHERE costo_unitario_referencia IS NOT NULL
   ON CONFLICT(movimiento_id) DO NOTHING;
-DROP TRIGGER IF EXISTS trg_inmutar_costo_historico_movimiento_stock ON public.movimientos_stock;
 UPDATE public.movimientos_stock SET costo_unitario_referencia=NULL WHERE costo_unitario_referencia IS NOT NULL;
 
 CREATE OR REPLACE FUNCTION public.capturar_costo_historico_movimiento_stock()
@@ -26,9 +25,6 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-CREATE TRIGGER trg_inmutar_costo_historico_movimiento_stock
-  BEFORE UPDATE OF costo_unitario_referencia ON public.movimientos_stock
-  FOR EACH ROW EXECUTE FUNCTION public.capturar_costo_historico_movimiento_stock();
 
 CREATE OR REPLACE FUNCTION public.guardar_costo_privado_movimiento_stock()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
@@ -39,9 +35,6 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-DROP TRIGGER IF EXISTS trg_guardar_costo_privado_movimiento_stock ON public.movimientos_stock;
-CREATE TRIGGER trg_guardar_costo_privado_movimiento_stock AFTER INSERT ON public.movimientos_stock
-  FOR EACH ROW EXECUTE FUNCTION public.guardar_costo_privado_movimiento_stock();
 REVOKE ALL ON FUNCTION public.guardar_costo_privado_movimiento_stock() FROM PUBLIC,anon,authenticated,service_role;
 REVOKE ALL ON FUNCTION public.capturar_costo_historico_movimiento_stock() FROM PUBLIC,anon,authenticated,service_role;
 NOTIFY pgrst,'reload schema';

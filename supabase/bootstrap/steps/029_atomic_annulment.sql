@@ -205,21 +205,6 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.anular_venta_atomica(uuid,text,uuid) FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.anular_venta_atomica(uuid,text,uuid) TO authenticated;
--- La RPC ya repone receta/lotes y registra kardex. El trigger legado hacía una
--- segunda reposición al cambiar estado; retirarlo en esta misma transacción.
-DO $$
-BEGIN
-  IF EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='public.ventas'::regclass
-    AND tgname='trg_devolver_stock_anulacion' AND NOT tgisinternal) THEN
-    IF NOT EXISTS(SELECT 1 FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid
-      JOIN pg_namespace n ON n.oid=p.pronamespace
-      WHERE t.tgrelid='public.ventas'::regclass AND t.tgname='trg_devolver_stock_anulacion'
-        AND n.nspname='public' AND p.proname='fn_devolver_stock_anulacion') THEN
-      RAISE EXCEPTION 'El trigger legado tiene otra función; revisar antes de retirarlo.';
-    END IF;
-    DROP TRIGGER trg_devolver_stock_anulacion ON public.ventas;
-  END IF;
-END $$;
 CREATE OR REPLACE FUNCTION public.proteger_anulacion_atomica() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 BEGIN
@@ -235,8 +220,6 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.proteger_anulacion_atomica() FROM PUBLIC,anon,authenticated,service_role;
-DROP TRIGGER IF EXISTS trg_proteger_anulacion_atomica ON public.ventas;
-CREATE TRIGGER trg_proteger_anulacion_atomica BEFORE UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION public.proteger_anulacion_atomica();
 CREATE OR REPLACE FUNCTION public.proteger_lineas_venta_anulada() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 DECLARE original uuid; destino uuid;
@@ -253,12 +236,6 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.proteger_lineas_venta_anulada() FROM PUBLIC,anon,authenticated,service_role;
-DROP TRIGGER IF EXISTS trg_lineas_venta_anulada ON public.detalles_venta;
-CREATE TRIGGER trg_lineas_venta_anulada BEFORE INSERT OR UPDATE OR DELETE ON public.detalles_venta
-  FOR EACH ROW EXECUTE FUNCTION public.proteger_lineas_venta_anulada();
-DROP TRIGGER IF EXISTS trg_pagos_venta_anulada ON public.pagos_venta;
-CREATE TRIGGER trg_pagos_venta_anulada BEFORE INSERT OR UPDATE OR DELETE ON public.pagos_venta
-  FOR EACH ROW EXECUTE FUNCTION public.proteger_lineas_venta_anulada();
 -- Evita que una devolución aparezca entre la comprobación y el commit de anulación.
 CREATE OR REPLACE FUNCTION public.proteger_devolucion_venta_vigente() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
@@ -275,8 +252,5 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.proteger_devolucion_venta_vigente() FROM PUBLIC,anon,authenticated,service_role;
-DROP TRIGGER IF EXISTS trg_devolucion_venta_vigente ON public.devoluciones_venta;
-CREATE TRIGGER trg_devolucion_venta_vigente BEFORE INSERT OR UPDATE ON public.devoluciones_venta
-  FOR EACH ROW EXECUTE FUNCTION public.proteger_devolucion_venta_vigente();
 NOTIFY pgrst,'reload schema';
 COMMIT;

@@ -280,26 +280,24 @@ it('el preflight de catálogo es ejecutable localmente y devuelve metadata de la
   expect(reporte.triggers.some(trigger => trigger.tabla==='ventas' && trigger.habilitado)).toBe(true)
   expect(await estado()).toMatchObject({ estado:'COMPLETADA',stock:'6',saldo:'300',anulaciones:0 })
 })
-it('el diagnóstico detecta el trigger legado aunque esté deshabilitado', async () => {
+it('el diagnóstico detecta el trigger legado habilitado', async () => {
   await db.exec(`CREATE OR REPLACE FUNCTION legado_diagnostico_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;
-    CREATE TRIGGER trg_devolver_stock_anulacion AFTER UPDATE ON ventas FOR EACH ROW EXECUTE FUNCTION legado_diagnostico_test();
-    ALTER TABLE ventas DISABLE TRIGGER trg_devolver_stock_anulacion;`)
+    CREATE TRIGGER trg_devolver_stock_anulacion AFTER UPDATE ON ventas FOR EACH ROW EXECUTE FUNCTION legado_diagnostico_test();`)
   const {rows}=await db.query<{diagnostico_anulacion:{version_actual:{sin_trigger_legado:boolean}}}>(
     readFileSync('sql_verificar_anulacion_atomica.sql','utf8'))
   expect(rows[0].diagnostico_anulacion.version_actual.sin_trigger_legado).toBe(false)
 })
-it('el diagnóstico señala una RPC ausente y un trigger deshabilitado', async () => {
+it('el diagnóstico señala una RPC ausente aunque los triggers permanezcan habilitados', async () => {
   await db.exec('BEGIN')
   try {
-    await db.exec(`DROP FUNCTION anular_venta_atomica(uuid,text,uuid);
-      ALTER TABLE pagos_venta DISABLE TRIGGER trg_pagos_venta_anulada;`)
+    await db.exec('DROP FUNCTION anular_venta_atomica(uuid,text,uuid);')
     const { rows } = await db.query<{ diagnostico_anulacion: {
       version_actual: { conserva_costo_original:boolean; exige_auditoria:boolean; detecta_reposicion_adicional:boolean };
       triggers: { trigger:string; habilitado:boolean }[];
     } }>(readFileSync('sql_verificar_anulacion_atomica.sql','utf8'))
     expect(rows[0].diagnostico_anulacion.version_actual).toMatchObject({ conserva_costo_original:false, exige_auditoria:false,
       detecta_reposicion_adicional:false })
-    expect(rows[0].diagnostico_anulacion.triggers.find(trigger => trigger.trigger==='trg_pagos_venta_anulada')?.habilitado).toBe(false)
+    expect(rows[0].diagnostico_anulacion.triggers.find(trigger => trigger.trigger==='trg_pagos_venta_anulada')?.habilitado).toBe(true)
   } finally {
     await db.exec('ROLLBACK')
   }

@@ -120,14 +120,6 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_validar_anulacion_venta ON public.ventas;
-CREATE TRIGGER trg_validar_anulacion_venta
-  BEFORE INSERT OR UPDATE ON public.ventas
-  FOR EACH ROW EXECUTE FUNCTION public.auditar_anulacion_venta();
-DROP TRIGGER IF EXISTS trg_registrar_auditoria_anulacion_venta ON public.ventas;
-CREATE TRIGGER trg_registrar_auditoria_anulacion_venta
-  AFTER UPDATE OF estado ON public.ventas
-  FOR EACH ROW EXECUTE FUNCTION public.registrar_auditoria_anulacion_venta();
 REVOKE ALL ON FUNCTION public.auditar_anulacion_venta() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.registrar_auditoria_anulacion_venta() FROM PUBLIC, anon, authenticated;
 

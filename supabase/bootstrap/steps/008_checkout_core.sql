@@ -4,8 +4,7 @@
 BEGIN;
 DO $$ BEGIN
   IF to_regclass('public.producto_costos') IS NULL OR to_regclass('public.movimiento_stock_costos') IS NULL
-    OR NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid='public.movimientos_stock'::regclass
-      AND tgname='trg_guardar_costo_privado_movimiento_stock' AND NOT tgisinternal AND tgenabled<>'D') THEN
+    OR to_regprocedure('public.guardar_costo_privado_movimiento_stock()') IS NULL THEN
     RAISE EXCEPTION 'Aplicar primero costos privados de productos y movimientos';
   END IF;
 END $$;

@@ -22,7 +22,7 @@ DECLARE
   tabla text;
   pol record;
   tablas text[] := ARRAY[
-    'kioscos','usuarios','categorias','productos','combo_items','promociones',
+    'kioscos','usuarios','platform_initial_admin_bootstrap_state','categorias','productos','combo_items','promociones',
     'lotes_producto','sesiones_caja','movimientos_caja','ventas','detalles_venta',
     'pagos_venta','movimientos_stock','clientes','movimientos_cuenta_corriente',
     'devoluciones_venta','producto_costos','movimiento_stock_costos',
@@ -30,7 +30,10 @@ DECLARE
     'checkout_manual_cancelaciones','anulaciones_venta_atomicas',
     'supervisor_politicas','supervisor_politica_auditoria',
     'supervisor_pin_secretos','supervisor_pin_config_auditoria',
-    'supervisor_pin_limites','supervisor_pin_intentos','supervisor_autorizaciones'
+    'supervisor_pin_limites','supervisor_pin_intentos','supervisor_autorizaciones',
+    'proveedores','compras_proveedor','detalles_compra','pagos_proveedor','tickets_soporte',
+    'operaciones_stock','electronica_unidades','electronica_reparaciones','electronica_solicitudes',
+    'operaciones_escritura','movimientos_proveedor','historial_precios_producto'
   ];
 BEGIN
   FOREACH tabla IN ARRAY tablas LOOP
@@ -86,15 +89,38 @@ CREATE POLICY auditoria_read_owner ON public.auditoria_operaciones FOR SELECT TO
   USING (kiosco_id=public.auth_user_kiosco_id() AND public.auth_es_dueno_o_superadmin());
 CREATE POLICY annulments_read_owner ON public.anulaciones_venta_atomicas FOR SELECT TO authenticated
   USING (kiosco_id=public.auth_user_kiosco_id() AND public.auth_es_dueno_o_superadmin());
+CREATE POLICY proveedores_read_tenant ON public.proveedores FOR SELECT TO authenticated
+  USING (kiosco_id=public.auth_user_kiosco_id() OR public.auth_es_superadmin());
+CREATE POLICY compras_read_tenant ON public.compras_proveedor FOR SELECT TO authenticated
+  USING (kiosco_id=public.auth_user_kiosco_id() OR public.auth_es_superadmin());
+CREATE POLICY detalles_compra_read_tenant ON public.detalles_compra FOR SELECT TO authenticated
+  USING (EXISTS (SELECT 1 FROM public.compras_proveedor c WHERE c.id=compra_id AND c.kiosco_id=public.auth_user_kiosco_id()));
+CREATE POLICY pagos_proveedor_read_tenant ON public.pagos_proveedor FOR SELECT TO authenticated
+  USING (kiosco_id=public.auth_user_kiosco_id() OR public.auth_es_superadmin());
+CREATE POLICY movimientos_proveedor_read_tenant ON public.movimientos_proveedor FOR SELECT TO authenticated
+  USING (kiosco_id=public.auth_user_kiosco_id() OR public.auth_es_superadmin());
+CREATE POLICY historial_precios_producto_read_owner ON public.historial_precios_producto FOR SELECT TO authenticated
+  USING (kiosco_id=public.auth_user_kiosco_id() AND public.auth_es_dueno_o_superadmin());
+CREATE POLICY tickets_soporte_read_tenant ON public.tickets_soporte FOR SELECT TO authenticated
+  USING (kiosco_id=public.auth_user_kiosco_id() OR public.auth_es_superadmin());
+CREATE POLICY electronica_unidades_read ON public.electronica_unidades FOR SELECT TO authenticated
+  USING (kiosco_id=public.electronica_kiosco_actual());
+CREATE POLICY electronica_reparaciones_read ON public.electronica_reparaciones FOR SELECT TO authenticated
+  USING (kiosco_id=public.electronica_kiosco_actual());
 
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC,anon,authenticated,service_role;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+REVOKE ALL ON public.platform_initial_admin_bootstrap_state FROM PUBLIC,anon,authenticated,service_role;
 GRANT SELECT ON public.kioscos,public.usuarios,public.categorias,public.productos,
   public.combo_items,public.promociones,public.lotes_producto,public.sesiones_caja,
   public.movimientos_caja,public.ventas,public.detalles_venta,public.pagos_venta,
   public.movimientos_stock,public.clientes,public.movimientos_cuenta_corriente,
   public.producto_costos,public.movimiento_stock_costos,public.auditoria_operaciones,
-  public.anulaciones_venta_atomicas TO authenticated;
+  public.anulaciones_venta_atomicas,public.proveedores,public.compras_proveedor,
+  public.detalles_compra,public.pagos_proveedor,public.movimientos_proveedor,public.tickets_soporte,
+  public.electronica_unidades,public.electronica_reparaciones,public.historial_precios_producto TO authenticated;
+-- The fresh backend keeps browser DML revoked. Tenant-owned writes go through
+-- audited server RPC/Edge entrypoints rather than table grants or RLS alone.
 
 -- Every SECURITY DEFINER routine in the public schema must be owned by postgres
 -- and use a fixed catalog-first path. Fully qualify application objects in bodies.
@@ -131,8 +157,39 @@ GRANT EXECUTE ON FUNCTION public.consultar_checkouts_manuales_pendientes(uuid,in
 GRANT EXECUTE ON FUNCTION public.recuperar_entrada_checkout_manual(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.consultar_cancelacion_checkout_manual(jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.anular_venta_atomica(uuid,text,uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.registrar_movimiento_stock_idempotente(uuid,uuid,text,numeric,text,text,date,text,uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.resolver_operacion_stock(uuid,uuid,uuid,boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.solicitar_apertura_manual_cajon(uuid,text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.registrar_resultado_apertura_cajon(uuid,text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.consultar_auditoria_supervisor(integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.resumir_bajas_stock(uuid,date,date) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.generar_snapshot_backup(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.generar_snapshot_backup_ampliado(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.restaurar_combo_backup(uuid,uuid,boolean,jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.restaurar_configuracion_backup(uuid,jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.electronica_registrar_unidad(uuid,uuid,text,text,date,text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.electronica_guardar_reparacion(uuid,uuid,integer,jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.consultar_politica_descuento_supervisor() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.configurar_politica_descuento_supervisor(numeric) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.electronica_kiosco_actual() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.registrar_movimiento_caja_transaccional(uuid,uuid,text,text,numeric,text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.abrir_sesion_caja_transaccional(uuid,numeric) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.cerrar_sesion_caja_transaccional(uuid,uuid,numeric) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.guardar_proveedor_transaccional(uuid,uuid,jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.registrar_movimiento_cuenta_corriente_transaccional(uuid,uuid,uuid,text,numeric,text,text,uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.registrar_compra_proveedor_transaccional(uuid,uuid,timestamptz,text,text,boolean,uuid,text,numeric,jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.registrar_pago_proveedor_transaccional(uuid,uuid,numeric,text,uuid,text,text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.ajustar_saldo_proveedor_transaccional(uuid,uuid,numeric,text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.anular_compra_proveedor_transaccional(uuid,uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.anular_pago_proveedor_transaccional(uuid,uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.guardar_producto_transaccional(uuid,uuid,jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.crear_ticket_soporte_transaccional(uuid,text,text,text,jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.actualizar_precios_catalogo_transaccional(uuid,jsonb,text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.guardar_categoria_transaccional(uuid,uuid,jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.eliminar_categoria_transaccional(uuid,uuid,boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.guardar_combo_transaccional(uuid,uuid,boolean,jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.guardar_promocion_transaccional(uuid,uuid,jsonb,boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.importar_productos_catalogo_transaccional(uuid,jsonb,uuid[]) TO authenticated;
 
 -- Internal checkout helpers, SECURITY DEFINER triggers, and
 -- confirmar_venta_manual_interna_supervisor remain uncallable by API roles.
