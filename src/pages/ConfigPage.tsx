@@ -7,23 +7,23 @@ import { CommercialAuditSection } from '../components/config/CommercialAuditSect
 import { SupervisorAuditSection } from '../components/config/SupervisorAuditSection'
 import { SupervisorPolicySection } from '../components/config/SupervisorPolicySection'
 import { RefreshButton } from '../components/ui/RefreshButton'
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase, createUnauthenticatedClient } from '../lib/supabase'
-import { useAuthStore, calcularDiasRestantes } from '../stores/authStore'
+import { useAuthStore } from '../stores/authStore'
 import { useThemeStore } from '../stores/themeStore'
 import { Button } from '../components/ui/Button'
 import { IconExportar, IconImportar } from '../components/ui/Icons'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
-import type { Kiosco, Usuario, Suscripcion, Categoria } from '../types/database'
-import { formatPrecio, formatFechaCorta } from '../lib/utils'
+import type { Kiosco, Usuario, Categoria } from '../types/database'
+import { SubscriptionSection } from '../components/config/SubscriptionSection'
 import { exportarMasterExcel } from '../lib/exportUtils'
 import { generarBackupIntegral } from '../lib/backupUtils'
 import { AFIPConfigSection } from '../components/config/AFIPConfigSection'
 import { AccessibilityConfigSection } from '../components/config/AccessibilityConfigSection'
 import { EquiposComercioSection, normalizarEquiposComercio } from '../components/config/EquiposComercioSection'
-import { useConfigAdminStore, formatearLinkWhatsApp } from '../stores/configAdminStore'
+import { useConfigAdminStore } from '../stores/configAdminStore'
 import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
 import { RestaurarBackupModal } from '../components/config/RestaurarBackupModal'
 import { ExternalBackupReminder } from '../components/config/ExternalBackupReminder'
@@ -45,21 +45,19 @@ import { getAnchoTicketGuardado, guardarAnchoTicket, type AnchoPapelTicket } fro
 import { configurarImpresoraSerial, probarImpresoraSerial, isWebSerialSupported, getAperturaAutomaticaCajon, setAperturaAutomaticaCajon } from '../lib/escposPrinter'
 import { capacidadesPorDefecto } from '../hooks/useTenantConfig'
 import type { CapacidadesOperativas } from '../types/database'
-import { kioskoPilotStrictScopeActivo, mensajeRecursosComercialesFueraDeAlcance } from '../lib/kioskPilotScope'
+import { kioskoPilotStrictScopeActivo } from '../lib/kioskPilotScope'
 import toast from 'react-hot-toast'
 
 export function ConfigPage() {
   const modoEstricto = kioskoPilotStrictScopeActivo()
-  const mensajeComercialFueraDeAlcance = mensajeRecursosComercialesFueraDeAlcance(modoEstricto)
   const [parametros] = useSearchParams()
   const { usuario } = useAuthStore()
   const { tema, setTema } = useThemeStore()
-  const { config: configAdmin, cargarConfig: cargarConfigAdmin } = useConfigAdminStore()
+  const { cargarConfig: cargarConfigAdmin } = useConfigAdminStore()
   const { puedeInstalar, estaInstalado, instalarApp } = usePwaStore()
   const { arqueoCiegoObligatorio, cargarArqueoCiegoConfig, guardarArqueoCiegoConfig } = useCajaStore()
 
   const [kiosco, setKiosco] = useState<Kiosco | null>(null)
-  const [suscripcion, setSuscripcion] = useState<Suscripcion | null>(null)
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [cargando, setCargando] = useState(true)
   const [guardandoKiosco, setGuardandoKiosco] = useState(false)
@@ -78,11 +76,6 @@ export function ConfigPage() {
     cargarConfigAdmin()
     cargarArqueoCiegoConfig()
   }, [cargarConfigAdmin, cargarArqueoCiegoConfig])
-
-  const copiarDato = (texto: string, label: string) => {
-    navigator.clipboard.writeText(texto)
-    toast.success(`${label} copiado al portapapeles`)
-  }
 
   // Formulario Kiosco
   const [nombreKiosco, setNombreKiosco] = useState('')
@@ -167,7 +160,6 @@ export function ConfigPage() {
     cargarArqueoCiegoConfig()
 
     try {
-      setSuscripcion(null)
       // 1. Cargar datos del Kiosco
       const { data: kioscoData } = await supabase
         .from('kioscos')
@@ -182,21 +174,6 @@ export function ConfigPage() {
         setTelefono(kioscoData.telefono || '')
         setEquiposComercio(normalizarEquiposComercio(kioscoData.equipos_comercio))
         setCapacidadesOperativas({ ...capacidadesPorDefecto(kioscoData.rubro), ...(kioscoData.capacidades_operativas || {}) })
-      }
-
-      // La administración comercial no forma parte del baseline del piloto estricto.
-      if (!modoEstricto) {
-        const { data: subData } = await supabase
-          .from('suscripciones')
-          .select('*, plan:planes(*)')
-          .eq('kiosco_id', kioscoId)
-          .order('fecha_vencimiento', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-
-        if (subData) {
-          setSuscripcion(subData as Suscripcion)
-        }
       }
 
       // 3. Cargar usuarios del Kiosco
@@ -515,17 +492,6 @@ export function ConfigPage() {
 
   const duenosActivos = usuarios.filter((u) => u.rol === 'DUEÑO' && u.activo).length
 
-  const diasRestantes = useMemo(() => {
-    return calcularDiasRestantes(suscripcion?.fecha_vencimiento)
-  }, [suscripcion?.fecha_vencimiento])
-
-  const estadoEfectivo = useMemo<'ACTIVO' | 'SOLO_LECTURA' | 'SUSPENDIDO'>(() => {
-    if (kiosco?.estado_suscripcion === 'SUSPENDIDO') return 'SUSPENDIDO'
-    if (kiosco?.estado_suscripcion === 'SOLO_LECTURA') return 'SOLO_LECTURA'
-    if (diasRestantes !== null && diasRestantes < 0) return 'SOLO_LECTURA'
-    return 'ACTIVO'
-  }, [kiosco?.estado_suscripcion, diasRestantes])
-
   const handleExportarMasterExcel = async () => {
     if (!usuario?.kiosco_id) return
     setExportandoBackup(true)
@@ -781,16 +747,7 @@ export function ConfigPage() {
               : moduleTabInactiveClassName
           }`}
         >
-          <span>{modoEstricto ? 'Administración comercial' : 'Suscripción'}</span>
-          {!modoEstricto && <span
-            className={`text-xs px-2 py-0.2 rounded-full font-semibold ${
-              estadoEfectivo === 'ACTIVO'
-                ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300'
-                : 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300'
-            }`}
-          >
-            {estadoEfectivo === 'ACTIVO' ? 'Al día' : 'Atención'}
-          </span>}
+          <span>Administración comercial</span>
         </button>
 
         <button
@@ -1593,205 +1550,7 @@ export function ConfigPage() {
           )}
 
           {/* PESTAÑA: SUSCRIPCIÓN Y COBERTURA */}
-          {pestanaActiva === 'SUSCRIPCION' && (
-            modoEstricto ? (
-              <div className="bg-amber-50 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-800/60 p-5 sm:p-6" role="status">
-                <h2 className="text-sm font-bold text-amber-900 dark:text-amber-200">Administración comercial fuera del piloto</h2>
-                <p className="text-sm text-amber-800 dark:text-amber-300 mt-2">{mensajeComercialFueraDeAlcance}</p>
-              </div>
-            ) : (
-            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 sm:p-6 shadow-xs space-y-5">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-indigo-100 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-300">
-                  Abono Mensual
-                </span>
-                <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                  Estado de la Suscripción
-                </h2>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {/* Tarjeta 1: Plan */}
-                <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-900/80 border border-gray-200 dark:border-gray-700 shadow-2xs">
-                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Plan contratado</p>
-                  <p className="text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">
-                    {suscripcion?.plan?.nombre || 'Kiosco Pro'}
-                  </p>
-                  <p className="text-xs text-indigo-600 dark:text-indigo-400 font-bold mt-0.5">
-                    {suscripcion?.plan?.precio_mensual
-                      ? `${formatPrecio(suscripcion.plan.precio_mensual)} / mes`
-                      : '$35.000 / mes'}
-                  </p>
-                </div>
-
-                {/* Tarjeta 2: Estado del Servicio */}
-                <div
-                  className={`p-4 rounded-xl border shadow-2xs ${
-                    estadoEfectivo === 'ACTIVO'
-                      ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800/50'
-                      : estadoEfectivo === 'SOLO_LECTURA'
-                      ? 'bg-amber-50/50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800/60'
-                      : 'bg-red-50/50 dark:bg-red-950/30 border-red-300 dark:border-red-800/60'
-                  }`}
-                >
-                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Estado de servicio</p>
-                  <p
-                    className={`text-lg font-bold mt-1 ${
-                      estadoEfectivo === 'ACTIVO'
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : estadoEfectivo === 'SOLO_LECTURA'
-                        ? 'text-amber-600 dark:text-amber-400'
-                        : 'text-red-600 dark:text-red-400'
-                    }`}
-                  >
-                    {estadoEfectivo === 'ACTIVO'
-                      ? 'Activo'
-                      : estadoEfectivo === 'SOLO_LECTURA'
-                      ? 'Solo Lectura'
-                      : 'Suspendido'}
-                  </p>
-                  <p
-                    className={`text-xs mt-0.5 ${
-                      estadoEfectivo === 'ACTIVO'
-                        ? 'text-gray-500 dark:text-gray-400'
-                        : estadoEfectivo === 'SOLO_LECTURA'
-                        ? 'text-amber-700 dark:text-amber-300 font-medium'
-                        : 'text-red-700 dark:text-red-300 font-medium'
-                    }`}
-                  >
-                    {estadoEfectivo === 'ACTIVO'
-                      ? 'Acceso total habilitado'
-                      : estadoEfectivo === 'SOLO_LECTURA'
-                      ? 'Ventas pausadas (período vencido)'
-                      : 'Servicio pausado temporalmente'}
-                  </p>
-                </div>
-
-                {/* Tarjeta 3: Vencimiento */}
-                <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-900/80 border border-gray-200 dark:border-gray-700 shadow-2xs">
-                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Vencimiento del Abono</p>
-                  <p className="text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">
-                    {suscripcion?.fecha_vencimiento
-                      ? formatFechaCorta(suscripcion.fecha_vencimiento)
-                      : 'Al día'}
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    {diasRestantes !== null
-                      ? diasRestantes > 5
-                        ? `Quedan ${diasRestantes} días de cobertura`
-                        : diasRestantes > 0
-                        ? `Vence en ${diasRestantes} días`
-                        : diasRestantes === 0
-                        ? 'Vence hoy'
-                        : `Vencido hace ${Math.abs(diasRestantes)} días`
-                      : 'Suscripción por tiempo indeterminado'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Aviso informativo condicional */}
-              {estadoEfectivo === 'SOLO_LECTURA' && (
-                <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-900 dark:text-amber-200">
-                  <span className="font-bold">Modo Solo Lectura: </span>
-                  Las ventas en el punto de venta (POS) están bloqueadas temporalmente por vencimiento del abono. Podés seguir consultando stock, caja y reportes de tu negocio. Para habilitar las ventas, comunicate con el administrador para regularizar tu suscripción.
-                </div>
-              )}
-
-              {estadoEfectivo === 'SUSPENDIDO' && (
-                <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 text-xs text-red-900 dark:text-red-200">
-                  <span className="font-bold">Servicio Suspendido: </span>
-                  El servicio se encuentra pausado temporalmente. Por favor, regularizá el abono para reactivar el sistema.
-                </div>
-              )}
-
-              {/* Datos para pago y renovación de suscripción */}
-              {(configAdmin.alias_mp || configAdmin.cbu_banco || configAdmin.titular_cuenta || configAdmin.whatsapp_soporte) && (
-                <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-900/70 border border-gray-200 dark:border-gray-700 space-y-3 shadow-2xs">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-200 dark:border-gray-700/80 pb-2.5">
-                    <div>
-                      <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                        Datos de Pago para Renovación de Abono
-                      </h3>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Transferí el monto de tu plan y enviá el comprobante al WhatsApp oficial del administrador.
-                      </p>
-                    </div>
-                    {configAdmin.whatsapp_soporte && (
-                      <a
-                        href={formatearLinkWhatsApp(
-                          configAdmin.whatsapp_soporte,
-                          `Hola! Me comunico desde "${kiosco?.nombre || 'Mi Kiosco'}" para consultar sobre la renovación de mi abono en AlPaso POS.`
-                        )}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs transition-colors self-start sm:self-auto"
-                      >
-                        WhatsApp Soporte
-                      </a>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                    {configAdmin.titular_cuenta && (
-                      <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-2xs">
-                        <span className="text-gray-400 dark:text-gray-500 block font-medium">Titular de la cuenta:</span>
-                        <span className="font-bold text-gray-900 dark:text-gray-100 mt-1 block text-sm leading-snug break-words">
-                          {configAdmin.titular_cuenta}
-                        </span>
-                      </div>
-                    )}
-
-                    {configAdmin.alias_mp && (
-                      <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3 shadow-2xs">
-                        <div className="min-w-0">
-                          <span className="text-gray-400 dark:text-gray-500 block font-medium">Alias Mercado Pago:</span>
-                          <span className="font-bold text-sky-600 dark:text-sky-400 mt-1 block text-sm break-words select-all">
-                            {configAdmin.alias_mp}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => copiarDato(configAdmin.alias_mp, 'Alias')}
-                          className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-xs font-bold text-gray-700 dark:text-gray-200 transition-colors flex-shrink-0 active:scale-95"
-                        >
-                          Copiar
-                        </button>
-                      </div>
-                    )}
-
-                    {configAdmin.cbu_banco && (
-                      <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3 shadow-2xs">
-                        <div className="min-w-0">
-                          <span className="text-gray-400 dark:text-gray-500 block font-medium">CBU / CVU Bancario:</span>
-                          <span className="font-bold text-gray-900 dark:text-gray-100 mt-1 block font-mono text-sm tracking-wide break-all select-all">
-                            {configAdmin.cbu_banco}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => copiarDato(configAdmin.cbu_banco, 'CBU')}
-                          className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-xs font-bold text-gray-700 dark:text-gray-200 transition-colors flex-shrink-0 active:scale-95"
-                        >
-                          Copiar
-                        </button>
-                      </div>
-                    )}
-
-                    {configAdmin.banco_nombre && (
-                      <div className="p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-2xs">
-                        <span className="text-gray-400 dark:text-gray-500 block font-medium">Banco / Billetera:</span>
-                        <span className="font-bold text-gray-900 dark:text-gray-100 mt-1 block text-sm break-words">
-                          {configAdmin.banco_nombre}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-            )
-          )}
-
+          {pestanaActiva === 'SUSCRIPCION' && <SubscriptionSection />}
           {/* PESTAÑA: COPIAS DE SEGURIDAD Y PWA */}
           {pestanaActiva === 'BACKUP' && (
             <div className="space-y-6">

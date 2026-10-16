@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   from: vi.fn(),
+  rpc: vi.fn(),
   signInWithPassword: vi.fn(),
   signOut: vi.fn(),
   getSession: vi.fn(),
@@ -11,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../lib/supabase', () => ({
   supabase: {
     from: mocks.from,
+    rpc: mocks.rpc,
     auth: {
       signInWithPassword: mocks.signInWithPassword,
       signOut: mocks.signOut,
@@ -60,6 +62,7 @@ describe('authStore en alcance estricto del piloto', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'true')
+    vi.stubEnv('VITE_ADMIN_COMERCIAL_HABILITADO', 'false')
     configurarConsultas()
     mocks.signInWithPassword.mockResolvedValue({ data: { user: { id: 'auth-u1' } }, error: null })
     mocks.getSession.mockResolvedValue({ data: { session: { user: { id: 'auth-u1' } } } })
@@ -70,6 +73,17 @@ describe('authStore en alcance estricto del piloto', () => {
 
   afterEach(() => vi.unstubAllEnvs())
 
+  it.each(['login', 'cargarSesion', 'refrescarKiosco'] as const)(
+    'comercial habilitado: %s carga sólo estado mínimo por RPC y conserva login', async accion => {
+      vi.stubEnv('VITE_ADMIN_COMERCIAL_HABILITADO', 'true')
+      mocks.rpc.mockResolvedValue({ data: { estado: 'SOLO_LECTURA' }, error: null })
+      await ejecutarAccion(accion)
+      expect(mocks.rpc).toHaveBeenCalledWith('obtener_estado_operativo_comercial')
+      expect(useAuthStore.getState().usuario?.id).toBe(usuario.id)
+      expect(useAuthStore.getState().kiosco?.estado_suscripcion).toBe('SOLO_LECTURA')
+      expect(mocks.from.mock.calls.map(([tabla]) => tabla)).not.toContain('suscripciones')
+    }
+  )
   it.each(['login', 'cargarSesion', 'refrescarKiosco'] as const)(
     '%s omite suscripciones y deja estado comercial nulo', async (accion) => {
       await ejecutarAccion(accion)

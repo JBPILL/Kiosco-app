@@ -1,3 +1,4 @@
+import { administracionComercialHabilitada } from '../lib/commercialScope'
 import { useState, useEffect, useMemo } from 'react'
 import { useAdminStore } from '../stores/adminStore'
 import { useConfigAdminStore, formatearLinkWhatsApp } from '../stores/configAdminStore'
@@ -13,6 +14,11 @@ import { ReportesSuperAdminTab } from '../components/admin/ReportesSuperAdminTab
 import toast from 'react-hot-toast'
 
 export function SuperAdminPage() {
+  if (!administracionComercialHabilitada()) return <section role="status"><h1>Administración comercial fuera del piloto</h1></section>
+  return <SuperAdminComercialPage />
+}
+
+function SuperAdminComercialPage() {
   const {
     kioscos,
     planes,
@@ -22,7 +28,7 @@ export function SuperAdminPage() {
     renovarSuscripcion,
     cambiarEstadoKiosco,
     editarKiosco,
-    eliminarKiosco,
+    error: errorComercial,
     crearKioscoCliente,
     obtenerHistorialPagos,
     actualizarPrecioPlan,
@@ -77,17 +83,12 @@ export function SuperAdminPage() {
   const [editPlanId, setEditPlanId] = useState('')
   const [editFechaVencimiento, setEditFechaVencimiento] = useState('')
 
-  // Modal Eliminar Kiosco
-  const [modalEliminarOpen, setModalEliminarOpen] = useState(false)
-  const [kioscoParaEliminar, setKioscoParaEliminar] = useState<KioscoAdminView | null>(null)
-  const [textoConfirmacion, setTextoConfirmacion] = useState('')
-
   // Modal Planes y Precios (Ajuste por Inflación)
   const [modalPlanesOpen, setModalPlanesOpen] = useState(false)
   const [preciosEditados, setPreciosEditados] = useState<Record<string, number>>({})
   const [creandoNuevoPlan, setCreandoNuevoPlan] = useState(false)
   const [nuevoPlanNombre, setNuevoPlanNombre] = useState('')
-  const [nuevoPlanPrecio, setNuevoPlanPrecio] = useState(35000)
+  const [nuevoPlanPrecio, setNuevoPlanPrecio] = useState(0)
   const [nuevoPlanDesc, setNuevoPlanDesc] = useState('')
 
   // Modal Renovar
@@ -140,7 +141,7 @@ export function SuperAdminPage() {
     setEstadoNube('VERIFICANDO')
     try {
       const inicio = Date.now()
-      const { error } = await supabase.from('planes').select('id').limit(1)
+      const { error } = await supabase.rpc('leer_administracion_comercial')
       const latencia = Date.now() - inicio
       if (error) throw error
       setEstadoNube('CONECTADO')
@@ -318,7 +319,7 @@ export function SuperAdminPage() {
       rubro: nuevoRubro,
       nombreDueno: nuevoNombreDueno.trim(),
       emailDueno: nuevoEmailDueno.trim(),
-      passwordDueno: nuevoPasswordDueno.trim(),
+      passwordDueno: nuevoPasswordDueno,
       planId: nuevoPlanId,
       diasValidez: Number(nuevosDiasValidez) || 30,
     })
@@ -374,31 +375,6 @@ export function SuperAdminPage() {
     }
   }
 
-  const abrirModalEliminar = (k: KioscoAdminView) => {
-    setKioscoParaEliminar(k)
-    setTextoConfirmacion('')
-    setModalEliminarOpen(true)
-  }
-
-  const handleConfirmarEliminacion = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!kioscoParaEliminar || cargandoAccion) return
-    const esperado = 'ELIMINAR'
-    if (
-      textoConfirmacion.trim().toUpperCase() !== esperado &&
-      textoConfirmacion.trim().toLowerCase() !== kioscoParaEliminar.nombre_kiosco.toLowerCase()
-    ) {
-      return
-    }
-
-    const ok = await eliminarKiosco(kioscoParaEliminar.kiosco_id)
-    if (ok) {
-      setModalEliminarOpen(false)
-      setKioscoParaEliminar(null)
-      setTextoConfirmacion('')
-    }
-  }
-
   const abrirModalPlanes = () => {
     const map: Record<string, number> = {}
     planesComerciales.forEach((p) => {
@@ -407,7 +383,7 @@ export function SuperAdminPage() {
     setPreciosEditados(map)
     setCreandoNuevoPlan(false)
     setNuevoPlanNombre('')
-    setNuevoPlanPrecio(35000)
+    setNuevoPlanPrecio(0)
     setNuevoPlanDesc('')
     setModalPlanesOpen(true)
   }
@@ -430,7 +406,7 @@ export function SuperAdminPage() {
     if (ok) {
       setCreandoNuevoPlan(false)
       setNuevoPlanNombre('')
-      setNuevoPlanPrecio(35000)
+      setNuevoPlanPrecio(0)
       setNuevoPlanDesc('')
     }
   }
@@ -635,6 +611,7 @@ export function SuperAdminPage() {
         </div>
       </div>
 
+      {errorComercial && <p role="alert">{errorComercial}</p>}
       {/* Tarjeta de Diagnóstico del Sistema (Health Check SuperAdmin) */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 shadow-xs space-y-3.5">
         <div className="flex items-center justify-between gap-3">
@@ -1169,15 +1146,7 @@ export function SuperAdminPage() {
                       Editar
                     </button>
 
-                    {/* Botón Eliminar */}
-                    <button
-                      type="button"
-                      onClick={() => abrirModalEliminar(k)}
-                      disabled={cargandoAccion}
-                      className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-600 dark:text-red-300 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/60 border border-red-200 dark:border-red-800/60 transition-all active:scale-95 cursor-pointer shadow-2xs whitespace-nowrap"
-                    >
-                      Eliminar
-                    </button>
+
                   </div>
                 </div>
               )
@@ -1666,7 +1635,9 @@ export function SuperAdminPage() {
                 <Input
                   label="Contraseña Inicial *"
                   type="password"
-                  placeholder="Mínimo 6 caracteres"
+                  placeholder="Mínimo 12 caracteres"
+                  minLength={12}
+                  maxLength={128}
                   value={nuevoPasswordDueno}
                   onChange={(e) => setNuevoPasswordDueno(e.target.value)}
                   required
@@ -1877,7 +1848,7 @@ export function SuperAdminPage() {
                     <th className="py-2 px-3">Fecha</th>
                     <th className="py-2 px-3">Monto</th>
                     <th className="py-2 px-3">Medio</th>
-                    <th className="py-2 px-3">Notas</th>
+                    <th className="py-2 px-3">Meses</th><th className="py-2 px-3">Actor</th><th className="py-2 px-3">Operación</th><th className="py-2 px-3">Notas</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -1888,7 +1859,7 @@ export function SuperAdminPage() {
                         {formatPrecio(p.monto)}
                       </td>
                       <td className="py-2 px-3">{p.medio_pago || '—'}</td>
-                      <td className="py-2 px-3 text-gray-500">{p.notas || '—'}</td>
+                      <td className="py-2 px-3">{p.meses ?? '—'}</td><td className="py-2 px-3">{p.nombre_actor ?? '—'}</td><td className="py-2 px-3">{p.operacion_id ?? '—'}</td><td className="py-2 px-3 text-gray-500">{p.notas || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -2096,66 +2067,6 @@ export function SuperAdminPage() {
         )}
       </Modal>
 
-      {/* MODAL ELIMINAR KIOSCO CON CONFIRMACIÓN */}
-      <Modal
-        isOpen={modalEliminarOpen}
-        onClose={() => setModalEliminarOpen(false)}
-        title="Eliminar Kiosco Definitivamente"
-      >
-        {kioscoParaEliminar && (
-          <form onSubmit={handleConfirmarEliminacion} className="space-y-4">
-            <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 text-xs text-red-800 dark:text-red-200 space-y-2">
-              <p className="font-bold text-sm">
-                Atención: Esta acción es irreversible
-              </p>
-              <p>
-                Estás a punto de eliminar de forma permanente al comercio{' '}
-                <strong>"{kioscoParaEliminar.nombre_kiosco}"</strong>.
-              </p>
-              <p>
-                Se borrarán todos sus productos cargados, historial de ventas, movimientos de caja, sesiones, cuentas corrientes de clientes y las credenciales de acceso de sus empleados.
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                Para confirmar la eliminación, escribí la palabra <strong className="text-red-600 dark:text-red-400">ELIMINAR</strong> o el nombre exacto del comercio:
-              </label>
-              <Input
-                placeholder='Escribí "ELIMINAR"'
-                value={textoConfirmacion}
-                onChange={(e) => setTextoConfirmacion(e.target.value)}
-                autoFocus
-                required
-              />
-            </div>
-
-            <div className="flex justify-end gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setModalEliminarOpen(false)}
-                disabled={cargandoAccion}
-              >
-                Cancelar
-              </Button>
-              <button
-                type="submit"
-                disabled={
-                  cargandoAccion ||
-                  (textoConfirmacion.trim().toUpperCase() !== 'ELIMINAR' &&
-                    textoConfirmacion.trim().toLowerCase() !==
-                      kioscoParaEliminar.nombre_kiosco.toLowerCase())
-                }
-                className="px-4 py-2 rounded-xl text-sm font-bold bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-xs transition-colors"
-              >
-                {cargandoAccion ? 'Eliminando...' : 'Eliminar Kiosco'}
-              </button>
-            </div>
-          </form>
-        )}
-      </Modal>
-
       {/* MODAL PLANES Y PRECIOS (AJUSTE POR INFLACIÓN) */}
       <Modal
         isOpen={modalPlanesOpen}
@@ -2321,7 +2232,7 @@ export function SuperAdminPage() {
                   onClick={() => {
                     setCreandoNuevoPlan(true)
                     setNuevoPlanNombre('')
-                    setNuevoPlanPrecio(35000)
+                    setNuevoPlanPrecio(0)
                     setNuevoPlanDesc('')
                   }}
                   className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
