@@ -26,7 +26,17 @@ function digest(file) { return createHash('sha256').update(readFileSync(file)).d
 function generate() {
   return { version: 2, profile: 'ONE_SHOT_EMPTY_DB', expectedProjectRef: null,
     importWindowAfter, postImportFiles,
-    files: ordered.map(path => ({ path, sha256: digest(join(root, path)) })) }
+    files: ordered.map(path => ({ path, sha256: digest(join(root, path)) })),
+    optionalModules: {
+      commercial: {
+        installAfter: '900_final_security.sql',
+        automaticInstall: false,
+        incrementalPath: '../../supabase_fase_comercial_suscripciones.sql',
+        incrementalSha256: digest(join(root, '../../supabase_fase_comercial_suscripciones.sql')),
+        files: readdirSync(join(root, 'commercial')).filter(name => name.endsWith('.sql')).sort()
+          .map(name => ({ path: `commercial/${name}`, sha256: digest(join(root, 'commercial', name)) })),
+      },
+    } }
 }
 function runSql(file) {
   if (expected && actual && expected !== actual) throw new Error('Expected and actual project refs do not match.')

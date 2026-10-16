@@ -7,42 +7,133 @@
       "mode": "SAFE_RPC",
       "entrypoint": "checkout-manual -> confirmar_venta_manual",
       "browserDml": false,
-      "requiredFlags": ["VITE_CHECKOUT_MANUAL_TRANSACCIONAL=true", "VITE_KIOSKO_PILOT_STRICT_SCOPE=true"]
+      "requiredFlags": [
+        "VITE_CHECKOUT_MANUAL_TRANSACCIONAL=true",
+        "VITE_KIOSKO_PILOT_STRICT_SCOPE=true"
+      ]
     },
     {
       "flow": "stock operations",
       "mode": "SAFE_RPC",
       "entrypoint": "registrar_movimiento_stock_idempotente / resolver_operacion_stock / checkout-manual",
       "browserDml": false,
-      "safeStrictEntrypoints": ["registrar_movimiento_stock_idempotente", "resolver_operacion_stock", "AuditoriaInventarioModal"],
+      "safeStrictEntrypoints": [
+        "registrar_movimiento_stock_idempotente",
+        "resolver_operacion_stock",
+        "AuditoriaInventarioModal"
+      ],
       "directWriteInventory": [
-        { "path": "src/components/catalogo/AumentoPreciosModal.tsx", "occurrences": 1, "mode": "LEGACY_ONLY", "strictEntrypoint": "actualizar_precios_catalogo_transaccional" },
-        { "path": "src/components/catalogo/ImportarCatalogoModal.tsx", "occurrences": 5, "mode": "LEGACY_ONLY", "strictEntrypoint": "importar_productos_catalogo_transaccional / guardar_categoria_transaccional" },
-        { "path": "src/components/catalogo/SiembraCatalogoModal.tsx", "occurrences": 3, "mode": "LEGACY_ONLY", "strictEntrypoint": "importar_productos_catalogo_transaccional / guardar_categoria_transaccional" },
-        { "path": "src/components/pos/AltaRapidaModal.tsx", "occurrences": 1, "mode": "LEGACY_ONLY", "strictEntrypoint": "guardar_producto_transaccional" },
-        { "path": "src/components/pos/PaymentModal.tsx", "occurrences": 5, "mode": "LEGACY_ONLY", "strictEntrypoint": "checkout-manual -> confirmar_venta_manual" },
-        { "path": "src/components/stock/AuditoriaInventarioModal.tsx", "occurrences": 2, "mode": "LEGACY_ONLY", "strictEntrypoint": "registrar_movimiento_stock_idempotente" },
-        { "path": "src/hooks/useProducts.ts", "occurrences": 9, "mode": "LEGACY_ONLY", "strictEntrypoint": "guardar_producto_transaccional / importar_productos_catalogo_transaccional / guardar_categoria_transaccional" },
-        { "path": "src/lib/backupUtils.ts", "occurrences": 3, "mode": "OUT_OF_SCOPE", "strictGuard": "RestaurarBackupModal deshabilitado en strict scope", "strictGuardPath": "src/components/config/RestaurarBackupModal.tsx" },
-        { "path": "src/stores/comboStore.ts", "occurrences": 3, "mode": "LEGACY_ONLY", "strictEntrypoint": "guardar_combo_transaccional / checkout-manual" },
-        { "path": "src/stores/devolucionStore.ts", "occurrences": 4, "mode": "OUT_OF_SCOPE", "strictGuard": "partial returns are blocked by kiosk pilot scope" },
-        { "path": "src/stores/loteStore.ts", "occurrences": 4, "mode": "LEGACY_ONLY", "strictEntrypoint": "registrar_movimiento_stock_idempotente" },
-        { "path": "src/stores/offlineSyncStore.ts", "occurrences": 3, "mode": "LEGACY_ONLY", "strictGuard": "old stock outbox sync is rejected in strict scope" },
-        { "path": "src/stores/proveedorStore.ts", "occurrences": 4, "mode": "LEGACY_ONLY", "strictEntrypoint": "proveedor transactional RPCs" }
+        {
+          "path": "src/components/catalogo/AumentoPreciosModal.tsx",
+          "occurrences": 1,
+          "mode": "LEGACY_ONLY",
+          "strictEntrypoint": "actualizar_precios_catalogo_transaccional"
+        },
+        {
+          "path": "src/components/catalogo/ImportarCatalogoModal.tsx",
+          "occurrences": 5,
+          "mode": "LEGACY_ONLY",
+          "strictEntrypoint": "importar_productos_catalogo_transaccional / guardar_categoria_transaccional"
+        },
+        {
+          "path": "src/components/catalogo/SiembraCatalogoModal.tsx",
+          "occurrences": 3,
+          "mode": "LEGACY_ONLY",
+          "strictEntrypoint": "importar_productos_catalogo_transaccional / guardar_categoria_transaccional"
+        },
+        {
+          "path": "src/components/pos/AltaRapidaModal.tsx",
+          "occurrences": 1,
+          "mode": "LEGACY_ONLY",
+          "strictEntrypoint": "guardar_producto_transaccional"
+        },
+        {
+          "path": "src/components/pos/PaymentModal.tsx",
+          "occurrences": 5,
+          "mode": "LEGACY_ONLY",
+          "strictEntrypoint": "checkout-manual -> confirmar_venta_manual"
+        },
+        {
+          "path": "src/components/stock/AuditoriaInventarioModal.tsx",
+          "occurrences": 2,
+          "mode": "LEGACY_ONLY",
+          "strictEntrypoint": "registrar_movimiento_stock_idempotente"
+        },
+        {
+          "path": "src/hooks/useProducts.ts",
+          "occurrences": 9,
+          "mode": "LEGACY_ONLY",
+          "strictEntrypoint": "guardar_producto_transaccional / importar_productos_catalogo_transaccional / guardar_categoria_transaccional"
+        },
+        {
+          "path": "src/lib/backupUtils.ts",
+          "occurrences": 3,
+          "mode": "OUT_OF_SCOPE",
+          "strictGuard": "RestaurarBackupModal deshabilitado en strict scope",
+          "strictGuardPath": "src/components/config/RestaurarBackupModal.tsx"
+        },
+        {
+          "path": "src/stores/comboStore.ts",
+          "occurrences": 3,
+          "mode": "LEGACY_ONLY",
+          "strictEntrypoint": "guardar_combo_transaccional / checkout-manual"
+        },
+        {
+          "path": "src/stores/devolucionStore.ts",
+          "occurrences": 4,
+          "mode": "OUT_OF_SCOPE",
+          "strictGuard": "partial returns are blocked by kiosk pilot scope"
+        },
+        {
+          "path": "src/stores/loteStore.ts",
+          "occurrences": 4,
+          "mode": "LEGACY_ONLY",
+          "strictEntrypoint": "registrar_movimiento_stock_idempotente"
+        },
+        {
+          "path": "src/stores/offlineSyncStore.ts",
+          "occurrences": 3,
+          "mode": "LEGACY_ONLY",
+          "strictGuard": "old stock outbox sync is rejected in strict scope"
+        },
+        {
+          "path": "src/stores/proveedorStore.ts",
+          "occurrences": 4,
+          "mode": "LEGACY_ONLY",
+          "strictEntrypoint": "proveedor transactional RPCs"
+        }
       ]
     },
     {
       "flow": "catalog product, price, category, import, seed, promotion and combo administration",
       "mode": "SAFE_RPC",
-      "relations": ["productos", "producto_costos", "movimientos_stock", "lotes_producto", "categorias", "promociones", "combo_items"],
+      "relations": [
+        "productos",
+        "producto_costos",
+        "movimientos_stock",
+        "lotes_producto",
+        "categorias",
+        "promociones",
+        "combo_items"
+      ],
       "browserDml": false,
-      "entrypoints": ["guardar_producto_transaccional", "actualizar_precios_catalogo_transaccional", "importar_productos_catalogo_transaccional", "guardar_categoria_transaccional", "eliminar_categoria_transaccional", "guardar_promocion_transaccional", "guardar_combo_transaccional"],
+      "entrypoints": [
+        "guardar_producto_transaccional",
+        "actualizar_precios_catalogo_transaccional",
+        "importar_productos_catalogo_transaccional",
+        "guardar_categoria_transaccional",
+        "eliminar_categoria_transaccional",
+        "guardar_promocion_transaccional",
+        "guardar_combo_transaccional"
+      ],
       "semantics": "product plus initial stock and cost history are atomic; import uses atomic chunks of at most 100 rows, stable request IDs and row-level errors; barcode uniqueness is tenant-scoped"
     },
     {
       "flow": "supplier directory CRUD",
       "mode": "SAFE_RPC",
-      "relations": ["proveedores"],
+      "relations": [
+        "proveedores"
+      ],
       "browserDml": false,
       "entrypoint": "guardar_proveedor_transaccional",
       "constraint": "same tenant and owner role; supplier balance remains RPC-only"
@@ -50,28 +141,52 @@
     {
       "flow": "supplier purchases, details, and payments",
       "mode": "SAFE_RPC",
-      "relations": ["compras_proveedor", "detalles_compra", "pagos_proveedor"],
+      "relations": [
+        "compras_proveedor",
+        "detalles_compra",
+        "pagos_proveedor"
+      ],
       "browserDml": false,
-      "entrypoints": ["registrar_compra_proveedor_transaccional", "registrar_pago_proveedor_transaccional", "ajustar_saldo_proveedor_transaccional", "anular_compra_proveedor_transaccional", "anular_pago_proveedor_transaccional"]
+      "entrypoints": [
+        "registrar_compra_proveedor_transaccional",
+        "registrar_pago_proveedor_transaccional",
+        "ajustar_saldo_proveedor_transaccional",
+        "anular_compra_proveedor_transaccional",
+        "anular_pago_proveedor_transaccional"
+      ]
     },
     {
       "flow": "cash sessions and movements",
       "mode": "SAFE_RPC",
-      "relations": ["sesiones_caja", "movimientos_caja"],
+      "relations": [
+        "sesiones_caja",
+        "movimientos_caja"
+      ],
       "browserDml": false,
-      "entrypoints": ["abrir_sesion_caja_transaccional", "registrar_movimiento_caja_transaccional", "cerrar_sesion_caja_transaccional"]
+      "entrypoints": [
+        "abrir_sesion_caja_transaccional",
+        "registrar_movimiento_caja_transaccional",
+        "cerrar_sesion_caja_transaccional"
+      ]
     },
     {
       "flow": "customer credit ledger",
       "mode": "SAFE_RPC",
-      "relations": ["clientes", "movimientos_cuenta_corriente"],
+      "relations": [
+        "clientes",
+        "movimientos_cuenta_corriente"
+      ],
       "browserDml": false,
-      "entrypoints": ["registrar_movimiento_cuenta_corriente_transaccional"]
+      "entrypoints": [
+        "registrar_movimiento_cuenta_corriente_transaccional"
+      ]
     },
     {
       "flow": "staff Auth provisioning and profile link",
       "mode": "SAFE_EDGE",
-      "relations": ["usuarios"],
+      "relations": [
+        "usuarios"
+      ],
       "browserDml": false,
       "entrypoint": "provision-user",
       "strategy": "create Auth user server-side then write trusted profile; compensate by deleting Auth user if profile creation/link fails",
@@ -80,7 +195,9 @@
     {
       "flow": "support ticket submission",
       "mode": "SAFE_RPC",
-      "relations": ["tickets_soporte"],
+      "relations": [
+        "tickets_soporte"
+      ],
       "browserDml": false,
       "entrypoint": "crear_ticket_soporte_transaccional",
       "identity": "auth.uid profile and tenant are server-derived; client-supplied identity fields are ignored",
@@ -89,15 +206,227 @@
     {
       "flow": "support ticket administration",
       "mode": "OUT_OF_SCOPE",
-      "relations": ["tickets_soporte"],
+      "relations": [
+        "tickets_soporte"
+      ],
       "browserDml": false,
       "strictGuard": "RutaSuperAdmin and support admin store methods block access in strict scope"
     },
     {
-      "flow": "commercial admin, fiscal, Point, shared packaging, partial returns",
+      "flow": "commercial subscriptions, plans, configuration and administration",
+      "mode": "SAFE_RPC",
+      "browserDml": false,
+      "requiredFlags": [
+        "VITE_ADMIN_COMERCIAL_HABILITADO=true"
+      ],
+      "entrypoints": [
+        "renovar_suscripcion_comercial",
+        "cambiar_estado_comercial",
+        "cambiar_plan_comercial",
+        "actualizar_plan",
+        "guardar_configuracion_comercial",
+        "editar_comercio_comercial"
+      ],
+      "installation": "optional commercial SQL after the hardened baseline; no automatic legacy installation"
+    },
+    {
+      "flow": "commerce and initial owner provisioning",
+      "mode": "SAFE_EDGE",
+      "browserDml": false,
+      "entrypoint": "provision-commerce",
+      "strategy": "SuperAdmin JWT, durable reservation, transactional business finalization; no destructive compensation after uncertain response"
+    },
+    {
+      "flow": "fiscal, Point, shared packaging and partial returns",
       "mode": "OUT_OF_SCOPE",
-      "resources": ["planes", "suscripciones", "ARCA/CAE", "Point", "envases compartidos", "devoluciones parciales"],
-      "strictGuard": "commercial admin route and related actions are blocked by strict pilot scope"
+      "browserDml": false,
+      "resources": [
+        "ARCA/CAE",
+        "Point",
+        "envases compartidos",
+        "devoluciones parciales"
+      ],
+      "strictGuard": "Existing strict pilot exclusions remain unchanged; commercial capability cannot enable these resources"
+    },
+    {
+      "flow": "commercial subscriptions, plans, configuration and administration",
+      "mode": "SAFE_RPC",
+      "browserDml": false,
+      "requiredFlags": [
+        "VITE_ADMIN_COMERCIAL_HABILITADO=true"
+      ],
+      "entrypoints": [
+        "renovar_suscripcion_comercial",
+        "cambiar_estado_comercial",
+        "cambiar_plan_comercial",
+        "actualizar_plan",
+        "guardar_configuracion_comercial",
+        "editar_comercio_comercial"
+      ],
+      "installation": "optional commercial SQL after the hardened baseline; no automatic legacy installation"
+    },
+    {
+      "flow": "commerce and initial owner provisioning",
+      "mode": "SAFE_EDGE",
+      "browserDml": false,
+      "entrypoint": "provision-commerce",
+      "strategy": "SuperAdmin JWT, durable reservation, transactional business finalization; no destructive compensation after uncertain response"
+    },
+    {
+      "flow": "fiscal, Point, shared packaging and partial returns",
+      "mode": "OUT_OF_SCOPE",
+      "browserDml": false,
+      "resources": [
+        "ARCA/CAE",
+        "Point",
+        "envases compartidos",
+        "devoluciones parciales"
+      ],
+      "strictGuard": "Existing strict pilot exclusions remain unchanged; commercial capability cannot enable these resources"
+    },
+    {
+      "flow": "commercial subscriptions, plans, configuration and administration",
+      "mode": "SAFE_RPC",
+      "browserDml": false,
+      "requiredFlags": [
+        "VITE_ADMIN_COMERCIAL_HABILITADO=true"
+      ],
+      "entrypoints": [
+        "renovar_suscripcion_comercial",
+        "cambiar_estado_comercial",
+        "cambiar_plan_comercial",
+        "actualizar_plan",
+        "guardar_configuracion_comercial",
+        "editar_comercio_comercial"
+      ],
+      "installation": "optional commercial SQL after the hardened baseline; no automatic legacy installation"
+    },
+    {
+      "flow": "commerce and initial owner provisioning",
+      "mode": "SAFE_EDGE",
+      "browserDml": false,
+      "entrypoint": "provision-commerce",
+      "strategy": "SuperAdmin JWT, durable reservation, transactional business finalization; no destructive compensation after uncertain response"
+    },
+    {
+      "flow": "fiscal, Point, shared packaging and partial returns",
+      "mode": "OUT_OF_SCOPE",
+      "browserDml": false,
+      "resources": [
+        "ARCA/CAE",
+        "Point",
+        "envases compartidos",
+        "devoluciones parciales"
+      ],
+      "strictGuard": "Existing strict pilot exclusions remain unchanged; commercial capability cannot enable these resources"
+    },
+    {
+      "flow": "commercial subscriptions, plans, configuration and administration",
+      "mode": "SAFE_RPC",
+      "browserDml": false,
+      "requiredFlags": [
+        "VITE_ADMIN_COMERCIAL_HABILITADO=true"
+      ],
+      "entrypoints": [
+        "renovar_suscripcion_comercial",
+        "cambiar_estado_comercial",
+        "cambiar_plan_comercial",
+        "actualizar_plan",
+        "guardar_configuracion_comercial",
+        "editar_comercio_comercial"
+      ],
+      "installation": "optional commercial SQL after the hardened baseline; no automatic legacy installation"
+    },
+    {
+      "flow": "commerce and initial owner provisioning",
+      "mode": "SAFE_EDGE",
+      "browserDml": false,
+      "entrypoint": "provision-commerce",
+      "strategy": "SuperAdmin JWT, durable reservation, transactional business finalization; no destructive compensation after uncertain response"
+    },
+    {
+      "flow": "fiscal, Point, shared packaging and partial returns",
+      "mode": "OUT_OF_SCOPE",
+      "browserDml": false,
+      "resources": [
+        "ARCA/CAE",
+        "Point",
+        "envases compartidos",
+        "devoluciones parciales"
+      ],
+      "strictGuard": "Existing strict pilot exclusions remain unchanged; commercial capability cannot enable these resources"
+    },
+    {
+      "flow": "commercial subscriptions, plans, configuration and administration",
+      "mode": "SAFE_RPC",
+      "browserDml": false,
+      "requiredFlags": [
+        "VITE_ADMIN_COMERCIAL_HABILITADO=true"
+      ],
+      "entrypoints": [
+        "renovar_suscripcion_comercial",
+        "cambiar_estado_comercial",
+        "cambiar_plan_comercial",
+        "actualizar_plan",
+        "guardar_configuracion_comercial",
+        "editar_comercio_comercial"
+      ],
+      "installation": "optional commercial SQL after the hardened baseline; no automatic legacy installation"
+    },
+    {
+      "flow": "commerce and initial owner provisioning",
+      "mode": "SAFE_EDGE",
+      "browserDml": false,
+      "entrypoint": "provision-commerce",
+      "strategy": "SuperAdmin JWT, durable reservation, transactional business finalization; no destructive compensation after uncertain response"
+    },
+    {
+      "flow": "fiscal, Point, shared packaging and partial returns",
+      "mode": "OUT_OF_SCOPE",
+      "browserDml": false,
+      "resources": [
+        "ARCA/CAE",
+        "Point",
+        "envases compartidos",
+        "devoluciones parciales"
+      ],
+      "strictGuard": "Existing strict pilot exclusions remain unchanged; commercial capability cannot enable these resources"
+    },
+    {
+      "flow": "commercial subscriptions, plans, configuration and administration",
+      "mode": "SAFE_RPC",
+      "browserDml": false,
+      "requiredFlags": [
+        "VITE_ADMIN_COMERCIAL_HABILITADO=true"
+      ],
+      "entrypoints": [
+        "renovar_suscripcion_comercial",
+        "cambiar_estado_comercial",
+        "cambiar_plan_comercial",
+        "actualizar_plan",
+        "guardar_configuracion_comercial",
+        "editar_comercio_comercial"
+      ],
+      "installation": "optional commercial SQL after the hardened baseline; no automatic legacy installation"
+    },
+    {
+      "flow": "commerce and initial owner provisioning",
+      "mode": "SAFE_EDGE",
+      "browserDml": false,
+      "entrypoint": "provision-commerce",
+      "strategy": "SuperAdmin JWT, durable reservation, transactional business finalization; no destructive compensation after uncertain response"
+    },
+    {
+      "flow": "fiscal, Point, shared packaging and partial returns",
+      "mode": "OUT_OF_SCOPE",
+      "browserDml": false,
+      "resources": [
+        "ARCA/CAE",
+        "Point",
+        "envases compartidos",
+        "devoluciones parciales"
+      ],
+      "strictGuard": "Existing strict pilot exclusions remain unchanged; commercial capability cannot enable these resources"
     }
   ]
 }
