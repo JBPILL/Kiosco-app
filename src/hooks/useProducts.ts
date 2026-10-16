@@ -540,7 +540,8 @@ export function useProducts() {
       const operacion = obtenerOperacionPersistida('catalogo-producto', identidad, datos)
       try {
         const { data, error } = await supabase.rpc('guardar_producto_transaccional', {
-          p_operacion_id: operacion.id, p_producto_id: nuevoId, p_datos: operacion.solicitud,
+          // El producto forma parte de la solicitud idempotente, también tras perder el ACK.
+          p_operacion_id: operacion.id, p_producto_id: operacion.id, p_datos: operacion.solicitud,
         })
         if (error || !data || typeof data !== 'object') throw error || new Error('El servidor no confirmó el producto')
         const respuesta = data as { producto: Producto; precio_costo?: number }

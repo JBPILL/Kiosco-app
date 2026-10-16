@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import type { Producto } from '../types/database'
 import { getCachedProductos, saveCachedProductos } from '../lib/utils'
 import { leerCostosProtegidosLocales } from '../lib/productCostAccess'
-import { db, encolar, resetDb, responder } from '../test/supabaseMock'
+import { db, encolar, llamadasRpcA, resetDb, responder, responderRpc } from '../test/supabaseMock'
 import { useProducts } from './useProducts'
 
 const sesion = vi.hoisted(() => ({
@@ -36,6 +36,44 @@ beforeEach(() => {
 })
 
 describe('useProducts: guardar cambios respetando autorización', () => {
+  it.each(['respuesta incierta', 'conexión interrumpida'])('recupera el alta strict con IDs y datos estables tras %s', async fallo => {
+    vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'true')
+    const { result, unmount } = renderHook(() => useProducts())
+    await waitFor(() => expect(result.current.productos).toHaveLength(1))
+    const datos = { ...producto, codigo_barras: 'nuevo', descripcion: 'Alta recuperable', precio_costo: 125 }
+    if (fallo === 'conexión interrumpida') db.lanzar.add('rpc.guardar_producto_transaccional')
+    else responderRpc('guardar_producto_transaccional', { data: null, error: { message: 'Respuesta perdida' } })
+
+    await act(async () => { expect(await result.current.crearProducto(datos)).toBeNull() })
+    const primero = llamadasRpcA('guardar_producto_transaccional')[0].args
+    expect(primero.p_producto_id).toBe(primero.p_operacion_id)
+    expect(result.current.productos).toHaveLength(1)
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(localStorage.getItem('kioskopos_operaciones_catalogo-producto')).not.toBeNull()
+
+    // Recrear el hook comprueba que la identidad sobrevive a un nuevo submit de la pantalla.
+    unmount()
+    const reintento = renderHook(() => useProducts())
+    await waitFor(() => expect(reintento.result.current.productos).toHaveLength(1))
+    const recuperado = { ...datos, id: primero.p_producto_id as string }
+    db.lanzar.delete('rpc.guardar_producto_transaccional')
+    responderRpc('guardar_producto_transaccional', { data: { producto: recuperado, precio_costo: 125 }, error: null })
+    responder('productos.select', { data: [recuperado, producto], error: null })
+    let confirmado: Producto | null = null
+    await act(async () => { confirmado = await reintento.result.current.crearProducto(datos) })
+
+    const llamadas = llamadasRpcA('guardar_producto_transaccional')
+    expect(llamadas).toHaveLength(2)
+    expect(llamadas[1].args.p_operacion_id).toBe(primero.p_operacion_id)
+    expect(llamadas[1].args.p_producto_id).toBe(primero.p_producto_id)
+    expect(llamadas[1].args.p_datos).toEqual(primero.p_datos)
+    expect(confirmado).toEqual(recuperado)
+    expect(reintento.result.current.productos.filter(p => p.id === recuperado.id)).toHaveLength(1)
+    expect(getCachedProductos('k1').filter(p => p.id === recuperado.id)).toHaveLength(1)
+    expect(localStorage.getItem('kioskopos_operaciones_catalogo-producto')).toBeNull()
+    expect(db.llamadas.some(llamada => llamada.op === 'insert')).toBe(false)
+  })
+
   it('un alta sin red conserva borrador y no permite reemplazar ID ni comercio del contexto', async () => {
     const { result } = renderHook(() => useProducts())
     await waitFor(() => expect(result.current.productos).toHaveLength(1))
