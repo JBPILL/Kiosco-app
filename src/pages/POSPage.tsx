@@ -403,13 +403,17 @@ export function POSPage() {
             let queryBalanza = supabase
               .from('productos')
               .select('*, categoria:categorias(nombre, color)')
-              .eq('activo', true)
               .or(`plu_balanza.eq.${parsedBalanza.plu4},plu_balanza.eq.${parsedBalanza.pluCorto},plu_balanza.eq.${parsedBalanza.plu5},codigo_barras.eq.${parsedBalanza.plu4},codigo_barras.eq.${parsedBalanza.pluCorto}`)
               .limit(1)
             if (kid) queryBalanza = queryBalanza.eq('kiosco_id', kid)
             const { data } = await queryBalanza.maybeSingle()
 
             if (data) {
+              if (data.activo === false) {
+                playScanSound('warning')
+                toast.error('Producto inactivo. El dueño debe reactivarlo desde Catálogo.')
+                return
+              }
               agregarProducto(data, parsedBalanza.pesoKg)
               toast.success(`${data.descripcion} (${parsedBalanza.pesoKg} kg) agregado`)
               return
@@ -425,6 +429,12 @@ export function POSPage() {
       const todos: Producto[] = getCachedProductos(kid)
       if (todos.length > 0) {
         productoEncontrado = todos.find((p) => p.activo && p.codigo_barras === codeTrim) || null
+      }
+
+      if (!navigator.onLine && todos.some(p => p.activo === false && p.codigo_barras === codeTrim)) {
+        playScanSound('warning')
+        toast.error('Producto inactivo. El dueño debe reactivarlo desde Catálogo.')
+        return
       }
 
       if (productoEncontrado) {
@@ -444,7 +454,6 @@ export function POSPage() {
         let queryGun = supabase
           .from('productos')
           .select('*, categoria:categorias(nombre, color)')
-          .eq('activo', true)
           .eq('codigo_barras', codeTrim)
           .limit(1)
         if (kid) queryGun = queryGun.eq('kiosco_id', kid)
@@ -454,6 +463,11 @@ export function POSPage() {
         if (error) throw error
 
         if (data) {
+          if (data.activo === false) {
+            playScanSound('warning')
+            toast.error('Producto inactivo. El dueño debe reactivarlo desde Catálogo.')
+            return
+          }
           window.dispatchEvent(new CustomEvent('pos-clear-search'))
           if (data.es_pesable) {
             setProductoPesableModal(data)
