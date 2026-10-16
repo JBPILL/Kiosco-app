@@ -3,7 +3,7 @@
 ## Objetivo
 Cerrar la clasificación de archivos preservados y entregar un bloque de seguridad local reproducible sin alterar Production.
 
-## Contexto actual
+## Contexto inicial
 Base publicada `41bebe9367ad6ca040288f869b77f22ecfd28b13`. Un plan modificado, 26 archivos untracked preservados en stash y una rama local de respaldo. El plan reducido perdió evidencia todavía útil. `provision-user` acepta campos extra y puede sobrescribir una vinculación concurrente.
 
 ## Problema
@@ -46,8 +46,11 @@ Vitest dirigido y completo, build, manifest, npm audit sin fix, scan de patrones
 - [x] Base, stash, refs, EOL y Production público inspeccionados.
 - [x] Clasificación y archivo histórico publicados en Git local (dd93ec7).
 - [x] Hardening de provisioning y alta autorizada, con pruebas dirigidas (78ae486, 7e5f79e).
-- [x] Auditoría local, manifest, diff, build y commits revisados (3d35813, 25edb12 y commit documental pendiente).
-- [ ] Push de la rama pendiente de disponibilidad de revisión automática.
+- [x] Auditoría local, manifest, diff, build y commits revisados (3d35813, 25edb12 y d2233ba).
+- [x] Rama `hardening/next-operational-block` publicada y [PR #1](https://github.com/JBPILL/Kiosco-app/pull/1) abierto hacia master, sin merge.
+- [x] Validación final previa sobre d2233ba: test strict PASS; suite 1830 PASS / 1 skipped / 190 files; build PASS (608 módulos); diff/index y escaneo textual sin secretos reales detectados. Audit diagnóstico: xlsx HIGH, dos avisos, sin fix automático; riesgo abierto.
+- [x] Findings cerrados en 9227508 (identidad de alta strict estable) y 268d81e (productos inactivos en pistola/cámara); 64 tests dirigidos PASS, incluido categoría strict. Suite final sobre 268d81e: 1840 PASS / 1 skipped / 190 files, build PASS (608 módulos), diff/index PASS. Secret scan sin candidatos nuevos ni secretos reales detectados en textos versionados (binarios/historial excluidos); audit oficial confirma xlsx HIGH con dos avisos sin fix automático. Commits temáticos preparados para push normal al PR #1 (ver scanner-labels-and-theme.md).
+- [ ] Post-merge con autorización: SQL incremental, deploy de provisioning, aceptación JWT reales Dueño/Cajero/otro tenant y ensayo físico de cámara/impresora.
 
 ## Resultado final
-Bloque local terminado y commits preparados en hardening/next-operational-block. Push autorizado por el usuario, pendiente del gate de revisión automática; los gates hosted permanecen separados.
+Bloque publicado en PR #1 y findings finales corregidos y validados; cierre documental posterior sin cambios del código probado. No se aplicó SQL remoto ni se desplegó provisioning; tampoco se mergeó el PR. xlsx sigue abierto; gates hosted y físicos permanecen post-merge. AFIP/WSFE/Point fuera de alcance. Documentación histórica y .env.local preservados.
