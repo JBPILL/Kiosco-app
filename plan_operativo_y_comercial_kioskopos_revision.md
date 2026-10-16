@@ -1,16 +1,40 @@
 # KioskoPOS — revisión del plan operativo y comercial
 
-**Estado actualizado: 08/10/2026.** Implementación en curso. El registro siguiente
+**Estado actualizado: 15/10/2026.** Implementación en curso. El registro siguiente
 es el resumen vigente; la evaluación original del 05/10 y las notas de avance
 del final se conservan como historial. Sus conteos y menciones de publicación
 pendiente describen aquella ejecución, no el estado actual.
 
-## Registro de tareas pendientes
+## Estado operativo F6 y reconciliación (15/10/2026)
 
-**Última actualización del registro: 08/10/2026, código `98318b6`.** La última
-suite global corresponde a `eafbdd9`; los avances posteriores tienen validaciones
-dirigidas, detalladas en tareas realizadas. Este apartado registra trabajo abierto;
-el siguiente reúne entregables realizados. Actualizar ambos al cerrar cada tarea.
+Base publicada de reconciliación: `41bebe9367ad6ca040288f869b77f22ecfd28b13`.
+La reducción local del plan no se acepta como pérdida de evidencia: se conservan
+[plan publicado y variante reducida](docs/history/reconciliation-2026-10-15/README.md),
+propuestas originales, inventario con hashes y clasificación de todos los archivos.
+El stash y la rama de respaldo permanecen conservados. Las guías históricas
+no autorizan aplicar SQL ni desplegar servicios.
+
+El bootstrap canónico tiene 43 SQL. El rehearsal local F6.3B-2B registra PASS;
+no equivale a validación hosted. Los documentos anteriores que dicen Docker
+indisponible o 42 SQL describen sus respectivos momentos. La evidencia hosted
+requiere revisión actual antes de cualquier avance. No se configura Vercel ni
+se despliegan AFIP/WSFE/Point en esta ejecución.
+
+La recuperación por dueño, auditoría del paso 53 y verificaciones de lotes,
+promociones y recetas ya cuentan con implementación y pruebas históricas en
+el plan publicado archivado. P09/P14 siguen abiertos para aceptación real;
+no se deben reconstruir esos módulos como si estuvieran ausentes.
+
+Próximo bloque local: endurecer `provision-user` frente a solicitudes inválidas
+y carrera de vinculación Auth, conservando tenant/rol y compensación. Después:
+smoke hosted autenticado de las tres Edge permitidas, aislamiento y costos con
+JWT reales; sólo avanzar al frontend productivo después de ese gate.
+
+Production público: GET de SPA y bundle HTTP 200 en esta revisión. No certifica
+Auth ni ventas. `xlsx` sigue como riesgo abierto aunque el audit de este entorno
+reporte cero: no sustituir evidencia de advisories por un resultado agregado.
+
+## Registro de tareas pendientes
 
 Una tarea pendiente puede requerir desarrollo, aplicación SQL, aceptación
 remota o prueba física. Una implementación local no cierra su fase hasta
@@ -22,16 +46,16 @@ cumplir la puerta de aceptación correspondiente.
 | P02 | 1 · Seguridad | Comprobar permisos con sesiones reales | Probar API/PostgREST con JWT de cajero, dueño y otro comercio: costos privados, cambios/anulación de ventas y escritura directa. No ampliar permisos para obtener un resultado verde. |
 | P03 | 1 · Seguridad | Aceptar operativamente el paso 52 | Catálogo remoto confirmado; falta demostrar INSERT directo rechazado para cajero y checkout por backend funcionando después de instalarlo. |
 | P04 | 1 · Seguridad | Completar pruebas de supervisor | Rechazo de PIN incorrecto y venta con PIN correcto ya informados; faltan concurrencia, espera/límites de intentos, permiso ligado a solicitud original y usos restantes en el piloto. |
-| P05 | 1 · Seguridad | Cerrar aceptación de anulación atómica | Diagnóstico remoto confirma trigger antiguo que duplicó reposición: aplicar fase actualizada y conciliar la unidad extra antes de aceptar el caso efectivo. También faltan pago mixto, fiado, caja original cerrada, lotes y reintento concurrente en Supabase real. |
-| P06 | 1 · Seguridad | Implementar devolución parcial transaccional y conciliación antigua | Auditoría y corrección del fallo de lectura previa realizadas; contrato por detalle y cálculos SQL históricos preparados. Falta conectar formulario y backend atómico/idempotente, bloqueos, stock/lotes históricos, reintegro, auditoría y permisos; comprobar concurrencia. Conciliar tickets antiguos sin inventar snapshots. |
+| P05 | 1 · Seguridad | Cerrar aceptación de anulación atómica | Caso efectivo/caja original abierta confirmado; faltan pago mixto, fiado, caja original cerrada, lotes y reintento concurrente en Supabase real. |
+| P06 | 1 · Seguridad | Revisar devoluciones y conciliación antigua | Auditar rutas restantes de devolución parcial y conciliar tickets/colas antiguos sin snapshot suficiente. No reconstruir autorizaciones ni recetas con valores actuales. |
 | P07 | 1 · Auditoría | Definir retención y operación de auditorías | Establecer responsables, acceso, conservación y comprobación remota de precio, descuento, anulación y apertura manual del cajón. |
 | P08 | Checkout | Validar pérdida de conexión y dos equipos | Ensayar preparación, confirmación, cancelación y respuesta perdida sin duplicar venta, pago, stock o deuda. |
-| P09 | Checkout | Aceptar recuperación sin copia local | Aplicar el paso 53 antes de desplegar `checkout-manual`. Acción del dueño implementada en Caja y Turno; probar en navegador/Supabase con JWT real, respuesta perdida, cancelación concurrente y operador/caja originales. No crear otra venta ni volver a cobrar. |
+| P09 | Checkout | Recuperar solicitudes cuando se pierde la copia local | Completar recuperación autorizada desde servidor; el panel de revisión no equivale a recuperación universal ni a una nueva venta. |
 | P10 | 2 · Periféricos | Validar impresoras y cajón físicos | Matriz por modelo/COM/USB: permiso denegado, desconexión, reimpresión, pago mixto y pulso único sólo tras efectivo confirmado. |
-| P11 | 2 · Periféricos | Completar canal por driver de Windows | Diálogo del navegador ya disponible con window.print y ajuste de contenedores para ticket largo. Configurar despliegue controlado y comprobar driver, márgenes, paginación y salida real; no hay confirmación ni impresión silenciosa. |
+| P11 | 2 · Periféricos | Completar canal por driver de Windows | Implementar despliegue controlado y comprobar impresión real; Web Serial existente no acredita ese canal. |
 | P12 | 2 · Periféricos | Probar lector, balanza y cámara móvil | Ensayar dispositivos reales, Safari/iOS, cancelar/reabrir, permisos y entrada manual de peso. |
 | P13 | 3 · Respaldo | Confirmar migraciones de respaldo vigentes | Verificar snapshot/configuración y pasos 49–50 de relaciones/combos en el entorno de ensayo/remoto. Git push no aplica SQL. |
-| P14 | 3 · Respaldo | Restaurar una copia real en entorno aislado | Control final de productos, lotes, promociones y recetas implementado. Exportar, descifrar, importar y comparar conteos, demás relaciones, saldos, costos privados y configuración. No ensayar sobre el comercio operativo. |
+| P14 | 3 · Respaldo | Restaurar una copia real en entorno aislado | Exportar, descifrar, importar y comparar conteos, relaciones, saldos, costos privados, configuración y recetas. No ensayar sobre el comercio operativo. |
 | P15 | 3 · Respaldo | Completar respaldo de base y recuperación | Probar pg_dump/pg_restore real y Storage; cubrir historial de ventas/caja y módulos excluidos del JSON operativo. |
 | P16 | 3 · Respaldo | Automatizar copias externas y retención | Definir destino, cifrado, programación, rotación y alertas; copia IndexedDB y recordatorio no sustituyen esta estrategia. |
 | P17 | 3 · Respaldo | Comprobar fallos de almacenamiento y cierre | Piloto con cuota agotada, perfil borrado, descarga fallida y cierre pendiente; el respaldo no debe alterar la caja. |
@@ -42,6 +66,7 @@ cumplir la puerta de aceptación correspondiente.
 | P22 | 7 · Escritorio/quiosco | Preparar entrega de instalación lista para usar | Definir PWA/instalador soportado, acceso directo, configuración inicial, arranque, actualización y procedimiento de soporte. |
 | P23 | 7 · Escritorio/quiosco | Resolver persistencia y recuperación del puesto | Edge kiosk usa InPrivate: probar login, permisos y cobros pendientes tras cierre/reinicio; decidir perfil/despliegue compatible antes de activarlo. |
 | P24 | 7 · Escritorio/quiosco | Probar Windows administrado en piloto | Assigned Access/salida de emergencia, cierre inesperado, reconexión, pantalla y recuperación. El lanzador no bloquea Windows ni relanza Edge. |
+| P25 | Calidad | Repetir suite completa tras cambios posteriores | Última suite completa: 1.372 pruebas/147 archivos en la revisión anterior a los últimos diagnósticos. Las pruebas dirigidas posteriores no son una nueva validación global. |
 
 ### Trabajo pausado por decisión del usuario
 
@@ -52,107 +77,6 @@ cumplir la puerta de aceptación correspondiente.
 
 ## Registro de tareas realizadas
 
-- [x] Diagnóstico de anulación detecta protección contra reposición adicional
-  y ausencia del trigger legado, incluso deshabilitado. 109 pruebas SQL de
-  anulación/checkout/conciliación aprobadas. Resultado remoto todavía pendiente.
-
-- [x] Causa remota del duplicado identificada: trigger legado de reposición
-  coexistía con RPC atómica. Migración retira sólo el trigger conocido y se
-  preparó conciliación específica, compensatoria/auditada y repetible sin doble
-  descuento. 100 pruebas de anulación y ocho de conciliación aprobadas;
-  aplicación remota y aceptación del stock corregido aún pendientes (P05).
-
-- [x] Protección de anulación detecta reposición adicional durante el cambio
-  de estado y revierte la transacción. Regresión con trigger antiguo que duplica
-  stock o sólo movimiento: 98 pruebas SQL aprobadas, incluido diagnóstico de
-  movimientos/triggers de sólo lectura. Aplicación remota y
-  conciliación del duplicado informado por el usuario todavía pendientes (P05).
-
-- [x] Catálogo remoto de devoluciones recibido: RLS habilitado y políticas
-  FOR ALL para authenticated por comercio; grants de escritura anon/authenticated.
-  Sin política anon en el resultado: no prueba escritura anónima efectiva.
-  Revocación de ruta directa e integración backend siguen abiertas (P06).
-
-- [x] Base privada de confirmaciones de devolución con solicitud/resultado,
-  identidad coherente, venta/comercio y UUID único preparada. Nueve pruebas
-  PostgreSQL aprobadas. No aplicada ni conectada: no cierra atomicidad (P06).
-
-- [x] Cálculo privado de reintegros por detalle original integra importe neto
-  histórico y cantidades previas; mantiene separadas líneas del mismo producto.
-  29 pruebas PostgreSQL aprobadas. Bloqueos, persistencia y efectos atómicos
-  siguen pendientes de integración en P06.
-
-- [x] Diagnóstico de permisos de devolución parcial preparado: tablas, RLS,
-  permisos efectivos por tabla/columna y políticas completas. Prueba PostgreSQL
-  aprobada; ejecución remota y reemplazo transaccional pendientes (P06).
-
-- [x] Comprobación global de `95f71ba`: build aprobado; 1.510 pruebas aprobadas
-  y siete agotaron el tiempo de arranque PostgreSQL. El diagnóstico ahora usa
-  entorno Node y límite explícito de 30 segundos; ocho casos dirigidos aprobaron
-  en 15,78 segundos. Repetición global con este ajuste: **1.517 pruebas en 158
-  archivos aprobadas**, 173,79 segundos, código 0; build también código 0.
-  P25 cerrado para esta revisión local. No acredita aceptación remota ni física.
-
-- [x] Contrato compartido de devolución por detalle original y UUID estable,
-  sin precios/importe/actor enviados por cliente. Catorce pruebas del parser
-  aprobadas. Ruta backend y conexión al formulario todavía pendientes (P06).
-
-- [x] Distribución SQL privada del importe neto histórico por detalle, con
-  redondeo acumulado, conservación del total y orden estable. Dieciocho pruebas
-  locales de cálculo aprobadas; integración transaccional pendiente (P06).
-
-- [x] Base SQL privada para cálculo acumulado de reintegro histórico sin exceso
-  por redondeo. Doce pruebas PostgreSQL aprobadas. Falta integrar autorización,
-  importes netos históricos, bloqueos y efectos atómicos: P06 sigue abierto.
-
-- [x] Devolución parcial bloquea entrada inválida/duplicada y falla de lectura
-  de devoluciones anteriores antes de escribir. Doce pruebas del store aprobadas;
-  atomicidad, cálculo autoritativo y permisos backend siguen pendientes (P06).
-
-- [x] Auditoría de devolución parcial identifica límites de validación,
-  persistencia, reintegro y compensación. [Hallazgos](docs/auditoria-devolucion-parcial.md).
-  Implementación transaccional y permisos remotos permanecen pendientes (P06).
-
-- [x] Respaldo PostgreSQL conserva manifiesto SHA256 y comprobador local antes
-  del ensayo de recuperación. 14 pruebas Windows aprobadas; no sustituye
-  dump/restore real, cifrado ni almacenamiento externo confiable (P15–P16).
-
-- [x] Impresión manual libera límites de altura/recorte de la vista previa y
-  máximo de ancho del ticket, restaurando contenedores al finalizar. Dos pruebas
-  DOM aprobadas; impresión de tickets largos con driver real pendiente (P11).
-
-- [x] Diagnóstico paso 53 contrastado con la migración real y su reaplicación:
-  permiso PUBLIC por columna detectado y eliminado. 77 pruebas SQL aprobadas;
-  aceptación remota de instalación y recuperación sigue abierta (P09).
-
-- [x] Diagnóstico de catálogo del paso 53, sólo lectura: objetos, RLS, contexto,
-  permisos por tabla/columna, roles y políticas adicionales. Ocho pruebas PostgreSQL locales y build
-  aprobados; resultado remoto aún pendiente y no sustituye recuperación JWT.
-
-- [x] Verificador de recetas rechaza duplicados y cantidades esperadas inválidas,
-  incluso si coinciden con la respuesta. 76 pruebas dirigidas aprobadas.
-
-- [x] Resumen de restauración muestra las colecciones comprobadas en servidor
-  (productos, lotes, promociones y recetas), sin afirmar comprobaciones omitidas
-  o fallidas. 43 pruebas dirigidas aprobadas. Suite global anterior: `eafbdd9`.
-
-- [x] Validación global sobre `eafbdd9`: 1.448 pruebas/151 archivos aprobados
-  en 141,44 segundos y build con código 0. Incluye las nuevas comprobaciones de
-  restauración; no sustituye aceptación JWT, ensayo aislado ni hardware.
-
-- [x] Comparación final de recetas de combos recuperados: IDs destino,
-  cantidades y eliminación de receta al convertir a físico. 69 pruebas
-  dirigidas aprobadas; aceptación de restauración real pendiente (P14).
-
-- [x] Verificación persistida de promociones 4.0: condiciones, descuentos,
-  relaciones y componentes JSON. Incluye copias sólo de promociones.
-  60 pruebas dirigidas aprobadas; restauración real aún pendiente (P14).
-
-- [x] Verificación persistida de lotes en respaldos 4.0: producto destino,
-  vencimiento, número, cantidades y actividad. Una diferencia evita la
-  desactivación del modo Reemplazo. 51 pruebas dirigidas y build aprobados.
-  Las escrituras anteriores no se revierten: el ensayo aislado sigue pendiente.
-
 Las casillas marcadas indican entregables implementados o evidencia recibida,
 no aceptación completa de toda la fase. Los enlaces llevan al detalle de
 alcance, instalación y limitaciones.
@@ -160,7 +84,6 @@ alcance, instalación y limitaciones.
 | Hecho | Entregable realizado | Evidencia y alcance |
 | --- | --- | --- |
 | [x] | Costos privados y protección de perfiles | Migraciones/consultas que separan costos del acceso de cajeros y protegen rol e identidad. [Guía de seguridad](docs/verificacion-seguridad-postgresql.md). API con JWT real pendiente (P02). |
-| [x] | Herramienta de lectura de costos por API | GET con identidad Auth verificada, perfil CAJERO/comercio esperado, control de filas privadas y paginación del costo público. [Guía](docs/comprobar-costos-api-cajero.md). Pruebas HTTP simuladas; ejecución real pendiente (P02). |
 | [x] | Auditoría de precios y motivo de cambio | Funciones, guardado y consulta de auditoría implementados. [Motivo de precio](docs/motivo-cambio-precio.md), [consulta comercial](docs/auditoria-comercial-consulta.md). |
 | [x] | PIN de supervisor y umbral configurable | Backend, espera progresiva, auditoría y política congelada en checkout. [Política](docs/supervisor-politica-descuento.md), [espera](docs/supervisor-pin-espera.md). |
 | [x] | Venta de Lucía autorizada en caja compartida | Evidencia del usuario: ef754442…, $2.240, umbral 15, requiere supervisor y cierre confirmado, pagos $2.240. PIN incorrecto rechazado; correcto aceptado. [Aceptación remota](docs/aceptacion-remota-checkout-2026-10-08.md). |
@@ -171,11 +94,7 @@ alcance, instalación y limitaciones.
 | [x] | Anulación atómica, paso 51 | Restitución histórica de stock/lotes/costos, cuenta corriente, reintegro e idempotencia con auditoría única. [Detalle](docs/anulacion-venta-atomica.md). |
 | [x] | Anulación remota de EF754442 | Usuario confirmó ANULADA, registro atómico, una auditoría, pagos $2.240 conservados, cantidades restituidas y cero egresos adicionales en caja original abierta. No acredita los demás casos (P05). |
 | [x] | Diseño de tickets interno y ARCA | Estructura de supermercado compartida, cantidad/precio/importe y promociones; botones Facturar/Ver/Reimprimir/Devolución separados. [Comprobantes](docs/redisenio-comprobantes-2026-10-08.md). Impresión física pendiente. |
-| [x] | Panel de pendientes remotos discreto | Revisión plegada en Caja para dueño; aviso de cobros locales sólo cuando existen pendientes. Recuperación conectada; aceptación remota pendiente (P09). |
-| [x] | Identidad estable al recuperar entradas remotas | Rechaza dueño sin identidad de autenticación y descarta respuesta si cambian identidad, perfil, rol, actividad o comercio durante la consulta. Seis regresiones cubren la lectura. |
-| [x] | Base SQL de recuperación por dueño comprobada | Preparación del cajero → recuperación por dueño → cierre backend → reintento: conserva vendedor y aplica stock/fiado una vez. 76 pruebas SQL aprobadas; aceptación JWT pendiente (P09). |
-| [x] | Recuperar cobro original desde Caja y Turno | Formulario del dueño con pagos originales y declaración de cobro/fiado recibido, reenvío de la misma entrada, bloqueo ante cancelación local y reintento sin nuevo cobro. 92 pruebas dirigidas/3 archivos y build aprobados; piloto remoto pendiente. |
-| [x] | Auditoría transaccional de recuperación por dueño | Paso 53 y adaptador backend guardan identidad del dueño separada del vendedor original, distinguen cierre previo y evitan auditorías duplicadas. Fallo de auditoría revierte venta/stock/fiado. Aplicación SQL y despliegue Edge pendientes. |
+| [x] | Panel de pendientes remotos discreto | Revisión plegada en Caja para dueño; aviso de cobros locales sólo cuando existen pendientes. Recuperación universal pendiente (P09). |
 | [x] | Selección de impresora y cajón separados | Prueba sin pulso, apertura automática opt-in tras efectivo confirmado y apertura manual auditada. [Cajón](docs/apertura-manual-cajon.md). Hardware pendiente. |
 | [x] | Mejoras del lector por cámara | Implementación y regresiones locales de apertura/cierre y fallback. [Lector móvil](docs/lector-camara-movil.md). Dispositivos reales pendientes. |
 | [x] | Respaldo operativo 4.0 y cifrado | Snapshot, configuración pública, validación, compatibilidad 2/3 y cifrado; excluye secretos y no incluye todo el historial. [Alcance](docs/respaldo-ampliado.md). |
@@ -188,30 +107,17 @@ alcance, instalación y limitaciones.
 | [x] | Servicios y pantallas por rubro | Circuitos y catálogos implementados; servicios offline conservan concepto. [Servicios](docs/verificacion-servicios-y-diseno-reportes.md), [offline](docs/verificacion-servicios-offline.md), [electrónica](docs/electronica-comercial.md). Piloto pendiente. |
 | [x] | Lanzador HTTPS para Edge y guía de quiosco | Validación de URL y parámetros; rechazo de localhost/puerto Vite/credenciales con diez pruebas Windows sin abrir Edge. [Guía](docs/despliegue-kiosco-windows.md). Instalación física pendiente. |
 | [x] | Publicación de entregables en Git | Cambios anteriores publicados en `origin/master`; cada commit conserva su evidencia local. Publicación Git no aplica SQL ni prueba el despliegue Vercel. |
-| [x] | P25 · Validación global sobre e9079de | `npm run test`: 1.386 pruebas/148 archivos aprobados en 120,76 s; `npm run build`: código 0. Se mantiene el aviso de chunks mayores a 500 kB. No acredita pruebas remotas ni físicas. |
 
 ### Registro de verificaciones
 
-- **Última suite completa registrada:** 1.448 pruebas aprobadas en 151 archivos
-  sobre `eafbdd9`, en 141,44 segundos; compilación aprobada. Incluye recuperación
-  desde Caja, auditoría del paso 53, comprobador API de costos y controles finales
-  de lotes, promociones y recetas. Repetir al introducir cambios de código.
-- **Suite anterior:** 1.386 pruebas/148 archivos sobre `e9079de`, 120,76 segundos.
-- **Comprobador API de costos:** 13 pruebas con HTTP simulado y build aprobados;
-  la ejecución con JWT real sigue pendiente.
-- **Auditoría de recuperación (paso 53):** 113 pruebas dirigidas en dos archivos
-  y build aprobados; aplicación SQL y despliegue Edge todavía sin confirmar.
-- **Suite completa anterior:** 1.372 pruebas/147 archivos en `6bcffab`,
-  conservada como evidencia histórica.
+- **Suite completa anterior:** 1.372 pruebas aprobadas en 147 archivos,
+  registrada en `6bcffab`. Los cambios posteriores requieren otra suite global.
 - **Anulación/checkout:** 116 pruebas dirigidas y build aprobados antes de
   publicar `686fa24`.
 - **Diagnóstico paso 52:** 17 pruebas dirigidas y build aprobados antes de
   publicar `fda6ca4`; resultado remoto positivo recibido del usuario después.
 - **Lanzador Windows:** diez pruebas de PowerShell aprobadas sin abrir un
   navegador real. No equivalen a una prueba de kiosk o periféricos.
-- **Recuperación remota:** 13 pruebas dirigidas en tres archivos aprobadas
-  después de la suite completa, incluidas seis de cambio de sesión. Repetir
-  validación global cuando se complete el siguiente circuito de recuperación.
 - **Límite general:** el plan sigue abierto. Las migraciones confirmadas por
   catálogo no sustituyen JWT/API, restauración aislada, concurrencia ni hardware.
 

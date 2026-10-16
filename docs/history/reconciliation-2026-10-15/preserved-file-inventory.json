@@ -1,0 +1,210 @@
+[
+  {
+    "file": "artifacts/sql-motivo-precio-2026-10-08/39_supabase_fase_motivo_cambio_precio.sql",
+    "sha256": "F399245745645C663042703EBA73949FF25DA0527B96870D22833B723307AA07",
+    "stashSha256": "CE8F53418E1854DC7F1A398C2187343472DC66D31A0DBAEADA4B4D39878C1E17",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "artifacts/sql-motivo-precio-2026-10-08/LEEME.md",
+    "sha256": "3C69F4890BE4D88652148789632654F68D452C946F6A7CA9A9A6AAE88C0A0648",
+    "stashSha256": "CDD41DBC0760E98E44EEEA42A04F3575A5BC8810F63DB02EBD9725F33D98B498",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "artifacts/sql-motivo-precio-2026-10-08/SHA256.txt",
+    "sha256": "248D31C39DEE79FEA8974016A9F51C8211C376C14C11CB1A3F25A68FCC109D16",
+    "stashSha256": "7AB385132D4C61466187D36B06DA16E3F4D84261E4CC18C59E821416836979C1",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "artifacts/sql-pendientes-2026-10-07/18_supabase_fase_backup_ampliado.sql",
+    "sha256": "D5DDBA47DE5EECD30BEB342A2F7055FA2CEEF4122676962BF38D7810998AE399",
+    "stashSha256": "97D123E8288AAF987876D3E25356D5324E97FE6ABF0FFD55ADC9B136D6EE774C",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "artifacts/sql-pendientes-2026-10-07/19_supabase_fase_dietetica_bazar.sql",
+    "sha256": "1B3C0FC91EEAEA0CC7E2AF369BD258C317B3E6F7F43EDB545C4646ED1D384964",
+    "stashSha256": "46FA0BF5C1FDBCA1310E7E868C0B2DC56C3AD848BEA4717686EE68A0B4DC46E6",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "artifacts/sql-pendientes-2026-10-07/20_supabase_fase_checkout_manual.sql",
+    "sha256": "ADE8CDB2F3F4053F4AE9F4A59B24A51AA4950C0959F5F6A2DE3904CC8E45F881",
+    "stashSha256": "782A55AF921D05114128363050E6F5B73186945E0706C24BAA78A7436308E3BF",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "artifacts/sql-pendientes-2026-10-07/21_supabase_fase_checkout_manual_backend.sql",
+    "sha256": "1C88EB3D22B193C739063C050E5E987358BBF7ACBE7F289C5FBDA5C5AE3EDE09",
+    "stashSha256": "3BC645B530E759148AEC01DBC266B6B2735871597F1F22091264EF67BFF6AA84",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "artifacts/sql-pendientes-2026-10-07/22_supabase_fase_checkout_manual_cancelacion.sql",
+    "sha256": "B9736E0456A69EDD06C9CA6606FD0951406DFB1A7E9686FBD2F7AEFECD11A231",
+    "stashSha256": "A23B9B9259052CBDF0F49C468D721070C24A4DB775035CB4CE8E2756A23EF532",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "artifacts/sql-pendientes-2026-10-07/23_supabase_fase_checkout_manual_cierre_caja.sql",
+    "sha256": "1E43935987B2BD9530F42529460456C7F1BBEFF92CE99089C267EE883A066715",
+    "stashSha256": "3CE3AFB2914C9C98ED0C7CB132086C90CFD5672554ED6D6818C8EFBA47710A22",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "artifacts/sql-pendientes-2026-10-07/24_supabase_fase_checkout_manual_orden_bloqueos.sql",
+    "sha256": "199464080D3AB3F4DE806C1E208D14917D00A91DEC3B4986D40A8A0D0AF01CFE",
+    "stashSha256": "8468CE324A70CAE5445014CF7F92660D82E85B128BE16EE540B9BC656AFF9182",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "artifacts/sql-pendientes-2026-10-07/25_supabase_fase_checkout_manual_preparacion_bloqueos.sql",
+    "sha256": "163D78A9747E9FA301AFAFAE5EC40E53F43BAF0D1AD618D5B0A37994FFDAE0F5",
+    "stashSha256": "048106AAB2F2E2AB84A03B3CB1E9630F325277FA5224678BE2ED6A14D48B5622",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "artifacts/sql-pendientes-2026-10-07/26_supabase_fase_checkout_manual_consulta_pendientes.sql",
+    "sha256": "5F79A0527EC72BE4E84C36A5C8B289E869CD120812E2F65E5EF489F0D6954B78",
+    "stashSha256": "3B82FE81834746CD1BB3208EE9F43225E204AF85AB0866D0B7CEE3282968A217",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "artifacts/sql-pendientes-2026-10-07/27_supabase_fase_checkout_manual_recuperar_entrada.sql",
+    "sha256": "661F5263D6015BDF47B80D575AE4BAA863F0B2CFCBA4C840BD0D67FFADE5FB63",
+    "stashSha256": "A7605A4BBB3EFCEE7E0C30F9933E613248307F6EF0184CD74CD25D3460D952AC",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "artifacts/sql-pendientes-2026-10-07/28_supabase_fase_checkout_manual_conciliar_cancelacion.sql",
+    "sha256": "E8D679D6610DE4639CFA648D4C5E8EE2DF877603A5155CC428DC65DF8C32BCA6",
+    "stashSha256": "D7B99CA330C0E87173EC58DE4EA1B249AAA66203C043FFC1B67A6CB3C5D77662",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "artifacts/sql-pendientes-2026-10-07/29_supabase_fase_supervisor_pin_privado.sql",
+    "sha256": "3A590594EED754A991896AA7FE141E5D26E7829B051B1B64F57EBC58869F4491",
+    "stashSha256": "1E5E7D6725644DD7A967095ED6A7FBD7628A3DCE42A87D3A4E0CBDD15DB0B4BA",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "artifacts/sql-pendientes-2026-10-07/30_supabase_fase_supervisor_pin_intentos.sql",
+    "sha256": "C2F6DC00ECEC74EAF33291A700506555A9F61A0404256CE42AC9BFF2E423A364",
+    "stashSha256": "64B9CD0C44ED1DDEDEE65A7FE8097B85B5DC278E4E57C4546E6745BB6EAC6F4C",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "artifacts/sql-pendientes-2026-10-07/31_supabase_fase_supervisor_autorizacion_descuento.sql",
+    "sha256": "5B10588422E2C1540053A892CB8E19FA9DCA99C6A77B767373C073FB6F6BBE9D",
+    "stashSha256": "BE45E3AF2F348FA072BEA70868C39A49F7D6B5B986BBE05BDD133FC90490F6B7",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "artifacts/sql-pendientes-2026-10-07/32_supabase_fase_checkout_manual_supervisor.sql",
+    "sha256": "56511A7FE5AB219E9C8651293BB78A95FCFD6E6400D701923AC612CABEDBF2A4",
+    "stashSha256": "DD7131B907568C98ABB8FF295EB8ED3203E8AB39AA7AA73618AE4BA7A8642157",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "artifacts/sql-pendientes-2026-10-07/33_supabase_fase_checkout_manual_politica_supervisor.sql",
+    "sha256": "AC2F3B2042BD0E7FA08B3AE31A1DC0620D08CC24524E1985695D3226DE7A12B7",
+    "stashSha256": "ADB4D5F95333D3EB78461D3E868FE9AB41CB1C829C538C50347450C43FFF04CE",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "artifacts/sql-pendientes-2026-10-07/LEEME.md",
+    "sha256": "89950AD612EC8D0C222AC7EA5D425383A5E6E696ABB162D4A688EDD261A98173",
+    "stashSha256": "A9E8D12659BB90965C97195476A55D02767A67A9E40F6C0DB01820112DFAEAF0",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "artifacts/sql-pendientes-2026-10-07/SHA256.txt",
+    "sha256": "49ECCFCEFC2FC862E87BFC9857DE234BBA85C0A4A86CA254EB1F9E56E4F0100C",
+    "stashSha256": "19AC25F5E86EFE9C71966CCD34D244FF8C7336F98D47F050AAAC0CD00256FF3C",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-historical-package"
+  },
+  {
+    "file": "bootstrap_staging_completo.sql",
+    "sha256": "BDBF2E29825323B7B2EC84EE3DCCE7CADC80808E964C8696FC579B85469B2966",
+    "stashSha256": "804D78992CB7C72A28786E0D25BDF49F18377C629DC24DC7C214C0F7F447393A",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "local-obsolete-generated-bootstrap"
+  },
+  {
+    "file": "despliegue-kiosco-windows.md",
+    "sha256": "D8D6A32CE6E8B58B5CEA5CC4B5CA6FDEB585F4ABB4E42828660D3417876C74C3",
+    "stashSha256": "2FBD830A0E00F79D9296AFBBB4BAF951AA10B982CD5AC0F0D1A01B0A56C31819",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "historical-document-archived"
+  },
+  {
+    "file": "plan_operativo_y_comercial_kioskopos.md",
+    "sha256": "2954D035E8EA2532E63EF7E1CDD0945EDD6B1E8671904C33B4D4ABDA2E3D008A",
+    "stashSha256": "51FB5717731671741867CCA4D9AA627594F590E1896193FFF2FC4590D4AE17E9",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "historical-document-archived"
+  },
+  {
+    "file": "plan_operativo_y_comercial_kioskopos_revision_veterinaria.md",
+    "sha256": "3BDBA2AC34D58E75B6DC68B30A02B40F42F0F7F0BDDD4BA79ABFC689F4EEA592",
+    "stashSha256": "5FAC6A2ECE4648DC1171AFFFB0FE6867D86BDFEBF9C5F1F9CC482EBBFE6FC0D1",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "historical-document-archived"
+  },
+  {
+    "file": "verificacion-respaldo-snapshot.md",
+    "sha256": "6F43AE0B493F1D5904581C26BADA808CC21DF7450DE6A91438228D924AD5EC4C",
+    "stashSha256": "7CBACB73341AD30996DA5A6D4F9B736CE83C2E636E07983DF62B1D6CF38D5459",
+    "equalBytes": false,
+    "equalNormalized": true,
+    "classification": "historical-document-archived"
+  }
+]

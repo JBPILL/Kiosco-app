@@ -1,0 +1,6 @@
+# Limit EOL policy to reconciled documents; do not renormalize the repository.
+/despliegue-kiosco-windows.md text eol=lf
+/verificacion-respaldo-snapshot.md text eol=lf
+/plan_operativo_y_comercial_kioskopos.md text eol=lf
+/plan_operativo_y_comercial_kioskopos_revision_veterinaria.md text eol=lf
+/docs/history/reconciliation-2026-10-15/*.md text eol=lf
