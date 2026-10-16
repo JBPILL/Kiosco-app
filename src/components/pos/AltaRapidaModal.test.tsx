@@ -60,3 +60,17 @@ it('strict conserva ID/cuerpo en reintento, costo privado y centavos; éxito só
   expect(first.p_datos.precio_costo).toBe(5.25)
   expect(mocks.cache).toHaveBeenCalledOnce()
 })
+
+it('si falla la categoría strict no continúa con un alta sin categoría', async () => {
+  vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'true')
+  mocks.rpc.mockReset().mockResolvedValue({ data: null, error: { message: 'category denied' } })
+  const saved = vi.fn()
+  render(<AltaRapidaModal isOpen codigo="7791234567890" categorias={[]} onClose={vi.fn()} onGuardadoExitoso={saved}
+    productoSugerido={{ codigo_barras: '7791234567890', descripcion: 'Sugerido', categoria_nombre: 'Nueva categoría', precio_venta_sugerido: 12.5, precio_costo_ref: 5.25, unidad_medida: 'UN', es_pesable: false }} />)
+  fireEvent.click(screen.getByRole('button', { name: /Guardar y agregar/ }))
+  await waitFor(() => expect(mocks.rpc).toHaveBeenCalledOnce())
+  await waitFor(() => expect((screen.getByRole('button', { name: /Guardar y agregar/ }) as HTMLButtonElement).disabled).toBe(false))
+  expect(mocks.rpc.mock.calls[0][0]).toBe('guardar_categoria_transaccional')
+  expect(saved).not.toHaveBeenCalled()
+  expect(mocks.cache).not.toHaveBeenCalled()
+})

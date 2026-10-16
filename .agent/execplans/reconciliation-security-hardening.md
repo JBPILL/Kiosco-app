@@ -44,9 +44,10 @@ Vitest dirigido y completo, build, manifest, npm audit sin fix, scan de patrones
 
 ## Progreso
 - [x] Base, stash, refs, EOL y Production público inspeccionados.
-- [ ] Clasificación y archivo histórico publicados en Git local.
-- [ ] Hardening y pruebas dirigidas.
-- [ ] Validaciones finales, reporte y commits.
+- [x] Clasificación y archivo histórico publicados en Git local (dd93ec7).
+- [x] Hardening de provisioning y alta autorizada, con pruebas dirigidas (78ae486, 7e5f79e).
+- [x] Auditoría local, manifest, diff, build y commits revisados (3d35813, 25edb12 y commit documental pendiente).
+- [ ] Push de la rama pendiente de disponibilidad de revisión automática.
 
 ## Resultado final
-En curso. Los gates hosted permanecen separados.
+Bloque local terminado y commits preparados en hardening/next-operational-block. Push autorizado por el usuario, pendiente del gate de revisión automática; los gates hosted permanecen separados.

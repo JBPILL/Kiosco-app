@@ -122,7 +122,8 @@ export function AltaRapidaModal({
         onCategoriaCreada?.(data as Categoria)
         return data.id
       }
-    } catch {
+    } catch (error: unknown) {
+      if (kioskoPilotStrictScopeActivo()) throw error
       // Ignorar si falla creación de categoría en red
     }
     return null

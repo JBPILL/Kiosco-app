@@ -1,5 +1,20 @@
 Este documento registra decisiones arquitectónicas o de dominio que sean no triviales, junto con su contexto y justificación.
 
+## Alta de producto desde un código desconocido en POS (15/10/2026)
+
+El usuario define que este flujo pertenece sólo al Dueño. Se conserva el alta
+editable existente, con guardas al abrir y guardar y sin alta local falsa ante
+rechazos. La cámara y la pistola comparten esa regla; el cajero solicita el
+registro al dueño. El alta confirmada agrega el producto al ticket, no cobra.
+
+Se descarta mantener creación directa por cajero en la RPC genérica de catálogo:
+ocultar el modal no impediría invocarla por API. El SQL impide nuevas altas del
+cajero y preserva la administración existente de catálogo por Dueño/SuperAdmin;
+el acceso de POS continúa restringido a DUEÑO. El cambio SQL y su prueba son
+locales; requiere aplicación incremental y aceptación autenticada antes de
+afirmar la restricción instalada en Production. No se reaplica el bootstrap
+one-shot ni se alteran evidencias históricas de hashes.
+
 ## Checkout transaccional
 
 ### Decisión

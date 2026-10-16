@@ -399,7 +399,7 @@ export function EtiquetasGondolaModal({
       <style>{`
         @media print {
           body > *:not(#printable-etiquetas) { display: none !important; }
-          html, body { height: auto !important; overflow: visible !important; }
+          html, body { height: auto !important; overflow: visible !important; background: #fff !important; margin: 0 !important; padding: 0 !important; }
           #printable-etiquetas [data-label-hidden="true"],
           #printable-etiquetas [data-label-hidden="true"] * { visibility: hidden !important; }
           #printable-etiquetas {

@@ -66,7 +66,7 @@ cumplir la puerta de aceptación correspondiente.
 | P22 | 7 · Escritorio/quiosco | Preparar entrega de instalación lista para usar | Definir PWA/instalador soportado, acceso directo, configuración inicial, arranque, actualización y procedimiento de soporte. |
 | P23 | 7 · Escritorio/quiosco | Resolver persistencia y recuperación del puesto | Edge kiosk usa InPrivate: probar login, permisos y cobros pendientes tras cierre/reinicio; decidir perfil/despliegue compatible antes de activarlo. |
 | P24 | 7 · Escritorio/quiosco | Probar Windows administrado en piloto | Assigned Access/salida de emergencia, cierre inesperado, reconexión, pantalla y recuperación. El lanzador no bloquea Windows ni relanza Edge. |
-| P25 | Calidad | Repetir suite completa tras cambios posteriores | Última suite completa: 1.372 pruebas/147 archivos en la revisión anterior a los últimos diagnósticos. Las pruebas dirigidas posteriores no son una nueva validación global. |
+| P25 | Calidad | Repetir suite completa tras cambios posteriores | Última suite completa disponible: 1.829 PASS/1 skip en 190 archivos, antes de un último caso de categoría strict. El build posterior pasó; la repetición de suite quedó bloqueada por spawn EPERM. Detalle: docs/security-reconciliation-2026-10-15.md. |
 
 ### Trabajo pausado por decisión del usuario
 
@@ -259,3 +259,8 @@ Reporte completo de bajas: nueva pestaña en Reportes con rango Desde/Hasta y c�
 Multirrubro/pesables: corregidas tres entradas del POS que agregaban una unidad entera al desactivar balanza. Los productos es_pesable siempre solicitan peso; la capacidad controla lectura USB/Serial y etiquetas de peso. El modal conserva ingreso manual y oculta USB si está desactivado. Ajustes aclara esta regla. Cinco regresiones nuevas; 515 pruebas en 39 archivos y build aprobados. No requiere SQL nuevo; falta publicación y piloto. Ver docs/verificacion-multirrubro-pesables.md. La fase completa y el objetivo permanecen abiertos.
 
 Catálogo/multirrubro: corregido el guardado que borraba atributos de peso, envase y vencimiento al desactivar módulos. Dos regresiones reprodujeron pérdida de KG/PLU, depósito y alerta; ahora conserva atributos y cantidades fraccionarias. 517 pruebas en 40 archivos y build aprobados. Sin SQL adicional. Publicación y piloto pendientes. Servicios rápidos actualmente solo persiste la preferencia: aún no hay panel operativo conectado a tieneServiciosRapidos; su implementación sigue pendiente.
+
+
+## Estado de reconciliación y siguiente bloque (15/10/2026)
+
+Bloque local de seguridad, alta de producto y etiquetas implementado en hardening/next-operational-block; historial preservado y cambios separados en commits. Ver [reconciliación](docs/security-reconciliation-2026-10-15.md), [alta y etiquetas](docs/scanner-labels-owner.md) y [riesgo XLSX](docs/riesgo-dependencia-xlsx.md). Sin cambios remotos. La publicación normal está autorizada y pendiente de completar el push de la rama. Próximo objetivo: instalación incremental SQL y smoke autenticado con allowlist; luego límites y aislamiento del parser XLSX.
