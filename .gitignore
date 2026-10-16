@@ -33,3 +33,13 @@ dist-ssr
 !.env.example
 /supabase/.temp/
 /supabase/.branches/
+
+# Preserved historical delivery packages; canonical SQL lives in supabase/bootstrap.
+/artifacts/sql-motivo-precio-2026-10-08/
+/artifacts/sql-pendientes-2026-10-07/
+/bootstrap_staging_completo.sql
+# Original local documents preserved; reviewed snapshots live in docs/history.
+/despliegue-kiosco-windows.md
+/verificacion-respaldo-snapshot.md
+/plan_operativo_y_comercial_kioskopos.md
+/plan_operativo_y_comercial_kioskopos_revision_veterinaria.md

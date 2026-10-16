@@ -193,6 +193,44 @@ describe('POSPage: cobro', () => {
 })
 
 describe('POSPage: pistola de códigos de barras', () => {
+  it.each(['DUEÑO', 'CAJERO'])('un producto remoto inactivo no se vende ni abre alta para %s', async rol => {
+    useAuthStore.setState({ usuario: { id: 'u1', rol, activo: true, kiosco_id: KIOSCO } as never })
+    await montar()
+    responder('productos.select', { data: crearProducto({ id: 'inactivo', codigo_barras: '7790001112223', activo: false, es_pesable: true }), error: null })
+
+    await escanear('7790001112223')
+
+    expect(cantidadEnCarrito()).toBe(0)
+    expect(screen.queryByTestId('alta')).toBeNull()
+    expect(screen.queryByTestId('balanza')).toBeNull()
+    expect(toast.error).toHaveBeenCalledWith('Producto inactivo. El dueño debe reactivarlo desde Catálogo.')
+    expect(llamadasA('productos', 'select').at(-1)!.filtros).not.toContainEqual(['eq', ['activo', true]])
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('sin conexión reconoce un código inactivo guardado y pide reactivarlo', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    useAuthStore.setState({ usuario: { id: 'owner', rol: 'DUEÑO', activo: true, kiosco_id: KIOSCO } as never })
+    saveCachedProductos([crearProducto({ id: 'inactivo', codigo_barras: '7790001112223', activo: false })], KIOSCO)
+    await montar()
+    const consultasAntes = llamadasA('productos', 'select').length
+    await escanear('7790001112223')
+    expect(cantidadEnCarrito()).toBe(0)
+    expect(screen.queryByTestId('alta')).toBeNull()
+    expect(toast.error).toHaveBeenCalledWith('Producto inactivo. El dueño debe reactivarlo desde Catálogo.')
+    expect(llamadasA('productos', 'select')).toHaveLength(consultasAntes)
+  })
+
+  it('un PLU de balanza inactivo tampoco se vende ni abre alta', async () => {
+    useAuthStore.setState({ usuario: { id: 'owner', rol: 'DUEÑO', activo: true, kiosco_id: KIOSCO } as never })
+    await montar()
+    responder('productos.select', { data: crearProducto({ id: 'inactivo', plu_balanza: '1234', activo: false }), error: null })
+    await escanear('2012340150000')
+    expect(cantidadEnCarrito()).toBe(0)
+    expect(screen.queryByTestId('alta')).toBeNull()
+    expect(toast.error).toHaveBeenCalledWith('Producto inactivo. El dueño debe reactivarlo desde Catálogo.')
+  })
+
   it('encuentra el producto en la caché local sin consultar a la red', async () => {
     const leche = crearProducto({ id: 'leche', descripcion: 'Leche', codigo_barras: '7790001112223' })
     saveCachedProductos([leche], KIOSCO)
@@ -233,6 +271,7 @@ describe('POSPage: pistola de códigos de barras', () => {
   })
 
   it('un código desconocido abre el alta rápida sin agregar nada al ticket', async () => {
+    useAuthStore.setState({ usuario: { id: 'owner', rol: 'DUEÑO', activo: true, kiosco_id: KIOSCO } as never })
     await montar()
     await escanear('  9999999999999 ')
 
@@ -315,6 +354,7 @@ describe('POSPage: pistola de códigos de barras', () => {
   })
 
   it('sin balanza habilitada, un código con prefijo 20 se trata como código común', async () => {
+    useAuthStore.setState({ usuario: { id: 'owner', rol: 'DUEÑO', activo: true, kiosco_id: KIOSCO } as never })
     mocks.tenant = { ...mocks.tenant, tieneBalanza: false }
     saveCachedProductos([crearProducto({ id: 'j', plu_balanza: '1234' } as never)], KIOSCO)
     await montar()
@@ -389,9 +429,20 @@ describe('POSPage: servicios rápidos', () => {
 
 describe('POSPage: búsqueda manual, atajos y promociones', () => {
   it('un código desconocido ingresado en el buscador abre el alta con el código limpio', async () => {
+    useAuthStore.setState({ usuario: { id: 'owner', rol: 'DUEÑO', activo: true, kiosco_id: KIOSCO } as never })
     await montar()
     fireEvent.click(screen.getByText('buscador-codigo-desconocido'))
     expect((await screen.findByTestId('alta')).getAttribute('data-codigo')).toBe('7791234567890')
+  })
+
+  it.each(['CAJERO', 'VISOR'])('un %s no abre el alta desde pistola ni buscador', async rol => {
+    useAuthStore.setState({ usuario: { id: 'staff', rol, activo: true, kiosco_id: KIOSCO } as never })
+    await montar()
+    await escanear('9999999999999')
+    fireEvent.click(screen.getByText('buscador-codigo-desconocido'))
+    expect(screen.queryByTestId('alta')).toBeNull()
+    expect(toast.error).toHaveBeenCalledWith('Producto no registrado. Pedile al dueño que lo agregue al catálogo.')
+    expect(cantidadEnCarrito()).toBe(0)
   })
 
   it('los favoritos cargados se pueden agregar al ticket', async () => {

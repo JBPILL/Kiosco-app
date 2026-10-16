@@ -53,6 +53,9 @@ BEGIN
   IF op.resultado IS NOT NULL THEN RETURN op.resultado; END IF;
   SELECT * INTO p FROM public.productos WHERE id=p_producto_id AND kiosco_id=a.kiosco_id FOR UPDATE;
   existe:=FOUND;
+  IF NOT existe AND a.rol<>'DUEÑO' AND NOT a.es_superadmin THEN
+    RAISE EXCEPTION 'Sólo el dueño puede registrar productos' USING ERRCODE='42501';
+  END IF;
   IF NOT existe AND EXISTS(SELECT 1 FROM public.productos WHERE id=p_producto_id) THEN RAISE EXCEPTION 'Producto fuera del comercio autorizado' USING ERRCODE='42501'; END IF;
   IF existe THEN
     IF a.rol<>'DUEÑO' AND NOT a.es_superadmin THEN RAISE EXCEPTION 'Sólo el dueño puede editar productos existentes' USING ERRCODE='42501'; END IF;

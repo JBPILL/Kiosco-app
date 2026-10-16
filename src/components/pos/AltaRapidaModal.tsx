@@ -12,6 +12,7 @@ import type { Producto, Categoria } from '../../types/database'
 import type { ProductoMaestro } from '../../data/catalogoMaestroArgentino'
 import { v4 as uuidv4 } from 'uuid'
 import toast from 'react-hot-toast'
+import { puedeRegistrarProductoPOS } from '../../lib/posProductRegistration'
 
 interface AltaRapidaModalProps {
   isOpen: boolean
@@ -94,6 +95,17 @@ export function AltaRapidaModal({
 
     try {
       const nuevaId = uuidv4()
+      if (kioskoPilotStrictScopeActivo()) {
+        const identidad = { kioscoId, nombre: nombreCat.toLowerCase() }
+        const operacion = obtenerOperacionPersistida('catalogo-categoria', identidad, { nombre: nombreCat, color: '#4f46e5', orden: categorias.length + 1 })
+        const { data, error } = await supabase.rpc('guardar_categoria_transaccional', {
+          p_operacion_id: operacion.id, p_categoria_id: operacion.id, p_datos: operacion.solicitud,
+        })
+        if (error || !data?.id) throw error || new Error('No se confirmó la categoría')
+        confirmarOperacionPersistida('catalogo-categoria', identidad)
+        onCategoriaCreada?.(data as Categoria)
+        return data.id
+      }
       const { data, error } = await supabase
         .from('categorias')
         .insert({
@@ -110,7 +122,8 @@ export function AltaRapidaModal({
         onCategoriaCreada?.(data as Categoria)
         return data.id
       }
-    } catch {
+    } catch (error: unknown) {
+      if (kioskoPilotStrictScopeActivo()) throw error
       // Ignorar si falla creación de categoría en red
     }
     return null
@@ -118,6 +131,11 @@ export function AltaRapidaModal({
 
   const handleGuardarYVender = async () => {
     if (guardando) return
+    const actor = useAuthStore.getState().usuario
+    if (!puedeRegistrarProductoPOS(actor) || actor?.id !== usuario?.id || actor?.kiosco_id !== kioscoId) {
+      toast.error('Sólo el dueño activo puede registrar productos desde el POS.')
+      return
+    }
     const descTrim = descripcion.trim()
     if (!descTrim) {
       toast.error('Ingresá una descripción para el producto')
@@ -126,7 +144,7 @@ export function AltaRapidaModal({
     }
 
     const vNum = Number(precioVenta)
-    if (isNaN(vNum) || vNum <= 0) {
+    if (!Number.isFinite(vNum) || vNum <= 0) {
       toast.error('El precio de venta debe ser mayor a $0')
       ventaInputRef.current?.focus()
       return
@@ -134,6 +152,10 @@ export function AltaRapidaModal({
 
     const cNum = puedeVerCostos ? Number(precioCosto) || 0 : 0
     const sNum = Number(stockInicial) || 0
+    if (!Number.isFinite(cNum) || !Number.isFinite(sNum) || cNum < 0 || sNum < 0) {
+      toast.error('Costo y stock deben ser números válidos mayores o iguales a cero')
+      return
+    }
     const codigoLimpio = codigo.trim() ? codigo.trim() : null
 
     setGuardando(true)
@@ -143,13 +165,13 @@ export function AltaRapidaModal({
       const nuevoId = uuidv4()
       const now = new Date().toISOString()
 
-      const payload: Producto = {
+      let payload: Producto = {
         id: nuevoId,
         kiosco_id: kioscoId || '',
         codigo_barras: codigoLimpio,
         descripcion: descTrim,
-        precio_venta: Math.round(vNum),
-        precio_costo: Math.round(cNum),
+        precio_venta: Math.round(vNum * 100) / 100,
+        precio_costo: Math.round(cNum * 100) / 100,
         stock_actual: Math.max(0, sNum),
         stock_minimo: 5,
         categoria_id: resolvedCatId,
@@ -167,22 +189,24 @@ export function AltaRapidaModal({
         if (kioskoPilotStrictScopeActivo()) {
           const datos = {
             codigo_barras: payload.codigo_barras, descripcion: payload.descripcion,
-            precio_venta: payload.precio_venta, stock_actual: payload.stock_actual,
+            precio_venta: payload.precio_venta, precio_costo: payload.precio_costo, stock_actual: payload.stock_actual,
             stock_minimo: payload.stock_minimo, categoria_id: payload.categoria_id,
             unidad_medida: payload.unidad_medida, es_pesable: payload.es_pesable, activo: true,
           }
           const identidad = { kioscoId, codigo: payload.codigo_barras?.trim().toLowerCase() || payload.descripcion.toLowerCase() }
           const operacion = obtenerOperacionPersistida('catalogo-alta-rapida', identidad, datos)
           const { data, error } = await supabase.rpc('guardar_producto_transaccional', {
-            p_operacion_id: operacion.id, p_producto_id: payload.id, p_datos: operacion.solicitud,
+            p_operacion_id: operacion.id, p_producto_id: operacion.id, p_datos: operacion.solicitud,
           })
           if (error || !data || typeof data !== 'object') throw error || new Error('El servidor no confirmó el producto')
           const respuesta = data as { producto: Producto }
-          Object.assign(payload, respuesta.producto)
+          if (respuesta.producto?.id !== operacion.id || respuesta.producto.kiosco_id !== kioscoId || !respuesta.producto.activo) {
+            throw new Error('La respuesta del alta no corresponde a la operación original')
+          }
+          payload = { ...payload, ...respuesta.producto }
           confirmarOperacionPersistida('catalogo-alta-rapida', identidad)
           guardadoEnNube = true
         } else {
-        try {
           const { error } = await supabase.from('productos').insert({
             id: payload.id,
             kiosco_id: payload.kiosco_id,
@@ -198,16 +222,17 @@ export function AltaRapidaModal({
             activo: true,
           })
           guardadoEnNube = !error
-          if (error) {
-            console.warn('Aviso al insertar en Supabase productos:', error.message)
-          }
-        } catch (e) {
-          console.warn('Fallo de red al insertar producto en Supabase:', e)
-        }
+          if (error) throw error
         }
       }
 
-      payload._local_offline = !guardadoEnNube
+      if (!guardadoEnNube) throw new Error('El servidor no confirmó el alta del producto')
+      const vigente = useAuthStore.getState().usuario
+      if (!puedeRegistrarProductoPOS(vigente) || vigente?.id !== actor?.id || vigente?.kiosco_id !== kioscoId) {
+        toast.error('La sesión cambió. Revisá el producto guardado en el catálogo antes de venderlo.')
+        return
+      }
+      payload = { ...payload, _local_offline: false }
 
       // 2. Guardar de inmediato en la caché local para que próximos escaneos respondan en 0ms
       const actuales = getCachedProductos(kioscoId)
@@ -223,9 +248,9 @@ export function AltaRapidaModal({
 
       onGuardadoExitoso(payload, 1)
       onClose()
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error al dar de alta rápida el producto:', err)
-      toast.error('Ocurrió un error al guardar el producto')
+      toast.error('No se confirmó el alta del producto. Revisá el catálogo antes de reintentar; no se agregó al ticket.')
     } finally {
       setGuardando(false)
     }
@@ -240,6 +265,8 @@ export function AltaRapidaModal({
       onClose()
     }
   }
+
+  if (!puedeRegistrarProductoPOS(usuario)) return null
 
   return (
     <Modal
@@ -404,7 +431,7 @@ export function AltaRapidaModal({
               'Guardando...'
             ) : (
               <>
-                <span>Guardar y Cobrar</span>
+                <span>Guardar y agregar al ticket</span>
                 <kbd className="hidden sm:inline-block px-1.5 py-0.5 rounded bg-indigo-700 text-indigo-100 text-[10px] font-mono">
                   Enter
                 </kbd>

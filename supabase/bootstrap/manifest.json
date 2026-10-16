@@ -170,7 +170,7 @@
     },
     {
       "path": "steps/041_catalog_support_write_hardening.sql",
-      "sha256": "76091a052c1862173546b3fe1111d9ce2e89a4a936472222c5192a8a7e8ee42e"
+      "sha256": "33a70389c3fa6b55e9b631da03f5ddaf73da0493465f07da4e808806042f684f"
     },
     {
       "path": "steps/042_post_import_triggers.sql",

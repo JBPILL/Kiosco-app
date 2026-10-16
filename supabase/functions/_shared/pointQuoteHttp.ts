@@ -18,7 +18,7 @@ export interface PointQuoteHttpDependencies {
     => Promise<{ orderId: string; estadoPersistido: string; total: number; montoPointCentavos: number }>
 }
 
-export async function leerCuerpo(request: Request): Promise<unknown> {
+export async function leerCuerpo(request: Request, maxBytes = 200000): Promise<unknown> {
   if (!request.body) throw new Error('Cuerpo vacío')
   const reader = request.body.getReader()
   const decoder = new TextDecoder()
@@ -29,7 +29,7 @@ export async function leerCuerpo(request: Request): Promise<unknown> {
       const chunk = await reader.read()
       if (chunk.done) break
       bytes += chunk.value.byteLength
-      if (bytes > 200000) {
+      if (bytes > maxBytes) {
         await reader.cancel()
         throw new Error('Solicitud demasiado grande')
       }

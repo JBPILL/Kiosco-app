@@ -38,6 +38,7 @@ import { useRealtimeSync, registrarToqueLocal, type KioskoProductsUpdatedDetail 
 import { useTenantConfig } from '../hooks/useTenantConfig'
 import toast from 'react-hot-toast'
 import { errorDevolucionFueraDeAlcance, kioskoPilotStrictScopeActivo } from '../lib/kioskPilotScope'
+import { puedeRegistrarProductoPOS } from '../lib/posProductRegistration'
 
 export function POSPage() {
   const navigate = useNavigate()
@@ -402,13 +403,17 @@ export function POSPage() {
             let queryBalanza = supabase
               .from('productos')
               .select('*, categoria:categorias(nombre, color)')
-              .eq('activo', true)
               .or(`plu_balanza.eq.${parsedBalanza.plu4},plu_balanza.eq.${parsedBalanza.pluCorto},plu_balanza.eq.${parsedBalanza.plu5},codigo_barras.eq.${parsedBalanza.plu4},codigo_barras.eq.${parsedBalanza.pluCorto}`)
               .limit(1)
             if (kid) queryBalanza = queryBalanza.eq('kiosco_id', kid)
             const { data } = await queryBalanza.maybeSingle()
 
             if (data) {
+              if (data.activo === false) {
+                playScanSound('warning')
+                toast.error('Producto inactivo. El dueño debe reactivarlo desde Catálogo.')
+                return
+              }
               agregarProducto(data, parsedBalanza.pesoKg)
               toast.success(`${data.descripcion} (${parsedBalanza.pesoKg} kg) agregado`)
               return
@@ -424,6 +429,12 @@ export function POSPage() {
       const todos: Producto[] = getCachedProductos(kid)
       if (todos.length > 0) {
         productoEncontrado = todos.find((p) => p.activo && p.codigo_barras === codeTrim) || null
+      }
+
+      if (!navigator.onLine && todos.some(p => p.activo === false && p.codigo_barras === codeTrim)) {
+        playScanSound('warning')
+        toast.error('Producto inactivo. El dueño debe reactivarlo desde Catálogo.')
+        return
       }
 
       if (productoEncontrado) {
@@ -443,7 +454,6 @@ export function POSPage() {
         let queryGun = supabase
           .from('productos')
           .select('*, categoria:categorias(nombre, color)')
-          .eq('activo', true)
           .eq('codigo_barras', codeTrim)
           .limit(1)
         if (kid) queryGun = queryGun.eq('kiosco_id', kid)
@@ -453,6 +463,11 @@ export function POSPage() {
         if (error) throw error
 
         if (data) {
+          if (data.activo === false) {
+            playScanSound('warning')
+            toast.error('Producto inactivo. El dueño debe reactivarlo desde Catálogo.')
+            return
+          }
           window.dispatchEvent(new CustomEvent('pos-clear-search'))
           if (data.es_pesable) {
             setProductoPesableModal(data)
@@ -468,6 +483,10 @@ export function POSPage() {
             saveCachedProductos([data, ...list], kid)
           }
         } else {
+          if (!puedeRegistrarProductoPOS(useAuthStore.getState().usuario)) {
+            toast.error('Producto no registrado. Pedile al dueño que lo agregue al catálogo.')
+            return
+          }
           // Disparar Asistente de Alta Rápida On-The-Fly con Catálogo Semilla
           window.dispatchEvent(new CustomEvent('pos-clear-search'))
           const matchMaestro = esFotocopiadora
@@ -492,6 +511,10 @@ export function POSPage() {
     (code: string) => {
       const codeTrim = code.trim()
       if (!codeTrim) return
+      if (!puedeRegistrarProductoPOS(useAuthStore.getState().usuario)) {
+        toast.error('Producto no registrado. Pedile al dueño que lo agregue al catálogo.')
+        return
+      }
       const matchMaestro = esFotocopiadora
         ? CATALOGO_MAESTRO_LIBRERIA.find((p) => p.codigo_barras === codeTrim) || buscarEnCatalogoMaestro(codeTrim)
         : buscarEnCatalogoMaestro(codeTrim)
@@ -927,6 +950,10 @@ export function POSPage() {
       <BarcodeScannerModal
         isOpen={modalScannerOpen}
         onClose={() => setModalScannerOpen(false)}
+        onCodigoNoEncontrado={puedeRegistrarProductoPOS(usuario) ? code => {
+          setModalScannerOpen(false)
+          handleCodigoNoEncontradoDesdeBuscador(code)
+        } : undefined}
         onProductScanned={(producto) => {
           handleSeleccion(producto)
         }}
@@ -1132,7 +1159,7 @@ export function POSPage() {
 
       {/* Asistente On-The-Fly: Alta Rápida de producto desde Mostrador con Catálogo Semilla */}
       <AltaRapidaModal
-        isOpen={modalAltaRapidaOpen}
+        isOpen={modalAltaRapidaOpen && puedeRegistrarProductoPOS(usuario)}
         onClose={() => setModalAltaRapidaOpen(false)}
         codigo={codigoParaAlta}
         productoSugerido={productoSugeridoParaAlta}

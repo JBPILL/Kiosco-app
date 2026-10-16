@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { supabase } from '../../lib/supabase'
@@ -6,6 +6,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { getCachedProductos, saveCachedProductos } from '../../lib/utils'
 import { playScanSound } from '../../lib/sound'
 import { useBarcodeGun } from '../../hooks/useBarcodeGun'
+import { BarcodeCaptureModal } from '../ui/BarcodeCaptureModal'
 import { useLoteStore } from '../../stores/loteStore'
 import { kioskoPilotStrictScopeActivo } from '../../lib/kioskPilotScope'
 import { confirmarOperacionPendiente, obtenerIdOperacionPendiente } from '../../lib/operationIdempotency'
@@ -35,24 +36,29 @@ export function AuditoriaInventarioModal({
   const [itemsAuditados, setItemsAuditados] = useState<ItemAuditoria[]>([])
   const [busqueda, setBusqueda] = useState('')
   const [procesando, setProcesando] = useState(false)
+  const [camaraOpen, setCamaraOpen] = useState(false)
+  useEffect(() => { if (!isOpen) setCamaraOpen(false) }, [isOpen])
+
+  const contarCodigo = (barcode: string) => {
+    if (!isOpen || procesando) return
+    const clean = barcode.trim()
+    const prod = productos.find(p => p.activo && p.kiosco_id === usuario?.kiosco_id &&
+      (p.codigo_barras?.trim() === clean || p.id === clean))
+    if (prod) {
+      agregarOIncrementar(prod)
+      setBusqueda('')
+      playScanSound('success')
+      toast.success(`Contado: ${prod.descripcion}`, { id: 'scan-audit', duration: 1500 })
+    } else {
+      playScanSound('error')
+      toast.error(`Código no encontrado: ${clean}`, { id: 'scan-audit-err' })
+    }
+  }
 
   // Escaneo directo con pistola de código de barras
   useBarcodeGun({
-    enabled: isOpen,
-    onScan: (barcode) => {
-      const clean = barcode.trim()
-      const prod = productos.find(
-        (p) => p.codigo_barras?.trim() === clean || p.id === clean
-      )
-      if (prod) {
-        agregarOIncrementar(prod)
-        playScanSound('success')
-        toast.success(`Contado: ${prod.descripcion}`, { id: 'scan-audit', duration: 1500 })
-      } else {
-        playScanSound('error')
-        toast.error(`Código no encontrado: ${clean}`, { id: 'scan-audit-err' })
-      }
-    },
+    enabled: isOpen && !camaraOpen && !procesando,
+    onScan: contarCodigo,
   })
 
   const agregarOIncrementar = (prod: Producto, incremento = 1) => {
@@ -253,7 +259,7 @@ export function AuditoriaInventarioModal({
     >
       <div className="space-y-3">
         {/* Barra superior: Buscador con autocompletado + Indicador de Lector */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="relative flex-1">
             <input
               type="text"
@@ -298,7 +304,10 @@ export function AuditoriaInventarioModal({
             )}
           </div>
 
-          <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-semibold whitespace-nowrap">
+          <Button variant="secondary" size="sm" disabled={procesando} onClick={() => setCamaraOpen(true)}>
+            Escanear con cámara
+          </Button>
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-semibold whitespace-nowrap">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span>Lector Activo</span>
           </div>
@@ -335,7 +344,7 @@ export function AuditoriaInventarioModal({
           <div className="max-h-64 overflow-y-auto">
             {itemsAuditados.length === 0 ? (
               <div className="py-8 text-center text-xs text-gray-400">
-                Escaneá productos con la pistola o buscalos arriba para iniciar el recuento.
+                Escaneá con la cámara o la pistola, o buscá el producto para iniciar el recuento.
               </div>
             ) : (
               <table className="w-full text-left text-xs divide-y divide-gray-200 dark:divide-gray-700">
@@ -450,6 +459,12 @@ export function AuditoriaInventarioModal({
           </div>
         </div>
       </div>
+      <BarcodeCaptureModal
+        isOpen={isOpen && camaraOpen}
+        onClose={() => setCamaraOpen(false)}
+        onBarcodeCaptured={contarCodigo}
+        title="Cámara para conteo físico"
+      />
     </Modal>
   )
 }

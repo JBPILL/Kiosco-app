@@ -13,6 +13,13 @@ vi.mock('../ui/BarcodeCaptureModal', () => ({ BarcodeCaptureModal: () => null })
 import { ProductForm } from './ProductForm'
 afterEach(() => vi.unstubAllEnvs())
 
+it('precarga el código escaneado en un alta nueva y conserva su edición', () => {
+  render(<ProductForm isOpen categorias={[]} codigoInicial="7791234567890" onClose={() => undefined} onGuardar={vi.fn()} />)
+  const codigo = screen.getByDisplayValue('7791234567890')
+  fireEvent.change(codigo, { target: { value: '7791234567891' } })
+  expect(screen.getByDisplayValue('7791234567891')).toBeTruthy()
+})
+
 it('exige y envía un motivo al modificar el precio', async () => {
   vi.stubEnv('VITE_AUDITORIA_MOTIVO_PRECIO', 'true')
   const guardar = vi.fn().mockResolvedValue(true)

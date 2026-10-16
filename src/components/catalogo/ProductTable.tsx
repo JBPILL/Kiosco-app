@@ -35,6 +35,8 @@ interface ProductTableProps {
   cargando: boolean
   onPurgarHuerfanos?: () => void
   onSincronizar?: () => void
+  onEscanear?: () => void
+  onBuscarCodigo?: (codigo: string) => void
 }
 
 type SortField = 'descripcion' | 'categoria' | 'stock' | 'precio_venta' | 'precio_costo'
@@ -53,6 +55,8 @@ export function ProductTable({
   cargando,
   onPurgarHuerfanos,
   onSincronizar,
+  onEscanear,
+  onBuscarCodigo,
 }: ProductTableProps) {
   const { tieneEnvases, tieneBalanza, tieneVencimientos } = useTenantConfig()
   const { proveedores, cargarProveedores } = useProveedorStore()
@@ -183,9 +187,16 @@ export function ProductTable({
             value={busqueda}
             onChange={(e) => onBusquedaChange(e.target.value)}
             onClear={() => onBusquedaChange('')}
+            onKeyDown={event => {
+              if (event.key === 'Enter' && onBuscarCodigo && /^\d{3,}$/.test(busqueda.trim())) {
+                event.preventDefault()
+                onBuscarCodigo(busqueda.trim())
+              }
+            }}
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {onEscanear && <Button variant="secondary" onClick={onEscanear}>Escanear con cámara</Button>}
           <select
             className="flex-1 sm:flex-initial rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-xs sm:text-sm focus:border-indigo-500 min-h-[36px]"
             aria-label="Filtrar por categoría"

@@ -17,12 +17,14 @@ interface BarcodeScannerModalProps {
   isOpen: boolean
   onClose: () => void
   onProductScanned: (producto: Producto) => void
+  onCodigoNoEncontrado?: (codigo: string) => void
 }
 
 export function BarcodeScannerModal({
   isOpen,
   onClose,
   onProductScanned,
+  onCodigoNoEncontrado,
 }: BarcodeScannerModalProps) {
   const [iniciando, setIniciando] = useState(true)
   const [errorCamara, setErrorCamara] = useState<string | null>(null)
@@ -31,6 +33,8 @@ export function BarcodeScannerModal({
     producto?: Producto
     codigo: string
     exito: boolean
+    verificadoRemotamente?: boolean
+    inactivo?: boolean
   } | null>(null)
   const [camaras, setCamaras] = useState<Array<{ id: string; label: string }>>([])
   const [camaraActualId, setCamaraActualId] = useState<string | null>(null)
@@ -68,6 +72,7 @@ export function BarcodeScannerModal({
     if (!code || !abiertoRef.current || consultasRef.current.has(code)) return
     const contexto = useAuthStore.getState()
     if (!contexto.usuario?.activo || !contexto.kiosco?.id || contexto.usuario.kiosco_id !== contexto.kiosco.id) return
+    const kioscoId = contexto.kiosco.id
     const ticket = useCartStore.getState().tabActivaId
     const generacion = generacionRef.current
     const vigente = () => {
@@ -88,15 +93,24 @@ export function BarcodeScannerModal({
 
     try {
       const sinConexion = !navigator.onLine
+      const cache = sinConexion ? getCachedProductos(kioscoId) : []
       const { data, error } = sinConexion
-        ? { data: buscarCodigoCamaraLocal(getCachedProductos(contexto.kiosco.id), contexto.kiosco.id, code), error: null }
+        ? { data: buscarCodigoCamaraLocal(cache, kioscoId, code)
+          ?? cache.find(p => p.kiosco_id === kioscoId && p.codigo_barras === code && p.activo === false) ?? null, error: null }
         : await supabase.from('productos')
           .select('*, categoria:categorias(nombre, color)')
-          .eq('activo', true).eq('kiosco_id', contexto.kiosco.id)
+          .eq('kiosco_id', kioscoId)
           .eq('codigo_barras', code).maybeSingle()
 
       if (!vigente()) return
       if (error) throw error
+
+      if (data?.activo === false) {
+        playScanSound('warning')
+        setUltimoEscaneo({ codigo: code, exito: false, inactivo: true })
+        toast.error('Producto inactivo. El dueño debe reactivarlo desde Catálogo.')
+        return
+      }
 
       if (data) {
         if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
@@ -118,6 +132,7 @@ export function BarcodeScannerModal({
         setUltimoEscaneo({
           codigo: code,
           exito: false,
+          verificadoRemotamente: !sinConexion,
         })
         toast.error(`Código no encontrado: ${code}`)
       }
@@ -414,10 +429,17 @@ export function BarcodeScannerModal({
               </div>
             ) : (
               <div>
-                <p className="font-bold">Código no encontrado</p>
+                <p className="font-bold">{ultimoEscaneo.inactivo ? 'Producto inactivo' : 'Código no encontrado'}</p>
                 <p className="text-[11px] opacity-80 mt-0.5">
-                  El código <span className="font-mono font-bold">{ultimoEscaneo.codigo}</span> no está asociado a ningún producto activo.
+                  {ultimoEscaneo.inactivo
+                    ? 'El dueño debe reactivarlo desde Catálogo.'
+                    : <>El código <span className="font-mono font-bold">{ultimoEscaneo.codigo}</span> no está asociado a ningún producto.</>}
                 </p>
+                {onCodigoNoEncontrado && ultimoEscaneo.verificadoRemotamente && !ultimoEscaneo.inactivo && (
+                  <Button variant="secondary" size="sm" className="mt-2" onClick={() => onCodigoNoEncontrado(ultimoEscaneo.codigo)}>
+                    Agregar y editar producto
+                  </Button>
+                )}
               </div>
             )}
           </div>
