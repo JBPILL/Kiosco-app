@@ -421,6 +421,12 @@ it('secures catalog product writes and support ticket creation with atomic idemp
   await expect(db.query('SELECT public.crear_ticket_soporte_transaccional($1,$2,$3,$4,$5::jsonb)', ['ac600000-0000-0000-0000-000000000002','INVALIDO','POS','x','{}'])).rejects.toThrow('Datos del ticket inválidos')
 
   await db.query("SELECT set_config('request.jwt.claim.sub',$1,false)", [cashierAuthId])
+  const deniedProduct = 'ac400000-0000-0000-0000-000000000099'
+  await expect(db.query('SELECT public.guardar_producto_transaccional($1,$2,$3::jsonb)', [
+    'ac500000-0000-0000-0000-000000000099', deniedProduct,
+    JSON.stringify({ descripcion: 'Alta desde API cajero', precio_venta: 10, codigo_barras: 'TEST-OWNER-ONLY' }),
+  ])).rejects.toThrow('Sólo el dueño puede registrar productos')
+  expect((await db.query<{ n: number }>('SELECT count(*)::int AS n FROM public.productos WHERE id=$1', [deniedProduct])).rows[0].n).toBe(0)
   await expect(db.query('SELECT public.guardar_producto_transaccional($1,$2,$3::jsonb)', ['ac500000-0000-0000-0000-000000000005',productId,'{"descripcion":"No autorizado"}'])).rejects.toThrow('Sólo el dueño puede editar productos existentes')
   await db.query("SELECT set_config('request.jwt.claim.sub','',false)")
   await expect(db.query('SELECT public.crear_ticket_soporte_transaccional($1,$2,$3,$4,$5::jsonb)', ['ac600000-0000-0000-0000-000000000003','CONSULTA','POS','sin auth','{}'])).rejects.toThrow('Autenticación requerida')
