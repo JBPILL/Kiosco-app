@@ -233,6 +233,7 @@ describe('POSPage: pistola de códigos de barras', () => {
   })
 
   it('un código desconocido abre el alta rápida sin agregar nada al ticket', async () => {
+    useAuthStore.setState({ usuario: { id: 'owner', rol: 'DUEÑO', activo: true, kiosco_id: KIOSCO } as never })
     await montar()
     await escanear('  9999999999999 ')
 
@@ -315,6 +316,7 @@ describe('POSPage: pistola de códigos de barras', () => {
   })
 
   it('sin balanza habilitada, un código con prefijo 20 se trata como código común', async () => {
+    useAuthStore.setState({ usuario: { id: 'owner', rol: 'DUEÑO', activo: true, kiosco_id: KIOSCO } as never })
     mocks.tenant = { ...mocks.tenant, tieneBalanza: false }
     saveCachedProductos([crearProducto({ id: 'j', plu_balanza: '1234' } as never)], KIOSCO)
     await montar()
@@ -389,9 +391,20 @@ describe('POSPage: servicios rápidos', () => {
 
 describe('POSPage: búsqueda manual, atajos y promociones', () => {
   it('un código desconocido ingresado en el buscador abre el alta con el código limpio', async () => {
+    useAuthStore.setState({ usuario: { id: 'owner', rol: 'DUEÑO', activo: true, kiosco_id: KIOSCO } as never })
     await montar()
     fireEvent.click(screen.getByText('buscador-codigo-desconocido'))
     expect((await screen.findByTestId('alta')).getAttribute('data-codigo')).toBe('7791234567890')
+  })
+
+  it.each(['CAJERO', 'VISOR'])('un %s no abre el alta desde pistola ni buscador', async rol => {
+    useAuthStore.setState({ usuario: { id: 'staff', rol, activo: true, kiosco_id: KIOSCO } as never })
+    await montar()
+    await escanear('9999999999999')
+    fireEvent.click(screen.getByText('buscador-codigo-desconocido'))
+    expect(screen.queryByTestId('alta')).toBeNull()
+    expect(toast.error).toHaveBeenCalledWith('Producto no registrado. Pedile al dueño que lo agregue al catálogo.')
+    expect(cantidadEnCarrito()).toBe(0)
   })
 
   it('los favoritos cargados se pueden agregar al ticket', async () => {

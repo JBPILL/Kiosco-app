@@ -17,6 +17,7 @@ interface ProductFormProps {
   onClose: () => void
   categorias: Categoria[]
   producto?: Producto | null
+  codigoInicial?: string
   onGuardar: (data: ProductFormData) => Promise<boolean>
 }
 
@@ -59,7 +60,7 @@ interface FormState {
   nombre_envase: string
 }
 
-export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }: ProductFormProps) {
+export function ProductForm({ isOpen, onClose, categorias, producto, codigoInicial = '', onGuardar }: ProductFormProps) {
   const { tieneEnvases, tieneBalanza, tieneVencimientos } = useTenantConfig()
   const mostrarBloqueEspeciales = tieneVencimientos || tieneBalanza || tieneEnvases
 
@@ -136,7 +137,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
         stock_minimo: '5',
         categoria_id: null,
         proveedor_id: null,
-        codigo_barras: null,
+        codigo_barras: codigoInicial || null,
         requiere_vencimiento: false,
         dias_alerta_vencimiento: 15,
         es_pesable: false,
@@ -147,7 +148,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
         nombre_envase: '',
       })
     }
-  }, [producto, isOpen])
+  }, [producto, isOpen, codigoInicial])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

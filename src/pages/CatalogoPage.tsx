@@ -1,5 +1,5 @@
 import { IndicatorCard } from '../components/ui/IndicatorCard'
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useProducts } from '../hooks/useProducts'
 import { CategoryManager } from '../components/catalogo/CategoryManager'
 import { ProductTable } from '../components/catalogo/ProductTable'
@@ -14,12 +14,15 @@ import { IconExportar, IconImportar } from '../components/ui/Icons'
 import { clearCachedProductos } from '../lib/utils'
 import { useAuthStore } from '../stores/authStore'
 import { useTenantConfig } from '../hooks/useTenantConfig'
+import { useBarcodeGun } from '../hooks/useBarcodeGun'
+import { BarcodeCaptureModal } from '../components/ui/BarcodeCaptureModal'
+import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import type { Producto } from '../types/database'
 import type { ProductFormData } from '../components/catalogo/ProductForm'
 
 export function CatalogoPage() {
-  const { kiosco } = useAuthStore()
+  const { usuario, kiosco } = useAuthStore()
   const { tieneEnvases, esFotocopiadora } = useTenantConfig()
   const {
     productos,
@@ -50,13 +53,58 @@ export function CatalogoPage() {
   const [etiquetasOpen, setEtiquetasOpen] = useState(false)
   const [productoEditar, setProductoEditar] = useState<Producto | null>(null)
   const [categoriasOpen, setCategoriasOpen] = useState(false)
+  const [scannerOpen, setScannerOpen] = useState(false)
+  const [codigoInicial, setCodigoInicial] = useState('')
+  const consultaCodigoRef = useRef(0)
+  useEffect(() => () => { consultaCodigoRef.current++ }, [])
+
+  const buscarCodigo = async (codigo: string) => {
+    const code = codigo.trim()
+    const actor = useAuthStore.getState().usuario
+    if (!code || !actor?.activo || !actor.kiosco_id || (actor.rol !== 'DUEÑO' && !actor.es_superadmin)) return
+    const consulta = ++consultaCodigoRef.current
+    try {
+      const { data, error } = await supabase.from('productos').select('*')
+        .eq('kiosco_id', actor.kiosco_id).eq('codigo_barras', code).maybeSingle()
+      const vigente = useAuthStore.getState().usuario
+      if (consulta !== consultaCodigoRef.current || !vigente?.activo || vigente.id !== actor.id ||
+          vigente.auth_user_id !== actor.auth_user_id || vigente.kiosco_id !== actor.kiosco_id || vigente.rol !== actor.rol) return
+      if (error) throw error
+      setBusqueda(code)
+      setCategoriaFiltro(null)
+      if (data) {
+        if (!data.activo) {
+          toast.error('Este código pertenece a un producto inactivo. Revisá su estado antes de volver a registrarlo.')
+          return
+        }
+        setProductoEditar(data)
+        setCodigoInicial('')
+      } else {
+        setProductoEditar(null)
+        setCodigoInicial(code)
+        toast('Producto no registrado. Completá sus datos para agregarlo al catálogo.')
+      }
+      setFormOpen(true)
+    } catch {
+      if (consulta === consultaCodigoRef.current) toast.error('No se pudo verificar el código. Revisá la conexión antes de agregar el producto.')
+    }
+  }
+
+  useBarcodeGun({
+    enabled: !formOpen && !scannerOpen && !siembraOpen && !importarOpen && !aumentoOpen && !envasesOpen && !etiquetasOpen && !categoriasOpen,
+    onScan: buscarCodigo,
+  })
 
   const handleNuevo = () => {
+    consultaCodigoRef.current++
+    setCodigoInicial('')
     setProductoEditar(null)
     setFormOpen(true)
   }
 
   const handleEditar = (producto: Producto) => {
+    consultaCodigoRef.current++
+    setCodigoInicial('')
     setProductoEditar(producto)
     setFormOpen(true)
   }
@@ -222,6 +270,8 @@ export function CatalogoPage() {
           cargando={cargando}
           onPurgarHuerfanos={purgarProductosHuerfanos}
           onSincronizar={handleSincronizar}
+          onEscanear={usuario?.activo && (usuario.rol === 'DUEÑO' || usuario.es_superadmin) ? () => setScannerOpen(true) : undefined}
+          onBuscarCodigo={code => { void buscarCodigo(code) }}
         />
       </div>
 
@@ -231,7 +281,15 @@ export function CatalogoPage() {
         onClose={() => setFormOpen(false)}
         categorias={categorias}
         producto={productoEditar}
+        codigoInicial={codigoInicial}
         onGuardar={handleGuardar}
+      />
+
+      <BarcodeCaptureModal
+        isOpen={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onBarcodeCaptured={code => { void buscarCodigo(code) }}
+        title="Escanear producto del catálogo"
       />
 
       {/* Modal de aumento masivo de precios */}

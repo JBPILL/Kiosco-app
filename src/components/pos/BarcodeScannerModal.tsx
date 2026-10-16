@@ -17,12 +17,14 @@ interface BarcodeScannerModalProps {
   isOpen: boolean
   onClose: () => void
   onProductScanned: (producto: Producto) => void
+  onCodigoNoEncontrado?: (codigo: string) => void
 }
 
 export function BarcodeScannerModal({
   isOpen,
   onClose,
   onProductScanned,
+  onCodigoNoEncontrado,
 }: BarcodeScannerModalProps) {
   const [iniciando, setIniciando] = useState(true)
   const [errorCamara, setErrorCamara] = useState<string | null>(null)
@@ -31,6 +33,7 @@ export function BarcodeScannerModal({
     producto?: Producto
     codigo: string
     exito: boolean
+    verificadoRemotamente?: boolean
   } | null>(null)
   const [camaras, setCamaras] = useState<Array<{ id: string; label: string }>>([])
   const [camaraActualId, setCamaraActualId] = useState<string | null>(null)
@@ -118,6 +121,7 @@ export function BarcodeScannerModal({
         setUltimoEscaneo({
           codigo: code,
           exito: false,
+          verificadoRemotamente: !sinConexion,
         })
         toast.error(`Código no encontrado: ${code}`)
       }
@@ -418,6 +422,11 @@ export function BarcodeScannerModal({
                 <p className="text-[11px] opacity-80 mt-0.5">
                   El código <span className="font-mono font-bold">{ultimoEscaneo.codigo}</span> no está asociado a ningún producto activo.
                 </p>
+                {onCodigoNoEncontrado && ultimoEscaneo.verificadoRemotamente && (
+                  <Button variant="secondary" size="sm" className="mt-2" onClick={() => onCodigoNoEncontrado(ultimoEscaneo.codigo)}>
+                    Agregar y editar producto
+                  </Button>
+                )}
               </div>
             )}
           </div>
