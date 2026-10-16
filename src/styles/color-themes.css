@@ -150,6 +150,23 @@
   color: #111827;
 }
 
+/* Native fields/autofill also follow the cream palette instead of browser white. */
+:root:not(.dark) :is(input:not([type]), input[type="text"], input[type="search"],
+  input[type="number"], input[type="email"], input[type="password"], input[type="tel"],
+  input[type="url"], input[type="date"], input[type="datetime-local"], input[type="time"],
+  textarea, select) {
+  background-color: #e9e2d4 !important;
+  color: #2b2721;
+}
+:root:not(.dark) input:autofill {
+  box-shadow: 0 0 0 1000px #e9e2d4 inset !important;
+  -webkit-text-fill-color: #2b2721 !important;
+}
+:root:not(.dark) input:-webkit-autofill {
+  box-shadow: 0 0 0 1000px #e9e2d4 inset !important;
+  -webkit-text-fill-color: #2b2721 !important;
+}
+
 :root.dark :focus-visible:not(input):not(select):not(textarea) {
   outline: 2px solid #8fa8c6;
   outline-offset: 3px;

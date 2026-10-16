@@ -1,7 +1,9 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
-import { BarcodeSvg } from '../../lib/barcodeSvg'
+import { GondolaLabel, LABEL_DIMENSIONS } from './GondolaLabel'
+import type { FormatoEtiqueta } from './GondolaLabel'
 import { formatPrecio } from '../../lib/utils'
 import type { Producto, Categoria } from '../../types/database'
 
@@ -13,7 +15,6 @@ interface EtiquetasGondolaModalProps {
   kioscoNombre?: string
 }
 
-type FormatoEtiqueta = 'A4' | 'TERMICA_58' | 'TERMICA_80'
 
 export function EtiquetasGondolaModal({
   isOpen,
@@ -30,8 +31,6 @@ export function EtiquetasGondolaModal({
   const [mostrarCodigo, setMostrarCodigo] = useState(true)
   const [mostrarNegocio, setMostrarNegocio] = useState(true)
   const [mostrarFecha, setMostrarFecha] = useState(true)
-
-  const printContainerRef = useRef<HTMLDivElement>(null)
 
   // Filtrado de productos disponibles
   const productosFiltrados = useMemo(() => {
@@ -160,7 +159,7 @@ export function EtiquetasGondolaModal({
                 />
                 <div>
                   <span className="font-medium text-gray-900 dark:text-gray-100">Hoja A4 (Estantería)</span>
-                  <p className="text-[10px] text-gray-500">Grilla 3x8 (24 etiquetas por carilla)</p>
+                  <p className="text-[10px] text-gray-500">Grilla 3x8 · 65 × 33 mm · 24 por hoja</p>
                 </div>
               </label>
               <label className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700">
@@ -173,7 +172,7 @@ export function EtiquetasGondolaModal({
                 />
                 <div>
                   <span className="font-medium text-gray-900 dark:text-gray-100">Rollo Térmico 58 mm</span>
-                  <p className="text-[10px] text-gray-500">Etiqueta individual continua</p>
+                  <p className="text-[10px] text-gray-500">Etiqueta fija de 54 × 40 mm</p>
                 </div>
               </label>
               <label className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700">
@@ -186,7 +185,7 @@ export function EtiquetasGondolaModal({
                 />
                 <div>
                   <span className="font-medium text-gray-900 dark:text-gray-100">Rollo Térmico 80 mm</span>
-                  <p className="text-[10px] text-gray-500">Etiqueta ancha góndola</p>
+                  <p className="text-[10px] text-gray-500">Etiqueta fija de 76 × 40 mm</p>
                 </div>
               </label>
             </div>
@@ -335,54 +334,11 @@ export function EtiquetasGondolaModal({
                   <p className="text-xs mt-1">Marcá los productos en la lista izquierda para previsualizarlos.</p>
                 </div>
               ) : (
-                <div
-                  className={
-                    formato === 'A4'
-                      ? 'grid grid-cols-2 gap-2'
-                      : 'flex flex-col items-center gap-2 max-w-[280px] mx-auto'
-                  }
-                >
+                <div className="grid justify-center gap-2" style={{ gridTemplateColumns: formato === 'A4' ? 'repeat(auto-fit, 65mm)' : `${LABEL_DIMENSIONS[formato].width}mm` }}>
                   {etiquetasAImprimir.slice(0, 8).map((prod, idx) => (
-                    <div
-                      key={`${prod.id}-${idx}`}
-                      className="bg-white text-gray-900 p-2 rounded border border-gray-300 shadow-xs flex flex-col justify-between select-none"
-                      style={{ minHeight: '110px' }}
-                    >
-                      {mostrarNegocio && (
-                        <div className="text-[9px] uppercase tracking-wider text-gray-500 font-bold border-b border-gray-100 pb-0.5 truncate">
-                          {kioscoNombre}
-                        </div>
-                      )}
-                      <div className="my-1">
-                        <div className="font-bold text-xs leading-tight text-gray-900 line-clamp-2">
-                          {prod.descripcion}
-                        </div>
-                        <div className="text-right font-black text-xl text-black tracking-tight mt-0.5">
-                          {formatPrecio(prod.precio_venta)}
-                          {prod.es_pesable && prod.unidad_medida && (
-                            <span className="text-[10px] font-normal text-gray-600 ml-1">/{prod.unidad_medida}</span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="mt-auto pt-1 border-t border-gray-100 flex flex-col items-center">
-                        {mostrarCodigo && (
-                          <div className="w-full max-w-[140px] flex flex-col items-center">
-                            <BarcodeSvg
-                              value={prod.codigo_barras || prod.id.slice(0, 8).toUpperCase()}
-                              height={24}
-                              className="w-full"
-                            />
-                            <span className="font-mono text-[8px] text-gray-600 tracking-wider">
-                              {prod.codigo_barras || prod.id.slice(0, 8).toUpperCase()}
-                            </span>
-                          </div>
-                        )}
-                        {mostrarFecha && (
-                          <div className="w-full text-right text-[8px] text-gray-400 mt-0.5">{fechaHoy}</div>
-                        )}
-                      </div>
-                    </div>
+                    <GondolaLabel key={`${prod.id}-${idx}`} producto={prod} formato={formato}
+                      negocio={kioscoNombre} fecha={fechaHoy} mostrarCodigo={mostrarCodigo}
+                      mostrarNegocio={mostrarNegocio} mostrarFecha={mostrarFecha} />
                   ))}
                   {etiquetasAImprimir.length > 8 && (
                     <div className="col-span-2 text-center text-xs text-gray-500 py-2">
@@ -398,7 +354,7 @@ export function EtiquetasGondolaModal({
         {/* Footer con Acciones */}
         <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-700 shrink-0">
           <div className="text-xs text-gray-500 dark:text-gray-400">
-            Total a imprimir: <strong className="text-indigo-600 dark:text-indigo-400">{etiquetasAImprimir.length}</strong> etiquetas
+            Escala de impresión: 100%, sin ajustar. Total: <strong className="text-indigo-600 dark:text-indigo-400">{etiquetasAImprimir.length}</strong> etiquetas
           </div>
           <div className="flex items-center gap-2">
             <Button variant="secondary" size="sm" onClick={onClose}>
@@ -422,211 +378,50 @@ export function EtiquetasGondolaModal({
         </div>
       </div>
 
-      {/* CONTENEDOR EXCLUSIVO PARA IMPRESIÓN (visible únicamente al disparar window.print()) */}
-      <div
-        ref={printContainerRef}
-        id="printable-etiquetas"
-        className="hidden"
-      >
-        <div
-          className={
-            formato === 'A4'
-              ? 'grid-a4-labels'
-              : formato === 'TERMICA_80'
-              ? 'flex-termica-80'
-              : 'flex-termica-58'
-          }
-        >
+      {/* Preview and printed output use the same fixed-size card. */}
+      {createPortal(<div id="printable-etiquetas" className="hidden">
+        {formato === 'A4' ? Array.from({ length: Math.ceil(etiquetasAImprimir.length / 24) }, (_, page) => (
+          <div key={page} className="page-a4-labels">
+            {etiquetasAImprimir.slice(page * 24, (page + 1) * 24).map((prod, idx) => (
+              <GondolaLabel key={`print-${page}-${idx}`} producto={prod} formato={formato}
+                negocio={kioscoNombre} fecha={fechaHoy} mostrarCodigo={mostrarCodigo}
+                mostrarNegocio={mostrarNegocio} mostrarFecha={mostrarFecha} />
+            ))}
+          </div>
+        )) : <div className="thermal-labels">
           {etiquetasAImprimir.map((prod, idx) => (
-            <div
-              key={`print-${prod.id}-${idx}`}
-              className={`etiqueta-card ${formato === 'A4' ? 'card-a4' : 'card-termica'}`}
-            >
-              {mostrarNegocio && (
-                <div className="etiqueta-header">
-                  {kioscoNombre}
-                </div>
-              )}
-
-              <div className="etiqueta-body">
-                <div className="etiqueta-descripcion">
-                  {prod.descripcion}
-                </div>
-                <div className="etiqueta-precio">
-                  {formatPrecio(prod.precio_venta)}
-                  {prod.es_pesable && prod.unidad_medida && (
-                    <span className="etiqueta-unidad">/{prod.unidad_medida}</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="etiqueta-footer">
-                {mostrarCodigo && (
-                  <div className="etiqueta-barcode-box">
-                    <BarcodeSvg
-                      value={prod.codigo_barras || prod.id.slice(0, 8).toUpperCase()}
-                      height={26}
-                    />
-                    <div className="etiqueta-codigo-texto">
-                      {prod.codigo_barras || prod.id.slice(0, 8).toUpperCase()}
-                    </div>
-                  </div>
-                )}
-                {mostrarFecha && (
-                  <div className="etiqueta-fecha">{fechaHoy}</div>
-                )}
-              </div>
-            </div>
+            <GondolaLabel key={`print-${idx}`} producto={prod} formato={formato}
+              negocio={kioscoNombre} fecha={fechaHoy} mostrarCodigo={mostrarCodigo}
+              mostrarNegocio={mostrarNegocio} mostrarFecha={mostrarFecha} />
           ))}
-        </div>
-      </div>
-
-      {/* ESTILOS CSS AISLADOS PARA IMPRESIÓN */}
+        </div>}
+      </div>, document.body)}
       <style>{`
         @media print {
-          body * {
-            visibility: hidden !important;
-          }
-          #printable-etiquetas, #printable-etiquetas * {
-            visibility: visible !important;
-          }
+          body > *:not(#printable-etiquetas) { display: none !important; }
+          html, body { height: auto !important; overflow: visible !important; }
+          #printable-etiquetas [data-label-hidden="true"],
+          #printable-etiquetas [data-label-hidden="true"] * { visibility: hidden !important; }
           #printable-etiquetas {
             display: block !important;
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            margin: 0 !important;
-            padding: ${formato === 'A4' ? '5mm' : '2mm'} !important;
-            background: white !important;
-            color: black !important;
+            position: static !important;
+            width: ${formato === 'A4' ? '200mm' : formato === 'TERMICA_58' ? '58mm' : '80mm'} !important;
+            margin: 0 !important; padding: 0 !important;
+            background: #fff !important; color: #111 !important;
           }
-
-          @page {
-            margin: ${formato === 'A4' ? '5mm' : '1mm'};
-            size: auto;
-          }
-
-          /* Grilla estándar A4: 3 columnas x 8 filas (24 por carilla) */
-          .grid-a4-labels {
+          @page { size: ${formato === 'A4' ? 'A4 portrait' : formato === 'TERMICA_58' ? '58mm 40mm' : '80mm 40mm'}; margin: ${formato === 'A4' ? '5mm' : '0'}; }
+          .page-a4-labels {
             display: grid !important;
-            grid-template-columns: repeat(3, 1fr) !important;
+            grid-template-columns: repeat(3, 65mm) !important;
+            grid-auto-rows: 33mm !important;
             gap: 2.5mm !important;
-            width: 100% !important;
+            width: 200mm !important;
+            break-after: page;
           }
-
-          .card-a4 {
-            width: 100% !important;
-            min-height: 33mm !important;
-            max-height: 35mm !important;
-            border: 0.5pt dashed #777 !important;
-            padding: 2mm !important;
-            box-sizing: border-box !important;
-            display: flex !important;
-            flex-direction: column !important;
-            justify-content: space-between !important;
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-          }
-
-          /* Formato térmico continuo */
-          .flex-termica-58 {
-            display: flex !important;
-            flex-direction: column !important;
-            width: 54mm !important;
-            margin: 0 auto !important;
-          }
-
-          .flex-termica-80 {
-            display: flex !important;
-            flex-direction: column !important;
-            width: 76mm !important;
-            margin: 0 auto !important;
-          }
-
-          .card-termica {
-            width: 100% !important;
-            border-bottom: 1pt dashed #444 !important;
-            padding: 3mm 1mm !important;
-            margin-bottom: 2mm !important;
-            box-sizing: border-box !important;
-            display: flex !important;
-            flex-direction: column !important;
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-          }
-
-          .etiqueta-header {
-            font-size: 7pt !important;
-            font-weight: 700 !important;
-            text-transform: uppercase !important;
-            color: #333 !important;
-            border-bottom: 0.5pt solid #ccc !important;
-            padding-bottom: 1mm !important;
-            white-space: nowrap !important;
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
-          }
-
-          .etiqueta-body {
-            margin: 1.5mm 0 !important;
-          }
-
-          .etiqueta-descripcion {
-            font-size: 9pt !important;
-            font-weight: 800 !important;
-            line-height: 1.15 !important;
-            color: #000 !important;
-            display: -webkit-box !important;
-            -webkit-line-clamp: 2 !important;
-            -webkit-box-orient: vertical !important;
-            overflow: hidden !important;
-          }
-
-          .etiqueta-precio {
-            font-size: 16pt !important;
-            font-weight: 900 !important;
-            text-align: right !important;
-            line-height: 1 !important;
-            margin-top: 1mm !important;
-            color: #000 !important;
-            letter-spacing: -0.5px !important;
-          }
-
-          .etiqueta-unidad {
-            font-size: 7pt !important;
-            font-weight: 400 !important;
-            margin-left: 1mm !important;
-          }
-
-          .etiqueta-footer {
-            margin-top: auto !important;
-            display: flex !important;
-            flex-direction: column !important;
-            align-items: center !important;
-          }
-
-          .etiqueta-barcode-box {
-            width: 80% !important;
-            display: flex !important;
-            flex-direction: column !important;
-            align-items: center !important;
-          }
-
-          .etiqueta-codigo-texto {
-            font-family: monospace !important;
-            font-size: 7pt !important;
-            color: #111 !important;
-            margin-top: 0.5mm !important;
-            letter-spacing: 1px !important;
-          }
-
-          .etiqueta-fecha {
-            width: 100% !important;
-            text-align: right !important;
-            font-size: 6pt !important;
-            color: #555 !important;
-          }
+          .page-a4-labels:last-child { break-after: auto; }
+          .thermal-labels { padding: 0 2mm; }
+          .thermal-labels .gondola-label { break-after: page; }
+          .thermal-labels .gondola-label:last-child { break-after: auto; }
         }
       `}</style>
     </Modal>
