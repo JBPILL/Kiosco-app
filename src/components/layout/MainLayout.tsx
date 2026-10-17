@@ -1,3 +1,4 @@
+import { administracionComercialHabilitada } from '../../lib/commercialScope'
 import { useState, useEffect, Suspense } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { Sidebar } from '../ui/Sidebar'
@@ -50,7 +51,7 @@ export function MainLayout() {
   // Bloqueo total si venció el período de prueba / cobertura o si fue suspendido manualmente
   const estaVencido = diasRestantes !== null && diasRestantes < 0
   const estaSuspendido = kiosco?.estado_suscripcion === 'SUSPENDIDO'
-  const debeBloquearPantalla = !kioskoPilotStrictScopeActivo() && !usuario?.es_superadmin && (estaSuspendido || estaVencido)
+  const debeBloquearPantalla = !administracionComercialHabilitada() && !kioskoPilotStrictScopeActivo() && !usuario?.es_superadmin && (estaSuspendido || estaVencido)
 
   if (debeBloquearPantalla && kiosco) {
     const titulo = esPlanPrueba
@@ -339,7 +340,7 @@ export function MainLayout() {
         )}
 
         {/* Banner de Aviso o Alerta de Vencimiento de Suscripción */}
-        {!usuario?.es_superadmin && (
+        {!administracionComercialHabilitada() && !usuario?.es_superadmin && (
           <>
             {kiosco?.estado_suscripcion === 'SOLO_LECTURA' ||
             (diasRestantes !== null && diasRestantes < 0) ? (
@@ -388,6 +389,11 @@ export function MainLayout() {
               </div>
             }
           >
+            {administracionComercialHabilitada() && !usuario?.es_superadmin && kiosco?.estado_suscripcion !== 'ACTIVO' && (
+              <p role="status" className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                {kiosco?.estado_suscripcion === 'SUSPENDIDO' ? 'Servicio suspendido.' : 'Comercio en modo solo lectura.'} Las nuevas ventas y escrituras operativas requieren regularización con administración.
+              </p>
+            )}
             <Outlet />
           </Suspense>
         </main>

@@ -18,15 +18,15 @@
     },
     {
       "path": "steps/003_profile_integrity.sql",
-      "sha256": "b581a82da5111fe3bfb4c9ae05be02e097801614308cf48b18bda61ac1474d65"
+      "sha256": "f8239b6494ea98c60b6ee0fabc8849fe2aaeeb0008a7c6fd62337aacb7970859"
     },
     {
       "path": "steps/004_private_product_costs.sql",
-      "sha256": "5bd12a406d8dbaf202610b0755112689afb196a4e04f110ae03a2701b2a58271"
+      "sha256": "ae715778229f0f5861cc704bff9d83dbefc767a2cca0fc83a35161b297c5f619"
     },
     {
       "path": "steps/005_stock_history.sql",
-      "sha256": "f45564f6099dad7b96cc84f0f8c0cce4e92389bc6347f8d3ef76e477705b6d18"
+      "sha256": "5a3de89b63033e02ba904b955d27ff953479a6b228a56844adb5b2c2e9f86ad1"
     },
     {
       "path": "steps/006_private_stock_costs.sql",
@@ -34,7 +34,7 @@
     },
     {
       "path": "steps/007_annulment_audit.sql",
-      "sha256": "7cd4dc7203c76cdfcc0209c40203675305e3ae0ba0fdbbd53ee97f37bbf7f1af"
+      "sha256": "6ec5f37f68a2e33a66f1782360fda10089bedd23c310dcd9747cb2db61a4a095"
     },
     {
       "path": "steps/008_checkout_core.sql",
@@ -46,11 +46,11 @@
     },
     {
       "path": "steps/010_checkout_cancel.sql",
-      "sha256": "bcb19feb584f5126ac6290dae0197a5635044ec40c53fbebb4e43cb66150e40c"
+      "sha256": "c990a1be8523420bad803f073d0799ac4883975638fcc985306fc632315e8fa5"
     },
     {
       "path": "steps/011_checkout_cash_close_guard.sql",
-      "sha256": "00907793043a9147209798599901ea8c5c8f094a7790b5ad61323b909cc6b6bd"
+      "sha256": "b1d197103a292e95e8d3d5be866981ee4beab7883908d6f1b21bc47fd8976601"
     },
     {
       "path": "steps/012_checkout_lock_order.sql",
@@ -58,7 +58,7 @@
     },
     {
       "path": "steps/013_checkout_prepare_lock.sql",
-      "sha256": "de4eb238113de3ee0eb8468f0a8e5d4690ef7d2b654c1c1dab0b37a569eff42b"
+      "sha256": "048106aab2f2e2ab84a03b3cb1e9630f325277fa5224678be2ed6a14d48b5622"
     },
     {
       "path": "steps/014_checkout_pending_query.sql",
@@ -102,7 +102,7 @@
     },
     {
       "path": "steps/024_checkout_frozen_policy.sql",
-      "sha256": "ddec067866b5e7a394f95aa2d741b85a7be25e94567acf243363d59e1e65ccbc"
+      "sha256": "55454458c2fd9820dd6a3ae04f8a91d1e1a97952f1a698dba87bb84135413a0f"
     },
     {
       "path": "steps/025_checkout_shared_cash.sql",
@@ -110,11 +110,11 @@
     },
     {
       "path": "steps/026_edge_identity_reads.sql",
-      "sha256": "2e392ab0a64b432f4e0a85774dbde2bf15baafa20e9605e67ef491b5ce454733"
+      "sha256": "ff9d4469acce90107fd654fcde4eac71814e727a3fb538be435fa282d7c2bc66"
     },
     {
       "path": "steps/027_edge_catalog_reads.sql",
-      "sha256": "c816c4394457e66269265edb76c986df392bbc1a8866ab43ab2b74583d895e94"
+      "sha256": "7ccabd8e23afa2dd35085859cc7a67042f21e305a9bb7378d5634aa6325895ca"
     },
     {
       "path": "steps/028_checkout_immutability.sql",
@@ -126,7 +126,7 @@
     },
     {
       "path": "steps/030_application_relations.sql",
-      "sha256": "88b4cfc4c0b81baeb766e413097d0726f608dddb3a4e40ce1437112cbdcd220c"
+      "sha256": "ea5110ae94fa8d5d5e83940d797842993f2475ccef219800116c6321e94767e8"
     },
     {
       "path": "steps/031_stock_idempotency.sql",
@@ -134,11 +134,11 @@
     },
     {
       "path": "steps/032_cash_drawer_request.sql",
-      "sha256": "a33f81e7a12affe402315d4ad60723c152940337de04c98247caead6823e4ab0"
+      "sha256": "033efb622b8b18739883f70611e7c2774ff1bef75543df2be7105a8eb55ae61a"
     },
     {
       "path": "steps/033_cash_drawer_result.sql",
-      "sha256": "f2ae222bfcfcaa4eb9062ae35962b5fdd01c0281ea2221f8006b6a4f5c31cfc1"
+      "sha256": "8130367b961f589d9d580465c3a4c9d4cadee0f9f79403de0d8938913b191c6e"
     },
     {
       "path": "steps/034_supervisor_audit.sql",
@@ -146,7 +146,7 @@
     },
     {
       "path": "steps/035_electronics.sql",
-      "sha256": "a7b1beb0350b1b6ad2f5c8fdf1c4e630ee626bce74bc25230bb5dfaeaee5ce8f"
+      "sha256": "54167233d8e6d613b8bef6d1dab526f3a255d3a608ac368b136aa3951e3e5262"
     },
     {
       "path": "steps/036_stock_loss_report.sql",
@@ -154,11 +154,11 @@
     },
     {
       "path": "steps/037_backup_combo_restore.sql",
-      "sha256": "a660541b25110e6dc281f56aeaf81ac2c6cb537bef6d74081bcbe4cd28a64130"
+      "sha256": "40d7a4e24a52622b473229d108e5faa01a2b29704c5c5e0a1425ad5e93667d32"
     },
     {
       "path": "steps/038_backup_compatible.sql",
-      "sha256": "212c00be2d021dc86eeae5b99b610b21038f94e6c00dcdba8c9aecddc0894cfb"
+      "sha256": "d27e7a1bb31f31f2de88fb189cd2e4860aba4445a5a9607b184e89e34af01bc9"
     },
     {
       "path": "steps/039_combo_backup_restore.sql",
@@ -174,11 +174,33 @@
     },
     {
       "path": "steps/042_post_import_triggers.sql",
-      "sha256": "ac08af97b86f62971c2bb86770a4529f0999bc2586c43eea3d43f66cdb22436a"
+      "sha256": "a44f97d0668e7d365eb01c3f46d8302c842652d9e2d998d510680035bd2893a7"
     },
     {
       "path": "900_final_security.sql",
-      "sha256": "db3adc68df0c6fdde45a2ca7320dda6bc1065f582e4b55876d7875e5be18f4d2"
+      "sha256": "a0874bdce915d7597f3012052453ae656ed9e7857185fb1b4fabf4f987fee57c"
     }
-  ]
+  ],
+  "optionalModules": {
+    "commercial": {
+      "installAfter": "900_final_security.sql",
+      "automaticInstall": false,
+      "incrementalPath": "../../supabase_fase_comercial_suscripciones.sql",
+      "incrementalSha256": "8aba324e8044e0de71dd5f8ea285c92417d4611dd990ea96f4625f5be1f22f4a",
+      "files": [
+        {
+          "path": "commercial/001_commercial_subscription.sql",
+          "sha256": "38b86f6f5ed974b92f880431111597fafc598bcfbb9026b6012094a7002d65fd"
+        },
+        {
+          "path": "commercial/002_commercial_write_gate.sql",
+          "sha256": "0011a874fb406a50223a25aabc47a21853a26012888fcdfcbe9619f7fde82fea"
+        },
+        {
+          "path": "commercial/003_commerce_provisioning.sql",
+          "sha256": "f42ccc45cd6078a59908a7b73d20c06f4552d4425e1038e8af0ab86bc7c8cc18"
+        }
+      ]
+    }
+  }
 }

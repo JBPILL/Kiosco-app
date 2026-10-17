@@ -1,0 +1,4 @@
+# Preserve SQL bytes already versioned in Git; avoid platform-dependent checksum drift.
+# No renormalization of existing SQL or historical documents.
+/supabase/bootstrap/**/*.sql -text
+/supabase_fase_comercial_suscripciones.sql -text

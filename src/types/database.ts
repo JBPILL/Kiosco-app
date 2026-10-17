@@ -382,6 +382,10 @@ export interface PagoSuscripcion {
   medio_pago: string | null
   comprobante: string | null
   notas: string | null
+  meses?: number | null
+  actor_usuario_id?: string | null
+  nombre_actor?: string | null
+  operacion_id?: string | null
 }
 
 export interface KioscoAdminView {

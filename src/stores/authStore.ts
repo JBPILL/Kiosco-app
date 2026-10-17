@@ -1,8 +1,19 @@
+import { administracionComercialHabilitada } from '../lib/commercialScope'
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import type { Usuario, Kiosco, Suscripcion } from '../types/database'
 import { kioskoPilotStrictScopeActivo } from '../lib/kioskPilotScope'
 
+async function consultarEstadoComercial(kiosco: Kiosco | null): Promise<Kiosco | null> {
+  if (!administracionComercialHabilitada() || !kiosco) return kiosco
+  try {
+    const { data, error } = await supabase.rpc('obtener_estado_operativo_comercial')
+    if (error || !data || !['ACTIVO','SOLO_LECTURA','SUSPENDIDO'].includes(data.estado)) {
+      return { ...kiosco, estado_suscripcion: 'SOLO_LECTURA' }
+    }
+    return { ...kiosco, estado_suscripcion: data.estado }
+  } catch { return { ...kiosco, estado_suscripcion: 'SOLO_LECTURA' } }
+}
 export function calcularDiasRestantes(fechaVencimientoStr?: string | null): number | null {
   if (!fechaVencimientoStr) return null
   const hoy = new Date()
@@ -128,9 +139,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           .eq('id', usuario.kiosco_id)
           .maybeSingle()
 
-        kioscoData = (kData as Kiosco) || null
+        kioscoData = await consultarEstadoComercial((kData as Kiosco) || null)
 
-        if (!modoEstricto) {
+        if (!modoEstricto && !administracionComercialHabilitada()) {
           // 4. Traer suscripción más reciente (solo fuera del alcance estricto)
           const { data: sData } = await supabase
             .from('suscripciones')
@@ -266,9 +277,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           .eq('id', usuario.kiosco_id)
           .maybeSingle()
 
-        kioscoData = (kData as Kiosco) || null
+        kioscoData = await consultarEstadoComercial((kData as Kiosco) || null)
 
-        if (!modoEstricto) {
+        if (!modoEstricto && !administracionComercialHabilitada()) {
           const { data: sData } = await supabase
             .from('suscripciones')
             .select('*, plan:planes(*)')
@@ -308,7 +319,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       let subData: Suscripcion | null = null
       let dias: number | null = null
-      if (!modoEstricto) {
+      if (!modoEstricto && !administracionComercialHabilitada()) {
         const { data: sData } = await supabase
           .from('suscripciones')
           .select('*, plan:planes(*)')
@@ -322,7 +333,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       set({
-        kiosco: (kData as Kiosco) || null,
+        kiosco: await consultarEstadoComercial((kData as Kiosco) || null),
         suscripcion: subData,
         diasRestantes: dias,
       })

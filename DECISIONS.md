@@ -1,5 +1,38 @@
 Este documento registra decisiones arquitectónicas o de dominio que sean no triviales, junto con su contexto y justificación.
 
+## Límite de administración comercial (16/10/2026)
+
+Se agrega una capacidad VITE_ADMIN_COMERCIAL_HABILITADO independiente del strict
+pilot, false por defecto. Controla visibilidad, no privilegios ni instalación.
+La autorización real pertenece a RPCs/Edge con perfil activo de DB; se eliminan
+escrituras privilegiadas browser-side y el alta de Dueño mediante signUp.
+
+El módulo SQL es una extensión incremental y canónica opcional instalada después
+del baseline endurecido; sus checksums se verifican en optionalModules del manifest.
+No se cambia la ventana F6 ni se insertan tablas comerciales en un import/cutover
+histórico automáticamente. Para datos existentes se exige preflight y resolución
+de suscripciones ambiguas; no se inventan planes ni coberturas. Esto evita reinterpretar
+el historial migratorio y permite instalar comercial sin habilitar módulos excluidos.
+
+La fuente de autoridad es el estado efectivo calculado en DB: suspensión administrativa
+domina; falta de suscripción o vencimiento implica SOLO_LECTURA; renovación válida
+reactiva sólo si no hay suspensión manual. Vencimiento inclusivo en fecha argentina,
+sin gracia; meses calendario 1..12. Triggers con lock del kiosco protegen escrituras
+de venta, stock, caja y crédito incluso desde SECURITY DEFINER. Login, consultas,
+soporte y exportación de backups mantienen su alcance. El replay sin nueva mutación
+recupera resultado cuando el contrato original lo permite; no se usa un rollback
+del frontend como sustituto de autorización.
+
+Se usa un libro privado equivalente a operaciones_escritura que admite operaciones
+globales sin tenant (planes/config). Cada UUID queda ligado a actor, tipo, tenant,
+solicitud y resultado; renovación/pago/auditoría son atómicos. No se guardan passwords
+en navegador ni en el libro. Provision-commerce reserva antes de Auth Admin, finaliza
+datos en una transacción y reclama compensación bajo lock sólo ante rollback inequívoco.
+Incertidumbre o compensación fallida requiere conciliación/TAINTED, sin borrado ni
+retry destructivo automático. Funciones de saga sólo service_role; RPCs de usuario
+sólo authenticated con verificación interna. Ninguna de estas decisiones instala
+la extensión ni autoriza deploy/SQL remoto.
+
 ## Checkout transaccional
 
 ### Decisión
