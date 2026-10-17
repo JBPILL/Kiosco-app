@@ -67,6 +67,7 @@ async function abrirVentasDiarias() {
 const cajaOriginal = useCajaStore.getState().registrarMovimientoCaja
 
 beforeEach(() => {
+  vi.unstubAllEnvs()
   localStorage.clear()
   resetDb()
   rpc.mockReset()
@@ -84,6 +85,16 @@ beforeEach(() => {
 })
 
 describe('ReportesPage: resumen diario', () => {
+  it('carga la venta confirmada en piloto estricto sin solicitar columnas fiscales ausentes', async () => {
+    vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'true')
+    responder('ventas.select', { data: [venta({ id: 'v-confirmada', total: 5350 })], error: null })
+    await abrirVentasDiarias()
+    const seleccion = llamadasA('ventas', 'select')[0].filtros.find(([nombre]) => nombre === 'select')?.[1]
+    expect(String(seleccion)).not.toContain('afip_')
+    expect(String(seleccion)).toContain('pagos:pagos_venta(medio_pago, monto)')
+    expect(screen.getAllByText(formatPrecio(5350)).length).toBeGreaterThan(0)
+    expect(toast.error).not.toHaveBeenCalled()
+  })
   it('permite al dueño abrir bajas de inventario', () => {
     render(<MemoryRouter><ReportesPage /></MemoryRouter>)
     fireEvent.click(screen.getByRole('button', { name: 'Bajas de Inventario' }))

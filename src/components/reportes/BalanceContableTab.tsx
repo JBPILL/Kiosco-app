@@ -1,3 +1,4 @@
+import { camposFiscalesReporteVenta } from '../../lib/salesReportProjection'
 import { RefreshButton } from '../ui/RefreshButton'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
@@ -153,7 +154,7 @@ export function BalanceContableTab() {
         .from('ventas')
         .select(`
           id, fecha_hora, total, estado, notas,
-          afip_cae, afip_vto_cae, afip_tipo_comprobante, afip_nro_comprobante, afip_qr_url,
+          ${camposFiscalesReporteVenta()}
           usuario:usuarios!usuario_id(nombre),
           pagos:pagos_venta(medio_pago, monto),
           detalles:detalles_venta(cantidad, precio_unitario, subtotal, producto_id, sin_envase, es_devolucion_envase, producto:productos(id, descripcion, precio_venta))
@@ -194,7 +195,7 @@ export function BalanceContableTab() {
           *,
           venta:ventas(
             id, fecha_hora, total, estado, notas,
-            afip_cae, afip_vto_cae, afip_tipo_comprobante, afip_nro_comprobante, afip_qr_url,
+            ${camposFiscalesReporteVenta()}
             usuario:usuarios!usuario_id(nombre),
             pagos:pagos_venta(medio_pago, monto),
             detalles:detalles_venta(cantidad, precio_unitario, subtotal, producto_id, sin_envase, es_devolucion_envase, producto:productos(id, descripcion, precio_venta))

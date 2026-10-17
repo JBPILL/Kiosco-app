@@ -1,3 +1,4 @@
+import { camposFiscalesReporteVenta } from '../lib/salesReportProjection'
 import { moduleTabsClassName, moduleTabClassName, moduleTabActiveClassName, moduleTabInactiveClassName } from '../components/ui/moduleTabStyles'
 import { IndicatorCard } from '../components/ui/IndicatorCard'
 import { RefreshButton } from '../components/ui/RefreshButton'
@@ -85,7 +86,7 @@ export function ReportesPage() {
       .from('ventas')
       .select(`
         id, fecha_hora, total, estado, notas, sesion_caja_id,
-        afip_cae, afip_vto_cae, afip_tipo_comprobante, afip_nro_comprobante, afip_qr_url,
+        ${camposFiscalesReporteVenta()}
         usuario:usuarios!usuario_id(nombre),
         pagos:pagos_venta(medio_pago, monto),
         detalles:detalles_venta(cantidad, precio_unitario, subtotal, producto_id, sin_envase, es_devolucion_envase, producto:productos(${productoResumenSelect}))

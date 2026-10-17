@@ -104,3 +104,33 @@ cambiar sus reglas nativas. Probar reemplazo, decimales, blur y no guardar por f
 - Publicación por push normal a master; PR #1 continúa sin merge.
 - Aceptación física de cámara compartida pendiente tras desplegar; impresora
   no disponible. Los tests y build no reemplazan esa confirmación.
+
+
+## Distancia de lectura iPhone — evidencia y plan
+Usuario confirma cero editable PASS. Capturas demuestran visor nuevo; luego logra
+leer tres productos pero sólo muy cerca. html5-qrcode reduce el recorte nativo al
+ancho CSS antes de ZXing (foreverScan); la vista iOS también limitaba su canvas al
+ancho CSS. Los PNG comprimidos del usuario no se decodificaron en el ensayo
+local; no se afirma que prueben por sí solos la solución. Añadir lectura local
+auxiliar iOS sobre los mismos píxeles visibles con detalle nativo (máximo 1280px),
+sin ampliar artificialmente, a dos intentos/s y sin solapar decodificaciones.
+Pedir resolución HD ideal, respetando deviceId elegido y fallback. Reutilizar
+ZXing incluido, sin dependencias nuevas; mantener lector normal y controles de
+comercio/ticket. Probar un EAN sintético real que pasa nativo y falla reducido,
+resolución/crop, cierre/resultado tardío y cadencia. No almacenar ni enviar frames.
+Validar suite/build, push normal master, Vercel y nueva aceptación de distancia.
+
+## Incidente de Reportes — venta confirmada
+Se prioriza el error informado durante el ensayo. Lectura con JWT de Dueño en
+Production confirma $5350 EFECTIVO COMPLETADA a las 15:17:53 Argentina. Ambas
+consultas de Reportes fallaban 42703 por ventas.afip_cae, ausente en piloto
+estricto. Omitir únicamente campos fiscales bajo ese flag, preservando el modo
+completo y la proyección anidada de devoluciones. Las consultas corregidas ya
+recuperan la venta en lectura real. Sin reenvío de checkout ni escrituras remotas.
+Evidencia: docs/reportes-venta-confirmada-2026-10-17.md. Dirigidos 26 PASS;
+suite final conjunta cámara/Reportes 1860 PASS / 1 skipped / 196 archivos,
+261,09 s. Build PASS, 610 módulos. Audit 0 vulnerabilidades. Diff de trabajo e
+índice PASS, mismos 44 candidatos conocidos del secret scan sin nuevos secretos.
+Se publican commits temáticos por push normal a master; verificación Vercel
+posterior pendiente. Aceptación física de distancia y ensayo de impresora siguen
+pendientes; usuario no tiene impresora disponible. PR #1 se conserva sin merge.
