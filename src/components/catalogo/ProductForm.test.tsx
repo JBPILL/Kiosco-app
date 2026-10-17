@@ -72,3 +72,17 @@ it('cerrar el formulario cierra la cámara y reabrirlo no la inicia por sorpresa
   expect(screen.queryByRole('button', { name: 'Lectura óptica de ensayo' })).toBeNull()
   expect(guardar).not.toHaveBeenCalled()
 })
+
+
+it('stock cero queda listo para reemplazar al enfocar sin guardar ni alterar otras cantidades', () => {
+  const guardar = vi.fn()
+  render(<ProductForm isOpen categorias={[]} onClose={vi.fn()} onGuardar={guardar} />)
+  const stock = screen.getByDisplayValue('0') as HTMLInputElement
+  fireEvent.focus(stock)
+  expect(stock.value).toBe('')
+  fireEvent.change(stock, { target: { value: '12' } })
+  fireEvent.blur(stock)
+  expect(stock.value).toBe('12')
+  expect(screen.getByDisplayValue('5')).toBeTruthy()
+  expect(guardar).not.toHaveBeenCalled()
+})

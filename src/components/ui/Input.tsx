@@ -1,4 +1,4 @@
-import { forwardRef } from 'react'
+import { forwardRef, useState } from 'react'
 import type { InputHTMLAttributes } from 'react'
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -8,7 +8,9 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, icon, className = '', ...props }, ref) => {
+  ({ label, error, icon, className = '', onFocus, onBlur, onChange, ...props }, ref) => {
+    const [ocultarCero, setOcultarCero] = useState(false)
+    const esCero = props.value === 0 || props.value === '0'
     return (
       <div className="w-full">
         {label && (
@@ -35,6 +37,23 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
               ${className}
             `}
             {...props}
+            value={ocultarCero && esCero ? '' : props.value}
+            placeholder={ocultarCero && esCero ? undefined : props.placeholder}
+            onFocus={event => {
+              // Keep the model intact; only hide an optional, valid numeric zero.
+              setOcultarCero(props.type === 'number' && esCero && !!onChange
+                && !props.required && !props.readOnly && !props.disabled && event.currentTarget.validity.valid)
+              onFocus?.(event)
+            }}
+            onChange={event => {
+              setOcultarCero(false)
+              onChange?.(event)
+            }}
+            onBlur={event => {
+              if (ocultarCero && esCero) event.currentTarget.value = String(props.value)
+              setOcultarCero(false)
+              onBlur?.(event)
+            }}
           />
         </div>
         {error && (
