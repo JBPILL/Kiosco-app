@@ -41,3 +41,5 @@ en la rama de compatibilidad del bundle, pero no se solicita bajo ese guard.
 La comprobación remota con JWT descrita arriba confirma la venta recuperada.
 No había pestaña autenticada disponible para comprobar la pantalla abierta del
 usuario; su página anterior necesita recarga. PR #1 continúa abierto sin merge.
+
+Aceptación posterior: el usuario recargó y confirmó que la venta aparece.

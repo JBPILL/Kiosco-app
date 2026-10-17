@@ -160,3 +160,7 @@ Validación final conjunta con la corrección de Reportes: 1860 PASS / 1 skipped
 con Reportes a4438de; ambos checks Vercel success. Asset auxiliar HD público HTTP
 200. Audit 0 vulnerabilidades, mismos candidatos sintéticos del escaneo sin nuevos
 secretos. Impresora no disponible; nuevo ensayo físico de distancia pendiente.
+
+Aceptación posterior del usuario: confirma que Reportes muestra la venta y que
+los códigos se leen mejor sin acercarlos tanto. Se cierra el ensayo de distancia
+en su iPhone/Brave; la impresión física sigue pendiente por falta de impresora.

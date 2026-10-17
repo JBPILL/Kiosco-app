@@ -133,6 +133,7 @@ suite final conjunta cámara/Reportes 1860 PASS / 1 skipped / 196 archivos,
 índice PASS, mismos 44 candidatos conocidos del secret scan sin nuevos secretos.
 Commits c1bb52d (cámara) y a4438de (Reportes) publicados por push normal a master;
 ambos checks Vercel success. Dominio público sirve index-CrUwLKIA.js, lector HD
-HTTP 200 y guard estricto activo en las tres proyecciones corregidas. Aceptación
-física de distancia y ensayo de impresora siguen
-pendientes; usuario no tiene impresora disponible. PR #1 se conserva sin merge.
+HTTP 200 y guard estricto activo en las tres proyecciones corregidas. El usuario
+confirmó después que la venta aparece y que la cámara lee mejor sin acercar tanto
+los productos. Ambos ensayos quedan aceptados. Impresión sigue pendiente porque
+no tiene impresora disponible. PR #1 se conserva sin merge.
