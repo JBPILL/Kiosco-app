@@ -110,14 +110,22 @@ optimista ni fila oculta en planes.
 - [x] Enforcement de estados y pruebas directas backend.
 - [x] Provisioning seguro y pruebas.
 - [x] Stores/UI/feature flag y pruebas.
-- [ ] Validación completa y publicación.
+- [x] Validación completa y push normal de rama independiente.
+- [ ] PR y aceptación hospedada autorizada.
 
 ## Resultado final
-Implementación terminada; publicación y suite final pendientes de cierre.
+Implementación terminada y rama publicada. PR pendiente de creación.
 Tests dirigidos: 87 PASS / 8 archivos. Build: PASS / 608 módulos.
 Manifest: PASS, 43 SQL base sin cambios de fuente y módulo opcional separado.
 Primer suite: 1829 PASS, 1 skipped, un timeout de 5s en preflight SQL.
 Se repite con maxWorkers=2 sin modificar el test; el resultado previo no es PASS.
+Repetición final 17/10/2026: 1830 PASS / 1 skipped / 191 archivos, 301,32 s.
+Diff e índice: PASS. Secret scan: 44 candidatos de fixtures/ejemplos,
+sin credenciales reales detectadas; excluye binarios e historial.
+El usuario autorizó continuar integración/activación, primero Staging y luego
+Production si pasan los gates. PR #1 conserva su restricción de no merge.
+Pendiente localizar las CLI autenticadas indicadas por el usuario y verificar
+destinos, backup y acceso de prueba antes de cualquier escritura remota.
 xlsx: una dependencia HIGH con dos avisos, sin fix automático; no audit fix.
 La aceptación hospedada, concurrencia PostgreSQL real, Auth Admin/PostgREST y
 activación de flags se harán en Staging autorizado antes de Production autorizado.
