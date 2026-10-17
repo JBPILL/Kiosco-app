@@ -1,6 +1,13 @@
 import type { SVGProps } from 'react'
 
 const paths = {
+  CreditCard: 'M3 4h18v16H3V4ZM3 9h18M7 15h3',
+  CalendarDays: 'M3 5h18v16H3V5ZM7 2v6M17 2v6M3 10h18M7 14h.01M12 14h.01M17 14h.01M7 17h.01M12 17h.01',
+  Clock3: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM12 7v5h4',
+  ReceiptText: 'M4 3l2 1 2-1 2 1 2-1 2 1 2-1 2 1 2-1v18l-2-1-2 1-2-1-2 1-2-1-2 1-2-1-2 1V3ZM8 8h8M8 12h8M8 16h4',
+  RefreshCw: 'M20 7a9 9 0 0 0-15-2L2 8M2 3v5h5M4 17a9 9 0 0 0 15 2l3-3M22 21v-5h-5',
+  ArrowUpRight: 'M7 17 17 7M7 7h10v10',
+  Wallet: 'M20 8V4H4a2 2 0 0 0 0 4h18v12H4a2 2 0 0 1-2-2V6M22 12h-5v4h5',
   Store: 'M3 10h18M4 10v11h16V10M2 10l3-7h14l3 7M9 21v-7h6v7',
   Printer: 'M6 9V3h12v6M6 18H3V9h18v9h-3M6 14h12v7H6v-7M17 11h.01',
   Palette: 'M12 3a9 9 0 1 0 0 18h2a2 2 0 0 0 0-4h-1a2 2 0 0 1 0-4h4a4 4 0 0 0 4-4c0-4-5-6-9-6ZM7 8h.01M12 6h.01M17 8h.01M5 13h.01',
@@ -42,3 +49,10 @@ export const Percent = icon('Percent')
 export const History = icon('History')
 export const Inbox = icon('Inbox')
 export const EyeOff = icon('EyeOff')
+export const CreditCard = icon('CreditCard')
+export const CalendarDays = icon('CalendarDays')
+export const Clock3 = icon('Clock3')
+export const ReceiptText = icon('ReceiptText')
+export const RefreshCw = icon('RefreshCw')
+export const ArrowUpRight = icon('ArrowUpRight')
+export const Wallet = icon('Wallet')

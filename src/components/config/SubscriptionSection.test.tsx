@@ -30,11 +30,28 @@ it('strict true + comercial true muestra plan real, incluso precio cero, sin acc
   expect(screen.queryByRole('button', { name: /renovar|cambiar plan|registrar pago/i })).toBeNull()
   expect(mocks.rpc).toHaveBeenCalledWith('obtener_mi_suscripcion_comercial')
 })
-it.each(['SOLO_LECTURA', 'SUSPENDIDO'])('explica estado %s sin permitir mutaciones', async estado => {
+it.each([['SOLO_LECTURA', 'Solo lectura'], ['SUSPENDIDO', 'Suspendido']])('explica estado %s sin permitir mutaciones', async (estado, label) => {
   mocks.rpc.mockResolvedValue({ data: { ...snapshot, estado }, error: null })
   render(<SubscriptionSection />)
-  await screen.findByText(estado)
+  await screen.findByText(label)
   expect(screen.getByRole('status')).toBeTruthy()
+})
+it('presenta fechas DATE del comercio sin restar un día por la zona horaria', async () => {
+  mocks.rpc.mockResolvedValue({ data: { ...snapshot, dias_restantes: 31,
+    suscripcion: { ...snapshot.suscripcion, fecha_inicio: '2026-10-17', fecha_vencimiento: '2026-11-17' } }, error: null })
+  render(<SubscriptionSection />)
+  expect(await screen.findByText('17/10/2026')).toBeTruthy()
+  expect(screen.getByText('17/11/2026')).toBeTruthy()
+  expect(screen.queryByText('16/10/2026')).toBeNull()
+})
+it('muestra un pago confirmado de importe cero sin inventar un monto ni notas internas', async () => {
+  mocks.rpc.mockResolvedValue({ data: { ...snapshot, pagos: [{ id: 'pay1', suscripcion_id: 's1', monto: 0,
+    fecha_pago: '2026-10-17T15:00:00Z', medio_pago: 'OTRO', meses: 1 }] }, error: null })
+  render(<SubscriptionSection />)
+  const table = await screen.findByRole('table', { name: 'Pagos confirmados de tu suscripción' })
+  expect(table.textContent).toContain('OTRO')
+  expect(table.textContent).toMatch(/\$\s*0/)
+  expect(screen.queryByText('No hay pagos registrados.')).toBeNull()
 })
 it('sin suscripción no inventa plan, precio ni vigencia', async () => {
   mocks.rpc.mockResolvedValue({ data: { ...snapshot, suscripcion: null, dias_restantes: null }, error: null })
