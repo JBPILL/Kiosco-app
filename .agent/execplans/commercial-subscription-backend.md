@@ -50,6 +50,10 @@ Medios de pago manuales TRANSFERENCIA/MERCADOPAGO/EFECTIVO/OTRO; no integración
 Extensión SQL incremental independiente, reutilizada como módulo canónico opcional
 después del bootstrap endurecido. No alterar contratos/hashes históricos de importación
 F6 ni instalar automáticamente esta extensión durante un cutover existente.
+El checkout nuevo evidenció hashes heredados calculados sobre EOL del directorio
+de trabajo que no siempre coinciden con los blobs Git. El manifest actual se
+regenera desde los bytes ya versionados y se fija -text sólo para SQL; no cambia
+ninguna definición SQL base ni se reescriben evidencias/hashes históricos en docs.
 Manifest raíz incluye y verifica los checksums opcionales; instalación es gate separado.
 
 RPCs SECURITY DEFINER con search_path=pg_catalog,public, actor interno, ACL cerradas
@@ -102,13 +106,18 @@ optimista ni fila oculta en planes.
 ## Progreso
 - [x] Base/PR #1, guías, flujos existentes y límite comercial inspeccionados.
 - [x] Modelo documentado antes del código.
-- [ ] SQL/RLS/RPCs/auditoría y tests.
-- [ ] Enforcement de estados y pruebas directas backend.
-- [ ] Provisioning seguro y pruebas.
-- [ ] Stores/UI/feature flag y pruebas.
+- [x] SQL/RLS/RPCs/auditoría y tests.
+- [x] Enforcement de estados y pruebas directas backend.
+- [x] Provisioning seguro y pruebas.
+- [x] Stores/UI/feature flag y pruebas.
 - [ ] Validación completa y publicación.
 
 ## Resultado final
-En implementación. xlsx es riesgo preexistente separado; no audit fix.
+Implementación terminada; publicación y suite final pendientes de cierre.
+Tests dirigidos: 87 PASS / 8 archivos. Build: PASS / 608 módulos.
+Manifest: PASS, 43 SQL base sin cambios de fuente y módulo opcional separado.
+Primer suite: 1829 PASS, 1 skipped, un timeout de 5s en preflight SQL.
+Se repite con maxWorkers=2 sin modificar el test; el resultado previo no es PASS.
+xlsx: una dependencia HIGH con dos avisos, sin fix automático; no audit fix.
 La aceptación hospedada, concurrencia PostgreSQL real, Auth Admin/PostgREST y
 activación de flags se harán en Staging autorizado antes de Production autorizado.

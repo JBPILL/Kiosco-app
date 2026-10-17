@@ -141,3 +141,15 @@ Para una instalación manual de validación distinta de C2, aplicar cada archivo
 Validación local disponible: `src/test/kioskoBootstrapSql.test.ts` ejecuta el orden completo con PGlite, verifica relaciones/RLS, ACL seleccionadas y pre/postflight. **No sustituye Supabase/PostgreSQL real**; ownership, concurrencia, comportamiento Auth, Realtime, Edge Function y seguridad efectiva siguen pendientes en una instancia desechable autorizada.
 
 El baseline incluye `platform_initial_admin_bootstrap_state` como tabla destino-only vacía, clasificada en `data-migration.json.reinitialize`. La seguridad final habilita RLS y revoca incluso el acceso de `service_role` a esa tabla; sólo el operador conectado como `postgres` puede gestionar su estado. Tras el bootstrap zero-row, `scripts/f6-3b-initial-platform-admin.mjs` prepara en un rehearsal local el SuperAdmin global (`rol=VISOR`, `es_superadmin=true`, kiosco NULL) y el primer Dueño. No ejecutar el runner contra un proyecto hosted sin un gate posterior explícito.
+
+### Módulo comercial opcional
+
+`manifest.json.optionalModules.commercial` declara tres archivos posteriores a 900,
+con instalación automática deshabilitada y checksum del incremental combinado.
+No modifica la ventana de importación F6. Para una base existente usar únicamente
+`supabase_fase_comercial_suscripciones.sql`; para una instalación nueva completar
+el baseline y luego los módulos opcionales en orden. No ejecutar ambas rutas.
+La fuente SQL base permanece intacta; los checksums actuales usan los bytes de Git
+preservados por .gitattributes. La guía de autorización, backup, instalación en
+Staging, validación JWT y posterior Production está en
+[Administración comercial](../../docs/commercial-subscription-backend.md).
