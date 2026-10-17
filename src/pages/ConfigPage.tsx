@@ -1550,7 +1550,7 @@ export function ConfigPage() {
           )}
 
           {/* PESTAÑA: SUSCRIPCIÓN Y COBERTURA */}
-          {pestanaActiva === 'SUSCRIPCION' && <SubscriptionSection />}
+          {pestanaActiva === 'SUSCRIPCION' && <SubscriptionSection recargaTrigger={recargaSeguridad} />}
           {/* PESTAÑA: COPIAS DE SEGURIDAD Y PWA */}
           {pestanaActiva === 'BACKUP' && (
             <div className="space-y-6">

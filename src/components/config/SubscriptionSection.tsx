@@ -6,8 +6,7 @@ import type { PagoSuscripcion, Suscripcion } from '../../types/database'
 import type { ConfiguracionAdmin } from '../../stores/configAdminStore'
 import { formatearLinkWhatsApp } from '../../stores/configAdminStore'
 import { formatPrecio, formatFechaCorta } from '../../lib/utils'
-import { ArrowUpRight, CalendarDays, Clock3, CreditCard, ReceiptText, RefreshCw, ShieldCheck, Wallet } from './ConfigIcons'
-import { Button } from '../ui/Button'
+import { ArrowUpRight, CalendarDays, Clock3, CreditCard, ReceiptText, ShieldCheck, Wallet } from './ConfigIcons'
 
 interface Snapshot {
   suscripcion: Suscripcion | null
@@ -26,12 +25,11 @@ const estados = {
   SOLO_LECTURA: { label: 'Solo lectura', style: 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300' },
   SUSPENDIDO: { label: 'Suspendido', style: 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-300' },
 }
-export function SubscriptionSection() {
+export function SubscriptionSection({ recargaTrigger = 0 }: { recargaTrigger?: number }) {
   const { usuario } = useAuthStore()
   const enabled = administracionComercialHabilitada()
   const permitido = usuario?.activo === true && usuario.rol === 'DUEÑO' && !!usuario.kiosco_id
   const identity = `${usuario?.id}:${usuario?.auth_user_id}:${usuario?.kiosco_id}`
-  const [revision, setRevision] = useState(0)
   const [response, setResponse] = useState<{ identity: string; value: Snapshot } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -46,11 +44,11 @@ export function SubscriptionSection() {
         if (rpcError || !data || !['ACTIVO', 'SOLO_LECTURA', 'SUSPENDIDO'].includes(data.estado)
           || !Array.isArray(data.pagos) || !data.instrucciones) throw new Error('snapshot')
         if (vigente) setResponse({ identity, value: data as Snapshot })
-      } catch { if (vigente) setError('No se pudo consultar la suscripción. Reintentá o contactá administración.') }
+      } catch { if (vigente) setError('No se pudo consultar la suscripción. Usá el botón superior de actualizar o contactá administración.') }
       finally { if (vigente) setLoading(false) }
     })()
     return () => { vigente = false }
-  }, [enabled, permitido, identity, revision])
+  }, [enabled, permitido, identity, recargaTrigger])
   if (!enabled) return <section role="status"><h2>Administración comercial fuera del piloto</h2><p>La administración comercial y de suscripciones está fuera del alcance del piloto.</p></section>
   if (!permitido) return <section role="status">La información de suscripción está disponible únicamente para el Dueño.</section>
   const snapshot = response?.identity === identity ? response.value : null
@@ -71,9 +69,6 @@ export function SubscriptionSection() {
           <p className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">Tu plan, su vigencia y los pagos confirmados, en un solo lugar.</p>
         </div>
       </div>
-      <Button type="button" size="sm" variant="secondary" disabled={loading} onClick={() => setRevision(r => r + 1)} className="shrink-0 self-start sm:self-auto">
-        <RefreshCw size={15} aria-hidden="true" className={loading ? 'animate-spin motion-reduce:animate-none' : ''} />Actualizar suscripción
-      </Button>
     </header>
     {loading && <div className={`${card} p-6`}><p role="status" className="text-sm text-gray-500 dark:text-gray-400">Consultando suscripción...</p></div>}
     {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300">{error}</p>}

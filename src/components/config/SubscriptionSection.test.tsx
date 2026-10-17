@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { SubscriptionSection } from './SubscriptionSection'
 const mocks = vi.hoisted(() => ({ rpc: vi.fn(), user: { id: 'owner', auth_user_id: 'a1', kiosco_id: 'k1', activo: true, rol: 'DUEÑO' } }))
@@ -65,11 +65,12 @@ it.each(['CAJERO', 'VISOR'])('%s no consulta datos comerciales sensibles', rol =
   render(<SubscriptionSection />)
   expect(mocks.rpc).not.toHaveBeenCalled()
 })
-it('un error es visible y permite reintentar', async () => {
+it('un error permite reintentar con la recarga general sin botón duplicado', async () => {
   mocks.rpc.mockResolvedValueOnce({ data: null, error: { message: 'denied' } })
-  render(<SubscriptionSection />)
+  const { rerender } = render(<SubscriptionSection recargaTrigger={0} />)
   await screen.findByRole('alert')
-  fireEvent.click(screen.getByRole('button', { name: 'Actualizar suscripción' }))
+  expect(screen.queryByRole('button', { name: 'Actualizar suscripción' })).toBeNull()
+  rerender(<SubscriptionSection recargaTrigger={1} />)
   await screen.findByText('Plan real')
 })
 it('descarta respuesta tardía al cambiar de comercio/operador', async () => {
