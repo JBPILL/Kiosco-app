@@ -38,7 +38,7 @@ de los cambios de producto inactivo del PR #1, que sigue abierto y sin merge. La
 | Equipo | Estado | Comprobación necesaria |
 |---|---|---|
 | Cámara POS | El usuario confirma lectura en el mismo celular | Faltan registrar dispositivo/navegador y confirmar duplicados y liberación al cerrar. |
-| Cámara Crear producto | iPhone 17, Brave; el cuadro completo no resolvió el fallo | Se reutiliza el lector POS que sí lee; nuevo ensayo pendiente tras publicar. |
+| Cámara Crear producto | iPhone 17, Brave; tres productos capturados, pero sólo muy cerca | Lectura auxiliar con detalle nativo; pendiente ensayo de distancia tras publicar. |
 | Impresora | No disponible según usuario | Pendiente cuando esté conectada. Registrar modelo, conexión, navegador y formato. |
 
 Para completar cámara, registrar celular/SO/navegador, código de un producto
@@ -130,3 +130,27 @@ maxWorkers=2. Build PASS, 608 módulos. Diff de trabajo e índice PASS; escaneo 
 del alcance). No se cambiaron dependencias, secretos ni SQL en esta continuación.
 La publicación queda separada en commits de cámara, cantidades y documentación.
 El estado óptico de Crear producto sigue pendiente hasta el nuevo ensayo físico.
+
+
+## Captura lograda y distancia de lectura
+El usuario confirmó el cero editable y finalmente capturó tres productos con el
+lector compartido, pero debió acercarlos demasiado. Las capturas de pantalla
+comprimidas no pudieron decodificarse en el ensayo local y no se usan como prueba
+de corrección. Se verificó en el código de html5-qrcode que el canvas de lectura
+reduce el recorte del sensor al tamaño CSS; la vista iOS también reducía detalle.
+
+Se añade una lectura auxiliar iOS del canvas que muestra el visor, preservando
+píxeles nativos hasta un máximo de 1280 por dimensión, sin ampliar artificialmente.
+Se solicitan 1920x1080 como resolución ideal (no obligatoria), respetando cámara
+elegida y fallback. Usa el mismo ZXing incluido, sin dependencia nueva ni envío
+ni persistencia de imágenes. El lector normal continúa; sus guards de captura
+única y cooldown también reciben los resultados HD. Se oculta la guía del SDK
+cuando el lector HD está disponible porque ese recorte no coincide con la vista
+iOS; se restaura al cerrar. Máximo dos intentos/s, sin solaparse y sin callbacks
+después de cerrar o mientras la página está oculta.
+
+Prueba óptica reproducible con EAN-13 sintético: barras a dos píxeles nativos por
+módulo se leen en el frame 1280x720; la reducción Lanczos a 390x219 deja de ser
+legible. El adaptador aporta únicamente píxeles al canvas y ejecuta ZXing real.
+No se agregaron fotos del usuario al repositorio. Falta aceptación física de la
+mejora de distancia después de publicar; no se promete distancia fija por tests.

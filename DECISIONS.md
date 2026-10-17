@@ -69,3 +69,15 @@ publica sus correcciones. Cambiar a read-excel-file retiraría XLS, por lo que s
 descarta esa alternativa. Se valida con archivos binarios reales y audit, sin
 supresiones, audit fix ni scripts de instalación. El origen CDN queda como
 requisito de instalación reproducible y deberá revisarse en futuras actualizaciones.
+
+
+## Detalle del sensor en lectura de barras iOS
+Se conserva html5-qrcode como cámara y lector principal. Para evitar que el
+ancho CSS descarte barras finas se reutiliza ZXing ya incluido en 2.3.8 mediante
+un adaptador aislado, con carga diferida y canvas nativo acotado. No se agrega
+otro SDK ni se procesa en un servidor. La clase está en un submódulo de esa
+versión; una actualización del paquete debe pasar build y la prueba óptica real
+del adaptador, además de aceptación física. Se descartan ampliar artificialmente
+píxeles y nuevos cambios cosméticos del visor como sustituto de conservar detalle.
+La lectura auxiliar es limitada a dos intentos/s y respeta cierre y guards del
+lector compartido; los QR conservan la ruta principal.

@@ -1,3 +1,14 @@
+function esIOS(): boolean {
+  return typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
+}
+
+export function restriccionesVideoCamaraIOS(cameraId?: string): MediaTrackConstraints | undefined {
+  if (!esIOS()) return undefined
+  return { ...(cameraId ? { deviceId: { exact: cameraId } } : { facingMode: 'environment' }),
+    width: { ideal: 1920 }, height: { ideal: 1080 } }
+}
+
 export function cuadroEscaneoMovil(ancho: number, alto: number) {
   return { width: Math.max(1, Math.floor(Math.min(ancho * 0.88, 420))),
     height: Math.max(1, Math.floor(Math.min(alto * 0.65, 260))) }
@@ -34,12 +45,10 @@ export async function listarCamarasAutorizadas(): Promise<Array<{ id: string; la
  * el elemento <video> de html5-qrcode. Pintar sus frames en un canvas visible
  * evita ese fallo de composición sin interferir con el video que decodifica.
  */
-export function iniciarVistaCamaraIOS(contenedor: HTMLElement): () => void {
+export function iniciarVistaCamaraIOS(contenedor: HTMLElement, alDecodificar?: (codigo: string) => void): () => void {
   if (typeof navigator === 'undefined' || typeof document === 'undefined') return () => {}
-  const esIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
-    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
   const video = contenedor.querySelector('video')
-  if (!esIOS || !video) return () => {}
+  if (!esIOS() || !video) return () => {}
 
   const lienzo = document.createElement('canvas')
   lienzo.setAttribute('aria-hidden', 'true')
@@ -63,6 +72,17 @@ export function iniciarVistaCamaraIOS(contenedor: HTMLElement): () => void {
   let frameId = 0
   let activo = true
   let ultimoFrame = -Infinity
+  let ultimoIntentoHD = -Infinity
+  let decodificando = false
+  let decodificar: typeof import('./cameraFrameDecoder').decodificarFrameCamaraHD | undefined
+  let guia: HTMLElement | null = null
+  let visibilidadGuia = ''
+  if (alDecodificar) {
+    void import('./cameraFrameDecoder').then(modulo => {
+      if (!activo) return
+      decodificar = modulo.decodificarFrameCamaraHD
+    }).catch(() => { /* The regular scanner remains available. */ })
+  }
 
   const dibujar = (tiempo: number) => {
     if (!activo) return
@@ -77,15 +97,29 @@ export function iniciarVistaCamaraIOS(contenedor: HTMLElement): () => void {
       const altoFuente = alto / escala
       const xFuente = (video.videoWidth - anchoFuente) / 2
       const yFuente = (video.videoHeight - altoFuente) / 2
-      const ratio = Math.min(1, 640 / ancho)
-      const anchoLienzo = Math.round(ancho * ratio)
-      const altoLienzo = Math.round(alto * ratio)
+      // Preserve real sensor pixels, instead of shrinking to CSS viewport pixels.
+      const ratio = Math.min(1, 1280 / anchoFuente, 1280 / altoFuente)
+      const anchoLienzo = Math.max(1, Math.round(anchoFuente * ratio))
+      const altoLienzo = Math.max(1, Math.round(altoFuente * ratio))
       if (lienzo.width !== anchoLienzo || lienzo.height !== altoLienzo) {
         lienzo.width = anchoLienzo
         lienzo.height = altoLienzo
       }
       try {
+        if (decodificar && !guia) {
+          // The SDK may append its guide after start() has already resolved.
+          guia = contenedor.querySelector<HTMLElement>('#qr-shaded-region')
+          if (guia) { visibilidadGuia = guia.style.visibility; guia.style.visibility = 'hidden' }
+        }
         contexto.drawImage(video, xFuente, yFuente, anchoFuente, altoFuente, 0, 0, lienzo.width, lienzo.height)
+        if (alDecodificar && decodificar && !decodificando && tiempo - ultimoIntentoHD >= 500) {
+          ultimoIntentoHD = tiempo
+          decodificando = true
+          void decodificar(lienzo).then(codigo => {
+            if (activo && !document.hidden && codigo.trim()) alDecodificar(codigo)
+          }).catch(() => { /* No barcode in a frame is normal. */ })
+            .finally(() => { decodificando = false })
+        }
       } catch {
         // Mantener el video nativo visible debajo; un fallo aislado no corta el ciclo.
       }
@@ -97,5 +131,6 @@ export function iniciarVistaCamaraIOS(contenedor: HTMLElement): () => void {
     activo = false
     window.cancelAnimationFrame(frameId)
     lienzo.remove()
+    if (guia) guia.style.visibility = visibilidadGuia ?? ''
   }
 }

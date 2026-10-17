@@ -1,4 +1,4 @@
-import { cuadroEscaneoMovil, errorCamaraMovil, iniciarVistaCamaraIOS, listarCamarasAutorizadas, puedeReintentarCamara } from '../../lib/mobileCameraScanner'
+import { restriccionesVideoCamaraIOS, cuadroEscaneoMovil, errorCamaraMovil, iniciarVistaCamaraIOS, listarCamarasAutorizadas, puedeReintentarCamara } from '../../lib/mobileCameraScanner'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import { Modal } from '../ui/Modal'
@@ -231,6 +231,7 @@ export function BarcodeScannerModal({
       const scanConfig = {
         fps: 10,
         qrbox: cuadroEscaneoMovil,
+        videoConstraints: restriccionesVideoCamaraIOS(cameraId),
       }
 
       const targetCamera = cameraId ? cameraId : { facingMode: 'environment' }
@@ -266,7 +267,9 @@ export function BarcodeScannerModal({
         scanner.clear()
         return
       }
-      limpiarVistaCamaraRef.current = iniciarVistaCamaraIOS(el)
+      limpiarVistaCamaraRef.current = iniciarVistaCamaraIOS(el, codigo => {
+        if (scannerRef.current === scanner) void procesarCodigo(codigo)
+      })
       const activeDeviceId = scanner.getRunningTrackSettings().deviceId
       if (activeDeviceId) setCamaraActualId(activeDeviceId)
 
