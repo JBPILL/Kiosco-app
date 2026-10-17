@@ -38,13 +38,18 @@ it('no permite PIN no numérico ni confirmaciones diferentes', async () => {
   expect(mocks.configurar).not.toHaveBeenCalled()
 })
 
-it('limpia el PIN después de un error y no expone su mensaje remoto', async () => {
+it('ante error incierto limpia el PIN, oculta errores remotos y recupera estado con recarga general', async () => {
   mocks.configurar.mockRejectedValue(new Error('secreto remoto'))
-  render(<SupervisorPinSection />)
+  const { rerender } = render(<SupervisorPinSection />)
   await screen.findByText('Sin configurar')
   fireEvent.change(screen.getByLabelText('PIN de supervisor'), { target: { value: '1234' } })
   fireEvent.change(screen.getByLabelText('Repetir PIN de supervisor'), { target: { value: '1234' } })
   fireEvent.click(screen.getByRole('button', { name: 'Guardar PIN' }))
   await waitFor(() => expect((screen.getByLabelText('PIN de supervisor') as HTMLInputElement).value).toBe(''))
   expect(screen.queryByText('secreto remoto')).toBeNull()
+  expect(screen.getByText(/No se pudo confirmar el guardado del PIN/)).toBeTruthy()
+  mocks.consultar.mockResolvedValueOnce(true)
+  rerender(<SupervisorPinSection recargaTrigger={1} />)
+  await screen.findByText('Configurado')
+  expect(mocks.configurar).toHaveBeenCalledOnce()
 })

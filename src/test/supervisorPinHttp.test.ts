@@ -104,6 +104,33 @@ it('errores de secretos y SQL no exponen datos ni confirman configuración', asy
  expect(res.status).toBe(503); expect(await res.text()).not.toContain('SECRET')
  expect((await recibirSupervisorPin(request({ accion: 'ESTADO', extra: 'x'.repeat(200001) }),d)).status).toBe(400)
 })
+it('distingue configuración del servicio sin exponer sus valores ni intentar guardar', async () => {
+ const d = deps(); d.versionPepperActual = () => { throw new Error('INTERNAL_VALUE') }
+ const res = await recibirSupervisorPin(request({ accion: 'CONFIGURAR', pin: '0042', repetirPin: '0042' }), d)
+ expect(res.status).toBe(503)
+ expect(await res.json()).toEqual({ error: 'Servicio de PIN no disponible', codigo: 'PIN_CONFIGURACION_NO_DISPONIBLE' })
+ expect(d.configurar).not.toHaveBeenCalled()
+})
+it('estado no informa falsamente sin configurar si el servicio no tiene protección disponible', async () => {
+ const d = deps(); d.obtenerPepper = async () => { throw new Error('INTERNAL_VALUE') }
+ const res = await recibirSupervisorPin(request({ accion: 'ESTADO' }), d)
+ expect(res.status).toBe(503)
+ expect(await res.json()).toEqual({ error: 'Servicio de PIN no disponible', codigo: 'PIN_CONFIGURACION_NO_DISPONIBLE' })
+ expect(d.consultarEstado).not.toHaveBeenCalled()
+})
+it('distingue fallo criptográfico y no reduce el trabajo criptográfico ni guarda', async () => {
+ const d = deps(); d.obtenerPepper = async () => new Uint8Array(1)
+ const res = await recibirSupervisorPin(request({ accion: 'CONFIGURAR', pin: '0042', repetirPin: '0042' }), d)
+ expect(res.status).toBe(503)
+ expect(await res.json()).toEqual({ error: 'Servicio de PIN no disponible', codigo: 'PIN_PROTECCION_NO_DISPONIBLE' })
+ expect(d.configurar).not.toHaveBeenCalled()
+})
+it('guardado incierto no se informa como éxito y no devuelve mensajes internos', async () => {
+ const d = deps(); d.configurar = async () => { throw new Error('INTERNAL_VALUE') }
+ const res = await recibirSupervisorPin(request({ accion: 'CONFIGURAR', pin: '0042', repetirPin: '0042' }), d)
+ expect(res.status).toBe(503)
+ expect(await res.json()).toEqual({ error: 'No se pudo confirmar el guardado del PIN', codigo: 'PIN_GUARDADO_NO_CONFIRMADO' })
+})
 it('secretos versionados admiten rotación, devuelven copia y no usan valor predeterminado', async () => {
  const secretos = leerPepperSupervisor(JSON.stringify({ '1': 'ab'.repeat(32), '2': 'cd'.repeat(32) }), '2')
  expect(secretos.versionActual).toBe('2'); const p = await secretos.obtenerPepper('1'); p[0] = 0

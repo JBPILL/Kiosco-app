@@ -43,6 +43,9 @@ export async function recibirSupervisorPin(request: Request, deps: DependenciasH
   if (cuerpo.accion === 'ESTADO') {
     try { camposManual(cuerpo, ['accion']) }
     catch { return responder(400, { error: 'Solicitud inválida' }) }
+    // A boolean "not configured" is misleading when the service cannot protect a PIN.
+    try { await deps.obtenerPepper(deps.versionPepperActual()) }
+    catch { return responder(503, { error: 'Servicio de PIN no disponible', codigo: 'PIN_CONFIGURACION_NO_DISPONIBLE' }) }
     try {
       const configurado = await deps.consultarEstado(contexto.kiosco.id)
       if (typeof configurado !== 'boolean') throw new Error('Estado inválido')
@@ -55,13 +58,15 @@ export async function recibirSupervisorPin(request: Request, deps: DependenciasH
       camposManual(cuerpo, ['accion', 'pin', 'repetirPin'])
       if (!pinValido(cuerpo.pin) || cuerpo.pin !== cuerpo.repetirPin) throw new Error('PIN inválido')
     } catch { return responder(400, { error: 'Ingresá y repetí un PIN de 4 a 6 dígitos' }) }
-    try {
-      const version = deps.versionPepperActual()
-      const pepper = await deps.obtenerPepper(version)
-      const hash = await crearHashPinSupervisor(cuerpo.pin as string, contexto.kiosco.id, pepper, version)
-      await deps.configurar(contexto.authUserId, hash)
-      return responder(200, { estado: 'CONFIGURADO' })
-    } catch { return responder(503, { error: 'No se pudo guardar el PIN de supervisor' }) }
+    let version: string; let pepper: Uint8Array
+    try { version = deps.versionPepperActual(); pepper = await deps.obtenerPepper(version) }
+    catch { return responder(503, { error: 'Servicio de PIN no disponible', codigo: 'PIN_CONFIGURACION_NO_DISPONIBLE' }) }
+    let hash: HashPinSupervisor
+    try { hash = await crearHashPinSupervisor(cuerpo.pin as string, contexto.kiosco.id, pepper, version) }
+    catch { return responder(503, { error: 'Servicio de PIN no disponible', codigo: 'PIN_PROTECCION_NO_DISPONIBLE' }) }
+    try { await deps.configurar(contexto.authUserId, hash) }
+    catch { return responder(503, { error: 'No se pudo confirmar el guardado del PIN', codigo: 'PIN_GUARDADO_NO_CONFIRMADO' }) }
+    return responder(200, { estado: 'CONFIGURADO' })
   }
   if (cuerpo.accion === 'AUTORIZAR_DESCUENTO') {
     let entrada: EntradaCheckoutManual

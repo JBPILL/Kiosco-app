@@ -50,7 +50,7 @@ export function SupervisorPinSection({ recargaTrigger = 0 }: SupervisorPinSectio
         setMensaje('PIN de supervisor guardado')
       }
     } catch {
-      if (generacion.current === turno) setMensaje('No se pudo guardar el PIN. Revisá la conexión y repetí la operación.')
+      if (generacion.current === turno) setMensaje('No se pudo confirmar el guardado del PIN. Actualizá el estado con el botón superior antes de reintentar.')
     } finally {
       enviando.current = false
       if (generacion.current === turno) {
