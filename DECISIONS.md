@@ -59,3 +59,13 @@ La auditoría de esta fase verificó la cadena JWT → Edge Function → identid
 ### Evidencia y alcance
 
 El login/UI ya reconocían el SuperAdmin global sin kiosco, pero `001_domain.sql` lo impedía con `kiosco_id NOT NULL`. `auth_es_superadmin()` lee el flag del perfil en DB, no metadata del usuario. Las policies actuales permiten lectura global al SuperAdmin donde lo declaran explícitamente; no se amplía esa superficie. `provision-user` conserva sólo CAJERO/VISOR y perfiles con `es_superadmin=false`. El rehearsal real sobre Supabase local terminó PASS el 14/10/2026, incluidos Auth/GoTrue, login, RLS, separación de privilegios y checkout; ese resultado no valida Production hospedado. La validación hosted sigue diferida.
+
+## Distribución corregida de SheetJS para la importación de catálogos
+
+Se conserva SheetJS CE y la API de importación XLS/XLSX, actualizando desde npm
+0.18.5 al tarball oficial 0.20.3 fijado con integridad en el lockfile. Los dos
+avisos HIGH conocidos afectan versiones anteriores; el paquete npm antiguo no
+publica sus correcciones. Cambiar a read-excel-file retiraría XLS, por lo que se
+descarta esa alternativa. Se valida con archivos binarios reales y audit, sin
+supresiones, audit fix ni scripts de instalación. El origen CDN queda como
+requisito de instalación reproducible y deberá revisarse en futuras actualizaciones.
