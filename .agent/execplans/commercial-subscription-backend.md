@@ -101,7 +101,9 @@ optimista ni fila oculta en planes.
 5. Migrar stores/UI y capacidad independiente; tests de flags y permisos.
 6. Tests dirigidos, suite completa, build, manifest, diff/index, audit diagnóstico
    y secret scan sólo path:line:type. Commits temáticos, push normal y PR a master.
-7. Sin SQL remoto, deploy, merge ni cambios a .env.local.
+7. Límite inicial: sin SQL remoto, deploy, merge ni cambios a .env.local.
+   El usuario amplió después el alcance a instalación/activación Staging y
+   Production; no autorizó todavía merge automático. Ver evidencia del 17/10.
 
 ## Progreso
 - [x] Base/PR #1, guías, flujos existentes y límite comercial inspeccionados.
@@ -111,21 +113,35 @@ optimista ni fila oculta en planes.
 - [x] Provisioning seguro y pruebas.
 - [x] Stores/UI/feature flag y pruebas.
 - [x] Validación completa y push normal de rama independiente.
-- [ ] PR y aceptación hospedada autorizada.
+- [x] PR #2 abierto y aceptación hospedada autorizada.
+- [x] Backups privados de ambos destinos restaurados y planes exactos ensayados.
+- [x] Staging: upgrade atómico, identidad separada, $0/365 días, JWT por rol,
+      concurrencia, replay, aislamiento, gates y frontend activado.
+- [x] Production: módulo incremental, $30.000/mes y prueba inicial gratuita,
+      JWT/denegaciones, Edge exclusiva y publicación del frontend.
+- [ ] Integración de PR #2 a master: requiere autorización expresa de merge;
+      PR #1 sigue abierto y fuera de este bloque.
 
 ## Resultado final
-Implementación terminada y rama publicada. PR pendiente de creación.
-Tests dirigidos: 87 PASS / 8 archivos. Build: PASS / 608 módulos.
-Manifest: PASS, 43 SQL base sin cambios de fuente y módulo opcional separado.
-Primer suite: 1829 PASS, 1 skipped, un timeout de 5s en preflight SQL.
-Se repite con maxWorkers=2 sin modificar el test; el resultado previo no es PASS.
-Repetición final 17/10/2026: 1830 PASS / 1 skipped / 191 archivos, 301,32 s.
-Diff e índice: PASS. Secret scan: 44 candidatos de fixtures/ejemplos,
-sin credenciales reales detectadas; excluye binarios e historial.
-El usuario autorizó continuar integración/activación, primero Staging y luego
-Production si pasan los gates. PR #1 conserva su restricción de no merge.
-Pendiente localizar las CLI autenticadas indicadas por el usuario y verificar
-destinos, backup y acceso de prueba antes de cualquier escritura remota.
-xlsx: una dependencia HIGH con dos avisos, sin fix automático; no audit fix.
-La aceptación hospedada, concurrencia PostgreSQL real, Auth Admin/PostgREST y
-activación de flags se harán en Staging autorizado antes de Production autorizado.
+PR #2: https://github.com/JBPILL/Kiosco-app/pull/2. Rama publicada; código final
+f81d1b3, commits siguientes sólo documentan cierre. Suite final: 1834 PASS /
+1 skipped / 193 archivos, maxWorkers=2, 359,43 s. El timeout inicial de 5s
+se resolvió reduciendo concurrencia, sin modificar el test. Dirigidos: 87 PASS
+/ 8 archivos inicialmente y 38 PASS / 3 archivos de SQL/planes. Build: PASS,
+608 módulos. Manifest PASS: 43 SQL base intactos y módulo opcional separado.
+
+Instalación autorizada en ambos destinos, con backups/ensayos previos y planes
+auditados. Production: cobertura del comercio existente hasta 17/11/2026,
+plan mensual $30.000; nuevos clientes disponen de prueba inicial $0/30 días.
+No se registró pago recibido al inicializar cobertura. Flags comercial=true
+y strict pilot=true en ambos proyectos. Staging/Production sirven el frontend
+comercial. JWT reales y denegaciones PASS; Staging incluye SA/Dueño/Cajero/Visor,
+otro tenant, provisioning, replay y concurrencia. Production sólo lecturas y
+denegaciones sobre cuentas existentes, sin fixtures ni pagos de ensayo.
+
+Se agregó únicamente provision-commerce, verify_jwt=true. Versiones previas
+de las otras funciones conservadas; no deploy de provision-user. AFIP/WSFE,
+Point, devoluciones y envases fuera de alcance. Ensayo físico cámara/impresora
+pendiente. xlsx mantiene dos avisos HIGH sin fix; no audit fix.
+Detalle reproducible, límites del backup y evidencia:
+docs/commercial-subscription-activation-2026-10-17.md.
