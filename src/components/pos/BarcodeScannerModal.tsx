@@ -13,16 +13,23 @@ import toast from 'react-hot-toast'
 import { useAuthStore } from '../../stores/authStore'
 import { useCartStore } from '../../stores/cartStore'
 
-interface BarcodeScannerModalProps {
+interface CameraModalProps {
   isOpen: boolean
   onClose: () => void
-  onProductScanned: (producto: Producto) => void
+  title?: string
 }
+
+type BarcodeScannerModalProps = CameraModalProps & (
+  | { onProductScanned: (producto: Producto) => void; onBarcodeCaptured?: never }
+  | { onBarcodeCaptured: (barcode: string) => void; onProductScanned?: never }
+)
 
 export function BarcodeScannerModal({
   isOpen,
   onClose,
   onProductScanned,
+  onBarcodeCaptured,
+  title = 'Lector de cámara',
 }: BarcodeScannerModalProps) {
   const [iniciando, setIniciando] = useState(true)
   const [errorCamara, setErrorCamara] = useState<string | null>(null)
@@ -50,15 +57,19 @@ export function BarcodeScannerModal({
   const generacionRef = useRef(0)
   const consultasRef = useRef(new Set<string>())
 
+  const esCaptura = typeof onBarcodeCaptured === 'function'
+  const capturaCompletadaRef = useRef(false)
+  const onBarcodeCapturedRef = useRef(onBarcodeCaptured)
   const onProductScannedRef = useRef(onProductScanned)
   const onCloseRef = useRef(onClose)
   const modoContinuoRef = useRef(modoContinuo)
 
   useEffect(() => {
+    onBarcodeCapturedRef.current = onBarcodeCaptured
     onProductScannedRef.current = onProductScanned
     onCloseRef.current = onClose
     modoContinuoRef.current = modoContinuo
-  }, [onProductScanned, onClose, modoContinuo])
+  }, [onProductScanned, onBarcodeCaptured, onClose, modoContinuo])
 
   const elementId = 'barcode-scanner-viewport'
 
@@ -66,6 +77,15 @@ export function BarcodeScannerModal({
   const procesarCodigo = useCallback(async (rawCode: string) => {
     const code = rawCode.trim()
     if (!code || !abiertoRef.current || consultasRef.current.has(code)) return
+    // Catalog capture ends here: no product query, sale context or cart mutation.
+    if (onBarcodeCapturedRef.current) {
+      if (capturaCompletadaRef.current) return
+      capturaCompletadaRef.current = true
+      playScanSound('success')
+      onBarcodeCapturedRef.current(code)
+      onCloseRef.current()
+      return
+    }
     const contexto = useAuthStore.getState()
     if (!contexto.usuario?.activo || !contexto.kiosco?.id || contexto.usuario.kiosco_id !== contexto.kiosco.id) return
     const ticket = useCartStore.getState().tabActivaId
@@ -108,7 +128,7 @@ export function BarcodeScannerModal({
           exito: true,
         })
         toast.success(`${data.descripcion} agregado al ticket${sinConexion ? ' · catálogo guardado sin conexión' : ''}`)
-        onProductScannedRef.current(data)
+        onProductScannedRef.current?.(data)
 
         if (!modoContinuoRef.current) {
           onCloseRef.current()
@@ -328,6 +348,7 @@ export function BarcodeScannerModal({
   useEffect(() => {
     generacionRef.current++
     if (isOpen) {
+      capturaCompletadaRef.current = false
       const t = setTimeout(() => {
         iniciarEscaner()
       }, 150)
@@ -335,6 +356,7 @@ export function BarcodeScannerModal({
     } else {
       detenerEscaner()
       setUltimoEscaneo(null)
+      if (onBarcodeCapturedRef.current) setCodigoManual('')
     }
   }, [isOpen])
 
@@ -351,7 +373,7 @@ export function BarcodeScannerModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Lector de cámara"
+      title={title}
       size="md"
       zIndex="z-[60]"
     >
@@ -426,7 +448,7 @@ export function BarcodeScannerModal({
         {/* Opciones y entrada manual */}
         <div className="space-y-3 pt-1 border-t border-gray-200 dark:border-gray-700">
           {/* Toggle de Modo Continuo */}
-          <div className="flex items-center justify-between rounded-xl border border-gray-200 dark:border-gray-700 bg-slate-50 dark:bg-gray-900/40 px-3 py-2.5">
+          {!esCaptura && <div className="flex items-center justify-between rounded-xl border border-gray-200 dark:border-gray-700 bg-slate-50 dark:bg-gray-900/40 px-3 py-2.5">
             <label htmlFor="camara-modo-continuo" className="text-xs font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
               Escaneo continuo
             </label>
@@ -437,7 +459,7 @@ export function BarcodeScannerModal({
               onChange={(e) => setModoContinuo(e.target.checked)}
               className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 border-gray-300 dark:border-gray-600 dark:bg-gray-700"
             />
-          </div>
+          </div>}
 
           {/* Fallback de entrada manual */}
           <form onSubmit={handleBuscarManual} className="flex gap-2">
@@ -457,14 +479,14 @@ export function BarcodeScannerModal({
               disabled={!codigoManual.trim() || buscandoManual}
               className="flex-shrink-0 self-end mb-1"
             >
-              Agregar
+              {esCaptura ? 'Asignar' : 'Agregar'}
             </Button>
           </form>
         </div>
 
         <div className="pt-2">
           <Button variant="secondary" fullWidth onClick={onClose}>
-            Cerrar Escáner
+            {esCaptura ? 'Cancelar' : 'Cerrar Escáner'}
           </Button>
         </div>
       </div>

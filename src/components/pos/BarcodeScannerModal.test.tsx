@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { BarcodeScannerModal } from './BarcodeScannerModal'
+import { BarcodeCaptureModal } from '../ui/BarcodeCaptureModal'
 import { saveCachedProductos } from '../../lib/utils'
 import { crearProducto } from '../../test/factories'
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), cart: vi.fn(), buscar: vi.fn(), eq: vi.fn(), select: vi.fn() }))
@@ -51,4 +52,20 @@ it.each(['cerrado', 'operador', 'ticket'])('descarta respuesta tardía tras camb
   if (cambio === 'ticket') mocks.cart.mockReturnValue({ tabActivaId: 't2' })
   await act(async () => { resolver({ data: { id: 'p1', descripcion: 'Producto' }, error: null }) })
   expect(agregar).not.toHaveBeenCalled()
+})
+
+
+it('el lector compartido en captura asigna el texto sin consultar productos ni tocar el ticket', async () => {
+  const capturar = vi.fn(); const cerrar = vi.fn()
+  mocks.auth.mockReturnValue({})
+  render(<BarcodeCaptureModal isOpen onClose={cerrar} onBarcodeCaptured={capturar} />)
+  expect(screen.queryByRole('checkbox', { name: 'Escaneo continuo' })).toBeNull()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Código manual' }), { target: { value: '  0012345678905  ' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Asignar' }))
+  await waitFor(() => expect(capturar).toHaveBeenCalledExactlyOnceWith('0012345678905'))
+  expect(cerrar).toHaveBeenCalledOnce()
+  expect(mocks.auth).not.toHaveBeenCalled()
+  expect(mocks.cart).not.toHaveBeenCalled()
+  expect(mocks.select).not.toHaveBeenCalled()
+  expect(mocks.buscar).not.toHaveBeenCalled()
 })
