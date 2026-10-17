@@ -91,6 +91,32 @@ rollback automático. No desactivar strict pilot para habilitar lo comercial.
 
 ## Límites y riesgos abiertos
 
+### Compatibilidad del Staging pre-030 observado
+
+El preflight autorizado del 17/10 encontró 30 tablas públicas y los 15 triggers
+operativos previos; faltan los módulos 030–041, el estado bootstrap y el módulo
+comercial. No reinstalar el baseline one-shot ni el paso 042 sobre ese destino.
+`scripts/plan-commercial-staging-upgrade.mjs INPUT.json OUTPUT.sql` genera offline
+una transacción específica para ese ref y ese estado; no se conecta ni ejecuta.
+Valida los hashes canónicos, preserva datos/triggers existentes y agrega los
+módulos faltantes con la frontera final de seguridad. Rechaza Production y un
+esquema que ya fue actualizado. El alcance de usuarios queda como el baseline
+actual: sólo SuperAdmin global sin comercio; personal siempre con comercio.
+
+El input contiene projectRef, adminEmail, planName="Plan de prueba", price=0 y
+days=365. El correo debe existir confirmado en Auth y no tener perfil previo.
+No contiene contraseña ni tokens. La identidad fue creada por el usuario en
+Auth; la transacción crea sólo su perfil administrativo separado, conservando
+los perfiles operativos existentes. La cobertura inicial aprobada se registra
+en operaciones/auditoría sin inventar un pago. No usar este plan para Production;
+requiere inventario y decisión de cobertura propios.
+
+Antes de la ejecución se exportaron esquema y datos a una carpeta privada fuera
+del repositorio y se restauraron en PostgreSQL 17 local sin puertos publicados.
+El ensayo final sobre la copia real pasó: un SuperAdmin global, dos perfiles
+tenant preservados, plan $0 y cobertura 365 días. Los tests sintéticos reproducen
+también el NOT NULL heredado de usuarios.kiosco_id, rollback y rechazo de replay.
+
 Los planes se desactivan, no se borran. La eliminación destructiva de comercios
 queda fuera del flujo. Cambiar email Auth requiere un procedimiento separado;
 no basta editar el perfil. No se habilitan AFIP/WSFE, Point, devoluciones ni envases.
