@@ -35,7 +35,11 @@ de inicializar los secretos con guardas de cero PIN existentes. El Dueño config
 autenticada posterior confirmó configurado=true.
 El informe actualizado está en docs/supervisor-pin-peripheral-validation-2026-10-17.md.
 SheetJS CE 0.20.3 oficial conserva XLS/XLSX y audit reporta cero vulnerabilidades
-production. Impresora no disponible; ensayo físico sigue abierto.
+production. El ensayo del cuadro completo no resolvió la captura: el usuario
+usa iPhone 17 con Brave y confirma POS operativo. Ahora se comparte lector/visor
+POS en modo captura de texto sin producto/ticket. Se agrega edición cómoda del
+cero en cantidades opcionales, sin cambiar el modelo por foco. Impresora no
+disponible; aceptación física del nuevo lector pendiente tras publicación.
 
 ## Continuación 17/10/2026
 - Panel publicado en master e85b3d8; botón duplicado retirado en 2044cd0.
@@ -68,3 +72,35 @@ production. Impresora no disponible; ensayo físico sigue abierto.
 - Aceptación final de servicio: PIN real configurado por usuario y estado remoto
   true. Pendiente sólo repetición óptica de cámara Crear producto y ensayo de
   impresora, no disponible. PR #1 permanece abierto y sin merge.
+
+
+## Reapertura de cámara — ensayo del usuario
+El cambio del recorte no resolvió el fallo físico. Usuario: iPhone 17, Brave,
+imagen nítida/completa; POS lee sin cambiar cámara ni activar luz. No marcar
+captura de catálogo como aceptada. Reutilizar directamente lector/visor POS
+mediante modo de captura pura; retirar implementación duplicada. El modo captura
+debe devolver texto una sola vez y cerrar, sin consultar productos, contexto de
+venta ni carrito. Conservar el comportamiento de venta y controles del lector
+POS. Validar ambos modos, cierre/reapertura, callbacks tardíos, build y suite;
+push normal a master y nueva prueba física. Impresora continúa no disponible.
+
+
+## Ajuste adicional de cantidades autorizado
+El usuario solicita ocultar el cero por defecto al enfocar cantidades, como Stock
+actual de Crear producto. Input ocultará sólo un cero numérico controlado,
+opcional, editable y nativamente válido, sin llamar onChange ni alterar el modelo.
+Al abandonar sin escribir, reaparece cero; al escribir, se conserva el valor nuevo.
+No tocar códigos de texto, campos obligatorios ni valores ya inválidos para no
+cambiar sus reglas nativas. Probar reemplazo, decimales, blur y no guardar por foco.
+
+
+## Validación de lector compartido y cantidades
+- Dirigidos: 53 PASS / 5 archivos (POS, captura, ciclo de cámara, formulario e Input).
+- Suite final: 1853 PASS / 1 skipped / 194 archivos, maxWorkers=2, 260,03 s.
+- Build final PASS: 608 módulos; advertencia previa de chunks grandes.
+- Diff de trabajo e índice PASS. Secret scan: 1064 textos, 14 binarios omitidos,
+  mismos 44 candidatos conocidos, sin coincidencias nuevas; historial no escaneado.
+- Sin dependencias nuevas, SQL ni cambios a PIN/secretos. .env.local no tocado.
+- Publicación por push normal a master; PR #1 continúa sin merge.
+- Aceptación física de cámara compartida pendiente tras desplegar; impresora
+  no disponible. Los tests y build no reemplazan esa confirmación.

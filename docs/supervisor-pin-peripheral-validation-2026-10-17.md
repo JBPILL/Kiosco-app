@@ -38,7 +38,7 @@ de los cambios de producto inactivo del PR #1, que sigue abierto y sin merge. La
 | Equipo | Estado | Comprobación necesaria |
 |---|---|---|
 | Cámara POS | El usuario confirma lectura en el mismo celular | Faltan registrar dispositivo/navegador y confirmar duplicados y liberación al cerrar. |
-| Cámara Crear producto | Imagen visible pero no decodificaba, según usuario | Se habilita lectura del cuadro completo; requiere repetir ensayo en el celular tras publicar. |
+| Cámara Crear producto | iPhone 17, Brave; el cuadro completo no resolvió el fallo | Se reutiliza el lector POS que sí lee; nuevo ensayo pendiente tras publicar. |
 | Impresora | No disponible según usuario | Pendiente cuando esté conectada. Registrar modelo, conexión, navegador y formato. |
 
 Para completar cámara, registrar celular/SO/navegador, código de un producto
@@ -56,7 +56,7 @@ desconectar debe informar el fallo sin repetir ventas ni abrir el cajón.
 Consultar también `docs/despliegue-kiosco-windows.md`. Hasta entonces el ensayo
 físico de impresión permanece abierto, sin presumir compatibilidad por el build.
 
-## Ajuste de cámara de Crear producto
+## Primer ajuste de cámara de Crear producto (ensayo posterior fallido)
 
 El usuario confirmó imagen en vivo y lectura correcta desde la cámara POS del
 mismo celular. Ambos usan html5-qrcode; la captura de catálogo limitaba el área
@@ -95,3 +95,38 @@ kiosco-app-staging). HTTP público Production: página, entry y bundle XLSX 200;
 el bundle publicado identifica versión 0.20.3. Se pidió repetir el ensayo de
 cámara Crear producto en el mismo celular sobre esta versión publicada; el
 resultado todavía está pendiente. El PIN real permanece configurado y verificado.
+
+
+## Segundo ensayo de cámara y corrección posterior
+
+El usuario informó que el cuadro completo tampoco resolvió la lectura en Crear
+producto. Dispositivo: iPhone 17 con Brave; imagen nítida y completa; la cámara
+POS del mismo celular lee sin cambiar cámara ni activar luz. El primer ajuste
+no se considera una solución física validada.
+
+Se retira la implementación duplicada de BarcodeCaptureModal: pasa a usar el
+mismo BarcodeScannerModal, visor, configuración, selección de cámara y ciclo
+de vida de POS, con un contrato de captura excluyente respecto de venta. En ese
+modo se devuelve texto una sola vez y se cierra, antes de consultar identidad,
+productos o ticket. La captura no guarda producto ni agrega ítems al carrito.
+El cambio requiere un nuevo ensayo físico después de su publicación; la causa
+óptica exacta del fallo anterior no se afirmó como demostrada.
+
+
+## Cantidades con cero por defecto
+El usuario pidió poder escribir sobre el cero sin borrarlo primero. Input oculta
+el cero numérico opcional y válido mientras se enfoca, sin cambiar el modelo ni
+disparar onChange. Si no se escribe, el cero reaparece al salir. Si se escribe,
+el valor nuevo se conserva; el cero explícitamente ingresado se muestra. Stock
+actual del formulario queda cubierto. No se aplica a códigos de texto, lectura
+sola, obligatorios ni valores inválidos para preservar validación nativa.
+Se prueban strings/números, decimales, foco/blur, callbacks y no guardar por foco.
+
+
+Validación de la corrección posterior y cantidades: 53 tests dirigidos PASS en
+cinco archivos. Suite final: **1853 PASS / 1 skipped / 194 archivos**, 260,03 s,
+maxWorkers=2. Build PASS, 608 módulos. Diff de trabajo e índice PASS; escaneo de
+1064 textos conserva los 44 candidatos conocidos (14 binarios e historial fuera
+del alcance). No se cambiaron dependencias, secretos ni SQL en esta continuación.
+La publicación queda separada en commits de cámara, cantidades y documentación.
+El estado óptico de Crear producto sigue pendiente hasta el nuevo ensayo físico.
