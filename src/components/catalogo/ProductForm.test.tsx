@@ -9,7 +9,10 @@ vi.mock('../../hooks/useTenantConfig', () => ({ useTenantConfig: () => tenant })
 vi.mock('../../hooks/useBarcodeGun', () => ({ useBarcodeGun: () => undefined }))
 vi.mock('../../stores/envasesStore', () => ({ useEnvasesStore: () => ({ tiposEnvases: [], cargarTiposEnvases: cargar }) }))
 vi.mock('../../stores/proveedorStore', () => ({ useProveedorStore: () => ({ proveedores: [], cargarProveedores: cargar }) }))
-vi.mock('../ui/BarcodeCaptureModal', () => ({ BarcodeCaptureModal: () => null }))
+vi.mock('../ui/BarcodeCaptureModal', () => ({
+  BarcodeCaptureModal: ({ isOpen, onBarcodeCaptured, onClose }: { isOpen: boolean; onBarcodeCaptured: (code: string) => void; onClose: () => void }) =>
+    isOpen ? <button onClick={() => { onBarcodeCaptured('0012345678905'); onClose() }}>Lectura óptica de ensayo</button> : null,
+}))
 import { ProductForm } from './ProductForm'
 afterEach(() => vi.unstubAllEnvs())
 
@@ -44,4 +47,28 @@ it('editar un retornable y perecedero conserva depósito y vencimiento aunque se
   await waitFor(() => expect(guardar).toHaveBeenCalledWith(expect.objectContaining({
     es_retornable: true, precio_envase: 500, nombre_envase: 'Botella', requiere_vencimiento: true, dias_alerta_vencimiento: 7,
   })))
+})
+
+
+it('la captura de cámara completa el código conservando ceros sin crear el producto automáticamente', () => {
+  const guardar = vi.fn()
+  render(<ProductForm isOpen categorias={[]} onClose={vi.fn()} onGuardar={guardar} />)
+  fireEvent.click(screen.getByTitle('Escanear código con la cámara del celular'))
+  fireEvent.click(screen.getByRole('button', { name: 'Lectura óptica de ensayo' }))
+  expect(screen.getByDisplayValue('0012345678905')).toBeTruthy()
+  expect(screen.queryByRole('button', { name: 'Lectura óptica de ensayo' })).toBeNull()
+  expect(guardar).not.toHaveBeenCalled()
+})
+
+it('cerrar el formulario cierra la cámara y reabrirlo no la inicia por sorpresa', () => {
+  const guardar = vi.fn(); const cerrar = vi.fn()
+  const ventana = (abierta: boolean) => <ProductForm isOpen={abierta} categorias={[]} onClose={cerrar} onGuardar={guardar} />
+  const vista = render(ventana(true))
+  fireEvent.click(screen.getByTitle('Escanear código con la cámara del celular'))
+  expect(screen.getByRole('button', { name: 'Lectura óptica de ensayo' })).toBeTruthy()
+  vista.rerender(ventana(false))
+  expect(screen.queryByRole('button', { name: 'Lectura óptica de ensayo' })).toBeNull()
+  vista.rerender(ventana(true))
+  expect(screen.queryByRole('button', { name: 'Lectura óptica de ensayo' })).toBeNull()
+  expect(guardar).not.toHaveBeenCalled()
 })

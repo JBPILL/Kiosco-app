@@ -1,4 +1,4 @@
-import { cuadroEscaneoMovil, errorCamaraMovil, iniciarVistaCamaraIOS, listarCamarasAutorizadas, puedeReintentarCamara } from '../../lib/mobileCameraScanner'
+import { errorCamaraMovil, iniciarVistaCamaraIOS, listarCamarasAutorizadas, puedeReintentarCamara } from '../../lib/mobileCameraScanner'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import { Modal } from './Modal'
@@ -138,7 +138,7 @@ export function BarcodeCaptureModal({
 
       const scanConfig = {
         fps: 10,
-        qrbox: cuadroEscaneoMovil,
+        // Capture the whole frame: a long barcode must not be clipped by the crop.
       }
 
       const targetCamera = cameraId ? cameraId : { facingMode: 'environment' }

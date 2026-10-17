@@ -8,7 +8,7 @@ vi.mock('html5-qrcode', () => ({
   Html5QrcodeSupportedFormats: {},
   Html5Qrcode: class {
     isScanning = false
-    async start() { await mocks.start(); this.isScanning = true }
+    async start(...args: unknown[]) { await mocks.start(...args); this.isScanning = true }
     async stop() { mocks.stop(); this.isScanning = false }
     clear() { mocks.clear() }
     getRunningTrackSettings() { return { deviceId: 'trasera' } }
@@ -77,4 +77,27 @@ it.each(['ventas', 'catálogo'])('libera %s sin reiniciar si se desmonta con una
   await act(async () => { resolver() })
   expect(mocks.stop).toHaveBeenCalledTimes(1)
   expect(mocks.start).toHaveBeenCalledTimes(1)
+})
+
+
+it('captura un código decodificado una sola vez, libera la cámara y admite otra captura al reabrir', async () => {
+  const capturar = vi.fn(); const cerrar = vi.fn()
+  const ventana = (abierta: boolean) => <BarcodeCaptureModal isOpen={abierta} onClose={cerrar} onBarcodeCaptured={capturar} />
+  const vista = render(ventana(true))
+  await act(async () => { await vi.advanceTimersByTimeAsync(150) })
+  const primeraLectura = mocks.start.mock.calls[0][2] as (code: string) => void
+  act(() => { primeraLectura('0012345678905'); primeraLectura('0012345678905') })
+  expect(capturar).toHaveBeenCalledExactlyOnceWith('0012345678905')
+  expect(cerrar).toHaveBeenCalledOnce()
+  vista.rerender(ventana(false))
+  await act(async () => {})
+  expect(mocks.stop).toHaveBeenCalledOnce()
+  act(() => primeraLectura('otro'))
+  expect(capturar).toHaveBeenCalledOnce()
+  vista.rerender(ventana(true))
+  await act(async () => { await vi.advanceTimersByTimeAsync(150) })
+  const segundaLectura = mocks.start.mock.calls[1][2] as (code: string) => void
+  act(() => { primeraLectura('viejo'); segundaLectura('000123') })
+  expect(capturar).toHaveBeenCalledTimes(2)
+  expect(capturar).toHaveBeenLastCalledWith('000123')
 })

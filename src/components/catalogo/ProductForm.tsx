@@ -97,6 +97,10 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
     }
   }, [isOpen, tieneEnvases, cargarProveedores, cargarTiposEnvases])
 
+  useEffect(() => {
+    if (!isOpen) setScannerCamaraOpen(false)
+  }, [isOpen])
+
   // Soporte para pistolas lectoras físicas USB / Bluetooth en el formulario
   useBarcodeGun({
     enabled: isOpen && !scannerCamaraOpen,
@@ -680,7 +684,7 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
 
       {/* Modal de escaneo por cámara para capturar código de barras */}
       <BarcodeCaptureModal
-        isOpen={scannerCamaraOpen}
+        isOpen={isOpen && scannerCamaraOpen}
         onClose={() => setScannerCamaraOpen(false)}
         onBarcodeCaptured={handleBarcodeCaptured}
         title="Escanear Código de Barras"
