@@ -23,12 +23,48 @@ PIN real corresponden al usuario, mediante el formulario seguro.
 
 ## Progreso
 - [x] Instrucciones, skills y código actual inspeccionados.
-- [ ] Rediseño, tests y push normal a master; verificar despliegue y captura.
-- [ ] Causa del PIN confirmada y corrección mínima validada.
-- [ ] Publicación y verificación final sin secretos; árbol limpio.
+- [x] Rediseño, tests y push normal a master; despliegue y captura verificados.
+- [x] Causa del PIN confirmada y configuración del servicio reparada; guardado real confirmado por el Dueño y ESTADO autenticado configurado=true.
+- [x] Publicación y verificación del código sin secretos; cierre documental separado.
 
 ## Resultado final
-En curso. Los cambios anteriores ya están en master mediante PR #2; no hay
-commits pendientes de ese bloque. El panel mostrado corresponde al nuevo módulo
-con presentación mínima. ESTADO de PIN funciona pero CONFIGURAR falla; todavía
-no se atribuye la causa a conexión, secretos o DB sin evidencia remota.
+Panel publicado en master; e85b3d8 contiene el rediseño y 2044cd0 elimina el
+botón duplicado usando la recarga general. Production tenía secretos del PIN
+inválidos, no un fallo de conexión o de SQL. Readiness volvió a HTTP 200 después
+de inicializar los secretos con guardas de cero PIN existentes. El Dueño configuró su PIN desde el formulario, sin compartirlo; una lectura
+autenticada posterior confirmó configurado=true.
+El informe actualizado está en docs/supervisor-pin-peripheral-validation-2026-10-17.md.
+SheetJS CE 0.20.3 oficial conserva XLS/XLSX y audit reporta cero vulnerabilidades
+production. Impresora no disponible; ensayo físico sigue abierto.
+
+## Continuación 17/10/2026
+- Panel publicado en master e85b3d8; botón duplicado retirado en 2044cd0.
+- PIN: readiness Staging 200, Production 503 PIN_CONFIGURACION_NO_DISPONIBLE.
+  Diagnóstico Production READ ONLY: cero PIN existentes; RPC/ACL alcanza escritura
+  bloqueada por transacción de lectura. No hay que cambiar SQL ni reducir PBKDF2.
+- Reparar exclusivamente secretos supervisor en Production si guardas previas
+  confirman configuración inválida y cero hashes; no imprimir ni persistir valores.
+- Excel: evaluar SheetJS CE 0.20.3 oficial, mantener XLS/XLSX, probar importación
+  con números, ceros iniciales, encabezado corporativo, rechazo de reportes y CSV.
+- Ensayo de cámara con el usuario pendiente. Impresora no disponible: pendiente
+  físico explícito; suite/build no lo sustituyen.
+
+
+## Ensayo recibido y siguiente validación
+- El usuario confirma PIN guardado; Production ESTADO 200 configurado=true.
+- Cámara POS lee en el mismo celular; captura en Crear producto muestra imagen
+  pero no leía. Corrección candidata: decodificar cuadro completo sin recorte.
+- El formulario ahora cierra la cámara al cerrarse; captura sólo rellena código,
+  sin guardar producto automáticamente. Dirigidos cámara/formulario: 25 PASS.
+- Suite antes del ajuste de cámara: 1844 PASS / 1 skipped / 193 archivos.
+  Suite final con el ajuste: 1847 PASS / 1 skipped / 193 archivos, 282,98 s.
+  Build final PASS, 608 módulos. Audit 0; diff/índice PASS; secret scan sin candidatos nuevos.
+- Impresora no disponible: mantener ensayo físico pendiente.
+
+- Push normal de código confirmado en origin/master df34059: PIN 0d8032b,
+  SheetJS fcf5a7c y cámara df34059. Ambos checks Vercel success en ese commit;
+  HTTP público confirma SheetJS 0.20.3 en Production. Cierre documental separado.
+
+- Aceptación final de servicio: PIN real configurado por usuario y estado remoto
+  true. Pendiente sólo repetición óptica de cámara Crear producto y ensayo de
+  impresora, no disponible. PR #1 permanece abierto y sin merge.

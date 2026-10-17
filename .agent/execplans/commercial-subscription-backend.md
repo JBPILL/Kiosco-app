@@ -145,3 +145,13 @@ Point, devoluciones y envases fuera de alcance. Ensayo físico cámara/impresora
 pendiente. xlsx mantiene dos avisos HIGH sin fix; no audit fix.
 Detalle reproducible, límites del backup y evidencia:
 docs/commercial-subscription-activation-2026-10-17.md.
+
+## Seguimiento posterior al cierre comercial — 17/10/2026
+El PR #2 ya fue integrado por autorización expresa; PR #1 se conserva sin merge.
+El rediseño de suscripción y la recarga única se publicaron después en master.
+La reparación del servicio PIN y el tratamiento de xlsx se documentan en
+`docs/supervisor-pin-peripheral-validation-2026-10-17.md` y
+`docs/riesgo-dependencia-xlsx.md`. La actualización explícita a SheetJS 0.20.3
+corrige los dos avisos anteriores; audit de producción ahora devuelve cero.
+La impresora no está disponible y el ensayo físico permanece pendiente.
+Los resultados anteriores se conservan como evidencia histórica de ese bloque.
