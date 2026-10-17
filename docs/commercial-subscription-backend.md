@@ -91,6 +91,25 @@ rollback automático. No desactivar strict pilot para habilitar lo comercial.
 
 ## Límites y riesgos abiertos
 
+### Plan de instalación Production autorizado
+
+`scripts/plan-commercial-production-install.mjs INPUT.json OUTPUT.sql` genera
+offline la instalación del módulo comercial sobre el baseline F6 existente de
+43 tablas. Sólo admite el ref Production revisado y el SuperAdmin confirmado
+ya existente; no crea identidades ni reinstala el baseline. Aborta si encuentra
+otra forma de esquema, cobertura distinta o un módulo comercial ya aplicado.
+El input autorizado fija monthlyPrice=30000, coverageMonths=1, trialPrice=0 y
+trialDays=30. La cobertura del comercio existente dura un mes calendario; el
+plan inicial gratuito para nuevas altas se presenta como prueba de 30 días.
+Al vencer, requiere seleccionar el plan mensual y renovar por el backend; no
+hay cargo automático ni continuidad gratuita implícita. No se registra un pago
+recibido al inicializar cobertura. La operación y ambos planes quedan auditados.
+
+El backup privado de Production se restauró y el plan exacto pasó en PostgreSQL
+17 local: plan mensual 30000, prueba inicial 0, cobertura un mes calendario y
+cero pagos iniciales. Este ensayo no autoriza por sí solo aplicar SQL ni desplegar;
+la autorización de integración/activación del usuario es una etapa separada.
+
 ### Compatibilidad del Staging pre-030 observado
 
 El preflight autorizado del 17/10 encontró 30 tablas públicas y los 15 triggers
