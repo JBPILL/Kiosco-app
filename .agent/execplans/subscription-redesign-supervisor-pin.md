@@ -131,6 +131,8 @@ Evidencia: docs/reportes-venta-confirmada-2026-10-17.md. Dirigidos 26 PASS;
 suite final conjunta cámara/Reportes 1860 PASS / 1 skipped / 196 archivos,
 261,09 s. Build PASS, 610 módulos. Audit 0 vulnerabilidades. Diff de trabajo e
 índice PASS, mismos 44 candidatos conocidos del secret scan sin nuevos secretos.
-Se publican commits temáticos por push normal a master; verificación Vercel
-posterior pendiente. Aceptación física de distancia y ensayo de impresora siguen
+Commits c1bb52d (cámara) y a4438de (Reportes) publicados por push normal a master;
+ambos checks Vercel success. Dominio público sirve index-CrUwLKIA.js, lector HD
+HTTP 200 y guard estricto activo en las tres proyecciones corregidas. Aceptación
+física de distancia y ensayo de impresora siguen
 pendientes; usuario no tiene impresora disponible. PR #1 se conserva sin merge.

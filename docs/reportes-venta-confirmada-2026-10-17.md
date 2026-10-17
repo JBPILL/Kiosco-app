@@ -30,3 +30,14 @@ en memoria, con cierre de la sesión de comprobación; no se imprimieron secreto
   historial fuera de alcance. Advertencias no bloqueantes de sourcemaps del SDK.
 - Audit de producción: cero vulnerabilidades; no se ejecutó audit fix.
 - No se aplicó SQL, no se desplegaron funciones ni se tocó .env.local.
+
+## Publicación
+
+Commit de corrección a4438de, posterior a c1bb52d de cámara, publicado en master
+mediante push normal. Ambos checks Vercel success. Production sirve
+index-CrUwLKIA.js y Reportes HTTP 200; el guard estricto compilado devuelve true y
+las tres proyecciones usan el helper. El texto de columnas fiscales permanece
+en la rama de compatibilidad del bundle, pero no se solicita bajo ese guard.
+La comprobación remota con JWT descrita arriba confirma la venta recuperada.
+No había pestaña autenticada disponible para comprobar la pantalla abierta del
+usuario; su página anterior necesita recarga. PR #1 continúa abierto sin merge.

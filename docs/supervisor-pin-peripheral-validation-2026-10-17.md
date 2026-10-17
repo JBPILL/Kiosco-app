@@ -154,3 +154,9 @@ módulo se leen en el frame 1280x720; la reducción Lanczos a 390x219 deja de se
 legible. El adaptador aporta únicamente píxeles al canvas y ejecuta ZXing real.
 No se agregaron fotos del usuario al repositorio. Falta aceptación física de la
 mejora de distancia después de publicar; no se promete distancia fija por tests.
+
+Validación final conjunta con la corrección de Reportes: 1860 PASS / 1 skipped /
+196 archivos; build PASS, 610 módulos. Cámara c1bb52d publicada en master junto
+con Reportes a4438de; ambos checks Vercel success. Asset auxiliar HD público HTTP
+200. Audit 0 vulnerabilidades, mismos candidatos sintéticos del escaneo sin nuevos
+secretos. Impresora no disponible; nuevo ensayo físico de distancia pendiente.
