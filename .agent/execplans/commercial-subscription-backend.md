@@ -161,3 +161,10 @@ Usuario confirmó Reportes y mejora de distancia de cámara después de publicac
 Se continúa con Excel maestro compatible con strict y paginado para evitar
 truncamiento silencioso. Ver `.agent/execplans/pilot-master-excel.md`. Impresión
 sigue pendiente; no se habilitan módulos excluidos ni se integra PR #1.
+
+Excel maestro completado y publicado en master (3d1f3e7 / 72839fa), checks Vercel
+success y versión pública comprobada. Suite conjunta 1870 PASS / 1 skipped /
+198 archivos; build 611 módulos PASS; audit 0. El usuario amplió después a ARCA,
+primero homologación: herramienta cifrada validada y WSASS accesible, pero creación
+del certificado bloqueada por error interno de WSASS. Ver arca-homologation.md;
+esto no habilita emisión fiscal ni integra el PR #1.

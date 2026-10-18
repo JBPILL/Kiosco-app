@@ -1,6 +1,8 @@
 # Preparar ARCA en homologación
 
 Estado: preparación local disponible; **no hay emisión fiscal activada**.
+En el ensayo asistido del 18/10 ya se generaron la clave y el CSR del titular;
+para retomarlo se conservan esos mismos archivos, sin repetir el paso 1.
 Homologación significa conversar con los servicios de prueba de ARCA y recibir
 sus respuestas reales. Una simulación local o un CAE aleatorio no la validan.
 
@@ -93,3 +95,9 @@ el error se repitió. La lista final continuó sin certificados. No asumir éxit
 no cambiar de clave/alias para reintentar a ciegas ni usar ese resultado como CAE.
 WSFE no fue autorizado y no se emitieron comprobantes de ningún entorno.
 Conservar la solicitud para retomar cuando WSASS pueda procesarla.
+
+Herramienta publicada en master en 72839fa junto con la corrección del Excel
+(3d1f3e7). Suite final conjunta: 1870 PASS / 1 skipped / 198 archivos; build PASS,
+611 módulos. Pruebas nativas de cifrado/CSR/ACL PASS. Audit 0; escaneo de fuentes
+sin secretos nuevos. Ambos checks Vercel success. Estos resultados validan el
+código y la preparación local, no la emisión de un certificado ni un CAE de ARCA.

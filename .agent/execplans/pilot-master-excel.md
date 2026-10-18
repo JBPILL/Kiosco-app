@@ -39,12 +39,16 @@ como copia transaccional, ni sustituir el snapshot JSON.
       hashes de fuentes probadas sin cambios. Build PASS 611 módulos. Audit 0;
       diff/index PASS; escaneo 1077 textos, 14 binarios omitidos, mismos 44
       candidatos sintéticos conocidos sin secretos nuevos; historial no escaneado.
-- [ ] Publicación y comprobación pública.
+- [x] Publicación y comprobación pública: 3d1f3e7 y 72839fa en master por push
+      normal, ambos checks Vercel success. Production sirve index-Ddi_5sAB.js,
+      ConfigPage HTTP 200 con exportación paginada y guía JSON. Lecturas reales
+      del 18/10 con JWT Dueño PASS en las seis fuentes y costos, sin descarga.
 
 ## Resultado final
 Corrección y validación local PASS. Exportación strict compatible, páginas cortas
 completas hasta página vacía, costos por lotes, rechazo de errores tardíos antes
 de descargar. No convierte Excel en snapshot transaccional: JSON integral sigue
 siendo la copia consistente/restaurable. No hay cambios SQL, Edge, checkout,
-facturación ni .env.local en este bloque. Publicación normal y checks pendientes
-de comprobar después del push. Preparación fiscal separada en arca-homologation.md.
+facturación ni .env.local en este bloque. Publicado y comprobado en Production.
+Preparación fiscal separada en arca-homologation.md; certificado WSASS bloqueado
+por error externo, no incluido en el PASS de este bloque de Excel.
