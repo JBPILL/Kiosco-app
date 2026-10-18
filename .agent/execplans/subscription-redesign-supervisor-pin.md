@@ -137,3 +137,11 @@ HTTP 200 y guard estricto activo en las tres proyecciones corregidas. El usuario
 confirmó después que la venta aparece y que la cámara lee mejor sin acercar tanto
 los productos. Ambos ensayos quedan aceptados. Impresión sigue pendiente porque
 no tiene impresora disponible. PR #1 se conserva sin merge.
+
+## Etiquetas térmicas uniformes — 18/10/2026
+Solicitud posterior del usuario: unificar geometría de las etiquetas térmicas.
+Vista previa e impresión comparten componente de 48 × 40 mm para rollo 58 y
+72 × 40 mm para rollo 80. Página térmica fija, una etiqueta por página, filas
+reservadas para textos y opciones; sin cambios en medidas de tickets de venta.
+Ver `docs/etiquetas-termicas-uniformes-2026-10-18.md` para evidencia y límites.
+El ensayo sobre papel continúa pendiente de disponer de impresora.

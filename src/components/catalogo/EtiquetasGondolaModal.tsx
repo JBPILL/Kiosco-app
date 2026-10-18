@@ -1,9 +1,11 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { BarcodeSvg } from '../../lib/barcodeSvg'
 import { formatPrecio } from '../../lib/utils'
 import type { Producto, Categoria } from '../../types/database'
+import { EtiquetaTermica, MEDIDAS_ETIQUETA_TERMICA } from './EtiquetaTermica'
+import { prepararContenedoresImpresion } from '../../lib/ticketPrintAncestors'
 
 interface EtiquetasGondolaModalProps {
   isOpen: boolean
@@ -32,6 +34,22 @@ export function EtiquetasGondolaModal({
   const [mostrarFecha, setMostrarFecha] = useState(true)
 
   const printContainerRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!isOpen) return
+    let restaurar: (() => void) | undefined
+    const antes = () => {
+      restaurar?.()
+      if (printContainerRef.current) restaurar = prepararContenedoresImpresion(printContainerRef.current)
+    }
+    const despues = () => { restaurar?.(); restaurar = undefined }
+    window.addEventListener('beforeprint', antes)
+    window.addEventListener('afterprint', despues)
+    return () => {
+      despues()
+      window.removeEventListener('beforeprint', antes)
+      window.removeEventListener('afterprint', despues)
+    }
+  }, [isOpen])
 
   // Filtrado de productos disponibles
   const productosFiltrados = useMemo(() => {
@@ -173,7 +191,7 @@ export function EtiquetasGondolaModal({
                 />
                 <div>
                   <span className="font-medium text-gray-900 dark:text-gray-100">Rollo Térmico 58 mm</span>
-                  <p className="text-[10px] text-gray-500">Etiqueta individual continua</p>
+                  <p className="text-[10px] text-gray-500">Contenido 48 × 40 mm · rollo de 58 mm</p>
                 </div>
               </label>
               <label className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700">
@@ -186,7 +204,7 @@ export function EtiquetasGondolaModal({
                 />
                 <div>
                   <span className="font-medium text-gray-900 dark:text-gray-100">Rollo Térmico 80 mm</span>
-                  <p className="text-[10px] text-gray-500">Etiqueta ancha góndola</p>
+                  <p className="text-[10px] text-gray-500">Contenido 72 × 40 mm · rollo de 80 mm</p>
                 </div>
               </label>
             </div>
@@ -328,7 +346,7 @@ export function EtiquetasGondolaModal({
               </span>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3">
+            <div className="flex-1 overflow-auto p-3">
               {etiquetasAImprimir.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center p-6 text-gray-400">
                   <p className="font-medium text-sm">No hay etiquetas seleccionadas</p>
@@ -339,10 +357,14 @@ export function EtiquetasGondolaModal({
                   className={
                     formato === 'A4'
                       ? 'grid grid-cols-2 gap-2'
-                      : 'flex flex-col items-center gap-2 max-w-[280px] mx-auto'
+                      : 'flex flex-col items-center gap-2 w-max min-w-full'
                   }
                 >
-                  {etiquetasAImprimir.slice(0, 8).map((prod, idx) => (
+                  {etiquetasAImprimir.slice(0, 8).map((prod, idx) => formato !== 'A4' ? (
+                    <EtiquetaTermica key={`${prod.id}-${idx}`} producto={prod} formato={formato}
+                      kioscoNombre={kioscoNombre} fecha={fechaHoy} mostrarNegocio={mostrarNegocio}
+                      mostrarCodigo={mostrarCodigo} mostrarFecha={mostrarFecha} />
+                  ) : (
                     <div
                       key={`${prod.id}-${idx}`}
                       className="bg-white text-gray-900 p-2 rounded border border-gray-300 shadow-xs flex flex-col justify-between select-none"
@@ -437,7 +459,11 @@ export function EtiquetasGondolaModal({
               : 'flex-termica-58'
           }
         >
-          {etiquetasAImprimir.map((prod, idx) => (
+          {etiquetasAImprimir.map((prod, idx) => formato !== 'A4' ? (
+            <EtiquetaTermica key={`print-${prod.id}-${idx}`} producto={prod} formato={formato}
+              kioscoNombre={kioscoNombre} fecha={fechaHoy} mostrarNegocio={mostrarNegocio}
+              mostrarCodigo={mostrarCodigo} mostrarFecha={mostrarFecha} />
+          ) : (
             <div
               key={`print-${prod.id}-${idx}`}
               className={`etiqueta-card ${formato === 'A4' ? 'card-a4' : 'card-termica'}`}
@@ -484,6 +510,23 @@ export function EtiquetasGondolaModal({
       {/* ESTILOS CSS AISLADOS PARA IMPRESIÓN */}
       <style>{`
         @media print {
+          .ticket-print-ancestor {
+            display: block !important;
+            position: static !important;
+            overflow: visible !important;
+            height: auto !important;
+            max-height: none !important;
+            width: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: 0 !important;
+            transform: none !important;
+            filter: none !important;
+            backdrop-filter: none !important;
+          }
+          .ticket-print-ancestor > :not(.ticket-print-ancestor):not(#printable-etiquetas) {
+            display: none !important;
+          }
           body * {
             visibility: hidden !important;
           }
@@ -492,19 +535,19 @@ export function EtiquetasGondolaModal({
           }
           #printable-etiquetas {
             display: block !important;
-            position: absolute !important;
+            position: static !important;
             left: 0 !important;
             top: 0 !important;
-            width: 100% !important;
+            width: ${formato === 'A4' ? '100%' : `${MEDIDAS_ETIQUETA_TERMICA[formato].papel}mm`} !important;
             margin: 0 !important;
-            padding: ${formato === 'A4' ? '5mm' : '2mm'} !important;
+            padding: ${formato === 'A4' ? '5mm' : '0'} !important;
             background: white !important;
             color: black !important;
           }
 
           @page {
-            margin: ${formato === 'A4' ? '5mm' : '1mm'};
-            size: auto;
+            margin: ${formato === 'A4' ? '5mm' : '0'};
+            size: ${formato === 'A4' ? 'auto' : `${MEDIDAS_ETIQUETA_TERMICA[formato].papel}mm ${MEDIDAS_ETIQUETA_TERMICA[formato].alto}mm`};
           }
 
           /* Grilla estándar A4: 3 columnas x 8 filas (24 por carilla) */
@@ -533,14 +576,14 @@ export function EtiquetasGondolaModal({
           .flex-termica-58 {
             display: flex !important;
             flex-direction: column !important;
-            width: 54mm !important;
+            width: 58mm !important;
             margin: 0 auto !important;
           }
 
           .flex-termica-80 {
             display: flex !important;
             flex-direction: column !important;
-            width: 76mm !important;
+            width: 80mm !important;
             margin: 0 auto !important;
           }
 
