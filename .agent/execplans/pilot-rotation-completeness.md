@@ -37,11 +37,12 @@ diff/index, escaneo sin valores y audit diagnóstico. Push normal con gates verd
       614 módulos. Audit 0; diff/index PASS.
       Escaneo: mismos 44 candidatos sintéticos conocidos, sin nuevos candidatos;
       binarios e historial no escaneados.
-- [ ] Publicación y comprobación de checks.
+- [x] Publicación por push normal de 03a798f a master. Vercel Staging/Production
+      success y versión pública index-CrwWtbi7.js con la corrección comprobada.
 
 ## Resultado
-Corrección local validada. No se presenta como certificación de concurrencia,
-snapshot transaccional ni ensayo hospedado de datos. Pendiente publicación.
+Corrección validada y publicada. No se presenta como certificación de concurrencia,
+snapshot transaccional ni ensayo hospedado de datos.
 
 ## Pendientes detectados para siguientes bloques
 BalanceContableTab conserva límites de 15.000 ventas y 10.000 movimientos/

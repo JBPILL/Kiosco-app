@@ -81,3 +81,36 @@ del adaptador, además de aceptación física. Se descartan ampliar artificialme
 píxeles y nuevos cambios cosméticos del visor como sustituto de conservar detalle.
 La lectura auxiliar es limitada a dos intentos/s y respeta cierre y guards del
 lector compartido; los QR conservan la ruta principal.
+
+## Envases compartidos y devoluciones en efectivo del piloto
+
+El usuario amplió el piloto para recibir envases mediante descuento en ticket o
+efectivo, entregar vacíos al distribuidor y devolver artículos en caja abierta.
+Eligió resolver cambios con reintegro en efectivo y nueva venta normal; cuenta
+corriente queda para otro bloque. El almacenamiento local de vacíos y las
+escrituras separadas de la devolución heredada no ofrecen atomicidad compartida.
+
+Se agregan módulos SQL incrementales fuera de los 43 archivos históricos. Una
+capacidad privada por comercio, falsa por defecto, separa instalación de
+habilitación. Las banderas de frontend y Edge no sustituyen esa autorización ni
+el gate comercial. Se descartan habilitar el store heredado quitando strict y
+sumar automáticamente los saldos locales de distintas cajas.
+
+La recepción en ticket queda provisional hasta el ACK de checkout; venta y vacíos
+se confirman en una transacción. Se conserva completo el reconocimiento del
+envase al distribuir ajustes comerciales. Checkout v1 exige pesos enteros; el
+reintegro de envases por caja admite centavos. La devolución usa el detalle y
+receta originales, cálculo histórico neto, lotes/costo de salida y efectivo en
+una transacción. Inicialmente sólo admite ventas originales íntegramente en
+efectivo, sin comprobante fiscal ni recepción de envases. Estos últimos tickets
+también rechazan la anulación heredada hasta conciliar vacíos/crédito.
+
+Ambos circuitos guardan identidad y solicitud en IndexedDB antes de la red;
+recuperan el mismo ACK y no generan una compensación o un pago nuevo por timeout.
+La llamada vincula el JWT al actor capturado y oculta respuestas si cambia la
+sesión. El ACK financiero se distingue de la entrega humana: ésta requiere una
+marca local posterior, no implica coordinación física entre dispositivos. El
+cierre de caja consulta las operaciones recuperables del dispositivo, incluso
+confirmadas pendientes de verificar entrega. Las pruebas locales no autorizan
+instalar SQL, desplegar Edge ni producir movimientos reales; Staging y luego
+Production mantienen sus gates separados. ARCA/WSFE y Point no se habilitan.
