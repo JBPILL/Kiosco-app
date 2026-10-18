@@ -155,3 +155,9 @@ La reparación del servicio PIN y el tratamiento de xlsx se documentan en
 corrige los dos avisos anteriores; audit de producción ahora devuelve cero.
 La impresora no está disponible y el ensayo físico permanece pendiente.
 Los resultados anteriores se conservan como evidencia histórica de ese bloque.
+
+## Siguiente bloque del piloto
+Usuario confirmó Reportes y mejora de distancia de cámara después de publicación.
+Se continúa con Excel maestro compatible con strict y paginado para evitar
+truncamiento silencioso. Ver `.agent/execplans/pilot-master-excel.md`. Impresión
+sigue pendiente; no se habilitan módulos excluidos ni se integra PR #1.

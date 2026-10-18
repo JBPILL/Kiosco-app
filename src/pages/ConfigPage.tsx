@@ -18,7 +18,7 @@ import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import type { Kiosco, Usuario, Categoria } from '../types/database'
 import { SubscriptionSection } from '../components/config/SubscriptionSection'
-import { exportarMasterExcel } from '../lib/exportUtils'
+import { exportarExcelMaestroComercio } from '../lib/masterExcelExport'
 import { generarBackupIntegral } from '../lib/backupUtils'
 import { AFIPConfigSection } from '../components/config/AFIPConfigSection'
 import { AccessibilityConfigSection } from '../components/config/AccessibilityConfigSection'
@@ -30,7 +30,6 @@ import { ExternalBackupReminder } from '../components/config/ExternalBackupRemin
 import { RespaldosCierreSection } from '../components/config/RespaldosCierreSection'
 import { usePwaStore } from '../stores/pwaStore'
 import { useCajaStore } from '../stores/cajaStore'
-import { adjuntarCostosProtegidos, cargarCostosProtegidos } from '../lib/productCostAccess'
 import {
   getWhatsAppReportConfig,
   saveWhatsAppReportConfig,
@@ -496,63 +495,7 @@ export function ConfigPage() {
     if (!usuario?.kiosco_id) return
     setExportandoBackup(true)
     try {
-      const [prodsRes, catsRes, movsRes, clientesRes, provsRes, ventasRes] = await Promise.all([
-        supabase
-          .from('productos')
-          .select('*, categoria:categorias(nombre)')
-          .eq('kiosco_id', usuario.kiosco_id)
-          .order('descripcion')
-          .limit(50000),
-        supabase
-          .from('categorias')
-          .select('*')
-          .eq('kiosco_id', usuario.kiosco_id)
-          .limit(1000),
-        supabase
-          .from('movimientos_stock')
-          .select('id, fecha, tipo, cantidad, motivo, notas, producto:productos(descripcion), usuario:usuarios(nombre)')
-          .eq('kiosco_id', usuario.kiosco_id)
-          .order('fecha', { ascending: false })
-          .limit(10000),
-        supabase
-          .from('clientes')
-          .select('*')
-          .eq('kiosco_id', usuario.kiosco_id)
-          .order('nombre')
-          .limit(10000),
-        supabase
-          .from('proveedores')
-          .select('*')
-          .eq('kiosco_id', usuario.kiosco_id)
-          .order('nombre')
-          .limit(5000),
-        supabase
-          .from('ventas')
-          .select('id, fecha_hora, total, estado, afip_cae, afip_nro_comprobante, usuario:usuarios!usuario_id(nombre), pagos:pagos_venta(medio_pago, monto)')
-          .eq('kiosco_id', usuario.kiosco_id)
-          .eq('estado', 'COMPLETADA')
-          .order('fecha_hora', { ascending: false })
-          .limit(15000),
-      ])
-
-      if ([prodsRes,catsRes,movsRes,clientesRes,provsRes,ventasRes].some((resultado) => resultado.error)) {
-        throw new Error('No se pudieron leer todos los datos para el Excel maestro')
-      }
-
-      const productosPublicos = prodsRes.data || []
-      const costos = await cargarCostosProtegidos(productosPublicos.map((producto: any) => producto.id))
-      const productosConCosto = adjuntarCostosProtegidos(productosPublicos, costos)
-
-      await exportarMasterExcel({
-        kioscoId: usuario.kiosco_id,
-        nombreKiosco: kiosco?.nombre || 'Comercio',
-        productos: productosConCosto,
-        categorias: catsRes.data || [],
-        movimientosStock: movsRes.data || [],
-        clientes: clientesRes.data || [],
-        proveedores: provsRes.data || [],
-        ventas: ventasRes.data || [],
-      })
+      await exportarExcelMaestroComercio(usuario.kiosco_id, kiosco?.nombre || 'Comercio')
       toast.success('Excel unificado exportado (.xlsx)')
     } catch (err: any) {
       console.error('Error al exportar backup maestro Excel:', err)
@@ -1581,7 +1524,7 @@ export function ConfigPage() {
                         Excel Unificado
                       </h3>
                       <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                        Descargá todo tu negocio en un único archivo Excel con pestañas para Catálogo, Movimientos de Stock, Clientes, Proveedores y Ventas.
+                        Exportá Catálogo, Movimientos de Stock, Clientes, Proveedores y Ventas a Excel. Para una copia consistente y restaurable, usá la copia integral JSON.
                       </p>
                     </div>
                     <Button
