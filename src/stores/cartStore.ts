@@ -56,7 +56,7 @@ interface CartState {
   vaciarCarrito: (revertirEnvases?: boolean) => void
   completarVentaTabActiva: () => void
   toggleEnvaseItem: (productoId: string) => void
-  agregarDevolucionEnvase: (nombreEnvase: string, precioUnitario: number, cantidad?: number, tipoEnvaseId?: string) => void
+  agregarDevolucionEnvase: (nombreEnvase: string, precioUnitario: number, cantidad?: number, tipoEnvaseId?: string, compartido?: boolean) => void
 
   // Acciones de descuentos y recargos
   aplicarAjuste: (tipo: TipoAjuste, valor: number) => void
@@ -123,7 +123,7 @@ function evaluarConPromociones(items: ItemCarrito[]): ItemCarrito[] {
 function revertirStockEnvasesDeItems(items: ItemCarrito[]) {
   try {
     for (const it of items) {
-      if (it.es_devolucion_envase && it.tipo_envase_id) {
+      if (it.es_devolucion_envase && it.tipo_envase_id && !it.envase_compartido) {
         useEnvasesStore.getState().ajustarStockVacios(
           it.tipo_envase_id,
           -it.cantidad,
@@ -402,8 +402,10 @@ export const useCartStore = create<CartState>((set, get) => ({
     })
   },
 
-  agregarDevolucionEnvase: (nombreEnvase: string, precioUnitario: number, cantidad = 1, tipoEnvaseId?: string) => {
+  agregarDevolucionEnvase: (nombreEnvase: string, precioUnitario: number, cantidad = 1, tipoEnvaseId?: string, compartido = false) => {
     if (cobroActualBloqueado(get())) return
+    if (compartido && (!tipoEnvaseId || !Number.isInteger(cantidad) || cantidad < 1 || cantidad > 999999
+      || !Number.isInteger(precioUnitario) || precioUnitario <= 0)) throw new Error('Cantidad o precio de envase incompatible con el ticket.')
     const cant = Math.max(1, Math.round(cantidad))
     const precio = Math.max(0, Math.round(precioUnitario))
     const desc = `Devolución ${nombreEnvase}`
@@ -435,6 +437,7 @@ export const useCartStore = create<CartState>((set, get) => ({
           es_devolucion_envase: true,
           precio_envase_unitario: precio,
           tipo_envase_id: tipoEnvaseId,
+          ...(compartido ? { envase_compartido: true } : {}),
         },
       ]
       return {

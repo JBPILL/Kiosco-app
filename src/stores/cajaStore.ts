@@ -15,6 +15,7 @@ import { useOfflineSyncStore } from './offlineSyncStore'
 import { crearRespaldoCierreLocal, guardarRespaldoCierreLocal } from '../lib/backupCierreLocal'
 import { checkoutManualTransaccionalActivo } from '../lib/manualCheckoutCart'
 import { hayCobrosManualesPendientes } from '../lib/manualCheckoutClient'
+import { hayOperacionesPilotoPorResolver } from '../lib/pilotCashCloseGuard'
 import { kioskoPilotStrictScopeActivo } from '../lib/kioskPilotScope'
 import { confirmarOperacionPendiente, obtenerIdOperacionPendiente } from '../lib/operationIdempotency'
 
@@ -633,6 +634,10 @@ export const useCajaStore = create<CajaState>((set, get) => ({
     try {
       if (checkoutManualTransaccionalActivo() && await hayCobrosManualesPendientes(sesion.kiosco_id, sesion.id)) {
         toast.error('Hay cobros manuales pendientes de confirmación. Sincronizalos antes de cerrar esta caja; no vuelvas a cobrar.')
+        return false
+      }
+      if (await hayOperacionesPilotoPorResolver(sesion.kiosco_id, sesion.id)) {
+        toast.error('Hay reintegros pendientes de recuperar o de verificar su entrega en este dispositivo. Resolvelos antes de cerrar la caja.')
         return false
       }
       const resumen = await get().cargarResumenSesion(sesion.id)

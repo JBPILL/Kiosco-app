@@ -1,6 +1,7 @@
 import type { Cliente, Kiosco, Usuario } from '../../../src/types/database.ts'
 import type { EntradaCheckoutManual, ResultadoCheckoutManual, SnapshotCheckoutManual } from '../../../src/types/checkoutManual.ts'
 import { ajusteCarrito } from '../../../src/lib/carritoImportes.ts'
+import { distribuirTotalConEnvases } from '../../../src/lib/distribuirTotalConEnvases.ts'
 import { distribuirTotalVenta } from '../../../src/lib/distribuirTotalVenta.ts'
 import { cotizarVentaManual } from './pointQuote.ts'
 import type { DatosCotizacionPoint } from './pointQuote.ts'
@@ -13,6 +14,7 @@ import { registrarFalloCheckout } from './checkoutDiagnostic.ts'
 
 export interface ContextoCheckoutManual { authUserId: string; usuario: Usuario; kiosco: Kiosco }
 export interface ManualCheckoutDependencies {
+  envasesCompartidos?: boolean
   cargarPolitica: (contexto: ContextoCheckoutManual) => Promise<unknown>
   ahora: () => Date
   buscar: (contexto: ContextoCheckoutManual, entrada: EntradaCheckoutManual) => Promise<unknown | null>
@@ -48,7 +50,8 @@ export async function cerrarCheckoutManual(contexto: ContextoCheckoutManual, ent
       if (contexto.usuario.rol === 'CAJERO' && requiereSupervisor && (!autorizacionId || !deps.confirmarAutorizado)) {
         throw new Error('Se requiere autorización de supervisor')
       }
-      const reparto = distribuirTotalVenta(ticket.items.map(i => i.subtotal), ticket.total)
+      const reparto = deps.envasesCompartidos ? distribuirTotalConEnvases(ticket.items, ticket.total)
+        : distribuirTotalVenta(ticket.items.map(item => item.subtotal), ticket.total)
       const combos = new Set(ticket.items.filter(i => i.producto.es_combo).map(i => i.producto.id))
       const receta = datos.componentes.filter(c => combos.has(c.combo_producto_id)).map(c => ({
         comboId: c.combo_producto_id, productoId: c.componente_producto_id, cantidad: c.cantidad,
@@ -58,7 +61,7 @@ export async function cerrarCheckoutManual(contexto: ContextoCheckoutManual, ent
       const credito = entrada.pagos.filter(p => p.medio === 'CUENTA_CORRIENTE').reduce((a, b) => a + b.montoCentavos, 0)
       validarCreditoCotizacionPoint(permisos.kioscoId, entrada.clienteId, datos.cliente, credito)
       etapa = 'CONSTRUIR_SNAPSHOT'
-      const snapshot = await construirSnapshotManual(entrada, ticket)
+      const snapshot = await construirSnapshotManual(entrada, ticket, deps.envasesCompartidos)
       etapa = 'PREPARAR_REGISTRO'
       registro = await deps.preparar(contexto, entrada, snapshot, requiereSupervisor, politica)
     }

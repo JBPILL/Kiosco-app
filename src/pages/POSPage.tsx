@@ -12,6 +12,7 @@ import { FavoritesGrid } from '../components/pos/FavoritesGrid'
 import { CartPanel } from '../components/pos/CartPanel'
 import { PaymentModal } from '../components/pos/PaymentModal'
 import { CobrosManualesPendientes } from '../components/pos/CobrosManualesPendientes'
+import { OperacionesPilotoPendientes } from '../components/pos/OperacionesPilotoPendientes'
 import { TicketReceiptModal, type TicketData } from '../components/pos/TicketReceiptModal'
 import { abrirCajonDineroDirecto, getAperturaAutomaticaCajon } from '../lib/escposPrinter'
 import { BarcodeScannerModal } from '../components/pos/BarcodeScannerModal'
@@ -19,8 +20,11 @@ import { KeyboardShortcutsModal } from '../components/pos/KeyboardShortcutsModal
 import { ArticuloLibreModal } from '../components/pos/ArticuloLibreModal'
 import { BalanzaManualModal } from '../components/pos/BalanzaManualModal'
 import { DevolucionModal } from '../components/pos/DevolucionModal'
+import { DevolucionEfectivoModal } from '../components/pos/DevolucionEfectivoModal'
 import { HistorialTicketsModal } from '../components/pos/HistorialTicketsModal'
 import { RecibirEnvaseModal } from '../components/pos/RecibirEnvaseModal'
+import { EnvasesOperativosModal } from '../components/pos/EnvasesOperativosModal'
+import { envasesTransaccionalesActivos, devolucionesEfectivoActivas } from '../lib/pilotExpansion'
 import { RetiroCajaModal } from '../components/pos/RetiroCajaModal'
 import { AltaRapidaModal } from '../components/pos/AltaRapidaModal'
 import { buscarEnCatalogoMaestro, type ProductoMaestro } from '../data/catalogoMaestroArgentino'
@@ -353,7 +357,7 @@ export function POSPage() {
 
       // 0. Comprobar si el código escaneado corresponde a un comprobante (Ticket de venta o Cierre de caja)
       if (/^t-[a-f0-9]{4,36}$/i.test(codeTrim) || /^ticket-[a-f0-9-]+$/i.test(codeTrim)) {
-        const errorFueraDeAlcance = errorDevolucionFueraDeAlcance(kioskoPilotStrictScopeActivo())
+        const errorFueraDeAlcance = devolucionesEfectivoActivas() ? null : errorDevolucionFueraDeAlcance(kioskoPilotStrictScopeActivo())
         if (errorFueraDeAlcance) {
           playScanSound('warning')
           toast.error(errorFueraDeAlcance)
@@ -599,6 +603,7 @@ export function POSPage() {
   return (
     <div className={`w-full h-full min-w-0 flex flex-col gap-2.5 ${cantItems > 0 ? 'pb-[calc(80px+env(safe-area-inset-bottom))]' : 'pb-0'} lg:pb-0 overflow-hidden`}>
       <CobrosManualesPendientes onVerTicket={ticket => { setTicketReciente(ticket); setTicketModalOpen(true); refrescarProductosVista() }} />
+      <OperacionesPilotoPendientes />
       <header className="flex shrink-0 items-center justify-between gap-3 px-1 py-1">
         <div className="flex min-w-0 items-center gap-3">
           <span className="hidden sm:flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-indigo-500 shadow-sm">
@@ -966,7 +971,12 @@ export function POSPage() {
       />
 
       {/* Modal de devoluciones y cambios de venta */}
-      <DevolucionModal
+      {devolucionesEfectivoActivas() ? <DevolucionEfectivoModal
+        isOpen={modalDevolucionOpen}
+        ventaInicial={ventaParaDevolver}
+        onClose={() => { setModalDevolucionOpen(false); setVentaParaDevolver(null) }}
+        onDevolucionExitosa={() => { refrescarProductosVista(); verificarSesionActiva() }}
+      /> : <DevolucionModal
         isOpen={modalDevolucionOpen}
         ventaInicial={ventaParaDevolver}
         onClose={() => {
@@ -977,14 +987,14 @@ export function POSPage() {
           refrescarProductosVista()
           verificarSesionActiva()
         }}
-      />
+      />}
 
       {/* Modal de historial de comprobantes y reimpresión */}
       <HistorialTicketsModal
         isOpen={modalTicketsOpen}
         onClose={() => setModalTicketsOpen(false)}
         onIniciarDevolucion={(v) => {
-          const errorFueraDeAlcance = errorDevolucionFueraDeAlcance(kioskoPilotStrictScopeActivo())
+          const errorFueraDeAlcance = devolucionesEfectivoActivas() ? null : errorDevolucionFueraDeAlcance(kioskoPilotStrictScopeActivo())
           if (errorFueraDeAlcance) {
             toast.error(errorFueraDeAlcance)
             return
@@ -1117,12 +1127,12 @@ export function POSPage() {
       </Modal>
 
       {/* Modal para recibir envases retornables vacíos */}
-      {tieneEnvases && (
+      {tieneEnvases && (envasesTransaccionalesActivos() ? <EnvasesOperativosModal isOpen={modalEnvaseOpen} onClose={() => setModalEnvaseOpen(false)} /> : (
         <RecibirEnvaseModal
           isOpen={modalEnvaseOpen}
           onClose={() => setModalEnvaseOpen(false)}
         />
-      )}
+      ))}
 
       {/* Modal para retiro rápido de efectivo en mostrador (Sangría de caja) */}
       <RetiroCajaModal

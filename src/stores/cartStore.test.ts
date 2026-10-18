@@ -25,6 +25,27 @@ function reiniciarCarrito() {
 
 const cart = () => useCartStore.getState()
 
+it('un crédito de envases compartidos no modifica vacíos locales al editar o cancelar el ticket', () => {
+  reiniciarCarrito()
+  const tipo = useEnvasesStore.getState().tiposEnvases[0]
+  useEnvasesStore.setState({ tiposEnvases: [{ ...tipo, stock_vacios: 10 }] })
+  cart().agregarDevolucionEnvase(tipo.nombre, 500, 2, tipo.id, true)
+  const virtual = cart().items[0].producto.id
+  expect(cart().items[0]).toMatchObject({ envase_compartido: true, subtotal: -1000 })
+  cart().actualizarCantidad(virtual, 3)
+  cart().quitarProducto(virtual)
+  expect(useEnvasesStore.getState().tiposEnvases[0].stock_vacios).toBe(10)
+  cart().agregarDevolucionEnvase(tipo.nombre, 500, 2, tipo.id, true)
+  cart().vaciarCarrito()
+  expect(useEnvasesStore.getState().tiposEnvases[0].stock_vacios).toBe(10)
+})
+
+it('no redondea silenciosamente el precio de un envase compartido', () => {
+  reiniciarCarrito()
+  expect(() => cart().agregarDevolucionEnvase('Vidrio', 500.25, 1, 'vidrio', true)).toThrow('incompatible')
+  expect(cart().items).toHaveLength(0)
+})
+
 it('un ticket con cobro guardado conserva artículos y ajuste hasta recuperar el cierre', () => {
   reiniciarCarrito()
   cart().agregarProducto(crearProducto(), 2)
