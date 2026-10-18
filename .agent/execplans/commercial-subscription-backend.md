@@ -168,3 +168,9 @@ success y versión pública comprobada. Suite conjunta 1870 PASS / 1 skipped /
 primero homologación: herramienta cifrada validada y WSASS accesible, pero creación
 del certificado bloqueada por error interno de WSASS. Ver arca-homologation.md;
 esto no habilita emisión fiscal ni integra el PR #1.
+
+## Continuación del piloto — 18/10/2026
+El usuario se encarga de la certificación y deja ARCA en pausa. Se detectó que
+el ticket térmico directo redondeaba los importes a pesos enteros. Corrección
+local acotada al formato de impresión, con regresiones de 58/80 mm; evidencia
+en `docs/pilot-thermal-cents-2026-10-18.md`. Impresora física sigue pendiente.

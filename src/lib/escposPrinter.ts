@@ -7,7 +7,7 @@
 
 import type { TicketData } from '../components/pos/TicketReceiptModal'
 import type { DatosCierreCaja } from '../components/pos/TicketCierreCajaModal'
-import { formatPrecio, formatFecha, formatearPromoTicket } from './utils'
+import { formatPrecio, formatNumero, formatFecha, formatearPromoTicket } from './utils'
 
 // Comandos ESC/POS estándar
 const ESC = 0x1b
@@ -78,7 +78,7 @@ function formatearLineaDosColumnas(izq: string, der: string, anchoTotal: number)
  */
 function formatearMontoFijo(monto: number, ancho: number = 9): string {
   const signo = monto < 0 ? '-$' : '$'
-  const numStr = Math.round(Math.abs(monto)).toLocaleString('es-AR')
+  const numStr = formatNumero(Math.abs(monto))
   const espacio = Math.max(1, ancho - signo.length - numStr.length)
   return signo + ' '.repeat(espacio) + numStr
 }
@@ -185,7 +185,7 @@ export function construirBufferEscPos(ticket: TicketData, anchoPapel: '58mm' | '
     const montoFijo = formatearMontoFijo(it.subtotal, colMontoAncho)
     dividirTextoEnLineas(it.descripcion.toUpperCase(), anchoCols).forEach((linea) => appendTexto(linea))
     appendTexto(formatearLineaDosColumnas(
-      `${it.cantidad} x $ ${Math.round(it.precioUnitario).toLocaleString('es-AR')}`,
+      `${it.cantidad} x $ ${formatNumero(it.precioUnitario)}`,
       montoFijo,
       anchoCols,
     ))
@@ -207,7 +207,7 @@ export function construirBufferEscPos(ticket: TicketData, anchoPapel: '58mm' | '
 
   appendBytes(CMD_BOLD_ON)
   appendBytes(CMD_DOUBLE_SIZE)
-  appendTexto(formatearLineaDosColumnas('TOTAL:', `$${Math.round(ticket.total).toLocaleString('es-AR')}`, anchoCols))
+  appendTexto(formatearLineaDosColumnas('TOTAL:', `$${formatNumero(ticket.total)}`, anchoCols))
   appendBytes(CMD_NORMAL_SIZE)
   appendBytes(CMD_BOLD_OFF)
 

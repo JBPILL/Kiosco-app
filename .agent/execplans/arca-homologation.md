@@ -66,3 +66,9 @@ ni acreditada todavía. La creación del certificado quedó bloqueada por el err
 interno de mensajería de WSASS, no por un fallo de firma CSR demostrado.
 Los archivos privados y metadatos de conciliación se conservan fuera del repo;
 no registrar aquí CUIT, DN completo, CSR, PEM ni rutas privadas del titular.
+
+## Pausa solicitada — 18/10/2026
+El usuario hará personalmente la certificación y pidió continuar con el resto
+del piloto dejando ARCA de lado. Se suspenden las acciones de certificado,
+autorización y activación fiscal hasta que solicite retomarlas. El CSR y la clave
+cifrada existentes se conservan; no se generan reemplazos ni se reintenta WSASS.
