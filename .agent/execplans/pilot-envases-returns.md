@@ -84,7 +84,8 @@ comprobante fiscal ni un refund electrónico sin su circuito separado.
       de código/SQL. Manifest histórico PASS (43 SQL intactos), audit --omit=dev 0
       vulnerabilidades. Escaneo: 46 candidatos revisados, todos sintéticos o PEM
       incompletos conocidos; no valores reales. Diff/index PASS.
-- [ ] Publicación de feat/pilot-envases-returns y PR separado, sin merge.
+- [x] Publicación normal de feat/pilot-envases-returns; PR #3 abierto en borrador:
+      https://github.com/JBPILL/Kiosco-app/pull/3. Sin merge; PR #1 intacto.
 - [ ] Gates de instalación/aceptación hospedada.
 
 ## Limitaciones y activación
@@ -105,6 +106,6 @@ del dispositivo, no coordinación física global. Conciliar vacíos locales por
 conteo real, nunca sumarlos entre puestos. Impresión física pendiente.
 
 ## Resultado
-Implementación local del primer circuito preparada; falta completar publicación
-y gates hospedados. Envases y devoluciones no están activados ni se presentan
+Implementación local del primer circuito validada y publicada en PR #3; quedan
+los gates hospedados. Envases y devoluciones no están activados ni se presentan
 como aprobados para uso real. Sin SQL remoto ni operaciones de negocio.
