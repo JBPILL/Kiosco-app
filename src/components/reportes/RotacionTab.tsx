@@ -1,6 +1,5 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../stores/authStore'
 import { usePromocionStore } from '../../stores/promocionStore'
 import {
@@ -10,7 +9,7 @@ import {
   type LineaVentaHistorial,
 } from '../../lib/rotacionInventario'
 import { exportarRotacionExcel } from '../../lib/exportUtils'
-import { formatPrecio, formatFecha, getCachedProductos, getFechaLocal } from '../../lib/utils'
+import { formatPrecio, formatFecha, getFechaLocal } from '../../lib/utils'
 import { IconExportar } from '../ui/Icons'
 import { Button } from '../ui/Button'
 import { RefreshButton } from '../ui/RefreshButton'
@@ -18,7 +17,7 @@ import { Modal } from '../ui/Modal'
 import { SearchInput } from '../ui/SearchInput'
 import type { Producto } from '../../types/database'
 import toast from 'react-hot-toast'
-import { adjuntarCostosProtegidos, cargarCostosProtegidos } from '../../lib/productCostAccess'
+import { cargarDatosRotacion } from '../../lib/rotationReportData'
 
 type FiltroSegmento = 'TODOS' | SegmentoRotacion
 type TipoLiquidacion = '2X1' | '20_OFF' | '30_OFF' | '50_OFF'
@@ -42,97 +41,35 @@ export function RotacionTab() {
   const [diasVigencia, setDiasVigencia] = useState(14)
   const [guardandoPromo, setGuardandoPromo] = useState(false)
 
+  const cargaActual = useRef(0)
+  const [errorCarga, setErrorCarga] = useState<string | null>(null)
+  const [tenantDatos, setTenantDatos] = useState<string | null>(null)
   const cargarDatos = useCallback(async () => {
+    const carga = ++cargaActual.current
     setCargando(true)
-    const fecha90diasAtras = new Date(Date.now() - 90 * 86400000).toISOString()
-
+    setErrorCarga(null)
+    setModalPromoOpen(false)
+    setProductoParaLiquidar(null)
     try {
-      // 1. Cargar productos activos
-      let queryProds = supabase
-        .from('productos')
-        .select('*, categoria:categorias(nombre, color)')
-        .eq('activo', true)
-        .order('descripcion')
-        .limit(10000)
-
-      if (kioscoId) {
-        queryProds = queryProds.eq('kiosco_id', kioscoId)
-      }
-
-      const { data: dataProds, error: errProds } = await queryProds
-
-      if (errProds) {
-        console.warn('Fallo cargando productos para rotación:', errProds)
-        const cached = getCachedProductos(kioscoId)
-        setProductos(cached || [])
-      } else {
-        const costos = await cargarCostosProtegidos((dataProds || []).map((producto: Producto) => producto.id))
-        setProductos(adjuntarCostosProtegidos((dataProds || []) as Producto[], costos))
-      }
-
-      // 2. Cargar ventas de los últimos 90 días con sus líneas
-      let queryVentas = supabase
-        .from('ventas')
-        .select(`
-          fecha_hora,
-          detalles:detalles_venta(
-            producto_id,
-            cantidad,
-            precio_unitario,
-            sin_envase,
-            es_devolucion_envase
-          )
-        `)
-        .eq('estado', 'COMPLETADA')
-        .gte('fecha_hora', fecha90diasAtras)
-        .order('fecha_hora', { ascending: false })
-        .limit(10000)
-
-      if (kioscoId) {
-        queryVentas = queryVentas.eq('kiosco_id', kioscoId)
-      }
-
-      const { data: dataVentas, error: errVentas } = await queryVentas
-
-      if (errVentas) {
-        console.warn('Aviso cargando historial de ventas para rotación:', errVentas)
-        setLineasVentas([])
-      } else {
-        const ventas = (dataVentas || []) as {
-          fecha_hora: string
-          detalles: { producto_id: string; cantidad: number; es_devolucion_envase: boolean }[] | null
-        }[]
-        const costosVentas = await cargarCostosProtegidos(ventas.flatMap((venta) => (venta.detalles || []).map((detalle) => detalle.producto_id)))
-        const costosPorId = new Map(costosVentas.map((costo) => [costo.producto_id, Number(costo.precio_costo) || 0]))
-        const lineasPlanas: LineaVentaHistorial[] = []
-        if (ventas) {
-          for (const v of ventas) {
-            if (!v.detalles) continue
-            for (const d of v.detalles) {
-              lineasPlanas.push({
-                producto_id: d.producto_id,
-                cantidad: Number(d.cantidad) || 0,
-                precio_costo: costosPorId.get(d.producto_id) || 0,
-                fecha_hora: v.fecha_hora,
-                es_devolucion_envase: Boolean(d.es_devolucion_envase),
-              })
-            }
-          }
-        }
-        setLineasVentas(lineasPlanas)
-      }
-    } catch (err) {
-      console.error('Error general calculando rotación:', err)
-      toast.error('Error cargando datos de rotación')
+      const datos = await cargarDatosRotacion(kioscoId || '', new Date(Date.now() - 90 * 86400000).toISOString())
+      if (carga !== cargaActual.current) return
+      setProductos(datos.productos)
+      setLineasVentas(datos.lineasVentas)
+      setTenantDatos(kioscoId || null)
+    } catch {
+      if (carga !== cargaActual.current) return
+      setProductos([])
+      setLineasVentas([])
+      setErrorCarga('No se pudo completar el informe de rotación. No se muestran resultados parciales. Revisá la conexión y volvé a intentar.')
     } finally {
-      setCargando(false)
+      if (carga === cargaActual.current) setCargando(false)
     }
   }, [kioscoId])
 
   useEffect(() => {
-    cargarDatos()
+    void cargarDatos()
+    return () => { cargaActual.current++ }
   }, [cargarDatos])
-
   // Cálculo de métricas puro
   const metricas = useMemo(() => {
     return calcularRotacionInventario(productos, lineasVentas, new Date(), 90)
@@ -155,6 +92,7 @@ export function RotacionTab() {
   }, [metricas.items, filtroSegmento, busqueda])
 
   const handleExportarExcel = async () => {
+    if (cargando || errorCarga) return
     try {
       await exportarRotacionExcel(metricas, kiosco?.nombre || 'Kiosco')
       toast.success('Informe de rotación exportado a Excel')
@@ -172,7 +110,7 @@ export function RotacionTab() {
   }
 
   const handleConfirmarLiquidacion = async () => {
-    if (!productoParaLiquidar || !kioscoId) return
+    if (!productoParaLiquidar || !kioscoId || cargando || errorCarga) return
 
     setGuardandoPromo(true)
     const hoyIso = getFechaLocal(new Date())
@@ -287,6 +225,18 @@ export function RotacionTab() {
           </span>
         )
     }
+  }
+
+  if (cargando || errorCarga || tenantDatos !== kioscoId) {
+    return (
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6 space-y-3">
+        <h3 className="font-semibold text-gray-900 dark:text-gray-100">Rotación y Stock Inmovilizado</h3>
+        {cargando || !errorCarga ? <p role="status">Cargando informe completo de rotación…</p> : <>
+          <p role="alert">{errorCarga}</p>
+          <Button onClick={() => void cargarDatos()}>Reintentar informe</Button>
+        </>}
+      </div>
+    )
   }
 
   return (
