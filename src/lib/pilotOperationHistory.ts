@@ -12,6 +12,7 @@ export interface MovimientoEnvaseCompartido {
   stock_resultante: number
   importe: number
   distribuidor: string | null
+  notas?: string | null
   creado_en: string
 }
 export interface HistorialDevolucionesTicket {
@@ -32,7 +33,7 @@ export async function cargarMovimientosEnvases(kioscoId: string, desde: string, 
   const kid = validarUuid(kioscoId)
   if (!Number.isFinite(Date.parse(desde)) || !Number.isFinite(Date.parse(hasta)) || Date.parse(desde) > Date.parse(hasta)) throw new Error('Período de envases inválido.')
   const filas = await leerColeccionPorId<{ id: string }>(async ultimo => {
-    let q = supabase.from('envases_movimientos').select('id,tipo_id,accion,cantidad,stock_resultante,importe,distribuidor,creado_en,pendientes_delta,pendientes_resultantes')
+    let q = supabase.from('envases_movimientos').select('id,tipo_id,accion,cantidad,stock_resultante,importe,distribuidor,creado_en,pendientes_delta,pendientes_resultantes,notas')
       .eq('kiosco_id', kid).gte('creado_en', desde).lte('creado_en', hasta).order('id').limit(500)
     if (ultimo) q = q.gt('id', ultimo)
     return await q
@@ -43,6 +44,7 @@ export async function cargarMovimientosEnvases(kioscoId: string, desde: string, 
     if (!acciones.some(a => a === r.accion) || typeof r.tipo_id !== 'string' || !r.tipo_id
       || typeof r.creado_en !== 'string' || !Number.isFinite(Date.parse(r.creado_en))
       || !(r.distribuidor === null || typeof r.distribuidor === 'string')) throw new Error('Movimiento de envase inválido.')
+    if (r.notas != null && (typeof r.notas !== 'string' || r.notas.length > 1000)) throw new Error('Observaciones del movimiento inválidas.')
     const cantidad = numero(r.cantidad, 0, 999999999), stock_resultante = numero(r.stock_resultante, 0, 999999999), importe = numero(r.importe, 2, 9999999999.99)
     if (stock_resultante < 0 || importe < 0
       || (['ENTREGAR_DISTRIBUIDOR', 'DEVOLVER_CLIENTE'].includes(String(r.accion)) && (cantidad >= 0 || importe !== 0))
@@ -52,7 +54,7 @@ export async function cargarMovimientosEnvases(kioscoId: string, desde: string, 
     const pendientes_resultantes = r.pendientes_resultantes == null ? null : numero(r.pendientes_resultantes, 0, 999999999)
     if (pendientes_resultantes !== null && pendientes_resultantes < 0) throw new Error('Pendientes inválidos.')
     if (['AJUSTAR_PENDIENTES', 'RECIBIR_PENDIENTES'].includes(String(r.accion)) && pendientes_resultantes === null) throw new Error('Historial de pendientes incompleto.')
-    return { pendientes_delta, pendientes_resultantes, id: validarUuid(r.id), tipo_id: r.tipo_id, accion: r.accion as MovimientoEnvaseCompartido['accion'], cantidad, stock_resultante, importe, distribuidor: r.distribuidor, creado_en: r.creado_en }
+    return { notas: typeof r.notas === 'string' ? r.notas : null, pendientes_delta, pendientes_resultantes, id: validarUuid(r.id), tipo_id: r.tipo_id, accion: r.accion as MovimientoEnvaseCompartido['accion'], cantidad, stock_resultante, importe, distribuidor: r.distribuidor, creado_en: r.creado_en }
   }).sort((a, b) => Date.parse(b.creado_en) - Date.parse(a.creado_en) || b.id.localeCompare(a.id))
 }
 

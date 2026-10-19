@@ -345,4 +345,16 @@ Sin cambios de SQL, permisos, saldo esperado ni semántica de reintentos.
 - [x] Dirigidos: 55 PASS / 3 archivos (incluye blanco, espacios y texto propio),
       build 631 módulos PASS. Diff de trabajo/índice PASS; scan mismos 46
       candidatos conocidos sin nuevos secretos. Sin cambios de dependencias/SQL.
-- [ ] Publicación y verificación del alias de Staging.
+- [x] 1b52b1f publicado y desplegado sólo en Staging:
+      dpl_DhRXP8QG8Re2sAUSBzkMu4PjgH2B READY. Observaciones ya opcionales.
+- [x] Ampliación de visibilidad: 76 PASS / 5 archivos, build 631 módulos PASS,
+      diff/índice y scan PASS (mismos candidatos conocidos). Helper real con JWT
+      Dueño en Staging lee 21 movimientos, 15 con notas; sólo lectura y sin
+      imprimir textos privados. Evidencia ../pilot-notes-history-staging-result.json.
+- [ ] Publicar la lectura/presentación de notas en el frontend de Staging.
+
+El usuario no encontraba las notas del movimiento: estaban guardadas en DB pero
+la proyección/historial no las mostraba. Se agrega lectura/validación de notas
+y presentación como texto escapado junto al cambio de pendientes en Catálogo →
+Precios de Envases → Depósito de envases → Movimientos de los últimos 30 días.
+Sin SQL ni ampliación de permisos; compatible con registros sin nota.

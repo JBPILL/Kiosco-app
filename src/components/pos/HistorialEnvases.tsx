@@ -39,6 +39,7 @@ function ContenidoHistorial({ kioscoId, tipos }: Props) {
           <p>{formatFecha(m.creado_en)} · Cantidad: {m.cantidad} · Saldo: {m.stock_resultante} vacíos</p>
           {m.pendientes_resultantes != null && <p>Pendientes: {m.pendientes_resultantes} · Cambio: {m.pendientes_delta}</p>}
           {m.importe > 0 && <p>Valor reconocido: {formatPrecio(m.importe)}</p>}
+          {m.notas && <p className="whitespace-pre-wrap break-words">Observaciones: {m.notas}</p>}
           {m.distribuidor && <p>Distribuidor: {m.distribuidor}</p>}
         </li>)}
       </ul>}

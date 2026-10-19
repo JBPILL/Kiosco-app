@@ -72,3 +72,14 @@ it('no consulta con comercio o período inválidos', async () => {
   await expect(cargarMovimientosEnvases(id(20), hasta, desde)).rejects.toThrow()
   expect(m.from).not.toHaveBeenCalled()
 })
+
+it('lee las observaciones guardadas y conserva registros sin nota', async () => {
+  paginas.envases_movimientos[0].notas = 'Entrega sin cobro'
+  const filas = await cargarMovimientosEnvases(id(20), desde, hasta)
+  expect(filas.find(f => f.id === id(1))?.notas).toBe('Entrega sin cobro')
+  expect(filas.find(f => f.id === id(2))?.notas).toBeNull()
+})
+it.each([123, 'x'.repeat(1001)])('rechaza notas malformadas del historial', async notas => {
+  paginas.envases_movimientos[0].notas = notas
+  await expect(cargarMovimientosEnvases(id(20), desde, hasta)).rejects.toThrow('Observaciones')
+})

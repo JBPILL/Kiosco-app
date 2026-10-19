@@ -33,3 +33,11 @@ it('oculta el historial anterior al cambiar de comercio', async () => {
   expect(screen.queryByText('Recepción en ticket · Vidrio')).toBeNull()
   expect(screen.getByRole('status')).toBeTruthy()
 })
+
+it('muestra las observaciones junto al cambio de pendientes como texto seguro', async () => {
+  m.cargar.mockResolvedValue([{ id: 'm1', tipo_id: 'vidrio', accion: 'AJUSTAR_PENDIENTES', cantidad: 0, stock_resultante: 2, pendientes_delta: 3, pendientes_resultantes: 3, importe: 0, distribuidor: null, notas: '<b>Préstamo sin cobrar</b>', creado_en: '2026-10-19T12:00:00Z' }])
+  render(<HistorialEnvases kioscoId="k1" tipos={tipos} />)
+  const nota = await screen.findByText('Observaciones: <b>Préstamo sin cobrar</b>')
+  expect(nota.querySelector('b')).toBeNull()
+  expect(screen.getByText('Pendientes: 3 · Cambio: 3')).toBeTruthy()
+})
