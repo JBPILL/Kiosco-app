@@ -401,3 +401,14 @@ sin apilar todos los formularios ni volver a escrituras locales antiguas.
 - [x] Vista local de componente real con datos ficticios: tabla, pie fijo,
       formularios cerrados y confirmación con saldos conservados verificados.
       Captura ../pilot-deposito-uniforme.png. Suite completa en ejecución.
+- [x] Suite completa sobre código 5c288d6: 2068 PASS / 1 skipped / 217 archivos,
+      191,88 s con --maxWorkers=4. Primera ejecución: 2067 PASS y un timeout
+      PGlite de cinco segundos; repetición sin cambiar pruebas ni límites PASS.
+      Se cierra esa deuda de validación local; permanece aceptación de Staging,
+      conciliación de fracciones históricas y ensayo físico de impresora.
+- [x] 5c288d6 publicado por push normal y desplegado sólo en kiosco-app-staging:
+      dpl_8o1L6RZnFhrBq7VaXgpMckXtaDR2 READY, alias estable verificado.
+      Bundle público: tabla heredada, confirmación de desactivación/reactivación,
+      formularios separados, pendientes/notas e identidad Staging PASS.
+      Sin SQL, bajas remotas ejecutadas ni cambios a master/Production.
+      PR #3 abierto en borrador, sin merge; aceptación visual pendiente.
