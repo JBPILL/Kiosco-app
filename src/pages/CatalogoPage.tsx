@@ -248,7 +248,7 @@ export function CatalogoPage() {
       />
 
       {/* Modal de modificación de precios de envases retornables */}
-      {tieneEnvases && (envasesTransaccionalesActivos() ? <EnvasesOperativosModal administracion isOpen={envasesOpen} onClose={() => setEnvasesOpen(false)} /> : (
+      {tieneEnvases && (envasesTransaccionalesActivos() ? <EnvasesOperativosModal administracion isOpen={envasesOpen} onClose={() => setEnvasesOpen(false)} productos={productos} cargandoProductos={cargando} onEditarProducto={handleEditar} /> : (
         <PreciosEnvasesModal
           isOpen={envasesOpen}
           onClose={() => setEnvasesOpen(false)}

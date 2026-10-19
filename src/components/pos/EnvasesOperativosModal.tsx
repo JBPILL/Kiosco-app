@@ -12,19 +12,24 @@ import { formatPrecio } from '../../lib/utils'
 import type { ResultadoEnvase } from '../../lib/envasesOutbox'
 import type { SolicitudEnvase } from '../../../supabase/functions/_shared/envasesRequest'
 import { HistorialEnvases } from './HistorialEnvases'
+import type { Producto } from '../../types/database'
 
-interface Props { isOpen: boolean; onClose: () => void; administracion?: boolean }
-export function EnvasesOperativosModal({ isOpen, onClose, administracion = false }: Props) {
+interface Props { isOpen: boolean; onClose: () => void; administracion?: boolean; productos?: Producto[]; cargandoProductos?: boolean; onEditarProducto?: (producto: Producto) => void }
+export function EnvasesOperativosModal({ isOpen, onClose, administracion = false, productos, cargandoProductos, onEditarProducto }: Props) {
   const usuario = useAuthStore(state => state.usuario)
   if (!isOpen || !usuario?.kiosco_id) return null
   if (!usuario.activo || usuario.rol === 'VISOR') return <Modal isOpen onClose={onClose} title="Envases"><p>Se requiere un Dueño o Cajero activo para operar envases.</p></Modal>
-  return <ContenidoEnvases key={`${usuario.id}:${usuario.kiosco_id}:${administracion}`} onClose={onClose} administracion={administracion} />
+  return <ContenidoEnvases key={`${usuario.id}:${usuario.kiosco_id}:${administracion}`} onClose={onClose} administracion={administracion} productos={productos} cargandoProductos={cargandoProductos} onEditarProducto={onEditarProducto} />
 }
 
-function ContenidoEnvases({ onClose, administracion }: Omit<Props, 'isOpen'>) {
+function ContenidoEnvases({ onClose, administracion, productos = [], cargandoProductos = false, onEditarProducto }: Omit<Props, 'isOpen'>) {
   const contexto = useRef(contextoOperacionPiloto()).current
   const dueno = useAuthStore(state => state.usuario?.rol === 'DUEÑO')
-  const [pestana, setPestana] = useState<'DEPOSITO' | 'TIPOS' | 'MOVIMIENTOS'>('DEPOSITO')
+  const [pestana, setPestana] = useState<'DEPOSITO' | 'TIPOS' | 'PRODUCTOS' | 'MOVIMIENTOS'>('DEPOSITO')
+  const [busquedaProducto, setBusquedaProducto] = useState('')
+  const [soloRetornables, setSoloRetornables] = useState(true)
+  const productosDelComercio = productos.filter(p => p.kiosco_id === contexto.kioscoId && p.activo)
+  const productosVisibles = productosDelComercio.filter(p => (!soloRetornables || p.es_retornable) && `${p.descripcion} ${p.nombre_envase ?? ''}`.toLocaleLowerCase().includes(busquedaProducto.trim().toLocaleLowerCase()))
   const [tipos, setTipos] = useState<TipoEnvaseCompartido[]>([])
   const [seleccion, setSeleccion] = useState('')
   const [cantidad, setCantidad] = useState('1')
@@ -99,8 +104,8 @@ function ContenidoEnvases({ onClose, administracion }: Omit<Props, 'isOpen'>) {
   }
 
   const entrada = 'w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 p-2 text-gray-900 dark:text-gray-100'
-  return <Modal isOpen onClose={ocupado ? () => {} : onClose} title={administracion ? 'Depósito de envases' : 'Recibir envases'} size={administracion ? 'xl' : 'lg'} footer={administracion ? <div className="flex w-full items-center justify-between gap-3"><p className="text-xs text-gray-500 dark:text-gray-400">Los cambios se guardan al confirmar cada operación.</p><Button variant="secondary" disabled={ocupado} onClick={onClose}>Cerrar</Button></div> : undefined}>
-    <div className="envases-controls space-y-4">
+  return <Modal isOpen onClose={ocupado ? () => {} : onClose} title={administracion ? 'Depósito de envases' : 'Recibir Envases Retornables'} size={administracion ? 'xl' : 'lg'} footer={administracion ? <div className="flex w-full items-center justify-between gap-3"><p className="text-xs text-gray-500 dark:text-gray-400">Los cambios se guardan al confirmar cada operación.</p><Button variant="secondary" disabled={ocupado} onClick={onClose}>Cerrar</Button></div> : undefined}>
+    <div className={`envases-controls space-y-4 ${administracion ? '' : 'envases-recepcion'}`}>
       {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       {confirmado ? <>
         <h3 className="text-lg font-bold">Recepción registrada</h3>
@@ -108,16 +113,21 @@ function ContenidoEnvases({ onClose, administracion }: Omit<Props, 'isOpen'>) {
         <p className="text-sm">Verificá si el cliente ya recibió el dinero antes de entregarlo. No repitas el pago si ya se realizó.</p>
         <Button fullWidth disabled={ocupado} onClick={() => void entrega()}>Ya verifiqué la entrega de efectivo</Button>
       </> : <fieldset disabled={cargando || ocupado || bloqueo.current} className="space-y-3">
-        <p className="text-sm text-gray-600 dark:text-gray-300">{administracion ? 'Controlá los vacíos del negocio y los pendientes que faltan traer.' : 'Elegí el envase y la cantidad que trae el cliente.'}</p>
+        <p className="text-sm text-gray-600 dark:text-gray-300">{administracion ? 'Controlá los vacíos del negocio y los pendientes que faltan traer.' : 'Seleccioná el tipo de envase y la cantidad devuelta para descontar del ticket o abonar en efectivo al cliente.'}</p>
         {administracion && <div role="tablist" aria-label="Administración de envases" className="flex gap-1 overflow-x-auto border-b border-gray-200 pb-1 dark:border-gray-700">
-          {([{ id: 'DEPOSITO', texto: 'Depósito de vacíos' }, { id: 'TIPOS', texto: 'Tipos y precios' }, { id: 'MOVIMIENTOS', texto: 'Movimientos' }] as const).map(p => <button key={p.id} type="button" role="tab" aria-selected={pestana === p.id} onClick={() => setPestana(p.id)} className={`shrink-0 rounded-t-lg border-b-2 px-3 py-2 text-xs font-bold transition-colors ${pestana === p.id ? 'border-indigo-600 bg-indigo-50/50 text-indigo-600 dark:bg-indigo-950/30 dark:text-indigo-400' : 'border-transparent text-gray-500 dark:text-gray-400'}`}>{p.texto}</button>)}
+          {([{ id: 'DEPOSITO', texto: 'Depósito de vacíos' }, { id: 'TIPOS', texto: 'Tipos y precios' }, { id: 'PRODUCTOS', texto: 'Productos del catálogo' }, { id: 'MOVIMIENTOS', texto: 'Movimientos' }] as const).map(p => <button key={p.id} type="button" role="tab" aria-selected={pestana === p.id} onClick={() => setPestana(p.id)} className={`shrink-0 rounded-t-lg border-b-2 px-3 py-2 text-xs font-bold transition-colors ${pestana === p.id ? 'border-indigo-600 bg-indigo-50/50 text-indigo-600 dark:bg-indigo-950/30 dark:text-indigo-400' : 'border-transparent text-gray-500 dark:text-gray-400'}`}>{p.texto}</button>)}
         </div>}
         {cargando ? <p role="status">Cargando envases…</p> : <>
-          {administracion && pestana !== 'MOVIMIENTOS' && <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xs dark:border-gray-700 dark:bg-gray-800">
+          {administracion && (pestana === 'DEPOSITO' || pestana === 'TIPOS') && <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xs dark:border-gray-700 dark:bg-gray-800">
             <div className="border-b border-gray-200 bg-gray-50 p-2.5 dark:border-gray-700 dark:bg-gray-900/60"><h3 className="text-xs font-bold">Stock en Depósito por Tipo de Envase</h3><p className="text-[11px] text-gray-500">Seleccioná un tipo para {pestana === 'TIPOS' ? 'editar su nombre, precio o estado' : 'registrar el conteo o los pendientes'}.</p></div>
             <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="bg-gray-100 text-[10px] uppercase tracking-wider text-gray-600 dark:bg-gray-700/50 dark:text-gray-300"><tr><th className="px-3 py-2">Tipo de envase</th><th className="px-3 py-2 text-right">Valor unitario</th><th className="px-3 py-2 text-center">Vacíos</th><th className="px-3 py-2 text-center">Pendientes de traer</th></tr></thead><tbody className="divide-y divide-gray-100 dark:divide-gray-700">{tipos.map(t => <tr key={t.id} aria-selected={seleccion === t.id} onClick={() => { if (cargando || ocupado || bloqueo.current) return; setSeleccion(t.id); setPendientes(''); setConfirmarEstado(false) }} className={`cursor-pointer ${seleccion === t.id ? 'bg-indigo-50/70 dark:bg-indigo-950/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700/40'}`}><td className="px-3 py-2.5"><button type="button" aria-pressed={seleccion === t.id} className="text-left font-bold text-indigo-700 underline-offset-2 hover:underline dark:text-indigo-300">{t.nombre}{t.activo ? '' : ' (inactivo)'}</button></td><td className="px-3 py-2.5 text-right tabular-nums">{formatPrecio(t.precio)}</td><td className="px-3 py-2.5 text-center font-bold tabular-nums">{t.stockVacios}</td><td className="px-3 py-2.5 text-center font-bold tabular-nums">{t.pendientes}</td></tr>)}</tbody></table></div>
             {tipos.length === 0 && <p className="p-3 text-sm">No hay tipos de envase configurados.</p>}
           </div>}
+          {administracion && pestana === 'PRODUCTOS' && <section className="space-y-3" aria-label="Productos del catálogo">
+            <div className="flex flex-wrap items-center gap-3"><div className="min-w-0 flex-1"><Input aria-label="Buscar producto o tipo de envase" placeholder="Buscar por nombre de producto o tipo de envase…" value={busquedaProducto} onChange={e => setBusquedaProducto(e.target.value)} /></div><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={soloRetornables} onChange={e => setSoloRetornables(e.target.checked)} />Sólo retornables</label></div>
+            {cargandoProductos ? <p role="status">Cargando catálogo…</p> : <div className="overflow-x-auto rounded-xl border border-gray-300 dark:border-gray-600"><table className="w-full text-left text-xs"><thead className="bg-gray-100 dark:bg-gray-700"><tr><th className="p-3">Retornable</th><th className="p-3">Producto</th><th className="p-3">Tipo de envase</th><th className="p-3">Precio envase</th><th className="p-3">Acción</th></tr></thead><tbody>{productosVisibles.map(p => <tr key={p.id} className="border-t border-gray-200 dark:border-gray-700"><td className="p-3">{p.es_retornable ? 'Sí' : 'No'}</td><td className="p-3 font-semibold">{p.descripcion}</td><td className="p-3">{p.nombre_envase || 'Sin asignar'}</td><td className="p-3">{formatPrecio(p.precio_envase ?? 0)}</td><td className="p-3">{dueno && onEditarProducto && <Button size="sm" variant="secondary" onClick={() => { onClose(); onEditarProducto(p) }}>Configurar</Button>}</td></tr>)}</tbody></table>{productosVisibles.length === 0 && <div className="space-y-3 p-6 text-center"><p className="text-sm">No se encontraron productos con los filtros aplicados.</p>{soloRetornables && <Button size="sm" variant="secondary" onClick={() => setSoloRetornables(false)}>Ver todos los productos del catálogo</Button>}</div>}</div>}
+            <p className="text-xs text-gray-500 dark:text-gray-400">Mostrando {productosVisibles.length} productos. La configuración se guarda desde el formulario habitual del producto.</p>
+          </section>}
           {!administracion && <div>
             <p className="mb-2 text-sm font-semibold">Tipo de envase</p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="group" aria-label="Tipos de envase">
@@ -202,7 +212,7 @@ function ContenidoEnvases({ onClose, administracion }: Omit<Props, 'isOpen'>) {
         </>}
       </fieldset>}
       {administracion && dueno && pestana === 'MOVIMIENTOS' && <HistorialEnvases kioscoId={contexto.kioscoId} tipos={tipos} />}
-      {!administracion && <Button fullWidth variant="danger" disabled={ocupado} onClick={onClose}>Cancelar</Button>}
+      {!administracion && <Button fullWidth variant="secondary" disabled={ocupado} onClick={onClose}>Cancelar</Button>}
     </div>
   </Modal>
 }

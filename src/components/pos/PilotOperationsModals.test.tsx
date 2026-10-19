@@ -310,3 +310,28 @@ it('selecciona el envase al pulsar precio, saldo o espacio de su fila', async ()
   await waitFor(() => expect((screen.getByLabelText('Vacíos contados') as HTMLInputElement).value).toBe('12'))
   expect(m.envase).not.toHaveBeenCalled()
 })
+
+it('Productos filtra retornables del comercio y configura mediante el formulario existente', async () => {
+  const base = { categoria_id: null, codigo_barras: null, precio_costo: 0, precio_venta: 200, stock_actual: 1, stock_minimo: 0, es_favorito: false, activo: true, fecha_creacion: '', fecha_actualizacion: '' }
+  const productos = [
+    { ...base, id: 'p1', kiosco_id: 'kid', descripcion: 'Gaseosa', es_retornable: true, nombre_envase: 'Vidrio', precio_envase: 100 },
+    { ...base, id: 'p2', kiosco_id: 'kid', descripcion: 'Caramelo', es_retornable: false },
+    { ...base, id: 'p3', kiosco_id: 'otro', descripcion: 'Ajeno', es_retornable: true },
+  ]
+  const editar = vi.fn(), cerrar = vi.fn()
+  render(<EnvasesOperativosModal administracion isOpen productos={productos} onEditarProducto={editar} onClose={cerrar} />)
+  await screen.findByLabelText('Vacíos contados')
+  fireEvent.click(screen.getByRole('tab', { name: 'Productos del catálogo' }))
+  expect(screen.getByText('Gaseosa')).toBeTruthy()
+  expect(screen.queryByText('Caramelo')).toBeNull()
+  expect(screen.queryByText('Ajeno')).toBeNull()
+  fireEvent.change(screen.getByLabelText('Buscar producto o tipo de envase'), { target: { value: 'no existe' } })
+  expect(screen.getByText('No se encontraron productos con los filtros aplicados.')).toBeTruthy()
+  fireEvent.change(screen.getByLabelText('Buscar producto o tipo de envase'), { target: { value: '' } })
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Sólo retornables' }))
+  expect(screen.getByText('Caramelo')).toBeTruthy()
+  fireEvent.click(screen.getAllByRole('button', { name: 'Configurar' })[0])
+  expect(editar).toHaveBeenCalledWith(productos[0])
+  expect(cerrar).toHaveBeenCalledOnce()
+  expect(m.envase).not.toHaveBeenCalled()
+})

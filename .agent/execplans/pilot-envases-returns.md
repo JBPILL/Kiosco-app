@@ -469,3 +469,16 @@ sin apilar todos los formularios ni volver a escrituras locales antiguas.
       ficticios ../pilot-envases-acciones.png. Sólo presentación, sin SQL.
       Suite completa anterior al ajuste: repetir antes de merge.
 - [x] 4d0f6aa publicado y desplegado sólo en Staging: dpl_7Q1XyPC465rQbMTcCN8Xi4yLTEDz READY. Alias/CSS público verifican celeste predefinido; recepción rojo/celeste/verde comprobada localmente. Sin merge ni cambios de Production.
+
+## Diseños migrados como referencia visual (19/10/2026)
+- [x] Recepción con tarjetas en grilla, selección clara, resumen verde, acciones
+      celeste/verde y Cancelar neutro como referencia. Conserva vacíos/pendientes,
+      notas opcionales y recuperación durable; no inventa descripciones de tipos.
+- [x] Productos del catálogo: búsqueda, Sólo retornables, tabla y estado vacío.
+      Lee productos ya cargados del comercio actual y Configurar (Dueño) abre
+      ProductForm existente; no hay edición masiva ni escrituras directas nuevas.
+      Depósito conserva distribución, acciones, saldos y ausencia de distribuidor.
+- [x] Dirigidos 48 PASS / 3 archivos; build 631 módulos PASS. Vista local con
+      datos ficticios ../pilot-envases-referencia.png; no operaciones remotas.
+      Suite completa previa anterior al ajuste: repetir antes de merge.
+- [x] Integración adicional Catálogo/ProductForm: 11 PASS / 2 archivos (59 dirigidos en total / 5 archivos). Diff/índice y scan sin nuevos secretos (46 candidatos conocidos).

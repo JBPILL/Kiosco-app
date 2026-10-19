@@ -459,3 +459,56 @@
   border-color: var(--envase-border);
   color: var(--envase-text);
 }
+
+/* Recepción basada en el modal migrado: tarjetas y resumen diferenciados. */
+:root .envases-recepcion [aria-label="Tipos de envase"] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (min-width: 640px) {
+  :root .envases-recepcion [aria-label="Tipos de envase"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+:root .envases-recepcion [aria-label="Tipos de envase"] button {
+  min-width: 0;
+  max-width: none;
+  padding: .75rem;
+  border-radius: .875rem;
+  background: #fff8eb;
+  color: #3f3528;
+}
+:root.dark .envases-recepcion [aria-label="Tipos de envase"] button {
+  background: #17344e;
+  color: #d9e7f4;
+}
+:root .envases-recepcion [aria-label="Tipos de envase"] button[aria-pressed="true"] {
+  background: #e3e1d8;
+  border-color: var(--envase-action);
+  outline-color: var(--envase-action);
+}
+:root.dark .envases-recepcion [aria-label="Tipos de envase"] button[aria-pressed="true"] {
+  background: #294d6b;
+}
+:root .envases-recepcion [aria-label="Tipos de envase"] button .envase-price {
+  color: #36576b;
+  margin-top: .25rem;
+  font-size: 1.125rem;
+}
+:root.dark .envases-recepcion [aria-label="Tipos de envase"] button .envase-price {
+  color: #a1c1dd;
+}
+:root .envases-recepcion .envase-total {
+  background: #e0e5d8;
+  border-color: #b0c6aa;
+  color: #24392d;
+}
+:root.dark .envases-recepcion .envase-total {
+  background: #193b34;
+  border-color: #658c6c;
+  color: #d5e8df;
+}
+:root .envases-recepcion button[data-variant="primary"],
+:root .envases-recepcion button[data-variant="success"] {
+  min-height: 3.25rem;
+}
