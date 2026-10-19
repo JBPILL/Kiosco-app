@@ -459,3 +459,12 @@ sin apilar todos los formularios ni volver a escrituras locales antiguas.
       revisión visual local con datos ficticios ../pilot-envases-verde.png.
       Suite completa previa anterior al ajuste; repetir antes de integrar.
 - [x] e0a2ea1 publicado y desplegado sólo en Staging: dpl_8HEBzb1H4XZZMq1FidToAvmkNBBy READY, alias y CSS público verde claro/oscuro verificados. Sin merge ni cambios de Production.
+
+## Acciones con colores predefinidos (19/10/2026)
+- [x] Celeste principal predefinido para guardar/crear/descontar y selección;
+      verde para reintegro en efectivo; rojo para Cancelar en recepción.
+      Guardar nombre/precio y pendientes pasan a variante primaria. Conserva
+      colores neutros deshabilitados, tamaños y lógica operacional.
+- [x] 27 pruebas del modal PASS, build 631 módulos PASS; revisión visual con datos
+      ficticios ../pilot-envases-acciones.png. Sólo presentación, sin SQL.
+      Suite completa anterior al ajuste: repetir antes de merge.
