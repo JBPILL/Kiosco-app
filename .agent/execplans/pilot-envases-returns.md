@@ -424,3 +424,4 @@ sin apilar todos los formularios ni volver a escrituras locales antiguas.
       217 archivos sobre 5c288d6, anterior a este ajuste visual/interacción.
       Repetir suite en HEAD definitivo antes de merge. Sin SQL/dependencias.
 - [x] Build final PASS (631 módulos).
+- [x] 12f6b69 push normal y despliegue Staging dpl_3QkBseR688qjuATL7rVSAEwmkLFz READY; alias y bundle con destino Staging verificados. PR #3 en borrador, sin merge ni cambios de Production.
