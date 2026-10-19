@@ -377,7 +377,12 @@ por defecto, con estados separados para evitar sobrescrituras accidentales.
       por defecto que se despliega sin campos del tipo seleccionado; sin
       distribuidor. Historial accesible por Movimientos. Capturas privadas
       ../pilot-deposito-{redesign,tipos-closed,tipo-expanded}.png.
-- [ ] Publicación y verificación exclusivamente en Staging.
+- [x] 017e052 publicado por push normal y desplegado sólo en kiosco-app-staging:
+      dpl_DQgvhFQ5h7fY6F1uSZwPRsVVRTfV READY, alias estable verificado
+      https://kiosco-app-staging.vercel.app. Bundle confirma pestañas y formularios
+      separados, conserva notas opcionales y destino Supabase Staging.
+      Sin operaciones financieras, SQL ni cambios de Production; PR #3 en borrador.
+      Aceptación visual del usuario pendiente.
 
 El usuario reafirma tomar el modal anterior como referencia. Se recupera su
 navegación por pestañas y ancho de administración: Depósito de vacíos, Tipos y
