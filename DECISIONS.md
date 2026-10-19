@@ -160,3 +160,11 @@ reintegro, crédito de ticket ni caja. Se conserva auditoría y solicitud idempo
 No se descuenta stock de vacíos al declarar: el envase salió lleno con mercadería,
 y no se puede suponer que salió del depósito de vacíos. Valores anteriores se
 concilian manualmente; cero inicial no certifica que no existan préstamos previos.
+
+
+## Observaciones opcionales al registrar pendientes (19/10/2026)
+El usuario solicita no exigir un motivo en cada registro. El frontend permite
+dejar las observaciones vacías y envía «Sin observaciones adicionales» como
+descripción neutral de esa ausencia. No se atribuye una razón inventada al
+operador. Se conserva el contrato remoto y la auditoría de actor, saldo anterior,
+saldo nuevo e ID/cuerpo para recuperación. No requiere SQL ni amplía permisos.

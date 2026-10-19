@@ -37,7 +37,9 @@ no sustituye JWT/RLS, concurrencia y permisos del servicio hospedado.
    El frontend que consulta pendientes requiere este módulo antes de publicarse.
 
 Pendientes sin cliente: el Dueño declara/corrige el total por tipo con saldo esperado
-para rechazar cambios sobre una lectura vieja y con motivo obligatorio. Recepción de
+para rechazar cambios sobre una lectura vieja. Las observaciones de ese registro
+son opcionales: si faltan, se guarda «Sin observaciones adicionales»; la auditoría
+de actor y cantidades sigue siendo obligatoria. Recepción de
 pendientes (Dueño/Cajero) reduce ese total y aumenta vacíos atómicamente; no paga,
 no agrega crédito al ticket ni requiere caja. Registro y recepción mantienen ID/cuerpo
 para recuperar el ACK sin duplicar. No se infieren de tickets ni se descuentan vacíos

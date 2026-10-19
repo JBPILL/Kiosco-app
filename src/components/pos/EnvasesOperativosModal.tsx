@@ -143,8 +143,8 @@ function ContenidoEnvases({ onClose, administracion }: Omit<Props, 'isOpen'>) {
           {dueno && tipo && <details className="border-t border-gray-200 pt-2 dark:border-gray-700"><summary className="cursor-pointer text-xs text-gray-500 dark:text-gray-400">Registrar envases pendientes</summary>
             <div className="mt-3 space-y-3"><p className="text-sm">Anotá el total que falta traer por este tipo porque no se cobró el envase. No cambia los vacíos del negocio ni mueve dinero.</p>
               <QuantityStepper label="Nuevo total pendiente" max={999999999} value={pendientes} onChange={setPendientes} />
-              <label className="block text-sm">Motivo del cambio<input className={entrada} maxLength={1000} value={notas} onChange={e => setNotas(e.target.value)} /></label>
-              <Button fullWidth variant="secondary" disabled={!pendientes || !Number.isInteger(Number(pendientes)) || Number(pendientes) < 0 || Number(pendientes) > 999999999 || !notas.trim()} onClick={() => void registrar({ version: 1, id: crypto.randomUUID(), accion: 'AJUSTAR_PENDIENTES', tipoId: tipo.id, datos: { pendientesEsperados: tipo.pendientes, nuevosPendientes: Number(pendientes), notas: notas.trim() } })}>Guardar total pendiente</Button>
+              <label className="block text-sm">Observaciones (opcional)<input className={entrada} maxLength={1000} value={notas} onChange={e => setNotas(e.target.value)} /></label>
+              <Button fullWidth variant="secondary" disabled={!pendientes || !Number.isInteger(Number(pendientes)) || Number(pendientes) < 0 || Number(pendientes) > 999999999} onClick={() => void registrar({ version: 1, id: crypto.randomUUID(), accion: 'AJUSTAR_PENDIENTES', tipoId: tipo.id, datos: { pendientesEsperados: tipo.pendientes, nuevosPendientes: Number(pendientes), notas: notas.trim() || 'Sin observaciones adicionales' } })}>Guardar total pendiente</Button>
             </div>
           </details>}
           {administracion && dueno && <>

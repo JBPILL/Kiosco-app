@@ -334,3 +334,15 @@ aumentar el máximo: esa línea se identifica como conciliación y deshabilita
 cantidad/Todo/reposición, sin enviar RPC. Otras líneas compatibles conservan
 su flujo. Diagnóstico read-only de Staging confirmó 0,013 repuesto con artículo
 UN no pesable, guardado antes del guard; no se alteran stock, caja ni historia.
+
+
+## Observaciones opcionales de pendientes (19/10/2026)
+Se retira la obligatoriedad de escribir el motivo en la interfaz. Si está vacío
+o sólo tiene espacios, la operación guarda la nota neutral «Sin observaciones
+adicionales», conservando el contrato SQL y su registro de actor/cantidades.
+Los textos escritos por el usuario se conservan recortando espacios externos.
+Sin cambios de SQL, permisos, saldo esperado ni semántica de reintentos.
+- [x] Dirigidos: 55 PASS / 3 archivos (incluye blanco, espacios y texto propio),
+      build 631 módulos PASS. Diff de trabajo/índice PASS; scan mismos 46
+      candidatos conocidos sin nuevos secretos. Sin cambios de dependencias/SQL.
+- [ ] Publicación y verificación del alias de Staging.

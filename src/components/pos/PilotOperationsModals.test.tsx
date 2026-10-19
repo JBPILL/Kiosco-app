@@ -197,3 +197,17 @@ it('un saldo unitario fraccionado anterior requiere conciliación y no ofrece To
   expect(screen.queryByText(/entera entre 0 y 0.987/)).toBeNull()
   expect(m.devolver).not.toHaveBeenCalled()
 })
+
+it.each(['', '   ', '  Entregas del día  '])('permite registrar pendientes con observaciones opcionales %j', async notas => {
+  m.envase.mockResolvedValue({ id: 'op', stock_vacios: 5, pendientes: 3, importe: 0 })
+  render(<EnvasesOperativosModal isOpen onClose={vi.fn()} />)
+  await screen.findByText('Registrar envases pendientes')
+  fireEvent.click(screen.getByText('Registrar envases pendientes'))
+  fireEvent.change(screen.getByLabelText('Nuevo total pendiente'), { target: { value: '3' } })
+  fireEvent.change(screen.getByLabelText('Observaciones (opcional)', { exact: true }), { target: { value: notas } })
+  const guardar = screen.getByRole('button', { name: 'Guardar total pendiente' })
+  expect(guardar.hasAttribute('disabled')).toBe(false)
+  fireEvent.click(guardar)
+  await waitFor(() => expect(m.envase).toHaveBeenCalledOnce())
+  expect(m.envase.mock.calls[0][1]).toMatchObject({ accion: 'AJUSTAR_PENDIENTES', datos: { pendientesEsperados: 0, nuevosPendientes: 3, notas: notas.trim() || 'Sin observaciones adicionales' } })
+})
