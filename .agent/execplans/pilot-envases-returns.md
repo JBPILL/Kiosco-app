@@ -482,3 +482,4 @@ sin apilar todos los formularios ni volver a escrituras locales antiguas.
       datos ficticios ../pilot-envases-referencia.png; no operaciones remotas.
       Suite completa previa anterior al ajuste: repetir antes de merge.
 - [x] Integración adicional Catálogo/ProductForm: 11 PASS / 2 archivos (59 dirigidos en total / 5 archivos). Diff/índice y scan sin nuevos secretos (46 candidatos conocidos).
+- [x] cd4b1d9 publicado y desplegado sólo en Staging: dpl_2BFsdPYGn7KL42R4TwVVB19b66bE READY. Alias/bundle verifican recepción, pestaña catálogo y destino Staging. Sin merge ni cambios de Production.
