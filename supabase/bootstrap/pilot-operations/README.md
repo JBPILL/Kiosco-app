@@ -143,3 +143,12 @@ Esa regla de elección fue sustituida por instrucción del usuario. La correcci�
 aprobó 34 comprobaciones Staging: único reintegro neto + vacíos, rechazo de la
 opción retirada, faltante de vacíos sin efectos, concurrencia y recuperación de
 ACK históricos intactos. El fixture sigue suspendido y sin capacidades activas.
+
+
+La administración de envases abre desde Catálogo → Precios de Envases. El modal
+conserva la navegación por pestañas: Depósito de vacíos, Tipos y precios y
+Movimientos. Nuevo tipo de envase es desplegable dentro de Tipos y precios;
+crear y editar usan formularios separados. El motivo/observaciones guardado
+se consulta en Movimientos. La entrega al distribuidor se retiró de la interfaz
+de este modal por pedido del usuario; registros anteriores y recuperación de
+solicitudes existentes se conservan. No se modifica el contrato remoto.

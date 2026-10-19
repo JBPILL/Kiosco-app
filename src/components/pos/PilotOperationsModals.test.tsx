@@ -1,12 +1,12 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, expect, it, vi } from 'vitest'
 import type { VentaConDetalles } from '../../stores/devolucionStore'
-const m = vi.hoisted(() => ({ rol: 'DUEÑO', historial: vi.fn(), cargar: vi.fn(), envase: vi.fn(), devolver: vi.fn(), entregar: vi.fn(), agregar: vi.fn(), caja: { id: 'caja', kiosco_id: 'kid' } as { id: string; kiosco_id: string } | null }))
+const m = vi.hoisted(() => ({ rol: 'DUEÑO', historial: vi.fn(), movimientos: vi.fn(), cargar: vi.fn(), envase: vi.fn(), devolver: vi.fn(), entregar: vi.fn(), agregar: vi.fn(), caja: { id: 'caja', kiosco_id: 'kid' } as { id: string; kiosco_id: string } | null }))
 vi.mock('../../stores/authStore', () => ({ useAuthStore: (selector: (s: unknown) => unknown) => selector({ usuario: { id: 'uid', kiosco_id: 'kid', rol: m.rol, activo: true } }) }))
 vi.mock('../../stores/cajaStore', () => ({ useCajaStore: { getState: () => ({ sesionActiva: m.caja }) } }))
 vi.mock('../../stores/cartStore', () => ({ useCartStore: { getState: () => ({ agregarDevolucionEnvase: m.agregar, tabActivaId: 'tab', cobrosBloqueados: {} }) } }))
 vi.mock('../../lib/envasesData', () => ({ cargarEnvasesCompartidos: m.cargar }))
-vi.mock('../../lib/pilotOperationHistory', () => ({ cargarHistorialDevolucionesTicket: m.historial }))
+vi.mock('../../lib/pilotOperationHistory', () => ({ cargarHistorialDevolucionesTicket: m.historial, cargarMovimientosEnvases: m.movimientos }))
 vi.mock('../../lib/pilotOperationClient', () => ({ contextoOperacionPiloto: () => ({ usuarioId: 'uid', kioscoId: 'kid', authId: 'auth' }), ejecutarOperacionEnvase: m.envase, ejecutarDevolucionEfectivo: m.devolver, confirmarEntregaPiloto: m.entregar }))
 import { EnvasesOperativosModal } from './EnvasesOperativosModal'
 import { DevolucionEfectivoModal } from './DevolucionEfectivoModal'
@@ -18,6 +18,7 @@ const venta: VentaConDetalles = { id: 'venta', kiosco_id: 'kid', usuario_id: 'ui
 const ventaEnvases: VentaConDetalles = { ...venta, detalles: [...venta.detalles, { id: 'vacio', venta_id: venta.id, producto_id: 'virtual-envase', cantidad: 1, precio_unitario: 0, subtotal: -50, es_devolucion_envase: true }] }
 beforeEach(() => {
   vi.clearAllMocks()
+  m.movimientos.mockResolvedValue([])
   m.rol = 'DUEÑO'
   m.caja = { id: 'caja', kiosco_id: 'kid' }
   m.cargar.mockResolvedValue([{ id: 'vidrio', nombre: 'Vidrio', precio: 100, activo: true, stockVacios: 5, pendientes: 0 }])
@@ -210,4 +211,50 @@ it.each(['', '   ', '  Entregas del día  '])('permite registrar pendientes con 
   fireEvent.click(guardar)
   await waitFor(() => expect(m.envase).toHaveBeenCalledOnce())
   expect(m.envase.mock.calls[0][1]).toMatchObject({ accion: 'AJUSTAR_PENDIENTES', datos: { pendientesEsperados: 0, nuevosPendientes: 3, notas: notas.trim() || 'Sin observaciones adicionales' } })
+})
+
+it('Depósito centra el conteo y pliega altas/edición sin distribuidor', async () => {
+  render(<EnvasesOperativosModal administracion isOpen onClose={vi.fn()} />)
+  await screen.findByLabelText('Vacíos contados')
+  await waitFor(() => expect((screen.getByLabelText('Vacíos contados') as HTMLInputElement).value).toBe('5'))
+  expect(screen.queryByLabelText('Distribuidor')).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Registrar entrega al distribuidor' })).toBeNull()
+  expect(screen.getByRole('tab', { name: 'Depósito de vacíos' }).getAttribute('aria-selected')).toBe('true')
+  fireEvent.click(screen.getByRole('tab', { name: 'Tipos y precios' }))
+  expect(screen.getByText('Nuevo tipo de envase').closest('details')?.open).toBe(false)
+  expect(screen.getByText('Editar nombre y precio').closest('details')?.open).toBe(false)
+  expect(screen.getByRole('button', { name: 'Crear tipo de envase' }).closest('details')).toBe(screen.getByText('Nuevo tipo de envase').closest('details'))
+})
+it('crear otro tipo no reutiliza nombre, precio ni ID del seleccionado', async () => {
+  m.envase.mockResolvedValue({ id: 'op', stock_vacios: 0, precio: 300 })
+  render(<EnvasesOperativosModal administracion isOpen onClose={vi.fn()} />)
+  await screen.findByRole('tab', { name: 'Tipos y precios' })
+  fireEvent.click(screen.getByRole('tab', { name: 'Tipos y precios' }))
+  fireEvent.click(screen.getByText('Nuevo tipo de envase'))
+  fireEvent.change(screen.getByLabelText('Nombre del nuevo envase'), { target: { value: '  Botella nueva  ' } })
+  fireEvent.change(screen.getByLabelText('Precio del nuevo envase'), { target: { value: '300' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Crear tipo de envase' }))
+  await waitFor(() => expect(m.envase).toHaveBeenCalledOnce())
+  expect(m.envase.mock.calls[0][1]).toMatchObject({ accion: 'CONFIGURAR_TIPO', datos: { nombre: 'Botella nueva', precio: 300, activo: true } })
+  expect(m.envase.mock.calls[0][1].tipoId).not.toBe('vidrio')
+})
+it('el conteo conserva saldo esperado y usa su propio motivo, no observaciones de pendientes', async () => {
+  m.envase.mockResolvedValue({ id: 'op', stock_vacios: 4, importe: 0 })
+  render(<EnvasesOperativosModal administracion isOpen onClose={vi.fn()} />)
+  await screen.findByLabelText('Vacíos contados')
+  fireEvent.change(screen.getByLabelText('Vacíos contados'), { target: { value: '4' } })
+  fireEvent.change(screen.getByLabelText('Motivo del ajuste de stock'), { target: { value: '  Conteo físico  ' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar conteo de vacíos' }))
+  await waitFor(() => expect(m.envase).toHaveBeenCalledOnce())
+  expect(m.envase.mock.calls[0][1]).toMatchObject({ accion: 'AJUSTAR_SALDO', tipoId: 'vidrio', datos: { stockEsperado: 5, nuevoStock: 4, notas: 'Conteo físico' } })
+})
+
+it('Movimientos abre el historial con observaciones sin los formularios de depósito', async () => {
+  render(<EnvasesOperativosModal administracion isOpen onClose={vi.fn()} />)
+  await screen.findByLabelText('Vacíos contados')
+  fireEvent.click(screen.getByRole('tab', { name: 'Movimientos' }))
+  await screen.findByText('No hay movimientos registrados en este período.')
+  expect(screen.queryByLabelText('Vacíos contados')).toBeNull()
+  expect(screen.queryByText('Nuevo tipo de envase')).toBeNull()
+  expect(m.movimientos).toHaveBeenCalledOnce()
 })

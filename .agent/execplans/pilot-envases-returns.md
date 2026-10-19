@@ -362,3 +362,24 @@ la proyección/historial no las mostraba. Se agrega lectura/validación de notas
 y presentación como texto escapado junto al cambio de pendientes en Catálogo →
 Precios de Envases → Depósito de envases → Movimientos de los últimos 30 días.
 Sin SQL ni ampliación de permisos; compatible con registros sin nota.
+
+
+## Rediseño de Depósito de envases (19/10/2026)
+Se retiran campo/acción de distribuidor de este modal sin borrar movimientos
+históricos ni modificar SQL. Conteo físico y saldos al frente; cantidad inicial
+del conteo refleja el saldo seleccionado, con motivo propio separado de notas
+de pendientes. Alta de tipo y edición del seleccionado en desplegables cerrados
+por defecto, con estados separados para evitar sobrescrituras accidentales.
+- [x] Dirigidos 42 PASS / 3 archivos; build 631 módulos PASS. Diff de trabajo/
+      índice PASS; scan 1128 textos, 14 binarios, mismos 46 candidatos conocidos.
+- [x] Vista local con datos ficticios y operaciones bloqueadas: pestañas como
+      referencia anterior, modal completo a la vista en escritorio, alta cerrada
+      por defecto que se despliega sin campos del tipo seleccionado; sin
+      distribuidor. Historial accesible por Movimientos. Capturas privadas
+      ../pilot-deposito-{redesign,tipos-closed,tipo-expanded}.png.
+- [ ] Publicación y verificación exclusivamente en Staging.
+
+El usuario reafirma tomar el modal anterior como referencia. Se recupera su
+navegación por pestañas y ancho de administración: Depósito de vacíos, Tipos y
+precios, Movimientos. Alta plegada dentro de Tipos; historial en Movimientos,
+sin apilar todos los formularios ni volver a escrituras locales antiguas.
