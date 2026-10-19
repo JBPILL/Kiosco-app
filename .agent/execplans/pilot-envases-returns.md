@@ -279,5 +279,21 @@ artículos por unidad; preservar pesables y ACK históricos.
 - [x] Vista local con operaciones remotas bloqueadas: tarjetas/saldos/cantidad,
       y 0,013 rechazado con confirmación deshabilitada para artículo unitario.
       Capturas ../pilot-pending-{envases,return-integer}-preview.png.
-- [ ] Commit/push y despliegue frontend exclusivamente en proyecto Staging;
-      mantener PR #3 en borrador sin merge. Aceptación interactiva del usuario pendiente.
+- [x] Commits publicados: 93bc14a (persistencia/reglas), 3f50621 (interfaz),
+      bd37eb0 (sólo CRLF→LF en los dos SQL nuevos; instrucciones equivalentes
+      a las instaladas, sin reaplicar SQL remoto). El checksum anterior registra
+      los bytes realmente instalados; no se modifica esa evidencia histórica.
+      Diff final e índice PASS después de normalizar; SQL históricos intactos.
+- [x] Frontend bd37eb0 publicado únicamente en kiosco-app-staging:
+      dpl_7mnwAh7Y4nTobBuVEgG5TKu6YcTW READY; alias estable
+      https://kiosco-app-staging.vercel.app. Flags de Staging conservados.
+      Bundle público verificado con acciones de pendientes, saldos y mensaje de
+      enteros, destino Supabase Staging sin referencia al ref de Production.
+      Contenedor local de ensayo detenido/conservado. PR #3 sigue en borrador,
+      sin merge; master y Production intactos. Aceptación del usuario pendiente.
+
+Nota de whitespace: diff de trabajo e índice PASS. La comparación completa con
+master señala CRLF ya existentes en returns/002, que este bloque no modifica;
+.gitattributes exige preservar esos bytes. La misma comparación con las reglas
+blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol pasa. No se normalizó SQL
+anterior ni se ocultaron espacios adicionales; los dos SQL 003 nuevos usan LF.
