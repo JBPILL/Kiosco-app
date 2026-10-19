@@ -3,7 +3,7 @@ import { beforeEach, expect, it, vi } from 'vitest'
 const m = vi.hoisted(() => ({ cargar: vi.fn() }))
 vi.mock('../../lib/pilotOperationHistory', () => ({ cargarMovimientosEnvases: m.cargar }))
 import { HistorialEnvases } from './HistorialEnvases'
-const tipos = [{ id: 'vidrio', nombre: 'Vidrio', precio: 100, activo: true, stockVacios: 2 }]
+const tipos = [{ id: 'vidrio', nombre: 'Vidrio', precio: 100, activo: true, stockVacios: 2, pendientes: 0 }]
 beforeEach(() => { vi.clearAllMocks(); m.cargar.mockResolvedValue([]) })
 it('muestra movimientos de ticket y distribuidor con cantidad y saldo compartidos', async () => {
   m.cargar.mockResolvedValue([{ id: 'm1', tipo_id: 'vidrio', accion: 'RECIBIR_TICKET', cantidad: 1, stock_resultante: 2, importe: 100, distribuidor: null, creado_en: '2026-10-18T12:00:00Z' },

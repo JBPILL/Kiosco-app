@@ -53,6 +53,7 @@ beforeAll(async()=>{
   await db.exec(readFileSync('supabase/bootstrap/pilot-operations/001_capabilities.sql','utf8'))
   const modulo=readFileSync('supabase/bootstrap/returns/001_atomic_cash_return.sql','utf8')
   await db.exec(modulo); await db.exec(modulo)
+  await db.exec(readFileSync('supabase/bootstrap/returns/003_whole_unit_quantities.sql','utf8'))
   await db.exec(`INSERT INTO auth.users(id) VALUES('${owner}'),('${cashier}'),('${viewer}'),('${other}');
     INSERT INTO kioscos(id,nombre) VALUES('${kid}','Ensayo'),('${foreign}','Otro');
     INSERT INTO piloto_operaciones_capacidades(kiosco_id,devoluciones_efectivo) VALUES('${kid}',true),('${foreign}',true);
@@ -129,4 +130,14 @@ it('cuenta corriente y OTRO continúan fuera del primer circuito',async()=>{
 it('APIs no escriben directamente ni leen el ledger privado',async()=>{
   await rechazo(()=>db.query('SELECT * FROM devolucion_reposiciones_atomicas'),/permission denied/)
   await rechazo(()=>db.query('DELETE FROM detalles_devolucion'),/permission denied/)
+})
+
+it('rechaza fracciones para artículos unitarios sin caja ni stock parcial', async () => {
+  await rechazo(() => devolver(solicitud(100, 0.013)), /cantidades enteras/)
+  expect(await estado()).toEqual({stock:'2.000',lote:'0.000',devoluciones:0,egresos:0})
+})
+it('preserva devolución fraccionada de artículos pesables', async () => {
+  await db.exec('RESET ROLE'); await db.query('UPDATE productos SET es_pesable=true,unidad_medida=\'KG\' WHERE id=$1',[producto]); await actor()
+  const r = await devolver(solicitud(100, 0.5))
+  expect(r.monto_total).toBeGreaterThan(0)
 })

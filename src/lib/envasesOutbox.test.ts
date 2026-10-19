@@ -70,3 +70,17 @@ it.each([
   await expect(outbox.guardar(kid, uid, { ...original, datos: { ...original.datos, ...cambios } })).rejects.toThrow()
   expect(await outbox.operaciones.count()).toBe(0)
 })
+
+it('recupera la misma recepción pendiente sin marcar entrega de dinero', async () => {
+  const s = parsearSolicitudEnvase({ version: 1, id: id(8), accion: 'RECIBIR_PENDIENTES', tipoId: 'vidrio', datos: { cantidad: 1, notas: null } })
+  const enviar = vi.fn().mockRejectedValueOnce(new Error('Timeout')).mockResolvedValue({ data: { id: id(8), kiosco_id: kid, tipo_id: 'vidrio', stock_vacios: 3, pendientes: 1, importe: 0 }, error: null })
+  await expect(procesarOperacionEnvase(outbox, kid, uid, s, enviar)).rejects.toThrow()
+  const r = await procesarOperacionEnvase(outbox, kid, uid, s, enviar)
+  expect(enviar.mock.calls[0][0]).toEqual(enviar.mock.calls[1][0])
+  expect(r.pendientes).toBe(1)
+  expect(await outbox.recuperables(kid, uid)).toEqual([])
+})
+it('no acepta ACK de pendientes sin saldo ni pagos inesperados', async () => {
+  const s = { version: 1, id: id(8), accion: 'RECIBIR_PENDIENTES', tipoId: 'vidrio', datos: { cantidad: 1, notas: null } }
+  await expect(procesarOperacionEnvase(outbox, kid, uid, s, async () => ({ data: { id: id(8), kiosco_id: kid, tipo_id: 'vidrio', stock_vacios: 3, importe: 0 }, error: null }))).rejects.toThrow('Pendientes')
+})

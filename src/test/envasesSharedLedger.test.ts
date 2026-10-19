@@ -14,7 +14,7 @@ async function actor(uid = owner, role = 'authenticated') {
   await db.exec(`SET ROLE ${role}`)
 }
 async function operar(accion: string, datos: unknown, n = 100, tipoId = 'vidrio') {
-  return (await db.query<{ r: { id: string; stock_vacios: number; importe: number } }>('SELECT public.operar_envases_atomico($1::jsonb) r',
+  return (await db.query<{ r: { id: string; stock_vacios: number; importe: number; pendientes: number } }>('SELECT public.operar_envases_atomico($1::jsonb) r',
     [JSON.stringify({ version: 1, id: id(n), accion, tipoId, datos })])).rows[0].r
 }
 async function rechazo(action: () => Promise<unknown>, patron: RegExp) {
@@ -41,6 +41,8 @@ beforeAll(async () => {
     'commercial/001_commercial_subscription.sql', 'commercial/002_commercial_write_gate.sql']) await db.exec(readFileSync(`supabase/bootstrap/${path}`, 'utf8'))
   await db.exec(readFileSync('supabase/bootstrap/pilot-operations/001_capabilities.sql', 'utf8'))
   await db.exec(source()); await db.exec(source())
+  await db.exec(readFileSync('supabase/bootstrap/envases/003_pending_totals.sql', 'utf8'))
+  await db.exec(readFileSync('supabase/bootstrap/envases/003_pending_totals.sql', 'utf8'))
   await db.exec(`INSERT INTO auth.users(id) VALUES('${owner}'),('${cashier}'),('${viewer}'),('${other}');
     INSERT INTO kioscos(id,nombre) VALUES('${kid}','Ensayo'),('${foreign}','Otro');
     INSERT INTO piloto_operaciones_capacidades(kiosco_id,envases) VALUES('${kid}',true),('${foreign}',true);
@@ -150,4 +152,41 @@ it('el gate remoto bloquea operaciones nuevas sin perder la recuperación de ACK
   expect(await recibir()).toEqual(anterior)
   await rechazo(()=>operar('ENTREGAR_DISTRIBUIDOR',{cantidad:1,distribuidor:'D',notas:null}),/no habilitado/)
   await rechazo(()=>db.query('UPDATE piloto_operaciones_capacidades SET envases=true'),/permission denied/)
+})
+
+it('pendientes por tipo se reciben sin dinero; replay no duplica ni permite sobregiro', async () => {
+  const inicio = await operar('AJUSTAR_PENDIENTES', { pendientesEsperados: 0, nuevosPendientes: 3, notas: 'Préstamos sin cobrar' })
+  expect(inicio.pendientes).toBe(3); expect(inicio.stock_vacios).toBe(0)
+  await actor(cashier)
+  const datos = { cantidad: 2, notas: null }
+  const ack = await operar('RECIBIR_PENDIENTES', datos, 101)
+  expect(ack).toMatchObject({ pendientes: 1, stock_vacios: 2, importe: 0 })
+  expect(await operar('RECIBIR_PENDIENTES', datos, 101)).toEqual(ack)
+  await rechazo(() => operar('RECIBIR_PENDIENTES', { cantidad: 2, notas: null }, 102), /supera pendientes/)
+  await rechazo(() => operar('RECIBIR_PENDIENTES', { cantidad: 0.5, notas: null }, 103), /Cantidad/)
+  await db.exec('RESET ROLE')
+  expect((await db.query('SELECT count(*)::int n FROM movimientos_caja')).rows).toEqual([{ n: 0 }])
+  expect((await db.query('SELECT cantidad FROM envases_pendientes')).rows).toEqual([{ cantidad: 1 }])
+})
+it('sólo Dueño corrige pendientes con saldo esperado y motivo; sin modificar vacíos', async () => {
+  await operar('AJUSTAR_PENDIENTES', { pendientesEsperados: 0, nuevosPendientes: 2, notas: 'Conteo inicial' })
+  await rechazo(() => operar('AJUSTAR_PENDIENTES', { pendientesEsperados: 0, nuevosPendientes: 5, notas: 'Viejo' }, 101), /cambiaron/)
+  await rechazo(() => operar('AJUSTAR_PENDIENTES', { pendientesEsperados: 2, nuevosPendientes: 3, notas: ' ' }, 102), /inválidos/)
+  await actor(cashier)
+  await rechazo(() => operar('AJUSTAR_PENDIENTES', { pendientesEsperados: 2, nuevosPendientes: 3, notas: 'No autorizado' }, 103), /Rol/)
+  await actor(viewer)
+  await rechazo(() => operar('RECIBIR_PENDIENTES', { cantidad: 1, notas: null }, 104), /Rol/)
+  await actor(other)
+  await rechazo(() => operar('RECIBIR_PENDIENTES', { cantidad: 1, notas: null }, 105), /Tipo de envase/)
+  expect((await db.query('SELECT cantidad FROM envases_pendientes')).rows).toEqual([])
+  await db.exec('RESET ROLE')
+  expect((await db.query('SELECT cantidad FROM envases_saldos')).rows).toEqual([{ cantidad: 0 }])
+})
+it('pendientes no admiten escritura REST ni operar suspendido, pero el ACK sí se recupera', async () => {
+  const datos = { pendientesEsperados: 0, nuevosPendientes: 3, notas: 'Ensayo' }
+  const ack = await operar('AJUSTAR_PENDIENTES', datos)
+  await rechazo(() => db.exec('UPDATE envases_pendientes SET cantidad=9'), /permission denied/)
+  await db.exec('RESET ROLE'); await db.exec(`UPDATE kioscos SET estado_suscripcion='SUSPENDIDO' WHERE id='${kid}'`); await actor()
+  expect(await operar('AJUSTAR_PENDIENTES', datos)).toEqual(ack)
+  await rechazo(() => operar('RECIBIR_PENDIENTES', { cantidad: 1, notas: null }, 101), /suspendido|operativo|habilitado/i)
 })

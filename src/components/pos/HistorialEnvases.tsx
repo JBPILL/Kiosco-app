@@ -7,6 +7,7 @@ import { Button } from '../ui/Button'
 const etiquetas: Record<MovimientoEnvaseCompartido['accion'], string> = {
   AJUSTAR_SALDO: 'Ajuste por conteo', ENTREGAR_DISTRIBUIDOR: 'Entrega al distribuidor',
   RECIBIR_EFECTIVO: 'Recepción con efectivo', RECIBIR_TICKET: 'Recepción en ticket',
+  AJUSTAR_PENDIENTES: 'Registro de pendientes', RECIBIR_PENDIENTES: 'Recepción pendiente sin pago',
   DEVOLVER_CLIENTE: 'Entrega al cliente por devolución',
 }
 interface Props { kioscoId: string; tipos: TipoEnvaseCompartido[] }
@@ -36,6 +37,7 @@ function ContenidoHistorial({ kioscoId, tipos }: Props) {
         {movimientos.map(m => <li key={m.id} className="rounded-lg border border-gray-300 p-3 text-sm dark:border-gray-600 space-y-1">
           <p className="font-semibold">{etiquetas[m.accion]} · {tipos.find(t => t.id === m.tipo_id)?.nombre ?? m.tipo_id}</p>
           <p>{formatFecha(m.creado_en)} · Cantidad: {m.cantidad} · Saldo: {m.stock_resultante} vacíos</p>
+          {m.pendientes_resultantes != null && <p>Pendientes: {m.pendientes_resultantes} · Cambio: {m.pendientes_delta}</p>}
           {m.importe > 0 && <p>Valor reconocido: {formatPrecio(m.importe)}</p>}
           {m.distribuidor && <p>Distribuidor: {m.distribuidor}</p>}
         </li>)}

@@ -30,6 +30,27 @@ no sustituye JWT/RLS, concurrencia y permisos del servicio hospedado.
    actualizado en una transacción con respaldo previo. Conserva ACK históricos,
    pero impide crear solicitudes nuevas de CONSERVAR_ENVASES.
 
+4. Ajustes de interfaz y pendientes por tipo: instalar `envases/003_pending_totals.sql`
+   y `returns/003_whole_unit_quantities.sql` juntos, después de todos los anteriores,
+   con respaldo y ensayo de restauración. No reaplicar versiones 001/002 después:
+   reemplazarían funciones o restricciones vigentes. La instalación no activa comercios.
+   El frontend que consulta pendientes requiere este módulo antes de publicarse.
+
+Pendientes sin cliente: el Dueño declara/corrige el total por tipo con saldo esperado
+para rechazar cambios sobre una lectura vieja y con motivo obligatorio. Recepción de
+pendientes (Dueño/Cajero) reduce ese total y aumenta vacíos atómicamente; no paga,
+no agrega crédito al ticket ni requiere caja. Registro y recepción mantienen ID/cuerpo
+para recuperar el ACK sin duplicar. No se infieren de tickets ni se descuentan vacíos
+al declarar: el préstamo fue de un envase lleno, no del depósito de vacíos. Conciliar
+los préstamos anteriores manualmente; el saldo inicial cero no acredita inexistencia.
+El historial registra el cambio y saldo pendiente. La recepción pagada sigue separada.
+
+Cantidades de devolución: artículos por unidad requieren enteros; pesables/unidades
+fraccionables y ventas históricas fraccionadas conservan hasta tres decimales.
+ACK históricos se recuperan antes de la nueva comprobación. La clasificación usa el
+producto actual porque el snapshot antiguo no guarda su unidad; cantidades originales
+fraccionadas conservan la capacidad de devolución aunque cambie esa clasificación.
+
 El ledger de devoluciones rechaza una instalación con devoluciones antiguas sin
 importe verificable; requiere conciliación, no inventar historial. Conciliar
 físicamente los vacíos de cada comercio; no sumar los saldos locales de puestos.

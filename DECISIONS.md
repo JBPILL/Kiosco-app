@@ -149,3 +149,14 @@ cierre de caja consulta las operaciones recuperables del dispositivo, incluso
 confirmadas pendientes de verificar entrega. Las pruebas locales no autorizan
 instalar SQL, desplegar Edge ni producir movimientos reales; Staging y luego
 Production mantienen sus gates separados. ARCA/WSFE y Point no se habilitan.
+
+
+## Pendientes de envases por tipo (19/10/2026)
+El usuario elige un total pendiente por tipo, sin identificación del cliente.
+Es una declaración explícita del Dueño sobre envases prestados sin cobrar, no una
+inferencia de ventas ni una deuda monetaria. Registrar/corregir exige saldo esperado
+y nota; recibir pendientes reduce ese saldo y suma vacíos en una transacción, sin
+reintegro, crédito de ticket ni caja. Se conserva auditoría y solicitud idempotente.
+No se descuenta stock de vacíos al declarar: el envase salió lleno con mercadería,
+y no se puede suponer que salió del depósito de vacíos. Valores anteriores se
+concilian manualmente; cero inicial no certifica que no existan préstamos previos.

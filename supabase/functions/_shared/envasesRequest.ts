@@ -1,4 +1,6 @@
 type DatosEnvase =
+  | { accion: 'AJUSTAR_PENDIENTES'; datos: { pendientesEsperados: number; nuevosPendientes: number; notas: string } }
+  | { accion: 'RECIBIR_PENDIENTES'; datos: { cantidad: number; notas: string | null } }
   | { accion: 'CONFIGURAR_TIPO'; datos: { nombre: string; precio: number; activo: boolean } }
   | { accion: 'AJUSTAR_SALDO'; datos: { stockEsperado: number; nuevoStock: number; notas: string | null } }
   | { accion: 'ENTREGAR_DISTRIBUIDOR'; datos: { cantidad: number; distribuidor: string; notas: string | null } }
@@ -38,6 +40,14 @@ export function parsearSolicitudEnvase(valor: unknown): SolicitudEnvase {
   if (s.version !== 1) throw new Error('Versión de envases inválida')
   const base = { version: 1 as const, id: uuidEnvase(s.id), tipoId: texto(s.tipoId, 150) }
   switch (s.accion) {
+    case 'AJUSTAR_PENDIENTES': {
+      const d = objeto(s.datos, ['pendientesEsperados', 'nuevosPendientes', 'notas'])
+      return { ...base, accion: s.accion, datos: { pendientesEsperados: entero(d.pendientesEsperados, 0, 999999999), nuevosPendientes: entero(d.nuevosPendientes, 0, 999999999), notas: texto(d.notas, 1000) } }
+    }
+    case 'RECIBIR_PENDIENTES': {
+      const d = objeto(s.datos, ['cantidad', 'notas'])
+      return { ...base, accion: s.accion, datos: { cantidad: entero(d.cantidad, 1, 999999), notas: notas(d.notas) } }
+    }
     case 'CONFIGURAR_TIPO': {
       const d = objeto(s.datos, ['nombre', 'precio', 'activo'])
       if (typeof d.activo !== 'boolean') throw new Error('Estado de envase inválido')

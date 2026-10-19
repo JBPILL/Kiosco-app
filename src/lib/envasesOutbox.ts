@@ -6,6 +6,7 @@ export interface ResultadoEnvase {
   kiosco_id: string
   tipo_id: string
   stock_vacios: number
+  pendientes?: number
   importe?: number
   precio?: number
 }
@@ -31,6 +32,11 @@ function validarResultado(valor: unknown, op: OperacionEnvaseLocal): ResultadoEn
       ? Math.round(op.solicitud.datos.cantidad * op.solicitud.datos.precioEsperado * 100) : 0
     if (typeof importe !== 'number' || !Number.isFinite(importe) || Math.round(importe * 100) !== esperado || Number(importe.toFixed(2)) !== importe) throw new Error('Importe confirmado incompatible')
     resultado.importe = importe
+  }
+  if (['AJUSTAR_PENDIENTES', 'RECIBIR_PENDIENTES'].includes(op.solicitud.accion)) {
+    if (typeof r.pendientes !== 'number' || !Number.isInteger(r.pendientes) || r.pendientes < 0 || r.pendientes > 999999999) throw new Error('Pendientes confirmados inválidos')
+    if (op.solicitud.accion === 'AJUSTAR_PENDIENTES' && r.pendientes !== op.solicitud.datos.nuevosPendientes) throw new Error('Pendientes confirmados incompatibles')
+    resultado.pendientes = r.pendientes
   }
   return resultado
 }
