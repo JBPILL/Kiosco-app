@@ -308,7 +308,25 @@ Captura del usuario muestra stock 5,013 bloqueado por step=1. ProductForm tambi�
 truncaba con parseInt si se forzaba submit. Se preserva exactamente el saldo previo
 al editar otros datos, con aviso de conciliación; correcciones unitarias nuevas
 exigen entero. Nunca ajustar stock remoto ni reinterpretar historia automáticamente.
-- [ ] Regresiones de UI y stock heredado; build/suite y publicación sólo Staging.
+- [x] Regresiones finales: 25 PASS / 2 archivos; suite posterior al segundo
+      hallazgo: 2053 PASS / 1 skipped / 217 archivos, 184,78 s. Suite anterior
+      de 2052 pruebas fue previa al caso 0,987, no sustituye esta evidencia.
+      Build final 631 módulos PASS; diff de trabajo/índice y manifest 43 SQL PASS.
+      Audit omit=dev cero; scan 1128 textos, 14 binarios, mismos 46 candidatos
+      conocidos sin nuevos secretos. No cambian dependencias ni SQL.
+- [x] Revisión visual local con datos ficticios y guardado bloqueado: panel
+      compacto con acciones principales visibles; marcar pendientes oculta
+      pagos/descuentos. Stock 5,013 conserva value exacto y validity.valid=true,
+      stepMismatch=false. Línea 0,987 muestra conciliación con Todo/cantidad y
+      reposición deshabilitados. Capturas ../pilot-modal-v2-{envases,stock,
+      pendientes,legacy-return}.png. No equivale a aceptación física del usuario.
+- [x] Commits 4fdfdbf (stock anterior sin truncamiento) y e03867f (modales),
+      push normal. Frontend e03867f publicado sólo en kiosco-app-staging:
+      dpl_Eh56ojaB8M3rg4ErbjzEH1rsM6qy READY, alias estable
+      https://kiosco-app-staging.vercel.app. Bundle verifica diseño compacto,
+      preservación de stock previo y aviso de conciliación; destino sólo Staging.
+      Sin nuevas operaciones financieras, cambios de inventario remoto ni SQL.
+      PR #3 continúa en borrador sin merge; master/Production intactos.
 
 El segundo hallazgo del usuario muestra saldo por devolver 0,987 después de
 devoluciones antiguas que suman 4,013 sobre cinco unidades. No redondear ni
