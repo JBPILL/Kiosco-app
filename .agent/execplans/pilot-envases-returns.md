@@ -450,3 +450,11 @@ sin apilar todos los formularios ni volver a escrituras locales antiguas.
       previa anterior a estos cambios: repetir antes de merge. Sin SQL/permisos.
 - [x] Build final PASS (631 módulos); diff trabajo/índice y scan PASS, mismos 46 candidatos conocidos.
 - [x] fc1459c publicado y desplegado sólo en Staging: dpl_GKnU1jbjuKjT1ZJkUrHqESRcZBbF READY. Alias y CSS público verifican paleta cálida. Sin SQL ni cambios de master/Production; PR sin merge.
+
+## Verde suave igual a Cobrar (19/10/2026)
+- [x] Acciones principales, éxito y opciones seleccionadas de ambos modales usan
+      el verde de Cobrar: #98b79c claro / #94c1a9 oscuro, texto #142b3a.
+      Conserva tonos neutros/deshabilitados y acción de peligro diferenciada.
+- [x] 27 pruebas del modal PASS, build 631 módulos PASS. Cambio sólo de CSS;
+      revisión visual local con datos ficticios ../pilot-envases-verde.png.
+      Suite completa previa anterior al ajuste; repetir antes de integrar.

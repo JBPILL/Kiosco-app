@@ -365,26 +365,26 @@
 
 /* Envases: los estados de controles usan la misma paleta en ambos modales. */
 :root .envases-controls {
-  --envase-action: #66523c;
-  --envase-action-hover: #51402e;
-  --envase-on-action: #fff8eb;
+  --envase-action: #98b79c;
+  --envase-action-hover: #87a88c;
+  --envase-on-action: #142b3a;
   --envase-selected: #ded4bd;
   --envase-text: #3f3528;
   --envase-border: #998668;
   --envase-disabled: #ded8cb;
   --envase-disabled-text: #625e56;
-  --envase-success: #586044;
+  --envase-success: var(--envase-action);
 }
 :root.dark .envases-controls {
-  --envase-action: #c5ad86;
-  --envase-action-hover: #d4bf9b;
-  --envase-on-action: #2d271e;
+  --envase-action: #94c1a9;
+  --envase-action-hover: #83b39b;
+  --envase-on-action: #142b3a;
   --envase-selected: #4b483b;
   --envase-text: #eee4d2;
   --envase-border: #b6a17e;
   --envase-disabled: #424337;
   --envase-disabled-text: #c3bfac;
-  --envase-success: #b8c29d;
+  --envase-success: var(--envase-action);
 }
 :root .envases-controls button[data-variant="primary"],
 :root .envases-controls :is([aria-label="Tipos de envase"], [aria-label="Cantidades rápidas"]) button[aria-pressed="true"] {
