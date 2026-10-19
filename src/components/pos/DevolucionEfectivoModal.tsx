@@ -43,8 +43,9 @@ function ContenidoDevolucion({ ventaInicial: venta, onClose, onDevolucionExitosa
     const d = mercaderia.find(item => item.id === detalleId)
     return Boolean(d && (!Number.isInteger(Number(d.cantidad)) || d.producto?.es_pesable || (d.producto?.unidad_medida && d.producto.unidad_medida !== 'UN')))
   }
+  const requiereConciliacion = (detalleId: string) => historial !== null && !admiteFraccion(detalleId) && !Number.isInteger(disponible(detalleId))
   const valida = historial !== null && !errorHistorial && (!conEnvases || (historial.operaciones === 0 && completa))
-    && items.length > 0 && items.every(item => Number.isFinite(item.cantidad) && Number(item.cantidad.toFixed(3)) === item.cantidad
+    && items.length > 0 && items.every(item => !requiereConciliacion(item.detalleId) && Number.isFinite(item.cantidad) && Number(item.cantidad.toFixed(3)) === item.cantidad
     && (admiteFraccion(item.detalleId) || Number.isInteger(item.cantidad)) && item.cantidad >= 0.001 && item.cantidad <= disponible(item.detalleId))
   const excluida = !venta || venta.kiosco_id !== contexto.kioscoId || venta.estado !== 'COMPLETADA' || Boolean(venta.afip_cae)
     || (conEnvases && !esDueno) || Boolean(venta.pagos?.some(p => p.medio_pago !== 'EFECTIVO'))
@@ -117,12 +118,15 @@ function ContenidoDevolucion({ ventaInicial: venta, onClose, onDevolucionExitosa
             <Button variant="secondary" size="sm" onClick={() => setSeleccion(Object.fromEntries(mercaderia.map(d => [d.id, { cantidad: String(d.cantidad), reingresaStock: seleccion[d.id]?.reingresaStock ?? true }])))}>Seleccionar devolución completa</Button>
           </div>}
           {venta?.detalles.filter(d => !d.es_devolucion_envase).map(detalle => <div key={detalle.id} className="rounded-xl border border-gray-300 dark:border-gray-600 p-3 space-y-2">
-            <p className="font-semibold">{detalle.producto?.descripcion || 'Artículo del ticket'} · {Number(detalle.cantidad)} vendidos · {historial ? `${disponible(detalle.id)} disponibles para devolver` : 'disponibilidad pendiente de verificar'}</p>
+            <p className="font-semibold">{detalle.producto?.descripcion || 'Artículo del ticket'} · {Number(detalle.cantidad)} vendidos · {historial ? requiereConciliacion(detalle.id) ? 'saldo pendiente de conciliación' : `${disponible(detalle.id)} disponibles para devolver` : 'disponibilidad pendiente de verificar'}</p>
+            {requiereConciliacion(detalle.id) && <p role="alert" className="rounded-lg border border-amber-500 p-3 text-sm text-amber-800 dark:text-amber-200">Las devoluciones anteriores dejaron un saldo fraccionado de {disponible(detalle.id).toLocaleString('es-AR', { maximumFractionDigits: 3 })} unidades. Requiere conciliación: no se puede devolver como una unidad ni redondearlo. El Dueño debe conciliar esta línea antes de continuar.</p>}
+            <fieldset disabled={requiereConciliacion(detalle.id)} className="space-y-2 disabled:opacity-60">
             <div className="flex items-end gap-2">
-              <div className="min-w-0 flex-1"><QuantityStepper label="Cantidad a devolver" max={disponible(detalle.id)} fractional={admiteFraccion(detalle.id)} value={seleccion[detalle.id]?.cantidad ?? ''} onChange={cantidad => setSeleccion(s => ({ ...s, [detalle.id]: { cantidad, reingresaStock: s[detalle.id]?.reingresaStock ?? true } }))} /></div>
+              <div className="min-w-0 flex-1"><QuantityStepper label="Cantidad a devolver" max={admiteFraccion(detalle.id) ? disponible(detalle.id) : Math.floor(disponible(detalle.id))} fractional={admiteFraccion(detalle.id)} value={seleccion[detalle.id]?.cantidad ?? ''} onChange={cantidad => setSeleccion(s => ({ ...s, [detalle.id]: { cantidad, reingresaStock: s[detalle.id]?.reingresaStock ?? true } }))} /></div>
               <Button size="sm" variant="secondary" onClick={() => setSeleccion(s => ({ ...s, [detalle.id]: { cantidad: String(disponible(detalle.id)), reingresaStock: s[detalle.id]?.reingresaStock ?? true } }))}>Todo</Button>
             </div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={seleccion[detalle.id]?.reingresaStock ?? true} onChange={e => setSeleccion(s => ({ ...s, [detalle.id]: { cantidad: s[detalle.id]?.cantidad ?? '', reingresaStock: e.target.checked } }))} />Volver a poner a la venta</label>
+            </fieldset>
           </div>)}
           <label className="block text-sm">Motivo<select className={entrada} value={motivo} onChange={e => setMotivo(e.target.value as SolicitudDevolucionEfectivo['motivo'])}>
             <option value="CAMBIO_PRODUCTO">Cambio de producto</option><option value="FALLA_ROTURA">Falla o rotura</option><option value="VENCIDO">Vencido</option><option value="ERROR_COBRO">Error de cobro</option><option value="OTRO">Otro motivo</option>

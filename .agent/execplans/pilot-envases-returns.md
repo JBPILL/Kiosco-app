@@ -297,3 +297,22 @@ master señala CRLF ya existentes en returns/002, que este bloque no modifica;
 .gitattributes exige preservar esos bytes. La misma comparación con las reglas
 blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol pasa. No se normalizó SQL
 anterior ni se ocultaron espacios adicionales; los dos SQL 003 nuevos usan LF.
+
+
+## Segunda revisión visual y stock fraccionado anterior (19/10/2026)
+El usuario pide acercar aún más recepción al modal antiguo. Se agrupan precio,
+cantidad/atajos y saldos en un panel compacto; total/acciones como el original.
+Recepción de pendientes mediante elección explícita que oculta pagos/descuentos;
+observaciones y administración plegadas. Sin cambios de contrato ni SQL.
+Captura del usuario muestra stock 5,013 bloqueado por step=1. ProductForm también
+truncaba con parseInt si se forzaba submit. Se preserva exactamente el saldo previo
+al editar otros datos, con aviso de conciliación; correcciones unitarias nuevas
+exigen entero. Nunca ajustar stock remoto ni reinterpretar historia automáticamente.
+- [ ] Regresiones de UI y stock heredado; build/suite y publicación sólo Staging.
+
+El segundo hallazgo del usuario muestra saldo por devolver 0,987 después de
+devoluciones antiguas que suman 4,013 sobre cinco unidades. No redondear ni
+aumentar el máximo: esa línea se identifica como conciliación y deshabilita
+cantidad/Todo/reposición, sin enviar RPC. Otras líneas compatibles conservan
+su flujo. Diagnóstico read-only de Staging confirmó 0,013 repuesto con artículo
+UN no pesable, guardado antes del guard; no se alteran stock, caja ni historia.
