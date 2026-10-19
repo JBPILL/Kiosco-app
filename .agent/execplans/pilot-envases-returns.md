@@ -388,3 +388,16 @@ El usuario reafirma tomar el modal anterior como referencia. Se recupera su
 navegación por pestañas y ancho de administración: Depósito de vacíos, Tipos y
 precios, Movimientos. Alta plegada dentro de Tipos; historial en Movimientos,
 sin apilar todos los formularios ni volver a escrituras locales antiguas.
+
+## Uniformidad con el modal migrado y tipos creados por error (19/10/2026)
+- [x] Modal compartido 2xl con pie fijo, tabla de existencias y controles Input/
+      Button comunes; alta/edición plegadas y sin distribuidor.
+- [x] Desactivar/reactivar sólo Dueño con confirmación y solicitud durable;
+      conserva historial y saldos visibles, recepción de pendientes inactivos
+      y bloqueo de cobros/descuentos nuevos. No se elimina ningún tipo remoto.
+- [x] Dirigidos 46 PASS / 3 archivos; build 631 módulos PASS; diff trabajo/índice
+      PASS, scan mismos 46 candidatos conocidos sin nuevos secretos. Audit
+      --omit=dev: 0 vulnerabilidades. Sin cambios de SQL ni dependencias.
+- [x] Vista local de componente real con datos ficticios: tabla, pie fijo,
+      formularios cerrados y confirmación con saldos conservados verificados.
+      Captura ../pilot-deposito-uniforme.png. Suite completa en ejecución.

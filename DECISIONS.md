@@ -168,3 +168,15 @@ dejar las observaciones vacías y envía «Sin observaciones adicionales» como
 descripción neutral de esa ausencia. No se atribuye una razón inventada al
 operador. Se conserva el contrato remoto y la auditoría de actor, saldo anterior,
 saldo nuevo e ID/cuerpo para recuperación. No requiere SQL ni amplía permisos.
+
+## Presentación heredada y baja reversible de tipos (19/10/2026)
+Se reutilizan Modal (ancho 2xl y pie fijo), Button e Input del programa migrado,
+y la tabla de existencias de PreciosEnvasesModal como referencia de presentación.
+Se conservan las operaciones compartidas autenticadas; no se reactivan escrituras
+locales heredadas ni la entrega al distribuidor en esta ventana.
+El Dueño puede desactivar/reactivar un tipo desde Tipos y precios, previa
+confirmación. Es una baja reversible mediante CONFIGURAR_TIPO existente, no un
+DELETE: conserva identidad, movimientos, vacíos y pendientes, visibles incluso
+inactivo. No permite nuevos cobros/descuentos; recibir pendientes sin pagar sigue
+permitido. El cambio usa nombre/precio confirmados, no ediciones sin guardar.
+No requiere SQL, permisos adicionales ni elimina datos remotos automáticamente.

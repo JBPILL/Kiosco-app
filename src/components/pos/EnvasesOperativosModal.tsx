@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { QuantityStepper } from '../ui/QuantityStepper'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
+import { Input } from '../ui/Input'
 import { useAuthStore } from '../../stores/authStore'
 import { useCajaStore } from '../../stores/cajaStore'
 import { useCartStore } from '../../stores/cartStore'
@@ -33,6 +34,7 @@ function ContenidoEnvases({ onClose, administracion }: Omit<Props, 'isOpen'>) {
   const [precio, setPrecio] = useState('')
   const [nuevoNombre, setNuevoNombre] = useState('')
   const [nuevoPrecio, setNuevoPrecio] = useState('')
+  const [confirmarEstado, setConfirmarEstado] = useState(false)
   const [notasStock, setNotasStock] = useState('')
   const [notas, setNotas] = useState('')
   const [error, setError] = useState('')
@@ -50,15 +52,16 @@ function ContenidoEnvases({ onClose, administracion }: Omit<Props, 'isOpen'>) {
     setPrecio(tipo ? String(tipo.precio) : '')
     if (administracion && tipo) setCantidad(String(tipo.stockVacios))
     setNotasStock('')
+    setConfirmarEstado(false)
   }, [tipo?.id, tipo?.nombre, tipo?.precio, tipo?.stockVacios, administracion])
   useEffect(() => {
     vigente.current = true
     void cargarEnvasesCompartidos(contexto.kioscoId).then(datos => {
-      if (vigente.current) { setTipos(datos); setSeleccion(datos.find(t => t.activo)?.id ?? '') }
+      if (vigente.current) { setTipos(datos); setSeleccion(datos.find(t => t.activo)?.id ?? datos.find(t => administracion || t.pendientes > 0)?.id ?? '') }
     }).catch(() => { if (vigente.current) setError('No se pudo cargar el saldo compartido. Cerrá y volvé a intentar.') })
       .finally(() => { if (vigente.current) setCargando(false) })
     return () => { vigente.current = false }
-  }, [contexto.kioscoId])
+  }, [contexto.kioscoId, administracion])
 
   async function registrar(solicitud: SolicitudEnvase) {
     if (bloqueo.current) return
@@ -96,7 +99,7 @@ function ContenidoEnvases({ onClose, administracion }: Omit<Props, 'isOpen'>) {
   }
 
   const entrada = 'w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 p-2 text-gray-900 dark:text-gray-100'
-  return <Modal isOpen onClose={ocupado ? () => {} : onClose} title={administracion ? 'Depósito de envases' : 'Recibir envases'} size={administracion ? 'xl' : 'md'}>
+  return <Modal isOpen onClose={ocupado ? () => {} : onClose} title={administracion ? 'Depósito de envases' : 'Recibir envases'} size={administracion ? '2xl' : 'md'} footer={administracion ? <div className="flex w-full items-center justify-between gap-3"><p className="text-xs text-gray-500 dark:text-gray-400">Los cambios se guardan al confirmar cada operación.</p><Button variant="secondary" disabled={ocupado} onClick={onClose}>Cerrar</Button></div> : undefined}>
     <div className="space-y-4">
       {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       {confirmado ? <>
@@ -110,7 +113,12 @@ function ContenidoEnvases({ onClose, administracion }: Omit<Props, 'isOpen'>) {
           {([{ id: 'DEPOSITO', texto: 'Depósito de vacíos' }, { id: 'TIPOS', texto: 'Tipos y precios' }, { id: 'MOVIMIENTOS', texto: 'Movimientos' }] as const).map(p => <button key={p.id} type="button" role="tab" aria-selected={pestana === p.id} onClick={() => setPestana(p.id)} className={`shrink-0 rounded-t-lg border-b-2 px-3 py-2 text-xs font-bold transition-colors ${pestana === p.id ? 'border-indigo-600 bg-indigo-50/50 text-indigo-600 dark:bg-indigo-950/30 dark:text-indigo-400' : 'border-transparent text-gray-500 dark:text-gray-400'}`}>{p.texto}</button>)}
         </div>}
         {cargando ? <p role="status">Cargando envases…</p> : <>
-          {(!administracion || pestana !== 'MOVIMIENTOS') && <div>
+          {administracion && pestana !== 'MOVIMIENTOS' && <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xs dark:border-gray-700 dark:bg-gray-800">
+            <div className="border-b border-gray-200 bg-gray-50 p-2.5 dark:border-gray-700 dark:bg-gray-900/60"><h3 className="text-xs font-bold">Stock en Depósito por Tipo de Envase</h3><p className="text-[11px] text-gray-500">Seleccioná un tipo para {pestana === 'TIPOS' ? 'editar su nombre, precio o estado' : 'registrar el conteo o los pendientes'}.</p></div>
+            <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="bg-gray-100 text-[10px] uppercase tracking-wider text-gray-600 dark:bg-gray-700/50 dark:text-gray-300"><tr><th className="px-3 py-2">Tipo de envase</th><th className="px-3 py-2 text-right">Valor unitario</th><th className="px-3 py-2 text-center">Vacíos</th><th className="px-3 py-2 text-center">Pendientes de traer</th></tr></thead><tbody className="divide-y divide-gray-100 dark:divide-gray-700">{tipos.map(t => <tr key={t.id} className={seleccion === t.id ? 'bg-indigo-50/70 dark:bg-indigo-950/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700/40'}><td className="px-3 py-2.5"><button type="button" aria-pressed={seleccion === t.id} onClick={() => { setSeleccion(t.id); setPendientes(''); setConfirmarEstado(false) }} className="text-left font-bold text-indigo-700 underline-offset-2 hover:underline dark:text-indigo-300">{t.nombre}{t.activo ? '' : ' (inactivo)'}</button></td><td className="px-3 py-2.5 text-right tabular-nums">{formatPrecio(t.precio)}</td><td className="px-3 py-2.5 text-center font-bold tabular-nums">{t.stockVacios}</td><td className="px-3 py-2.5 text-center font-bold tabular-nums">{t.pendientes}</td></tr>)}</tbody></table></div>
+            {tipos.length === 0 && <p className="p-3 text-sm">No hay tipos de envase configurados.</p>}
+          </div>}
+          {!administracion && <div>
             <p className="mb-2 text-sm font-semibold">Tipo de envase</p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="group" aria-label="Tipos de envase">
               {tipos.filter(t => administracion || t.activo || t.pendientes > 0).map(t => <button type="button" key={t.id} aria-pressed={seleccion === t.id} onClick={() => { setSeleccion(t.id); setPendientes(''); setRecepcionPendiente(false) }} className={`rounded-xl border p-3 text-left ${seleccion === t.id ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-500 dark:bg-indigo-950/40' : 'border-gray-300 dark:border-gray-600'}`}>
@@ -171,17 +179,21 @@ function ContenidoEnvases({ onClose, administracion }: Omit<Props, 'isOpen'>) {
               <summary className="cursor-pointer text-sm font-semibold">Editar nombre y precio</summary>
               <div className="mt-3 space-y-3">
                 <p className="text-xs text-gray-500 dark:text-gray-400">{tipo.nombre} · {formatPrecio(tipo.precio)}</p>
-                <label className="block text-xs font-semibold">Nombre del tipo seleccionado<input className={entrada} maxLength={150} value={nombre} onChange={e => setNombre(e.target.value)} /></label>
-                <label className="block text-xs font-semibold">Precio del tipo seleccionado<input className={entrada} type="number" min="0" step="0.01" value={precio} onChange={e => setPrecio(e.target.value)} /></label>
+                <Input label="Nombre del tipo seleccionado" aria-label="Nombre del tipo seleccionado" maxLength={150} value={nombre} onChange={e => setNombre(e.target.value)} />
+                <Input label="Precio del tipo seleccionado" aria-label="Precio del tipo seleccionado" type="number" min="0" step="0.01" value={precio} onChange={e => setPrecio(e.target.value)} />
                 <Button fullWidth variant="secondary" disabled={!nombre.trim() || !precioValido(precio)} onClick={() => void registrar({ version: 1, id: crypto.randomUUID(), accion: 'CONFIGURAR_TIPO', tipoId: tipo.id, datos: { nombre: nombre.trim(), precio: Number(precio), activo: tipo.activo } })}>Guardar nombre y precio</Button>
               </div>
             </details>}
+            {tipo && <section className="rounded-xl border border-gray-200 p-3 dark:border-gray-700" aria-label="Estado del tipo de envase">
+              <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-xs font-bold">{tipo.nombre} · {tipo.activo ? 'Activo' : 'Inactivo'}</h3><p className="text-xs text-gray-500 dark:text-gray-400">Desactivar conserva el historial, los vacíos y los pendientes.</p></div><Button size="sm" variant="secondary" onClick={() => setConfirmarEstado(true)}>{tipo.activo ? 'Desactivar tipo' : 'Reactivar tipo'}</Button></div>
+              {confirmarEstado && <div role="group" aria-label="Confirmar cambio de estado" className="mt-3 space-y-3 border-t border-gray-200 pt-3 dark:border-gray-700"><p className="text-sm">{tipo.activo ? `¿Desactivar ${tipo.nombre}? Dejará de ofrecerse para nuevos cobros y descuentos. Los ${tipo.stockVacios} vacíos y ${tipo.pendientes} pendientes seguirán visibles; podrás recibir los pendientes sin pagar.` : `¿Reactivar ${tipo.nombre} para volver a utilizarlo?`}</p><div className="flex flex-wrap justify-end gap-2"><Button size="sm" variant="secondary" onClick={() => setConfirmarEstado(false)}>Volver</Button><Button size="sm" variant={tipo.activo ? 'danger' : 'primary'} onClick={() => void registrar({ version: 1, id: crypto.randomUUID(), accion: 'CONFIGURAR_TIPO', tipoId: tipo.id, datos: { nombre: tipo.nombre, precio: tipo.precio, activo: !tipo.activo } })}>{tipo.activo ? 'Confirmar desactivación' : 'Confirmar reactivación'}</Button></div></div>}
+            </section>}
             <details className="rounded-xl border border-gray-300 p-3 dark:border-gray-600">
               <summary className="cursor-pointer text-sm font-semibold">Nuevo tipo de envase</summary>
               <div className="mt-3 space-y-3">
                 <p className="text-xs text-gray-500 dark:text-gray-400">Agregá otro tipo sin modificar el seleccionado.</p>
-                <label className="block text-xs font-semibold">Nombre del nuevo envase<input className={entrada} maxLength={150} value={nuevoNombre} onChange={e => setNuevoNombre(e.target.value)} /></label>
-                <label className="block text-xs font-semibold">Precio del nuevo envase<input className={entrada} type="number" min="0" step="0.01" value={nuevoPrecio} onChange={e => setNuevoPrecio(e.target.value)} /></label>
+                <Input label="Nombre del nuevo envase" aria-label="Nombre del nuevo envase" maxLength={150} value={nuevoNombre} onChange={e => setNuevoNombre(e.target.value)} />
+                <Input label="Precio del nuevo envase" aria-label="Precio del nuevo envase" type="number" min="0" step="0.01" value={nuevoPrecio} onChange={e => setNuevoPrecio(e.target.value)} />
                 <Button fullWidth disabled={!nuevoNombre.trim() || !precioValido(nuevoPrecio)} onClick={() => void registrar({ version: 1, id: crypto.randomUUID(), accion: 'CONFIGURAR_TIPO', tipoId: crypto.randomUUID(), datos: { nombre: nuevoNombre.trim(), precio: Number(nuevoPrecio), activo: true } })}>Crear tipo de envase</Button>
               </div>
             </details>
@@ -190,7 +202,7 @@ function ContenidoEnvases({ onClose, administracion }: Omit<Props, 'isOpen'>) {
         </>}
       </fieldset>}
       {administracion && dueno && pestana === 'MOVIMIENTOS' && <HistorialEnvases kioscoId={contexto.kioscoId} tipos={tipos} />}
-      <Button fullWidth variant="secondary" disabled={ocupado} onClick={onClose}>Cancelar</Button>
+      {!administracion && <Button fullWidth variant="secondary" disabled={ocupado} onClick={onClose}>Cancelar</Button>}
     </div>
   </Modal>
 }
