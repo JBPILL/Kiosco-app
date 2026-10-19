@@ -84,6 +84,20 @@ lector compartido; los QR conservan la ruta principal.
 
 ## Envases compartidos y devoluciones en efectivo del piloto
 
+### Elección del Dueño al devolver un ticket con envases
+El usuario autoriza elegir por operación entre conservar los vacíos/reintegrar
+el valor de la mercadería y entregar los vacíos/reintegrar el efectivo neto.
+La primera ampliación exige devolución completa, sin devoluciones previas: el
+snapshot no vincula cada crédito de envase con una línea concreta de mercadería.
+Se descarta prorratear vacíos entre devoluciones parciales sin una regla acordada.
+Sólo el Dueño activo puede iniciar este contrato v2; el v1 sigue vigente para
+devoluciones sin envases y conserva sus ACK. Ambos importes salen del checkout
+inmutable, con los descuentos ya aplicados, sin usar precios actuales. La salida
+de vacíos valida saldo bajo lock y comparte transacción con stock y efectivo.
+La modalidad y cantidades se guardan en el ACK durable para verificar la entrega
+física incluso al recuperar una respuesta perdida. No se habilita anulación,
+refund electrónico, devolución fiscal ni cuenta corriente.
+
 El usuario amplió el piloto para recibir envases mediante descuento en ticket o
 efectivo, entregar vacíos al distribuidor y devolver artículos en caja abierta.
 Eligió resolver cambios con reintegro en efectivo y nueva venta normal; cuenta

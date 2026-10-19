@@ -142,17 +142,50 @@ Después validar JWT reales Dueño/Cajero/Visor/otro comercio, concurrencia y re
 Production es otro gate. El estado de flags y SQL hospedados de estos módulos no
 se presenta como verificado por las pruebas locales.
 
-La primera devolución exige venta original íntegramente en efectivo, no fiscal y
-sin recepción de envases. La devolución/anulación de tickets con esos créditos
-está bloqueada hasta conciliar vacíos y crédito. Se consultó la regla pendiente:
-conservar vacíos/reintegrar artículo, devolver vacíos/efectivo neto, o elección
-del Dueño por operación. No implementar ni asumir esa regla sin respuesta.
+La devolución parcial exige venta original íntegramente en efectivo, no fiscal y
+sin recepción de envases. El usuario eligió que el Dueño pueda escoger por
+operación cómo resolver los envases; la ampliación v2 permite devolución completa
+sin devoluciones anteriores. La devolución parcial de tickets con esos créditos
+y la anulación heredada siguen bloqueadas.
 Cuenta corriente, pagos mixtos,
 refunds externos, ARCA/WSFE y Point siguen fuera. Ticket v1 usa pesos enteros;
 envases con centavos deben recibirse en efectivo. La cotización existente limita
 el catálogo a 100 tipos activos. La marca de entrega y el bloqueo de cierre son
 del dispositivo, no coordinación física global. Conciliar vacíos locales por
 conteo real, nunca sumarlos entre puestos. Impresión física pendiente.
+
+## Ampliación autorizada: elección del Dueño
+El usuario eligió ambas modalidades para tickets que recibieron envases:
+conservar los vacíos y reintegrar el valor del artículo, o entregar los vacíos
+y reintegrar el efectivo neto. Se implementó primero para devolución completa
+del ticket, sin devoluciones previas: evita inventar una asignación entre envases
+y líneas de producto que el ticket no conserva. Sólo Dueño activo; importes y
+tipos/cantidades desde el checkout inmutable, nunca desde precios actuales.
+La entrega requiere saldo suficiente, locks estables y escritura atómica con el
+egreso de caja y la reposición opcional de mercadería. No se habilita anulación.
+
+- [x] Contrato versionado y helpers SQL privados; conservar replay v1.
+- [x] UI y recuperación durable con modalidad e instrucciones de entrega.
+- [x] Regresiones: ambas modalidades, actor, historial, saldo, rollback y replay.
+- [x] Respaldo public nuevo y restauración aislada; dos SQL instalados en Staging
+      en una transacción. SHA256 0a5547cc6dc18de5b45972d4570dafd179c6a79e354421ce564109b8987caf03.
+      41 comprobaciones hospedadas PASS; sólo dos tickets ficticios nuevos en el
+      mismo fixture. Elección $200/conservar frente a $100/entregar, JWT reales
+      Dueño/Cajero/Visor, reintentos concurrentes, denegación de segundo reintegro
+      y recuperación con comercio suspendido. Postflight confirma datos originales
+      intactos y cero comercios habilitados. Helpers reales leen 6 movimientos
+      con JWT Cajero, incluida salida al cliente; historial de venta anterior intacto.
+      Evidencia: ../owner-choice-staging-{installed,result,history-result}.json,
+      ../owner-choice-staging-journal.json y respaldo privado separado.
+      Vista local con datos ficticios y RPC bloqueadas comprobada con el selector
+      explícito y devolución completa; captura ../pilot-owner-choice-preview.png.
+      Los contenedores de restauración propios quedaron detenidos y conservados.
+- [x] Suite final de afedc08: 2018 PASS / 1 skipped / 215 archivos, 291,90 s;
+      build PASS (629 módulos), posterior al último cambio. Manifest histórico
+      PASS (43 SQL intactos); diff/index PASS; audit --omit=dev 0 vulnerabilidades.
+      Scan: 1121 textos, 14 binarios excluidos, mismos 46 candidatos conocidos
+      sintéticos/ejemplos/PEM incompletos; ninguno nuevo. No valores reales.
+      Commits temáticos: 88afbd8 SQL y afedc08 interfaz/recuperación.
 
 ## Resultado
 Implementación validada localmente y mediante ensayos backend en Staging, publicada
