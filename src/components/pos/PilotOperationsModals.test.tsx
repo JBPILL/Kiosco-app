@@ -20,7 +20,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   m.rol = 'DUEÑO'
   m.caja = { id: 'caja', kiosco_id: 'kid' }
-  m.cargar.mockResolvedValue([{ id: 'vidrio', nombre: 'Vidrio', precio: 100, activo: true, stockVacios: 5 }])
+  m.cargar.mockResolvedValue([{ id: 'vidrio', nombre: 'Vidrio', precio: 100, activo: true, stockVacios: 5, pendientes: 0 }])
   m.historial.mockResolvedValue({ operaciones: 0, importeReintegrado: 0, cantidadesPorDetalle: {} })
 })
 
@@ -28,9 +28,9 @@ it('devuelve efectivo y vacíos al cliente sin ofrecer conservarlos', async () =
   const modalidad = 'ENTREGAR_ENVASES'
   m.devolver.mockResolvedValue({ id: 'op', monto_total: 100, envases: { modalidad, credito: 50, entregas: [{ tipo_id: 'vidrio', cantidad: 1, stock_vacios: 0 }] } })
   render(<DevolucionEfectivoModal isOpen ventaInicial={ventaEnvases} onClose={vi.fn()} onDevolucionExitosa={vi.fn()} />)
-  await screen.findByText(/Devoluciones anteriores: 0/)
+  await screen.findByText(/0 devoluciones/)
   fireEvent.click(screen.getByRole('button', { name: 'Seleccionar devolución completa' }))
-  const confirmar = screen.getByRole('button', { name: 'Registrar devolución y calcular reintegro' })
+  const confirmar = screen.getByRole('button', { name: 'Confirmar devolución' })
   expect(screen.queryByLabelText('Resolución de envases')).toBeNull()
   expect(screen.queryByRole('option', { name: /Conservar envases/ })).toBeNull()
   expect(confirmar.hasAttribute('disabled')).toBe(false)
@@ -49,7 +49,7 @@ it('no permite otra devolución del ticket con envases si ya tiene reintegros', 
   render(<DevolucionEfectivoModal isOpen ventaInicial={ventaEnvases} onClose={vi.fn()} onDevolucionExitosa={vi.fn()} />)
   await screen.findByText(/ya tiene devoluciones/)
   fireEvent.click(screen.getByRole('button', { name: 'Seleccionar devolución completa' }))
-  expect(screen.getByRole('button', { name: 'Registrar devolución y calcular reintegro' }).hasAttribute('disabled')).toBe(true)
+  expect(screen.getByRole('button', { name: 'Confirmar devolución' }).hasAttribute('disabled')).toBe(true)
   expect(m.devolver).not.toHaveBeenCalled()
 })
 
@@ -63,7 +63,7 @@ it('descuenta envases del ticket sin ejecutar un pago ni una escritura de saldo'
 })
 
 it('no redondea precios con centavos para llevarlos al ticket', async () => {
-  m.cargar.mockResolvedValue([{ id: 'vidrio', nombre: 'Vidrio', precio: 100.25, activo: true, stockVacios: 5 }])
+  m.cargar.mockResolvedValue([{ id: 'vidrio', nombre: 'Vidrio', precio: 100.25, activo: true, stockVacios: 5, pendientes: 0 }])
   render(<EnvasesOperativosModal isOpen onClose={vi.fn()} />)
   const boton = await screen.findByRole('button', { name: 'Descontar del ticket' })
   await waitFor(() => expect(boton.hasAttribute('disabled')).toBe(true))
@@ -73,7 +73,7 @@ it('no redondea precios con centavos para llevarlos al ticket', async () => {
 it('no registra egreso si falta caja abierta', async () => {
   m.caja = null
   render(<EnvasesOperativosModal isOpen onClose={vi.fn()} />)
-  fireEvent.click(await screen.findByRole('button', { name: 'Registrar recepción y reintegro en efectivo' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Pagar en efectivo' }))
   expect(screen.getByRole('alert').textContent).toContain('Abrí una caja')
   expect(m.envase).not.toHaveBeenCalled()
 })
@@ -81,7 +81,7 @@ it('no registra egreso si falta caja abierta', async () => {
 it('una respuesta incierta bloquea otro envío desde el formulario', async () => {
   m.envase.mockRejectedValue(new Error('Respuesta incierta'))
   render(<EnvasesOperativosModal isOpen onClose={vi.fn()} />)
-  const boton = await screen.findByRole('button', { name: 'Registrar recepción y reintegro en efectivo' })
+  const boton = await screen.findByRole('button', { name: 'Pagar en efectivo' })
   fireEvent.click(boton)
   await screen.findByRole('alert')
   fireEvent.click(boton)
@@ -91,9 +91,9 @@ it('una respuesta incierta bloquea otro envío desde el formulario', async () =>
 it('envía la línea original por ID aunque dos líneas tengan el mismo producto', async () => {
   m.devolver.mockResolvedValue({ id: 'op', monto_total: 50 })
   render(<DevolucionEfectivoModal isOpen ventaInicial={venta} onClose={vi.fn()} onDevolucionExitosa={vi.fn()} />)
-  await screen.findByText(/Devoluciones anteriores:/)
+  await screen.findByText(/Ya devuelto:/)
   fireEvent.change(screen.getAllByLabelText('Cantidad a devolver')[1], { target: { value: '1' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Registrar devolución y calcular reintegro' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar devolución' }))
   await screen.findByText('Devolución registrada')
   expect(m.devolver.mock.calls[0][1]).toMatchObject({ metodo: 'EFECTIVO_CAJA', motivo: 'CAMBIO_PRODUCTO', items: [{ detalleId: 'detalle2', cantidad: 1, reingresaStock: true }] })
   expect(m.entregar).not.toHaveBeenCalled()
@@ -104,21 +104,21 @@ it('Cajero no devuelve una venta con recepción de envases ni recurre al flujo h
   m.rol = 'CAJERO'
   render(<DevolucionEfectivoModal isOpen ventaInicial={{ ...venta, detalles: [{ ...venta.detalles[0], es_devolucion_envase: true }] }} onClose={vi.fn()} onDevolucionExitosa={vi.fn()} />)
   expect(screen.getByRole('alert').textContent).toContain('sólo puede devolverlos el Dueño')
-  fireEvent.click(screen.getByRole('button', { name: 'Registrar devolución y calcular reintegro' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar devolución' }))
   expect(m.devolver).not.toHaveBeenCalled()
 })
 
 it('descuenta lo ya devuelto por línea y no permite otra cantidad mayor al saldo', async () => {
   m.historial.mockResolvedValue({ operaciones: 1, importeReintegrado: 50, cantidadesPorDetalle: { detalle1: 1 } })
   render(<DevolucionEfectivoModal isOpen ventaInicial={venta} onClose={vi.fn()} onDevolucionExitosa={vi.fn()} />)
-  await screen.findByText(/Devoluciones anteriores: 1/)
+  await screen.findByText(/1 devoluciones/)
   const cantidades = screen.getAllByLabelText('Cantidad a devolver')
   expect(cantidades[0].getAttribute('max')).toBe('1')
   expect(cantidades[1].getAttribute('max')).toBe('1')
   fireEvent.change(cantidades[0], { target: { value: '2' } })
-  expect(screen.getByRole('button', { name: 'Registrar devolución y calcular reintegro' }).hasAttribute('disabled')).toBe(true)
+  expect(screen.getByRole('button', { name: 'Confirmar devolución' }).hasAttribute('disabled')).toBe(true)
   fireEvent.change(cantidades[0], { target: { value: '1' } })
-  expect(screen.getByRole('button', { name: 'Registrar devolución y calcular reintegro' }).hasAttribute('disabled')).toBe(false)
+  expect(screen.getByRole('button', { name: 'Confirmar devolución' }).hasAttribute('disabled')).toBe(false)
   expect(m.devolver).not.toHaveBeenCalled()
 })
 
@@ -126,10 +126,10 @@ it('no presenta historia fallida como cero devoluciones y permite reintentar só
   m.historial.mockRejectedValueOnce(new Error('Sin conexión'))
   render(<DevolucionEfectivoModal isOpen ventaInicial={venta} onClose={vi.fn()} onDevolucionExitosa={vi.fn()} />)
   expect((await screen.findByRole('alert')).textContent).toContain('No se pudo verificar')
-  expect(screen.queryByText(/Devoluciones anteriores: 0/)).toBeNull()
-  expect(screen.getByRole('button', { name: 'Registrar devolución y calcular reintegro' }).closest('fieldset')?.disabled).toBe(true)
+  expect(screen.queryByText(/0 devoluciones/)).toBeNull()
+  expect(screen.getByRole('button', { name: 'Confirmar devolución' }).closest('fieldset')?.disabled).toBe(true)
   fireEvent.click(screen.getByRole('button', { name: 'Reintentar historial' }))
-  await screen.findByText(/Devoluciones anteriores: 0/)
+  await screen.findByText(/0 devoluciones/)
   expect(m.devolver).not.toHaveBeenCalled()
 })
 
@@ -137,6 +137,45 @@ it('bloquea una historia incompatible con el ticket original', async () => {
   m.historial.mockResolvedValue({ operaciones: 1, importeReintegrado: 50, cantidadesPorDetalle: { detalleDesconocido: 1 } })
   render(<DevolucionEfectivoModal isOpen ventaInicial={venta} onClose={vi.fn()} onDevolucionExitosa={vi.fn()} />)
   await screen.findByRole('alert')
-  expect(screen.getByRole('button', { name: 'Registrar devolución y calcular reintegro' }).closest('fieldset')?.disabled).toBe(true)
+  expect(screen.getByRole('button', { name: 'Confirmar devolución' }).closest('fieldset')?.disabled).toBe(true)
   expect(m.devolver).not.toHaveBeenCalled()
+})
+
+it('rechaza fracciones en artículos por unidad y permite elegir Todo sin escribir', async () => {
+  m.devolver.mockResolvedValue({ id: 'op', monto_total: 100 })
+  render(<DevolucionEfectivoModal isOpen ventaInicial={venta} onClose={vi.fn()} onDevolucionExitosa={vi.fn()} />)
+  await screen.findByText(/Ya devuelto:/)
+  fireEvent.change(screen.getAllByLabelText('Cantidad a devolver')[0], { target: { value: '0,013' } })
+  expect(screen.getByRole('alert').textContent).toContain('entera')
+  const confirmar = screen.getByRole('button', { name: 'Confirmar devolución' })
+  expect(confirmar.hasAttribute('disabled')).toBe(true)
+  fireEvent.click(confirmar)
+  expect(m.devolver).not.toHaveBeenCalled()
+  fireEvent.click(screen.getAllByRole('button', { name: 'Todo' })[0])
+  expect(confirmar.hasAttribute('disabled')).toBe(false)
+  fireEvent.click(confirmar)
+  await screen.findByText('Devolución registrada')
+  expect(m.devolver.mock.calls[0][1].items[0].cantidad).toBe(2)
+})
+it('muestra vacíos y pendientes separados y salda los pendientes sin crédito ni efectivo', async () => {
+  m.cargar.mockResolvedValue([{ id: 'vidrio', nombre: 'Vidrio', precio: 100, activo: true, stockVacios: 5, pendientes: 3 }])
+  m.envase.mockResolvedValue({ id: 'op', stock_vacios: 6, pendientes: 2, importe: 0 })
+  const cerrar = vi.fn()
+  render(<EnvasesOperativosModal isOpen onClose={cerrar} />)
+  await screen.findByText('Vacíos en el negocio')
+  expect(screen.getByText('Pendientes de traer')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Recibir pendientes sin pagar' }))
+  await waitFor(() => expect(cerrar).toHaveBeenCalledOnce())
+  expect(m.envase.mock.calls[0][1]).toMatchObject({ accion: 'RECIBIR_PENDIENTES', datos: { cantidad: 1, notas: null } })
+  expect(m.agregar).not.toHaveBeenCalled()
+})
+it('Cajero no declara pendientes y no recibe más que el total pendiente', async () => {
+  m.rol = 'CAJERO'
+  m.cargar.mockResolvedValue([{ id: 'vidrio', nombre: 'Vidrio', precio: 100, activo: true, stockVacios: 5, pendientes: 1 }])
+  render(<EnvasesOperativosModal isOpen onClose={vi.fn()} />)
+  await screen.findByText('Pendientes de traer')
+  expect(screen.queryByText('Registrar envases pendientes')).toBeNull()
+  fireEvent.change(screen.getByLabelText('Cantidad recibida'), { target: { value: '2' } })
+  expect(screen.getByRole('button', { name: 'Recibir pendientes sin pagar' }).hasAttribute('disabled')).toBe(true)
+  expect(m.envase).not.toHaveBeenCalled()
 })

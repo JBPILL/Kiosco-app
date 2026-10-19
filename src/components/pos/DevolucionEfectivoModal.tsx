@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { QuantityStepper } from '../ui/QuantityStepper'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { useAuthStore } from '../../stores/authStore'
@@ -38,9 +39,13 @@ function ContenidoDevolucion({ ventaInicial: venta, onClose, onDevolucionExitosa
   const conEnvases = Boolean(venta?.detalles.some(d => d.es_devolucion_envase))
   const mercaderia = venta?.detalles.filter(d => !d.es_devolucion_envase) ?? []
   const completa = items.length === mercaderia.length && mercaderia.every(d => items.some(i => i.detalleId === d.id && i.cantidad === Number(d.cantidad)))
+  const admiteFraccion = (detalleId: string) => {
+    const d = mercaderia.find(item => item.id === detalleId)
+    return Boolean(d && (!Number.isInteger(Number(d.cantidad)) || d.producto?.es_pesable || (d.producto?.unidad_medida && d.producto.unidad_medida !== 'UN')))
+  }
   const valida = historial !== null && !errorHistorial && (!conEnvases || (historial.operaciones === 0 && completa))
     && items.length > 0 && items.every(item => Number.isFinite(item.cantidad) && Number(item.cantidad.toFixed(3)) === item.cantidad
-    && item.cantidad >= 0.001 && item.cantidad <= disponible(item.detalleId))
+    && (admiteFraccion(item.detalleId) || Number.isInteger(item.cantidad)) && item.cantidad >= 0.001 && item.cantidad <= disponible(item.detalleId))
   const excluida = !venta || venta.kiosco_id !== contexto.kioscoId || venta.estado !== 'COMPLETADA' || Boolean(venta.afip_cae)
     || (conEnvases && !esDueno) || Boolean(venta.pagos?.some(p => p.medio_pago !== 'EFECTIVO'))
 
@@ -53,7 +58,10 @@ function ContenidoDevolucion({ ventaInicial: venta, onClose, onDevolucionExitosa
         const original = venta.detalles.find(d => d.id === id)
         if (!original || cantidad > Number(original.cantidad)) throw new Error('Historia inconsistente')
       }
-      if (vigente) setHistorial(h)
+      if (vigente) {
+        setHistorial(h)
+        if (conEnvases && h.operaciones === 0) setSeleccion(Object.fromEntries(mercaderia.map(d => [d.id, { cantidad: String(d.cantidad), reingresaStock: true }])))
+      }
     }).catch(() => { if (vigente) setErrorHistorial('No se pudo verificar lo ya devuelto. No se registrará otro reintegro hasta recuperar el historial.') })
     return () => { vigente = false }
   }, [venta, excluida, contexto.kioscoId, revisionHistorial])
@@ -97,10 +105,10 @@ function ContenidoDevolucion({ ventaInicial: venta, onClose, onDevolucionExitosa
         <Button fullWidth disabled={ocupado} onClick={() => void entregar()}>{resultado.envases?.modalidad === 'ENTREGAR_ENVASES' ? 'Ya verifiqué la entrega de efectivo y envases' : 'Ya verifiqué la entrega de efectivo'}</Button>
         {motivo === 'CAMBIO_PRODUCTO' && <p className="text-sm">Después del reintegro, cargá el reemplazo como una venta normal en el POS.</p>}
       </> : <>
-        <p className="text-sm">Seleccioná las unidades recibidas. El sistema calcula el reintegro con los descuentos del ticket original y valida lo ya devuelto. No entregues efectivo hasta ver la confirmación y su importe.</p>
+        <p className="text-sm">Elegí qué recibís. Entregá el efectivo sólo después de ver el reintegro confirmado.</p>
         {excluida && <p role="alert" className="text-amber-700 dark:text-amber-300">Se requiere una venta completada, no fiscal y pagada íntegramente en efectivo. Los tickets con envases sólo puede devolverlos el Dueño. Abrí una venta compatible desde Tickets emitidos.</p>}
         {!excluida && (errorHistorial ? <div role="alert" className="space-y-2 text-sm"><p>{errorHistorial}</p><Button size="sm" variant="secondary" onClick={() => setRevisionHistorial(n => n + 1)}>Reintentar historial</Button></div>
-          : historial ? <p className="rounded-lg bg-gray-100 p-3 text-sm dark:bg-gray-800">Devoluciones anteriores: {historial.operaciones}. Reintegrado: <strong>{formatPrecio(historial.importeReintegrado)}</strong>. Las cantidades disponibles descuentan lo ya recibido.</p>
+          : historial ? <p className="rounded-lg bg-gray-100 p-3 text-sm dark:bg-gray-800">Ya devuelto: {formatPrecio(historial.importeReintegrado)} · {historial.operaciones} devoluciones</p>
           : <p role="status" className="text-sm">Verificando devoluciones anteriores…</p>)}
         <fieldset disabled={ocupado || intentado || excluida || !historial || Boolean(errorHistorial)} className="space-y-3 disabled:opacity-60">
           {conEnvases && <div className="rounded-xl border border-amber-500 p-3 space-y-3">
@@ -110,16 +118,17 @@ function ContenidoDevolucion({ ventaInicial: venta, onClose, onDevolucionExitosa
           </div>}
           {venta?.detalles.filter(d => !d.es_devolucion_envase).map(detalle => <div key={detalle.id} className="rounded-xl border border-gray-300 dark:border-gray-600 p-3 space-y-2">
             <p className="font-semibold">{detalle.producto?.descripcion || 'Artículo del ticket'} · {Number(detalle.cantidad)} vendidos · {historial ? `${disponible(detalle.id)} disponibles para devolver` : 'disponibilidad pendiente de verificar'}</p>
-            <label className="block text-sm">Cantidad a devolver
-              <input className={entrada} type="number" min="0" max={disponible(detalle.id)} step="0.001" value={seleccion[detalle.id]?.cantidad ?? ''} placeholder="0" onChange={e => setSeleccion(s => ({ ...s, [detalle.id]: { cantidad: e.target.value, reingresaStock: s[detalle.id]?.reingresaStock ?? true } }))} />
-            </label>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={seleccion[detalle.id]?.reingresaStock ?? true} onChange={e => setSeleccion(s => ({ ...s, [detalle.id]: { cantidad: s[detalle.id]?.cantidad ?? '', reingresaStock: e.target.checked } }))} />Reponer al stock vendible (desmarcar si está dañado o vencido)</label>
+            <div className="flex items-end gap-2">
+              <div className="min-w-0 flex-1"><QuantityStepper label="Cantidad a devolver" max={disponible(detalle.id)} fractional={admiteFraccion(detalle.id)} value={seleccion[detalle.id]?.cantidad ?? ''} onChange={cantidad => setSeleccion(s => ({ ...s, [detalle.id]: { cantidad, reingresaStock: s[detalle.id]?.reingresaStock ?? true } }))} /></div>
+              <Button size="sm" variant="secondary" onClick={() => setSeleccion(s => ({ ...s, [detalle.id]: { cantidad: String(disponible(detalle.id)), reingresaStock: s[detalle.id]?.reingresaStock ?? true } }))}>Todo</Button>
+            </div>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={seleccion[detalle.id]?.reingresaStock ?? true} onChange={e => setSeleccion(s => ({ ...s, [detalle.id]: { cantidad: s[detalle.id]?.cantidad ?? '', reingresaStock: e.target.checked } }))} />Volver a poner a la venta</label>
           </div>)}
           <label className="block text-sm">Motivo<select className={entrada} value={motivo} onChange={e => setMotivo(e.target.value as SolicitudDevolucionEfectivo['motivo'])}>
             <option value="CAMBIO_PRODUCTO">Cambio de producto</option><option value="FALLA_ROTURA">Falla o rotura</option><option value="VENCIDO">Vencido</option><option value="ERROR_COBRO">Error de cobro</option><option value="OTRO">Otro motivo</option>
           </select></label>
-          <label className="block text-sm">Observaciones<textarea className={entrada} maxLength={1000} value={notas} onChange={e => setNotas(e.target.value)} /></label>
-          <Button fullWidth disabled={!valida || excluida} onClick={() => void confirmar()}>Registrar devolución y calcular reintegro</Button>
+          <details><summary className="cursor-pointer text-sm">Agregar observaciones</summary><label className="block text-sm">Observaciones<textarea className={entrada} maxLength={1000} value={notas} onChange={e => setNotas(e.target.value)} /></label></details>
+          <Button fullWidth disabled={!valida || excluida} onClick={() => void confirmar()}>Confirmar devolución</Button>
         </fieldset>
         {intentado && !ocupado && <p className="text-sm">Si no se confirmó, cerrá y recuperá la operación original desde el panel del POS antes de intentar otra devolución.</p>}
       </>}

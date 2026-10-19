@@ -248,3 +248,36 @@ Production; siguen pendientes aceptación de interfaz, ensayo físico e integrac
   seleccionar venta → Devolver. Con envases acreditados: ticket completo sin devolución
   previa, reintegro del efectivo neto y entrega de los vacíos al cliente. Aceptación
   interactiva todavía pendiente; master, PR #1 y Production fuera de esta activación.
+
+
+## Ajuste de interfaz y pendientes por tipo (19/10/2026)
+Solicitud: recuperar tarjetas/cantidad del modal antiguo sin volver a escrituras
+locales; mostrar vacíos y pendientes por tipo. Pendientes sin cliente por elección
+expresa: alta/corrección manual del Dueño, recepción sin dinero aumenta vacíos y
+disminuye pendientes atómicamente. No inferir préstamos desde ventas históricas ni
+cobrar automáticamente depósitos. Simplificar devolución y usar enteros para
+artículos por unidad; preservar pesables y ACK históricos.
+- [x] UI de recepción con tarjetas, contador y acciones separadas.
+- [x] Libro remoto de pendientes, permisos/locks/replay y lectura por comercio.
+- [x] Devolución simplificada y validación de cantidades local/servidor.
+- [x] Suite final 2048 PASS / 1 skipped / 217 archivos, 178,80 s. Build PASS,
+      631 módulos. Audit omit=dev cero vulnerabilidades; sin audit fix. Diff/index
+      y manifest histórico PASS (43 SQL intactos). Secret scan: 1128 textos,
+      14 binarios excluidos, mismos 46 candidatos conocidos; sin nuevos secretos.
+      Pruebas dirigidas de núcleo/UI/outbox: 64 PASS / 4 archivos.
+- [x] Respaldo nuevo de public en ../private-pending-staging-backup-20261019-r3/,
+      restauración local aislada e instalación transaccional de ambos módulos
+      003 sólo en Staging. SHA256 de instalación:
+      2a10e944654829f70fb10cc15da30901909ccc679f1830245fb47444b26c7ad5.
+      Los intentos previos quedaron conservados incompletos, no se usaron como respaldo.
+- [x] Ensayo hosted: 27 comprobaciones PASS con JWT reales, helper frontend real,
+      permisos, RLS otro comercio, replay concurrente, saldo viejo, enteros,
+      sobregiro, sin ventas/egresos/devoluciones nuevas. Sólo un tipo ficticio
+      nuevo; conciliado a cero pendientes, desactivado y conservado. Comercio
+      del usuario sigue ACTIVO. Ver ../pending-staging-{installed,result}.json
+      y ../pending-staging-test-journal.json; no repetir el journal.
+- [x] Vista local con operaciones remotas bloqueadas: tarjetas/saldos/cantidad,
+      y 0,013 rechazado con confirmación deshabilitada para artículo unitario.
+      Capturas ../pilot-pending-{envases,return-integer}-preview.png.
+- [ ] Commit/push y despliegue frontend exclusivamente en proyecto Staging;
+      mantener PR #3 en borrador sin merge. Aceptación interactiva del usuario pendiente.
