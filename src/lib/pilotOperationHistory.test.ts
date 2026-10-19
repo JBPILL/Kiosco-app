@@ -61,8 +61,8 @@ it('acepta ajuste descendente, pero rechaza stock negativo de envases', async ()
   paginas.envases_movimientos[0] = { ...paginas.envases_movimientos[0], stock_resultante: -1 }
   await expect(cargarMovimientosEnvases(id(20), desde, hasta)).rejects.toThrow('inconsistente')
 })
-it('interpreta la entrega al distribuidor como salida firmada, igual que el ledger SQL', async () => {
-  paginas.envases_movimientos = [{ ...paginas.envases_movimientos[0], accion: 'ENTREGAR_DISTRIBUIDOR', cantidad: -2, importe: 0, distribuidor: 'Ensayo' }]
+it.each(['ENTREGAR_DISTRIBUIDOR', 'DEVOLVER_CLIENTE'])('interpreta %s como salida firmada, igual que el ledger SQL', async accion => {
+  paginas.envases_movimientos = [{ ...paginas.envases_movimientos[0], accion, cantidad: -2, importe: 0, distribuidor: 'Ensayo' }]
   expect((await cargarMovimientosEnvases(id(20), desde, hasta))[0].cantidad).toBe(-2)
   paginas.envases_movimientos[0] = { ...paginas.envases_movimientos[0], cantidad: 2 }
   await expect(cargarMovimientosEnvases(id(20), desde, hasta)).rejects.toThrow('inconsistente')

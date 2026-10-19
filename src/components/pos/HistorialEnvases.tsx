@@ -7,6 +7,7 @@ import { Button } from '../ui/Button'
 const etiquetas: Record<MovimientoEnvaseCompartido['accion'], string> = {
   AJUSTAR_SALDO: 'Ajuste por conteo', ENTREGAR_DISTRIBUIDOR: 'Entrega al distribuidor',
   RECIBIR_EFECTIVO: 'Recepción con efectivo', RECIBIR_TICKET: 'Recepción en ticket',
+  DEVOLVER_CLIENTE: 'Entrega al cliente por devolución',
 }
 interface Props { kioscoId: string; tipos: TipoEnvaseCompartido[] }
 export function HistorialEnvases({ kioscoId, tipos }: Props) {

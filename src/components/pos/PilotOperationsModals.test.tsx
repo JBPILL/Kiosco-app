@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, expect, it, vi } from 'vitest'
 import type { VentaConDetalles } from '../../stores/devolucionStore'
-const m = vi.hoisted(() => ({ historial: vi.fn(), cargar: vi.fn(), envase: vi.fn(), devolver: vi.fn(), entregar: vi.fn(), agregar: vi.fn(), caja: { id: 'caja', kiosco_id: 'kid' } as { id: string; kiosco_id: string } | null }))
-vi.mock('../../stores/authStore', () => ({ useAuthStore: (selector: (s: unknown) => unknown) => selector({ usuario: { id: 'uid', kiosco_id: 'kid', rol: 'DUEÑO', activo: true } }) }))
+const m = vi.hoisted(() => ({ rol: 'DUEÑO', historial: vi.fn(), cargar: vi.fn(), envase: vi.fn(), devolver: vi.fn(), entregar: vi.fn(), agregar: vi.fn(), caja: { id: 'caja', kiosco_id: 'kid' } as { id: string; kiosco_id: string } | null }))
+vi.mock('../../stores/authStore', () => ({ useAuthStore: (selector: (s: unknown) => unknown) => selector({ usuario: { id: 'uid', kiosco_id: 'kid', rol: m.rol, activo: true } }) }))
 vi.mock('../../stores/cajaStore', () => ({ useCajaStore: { getState: () => ({ sesionActiva: m.caja }) } }))
 vi.mock('../../stores/cartStore', () => ({ useCartStore: { getState: () => ({ agregarDevolucionEnvase: m.agregar, tabActivaId: 'tab', cobrosBloqueados: {} }) } }))
 vi.mock('../../lib/envasesData', () => ({ cargarEnvasesCompartidos: m.cargar }))
@@ -15,11 +15,40 @@ const venta: VentaConDetalles = { id: 'venta', kiosco_id: 'kid', usuario_id: 'ui
   detalles: [{ id: 'detalle1', venta_id: 'venta', producto_id: 'producto', cantidad: 2, precio_unitario: 50, subtotal: 100 },
     { id: 'detalle2', venta_id: 'venta', producto_id: 'producto', cantidad: 1, precio_unitario: 50, subtotal: 50 }],
   pagos: [{ id: 'pago', venta_id: 'venta', medio_pago: 'EFECTIVO', monto: 100, referencia: null }] }
+const ventaEnvases: VentaConDetalles = { ...venta, detalles: [...venta.detalles, { id: 'vacio', venta_id: venta.id, producto_id: 'virtual-envase', cantidad: 1, precio_unitario: 0, subtotal: -50, es_devolucion_envase: true }] }
 beforeEach(() => {
   vi.clearAllMocks()
+  m.rol = 'DUEÑO'
   m.caja = { id: 'caja', kiosco_id: 'kid' }
   m.cargar.mockResolvedValue([{ id: 'vidrio', nombre: 'Vidrio', precio: 100, activo: true, stockVacios: 5 }])
   m.historial.mockResolvedValue({ operaciones: 0, importeReintegrado: 0, cantidadesPorDetalle: {} })
+})
+
+it.each(['CONSERVAR_ENVASES', 'ENTREGAR_ENVASES'])('Dueño elige %s explícitamente para devolver todo el ticket', async modalidad => {
+  m.devolver.mockResolvedValue({ id: 'op', monto_total: 100, envases: { modalidad, credito: 50, entregas: modalidad === 'CONSERVAR_ENVASES' ? [] : [{ tipo_id: 'vidrio', cantidad: 1, stock_vacios: 0 }] } })
+  render(<DevolucionEfectivoModal isOpen ventaInicial={ventaEnvases} onClose={vi.fn()} onDevolucionExitosa={vi.fn()} />)
+  await screen.findByText(/Devoluciones anteriores: 0/)
+  fireEvent.click(screen.getByRole('button', { name: 'Seleccionar devolución completa' }))
+  const confirmar = screen.getByRole('button', { name: 'Registrar devolución y calcular reintegro' })
+  expect(confirmar.hasAttribute('disabled')).toBe(true)
+  fireEvent.change(screen.getByLabelText('Resolución de envases'), { target: { value: modalidad } })
+  fireEvent.click(confirmar)
+  await screen.findByText('Devolución registrada')
+  expect(m.devolver.mock.calls[0][1]).toMatchObject({ version: 2, modalidadEnvases: modalidad, items: [
+    { detalleId: 'detalle1', cantidad: 2, reingresaStock: true }, { detalleId: 'detalle2', cantidad: 1, reingresaStock: true },
+  ] })
+  expect(m.devolver.mock.calls[0][1].items.some((i: {detalleId: string}) => i.detalleId === 'vacio')).toBe(false)
+  expect(screen.getByText(modalidad === 'CONSERVAR_ENVASES' ? /Los envases quedan/ : /Entregá también/)).toBeTruthy()
+})
+
+it('no permite otra devolución del ticket con envases si ya tiene reintegros', async () => {
+  m.historial.mockResolvedValue({ operaciones: 1, importeReintegrado: 10, cantidadesPorDetalle: {} })
+  render(<DevolucionEfectivoModal isOpen ventaInicial={ventaEnvases} onClose={vi.fn()} onDevolucionExitosa={vi.fn()} />)
+  await screen.findByText(/ya tiene devoluciones/)
+  fireEvent.click(screen.getByRole('button', { name: 'Seleccionar devolución completa' }))
+  fireEvent.change(screen.getByLabelText('Resolución de envases'), { target: { value: 'CONSERVAR_ENVASES' } })
+  expect(screen.getByRole('button', { name: 'Registrar devolución y calcular reintegro' }).hasAttribute('disabled')).toBe(true)
+  expect(m.devolver).not.toHaveBeenCalled()
 })
 
 it('descuenta envases del ticket sin ejecutar un pago ni una escritura de saldo', async () => {
@@ -69,9 +98,10 @@ it('envía la línea original por ID aunque dos líneas tengan el mismo producto
   expect(screen.getByText(/cargá el reemplazo como una venta normal/)).toBeTruthy()
 })
 
-it('rechaza en pantalla una venta con recepción de envases sin recurrir al flujo heredado', () => {
+it('Cajero no devuelve una venta con recepción de envases ni recurre al flujo heredado', () => {
+  m.rol = 'CAJERO'
   render(<DevolucionEfectivoModal isOpen ventaInicial={{ ...venta, detalles: [{ ...venta.detalles[0], es_devolucion_envase: true }] }} onClose={vi.fn()} onDevolucionExitosa={vi.fn()} />)
-  expect(screen.getByRole('alert').textContent).toContain('sin recepción de envases')
+  expect(screen.getByRole('alert').textContent).toContain('sólo puede devolverlos el Dueño')
   fireEvent.click(screen.getByRole('button', { name: 'Registrar devolución y calcular reintegro' }))
   expect(m.devolver).not.toHaveBeenCalled()
 })

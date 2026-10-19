@@ -32,3 +32,22 @@ it.each(['CUENTA_CORRIENTE','OTRO'])('no guarda ni envía el método excluido %s
   await expect(procesarDevolucionEfectivo(outbox,kid,uid,{...solicitud(),metodo,sesionReintegroId:null},enviar)).rejects.toThrow('reintegro en efectivo')
   expect(enviar).not.toHaveBeenCalled()
 })
+
+it.each(['CONSERVAR_ENVASES','ENTREGAR_ENVASES'])('recupera modalidad %s y entrega física sin mutar el cuerpo',async modalidadEnvases=>{
+  const s={...solicitud(),version:2,modalidadEnvases}
+  await expect(procesarDevolucionEfectivo(outbox,kid,uid,s,async()=>{throw new Error('timeout')})).rejects.toThrow('timeout')
+  const r={...ack(),envases:{modalidad:modalidadEnvases,credito:100,entregas:modalidadEnvases==='CONSERVAR_ENVASES'?[]:[{tipo_id:'vidrio',cantidad:1,stock_vacios:0}]}}
+  const nombre=outbox.name;outbox.close();outbox=new CashReturnOutbox(nombre)
+  expect(await procesarDevolucionEfectivo(outbox,kid,uid,s,async()=>({data:r,error:null}))).toEqual(r)
+  expect(await outbox.recuperables(kid,uid)).toHaveLength(1)
+  await expect(procesarDevolucionEfectivo(outbox,kid,uid,{...s,modalidadEnvases:modalidadEnvases==='CONSERVAR_ENVASES'?'ENTREGAR_ENVASES':'CONSERVAR_ENVASES'},async()=>({data:r,error:null}))).rejects.toThrow()
+})
+it.each([
+  {modalidad:'CONSERVAR_ENVASES',credito:100,entregas:[]},
+  {modalidad:'ENTREGAR_ENVASES',credito:100,entregas:[]},
+  {modalidad:'ENTREGAR_ENVASES',credito:100,entregas:[{tipo_id:'vidrio',cantidad:-1,stock_vacios:0}]},
+  undefined,
+])('no confirma v2 con entrega incompatible %j',async envases=>{
+  await expect(procesarDevolucionEfectivo(outbox,kid,uid,{...solicitud(),version:2,modalidadEnvases:'ENTREGAR_ENVASES'},async()=>({data:{...ack(),envases},error:null}))).rejects.toThrow()
+  expect(await outbox.pendientes(kid,uid)).toHaveLength(1)
+})

@@ -1,7 +1,9 @@
 import { parsearSolicitudDevolucionParcial, type SolicitudDevolucionParcial } from '../../supabase/functions/_shared/partialReturnRequest'
 import { DurablePilotOperationOutbox, procesarOperacionPiloto, validarUuid, type OperacionPilotoLocal, type EnviarOperacionPiloto } from './durablePilotOperationOutbox'
 
-export type SolicitudDevolucionEfectivo = Omit<SolicitudDevolucionParcial, 'metodo' | 'sesionReintegroId'> & { metodo: 'EFECTIVO_CAJA'; sesionReintegroId: string }
+export type ModalidadDevolucionEnvases = 'CONSERVAR_ENVASES' | 'ENTREGAR_ENVASES'
+type BaseDevolucionEfectivo = Omit<SolicitudDevolucionParcial, 'metodo' | 'sesionReintegroId' | 'version'> & { metodo: 'EFECTIVO_CAJA'; sesionReintegroId: string }
+export type SolicitudDevolucionEfectivo = BaseDevolucionEfectivo & ({ version: 1 } | { version: 2; modalidadEnvases: ModalidadDevolucionEnvases })
 export interface ResultadoDevolucionEfectivo {
   id: string
   venta_id: string
@@ -10,8 +12,15 @@ export interface ResultadoDevolucionEfectivo {
   monto_total: number
   detalles: { detalle_id: string; cantidad: number; importe: number }[]
   stock: { producto_id: string; stock_actual: number }[]
+  envases?: { modalidad: ModalidadDevolucionEnvases; credito: number; entregas: { tipo_id: string; cantidad: number; stock_vacios: number }[] }
 }
 function parsear(valor: unknown): SolicitudDevolucionEfectivo {
+  if (valor && typeof valor === 'object' && !Array.isArray(valor) && 'version' in valor && valor.version === 2) {
+    const { modalidadEnvases, ...base } = valor as Record<string, unknown>
+    if (modalidadEnvases !== 'CONSERVAR_ENVASES' && modalidadEnvases !== 'ENTREGAR_ENVASES') throw new Error('Elegí cómo resolver los envases')
+    const s = parsear({ ...base, version: 1 })
+    return { ...s, version: 2, modalidadEnvases }
+  }
   const s = parsearSolicitudDevolucionParcial(valor)
   if (s.metodo !== 'EFECTIVO_CAJA' || !s.sesionReintegroId) throw new Error('El piloto requiere reintegro en efectivo y nueva venta para cambios')
   return { ...s, metodo: 'EFECTIVO_CAJA', sesionReintegroId: s.sesionReintegroId }
@@ -51,7 +60,22 @@ function validarResultado(valor: unknown, op: OperacionPilotoLocal<SolicitudDevo
     productos.add(producto_id)
     return { producto_id, stock_actual }
   })
-  return { id: op.id, venta_id: op.solicitud.ventaId, kiosco_id: op.kioscoId, sesion_caja_id: op.solicitud.sesionReintegroId, monto_total, detalles, stock }
+  const resultado: ResultadoDevolucionEfectivo = { id: op.id, venta_id: op.solicitud.ventaId, kiosco_id: op.kioscoId, sesion_caja_id: op.solicitud.sesionReintegroId, monto_total, detalles, stock }
+  if (op.solicitud.version === 2) {
+    const e = objeto(r.envases), tipos = new Set<string>()
+    if (e.modalidad !== op.solicitud.modalidadEnvases || !Array.isArray(e.entregas)) throw new Error('Modalidad de envases incompatible')
+    const credito = moneda(e.credito)
+    if (credito <= 0 || (e.modalidad === 'CONSERVAR_ENVASES' ? e.entregas.length !== 0 : e.entregas.length === 0)) throw new Error('Entrega de envases incompatible')
+    const entregas = e.entregas.map(valorEntrega => {
+      const fila = objeto(valorEntrega), cantidad = numero(fila.cantidad), stock_vacios = numero(fila.stock_vacios)
+      if (typeof fila.tipo_id !== 'string' || !fila.tipo_id || tipos.has(fila.tipo_id) || !Number.isInteger(cantidad) || cantidad < 1 || cantidad > 999999999
+        || !Number.isInteger(stock_vacios) || stock_vacios > 999999999) throw new Error('Envase confirmado incompatible')
+      tipos.add(fila.tipo_id)
+      return { tipo_id: fila.tipo_id, cantidad, stock_vacios }
+    })
+    resultado.envases = { modalidad: op.solicitud.modalidadEnvases, credito, entregas }
+  } else if (r.envases !== undefined) throw new Error('Confirmación de envases inesperada')
+  return resultado
 }
 export class CashReturnOutbox extends DurablePilotOperationOutbox<SolicitudDevolucionEfectivo, ResultadoDevolucionEfectivo> {
   constructor(nombre = 'KioskoPOSDevolucionesEfectivo') { super(nombre, parsear, validarResultado, () => true) }

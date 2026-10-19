@@ -5,7 +5,7 @@ import { validarUuid } from './durablePilotOperationOutbox'
 export interface MovimientoEnvaseCompartido {
   id: string
   tipo_id: string
-  accion: 'AJUSTAR_SALDO' | 'ENTREGAR_DISTRIBUIDOR' | 'RECIBIR_EFECTIVO' | 'RECIBIR_TICKET'
+  accion: 'AJUSTAR_SALDO' | 'ENTREGAR_DISTRIBUIDOR' | 'RECIBIR_EFECTIVO' | 'RECIBIR_TICKET' | 'DEVOLVER_CLIENTE'
   cantidad: number
   stock_resultante: number
   importe: number
@@ -37,13 +37,13 @@ export async function cargarMovimientosEnvases(kioscoId: string, desde: string, 
   }, 'movimientos de envases')
   return filas.map(fila => {
     const r = objeto(fila)
-    const acciones = ['AJUSTAR_SALDO', 'ENTREGAR_DISTRIBUIDOR', 'RECIBIR_EFECTIVO', 'RECIBIR_TICKET'] as const
+    const acciones = ['AJUSTAR_SALDO', 'ENTREGAR_DISTRIBUIDOR', 'RECIBIR_EFECTIVO', 'RECIBIR_TICKET', 'DEVOLVER_CLIENTE'] as const
     if (!acciones.some(a => a === r.accion) || typeof r.tipo_id !== 'string' || !r.tipo_id
       || typeof r.creado_en !== 'string' || !Number.isFinite(Date.parse(r.creado_en))
       || !(r.distribuidor === null || typeof r.distribuidor === 'string')) throw new Error('Movimiento de envase inválido.')
     const cantidad = numero(r.cantidad, 0, 999999999), stock_resultante = numero(r.stock_resultante, 0, 999999999), importe = numero(r.importe, 2, 9999999999.99)
     if (stock_resultante < 0 || importe < 0
-      || (r.accion === 'ENTREGAR_DISTRIBUIDOR' && (cantidad >= 0 || importe !== 0))
+      || (['ENTREGAR_DISTRIBUIDOR', 'DEVOLVER_CLIENTE'].includes(String(r.accion)) && (cantidad >= 0 || importe !== 0))
       || (r.accion === 'AJUSTAR_SALDO' && importe !== 0)
       || (['RECIBIR_EFECTIVO', 'RECIBIR_TICKET'].includes(String(r.accion)) && (cantidad <= 0 || importe <= 0))) throw new Error('Movimiento de envase inconsistente.')
     return { id: validarUuid(r.id), tipo_id: r.tipo_id, accion: r.accion as MovimientoEnvaseCompartido['accion'], cantidad, stock_resultante, importe, distribuidor: r.distribuidor, creado_en: r.creado_en }

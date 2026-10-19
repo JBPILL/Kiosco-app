@@ -67,7 +67,13 @@ function PendientesDelUsuario({ contexto }: { contexto: ContextoOperacionPiloto 
       {fila.op.estado === 'CONFIRMADO' && fila.op.resultado ? <>
         <p>Registrado en caja: <strong>{formatPrecio(fila.tipo === 'ENVASES' ? fila.op.resultado?.importe ?? 0 : fila.op.resultado?.monto_total ?? 0)}</strong>.</p>
         <p className="text-sm">Verificá la entrega anterior. Si ya se entregó, no vuelvas a pagar. Esta marca se conserva sólo en este dispositivo.</p>
-        <Button size="sm" disabled={ocupado} onClick={() => void resolver(fila, true)}>Ya verifiqué la entrega de efectivo</Button>
+        {fila.tipo === 'DEVOLUCION' && fila.op.resultado.envases && <div className="text-sm">
+          {fila.op.resultado.envases.modalidad === 'CONSERVAR_ENVASES' ? <p>Los envases quedan en el kiosco.</p> : <>
+            <p>Verificá también la entrega de vacíos al cliente; no la repitas:</p>
+            <ul>{fila.op.resultado.envases.entregas.map(e => <li key={e.tipo_id}>{e.cantidad} × {e.tipo_id}</li>)}</ul>
+          </>}
+        </div>}
+        <Button size="sm" disabled={ocupado} onClick={() => void resolver(fila, true)}>{fila.tipo === 'DEVOLUCION' && fila.op.resultado.envases?.modalidad === 'ENTREGAR_ENVASES' ? 'Ya verifiqué la entrega de efectivo y envases' : 'Ya verifiqué la entrega de efectivo'}</Button>
       </> : <>
         <p className="text-sm">Respuesta pendiente. No entregues efectivo hasta recuperar la confirmación.</p>
         <Button size="sm" disabled={ocupado} onClick={() => void resolver(fila, false)}>Recuperar operación original</Button>
