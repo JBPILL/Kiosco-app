@@ -86,7 +86,36 @@ comprobante fiscal ni un refund electrónico sin su circuito separado.
       incompletos conocidos; no valores reales. Diff/index PASS.
 - [x] Publicación normal de feat/pilot-envases-returns; PR #3 abierto en borrador:
       https://github.com/JBPILL/Kiosco-app/pull/3. Sin merge; PR #1 intacto.
-- [ ] Gates de instalación/aceptación hospedada.
+- [x] Instalación y aceptación backend en Staging autorizadas expresamente:
+      respaldo public completo y privado, restauración en contenedor aislado,
+      ensayo de los siete SQL e instalación atómica con hashes verificados.
+      checkout-manual desplegado sólo en acoyfwwmhaeruciyedri, con JWT requerido.
+      51 comprobaciones hospedadas PASS: Dueño/Cajero/Visor/otro comercio,
+      concurrencia, replay, recepción en efectivo/ticket, distribuidor,
+      devolución parcial y stock vendible. Costo histórico 50 conservado después
+      de cambiar el costo actual a 99, comprobado además por postflight.
+      Las huellas de las tablas originales no cambiaron al excluir el fixture.
+      Comercio de ensayo conservado SUSPENDIDO y capacidades deshabilitadas;
+      cero comercios habilitados. Sin intervención en Production ni PR #1.
+- [ ] Aceptación del frontend con el módulo habilitado, conciliación física y
+      autorización posterior de integración/Production. PR #3 sigue en borrador.
+
+## Evidencia hospedada y ensayo
+Artefactos locales fuera del checkout: ../private-pilot-staging-backup-20261018/
+(schema y datos public, acceso local restringido), ../pilot-staging-install-result.json,
+../pilot-staging-rehearsal-result.json, ../pilot-staging-operations-result.json y
+../pilot-staging-postflight-result.json. Claves/JWT/contraseñas sólo en memoria.
+El respaldo no exporta Auth ni roles: el ensayo local usa Auth simulado.
+La revisión automática rechazó agregar metadatos de Auth/roles al respaldo;
+se omitió ese payload. Otro intento se detuvo por límite de revisión y se retomó
+tras la nueva instrucción del usuario. Ninguno de esos rechazos es un PASS técnico.
+
+El ensayo inicial intentó abrir dos cajas en un mismo comercio; el índice
+sesiones_caja_una_abierta_por_kiosco_idx lo rechazó. Se corrigió sólo el runner,
+cerrando la sesión vacía de preparación y usando una única caja del Cajero.
+La restricción de producción no se relajó. Los perfiles ficticios se sembraron
+con guardas SQL del comercio nuevo, porque el DML directo del cliente de servicio
+no estaba permitido; no se cambiaron permisos de usuarios para realizar el ensayo.
 
 ## Limitaciones y activación
 La instalación opcional revisable está descrita en
@@ -106,6 +135,8 @@ del dispositivo, no coordinación física global. Conciliar vacíos locales por
 conteo real, nunca sumarlos entre puestos. Impresión física pendiente.
 
 ## Resultado
-Implementación local del primer circuito validada y publicada en PR #3; quedan
-los gates hospedados. Envases y devoluciones no están activados ni se presentan
-como aprobados para uso real. Sin SQL remoto ni operaciones de negocio.
+Implementación validada localmente y mediante ensayos backend en Staging, publicada
+en PR #3. SQL y checkout-manual instalados sólo en Staging; operaciones ficticias
+conservadas en comercio aislado y suspendido. El frontend no se habilitó para los
+comercios existentes. No se presenta como activación real ni como aceptación de
+Production; quedan los gates de interfaz, conciliación e integración autorizada.

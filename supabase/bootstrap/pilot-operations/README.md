@@ -1,6 +1,8 @@
 # Envases y devoluciones del piloto — instalación opcional
 
-Estado: desarrollo local; no instalado ni activado en Staging o Production.
+Estado: instalado y probado con JWT reales en Staging bajo autorización; comercio
+de ensayo suspendido, capacidades deshabilitadas y ningún comercio habilitado.
+No instalado ni activado en Production. Frontend operativo aún no habilitado.
 Estos archivos no pertenecen al manifest histórico de 43 SQL. No reinstalar ese
 bootstrap sobre un comercio existente para incorporar este módulo.
 
@@ -80,3 +82,9 @@ JWT Dueño/Cajero/Visor/otro comercio, reintentos y concurrencia reales, aceptac
 de los flujos y conciliación física. Production requiere autorización posterior.
 No crear pagos o ventas de ensayo en Production. La impresora sigue pendiente
 de disponibilidad del usuario.
+
+La aceptación backend de Staging aprobó 51 comprobaciones y un postflight de
+costos/permisos/huellas originales. Antes de repetir operaciones, consultar los
+ledgers y el journal del ensayo: no volver a crear ni pagar los mismos eventos.
+El piloto mantiene una única caja abierta por comercio; los ensayos no eliminan
+ese índice ni habilitan cajas concurrentes del mismo comercio.
