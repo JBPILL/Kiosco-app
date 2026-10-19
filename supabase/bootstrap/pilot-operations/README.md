@@ -21,11 +21,14 @@ no sustituye JWT/RLS, concurrencia y permisos del servicio hospedado.
    `supabase_fase_devolucion_calculo_historico.sql`,
    `supabase_fase_devolucion_preparacion_privada.sql`, y después
    `returns/001_atomic_cash_return.sql`, y finalmente
-   `returns/002_owner_envases_return.sql` para la elección del Dueño.
+   `returns/002_owner_envases_return.sql` para devolver efectivo y vacíos al cliente.
    Para actualizar desde la primera instalación, aplicar 001 actualizado + 002
    en una transacción con respaldo previo. No reinstalar envases/001 o 002
    después de returns/002: sus listas anteriores de acciones no incluyen la
    nueva salida de vacíos al cliente.
+   La corrección posterior de la regla se instala reaplicando sólo returns/002
+   actualizado en una transacción con respaldo previo. Conserva ACK históricos,
+   pero impide crear solicitudes nuevas de CONSERVAR_ENVASES.
 
 El ledger de devoluciones rechaza una instalación con devoluciones antiguas sin
 importe verificable; requiere conciliación, no inventar historial. Conciliar
@@ -73,8 +76,9 @@ ACK previos. Nunca usar la desactivación de strict como mecanismo de habilitaci
 - Cambio: reintegro en efectivo y una nueva venta normal. Sin vales, cuenta
   corriente ni refunds electrónicos. ARCA/WSFE y Point permanecen excluidos.
 - Una venta con recepción de envases admite devolución completa por el Dueño,
-  sin devoluciones previas: conserva los vacíos y reintegra mercadería, o entrega
-  vacíos y reintegra el neto en efectivo. Se usan importes/tipos del ledger
+  sin devoluciones previas: entrega los vacíos al cliente y reintegra el efectivo
+  neto que pagó. No permite conservar los envases del cliente ni reintegrar un
+  importe mayor. Se usan importes/tipos del ledger
   histórico; la entrega exige saldo suficiente, sin recorte ni stock negativo.
   Devoluciones parciales de esos tickets y anulación heredada siguen bloqueadas.
 - El catálogo usado por la cotización existente tiene un máximo operativo de
@@ -103,7 +107,7 @@ ledgers y el journal del ensayo: no volver a crear ni pagar los mismos eventos.
 El piloto mantiene una única caja abierta por comercio; los ensayos no eliminan
 ese índice ni habilitan cajas concurrentes del mismo comercio.
 
-La ampliación del Dueño aprobó otras 41 comprobaciones en el mismo comercio
+La ampliación anterior del Dueño aprobó otras 41 comprobaciones en el mismo comercio
 aislado, con respaldo public nuevo y restauración previa. Se conservaron dos
 tickets ficticios: mercadería $200 menos envase $100; devolver $200/conservar
 vacío y devolver $100/entregar vacío. Las llamadas simultáneas recuperaron un
@@ -112,3 +116,7 @@ Finalizó suspendido, ambas capacidades apagadas y datos originales intactos.
 Los helpers reales de historial leyeron también la nueva salida DEVOLVER_CLIENTE
 con JWT del Cajero. La comprobación visual del formulario usó datos ficticios
 locales y operaciones remotas bloqueadas; no reemplaza aceptación frontend hosted.
+Esa regla de elección fue sustituida por instrucción del usuario. La corrección
+aprobó 34 comprobaciones Staging: único reintegro neto + vacíos, rechazo de la
+opción retirada, faltante de vacíos sin efectos, concurrencia y recuperación de
+ACK históricos intactos. El fixture sigue suspendido y sin capacidades activas.

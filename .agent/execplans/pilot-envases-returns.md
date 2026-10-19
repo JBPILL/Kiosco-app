@@ -143,8 +143,8 @@ Production es otro gate. El estado de flags y SQL hospedados de estos módulos n
 se presenta como verificado por las pruebas locales.
 
 La devolución parcial exige venta original íntegramente en efectivo, no fiscal y
-sin recepción de envases. El usuario eligió que el Dueño pueda escoger por
-operación cómo resolver los envases; la ampliación v2 permite devolución completa
+sin recepción de envases. La regla corregida por el usuario exige devolver al
+cliente el efectivo pagado y sus vacíos; la ampliación v2 permite devolución completa
 sin devoluciones anteriores. La devolución parcial de tickets con esos créditos
 y la anulación heredada siguen bloqueadas.
 Cuenta corriente, pagos mixtos,
@@ -186,6 +186,31 @@ egreso de caja y la reposición opcional de mercadería. No se habilita anulaci�
       Scan: 1121 textos, 14 binarios excluidos, mismos 46 candidatos conocidos
       sintéticos/ejemplos/PEM incompletos; ninguno nuevo. No valores reales.
       Commits temáticos: 88afbd8 SQL y afedc08 interfaz/recuperación.
+
+## Corrección vigente: efectivo pagado y vacíos al cliente
+El usuario retiró conservar envases: sólo ENTREGAR_ENVASES para solicitudes
+nuevas, sin selector. Se mantiene el Dueño activo, ticket completo y sin
+devoluciones previas. Los contratos históricos ya confirmados conservan el ACK;
+no se cambian sus cuerpos ni se genera otro pago para reinterpretarlos.
+
+- [x] Guard servidor y guard local para nuevas operaciones; compatibilidad de
+      recuperación histórica sin inventar un resultado ni descartar la cola.
+- [x] Dirigidos de devolución: 51 PASS / 4 archivos.
+- [x] Nuevo respaldo public/restauración aislada e instalación sólo returns/002
+      en Staging. SHA256 0699a82989e7ef9d1bc6beb90aaec33faea67805ba08f8fd18fcdb85fe4c24ab.
+      34 comprobaciones hospedadas PASS. Un ticket ficticio nuevo, conteos de
+      vacíos ficticios para verificar faltante/recuperación y reintegro neto $100
+      más un vacío. CONSERVAR nuevo rechazado; ACK anteriores recuperados intactos.
+      Postflight: datos originales intactos, fixture suspendido y capacidades off.
+      Evidencia privada fuera del checkout: ../return-rule-staging-*.json y backup
+      ../private-return-rule-staging-backup-20261018/. No repetir el journal.
+- [x] Validación conjunta del código eac247f (incluye Balance): 2038 PASS /
+      1 skipped / 217 archivos, 414,22 s. Build 630 módulos PASS. Diff/index,
+      manifest 43 SQL PASS; audit 0; scan mismos 46 candidatos conocidos,
+      1125 textos y 14 binarios excluidos. Commits de código: 5a6a361 y eac247f.
+      Captura local de regla única, con datos ficticios y operaciones remotas
+      bloqueadas: ../pilot-return-correction-preview.png. Sin selector de modalidad.
+      Actualización de PR #3 sin merge; gates de uso real permanecen vigentes.
 
 ## Resultado
 Implementación validada localmente y mediante ensayos backend en Staging, publicada

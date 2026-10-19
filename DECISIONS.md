@@ -82,10 +82,31 @@ píxeles y nuevos cambios cosméticos del visor como sustituto de conservar deta
 La lectura auxiliar es limitada a dos intentos/s y respeta cierre y guards del
 lector compartido; los QR conservan la ruta principal.
 
+## Balance con fuentes completas
+El informe contable pasa a consultar sus seis fuentes completas y publicar el
+resultado conjuntamente. Se descarta paginar sólo ventas y conservar el store
+operativo de proveedores como fuente, porque ese store puede recurrir a caché
+sin propagar el error y truncar compras/pagos. Sus otros consumidores conservan
+su comportamiento; sólo Balance prescinde de ese fallback. Errores de una fuente
+ocultan cifras y bloquean exportaciones, sin convertirlos en colecciones vacías.
+Se mantienen fórmulas y alcance del período. Son lecturas de análisis que pueden
+observar cambios concurrentes, no una copia transaccional/restaurable de la base.
+
 ## Envases compartidos y devoluciones en efectivo del piloto
 
-### Elección del Dueño al devolver un ticket con envases
-El usuario autoriza elegir por operación entre conservar los vacíos/reintegrar
+### Regla vigente: devolver efectivo pagado y vacíos al cliente
+El usuario corrigió la decisión anterior: los envases entregados pertenecen al
+cliente. Las solicitudes nuevas sólo admiten ENTREGAR_ENVASES y reintegran el
+efectivo neto pagado, manteniendo descuentos históricos. Sin saldo suficiente de
+vacíos, toda la operación se rechaza antes de confirmar caja o stock. Se retira
+el selector del formulario y la RPC impide eludirlo con una solicitud manual.
+Los ACK ya confirmados conservan cuerpo, importe y resultado originales para no
+duplicar pagos ni reescribir historia; CONSERVAR_ENVASES queda sólo para recuperar
+esos registros anteriores. Un intento antiguo no confirmado será rechazado,
+nunca convertido silenciosamente a otro importe/modalidad.
+
+### Elección del Dueño anterior (sustituida)
+El usuario autorizó inicialmente elegir por operación entre conservar los vacíos/reintegrar
 el valor de la mercadería y entregar los vacíos/reintegrar el efectivo neto.
 La primera ampliación exige devolución completa, sin devoluciones previas: el
 snapshot no vincula cada crédito de envase con una línea concreta de mercadería.
