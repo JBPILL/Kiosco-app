@@ -449,3 +449,4 @@ sin apilar todos los formularios ni volver a escrituras locales antiguas.
       sin escrituras remotas. Captura ../pilot-envases-tierra.png. Suite completa
       previa anterior a estos cambios: repetir antes de merge. Sin SQL/permisos.
 - [x] Build final PASS (631 módulos); diff trabajo/índice y scan PASS, mismos 46 candidatos conocidos.
+- [x] fc1459c publicado y desplegado sólo en Staging: dpl_GKnU1jbjuKjT1ZJkUrHqESRcZBbF READY. Alias y CSS público verifican paleta cálida. Sin SQL ni cambios de master/Production; PR sin merge.
