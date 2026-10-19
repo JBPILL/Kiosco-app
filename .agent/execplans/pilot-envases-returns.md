@@ -214,7 +214,37 @@ no se cambian sus cuerpos ni se genera otro pago para reinterpretarlos.
 
 ## Resultado
 Implementación validada localmente y mediante ensayos backend en Staging, publicada
-en PR #3. SQL y checkout-manual instalados sólo en Staging; operaciones ficticias
-conservadas en comercio aislado y suspendido. El frontend no se habilitó para los
-comercios existentes. No se presenta como activación real ni como aceptación de
-Production; quedan los gates de interfaz, conciliación e integración autorizada.
+en PR #3 sin merge. SQL y checkout-manual instalados sólo en Staging. Después del
+postflight suspendido de los ensayos automáticos, el usuario autorizó probar la
+interfaz con una cuenta Dueño propia: el comercio aislado queda ACTIVO durante esa
+prueba interactiva, con ambas capacidades habilitadas exclusivamente allí. Los
+comercios originales permanecen sin modificaciones. No representa aceptación de
+Production; siguen pendientes aceptación de interfaz, ensayo físico e integración.
+
+## Acceso interactivo a Staging (18/10/2026)
+- Despliegue manual del código c910e6489193006fe562b11107a4cb667ff454ed en el proyecto
+  Vercel kiosco-app-staging (prj_G6ti9AGW8hY4GsfjmY6jvO6mm0YR), dpl_DxXhz8zeX81yY2Vdv5g3MzVzc1CA:
+  READY y alias https://kiosco-app-staging.vercel.app verificados. El entorno principal
+  de ese proyecto es Staging; no se desplegó el proyecto de Production.
+- Flags strict, checkout manual, envases y devoluciones activados para ese build.
+  Recursos públicos: HTTP 200, 28 assets, destino Supabase Staging acoyfwwmhaeruciyedri,
+  módulos presentes y sin referencia al proyecto Supabase de Production.
+- Cuenta creada y confirmada por el usuario, verificada por ID exacto antes de
+  vincularla como Dueño ordinario (sin SuperAdmin) al fixture b7254826-c767-4098-94b8-71013c12021d.
+  No se cambió su contraseña ni el vínculo del Dueño automatizado anterior.
+- Se desactivaron únicamente los perfiles ficticios cashier2/Visor del fixture,
+  conservando sus registros: tres perfiles activos dentro del límite del plan.
+  Caja ficticia anterior cerrada mediante RPC con su Cajero/JWT: sistema/declarado
+  $1000, diferencia cero. No se abrió otra caja ni se crearon ventas/reintegros nuevos.
+- JWT real del nuevo Dueño: rol, comercio, lectura RLS de productos y estado ACTIVO PASS.
+  Postflight: un solo comercio con capacidades habilitadas, cero cajas abiertas;
+  hashes de comercios y perfiles externos intactos. Claves/JWT sólo en memoria.
+  Evidencia privada: ../pilot-staging-interactive-activation.json. No repetir operaciones
+  financieras del journal anterior. El fixture queda activo para la prueba del usuario.
+- Validación del código sin cambios: suite 2038 PASS / 1 skipped / 217 archivos y
+  build 630 módulos previamente registrados; despliegue remoto READY. Esta actualización
+  sólo registra configuración/ensayo y no requiere repetir la suite de código.
+- Recorrido: ingresar como Dueño del fixture, abrir caja, POS → Tickets emitidos →
+  seleccionar venta → Devolver. Con envases acreditados: ticket completo sin devolución
+  previa, reintegro del efectivo neto y entrega de los vacíos al cliente. Aceptación
+  interactiva todavía pendiente; master, PR #1 y Production fuera de esta activación.
