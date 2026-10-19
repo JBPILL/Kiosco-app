@@ -436,3 +436,4 @@ sin apilar todos los formularios ni volver a escrituras locales antiguas.
       y ../pilot-deposito-colores-claro.png. No se alteran permisos ni SQL.
       Suite completa previa de 5c288d6 no cubre estos ajustes; repetir antes de merge.
 - [x] Build final PASS (631 módulos), diff trabajo/índice PASS y scan sin nuevos secretos (46 candidatos conocidos).
+- [x] 330645f publicado y desplegado sólo en Staging, dpl_Hy2YHDybkM1Dxy3DdmYfSHdDGQR2 READY. Alias y CSS público confirman temas, selección y deshabilitados. PR #3 borrador, sin merge ni cambios de Production.
