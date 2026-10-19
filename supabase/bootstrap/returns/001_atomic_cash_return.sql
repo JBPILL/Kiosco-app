@@ -87,7 +87,11 @@ BEGIN
   END IF;
   PERFORM public.exigir_comercio_operativo(actor.kiosco_id);
   PERFORM public.exigir_capacidad_operativa_piloto(actor.kiosco_id,'DEVOLUCIONES_EFECTIVO');
-  plan:=public.preparar_devolucion_parcial_privada(p_solicitud);
+  IF p_solicitud->'version'='2'::jsonb THEN
+    plan:=public.preparar_devolucion_envases_piloto(p_solicitud);
+  ELSE
+    plan:=public.preparar_devolucion_parcial_privada(p_solicitud);
+  END IF;
   IF (plan->>'confirmada')::boolean THEN RETURN plan->'resultado'; END IF;
   kid:=(plan->>'kiosco_id')::uuid; venta_id:=(plan->>'venta_id')::uuid;
   caja:=(p_solicitud->>'sesionReintegroId')::uuid; snapshot:=plan->'snapshot';
@@ -99,9 +103,15 @@ BEGIN
   PERFORM 1 FROM public.sesiones_caja WHERE id=caja AND kiosco_id=kid AND estado='ABIERTA' AND fecha_cierre IS NULL
     AND (usuario_id=actor.id OR actor.rol='DUEÑO') FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Seleccioná una caja abierta del comercio para el reintegro'; END IF;
+  IF p_solicitud->'version'='2'::jsonb THEN
+    plan:=plan||jsonb_build_object('envases',public.aplicar_envases_devolucion_piloto(plan,p_solicitud));
+  END IF;
   -- Build physical quantities exclusively from the immutable checkout recipe.
   FOR original IN SELECT value FROM jsonb_array_elements(snapshot->'detalles') LOOP
-    IF coalesce((original->>'es_devolucion_envase')::boolean,false) THEN RAISE EXCEPTION 'Venta con recepción de envases requiere conciliación antes de devolver'; END IF;
+    IF coalesce((original->>'es_devolucion_envase')::boolean,false) THEN
+      IF p_solicitud->'version'='2'::jsonb THEN CONTINUE; END IF;
+      RAISE EXCEPTION 'Venta con recepción de envases requiere conciliación antes de devolver';
+    END IF;
     SELECT value INTO seleccion FROM jsonb_array_elements(p_solicitud->'items') WHERE value->>'detalleId'=original->>'id';
     IF seleccion IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.detalles_venta d WHERE d.id=(original->>'id')::uuid
       AND d.venta_id=devolucion_piloto.venta_id AND d.cantidad=(original->>'cantidad')::numeric
@@ -177,6 +187,7 @@ BEGIN
   GET DIAGNOSTICS filas=ROW_COUNT;
   IF filas<>1 THEN RAISE EXCEPTION 'No se confirmó el reintegro en caja'; END IF;
   resultado:=jsonb_build_object('id',op_id,'venta_id',venta_id,'kiosco_id',kid,'monto_total',total,'sesion_caja_id',caja,'detalles',plan->'detalles','stock',stocks);
+  IF p_solicitud->'version'='2'::jsonb THEN resultado:=resultado||jsonb_build_object('envases',plan->'envases'); END IF;
   INSERT INTO public.devoluciones_parciales_atomicas(id,venta_id,kiosco_id,actor_auth_id,solicitud,resultado)
     VALUES(op_id,venta_id,kid,auth.uid(),p_solicitud,resultado);
   GET DIAGNOSTICS filas=ROW_COUNT;
