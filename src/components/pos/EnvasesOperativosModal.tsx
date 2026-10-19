@@ -100,14 +100,14 @@ function ContenidoEnvases({ onClose, administracion }: Omit<Props, 'isOpen'>) {
 
   const entrada = 'w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 p-2 text-gray-900 dark:text-gray-100'
   return <Modal isOpen onClose={ocupado ? () => {} : onClose} title={administracion ? 'Depósito de envases' : 'Recibir envases'} size={administracion ? 'xl' : 'md'} footer={administracion ? <div className="flex w-full items-center justify-between gap-3"><p className="text-xs text-gray-500 dark:text-gray-400">Los cambios se guardan al confirmar cada operación.</p><Button variant="secondary" disabled={ocupado} onClick={onClose}>Cerrar</Button></div> : undefined}>
-    <div className="space-y-4">
+    <div className="envases-controls space-y-4">
       {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       {confirmado ? <>
         <h3 className="text-lg font-bold">Recepción registrada</h3>
         <p>Reintegro en caja: <strong>{formatPrecio(confirmado.importe ?? 0)}</strong></p>
         <p className="text-sm">Verificá si el cliente ya recibió el dinero antes de entregarlo. No repitas el pago si ya se realizó.</p>
         <Button fullWidth disabled={ocupado} onClick={() => void entrega()}>Ya verifiqué la entrega de efectivo</Button>
-      </> : <fieldset disabled={cargando || ocupado || bloqueo.current} className="space-y-3 disabled:opacity-70">
+      </> : <fieldset disabled={cargando || ocupado || bloqueo.current} className="space-y-3">
         <p className="text-sm text-gray-600 dark:text-gray-300">{administracion ? 'Controlá los vacíos del negocio y los pendientes que faltan traer.' : 'Elegí el envase y la cantidad que trae el cliente.'}</p>
         {administracion && <div role="tablist" aria-label="Administración de envases" className="flex gap-1 overflow-x-auto border-b border-gray-200 pb-1 dark:border-gray-700">
           {([{ id: 'DEPOSITO', texto: 'Depósito de vacíos' }, { id: 'TIPOS', texto: 'Tipos y precios' }, { id: 'MOVIMIENTOS', texto: 'Movimientos' }] as const).map(p => <button key={p.id} type="button" role="tab" aria-selected={pestana === p.id} onClick={() => setPestana(p.id)} className={`shrink-0 rounded-t-lg border-b-2 px-3 py-2 text-xs font-bold transition-colors ${pestana === p.id ? 'border-indigo-600 bg-indigo-50/50 text-indigo-600 dark:bg-indigo-950/30 dark:text-indigo-400' : 'border-transparent text-gray-500 dark:text-gray-400'}`}>{p.texto}</button>)}
@@ -123,7 +123,7 @@ function ContenidoEnvases({ onClose, administracion }: Omit<Props, 'isOpen'>) {
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="group" aria-label="Tipos de envase">
               {tipos.filter(t => administracion || t.activo || t.pendientes > 0).map(t => <button type="button" key={t.id} aria-pressed={seleccion === t.id} onClick={() => { setSeleccion(t.id); setPendientes(''); setRecepcionPendiente(false) }} className={`rounded-xl border p-3 text-left ${seleccion === t.id ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-500 dark:bg-indigo-950/40' : 'border-gray-300 dark:border-gray-600'}`}>
                 <span className="block text-xs font-bold">{t.nombre}{t.activo ? '' : ' (inactivo)'}</span>
-                <span className="block font-bold text-indigo-600 dark:text-indigo-300">{formatPrecio(t.precio)}</span>
+                <span className="envase-price block font-bold">{formatPrecio(t.precio)}</span>
               </button>)}
             </div>
             {tipos.length === 0 && <p className="text-sm">No hay tipos de envase configurados.</p>}

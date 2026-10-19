@@ -362,3 +362,68 @@
 :root:not(.dark) :is(button, a, [role="button"]):is([class~="text-emerald-500"], [class~="text-emerald-600"], [class~="text-emerald-700"], [class~="text-emerald-800"], [class~="text-green-500"], [class~="text-green-600"], [class~="text-green-700"], [class~="text-green-800"], [class~="text-teal-500"], [class~="text-teal-600"], [class~="text-teal-700"], [class~="text-teal-800"], [class~="text-cyan-500"], [class~="text-cyan-600"], [class~="text-cyan-700"], [class~="text-cyan-800"]) { color: #365d46; }
 :root:not(.dark) :is(button, a, [role="button"]):is([class~="text-red-500"], [class~="text-red-600"], [class~="text-red-700"], [class~="text-red-800"], [class~="text-rose-500"], [class~="text-rose-600"], [class~="text-rose-700"], [class~="text-rose-800"], [class~="text-pink-500"], [class~="text-pink-600"], [class~="text-pink-700"], [class~="text-pink-800"]) { color: #793e35; }
 :root:not(.dark) :is(button, a, [role="button"]):is([class~="text-amber-500"], [class~="text-amber-600"], [class~="text-amber-700"], [class~="text-amber-800"], [class~="text-orange-500"], [class~="text-orange-600"], [class~="text-orange-700"], [class~="text-orange-800"], [class~="text-yellow-500"], [class~="text-yellow-600"], [class~="text-yellow-700"], [class~="text-yellow-800"], [class~="text-lime-500"], [class~="text-lime-600"], [class~="text-lime-700"], [class~="text-lime-800"]) { color: #695222; }
+
+/* Envases: los estados de controles usan la misma paleta en ambos modales. */
+:root .envases-controls {
+  --envase-action: #36576b;
+  --envase-action-hover: #294657;
+  --envase-on-action: #fff8eb;
+  --envase-selected: #d4dfe1;
+  --envase-text: #20343e;
+  --envase-border: #718b96;
+  --envase-disabled: #ded8cb;
+  --envase-disabled-text: #625e56;
+  --envase-success: #365d46;
+}
+:root.dark .envases-controls {
+  --envase-action: #8db6d7;
+  --envase-action-hover: #a1c1dd;
+  --envase-on-action: #142b3a;
+  --envase-selected: #294d6b;
+  --envase-text: #d9e7f4;
+  --envase-border: #7194b1;
+  --envase-disabled: #29445d;
+  --envase-disabled-text: #a9bfd2;
+  --envase-success: #94c1a9;
+}
+:root .envases-controls button[data-variant="primary"],
+:root .envases-controls :is([aria-label="Tipos de envase"], [aria-label="Cantidades rápidas"]) button[aria-pressed="true"] {
+  background: var(--envase-action);
+  border-color: var(--envase-action);
+  color: var(--envase-on-action);
+}
+:root .envases-controls button[data-variant="primary"]:enabled:hover,
+:root .envases-controls :is([aria-label="Tipos de envase"], [aria-label="Cantidades rápidas"]) button[aria-pressed="true"]:enabled:hover {
+  background: var(--envase-action-hover);
+}
+:root .envases-controls button[data-variant="success"] {
+  background: var(--envase-success);
+  border-color: var(--envase-success);
+  color: var(--envase-on-action);
+}
+:root .envases-controls button[aria-pressed] {
+  border-color: var(--envase-border);
+}
+:root .envases-controls button[aria-pressed] .envase-price {
+  color: inherit;
+}
+:root .envases-controls button[aria-label^="Restar"],
+:root .envases-controls button[aria-label^="Sumar"] {
+  background: var(--envase-selected);
+  border-color: var(--envase-border);
+  color: var(--envase-text);
+}
+:root .envases-controls tr[aria-selected="true"] {
+  background: var(--envase-selected);
+}
+:root .envases-controls button:disabled {
+  background: var(--envase-disabled);
+  border-color: var(--envase-disabled-text);
+  color: var(--envase-disabled-text);
+  opacity: 1;
+  cursor: not-allowed;
+}
+:root .envases-controls button:focus-visible {
+  outline: 2px solid var(--envase-border);
+  outline-offset: 3px;
+}

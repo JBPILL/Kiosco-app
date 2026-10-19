@@ -425,3 +425,14 @@ sin apilar todos los formularios ni volver a escrituras locales antiguas.
       Repetir suite en HEAD definitivo antes de merge. Sin SQL/dependencias.
 - [x] Build final PASS (631 módulos).
 - [x] 12f6b69 push normal y despliegue Staging dpl_3QkBseR688qjuATL7rVSAEwmkLFz READY; alias y bundle con destino Staging verificados. PR #3 en borrador, sin merge ni cambios de Production.
+
+## Colores consistentes de controles de envases (19/10/2026)
+- [x] Paleta semántica acotada a los dos modales, con selección, acciones,
+      cantidades, foco y deshabilitados legibles en claro/oscuro. Precio hereda
+      texto de tarjeta; deshabilitados neutros sin opacidad acumulada.
+      Button expone data-variant; no cambia comportamiento fuera de Envases.
+- [x] 47 dirigidos PASS / 3 archivos, revisión visual local de ambos temas,
+      sin operaciones remotas. Capturas ../pilot-envases-colores-{claro,oscuro}.png
+      y ../pilot-deposito-colores-claro.png. No se alteran permisos ni SQL.
+      Suite completa previa de 5c288d6 no cubre estos ajustes; repetir antes de merge.
+- [x] Build final PASS (631 módulos), diff trabajo/índice PASS y scan sin nuevos secretos (46 candidatos conocidos).
