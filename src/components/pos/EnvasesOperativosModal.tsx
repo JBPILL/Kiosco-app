@@ -9,6 +9,7 @@ import { confirmarEntregaPiloto, contextoOperacionPiloto, ejecutarOperacionEnvas
 import { formatPrecio } from '../../lib/utils'
 import type { ResultadoEnvase } from '../../lib/envasesOutbox'
 import type { SolicitudEnvase } from '../../../supabase/functions/_shared/envasesRequest'
+import { HistorialEnvases } from './HistorialEnvases'
 
 interface Props { isOpen: boolean; onClose: () => void; administracion?: boolean }
 export function EnvasesOperativosModal({ isOpen, onClose, administracion = false }: Props) {
@@ -133,6 +134,7 @@ function ContenidoEnvases({ onClose, administracion }: Omit<Props, 'isOpen'>) {
           </>}
         </>}
       </fieldset>}
+      {administracion && dueno && <HistorialEnvases kioscoId={contexto.kioscoId} tipos={tipos} />}
       <Button fullWidth variant="ghost" disabled={ocupado} onClick={onClose}>Cerrar</Button>
     </div>
   </Modal>

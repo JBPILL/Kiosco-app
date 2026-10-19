@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { useAuthStore } from '../../stores/authStore'
@@ -7,6 +7,7 @@ import type { VentaConDetalles } from '../../stores/devolucionStore'
 import { confirmarEntregaPiloto, contextoOperacionPiloto, ejecutarDevolucionEfectivo } from '../../lib/pilotOperationClient'
 import type { ResultadoDevolucionEfectivo, SolicitudDevolucionEfectivo } from '../../lib/cashReturnOutbox'
 import { formatPrecio } from '../../lib/utils'
+import { cargarHistorialDevolucionesTicket, type HistorialDevolucionesTicket } from '../../lib/pilotOperationHistory'
 
 interface Props { isOpen: boolean; ventaInicial: VentaConDetalles | null; onClose: () => void; onDevolucionExitosa: () => void }
 export function DevolucionEfectivoModal(props: Props) {
@@ -25,13 +26,32 @@ function ContenidoDevolucion({ ventaInicial: venta, onClose, onDevolucionExitosa
   const [ocupado, setOcupado] = useState(false)
   const [intentado, setIntentado] = useState(false)
   const [resultado, setResultado] = useState<ResultadoDevolucionEfectivo | null>(null)
+  const [historial, setHistorial] = useState<HistorialDevolucionesTicket | null>(null)
+  const [errorHistorial, setErrorHistorial] = useState('')
+  const [revisionHistorial, setRevisionHistorial] = useState(0)
   const bloqueo = useRef(false)
+  const disponible = (detalleId: string) => historial === null ? 0 : Math.max(0, (Math.round(Number(venta?.detalles.find(d => d.id === detalleId)?.cantidad ?? 0) * 1000)
+    - Math.round((historial?.cantidadesPorDetalle[detalleId] ?? 0) * 1000)) / 1000)
   const items = Object.entries(seleccion).filter(([, valor]) => Number(valor.cantidad) > 0)
     .map(([detalleId, valor]) => ({ detalleId, cantidad: Number(valor.cantidad), reingresaStock: valor.reingresaStock }))
-  const valida = items.length > 0 && items.every(item => Number.isFinite(item.cantidad) && Number(item.cantidad.toFixed(3)) === item.cantidad
-    && item.cantidad >= 0.001 && item.cantidad <= Number(venta?.detalles.find(d => d.id === item.detalleId)?.cantidad ?? 0))
+  const valida = historial !== null && !errorHistorial && items.length > 0 && items.every(item => Number.isFinite(item.cantidad) && Number(item.cantidad.toFixed(3)) === item.cantidad
+    && item.cantidad >= 0.001 && item.cantidad <= disponible(item.detalleId))
   const excluida = !venta || venta.kiosco_id !== contexto.kioscoId || venta.estado !== 'COMPLETADA' || Boolean(venta.afip_cae)
     || venta.detalles.some(d => d.es_devolucion_envase) || Boolean(venta.pagos?.some(p => p.medio_pago !== 'EFECTIVO'))
+
+  useEffect(() => {
+    let vigente = true
+    setHistorial(null); setErrorHistorial('')
+    if (!venta || excluida) return
+    void cargarHistorialDevolucionesTicket(contexto.kioscoId, venta.id).then(h => {
+      for (const [id, cantidad] of Object.entries(h.cantidadesPorDetalle)) {
+        const original = venta.detalles.find(d => d.id === id)
+        if (!original || cantidad > Number(original.cantidad)) throw new Error('Historia inconsistente')
+      }
+      if (vigente) setHistorial(h)
+    }).catch(() => { if (vigente) setErrorHistorial('No se pudo verificar lo ya devuelto. No se registrará otro reintegro hasta recuperar el historial.') })
+    return () => { vigente = false }
+  }, [venta, excluida, contexto.kioscoId, revisionHistorial])
 
   async function confirmar() {
     if (!venta || !valida || excluida || bloqueo.current) return
@@ -68,11 +88,14 @@ function ContenidoDevolucion({ ventaInicial: venta, onClose, onDevolucionExitosa
       </> : <>
         <p className="text-sm">Seleccioná las unidades recibidas. El sistema calcula el reintegro con los descuentos del ticket original y valida lo ya devuelto. No entregues efectivo hasta ver la confirmación y su importe.</p>
         {excluida && <p role="alert" className="text-amber-700 dark:text-amber-300">Esta primera versión requiere una venta completada, no fiscal y pagada íntegramente en efectivo, sin recepción de envases. Abrí una venta compatible desde Tickets emitidos.</p>}
-        <fieldset disabled={ocupado || intentado || excluida} className="space-y-3 disabled:opacity-60">
+        {!excluida && (errorHistorial ? <div role="alert" className="space-y-2 text-sm"><p>{errorHistorial}</p><Button size="sm" variant="secondary" onClick={() => setRevisionHistorial(n => n + 1)}>Reintentar historial</Button></div>
+          : historial ? <p className="rounded-lg bg-gray-100 p-3 text-sm dark:bg-gray-800">Devoluciones anteriores: {historial.operaciones}. Reintegrado: <strong>{formatPrecio(historial.importeReintegrado)}</strong>. Las cantidades disponibles descuentan lo ya recibido.</p>
+          : <p role="status" className="text-sm">Verificando devoluciones anteriores…</p>)}
+        <fieldset disabled={ocupado || intentado || excluida || !historial || Boolean(errorHistorial)} className="space-y-3 disabled:opacity-60">
           {venta?.detalles.filter(d => !d.es_devolucion_envase).map(detalle => <div key={detalle.id} className="rounded-xl border border-gray-300 dark:border-gray-600 p-3 space-y-2">
-            <p className="font-semibold">{detalle.producto?.descripcion || 'Artículo del ticket'} · {Number(detalle.cantidad)} vendidos</p>
+            <p className="font-semibold">{detalle.producto?.descripcion || 'Artículo del ticket'} · {Number(detalle.cantidad)} vendidos · {historial ? `${disponible(detalle.id)} disponibles para devolver` : 'disponibilidad pendiente de verificar'}</p>
             <label className="block text-sm">Cantidad a devolver
-              <input className={entrada} type="number" min="0" max={Number(detalle.cantidad)} step="0.001" value={seleccion[detalle.id]?.cantidad ?? ''} placeholder="0" onChange={e => setSeleccion(s => ({ ...s, [detalle.id]: { cantidad: e.target.value, reingresaStock: s[detalle.id]?.reingresaStock ?? true } }))} />
+              <input className={entrada} type="number" min="0" max={disponible(detalle.id)} step="0.001" value={seleccion[detalle.id]?.cantidad ?? ''} placeholder="0" onChange={e => setSeleccion(s => ({ ...s, [detalle.id]: { cantidad: e.target.value, reingresaStock: s[detalle.id]?.reingresaStock ?? true } }))} />
             </label>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={seleccion[detalle.id]?.reingresaStock ?? true} onChange={e => setSeleccion(s => ({ ...s, [detalle.id]: { cantidad: s[detalle.id]?.cantidad ?? '', reingresaStock: e.target.checked } }))} />Reponer al stock vendible (desmarcar si está dañado o vencido)</label>
           </div>)}
