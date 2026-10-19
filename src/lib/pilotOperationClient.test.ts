@@ -79,3 +79,18 @@ it.each(['VISOR', 'CAJERO_INACTIVO'])('impide operar al perfil %s', rol => {
   mocks.getState.mockReturnValue({ usuario: { ...usuario, rol: rol === 'VISOR' ? rol : 'CAJERO', activo: rol !== 'CAJERO_INACTIVO' } })
   expect(contextoOperacionPiloto).toThrow('usuario activo')
 })
+
+it('rechaza nuevas solicitudes de conservar envases, pero recupera el cuerpo histórico sin modificarlo', async () => {
+  const retorno = { version: 2, id: id(7), ventaId: id(8), sesionReintegroId: id(5), metodo: 'EFECTIVO_CAJA', motivo: 'CAMBIO_PRODUCTO', notas: null, modalidadEnvases: 'CONSERVAR_ENVASES', items: [{ detalleId: id(9), cantidad: 1, reingresaStock: false }] }
+  const contexto = contextoOperacionPiloto()
+  await expect(ejecutarDevolucionEfectivo(contexto, retorno)).rejects.toThrow('entregar los envases al cliente')
+  expect(mocks.rpc).not.toHaveBeenCalled()
+  expect(await cashReturnOutbox.operaciones.get(retorno.id)).toBeUndefined()
+  // An uncertain operation persisted by the previous release must still recover its original ACK.
+  await cashReturnOutbox.guardar(id(2), id(1), retorno)
+  vi.stubEnv('VITE_KIOSKO_DEVOLUCIONES_EFECTIVO', 'false')
+  const resultado = { id: id(7), venta_id: id(8), kiosco_id: id(2), sesion_caja_id: id(5), monto_total: 20, detalles: [{ detalle_id: id(9), cantidad: 1, importe: 20 }], stock: [], envases: { modalidad: 'CONSERVAR_ENVASES', credito: 10, entregas: [] } }
+  mocks.rpc.mockReturnValue({ setHeader: vi.fn(async () => ({ data: resultado, error: null })) })
+  await expect(ejecutarDevolucionEfectivo(contexto, retorno)).resolves.toEqual(resultado)
+  expect(mocks.rpc).toHaveBeenCalledWith('confirmar_devolucion_efectivo_piloto', { p_solicitud: retorno })
+})

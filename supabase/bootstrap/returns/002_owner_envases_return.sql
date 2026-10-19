@@ -1,4 +1,5 @@
--- Optional owner-only full-ticket return for cash sales that received empties.
+-- Owner-only full-ticket return: refund paid cash AND return received empties.
+-- Existing ACKs (including the retired keep-empties mode) remain recoverable.
 -- Install AFTER returns/001 and envases/002. Never enables a commerce.
 BEGIN;
 ALTER TABLE public.devoluciones_parciales_atomicas DROP CONSTRAINT IF EXISTS devoluciones_parciales_atomicas_check;
@@ -35,7 +36,7 @@ BEGIN
   END IF;
   IF p_solicitud->'version' IS DISTINCT FROM '2'::jsonb
     OR jsonb_typeof(p_solicitud->'modalidadEnvases') IS DISTINCT FROM 'string'
-    OR p_solicitud->>'modalidadEnvases' NOT IN ('CONSERVAR_ENVASES','ENTREGAR_ENVASES')
+    OR p_solicitud->>'modalidadEnvases' IS DISTINCT FROM 'ENTREGAR_ENVASES'
     OR p_solicitud->>'metodo' IS DISTINCT FROM 'EFECTIVO_CAJA'
     OR jsonb_typeof(p_solicitud->'id') IS DISTINCT FROM 'string'
     OR (p_solicitud->>'id') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
@@ -147,7 +148,7 @@ BEGIN
   IF envases IS NULL OR (SELECT sum((e->>'importe')::numeric) FROM jsonb_array_elements(envases) e) IS DISTINCT FROM credito THEN
     RAISE EXCEPTION 'Movimientos históricos de envases inconsistentes';
   END IF;
-  plan:=public.preparar_reintegros_historicos(CASE WHEN p_solicitud->>'modalidadEnvases'='CONSERVAR_ENVASES' THEN base_importe ELSE v.total END,mercaderia,p_solicitud->'items','[]'::jsonb);
+  plan:=public.preparar_reintegros_historicos(v.total,mercaderia,p_solicitud->'items','[]'::jsonb);
   RETURN jsonb_build_object('confirmada',false,'actor_id',actor.id,'actor_auth_id',auth.uid(),
     'kiosco_id',v.kiosco_id,'venta_id',v.id,'snapshot',op.solicitud,'detalles',plan,'credito_envases',credito,'recepciones_envases',envases);
 END $$;

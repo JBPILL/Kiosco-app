@@ -5,7 +5,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { useCajaStore } from '../../stores/cajaStore'
 import type { VentaConDetalles } from '../../stores/devolucionStore'
 import { confirmarEntregaPiloto, contextoOperacionPiloto, ejecutarDevolucionEfectivo } from '../../lib/pilotOperationClient'
-import type { ModalidadDevolucionEnvases, ResultadoDevolucionEfectivo, SolicitudDevolucionEfectivo } from '../../lib/cashReturnOutbox'
+import type { ResultadoDevolucionEfectivo, SolicitudDevolucionEfectivo } from '../../lib/cashReturnOutbox'
 import { formatPrecio } from '../../lib/utils'
 import { cargarHistorialDevolucionesTicket, type HistorialDevolucionesTicket } from '../../lib/pilotOperationHistory'
 
@@ -20,7 +20,6 @@ export function DevolucionEfectivoModal(props: Props) {
 function ContenidoDevolucion({ ventaInicial: venta, onClose, onDevolucionExitosa }: Props) {
   const esDueno = useAuthStore(state => state.usuario?.rol === 'DUEÑO')
   const contexto = useRef(contextoOperacionPiloto()).current
-  const [modalidadEnvases, setModalidadEnvases] = useState<ModalidadDevolucionEnvases | ''>('')
   const [seleccion, setSeleccion] = useState<Record<string, { cantidad: string; reingresaStock: boolean }>>({})
   const [motivo, setMotivo] = useState<SolicitudDevolucionEfectivo['motivo']>('CAMBIO_PRODUCTO')
   const [notas, setNotas] = useState('')
@@ -39,7 +38,7 @@ function ContenidoDevolucion({ ventaInicial: venta, onClose, onDevolucionExitosa
   const conEnvases = Boolean(venta?.detalles.some(d => d.es_devolucion_envase))
   const mercaderia = venta?.detalles.filter(d => !d.es_devolucion_envase) ?? []
   const completa = items.length === mercaderia.length && mercaderia.every(d => items.some(i => i.detalleId === d.id && i.cantidad === Number(d.cantidad)))
-  const valida = historial !== null && !errorHistorial && (!conEnvases || (historial.operaciones === 0 && completa && Boolean(modalidadEnvases)))
+  const valida = historial !== null && !errorHistorial && (!conEnvases || (historial.operaciones === 0 && completa))
     && items.length > 0 && items.every(item => Number.isFinite(item.cantidad) && Number(item.cantidad.toFixed(3)) === item.cantidad
     && item.cantidad >= 0.001 && item.cantidad <= disponible(item.detalleId))
   const excluida = !venta || venta.kiosco_id !== contexto.kioscoId || venta.estado !== 'COMPLETADA' || Boolean(venta.afip_cae)
@@ -66,9 +65,8 @@ function ContenidoDevolucion({ ventaInicial: venta, onClose, onDevolucionExitosa
     bloqueo.current = true; setIntentado(true); setOcupado(true); setError('')
     try {
       const base = { id: crypto.randomUUID(), ventaId: venta.id, sesionReintegroId: caja.id, metodo: 'EFECTIVO_CAJA' as const, motivo, notas: notas || null, items }
-      if (conEnvases && !modalidadEnvases) throw new Error('Elegí cómo resolver los envases.')
-      const solicitud: SolicitudDevolucionEfectivo = conEnvases && modalidadEnvases
-        ? { ...base, version: 2, modalidadEnvases } : { ...base, version: 1 }
+      const solicitud: SolicitudDevolucionEfectivo = conEnvases
+        ? { ...base, version: 2, modalidadEnvases: 'ENTREGAR_ENVASES' } : { ...base, version: 1 }
       const ack = await ejecutarDevolucionEfectivo(contexto, solicitud)
       setResultado(ack)
       onDevolucionExitosa()
@@ -106,13 +104,8 @@ function ContenidoDevolucion({ ventaInicial: venta, onClose, onDevolucionExitosa
           : <p role="status" className="text-sm">Verificando devoluciones anteriores…</p>)}
         <fieldset disabled={ocupado || intentado || excluida || !historial || Boolean(errorHistorial)} className="space-y-3 disabled:opacity-60">
           {conEnvases && <div className="rounded-xl border border-amber-500 p-3 space-y-3">
-            <p className="text-sm">Este ticket recibió envases. Requiere devolver todos los artículos, sin devoluciones anteriores. El Dueño elige una modalidad para todo el ticket.</p>
+            <p className="text-sm">Este ticket recibió envases. Se reintegra el efectivo que pagó el cliente y se le devuelven sus envases vacíos. Requiere devolver todos los artículos, sin devoluciones anteriores. Si faltan vacíos, la operación no se confirma.</p>
             {historial !== null && historial.operaciones > 0 && <p role="alert">El ticket ya tiene devoluciones; requiere conciliación antes de continuar.</p>}
-            <label className="block text-sm">Resolución de envases<select className={entrada} value={modalidadEnvases} onChange={e => setModalidadEnvases(e.target.value as ModalidadDevolucionEnvases | '')}>
-              <option value="">Elegí una modalidad</option>
-              <option value="CONSERVAR_ENVASES">Conservar envases y reintegrar el valor de los artículos</option>
-              <option value="ENTREGAR_ENVASES">Entregar envases y reintegrar el efectivo neto pagado</option>
-            </select></label>
             <Button variant="secondary" size="sm" onClick={() => setSeleccion(Object.fromEntries(mercaderia.map(d => [d.id, { cantidad: String(d.cantidad), reingresaStock: seleccion[d.id]?.reingresaStock ?? true }])))}>Seleccionar devolución completa</Button>
           </div>}
           {venta?.detalles.filter(d => !d.es_devolucion_envase).map(detalle => <div key={detalle.id} className="rounded-xl border border-gray-300 dark:border-gray-600 p-3 space-y-2">

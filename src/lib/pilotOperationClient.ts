@@ -60,6 +60,9 @@ export async function ejecutarDevolucionEfectivo(contexto: ContextoOperacionPilo
   const solicitud = cashReturnOutbox.parsear(valor)
   const anterior = await cashReturnOutbox.operaciones.get(solicitud.id)
   exigirContexto(contexto)
+  if (!anterior && solicitud.version === 2 && solicitud.modalidadEnvases !== 'ENTREGAR_ENVASES') {
+    throw new Error('La devolución debe reintegrar el efectivo pagado y entregar los envases al cliente.')
+  }
   if (!anterior && !devolucionesEfectivoActivas()) throw new Error('Devoluciones todavía no está habilitado para nuevas operaciones.')
   const resultado = await procesarDevolucionEfectivo(cashReturnOutbox, contexto.kioscoId, contexto.usuarioId, solicitud, async cuerpo => {
     const token = await tokenParaContexto(contexto)

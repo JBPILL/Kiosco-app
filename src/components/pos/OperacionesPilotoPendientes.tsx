@@ -68,7 +68,7 @@ function PendientesDelUsuario({ contexto }: { contexto: ContextoOperacionPiloto 
         <p>Registrado en caja: <strong>{formatPrecio(fila.tipo === 'ENVASES' ? fila.op.resultado?.importe ?? 0 : fila.op.resultado?.monto_total ?? 0)}</strong>.</p>
         <p className="text-sm">Verificá la entrega anterior. Si ya se entregó, no vuelvas a pagar. Esta marca se conserva sólo en este dispositivo.</p>
         {fila.tipo === 'DEVOLUCION' && fila.op.resultado.envases && <div className="text-sm">
-          {fila.op.resultado.envases.modalidad === 'CONSERVAR_ENVASES' ? <p>Los envases quedan en el kiosco.</p> : <>
+          {fila.op.resultado.envases.modalidad === 'CONSERVAR_ENVASES' ? <p>Operación anterior a la corrección: se confirmó conservar los envases. Verificá el reintegro registrado; no generes otra devolución para cambiarla.</p> : <>
             <p>Verificá también la entrega de vacíos al cliente; no la repitas:</p>
             <ul>{fila.op.resultado.envases.entregas.map(e => <li key={e.tipo_id}>{e.cantidad} × {e.tipo_id}</li>)}</ul>
           </>}

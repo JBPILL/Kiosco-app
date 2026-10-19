@@ -101,17 +101,18 @@ it('la anulación heredada no conserva silenciosamente vacíos que fueron acredi
   expect(await estado()).toEqual({stock:'9.000',vacios:1,ventas:1,ledger:1,egresos:0})
 })
 
-const solicitudEnvases = (modalidadEnvases='CONSERVAR_ENVASES', n=100) => ({version:2,id:id(n),ventaId:checkout,metodo:'EFECTIVO_CAJA',motivo:'CAMBIO_PRODUCTO',notas:null,sesionReintegroId:caja,modalidadEnvases,items:[{detalleId:id(50),cantidad:1,reingresaStock:true}]})
+const solicitudEnvases = (modalidadEnvases='ENTREGAR_ENVASES', n=100) => ({version:2,id:id(n),ventaId:checkout,metodo:'EFECTIVO_CAJA',motivo:'CAMBIO_PRODUCTO',notas:null,sesionReintegroId:caja,modalidadEnvases,items:[{detalleId:id(50),cantidad:1,reingresaStock:true}]})
 async function usuario(uid=owner) {
   await db.exec('RESET ROLE');await db.query("SELECT set_config('request.jwt.claim.sub',$1,false),set_config('request.jwt.claim.role','authenticated',false)",[uid]);await db.exec('SET ROLE authenticated')
 }
 async function devolverEnvases(s:unknown=solicitudEnvases()) {return (await db.query<{r:{monto_total:number;envases:{modalidad:string;credito:number;entregas:unknown[]}}}>('SELECT public.confirmar_devolucion_efectivo_piloto($1::jsonb) r',[JSON.stringify(s)])).rows[0].r}
-it.each(['CONSERVAR_ENVASES','ENTREGAR_ENVASES'])('Dueño devuelve ticket completo con %s sin duplicar efectos',async modalidad=>{
+it('Dueño reintegra sólo el efectivo pagado y entrega los vacíos, una sola vez',async()=>{
+  const modalidad='ENTREGAR_ENVASES'
   await confirmar();await usuario();const solicitud=solicitudEnvases(modalidad);const ack=await devolverEnvases(solicitud)
-  expect(ack.monto_total).toBe(modalidad==='CONSERVAR_ENVASES'?3000:2500)
-  expect(ack.envases).toEqual({modalidad,credito:500,entregas:modalidad==='CONSERVAR_ENVASES'?[]:[{tipo_id:'vidrio',cantidad:1,stock_vacios:0}]})
+  expect(ack.monto_total).toBe(2500)
+  expect(ack.envases).toEqual({modalidad,credito:500,entregas:[{tipo_id:'vidrio',cantidad:1,stock_vacios:0}]})
   expect(await devolverEnvases(solicitud)).toEqual(ack)
-  expect(await estado()).toEqual({stock:'10.000',vacios:modalidad==='CONSERVAR_ENVASES'?1:0,ventas:1,ledger:1,egresos:1})
+  expect(await estado()).toEqual({stock:'10.000',vacios:0,ventas:1,ledger:1,egresos:1})
   expect((await db.query('SELECT count(*)::int n FROM devoluciones_venta')).rows[0]).toEqual({n:1})
 })
 it('Cajero no puede elegir ninguna modalidad ni utilizar el contrato anterior para eludirla',async()=>{
@@ -123,7 +124,7 @@ it('Cajero no puede elegir ninguna modalidad ni utilizar el contrato anterior pa
 })
 it('rechaza cambio de modalidad en replay y otro reintegro del mismo ticket',async()=>{
   await confirmar();await usuario();await devolverEnvases()
-  await rechazo(()=>devolverEnvases(solicitudEnvases('ENTREGAR_ENVASES')),/solicitud original/)
+  await rechazo(()=>devolverEnvases(solicitudEnvases('CONSERVAR_ENVASES')),/solicitud original/)
   await rechazo(()=>devolverEnvases(solicitudEnvases('ENTREGAR_ENVASES',101)),/sin devoluciones previas/)
   expect((await estado()).egresos).toBe(1)
 })
@@ -157,4 +158,21 @@ it('helpers de elección y entrega siguen privados para el navegador',async()=>{
   await usuario()
   await rechazo(()=>db.query("SELECT public.preparar_devolucion_envases_piloto('{}'::jsonb)"),/permission denied/)
   await rechazo(()=>db.query("SELECT public.aplicar_envases_devolucion_piloto('{}'::jsonb,'{}'::jsonb)"),/permission denied/)
+})
+
+it('rechaza conservar vacíos sin egreso, reposición ni entrega parcial',async()=>{
+  await confirmar();await usuario()
+  await rechazo(()=>devolverEnvases(solicitudEnvases('CONSERVAR_ENVASES')),/inválida/)
+  expect(await estado()).toEqual({stock:'9.000',vacios:1,ventas:1,ledger:1,egresos:0})
+})
+it('recupera un ACK histórico retirado sin permitir modificarlo ni pagarlo otra vez',async()=>{
+  await confirmar();await db.exec('RESET ROLE')
+  const s=solicitudEnvases('CONSERVAR_ENVASES'),r={id:s.id,venta_id:checkout,kiosco_id:kid,sesion_caja_id:caja,monto_total:3000,detalles:[{detalle_id:id(50),cantidad:1,importe:3000}],stock:[],envases:{modalidad:'CONSERVAR_ENVASES',credito:500,entregas:[]}}
+  // Confirmed historical record: new requests cannot create this retired mode.
+  await db.query('INSERT INTO devoluciones_parciales_atomicas(id,venta_id,kiosco_id,actor_auth_id,solicitud,resultado) VALUES($1,$2,$3,$4,$5::jsonb,$6::jsonb)',[s.id,checkout,kid,owner,JSON.stringify(s),JSON.stringify(r)])
+  await db.exec(readFileSync('supabase/bootstrap/returns/002_owner_envases_return.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,''))
+  await db.exec("UPDATE kioscos SET estado_suscripcion='SUSPENDIDO'; UPDATE piloto_operaciones_capacidades SET envases=false,devoluciones_efectivo=false")
+  await usuario();expect(await devolverEnvases(s)).toEqual(r)
+  await rechazo(()=>devolverEnvases({...s,modalidadEnvases:'ENTREGAR_ENVASES'}),/solicitud original/)
+  expect((await estado()).egresos).toBe(0)
 })

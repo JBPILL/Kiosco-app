@@ -1,6 +1,7 @@
 import { parsearSolicitudDevolucionParcial, type SolicitudDevolucionParcial } from '../../supabase/functions/_shared/partialReturnRequest'
 import { DurablePilotOperationOutbox, procesarOperacionPiloto, validarUuid, type OperacionPilotoLocal, type EnviarOperacionPiloto } from './durablePilotOperationOutbox'
 
+/** CONSERVAR_ENVASES is read only compatibility for already persisted operations. */
 export type ModalidadDevolucionEnvases = 'CONSERVAR_ENVASES' | 'ENTREGAR_ENVASES'
 type BaseDevolucionEfectivo = Omit<SolicitudDevolucionParcial, 'metodo' | 'sesionReintegroId' | 'version'> & { metodo: 'EFECTIVO_CAJA'; sesionReintegroId: string }
 export type SolicitudDevolucionEfectivo = BaseDevolucionEfectivo & ({ version: 1 } | { version: 2; modalidadEnvases: ModalidadDevolucionEnvases })
