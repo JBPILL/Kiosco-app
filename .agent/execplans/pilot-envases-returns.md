@@ -351,7 +351,11 @@ Sin cambios de SQL, permisos, saldo esperado ni semántica de reintentos.
       diff/índice y scan PASS (mismos candidatos conocidos). Helper real con JWT
       Dueño en Staging lee 21 movimientos, 15 con notas; sólo lectura y sin
       imprimir textos privados. Evidencia ../pilot-notes-history-staging-result.json.
-- [ ] Publicar la lectura/presentación de notas en el frontend de Staging.
+- [x] a3cc0ff publicado por push normal y desplegado sólo en Staging,
+      dpl_8kWea5X4xxQdtn6e8yfe7iCfFVUg READY. Bundle público del alias estable
+      verifica etiqueta opcional, nota neutral e historial con observaciones.
+      Ruta: Catálogo → Precios de Envases → final del modal Depósito de envases.
+      PR #3 sigue en borrador; sin merge, SQL ni cambios a Production.
 
 El usuario no encontraba las notas del movimiento: estaban guardadas en DB pero
 la proyección/historial no las mostraba. Se agrega lectura/validación de notas
