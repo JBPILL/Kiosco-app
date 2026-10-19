@@ -97,6 +97,23 @@ comprobante fiscal ni un refund electrónico sin su circuito separado.
       Las huellas de las tablas originales no cambiaron al excluir el fixture.
       Comercio de ensayo conservado SUSPENDIDO y capacidades deshabilitadas;
       cero comercios habilitados. Sin intervención en Production ni PR #1.
+- [x] Faltantes de interfaz completados en 2b90397: historial compartido de envases
+      de los últimos 30 días, paginado hasta vacío y sin presentar errores como
+      período sin movimientos; historial completo de devoluciones de cada ticket
+      y saldo por ID de línea, con cálculo en milésimas/centavos. Una historia
+      fallida o incompatible bloquea otra devolución hasta recuperar su lectura.
+      Pruebas dirigidas 25 PASS / 3 archivos; build PASS (629 módulos).
+      Los helpers reales se ejecutaron con JWT del Cajero en Staging, sólo lectura:
+      3 movimientos y 2 devoluciones, cantidad total devuelta 3. Comercio suspendido.
+      Se verificó la salida negativa al distribuidor frente al ledger real y se
+      agregó regresión; no se cambió el formato financiero del servidor.
+      Evidencia local: ../pilot-staging-history-result.json y capturas
+      ../pilot-return-history-preview.png / ../pilot-envases-history-preview.png.
+- [x] Suite completa final de 2b90397: 1998 PASS / 1 skipped / 215 archivos,
+      326,27 s. Build 629 módulos PASS, manifest 43 SQL PASS, diff/index PASS.
+      Audit --omit=dev: 0 vulnerabilidades. Escaneo de 1120 textos: mismos 46
+      candidatos sintéticos/ejemplos/PEM incompletos, ninguno nuevo; 14 binarios e
+      historial Git excluidos. Fixture visual retirado; capturas fuera del repo.
 - [ ] Aceptación del frontend con el módulo habilitado, conciliación física y
       autorización posterior de integración/Production. PR #3 sigue en borrador.
 
@@ -127,7 +144,10 @@ se presenta como verificado por las pruebas locales.
 
 La primera devolución exige venta original íntegramente en efectivo, no fiscal y
 sin recepción de envases. La devolución/anulación de tickets con esos créditos
-está bloqueada hasta conciliar vacíos y crédito. Cuenta corriente, pagos mixtos,
+está bloqueada hasta conciliar vacíos y crédito. Se consultó la regla pendiente:
+conservar vacíos/reintegrar artículo, devolver vacíos/efectivo neto, o elección
+del Dueño por operación. No implementar ni asumir esa regla sin respuesta.
+Cuenta corriente, pagos mixtos,
 refunds externos, ARCA/WSFE y Point siguen fuera. Ticket v1 usa pesos enteros;
 envases con centavos deben recibirse en efectivo. La cotización existente limita
 el catálogo a 100 tipos activos. La marca de entrega y el bloqueo de cierre son

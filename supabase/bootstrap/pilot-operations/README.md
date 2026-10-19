@@ -52,6 +52,12 @@ ACK previos. Nunca usar la desactivación de strict como mecanismo de habilitaci
 - Envases: catálogo/precios del comercio, saldo compartido, ajuste contra saldo
   esperado, recepción con egreso de caja, descuento en ticket y entrega exacta al
   distribuidor. La recepción en ticket cambia saldo sólo al confirmar la venta.
+- El depósito muestra todos los movimientos de los últimos 30 días mediante
+  paginación; un fallo de lectura no se presenta como período vacío. La salida
+  al distribuidor conserva cantidad negativa, tal como se registra en el ledger.
+- La devolución consulta toda la historia del ticket por ID de línea y descuenta
+  las cantidades ya recibidas. Una historia fallida/incompatible bloquea otra
+  confirmación; la RPC vuelve a validar bajo lock aunque la lectura fuera reciente.
 - El protocolo de checkout v1 usa pesos enteros; el ticket rechaza créditos de
   envases con centavos. La recepción en efectivo sí admite dos decimales.
 - Devoluciones parciales: venta original íntegramente en efectivo, no fiscal,
