@@ -468,3 +468,4 @@ sin apilar todos los formularios ni volver a escrituras locales antiguas.
 - [x] 27 pruebas del modal PASS, build 631 módulos PASS; revisión visual con datos
       ficticios ../pilot-envases-acciones.png. Sólo presentación, sin SQL.
       Suite completa anterior al ajuste: repetir antes de merge.
+- [x] 4d0f6aa publicado y desplegado sólo en Staging: dpl_7Q1XyPC465rQbMTcCN8Xi4yLTEDz READY. Alias/CSS público verifican celeste predefinido; recepción rojo/celeste/verde comprobada localmente. Sin merge ni cambios de Production.
