@@ -437,3 +437,15 @@ sin apilar todos los formularios ni volver a escrituras locales antiguas.
       Suite completa previa de 5c288d6 no cubre estos ajustes; repetir antes de merge.
 - [x] Build final PASS (631 módulos), diff trabajo/índice PASS y scan sin nuevos secretos (46 candidatos conocidos).
 - [x] 330645f publicado y desplegado sólo en Staging, dpl_Hy2YHDybkM1Dxy3DdmYfSHdDGQR2 READY. Alias y CSS público confirman temas, selección y deshabilitados. PR #3 borrador, sin merge ni cambios de Production.
+
+## Paleta tierra y recepción más ancha (19/10/2026)
+- [x] Se sustituye celeste por marrón/arena/oliva en acciones, foco, pestañas,
+      selección, controles y resumen de ambos modales. Oscuro usa arena/oliva
+      claros sobre su superficie existente; no modifica el tema global.
+- [x] Recibir envases pasa de 448 a 512 px máximos. Tipos se ajustan al contenido,
+      con ancho 96–192 px y padding compacto, sin estirarse todos a igual ancho.
+      Depósito conserva 672 px y selección por toda la fila.
+- [x] Dirigidos 47 PASS / 3 archivos; vista local clara/oscura con datos ficticios,
+      sin escrituras remotas. Captura ../pilot-envases-tierra.png. Suite completa
+      previa anterior a estos cambios: repetir antes de merge. Sin SQL/permisos.
+- [x] Build final PASS (631 módulos); diff trabajo/índice y scan PASS, mismos 46 candidatos conocidos.

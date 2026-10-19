@@ -365,26 +365,26 @@
 
 /* Envases: los estados de controles usan la misma paleta en ambos modales. */
 :root .envases-controls {
-  --envase-action: #36576b;
-  --envase-action-hover: #294657;
+  --envase-action: #66523c;
+  --envase-action-hover: #51402e;
   --envase-on-action: #fff8eb;
-  --envase-selected: #d4dfe1;
-  --envase-text: #20343e;
-  --envase-border: #718b96;
+  --envase-selected: #ded4bd;
+  --envase-text: #3f3528;
+  --envase-border: #998668;
   --envase-disabled: #ded8cb;
   --envase-disabled-text: #625e56;
-  --envase-success: #365d46;
+  --envase-success: #586044;
 }
 :root.dark .envases-controls {
-  --envase-action: #8db6d7;
-  --envase-action-hover: #a1c1dd;
-  --envase-on-action: #142b3a;
-  --envase-selected: #294d6b;
-  --envase-text: #d9e7f4;
-  --envase-border: #7194b1;
-  --envase-disabled: #29445d;
-  --envase-disabled-text: #a9bfd2;
-  --envase-success: #94c1a9;
+  --envase-action: #c5ad86;
+  --envase-action-hover: #d4bf9b;
+  --envase-on-action: #2d271e;
+  --envase-selected: #4b483b;
+  --envase-text: #eee4d2;
+  --envase-border: #b6a17e;
+  --envase-disabled: #424337;
+  --envase-disabled-text: #c3bfac;
+  --envase-success: #b8c29d;
 }
 :root .envases-controls button[data-variant="primary"],
 :root .envases-controls :is([aria-label="Tipos de envase"], [aria-label="Cantidades rápidas"]) button[aria-pressed="true"] {
@@ -426,4 +426,36 @@
 :root .envases-controls button:focus-visible {
   outline: 2px solid var(--envase-border);
   outline-offset: 3px;
+}
+
+:root .envases-controls [aria-label="Tipos de envase"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+:root .envases-controls [aria-label="Tipos de envase"] button {
+  flex: 0 1 auto;
+  min-width: 6rem;
+  max-width: 12rem;
+  padding: .5rem .75rem;
+}
+:root .envases-controls [aria-label="Tipos de envase"] button[aria-pressed="true"] {
+  outline: 2px solid var(--envase-border);
+  outline-offset: 1px;
+}
+:root:not(.dark) .envases-controls table button[aria-pressed],
+:root.dark .envases-controls table button[aria-pressed],
+:root:not(.dark) .envases-controls button[role="tab"],
+:root.dark .envases-controls button[role="tab"] {
+  color: var(--envase-text);
+}
+:root .envases-controls button[role="tab"][aria-selected="true"] {
+  background: var(--envase-selected);
+  border-color: var(--envase-border);
+}
+
+:root .envases-controls .envase-total {
+  background: var(--envase-selected);
+  border-color: var(--envase-border);
+  color: var(--envase-text);
 }

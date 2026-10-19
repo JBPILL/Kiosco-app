@@ -99,7 +99,7 @@ function ContenidoEnvases({ onClose, administracion }: Omit<Props, 'isOpen'>) {
   }
 
   const entrada = 'w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 p-2 text-gray-900 dark:text-gray-100'
-  return <Modal isOpen onClose={ocupado ? () => {} : onClose} title={administracion ? 'Depósito de envases' : 'Recibir envases'} size={administracion ? 'xl' : 'md'} footer={administracion ? <div className="flex w-full items-center justify-between gap-3"><p className="text-xs text-gray-500 dark:text-gray-400">Los cambios se guardan al confirmar cada operación.</p><Button variant="secondary" disabled={ocupado} onClick={onClose}>Cerrar</Button></div> : undefined}>
+  return <Modal isOpen onClose={ocupado ? () => {} : onClose} title={administracion ? 'Depósito de envases' : 'Recibir envases'} size={administracion ? 'xl' : 'lg'} footer={administracion ? <div className="flex w-full items-center justify-between gap-3"><p className="text-xs text-gray-500 dark:text-gray-400">Los cambios se guardan al confirmar cada operación.</p><Button variant="secondary" disabled={ocupado} onClick={onClose}>Cerrar</Button></div> : undefined}>
     <div className="envases-controls space-y-4">
       {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       {confirmado ? <>
@@ -121,7 +121,7 @@ function ContenidoEnvases({ onClose, administracion }: Omit<Props, 'isOpen'>) {
           {!administracion && <div>
             <p className="mb-2 text-sm font-semibold">Tipo de envase</p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="group" aria-label="Tipos de envase">
-              {tipos.filter(t => administracion || t.activo || t.pendientes > 0).map(t => <button type="button" key={t.id} aria-pressed={seleccion === t.id} onClick={() => { setSeleccion(t.id); setPendientes(''); setRecepcionPendiente(false) }} className={`rounded-xl border p-3 text-left ${seleccion === t.id ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-500 dark:bg-indigo-950/40' : 'border-gray-300 dark:border-gray-600'}`}>
+              {tipos.filter(t => administracion || t.activo || t.pendientes > 0).map(t => <button type="button" key={t.id} aria-pressed={seleccion === t.id} onClick={() => { setSeleccion(t.id); setPendientes(''); setRecepcionPendiente(false) }} className={`rounded-lg border text-left ${seleccion === t.id ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40' : 'border-gray-300 dark:border-gray-600'}`}>
                 <span className="block text-xs font-bold">{t.nombre}{t.activo ? '' : ' (inactivo)'}</span>
                 <span className="envase-price block font-bold">{formatPrecio(t.precio)}</span>
               </button>)}
@@ -148,7 +148,7 @@ function ContenidoEnvases({ onClose, administracion }: Omit<Props, 'isOpen'>) {
           </section>}
           {!administracion && tipo && tipo.pendientes > 0 && <label className="flex items-start gap-2 rounded-lg border border-gray-300 p-2.5 text-xs dark:border-gray-600"><input type="checkbox" checked={recepcionPendiente} onChange={e => setRecepcionPendiente(e.target.checked)} /><span>Son envases pendientes de traer<br /><span className="text-gray-500 dark:text-gray-400">Se reciben sin pagar ni descontar dinero.</span></span></label>}
           {!administracion && <>
-            <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 dark:border-emerald-800/60 dark:bg-emerald-950/40">
+            <div className="envase-total flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 dark:border-emerald-800/60 dark:bg-emerald-950/40">
               <div><p className="text-xs font-bold">{recepcionPendiente ? 'Pendientes que se reciben' : 'Total a reconocer al cliente'}</p><p className="text-[11px]">{recepcionPendiente ? 'Sin reintegro ni descuento' : `${cantidadValida ? cant : 0} ${cant === 1 ? 'unidad' : 'unidades'} × ${formatPrecio(tipo?.precio ?? 0)}`}</p></div>
               <strong className="text-xl font-black tabular-nums">{recepcionPendiente ? `${cantidadValida ? cant : 0} ${cant === 1 ? 'envase' : 'envases'}` : formatPrecio(tipo && cantidadValida ? tipo.precio * cant : 0)}</strong>
             </div>
