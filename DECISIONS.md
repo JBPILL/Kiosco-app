@@ -180,3 +180,10 @@ DELETE: conserva identidad, movimientos, vacíos y pendientes, visibles incluso
 inactivo. No permite nuevos cobros/descuentos; recibir pendientes sin pagar sigue
 permitido. El cambio usa nombre/precio confirmados, no ediciones sin guardar.
 No requiere SQL, permisos adicionales ni elimina datos remotos automáticamente.
+
+## Depósito compacto y selección por fila (19/10/2026)
+A pedido del usuario, el ancho de administración baja de 896 a 672 px máximos;
+el control de cantidad se limita a 320 px y se retiran saldos duplicados del
+formulario. La fila completa selecciona al hacer clic, conserva botón accesible
+por teclado y resaltado persistente. El hover sólo destaca, no cambia el tipo.
+El manejador de fila respeta carga/bloqueo durable aunque tr no herede disabled.

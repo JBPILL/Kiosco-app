@@ -412,3 +412,15 @@ sin apilar todos los formularios ni volver a escrituras locales antiguas.
       formularios separados, pendientes/notas e identidad Staging PASS.
       Sin SQL, bajas remotas ejecutadas ni cambios a master/Production.
       PR #3 abierto en borrador, sin merge; aceptación visual pendiente.
+
+## Selección por fila y proporciones compactas (19/10/2026)
+- [x] Fila completa clicable (precio/saldo/espacio), botón por teclado conservado;
+      no cambia selección después de intentar una operación durable.
+- [x] Ancho máximo 672 px, cantidad máxima 320 px y sin saldos repetidos.
+      Vista local confirma selección al pulsar precio; captura
+      ../pilot-deposito-compacto.png con datos ficticios, sin escrituras remotas.
+- [x] Dirigidos 47 PASS / 3 archivos; scan mismos 46 candidatos conocidos,
+      diff trabajo/índice PASS. Suite completa previa 2068 PASS / 1 skipped /
+      217 archivos sobre 5c288d6, anterior a este ajuste visual/interacción.
+      Repetir suite en HEAD definitivo antes de merge. Sin SQL/dependencias.
+- [x] Build final PASS (631 módulos).

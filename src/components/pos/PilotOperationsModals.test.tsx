@@ -293,3 +293,20 @@ it('Cajero no tiene acciones de configuración ni desactivación', async () => {
   expect(screen.queryByRole('button', { name: 'Desactivar tipo' })).toBeNull()
   expect(screen.queryByText('Nuevo tipo de envase')).toBeNull()
 })
+
+it('selecciona el envase al pulsar precio, saldo o espacio de su fila', async () => {
+  m.cargar.mockResolvedValue([
+    { id: 'vidrio', nombre: 'Vidrio', precio: 100, activo: true, stockVacios: 5, pendientes: 0 },
+    { id: 'otro', nombre: 'Otro', precio: 300, activo: true, stockVacios: 12, pendientes: 2 },
+  ])
+  render(<EnvasesOperativosModal administracion isOpen onClose={vi.fn()} />)
+  const precio = await screen.findByRole('cell', { name: /300/ })
+  fireEvent.click(precio)
+  await waitFor(() => expect((screen.getByLabelText('Vacíos contados') as HTMLInputElement).value).toBe('12'))
+  expect(precio.closest('tr')?.getAttribute('aria-selected')).toBe('true')
+  fireEvent.click(screen.getByRole('cell', { name: /^5$/ }))
+  await waitFor(() => expect((screen.getByLabelText('Vacíos contados') as HTMLInputElement).value).toBe('5'))
+  fireEvent.click(precio.closest('tr')!)
+  await waitFor(() => expect((screen.getByLabelText('Vacíos contados') as HTMLInputElement).value).toBe('12'))
+  expect(m.envase).not.toHaveBeenCalled()
+})
