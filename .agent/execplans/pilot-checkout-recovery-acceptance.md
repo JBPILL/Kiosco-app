@@ -43,3 +43,39 @@ P08/P09/P23 siguen abiertos para los casos expresamente no cubiertos: primer
 commit con pérdida real de respuesta, pendiente preparado sin copia local,
 cancelación concurrente y dos terminales físicas. No se da por aceptado todo el
 piloto por el éxito del reintento de una venta ya confirmada.
+
+## Ensayos iniciales adicionales autorizados (20/10/2026)
+El usuario solicita probar corte durante primera confirmación y recuperación
+sin copia local, y continuar con el siguiente bloque. Se anuncian dos tickets
+ficticios de servicio de $1 cada uno en el comercio aislado activo, sin dinero
+real, producto físico ni cambios al comercio original/Production.
+
+- [x] Identidad Dueño de ensayo, comercio y caja abierta original comprobados.
+      UUID nuevos y diario externo conservado antes del primer envío. El runner
+      se detiene si ya existe el diario; no crea nuevas operaciones al repetirlo.
+- [x] Primer ticket inexistente antes del envío. Proxy de loopback consume el
+      ACK 200 del servidor y corta el socket antes de responder al consumidor:
+      el fetch del consumidor falla por transporte, después del commit real.
+      Antes de reintentar hay exactamente una venta, pago y detalle. Reintento
+      secuencial y dos simultáneos conservan resultado y cardinalidades de uno.
+- [x] Segundo ticket preparado mediante RPC privada del servidor con política
+      vigente; aún no hay venta, pago ni detalle. El consumidor descarta su
+      entrada en memoria, no dispone de cola IndexedDB y recupera la solicitud
+      por listado/RPC del Dueño. Hash canónico confirma mismo cuerpo; ID,
+      operador y caja originales conservados. Confirmación y reintento producen
+      exactamente una venta, pago y detalle.
+- [x] Ambos dejan de estar pendientes; stock físico activo idéntico antes/después.
+      Dos ventas ficticias por $2 totales conservadas como auditoría del ensayo.
+      43 comprobaciones PASS; sin secretos impresos/guardados ni SQL de instalación.
+
+Evidencia externa: ../test-first-checkout-recovery-staging.cjs y
+../first-checkout-recovery-journal.json. No se debe ejecutar de nuevo para
+recrear operaciones. El diario guarda la primera solicitud para recuperación y
+sólo ID/hash de la segunda, sin tokens, claves ni contraseñas.
+
+Estos ensayos cierran el corte controlado de transporte tras primer commit y
+la recuperación backend de un preparado sin cola local. No simulan pérdida
+física del disco: el consumidor se descarta lógicamente dentro del runner.
+P08/P09/P23 siguen abiertos para UI del operador sin copia local, cambio de
+operador/caja, cancelación concurrente y dos terminales físicas. Sin merge,
+deploy, modificación de aplicación ni acceso a Production.
