@@ -22,6 +22,12 @@ Una tarea pendiente puede requerir desarrollo, aplicación SQL, aceptación
 remota o prueba física. Una implementación local no cierra su fase hasta
 cumplir la puerta de aceptación correspondiente.
 
+Por decisión del usuario, impresora/cajón físicos y Point quedan diferidos al
+final, cuando exista un cliente para ensayarlos; no forman parte del bloque
+actual. Recuperación de cobros: 117 pruebas locales PASS y ensayo JWT en Staging
+de reintento secuencial/concurrente de venta confirmada sin cambios en sus
+efectos. Alcance y límites: `.agent/execplans/pilot-checkout-recovery-acceptance.md`.
+
 | ID | Fase | Tarea pendiente | Qué falta para cerrarla |
 | --- | --- | --- | --- |
 | P01 | 0 · Producto | Definir entrega comercial y puestos soportados | Registrar SaaS/licencia, versiones de Windows/navegador, modelos de periféricos y responsables de soporte/credenciales. |
@@ -31,9 +37,9 @@ cumplir la puerta de aceptación correspondiente.
 | P05 | 1 · Seguridad | Cerrar aceptación de anulación atómica | Diagnóstico remoto confirma trigger antiguo que duplicó reposición: aplicar fase actualizada y conciliar la unidad extra antes de aceptar el caso efectivo. También faltan pago mixto, fiado, caja original cerrada, lotes y reintento concurrente en Supabase real. |
 | P06 | 1 · Seguridad | Aceptar devoluciones transaccionales y conciliar historia | Backend/formulario atómicos e idempotentes implementados y ensayados en Staging. Interfaz aceptada por el usuario. Quedan conciliación de tickets/saldos antiguos y aceptación operativa; integración/Production mantienen gate separado. Cuenta corriente y pagos mixtos diferidos; tickets con envases sólo completos y Dueño. |
 | P07 | 1 · Auditoría | Definir retención y operación de auditorías | Establecer responsables, acceso, conservación y comprobación remota de precio, descuento, anulación y apertura manual del cajón. |
-| P08 | Checkout | Validar pérdida de conexión y dos equipos | Ensayar preparación, confirmación, cancelación y respuesta perdida sin duplicar venta, pago, stock o deuda. |
+| P08 | Checkout | Validar pérdida de conexión y dos equipos | Reintento secuencial/concurrente de venta confirmada comprobado en Staging con JWT real, sin cambios en venta/pagos/detalles/stock. Faltan pérdida real durante primer commit, preparación, cancelación concurrente y dos terminales físicas; no se sustituyen por peticiones HTTP. |
 | P09 | Checkout | Aceptar recuperación sin copia local | Aplicar el paso 53 antes de desplegar `checkout-manual`. Acción del dueño implementada en Caja y Turno; probar en navegador/Supabase con JWT real, respuesta perdida, cancelación concurrente y operador/caja originales. No crear otra venta ni volver a cobrar. |
-| P10 | 2 · Periféricos | Validar impresoras y cajón físicos | Matriz por modelo/COM/USB: permiso denegado, desconexión, reimpresión, pago mixto y pulso único sólo tras efectivo confirmado. |
+| P10 | 2 · Periféricos | Validar impresoras y cajón físicos | Diferido al final por el usuario, hasta contar con cliente para pruebas. Matriz por modelo/COM/USB: permiso denegado, desconexión, reimpresión, pago mixto y pulso único sólo tras efectivo confirmado. |
 | P11 | 2 · Periféricos | Completar canal por driver de Windows | Diálogo del navegador ya disponible con window.print y ajuste de contenedores para ticket largo. Configurar despliegue controlado y comprobar driver, márgenes, paginación y salida real; no hay confirmación ni impresión silenciosa. |
 | P12 | 2 · Periféricos | Probar lector, balanza y cámara móvil | Ensayar dispositivos reales, Safari/iOS, cancelar/reabrir, permisos y entrada manual de peso. |
 | P13 | 3 · Respaldo | Confirmar migraciones de respaldo vigentes | Verificar snapshot/configuración y pasos 49–50 de relaciones/combos en el entorno de ensayo/remoto. Git push no aplica SQL. |
