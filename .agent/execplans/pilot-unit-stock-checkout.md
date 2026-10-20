@@ -26,7 +26,11 @@ No alterar solicitudes ya guardadas, UUID, importes, ventas ni reintegros.
       Build 631 módulos PASS. Diff trabajo/índice PASS; manifest 43 SQL intactos.
       Scan 1130 textos, 14 binarios omitidos, 46 candidatos conocidos.
       npm audit --omit=dev: 0 vulnerabilidades; no se modifican dependencias.
-- [ ] Publicar en la rama del PR #3 y desplegar sólo el frontend de Staging.
+- [x] Corrección 536b41f y evidencia 208506e publicadas en la rama del PR #3.
+      Frontend Staging READY: dpl_6QHLjvCqN3Dfi3TjU3c3NYqzvo9J.
+      Alias kiosco-app-staging.vercel.app y bundle público verifican el cambio.
+      PR #3 abierto y borrador, sin merge. Falta aceptación del carrito corregido
+      en el perfil del operador; no se confirma ninguna venta adicional por agente.
 
 ## Conciliación pendiente
 El cobro original inválido no debe redondearse ni marcarse confirmado. El Dueño
