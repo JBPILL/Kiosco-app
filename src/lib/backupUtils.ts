@@ -10,6 +10,8 @@ import { descargarArchivo, sanitizarNombreArchivo } from './exportUtils'
 import { clearCachedProductos } from './utils'
 import { cifrarBackupJson } from './backupCrypto'
 import { identidadRestaurada } from './backupIdentity'
+import { kioskoPilotStrictScopeActivo } from './kioskPilotScope'
+import { guardarCatalogoBackupStrict } from './backupStrictCatalog'
 import { leerColeccionPorId } from './backupPagination'
 import { registrarDescargaRespaldoExterno } from './externalBackupReminder'
 import { validarAmpliacionBackup, capturarPreferenciasEquipo, restaurarPreferenciasEquipo, type BackupAmpliacion } from './backupAmpliado'
@@ -389,6 +391,12 @@ export async function restaurarBackupIntegral(
   }
 
   try {
+    const strict = kioskoPilotStrictScopeActivo()
+    if (strict && (modo === 'REEMPLAZO' || backupData.clientes.length > 0 || backupData.proveedores.length > 0
+      || backupData.promociones.length > 0 || backupData.lotes_producto.length > 0
+      || backupData.productos.some(prod => prod.proveedor_id))) {
+      throw new Error('La restauración estricta admite por ahora catálogo y categorías en modo Fusión. Esta copia requiere otros módulos; no se escribió ningún dato.')
+    }
     if (backupData.version === '2.0' && backupData.productos.some(prod => prod.es_combo === true)) {
       throw new Error('La copia 2.0 no permite recuperar componentes de combos. Generá una copia nueva.')
     }
@@ -431,6 +439,16 @@ export async function restaurarBackupIntegral(
         resumen.categoriasReutilizadas++
       } else {
         maxOrden++
+        if (strict) {
+          const id = await identidadRestaurada(backupData.kiosco.id, kioscoId, 'categorias', cat.id)
+          await guardarCatalogoBackupStrict('categorias', kioscoId, id, {
+            nombre: cat.nombre.trim(), color: cat.color || '#4f46e5', orden: cat.orden ?? maxOrden,
+          })
+          mapaCategoriasPorNombre.set(nombreNorm, id)
+          mapaCategoriasPorIdOriginal.set(cat.id, id)
+          resumen.categoriasCreadas++
+          continue
+        }
         const { data: nuevaCat, error: errInsertCat } = await supabase
           .from('categorias')
           .insert({
@@ -670,6 +688,7 @@ export async function restaurarBackupIntegral(
     })
 
     const productosBackup = backupData.productos || []
+    const mapaProdsPorId = new Map(prodsExistentes.map(p => [p.id, p]))
     const idsProcesadosEnBackup = new Set<string>()
     const CHUNK_SIZE = 50
 
@@ -700,8 +719,10 @@ export async function restaurarBackupIntegral(
             if (prod.proveedor_id && !proveedorIdFinal) throw new Error('No se pudo recuperar el proveedor del producto.')
 
             // Buscar si ya existe por código o descripción
-            const prodExistente =
-              (codeNorm ? mapaProdsPorCodigo.get(codeNorm) : null) || (descNorm ? mapaProdsPorDesc.get(descNorm) : null)
+            const idRestaurado = strict ? await identidadRestaurada(backupData.kiosco.id, kioscoId, 'productos', prod.id) : null
+            const prodExistente = strict
+              ? mapaProdsPorId.get(idRestaurado!) || (codeNorm ? mapaProdsPorCodigo.get(codeNorm) : null)
+              : (codeNorm ? mapaProdsPorCodigo.get(codeNorm) : null) || (descNorm ? mapaProdsPorDesc.get(descNorm) : null)
 
             const datosProducto = {
               kiosco_id: kioscoId,
@@ -724,7 +745,19 @@ export async function restaurarBackupIntegral(
               dias_alerta_vencimiento: Number(prod.dias_alerta_vencimiento) || 15,
             }
 
-            if (prodExistente) {
+            if (strict) {
+              const id = prodExistente?.id || idRestaurado!
+              const { kiosco_id: _kiosco, proveedor_id: _proveedor, ...camposStrict } = datosProducto
+              await guardarCatalogoBackupStrict('productos', kioscoId, id, {
+                ...camposStrict, es_combo: false, es_favorito: Boolean(prod.es_favorito),
+                ...(motivoPrecio ? { motivo_cambio_precio: motivoPrecio } : {}),
+              })
+              idsProcesadosEnBackup.add(id)
+              mapaProductosIdOriginal.set(prod.id, id)
+              productosEsperados.set(id, { ...datosProducto, es_combo: false, es_favorito: Boolean(prod.es_favorito) })
+              if (prodExistente) resumen.productosActualizados++
+              else resumen.productosCreados++
+            } else if (prodExistente) {
               const { data: productosConfirmados, error: errUpd } = await supabase
                 .from('productos')
                 .update({
