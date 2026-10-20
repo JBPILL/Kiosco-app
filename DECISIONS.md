@@ -223,3 +223,16 @@ antes de escribir: requieren completar sus contratos de restauración estricta.
 El bloqueo existente de restauración integral en la interfaz se conserva. La
 prueba técnica no autoriza activarla ni declara P14 completo. El destino de ensayo
 queda suspendido; origen, master y Production permanecen intactos.
+
+## Promociones y relaciones en restauración estricta (20/10/2026)
+Se amplía el motor preparado del catálogo con guardar_promocion_transaccional,
+conservando operación pendiente, ID reproducible y ACK de la sesión/comercio
+originales. Las relaciones se remapean sólo a productos/categorías restaurados y
+la composición, días, fechas e inactividad se verifican desde el snapshot final.
+
+El ensayo representativo con JWT Dueño de Staging conserva cuatro tipos de
+promoción y una receta de combo con componente pesable, incluida su repetición.
+No se necesita SQL nuevo ni habilitar escritura directa. Esto sustituye sólo la
+restricción de promociones del bloque anterior; clientes, saldos de proveedores,
+lotes, asociación producto-proveedor, REEMPLAZO e interfaz integral mantienen
+sus gates. No simular saldos iniciales mediante cargos/abonos nuevos.
