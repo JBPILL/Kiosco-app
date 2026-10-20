@@ -42,3 +42,19 @@ El operador confirma que fue una prueba sin dinero real y realiza la cancelació
 desde el perfil original. Lectura del servidor confirma NO_COBRADO para el
 identificador original. No se borraron datos locales ni se reemplazó la entrada.
 Sin SQL remoto, Edge deploy, merge ni cambios de Production.
+
+## Aceptación de cantidades y texto (19/10/2026)
+La captura posterior del operador muestra 1 unidad a $200 con stock histórico
+1.013: la cantidad ya no incorpora la fracción. El aviso seguía mostrando el
+stock histórico en lugar del límite vendible. Se ajustan sólo los mensajes
+del carrito para indicar unidades enteras disponibles, con singular/plural.
+El dato histórico permanece intacto y pendiente de conciliación explícita.
+
+El operador autoriza que el dato represente 1 unidad de ensayo. Se registra
+AJUSTE_MANUAL mediante registrar_movimiento_stock_idempotente con JWT del Dueño
+aislado, claves sólo en memoria, precondición 1.013 y solicitud persistida fuera
+del repositorio. ACK confirma 1.013 -> 1 y movimiento; lectura posterior confirma
+stock 1. No se elimina el historial ni se modifican ventas/devoluciones.
+76 pruebas dirigidas (carrito, recuperación, lanzador) PASS y build 631 módulos
+PASS tras el ajuste de mensajes. La suite global 2091 PASS / 1 skipped precede
+este cambio sólo de texto. Scan sin secretos nuevos, diff trabajo/índice PASS.

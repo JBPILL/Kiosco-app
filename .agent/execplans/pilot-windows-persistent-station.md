@@ -77,3 +77,13 @@ real previa sólo inspeccionó modo/origen, por lo que tampoco detectó el defec
 - [x] Build final 631 módulos PASS; diff trabajo/índice PASS. Publicación normal
       de la corrección en la misma rama del piloto, sin merge ni instalación real.
 La suite global 2085 PASS anterior precede esta corrección localizada.
+
+## Adopción informada por el operador (19/10/2026)
+El operador abre la ventana de Staging con el puesto caja-prueba y confirma
+inicio de sesión. Tras cerrar y abrir por el mismo acceso, confirma que la
+sesión se conserva. Se cierra esa comprobación manual concreta; no confirma
+por sí sola persistencia del tema, recuperación tras pérdida de respuesta,
+permisos de cámara/impresora, bloqueo de Windows ni respaldo externo.
+El cobro ficticio bloqueado por cantidad fraccionaria se concilió como NO_COBRADO
+mediante el flujo existente, verificado en servidor; véase
+pilot-unit-stock-checkout.md. No se realizó ninguna venta adicional por agente.

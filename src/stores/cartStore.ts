@@ -326,7 +326,7 @@ export const useCartStore = create<CartState>((set, get) => ({
     const existenteActual = stateActual.items.find((item) => item.producto.id === producto.id)
     if (tieneStockLimitado && existenteActual && existenteActual.cantidad >= stockVendible) {
       toast.error(
-        `Stock máximo alcanzado: Ya tenés el total (${producto.stock_actual} u.) de "${producto.descripcion}" en el ticket.`,
+        `Stock máximo alcanzado: Ya tenés ${stockVendible} ${stockVendible === 1 ? 'unidad disponible' : 'unidades disponibles'} de "${producto.descripcion}" en el ticket.`,
         { id: `stock-max-${producto.id}`, duration: 3500 }
       )
       return
@@ -342,13 +342,13 @@ export const useCartStore = create<CartState>((set, get) => ({
           const restante = Math.max(0, stockVendible - existente.cantidad)
           if (restante <= 0) {
             toast.error(
-              `Stock máximo alcanzado: Ya tenés el total (${producto.stock_actual} u.) de "${producto.descripcion}" en el ticket.`,
+              `Stock máximo alcanzado: Ya tenés ${stockVendible} ${stockVendible === 1 ? 'unidad disponible' : 'unidades disponibles'} de "${producto.descripcion}" en el ticket.`,
               { id: `stock-max-${producto.id}`, duration: 3500 }
             )
             return state
           }
           toast.error(
-            `Stock insuficiente: Solo podés sumar ${restante} u. más de "${producto.descripcion}" (Stock total: ${producto.stock_actual})`,
+            `Stock insuficiente: Solo podés sumar ${restante} u. más de "${producto.descripcion}" (${stockVendible} unidades disponibles)`,
             { id: `stock-max-${producto.id}`, duration: 3500 }
           )
           nuevaCantidad = stockVendible
@@ -363,7 +363,7 @@ export const useCartStore = create<CartState>((set, get) => ({
       } else {
         if (tieneStockLimitado && cantAgregar > stockVendible) {
           toast.error(
-            `Stock insuficiente: Solo hay ${producto.stock_actual} u. de "${producto.descripcion}". Se cargó el máximo disponible.`,
+            `Stock insuficiente: Solo hay ${stockVendible} ${stockVendible === 1 ? 'unidad disponible' : 'unidades disponibles'} de "${producto.descripcion}". Se cargó el máximo disponible.`,
             { id: `stock-max-${producto.id}`, duration: 3500 }
           )
           cantAgregar = stockVendible
@@ -528,7 +528,7 @@ export const useCartStore = create<CartState>((set, get) => ({
       }
       if (cantidadAjustada > stockVendible) {
         toast.error(
-          `Stock máximo alcanzado: No podés superar las ${itemTarget.producto.stock_actual} unidades disponibles de "${itemTarget.producto.descripcion}".`,
+          `Stock máximo alcanzado: Hay ${stockVendible} ${stockVendible === 1 ? 'unidad disponible' : 'unidades disponibles'} de "${itemTarget.producto.descripcion}".`,
           { id: `stock-max-${productoId}`, duration: 3500 }
         )
         cantidadAjustada = stockVendible
