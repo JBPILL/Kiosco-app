@@ -505,3 +505,4 @@ sin apilar todos los formularios ni volver a escrituras locales antiguas.
 - [x] Revisión visual local con datos ficticios ../pilot-envases-precios-negros.png;
       build PASS 631 módulos. La suite completa anterior 2070 PASS / 1 skipped
       precede este ajuste tipográfico, sin cambios funcionales ni SQL.
+- [x] 26be7cf publicado y desplegado sólo en Staging: dpl_82ZvF9ZACD8AynvRnZHFsCRosKeE READY. Alias/CSS público verifican precios negros; negrita comprobada en vista local. Sin merge ni cambios de Production.
