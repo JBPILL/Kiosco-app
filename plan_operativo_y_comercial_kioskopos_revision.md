@@ -1,16 +1,20 @@
 # KioskoPOS — revisión del plan operativo y comercial
 
-**Estado actualizado: 19/10/2026.** Implementación en curso. El registro siguiente
+**Estado actualizado: 20/10/2026.** Implementación en curso. El registro siguiente
 es el resumen vigente; la evaluación original del 05/10 y las notas de avance
 del final se conservan como historial. Sus conteos y menciones de publicación
 pendiente describen aquella ejecución, no el estado actual.
 
 ## Registro de tareas pendientes
 
-**Seguimiento del registro: 19/10/2026.** Envases/Devoluciones se implementaron
+**Seguimiento del registro: 20/10/2026.** Envases/Devoluciones se implementaron
 con módulos transaccionales y aceptación backend en Staging; el usuario da por
 aceptados los ajustes visuales. Se continúa P22/P23 con preparación de puesto
-persistente. Evidencia actual: `.agent/execplans/pilot-envases-returns.md` y
+persistente. El operador confirma sesión conservada tras cerrar y reabrir Staging.
+Cobro ficticio inválido cancelado sin cobro y remanente del artículo de ensayo
+conciliado a 1 unidad mediante ajuste auditado autorizado. Evidencia actual:
+`.agent/execplans/pilot-envases-returns.md`,
+`.agent/execplans/pilot-unit-stock-checkout.md` y
 `.agent/execplans/pilot-windows-persistent-station.md`. Las notas históricas del
 final conservan los estados y conteos de sus ejecuciones.
 
@@ -42,7 +46,7 @@ cumplir la puerta de aceptación correspondiente.
 | P20 | 5 · Multirrubro | Pilotar capacidades por rubro | Cambio de rubro con datos existentes y combinaciones de pesables, envases, lotes y servicios sin pérdida de atributos. |
 | P21 | 5 · Multirrubro | Aceptar circuitos comerciales especializados | Verificar servicios, dietética/bazar y electrónica con usuarios reales, importación, reportes y continuidad offline. |
 | P22 | 7 · Escritorio/quiosco | Completar entrega de instalación lista para usar | Preparación de arranque persistente por puesto implementada; faltan acceso directo/instalación autorizados, actualización, soporte y aceptación en terminal real. No instala ni bloquea Windows automáticamente. |
-| P23 | 7 · Escritorio/quiosco | Aceptar perfil persistente y recuperación del puesto | Lanzador preparado con perfil por origen/puesto, sin kiosk/InPrivate y con rechazo de políticas incompatibles. Falta comprobar perfil efectivo, login, preferencias, permisos y recuperación de solicitudes originales tras cierre/reinicio en Staging aislado, antes de adoptar el puesto. No copiar ni borrar perfiles con pendientes. |
+| P23 | 7 · Escritorio/quiosco | Aceptar perfil persistente y recuperación del puesto | Lanzador con perfil por origen/puesto, sin kiosk/InPrivate y con rechazo de políticas incompatibles. Operador confirma login y sesión conservada al cerrar/reabrir el mismo puesto en Staging. Faltan perfil efectivo, preferencias, permisos y recuperación de solicitudes originales tras respuesta perdida/cierre inesperado. No copiar ni borrar perfiles con pendientes. |
 | P24 | 7 · Escritorio/quiosco | Probar Windows administrado en piloto | Assigned Access/salida de emergencia, cierre inesperado, reconexión, pantalla y recuperación. El lanzador no bloquea Windows ni relanza Edge. |
 
 ### Trabajo pausado por decisión del usuario

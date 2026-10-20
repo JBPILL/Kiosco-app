@@ -58,3 +58,10 @@ stock 1. No se elimina el historial ni se modifican ventas/devoluciones.
 76 pruebas dirigidas (carrito, recuperación, lanzador) PASS y build 631 módulos
 PASS tras el ajuste de mensajes. La suite global 2091 PASS / 1 skipped precede
 este cambio sólo de texto. Scan sin secretos nuevos, diff trabajo/índice PASS.
+
+## Publicación verificada (20/10/2026)
+313fd66 publicado en la rama del PR #3. Staging READY:
+dpl_HeTmhyZmKDvZgfRK8V3gnDkoLXWA, alias kiosco-app-staging.vercel.app.
+Bundle público verifica límite entero y textos singular/plural. PR continúa
+sin integrar; no se modifican master ni Production. La aceptación operativa
+restante se conserva en P22/P23 y en el plan del puesto persistente.
