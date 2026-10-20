@@ -39,7 +39,9 @@ otra ruta y no copia datos. El modo de preparación no escribe en el equipo.
   crear/borrar/escribir archivos desde el script provoca fallo en las pruebas.
 - [x] Guía de adopción/recuperación y P06/P22/P23 del registro actualizados;
   se conservan notas históricas. Aceptación visual de Envases registrada.
-- [ ] Validación final y publicación normal de la rama, sin instalación real.
+- [x] Validación final y publicación normal de e05582d en la rama del piloto,
+  PR #3 en borrador, sin instalación real ni merge. No requiere deploy frontend
+  manual: este bloque cambia lanzador/documentación/tests, no la interfaz.
 
 ## Resultado final
 Implementación y validación local completas. El lanzador y la guía quedan listos
