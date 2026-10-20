@@ -7,7 +7,7 @@ const windows = process.platform === 'win32'
 const quote = (value: string) => `'${value.replace(/'/g, "''")}'`
 const script = resolve('scripts/iniciar-kioskopos-kiosco.ps1')
 
-function ejecutar(url: string, edgeDisponible = true, opciones: { puesto?: string; preparar?: boolean; localAppData?: string; politica?: string } = {}) {
+function ejecutar(url: string, edgeDisponible = true, opciones: { puesto?: string; preparar?: boolean; localAppData?: string; politica?: string; instalacion?: 'x86' | 'x64' } = {}) {
   const command = `
     $ErrorActionPreference='Stop'
     $env:LOCALAPPDATA=${quote(opciones.localAppData ?? 'C:\\Users\\Caja Prueba\\AppData\\Local')}
@@ -15,7 +15,7 @@ function ejecutar(url: string, edgeDisponible = true, opciones: { puesto?: strin
     function global:New-Item { throw 'No se deben crear archivos desde este lanzador' }
     function global:Remove-Item { throw 'No se deben eliminar perfiles' }
     function global:Set-Content { throw 'No se deben escribir archivos desde este lanzador' }
-    function global:Test-Path { param($LiteralPath) return $${edgeDisponible} }
+    function global:Test-Path { param($LiteralPath) return $${edgeDisponible} ${opciones.instalacion ? `-and ${opciones.instalacion === 'x86' ? '' : '-not '}$LiteralPath.Contains('(x86)')` : ''} }
     function global:Start-Process {
       param($FilePath,$ArgumentList,$WindowStyle)
       @{ archivo=$FilePath; argumentos=$ArgumentList; ventana=$WindowStyle } | ConvertTo-Json -Compress
@@ -99,4 +99,15 @@ it.skipIf(!windows)('escapa espacios y comillas de la URL sin agregar argumentos
   const data = JSON.parse(result.stdout.trim()) as { argumentos: string[] }
   expect(data.argumentos).toHaveLength(4)
   expect(data.argumentos[1]).toBe(`--app="${url}"`)
+}, 30_000)
+
+it.skipIf(!windows).each(['x86', 'x64'] as const)('con una sola instalación %s conserva la ruta completa al preparar y lanzar', instalacion => {
+  for (const preparar of [true, false]) {
+    const result = ejecutar('https://pos.example.com', true, { instalacion, preparar })
+    expect(result.status, result.stderr).toBe(0)
+    const data = JSON.parse(result.stdout.trim()) as { Ejecutable?: string; archivo?: string }
+    const ejecutable = preparar ? data.Ejecutable : data.archivo
+    expect(ejecutable).toMatch(/^[A-Za-z]:\\.+\\Microsoft\\Edge\\Application\\msedge\.exe$/)
+    expect(ejecutable?.includes('(x86)')).toBe(instalacion === 'x86')
+  }
 }, 30_000)

@@ -43,9 +43,11 @@ foreach ($policyPath in @('HKLM:\SOFTWARE\Policies\Microsoft\Edge', 'HKCU:\SOFTW
 }
 
 $edgeCandidates = @(
-  (Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'),
-  (Join-Path $env:ProgramFiles 'Microsoft\Edge\Application\msedge.exe')
-) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+  @(
+    (Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'),
+    (Join-Path $env:ProgramFiles 'Microsoft\Edge\Application\msedge.exe')
+  ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+)
 
 if (-not $edgeCandidates) {
   throw 'No se encontró Microsoft Edge. Instalalo o ajustá la ruta del ejecutable para este puesto.'

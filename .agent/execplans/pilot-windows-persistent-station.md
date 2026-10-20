@@ -60,3 +60,20 @@ No se abrió Edge ni se instaló/configuró un puesto real.
   PASS; advertencia conocida de chunks grandes, sin errores de compilación.
 - No hay instalación, adopción de perfil, prueba de cierre/reinicio, permisos
   físicos ni operaciones financieras. P22/P23 continúan abiertos a esa aceptación.
+
+## Corrección de una única instalación de Edge (19/10/2026)
+El usuario detectó `Ejecutable : C` y fallo de Start-Process. La salida filtrada
+se convertía en string cuando sólo existía una instalación; [0] tomaba la primera
+letra. Se fuerza una colección después del filtro y se conserva la ruta completa.
+Las pruebas anteriores simulaban ambas rutas existentes y no verificaban el
+archivo recibido por Start-Process: no cubrían esta cardinalidad. La preparación
+real previa sólo inspeccionó modo/origen, por lo que tampoco detectó el defecto.
+
+- [x] Regresión reproducida antes de corregir: dos fallos, instalación única x86/x64.
+- [x] Después: 27 pruebas PowerShell PASS, verificando ruta completa tanto en
+      preparación como en lanzamiento simulado. No se abrió Edge.
+- [x] Preparación real caja-prueba: ejecutable completo y Test-Path Leaf=True;
+      mismo perfil propuesto, sin crear/borrar/copiar perfiles ni iniciar sesión.
+- [x] Build final 631 módulos PASS; diff trabajo/índice PASS. Publicación normal
+      de la corrección en la misma rama del piloto, sin merge ni instalación real.
+La suite global 2085 PASS anterior precede esta corrección localizada.
