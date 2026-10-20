@@ -22,7 +22,10 @@ No alterar solicitudes ya guardadas, UUID, importes, ventas ni reintegros.
 ## Validación
 - [x] Cuatro regresiones reproducidas: agregar, sumar, editar y remanente < 1.
 - [x] Después de corregir: 93 pruebas PASS en carrito, recuperación y backend.
-- [ ] Suite completa y build finales.
+- [x] Suite final: 2091 PASS / 1 skipped / 217 archivos, 269.44 s.
+      Build 631 módulos PASS. Diff trabajo/índice PASS; manifest 43 SQL intactos.
+      Scan 1130 textos, 14 binarios omitidos, 46 candidatos conocidos.
+      npm audit --omit=dev: 0 vulnerabilidades; no se modifican dependencias.
 - [ ] Publicar en la rama del PR #3 y desplegar sólo el frontend de Staging.
 
 ## Conciliación pendiente
@@ -31,7 +34,7 @@ debe revisar la operación guardada y la resolución real del dinero mediante el
 flujo existente de Cancelar pendiente. No declarar NO_COBRADO o REINTEGRADO sin
 confirmación del operador. No crear venta de reemplazo antes de conciliar.
 Esta corrección preventiva no constituye recuperación del cobro original.
-El operador confirma que fue una prueba sin dinero real. Se indica cancelar
-el pendiente con NO_COBRADO desde el mismo perfil, sin ejecutar esa decisión
-por su cuenta ni borrar datos locales; falta confirmar el resultado de la UI.
+El operador confirma que fue una prueba sin dinero real y realiza la cancelación
+desde el perfil original. Lectura del servidor confirma NO_COBRADO para el
+identificador original. No se borraron datos locales ni se reemplazó la entrada.
 Sin SQL remoto, Edge deploy, merge ni cambios de Production.
