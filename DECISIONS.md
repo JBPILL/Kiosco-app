@@ -203,3 +203,23 @@ Otras políticas y persistencia real requieren aceptación del puesto. Cambiar
 perfil/URL/puesto no cancela solicitudes: revisar la cola anterior y recuperar
 la operación original antes de adoptar otra configuración. No se realiza la
 adopción, instalación, Assigned Access ni prueba financiera en esta sesión.
+
+## Restauración técnica del catálogo estricto (20/10/2026)
+El ensayo real de exportar/cifrar/descifrar/restaurar en un comercio nuevo de
+Staging confirmó que el DML directo del restaurador legacy es rechazado por las
+protecciones del piloto. No se amplían permisos ni se usa service-role para
+restaurar productos: el Dueño utiliza guardar_producto_transaccional y
+guardar_categoria_transaccional. Los IDs se remapean de forma reproducible por
+origen/destino/tabla/ID; la descripción no identifica un producto de forma única.
+
+Cada escritura conserva una operación local durable hasta recibir ACK del ID y
+comercio correctos con sesión original vigente. Un fallo de almacenamiento o una
+solicitud pendiente distinta detiene el envío. Se verifican los productos desde
+un snapshot posterior; repetir la restauración no debe crear nuevas identidades.
+
+Esta implementación cubre catálogo/categorías en Fusión. Copias con proveedores,
+clientes, promociones, lotes, asociación a proveedor o modo Reemplazo se rechazan
+antes de escribir: requieren completar sus contratos de restauración estricta.
+El bloqueo existente de restauración integral en la interfaz se conserva. La
+prueba técnica no autoriza activarla ni declara P14 completo. El destino de ensayo
+queda suspendido; origen, master y Production permanecen intactos.
