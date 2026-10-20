@@ -483,3 +483,17 @@ sin apilar todos los formularios ni volver a escrituras locales antiguas.
       Suite completa previa anterior al ajuste: repetir antes de merge.
 - [x] Integración adicional Catálogo/ProductForm: 11 PASS / 2 archivos (59 dirigidos en total / 5 archivos). Diff/índice y scan sin nuevos secretos (46 candidatos conocidos).
 - [x] cd4b1d9 publicado y desplegado sólo en Staging: dpl_2BFsdPYGn7KL42R4TwVVB19b66bE READY. Alias/bundle verifican recepción, pestaña catálogo y destino Staging. Sin merge ni cambios de Production.
+
+## Tarjetas crema y cierre de validación acumulada (19/10/2026)
+- [x] Fondo de tarjetas no seleccionadas #eee8dc, crema en vez del blanco anterior;
+      selección, paleta de acciones y tema oscuro conservados. Captura local
+      ../pilot-envases-crema.png, datos ficticios sin operaciones remotas.
+- [x] Build 631 módulos PASS; manifest 43 SQL intactos; diff trabajo/índice PASS.
+      Scan 1128 textos, 14 binarios omitidos, mismos 46 candidatos conocidos.
+      npm audit --omit=dev: 0 vulnerabilidades, sin audit fix ni dependencias nuevas.
+- [x] Suite completa final: 2070 PASS / 1 skipped / 217 archivos, 296,91 s,
+      --maxWorkers=4; posterior a los ajustes visuales y pestaña de catálogo.
+      La ejecución anterior perdió su sesión al interrumpirse; no se contó como
+      PASS. Repetición completa conservada en ../pilot-cream-final-suite.log.
+      Se cierra deuda automática acumulada; siguen aceptación Staging,
+      conciliación histórica/ensayos y prueba física de impresora antes de merge.

@@ -475,7 +475,7 @@
   max-width: none;
   padding: .75rem;
   border-radius: .875rem;
-  background: #fff8eb;
+  background: #eee8dc;
   color: #3f3528;
 }
 :root.dark .envases-recepcion [aria-label="Tipos de envase"] button {
