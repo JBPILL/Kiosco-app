@@ -307,6 +307,12 @@ export const useCartStore = create<CartState>((set, get) => ({
     if (cobroActualBloqueado(get())) return
     let cantAgregar = cantidad > 0 ? cantidad : 1
     const tieneStockLimitado = !producto.es_pesable && producto.stock_actual > 0 && producto.stock_actual !== 99999
+    const stockVendible = producto.es_pesable ? producto.stock_actual : Math.floor(producto.stock_actual)
+    if (!producto.es_pesable) cantAgregar = Math.max(1, Math.round(cantAgregar))
+    if (tieneStockLimitado && stockVendible < 1) {
+      toast.error('No hay unidades enteras disponibles. Revisá el stock en Catálogo.')
+      return
+    }
 
     // Si el producto figura con stock 0 en sistema, emitir aviso pero permitir agregarlo
     if (producto.stock_actual <= 0) {
@@ -318,7 +324,7 @@ export const useCartStore = create<CartState>((set, get) => ({
     // Si tiene stock limitado y ya no hay stock para sumar en el ticket actual
     const stateActual = get()
     const existenteActual = stateActual.items.find((item) => item.producto.id === producto.id)
-    if (tieneStockLimitado && existenteActual && existenteActual.cantidad >= producto.stock_actual) {
+    if (tieneStockLimitado && existenteActual && existenteActual.cantidad >= stockVendible) {
       toast.error(
         `Stock máximo alcanzado: Ya tenés el total (${producto.stock_actual} u.) de "${producto.descripcion}" en el ticket.`,
         { id: `stock-max-${producto.id}`, duration: 3500 }
@@ -332,8 +338,8 @@ export const useCartStore = create<CartState>((set, get) => ({
 
       if (existente) {
         let nuevaCantidad = Number((existente.cantidad + cantAgregar).toFixed(3))
-        if (tieneStockLimitado && nuevaCantidad > producto.stock_actual) {
-          const restante = Math.max(0, producto.stock_actual - existente.cantidad)
+        if (tieneStockLimitado && nuevaCantidad > stockVendible) {
+          const restante = Math.max(0, stockVendible - existente.cantidad)
           if (restante <= 0) {
             toast.error(
               `Stock máximo alcanzado: Ya tenés el total (${producto.stock_actual} u.) de "${producto.descripcion}" en el ticket.`,
@@ -345,7 +351,7 @@ export const useCartStore = create<CartState>((set, get) => ({
             `Stock insuficiente: Solo podés sumar ${restante} u. más de "${producto.descripcion}" (Stock total: ${producto.stock_actual})`,
             { id: `stock-max-${producto.id}`, duration: 3500 }
           )
-          nuevaCantidad = producto.stock_actual
+          nuevaCantidad = stockVendible
         }
 
         nuevosItems = state.items.map((item) => {
@@ -355,12 +361,12 @@ export const useCartStore = create<CartState>((set, get) => ({
           return itemAct
         })
       } else {
-        if (tieneStockLimitado && cantAgregar > producto.stock_actual) {
+        if (tieneStockLimitado && cantAgregar > stockVendible) {
           toast.error(
             `Stock insuficiente: Solo hay ${producto.stock_actual} u. de "${producto.descripcion}". Se cargó el máximo disponible.`,
             { id: `stock-max-${producto.id}`, duration: 3500 }
           )
-          cantAgregar = producto.stock_actual
+          cantAgregar = stockVendible
         }
         const cantRedondeada = Number(cantAgregar.toFixed(3))
         const nuevoItem: ItemCarrito = {
@@ -515,12 +521,17 @@ export const useCartStore = create<CartState>((set, get) => ({
     let cantidadAjustada = itemTarget?.producto.es_pesable ? cantidad : Math.max(1, Math.round(cantidad))
 
     if (itemTarget && !itemTarget.producto.es_pesable && itemTarget.producto.stock_actual > 0 && itemTarget.producto.stock_actual !== 99999) {
-      if (cantidadAjustada > itemTarget.producto.stock_actual) {
+      const stockVendible = Math.floor(itemTarget.producto.stock_actual)
+      if (stockVendible < 1) {
+        toast.error('No hay unidades enteras disponibles. Revisá el stock en Catálogo.')
+        return
+      }
+      if (cantidadAjustada > stockVendible) {
         toast.error(
           `Stock máximo alcanzado: No podés superar las ${itemTarget.producto.stock_actual} unidades disponibles de "${itemTarget.producto.descripcion}".`,
           { id: `stock-max-${productoId}`, duration: 3500 }
         )
-        cantidadAjustada = itemTarget.producto.stock_actual
+        cantidadAjustada = stockVendible
       }
     }
 

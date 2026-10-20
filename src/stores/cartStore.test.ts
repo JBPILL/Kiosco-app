@@ -131,6 +131,24 @@ describe('cartStore: productos y cantidades', () => {
     expect(cart().items[0].cantidad).toBe(2)
   })
 
+  it.each(['agregar', 'sumar', 'editar'])('mantiene unidades enteras con stock histórico fraccionario al %s', (accion) => {
+    const p = crearProducto({ stock_actual: 5.013, precio_venta: 200 })
+    if (accion === 'agregar') cart().agregarProducto(p, 6)
+    else {
+      cart().agregarProducto(p, 5)
+      if (accion === 'sumar') cart().agregarProducto(p)
+      else cart().actualizarCantidad(p.id, 6)
+    }
+    expect(cart().items[0].cantidad).toBe(5)
+    expect(cart().items[0].subtotal).toBe(1000)
+    expect(cart().items[0].producto.stock_actual).toBe(5.013)
+  })
+
+  it('no convierte un remanente menor que una unidad en una unidad vendible', () => {
+    cart().agregarProducto(crearProducto({ stock_actual: 0.987 }))
+    expect(cart().items).toHaveLength(0)
+  })
+
   it('permite vender con stock 0 o negativo (stock negativo controlado)', () => {
     cart().agregarProducto(crearProducto({ stock_actual: 0 }), 5)
     expect(cart().items[0].cantidad).toBe(5)
