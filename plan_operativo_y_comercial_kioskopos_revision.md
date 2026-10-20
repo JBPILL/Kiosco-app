@@ -1,16 +1,18 @@
 # KioskoPOS — revisión del plan operativo y comercial
 
-**Estado actualizado: 08/10/2026.** Implementación en curso. El registro siguiente
+**Estado actualizado: 19/10/2026.** Implementación en curso. El registro siguiente
 es el resumen vigente; la evaluación original del 05/10 y las notas de avance
 del final se conservan como historial. Sus conteos y menciones de publicación
 pendiente describen aquella ejecución, no el estado actual.
 
 ## Registro de tareas pendientes
 
-**Última actualización del registro: 08/10/2026, código `98318b6`.** La última
-suite global corresponde a `eafbdd9`; los avances posteriores tienen validaciones
-dirigidas, detalladas en tareas realizadas. Este apartado registra trabajo abierto;
-el siguiente reúne entregables realizados. Actualizar ambos al cerrar cada tarea.
+**Seguimiento del registro: 19/10/2026.** Envases/Devoluciones se implementaron
+con módulos transaccionales y aceptación backend en Staging; el usuario da por
+aceptados los ajustes visuales. Se continúa P22/P23 con preparación de puesto
+persistente. Evidencia actual: `.agent/execplans/pilot-envases-returns.md` y
+`.agent/execplans/pilot-windows-persistent-station.md`. Las notas históricas del
+final conservan los estados y conteos de sus ejecuciones.
 
 Una tarea pendiente puede requerir desarrollo, aplicación SQL, aceptación
 remota o prueba física. Una implementación local no cierra su fase hasta
@@ -23,7 +25,7 @@ cumplir la puerta de aceptación correspondiente.
 | P03 | 1 · Seguridad | Aceptar operativamente el paso 52 | Catálogo remoto confirmado; falta demostrar INSERT directo rechazado para cajero y checkout por backend funcionando después de instalarlo. |
 | P04 | 1 · Seguridad | Completar pruebas de supervisor | Rechazo de PIN incorrecto y venta con PIN correcto ya informados; faltan concurrencia, espera/límites de intentos, permiso ligado a solicitud original y usos restantes en el piloto. |
 | P05 | 1 · Seguridad | Cerrar aceptación de anulación atómica | Diagnóstico remoto confirma trigger antiguo que duplicó reposición: aplicar fase actualizada y conciliar la unidad extra antes de aceptar el caso efectivo. También faltan pago mixto, fiado, caja original cerrada, lotes y reintento concurrente en Supabase real. |
-| P06 | 1 · Seguridad | Implementar devolución parcial transaccional y conciliación antigua | Auditoría y corrección del fallo de lectura previa realizadas; contrato por detalle y cálculos SQL históricos preparados. Falta conectar formulario y backend atómico/idempotente, bloqueos, stock/lotes históricos, reintegro, auditoría y permisos; comprobar concurrencia. Conciliar tickets antiguos sin inventar snapshots. |
+| P06 | 1 · Seguridad | Aceptar devoluciones transaccionales y conciliar historia | Backend/formulario atómicos e idempotentes implementados y ensayados en Staging. Interfaz aceptada por el usuario. Quedan conciliación de tickets/saldos antiguos y aceptación operativa; integración/Production mantienen gate separado. Cuenta corriente y pagos mixtos diferidos; tickets con envases sólo completos y Dueño. |
 | P07 | 1 · Auditoría | Definir retención y operación de auditorías | Establecer responsables, acceso, conservación y comprobación remota de precio, descuento, anulación y apertura manual del cajón. |
 | P08 | Checkout | Validar pérdida de conexión y dos equipos | Ensayar preparación, confirmación, cancelación y respuesta perdida sin duplicar venta, pago, stock o deuda. |
 | P09 | Checkout | Aceptar recuperación sin copia local | Aplicar el paso 53 antes de desplegar `checkout-manual`. Acción del dueño implementada en Caja y Turno; probar en navegador/Supabase con JWT real, respuesta perdida, cancelación concurrente y operador/caja originales. No crear otra venta ni volver a cobrar. |
@@ -39,8 +41,8 @@ cumplir la puerta de aceptación correspondiente.
 | P19 | 4 · Mermas | Aceptar reporte de bajas completo | Comparar período argentino y costos conocidos/desconocidos con datos reales; conservar distinción de estimación a costo frente a contabilidad fiscal. |
 | P20 | 5 · Multirrubro | Pilotar capacidades por rubro | Cambio de rubro con datos existentes y combinaciones de pesables, envases, lotes y servicios sin pérdida de atributos. |
 | P21 | 5 · Multirrubro | Aceptar circuitos comerciales especializados | Verificar servicios, dietética/bazar y electrónica con usuarios reales, importación, reportes y continuidad offline. |
-| P22 | 7 · Escritorio/quiosco | Preparar entrega de instalación lista para usar | Definir PWA/instalador soportado, acceso directo, configuración inicial, arranque, actualización y procedimiento de soporte. |
-| P23 | 7 · Escritorio/quiosco | Resolver persistencia y recuperación del puesto | Edge kiosk usa InPrivate: probar login, permisos y cobros pendientes tras cierre/reinicio; decidir perfil/despliegue compatible antes de activarlo. |
+| P22 | 7 · Escritorio/quiosco | Completar entrega de instalación lista para usar | Preparación de arranque persistente por puesto implementada; faltan acceso directo/instalación autorizados, actualización, soporte y aceptación en terminal real. No instala ni bloquea Windows automáticamente. |
+| P23 | 7 · Escritorio/quiosco | Aceptar perfil persistente y recuperación del puesto | Lanzador preparado con perfil por origen/puesto, sin kiosk/InPrivate y con rechazo de políticas incompatibles. Falta comprobar perfil efectivo, login, preferencias, permisos y recuperación de solicitudes originales tras cierre/reinicio en Staging aislado, antes de adoptar el puesto. No copiar ni borrar perfiles con pendientes. |
 | P24 | 7 · Escritorio/quiosco | Probar Windows administrado en piloto | Assigned Access/salida de emergencia, cierre inesperado, reconexión, pantalla y recuperación. El lanzador no bloquea Windows ni relanza Edge. |
 
 ### Trabajo pausado por decisión del usuario
@@ -51,6 +53,15 @@ cumplir la puerta de aceptación correspondiente.
   El cobro manual con posnet continúa siendo una ruta independiente.
 
 ## Registro de tareas realizadas
+
+- [x] P22/P23: lanzador de puesto con perfil persistente por origen/puesto,
+  preparación sin abrir Edge ni crear archivos, rechazo de políticas incompatibles
+  y guía de adopción/recuperación. 25 pruebas PowerShell aprobadas, preparación
+  real de sólo lectura para Staging PASS. Suite final 2085 PASS / 1 skipped /
+  217 archivos; build 631 módulos PASS. No instalado: persisten aceptación física,
+  cierre/reinicio, periféricos, soporte y configuración administrada del puesto.
+- [x] Envases: usuario acepta los ajustes visuales y solicita continuar el plan.
+  No equivale a conciliación de ensayos, impresión física ni autorización de merge.
 
 - [x] Diagnóstico de anulación detecta protección contra reposición adicional
   y ausencia del trigger legado, incluso deshabilitado. 109 pruebas SQL de

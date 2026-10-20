@@ -1,20 +1,69 @@
 # Despliegue de KioskoPOS en un puesto Windows
 
-## Lanzamiento de Edge
+## Preparar un puesto persistente
 
-El lanzador `scripts/iniciar-kioskopos-kiosco.ps1` abre la URL de producción en Edge a pantalla completa. Pasale la URL real del comercio:
+El lanzador abre KioskoPOS en una ventana de aplicación maximizada de Edge,
+con un perfil dedicado al puesto. Primero revisá la preparación sin abrir Edge
+ni crear carpetas:
 
 ```powershell
-.\scripts\iniciar-kioskopos-kiosco.ps1 -Url https://pos.tu-dominio.com
+.\scripts\iniciar-kioskopos-kiosco.ps1 -Url https://pos.tu-dominio.com -Puesto caja-1 -Preparar
 ```
 
-El script rechaza HTTP y no abre el servidor Vite de desarrollo. Antes, instalá Edge, publicá la aplicación por HTTPS y verificá que el terminal y su red tengan hora correcta y conectividad estable.
+Después de revisar los pendientes del navegador anterior y aprobar la adopción
+del puesto, el operador puede abrirlo con los mismos valores y sin `-Preparar`.
+No hace falta usar una cuenta administradora. La URL debe ser pública, HTTPS,
+sin usuario/contraseña; no incluyas claves ni tokens en ella. El nombre del puesto
+admite letras, números, guion y guion bajo (máximo 40 caracteres).
 
-Este lanzamiento por sí solo no bloquea Windows ni reinicia Edge después de un cierre. Para un equipo dedicado, configurá una cuenta estándar separada y Windows Assigned Access (quiosco de aplicación única) o una política administrada de Shell Launcher; definí también quién conserva la cuenta administrativa y el procedimiento de recuperación. Probá primero en una terminal piloto. La configuración de Assigned Access depende de la edición y política de Windows del comercio.
+El perfil queda bajo `%LOCALAPPDATA%\KioskoPOS\Puestos`, separado del Edge
+personal. Su identidad combina origen HTTPS y nombre del puesto: cambiar sólo
+la ruta o los filtros conserva el perfil; cambiar host, puerto o puesto abre uno
+separado. Staging y Production no comparten el perfil. El script no copia,
+borra ni modifica perfiles existentes, no guarda contraseñas y no concede
+permisos de impresora o cámara. Los accesos directos deben conservar estos
+valores. No alternes nombres de puesto para intentar recuperar una venta.
 
-Edge kiosk se ejecuta en sesión InPrivate. KioskoPOS guarda la preferencia local de impresora y la apertura del cajón en almacenamiento del navegador; validá si sobreviven al cierre completo de Edge en la configuración piloto. Una sesión reiniciada puede requerir iniciar sesión y volver a autorizar Web Serial. Si eso impide la operación, mantené el piloto detenido hasta definir si el puesto debe reconfigurarse por turno o requiere otro perfil de navegador administrado compatible con la política del comercio.
+El lanzador anterior usaba `--kiosk`. Microsoft documenta que ese modo utiliza
+InPrivate, que elimina los datos de sesión al cerrar todas sus ventanas.
+Por eso este arranque usa una ventana de aplicación con `--user-data-dir`,
+sin kiosk ni InPrivate. Un perfil persistente no garantiza una sesión de acceso
+indefinida: puede expirar, y las políticas de Windows pueden limitar o limpiar
+almacenamiento. El lanzador se detiene si detecta `UserDataDir` administrado,
+InPrivate forzado o limpieza de datos al salir; no altera esas políticas.
+El administrador debe revisar también el resto de políticas efectivas y confirmar
+la ruta en `edge://version` antes de aceptar el puesto.
 
-Microsoft documenta el lanzamiento de Edge con `--kiosk <URL> --edge-kiosk-type=fullscreen --no-first-run` y la asignación del navegador como aplicación de quiosco [en su guía de Edge kiosk](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-configure-kiosk-mode) y [la guía de Windows Assigned Access](https://learn.microsoft.com/en-us/windows/configuration/assigned-access/quickstart-kiosk).
+Referencias: [modo kiosk de Edge](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-configure-kiosk-mode),
+[datos eliminados al salir de InPrivate](https://support.microsoft.com/en-us/edge/browse-inprivate-in-microsoft-edge),
+[directiva UserDataDir](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-browser-policies/userdatadir).
+
+## Adopción y recuperación
+
+1. En el navegador/perfil anterior, revisá cobros, envases, devoluciones y stock
+   pendientes. Recuperá la solicitud original desde sus paneles; no repitas la
+   venta ni entregues efectivo otra vez por no verla en el nuevo perfil.
+2. No borres datos del navegador, ni renombres o copies carpetas de perfiles.
+   Si una sesión InPrivate anterior ya se cerró, su cola local puede haberse
+   perdido. Usá la recuperación autorizada de servidor y conciliación; el
+   lanzador no reconstruye solicitudes desaparecidas.
+3. En el comercio aislado de Staging, abrí el puesto, iniciá sesión y verificá
+   catálogo, caja y permisos de periféricos. Un acceso nuevo puede requerir
+   autorización manual; no se debe pedir durante la confirmación del cobro.
+4. Cerrá y volvé a abrir con la misma URL y puesto. Comprobá el perfil efectivo,
+   preferencias y lectura de pendientes. Si vuelve a pedir login, autenticarse
+   no autoriza generar otra operación financiera.
+5. El ensayo de respuesta perdida requiere operaciones ficticias autorizadas:
+   recuperá el mismo ID/cuerpo y comprobá un único resultado/stock/pago. Ensayar
+   también cierre inesperado, reconexión y dos terminales antes de aceptación.
+6. Si se pierde el disco/perfil, detener nuevos cobros ambiguos y conciliar con
+   servidor y respaldo. Un perfil persistente no es copia externa ni restauración.
+
+Este script no instala accesos directos, arranque automático, actualizaciones,
+Assigned Access ni relanzamiento. Tampoco bloquea Windows. Para un puesto
+administrado hay que definir cuenta estándar, salida de emergencia y responsable
+de soporte; ese despliegue requiere aceptación separada. No combinar el perfil
+persistente con Edge kiosk/InPrivate para intentar conseguir ambas funciones.
 
 ## Impresora y cajón
 
@@ -27,12 +76,12 @@ También se quita el máximo de ancho usado en pantalla. Dos pruebas DOM cubren
 marcado/restauración de ancestros; falta comprobar paginación y márgenes reales
 con navegador, driver y tickets largos en papel de 58/80 mm.
 
-El lanzador rechaza también HTTPS en localhost/loopback, nombres `.localhost`,
-el puerto de desarrollo 5173 y URLs con usuario/contraseña. Diez pruebas
-ejecutan PowerShell con detección de Edge y lanzamiento simulados: validan
-rechazos, argumentos y falta del navegador sin abrir ventanas reales.
-Build aprobado. Sigue pendiente probar el puesto físico, persistencia,
-reinicio y periféricos; no se instalaron políticas de Windows desde esta sesión.
+El lanzador también rechaza localhost/loopback, nombres `.localhost`, puerto
+5173 y URLs con credenciales. Las pruebas PowerShell simulan políticas, presencia
+de Edge y lanzamiento: no abren ventanas ni escriben perfiles. Validan identidad,
+separación de entornos, argumentos con espacios y fallos de configuración.
+La persistencia tras reinicio, permisos y periféricos sigue pendiente de ensayo
+físico; las pruebas locales no certifican el puesto instalado.
 
 1. Iniciá sesión en KioskoPOS y abrí Configuración desde la sesión de administración.
 2. Elegí la impresora Web Serial para ese puesto y ejecutá **Imprimir prueba**.

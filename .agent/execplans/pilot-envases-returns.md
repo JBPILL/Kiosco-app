@@ -506,3 +506,10 @@ sin apilar todos los formularios ni volver a escrituras locales antiguas.
       build PASS 631 módulos. La suite completa anterior 2070 PASS / 1 skipped
       precede este ajuste tipográfico, sin cambios funcionales ni SQL.
 - [x] 26be7cf publicado y desplegado sólo en Staging: dpl_82ZvF9ZACD8AynvRnZHFsCRosKeE READY. Alias/CSS público verifican precios negros; negrita comprobada en vista local. Sin merge ni cambios de Production.
+
+
+## Aceptación visual del usuario y continuación del plan (19/10/2026)
+El usuario da por hechos los ajustes de diseño, colores y tipografía de Envases.
+Se cierra la aceptación visual de ese bloque; no implica ensayo físico de
+impresora, conciliación de tickets antiguos ni autorización de merge/Production.
+El siguiente bloque P22/P23 se registra en pilot-windows-persistent-station.md.

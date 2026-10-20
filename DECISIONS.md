@@ -187,3 +187,19 @@ el control de cantidad se limita a 320 px y se retiran saldos duplicados del
 formulario. La fila completa selecciona al hacer clic, conserva botón accesible
 por teclado y resaltado persistente. El hover sólo destaca, no cambia el tipo.
 El manejador de fila respeta carga/bloqueo durable aunque tr no herede disabled.
+
+
+## Arranque de puesto Windows persistente (19/10/2026)
+El usuario acepta el diseño de Envases y pide continuar el plan. Se avanza P22/P23:
+--kiosk usa InPrivate y no es apropiado para prometer conservación de la outbox
+local entre sesiones. El lanzador usa --app y un user-data-dir estable por origen
+HTTPS y nombre de puesto, bajo LOCALAPPDATA del usuario Windows. No usa el perfil
+personal ni copia/borra perfiles, operaciones o credenciales. -Preparar es sólo
+lectura: devuelve el arranque propuesto sin abrir Edge ni escribir archivos.
+
+Se rechaza el arranque si hay política administrada UserDataDir, InPrivate
+forzado o limpieza al salir; no se intenta sobreescribir seguridad de Windows.
+Otras políticas y persistencia real requieren aceptación del puesto. Cambiar
+perfil/URL/puesto no cancela solicitudes: revisar la cola anterior y recuperar
+la operación original antes de adoptar otra configuración. No se realiza la
+adopción, instalación, Assigned Access ni prueba financiera en esta sesión.
