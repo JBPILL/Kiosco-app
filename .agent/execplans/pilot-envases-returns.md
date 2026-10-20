@@ -497,3 +497,4 @@ sin apilar todos los formularios ni volver a escrituras locales antiguas.
       PASS. Repetición completa conservada en ../pilot-cream-final-suite.log.
       Se cierra deuda automática acumulada; siguen aceptación Staging,
       conciliación histórica/ensayos y prueba física de impresora antes de merge.
+- [x] 9feffe5 publicado y desplegado sólo en Staging: dpl_7z2bAdhWzs665rkkWAoa3oLfpTiZ READY. Alias y CSS público confirman crema. PR #3 sigue borrador sin merge; quedan aceptación, conciliación histórica y hardware.
