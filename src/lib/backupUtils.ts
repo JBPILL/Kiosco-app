@@ -116,6 +116,10 @@ async function guardarRegistroRestaurado(
   idOriginal: string, campos: Record<string, unknown>,
 ): Promise<string> {
   const id = await identidadRestaurada(origen, kioscoId, tabla, idOriginal)
+  if (kioskoPilotStrictScopeActivo() && tabla === 'promociones') {
+    await guardarCatalogoBackupStrict('promociones', kioscoId, id, campos)
+    return id
+  }
   const { data: existente, error: errorLectura } = await supabase.from(tabla)
     .select('id').eq('kiosco_id', kioscoId).eq('id', id).maybeSingle()
   if (errorLectura) throw new Error(errorLectura.message)
@@ -393,9 +397,9 @@ export async function restaurarBackupIntegral(
   try {
     const strict = kioskoPilotStrictScopeActivo()
     if (strict && (modo === 'REEMPLAZO' || backupData.clientes.length > 0 || backupData.proveedores.length > 0
-      || backupData.promociones.length > 0 || backupData.lotes_producto.length > 0
+      || backupData.lotes_producto.length > 0
       || backupData.productos.some(prod => prod.proveedor_id))) {
-      throw new Error('La restauración estricta admite por ahora catálogo y categorías en modo Fusión. Esta copia requiere otros módulos; no se escribió ningún dato.')
+      throw new Error('La restauración estricta admite por ahora catálogo, categorías y promociones en modo Fusión. Esta copia requiere otros módulos; no se escribió ningún dato.')
     }
     if (backupData.version === '2.0' && backupData.productos.some(prod => prod.es_combo === true)) {
       throw new Error('La copia 2.0 no permite recuperar componentes de combos. Generá una copia nueva.')

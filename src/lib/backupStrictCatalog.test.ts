@@ -39,6 +39,15 @@ it('categorías usan su RPC y exigen confirmación del comercio', async () => {
   await guardarCatalogoBackupStrict('categorias', kid, id, { nombre: 'Bebidas' })
   expect(mocks.rpc).toHaveBeenCalledWith('guardar_categoria_transaccional', expect.objectContaining({ p_categoria_id: id }))
 })
+it('promoción incierta conserva operación, identidad y composición en el reintento', async () => {
+  mocks.rpc.mockResolvedValueOnce({ data: null, error: { message: 'Respuesta perdida' } })
+    .mockResolvedValueOnce({ data: { id, kiosco_id: kid }, error: null })
+  const datos = { nombre: 'Oferta', tipo: 'COMBO', items_combo: [{ producto_id: kid, cantidad: 2 }], precio_combo: 300 }
+  await expect(guardarCatalogoBackupStrict('promociones', kid, id, datos)).rejects.toThrow('Respuesta perdida')
+  await guardarCatalogoBackupStrict('promociones', kid, id, datos)
+  expect(mocks.rpc.mock.calls[1]).toEqual(mocks.rpc.mock.calls[0])
+  expect(mocks.rpc).toHaveBeenLastCalledWith('guardar_promocion_transaccional', expect.objectContaining({ p_promocion_id: id, p_datos: datos, p_eliminar: false }))
+})
 it('un cambio de operador durante el envío no confirma ni borra la solicitud original', async () => {
   mocks.rpc.mockImplementation(async () => {
     mocks.state.usuario = { ...mocks.state.usuario, id: 'other-owner' }

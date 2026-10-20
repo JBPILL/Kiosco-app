@@ -7,7 +7,7 @@ interface SolicitudCatalogoBackup {
 
 /** No enviar una escritura restaurada si su identidad no pudo conservarse. */
 export async function guardarCatalogoBackupStrict(
-  tabla: 'productos' | 'categorias', kioscoId: string, registroId: string,
+  tabla: 'productos' | 'categorias' | 'promociones', kioscoId: string, registroId: string,
   datos: Record<string, unknown>,
 ): Promise<void> {
   const { useAuthStore } = await import('../stores/authStore')
@@ -42,9 +42,12 @@ export async function guardarCatalogoBackupStrict(
     ? await supabase.rpc('guardar_producto_transaccional', {
       p_operacion_id: operacion.id, p_producto_id: registroId, p_datos: operacion.solicitud,
     })
-    : await supabase.rpc('guardar_categoria_transaccional', {
+    : tabla === 'categorias' ? await supabase.rpc('guardar_categoria_transaccional', {
       p_operacion_id: operacion.id, p_categoria_id: registroId, p_datos: operacion.solicitud,
     })
+      : await supabase.rpc('guardar_promocion_transaccional', {
+        p_operacion_id: operacion.id, p_promocion_id: registroId, p_datos: operacion.solicitud, p_eliminar: false,
+      })
   if (error) throw new Error(error.message)
   validarContexto()
   const fila: unknown = tabla === 'productos' ? data?.producto : data
