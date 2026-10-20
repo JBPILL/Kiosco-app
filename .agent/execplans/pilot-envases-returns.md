@@ -498,3 +498,10 @@ sin apilar todos los formularios ni volver a escrituras locales antiguas.
       Se cierra deuda automática acumulada; siguen aceptación Staging,
       conciliación histórica/ensayos y prueba física de impresora antes de merge.
 - [x] 9feffe5 publicado y desplegado sólo en Staging: dpl_7z2bAdhWzs665rkkWAoa3oLfpTiZ READY. Alias y CSS público confirman crema. PR #3 sigue borrador sin merge; quedan aceptación, conciliación histórica y hardware.
+
+## Tipografía de importes de envases (19/10/2026)
+- [x] Valor unitario de tabla en negrita; precios de tarjetas negros (#171717)
+      en claro y claros (#d9e7f4) en oscuro. Sólo presentación.
+- [x] Revisión visual local con datos ficticios ../pilot-envases-precios-negros.png;
+      build PASS 631 módulos. La suite completa anterior 2070 PASS / 1 skipped
+      precede este ajuste tipográfico, sin cambios funcionales ni SQL.

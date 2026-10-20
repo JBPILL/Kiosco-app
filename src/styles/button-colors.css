@@ -491,12 +491,12 @@
   background: #294d6b;
 }
 :root .envases-recepcion [aria-label="Tipos de envase"] button .envase-price {
-  color: #36576b;
+  color: #171717;
   margin-top: .25rem;
   font-size: 1.125rem;
 }
 :root.dark .envases-recepcion [aria-label="Tipos de envase"] button .envase-price {
-  color: #a1c1dd;
+  color: #d9e7f4;
 }
 :root .envases-recepcion .envase-total {
   background: #e0e5d8;
