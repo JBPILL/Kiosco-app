@@ -115,3 +115,13 @@ Resultado posterior: suite integrada 2426 PASS / 1 skipped / 230 archivos;
 corrección de fixture readonly verificada con 102 pruebas afectadas y build
 final PASS. Edge local composición/replay PASS con una carga y consulta mock.
 No se instala SQL/Edge ni se autoriza emisión por esta verificación local.
+
+Avance F04 compartido 21/10: SQL 006 y sobre AES-GCM preparados con datos y claves
+efímeros sintéticos; coordinación por certificado/wsfe y recuperación de ACK.
+105 pruebas enfocadas y doce casos PostgreSQL PASS. TA vigente se reutiliza;
+se espera su vencimiento en el margen final. No hay activación ni custodia real;
+seguir con proveedor CMS/WSAA y recuperación operativa antes del endpoint.
+Resultado final del incremento: 2447 PASS / 1 skipped / 231 archivos, build PASS,
+doce casos PostgreSQL y tres aserciones Edge con cifrado real y servicios mock
+PASS. No hay TA/claves reales ni instalación remota. Custodia real y recuperación
+operativa siguen pendientes antes de habilitar el worker.

@@ -11,6 +11,8 @@ import type { FiscalRpc } from '../../supabase/functions/_shared/fiscalPersisten
 import { reconcileAuthorizedFiscalVoucher } from '../../supabase/functions/_shared/fiscalAuthorizedReconciliation'
 import { createFiscalTicketCache } from '../../supabase/functions/_shared/fiscalTicketCache'
 import type { WsaaTicketLoader } from '../../supabase/functions/_shared/fiscalTicketCache'
+import { createSharedFiscalTicketLoader } from '../../supabase/functions/_shared/fiscalSharedTickets'
+import { authorizeFiscalWorker } from '../../supabase/functions/_shared/fiscalWorkerAuthorization'
 
 const db = new PGlite()
 const kid=randomUUID(), auth=randomUUID(), owner=randomUUID(), sale=randomUUID(), op=randomUUID(), attempt=randomUUID()
@@ -30,7 +32,7 @@ beforeAll(async()=>{
     ...readdirSync(join(root,'steps')).sort().map(name=>join(root,'steps',name)),join(root,'900_final_security.sql')]) {
     await db.exec(readFileSync(file,'utf8'))
   }
-  for(const file of ['001_fiscal_journal.sql','002_fiscal_reservations.sql','003_fiscal_requests.sql','004_fiscal_reconciliation.sql','005_fiscal_worker_authorization.sql']) {
+  for(const file of ['001_fiscal_journal.sql','002_fiscal_reservations.sql','003_fiscal_requests.sql','004_fiscal_reconciliation.sql','005_fiscal_worker_authorization.sql','006_fiscal_shared_tickets.sql']) {
     const sql=readFileSync(join('supabase/pilot-fiscal',file),'utf8')
     await db.exec(sql); await db.exec(sql)
   }
@@ -234,13 +236,16 @@ it.each(['fiscal_autorizaciones_homologacion','fiscal_series_homologacion','fisc
 const persistedRpc: FiscalRpc={async rpc(name,args){
   const allowed:Record<string,string[]>={
     autorizar_consulta_fiscal_homologacion:['p_actor_auth_id','p_operacion_id'],
+    solicitar_ta_homologacion:['p_operacion_id','p_credencial_id','p_huella','p_revision','p_intento_id'],
+    confirmar_ta_homologacion:['p_operacion_id','p_credencial_id','p_huella','p_revision','p_intento_id','p_generacion','p_cifrado'],
     consultar_reconciliacion_homologacion:['p_operacion_id','p_id'],
     cargar_contexto_conciliacion_homologacion:['p_operacion_id'],
     registrar_reconciliacion_fiscal_homologacion:['p_id','p_operacion_id','p_intento_id','p_sha','p_revision','p_decision'],
   }
   const keys=allowed[name]; if(!keys)throw new Error('RPC no permitida en fixture')
-  const values=keys.map(key=>key==='p_decision'?JSON.stringify(args[key]):args[key])
-  const placeholders=keys.map((key,index)=>'$'+(index+1)+(key==='p_decision'?'::jsonb':''))
+  const isJson=(key:string)=>key==='p_decision'||key==='p_cifrado'
+  const values=keys.map(key=>isJson(key)?JSON.stringify(args[key]):args[key])
+  const placeholders=keys.map((key,index)=>'$'+(index+1)+(isJson(key)?'::jsonb':''))
   const result=await db.query<{ack:unknown}>(`SELECT ${name}(${placeholders.join(',')}) ack`,values)
   return {data:result.rows[0].ack,error:null}
 }}
@@ -358,4 +363,71 @@ it('composición privada verifica actor/emisor antes de custodia y no renueva TA
   expect(await reconcileAuthorizedFiscalVoucher(admin,'SYNTHETIC_JWT',op,id,cache,load,fetcher)).toEqual(ack)
   expect(load).toHaveBeenCalledTimes(1);expect(fetcher).toHaveBeenCalledTimes(1)
   expect(JSON.stringify(ack)).not.toContain('SYNTHETIC')
+})
+
+it('comparte sólo TA cifrado entre dos cachés y recupera ACK perdido sin renovar WSAA',async()=>{
+  await provisionEmitter()
+  const admin={...persistedRpc,auth:{async getUser(){return {data:{user:{id:auth}},error:null}}}}
+  const binding=await authorizeFiscalWorker(admin,'SYNTHETIC_JWT',op)
+  const key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']),keyId=randomUUID()
+  const keys={async active(){return {id:keyId,key}},async read(id:string){expect(id).toBe(keyId);return key}}
+  const source=vi.fn<WsaaTicketLoader>(async b=>({entorno:'HOMOLOGACION',servicio:'wsfe',cuitEmisor:b.cuit_emisor,credencialId:b.credencial_id,
+    certificadoSha256:b.certificado_sha256,token:'SYNTHETIC_SHARED_TOKEN',sign:'SYNTHETIC_SHARED_SIGN',expiresAt:Date.now()+120000}))
+  let lose=true
+  const dbLost: FiscalRpc={async rpc(name,args){const result=await persistedRpc.rpc(name,args)
+    if(name==='confirmar_ta_homologacion'&&lose){lose=false;throw new Error('SYNTHETIC_ACK_LOST')}return result}}
+  await expect(createFiscalTicketCache().get(binding,createSharedFiscalTicketLoader(dbLost,keys,source)))
+    .rejects.toThrow('FISCAL_TICKET_NO_DISPONIBLE')
+  const loaded=await createFiscalTicketCache().get(binding,createSharedFiscalTicketLoader(persistedRpc,keys,source))
+  expect(loaded.token).toBe('SYNTHETIC_SHARED_TOKEN');expect(source).toHaveBeenCalledTimes(1)
+  await db.exec('RESET ROLE')
+  const rows=(await db.query<{cifrado:unknown}>('SELECT cifrado FROM fiscal_ta_homologacion')).rows
+  expect(JSON.stringify(rows)).not.toContain('SYNTHETIC_SHARED')
+  expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_ta_intentos_homologacion')).rows[0].n).toBe(1)
+})
+it('renovación incierta no se libera por otro trabajador ni por reintento',async()=>{
+  await provisionEmitter()
+  const admin={...persistedRpc,auth:{async getUser(){return {data:{user:{id:auth}},error:null}}}}
+  const binding=await authorizeFiscalWorker(admin,'SYNTHETIC_JWT',op)
+  const source=vi.fn<WsaaTicketLoader>(async()=>{throw new Error('SYNTHETIC_WSAA_TIMEOUT')})
+  const key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']),keyId=randomUUID()
+  const keys={async active(){return {id:keyId,key}},async read(){return key}}
+  const loader=createSharedFiscalTicketLoader(persistedRpc,keys,source)
+  await expect(createFiscalTicketCache().get(binding,loader)).rejects.toThrow('FISCAL_TICKET_NO_DISPONIBLE')
+  await expect(createFiscalTicketCache().get(binding,loader)).rejects.toThrow('FISCAL_TICKET_NO_DISPONIBLE')
+  expect(source).toHaveBeenCalledTimes(1)
+})
+it.each(['anon','authenticated','service_role'])('TA compartido sin acceso directo para %s',async role=>{
+  await db.exec(`RESET ROLE; SET ROLE ${role}`)
+  for(const table of ['fiscal_ta_homologacion','fiscal_ta_intentos_homologacion']){
+    await denied(()=>db.exec(`SELECT * FROM ${table}`));await denied(()=>db.exec(`DELETE FROM ${table}`))
+  }
+})
+
+it('cifra y conserva un TA válido recibido después de abort del consumidor',async()=>{
+  await provisionEmitter()
+  const admin={...persistedRpc,auth:{async getUser(){return {data:{user:{id:auth}},error:null}}}}
+  const binding=await authorizeFiscalWorker(admin,'SYNTHETIC_JWT',op),controller=new AbortController()
+  const key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']),keyId=randomUUID()
+  const keys={async active(){return {id:keyId,key}},async read(){return key}}
+  const source=vi.fn<WsaaTicketLoader>(async b=>{controller.abort();return {entorno:'HOMOLOGACION',servicio:'wsfe',cuitEmisor:b.cuit_emisor,
+    credencialId:b.credencial_id,certificadoSha256:b.certificado_sha256,token:'SYNTHETIC_LATE',sign:'SYNTHETIC_LATE',expiresAt:Date.now()+120000}})
+  const loader=createSharedFiscalTicketLoader(persistedRpc,keys,source)
+  await loader(binding,controller.signal)
+  expect((await loader(binding,new AbortController().signal)).token).toBe('SYNTHETIC_LATE')
+  expect(source).toHaveBeenCalledTimes(1)
+})
+it('no llama WSAA si la clave de cifrado no está disponible',async()=>{
+  await provisionEmitter()
+  const admin={...persistedRpc,auth:{async getUser(){return {data:{user:{id:auth}},error:null}}}}
+  const binding=await authorizeFiscalWorker(admin,'SYNTHETIC_JWT',op),source=vi.fn<WsaaTicketLoader>()
+  const keys={async active():Promise<{id:string;key:CryptoKey}>{throw new Error('SYNTHETIC_KEY_UNAVAILABLE')},async read():Promise<CryptoKey>{throw new Error('SYNTHETIC_KEY_UNAVAILABLE')}}
+  await expect(createSharedFiscalTicketLoader(persistedRpc,keys,source)(binding,new AbortController().signal)).rejects.toThrow('FISCAL_TICKET_COMPARTIDO_NO_CONFIRMADO')
+  expect(source).not.toHaveBeenCalled()
+})
+it.each(['fiscal_ta_homologacion','fiscal_ta_intentos_homologacion'])('no concede renovación si se omite escritura en %s',async table=>{
+  await provisionEmitter();const binding=await authorize();await db.exec('RESET ROLE')
+  await db.exec(`CREATE FUNCTION omitir_ta() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$;
+    CREATE TRIGGER omitir BEFORE ${table==='fiscal_ta_homologacion'?'UPDATE':'INSERT'} ON ${table} FOR EACH ROW EXECUTE FUNCTION omitir_ta(); SET ROLE service_role`)
+  await denied(()=>db.query('SELECT solicitar_ta_homologacion($1,$2,$3,1,$4)',[op,binding.credencial_id,'a'.repeat(64),randomUUID()]))
 })

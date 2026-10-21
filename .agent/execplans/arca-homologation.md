@@ -592,3 +592,61 @@ exited. Diez casos PostgreSQL reales PASS, manifiesto 43 SQL PASS. Escaneo:
 reescaneó historial. La revisión de permisos/caché es local: no acredita Auth
 JWT/RLS hospedados ni proveedor real de certificado/TA. Próximo paso F04:
 custodia/CMS/WSAA y renovación coordinada entre procesos, antes del endpoint.
+
+### F04 — coordinación TA compartida y sobre cifrado — 21/10/2026
+
+La especificación oficial WSAA exige usar el TA mientras siga vigente (12 horas
+según esa versión). Se corrigió la renovación anticipada local: en el margen
+final de 60 segundos no se envía a WSFE ni se pide otro TA; se espera vencimiento.
+No se aplicó este cambio contra ARCA, sólo fixtures. Fuente primaria:
+https://www.afip.gov.ar/ws/WSAA/Especificacion_Tecnica_WSAA_1.2.2.pdf (p. 9–10).
+
+- SQL 006 aditivo preparado: coordinación global por huella de certificado,
+  entorno homologación y servicio wsfe, incluso entre comercios/aliases distintos.
+  El gate privado de emisor se revalida en cada RPC. No concede SELECT/DML API.
+- La intención durable precede red; un único trabajador obtiene nuevo_intento.
+  Repetir/solicitar con otro ID ante estado incierto no concede nueva renovación.
+  No hay liberación por timeout ni vencimiento automático del trabajador. Queda
+  pendiente un procedimiento autorizado de recuperación del estado incierto,
+  incluso si el fallo ocurrió antes de red o se perdió el ACK de adquisición.
+- Para compartir TA se preparó un sobre AES-256-GCM mediante WebCrypto: nonce
+  aleatorio de 96 bits, tag 128 bits y AAD de proyecto Staging/entorno/servicio/
+  certificado/ID de clave/vencimiento. Clave CryptoKey no exportable suministrada
+  sólo por un proveedor privado; no se crea ni almacena una clave real aquí.
+  Referencia del algoritmo: https://www.w3.org/TR/2017/REC-WebCryptoAPI-20170126/#aes-gcm .
+- Sólo el sobre cifrado puede llegar al SQL nuevo. Token/Sign planos continúan
+  únicamente en memoria del proceso. Esto amplía la propuesta de caché compartida:
+  antes de activarla se requiere autorización de instalación y provisión/custodia
+  de la clave privada de cifrado; no se habilita por este commit.
+- Composición de loader recupera/descifra el sobre o renueva una sola vez; clave
+  de cifrado se valida antes de llamar al proveedor WSAA. Un TA válido que llega
+  después del abort se conserva cifrado para no perderlo. ACK perdido al confirmar
+  se recupera sin otra renovación. No hay ruta para hacer CMS ni WSAA reales aún.
+- Claves antiguas de cifrado deben conservarse durante la vigencia de sobres que
+  las usan. No colocar claves de descifrado en la misma DB/backup. Tras restore,
+  mantener worker detenido hasta revalidar coordinación/TA y numeración; no
+  restaurar una caché como prueba de autorización fiscal. Gate DR sigue abierto.
+- Pruebas enfocadas 105 PASS; build PASS previo al último guard de abort (misma
+  API). Doce carreras/casos PostgreSQL 17.11 PASS; dos comercios comparten una
+  sola intención y el sobre confirmado. Fixture de carrera es opaco sintético;
+  cifrado real y recuperación se prueban aparte con WebCrypto+PGlite. Evidencia:
+  fiscal-shared-tickets-concurrency-20261021.json, fuera de Git. Contenedor propio
+  detenido; cero consultas/emisiones externas.
+- Suite integrada y ejecución Edge finales todavía pendientes/en curso. Fuente
+  de certificado/CMS/WSAA, endpoint, instalación y aceptación hospedada siguen
+  abiertos. SQL 001–006 no instalados remotamente; no credenciales reales usadas.
+
+Verificación final compartida (21/10): suite integrada 2447 PASS / 1 skipped /
+231 archivos, 211,77 s; build final PASS (634 módulos). Edge Runtime v1.77.4
+local ejecutó tres aserciones con cifrado/descifrado reales y claves efímeras:
+una carga WSAA simulada, una consulta fiscal simulada y recuperación en otra
+caché sin renovación adicional. RPC/Auth fueron mocks, cero SQL/red fiscal.
+Evidencia: fiscal-shared-edge-result.json; contenedor propio confirmado exited.
+Doce casos PostgreSQL reales PASS, incluyendo exclusión entre comercios para un
+mismo certificado y lectura del sobre tras commit. Escaneo 1188 archivos/1174
+texto/14 binarios omitidos, mismos 46 candidatos, delta 0; historial no escaneado.
+Manifiesto histórico de 43 SQL intacto. No se usaron certificados, claves o TA
+reales, no se instalaron SQL/Edge ni se modificó .env. Siguiente trabajo F04:
+proveedor real de custodia/CMS/WSAA y recuperación operativa de intención incierta;
+activación de persistencia cifrada requiere autorización específica junto al
+provisionamiento privado de claves. PR03, F04 y gates hospedados siguen abiertos.

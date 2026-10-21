@@ -95,7 +95,7 @@ try {
     ...readdirSync(join(bootstrap,'steps')).sort().map(file=>join(bootstrap,'steps',file)),join(bootstrap,'900_final_security.sql'),
     join(root,'supabase/pilot-fiscal/001_fiscal_journal.sql'),join(root,'supabase/pilot-fiscal/002_fiscal_reservations.sql'),
     join(root,'supabase/pilot-fiscal/003_fiscal_requests.sql'),join(root,'supabase/pilot-fiscal/004_fiscal_reconciliation.sql'),
-    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql')]) {
+    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql')]) {
     await observer.query(readFileSync(file,'utf8'))
   }
   async function fixture() {
@@ -199,6 +199,30 @@ try {
   const crossActor=await capture(b.query('SELECT autorizar_consulta_fiscal_homologacion($1,$2)',[foreign.auth,first.id]))
   assert.equal(crossActor.error?.code,'42501');await b.query('ROLLBACK')
   cases.push('gate_emisor_privado_y_actor_ajeno_rechazado')
+  const credentialA=permitted.rows[0].ack.credencial_id,credentialB=randomUUID(),fingerprint='a'.repeat(64)
+  await observer.query(`INSERT INTO fiscal_emisores_homologacion(kiosco_id,cuit_emisor,punto_venta,credencial_id,certificado_sha256,habilitado)
+    VALUES($1,$2,2,$3,$4,true)`,[foreign.kid,issuer,credentialB,fingerprint])
+  const acquire=async(client,operation,credential,attemptId)=>
+    (await client.query('SELECT solicitar_ta_homologacion($1,$2,$3,1,$4) ack',[operation,credential,fingerprint,attemptId])).rows[0].ack
+  const taAttempt=randomUUID()
+  await start(a);const taLease=await acquire(a,first.id,credentialA,taAttempt)
+  assert.equal(taLease.nuevo_intento,true)
+  await start(b);const pendingTa=capture(acquire(b,other.id,credentialB,randomUUID()))
+  await waitForLock(observer,b);await a.query('COMMIT')
+  const taBlocked=await pendingTa;assert(!taBlocked.error);assert.equal(taBlocked.value.estado,'RENOVACION_PENDIENTE')
+  assert.equal(taBlocked.value.nuevo_intento,false);await b.query('COMMIT')
+  cases.push('dos_comercios_mismo_certificado_una_renovacion_TA')
+  // Sobre opaco sintético: comprueba CAS SQL; cifrado/descifrado real se prueba
+  // por separado. Este fixture jamás representa un TA de ARCA.
+  const cipher={version:1,keyId:randomUUID(),nonce:'0'.repeat(24),ciphertext:'0'.repeat(32),expiresAt:Date.now()+120000}
+  await start(a)
+  await a.query('SELECT confirmar_ta_homologacion($1,$2,$3,1,$4,$5,$6::jsonb)',[first.id,credentialA,fingerprint,taAttempt,taLease.revision,JSON.stringify(cipher)])
+  await start(b);const pendingRead=capture(acquire(b,other.id,credentialB,randomUUID()))
+  await waitForLock(observer,b);await a.query('COMMIT')
+  const shared=await pendingRead;assert(!shared.error);assert.equal(shared.value.estado,'DISPONIBLE')
+  assert.equal(shared.value.nuevo_intento,false);assert.deepEqual(shared.value.cifrado,cipher);await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_ta_intentos_homologacion')).rows[0].n,1)
+  cases.push('TA_confirmado_compartido_sin_nuevo_intento')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',

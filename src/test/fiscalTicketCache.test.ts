@@ -22,10 +22,13 @@ it('reutiliza TA vigente sin exponer Token/Sign en serialización habitual',asyn
   expect({...first}).toEqual({expiresAt:time+120000});expect(String(first)).toBe('[Ticket WSAA privado]')
   expect(Object.isFrozen(first)).toBe(true)
 })
-it('excluye renovaciones simultáneas y renueva antes del vencimiento',async()=>{
+it('excluye renovaciones simultáneas y espera vencimiento real para renovar',async()=>{
   const cache=createFiscalTicketCache({now:()=>time}),load=vi.fn(async()=>envelope())
   const results=await Promise.all(Array.from({length:12},()=>cache.get(binding,load)))
   expect(load).toHaveBeenCalledTimes(1);expect(new Set(results).size).toBe(1)
+  time+=60000
+  await expect(cache.get(binding,load)).rejects.toThrow('FISCAL_TICKET_NO_DISPONIBLE')
+  expect(load).toHaveBeenCalledTimes(1)
   time+=60000
   await cache.get(binding,load);expect(load).toHaveBeenCalledTimes(2)
 })
@@ -45,7 +48,7 @@ it.each(['emisor','certificado','credencial','vencido','token','control','sign']
   if(mode==='emisor')value.cuitEmisor='30123456789'
   if(mode==='certificado')value.certificadoSha256='b'.repeat(64)
   if(mode==='credencial')value.credencialId=randomUUID()
-  if(mode==='vencido')value.expiresAt=time+60000
+  if(mode==='vencido')value.expiresAt=time
   if(mode==='token')value.token=''
   if(mode==='control')value.token='x\u0000'
   if(mode==='sign')value.sign='x'.repeat(262145)
@@ -77,8 +80,14 @@ it('limita entradas sin desalojar renovaciones activas',async()=>{
   await cache.get(binding,load)
   await expect(cache.get({...binding,credencial_id:randomUUID()},load)).rejects.toThrow('FISCAL_TICKET_NO_DISPONIBLE')
   expect(load).toHaveBeenCalledTimes(1)
-  time+=60000
+  time+=120000
   await cache.get({...binding,credencial_id:randomUUID()},load);expect(load).toHaveBeenCalledTimes(2)
+})
+it('una fuente con TA próximo a vencer no dispara otra renovación durante su vigencia',async()=>{
+  const cache=createFiscalTicketCache({now:()=>time}),load=vi.fn(async()=>({...envelope(),expiresAt:time+30000}))
+  await expect(cache.get(binding,load)).rejects.toThrow('FISCAL_TICKET_NO_DISPONIBLE')
+  await expect(cache.get(binding,load)).rejects.toThrow('FISCAL_TICKET_NO_DISPONIBLE')
+  expect(load).toHaveBeenCalledTimes(1)
 })
 it.each([{...binding,entorno:'PRODUCCION'},{...binding,credencial_id:'-'.repeat(36)},
   {...binding,certificado_sha256:'a'.repeat(65)},{...binding,revision:0}])('rechaza metadatos antes de tocar custodia %#',async data=>{

@@ -28,7 +28,10 @@ export function createFiscalTicketCache(options: {now?:()=>number;timeoutMs?:num
     const existing=entries.get(key)
     if(existing?.pending)return existing.pending
     if(existing?.ticket&&existing.expiresAt>time+60000)return existing.ticket
-    for(const [id,entry] of entries)if(!entry.pending&&entry.expiresAt<=time+60000)entries.delete(id)
+    // WSAA exige reutilizar el TA mientras esté vigente. En el margen de envío
+    // no se usa ni se renueva: esperar vencimiento evita pedir TA solapados.
+    if(existing&&existing.expiresAt>time)return fail()
+    for(const [id,entry] of entries)if(!entry.pending&&entry.expiresAt<=time)entries.delete(id)
     if(entries.size>=capacity)return fail()
     const entry:Entry={expiresAt:0},controller=new AbortController()
     entries.set(key,entry)
@@ -39,10 +42,12 @@ export function createFiscalTicketCache(options: {now?:()=>number;timeoutMs?:num
       const current=now()
       if(value.entorno!==b.entorno||value.servicio!==b.servicio||value.cuitEmisor!==b.cuit_emisor
         ||value.credencialId!==b.credencial_id||value.certificadoSha256!==b.certificado_sha256
-        ||!Number.isSafeInteger(current)||!Number.isSafeInteger(value.expiresAt)||value.expiresAt<=current+60000
+        ||!Number.isSafeInteger(current)||!Number.isSafeInteger(value.expiresAt)||value.expiresAt<=current
         ||typeof value.token!=='string'||typeof value.sign!=='string'
         ||!value.token.length||!value.sign.length||value.token.length>262144||value.sign.length>262144
         ||!/^[\x09\x0A\x0D\x20-\x7E]+$/.test(value.token)||!/^[\x09\x0A\x0D\x20-\x7E]+$/.test(value.sign))return fail()
+      entry.expiresAt=value.expiresAt
+      if(value.expiresAt<=current+60000)return fail()
       // Evita filtración accidental con JSON.stringify/spread/console habituales.
       // No sustituye custodia ni permite devolver este objeto al navegador.
       const ticket=Object.defineProperties({expiresAt:value.expiresAt},{
@@ -60,7 +65,7 @@ export function createFiscalTicketCache(options: {now?:()=>number;timeoutMs?:num
     },()=>{
       if(timer)clearTimeout(timer)
       // Una fuente que ignora abort sigue ocupando la ranura: no solapar WSAA.
-      if(!timedOut&&entries.get(key)===entry)entries.delete(key)
+      if(!timedOut&&entry.expiresAt<=now()&&entries.get(key)===entry)entries.delete(key)
       return fail()
     })
     void source.finally(()=>{if(timedOut&&entries.get(key)===entry)entries.delete(key)}).catch(()=>{})

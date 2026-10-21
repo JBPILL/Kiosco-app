@@ -382,3 +382,20 @@ confirmado no renueva WSAA ni consulta WSFE. La caché de proceso no serializa
 Token/Sign en operaciones habituales, no usa TA vencido y no solapa renovaciones
 si una fuente ignora abort. No basta para varios procesos: custodia real y
 coordinación distribuida siguen pendientes antes de habilitar el worker.
+
+## 21/10/2026 — Compartir TA cifrado y no renovar mientras siga vigente
+
+WSAA documenta reutilizar el TA vigente antes de solicitar otro. Se reemplaza
+la renovación anticipada por espera en el margen final de seguridad de envío.
+La coordinación usa certificado+homologación+wsfe, porque el TA corresponde al
+CEE y servicio, no al alias local del comercio.
+
+Se prepara persistir sólo un sobre AES-GCM privado para compartir entre procesos;
+la clave proviene de custodia externa al DB/backup. Token/Sign descifrados quedan
+en memoria y no se serializan en salidas habituales. La activación requiere gate
+de instalación y provisión de claves; no se utilizó TA ni clave reales.
+Se conserva la intención ante respuesta incierta: un timeout no autoriza otra
+llamada a WSAA. Recuperación operativa explícita pendiente antes de habilitar
+servicio hospedado. Rotación y DR deben preservar claves vigentes y detener el
+worker hasta revalidar el estado restaurado. No usar cifrado como sustituto de
+Auth/tenant: el gate privado se aplica antes de recuperar el sobre.
