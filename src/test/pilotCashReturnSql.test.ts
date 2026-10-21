@@ -2,6 +2,8 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest'
+import { freezeFiscalRequest, serializeFiscalRequest } from '../../supabase/functions/_shared/fiscalReconciliation'
+import { wsfeSample } from './fixtures/fiscalWsfe'
 
 const db = new PGlite()
 const id = (n: number) => `de000000-0000-4000-8000-${String(n).padStart(12, '0')}`
@@ -54,6 +56,9 @@ beforeAll(async()=>{
   const modulo=readFileSync('supabase/bootstrap/returns/001_atomic_cash_return.sql','utf8')
   await db.exec(modulo); await db.exec(modulo)
   await db.exec(readFileSync('supabase/bootstrap/returns/003_whole_unit_quantities.sql','utf8'))
+  for(const path of readdirSync('supabase/pilot-fiscal').filter(n=>/^\d{3}_.*\.sql$/.test(n)).sort()) {
+    const sql=readFileSync(`supabase/pilot-fiscal/${path}`,'utf8');await db.exec(sql);await db.exec(sql)
+  }
   await db.exec(`INSERT INTO auth.users(id) VALUES('${owner}'),('${cashier}'),('${viewer}'),('${other}');
     INSERT INTO kioscos(id,nombre) VALUES('${kid}','Ensayo'),('${foreign}','Otro');
     INSERT INTO piloto_operaciones_capacidades(kiosco_id,devoluciones_efectivo) VALUES('${kid}',true),('${foreign}',true);
@@ -79,6 +84,47 @@ beforeAll(async()=>{
 beforeEach(async()=>{ await db.exec('RESET ROLE; BEGIN;'); await actor() })
 afterEach(async()=>{ await db.exec('ROLLBACK; RESET ROLE;') })
 afterAll(async()=>{ await db.close() })
+
+async function prepararFiscal() {
+  await actor(owner)
+  await db.query('SELECT preparar_operacion_fiscal_homologacion($1,$2,$3,$4::jsonb)',[id(200),kid,venta,JSON.stringify({version:1,cuit_emisor:wsfeSample.cuitEmisor,punto_venta:2,tipo_comprobante:11,tipo_doc_receptor:99,nro_doc_receptor:'0'})])
+}
+async function reservarFiscal() {
+  const frozen=await freezeFiscalRequest({...wsfeSample,importes:{...wsfeSample.importes,total:'1.00',neto:'1.00'}})
+  await actor(owner,'service_role')
+  return db.query('SELECT persistir_solicitud_fiscal_homologacion($1,$2,$3,0,clock_timestamp())',[id(200),await serializeFiscalRequest(frozen),frozen.sha256])
+}
+it.each(['RESERVADA','ENVIO_INCIERTO','AUTORIZADA'])('devolución común rechazada sin stock/caja cuando la factura está %s',async fase=>{
+  await prepararFiscal();await reservarFiscal()
+  if(fase!=='RESERVADA')await db.query('SELECT registrar_intento_fiscal_homologacion($1,$2)',[id(200),id(201)])
+  if(fase==='AUTORIZADA')await db.exec("RESET ROLE; UPDATE fiscal_reservas_homologacion SET estado='AUTORIZADA'")
+  await actor(cashier)
+  await rechazo(()=>devolver(),/facturación reservada o confirmada/)
+  expect(await estado()).toEqual({stock:'2.000',lote:'0.000',devoluciones:0,egresos:0})
+})
+it('devolver antes de reservar impide fiscalizar el total original y no consume número',async()=>{
+  await prepararFiscal();await actor(cashier);await devolver()
+  await rechazo(()=>reservarFiscal(),/tiene devoluciones/)
+  await db.exec('RESET ROLE')
+  expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_reservas_homologacion')).rows[0].n).toBe(0)
+  expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_series_homologacion')).rows[0].n).toBe(0)
+  expect(await estado()).toEqual({stock:'3.000',lote:'1.000',devoluciones:1,egresos:1})
+})
+it('preparar sin reserva permite devolución y conserva el ACK recuperable',async()=>{
+  await prepararFiscal();await actor(cashier)
+  const ack=await devolver();expect(await devolver()).toEqual(ack)
+  expect(await estado()).toEqual({stock:'3.000',lote:'1.000',devoluciones:1,egresos:1})
+})
+it.each(['anon','authenticated','service_role'])('los helpers de trigger no son ejecutables por %s',async role=>{
+  await db.exec('RESET ROLE')
+  expect((await db.query<{allowed:boolean}>(`SELECT has_function_privilege($1,'public.fiscal_proteger_devolucion_reservada()','EXECUTE') OR has_function_privilege($1,'public.fiscal_proteger_reserva_devuelta()','EXECUTE') allowed`,[role])).rows[0].allowed).toBe(false)
+})
+it.each(['REPEATABLE READ','SERIALIZABLE'])('snapshot fija %s falla cerrada sin devolución ni reserva',async isolation=>{
+  await db.exec(`ROLLBACK; RESET ROLE; BEGIN ISOLATION LEVEL ${isolation}`)
+  await actor(cashier);await rechazo(()=>devolver(),/requiere READ COMMITTED/)
+  await prepararFiscal();await rechazo(()=>reservarFiscal(),/requiere READ COMMITTED/)
+  expect(await estado()).toEqual({stock:'2.000',lote:'0.000',devoluciones:0,egresos:0})
+})
 
 it('recupera la misma devolución sin duplicar efectivo, stock ni lote; conserva costo histórico',async()=>{
   const primera=await devolver()

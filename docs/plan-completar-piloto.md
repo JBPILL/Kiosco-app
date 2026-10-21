@@ -197,3 +197,46 @@ ninguna prueba fiscal nueva omitida. Build posterior PASS, 634 módulos;
 Manifiesto 43 SQL PASS; diff sin errores; escaneo 1210 archivos, 47 candidatos,
 delta 0. Este cierre reemplaza el estado de suite en ejecución anterior para
 este incremento. SQL 001–009 y Edge fiscal continúan sin instalar/activar.
+
+### PR03 — exclusión devolución/reserva preparada, 21/10/2026
+
+SQL 010 agrega guards privados en devoluciones_venta (incluido el camino heredado)
+y fiscal_reservas_homologacion. Ambos bloquean las mismas filas de ventas antes
+de comprobar el otro registro. Una devolución previa impide reservar el total
+original; cualquier reserva, incierta o autorizada, impide una devolución común.
+La mera preparación sin reserva permite devolver y recuperar el ACK. No hay
+reescritura de afip_cae, notas de crédito, importes, stock ni caja por estos guards.
+Las devoluciones atómicas v1/v2 registran primero el mismo padre, por lo que el
+rechazo revierte su transacción. Los permisos existentes no se amplían.
+
+La protección exige READ COMMITTED, aislamiento de las RPC actuales. Se rechazan
+REPEATABLE READ/SERIALIZABLE antes de escribir: una snapshot fija no permite
+apoyarse en una consulta posterior al lock para ver un commit concurrente. No se
+baja el aislamiento silenciosamente ni se actualiza comercialmente la venta para
+forzar conflictos. Helpers SECURITY DEFINER con search_path fijo y EXECUTE revocado.
+
+195 pruebas enfocadas PASS (diario/persistencia/worker/devolución real), incluida
+falta de efectos de stock/lote/caja en los tres estados fiscales, reserva después
+de devolución sin consumir número, replay y aislamiento/ACL. 20 carreras PostgreSQL
+17.11 PASS: los dos nuevos órdenes observaron el lock real antes de liberar el
+competidor. Primera ejecución falló 42501 por identidad ausente en el fixture
+heredado; se agregó la identidad correcta sin eliminar el control. Evidencia
+final: fiscal-return-exclusion-concurrency-20261021-v3.json; contenedores propios
+detenidos, datos preservados y cero conexiones remotas. La primera compilación
+marcó dos accesos unknown en pruebas; corregidos con tipos explícitos. Build final
+y suite integrada en ejecución, sin declarar aún cierre integrado de SQL 010.
+
+SQL 001–010 siguen sin instalar; los conflictos históricos, si aparecen en el
+preflight de instalación, requieren conciliación y no se borran. Falta resolver
+preparación fiscal/revisión UI, rechazos, aceptación hospedada y decisión externa
+de notas de crédito. PR03 continúa PARCIAL y PR02 sin CAE real.
+
+Cierre integrado SQL 010: 2666 PASS / 1 skipped / 238 archivos, salida 0,
+registrado en pilot-fiscal-return-exclusion-suite-results.json. La omitida sigue
+siendo la fixture F6 sin configurar; ninguna prueba fiscal nueva omitida. 195
+casos enfocados, 20 carreras PostgreSQL v3, build 634 módulos, oxlint dirigido,
+manifest 43 y diff PASS. Escaneo 1211 archivos/47 candidatos/delta 0. Este cierre
+sustituye el estado anterior de suite en curso. Sin instalación SQL/Edge, sin
+emisión real, sin frontend/deploy nuevo ni cambios en master/Production. Próximo:
+preparación fiscal explícita y revisión UI, con resolución de rechazos y los
+gates hospedados pendientes; no reutilizar defaults de punto/IVA del legado.

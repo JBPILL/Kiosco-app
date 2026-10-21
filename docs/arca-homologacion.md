@@ -369,3 +369,7 @@ ninguna prueba fiscal nueva omitida. Build posterior PASS, 634 módulos;
 Manifiesto 43 SQL PASS; diff sin errores; escaneo 1210 archivos, 47 candidatos,
 delta 0. Este cierre reemplaza el estado de suite en ejecución anterior para
 este incremento. SQL 001–009 y Edge fiscal continúan sin instalar/activar.
+
+SQL 010 prepara la exclusión transaccional de devolución/reserva con lock de venta, sin modificar stock/caja. Exige READ COMMITTED; otras snapshots fallan cerradas. 195 pruebas enfocadas y 20 carreras PostgreSQL locales PASS. No instalado; faltan preparación/UI, rechazos y notas de crédito antes de aceptar el piloto fiscal.
+
+Cierre SQL 010: 2666 PASS / 1 skipped / 238 archivos; build, 195 enfocadas, 20 carreras PostgreSQL y oxlint dirigido PASS. Pruebas locales, sin instalación ni emisión real.

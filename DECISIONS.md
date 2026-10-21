@@ -465,3 +465,15 @@ No se inventan IVA, tributos o importes desde defaults, ni se atribuye una
 numeración ocupada sin intento propio. El flag de emisión es separado y cerrado.
 La devolución fiscal debe reconocer el ledger nuevo antes de activar usuarios;
 el circuito de nota de crédito conserva su decisión externa pendiente.
+
+## 21/10/2026 — Devoluciones y reserva fiscal comparten exclusión por venta
+
+El registro antiguo afip_cae no reconoce la nueva autorización privada. Se elige
+proteger la tabla padre de devoluciones y la reserva fiscal con la misma fila de
+venta, en lugar de duplicar CAE o confiar en un bloqueo del modal. Se conserva la
+preparación sin reserva y el replay de devoluciones ya confirmadas. Una devolución
+previa no se descuenta/infiere fiscalmente: bloquea facturar el total original.
+La implementación exige READ COMMITTED para ver commits tras esperar el lock;
+rechaza snapshots fijas explícitamente y no muta ventas para forzar conflictos.
+SQL 010 preparado, sin instalación. Notas de crédito requieren todavía su contrato
+fiscal externo y aceptación; estos guards no lo sustituyen.

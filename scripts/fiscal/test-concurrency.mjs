@@ -95,7 +95,7 @@ try {
     ...readdirSync(join(bootstrap,'steps')).sort().map(file=>join(bootstrap,'steps',file)),join(bootstrap,'900_final_security.sql'),
     join(root,'supabase/pilot-fiscal/001_fiscal_journal.sql'),join(root,'supabase/pilot-fiscal/002_fiscal_reservations.sql'),
     join(root,'supabase/pilot-fiscal/003_fiscal_requests.sql'),join(root,'supabase/pilot-fiscal/004_fiscal_reconciliation.sql'),
-    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql')]) {
+    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql')]) {
     await observer.query(readFileSync(file,'utf8'))
   }
   async function fixture() {
@@ -290,6 +290,27 @@ try {
   assert.equal((await observer.query('SELECT estado FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[revoked.op])).rows[0].estado,'RESERVADA')
   assert.equal((await observer.query('SELECT usado_por_intento FROM fiscal_permisos_emision_homologacion WHERE operacion_id=$1',[revoked.op])).rows[0].usado_por_intento,null)
   cases.push('revocar_permiso_antes_intencion_no_modifica_reserva')
+  // Ambos órdenes reales, con espera de lock observada (no sleeps inferidos).
+  const beforeReturn=await fixture()
+  await start(a,'authenticated',beforeReturn.auth);const fiscalFirst=await prepare(a,beforeReturn,randomUUID(),83);await a.query('COMMIT')
+  await start(a);await reserve(a,fiscalFirst.id,83,0)
+  await b.query('BEGIN')
+  await b.query("SELECT set_config('request.jwt.claim.sub',$1,true)",[beforeReturn.auth])
+  const blockedReturn=capture(b.query('INSERT INTO devoluciones_venta(venta_id,kiosco_id) VALUES($1,$2)',[beforeReturn.sale,beforeReturn.kid]))
+  await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await blockedReturn).error?.code,'55000');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM devoluciones_venta WHERE venta_id=$1',[beforeReturn.sale])).rows[0].n,0)
+  cases.push('reserva_antes_devolucion_bloquea_registro_heredado')
+  const afterReturn=await fixture()
+  await start(a,'authenticated',afterReturn.auth);const returnFirst=await prepare(a,afterReturn,randomUUID(),84);await a.query('COMMIT')
+  await a.query('BEGIN');await a.query("SELECT set_config('request.jwt.claim.sub',$1,true)",[afterReturn.auth])
+  await a.query('INSERT INTO devoluciones_venta(venta_id,kiosco_id) VALUES($1,$2)',[afterReturn.sale,afterReturn.kid])
+  await start(b);const blockedFiscal=capture(reserve(b,returnFirst.id,84,0))
+  await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await blockedFiscal).error?.code,'55000');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[returnFirst.id])).rows[0].n,0)
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_series_homologacion WHERE punto_venta=84')).rows[0].n,0)
+  cases.push('devolucion_antes_reserva_bloquea_total_original_sin_numero')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
