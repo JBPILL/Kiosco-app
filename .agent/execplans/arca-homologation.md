@@ -239,3 +239,46 @@ transición productiva y el piloto comercial con responsables, conciliación,
 soporte y rollback; su ejecución requiere aprobación específica. Impresora/cajón
 físicos y Point permanecen diferidos hasta contar con cliente. Master y
 Production no se modifican por este objetivo. Conservar datos e historia.
+
+
+### PR03: primer registro durable implementado localmente — 20/10/2026
+
+Se preparó `supabase/pilot-fiscal/001_fiscal_journal.sql`, aditivo al bootstrap.
+Tabla privada `fiscal_operaciones_homologacion` y RPC
+`preparar_operacion_fiscal_homologacion`: sólo Dueño ordinario activo del mismo
+comercio activo, venta propia COMPLETADA con total positivo. Sin conexión de red,
+numeración, CAE, certificados, worker ni activación de frontend. NO instalado.
+
+Contrato inicial versionado: UUID de operación/comercio/venta y contexto cerrado
+(version, CUIT emisor propuesto, punto propuesto, tipo 1/6/11 y documento receptor).
+No admite importe, entorno, fecha o credenciales suministrados por el cliente.
+Deriva total/fecha/detalles desde DB y conserva snapshot estable en UTC. El
+contexto es una propuesta, NO configuración fiscal verificada ni cuerpo WSFE
+listo para emitir; falta condición IVA, desglose y validación fiscal completa.
+
+Unicidad por comercio/venta/homologación; reintento idéntico con otro UUID devuelve
+la operación original, sin fabricar otra identidad. Reutilización de UUID para
+otra venta o cambio de contexto/snapshot falla. Bloquea perfil/comercio/venta en
+orden consistente con los patrones existentes, sin llamada externa dentro de la
+transacción. No acredita concurrencia multiproceso real: ésta sigue en F03/F07.
+
+La tabla no concede SELECT/DML a anon/authenticated/service_role; revoca también
+permisos por columna al reaplicar y rechaza privilegios heredados. Sólo la RPC
+concede EXECUTE a authenticated y responde identidad/estado y
+`emision_habilitada=false`. No expone snapshot ni documentos al llamador. La
+anulación fiscal y su coordinación futura requieren contrato separado: preparar
+una operación no bloquea actualmente una anulación comercial, y el worker futuro
+debe revalidar y coordinar ambas antes de emitir. No habilitar el worker sin ello.
+
+Pruebas locales nuevas: 31 casos con bootstrap completo y reaplicación del SQL;
+incluyen DML/lectura, rol/tenant/estado, identidad/cuerpo, cambio de detalles,
+fecha estable entre zonas horarias y trigger que omite inserción sin falso ACK.
+Con diagnóstico WSAA: 33 PASS / 2 archivos. Suite global posterior: 2208 PASS / 1 skipped / 225 archivos (210,60 s).
+Build PASS, 634 módulos; manifiesto histórico 43 SQL PASS; diff PASS. Escaneo
+del árbol: 46 candidatos conocidos, sin candidatos nuevos. No hay dependencias
+nuevas. Estas comprobaciones locales no acreditan instalación ni JWT hospedados.
+
+Pendientes del bloque: completar F01/F02 (contrato fiscal final), hash/estados y
+reserva de numeración F03; custodia/caché privada F04; adaptador/reconciliación
+F05/F06; ensayos PostgreSQL/JWT/RLS hospedados y autorización de instalación.
+PR03 sigue PARCIAL, sin afirmar que este registro ya sea una pasarela fiscal.

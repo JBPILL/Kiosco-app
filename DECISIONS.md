@@ -278,3 +278,26 @@ Los estados locales/hospedados/productivos siguen diferenciados y la documentaci
 no amplía autorizaciones. Se continúa PR01 (consulta real WSFE homologación);
 WSAA real ya pasó, CAE/Producción no están aceptados. Impresora/cajón y Point
 siguen diferidos hasta cliente, sin convertir esa decisión en aprobación técnica.
+
+
+## 20/10/2026 — PR03: registro fiscal preparatorio separado del cierre comercial
+
+Contexto: PR01 de autenticación homologada está PASS; el esquema comercial tiene
+ventas COMPLETADA/ANULADA y un checkout durable, pero carece del diario fiscal.
+La Edge legacy no cumple custodia ni idempotencia. Alternativas: reutilizar el
+resultado comercial como autorización fiscal o habilitar el legacy; se descartan
+porque confunden efectos comerciales con una autorización externa incierta.
+
+Decisión: módulo SQL aditivo de preparación de homologación con identidad estable
+por venta, contexto cerrado y snapshot derivado de DB; permisos mínimos y sin
+credenciales/numeración/envío. Se devuelve el UUID original en reintentos con otro
+UUID y mismo contenido; cualquier cambio de contenido requiere resolver la
+operación existente, no crear otra silenciosamente. Preparación no valida todavía
+el emisor/punto ni representa el cuerpo WSFE completo. Sólo el Dueño ordinario
+puede preparar en esta primera etapa; permisos de cajero y trabajador deberán
+definirse y probarse antes de habilitarlos.
+
+Consecuencias: entrega incremental local comprobable; no permite emisión hasta
+completar reservas, estados, autorización/custodia, reconciliación y coordinación
+con anulación comercial. No se altera el manifiesto histórico ni se instala el
+módulo por esta decisión. PR03 y aceptación hospedada continúan pendientes.

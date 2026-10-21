@@ -262,3 +262,17 @@ sin abrir un plan equivalente ni duplicar la matriz canónica.
 Validación del código usado: 4 pruebas dirigidas PASS / 2 archivos, con 32
 comprobaciones sintéticas; diff PASS. La suite global/build anteriores no se
 reclasifican como ejecución posterior a este agregado. No hay nueva dependencia.
+
+
+### Avance PR03 local — 20/10/2026
+
+Primer diario preparatorio de homologación implementado en SQL aditivo, sin
+instalación remota ni integración de emisión. Conserva contexto propuesto y
+snapshot de venta; identidad estable, rechazo de cambio de contenido y permisos
+mínimos. No reserva números, contacta ARCA ni conserva credenciales. Detalles y
+límites en el [ExecPlan](../.agent/execplans/arca-homologation.md#pr03-primer-registro-durable-implementado-localmente--20102026).
+
+31 pruebas SQL locales nuevas; suite completa posterior 2208 PASS / 1 skipped /
+225 archivos, build PASS 634 módulos, manifiesto 43 SQL PASS y diff PASS. PR03
+sigue PARCIAL: faltan contrato final, numeración, worker/custodia, reconciliación
+y aceptación hospedada. No se emiten comprobantes con esta preparación.
