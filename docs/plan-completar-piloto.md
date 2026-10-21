@@ -134,3 +134,13 @@ de custodia, recuperación operativa y endpoint antes de instalación autorizada
 Verificación final: 2492 PASS / 1 skipped / 233 archivos; build PASS, auditoría
 npm 0 alertas; CMS contrastado por .NET y recorrido Edge mock PASS. Sin cambios
 de lógica posteriores, llamadas fiscales reales ni nuevas instalaciones.
+
+Avance de custodia 21/10: lector privado PKCS8 cifrado y keyring implementados,
+con bloqueo de proyecto antes de leer secretos, importación no exportable y
+rotación de IDs. 93 pruebas enfocadas, interoperabilidad .NET UTF-8 y Edge con
+material sintético PASS; build PASS y lector ausente del frontend. Provisión
+real, recuperación operativa y endpoint siguen pendientes de sus gates.
+Verificación posterior de custodia y corrección de conteo Envases: 2514 PASS /
+1 skipped / 234 archivos, con dos trabajadores y mismos timeouts, build final
+PASS. Se conservan los fallos previos de timeout y la regresión real del conteo.
+Nuevo lector sin instalación SQL/Edge, provisión real ni llamadas fiscales.

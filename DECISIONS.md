@@ -414,3 +414,17 @@ El contrato de DN inicial es explícitamente simple y falla ante formato no
 soportado; no se normaliza aproximadamente un DN complejo. Huella pinneada y
 issuer Test no sustituyen validación de cadena/autorización remota. Configurar
 custodia y ejecutar contra ARCA siguen sus gates; no se usó material real aquí.
+
+## 21/10/2026 — Custodia PKCS8 y keyring sólo servidor
+
+Se implementa un lector inyectado de secretos, con proyecto Staging fijo y nombres
+privados derivados de UUID. Acepta el formato cifrado que genera el preparador
+.NET, no PEM privado plano ni valores del browser. Importa claves no exportables;
+la passphrase y el PKCS8 descifrado sólo transitan en memoria. Límites previos a
+PBKDF2 evitan parámetros inesperados o trabajo desmedido de una configuración
+errónea. No sustituye un administrador de secretos ni autoriza provisionarlos.
+
+La rotación AES conserva IDs antiguos durante vigencia de los sobres; si falta
+la clave correcta se falla, no se usa otra. Se verificó formato .NET con material
+sintético y UTF-8. Los adaptadores no se instalan ni reciben material real hasta
+el gate autorizado. El frontend no contiene prefijos de este lector/keyring.

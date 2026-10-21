@@ -713,3 +713,76 @@ No se usaron certificados/secretos reales, no hubo red fiscal ni instalación.
 Próximo paso concreto: lector de material privado cifrado y keyring (ambos sólo
 servidor), distinguir fallo previo a red de intención WSAA incierta y preparar
 su recuperación auditable; endpoint después. F04/PR03 continúan parciales.
+
+### F04 — lector de custodia cifrada y keyring preparados — 21/10/2026
+
+- Nuevo adaptador recibe un lector de secretos del servidor, sin filesystem,
+  .env, VITE ni fallback. Verifica primero SUPABASE_URL de Staging exacto; un
+  proyecto distinto (incluido Production) falla antes de leer material privado.
+- Nombres privados derivados del UUID autorizado: revisión, certificado PEM,
+  PKCS8 ENCRYPTED PRIVATE KEY y passphrase. No acepta nombres/rutas del request.
+  Exige revisión y huella coincidentes antes de descifrar. PBES2/PBKDF2-HMAC-SHA256/
+  AES256-CBC compatibles con el preparador .NET existente; 200000–1000000
+  iteraciones, límites ASN.1/tamaños y parámetros explícitos antes de derivación.
+- Importa RSA/SHA256 como CryptoKey no exportable; buffers propios de passphrase
+  y PKCS8 plano se sobrescriben al finalizar. No afirmar borrado de strings
+  inmutables ni de buffers internos del runtime/biblioteca. Material de retorno
+  no enumera clave/certificado y source CMS vuelve a verificar pin/issuer/fechas.
+- Keyring AES privado importa 256 bits no exportables por UUID; mantiene lectura
+  de IDs anteriores tras rotación. Clave faltante no se reemplaza por la activa.
+  No se provisionaron valores reales ni se modificó ningún secreto remoto.
+- 93 pruebas enfocadas PASS (20 nuevas de custodia/keyring), incluido recorrido
+  Auth mock/SQL/PKCS8 cifrado/keyring/CMS/WSAA mock/conciliación. Sólo la clave
+  generadora sintética se exporta en RAM para fabricar el fixture cifrado; el
+  proveedor reimporta no exportable. Ningún archivo de clave de ensayo generado.
+- Interoperabilidad independiente .NET PASS: clave sintética cifrada con el
+  mismo PBE/200000 del preparador, contraseña UTF-8 y certificado emitido por CA
+  sintética Test; importación no exportable y firma CMS válidas. Fixture pasó
+  por stdout capturado únicamente en memoria, sin imprimir ni escribir material.
+  Evidencia fuera de Git: fiscal-custody-dotnet-result.json; script de prueba sin
+  valores de material generado en fiscal-custody-dotnet-probe.mjs.
+- Build PASS (634 módulos) después de ajustar IV explícito del tipo del fixture y
+  retirar import reemplazado. Verificación de artefactos: prefijos de secretos
+  del lector/keyring ausentes del frontend. Manifiesto histórico 43 SQL PASS.
+  Escaneo 1197 archivos/1183 texto/14 binarios, mismos 46 candidatos (delta 0).
+- Edge Runtime v1.77.4 local PASS, tres aserciones: custodia PKCS8 cifrada y
+  keyring reales del código, firma/cifrado reales con secretos sintéticos,
+  Auth/SQL/ARCA mock. Una carga/renovación y consulta simuladas; replay/otra caché
+  no duplican. Evidencia: fiscal-custody-edge-result.json; contenedor exited.
+- Fuente técnica: API CryptoEngine/PKCS8 de PKI.js fijada y formato del preparador
+  existente (scripts/preparar-arca-homologacion.ps1). No se leyeron el certificado,
+  clave ni DPAPI reales. Suite integrada en ejecución, no afirmar PASS todavía.
+- Pendientes antes de habilitar: provisión/custodia real autorizada y gate de
+  instalación, recuperación auditable que distinga fallos previos a red de
+  renovación incierta, endpoint y JWT/RLS/E2E hospedados. Sigue sin index.ts
+  activado ni instalación SQL/Edge nueva. No se ejecutó WSAA autenticado real.
+
+La primera suite completa de custodia terminó con 2511 PASS / 1 FAIL / 1 skipped:
+falló el conteo de Envases (nuevoStock 5 en lugar de 4). No se descartó como
+intermitencia: una regresión adicional confirmó la inicialización tardía del
+formulario. Corrección y dos regresiones documentadas en pilot-envases-returns.md.
+Pase enfocado conjunto: 123 PASS. Se repite la suite final con salida JSON durable
+porque el proceso anterior perdió el registro de terminación; no se considera PASS.
+
+La repetición con salida JSON durable concluyó con 2432 PASS, dos tests fallidos
+y cinco archivos con hook de arranque agotado (81 pendientes en total). Los dos
+fallos fueron timeout del preparador PowerShell y preflight PGlite; las regresiones
+nuevas de Envases pasaron. No es PASS integrado. Se repite sin build concurrente,
+con dos trabajadores, sin relajar timeouts ni modificar las pruebas.
+
+Siguiente incremento F04: separar la reserva de renovación TA de su intención de
+red durable. Antes de enviar, una reserva preparada puede cancelarse únicamente
+con comparación de intento/revisión y registro auditable; después de registrar
+intención, un timeout conserva incertidumbre y no habilita otro WSAA. Probar ACK
+perdido en cada frontera, carrera cancelar/enviar, revisión obsoleta y llegada
+tardía de TA válido. Mantener el bloqueo entre procesos y la recuperación del
+sobre confirmado. Este criterio está preparado; aún no implementado ni habilitado.
+
+Cierre verificado del incremento (21/10): repetición con dos trabajadores y sin
+build concurrente PASS, 2514 pruebas / 1 skipped / 234 archivos, exit 0. No se
+modificaron timeouts ni se excluyeron tests para obtener el resultado. Informe
+JSON durable fuera de Git: pilot-custody-envases-limited-results.json; se conserva
+el informe previo fallido. Build final PASS, 634 módulos; lint enfocado sin
+errores, cinco avisos react(refs) previos. Manifiesto histórico 43 SQL PASS;
+escaneo 1197 archivos, 46 candidatos, delta 0. Este PASS local no cierra PR03
+hospedado ni habilita la emisión. Código de recuperación TA aún pendiente.

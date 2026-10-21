@@ -14,7 +14,8 @@ import type { WsaaTicketLoader } from '../../supabase/functions/_shared/fiscalTi
 import { createSharedFiscalTicketLoader } from '../../supabase/functions/_shared/fiscalSharedTickets'
 import { authorizeFiscalWorker } from '../../supabase/functions/_shared/fiscalWorkerAuthorization'
 import { createWsaaTicketSource } from '../../supabase/functions/_shared/fiscalWsaa'
-import { syntheticFiscalSigner } from './fixtures/fiscalSigner'
+import { syntheticEncryptedCustody } from './fixtures/fiscalEncryptedCustody'
+import { createPrivateFiscalCustody, createPrivateFiscalTicketKeys } from '../../supabase/functions/_shared/fiscalPrivateCustody'
 
 const db = new PGlite()
 const kid=randomUUID(), auth=randomUUID(), owner=randomUUID(), sale=randomUUID(), op=randomUUID(), attempt=randomUUID()
@@ -434,15 +435,17 @@ it.each(['fiscal_ta_homologacion','fiscal_ta_intentos_homologacion'])('no conced
   await denied(()=>db.query('SELECT solicitar_ta_homologacion($1,$2,$3,1,$4)',[op,binding.credencial_id,'a'.repeat(64),randomUUID()]))
 })
 
-it('integra Auth mock, SQL, custodia sintética, CMS real, WSAA mock, cifrado y conciliación sin duplicar',async()=>{
-  const signer=await syntheticFiscalSigner()
-  await provisionEmitter(signer.fingerprint)
+it('integra Auth mock, SQL, custodia PKCS8 cifrada, CMS real, WSAA mock y conciliación sin duplicar',async()=>{
+  const protectedFixture=await syntheticEncryptedCustody()
+  await provisionEmitter(protectedFixture.binding.certificado_sha256)
   await db.exec('RESET ROLE')
-  await db.query('UPDATE fiscal_emisores_homologacion SET credencial_id=$1 WHERE kiosco_id=$2',[signer.material.credentialId,kid])
+  await db.query('UPDATE fiscal_emisores_homologacion SET credencial_id=$1 WHERE kiosco_id=$2',[protectedFixture.binding.credencial_id,kid])
   await db.exec('SET ROLE service_role');await persist();await intent()
   const admin={...persistedRpc,auth:{async getUser(){return {data:{user:{id:auth}},error:null}}}}
-  const key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']),keyId=randomUUID()
-  const keys={async active(){return {id:keyId,key}},async read(){return key}}
+  const keyId=randomUUID(),raw=crypto.getRandomValues(new Uint8Array(32))
+  protectedFixture.secrets.ARCA_HOMO_TA_ACTIVE_KEY_ID=keyId
+  protectedFixture.secrets['ARCA_HOMO_TA_KEY_'+keyId.replace(/-/g,'').toUpperCase()]=btoa(String.fromCharCode(...raw));raw.fill(0)
+  const read=(name:string)=>protectedFixture.secrets[name],keys=createPrivateFiscalTicketKeys(read)
   const fetcher=vi.fn<typeof fetch>(async input=>{
     const request=input as Request
     if(request.url==='https://wsaahomo.afip.gov.ar/ws/services/LoginCms'){
@@ -456,7 +459,7 @@ it('integra Auth mock, SQL, custodia sintética, CMS real, WSAA mock, cifrado y 
     expect(request.url).toBe('https://wswhomo.afip.gov.ar/wsfev1/service.asmx')
     return new Response(fiscalXml(),{headers:{'Content-Type':'text/xml'}})
   })
-  const custody=vi.fn(async()=>signer.material),source=createWsaaTicketSource(custody,fetcher)
+  const custody=vi.fn(createPrivateFiscalCustody(read)),source=createWsaaTicketSource(custody,fetcher)
   const shared=createSharedFiscalTicketLoader(persistedRpc,keys,source),id=randomUUID()
   const ack=await reconcileAuthorizedFiscalVoucher(admin,'SYNTHETIC_JWT',op,id,createFiscalTicketCache(),shared,fetcher)
   expect(ack.estado).toBe('AUTORIZADA')
