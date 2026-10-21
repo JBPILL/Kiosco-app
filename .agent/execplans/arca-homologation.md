@@ -282,3 +282,109 @@ Pendientes del bloque: completar F01/F02 (contrato fiscal final), hash/estados y
 reserva de numeración F03; custodia/caché privada F04; adaptador/reconciliación
 F05/F06; ensayos PostgreSQL/JWT/RLS hospedados y autorización de instalación.
 PR03 sigue PARCIAL, sin afirmar que este registro ya sea una pasarela fiscal.
+
+
+### PR03/F03 — reservas y registro previo de intención (20/10/2026)
+
+Módulo aditivo `supabase/pilot-fiscal/002_fiscal_reservations.sql`, NO instalado:
+serie global por CUIT/punto/tipo (entorno fijo homologación), reserva única
+pendiente y registro privado de intento. RPC sólo service_role con comprobación
+adicional de auth.role(); helpers, tablas, columnas y triggers sin EXECUTE/DML
+para roles de API. No se incorporó worker ni se habilitó emisión/red.
+
+El trabajador futuro debe aportar una observación real validada de
+FECompUltimoAutorizado para el mismo emisor/punto/tipo. La RPC sólo admite un
+valor en rango y ventana local de frescura (2 minutos, tolerancia futura de 30 s);
+esto es una política interna, no una regla tributaria. Inicializa el próximo
+número observado + 1; observación divergente o reserva de otra operación bloquea
+la serie para conciliación. No confundir una reserva sintética local con un
+número autorizado por ARCA. Rango 1–99999999 contrastado con manual oficial:
+https://www.afip.gov.ar/fe/documentos/manualDesarrolladorCOMPGv21.pdf
+
+Antes de reservar/registrar intento se revalidan actor original, comercio,
+venta y snapshot; se toman locks de DB sin mantener llamada de red dentro de la
+transacción. El primer intento cambia a ENVIO_INCIERTO antes de cualquier envío
+futuro; repetir su UUID devuelve nuevo_intento=false y exige conciliación.
+Otro UUID no sustituye al intento anterior. No hay vencimiento automático,
+liberación de serie ni toma de control que habilite duplicar una emisión incierta.
+Toda respuesta sigue incluyendo emision_habilitada=false: falta contrato fiscal
+final y autorización/custodia/adaptador. El diario inicial es un ancla inmutable
+PREPARADA; el estado de reserva vive en su tabla privada. Faltan consulta de
+estado pública e integración UI antes de habilitar el flujo.
+
+Los triggers serializan modificaciones de detalle con la venta y bloquean
+importe/fecha/estado e inserción/modificación/eliminación de detalles después de
+reservar. La anulación atómica se rechaza y revierte sus efectos si hay reserva;
+si anulación ganó primero, la reserva debe fallar. Los actores existentes fuera
+de una venta reservada mantienen su comportamiento.
+
+Pruebas SQL locales ampliadas a 57 casos PASS. Incluyen series entre comercios,
+ACK perdido, intento único, permisos, rollback de anulación, triggers que omiten
+escrituras sin falsa confirmación y decimales JSON equivalentes. El test WSAA
+agotó tiempo en paralelo durante inicio de Docker y pasó aislado (2 PASS).
+La suite global posterior a este módulo está pendiente de ejecución/cierre.
+
+Se preparó runner reproducible `scripts/fiscal/test-concurrency.mjs --run-local`:
+usa sólo imagen postgres:17-alpine ya instalada, puerto 127.0.0.1, fixtures
+sintéticas y transacciones distintas observadas por pg_stat_activity. No lee .env
+ni usa credenciales Supabase/ARCA. Conserva contenedor de ensayo detenido y
+registra evidencia JSON fuera de Git; no modifica contenedores existentes.
+El primer preflight no esperó suficiente inicialización; se corrigió la espera.
+La siguiente ejecución perdió el motor Docker/ECONNRESET antes de completar
+las carreras: NO PASS. Se reforzó manejo de eventos de conexión y evidencia de
+limpieza no confirmada si Docker desaparece. Comprobar estado antes de repetir;
+no reiniciar un proceso de ensayo que siga vivo ni dar por detenido su contenedor.
+
+Pendientes: resolución/conciliación y desbloqueo seguro de series, cuerpo WSFE
+completo y hash, binding de emisor/credenciales, worker, caché TA y permisos,
+PostgreSQL concurrente real y aceptación JWT/RLS hospedada. PR03 sigue PARCIAL.
+
+
+#### Resultado PostgreSQL real local — 20/10/2026
+
+Tras comprobar que Docker completó su actualización (motor 29.9.1) y que los
+intentos anteriores estaban detenidos, se ejecutó el runner corregido: PASS en
+PostgreSQL 17.11, imagen local postgres:17-alpine, seis casos con dos conexiones
+y espera de Lock comprobada mediante pg_stat_activity (no sólo temporizadores):
+
+1. Dos UUID de preparación simultáneos para la misma venta: una operación.
+2. Dos comercios, mismo emisor/punto/tipo: una reserva; la otra bloqueada.
+3. Dos trabajadores: un intento; ACK perdido exige conciliación, no segundo envío.
+4. Reserva gana a anulación: venta COMPLETADA y auditoría de anulación revertida.
+5. Anulación gana a reserva: venta ANULADA y ninguna numeración reservada.
+6. Rollback antes de ACK: siguiente reserva conserva número y no deja hueco.
+
+Evidencia sanitizada conservada fuera de Git en
+`../fiscal-concurrency-local-result.json` (UTC 21/10, noche local del 20/10).
+Contenedor propio detenido al finalizar; datos sintéticos conservados; ningún
+contenedor previo modificado. No hubo conexión a Supabase/ARCA ni emisión.
+Runner valida ownership/puerto localhost, no descarga imágenes, no lee .env,
+registra fallos de conexión y no permite sobrescribir una evidencia previa.
+El guard de sobrescritura se comprobó por separado (PASS, sin crear contenedor).
+
+Esto acredita carreras concretas PostgreSQL locales; no acredita JWT hospedado,
+RLS multi comercio de Staging, custodia del emisor ni respuestas reales de emisión.
+Resolución de incertidumbre y liberación de la serie siguen pendientes; no activar
+ni instalar todavía una pasarela de emisión con estos módulos preparatorios.
+
+
+#### Verificación final del bloque de reservas — 20/10/2026
+
+- Suite integrada: 2234 PASS / 1 skipped / 225 archivos, 269,67 s.
+- Seis carreras PostgreSQL 17.11 reales locales PASS; ningún acceso hospedado.
+- El build inicial detectó inferencia UUID demasiado estricta en dos helpers de
+  pruebas. Se corrigieron sólo anotaciones; luego 57 casos SQL PASS y build PASS
+  (634 módulos). La suite integrada antecede a esa corrección de tipos sin cambio
+  de lógica; no se presenta como reejecutada después de ella.
+- Manifiesto histórico: 43 SQL PASS; diff PASS; escaneo del árbol conserva 46
+  candidatos conocidos, sin nuevos candidatos; historial no reescaneado.
+- Runner: sintaxis y rechazo de sobrescritura de evidencia PASS. Datos y evidencia
+  locales conservados; contenedor creado por el ensayo detenido correctamente.
+- Ninguna dependencia nueva, cambio de .env.local, instalación SQL/Edge, emisión,
+  modificación de master o Production. No hace falta redeploy de frontend: sólo
+  se agregó preparación backend local, pruebas, runner y documentación.
+
+Continuar con F02/F05/F06: contrato fiscal completo, hash/estados finales,
+conciliación de la reserva con FECompConsultar y liberación controlada; después
+custodia/worker y gate de instalación/ensayo hospedado. Mantener emisión bloqueada
+mientras falte cualquiera de esos requisitos. PR03 continúa PARCIAL.

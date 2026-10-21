@@ -27,6 +27,8 @@ beforeAll(async () => {
   await db.exec(sql)
   await db.exec('GRANT SELECT(id), UPDATE(estado) ON fiscal_operaciones_homologacion TO authenticated')
   await db.exec(sql)
+  const reservations = readFileSync('supabase/pilot-fiscal/002_fiscal_reservations.sql', 'utf8')
+  await db.exec(reservations); await db.exec(reservations)
   await db.query('INSERT INTO auth.users VALUES($1)', [ownerAuth])
   await db.query("INSERT INTO kioscos(id,nombre) VALUES($1,'Fiscal local'),($2,'Ajeno')", [kid, foreignKid])
   await db.query("INSERT INTO usuarios(id,auth_user_id,kiosco_id,nombre,rol) VALUES($1,$2,$3,'Dueño','DUEÑO')", [owner, ownerAuth, kid])
@@ -163,4 +165,173 @@ it('un trigger que omite la inserción no produce confirmación falsa', async ()
   await denied(() => prepare())
   await db.exec('RESET ROLE')
   expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_operaciones_homologacion')).rows[0].n).toBe(0)
+})
+
+
+interface Reservation { operacion_id: string; numero: number; estado: string; emision_habilitada: boolean }
+async function worker(): Promise<void> {
+  await db.exec("RESET ROLE; SET ROLE service_role; SELECT set_config('request.jwt.claim.role','service_role',true)")
+}
+async function reserve(op: string = operation, last = 41, point = 2, issuer = context.cuit_emisor, observed = new Date().toISOString()): Promise<Reservation> {
+  const result = await db.query<{ack: Reservation}>(
+    'SELECT reservar_numero_fiscal_homologacion($1,$2,$3,$4,$5,$6) ack',[op,issuer,point,11,last,observed])
+  return result.rows[0].ack
+}
+async function attempt(id: string, op: string = operation): Promise<Record<string, unknown>> {
+  const result = await db.query<{ack: Record<string, unknown>}>('SELECT registrar_intento_fiscal_homologacion($1,$2) ack',[op,id])
+  return result.rows[0].ack
+}
+async function secondOperation(point = 2): Promise<string> {
+  await db.exec('RESET ROLE')
+  const second = randomUUID(), op = randomUUID()
+  await db.query('INSERT INTO ventas(id,kiosco_id,total) VALUES($1,$2,30)',[second,kid])
+  await db.exec('SET ROLE authenticated')
+  await prepare({...context,punto_venta:point},op,second)
+  return op
+}
+it('reserva el número observado + 1 una sola vez y conserva el ACK', async () => {
+  await prepare(); await worker()
+  const first = await reserve()
+  expect(first).toEqual({operacion_id:operation,numero:42,estado:'RESERVADA',entorno:'HOMOLOGACION',emision_habilitada:false})
+  expect(await reserve()).toEqual(first)
+  await db.exec('RESET ROLE')
+  expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_reservas_homologacion')).rows[0].n).toBe(1)
+})
+it('mantiene una sola operación pendiente por serie y separa otra serie', async () => {
+  await prepare()
+  const same = await secondOperation(), other = await secondOperation(3)
+  await worker(); await reserve()
+  await denied(() => reserve(same))
+  expect((await reserve(other,0,3)).numero).toBe(1)
+})
+it('la serie es global aunque dos comercios compartan emisor/punto/tipo', async () => {
+  await prepare(); await worker(); await reserve()
+  await db.exec('RESET ROLE')
+  const otherAuth=randomUUID(), otherOwner=randomUUID(), otherOp=randomUUID()
+  await db.query('INSERT INTO auth.users VALUES($1)',[otherAuth])
+  await db.query("INSERT INTO usuarios(id,auth_user_id,kiosco_id,nombre,rol) VALUES($1,$2,$3,'Otro dueño','DUEÑO')",[otherOwner,otherAuth,foreignKid])
+  await db.query("SELECT set_config('request.jwt.claim.sub',$1,true)",[otherAuth])
+  await db.exec('SET ROLE authenticated')
+  await prepare(context,otherOp,foreignSale,foreignKid)
+  await worker(); await denied(() => reserve(otherOp))
+})
+it.each([-1,99999999])('rechaza último número fuera de rango %s sin crear reservas', async last => {
+  await prepare(); await worker(); await denied(() => reserve(operation,last))
+})
+it('admite el último número permitido y bloquea deriva de observación', async () => {
+  await prepare(); await worker()
+  expect((await reserve(operation,99999998)).numero).toBe(99999999)
+  await denied(() => reserve(operation,12))
+})
+it.each(['2000-01-01T00:00:00Z','2099-01-01T00:00:00Z'])('rechaza observación temporal no válida %s', async date => {
+  await prepare(); await worker(); await denied(() => reserve(operation,41,2,context.cuit_emisor,date))
+})
+it('rechaza observación de otro emisor o punto', async () => {
+  await prepare(); await worker()
+  await denied(() => reserve(operation,41,2,'30123456789'))
+  await denied(() => reserve(operation,41,3))
+})
+it.each(['anon','authenticated'])('no concede reserva ni intento al rol %s', async role => {
+  await prepare()
+  await db.exec(`RESET ROLE; SET ROLE ${role}`)
+  await denied(() => reserve())
+  await denied(() => attempt(randomUUID()))
+})
+it('comprueba claim privado además de EXECUTE', async () => {
+  await prepare(); await worker()
+  await db.exec("SELECT set_config('request.jwt.claim.role','authenticated',true)")
+  await denied(() => reserve())
+  await denied(() => attempt(randomUUID()))
+})
+it('requiere reserva antes del intento y revalida actor/comercio', async () => {
+  await prepare(); await worker(); await denied(() => attempt(randomUUID()))
+  await db.exec('RESET ROLE')
+  await db.query('UPDATE usuarios SET activo=false WHERE id=$1',[owner])
+  await worker(); await denied(() => reserve())
+})
+it('rechaza snapshot modificado antes de reservar', async () => {
+  await prepare(); await db.exec('RESET ROLE')
+  await db.query('UPDATE ventas SET total=50 WHERE id=$1',[sale])
+  await worker(); await denied(() => reserve())
+})
+it('persiste intención antes de red; ACK perdido no concede un segundo intento', async () => {
+  await prepare(); await worker(); await reserve()
+  const id=randomUUID()
+  expect(await attempt(id)).toMatchObject({estado:'ENVIO_INCIERTO',numero:42,nuevo_intento:true,requiere_conciliacion:false,emision_habilitada:false})
+  expect(await attempt(id)).toMatchObject({estado:'ENVIO_INCIERTO',numero:42,nuevo_intento:false,requiere_conciliacion:true,emision_habilitada:false})
+  await denied(() => attempt(randomUUID()))
+  expect((await reserve()).numero).toBe(42)
+})
+it('un intento incierto no libera la serie para otra venta', async () => {
+  await prepare(); const second=await secondOperation()
+  await worker(); await reserve(); await attempt(randomUUID())
+  await denied(() => reserve(second))
+})
+it('bloquea cambios de cabecera y detalles después de reservar', async () => {
+  await prepare(); await worker(); await reserve(); await db.exec('RESET ROLE')
+  await denied(() => db.query('UPDATE ventas SET total=50 WHERE id=$1',[sale]))
+  await denied(() => db.query("UPDATE ventas SET fecha_hora=now()+interval '1 day' WHERE id=$1",[sale]))
+  const product=randomUUID()
+  await db.query("INSERT INTO productos(id,kiosco_id,descripcion,precio_venta) VALUES($1,$2,'Ensayo',1)",[product,kid])
+  await denied(() => db.query('INSERT INTO detalles_venta(venta_id,producto_id,cantidad,precio_unitario,subtotal) VALUES($1,$2,1,1,1)',[sale,product]))
+})
+it('rechaza anulación atómica con reserva y revierte sus efectos', async () => {
+  await prepare(); await worker(); await reserve(); await db.exec('RESET ROLE')
+  await db.query(`INSERT INTO checkout_manuales(id,kiosco_id,venta_id,solicitud,resultado)
+    VALUES($1,$2,$3,'{"total":123.45,"detalles":[],"pagos":[]}', '{}')`,[randomUUID(),kid,sale])
+  await db.exec('SET ROLE authenticated')
+  await denied(() => db.query("SELECT anular_venta_atomica($1,'Anulación de ensayo',NULL)",[sale]))
+  await db.exec('RESET ROLE')
+  expect((await db.query<{estado:string}>('SELECT estado FROM ventas WHERE id=$1',[sale])).rows[0].estado).toBe('COMPLETADA')
+  expect((await db.query<{n:number}>('SELECT count(*)::int n FROM anulaciones_venta_atomicas')).rows[0].n).toBe(0)
+})
+it.each(['anon','authenticated','service_role'])('tablas de reserva sin lectura/DML directo para %s', async role => {
+  await prepare(); await worker(); await reserve()
+  await db.exec(`RESET ROLE; SET ROLE ${role}`)
+  for (const table of ['fiscal_series_homologacion','fiscal_reservas_homologacion']) {
+    await denied(() => db.exec(`SELECT * FROM ${table}`))
+    await denied(() => db.exec(`DELETE FROM ${table}`))
+  }
+  await denied(() => db.query('SELECT fiscal_operacion_vigente_homologacion($1)',[operation]))
+})
+
+it.each(['reserva','intento'])('rechaza ACK falso si un trigger omite %s', async mode => {
+  await prepare(); await worker()
+  if (mode==='intento') await reserve()
+  await db.exec('RESET ROLE')
+  const event=mode==='reserva'?'INSERT':'UPDATE'
+  await db.exec(`CREATE FUNCTION pg_temp.omitir_reserva() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$;
+    CREATE TRIGGER omitir_reserva BEFORE ${event} ON fiscal_reservas_homologacion FOR EACH ROW EXECUTE FUNCTION pg_temp.omitir_reserva();`)
+  await worker()
+  if (mode==='reserva') await denied(() => reserve())
+  else await denied(() => attempt(randomUUID()))
+  await db.exec('RESET ROLE')
+  const rows=await db.query<{estado:string}>('SELECT estado FROM fiscal_reservas_homologacion')
+  expect(rows.rows).toEqual(mode==='reserva'?[]:[{estado:'RESERVADA'}])
+  if (mode==='reserva') expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_series_homologacion')).rows[0].n).toBe(0)
+})
+it('no permite reutilizar identidad de intento entre series', async () => {
+  await prepare(); const other=await secondOperation(3)
+  await worker(); await reserve(); await reserve(other,41,3)
+  const id=randomUUID()
+  await attempt(id)
+  await denied(() => attempt(id,other))
+  expect(await attempt(randomUUID(),other)).toMatchObject({nuevo_intento:true,estado:'ENVIO_INCIERTO'})
+})
+it('no pierde numeración por representación JSON decimal equivalente', async () => {
+  const result=await db.query<{ack:Ack}>('SELECT preparar_operacion_fiscal_homologacion($1,$2,$3,$4::jsonb) ack',
+    [operation,kid,sale,JSON.stringify(context).replace('"punto_venta":2','"punto_venta":2.0').replace('"tipo_comprobante":11','"tipo_comprobante":11.0')])
+  expect(result.rows[0].ack.id).toBe(operation)
+  await worker()
+  expect((await reserve()).numero).toBe(42)
+})
+it('bloquea modificar o eliminar detalles existentes de una venta reservada', async () => {
+  await db.exec('RESET ROLE')
+  const product=randomUUID(), detail=randomUUID()
+  await db.query("INSERT INTO productos(id,kiosco_id,descripcion,precio_venta) VALUES($1,$2,'Ensayo',123.45)",[product,kid])
+  await db.query('INSERT INTO detalles_venta(id,venta_id,producto_id,cantidad,precio_unitario,subtotal) VALUES($1,$2,$3,1,123.45,123.45)',[detail,sale,product])
+  await db.exec('SET ROLE authenticated')
+  await prepare(); await worker(); await reserve(); await db.exec('RESET ROLE')
+  await denied(() => db.query('UPDATE detalles_venta SET cantidad=2 WHERE id=$1',[detail]))
+  await denied(() => db.query('DELETE FROM detalles_venta WHERE id=$1',[detail]))
 })

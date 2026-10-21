@@ -276,3 +276,26 @@ límites en el [ExecPlan](../.agent/execplans/arca-homologation.md#pr03-primer-r
 225 archivos, build PASS 634 módulos, manifiesto 43 SQL PASS y diff PASS. PR03
 sigue PARCIAL: faltan contrato final, numeración, worker/custodia, reconciliación
 y aceptación hospedada. No se emiten comprobantes con esta preparación.
+
+
+### Reserva y concurrencia fiscal local — 20/10/2026
+
+Preparado segundo SQL aditivo con serie global, reserva única e intento previo;
+ACK repetido no habilita otro envío y reserva/venta se coordinan con la anulación.
+57 casos SQL locales PASS y seis carreras reales PostgreSQL 17.11 PASS, usando
+sólo fixtures sintéticas y conexiones locales. El runner conserva datos de ensayo
+y detiene sólo su contenedor. Los intentos iniciales fallaron durante arranque y
+actualización de Docker; sus límites y el resultado posterior se preservan en el
+[ExecPlan existente](../.agent/execplans/arca-homologation.md#resultado-postgresql-real-local--20102026).
+
+No se instaló SQL en Staging ni se conectó worker a ARCA. Faltan reconciliación,
+resolución de reservas, cuerpo fiscal final, custodia y aceptación hospedada.
+La suite/build posteriores a este agregado se registrarán al terminar. El módulo
+continúa respondiendo emision_habilitada=false. PR03 sigue PARCIAL.
+
+
+Cierre local del bloque de reservas: suite 2234 PASS / 1 skipped / 225 archivos;
+seis carreras PostgreSQL PASS. Se corrigieron anotaciones UUID detectadas por el
+build; después 57 casos SQL PASS y build PASS (634 módulos). Manifiesto 43 SQL y
+diff PASS. No hay instalación ni emisión. El detalle del orden de validación y
+las limitaciones permanecen en el ExecPlan.

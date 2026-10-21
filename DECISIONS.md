@@ -301,3 +301,25 @@ Consecuencias: entrega incremental local comprobable; no permite emisión hasta
 completar reservas, estados, autorización/custodia, reconciliación y coordinación
 con anulación comercial. No se altera el manifiesto histórico ni se instala el
 módulo por esta decisión. PR03 y aceptación hospedada continúan pendientes.
+
+
+## 20/10/2026 — PR03: serie global y un solo intento incierto
+
+Contexto: dos comercios configurados con el mismo CUIT/punto/tipo comparten la
+numeración externa. Un contador por tenant o un lock sólo del proceso permite
+colisiones. Una concesión con vencimiento permite que un trabajador tardío envíe
+mientras el reemplazo reintenta. Alternativas descartadas: incrementar sin
+conciliar, liberar reserva por timeout o confiar en un mutex de Edge.
+
+Decisión: reserva serializada en DB por serie global de homologación, una única
+operación pendiente, sin avance/liberación automática. Registrar intento antes
+de red y conservar identidad ante ACK perdido; otra identidad exige conciliación.
+Coordinar reserva con modificaciones/anulación de venta mediante locks de fila
+y triggers. El trabajador futuro debe acreditar emisor y observación real del
+último autorizado antes de llamar la RPC privada; ésta no autentica una respuesta
+ARCA por sí misma. Todas las respuestas siguen con emisión deshabilitada.
+
+Consecuencias: preserva número y detiene nuevas solicitudes hasta resolver la
+incertidumbre; falta implementar resolución segura y estados finales. No instalar
+ni activar como pasarela completa. Concurrencia local y hospedada son evidencias
+distintas; una caída del Docker de ensayo no equivale a un PASS.
