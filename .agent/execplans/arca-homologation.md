@@ -388,3 +388,86 @@ Continuar con F02/F05/F06: contrato fiscal completo, hash/estados finales,
 conciliación de la reserva con FECompConsultar y liberación controlada; después
 custodia/worker y gate de instalación/ensayo hospedado. Mantener emisión bloqueada
 mientras falte cualquiera de esos requisitos. PR03 continúa PARCIAL.
+
+
+## Reconciliación F02/F05/F06 — avance local 21/10/2026
+
+Se implementaron helpers de servidor, sin conectarlos todavía a UI, SQL ni worker:
+`fiscalReconciliation.ts` congela el contrato v1 y calcula SHA-256; compara todos
+sus datos con un DTO validado de FECompConsultar. `fiscalVoucherXml.ts` construye
+la consulta homologada, valida SOAP/XML y ejecuta una sola consulta mediante
+transporte obligatorio inyectado. No genera CAE, emite, reenvía ni altera venta,
+stock o caja. Toda salida conserva puedeReenviar=false.
+
+Contrato v1: emisor/entorno/punto/tipo/número, concepto, documento, condición IVA,
+fecha/servicio/vencimiento, moneda PES/cotización 1, seis importes, alícuotas y
+tributos. Tipos 1/6/11. Importes como cadenas decimales exactas, sin double ni
+redondeo implícito; sumas en enteros BigInt. Arrays normalizados con orden estable
+independiente del idioma del sistema; copia profunda congelada y verificación del
+hash antes de consultar/comparar. No acepta campos desconocidos ni omite datos
+fiscales fuera del contrato. No es validación tributaria integral: falta catálogo
+vigente de parámetros/regímenes y derivación/binding con venta/configuración
+privada. No habilitar un tipo/moneda/campo adicional descartándolo silenciosamente.
+
+La coincidencia se llama AUTORIZACION_COINCIDENTE y es sólo candidata a persistir,
+no estado final de DB. Exige CAE/resultado A, identidad, cuerpo completo, sumas,
+fecha y vencimiento coherentes; una autorización histórica no se rechaza sólo
+porque hoy pasó su vencimiento. Ausencia de resultado, errores incluso junto a
+un resultado aparente, rechazo, CAEA o diferencia mantienen CONCILIAR. Mensajes,
+XML y excepciones remotos nunca se devuelven ni se imprimen.
+
+Adaptador: namespace SOAP 1.1/WSFE y jerarquía directa; rechaza elementos
+ambiguos/duplicados, DTD/entidades, nil contradictorio, campos no soportados,
+UTF8 inválido y tamaño/profundidad excesivos. Parser @xmldom/xmldom 0.9.12 fijado,
+con onError que interrumpe cualquier warning/error sin logs. Dependencia de
+pruebas Node e import map propio del futuro runtime arca-homologacion; no se
+importa en frontend ni se creó un endpoint fiscal desplegable. Consulta fija al
+endpoint de homologación, XML escapado, TA vigente con margen, sin redirecciones.
+El límite incluye fetch y lectura del cuerpo; flujo sin fin o exceso de tamaño
+queda pendiente y se cancela. No reintentar automáticamente tras error/timeout.
+
+Contrato contrastado con WSDL público real guardado fuera de Git y documentación
+oficial: FEDetRequest -> FECAEDetRequest -> FECompConsResponse; esto evita comparar
+sólo los campos adicionales mostrados en el ejemplo superficial del método.
+Fuentes: https://wswhomo.afip.gov.ar/wsfev1/service.asmx?WSDL y
+https://wswhomo.afip.gov.ar/wsfev1/service.asmx?op=FECompConsultar . No se ejecutaron
+consultas autenticadas nuevas ni se utilizaron Token/Sign reales en este bloque.
+
+Validación posterior del árbol:
+- 90 casos dirigidos PASS en dos archivos: tipo A/B/C, receptor, IVA/tributos,
+  identidad, hash, fechas, error/ausencia/CAEA, copia inmutable, XML adversario,
+  cuerpo detenido, fetch detenido, límites, no logs y una única consulta mock.
+- Suite integrada: 2324 PASS / 1 skipped / 227 archivos, 245,56 s.
+- Build PASS (634 módulos), Vite parcheado; manifiesto histórico 43 SQL PASS.
+- Empaquetado y ejecución real en Edge Runtime local v1.77.4: dos casos sintéticos
+  PASS (coincidencia y rechazo de XML duplicado), sin red fiscal ni SQL. Sólo se
+  montaron copias de helpers/fixtures, no .env; contenedor propio detenido.
+  Evidencia fuera de Git en fiscal-edge-runtime-result.json y carpeta de probe.
+- Primera invocación de bundle con import-map flag devolvió advertencia y ningún
+  artefacto; no se dio por PASS. Se usó deno.json, se comprobó eszip y después HTTP
+  local confirmó ejecución. Un error de fixture de prefijos y el ajuste de tipos
+  nullable del DOM se corrigieron antes de la suite integrada final.
+
+### Siguiente paso concreto de persistencia (todavía pendiente)
+
+1. SQL privado aditivo para ligar la solicitud final/hash a operación, snapshot,
+   contexto y número. Persistir cuerpo+reserva de forma atómica antes de registrar
+   intención/enviar; si el número candidato cambió, abortar, no modificar cuerpo.
+2. CAS de reconciliación ligado a intento/solicitud/serie: persistir sólo un CAE
+   coincidente, conservar evidencia mínima y no repetir efectos comerciales.
+   Una respuesta ausente/inconclusa no libera automáticamente la numeración.
+3. Conservar reservas/historia al cerrar una autorización; permitir la siguiente
+   reserva sólo después de resolver de manera duradera la pendiente anterior.
+   Probar dos conciliadores, ACK perdido y numeración contra resolución.
+4. Integrar worker con custodia/caché y validación real de actor/tenant/emisor;
+   prueba hospedada e instalación con sus autorizaciones; luego punto de ensayo
+   y emisión homologada expresamente autorizada. UI de estados después de contar
+   con esos contratos. PR03/PR02 continúan abiertos.
+
+
+Escaneo final del 21/10: 1174 archivos / 1160 de texto / 14 binarios omitidos;
+46 candidatos iguales al escaneo anterior (cero agregados o retirados), sin
+valores sensibles impresos; historial no reescaneado. Auditoría npm final:
+0 info/low/moderate/high/critical. Contenedor Edge confirmado exited después del
+ensayo. Ningún .env modificado, ningún SQL/Edge instalado, ningún comprobante
+emitido. Cambios listos para commits temáticos en la rama autorizada.

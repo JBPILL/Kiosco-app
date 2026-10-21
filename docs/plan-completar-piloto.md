@@ -77,3 +77,15 @@ pruebas y autorizaciones está en el [ExecPlan ARCA existente](../.agent/execpla
 El inventario inicial ya comenzó; no se instalaron SQL/Edge ni se emitieron
 comprobantes por este nuevo objetivo. El resto del registro canónico sigue
 vigente, con impresora/cajón físicos y Point diferidos y Production separada.
+
+
+## Avance fiscal y seguridad — 21/10/2026
+
+Contrato final v1 normalizado/SHA-256, lectura SOAP estricta y transporte de
+consulta preparados y probados localmente; candidato de autorización no se
+persiste todavía. Suite 2324 PASS / 1 skipped / 227 archivos, build PASS;
+90 casos fiscales nuevos y dos pruebas Edge locales con fixtures PASS.
+Dependencias parcheadas y audit npm 0 alertas. Siguiente paso: ligar cuerpo/hash
+a operación/reserva y persistir la reconciliación con CAS, luego custodia/worker
+e instalación/aceptación hospedada. Ver el ExecPlan ARCA existente; PR03/PR02
+siguen abiertos y no se autoriza emisión por este avance.

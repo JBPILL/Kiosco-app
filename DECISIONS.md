@@ -323,3 +323,35 @@ Consecuencias: preserva número y detiene nuevas solicitudes hasta resolver la
 incertidumbre; falta implementar resolución segura y estados finales. No instalar
 ni activar como pasarela completa. Concurrencia local y hospedada son evidencias
 distintas; una caída del Docker de ensayo no equivale a un PASS.
+
+
+## 21/10/2026 — F02/F05/F06: comparación fiscal completa y XML de servidor
+
+Contexto: reservar un número no resuelve un envío incierto. El resultado de la
+consulta hereda importes y datos de FEDetRequest; comparar sólo CAE/total deja
+pasar diferencias de receptor, IVA, moneda o número. El legacy usa regex XML y
+no tiene un cuerpo fiscal durable ligado a la operación.
+
+Decisión: helpers puros de servidor con contrato cerrado/versionado, decimales
+exactos y SHA-256; comparar todo el cuerpo, no sólo total/CAE. Parser DOM con
+namespace/jerarquía directa y rechazo de ambigüedad/DTD, límites y errores
+sanitizados. @xmldom/xmldom 0.9.12 mantenido y fijado para Node/Edge; no regex para
+extraer XML. Transporte único de consulta homologada y sin redirecciones; timeout
+incluye el cuerpo. Capturar una copia inmutable antes de esperar red.
+
+Consecuencias: sólo devuelve una coincidencia candidata; falta CAS/persistencia
+privada antes de confirmar el estado final. No habilita reenvío ni emisión. Datos
+no soportados se rechazan en lugar de descartarlos. La legalidad del régimen,
+parámetros actuales y vínculo de emisor/venta se deben verificar en el worker.
+Node y Edge local sintéticos no sustituyen JWT/RLS ni ARCA hospedados.
+
+## 21/10/2026 — PR06: parches de dependencias encontrados al revisar el parser
+
+La auditoría informó dos paquetes existentes con severidad alta: source-map-js
+1.2.1 y Vite 8.3.0 (avisos launch-editor). Se aplicaron parches compatibles:
+Vite 8.3.4 y source-map-js 1.2.2, con sus dependencias de compilación relacionadas;
+no actualización mayor ni scripts de instalación. Auditoría posterior: 0 alertas.
+La incorporación del parser quedó fijada a 0.9.12; no era el paquete afectado.
+Suite y build finales incluyen ambos cambios. Esto no cierra PR06 hospedado.
+Fuentes primarias de avisos: https://github.com/advisories/GHSA-68fv-2mgg-jv7q y
+https://github.com/advisories/GHSA-698v-4r3x-3vcv .

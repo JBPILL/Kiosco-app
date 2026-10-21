@@ -299,3 +299,20 @@ seis carreras PostgreSQL PASS. Se corrigieron anotaciones UUID detectadas por el
 build; después 57 casos SQL PASS y build PASS (634 módulos). Manifiesto 43 SQL y
 diff PASS. No hay instalación ni emisión. El detalle del orden de validación y
 las limitaciones permanecen en el ExecPlan.
+
+
+### Reconciliación: adaptador local preparado — 21/10/2026
+
+Contrato congelado con SHA-256 y comparación de identidad/receptor/importes/IVA/
+tributos/fechas; lectura SOAP estricta con parser mantenido, consulta homologada
+sin redirecciones y timeout que incluye el cuerpo. Respuestas inciertas o distintas
+no autorizan reenvíos; no hay CAE generado ni cambios comerciales.
+90 casos dirigidos y suite 2324 PASS / 1 skipped / 227 archivos; build 634 módulos
+PASS. Ejecución en Edge Runtime local: dos casos sintéticos PASS. Auditoría npm:
+0 alertas tras parches de Vite y source-map-js. Alcances y fuentes en el
+[ExecPlan](../.agent/execplans/arca-homologation.md#reconciliacion-f02f05f06--avance-local-21102026).
+
+Todavía falta persistir cuerpo/hash ligado a venta/reserva, resolver la autorización
+en DB de forma atómica, y conectar custodia/worker/UI. No se instaló ni desplegó
+una función fiscal ni se consultaron comprobantes reales en este bloque. La emisión
+y PR03/PR02 siguen pendientes; esta preparación no habilita facturación.
