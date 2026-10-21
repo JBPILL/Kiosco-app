@@ -355,3 +355,17 @@ La incorporación del parser quedó fijada a 0.9.12; no era el paquete afectado.
 Suite y build finales incluyen ambos cambios. Esto no cierra PR06 hospedado.
 Fuentes primarias de avisos: https://github.com/advisories/GHSA-68fv-2mgg-jv7q y
 https://github.com/advisories/GHSA-698v-4r3x-3vcv .
+
+## 21/10/2026 — Conciliación durable conserva historia y respuesta original
+
+Se eligió conservar reservas fiscales autorizadas, con índice único de número
+histórico y otro parcial de pendiente por serie. Borrar la reserva al resolver
+habría quitado el bloqueo de cambios/anulación de la venta y perdido trazabilidad.
+El cierre confirma autorización, revisión y avance de numeración atómicamente.
+Una observación inconclusa mantiene la serie bloqueada; no autoriza reenvío.
+
+Cada observación tiene identidad y resultado inmutables. Recuperar su ACK no
+repite consulta; una consulta nueva de pendiente usa otra identidad. Esto permite
+reconstruir lo ocurrido sin transformar un error de red en nuevo cobro/factura.
+La verificación de SOAP pertenece al trabajador privado y las RPC sólo aceptan
+su servicio; la exposición de un endpoint exige todavía permisos y custodia.

@@ -97,3 +97,12 @@ conciliado con CAS, el worker privado y aceptación hospedada. El nuevo SQL no
 está instalado. Evidencia y límites en el ExecPlan ARCA existente.
 Resultado posterior: suite integrada 2345 PASS / 1 skipped / 228 archivos y seis
 carreras PostgreSQL 17.11 con SQL 001–003 PASS; contenedor propio detenido.
+
+Avance posterior 21/10: SQL 004 y orquestador privado preparados para guardar
+CAE conciliado, cerrar reserva con avance único y recuperar ACK sin otra
+consulta. 196 pruebas fiscales y nueve carreras PostgreSQL PASS; build PASS.
+Falta custodia/caché de TA, autorización del worker y aceptación hospedada; no
+hay nueva instalación ni emisión. El ExecPlan conserva evidencia y próximos gates.
+Verificación final: suite integrada 2373 PASS / 1 skipped / 228 archivos;
+Edge Runtime local con autorización simulada y replay PASS (una consulta mock),
+sin SQL ni llamadas fiscales. Contenedores propios detenidos.

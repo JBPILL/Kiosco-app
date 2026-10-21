@@ -507,3 +507,43 @@ Escaneo 1176 archivos, 1162 texto, 14 binarios omitidos, 46 candidatos: cero
 cambios de candidatos respecto del escaneo previo, historial no reescaneado.
 No se modificó .env ni se instaló SQL/Edge remoto. El siguiente incremento sigue
 siendo CAS de reconciliación y estados finales, antes de conectar el worker.
+
+### Cierre atómico y recuperación de conciliación — 21/10/2026
+
+- SQL 004 preparado: autorización coincidente, estado AUTORIZADA, revisión 2 y
+  avance único de serie se confirman en la misma transacción. Se conserva cada
+  reserva histórica y se permite otra pendiente después del cierre durable.
+  Resultado inconcluso persiste PENDIENTE_CONCILIACION sin liberar numeración.
+- ID de observación inmutable: replay devuelve su ACK histórico; ID reutilizado
+  con contenido distinto se rechaza. Un nuevo ID puede consultar de nuevo una
+  pendiente, pero no habilita reenvío de FECAESolicitar. CAE contradictorio se
+  rechaza y observación tardía negativa no degrada una autorización confirmada.
+- Getters y RPC sólo de servicio, sin lectura/DML directo de tablas. Orquestador
+  privado integra recuperación, FECompConsultar limitado, comparación completa
+  y CAS. No es un endpoint; no autentica actor/tenant ni administra certificados.
+  Una coincidencia en SQL proviene del trabajador confiable: SQL no demuestra
+  por sí solo autenticidad de una respuesta de ARCA.
+- Prueba integrada SOAP mock→comparación→SQL cubre ACK perdido después de guardar:
+  replay y operación ya autorizada no hacen otra consulta. Falla de transporte
+  queda pendiente; no existen efectos comerciales ni envío de comprobantes.
+- 196 pruebas fiscales enfocadas PASS (49 en persistencia/recuperación). Build
+  PASS, 634 módulos. Nueve carreras PostgreSQL 17.11 PASS con SQL 001–004 finales:
+  dos conciliadores, CAE contradictorio, cierre contra próxima reserva, además
+  de las seis carreras anteriores. Evidencia local fuera de Git:
+  fiscal-reconciliation-cas-final-20261021.json; contenedor propio detenido.
+- Pruebas incluyen escrituras omitidas o alteradas por triggers: no se acepta
+  una confirmación que no corresponde al dato efectivamente persistido.
+- Manifiesto histórico 43 SQL PASS; escaneo 1178 archivos/1164 texto/14 binarios,
+  mismos 46 candidatos (delta 0). Suite integrada nueva en ejecución.
+- Sigue abierto PR03: falta custodia privada/caché de TA y worker con autorización
+  real de actor/comercio/emisor; emisión de homologación no implementada ni
+  autorizada por este bloque. No se instalaron SQL 001–004 ni Edge remotos.
+  PR02 requiere además acreditar punto de ensayo y autorizar emisión.
+
+Verificación final de cierre (21/10): suite integrada 2373 PASS / 1 skipped /
+228 archivos, 195,50 s. Build PASS; manifiesto histórico 43 SQL PASS. Edge Runtime
+local v1.77.4 empaquetó y ejecutó dos aserciones sintéticas PASS: autorización y
+replay con una sola consulta mock, cero SQL y cero llamadas fiscales. Evidencia
+fuera de Git en fiscal-cas-edge-result.json; contenedor propio confirmado exited.
+No se usaron certificados ni Token/Sign reales. Este bloque no cierra F04/F07:
+continúa custodia/caché de TA y autorización del trabajador antes de Staging.

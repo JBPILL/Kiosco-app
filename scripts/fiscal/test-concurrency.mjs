@@ -55,14 +55,14 @@ const prepare = async(client,fixture,op=randomUUID(),point=2)=>{
     [op,fixture.kid,fixture.sale,JSON.stringify(context(point))])
   return r.rows[0].ack
 }
-const reserve = async(client,op,point=2)=>{
+const reserve = async(client,op,point=2,last=41)=>{
   // Mismo cuerpo durable para los reintentos; ninguna credencial ni red fiscal.
-  const body=JSON.stringify({version:1,entorno:'HOMOLOGACION',cuitEmisor:issuer,puntoVenta:point,tipoComprobante:11,numero:42,
+  const body=JSON.stringify({version:1,entorno:'HOMOLOGACION',cuitEmisor:issuer,puntoVenta:point,tipoComprobante:11,numero:last+1,
     concepto:1,tipoDocumento:99,numeroDocumento:'0',condicionIvaReceptor:5,fecha:'20261021',servicioDesde:null,
     servicioHasta:null,vencimientoPago:null,moneda:'PES',cotizacion:'1',
     importes:{total:'123.45',neto:'123.45',iva:'0.00',noGravado:'0.00',exento:'0.00',tributos:'0.00'},iva:[],tributos:[]})
   const hash=createHash('sha256').update(body).digest('hex')
-  const r=await client.query('SELECT persistir_solicitud_fiscal_homologacion($1,$2,$3,41,clock_timestamp()) ack',[op,body,hash])
+  const r=await client.query('SELECT persistir_solicitud_fiscal_homologacion($1,$2,$3,$4,clock_timestamp()) ack',[op,body,hash,last])
   return r.rows[0].ack
 }
 const attempt = async(client,op,id)=>{
@@ -94,7 +94,7 @@ try {
   for (const file of [join(bootstrap,'001_domain.sql'),join(bootstrap,'002_identity_helpers.sql'),
     ...readdirSync(join(bootstrap,'steps')).sort().map(file=>join(bootstrap,'steps',file)),join(bootstrap,'900_final_security.sql'),
     join(root,'supabase/pilot-fiscal/001_fiscal_journal.sql'),join(root,'supabase/pilot-fiscal/002_fiscal_reservations.sql'),
-    join(root,'supabase/pilot-fiscal/003_fiscal_requests.sql')]) {
+    join(root,'supabase/pilot-fiscal/003_fiscal_requests.sql'),join(root,'supabase/pilot-fiscal/004_fiscal_reconciliation.sql')]) {
     await observer.query(readFileSync(file,'utf8'))
   }
   async function fixture() {
@@ -162,6 +162,30 @@ try {
   await start(a); assert.equal((await reserve(a,opCrash.id,5)).numero,42); await a.query('ROLLBACK')
   await start(b); assert.equal((await reserve(b,opCrash.id,5)).numero,42); await b.query('COMMIT')
   cases.push('rollback_antes_ACK_sin_hueco_de_numeracion')
+  const close=async(client,operation,intent,sha,cae='11111111111111')=>{
+    const decision={estado:'AUTORIZACION_COINCIDENTE',cae,vencimiento:'20261031',procesadoEn:'20261021120000',solicitudSha256:sha,puedeReenviar:false}
+    return (await client.query('SELECT registrar_reconciliacion_fiscal_homologacion($1,$2,$3,$4,1,$5::jsonb) ack',
+      [randomUUID(),operation,intent,sha,JSON.stringify(decision)])).rows[0].ack
+  }
+  await start(a); const closed=await close(a,first.id,id,recovered.solicitud_sha256)
+  await start(b); const pendingClose=capture(close(b,first.id,id,recovered.solicitud_sha256))
+  await waitForLock(observer,b); await a.query('COMMIT')
+  const closing=await pendingClose; assert(!closing.error); assert.deepEqual(closing.value,closed); await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT ultimo_observado FROM fiscal_series_homologacion WHERE punto_venta=2')).rows[0].ultimo_observado,42)
+  cases.push('dos_conciliadores_un_CAE_un_avance')
+  await start(b); const contradiction=await capture(close(b,first.id,id,recovered.solicitud_sha256,'22222222222222'))
+  assert.equal(contradiction.error?.code,'22023'); await b.query('ROLLBACK')
+  cases.push('CAE_contradictorio_rechazado_sin_downgrade')
+  await start(a); const next=await reserve(a,other.id,2,42); const nextIntent=randomUUID()
+  await attempt(a,other.id,nextIntent); await a.query('COMMIT')
+  const third=await fixture()
+  await start(b,'authenticated',third.auth); const thirdOp=await prepare(b,third); await b.query('COMMIT')
+  await start(a); await close(a,other.id,nextIntent,next.solicitud_sha256)
+  await start(b); const pendingNext=capture(reserve(b,thirdOp.id,2,43))
+  await waitForLock(observer,b); await a.query('COMMIT')
+  const afterClose=await pendingNext; assert(!afterClose.error); assert.equal(afterClose.value.numero,44); await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_reservas_homologacion WHERE punto_venta=2')).rows[0].n,3)
+  cases.push('cierre_antes_siguiente_reserva_sin_perder_historia')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
