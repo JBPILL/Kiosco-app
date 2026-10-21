@@ -11,6 +11,7 @@ import type {
   TipoDocumentoCliente,
 } from '../types/afip'
 import toast from 'react-hot-toast'
+import { normalizarFechaInicioActividades } from '../lib/afipFecha'
 
 interface EmitirFacturaParams {
   ventaId: string
@@ -158,7 +159,7 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
       ultimo_nro_comprobante: 0,
     }
 
-    const configActualizada: ConfiguracionAFIP = {
+    let configActualizada: ConfiguracionAFIP = {
       ...configActual,
       ...nuevaConfig,
     }
@@ -176,6 +177,12 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
       }
     }
 
+    try {
+      configActualizada = { ...configActualizada, inicio_actividades: normalizarFechaInicioActividades(configActualizada.inicio_actividades) }
+    } catch {
+      toast.error('Ingresá una fecha válida con formato dd/mm/aaaa.')
+      return false
+    }
     set({ guardando: true })
 
     // 1. Guardar en localStorage

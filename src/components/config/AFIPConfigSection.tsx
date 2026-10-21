@@ -6,10 +6,12 @@ import { Input } from '../ui/Input'
 import { TicketReceiptModal, type TicketData } from '../pos/TicketReceiptModal'
 import type { ConfiguracionAFIP, CondicionIvaAFIP, EntornoAFIP } from '../../types/afip'
 import toast from 'react-hot-toast'
+import { enmascararFechaInicioActividades, errorFechaInicioActividades, normalizarFechaInicioActividades } from '../../lib/afipFecha'
 
 export function AFIPConfigSection() {
   const cuitInputRef = useRef<HTMLInputElement>(null)
   const puntoVentaInputRef = useRef<HTMLInputElement>(null)
+  const fechaInicioInputRef = useRef<HTMLInputElement>(null)
 
   const { usuario } = useAuthStore()
   const esDuenio = usuario?.rol === 'DUEÑO' || usuario?.es_superadmin
@@ -24,6 +26,7 @@ export function AFIPConfigSection() {
   const [puntoVenta, setPuntoVenta] = useState(2)
   const [iibb, setIibb] = useState('')
   const [inicioActividades, setInicioActividades] = useState('')
+  const [fechaInicioRevisada, setFechaInicioRevisada] = useState(false)
   const [entorno, setEntorno] = useState<EntornoAFIP>('HOMOLOGACION')
   const [facturarAutomatico, setFacturarAutomatico] = useState(false)
   const [montoMinimoAuto, setMontoMinimoAuto] = useState(0)
@@ -47,7 +50,9 @@ export function AFIPConfigSection() {
       setCondicionIva(config.condicion_iva || 'MONOTRIBUTO')
       setPuntoVenta(config.punto_venta || 2)
       setIibb(config.iibb || '')
-      setInicioActividades(config.inicio_actividades || '')
+      try { setInicioActividades(normalizarFechaInicioActividades(config.inicio_actividades)) }
+      catch { setInicioActividades(config.inicio_actividades || '') }
+      setFechaInicioRevisada(false)
       setEntorno(config.entorno || 'HOMOLOGACION')
       setFacturarAutomatico(config.facturar_automatico || false)
       setMontoMinimoAuto(config.monto_minimo_auto || 0)
@@ -57,6 +62,14 @@ export function AFIPConfigSection() {
   // Validación de CUIT en vivo
   const cuitLimpio = cuit.replace(/\D/g, '')
   const cuitValido = cuitLimpio.length === 11 ? validarCUIT(cuitLimpio) : null
+  const errorFecha = errorFechaInicioActividades(inicioActividades)
+  const validarFecha = () => {
+    setFechaInicioRevisada(true)
+    if (!errorFecha) return true
+    toast.error(errorFecha)
+    fechaInicioInputRef.current?.focus()
+    return false
+  }
 
   const handleGuardar = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -72,6 +85,7 @@ export function AFIPConfigSection() {
       cuitInputRef.current?.focus()
       return
     }
+    if (!validarFecha()) return
 
     if (habilitado) {
       if (!cuitLimpio) {
@@ -113,6 +127,7 @@ export function AFIPConfigSection() {
     }
 
     const nuevoEstado = !habilitado
+    if (!validarFecha()) return
 
     if (nuevoEstado) {
       if (!cuitLimpio) {
@@ -349,10 +364,17 @@ export function AFIPConfigSection() {
 
           {/* Inicio de Actividades */}
           <Input
+            ref={fechaInicioInputRef}
             label="Fecha Inicio de Actividades"
-            placeholder="Ej: 01/03/2021"
+            aria-label="Fecha Inicio de Actividades"
+            placeholder="dd/mm/aaaa"
+            inputMode="numeric"
+            maxLength={10}
+            aria-invalid={fechaInicioRevisada && !!errorFecha}
+            error={fechaInicioRevisada ? errorFecha : undefined}
             value={inicioActividades}
-            onChange={(e) => setInicioActividades(e.target.value)}
+            onChange={(e) => setInicioActividades(enmascararFechaInicioActividades(e.target.value))}
+            onBlur={() => setFechaInicioRevisada(true)}
           />
 
           {/* Entorno de Trabajo */}
