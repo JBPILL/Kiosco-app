@@ -316,3 +316,33 @@ Todavía falta persistir cuerpo/hash ligado a venta/reserva, resolver la autoriz
 en DB de forma atómica, y conectar custodia/worker/UI. No se instaló ni desplegó
 una función fiscal ni se consultaron comprobantes reales en este bloque. La emisión
 y PR03/PR02 siguen pendientes; esta preparación no habilita facturación.
+
+### Endpoint de consulta y recuperación preparado — 21/10/2026
+
+La función nueva `arca-homologacion` está preparada para revisión, sin instalación
+remota. Arranca cerrada salvo flag privado y proyecto Staging exacto. Conserva
+verificación JWT de gateway y vuelve a verificar usuario/tenant en Auth/SQL.
+No admite emitir ni enviar un cuerpo fiscal desde la aplicación.
+
+Contrato POST JSON, con sesión Bearer y Origin del frontend de Staging:
+
+- `CONCILIAR`: `operacion_id` y `observacion_id` UUID de la operación existente.
+  Repetir la misma observación recupera su resultado sin otra consulta fiscal.
+- `ESTADO_TA`: `operacion_id`. Devuelve estado/intento/revisión sin credenciales.
+- `CANCELAR_PREPARACION_TA`: `operacion_id`, `intento_id`, `revision` originales.
+  Sólo libera PREPARADA; una intención ya enviada o incierta no se libera.
+
+Límite de cuerpo 2048 bytes; campos extra/duplicados y acciones desconocidas se
+rechazan. Las respuestas contienen `emision_habilitada=false`. Un estado incierto
+requiere conservar los identificadores; no autoriza volver a cobrar ni emitir.
+
+146 pruebas locales enfocadas y dos recorridos Edge locales PASS. Auth/ARCA son
+simulados en esos recorridos; JWT/RLS y E2E hospedados siguen pendientes. Instalar
+SQL 001–007, desplegar la nueva función deshabilitada, provisionar secretos y
+habilitar consultas son gates diferentes. Habilitar el flag privado requiere el
+alcance autorizado de consulta real. No se usó material criptográfico real aquí.
+La recuperación sólo permite actuar sobre la operación de origen. Si la sesión
+consulta otra operación que comparte certificado, recibe `COMPARTIDA`, sin los
+identificadores ajenos. SQL 008 refuerza este aislamiento; los registros antiguos
+sin origen verificable no se reasignan ni se liberan automáticamente. El ensayo
+actualizado tiene 150 pruebas dirigidas y dieciséis carreras PostgreSQL PASS.

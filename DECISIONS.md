@@ -437,3 +437,20 @@ envío se concede una sola vez, después de validar custodia y firmar; ACK perdi
 mantiene incertidumbre. Una cancelación antigua no libera una reserva nueva.
 No se libera por reloj una solicitud que pudo llegar a ARCA. SQL 007 y proveedor
 preparados localmente; el gate de instalación/custodia real no se amplía.
+
+## 21/10/2026 — Frontera HTTP fiscal cerrada e instalada por gate separado
+
+La nueva función sólo consulta/reconcilia operaciones existentes o recupera una
+preparación TA. CORS exacto, JSON acotado/cerrado y Auth.getUser + gate SQL preceden
+custodia. El SDK privado sólo accede a Auth y RPC fiscales del host Staging, sin
+reintentos, sesión persistente, redirecciones ni exposición de respuestas privadas.
+La configuración de gateway mantiene verify_jwt=true; nunca se reemplaza por
+claims locales. El flag privado está cerrado por defecto; autorizar publicación
+de código o deploy no habilita consultas ARCA reales ni emisión. Primero preparar
+y revisar, después instalar/provisionar/pruebas hospedadas con sus autorizaciones.
+
+La recuperación HTTP de TA se limita además a la operación que creó el intento.
+Compartir certificado/TA entre comercios no autoriza a un Dueño a cancelar ni
+identificar la preparación de otro. SQL 008 conserva el origen de nuevos intentos
+y falla ante orígenes históricos desconocidos; no se backfillea una atribución
+sin evidencia. La reutilización privada del TA ya confirmado continúa permitida.

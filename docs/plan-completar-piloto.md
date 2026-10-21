@@ -153,3 +153,18 @@ ni llamada ARCA real; endpoint y aceptación hospedada aún pendientes.
 Cierre posterior: suite completa 2532 PASS / 1 skipped / 234 archivos, build PASS;
 Edge local cuatro aserciones PASS. Incremento de recuperación TA listo para revisión
 en rama del piloto; no se instaló SQL 007 ni se activó un endpoint fiscal.
+
+Frontera HTTP fiscal preparada: consultas/replay y recuperación TA por IDs, sin
+emisión, CORS Staging cerrado y doble gate Auth/SQL antes de custodia. SDK privado
+sin reintentos ni sesión persistente, host y RPC limitados. 146 pruebas enfocadas,
+build y Edge local PASS (entrypoint deshabilitado + integración sintética).
+Sin instalación SQL/Edge ni llamadas reales; pruebas JWT/RLS/E2E hospedadas siguen
+pendientes y el flag privado permanece sin activar. Suite completa en ejecución.
+Revisión de aislamiento: SQL 008 restringe recuperación TA a su operación origen;
+no expone ni cancela intentos de otro comercio aunque comparta certificado. 150
+casos enfocados, dieciséis carreras PostgreSQL, build y Edge local finales PASS.
+Suite completa final en curso; la anterior de 2589 PASS precede este guard.
+Cierre final HTTP + aislamiento: 2593 PASS / 1 skipped / 236 archivos, build,
+150 dirigidas, 16 carreras PostgreSQL y Edge local 3+5 PASS. Sin instalación ni
+activación remotas. Sigue pendiente el trabajador de último número/emisión y la
+integración UI antes de aceptar PR03/PR02, además de los gates hospedados.

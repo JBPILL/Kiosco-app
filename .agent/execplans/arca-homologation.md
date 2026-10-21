@@ -834,3 +834,102 @@ siguen preparados, no instalados; sin credenciales reales ni llamada fiscal nuev
 Próximo gate de implementación: endpoint privado de consulta/recuperación con
 Auth real, CORS y cuerpo acotados, configuración Staging cerrada y salida sin
 secretos. Instalar/provisionar y ejecutar aceptación hospedada requieren su gate.
+
+### F04 — endpoint HTTP de consulta/recuperación preparado — 21/10/2026
+
+Nuevo arca-homologacion/index.ts y composición privada HTTP. El servidor sólo
+acepta Origin del frontend Staging y POST JSON de hasta 2048 bytes (incluye
+stream y límite de lectura de tres segundos). Contrato cerrado, UUID normalizados,
+propiedades duplicadas/extra y solicitudes de emisión rechazadas. Flag privado
+ARCA_HOMO_BACKEND_ENABLED distinto de true o proyecto distinto de Staging devuelve
+503 antes de crear cliente/custodia. Gateway verify_jwt=true conservado; además
+Auth.getUser verifica el JWT y SQL verifica actor original Dueño, tenant y emisor
+antes de leer claves/TA. No se confía en claims decodificados por el browser.
+
+SDK @supabase/supabase-js fijado a 2.116.0 en import map Edge. Adaptador permite
+sólo GET /auth/v1/user y nueve RPC fiscales explícitas del host Staging; rechaza
+tablas/funciones/destinos alternativos y redirecciones. Desactiva reintentos en
+configuración y RPC; quince segundos incluyen fetch/cuerpo, máximo dos MiB de
+respuesta. Auth usa JWT del caller, RPC mantiene credencial del servidor: pruebas
+con dos JWT distintos acreditan que no se reutiliza una sesión local para RPC.
+
+Acciones preparadas: CONCILIAR (operación/observación existentes), ESTADO_TA y
+CANCELAR_PREPARACION_TA con intento/revisión originales. Resultados cerrados,
+sin Token/Sign/certificado/clave; emision_habilitada=false. Un rechazo SQL o ACK
+incierto no se presenta como éxito ni dispara reenvío automático.
+
+Evidencia local: 146 pruebas enfocadas PASS (HTTP, SDK real con red simulada y
+SQL/PGlite). Incluye custodia PKCS8, CMS, cifrado y cierre reales sobre fixture
+sintético; replay HTTP no duplica WSAA ni consulta ni CAE. Recuperación/cancelación
+por HTTP conserva generación posterior y rechaza intento ya enviado. Build PASS,
+634 módulos; lint enfocado sin errores. Suite completa en ejecución, no PASS aún.
+
+Edge Runtime v1.77.4 local: entrypoint real compilado/ejecutado deshabilitado por
+defecto PASS (tres aserciones); integración HTTP/SDK PASS (cinco), dos llamadas
+Auth mock, un permiso, un WSAA y un WSFE mock, replay/cifrado privados. Contenedores
+propios confirmados exited. Evidencia fuera de Git: fiscal-http-edge-entry-result.json
+y fiscal-http-edge-integration-result.json. No se acredita JWT/RLS hospedado.
+Escaneo 1203 archivos/47 candidatos: único delta es literal explícito de secreto
+sintético en fiscalSupabaseAdmin.test.ts:5, sin material real. Manifiesto 43 SQL
+históricos intacto; módulos privados ausentes del frontend compilado.
+
+Pendientes: instalación de SQL 001–007 y nueva Edge (primero deshabilitada),
+provisión privada, pruebas hospedadas JWT/RLS/E2E y autorización distinta para
+consultas fiscales reales. El flag no debe activarse sólo por autorizar deploy.
+No se desplegó función fiscal, cambió configuración remota ni consultó ARCA real.
+PR03 sigue PARCIAL; PR02 y emisión continúan bloqueados por sus gates.
+
+El alcance de este endpoint es consulta/recuperación, no completa por sí solo el
+backend PR03. Antes de CAE real faltan también el adaptador de último autorizado,
+serialización/envío FECAESolicitar con intención durable y reconciliación, y su
+integración UI. Son implementación local pendiente; luego se revisan instalación,
+provisión y aceptación hospedadas. No convertir el éxito de consulta en emisión
+aceptada ni omitir esos componentes para cerrar PR02/PR03.
+
+Revisión previa a publicar: la coordinación global por certificado permite a un
+worker de otro comercio autorizado compartir TA, pero el nuevo HTTP de cancelación
+no debe trasladar esa capacidad al Dueño de otro tenant. Falta ligar el intento a
+su operación de origen y ocultar metadata ajena antes de publicar el endpoint.
+Se conserva la suite en curso como evidencia del estado previo; no editar código
+mientras corre ni presentar ese pase como aceptación de la corrección pendiente.
+
+Corrección de aislamiento antes de publicar: SQL 008 liga nuevos intentos TA a
+operacion_origen_id (FK privada). Sólo esa operación puede registrar intención,
+confirmar el sobre o cancelar preparación; la consulta de otra operación devuelve
+COMPARTIDA sin intento ni revisión ajenos. El TA confirmado se sigue compartiendo
+privadamente por certificado; no se duplica renovación por separar comercios.
+No se inventa origen de historia anterior (NULL): queda no cancelable/enviable;
+requiere revisión privada, no redondeo ni asignación automática. Timestamp y FK
+hacen trazable el origen sin ampliar lecturas públicas de la tabla/columna nueva.
+
+Primera suite completa del endpoint previo al guard: 2589 PASS / 1 skipped /
+236 archivos; se conserva pilot-fiscal-http-suite-results.json. La revisión de
+seguridad encontró luego el riesgo de cancelación cruzada, por lo que ese pase
+no se usa como aceptación final. Después del guard: 150 casos enfocados PASS,
+dieciséis carreras PostgreSQL 17.11 PASS, incluidas metadata/acción ajenas
+rechazadas y reutilización TA conservada. Build final PASS; Edge real deshabilitado
+(3) e integración HTTP/SDK sintética (5) repetidos con código final PASS. Evidencia
+pre-ownership conservada por separado; contenedores propios exited y datos locales
+conservados. Lint/diff/manifiesto 43 SQL PASS. Escaneo 1204 archivos/47 candidatos,
+sólo el literal sintético identificado antes. Suite completa final en ejecución.
+SQL 001–008 y nueva Edge continúan sin instalación ni habilitación remotas.
+
+Fuentes para el siguiente componente: la página oficial de WebService consultada
+el 21/10 anuncia manual WSFEv1 V4.7 (https://www.afip.gob.ar/fe/ayuda/webservice.asp).
+El enlace actual apunta a /ws/documentacion/manuales/manual-desarrollador-ARCA-COMPG.pdf;
+su lectura por la herramienta agotó tiempo, por lo que no se afirma haber revisado
+el PDF completo. Se pudo leer la documentación SOAP pública de FECAESolicitar
+(https://wswhomo.afip.gov.ar/wsfev1/service.asmx?op=FECAESolicitar); la de último
+autorizado agotó tiempo. Fueron GET de documentación sin autenticación ni emisión.
+Verificar manual/WSDL vigentes al implementar envío; no tomar el manual histórico
+v2.1 mencionado antes como especificación suficiente para esa etapa.
+
+Cierre final del endpoint con aislamiento (21/10): 2593 PASS / 1 skipped /
+236 archivos, exit 0, dos trabajadores y mismos timeouts. Informe durable:
+pilot-fiscal-http-ownership-suite-results.json. La única omisión preexistente es
+la comparación del set F6 revisado de 942 candidatos, condicionada a configurar
+F6_C3A_CANDIDATES_PATH; no se omiten pruebas fiscales nuevas. Build final PASS,
+150 enfocadas PASS, 16 carreras PostgreSQL PASS y Edge final 3+5 aserciones PASS.
+No hubo cambios de código posteriores. El frontend compilado conserva 634 módulos
+y no incluye el backend privado. Instalar SQL 001–008, desplegar Edge y provisionar
+secretos siguen pendientes de autorización; no se activó el flag ni se emitió.

@@ -16,6 +16,8 @@ import { authorizeFiscalWorker } from '../../supabase/functions/_shared/fiscalWo
 import type { GuardedWsaaTicketLoader } from '../../supabase/functions/_shared/fiscalWsaa'
 import { createWsaaTicketSource } from '../../supabase/functions/_shared/fiscalWsaa'
 import { syntheticEncryptedCustody } from './fixtures/fiscalEncryptedCustody'
+import { createFiscalHttpHandler } from '../../supabase/functions/_shared/fiscalHttp'
+import { createFiscalSupabaseAdmin, FISCAL_STAGING_URL } from '../../supabase/functions/_shared/fiscalSupabaseAdmin'
 import { createPrivateFiscalCustody, createPrivateFiscalTicketKeys } from '../../supabase/functions/_shared/fiscalPrivateCustody'
 
 const db = new PGlite()
@@ -36,7 +38,7 @@ beforeAll(async()=>{
     ...readdirSync(join(root,'steps')).sort().map(name=>join(root,'steps',name)),join(root,'900_final_security.sql')]) {
     await db.exec(readFileSync(file,'utf8'))
   }
-  for(const file of ['001_fiscal_journal.sql','002_fiscal_reservations.sql','003_fiscal_requests.sql','004_fiscal_reconciliation.sql','005_fiscal_worker_authorization.sql','006_fiscal_shared_tickets.sql','007_fiscal_ticket_recovery.sql']) {
+  for(const file of ['001_fiscal_journal.sql','002_fiscal_reservations.sql','003_fiscal_requests.sql','004_fiscal_reconciliation.sql','005_fiscal_worker_authorization.sql','006_fiscal_shared_tickets.sql','007_fiscal_ticket_recovery.sql','008_fiscal_ticket_ownership.sql']) {
     const sql=readFileSync(join('supabase/pilot-fiscal',file),'utf8')
     await db.exec(sql); await db.exec(sql)
   }
@@ -439,6 +441,19 @@ it.each(['fiscal_ta_homologacion','fiscal_ta_intentos_homologacion'])('no conced
   await denied(()=>db.query('SELECT solicitar_ta_homologacion($1,$2,$3,1,$4)',[op,binding.credencial_id,'a'.repeat(64),randomUUID()]))
 })
 
+async function syntheticFiscalResponse(request:Request):Promise<Response> {
+    if(request.url==='https://wsaahomo.afip.gov.ar/ws/services/LoginCms'){
+      const {ContentInfo,SignedData}=await import('pkijs'),body=await request.text(),cms=body.match(/<in0>([^<]+)<\/in0>/)![1]
+      const info=ContentInfo.fromBER(Uint8Array.from(atob(cms),c=>c.charCodeAt(0))),signed=new SignedData({schema:info.content})
+      const tra=new TextDecoder().decode(signed.encapContentInfo.eContent!.getValue()),id=tra.match(/<uniqueId>(\d+)<\/uniqueId>/)![1]
+      const ticket=`<loginTicketResponse version="1.0"><header><source>CN=wsaa,O=AFIP,C=AR,SERIALNUMBER=CUIT 33693450239</source><destination>CN=Kiosko Synthetic,SERIALNUMBER=CUIT 20123456786</destination><uniqueId>${id}</uniqueId><generationTime>${new Date(Date.now()-1000).toISOString()}</generationTime><expirationTime>${new Date(Date.now()+3600000).toISOString()}</expirationTime></header><credentials><token>SYNTHETIC_FULL_TOKEN</token><sign>SYNTHETIC_FULL_SIGN</sign></credentials></loginTicketResponse>`
+      const escaped=ticket.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      return new Response(`<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><w:loginCmsResponse xmlns:w="http://wsaa.view.sua.dvadac.desein.afip.gov"><loginCmsReturn>${escaped}</loginCmsReturn></w:loginCmsResponse></s:Body></s:Envelope>`,{headers:{'Content-Type':'text/xml'}})
+    }
+    expect(request.url).toBe('https://wswhomo.afip.gov.ar/wsfev1/service.asmx')
+    return new Response(fiscalXml(),{headers:{'Content-Type':'text/xml'}})
+}
+
 it('integra Auth mock, SQL, custodia PKCS8 cifrada, CMS real, WSAA mock y conciliación sin duplicar',async()=>{
   const protectedFixture=await syntheticEncryptedCustody()
   await provisionEmitter(protectedFixture.binding.certificado_sha256)
@@ -450,19 +465,7 @@ it('integra Auth mock, SQL, custodia PKCS8 cifrada, CMS real, WSAA mock y concil
   protectedFixture.secrets.ARCA_HOMO_TA_ACTIVE_KEY_ID=keyId
   protectedFixture.secrets['ARCA_HOMO_TA_KEY_'+keyId.replace(/-/g,'').toUpperCase()]=btoa(String.fromCharCode(...raw));raw.fill(0)
   const read=(name:string)=>protectedFixture.secrets[name],keys=createPrivateFiscalTicketKeys(read)
-  const fetcher=vi.fn<typeof fetch>(async input=>{
-    const request=input as Request
-    if(request.url==='https://wsaahomo.afip.gov.ar/ws/services/LoginCms'){
-      const {ContentInfo,SignedData}=await import('pkijs'),body=await request.text(),cms=body.match(/<in0>([^<]+)<\/in0>/)![1]
-      const info=ContentInfo.fromBER(Uint8Array.from(atob(cms),c=>c.charCodeAt(0))),signed=new SignedData({schema:info.content})
-      const tra=new TextDecoder().decode(signed.encapContentInfo.eContent!.getValue()),id=tra.match(/<uniqueId>(\d+)<\/uniqueId>/)![1]
-      const ticket=`<loginTicketResponse version="1.0"><header><source>CN=wsaa,O=AFIP,C=AR,SERIALNUMBER=CUIT 33693450239</source><destination>CN=Kiosko Synthetic,SERIALNUMBER=CUIT 20123456786</destination><uniqueId>${id}</uniqueId><generationTime>${new Date(Date.now()-1000).toISOString()}</generationTime><expirationTime>${new Date(Date.now()+3600000).toISOString()}</expirationTime></header><credentials><token>SYNTHETIC_FULL_TOKEN</token><sign>SYNTHETIC_FULL_SIGN</sign></credentials></loginTicketResponse>`
-      const escaped=ticket.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-      return new Response(`<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><w:loginCmsResponse xmlns:w="http://wsaa.view.sua.dvadac.desein.afip.gov"><loginCmsReturn>${escaped}</loginCmsReturn></w:loginCmsResponse></s:Body></s:Envelope>`,{headers:{'Content-Type':'text/xml'}})
-    }
-    expect(request.url).toBe('https://wswhomo.afip.gov.ar/wsfev1/service.asmx')
-    return new Response(fiscalXml(),{headers:{'Content-Type':'text/xml'}})
-  })
+  const fetcher=vi.fn<typeof fetch>(async input=>syntheticFiscalResponse(input as Request))
   const custody=vi.fn(createPrivateFiscalCustody(read)),source=createWsaaTicketSource(custody,fetcher)
   const shared=createSharedFiscalTicketLoader(persistedRpc,keys,source),id=randomUUID()
   const ack=await reconcileAuthorizedFiscalVoucher(admin,'SYNTHETIC_JWT',op,id,createFiscalTicketCache(),shared,fetcher)
@@ -599,4 +602,122 @@ it('migrar incertidumbre anterior no habilita preparación ni cancelación',asyn
   expect((await persistedRpc.rpc('consultar_preparacion_ta_homologacion',args)).data).toMatchObject({estado:'ENVIO_INCIERTO',revision:1})
   await denied(()=>persistedRpc.rpc('cancelar_preparacion_ta_homologacion',lease))
   expect((await persistedRpc.rpc('iniciar_envio_ta_homologacion',lease)).data).toMatchObject({nuevo_envio:false})
+})
+
+const httpOrigin='https://kiosco-app-staging.vercel.app',httpServiceSecret='SYNTHETIC_PRIVATE_SERVICE_SECRET'
+async function syntheticHttpNetwork(request:Request):Promise<Response> {
+  const url=new URL(request.url)
+  if(url.origin===FISCAL_STAGING_URL&&url.pathname==='/auth/v1/user'){
+    expect(request.headers.get('authorization')).toBe('Bearer SYNTHETIC_JWT')
+    return Response.json({id:auth,aud:'authenticated'})
+  }
+  if(url.origin===FISCAL_STAGING_URL&&url.pathname.startsWith('/rest/v1/rpc/')){
+    expect(request.headers.get('authorization')).toBe('Bearer '+httpServiceSecret)
+    const args:Record<string,unknown>=await request.json()
+    await db.exec('SAVEPOINT http_rpc')
+    try {const result=await persistedRpc.rpc(url.pathname.split('/').at(-1)!,args);await db.exec('RELEASE SAVEPOINT http_rpc');return Response.json(result.data)}
+    catch {await db.exec('ROLLBACK TO SAVEPOINT http_rpc; RELEASE SAVEPOINT http_rpc');return Response.json({code:'40001',message:'SYNTHETIC_SQL_REJECTED'},{status:409})}
+  }
+  return syntheticFiscalResponse(request)
+}
+function httpRequest(body:Record<string,unknown>):Request {
+  return new Request(FISCAL_STAGING_URL+'/functions/v1/arca-homologacion',{method:'POST',headers:{origin:httpOrigin,authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify(body)})
+}
+it('HTTP + SDK real + SQL + CMS/PKCS8: autoriza consulta existente, replay no duplica ni filtra TA',async()=>{
+  const protectedFixture=await syntheticEncryptedCustody();await provisionEmitter(protectedFixture.binding.certificado_sha256)
+  await db.exec('RESET ROLE');await db.query('UPDATE fiscal_emisores_homologacion SET credencial_id=$1 WHERE kiosco_id=$2',[protectedFixture.binding.credencial_id,kid])
+  await db.exec('SET ROLE service_role');await persist();await intent()
+  const keyId=randomUUID(),raw=crypto.getRandomValues(new Uint8Array(32))
+  protectedFixture.secrets.ARCA_HOMO_TA_ACTIVE_KEY_ID=keyId
+  protectedFixture.secrets.ARCA_HOMO_BACKEND_ENABLED='true'
+  protectedFixture.secrets['ARCA_HOMO_TA_KEY_'+keyId.replace(/-/g,'').toUpperCase()]=btoa(String.fromCharCode(...raw));raw.fill(0)
+  const read=vi.fn((name:string)=>protectedFixture.secrets[name]),fetcher=vi.fn<typeof fetch>(async input=>syntheticHttpNetwork(input as Request))
+  const handler=createFiscalHttpHandler({readSecret:read,createAdmin:url=>createFiscalSupabaseAdmin(url,httpServiceSecret,fetcher),fetcher})
+  const cmd={accion:'CONCILIAR',operacion_id:op,observacion_id:randomUUID()}
+  const first=await handler(httpRequest(cmd));expect(first.status).toBe(200)
+  const result=await first.json();expect(result.resultado.estado).toBe('AUTORIZADA');expect(result.emision_habilitada).toBe(false)
+  const replay=await handler(httpRequest(cmd));expect(replay.status).toBe(200);expect(await replay.json()).toEqual(result)
+  const state=await handler(httpRequest({accion:'ESTADO_TA',operacion_id:op}));expect(state.status).toBe(200)
+  expect((await state.json()).resultado.estado).toBe('DISPONIBLE')
+  const requests=fetcher.mock.calls.map(c=>c[0] as Request)
+  expect(requests.filter(r=>r.url.endsWith('/auth/v1/user'))).toHaveLength(3)
+  expect(requests.filter(r=>r.url==='https://wsaahomo.afip.gov.ar/ws/services/LoginCms')).toHaveLength(1)
+  expect(requests.filter(r=>r.url==='https://wswhomo.afip.gov.ar/wsfev1/service.asmx')).toHaveLength(1)
+  expect(requests.filter(r=>r.url.endsWith('/iniciar_envio_ta_homologacion'))).toHaveLength(1)
+  expect(JSON.stringify(result)).not.toContain('SYNTHETIC')
+  expect(read.mock.calls.filter(c=>c[0].endsWith('_KEY_PEM'))).toHaveLength(1)
+  await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_autorizaciones_homologacion')).rows[0].n).toBe(1)
+})
+it('HTTP recupera/cancela preparación por CAS; reenvío de cancelación no libera generación nueva ni envío incierto',async()=>{
+  const {args,lease}=await taFixture(),fetcher=vi.fn<typeof fetch>(async input=>syntheticHttpNetwork(input as Request))
+  const read=vi.fn((name:string)=>name==='SUPABASE_URL'?FISCAL_STAGING_URL:name==='ARCA_HOMO_BACKEND_ENABLED'?'true':undefined)
+  const handler=createFiscalHttpHandler({readSecret:read,createAdmin:url=>createFiscalSupabaseAdmin(url,httpServiceSecret,fetcher),fetcher})
+  const state=await handler(httpRequest({accion:'ESTADO_TA',operacion_id:op}));expect((await state.json()).resultado.estado).toBe('PREPARADA')
+  const cmd={accion:'CANCELAR_PREPARACION_TA',operacion_id:op,intento_id:lease.p_intento_id,revision:lease.p_generacion}
+  expect((await handler(httpRequest(cmd))).status).toBe(200)
+  const nextId=randomUUID(),next=(await persistedRpc.rpc('solicitar_ta_homologacion',{...args,p_intento_id:nextId})).data as Record<string,unknown>
+  expect(next.revision).toBe(2);expect((await handler(httpRequest(cmd))).status).toBe(200)
+  await persistedRpc.rpc('iniciar_envio_ta_homologacion',{...args,p_intento_id:nextId,p_generacion:next.revision})
+  const reject=await handler(httpRequest({...cmd,intento_id:nextId,revision:next.revision}));expect(reject.status).toBe(409)
+  expect(await reject.text()).not.toContain('SYNTHETIC')
+  expect(fetcher.mock.calls.every(c=>new URL((c[0] as Request).url).origin===FISCAL_STAGING_URL)).toBe(true)
+  expect(read.mock.calls.every(c=>['SUPABASE_URL','ARCA_HOMO_BACKEND_ENABLED'].includes(c[0]))).toBe(true)
+})
+
+async function foreignTaOperation() {
+  const fk=randomUUID(),fa=randomUUID(),fu=randomUUID(),fsale=randomUUID(),fop=randomUUID(),credential=randomUUID()
+  await db.exec('RESET ROLE')
+  await db.query('INSERT INTO auth.users VALUES($1)',[fa])
+  await db.query("INSERT INTO kioscos(id,nombre) VALUES($1,'Segundo comercio sintético')",[fk])
+  await db.query("INSERT INTO usuarios(id,auth_user_id,kiosco_id,nombre,rol) VALUES($1,$2,$3,'Otro Dueño','DUEÑO')",[fu,fa,fk])
+  await db.query('INSERT INTO ventas(id,kiosco_id,usuario_id,total) VALUES($1,$2,$3,123.45)',[fsale,fk,fu])
+  await db.exec('SET ROLE authenticated');await db.query("SELECT set_config('request.jwt.claim.sub',$1,true)",[fa])
+  await db.query('SELECT preparar_operacion_fiscal_homologacion($1,$2,$3,$4::jsonb)',[fop,fk,fsale,JSON.stringify(context)])
+  await db.exec('RESET ROLE')
+  await db.query(`INSERT INTO fiscal_emisores_homologacion(kiosco_id,cuit_emisor,punto_venta,credencial_id,certificado_sha256,habilitado)
+    VALUES($1,'20123456786',2,$2,$3,true)`,[fk,credential,'a'.repeat(64)])
+  await db.query("SELECT set_config('request.jwt.claim.sub',$1,true)",[auth]);await db.exec('SET ROLE service_role')
+  return {actor:fa,args:{p_operacion_id:fop,p_credencial_id:credential,p_huella:'a'.repeat(64),p_revision:1}}
+}
+it('certificado compartido no expone ni concede cancelación/envío/confirmación de preparación ajena',async()=>{
+  const {lease,args}=await taFixture(),foreign=await foreignTaOperation()
+  const foreignLease={...foreign.args,p_intento_id:lease.p_intento_id,p_generacion:lease.p_generacion}
+  expect((await persistedRpc.rpc('consultar_preparacion_ta_homologacion',foreign.args)).data).toEqual({estado:'COMPARTIDA',intento_id:null,revision:0})
+  for(const name of ['cancelar_preparacion_ta_homologacion','iniciar_envio_ta_homologacion'])await denied(()=>persistedRpc.rpc(name,foreignLease))
+  const cipher={version:1,keyId:randomUUID(),nonce:'0'.repeat(24),ciphertext:'0'.repeat(32),expiresAt:Date.now()+120000}
+  await persistedRpc.rpc('iniciar_envio_ta_homologacion',lease)
+  await denied(()=>persistedRpc.rpc('confirmar_ta_homologacion',{...foreignLease,p_cifrado:cipher}))
+  await persistedRpc.rpc('confirmar_ta_homologacion',{...lease,p_cifrado:cipher})
+  expect((await persistedRpc.rpc('solicitar_ta_homologacion',{...foreign.args,p_intento_id:randomUUID()})).data).toMatchObject({estado:'DISPONIBLE',nuevo_intento:false,cifrado:cipher})
+  expect((await persistedRpc.rpc('consultar_preparacion_ta_homologacion',args)).data).toMatchObject({estado:'DISPONIBLE',intento_id:lease.p_intento_id})
+  await db.exec('RESET ROLE')
+  expect((await db.query<{operacion_origen_id:string}>('SELECT operacion_origen_id FROM fiscal_ta_intentos_homologacion')).rows[0].operacion_origen_id).toBe(op)
+})
+it('HTTP de otro Dueño sólo ve estado compartido y no puede cancelar aunque conozca intento/revisión',async()=>{
+  const {lease}=await taFixture(),foreign=await foreignTaOperation()
+  const fetcher=vi.fn<typeof fetch>(async input=>{
+    const req=input as Request
+    if(req.url.endsWith('/auth/v1/user')){expect(req.headers.get('authorization')).toBe('Bearer SYNTHETIC_FOREIGN');return Response.json({id:foreign.actor,aud:'authenticated'})}
+    return syntheticHttpNetwork(req)
+  })
+  const handler=createFiscalHttpHandler({readSecret:name=>name==='SUPABASE_URL'?FISCAL_STAGING_URL:name==='ARCA_HOMO_BACKEND_ENABLED'?'true':undefined,
+    createAdmin:url=>createFiscalSupabaseAdmin(url,httpServiceSecret,fetcher),fetcher})
+  const foreignRequest=(body:Record<string,unknown>)=>{
+    const req=httpRequest(body),headers=new Headers(req.headers);headers.set('authorization','Bearer SYNTHETIC_FOREIGN');return new Request(req,{headers})
+  }
+  const state=await handler(foreignRequest({accion:'ESTADO_TA',operacion_id:foreign.args.p_operacion_id}))
+  expect(state.status).toBe(200);expect((await state.json()).resultado).toEqual({estado:'COMPARTIDA',intento_id:null,revision:0})
+  const cancel=await handler(foreignRequest({accion:'CANCELAR_PREPARACION_TA',operacion_id:foreign.args.p_operacion_id,intento_id:lease.p_intento_id,revision:lease.p_generacion}))
+  expect(cancel.status).toBe(409);expect(await cancel.text()).not.toContain(op)
+  expect((await persistedRpc.rpc('iniciar_envio_ta_homologacion',lease)).data).toMatchObject({nuevo_envio:true})
+})
+it('historia sin origen no se reasigna durante migración/replay ni habilita cancelación',async()=>{
+  const {args,lease}=await taFixture();await db.exec('RESET ROLE')
+  await db.query('UPDATE fiscal_ta_intentos_homologacion SET operacion_origen_id=NULL WHERE id=$1',[lease.p_intento_id])
+  const sql=readFileSync('supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql','utf8').replace(/^BEGIN;$/m,'SAVEPOINT migrate_owner;').replace(/^COMMIT;$/m,'RELEASE SAVEPOINT migrate_owner;')
+  await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
+  expect((await persistedRpc.rpc('consultar_preparacion_ta_homologacion',args)).data).toEqual({estado:'COMPARTIDA',intento_id:null,revision:0})
+  await denied(()=>persistedRpc.rpc('cancelar_preparacion_ta_homologacion',lease));await denied(()=>persistedRpc.rpc('iniciar_envio_ta_homologacion',lease))
+  await db.exec('RESET ROLE')
+  expect((await db.query<{operacion_origen_id:null}>('SELECT operacion_origen_id FROM fiscal_ta_intentos_homologacion')).rows[0].operacion_origen_id).toBeNull()
 })
