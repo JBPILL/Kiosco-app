@@ -102,3 +102,23 @@ comprobaciones sintéticas de protocolo/criptografía. La suite completa de 2177
 PASS / 1 skipped y el build de 634 módulos preceden a esta ampliación WSFE.
 Referencia oficial del método y alcance de su consulta:
 https://www.afip.gov.ar/fe/documentos/manualDesarrolladorCOMPGv21.pdf
+
+
+### Preparación del siguiente diagnóstico PR01 (20/10/2026)
+
+Se agregó la opción explícita `-ConsultaWsfe FEParamGetTiposCbte` al diagnóstico
+local. El valor predeterminado sigue siendo FEParamGetPtosVenta; una ejecución
+consulta sólo el método seleccionado, sin reintentos automáticos. Ambos métodos
+están en una lista cerrada; no admite operaciones de emisión ni URL configurable.
+La consulta de tipos no depende de informar un punto de venta. Su resultado no
+acredita que el punto 2 esté disponible ni habilita una emisión con CAE.
+
+Validación local posterior: 4 pruebas PASS en 2 archivos, incluidas 32
+comprobaciones sintéticas (solicitud y acción SOAP, lista válida, lista vacía,
+duplicados, identificador inválido, método incorrecto, error de negocio y
+operación no permitida). PR01 sigue PARCIAL. La ejecución real adicional está
+pendiente de autorización específica; no se reutiliza el permiso de la consulta
+anterior ni se crean puntos de venta en Producción.
+
+Contrato oficial consultado el 20/10/2026:
+https://wswhomo.afip.gov.ar/wsfev1/service.asmx?op=FEParamGetTiposCbte

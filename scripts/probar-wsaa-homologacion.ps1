@@ -7,7 +7,9 @@ param(
     [string]$Servicio = 'wsfe',
     [switch]$Conectar,
     [switch]$ConsultarWsfe,
-    [string]$CuitRepresentado
+    [string]$CuitRepresentado,
+    [ValidateSet("FEParamGetPtosVenta", "FEParamGetTiposCbte")]
+    [string]$ConsultaWsfe = "FEParamGetPtosVenta"
 )
 
 $ErrorActionPreference = 'Stop'
@@ -40,10 +42,15 @@ try {
         Write-Output ('EXPIRATION_TIME=' + $ticket.Expiration.ToUniversalTime().ToString('o'))
         if ($ConsultarWsfe) {
             $etapa = 'WSFE_CONSULTA'
-            $diagnostico = [WsaaHomologacion]::ConsultWsfe($ticket, $CuitRepresentado)
+            $diagnostico = [WsaaHomologacion]::ConsultWsfe($ticket, $CuitRepresentado, $ConsultaWsfe)
             Write-Output 'WSFE_HOMOLOGACION=PASS'
-            Write-Output ('PUNTOS_VENTA=' + $diagnostico.Points)
-            Write-Output ('PUNTOS_BLOQUEADOS=' + $diagnostico.BlockedPoints)
+            Write-Output ('CONSULTA_WSFE=' + $ConsultaWsfe)
+            if ($ConsultaWsfe -eq 'FEParamGetTiposCbte') {
+                Write-Output ('TIPOS_COMPROBANTE=' + $diagnostico.VoucherTypes)
+            } else {
+                Write-Output ('PUNTOS_VENTA=' + $diagnostico.Points)
+                Write-Output ('PUNTOS_BLOQUEADOS=' + $diagnostico.BlockedPoints)
+            }
             Write-Output 'COMPROBANTES_EMITIDOS=0'
         }
     } else { Write-Output 'WSAA_HOMOLOGACION=NOT_RUN' }
@@ -52,7 +59,7 @@ try {
     $codigo = 'LOCAL_OR_TRANSPORT_ERROR'
     $errorInterno = $_.Exception
     while ($errorInterno.InnerException) { $errorInterno = $errorInterno.InnerException }
-    if ($errorInterno.Message -match '^((WSAA|WSFE)_FAULT:[a-zA-Z0-9_.:-]{1,100}|WSFE_BUSINESS:([0-9,]{1,90}|UNKNOWN)|WSFE_(RESULT|POINTS)|CERT_KEY_MISMATCH|CERT_NOT_CURRENT|CERT_NOT_TESTING|TICKET_[A-Z_]+|XML_[A-Z_]+|(WSAA|WSFE)_HTTP_[0-9]{3})$') {
+    if ($errorInterno.Message -match '^((WSAA|WSFE)_FAULT:[a-zA-Z0-9_.:-]{1,100}|WSFE_BUSINESS:([0-9,]{1,90}|UNKNOWN)|WSFE_(RESULT|POINTS|TYPES|OPERATION)|CERT_KEY_MISMATCH|CERT_NOT_CURRENT|CERT_NOT_TESTING|TICKET_[A-Z_]+|XML_[A-Z_]+|(WSAA|WSFE)_HTTP_[0-9]{3})$') {
         $codigo = $errorInterno.Message
     }
     $gate = if ($etapa -eq 'WSFE_CONSULTA') { 'WSFE_HOMOLOGACION' } else { 'WSAA_HOMOLOGACION' }

@@ -18,6 +18,7 @@ public static class WsaaHomologacion {
     public sealed class WsfeDiagnostic {
         public int Points { get; internal set; }
         public int BlockedPoints { get; internal set; }
+        public int VoucherTypes { get; internal set; }
     }
     public sealed class Ticket {
         public string Token { get; internal set; }
@@ -137,20 +138,26 @@ public static class WsaaHomologacion {
 
     // Sólo construye una consulta de parámetros: no envía, persiste ni autoriza comprobantes.
     // El llamador debe usar el TA obtenido para wsfe, en el mismo proceso privado.
-    public static HttpRequestMessage PrepareWsfeDiagnostic(Ticket ticket, string representedCuit, DateTimeOffset now) {
+    public static HttpRequestMessage PrepareWsfeDiagnostic(Ticket ticket, string representedCuit, DateTimeOffset now, string operation = "FEParamGetPtosVenta") {
+        ValidateWsfeOperation(operation);
         if (ticket == null || ticket.Expiration <= now.AddMinutes(1))
             throw new InvalidDataException("TICKET_EXPIRATION");
         ValidateRepresentedCuit(representedCuit);
         XNamespace soap = "http://schemas.xmlsoap.org/soap/envelope/";
         XNamespace wsfe = "http://ar.gov.afip.dif.FEV1/";
         var envelope = new XElement(soap + "Envelope", new XElement(soap + "Body",
-            new XElement(wsfe + "FEParamGetPtosVenta", new XElement(wsfe + "Auth",
+            new XElement(wsfe + operation, new XElement(wsfe + "Auth",
                 new XElement(wsfe + "Token", ticket.Token), new XElement(wsfe + "Sign", ticket.Sign),
                 new XElement(wsfe + "Cuit", representedCuit)))));
         var request = new HttpRequestMessage(HttpMethod.Post, "https://wswhomo.afip.gov.ar/wsfev1/service.asmx");
-        request.Headers.Add("SOAPAction", "\"http://ar.gov.afip.dif.FEV1/FEParamGetPtosVenta\"");
+        request.Headers.Add("SOAPAction", "\"http://ar.gov.afip.dif.FEV1/" + operation + "\"");
         request.Content = new StringContent(envelope.ToString(SaveOptions.DisableFormatting), Encoding.UTF8, "text/xml");
         return request;
+    }
+
+    public static void ValidateWsfeOperation(string operation) {
+        if (operation != "FEParamGetPtosVenta" && operation != "FEParamGetTiposCbte")
+            throw new ArgumentException("WSFE_OPERATION");
     }
 
     public static void ValidateRepresentedCuit(string representedCuit) {
@@ -164,7 +171,8 @@ public static class WsaaHomologacion {
         if (digit != representedCuit[10] - '0') throw new ArgumentException("CUIT representado inválido.");
     }
 
-    public static WsfeDiagnostic ParseWsfeDiagnostic(string xml) {
+    public static WsfeDiagnostic ParseWsfeDiagnostic(string xml, string operation = "FEParamGetPtosVenta") {
+        ValidateWsfeOperation(operation);
         var envelope = ReadXml(xml);
         CheckFault(envelope, "WSFE");
         XNamespace wsfe = "http://ar.gov.afip.dif.FEV1/";
@@ -172,9 +180,9 @@ public static class WsaaHomologacion {
         if (envelope.Root?.Name != soap + "Envelope") throw new InvalidDataException("WSFE_RESULT");
         var bodies = envelope.Root.Elements(soap + "Body").ToArray();
         if (bodies.Length != 1) throw new InvalidDataException("WSFE_RESULT");
-        var responses = bodies[0].Elements(wsfe + "FEParamGetPtosVentaResponse").ToArray();
+        var responses = bodies[0].Elements(wsfe + operation + "Response").ToArray();
         if (responses.Length != 1) throw new InvalidDataException("WSFE_RESULT");
-        var results = responses[0].Elements(wsfe + "FEParamGetPtosVentaResult").ToArray();
+        var results = responses[0].Elements(wsfe + operation + "Result").ToArray();
         if (results.Length != 1) throw new InvalidDataException("WSFE_RESULT");
         var result = results[0];
         var errors = result.Descendants(wsfe + "Err").ToArray();
@@ -185,6 +193,21 @@ public static class WsaaHomologacion {
         }
         var collections = result.Elements(wsfe + "ResultGet").ToArray();
         if (collections.Length != 1) throw new InvalidDataException("WSFE_RESULT");
+        if (operation == "FEParamGetTiposCbte") {
+            var types = collections[0].Elements(wsfe + "CbteTipo").ToArray();
+            var ids = new System.Collections.Generic.HashSet<int>();
+            if (types.Length == 0 || collections[0].Elements().Count() != types.Length)
+                throw new InvalidDataException("WSFE_TYPES");
+            foreach (var type in types) {
+                var fields = type.Elements(wsfe + "Id").ToArray();
+                var descriptions = type.Elements(wsfe + "Desc").ToArray();
+                if (fields.Length != 1 || fields[0].HasElements ||
+                    !Int32.TryParse(fields[0].Value, out var id) || id < 1 || !ids.Add(id) ||
+                    descriptions.Length != 1 || descriptions[0].HasElements || String.IsNullOrWhiteSpace(descriptions[0].Value))
+                    throw new InvalidDataException("WSFE_TYPES");
+            }
+            return new WsfeDiagnostic { VoucherTypes = types.Length };
+        }
         var points = collections[0].Elements(wsfe + "PtoVenta").ToArray();
         var numbers = new System.Collections.Generic.HashSet<int>();
         foreach (var point in points) {
@@ -194,10 +217,10 @@ public static class WsaaHomologacion {
         return new WsfeDiagnostic { Points = points.Length, BlockedPoints = points.Count(p => p.Element(wsfe + "Bloqueado")?.Value == "S") };
     }
 
-    public static WsfeDiagnostic ConsultWsfe(Ticket ticket, string representedCuit) {
-        using var request = PrepareWsfeDiagnostic(ticket, representedCuit, DateTimeOffset.UtcNow);
+    public static WsfeDiagnostic ConsultWsfe(Ticket ticket, string representedCuit, string operation = "FEParamGetPtosVenta") {
+        using var request = PrepareWsfeDiagnostic(ticket, representedCuit, DateTimeOffset.UtcNow, operation);
         var response = SendDiagnostic(request);
-        var result = ParseWsfeDiagnostic(response.Xml);
+        var result = ParseWsfeDiagnostic(response.Xml, operation);
         if (response.Status < 200 || response.Status >= 300) throw new InvalidDataException("WSFE_HTTP_" + response.Status);
         return result;
     }

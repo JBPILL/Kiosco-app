@@ -63,6 +63,28 @@ it.skipIf(process.platform !== 'win32')('valida TRA, CMS y parsing sin red ni cr
       try { [WsaaHomologacion]::ParseWsfeDiagnostic($wsfePrefix+$wsfeSuffix) | Out-Null } catch { $checks.wsfeMissingResult=$true }
       $checks.wsfeWrongNamespace = $false
       try { [WsaaHomologacion]::ParseWsfeDiagnostic(($wsfePrefix+'<ResultGet/>'+$wsfeSuffix).Replace('http://ar.gov.afip.dif.FEV1/','http://example.test/')) | Out-Null } catch { $checks.wsfeWrongNamespace=$true }
+      $typesOperation = 'FEParamGetTiposCbte'
+      $typesRequest = [WsaaHomologacion]::PrepareWsfeDiagnostic($ticket,'20123456786',$now,$typesOperation)
+      [xml]$typesBody = $typesRequest.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+      $checks.typesRequest = $typesRequest.RequestUri.Host -eq 'wswhomo.afip.gov.ar' -and $typesRequest.Headers.GetValues('SOAPAction')[0] -eq '"http://ar.gov.afip.dif.FEV1/FEParamGetTiposCbte"' -and $null -ne $typesBody.SelectSingleNode('//*[local-name()="FEParamGetTiposCbte"]')
+      $typesRequest.Dispose()
+      $typesPrefix = $wsfePrefix.Replace('FEParamGetPtosVenta','FEParamGetTiposCbte')
+      $typesSuffix = $wsfeSuffix.Replace('FEParamGetPtosVenta','FEParamGetTiposCbte')
+      $type = '<CbteTipo><Id>11</Id><Desc>Factura C</Desc><FchDesde>20100101</FchDesde><FchHasta>NULL</FchHasta></CbteTipo>'
+      $typesXml = $typesPrefix+'<ResultGet>'+$type+'</ResultGet>'+$typesSuffix
+      $checks.typesResponse = [WsaaHomologacion]::ParseWsfeDiagnostic($typesXml,$typesOperation).VoucherTypes -eq 1
+      $checks.typesDuplicate = $false
+      try { [WsaaHomologacion]::ParseWsfeDiagnostic($typesXml.Replace($type,$type+$type),$typesOperation) | Out-Null } catch { $checks.typesDuplicate=$_.Exception.InnerException.Message -eq 'WSFE_TYPES' }
+      $checks.typesEmpty = $false
+      try { [WsaaHomologacion]::ParseWsfeDiagnostic($typesPrefix+'<ResultGet/>'+$typesSuffix,$typesOperation) | Out-Null } catch { $checks.typesEmpty=$_.Exception.InnerException.Message -eq 'WSFE_TYPES' }
+      $checks.typesMalformed = $false
+      try { [WsaaHomologacion]::ParseWsfeDiagnostic($typesXml.Replace('<Id>11</Id>','<Id>invalid</Id>'),$typesOperation) | Out-Null } catch { $checks.typesMalformed=$_.Exception.InnerException.Message -eq 'WSFE_TYPES' }
+      $checks.typesWrongMethod = $false
+      try { [WsaaHomologacion]::ParseWsfeDiagnostic($typesXml) | Out-Null } catch { $checks.typesWrongMethod=$_.Exception.InnerException.Message -eq 'WSFE_RESULT' }
+      $checks.typesBusiness = $false
+      try { [WsaaHomologacion]::ParseWsfeDiagnostic($typesPrefix+'<Errors><Err><Code>601</Code><Msg>SYNTHETIC_SECRET</Msg></Err></Errors>'+$typesSuffix,$typesOperation) | Out-Null } catch { $checks.typesBusiness=$_.Exception.InnerException.Message -eq 'WSFE_BUSINESS:601' }
+      $checks.operationDenied = $false
+      try { [WsaaHomologacion]::PrepareWsfeDiagnostic($ticket,'20123456786',$now,'UNSUPPORTED') | Out-Null } catch { $checks.operationDenied=$_.Exception.InnerException.Message -eq 'WSFE_OPERATION' }
       $key = [Security.Cryptography.RSA]::Create(2048)
       $request = [Security.Cryptography.X509Certificates.CertificateRequest]::new('CN=Computadores Test',$key,[Security.Cryptography.HashAlgorithmName]::SHA256,[Security.Cryptography.RSASignaturePadding]::Pkcs1)
       $cert = $request.CreateSelfSigned([DateTimeOffset]::UtcNow.AddMinutes(-5),[DateTimeOffset]::UtcNow.AddHours(1))
@@ -89,7 +111,7 @@ it.skipIf(process.platform !== 'win32')('valida TRA, CMS y parsing sin red ni cr
     const result = spawnSync('pwsh', ['-NoProfile', '-NonInteractive', '-File', runner], { encoding: 'utf8', timeout: 30_000 })
     expect(result.status, result.stdout + result.stderr).toBe(0)
     const checks: Record<string, boolean> = JSON.parse(result.stdout.trim())
-    expect(Object.keys(checks)).toHaveLength(24)
+    expect(Object.keys(checks)).toHaveLength(32)
     expect(Object.entries(checks).filter(([, passed]) => !passed)).toEqual([])
     expect(result.stdout + result.stderr).not.toMatch(/SYNTHETIC_|PRIVATE KEY|BEGIN CERTIFICATE/)
   } finally {
