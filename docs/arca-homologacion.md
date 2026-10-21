@@ -3,7 +3,7 @@
 Estado: preparación local disponible; **no hay emisión fiscal activada**.
 Actualización 20/10/2026: certificado recibido, par criptográfico comprobado y
 WSAA homologación PASS tras la autorización WSASS de `wsfe` por el titular.
-WSFE aún no se consultó ni se emitieron comprobantes. Los resultados históricos
+WSFE se consultó después de este estado inicial; ver la adenda final con código 602. No se emitieron comprobantes. Los resultados históricos
 inferiores se conservan.
 En el ensayo asistido del 18/10 ya se generaron la clave y el CSR del titular;
 para retomarlo se conservan esos mismos archivos, sin repetir el paso 1.
@@ -196,3 +196,24 @@ criptográficas/protocolo con datos sintéticos y el contrato de no emisión.
 | SIGN_RECEIVED | PASS |
 | WSFE_READY | PENDIENTE: solicitud preparada, ejecución no realizada |
 | TESTS | PASS con el alcance y orden indicados arriba |
+
+
+### Adenda: consulta real y aclaración del punto de venta (20/10/2026)
+
+Con autorización específica del titular se ejecutó una autenticación WSAA y una
+única consulta FEParamGetPtosVenta, exclusivamente en homologación. Par de claves,
+TRA y CMS PASS; WSAA PASS real. WSFE respondió `WSFE_BUSINESS:602` (sin datos).
+No se emitió ningún comprobante, no se obtuvo CAE y no se persistieron Token/Sign.
+No se reintentó la consulta después de ese resultado.
+
+El titular confirmó que el punto 2 sólo se ingresó en KioskoPOS. Esa configuración
+no acredita su registro en ARCA. El código 602 no demuestra por sí solo un fallo
+del certificado ni permite afirmar que haga falta crear un punto en Producción.
+PR01 sigue PARCIAL: comprobar las reglas específicas de homologación y preparar
+el siguiente diagnóstico no transaccional antes de solicitar su autorización.
+
+Validación del diagnóstico ampliado: 4 pruebas PASS en 2 archivos, con 24
+comprobaciones sintéticas de protocolo/criptografía. La suite completa de 2177
+PASS / 1 skipped y el build de 634 módulos preceden a esta ampliación WSFE.
+Referencia oficial del método y alcance de su consulta:
+https://www.afip.gov.ar/fe/documentos/manualDesarrolladorCOMPGv21.pdf

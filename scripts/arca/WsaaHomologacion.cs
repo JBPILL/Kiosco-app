@@ -9,11 +9,16 @@ using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Xml;
 using System.Xml.Linq;
 
 // Herramienta local. No es una pasarela fiscal ni autoriza comprobantes.
 public static class WsaaHomologacion {
+    public sealed class WsfeDiagnostic {
+        public int Points { get; internal set; }
+        public int BlockedPoints { get; internal set; }
+    }
     public sealed class Ticket {
         public string Token { get; internal set; }
         public string Sign { get; internal set; }
@@ -76,14 +81,18 @@ public static class WsaaHomologacion {
         return values[0].Value.Trim();
     }
 
-    public static Ticket ParseResponse(string soap, DateTimeOffset now) {
-        var envelope = ReadXml(soap);
+    private static void CheckFault(XDocument envelope, string service) {
         if (envelope.Descendants().Any(e => e.Name.LocalName == "Fault")) {
             // Nunca propagar un faultstring remoto: puede reflejar entradas sensibles.
             var faultCode = envelope.Descendants().FirstOrDefault(e => e.Name.LocalName == "faultcode")?.Value ?? "UNKNOWN";
             var safeCode = Regex.IsMatch(faultCode, "^[a-zA-Z0-9_.:-]{1,100}$") ? faultCode : "UNKNOWN";
-            throw new InvalidDataException("WSAA_FAULT:" + safeCode);
+            throw new InvalidDataException(service + "_FAULT:" + safeCode);
         }
+    }
+
+    public static Ticket ParseResponse(string soap, DateTimeOffset now) {
+        var envelope = ReadXml(soap);
+        CheckFault(envelope, "WSAA");
         var response = ReadXml(One(envelope, "loginCmsReturn"));
         if (response.Root?.Name.LocalName != "loginTicketResponse") throw new InvalidDataException("TICKET_ROOT");
         var token = One(response, "token");
@@ -97,8 +106,6 @@ public static class WsaaHomologacion {
 
     public static Ticket Login(byte[] cms) {
         // Endpoint fijo, sin redirecciones ni opción de producción.
-        using var handler = new HttpClientHandler { AllowAutoRedirect = false };
-        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(40) };
         var envelope = new XElement(XName.Get("Envelope", "http://schemas.xmlsoap.org/soap/envelope/"),
             new XElement(XName.Get("Body", "http://schemas.xmlsoap.org/soap/envelope/"),
                 new XElement(XName.Get("loginCms", "http://wsaa.view.sua.dvadac.desein.afip.gov"),
@@ -106,18 +113,26 @@ public static class WsaaHomologacion {
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://wsaahomo.afip.gov.ar/ws/services/LoginCms");
         request.Headers.Add("SOAPAction", "\"\"");
         request.Content = new StringContent(envelope.ToString(SaveOptions.DisableFormatting), Encoding.UTF8, "text/xml");
-        using var response = client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
-        using var stream = response.Content.ReadAsStream();
+        var response = SendDiagnostic(request);
+        var ticket = ParseResponse(response.Xml, DateTimeOffset.UtcNow);
+        if (response.Status < 200 || response.Status >= 300) throw new InvalidDataException("WSAA_HTTP_" + response.Status);
+        return ticket;
+    }
+
+    private static (string Xml, int Status) SendDiagnostic(HttpRequestMessage request) {
+        using var handler = new HttpClientHandler { AllowAutoRedirect = false };
+        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(40) };
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(40));
+        using var response = client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).GetAwaiter().GetResult();
+        using var stream = response.Content.ReadAsStreamAsync(timeout.Token).GetAwaiter().GetResult();
         using var memory = new MemoryStream();
         var buffer = new byte[8192];
         int read;
-        while ((read = stream.Read(buffer, 0, buffer.Length)) > 0) {
+        while ((read = stream.ReadAsync(buffer.AsMemory(), timeout.Token).AsTask().GetAwaiter().GetResult()) > 0) {
             if (memory.Length + read > 1048576) throw new InvalidDataException("XML_SIZE");
             memory.Write(buffer, 0, read);
         }
-        var ticket = ParseResponse(Encoding.UTF8.GetString(memory.ToArray()), DateTimeOffset.UtcNow);
-        if (!response.IsSuccessStatusCode) throw new InvalidDataException("WSAA_HTTP_" + (int)response.StatusCode);
-        return ticket;
+        return (Encoding.UTF8.GetString(memory.ToArray()), (int)response.StatusCode);
     }
 
     // Sólo construye una consulta de parámetros: no envía, persiste ni autoriza comprobantes.
@@ -125,14 +140,7 @@ public static class WsaaHomologacion {
     public static HttpRequestMessage PrepareWsfeDiagnostic(Ticket ticket, string representedCuit, DateTimeOffset now) {
         if (ticket == null || ticket.Expiration <= now.AddMinutes(1))
             throw new InvalidDataException("TICKET_EXPIRATION");
-        if (!Regex.IsMatch(representedCuit ?? "", "^[0-9]{11}$"))
-            throw new ArgumentException("CUIT representado inválido.");
-        int[] weights = {5,4,3,2,7,6,5,4,3,2};
-        int sum = 0;
-        for (int i = 0; i < 10; i++) sum += (representedCuit[i] - '0') * weights[i];
-        int digit = 11 - sum % 11;
-        digit = digit == 11 ? 0 : digit == 10 ? 9 : digit;
-        if (digit != representedCuit[10] - '0') throw new ArgumentException("CUIT representado inválido.");
+        ValidateRepresentedCuit(representedCuit);
         XNamespace soap = "http://schemas.xmlsoap.org/soap/envelope/";
         XNamespace wsfe = "http://ar.gov.afip.dif.FEV1/";
         var envelope = new XElement(soap + "Envelope", new XElement(soap + "Body",
@@ -143,5 +151,54 @@ public static class WsaaHomologacion {
         request.Headers.Add("SOAPAction", "\"http://ar.gov.afip.dif.FEV1/FEParamGetPtosVenta\"");
         request.Content = new StringContent(envelope.ToString(SaveOptions.DisableFormatting), Encoding.UTF8, "text/xml");
         return request;
+    }
+
+    public static void ValidateRepresentedCuit(string representedCuit) {
+        if (!Regex.IsMatch(representedCuit ?? "", "^[0-9]{11}$"))
+            throw new ArgumentException("CUIT representado inválido.");
+        int[] weights = {5,4,3,2,7,6,5,4,3,2};
+        int sum = 0;
+        for (int i = 0; i < 10; i++) sum += (representedCuit[i] - '0') * weights[i];
+        int digit = 11 - sum % 11;
+        digit = digit == 11 ? 0 : digit == 10 ? 9 : digit;
+        if (digit != representedCuit[10] - '0') throw new ArgumentException("CUIT representado inválido.");
+    }
+
+    public static WsfeDiagnostic ParseWsfeDiagnostic(string xml) {
+        var envelope = ReadXml(xml);
+        CheckFault(envelope, "WSFE");
+        XNamespace wsfe = "http://ar.gov.afip.dif.FEV1/";
+        XNamespace soap = "http://schemas.xmlsoap.org/soap/envelope/";
+        if (envelope.Root?.Name != soap + "Envelope") throw new InvalidDataException("WSFE_RESULT");
+        var bodies = envelope.Root.Elements(soap + "Body").ToArray();
+        if (bodies.Length != 1) throw new InvalidDataException("WSFE_RESULT");
+        var responses = bodies[0].Elements(wsfe + "FEParamGetPtosVentaResponse").ToArray();
+        if (responses.Length != 1) throw new InvalidDataException("WSFE_RESULT");
+        var results = responses[0].Elements(wsfe + "FEParamGetPtosVentaResult").ToArray();
+        if (results.Length != 1) throw new InvalidDataException("WSFE_RESULT");
+        var result = results[0];
+        var errors = result.Descendants(wsfe + "Err").ToArray();
+        if (errors.Length > 0) {
+            var codes = errors.Take(10).Select(e => e.Element(wsfe + "Code")?.Value ?? "").ToArray();
+            var safeCodes = codes.All(c => Regex.IsMatch(c, "^[0-9]{1,8}$")) ? String.Join(",", codes) : "UNKNOWN";
+            throw new InvalidDataException("WSFE_BUSINESS:" + safeCodes);
+        }
+        var collections = result.Elements(wsfe + "ResultGet").ToArray();
+        if (collections.Length != 1) throw new InvalidDataException("WSFE_RESULT");
+        var points = collections[0].Elements(wsfe + "PtoVenta").ToArray();
+        var numbers = new System.Collections.Generic.HashSet<int>();
+        foreach (var point in points) {
+            if (!Int32.TryParse(point.Element(wsfe + "Nro")?.Value, out var number) || number < 1 || number > 99999 || !numbers.Add(number))
+                throw new InvalidDataException("WSFE_POINTS");
+        }
+        return new WsfeDiagnostic { Points = points.Length, BlockedPoints = points.Count(p => p.Element(wsfe + "Bloqueado")?.Value == "S") };
+    }
+
+    public static WsfeDiagnostic ConsultWsfe(Ticket ticket, string representedCuit) {
+        using var request = PrepareWsfeDiagnostic(ticket, representedCuit, DateTimeOffset.UtcNow);
+        var response = SendDiagnostic(request);
+        var result = ParseWsfeDiagnostic(response.Xml);
+        if (response.Status < 200 || response.Status >= 300) throw new InvalidDataException("WSFE_HTTP_" + response.Status);
+        return result;
     }
 }

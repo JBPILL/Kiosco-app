@@ -47,6 +47,22 @@ it.skipIf(process.platform !== 'win32')('valida TRA, CMS y parsing sin red ni cr
       try { [WsaaHomologacion]::ParseResponse('<!DOCTYPE a [<!ENTITY x SYSTEM "file:///nonexistent">]><a>&x;</a>',$now) | Out-Null } catch { $checks.dtd=$true }
       $checks.fault = $false
       try { [WsaaHomologacion]::ParseResponse('<Envelope><Fault><faultcode>ns1:coe.notAuthorized</faultcode><faultstring>SYNTHETIC_SECRET</faultstring></Fault></Envelope>',$now) | Out-Null } catch { $checks.fault=$_.Exception.InnerException.Message -eq 'WSAA_FAULT:ns1:coe.notAuthorized' }
+      $wsfePrefix = '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><FEParamGetPtosVentaResponse xmlns="http://ar.gov.afip.dif.FEV1/"><FEParamGetPtosVentaResult>'
+      $wsfeSuffix = '</FEParamGetPtosVentaResult></FEParamGetPtosVentaResponse></s:Body></s:Envelope>'
+      $points = '<PtoVenta><Nro>1</Nro><Bloqueado>N</Bloqueado></PtoVenta><PtoVenta><Nro>2</Nro><Bloqueado>S</Bloqueado></PtoVenta>'
+      $wsfeResult = [WsaaHomologacion]::ParseWsfeDiagnostic($wsfePrefix+'<ResultGet>'+$points+'</ResultGet>'+$wsfeSuffix)
+      $checks.wsfeResponse = $wsfeResult.Points -eq 2 -and $wsfeResult.BlockedPoints -eq 1
+      $checks.wsfeEmpty = [WsaaHomologacion]::ParseWsfeDiagnostic($wsfePrefix+'<ResultGet/>'+$wsfeSuffix).Points -eq 0
+      $checks.wsfeBusiness = $false
+      try { [WsaaHomologacion]::ParseWsfeDiagnostic($wsfePrefix+'<Errors><Err><Code>600</Code><Msg>SYNTHETIC_SECRET</Msg></Err></Errors>'+$wsfeSuffix) | Out-Null } catch { $checks.wsfeBusiness=$_.Exception.InnerException.Message -eq 'WSFE_BUSINESS:600' }
+      $checks.wsfeFault = $false
+      try { [WsaaHomologacion]::ParseWsfeDiagnostic('<Envelope><Fault><faultcode>soap:Server</faultcode><faultstring>SYNTHETIC_SECRET</faultstring></Fault></Envelope>') | Out-Null } catch { $checks.wsfeFault=$_.Exception.InnerException.Message -eq 'WSFE_FAULT:soap:Server' }
+      $checks.wsfeDuplicate = $false
+      try { [WsaaHomologacion]::ParseWsfeDiagnostic($wsfePrefix+'<ResultGet>'+$points.Replace('<Nro>2</Nro>','<Nro>1</Nro>')+'</ResultGet>'+$wsfeSuffix) | Out-Null } catch { $checks.wsfeDuplicate=$true }
+      $checks.wsfeMissingResult = $false
+      try { [WsaaHomologacion]::ParseWsfeDiagnostic($wsfePrefix+$wsfeSuffix) | Out-Null } catch { $checks.wsfeMissingResult=$true }
+      $checks.wsfeWrongNamespace = $false
+      try { [WsaaHomologacion]::ParseWsfeDiagnostic(($wsfePrefix+'<ResultGet/>'+$wsfeSuffix).Replace('http://ar.gov.afip.dif.FEV1/','http://example.test/')) | Out-Null } catch { $checks.wsfeWrongNamespace=$true }
       $key = [Security.Cryptography.RSA]::Create(2048)
       $request = [Security.Cryptography.X509Certificates.CertificateRequest]::new('CN=Computadores Test',$key,[Security.Cryptography.HashAlgorithmName]::SHA256,[Security.Cryptography.RSASignaturePadding]::Pkcs1)
       $cert = $request.CreateSelfSigned([DateTimeOffset]::UtcNow.AddMinutes(-5),[DateTimeOffset]::UtcNow.AddHours(1))
@@ -73,7 +89,7 @@ it.skipIf(process.platform !== 'win32')('valida TRA, CMS y parsing sin red ni cr
     const result = spawnSync('pwsh', ['-NoProfile', '-NonInteractive', '-File', runner], { encoding: 'utf8', timeout: 30_000 })
     expect(result.status, result.stdout + result.stderr).toBe(0)
     const checks: Record<string, boolean> = JSON.parse(result.stdout.trim())
-    expect(Object.keys(checks)).toHaveLength(17)
+    expect(Object.keys(checks)).toHaveLength(24)
     expect(Object.entries(checks).filter(([, passed]) => !passed)).toEqual([])
     expect(result.stdout + result.stderr).not.toMatch(/SYNTHETIC_|PRIVATE KEY|BEGIN CERTIFICATE/)
   } finally {

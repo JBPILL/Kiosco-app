@@ -81,3 +81,24 @@ Referencia canónica: [gates PR01–PR11](../../plan_operativo_y_comercial_kiosk
 Reanudado por el titular el 20/10. Certificado original/par, autorización WSASS y WSAA homologación reales PASS. Token/Sign sólo en memoria; la consulta WSFE sigue pendiente. La pausa y el error WSASS del 18/10 se conservan como historia, no como bloqueo actual. Siguiente: FEParamGetPtosVenta real sin emitir. CAE y transición productiva permanecen pendientes y sujetos a sus autorizaciones.
 
 Esta adenda complementa los estados y decisiones anteriores, sin borrarlos ni convertir un PASS local/histórico en aceptación global. Registrar entorno, versión, fecha, evidencia y límites antes de cerrar el gate aplicable. Continuar según el primer gate pendiente del registro maestro (PR01); las autorizaciones de la sesión conservan su alcance y no se amplían por este plan.
+
+
+### Adenda: consulta real y aclaración del punto de venta (20/10/2026)
+
+Con autorización específica del titular se ejecutó una autenticación WSAA y una
+única consulta FEParamGetPtosVenta, exclusivamente en homologación. Par de claves,
+TRA y CMS PASS; WSAA PASS real. WSFE respondió `WSFE_BUSINESS:602` (sin datos).
+No se emitió ningún comprobante, no se obtuvo CAE y no se persistieron Token/Sign.
+No se reintentó la consulta después de ese resultado.
+
+El titular confirmó que el punto 2 sólo se ingresó en KioskoPOS. Esa configuración
+no acredita su registro en ARCA. El código 602 no demuestra por sí solo un fallo
+del certificado ni permite afirmar que haga falta crear un punto en Producción.
+PR01 sigue PARCIAL: comprobar las reglas específicas de homologación y preparar
+el siguiente diagnóstico no transaccional antes de solicitar su autorización.
+
+Validación del diagnóstico ampliado: 4 pruebas PASS en 2 archivos, con 24
+comprobaciones sintéticas de protocolo/criptografía. La suite completa de 2177
+PASS / 1 skipped y el build de 634 módulos preceden a esta ampliación WSFE.
+Referencia oficial del método y alcance de su consulta:
+https://www.afip.gov.ar/fe/documentos/manualDesarrolladorCOMPGv21.pdf
