@@ -27,13 +27,13 @@ function schema(node: XmlElement, allowed: readonly string[], namespace=WSFE): v
   const seen=new Set<string>()
   for (const child of children(node)) {
     const name=child.localName
-    if(!name || child.namespaceURI!==namespace || !allowed.includes(name) || seen.has(name))return invalid()
+    if(!name || (child.namespaceURI??'')!==namespace || !allowed.includes(name) || seen.has(name))return invalid()
     seen.add(name)
   }
   whitespace(node)
 }
 function one(node: XmlElement, name: string, required=true, namespace=WSFE): XmlElement | null {
-  const matches=children(node).filter(c=>c.namespaceURI===namespace && c.localName===name)
+  const matches=children(node).filter(c=>(c.namespaceURI??'')===namespace && c.localName===name)
   if(matches.length>1 || (required && matches.length!==1))return invalid()
   return matches[0]??null
 }
@@ -62,13 +62,13 @@ function list(node: XmlElement,name: string,item: string,fields: readonly string
   }
   return nodes
 }
-function parse(xml: string): XmlElement {
+export function parseFiscalXmlRoot(xml: string): XmlElement {
   if(typeof xml!=='string' || new TextEncoder().encode(xml).length>MAX_BYTES
     || /<!\s*(?:DOCTYPE|ENTITY)/i.test(xml) || (xml.match(/</g)?.length??0)>5000)return invalid()
   try {
     const doc=new DOMParser({onError:()=>invalid()}).parseFromString(xml,'text/xml')
     const root=doc.documentElement
-    if(!root || root.namespaceURI!==SOAP || root.localName!=='Envelope')return invalid()
+    if(!root)return invalid()
     const pending:[XmlNode,number][]=[[doc,0]]
     let count=0
     while(pending.length) {
@@ -90,7 +90,8 @@ function parse(xml: string): XmlElement {
 /** Sólo interpretar una respuesta del transporte privado y de esta consulta exacta.
  * Campos no soportados se rechazan: nunca descartar datos fiscales silenciosamente. */
 export function decodeFiscalVoucherXml(xml: string,consulta: FiscalIdentity): unknown {
-  const root=parse(xml)
+  const root=parseFiscalXmlRoot(xml)
+  if(root.namespaceURI!==SOAP||root.localName!=='Envelope')return invalid()
   schema(root,['Header','Body'],SOAP)
   const body=one(root,'Body',true,SOAP)!
   schema(body,['FECompConsultarResponse'])
@@ -138,6 +139,7 @@ function deadline<T>(promise: Promise<T>,signal: AbortSignal): Promise<T> {
       error=>{signal.removeEventListener('abort',abort);reject(error)})
   })
 }
+export { children as fiscalXmlChildren, schema as fiscalXmlSchema, one as fiscalXmlOne, deadline as withFiscalDeadline }
 /** fetcher obligatorio: el worker autorizado debe inyectar su transporte.
  * Nunca llama emisión, reenvía una factura, cambia DB ni devuelve XML/Token/Sign. */
 export async function consultFiscalVoucher(

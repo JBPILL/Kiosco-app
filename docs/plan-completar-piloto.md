@@ -125,3 +125,12 @@ Resultado final del incremento: 2447 PASS / 1 skipped / 231 archivos, build PASS
 doce casos PostgreSQL y tres aserciones Edge con cifrado real y servicios mock
 PASS. No hay TA/claves reales ni instalación remota. Custodia real y recuperación
 operativa siguen pendientes antes de habilitar el worker.
+
+Avance WSAA 21/10: proveedor CMS RSA/SHA256, lector de TA y transporte fijo
+preparados con custodia inyectada. Certificados efímeros en pruebas; .NET verificó
+CMS y rechazó alteración. 148 casos enfocados y recorrido DB con WSAA/WSFE mock
+PASS; Edge local con CMS/cifrado reales y servicios mock PASS. Falta lector real
+de custodia, recuperación operativa y endpoint antes de instalación autorizada.
+Verificación final: 2492 PASS / 1 skipped / 233 archivos; build PASS, auditoría
+npm 0 alertas; CMS contrastado por .NET y recorrido Edge mock PASS. Sin cambios
+de lógica posteriores, llamadas fiscales reales ni nuevas instalaciones.

@@ -399,3 +399,18 @@ llamada a WSAA. Recuperación operativa explícita pendiente antes de habilitar
 servicio hospedado. Rotación y DR deben preservar claves vigentes y detener el
 worker hasta revalidar el estado restaurado. No usar cifrado como sustituto de
 Auth/tenant: el gate privado se aplica antes de recuperar el sobre.
+
+## 21/10/2026 — CMS con clave CryptoKey y proveedor WSAA privado
+
+Se eligió PKI.js/asn1js fijados sobre WebCrypto para CMS/X.509, evitando construir
+ASN.1 de firma a mano. El diagnóstico .NET existente ya usaba RSA/SHA-256; el
+nuevo código conserva ese algoritmo y se verificó por .NET independientemente.
+No se exporta clave privada; la fuente de custodia debe entregarla como CryptoKey
+no exportable junto a certificado público, huella y referencia privadas.
+
+WSAA se consulta sólo por transporte privado fijo de homologación. El TA se liga
+al identificador del TRA y al DN del certificado, con reloj/namespace/XML acotados.
+El contrato de DN inicial es explícitamente simple y falla ante formato no
+soportado; no se normaliza aproximadamente un DN complejo. Huella pinneada y
+issuer Test no sustituyen validación de cadena/autorización remota. Configurar
+custodia y ejecutar contra ARCA siguen sus gates; no se usó material real aquí.

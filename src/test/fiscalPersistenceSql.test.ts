@@ -13,6 +13,8 @@ import { createFiscalTicketCache } from '../../supabase/functions/_shared/fiscal
 import type { WsaaTicketLoader } from '../../supabase/functions/_shared/fiscalTicketCache'
 import { createSharedFiscalTicketLoader } from '../../supabase/functions/_shared/fiscalSharedTickets'
 import { authorizeFiscalWorker } from '../../supabase/functions/_shared/fiscalWorkerAuthorization'
+import { createWsaaTicketSource } from '../../supabase/functions/_shared/fiscalWsaa'
+import { syntheticFiscalSigner } from './fixtures/fiscalSigner'
 
 const db = new PGlite()
 const kid=randomUUID(), auth=randomUUID(), owner=randomUUID(), sale=randomUUID(), op=randomUUID(), attempt=randomUUID()
@@ -315,10 +317,10 @@ it('no confirma sin intención y rechaza campos obligatorios ausentes',async()=>
   await denied(()=>reconcile(missing))
 })
 
-async function provisionEmitter() {
+async function provisionEmitter(fingerprint='a'.repeat(64)) {
   await db.exec('RESET ROLE')
   await db.query(`INSERT INTO fiscal_emisores_homologacion(kiosco_id,cuit_emisor,punto_venta,credencial_id,certificado_sha256,habilitado)
-    VALUES($1,'20123456786',2,$2,$3,true)`,[kid,randomUUID(),'a'.repeat(64)])
+    VALUES($1,'20123456786',2,$2,$3,true)`,[kid,randomUUID(),fingerprint])
   await db.exec('SET ROLE service_role')
 }
 async function authorize(actor=auth,operation=op) {
@@ -430,4 +432,38 @@ it.each(['fiscal_ta_homologacion','fiscal_ta_intentos_homologacion'])('no conced
   await db.exec(`CREATE FUNCTION omitir_ta() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$;
     CREATE TRIGGER omitir BEFORE ${table==='fiscal_ta_homologacion'?'UPDATE':'INSERT'} ON ${table} FOR EACH ROW EXECUTE FUNCTION omitir_ta(); SET ROLE service_role`)
   await denied(()=>db.query('SELECT solicitar_ta_homologacion($1,$2,$3,1,$4)',[op,binding.credencial_id,'a'.repeat(64),randomUUID()]))
+})
+
+it('integra Auth mock, SQL, custodia sintética, CMS real, WSAA mock, cifrado y conciliación sin duplicar',async()=>{
+  const signer=await syntheticFiscalSigner()
+  await provisionEmitter(signer.fingerprint)
+  await db.exec('RESET ROLE')
+  await db.query('UPDATE fiscal_emisores_homologacion SET credencial_id=$1 WHERE kiosco_id=$2',[signer.material.credentialId,kid])
+  await db.exec('SET ROLE service_role');await persist();await intent()
+  const admin={...persistedRpc,auth:{async getUser(){return {data:{user:{id:auth}},error:null}}}}
+  const key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']),keyId=randomUUID()
+  const keys={async active(){return {id:keyId,key}},async read(){return key}}
+  const fetcher=vi.fn<typeof fetch>(async input=>{
+    const request=input as Request
+    if(request.url==='https://wsaahomo.afip.gov.ar/ws/services/LoginCms'){
+      const {ContentInfo,SignedData}=await import('pkijs'),body=await request.text(),cms=body.match(/<in0>([^<]+)<\/in0>/)![1]
+      const info=ContentInfo.fromBER(Uint8Array.from(atob(cms),c=>c.charCodeAt(0))),signed=new SignedData({schema:info.content})
+      const tra=new TextDecoder().decode(signed.encapContentInfo.eContent!.getValue()),id=tra.match(/<uniqueId>(\d+)<\/uniqueId>/)![1]
+      const ticket=`<loginTicketResponse version="1.0"><header><source>CN=wsaa,O=AFIP,C=AR,SERIALNUMBER=CUIT 33693450239</source><destination>CN=Kiosko Synthetic,SERIALNUMBER=CUIT 20123456786</destination><uniqueId>${id}</uniqueId><generationTime>${new Date(Date.now()-1000).toISOString()}</generationTime><expirationTime>${new Date(Date.now()+3600000).toISOString()}</expirationTime></header><credentials><token>SYNTHETIC_FULL_TOKEN</token><sign>SYNTHETIC_FULL_SIGN</sign></credentials></loginTicketResponse>`
+      const escaped=ticket.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      return new Response(`<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><w:loginCmsResponse xmlns:w="http://wsaa.view.sua.dvadac.desein.afip.gov"><loginCmsReturn>${escaped}</loginCmsReturn></w:loginCmsResponse></s:Body></s:Envelope>`,{headers:{'Content-Type':'text/xml'}})
+    }
+    expect(request.url).toBe('https://wswhomo.afip.gov.ar/wsfev1/service.asmx')
+    return new Response(fiscalXml(),{headers:{'Content-Type':'text/xml'}})
+  })
+  const custody=vi.fn(async()=>signer.material),source=createWsaaTicketSource(custody,fetcher)
+  const shared=createSharedFiscalTicketLoader(persistedRpc,keys,source),id=randomUUID()
+  const ack=await reconcileAuthorizedFiscalVoucher(admin,'SYNTHETIC_JWT',op,id,createFiscalTicketCache(),shared,fetcher)
+  expect(ack.estado).toBe('AUTORIZADA')
+  expect(await reconcileAuthorizedFiscalVoucher(admin,'SYNTHETIC_JWT',op,id,createFiscalTicketCache(),shared,fetcher)).toEqual(ack)
+  const binding=await authorizeFiscalWorker(admin,'SYNTHETIC_JWT',op)
+  expect((await createFiscalTicketCache().get(binding,shared)).token).toBe('SYNTHETIC_FULL_TOKEN')
+  expect(custody).toHaveBeenCalledTimes(1);expect(fetcher).toHaveBeenCalledTimes(2)
+  await db.exec('RESET ROLE')
+  expect(JSON.stringify((await db.query('SELECT cifrado FROM fiscal_ta_homologacion')).rows)).not.toContain('SYNTHETIC_FULL')
 })

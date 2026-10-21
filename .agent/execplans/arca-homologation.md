@@ -650,3 +650,66 @@ reales, no se instalaron SQL/Edge ni se modificó .env. Siguiente trabajo F04:
 proveedor real de custodia/CMS/WSAA y recuperación operativa de intención incierta;
 activación de persistencia cifrada requiere autorización específica junto al
 provisionamiento privado de claves. PR03, F04 y gates hospedados siguen abiertos.
+
+### F04/F05 — proveedor WSAA y CMS preparados — 21/10/2026
+
+- Nuevo proveedor privado prepara TRA de wsfe, firma CMS SignedData RSA/SHA-256
+  con CryptoKey no exportable y verifica la firma contra el certificado incluido.
+  Exige huella y referencia privadas, vigencia y emisor Test antes de red. No
+  exporta la clave ni utiliza el certificado/clave originales en las pruebas.
+- PKI.js 3.4.3 y asn1js 3.1.0 fijados; instalación sin scripts, audit npm 0 alertas.
+  Deno importa esas versiones. Son dependencias de backend/pruebas, no importadas
+  por el frontend; build conserva los mismos 634 módulos/artefactos de aplicación.
+  Se usó motor WebCrypto explícito, sin sustituir el motor global de la librería.
+- Comprobación independiente: .NET System.Security.Cryptography.Pkcs verificó
+  el CMS sintético generado por el nuevo código y rechazó firma alterada. Clave
+  privada nunca exportada. Evidencia fuera de Git: fiscal-wsaa-cms-dotnet-result.json.
+- Transporte sólo a LoginCms de homologación, POST, redirect:error, SOAPAction
+  vacío, máximo 40 s configurable hasta ese límite, 1 MiB y UTF-8 estricto. Timeout
+  cubre fetch y lectura del cuerpo; sin reintento. fetcher obligatorio e inyectado.
+- Parser SOAP/TA reutiliza límites XML seguros del lector fiscal; verifica raíz,
+  namespace, campos directos únicos, uniqueId, DN destinatario ligado al certificado,
+  DN WSAA de homologación documentado, generación/vencimiento y credenciales.
+  Fault/error remoto no se refleja ni registra. Token/Sign sólo en memoria y
+  no enumerables. DN soporta subconjunto ASCII simple; escapes/RDN multivaluados
+  u otros atributos se rechazan. No relajar esto sin caso real y pruebas.
+- Pin y emisor Test son gates locales, no una validación de cadena de confianza
+  ARCA. TLS y aceptación remota siguen pendientes para esta implementación. No
+  interpretar certificados sintéticos como autorización ni como CA de confianza.
+- Prueba integrada con DB: Auth mock → gate privado SQL → custodia sintética →
+  CMS real → WSAA mock ligado al uniqueId del CMS → TA cifrado → WSFE mock →
+  conciliación durable. Replay y otra caché recuperan resultados/TA sin nueva
+  custodia ni autenticación. 148 pruebas enfocadas PASS / cuatro archivos.
+- Build PASS después de corregir el tipo ArrayBuffer del resultado CMS (no cambió
+  lógica). Suite completa y build de release en ejecución. Escaneo 1194 archivos /
+  1180 texto / 14 binarios omitidos, mismos 46 candidatos (delta 0); manifiesto
+  histórico 43 SQL PASS. No historial reescaneado, ni .env modificado.
+- Edge Runtime local v1.77.4: tres aserciones PASS con certificado efímero, CMS
+  y cifrado reales, Auth/SQL/WSAA/WSFE mock; una carga, una autenticación simulada,
+  una consulta simulada y recuperación sin repetir. Contenedor confirmado exited.
+  Evidencia fuera de Git: fiscal-wsaa-edge-result.json. Ninguna red fiscal real.
+- Próximo trabajo: implementar lector concreto de custodia privada (material
+  cifrado y claves), recuperación operativa de intención TA incierta y endpoint
+  autorizado. Luego gate de instalación/ensayo hospedado. No hay index.ts nuevo
+  activado ni instalación SQL/Edge; nueva autenticación real requiere autorización.
+
+Fuentes primarias consultadas para el contrato: documentación oficial WSAA y
+su WSDL, y API SignedData/Certificate de PKI.js:
+https://www.afip.gov.ar/ws/documentacion/wsaa.asp
+https://www.afip.gov.ar/ws/WSAA/Especificacion_Tecnica_WSAA_1.2.2.pdf
+https://pkijs.org/docs/api/classes/SignedData/
+https://pkijs.org/docs/api/classes/Certificate/
+La descarga WSDL por web tool no admitió text/xml; se usó el contrato oficial
+publicado y los namespaces del diagnóstico existente, sin llamada autenticada.
+
+Verificación final del proveedor (21/10): suite integrada 2492 PASS / 1 skipped /
+233 archivos, 208,75 s; compilación release PASS (634 módulos). Sin cambios de
+lógica después de la suite. CMS firmado en WebCrypto/PKI.js verificado por .NET
+PASS y firma alterada rechazada; Edge Runtime v1.77.4 PASS en tres aserciones
+con CMS/cifrado reales y servicios mock. Contenedor confirmado exited. Audit
+npm 0 alertas, seis paquetes nuevos CMS y cero versiones existentes cambiadas.
+Escaneo: mismos 46 candidatos, sin nuevos. Manifiesto histórico 43 SQL PASS.
+No se usaron certificados/secretos reales, no hubo red fiscal ni instalación.
+Próximo paso concreto: lector de material privado cifrado y keyring (ambos sólo
+servidor), distinguir fallo previo a red de intención WSAA incierta y preparar
+su recuperación auditable; endpoint después. F04/PR03 continúan parciales.
