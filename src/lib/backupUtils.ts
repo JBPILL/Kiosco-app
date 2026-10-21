@@ -12,12 +12,13 @@ import { cifrarBackupJson } from './backupCrypto'
 import { identidadRestaurada } from './backupIdentity'
 import { kioskoPilotStrictScopeActivo } from './kioskPilotScope'
 import { guardarCatalogoBackupStrict } from './backupStrictCatalog'
+import { comprobarModulosBackupStrict, datosContactoBackup, guardarModuloBackupStrict, prepararLotesBackupStrict } from './backupStrictModules'
 import { leerColeccionPorId } from './backupPagination'
 import { registrarDescargaRespaldoExterno } from './externalBackupReminder'
 import { validarAmpliacionBackup, capturarPreferenciasEquipo, restaurarPreferenciasEquipo, type BackupAmpliacion } from './backupAmpliado'
 import { auditoriaMotivoPrecioActiva, validarMotivoCambioPrecio } from './priceChangeAudit'
 import { validarRelacionesBackup } from './backupRelations'
-import { verificarProductosBackup, verificarLotesBackup, verificarPromocionesBackup, verificarCombosBackup, type ComboEsperadoBackup, type ProductoEsperadoBackup, type PromocionEsperadaBackup } from './backupVerification'
+import { verificarProductosBackup, verificarLotesBackup, verificarPromocionesBackup, verificarCombosBackup, verificarContactosBackup, type ComboEsperadoBackup, type ProductoEsperadoBackup, type PromocionEsperadaBackup } from './backupVerification'
 import type { Categoria, Proveedor, Cliente, Producto } from '../types/database'
 
 export interface BackupData {
@@ -75,6 +76,8 @@ export interface ProgresoRestauracion {
 }
 
 export interface ResumenRestauracion {
+  clientesVerificados?: number
+  proveedoresVerificados?: number
   combosVerificados?: number
   promocionesVerificadas?: number
   lotesVerificados?: number
@@ -118,6 +121,10 @@ async function guardarRegistroRestaurado(
   const id = await identidadRestaurada(origen, kioscoId, tabla, idOriginal)
   if (kioskoPilotStrictScopeActivo() && tabla === 'promociones') {
     await guardarCatalogoBackupStrict('promociones', kioscoId, id, campos)
+    return id
+  }
+  if (kioskoPilotStrictScopeActivo() && tabla === 'lotes_producto') {
+    await guardarModuloBackupStrict('lotes_producto', kioscoId, id, campos)
     return id
   }
   const { data: existente, error: errorLectura } = await supabase.from(tabla)
@@ -396,11 +403,13 @@ export async function restaurarBackupIntegral(
 
   try {
     const strict = kioskoPilotStrictScopeActivo()
-    if (strict && (modo === 'REEMPLAZO' || backupData.clientes.length > 0 || backupData.proveedores.length > 0
-      || backupData.lotes_producto.length > 0
-      || backupData.productos.some(prod => prod.proveedor_id))) {
-      throw new Error('La restauración estricta admite por ahora catálogo, categorías y promociones en modo Fusión. Esta copia requiere otros módulos; no se escribió ningún dato.')
+    // También un catálogo sin lotes en la copia puede encontrar lotes en el destino.
+    // Toda restauración estricta exige el contrato que coordina producto y lotes.
+    const modulosStrict = strict
+    if (strict && modo === 'REEMPLAZO') {
+      throw new Error('La restauración estricta sólo admite modo Fusión; no se escribió ningún dato.')
     }
+    if (modulosStrict && backupData.version === '2.0') throw new Error('Estos módulos requieren una copia completa 3.0 o 4.0; no se escribió ningún dato.')
     if (backupData.version === '2.0' && backupData.productos.some(prod => prod.es_combo === true)) {
       throw new Error('La copia 2.0 no permite recuperar componentes de combos. Generá una copia nueva.')
     }
@@ -408,6 +417,12 @@ export async function restaurarBackupIntegral(
     if (backupData.version === '4.0') validarAmpliacionBackup({ configuracion_comercio: backupData.configuracion_comercio, saldos_snapshot: backupData.saldos_snapshot, preferencias_equipo: backupData.preferencias_equipo }, backupData.clientes, backupData.proveedores)
     if ((opciones.restaurarConfiguracion || opciones.restaurarPreferencias)
       && (backupData.version !== '4.0' || backupData.kiosco.id !== kioscoId)) throw new Error('La configuración sólo se recupera desde una copia 4.0 del mismo comercio')
+    const proveedoresStrict = strict ? backupData.proveedores.map(fila => datosContactoBackup('proveedores', fila)) : []
+    const clientesStrict = strict ? backupData.clientes.map(fila => datosContactoBackup('clientes', fila)) : []
+    const lotesStrict = strict ? prepararLotesBackupStrict(backupData.lotes_producto, backupData.productos) : []
+    const proveedoresEsperados: PromocionEsperadaBackup[] = []
+    const clientesEsperados: PromocionEsperadaBackup[] = []
+    if (modulosStrict) await comprobarModulosBackupStrict(kioscoId)
     // ─────────────────────────────────────────────────────────────
     // PASO 1: CATEGORÍAS (Mapeo Nombre/ID -> ID Actual)
     // ─────────────────────────────────────────────────────────────
@@ -506,6 +521,20 @@ export async function restaurarBackupIntegral(
     const proveedoresBackup = backupData.proveedores || []
     for (let i = 0; i < proveedoresBackup.length; i++) {
       const prov = proveedoresBackup[i]
+      if (strict) {
+        try {
+          const id = await identidadRestaurada(backupData.kiosco.id, kioscoId, 'proveedores', prov.id)
+          const ack = await guardarModuloBackupStrict('proveedores', kioscoId, id, proveedoresStrict[i])
+          mapaProveedoresPorIdOriginal.set(prov.id, id)
+          proveedoresEsperados.push({ id, campos: { ...proveedoresStrict[i], saldo_pendiente: ack.registro.saldo_pendiente } })
+          if (ack.creado) resumen.proveedoresCreados++
+          else resumen.proveedoresActualizados++
+        } catch (error: unknown) {
+          resumen.errores.push(`Proveedor ${i + 1}: ${error instanceof Error ? error.message : 'Error de restauración.'}`)
+        }
+        reportar('PROVEEDORES', 'Sincronizando Proveedores', 15 + ((i + 1) / proveedoresBackup.length) * 10, `Proveedor ${i + 1} de ${proveedoresBackup.length}`, i + 1, proveedoresBackup.length)
+        continue
+      }
       const nombreNorm = (prov.nombre || '').trim().toLowerCase()
       if (!nombreNorm) {
         resumen.errores.push(`Proveedor ${i + 1}: falta el nombre.`)
@@ -597,6 +626,19 @@ export async function restaurarBackupIntegral(
     const clientesBackup = backupData.clientes || []
     for (let i = 0; i < clientesBackup.length; i++) {
       const cli = clientesBackup[i]
+      if (strict) {
+        try {
+          const id = await identidadRestaurada(backupData.kiosco.id, kioscoId, 'clientes', cli.id)
+          const ack = await guardarModuloBackupStrict('clientes', kioscoId, id, clientesStrict[i])
+          clientesEsperados.push({ id, campos: { ...clientesStrict[i], saldo_deudor: ack.registro.saldo_deudor } })
+          if (ack.creado) resumen.clientesCreados++
+          else resumen.clientesActualizados++
+        } catch (error: unknown) {
+          resumen.errores.push(`Cliente ${i + 1}: ${error instanceof Error ? error.message : 'Error de restauración.'}`)
+        }
+        reportar('CLIENTES', 'Sincronizando Clientes', 25 + ((i + 1) / clientesBackup.length) * 10, `Cliente ${i + 1} de ${clientesBackup.length}`, i + 1, clientesBackup.length)
+        continue
+      }
       const nombreNorm = (cli.nombre || '').trim().toLowerCase()
       if (!nombreNorm) {
         resumen.errores.push(`Cliente ${i + 1}: falta el nombre.`)
@@ -752,10 +794,19 @@ export async function restaurarBackupIntegral(
             if (strict) {
               const id = prodExistente?.id || idRestaurado!
               const { kiosco_id: _kiosco, proveedor_id: _proveedor, ...camposStrict } = datosProducto
-              await guardarCatalogoBackupStrict('productos', kioscoId, id, {
+              const solicitud = {
                 ...camposStrict, es_combo: false, es_favorito: Boolean(prod.es_favorito),
                 ...(motivoPrecio ? { motivo_cambio_precio: motivoPrecio } : {}),
-              })
+              }
+              if (modulosStrict) {
+                const lotesProducto = await Promise.all(lotesStrict.flatMap((lote, indice) => lote.producto_id === prod.id
+                  ? [{ lote, original: backupData.lotes_producto[indice].id as string }] : []).map(async ({ lote, original }) => ({
+                  ...lote, id: await identidadRestaurada(backupData.kiosco.id, kioscoId, 'lotes_producto', original), producto_id: id,
+                })))
+                await guardarModuloBackupStrict('productos', kioscoId, id, { ...solicitud,
+                  proveedor_id: datosProducto.proveedor_id, lotes_backup: lotesProducto })
+              }
+              else await guardarCatalogoBackupStrict('productos', kioscoId, id, solicitud)
               idsProcesadosEnBackup.add(id)
               mapaProductosIdOriginal.set(prod.id, id)
               productosEsperados.set(id, { ...datosProducto, es_combo: false, es_favorito: Boolean(prod.es_favorito) })
@@ -923,23 +974,26 @@ export async function restaurarBackupIntegral(
       }
 
       try {
-        const campos = {
+        const campos = strict ? { ...lotesStrict[i], producto_id: prodIdFinal } : {
           producto_id: prodIdFinal,
           numero_lote: lote.numero_lote || null,
           fecha_vencimiento: lote.fecha_vencimiento,
           cantidad_inicial: Number(lote.cantidad_inicial) || 0,
           cantidad_actual: Number(lote.cantidad_actual) || 0,
           activo: lote.activo !== false,
+          ...(lote.fecha_ingreso ? { fecha_ingreso: lote.fecha_ingreso } : {}),
         }
-        const id = await guardarRegistroRestaurado('lotes_producto', backupData.kiosco.id, kioscoId, lote.id, campos)
-        lotesEsperados.push({ id, campos })
+        const id = strict ? await identidadRestaurada(backupData.kiosco.id, kioscoId, 'lotes_producto', lote.id)
+          : await guardarRegistroRestaurado('lotes_producto', backupData.kiosco.id, kioscoId, lote.id, campos)
+        lotesEsperados.push({ id, campos: campos as ProductoEsperadoBackup['campos'] })
         resumen.lotesRestaurados++
       } catch (error: unknown) {
         resumen.errores.push(`Lote ${i + 1}: ${error instanceof Error ? error.message : 'Error inesperado.'}`)
       }
     }
 
-    if (resumen.errores.length === 0 && backupData.version === '4.0' && (productosEsperados.size > 0 || lotesEsperados.length > 0 || promocionesEsperadas.length > 0)) {
+    if (resumen.errores.length === 0 && (backupData.version === '4.0' || modulosStrict)
+      && (productosEsperados.size > 0 || lotesEsperados.length > 0 || promocionesEsperadas.length > 0 || clientesEsperados.length > 0 || proveedoresEsperados.length > 0)) {
       try {
         reportar('FINALIZANDO', 'Verificando Restauración', 94, 'Comparando productos, stock y lotes con el servidor...')
         const { data, error } = await supabase.rpc('generar_snapshot_backup_ampliado', { p_kiosco_id: kioscoId })
@@ -953,6 +1007,10 @@ export async function restaurarBackupIntegral(
         resumen.lotesVerificados = verificarLotesBackup(lotesEsperados, verificacion.datos.lotes_producto)
         resumen.promocionesVerificadas = verificarPromocionesBackup(promocionesEsperadas, verificacion.datos.promociones)
         resumen.combosVerificados = verificarCombosBackup(combosEsperados, verificacion.datos.productos)
+        if (modulosStrict) {
+          resumen.clientesVerificados = verificarContactosBackup(clientesEsperados, verificacion.datos.clientes)
+          resumen.proveedoresVerificados = verificarContactosBackup(proveedoresEsperados, verificacion.datos.proveedores)
+        }
       } catch (error: unknown) {
         resumen.errores.push(error instanceof Error ? error.message : 'No se pudo verificar la restauración.')
       }

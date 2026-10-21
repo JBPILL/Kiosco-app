@@ -1,6 +1,6 @@
 /** Identidad reproducible para importar registros sin duplicarlos al reintentar. */
 export async function identidadRestaurada(
-  origen: string, destino: string, tabla: 'promociones' | 'lotes_producto' | 'productos' | 'categorias', id: string,
+  origen: string, destino: string, tabla: 'promociones' | 'lotes_producto' | 'productos' | 'categorias' | 'clientes' | 'proveedores', id: string,
 ): Promise<string> {
   if (!origen || !destino || !id) throw new Error('Falta la identidad original del registro o del comercio.')
   if (origen === destino) return id

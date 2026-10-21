@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { verificarProductosBackup, verificarLotesBackup, verificarPromocionesBackup, verificarCombosBackup } from './backupVerification'
+import { verificarProductosBackup, verificarLotesBackup, verificarPromocionesBackup, verificarCombosBackup, verificarContactosBackup } from './backupVerification'
 const esperado = [{ id: 'destino', campos: { precio_costo: 10, precio_venta: 20, stock_actual: 3.5, es_combo: true } }]
 const producto = { id: 'destino', precio_costo: 10, precio_venta: 20, stock_actual: 3.5, es_combo: true }
 const lote = { id: 'lote-destino', producto_id: 'producto-destino', numero_lote: null,
@@ -10,6 +10,19 @@ const promocion = { id: 'promo', producto_id: 'destino', categoria_id: null,
   items_combo: [{ producto_id: 'destino', cantidad: 2 }], dias_semana: [1, 3], descuento_porcentaje: 20 }
 const { id: idPromo, ...camposPromo } = promocion
 const promosEsperadas = [{ id: idPromo, campos: camposPromo }]
+it('verifica contactos y saldo confirmado sin depender del nombre como identidad', () => {
+  const rows = [{ id: 'a', nombre: 'Igual', saldo_deudor: 5 }, { id: 'b', nombre: 'Igual', saldo_deudor: 10 }]
+  const expected = rows.map(({ id, ...campos }) => ({ id, campos }))
+  expect(verificarContactosBackup(expected, [...rows].reverse())).toBe(2)
+  expect(() => verificarContactosBackup(expected, [rows[0]])).toThrow('contacto')
+  expect(() => verificarContactosBackup(expected, [rows[0], { ...rows[1], saldo_deudor: 11 }])).toThrow('saldo')
+  expect(() => verificarContactosBackup(expected, [rows[0], rows[0]])).toThrow('Identificadores')
+})
+it('compara fecha de ingreso de lotes por instante conservando el orden FEFO', () => {
+  const expected = [{ id: lote.id, campos: { ...camposLote, fecha_ingreso: '2026-10-01T10:00:00Z' } }]
+  expect(verificarLotesBackup(expected, [{ ...lote, fecha_ingreso: '2026-10-01T07:00:00-03:00' }])).toBe(1)
+  expect(() => verificarLotesBackup(expected, [{ ...lote, fecha_ingreso: '2026-10-02T07:00:00-03:00' }])).toThrow('fecha_ingreso')
+})
 const componentes = [{ componente_producto_id: 'a', cantidad: 2 }, { componente_producto_id: 'b', cantidad: 0.5 }]
 it('verifica recetas por ID remapeado independientemente de orden', () => {
   expect(verificarCombosBackup([{ id: 'pack', componentes }], [{ id: 'pack', componentes_combo: [...componentes].reverse() }])).toBe(1)
