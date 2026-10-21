@@ -1,1 +1,7 @@
-{"imports":{"@xmldom/xmldom":"npm:@xmldom/xmldom@0.9.12"}}
+{
+  "imports": {
+    "@xmldom/xmldom": "npm:@xmldom/xmldom@0.9.12",
+    "pkijs": "npm:pkijs@3.4.3",
+    "asn1js": "npm:asn1js@3.1.0"
+  }
+}
