@@ -346,3 +346,26 @@ consulta otra operación que comparte certificado, recibe `COMPARTIDA`, sin los
 identificadores ajenos. SQL 008 refuerza este aislamiento; los registros antiguos
 sin origen verificable no se reasignan ni se liberan automáticamente. El ensayo
 actualizado tiene 150 pruebas dirigidas y dieciséis carreras PostgreSQL PASS.
+
+### Trabajador privado de envío preparado — 21/10/2026
+
+Se contrastó el WSDL público y el manual oficial v4.7 (revisión 01/09/2026).
+El worker consulta el último número, consume una autorización exacta del cuerpo
+guardado y solicita un solo comprobante. Una respuesta de aprobación requiere
+consulta completa y persistencia antes de confirmarse. Los errores o respuestas
+perdidas se concilian; no se repite automáticamente el envío ni el cobro.
+
+SQL 009 no se instaló y no crea autorizaciones activas. El permiso liga operación,
+hash y credencial, expira como máximo en una hora y no se reutiliza. El endpoint
+público conserva sólo consultas/recuperación; no admite emitir. Preparación de
+datos fiscales, revisión UI y resolución de rechazos/devoluciones siguen pendientes.
+Las pruebas fueron sintéticas; falta punto acreditado y autorización de emisión.
+
+Cierre integrado posterior al guard de vigencia: 2656 PASS / 1 skipped /
+238 archivos, salida 0 (pilot-fiscal-emission-permission-suite-results.json).
+La única omitida sigue siendo la fixture F6 de candidatos no configurada;
+ninguna prueba fiscal nueva omitida. Build posterior PASS, 634 módulos;
+153 enfocadas y 18 carreras PostgreSQL v4 PASS, Edge sintético 3+7 PASS.
+Manifiesto 43 SQL PASS; diff sin errores; escaneo 1210 archivos, 47 candidatos,
+delta 0. Este cierre reemplaza el estado de suite en ejecución anterior para
+este incremento. SQL 001–009 y Edge fiscal continúan sin instalar/activar.

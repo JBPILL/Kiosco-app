@@ -454,3 +454,14 @@ Compartir certificado/TA entre comercios no autoriza a un Dueño a cancelar ni
 identificar la preparación de otro. SQL 008 conserva el origen de nuevos intentos
 y falla ante orígenes históricos desconocidos; no se backfillea una atribución
 sin evidencia. La reutilización privada del TA ya confirmado continúa permitida.
+
+## 21/10/2026 — Envío homologado único con permiso por hash
+
+El nuevo worker sólo consume un cuerpo previamente persistido y un permiso
+privado exacto de vigencia acotada. Registrar intención y consumir permiso es
+atómico; ACK perdido o repetido nunca habilita otro FECAESolicitar. Una respuesta
+con CAE sólo es una recepción: se confirma mediante consulta completa y CAS.
+No se inventan IVA, tributos o importes desde defaults, ni se atribuye una
+numeración ocupada sin intento propio. El flag de emisión es separado y cerrado.
+La devolución fiscal debe reconocer el ledger nuevo antes de activar usuarios;
+el circuito de nota de crédito conserva su decisión externa pendiente.

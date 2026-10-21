@@ -168,3 +168,32 @@ Cierre final HTTP + aislamiento: 2593 PASS / 1 skipped / 236 archivos, build,
 150 dirigidas, 16 carreras PostgreSQL y Edge local 3+5 PASS. Sin instalación ni
 activación remotas. Sigue pendiente el trabajador de último número/emisión y la
 integración UI antes de aceptar PR03/PR02, además de los gates hospedados.
+
+Worker de último autorizado/emisión preparado localmente: cuerpo durable,
+permiso privado por hash, intención/consumo atómicos, un envío y conciliación
+completa antes de confirmar CAE. 152 casos enfocados, build, 18 carreras PostgreSQL
+y Edge sintético PASS. SQL 009 sin instalar, sin permisos/flags reales nuevos.
+Falta cerrar suite integrada, preparación/UI, rechazos y guard de devolución
+contra el nuevo ledger antes de habilitar facturación a usuarios.
+
+### Cierre adicional del permiso temporal — 21/10/2026
+
+Una regresión nueva demostró que un permiso creado en el futuro podía aceptarse
+antes de su vigencia. Se corrigió la comprobación de inicio tanto al cargar como
+al consumir el permiso, conservando la validación de vencimiento después de los
+bloqueos y el rollback íntegro. Regresión roja conservada como evidencia local;
+resultado dirigido posterior: 153 PASS. PostgreSQL 17.11: 18 carreras PASS en
+fiscal-emission-permit-concurrency-20261021-v4.json, contenedor propio detenido y
+datos conservados. Build posterior PASS (634 módulos). La suite anterior cerró
+2655 PASS / 1 skipped / 238 archivos; precede esta última regresión y no se usa
+como cierre de la corrección. Suite completa posterior en ejecución. Sin llamadas
+ARCA, emisión real, instalación SQL, cambios remotos ni acceso a claves originales.
+
+Cierre integrado posterior al guard de vigencia: 2656 PASS / 1 skipped /
+238 archivos, salida 0 (pilot-fiscal-emission-permission-suite-results.json).
+La única omitida sigue siendo la fixture F6 de candidatos no configurada;
+ninguna prueba fiscal nueva omitida. Build posterior PASS, 634 módulos;
+153 enfocadas y 18 carreras PostgreSQL v4 PASS, Edge sintético 3+7 PASS.
+Manifiesto 43 SQL PASS; diff sin errores; escaneo 1210 archivos, 47 candidatos,
+delta 0. Este cierre reemplaza el estado de suite en ejecución anterior para
+este incremento. SQL 001–009 y Edge fiscal continúan sin instalar/activar.

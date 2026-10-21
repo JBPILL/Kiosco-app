@@ -7,6 +7,12 @@ export interface FiscalIdentity {
   tipoComprobante: number
   numero: number
 }
+export type FiscalSeries=Omit<FiscalIdentity,'numero'>
+export function normalizeFiscalSeries(input:unknown):Readonly<FiscalSeries> {
+  const value=object(input,['entorno','cuitEmisor','puntoVenta','tipoComprobante'])
+  const normalized=identity({...value,numero:1})
+  return Object.freeze({entorno:normalized.entorno,cuitEmisor:normalized.cuitEmisor,puntoVenta:normalized.puntoVenta,tipoComprobante:normalized.tipoComprobante})
+}
 interface Iva { id: number; base: string; importe: string }
 interface Tributo { id: number; descripcion: string; base: string; alicuota: string; importe: string }
 export interface FiscalRequestData extends FiscalIdentity {
@@ -188,16 +194,22 @@ export async function reconcileFiscalVoucher(observed: unknown, expected: unknow
     return {estado:'AUTORIZACION_COINCIDENTE',cae:auth.cae,vencimiento,procesadoEn,solicitudSha256:frozen.sha256,puedeReenviar:false}
   } catch { return review('RESPUESTA_INVALIDA') }
 }
-function escape(value: string): string {
-  return value.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]!))
+export function escapeFiscalXml(value: string): string {
+  if(typeof value!=='string'||/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/.test(value)
+    ||new TextDecoder().decode(new TextEncoder().encode(value))!==value)return invalid()
+  return value.replace(/[&<>"'\r]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;','\r':'&#13;'}[c]!))
 }
-export async function buildFiscalVoucherQuery(expected: unknown, ticket: {token:string;sign:string;expiresAt:number}, now = Date.now()): Promise<Request> {
-  const frozen=await verifyFiscalRequest(expected)
+export function buildFiscalAuthXml(series:unknown,ticket:{token:string;sign:string;expiresAt:number},now=Date.now()):string {
+  const s=normalizeFiscalSeries(series)
   if (!ticket || typeof ticket.token!=='string' || typeof ticket.sign!=='string'
     || !/^[\x09\x0A\x0D\x20-\x7E]+$/.test(ticket.token) || !/^[\x09\x0A\x0D\x20-\x7E]+$/.test(ticket.sign) || ticket.token.length>262144 || ticket.sign.length>262144
     || !Number.isSafeInteger(now) || !Number.isSafeInteger(ticket.expiresAt) || ticket.expiresAt<=now+60000) return invalid()
-  const {cuitEmisor,puntoVenta,tipoComprobante,numero}=frozen.solicitud
-  const body=`<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><FECompConsultar xmlns="http://ar.gov.afip.dif.FEV1/"><Auth><Token>${escape(ticket.token)}</Token><Sign>${escape(ticket.sign)}</Sign><Cuit>${cuitEmisor}</Cuit></Auth><FeCompConsReq><CbteTipo>${tipoComprobante}</CbteTipo><CbteNro>${numero}</CbteNro><PtoVta>${puntoVenta}</PtoVta></FeCompConsReq></FECompConsultar></s:Body></s:Envelope>`
+  return `<Auth><Token>${escapeFiscalXml(ticket.token)}</Token><Sign>${escapeFiscalXml(ticket.sign)}</Sign><Cuit>${s.cuitEmisor}</Cuit></Auth>`
+}
+export async function buildFiscalVoucherQuery(expected: unknown, ticket: {token:string;sign:string;expiresAt:number}, now = Date.now()): Promise<Request> {
+  const frozen=await verifyFiscalRequest(expected),{entorno,cuitEmisor,puntoVenta,tipoComprobante,numero}=frozen.solicitud
+  const auth=buildFiscalAuthXml({entorno,cuitEmisor,puntoVenta,tipoComprobante},ticket,now)
+  const body=`<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><FECompConsultar xmlns="http://ar.gov.afip.dif.FEV1/">${auth}<FeCompConsReq><CbteTipo>${tipoComprobante}</CbteTipo><CbteNro>${numero}</CbteNro><PtoVta>${puntoVenta}</PtoVta></FeCompConsReq></FECompConsultar></s:Body></s:Envelope>`
   return new Request('https://wswhomo.afip.gov.ar/wsfev1/service.asmx',{method:'POST',redirect:'error',
     headers:{'Content-Type':'text/xml; charset=utf-8',SOAPAction:'"http://ar.gov.afip.dif.FEV1/FECompConsultar"'},body})
 }

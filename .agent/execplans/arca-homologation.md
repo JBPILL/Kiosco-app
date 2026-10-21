@@ -933,3 +933,110 @@ F6_C3A_CANDIDATES_PATH; no se omiten pruebas fiscales nuevas. Build final PASS,
 No hubo cambios de código posteriores. El frontend compilado conserva 634 módulos
 y no incluye el backend privado. Instalar SQL 001–008, desplegar Edge y provisionar
 secretos siguen pendientes de autorización; no se activó el flag ni se emitió.
+
+### F05/F06 — último autorizado y trabajador de envío preparado — 21/10/2026
+
+Fuentes actuales obtenidas por GET público (sin autenticación): WSDL de homologación
+77307 bytes y manual oficial v4.7, 203 páginas, revisión 01/09/2026. La extracción
+local sí permitió leer el PDF cuyo acceso web había agotado tiempo. Orígenes y
+SHA-256 se conservan fuera de Git en arca-wsfe-official-sources-20261021.json.
+Manual: https://www.afip.gob.ar/ws/documentacion/manuales/manual-desarrollador-ARCA-COMPG.pdf
+WSDL: https://wswhomo.afip.gov.ar/wsfev1/service.asmx?wsdl
+
+Adaptador preparado para FECompUltimoAutorizado y un FECAESolicitar por cuerpo.
+Verifica serie, admite cero como último real, rechaza errores/identidad distinta,
+XML ambiguo, redirecciones y respuestas fuera de límites. PES/cotización 1 y
+condición IVA explícitos; no infiere tasas ni redondea importes. Conserva IVA,
+tributos y fechas del cuerpo canónico. Valida restricciones wire del manual
+(punto hasta 99998, descripción hasta 80, alícuota de tributo sin redondear) antes
+de pedir TA en el worker. Escape XML preserva CR y rechaza UTF-16 no válido.
+Una aprobación recibida, incluso con observaciones, no se convierte en cierre:
+FECompConsultar debe coincidir con cuerpo completo y el CAS existente guarda CAE.
+
+SQL 009 preparado: permiso privado exacto de operación/hash/credencial/huella/
+revisión, sin filas habilitadas por defecto, vigencia máxima una hora. No hay
+DML directo ni para service_role. Callback del transporte sólo recibe permiso
+nuevo tras registrar intención y consumir autorización en la misma transacción.
+El vencimiento se revalida al consumir; omitir escritura o vencer durante el
+registro revierte también la intención. ACK repetido no concede otro envío.
+Worker requiere proyecto Staging/backend habilitado y flag privado de emisión
+separado para un primer intento; recupera estados inciertos/autorizados sin
+reenviar ni alterar venta, stock o caja. Numeración ya ocupada sin intento local
+no se atribuye como propia ni se repara silenciosamente.
+
+Validación local parcial: 152 enfocadas PASS, build final PASS 634 módulos;
+18 carreras PostgreSQL 17.11 PASS (v3 final). El primer agregado chocó con el
+pendiente que otro escenario conserva y falló 55000; se preservó ese fixture y
+se probaron las nuevas carreras en series sintéticas 81/82, sin liberar datos.
+Contenedores propios detenidos y datos conservados. Evidencias v1/v2/v3 fuera
+Git; fiscal-emission-permit-concurrency-20261021-v3.json es el cierre final.
+Primer test de timeout falló por avanzar fake timers antes de acabar la validación/
+hash: corregido esperando entrar en el guard antes de avanzar, sin relajar plazo.
+Lint sin errores; tres avisos control-regex (dos existentes y uno intencional
+nuevo para rechazar caracteres XML prohibidos), no se deshabilitaron reglas.
+
+Edge Runtime local: entrypoint público sigue deshabilitado (3 checks PASS).
+Recorrido privado con SDK/CMS/custodia/cifrado reales y Auth/SQL/ARCA simulados
+PASS: dos Auth, un WSAA, una consulta de número, un envío mock, una consulta
+completa y un permiso de emisión; replay recupera el mismo resultado. No hubo
+emisión real ni acceso a credenciales originales. Un error de etiqueta del
+runner impidió su primer cleanup: se verificó ID/nombre/etiqueta del contenedor
+propio, se lo detuvo y se repitió con etiqueta consistente. Ambos contenedores
+finales confirmados exited. Evidencia: fiscal-emission-edge-*-result.json.
+Escaneo 1210 archivos/47 candidatos, delta 0 respecto al anterior; manifiesto
+histórico 43 SQL intacto. Backend de emisión ausente del frontend. Suite completa
+en ejecución: este bloque todavía no tiene PASS integrado final.
+
+Pendientes de integración antes de habilitar: preparación desde datos fiscales
+reales/IVA de catálogo sin defaults inferidos, revisión en UI, API de emisión
+controlada, resolución de rechazos/cancelación y sincronización del nuevo ledger
+con bloqueos de devoluciones. El guard actual de devolución consulta afip_cae
+(bootstrap/returns/002_owner_envases_return.sql:104); no reconoce todavía el CAE
+privado nuevo. Auditar y reforzar antes de permitir emisión a usuarios. Notas de
+crédito conservan la decisión fiscal externa pendiente documentada; no implementarla
+por inferencia. El worker no modifica afip_cae ni habilita botón/endpoint de emisión.
+Instalación SQL 001–009, provisión, JWT/RLS/E2E hospedados, punto verificado y primera
+emisión requieren sus gates y permisos. PR03/PR02 siguen PARCIAL/PENDIENTE.
+
+La allowlist del SDK privado incorpora dos RPC específicas para este worker
+(cargar preparación y registrar envío): once en total, sin API genérica de tablas
+o emisión SOAP directa. El endpoint HTTP de consulta sigue rechazando EMITIR y
+el nuevo flag de emisión no está activado. La aprobación privada por cuerpo es
+el gate del ensayo controlado inicial; falta diseñar su revisión/otorgamiento en
+UI bajo las reglas fiscales reales antes de considerar listo el piloto comercial.
+
+### Cierre adicional del permiso temporal — 21/10/2026
+
+Una regresión nueva demostró que un permiso creado en el futuro podía aceptarse
+antes de su vigencia. Se corrigió la comprobación de inicio tanto al cargar como
+al consumir el permiso, conservando la validación de vencimiento después de los
+bloqueos y el rollback íntegro. Regresión roja conservada como evidencia local;
+resultado dirigido posterior: 153 PASS. PostgreSQL 17.11: 18 carreras PASS en
+fiscal-emission-permit-concurrency-20261021-v4.json, contenedor propio detenido y
+datos conservados. Build posterior PASS (634 módulos). La suite anterior cerró
+2655 PASS / 1 skipped / 238 archivos; precede esta última regresión y no se usa
+como cierre de la corrección. Suite completa posterior en ejecución. Sin llamadas
+ARCA, emisión real, instalación SQL, cambios remotos ni acceso a claves originales.
+
+### Siguiente incremento PR03 — exclusión devolución/fiscalización
+
+Antes de activar emisión, agregar una migración fiscal incremental (sin editar
+el manifiesto histórico) que serialice las devoluciones y la reserva fiscal por
+la misma fila de venta. Cubrir ambas direcciones: una reserva existente impide
+registrar una devolución común; una devolución existente impide reservar el cuerpo
+original completo. Mantener recuperables los ACK históricos y no cambiar ventas
+no fiscales. Revisar todas las inserciones en devoluciones_venta y el registro
+atómico, incluidos caminos heredados; no basta con el campo afip_cae. Validar
+ambos órdenes de carrera en PostgreSQL, rollback sin stock/caja y ACL/roles.
+No supone resolver notas de crédito ni autoriza instalar el backend. El contrato
+de notas de crédito conserva su decisión fiscal externa pendiente. Este diseño
+continúa pendiente de implementación y no acredita aceptación hospedada.
+
+Cierre integrado posterior al guard de vigencia: 2656 PASS / 1 skipped /
+238 archivos, salida 0 (pilot-fiscal-emission-permission-suite-results.json).
+La única omitida sigue siendo la fixture F6 de candidatos no configurada;
+ninguna prueba fiscal nueva omitida. Build posterior PASS, 634 módulos;
+153 enfocadas y 18 carreras PostgreSQL v4 PASS, Edge sintético 3+7 PASS.
+Manifiesto 43 SQL PASS; diff sin errores; escaneo 1210 archivos, 47 candidatos,
+delta 0. Este cierre reemplaza el estado de suite en ejecución anterior para
+este incremento. SQL 001–009 y Edge fiscal continúan sin instalar/activar.
