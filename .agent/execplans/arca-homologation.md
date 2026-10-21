@@ -166,3 +166,76 @@ fiscal. PR02 sigue pendiente y exige primero su dependencia PR03.
 Validación del código usado: 4 pruebas dirigidas PASS / 2 archivos, con 32
 comprobaciones sintéticas; diff PASS. La suite global/build anteriores no se
 reclasifican como ejecución posterior a este agregado. No hay nueva dependencia.
+
+
+## Objetivo de continuidad detallado — 20/10/2026
+
+Por pedido del titular se registró un objetivo activo para completar el piloto.
+Este ExecPlan desarrolla el bloque fiscal; la matriz PR01–PR11 del plan operativo
+sigue siendo la fuente de estados y el plan-completar-piloto conserva el resto
+del alcance. No crear otro plan fiscal equivalente. PR01 está PASS; el siguiente
+resultado buscado es PR02, cumpliendo primero PR03 y sus controles de seguridad.
+
+### Resultado verificable del bloque
+
+Una venta completada y propia puede solicitar fiscalización de homologación a
+través de un backend autorizado. La misma solicitud conserva identidad, cuerpo
+y número reservado; un reintento no produce otro comprobante. Una respuesta
+incierta queda pendiente de conciliación. Sólo una autorización real y coherente
+permite mostrar CAE. Cobro, stock y caja no se ejecutan de nuevo por fiscalizar.
+La emisión continuará bloqueada hasta completar los requisitos y autorizaciones.
+
+### Pasos, entregables y salida de cada etapa
+
+| Etapa | Trabajo y entregable concreto | Comprobación para avanzar |
+|---|---|---|
+| F01 — Inventario | Trazar ventas, checkout confirmado, roles, guard estricto, configuración, importes y Edge legacy. Precisar contrato inicial de factura admitida y restricciones. | Rutas y tablas identificadas; ninguna ruta usa CAE simulado ni claves del browser como solución nueva. |
+| F02 — Contrato durable | Especificar estados fiscales, solicitud canónica/versionada, vínculo venta/tenant/emisor/entorno, hash e identidad estable; errores y respuesta pública sin secretos. | Matriz de transiciones válida e inválida y pruebas de cambio de cuerpo, venta ajena/anulada y repetición. |
+| F03 — Persistencia y numeración | Preparar SQL aditivo fuera del manifiesto histórico: unicidad por venta/entorno, serie por emisor/entorno/punto/tipo, reserva durable y coordinación de trabajadores. | Dos solicitudes idénticas producen una operación; dos distintas no reciben el mismo número; crash no libera una emisión incierta. Pruebas locales no sustituyen concurrencia PostgreSQL real. |
+| F04 — Custodia y permisos | Backend incremental: validar JWT, actor y comercio; separar función del operador y trabajador privado; custodia de certificado/clave y caché TA exclusivamente privada. | Anónimo, tenant ajeno, roles no autorizados y DML directo rechazados; secretos ausentes de respuestas/logs/config pública. Probar renovación y exclusión de renovación de TA. |
+| F05 — Adaptador fiscal | XML por parser seguro; tiempo Argentina, importes precisos y sumas coherentes; endpoints fijos por entorno; timeout acotado y errores sanitizados. Contrato y parámetros oficiales vigentes antes de emisión. | Fixtures de autorización, rechazo, SOAP Fault, XML malformado/duplicado, vencimiento y respuesta con identidad/importes distintos; nunca CAE inventado. |
+| F06 — Recuperación | Registrar intención antes de red; reconciliar número reservado con FECompConsultar tras timeout/crash; confirmar sólo identidad e importes coincidentes; bloquear reenvío si inconcluso. | Fallos antes/después del envío y de persistir ACK; dos trabajadores; ninguna segunda cobranza, movimiento de stock ni numeración nueva por reintento. |
+| F07 — Ensayo hospedado | Preparar respaldo/preflight, instalación acotada y rollback de configuración; pedir autorización nueva para SQL/Edge y pruebas en comercio aislado de Staging. | JWT/RLS/ACL reales, worker concurrente, conciliación DB y auditoría; conservar registros y suspender sólo fixtures creados para ensayo. |
+| F08 — CAE de homologación | Acreditar punto de ensayo y contrato fiscal; preparar caso mínimo reproducible con titular/importes/tipo y pedir autorización específica antes de emitir. | CAE real, número/vencimiento/QR coherentes y recuperación por consulta; cero cambios productivos. Cerrar PR02 sólo con evidencia completa. |
+| F09 — Contingencias y UI | Mostrar estados comerciales/fiscales separados, pendientes y recuperación; ensayar caída ARCA/Internet y reintentos; eliminar dependencia del legacy para el nuevo flujo. | Operador puede distinguir autorizado/rechazado/pendiente sin recobrar; E2E y dos terminales, regresiones checkout/envases/devoluciones. |
+
+### Inventario inicial ejecutado
+
+- `supabase/bootstrap/001_domain.sql`: ventas con `COMPLETADA`/`ANULADA`,
+  total numeric(12,2), detalles, pagos y caja relacionados. El estado comercial
+  no debe reutilizarse como estado de autorización fiscal.
+- `supabase/bootstrap/steps/008_checkout_core.sql`: contrato transaccional de
+  checkout existente; revisar su ACK y reservas antes de enlazar fiscalización.
+- `src/stores/afipStore.ts` y `src/lib/kioskPilotScope.ts`: guard estricto de
+  emisión existente; mantenerlo hasta disponer del backend y aceptación nuevos.
+- `src/lib/afipImportes.ts`: cálculo legacy con defaults/coerciones; no asumir
+  que sustituye validación fiscal estricta en servidor ni soporte multi alícuota.
+- `supabase/functions/afip-wsfe/index.ts`: legacy ya diagnosticado; no desplegarlo
+  como backend nuevo ni utilizar sus rutas de simulación/credenciales públicas.
+- `supabase/pilot-backup/001_contacts_restore.sql`: ejemplo actual de validación
+  de perfil/comercio y solicitud inmutable; reutilizar convenciones pertinentes,
+  sin mezclar el resultado comercial de operaciones_escritura con el diario fiscal.
+
+### Seguimiento y criterio de cierre
+
+- [x] Objetivo activo creado por pedido del titular y vinculado a planes existentes.
+- [x] Inventario inicial de superficies; pendientes el trazado completo y contrato fiscal admitido de F01.
+- [ ] Completar F01 y F02 con revisión de permisos, estados y solicitud canónica.
+- [ ] Implementar y probar F03–F06 localmente; revisar seguridad y datos.
+- [ ] Completar F07 tras autorización específica de instalación y ensayo hospedado.
+- [ ] Completar F08 tras autorización específica de emisión homologada.
+- [ ] Completar F09 y actualizar evidencias de PR04/PR06/PR08/PR09.
+
+Registrar cada avance con versión, entorno, casos ejecutados, resultado y límites.
+Ejecutar pruebas dirigidas y build cuando cambie la aplicación; usar suite global
+al cerrar un bloque integrado o ante regresiones. Revisar diff y secretos antes
+de publicar commits en la rama autorizada del PR #3. No presentar PASS local
+como aceptación de RLS, concurrencia, operación fiscal ni piloto comercial.
+
+Después de este bloque, continuar los pendientes canónicos de integridad,
+seguridad, backup/restore, recuperación y concurrencia. La restauración integral
+seguirá bloqueada hasta instalación y aceptación de los SQL nuevos. Preparar la
+transición productiva y el piloto comercial con responsables, conciliación,
+soporte y rollback; su ejecución requiere aprobación específica. Impresora/cajón
+físicos y Point permanecen diferidos hasta contar con cliente. Master y
+Production no se modifican por este objetivo. Conservar datos e historia.

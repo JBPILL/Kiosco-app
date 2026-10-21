@@ -66,3 +66,14 @@ Pruebas dirigidas, suite completa al cerrar cada bloque, build, diff y manifiest
 En curso. No se declara completado el piloto por terminar un bloque individual.
 Instalación y ensayo hospedado de la restauración ampliada preparados en
 restauracion-modulos-staging.md; la interfaz integral continúa bloqueada.
+
+
+## Objetivo activo detallado — 20/10/2026
+
+El titular pidió crear un objetivo para seguir con detalle el trabajo pendiente.
+Se registró como objetivo activo completar los módulos y gates del piloto,
+priorizando PR03 antes del CAE de PR02. El desglose fiscal F01–F09, entregables,
+pruebas y autorizaciones está en el [ExecPlan ARCA existente](../.agent/execplans/arca-homologation.md#objetivo-de-continuidad-detallado--20102026).
+El inventario inicial ya comenzó; no se instalaron SQL/Edge ni se emitieron
+comprobantes por este nuevo objetivo. El resto del registro canónico sigue
+vigente, con impresora/cajón físicos y Point diferidos y Production separada.
