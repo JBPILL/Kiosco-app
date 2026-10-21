@@ -122,3 +122,47 @@ anterior ni se crean puntos de venta en Producción.
 
 Contrato oficial consultado el 20/10/2026:
 https://wswhomo.afip.gov.ar/wsfev1/service.asmx?op=FEParamGetTiposCbte
+
+
+### Cierre de diagnóstico PR01 y siguiente dependencia (20/10/2026)
+
+Tras autorización específica del titular se ejecutó con el diagnóstico
+`cc199d5` una única autenticación WSAA y una única consulta FEParamGetTiposCbte,
+ambas en homologación, con certificado original y CUIT representado autorizado.
+Resultados sanitizados: CERT_KEY_MATCH, TRA_GENERATION, CMS_SIGNATURE y
+WSAA_HOMOLOGACION PASS; WSFE_HOMOLOGACION PASS; TIPOS_COMPROBANTE=36;
+COMPROBANTES_EMITIDOS=0. Token/Sign sólo en memoria; proceso finalizado sin
+persistencia de credenciales. No se modificaron configuración ni datos fiscales
+del comercio, master o Production.
+
+PR01 queda PASS para autenticación y consulta de parámetros; se conservan arriba
+el 602 de la consulta de puntos y los estados históricos previos. Este cierre
+no acredita disponibilidad del punto 2, habilitación productiva, CAE ni robustez
+fiscal. PR02 sigue pendiente y exige primero su dependencia PR03.
+
+#### Bloque siguiente: PR03 previo al CAE
+
+- Usar módulo incremental separado del legacy. Autenticar al actor, comprobar
+  rol/comercio activo y venta confirmada propia antes de acceder a material fiscal.
+  Ninguna clave o TA en configuración pública, browser o respuesta al cliente.
+- Registrar operación fiscal durable por venta/entorno y hash de la solicitud
+  canónica. Un reintento idéntico devuelve el resultado; un cuerpo distinto para
+  la misma operación se rechaza. No generar otra identidad ante timeout.
+- Serializar por emisor/entorno/punto/tipo. Reservar numeración en DB y persistir
+  intención antes de contactar a WSFE. Nunca mantener una transacción abierta
+  durante una llamada externa ni usar sólo un lock del proceso Edge.
+- Ante incertidumbre o crash, conservar estado pendiente y consultar el número
+  reservado mediante FECompConsultar; comparar identidad/importes y confirmar
+  CAE únicamente con respuesta real coherente. Un resultado inconcluso no libera
+  la secuencia ni habilita un nuevo envío automático.
+- Separar estado comercial y fiscal: ninguna recuperación vuelve a cobrar,
+  descuenta stock otra vez o fabrica CAE. Probar rechazo definitivo, timeout,
+  ACK perdido, dos trabajadores y colisión de numeración.
+- Preparar esquema/RPC y pruebas locales usando los patrones transaccionales del
+  repositorio; instalación y ensayos hospedados requieren su gate correspondiente.
+  No emitir hasta disponer de backend seguro, disponibilidad del punto de ensayo
+  comprobada y autorización específica de emisión.
+
+Validación del código usado: 4 pruebas dirigidas PASS / 2 archivos, con 32
+comprobaciones sintéticas; diff PASS. La suite global/build anteriores no se
+reclasifican como ejecución posterior a este agregado. No hay nueva dependencia.

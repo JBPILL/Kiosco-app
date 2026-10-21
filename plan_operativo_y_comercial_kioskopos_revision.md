@@ -14,7 +14,8 @@ ni pausas históricas. Un PASS local, un deploy o WSAA PASS no cierran por sí s
 un gate hospedado, fiscal ni comercial. No duplicar esta matriz en otros planes:
 referenciar sus IDs y registrar allí únicamente la evidencia del módulo.
 
-**Orden vigente:** continuar por PR01 (WSFE homologación). Los demás gates pueden
+**Orden vigente:** PR01 completado; continuar PR02 (CAE homologación), preparando
+primero su dependencia obligatoria PR03 (backend seguro e idempotencia fiscal). Los demás gates pueden
 prepararse en paralelo cuando no dependan de su aceptación; ninguna preparación
 autoriza emisión, instalación SQL, transición productiva ni uso de datos reales
 fuera del alcance ya autorizado. Impresora/cajón físicos y Point siguen diferidos
@@ -22,7 +23,7 @@ por el titular hasta contar con cliente; no se consideran probados ni aprobados.
 
 | Gate | Alcance y evidencia necesaria para cerrar | Estado comprobado y siguiente acción | Dependencia / vínculo |
 |---|---|---|---|
-| PR01 | WSAA/WSFE homologación: certificado/par original y vigencia; autorización del servicio; TRA/CMS válidos; Token/Sign y expiración reales sin exposición; consulta autenticada no transaccional a WSFE con CUIT representado; errores SOAP/negocio explícitos. | PARCIAL: certificado/par, autorización WSASS y WSAA reales PASS el 20/10. FEParamGetPtosVenta real respondió WSFE_BUSINESS:602 (sin datos) con autorización del titular. El punto 2 sólo se ingresó en KioskoPOS; no se acreditó alta ni disponibilidad en ARCA. PR01 permanece abierto: determinar el diagnóstico de homologación apropiado sin modificar Producción. | ExecPlan arca-homologation; docs/arca-homologacion. |
+| PR01 | WSAA/WSFE homologación: certificado/par original y vigencia; autorización del servicio; TRA/CMS válidos; Token/Sign y expiración reales sin exposición; consulta autenticada no transaccional a WSFE con CUIT representado; errores SOAP/negocio explícitos. | PASS de diagnóstico real el 20/10: certificado/par, WSASS, WSAA y consulta FEParamGetTiposCbte autenticada devolviendo 36 tipos; cero comprobantes emitidos. FEParamGetPtosVenta respondió antes 602 (sin datos), conservado como evidencia. No acredita disponibilidad del punto 2 ni CAE; esos requisitos siguen en PR02. Evidencia: diagnóstico cc199d5, ejecución autorizada, credenciales sólo en memoria. | ExecPlan arca-homologation; docs/arca-homologacion. |
 | PR02 | CAE real de homologación: respuesta autorizada de WSFE, número, tipo, punto de venta, importes, vencimiento y QR coherentes; persistencia y recuperación por FECompConsultar; rechazo no presentado como autorizado; ninguna simulación de CAE. | PENDIENTE. Preparar la prueba reproducible y pedir la autorización requerida antes de emitir un comprobante, incluso de homologación. | PR01 y contrato seguro de PR03. |
 | PR03 | Idempotencia y robustez fiscal: operación durable por venta/entorno, cuerpo inmutable y control de permisos; reserva/lock de numeración por CUIT/punto/tipo; mismo reintento no duplica; respuesta incierta se reconcilia antes de reenviar; importes/IVA/fechas/XML y caché/renovación de TA validados. | PENDIENTE. La Edge legacy no cumple y no debe activarse como atajo. El diagnóstico WSAA local no es una pasarela fiscal multi comercio. | PR01; debe satisfacer invariantes antes de PR02 end-to-end. |
 | PR04 | Contingencias ARCA/Internet: caída de WSAA/WSFE, timeout antes/después del commit, vencimiento de TA, reconexión y reintento controlado; estado comercial separado del fiscal; ticket pendiente claramente identificado, sin CAE inventado ni doble cobro. Definir operación, responsables y límites de contingencia. | PARCIAL: existe evidencia de recuperación de cobros comerciales; falta circuito fiscal real y aceptación del operador. No asumir que ticket interno sustituye un comprobante fiscal. | PR03, PR08; P08/P09/P17. |
@@ -53,11 +54,15 @@ por el titular hasta contar con cliente; no se consideran probados ni aprobados.
 
 ### Siguiente acción autorizada
 
-Continuar PR01 tras FEParamGetPtosVenta real con código 602: verificar el
-tratamiento de puntos de venta en homologación y preparar una consulta adicional
-no transaccional que permita separar autenticación de disponibilidad de puntos.
-La autorización consumida no se amplía a nuevas solicitudes ni a emisión; si un gate necesita nueva autorización, preparar primero
-el artefacto/prueba revisable y mantener visible lo pendiente.
+PR01 completado mediante WSAA y FEParamGetTiposCbte reales. Continuar PR02
+preparando primero PR03: custodia privada y permisos por comercio, operación
+fiscal durable con cuerpo inmutable, reserva de numeración y reconciliación
+FECompConsultar antes de reintentar respuestas inciertas. Probar localmente
+contratos y fallos, luego pedir la autorización específica de instalación y
+ensayo hospedado que corresponda. No activar la Edge legacy ni emitir un
+comprobante sin autorización de emisión. La disponibilidad del punto 2 sigue
+sin acreditarse; no crear puntos en Producción como atajo para homologación.
+
 
 ## Registro de tareas pendientes
 

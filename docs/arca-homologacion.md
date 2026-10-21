@@ -237,3 +237,28 @@ anterior ni se crean puntos de venta en Producción.
 
 Contrato oficial consultado el 20/10/2026:
 https://wswhomo.afip.gov.ar/wsfev1/service.asmx?op=FEParamGetTiposCbte
+
+
+### Cierre de diagnóstico PR01 y siguiente dependencia (20/10/2026)
+
+Tras autorización específica del titular se ejecutó con el diagnóstico
+`cc199d5` una única autenticación WSAA y una única consulta FEParamGetTiposCbte,
+ambas en homologación, con certificado original y CUIT representado autorizado.
+Resultados sanitizados: CERT_KEY_MATCH, TRA_GENERATION, CMS_SIGNATURE y
+WSAA_HOMOLOGACION PASS; WSFE_HOMOLOGACION PASS; TIPOS_COMPROBANTE=36;
+COMPROBANTES_EMITIDOS=0. Token/Sign sólo en memoria; proceso finalizado sin
+persistencia de credenciales. No se modificaron configuración ni datos fiscales
+del comercio, master o Production.
+
+PR01 queda PASS para autenticación y consulta de parámetros; se conservan arriba
+el 602 de la consulta de puntos y los estados históricos previos. Este cierre
+no acredita disponibilidad del punto 2, habilitación productiva, CAE ni robustez
+fiscal. PR02 sigue pendiente y exige primero su dependencia PR03.
+
+El bloque de implementación PR03 y sus casos de fallo están en el
+[ExecPlan existente](../.agent/execplans/arca-homologation.md#bloque-siguiente-pr03-previo-al-cae),
+sin abrir un plan equivalente ni duplicar la matriz canónica.
+
+Validación del código usado: 4 pruebas dirigidas PASS / 2 archivos, con 32
+comprobaciones sintéticas; diff PASS. La suite global/build anteriores no se
+reclasifican como ejecución posterior a este agregado. No hay nueva dependencia.

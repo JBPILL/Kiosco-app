@@ -36,7 +36,8 @@ Cada módulo tiene pruebas de comportamiento y permisos, build cuando correspond
 
 ## Plan de implementación
 0. Por instrucción del titular del 20/10, actualizar planes existentes y retomar
-   PR01: consulta real autenticada WSFE homologación; sin emisión ni Production.
+   PR02: CAE homologación, preparando primero PR03 (backend seguro e
+   idempotencia fiscal); sin emisión sin autorización ni cambios en Production.
 1. Contratos SQL locales para contactos y saldos, con pruebas de autorización, idempotencia y conservación.
 2. Completar lotes y asociaciones; integrar preflight de capacidades antes de cualquier escritura.
 3. Validar instalación preparada y ensayo aislado de Staging con el gate necesario.
@@ -56,7 +57,10 @@ Pruebas dirigidas, suite completa al cerrar cada bloque, build, diff y manifiest
 - [ ] Integración y aceptación hospedada del respaldo completo.
 - [ ] Resto del registro vivo.
 - [x] Gates permanentes PR01–PR11 incorporados al plan operativo y reglas ExecPlan.
-- [ ] PR01: WSAA real PASS; consulta WSFE real pendiente, primer gate a continuar.
+- [x] PR01: WSAA y FEParamGetTiposCbte reales PASS (36 tipos, cero emisiones),
+      20/10/2026 con diagnóstico cc199d5. Consulta previa de puntos 602 conservada.
+- [ ] PR02: CAE pendiente; primero completar dependencia PR03 de backend seguro
+      e idempotencia. Punto 2 todavía sin disponibilidad acreditada en ARCA.
 
 ## Resultado final
 En curso. No se declara completado el piloto por terminar un bloque individual.

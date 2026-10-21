@@ -71,7 +71,8 @@ resultados históricos y añadir revisiones fechadas. Los gates no amplían perm
 respetar autorizaciones para SQL, emisión fiscal, publicación y Production.
 Impresora/cajón físicos y Point permanecen diferidos hasta ensayo con cliente por
 decisión del titular. Al retomar, continuar por el primer gate pendiente del
-registro, actualmente PR01 (consulta WSFE homologación).
+registro: PR01 quedó PASS el 20/10/2026; sigue PR02 (CAE), cuya dependencia
+PR03 (backend seguro e idempotencia fiscal) debe prepararse antes de emitir.
 
 - Ground the plan in the current repository; do not fill gaps with invented architecture.
 - Keep the scope and validation proportional to the change, and follow project instructions such as `AGENTS.md` and `RTK.md`.
