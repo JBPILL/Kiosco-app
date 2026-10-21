@@ -89,3 +89,11 @@ Dependencias parcheadas y audit npm 0 alertas. Siguiente paso: ligar cuerpo/hash
 a operación/reserva y persistir la reconciliación con CAS, luego custodia/worker
 e instalación/aceptación hospedada. Ver el ExecPlan ARCA existente; PR03/PR02
 siguen abiertos y no se autoriza emisión por este avance.
+
+Actualización 21/10: cuerpo/hash ligado a operación y reserva preparado en SQL
+003, intención exige persistencia previa; 168 pruebas fiscales y build PASS.
+Reintento no cambia el cuerpo ni habilita otro envío. Aún falta persistir el CAE
+conciliado con CAS, el worker privado y aceptación hospedada. El nuevo SQL no
+está instalado. Evidencia y límites en el ExecPlan ARCA existente.
+Resultado posterior: suite integrada 2345 PASS / 1 skipped / 228 archivos y seis
+carreras PostgreSQL 17.11 con SQL 001–003 PASS; contenedor propio detenido.

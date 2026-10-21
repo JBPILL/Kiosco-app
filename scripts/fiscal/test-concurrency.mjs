@@ -1,7 +1,7 @@
 // Ensayo PostgreSQL real y sintético. No lee .env ni accede a Supabase/ARCA.
 // Requiere Docker iniciado e imagen postgres:17-alpine ya instalada (sin pull).
 import { execFileSync } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import assert from 'node:assert/strict'
@@ -56,7 +56,13 @@ const prepare = async(client,fixture,op=randomUUID(),point=2)=>{
   return r.rows[0].ack
 }
 const reserve = async(client,op,point=2)=>{
-  const r=await client.query('SELECT reservar_numero_fiscal_homologacion($1,$2,$3,11,41,clock_timestamp()) ack',[op,issuer,point])
+  // Mismo cuerpo durable para los reintentos; ninguna credencial ni red fiscal.
+  const body=JSON.stringify({version:1,entorno:'HOMOLOGACION',cuitEmisor:issuer,puntoVenta:point,tipoComprobante:11,numero:42,
+    concepto:1,tipoDocumento:99,numeroDocumento:'0',condicionIvaReceptor:5,fecha:'20261021',servicioDesde:null,
+    servicioHasta:null,vencimientoPago:null,moneda:'PES',cotizacion:'1',
+    importes:{total:'123.45',neto:'123.45',iva:'0.00',noGravado:'0.00',exento:'0.00',tributos:'0.00'},iva:[],tributos:[]})
+  const hash=createHash('sha256').update(body).digest('hex')
+  const r=await client.query('SELECT persistir_solicitud_fiscal_homologacion($1,$2,$3,41,clock_timestamp()) ack',[op,body,hash])
   return r.rows[0].ack
 }
 const attempt = async(client,op,id)=>{
@@ -87,7 +93,8 @@ try {
   const bootstrap=join(root,'supabase/bootstrap')
   for (const file of [join(bootstrap,'001_domain.sql'),join(bootstrap,'002_identity_helpers.sql'),
     ...readdirSync(join(bootstrap,'steps')).sort().map(file=>join(bootstrap,'steps',file)),join(bootstrap,'900_final_security.sql'),
-    join(root,'supabase/pilot-fiscal/001_fiscal_journal.sql'),join(root,'supabase/pilot-fiscal/002_fiscal_reservations.sql')]) {
+    join(root,'supabase/pilot-fiscal/001_fiscal_journal.sql'),join(root,'supabase/pilot-fiscal/002_fiscal_reservations.sql'),
+    join(root,'supabase/pilot-fiscal/003_fiscal_requests.sql')]) {
     await observer.query(readFileSync(file,'utf8'))
   }
   async function fixture() {
@@ -120,7 +127,11 @@ try {
   await waitForLock(observer,b); await a.query('COMMIT')
   const competing=await pendingAttempt; assert.equal(competing.error?.code,'55000'); await b.query('ROLLBACK')
   await start(b); assert.equal((await attempt(b,first.id,id)).nuevo_intento,false); await b.query('COMMIT')
-  cases.push('dos_trabajadores_un_intento_ACK_perdido_sin_reenvio')
+  await start(b)
+  const recovered=await reserve(b,first.id)
+  assert.equal(recovered.estado,'ENVIO_INCIERTO'); assert.match(recovered.solicitud_sha256,/^[0-9a-f]{64}$/)
+  await b.query('COMMIT')
+  cases.push('dos_trabajadores_cuerpo_durable_un_intento_ACK_perdido_sin_reenvio')
 
   const annul=async(client,fixture)=>client.query("SELECT anular_venta_atomica($1,'Anulación sintética local',NULL)",[fixture.sale])
   async function seedCheckout(fixture) {

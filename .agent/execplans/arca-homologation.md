@@ -471,3 +471,39 @@ valores sensibles impresos; historial no reescaneado. Auditoría npm final:
 0 info/low/moderate/high/critical. Contenedor Edge confirmado exited después del
 ensayo. Ningún .env modificado, ningún SQL/Edge instalado, ningún comprobante
 emitido. Cambios listos para commits temáticos en la rama autorizada.
+
+### Persistencia del cuerpo fiscal — 21/10/2026 (avance local)
+
+- Nuevo módulo aditivo 003_fiscal_requests.sql: cuerpo/hash, reserva y vínculo
+  atómicos; SHA-256 nativo verificado contra el contrato TypeScript. El número
+  candidato discrepante revierte la transacción completa. Misma operación no
+  admite otro cuerpo. No se tocan cobro, venta, stock ni caja.
+- Intención exige cuerpo durable ligado a la reserva; repetir la identidad
+  retorna necesidad de conciliación, sin segundo envío. Se corrigió un CHECK
+  para rechazar NULL explícitamente y se validan tipos textuales del contrato.
+- Funciones privadas sin lectura/DML directo para roles API; dos barreras para
+  ejecución: privilegio SQL de servicio y claim de servicio. No implica que
+  la futura entrada Edge tenga autenticación/tenant/custodia ya resueltos.
+- Pruebas fiscales enfocadas: 168 PASS / 4 archivos; build PASS, 634 módulos.
+  Cubren rollback ante escritura omitida, sustitución del cuerpo/hash, errores
+  de número/fecha/importes/contexto, falta de cuerpo, replay con ACK perdido y
+  continuidad tras commit. PGlite es monoconexión: no acredita reconexión real.
+- Runner PostgreSQL actualizado para ejecutar carreras con cuerpo durable.
+  Primer intento no arrancó: Docker engine detenido, cero casos ejecutados.
+  Se solicitó iniciar Docker; resultado posterior debe registrarse antes de
+  afirmar PASS. Suite integrada en ejecución, aún sin resultado nuevo.
+- Sigue pendiente el paso 2 (CAS y persistencia final de reconciliación), estados
+  finales/historia, custodia y worker, instalación/aceptación hospedada y emisión
+  homologada con sus gates. SQL 003 no instalado en Staging ni Production.
+
+Cierre de verificación de este incremento (21/10): suite integrada 2345 PASS /
+1 skipped / 228 archivos, 220,10 s; build PASS. Ensayo PostgreSQL 17.11 real
+PASS en las seis carreras con SQL 001–003 y cuerpos durables, incluyendo ACK
+perdido y conflicto con anulación. Evidencia fuera de Git:
+fiscal-persistence-concurrency-20261021-retry.json. Contenedor propio detenido,
+datos conservados; cero operaciones externas y cero emisiones. El primer
+intento fallido por Docker detenido se conserva como evidencia separada.
+Escaneo 1176 archivos, 1162 texto, 14 binarios omitidos, 46 candidatos: cero
+cambios de candidatos respecto del escaneo previo, historial no reescaneado.
+No se modificó .env ni se instaló SQL/Edge remoto. El siguiente incremento sigue
+siendo CAS de reconciliación y estados finales, antes de conectar el worker.

@@ -153,6 +153,11 @@ export async function verifyFiscalRequest(input: unknown): Promise<FrozenFiscalR
   if (normalized.sha256!==obj.sha256) return invalid()
   return normalized
 }
+/** Serialización exacta usada por SHA-256 y por la persistencia privada. */
+export async function serializeFiscalRequest(input: unknown): Promise<string> {
+  const frozen=await verifyFiscalRequest(input)
+  return canonical(frozen.solicitud)
+}
 const review = (codigo: Extract<FiscalReconciliation,{estado:'CONCILIAR'}>['codigo']): FiscalReconciliation =>
   ({estado:'CONCILIAR',codigo,puedeReenviar:false})
 /** Sólo con DTO de FECompConsultar validado por adaptador XML y transporte privado.
