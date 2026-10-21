@@ -50,3 +50,12 @@ devoluciones sin paginación; sus fuentes de compras/pagos también requieren
 revisión conjunta para no declarar un balance completo sólo por paginar ventas.
 No se modifica ese bloque en esta corrección de rotación. La impresión física
 sigue pendiente. El cambio no equivale a aprobación integral de todo el piloto.
+
+
+## Production Readiness — revisión permanente 20/10/2026
+
+Referencia canónica: [gates PR01–PR11](../../plan_operativo_y_comercial_kioskopos_revision.md#production-readiness--gates-permanentes-20102026). Gates aplicables a este ExecPlan: **PR05, PR06, PR09 y PR11**.
+
+El reporte local completo requiere aceptación de períodos/actores/datos hospedados y conciliación; no sustituir datos ausentes por ceros o estimaciones sin identificar.
+
+Esta adenda complementa los estados y decisiones anteriores, sin borrarlos ni convertir un PASS local/histórico en aceptación global. Registrar entorno, versión, fecha, evidencia y límites antes de cerrar el gate aplicable. Continuar según el primer gate pendiente del registro maestro (PR01); las autorizaciones de la sesión conservan su alcance y no se amplían por este plan.

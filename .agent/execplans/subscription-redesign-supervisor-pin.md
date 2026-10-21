@@ -145,3 +145,12 @@ Vista previa e impresión comparten componente de 48 × 40 mm para rollo 58 y
 reservadas para textos y opciones; sin cambios en medidas de tickets de venta.
 Ver `docs/etiquetas-termicas-uniformes-2026-10-18.md` para evidencia y límites.
 El ensayo sobre papel continúa pendiente de disponer de impresora.
+
+
+## Production Readiness — revisión permanente 20/10/2026
+
+Referencia canónica: [gates PR01–PR11](../../plan_operativo_y_comercial_kioskopos_revision.md#production-readiness--gates-permanentes-20102026). Gates aplicables a este ExecPlan: **PR05, PR06 y PR09**.
+
+Completar intentos/límites, permiso ligado al cuerpo original, concurrencia y auditoría con los actores del entorno requerido; preservar resultados de UI/backend ya obtenidos.
+
+Esta adenda complementa los estados y decisiones anteriores, sin borrarlos ni convertir un PASS local/histórico en aceptación global. Registrar entorno, versión, fecha, evidencia y límites antes de cerrar el gate aplicable. Continuar según el primer gate pendiente del registro maestro (PR01); las autorizaciones de la sesión conservan su alcance y no se amplían por este plan.

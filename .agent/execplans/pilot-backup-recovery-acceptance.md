@@ -73,3 +73,12 @@ repetición sin duplicados. Destino suspendido. El flujo integral en UI conserva
 su gate; P14 y los módulos de respaldo completo no se declaran terminados.
 Sin cambios de SQL, dependencias, permisos remotos, master ni Production; no se
 necesita activar/deployar una UI nueva para publicar esta preparación técnica.
+
+
+## Production Readiness — revisión permanente 20/10/2026
+
+Referencia canónica: [gates PR01–PR11](../../plan_operativo_y_comercial_kioskopos_revision.md#production-readiness--gates-permanentes-20102026). Gates aplicables a este ExecPlan: **PR06, PR07, PR08 y PR09**.
+
+Ampliación local del 20/10: clientes/proveedores con conservación de saldos, producto/proveedor/lotes atómicos y capacidad previa implementados; suite 2177 PASS / 1 skipped, build 634 módulos PASS. SQL nuevo y ensayo hospedado aún pendientes. UI integral bloqueada. El snapshot JSON no cubre pg_dump/pg_restore, Storage ni historia financiera completa.
+
+Esta adenda complementa los estados y decisiones anteriores, sin borrarlos ni convertir un PASS local/histórico en aceptación global. Registrar entorno, versión, fecha, evidencia y límites antes de cerrar el gate aplicable. Continuar según el primer gate pendiente del registro maestro (PR01); las autorizaciones de la sesión conservan su alcance y no se amplían por este plan.

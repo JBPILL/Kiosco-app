@@ -48,3 +48,12 @@ Motor de promociones y relaciones preparado y ensayado con JWT real, incluidas
 categoría, receta pesable y repetición sin duplicar. No se amplían permisos ni
 se aplica SQL remoto. Clientes/saldos/proveedores/lotes y asociaciones mantienen
 su rechazo previo a escritura hasta completar los contratos específicos.
+
+
+## Production Readiness — revisión permanente 20/10/2026
+
+Referencia canónica: [gates PR01–PR11](../../plan_operativo_y_comercial_kioskopos_revision.md#production-readiness--gates-permanentes-20102026). Gates aplicables a este ExecPlan: **PR05, PR06, PR07, PR08 y PR09**.
+
+El ensayo histórico de catálogo/promociones/recetas conserva validez para aquel árbol. La versión nueva exige contratos completos antes de toda restauración estricta y coordina producto/lotes atómicamente; sus pruebas locales no sustituyen instalación ni ensayo JWT de Staging. Véase docs/restauracion-modulos-staging.md.
+
+Esta adenda complementa los estados y decisiones anteriores, sin borrarlos ni convertir un PASS local/histórico en aceptación global. Registrar entorno, versión, fecha, evidencia y límites antes de cerrar el gate aplicable. Continuar según el primer gate pendiente del registro maestro (PR01); las autorizaciones de la sesión conservan su alcance y no se amplían por este plan.

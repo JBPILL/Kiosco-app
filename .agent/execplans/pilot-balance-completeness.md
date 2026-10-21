@@ -55,3 +55,12 @@ la salida. Suite/build, diff/index, manifest, secret scan y audit diagnóstico.
 Implementación, suite/build y aceptación de lecturas Staging completas, para
 PR #3 sin merge. El alcance no certifica el resto del piloto ni
 hardware, ni transforma la lectura paginada en snapshot transaccional.
+
+
+## Production Readiness — revisión permanente 20/10/2026
+
+Referencia canónica: [gates PR01–PR11](../../plan_operativo_y_comercial_kioskopos_revision.md#production-readiness--gates-permanentes-20102026). Gates aplicables a este ExecPlan: **PR05, PR06, PR09 y PR11**.
+
+Completar conciliación de venta/pagos/caja, período argentino y clasificación comercial/fiscal; errores y falta de datos deben seguir explícitos.
+
+Esta adenda complementa los estados y decisiones anteriores, sin borrarlos ni convertir un PASS local/histórico en aceptación global. Registrar entorno, versión, fecha, evidencia y límites antes de cerrar el gate aplicable. Continuar según el primer gate pendiente del registro maestro (PR01); las autorizaciones de la sesión conservan su alcance y no se amplían por este plan.

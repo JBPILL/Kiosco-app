@@ -87,3 +87,12 @@ permisos de cámara/impresora, bloqueo de Windows ni respaldo externo.
 El cobro ficticio bloqueado por cantidad fraccionaria se concilió como NO_COBRADO
 mediante el flujo existente, verificado en servidor; véase
 pilot-unit-stock-checkout.md. No se realizó ninguna venta adicional por agente.
+
+
+## Production Readiness — revisión permanente 20/10/2026
+
+Referencia canónica: [gates PR01–PR11](../../plan_operativo_y_comercial_kioskopos_revision.md#production-readiness--gates-permanentes-20102026). Gates aplicables a este ExecPlan: **PR04, PR08, PR09 y PR11**.
+
+La sesión persistente confirmada por el operador no demuestra recuperación de crash, permisos ni dos terminales. Impresora/cajón y Point siguen diferidos hasta cliente, sin considerarlos PASS.
+
+Esta adenda complementa los estados y decisiones anteriores, sin borrarlos ni convertir un PASS local/histórico en aceptación global. Registrar entorno, versión, fecha, evidencia y límites antes de cerrar el gate aplicable. Continuar según el primer gate pendiente del registro maestro (PR01); las autorizaciones de la sesión conservan su alcance y no se amplían por este plan.

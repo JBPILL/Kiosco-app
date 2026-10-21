@@ -513,3 +513,12 @@ El usuario da por hechos los ajustes de diseño, colores y tipografía de Envase
 Se cierra la aceptación visual de ese bloque; no implica ensayo físico de
 impresora, conciliación de tickets antiguos ni autorización de merge/Production.
 El siguiente bloque P22/P23 se registra en pilot-windows-persistent-station.md.
+
+
+## Production Readiness — revisión permanente 20/10/2026
+
+Referencia canónica: [gates PR01–PR11](../../plan_operativo_y_comercial_kioskopos_revision.md#production-readiness--gates-permanentes-20102026). Gates aplicables a este ExecPlan: **PR05, PR06, PR08, PR09 y PR11**.
+
+Conservar la aceptación visual y los ensayos hospedados ya documentados. Conciliación histórica, concurrencia y aceptación operativa siguen siendo gates separados; no reabrir modalidades de reintegro diferidas sin regla de dominio autorizada.
+
+Esta adenda complementa los estados y decisiones anteriores, sin borrarlos ni convertir un PASS local/histórico en aceptación global. Registrar entorno, versión, fecha, evidencia y límites antes de cerrar el gate aplicable. Continuar según el primer gate pendiente del registro maestro (PR01); las autorizaciones de la sesión conservan su alcance y no se amplían por este plan.

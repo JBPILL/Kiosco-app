@@ -79,3 +79,12 @@ física del disco: el consumidor se descarta lógicamente dentro del runner.
 P08/P09/P23 siguen abiertos para UI del operador sin copia local, cambio de
 operador/caja, cancelación concurrente y dos terminales físicas. Sin merge,
 deploy, modificación de aplicación ni acceso a Production.
+
+
+## Production Readiness — revisión permanente 20/10/2026
+
+Referencia canónica: [gates PR01–PR11](../../plan_operativo_y_comercial_kioskopos_revision.md#production-readiness--gates-permanentes-20102026). Gates aplicables a este ExecPlan: **PR04, PR05, PR08 y PR09**.
+
+Conservar evidencia posterior de pérdida de primer ACK y recuperación sin cola local. Reintentos HTTP no sustituyen dos terminales, cancelación concurrente ni operador/caja distintos; no crear otra venta para recuperar la original.
+
+Esta adenda complementa los estados y decisiones anteriores, sin borrarlos ni convertir un PASS local/histórico en aceptación global. Registrar entorno, versión, fecha, evidencia y límites antes de cerrar el gate aplicable. Continuar según el primer gate pendiente del registro maestro (PR01); las autorizaciones de la sesión conservan su alcance y no se amplían por este plan.

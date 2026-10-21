@@ -55,6 +55,24 @@ An ExecPlan is a living document: create it before implementation, update **Prog
 
 ## Working rules
 
+### Production Readiness del piloto
+
+Los ExecPlans del repositorio deben vincular los gates aplicables del registro
+canónico [Production Readiness](../plan_operativo_y_comercial_kioskopos_revision.md#production-readiness--gates-permanentes-20102026),
+PR01–PR11. Incluyen WSAA/WSFE homologación, CAE, idempotencia fiscal, contingencias,
+integridad venta-stock-caja, seguridad, backup/restore, recuperación, concurrencia
+E2E, transición productiva y piloto comercial. No duplicar esa matriz ni crear
+otro plan equivalente; registrar sólo progreso/evidencia/limitaciones del módulo.
+
+Antes de cerrar un ExecPlan o declarar un release listo, comprobar el gate
+correspondiente con evidencia del entorno requerido, sin convertir un PASS local,
+una simulación o un DIFERIDO en aceptación hospedada/productiva. Conservar
+resultados históricos y añadir revisiones fechadas. Los gates no amplían permisos:
+respetar autorizaciones para SQL, emisión fiscal, publicación y Production.
+Impresora/cajón físicos y Point permanecen diferidos hasta ensayo con cliente por
+decisión del titular. Al retomar, continuar por el primer gate pendiente del
+registro, actualmente PR01 (consulta WSFE homologación).
+
 - Ground the plan in the current repository; do not fill gaps with invented architecture.
 - Keep the scope and validation proportional to the change, and follow project instructions such as `AGENTS.md` and `RTK.md`.
 - Update the plan when scope, decisions, risks, or implementation progress materially changes.

@@ -5,6 +5,60 @@ es el resumen vigente; la evaluación original del 05/10 y las notas de avance
 del final se conservan como historial. Sus conteos y menciones de publicación
 pendiente describen aquella ejecución, no el estado actual.
 
+## Production Readiness — gates permanentes (20/10/2026)
+
+Este registro es la fuente canónica de las puertas de aceptación del piloto y de
+su futura salida productiva. Se incorpora por instrucción expresa del titular.
+Complementa P01–P24 y los ExecPlans existentes; no elimina decisiones, resultados
+ni pausas históricas. Un PASS local, un deploy o WSAA PASS no cierran por sí solos
+un gate hospedado, fiscal ni comercial. No duplicar esta matriz en otros planes:
+referenciar sus IDs y registrar allí únicamente la evidencia del módulo.
+
+**Orden vigente:** continuar por PR01 (WSFE homologación). Los demás gates pueden
+prepararse en paralelo cuando no dependan de su aceptación; ninguna preparación
+autoriza emisión, instalación SQL, transición productiva ni uso de datos reales
+fuera del alcance ya autorizado. Impresora/cajón físicos y Point siguen diferidos
+por el titular hasta contar con cliente; no se consideran probados ni aprobados.
+
+| Gate | Alcance y evidencia necesaria para cerrar | Estado comprobado y siguiente acción | Dependencia / vínculo |
+|---|---|---|---|
+| PR01 | WSAA/WSFE homologación: certificado/par original y vigencia; autorización del servicio; TRA/CMS válidos; Token/Sign y expiración reales sin exposición; consulta autenticada no transaccional a WSFE con CUIT representado; errores SOAP/negocio explícitos. | PARCIAL: certificado/par, autorización WSASS y WSAA reales PASS el 20/10. WSFE sólo tiene solicitud FEParamGetPtosVenta preparada; falta ejecutar y comprobar su resultado. Primer gate pendiente. | ExecPlan arca-homologation; docs/arca-homologacion. |
+| PR02 | CAE real de homologación: respuesta autorizada de WSFE, número, tipo, punto de venta, importes, vencimiento y QR coherentes; persistencia y recuperación por FECompConsultar; rechazo no presentado como autorizado; ninguna simulación de CAE. | PENDIENTE. Preparar la prueba reproducible y pedir la autorización requerida antes de emitir un comprobante, incluso de homologación. | PR01 y contrato seguro de PR03. |
+| PR03 | Idempotencia y robustez fiscal: operación durable por venta/entorno, cuerpo inmutable y control de permisos; reserva/lock de numeración por CUIT/punto/tipo; mismo reintento no duplica; respuesta incierta se reconcilia antes de reenviar; importes/IVA/fechas/XML y caché/renovación de TA validados. | PENDIENTE. La Edge legacy no cumple y no debe activarse como atajo. El diagnóstico WSAA local no es una pasarela fiscal multi comercio. | PR01; debe satisfacer invariantes antes de PR02 end-to-end. |
+| PR04 | Contingencias ARCA/Internet: caída de WSAA/WSFE, timeout antes/después del commit, vencimiento de TA, reconexión y reintento controlado; estado comercial separado del fiscal; ticket pendiente claramente identificado, sin CAE inventado ni doble cobro. Definir operación, responsables y límites de contingencia. | PARCIAL: existe evidencia de recuperación de cobros comerciales; falta circuito fiscal real y aceptación del operador. No asumir que ticket interno sustituye un comprobante fiscal. | PR03, PR08; P08/P09/P17. |
+| PR05 | Integridad venta-stock-caja: venta/pagos/detalles/stock/kardex/costos/lotes/envases y caja coherentes; descuentos, cambio/devolución, anulación y caja cerrada; una solicitud produce un solo efecto y una reversa. Conciliar datos de ensayo e historia sin borrar/redondear movimientos. | PARCIAL: checkout, envases/devoluciones y ajuste de unidad cuentan con ensayos; completar matriz pendiente y revisar hallazgos de anulación antes de afirmar cierre. | P05/P06/P08/P18/P19; PR09. |
+| PR06 | Seguridad: JWT reales de Dueño/Cajero/Visor y otro comercio, DML directo rechazado, RLS/ACL efectivas, supervisor ligado a operación y límites de intentos, auditoría y retención; secretos/certificados sólo bajo custodia privada apropiada, nunca en frontend/logs/commits; dependencias y cambios revisados. | PARCIAL: contratos y pruebas locales no cierran la matriz hospedada. Custodia y autorización fiscal de la futura pasarela pendientes. | P02/P03/P04/P07; ExecPlans F5/F6, supervisor y administración. |
+| PR07 | Backup/restore: copia operativa cifrada y restauración representativa con saldos/relaciones/lotes/configuración, repetición y verificación de origen/destino; además pg_dump/pg_restore + Storage/historia, destino externo, retención, alertas y restauración medida según RPO/RTO acordados. Ninguna copia local sola acredita recuperación de desastre. | PARCIAL: catálogo/promociones/combos aceptados en Staging. Contratos ampliados preparados y probados localmente; SQL nuevo y ensayo hospedado pendientes. UI integral sigue bloqueada. No se cerraron PostgreSQL/Storage ni política externa. | P13–P17; ExecPlans backup-recovery-acceptance y backup-promotions-relations. |
+| PR08 | Recuperación ante fallos: cierre/crash del puesto o backend, cuota/perfil perdido, ACK descartado, solicitud preparada sin copia local; conservar identidad, operador, caja y cuerpo; recuperación sin volver a cobrar; procedimiento de soporte y restauración ensayado. | PARCIAL: sesión persistente y recuperación backend específicas verificadas; falta completar aceptación UI, operador/caja distintos, cancelación concurrente y pérdida de perfil/almacenamiento. | P08/P09/P17/P22–P24; PR07/PR09. |
+| PR09 | Concurrencia/E2E: dos actores/terminales, solicitudes idénticas y distintas, último stock/lote/envase, supervisor, anulación/devolución, cancelar contra confirmar y numeración fiscal; inyección de fallos y aserciones de DB + UI con datos aislados. Automatización local/HTTP no sustituye aceptación con JWT/entorno y actores correspondientes. | PARCIAL: reintentos HTTP reales y pruebas locales disponibles; no está cerrada la matriz integral comercial/fiscal ni dos terminales de operador. | PR03–PR08; P04/P05/P08/P18/P20/P21. |
+| PR10 | Transición controlada a ARCA Producción: gates previos aceptados, titular/CUIT/punto/certificado/servicios productivos correctos, custodia y accesos, versión/configuración revisadas, respaldo y conciliación previos, ventana/cutover/rollback/monitoreo/soporte y aprobación explícita de cambio. Emisión productiva requiere su autorización específica. | NO INICIADO. Homologación, commits, Staging o este plan no autorizan Production, master, credenciales productivas ni comprobantes reales. No regenerar material privado como solución automática. | PR01–PR09 cerrados, decisión del titular. |
+| PR11 | Piloto comercial: comercio/operadores elegidos, formación y soporte, alcance de rubro, turnos/cierre/reportes, criterios medibles y responsables, seguimiento de incidencias y conciliación, aceptación y decisión de ampliar/retroceder. Validar impresora/cajón y Point al final cuando el titular aporte cliente/medios. | PENDIENTE. Entrega operativa/comercial y aceptación real no se sustituyen con datos ficticios, un HTTP 200 o un mock. Mantener los periféricos diferidos visibles hasta su ensayo autorizado. | P01/P10–P12/P20–P24 y gates técnicos aplicables; PR10 para alcance fiscal productivo. |
+
+### Evidencia, revisión y reglas de cierre
+
+- Cada cierre debe identificar entorno/ref, versión/commit, caso y resultado
+  reproducible, fecha, responsable, límites y enlace a evidencia sanitizada.
+  Distinguir preparación local, PGlite/mock, JWT hospedado, operador y hardware.
+- Usar estados PENDIENTE, PARCIAL, EN VALIDACIÓN, PASS o DIFERIDO; un DIFERIDO no
+  equivale a PASS. No marcar el piloto o Production listos con gates requeridos abiertos.
+- Preservar solicitudes, diarios y datos del ensayo; no borrar historia ni cambiar
+  IDs/saldos para hacer pasar una comprobación. Registrar decisiones y rollback.
+- No exponer claves/Token/Sign/CMS privados, passwords ni conexiones. Autorización
+  de acceso/consulta no implica autorización para emisión, credenciales nuevas,
+  instalación SQL o despliegue productivo. Aplicar las autorizaciones de la sesión
+  a su alcance concreto sin pedir de nuevo las ya concedidas.
+- Estado local conjunto del 20/10: 2177 PASS / 1 skipped / 224 archivos, build
+  634 módulos PASS. Acredita ese árbol local, no la instalación hospedada de los
+  SQL nuevos, CAE, Production ni el piloto comercial.
+
+### Siguiente acción autorizada
+
+Actualizar los ExecPlans vinculados y continuar PR01: preparar y ejecutar una
+consulta real FEParamGetPtosVenta de homologación con TA de wsfe, sin emitir,
+persistir secretos ni cambiar Production. Analizar códigos SOAP/negocio y
+registrar el resultado; si un gate necesita nueva autorización, preparar primero
+el artefacto/prueba revisable y mantener visible lo pendiente.
+
 ## Registro de tareas pendientes
 
 **Seguimiento del registro: 20/10/2026.** Envases/Devoluciones se implementaron

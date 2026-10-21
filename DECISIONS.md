@@ -236,3 +236,45 @@ No se necesita SQL nuevo ni habilitar escritura directa. Esto sustituye sólo la
 restricción de promociones del bloque anterior; clientes, saldos de proveedores,
 lotes, asociación producto-proveedor, REEMPLAZO e interfaz integral mantienen
 sus gates. No simular saldos iniciales mediante cargos/abonos nuevos.
+
+## Diagnóstico WSAA aislado de homologación (20/10/2026)
+El certificado recibido corresponde a la clave original cifrada. Se prepara un
+diagnóstico local PowerShell/.NET con endpoint fijo de Testing, firma CMS
+verificada y Token/Sign sólo en memoria; no se reutiliza la Edge legacy que mezcla
+autenticación y emisión. No se regenera material criptográfico ni se publica este
+bloque sin autorización. La única solicitud autorizada devolvió coe.notAuthorized;
+se detienen reintentos hasta verificar la autorización WSASS del servicio wsfe.
+El certificado público personal y los artefactos privados permanecen fuera de Git.
+Tras la autorización WSASS confirmada por el titular, un único reintento obtuvo
+Token/Sign y vencimiento reales (WSAA homologación PASS). El ticket permanece sólo
+en memoria y no se persiste para reutilizarlo desde la interfaz. La consulta WSFE
+preparada es exclusivamente FEParamGetPtosVenta; su ejecución y la pasarela fiscal
+segura siguen pendientes. No confundir WSAA PASS con facturación habilitada.
+
+## Restauración estricta de contactos e inventario (20/10/2026, preparación local)
+Se agregan contratos SQL fuera del manifiesto histórico, sin habilitar DML directo.
+La identidad reproducible de clientes/proveedores evita fusionar contactos por
+nombre. Los saldos sólo se inicializan en registros nuevos; registros existentes
+conservan su saldo vigente y no generan movimientos financieros artificiales.
+Se rechazan puntos de fidelidad no soportados en vez de descartarlos.
+
+La asociación producto/proveedor envuelve el RPC de catálogo en una transacción;
+una asociación fallida revierte producto, costos, stock y operación. Los lotes
+restauran cantidades/ingreso FEFO sin volver a aumentar stock. La validación del
+servidor limita lotes activos al stock físico y rechaza fracciones en unidades.
+El motor exige capacidad instalada antes de cualquier escritura de una copia que
+requiera estos módulos y verifica el snapshot final. El pendiente conserva sólo
+UUID y huella, sin datos personales en localStorage. La interfaz integral permanece
+bloqueada: local/PGlite no demuestra JWT, red ni concurrencia de Staging.
+
+## Gates permanentes de Production Readiness (20/10/2026)
+Por instrucción expresa del titular se amplía el plan operativo existente con los
+gates PR01–PR11: WSAA/WSFE homologación, CAE, robustez/idempotencia fiscal,
+contingencias, integridad comercial, seguridad, backup/restore, recuperación,
+concurrencia/E2E, transición productiva controlada y piloto comercial. Esa matriz
+es canónica; los ExecPlans existentes la referencian y conservan su historia en
+adendas fechadas, sin crear otro plan equivalente ni copiar gates en cada archivo.
+Los estados locales/hospedados/productivos siguen diferenciados y la documentación
+no amplía autorizaciones. Se continúa PR01 (consulta real WSFE homologación);
+WSAA real ya pasó, CAE/Producción no están aceptados. Impresora/cajón y Point
+siguen diferidos hasta cliente, sin convertir esa decisión en aprobación técnica.

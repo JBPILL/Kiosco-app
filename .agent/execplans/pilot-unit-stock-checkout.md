@@ -65,3 +65,12 @@ dpl_HeTmhyZmKDvZgfRK8V3gnDkoLXWA, alias kiosco-app-staging.vercel.app.
 Bundle público verifica límite entero y textos singular/plural. PR continúa
 sin integrar; no se modifican master ni Production. La aceptación operativa
 restante se conserva en P22/P23 y en el plan del puesto persistente.
+
+
+## Production Readiness — revisión permanente 20/10/2026
+
+Referencia canónica: [gates PR01–PR11](../../plan_operativo_y_comercial_kioskopos_revision.md#production-readiness--gates-permanentes-20102026). Gates aplicables a este ExecPlan: **PR05, PR08 y PR09**.
+
+Conservar cancelación NO_COBRADO y ajuste auditado autorizado a una unidad; no repetirlos como ensayo ni redondear historia. Completar los escenarios pendientes sin crear doble cobro.
+
+Esta adenda complementa los estados y decisiones anteriores, sin borrarlos ni convertir un PASS local/histórico en aceptación global. Registrar entorno, versión, fecha, evidencia y límites antes de cerrar el gate aplicable. Continuar según el primer gate pendiente del registro maestro (PR01); las autorizaciones de la sesión conservan su alcance y no se amplían por este plan.
