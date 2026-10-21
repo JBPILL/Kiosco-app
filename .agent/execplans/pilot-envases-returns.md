@@ -535,3 +535,13 @@ Las 30 pruebas enfocadas de modales pasaron; verificación integrada final pendi
 Cierre local: suite completa 2514 PASS / 1 skipped / 234 archivos, build final
 PASS (634 módulos); lint sin errores y cinco avisos react(refs) previos. Ningún
 cambio posterior de código. Publicación frontend Staging pendiente en este punto.
+
+Publicación 21/10: commits 2a0534a (custodia fiscal local) y c7f1058 (conteo)
+subidos al PR #3. Frontend publicado sólo en kiosco-app-staging, despliegue
+dpl_2ZUHeH8QtxBDBvmpBgiRCHsqfRjS READY y alias habitual asignado. Verificación
+pública PASS: HTML/asset 200, destino Supabase Staging en módulo Auth y selección
+atómica corregida presente en /assets/index-mcrjBlbn.js; lector privado ausente.
+El hash público difiere del build local por compilación/configuración remota;
+no se afirma identidad binaria. No se hizo una operación de stock hospedada nueva.
+Pruebas de negocio corresponden al código local; no sustituyen E2E autenticado.
+No se instalaron SQL/Edge fiscales ni se modificaron master o Production.
