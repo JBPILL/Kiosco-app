@@ -522,3 +522,16 @@ Referencia canónica: [gates PR01–PR11](../../plan_operativo_y_comercial_kiosk
 Conservar la aceptación visual y los ensayos hospedados ya documentados. Conciliación histórica, concurrencia y aceptación operativa siguen siendo gates separados; no reabrir modalidades de reintegro diferidas sin regla de dominio autorizada.
 
 Esta adenda complementa los estados y decisiones anteriores, sin borrarlos ni convertir un PASS local/histórico en aceptación global. Registrar entorno, versión, fecha, evidencia y límites antes de cerrar el gate aplicable. Continuar según el primer gate pendiente del registro maestro (PR01); las autorizaciones de la sesión conservan su alcance y no se amplían por este plan.
+
+## Corrección del conteo inicial — 21/10/2026
+
+La suite integrada detectó un defecto real: el efecto pasivo que cargaba el saldo
+podía reemplazar un conteo recién escrito (4 por 5). Se confirmó con una regresión
+que observaba 1 en el primer formulario editable, en lugar del saldo cargado 5.
+La selección y los campos se inicializan ahora juntos antes de habilitar el
+formulario. Pulsar nuevamente el tipo seleccionado conserva el conteo editado.
+No cambian diseño, modalidades, saldos históricos ni contrato de ajuste por CAS.
+Las 30 pruebas enfocadas de modales pasaron; verificación integrada final pendiente.
+Cierre local: suite completa 2514 PASS / 1 skipped / 234 archivos, build final
+PASS (634 módulos); lint sin errores y cinco avisos react(refs) previos. Ningún
+cambio posterior de código. Publicación frontend Staging pendiente en este punto.

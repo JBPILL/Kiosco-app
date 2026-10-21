@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { Profiler } from 'react'
 import { beforeEach, expect, it, vi } from 'vitest'
 import type { VentaConDetalles } from '../../stores/devolucionStore'
 const m = vi.hoisted(() => ({ rol: 'DUEÑO', historial: vi.fn(), movimientos: vi.fn(), cargar: vi.fn(), envase: vi.fn(), devolver: vi.fn(), entregar: vi.fn(), agregar: vi.fn(), caja: { id: 'caja', kiosco_id: 'kid' } as { id: string; kiosco_id: string } | null }))
@@ -247,6 +248,27 @@ it('el conteo conserva saldo esperado y usa su propio motivo, no observaciones d
   fireEvent.click(screen.getByRole('button', { name: 'Guardar conteo de vacíos' }))
   await waitFor(() => expect(m.envase).toHaveBeenCalledOnce())
   expect(m.envase.mock.calls[0][1]).toMatchObject({ accion: 'AJUSTAR_SALDO', tipoId: 'vidrio', datos: { stockEsperado: 5, nuevoStock: 4, notas: 'Conteo físico' } })
+})
+it('muestra el saldo inicial correcto desde el primer render editable del conteo', async () => {
+  let primerValor: string | undefined
+  render(<Profiler id="conteo" onRender={() => {
+    const input = screen.queryByLabelText('Vacíos contados') as HTMLInputElement | null
+    if (input && primerValor === undefined) primerValor = input.value
+  }}><EnvasesOperativosModal administracion isOpen onClose={vi.fn()} /></Profiler>)
+  await screen.findByLabelText('Vacíos contados')
+  expect(primerValor).toBe('5')
+})
+it('volver a pulsar el envase seleccionado conserva el conteo que se está editando', async () => {
+  m.envase.mockResolvedValue({ id: 'op', stock_vacios: 4, importe: 0 })
+  render(<EnvasesOperativosModal administracion isOpen onClose={vi.fn()} />)
+  const input = await screen.findByLabelText('Vacíos contados')
+  await waitFor(() => expect((input as HTMLInputElement).value).toBe('5'))
+  fireEvent.change(input, { target: { value: '4' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Vidrio' }))
+  fireEvent.change(screen.getByLabelText('Motivo del ajuste de stock'), { target: { value: 'Conteo físico' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar conteo de vacíos' }))
+  await waitFor(() => expect(m.envase).toHaveBeenCalledOnce())
+  expect(m.envase.mock.calls[0][1]).toMatchObject({ datos: { stockEsperado: 5, nuevoStock: 4 } })
 })
 
 it('Movimientos abre el historial con observaciones sin los formularios de depósito', async () => {
