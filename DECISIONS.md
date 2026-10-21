@@ -369,3 +369,16 @@ repite consulta; una consulta nueva de pendiente usa otra identidad. Esto permit
 reconstruir lo ocurrido sin transformar un error de red en nuevo cobro/factura.
 La verificación de SOAP pertenece al trabajador privado y las RPC sólo aceptan
 su servicio; la exposición de un endpoint exige todavía permisos y custodia.
+
+## 21/10/2026 — Emisor privado y TA con carga perezosa
+
+La configuración pública propone CUIT/PV pero no concede uso de credenciales.
+Se requiere metadata privada provisionada, deshabilitada por defecto, asociada
+al comercio y a una referencia/huella/revisión de credencial. Sólo el servicio
+consulta el gate después de verificar Auth y actor Dueño original en DB.
+
+El TA se carga después de recuperar resultados durables: reintentar un ACK
+confirmado no renueva WSAA ni consulta WSFE. La caché de proceso no serializa
+Token/Sign en operaciones habituales, no usa TA vencido y no solapa renovaciones
+si una fuente ignora abort. No basta para varios procesos: custodia real y
+coordinación distribuida siguen pendientes antes de habilitar el worker.

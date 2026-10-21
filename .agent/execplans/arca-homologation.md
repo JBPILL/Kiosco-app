@@ -547,3 +547,48 @@ replay con una sola consulta mock, cero SQL y cero llamadas fiscales. Evidencia
 fuera de Git en fiscal-cas-edge-result.json; contenedor propio confirmado exited.
 No se usaron certificados ni Token/Sign reales. Este bloque no cierra F04/F07:
 continúa custodia/caché de TA y autorización del trabajador antes de Staging.
+
+### F04 — autorización privada y caché TA local — 21/10/2026
+
+- Inventario: checkout actual verifica Auth con getUser; la propuesta de CUIT/PV
+  del navegador no acredita autoridad sobre certificado/emisor. Nuevo SQL 005
+  prepara metadatos privados de emisor por comercio, sin claves/certificados/TA,
+  sin filas ni habilitación automática y sin API de configuración pública.
+- RPC privada verifica un único Dueño ordinario activo, actor original de la
+  operación, mismo comercio activo, snapshot y coincidencia con emisor privado.
+  El gate no acredita disponibilidad del punto ante ARCA ni autoriza emisión.
+- Fachada usa getUser de Auth antes de resolver actor en DB; no decodifica claims
+  del token ni acepta actor/CUIT/PV del request como autoridad. Su cliente real
+  debe configurarse en servidor; las pruebas usan Auth simulado, no JWT hospedado.
+- Composición conecta gate → recuperación → caché privada perezosa → consulta
+  limitada/comparación → cierre SQL. Recuperar ACK no solicita TA ni consulta WSFE.
+- Caché sólo en memoria por comercio/credencial/huella/revisión/emisor/servicio,
+  con renovación anticipada y exclusión por proceso. Caducado no se usa como
+  fallback; fallos/metadata ajena se rechazan. Timeout aborta fuente y no permite
+  otra renovación solapada si la fuente no terminó. Capacidad acotada.
+- Token/Sign no enumerables y objeto inmutable: stringify/spread habituales no
+  los muestran. Esto no sustituye custodia ni habilita devolverlos al browser;
+  nunca se registran errores originales de Auth/custodia ni esos valores.
+- 192 pruebas enfocadas PASS; diez casos PostgreSQL 17.11 con SQL 001–005 PASS,
+  contenedor propio detenido, cero operaciones externas. Evidencia local fuera
+  de Git: fiscal-worker-gate-20261021.json. Suite integrada aún en ejecución.
+- Compilación detectó readonly en fixture que muta credenciales; corrección de
+  tipos pendiente al terminar suite activa. No presentar build previo como PASS.
+- F04 sigue PARCIAL: faltan fuente real de custodia/CMS/WSAA, coordinación de TA
+  entre procesos y endpoint con límites/cors/configuración privada. No se copiaron
+  claves ni certificados a frontend ni se usaron los reales en este incremento.
+  SQL 001–005 y nuevo worker NO instalados remotamente. F07/F08 siguen gated.
+
+Cierre local F04 de este incremento: suite integrada 2426 PASS / 1 skipped /
+230 archivos, 198,24 s. Después se corrigió únicamente el fixture mutable del
+caso de TA inválido (copia de un envelope readonly); las 102 pruebas afectadas
+se repitieron PASS y la compilación final PASS (634 módulos). No se repitió la
+suite completa después de ese cambio de fixture; la lógica de servidor ya era
+la de la suite integrada. Edge Runtime local v1.77.4 PASS en composición/replay:
+una carga simulada de TA y una consulta simulada; cero SQL ni red fiscal.
+Evidencia fuera de Git: fiscal-worker-edge-result.json; contenedor confirmado
+exited. Diez casos PostgreSQL reales PASS, manifiesto 43 SQL PASS. Escaneo:
+1184 archivos/1170 texto/14 binarios, mismos 46 candidatos (sin nuevos); no se
+reescaneó historial. La revisión de permisos/caché es local: no acredita Auth
+JWT/RLS hospedados ni proveedor real de certificado/TA. Próximo paso F04:
+custodia/CMS/WSAA y renovación coordinada entre procesos, antes del endpoint.

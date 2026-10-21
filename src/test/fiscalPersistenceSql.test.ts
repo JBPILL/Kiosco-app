@@ -8,6 +8,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vite
 import { freezeFiscalRequest, serializeFiscalRequest } from '../../supabase/functions/_shared/fiscalReconciliation'
 import { reconcilePersistedFiscalVoucher } from '../../supabase/functions/_shared/fiscalPersistence'
 import type { FiscalRpc } from '../../supabase/functions/_shared/fiscalPersistence'
+import { reconcileAuthorizedFiscalVoucher } from '../../supabase/functions/_shared/fiscalAuthorizedReconciliation'
+import { createFiscalTicketCache } from '../../supabase/functions/_shared/fiscalTicketCache'
+import type { WsaaTicketLoader } from '../../supabase/functions/_shared/fiscalTicketCache'
 
 const db = new PGlite()
 const kid=randomUUID(), auth=randomUUID(), owner=randomUUID(), sale=randomUUID(), op=randomUUID(), attempt=randomUUID()
@@ -27,7 +30,7 @@ beforeAll(async()=>{
     ...readdirSync(join(root,'steps')).sort().map(name=>join(root,'steps',name)),join(root,'900_final_security.sql')]) {
     await db.exec(readFileSync(file,'utf8'))
   }
-  for(const file of ['001_fiscal_journal.sql','002_fiscal_reservations.sql','003_fiscal_requests.sql','004_fiscal_reconciliation.sql']) {
+  for(const file of ['001_fiscal_journal.sql','002_fiscal_reservations.sql','003_fiscal_requests.sql','004_fiscal_reconciliation.sql','005_fiscal_worker_authorization.sql']) {
     const sql=readFileSync(join('supabase/pilot-fiscal',file),'utf8')
     await db.exec(sql); await db.exec(sql)
   }
@@ -230,6 +233,7 @@ it.each(['fiscal_autorizaciones_homologacion','fiscal_series_homologacion','fisc
 
 const persistedRpc: FiscalRpc={async rpc(name,args){
   const allowed:Record<string,string[]>={
+    autorizar_consulta_fiscal_homologacion:['p_actor_auth_id','p_operacion_id'],
     consultar_reconciliacion_homologacion:['p_operacion_id','p_id'],
     cargar_contexto_conciliacion_homologacion:['p_operacion_id'],
     registrar_reconciliacion_fiscal_homologacion:['p_id','p_operacion_id','p_intento_id','p_sha','p_revision','p_decision'],
@@ -304,4 +308,54 @@ it('no confirma sin intención y rechaza campos obligatorios ausentes',async()=>
   await persist();await denied(()=>reconcile());await intent()
   const missing={...positive()} as Record<string,unknown>;delete missing.procesadoEn
   await denied(()=>reconcile(missing))
+})
+
+async function provisionEmitter() {
+  await db.exec('RESET ROLE')
+  await db.query(`INSERT INTO fiscal_emisores_homologacion(kiosco_id,cuit_emisor,punto_venta,credencial_id,certificado_sha256,habilitado)
+    VALUES($1,'20123456786',2,$2,$3,true)`,[kid,randomUUID(),'a'.repeat(64)])
+  await db.exec('SET ROLE service_role')
+}
+async function authorize(actor=auth,operation=op) {
+  return (await db.query<{ack:Record<string,unknown>}>('SELECT autorizar_consulta_fiscal_homologacion($1,$2) ack',[actor,operation])).rows[0].ack
+}
+it('requiere emisor privado: configuración propuesta no concede acceso a credenciales',async()=>{
+  await denied(()=>authorize())
+  await provisionEmitter()
+  expect(await authorize()).toMatchObject({version:1,entorno:'HOMOLOGACION',servicio:'wsfe',operacion_id:op,kiosco_id:kid,usuario_id:owner,cuit_emisor:'20123456786',punto_venta:2,revision:1})
+})
+it.each(['punto','cuit','deshabilitado','rol','superadmin','inactivo','suspendido','otro_actor','otra_operacion'])('rechaza gate privado %s',async mode=>{
+  await provisionEmitter();await db.exec('RESET ROLE')
+  if(mode==='punto')await db.exec('UPDATE fiscal_emisores_homologacion SET punto_venta=3')
+  if(mode==='cuit')await db.exec("UPDATE fiscal_emisores_homologacion SET cuit_emisor='30123456789'")
+  if(mode==='deshabilitado')await db.exec('UPDATE fiscal_emisores_homologacion SET habilitado=false')
+  if(mode==='rol')await db.query("UPDATE usuarios SET rol='CAJERO' WHERE id=$1",[owner])
+  if(mode==='superadmin')await db.query('UPDATE usuarios SET es_superadmin=true,kiosco_id=NULL WHERE id=$1',[owner])
+  if(mode==='inactivo')await db.query('UPDATE usuarios SET activo=false WHERE id=$1',[owner])
+  if(mode==='suspendido')await db.query("UPDATE kioscos SET estado_suscripcion='SUSPENDIDO' WHERE id=$1",[kid])
+  await db.exec('SET ROLE service_role')
+  await denied(()=>authorize(mode==='otro_actor'?randomUUID():auth,mode==='otra_operacion'?randomUUID():op))
+})
+it.each(['anon','authenticated','service_role'])('metadatos del emisor privados para %s',async role=>{
+  await provisionEmitter();await db.exec(`RESET ROLE; SET ROLE ${role}`)
+  await denied(()=>db.exec('SELECT * FROM fiscal_emisores_homologacion'))
+  await denied(()=>db.exec('UPDATE fiscal_emisores_homologacion SET habilitado=true'))
+  if(role!=='service_role')await denied(()=>authorize())
+})
+
+it('composición privada verifica actor/emisor antes de custodia y no renueva TA al recuperar ACK',async()=>{
+  await persist();await intent()
+  const admin={...persistedRpc,auth:{async getUser(){return {data:{user:{id:auth}},error:null}}}}
+  const load=vi.fn<WsaaTicketLoader>(async b=>({entorno:'HOMOLOGACION',servicio:'wsfe',cuitEmisor:b.cuit_emisor,
+    credencialId:b.credencial_id,certificadoSha256:b.certificado_sha256,token:'SYNTHETIC_TOKEN',sign:'SYNTHETIC_SIGN',expiresAt:Date.now()+120000}))
+  const fetcher=vi.fn<typeof fetch>(async()=>new Response(fiscalXml(),{headers:{'Content-Type':'text/xml'}}))
+  const cache=createFiscalTicketCache(),id=randomUUID()
+  await denied(()=>reconcileAuthorizedFiscalVoucher(admin,'SYNTHETIC_JWT',op,id,cache,load,fetcher))
+  expect(load).not.toHaveBeenCalled();expect(fetcher).not.toHaveBeenCalled()
+  await provisionEmitter()
+  const ack=await reconcileAuthorizedFiscalVoucher(admin,'SYNTHETIC_JWT',op,id,cache,load,fetcher)
+  expect(ack.estado).toBe('AUTORIZADA')
+  expect(await reconcileAuthorizedFiscalVoucher(admin,'SYNTHETIC_JWT',op,id,cache,load,fetcher)).toEqual(ack)
+  expect(load).toHaveBeenCalledTimes(1);expect(fetcher).toHaveBeenCalledTimes(1)
+  expect(JSON.stringify(ack)).not.toContain('SYNTHETIC')
 })

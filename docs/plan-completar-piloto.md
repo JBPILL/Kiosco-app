@@ -106,3 +106,12 @@ hay nueva instalación ni emisión. El ExecPlan conserva evidencia y próximos g
 Verificación final: suite integrada 2373 PASS / 1 skipped / 228 archivos;
 Edge Runtime local con autorización simulada y replay PASS (una consulta mock),
 sin SQL ni llamadas fiscales. Contenedores propios detenidos.
+
+Avance F04 21/10: gate privado de actor/comercio/emisor y caché TA en memoria
+preparados, con carga perezosa al conciliar. 192 pruebas enfocadas y diez casos
+PostgreSQL locales PASS. Falta custodia real, renovación entre procesos y
+endpoint/hospedado; no se instalaron SQL/Edge ni se usaron credenciales reales.
+Resultado posterior: suite integrada 2426 PASS / 1 skipped / 230 archivos;
+corrección de fixture readonly verificada con 102 pruebas afectadas y build
+final PASS. Edge local composición/replay PASS con una carga y consulta mock.
+No se instala SQL/Edge ni se autoriza emisión por esta verificación local.

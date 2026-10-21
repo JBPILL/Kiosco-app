@@ -46,7 +46,8 @@ function ack(value: unknown, op: string, sha?: string): FiscalReconciliationAck 
  * Para otra consulta pendiente se necesita otro ID; nunca se reenvía FECAESolicitar. */
 export async function reconcilePersistedFiscalVoucher(
   db: FiscalRpc, operationId: string, observationId: string,
-  ticket: {token:string;sign:string;expiresAt:number}, fetcher: typeof fetch,
+  ticket: {token:string;sign:string;expiresAt:number} | (()=>Promise<{token:string;sign:string;expiresAt:number}>), fetcher: typeof fetch,
+  issuer?: {cuitEmisor:string;puntoVenta:number},
 ): Promise<FiscalReconciliationAck> {
   if(!uuid(operationId) || !uuid(observationId))return fail()
   async function call(name:string,args:Record<string,unknown>):Promise<unknown> {
@@ -62,9 +63,12 @@ export async function reconcilePersistedFiscalVoucher(
   if(context.operacion_id!==operationId || !uuid(context.intento_id) || ![1,2].includes(Number(context.revision)))return fail()
   let frozen
   try { frozen=await verifyFiscalRequest(context.solicitud) } catch { return fail() }
+  if(issuer&&(frozen.solicitud.cuitEmisor!==issuer.cuitEmisor||frozen.solicitud.puntoVenta!==issuer.puntoVenta))return fail()
   if(context.resultado!==null)return ack(context.resultado,operationId,frozen.sha256)
   if(context.revision!==1)return fail()
-  const decision=await consultFiscalVoucher(frozen,ticket,fetcher)
+  let privateTicket
+  try {privateTicket=typeof ticket==='function'?await ticket():ticket} catch {return fail()}
+  const decision=await consultFiscalVoucher(frozen,privateTicket,fetcher)
   const saved=await call('registrar_reconciliacion_fiscal_homologacion',{
     p_id:observationId,p_operacion_id:operationId,p_intento_id:context.intento_id,
     p_sha:frozen.sha256,p_revision:context.revision,p_decision:decision,

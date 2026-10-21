@@ -94,7 +94,8 @@ try {
   for (const file of [join(bootstrap,'001_domain.sql'),join(bootstrap,'002_identity_helpers.sql'),
     ...readdirSync(join(bootstrap,'steps')).sort().map(file=>join(bootstrap,'steps',file)),join(bootstrap,'900_final_security.sql'),
     join(root,'supabase/pilot-fiscal/001_fiscal_journal.sql'),join(root,'supabase/pilot-fiscal/002_fiscal_reservations.sql'),
-    join(root,'supabase/pilot-fiscal/003_fiscal_requests.sql'),join(root,'supabase/pilot-fiscal/004_fiscal_reconciliation.sql')]) {
+    join(root,'supabase/pilot-fiscal/003_fiscal_requests.sql'),join(root,'supabase/pilot-fiscal/004_fiscal_reconciliation.sql'),
+    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql')]) {
     await observer.query(readFileSync(file,'utf8'))
   }
   async function fixture() {
@@ -186,6 +187,18 @@ try {
   const afterClose=await pendingNext; assert(!afterClose.error); assert.equal(afterClose.value.numero,44); await b.query('COMMIT')
   assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_reservas_homologacion WHERE punto_venta=2')).rows[0].n,3)
   cases.push('cierre_antes_siguiente_reserva_sin_perder_historia')
+  await start(a)
+  const unprovisioned=await capture(a.query('SELECT autorizar_consulta_fiscal_homologacion($1,$2)',[f.auth,first.id]))
+  assert.equal(unprovisioned.error?.code,'42501');await a.query('ROLLBACK')
+  await observer.query(`INSERT INTO fiscal_emisores_homologacion(kiosco_id,cuit_emisor,punto_venta,credencial_id,certificado_sha256,habilitado)
+    VALUES($1,$2,2,$3,$4,true)`,[f.kid,issuer,randomUUID(),'a'.repeat(64)])
+  await start(a)
+  const permitted=await a.query('SELECT autorizar_consulta_fiscal_homologacion($1,$2) ack',[f.auth,first.id])
+  assert.equal(permitted.rows[0].ack.kiosco_id,f.kid);await a.query('COMMIT')
+  await start(b)
+  const crossActor=await capture(b.query('SELECT autorizar_consulta_fiscal_homologacion($1,$2)',[foreign.auth,first.id]))
+  assert.equal(crossActor.error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('gate_emisor_privado_y_actor_ajeno_rechazado')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
