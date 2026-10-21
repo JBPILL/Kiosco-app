@@ -13,6 +13,7 @@ import { createFiscalTicketCache } from '../../supabase/functions/_shared/fiscal
 import type { WsaaTicketLoader } from '../../supabase/functions/_shared/fiscalTicketCache'
 import { createSharedFiscalTicketLoader } from '../../supabase/functions/_shared/fiscalSharedTickets'
 import { authorizeFiscalWorker } from '../../supabase/functions/_shared/fiscalWorkerAuthorization'
+import type { GuardedWsaaTicketLoader } from '../../supabase/functions/_shared/fiscalWsaa'
 import { createWsaaTicketSource } from '../../supabase/functions/_shared/fiscalWsaa'
 import { syntheticEncryptedCustody } from './fixtures/fiscalEncryptedCustody'
 import { createPrivateFiscalCustody, createPrivateFiscalTicketKeys } from '../../supabase/functions/_shared/fiscalPrivateCustody'
@@ -35,7 +36,7 @@ beforeAll(async()=>{
     ...readdirSync(join(root,'steps')).sort().map(name=>join(root,'steps',name)),join(root,'900_final_security.sql')]) {
     await db.exec(readFileSync(file,'utf8'))
   }
-  for(const file of ['001_fiscal_journal.sql','002_fiscal_reservations.sql','003_fiscal_requests.sql','004_fiscal_reconciliation.sql','005_fiscal_worker_authorization.sql','006_fiscal_shared_tickets.sql']) {
+  for(const file of ['001_fiscal_journal.sql','002_fiscal_reservations.sql','003_fiscal_requests.sql','004_fiscal_reconciliation.sql','005_fiscal_worker_authorization.sql','006_fiscal_shared_tickets.sql','007_fiscal_ticket_recovery.sql']) {
     const sql=readFileSync(join('supabase/pilot-fiscal',file),'utf8')
     await db.exec(sql); await db.exec(sql)
   }
@@ -240,6 +241,9 @@ const persistedRpc: FiscalRpc={async rpc(name,args){
   const allowed:Record<string,string[]>={
     autorizar_consulta_fiscal_homologacion:['p_actor_auth_id','p_operacion_id'],
     solicitar_ta_homologacion:['p_operacion_id','p_credencial_id','p_huella','p_revision','p_intento_id'],
+    iniciar_envio_ta_homologacion:['p_operacion_id','p_credencial_id','p_huella','p_revision','p_intento_id','p_generacion'],
+    cancelar_preparacion_ta_homologacion:['p_operacion_id','p_credencial_id','p_huella','p_revision','p_intento_id','p_generacion'],
+    consultar_preparacion_ta_homologacion:['p_operacion_id','p_credencial_id','p_huella','p_revision'],
     confirmar_ta_homologacion:['p_operacion_id','p_credencial_id','p_huella','p_revision','p_intento_id','p_generacion','p_cifrado'],
     consultar_reconciliacion_homologacion:['p_operacion_id','p_id'],
     cargar_contexto_conciliacion_homologacion:['p_operacion_id'],
@@ -374,8 +378,8 @@ it('comparte sólo TA cifrado entre dos cachés y recupera ACK perdido sin renov
   const binding=await authorizeFiscalWorker(admin,'SYNTHETIC_JWT',op)
   const key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']),keyId=randomUUID()
   const keys={async active(){return {id:keyId,key}},async read(id:string){expect(id).toBe(keyId);return key}}
-  const source=vi.fn<WsaaTicketLoader>(async b=>({entorno:'HOMOLOGACION',servicio:'wsfe',cuitEmisor:b.cuit_emisor,credencialId:b.credencial_id,
-    certificadoSha256:b.certificado_sha256,token:'SYNTHETIC_SHARED_TOKEN',sign:'SYNTHETIC_SHARED_SIGN',expiresAt:Date.now()+120000}))
+  const source=vi.fn<GuardedWsaaTicketLoader>(async(b,_signal,send)=>{await send();return {entorno:'HOMOLOGACION',servicio:'wsfe',cuitEmisor:b.cuit_emisor,credencialId:b.credencial_id,
+    certificadoSha256:b.certificado_sha256,token:'SYNTHETIC_SHARED_TOKEN',sign:'SYNTHETIC_SHARED_SIGN',expiresAt:Date.now()+120000}})
   let lose=true
   const dbLost: FiscalRpc={async rpc(name,args){const result=await persistedRpc.rpc(name,args)
     if(name==='confirmar_ta_homologacion'&&lose){lose=false;throw new Error('SYNTHETIC_ACK_LOST')}return result}}
@@ -392,7 +396,7 @@ it('renovación incierta no se libera por otro trabajador ni por reintento',asyn
   await provisionEmitter()
   const admin={...persistedRpc,auth:{async getUser(){return {data:{user:{id:auth}},error:null}}}}
   const binding=await authorizeFiscalWorker(admin,'SYNTHETIC_JWT',op)
-  const source=vi.fn<WsaaTicketLoader>(async()=>{throw new Error('SYNTHETIC_WSAA_TIMEOUT')})
+  const source=vi.fn<GuardedWsaaTicketLoader>(async(_b,_signal,send)=>{await send();throw new Error('SYNTHETIC_WSAA_TIMEOUT')})
   const key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']),keyId=randomUUID()
   const keys={async active(){return {id:keyId,key}},async read(){return key}}
   const loader=createSharedFiscalTicketLoader(persistedRpc,keys,source)
@@ -413,7 +417,7 @@ it('cifra y conserva un TA válido recibido después de abort del consumidor',as
   const binding=await authorizeFiscalWorker(admin,'SYNTHETIC_JWT',op),controller=new AbortController()
   const key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']),keyId=randomUUID()
   const keys={async active(){return {id:keyId,key}},async read(){return key}}
-  const source=vi.fn<WsaaTicketLoader>(async b=>{controller.abort();return {entorno:'HOMOLOGACION',servicio:'wsfe',cuitEmisor:b.cuit_emisor,
+  const source=vi.fn<GuardedWsaaTicketLoader>(async(b,_signal,send)=>{await send();controller.abort();return {entorno:'HOMOLOGACION',servicio:'wsfe',cuitEmisor:b.cuit_emisor,
     credencialId:b.credencial_id,certificadoSha256:b.certificado_sha256,token:'SYNTHETIC_LATE',sign:'SYNTHETIC_LATE',expiresAt:Date.now()+120000}})
   const loader=createSharedFiscalTicketLoader(persistedRpc,keys,source)
   await loader(binding,controller.signal)
@@ -423,7 +427,7 @@ it('cifra y conserva un TA válido recibido después de abort del consumidor',as
 it('no llama WSAA si la clave de cifrado no está disponible',async()=>{
   await provisionEmitter()
   const admin={...persistedRpc,auth:{async getUser(){return {data:{user:{id:auth}},error:null}}}}
-  const binding=await authorizeFiscalWorker(admin,'SYNTHETIC_JWT',op),source=vi.fn<WsaaTicketLoader>()
+  const binding=await authorizeFiscalWorker(admin,'SYNTHETIC_JWT',op),source=vi.fn<GuardedWsaaTicketLoader>()
   const keys={async active():Promise<{id:string;key:CryptoKey}>{throw new Error('SYNTHETIC_KEY_UNAVAILABLE')},async read():Promise<CryptoKey>{throw new Error('SYNTHETIC_KEY_UNAVAILABLE')}}
   await expect(createSharedFiscalTicketLoader(persistedRpc,keys,source)(binding,new AbortController().signal)).rejects.toThrow('FISCAL_TICKET_COMPARTIDO_NO_CONFIRMADO')
   expect(source).not.toHaveBeenCalled()
@@ -469,4 +473,130 @@ it('integra Auth mock, SQL, custodia PKCS8 cifrada, CMS real, WSAA mock y concil
   expect(custody).toHaveBeenCalledTimes(1);expect(fetcher).toHaveBeenCalledTimes(2)
   await db.exec('RESET ROLE')
   expect(JSON.stringify((await db.query('SELECT cifrado FROM fiscal_ta_homologacion')).rows)).not.toContain('SYNTHETIC_FULL')
+})
+
+async function typedTaBinding() {
+  return authorizeFiscalWorker({...persistedRpc,auth:{async getUser(){return {data:{user:{id:auth}},error:null}}}},'SYNTHETIC_JWT',op)
+}
+async function taFixture() {
+  await provisionEmitter()
+  const binding=await typedTaBinding(),id=randomUUID()
+  const args={p_operacion_id:op,p_credencial_id:binding.credencial_id,p_huella:binding.certificado_sha256,p_revision:1}
+  const lease=(await persistedRpc.rpc('solicitar_ta_homologacion',{...args,p_intento_id:id})).data as Record<string,unknown>
+  return {binding,args,lease:{...args,p_intento_id:id,p_generacion:lease.revision}}
+}
+it('reserva TA recuperable tras ACK perdido sin convertir preparación en envío',async()=>{
+  const {args,lease}=await taFixture()
+  const state=(await persistedRpc.rpc('consultar_preparacion_ta_homologacion',args)).data
+  expect(state).toEqual({estado:'PREPARADA',intento_id:lease.p_intento_id,revision:1})
+  expect(JSON.stringify(state)).not.toMatch(/token|sign|cifrado/i)
+  await db.exec('RESET ROLE')
+  await db.exec(readFileSync('supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql','utf8').replace(/^BEGIN;$/m,'SAVEPOINT migration;').replace(/^COMMIT;$/m,'RELEASE SAVEPOINT migration;'))
+  await db.exec('SET ROLE service_role')
+  expect((await persistedRpc.rpc('consultar_preparacion_ta_homologacion',args)).data).toEqual(state)
+})
+it('cancelar antes de enviar conserva historial y permite otra generación, no revive el intento viejo',async()=>{
+  const {args,lease}=await taFixture()
+  const ack=(await persistedRpc.rpc('cancelar_preparacion_ta_homologacion',lease)).data
+  expect(ack).toMatchObject({estado:'CANCELADA',revision:1})
+  const next=(await persistedRpc.rpc('solicitar_ta_homologacion',{...args,p_intento_id:randomUUID()})).data
+  expect(next).toMatchObject({nuevo_intento:true,revision:2})
+  expect((await persistedRpc.rpc('cancelar_preparacion_ta_homologacion',lease)).data).toEqual(ack)
+  await denied(()=>persistedRpc.rpc('iniciar_envio_ta_homologacion',lease))
+  await db.exec('RESET ROLE')
+  expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_ta_intentos_homologacion')).rows[0].n).toBe(2)
+  const first=(await db.query<{cancelado_en:unknown;envio_iniciado_en:unknown}>('SELECT cancelado_en,envio_iniciado_en FROM fiscal_ta_intentos_homologacion WHERE id=$1',[lease.p_intento_id])).rows[0]
+  expect(first.cancelado_en).not.toBeNull();expect(first.envio_iniciado_en).toBeNull()
+})
+it('sólo el primer ACK de intención concede envío; replay y cancelación posterior nunca lo conceden',async()=>{
+  const {args,lease}=await taFixture()
+  expect((await persistedRpc.rpc('iniciar_envio_ta_homologacion',lease)).data).toMatchObject({nuevo_envio:true,estado:'ENVIO_INCIERTO'})
+  expect((await persistedRpc.rpc('iniciar_envio_ta_homologacion',lease)).data).toMatchObject({nuevo_envio:false,estado:'ENVIO_INCIERTO'})
+  await denied(()=>persistedRpc.rpc('cancelar_preparacion_ta_homologacion',lease))
+  expect((await persistedRpc.rpc('solicitar_ta_homologacion',{...args,p_intento_id:randomUUID()})).data).toMatchObject({nuevo_intento:false,estado:'RENOVACION_PENDIENTE'})
+})
+it.each(['iniciar_envio_ta_homologacion','cancelar_preparacion_ta_homologacion'])('%s rechaza intento/generación ajenos y nulos',async name=>{
+  const {lease}=await taFixture()
+  for(const patch of [{p_intento_id:randomUUID()},{p_generacion:2},{p_generacion:null},{p_huella:'b'.repeat(64)},{p_revision:2}])
+    await denied(()=>persistedRpc.rpc(name,{...lease,...patch}))
+})
+it.each(['iniciar_envio_ta_homologacion','cancelar_preparacion_ta_homologacion'])('%s no confirma escritura omitida en ninguna tabla',async name=>{
+  const {lease}=await taFixture()
+  for(const table of ['fiscal_ta_homologacion','fiscal_ta_intentos_homologacion']){
+    await db.exec('RESET ROLE; SAVEPOINT trigger_test')
+    await db.exec(`CREATE FUNCTION omitir_frontera() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$;
+      CREATE TRIGGER omitir_frontera BEFORE UPDATE ON ${table} FOR EACH ROW EXECUTE FUNCTION omitir_frontera(); SET ROLE service_role`)
+    await denied(()=>persistedRpc.rpc(name,lease))
+    await db.exec('ROLLBACK TO SAVEPOINT trigger_test; RELEASE SAVEPOINT trigger_test; SET ROLE service_role')
+  }
+})
+it.each(['anon','authenticated'])('fronteras TA no accesibles por %s ni por columnas nuevas',async role=>{
+  const {args,lease}=await taFixture()
+  await db.exec(`RESET ROLE; SET ROLE ${role}`)
+  await denied(()=>persistedRpc.rpc('iniciar_envio_ta_homologacion',lease))
+  await denied(()=>persistedRpc.rpc('cancelar_preparacion_ta_homologacion',lease))
+  await denied(()=>persistedRpc.rpc('consultar_preparacion_ta_homologacion',args))
+  await denied(()=>db.query('SELECT envio_iniciado_en,cancelado_en FROM fiscal_ta_intentos_homologacion'))
+})
+it('no confirma un sobre antes de obtener permiso de envío',async()=>{
+  const {lease}=await taFixture()
+  await denied(()=>persistedRpc.rpc('confirmar_ta_homologacion',{...lease,p_cifrado:{version:1,keyId:randomUUID(),nonce:'0'.repeat(24),ciphertext:'0'.repeat(32),expiresAt:Date.now()+120000}}))
+})
+it.each(['custodia','keyring'])('fallo previo de %s libera preparación con auditoría y permite corregir configuración',async mode=>{
+  await provisionEmitter();const binding=await typedTaBinding()
+  const key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']),id=randomUUID()
+  const keys={async active(){if(mode==='keyring')throw new Error('SYNTHETIC_KEY');return {id,key}},async read(){return key}}
+  const source=vi.fn<GuardedWsaaTicketLoader>(async()=>{throw new Error('SYNTHETIC_CUSTODY')})
+  const loader=createSharedFiscalTicketLoader(persistedRpc,keys,source)
+  await expect(loader(binding,new AbortController().signal)).rejects.toThrow('FISCAL_TICKET_COMPARTIDO_NO_CONFIRMADO')
+  await expect(loader(binding,new AbortController().signal)).rejects.toThrow('FISCAL_TICKET_COMPARTIDO_NO_CONFIRMADO')
+  expect(source).toHaveBeenCalledTimes(mode==='keyring'?0:2)
+  await db.exec('RESET ROLE')
+  expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_ta_intentos_homologacion WHERE cancelado_en IS NOT NULL AND envio_iniciado_en IS NULL')).rows[0].n).toBe(2)
+})
+it('ACK de intención perdido conserva incertidumbre y no vuelve a llamar a la fuente',async()=>{
+  await provisionEmitter();const binding=await typedTaBinding()
+  const key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt'])
+  const keys={async active(){return {id:randomUUID(),key}},async read(){return key}}
+  const network=vi.fn(),source=vi.fn<GuardedWsaaTicketLoader>(async(b,_signal,send)=>{await send();network();return {entorno:b.entorno,servicio:b.servicio,cuitEmisor:b.cuit_emisor,credencialId:b.credencial_id,certificadoSha256:b.certificado_sha256,...ticket()}})
+  const lost: FiscalRpc={async rpc(name,args){const result=await persistedRpc.rpc(name,args);if(name==='iniciar_envio_ta_homologacion')throw new Error('SYNTHETIC_ACK_LOST');return result}}
+  const loader=createSharedFiscalTicketLoader(lost,keys,source)
+  await expect(loader(binding,new AbortController().signal)).rejects.toThrow()
+  await expect(loader(binding,new AbortController().signal)).rejects.toThrow()
+  expect(source).toHaveBeenCalledTimes(1);expect(network).not.toHaveBeenCalled()
+  await db.exec('RESET ROLE')
+  expect((await db.query<{estado:string}>('SELECT estado FROM fiscal_ta_homologacion')).rows[0].estado).toBe('ENVIO_INCIERTO')
+})
+it('fuente que omite el permiso durable no entrega un TA utilizable',async()=>{
+  await provisionEmitter();const binding=await typedTaBinding()
+  const key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt'])
+  const source:GuardedWsaaTicketLoader=async b=>({entorno:b.entorno,servicio:b.servicio,cuitEmisor:b.cuit_emisor,credencialId:b.credencial_id,certificadoSha256:b.certificado_sha256,...ticket()})
+  await expect(createSharedFiscalTicketLoader(persistedRpc,{async active(){return {id:randomUUID(),key}},async read(){return key}},source)(binding,new AbortController().signal)).rejects.toThrow()
+  await db.exec('RESET ROLE')
+  expect((await db.query<{estado:string}>('SELECT estado FROM fiscal_ta_homologacion')).rows[0].estado).toBe('VACIO')
+})
+
+it('ACK de reserva perdido se inspecciona y cancela explícitamente sin envío oculto',async()=>{
+  await provisionEmitter();const binding=await typedTaBinding()
+  const key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt'])
+  const keys={async active(){return {id:randomUUID(),key}},async read(){return key}},source=vi.fn<GuardedWsaaTicketLoader>()
+  const lost:FiscalRpc={async rpc(name,args){const result=await persistedRpc.rpc(name,args);if(name==='solicitar_ta_homologacion')throw new Error('SYNTHETIC_LEASE_ACK_LOST');return result}}
+  await expect(createSharedFiscalTicketLoader(lost,keys,source)(binding,new AbortController().signal)).rejects.toThrow()
+  expect(source).not.toHaveBeenCalled()
+  const args={p_operacion_id:op,p_credencial_id:binding.credencial_id,p_huella:binding.certificado_sha256,p_revision:1}
+  const state=(await persistedRpc.rpc('consultar_preparacion_ta_homologacion',args)).data as Record<string,unknown>
+  expect(state.estado).toBe('PREPARADA')
+  expect((await persistedRpc.rpc('cancelar_preparacion_ta_homologacion',{...args,p_intento_id:state.intento_id,p_generacion:state.revision})).data).toMatchObject({estado:'CANCELADA'})
+  expect((await persistedRpc.rpc('solicitar_ta_homologacion',{...args,p_intento_id:randomUUID()})).data).toMatchObject({revision:2,nuevo_intento:true})
+})
+it('migrar incertidumbre anterior no habilita preparación ni cancelación',async()=>{
+  const {args,lease}=await taFixture()
+  await persistedRpc.rpc('iniciar_envio_ta_homologacion',lease)
+  await db.exec('RESET ROLE')
+  await db.query('UPDATE fiscal_ta_intentos_homologacion SET envio_iniciado_en=NULL WHERE id=$1',[lease.p_intento_id])
+  const sql=readFileSync('supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql','utf8').replace(/^BEGIN;$/m,'SAVEPOINT migration;').replace(/^COMMIT;$/m,'RELEASE SAVEPOINT migration;')
+  await db.exec(sql);await db.exec('SET ROLE service_role')
+  expect((await persistedRpc.rpc('consultar_preparacion_ta_homologacion',args)).data).toMatchObject({estado:'ENVIO_INCIERTO',revision:1})
+  await denied(()=>persistedRpc.rpc('cancelar_preparacion_ta_homologacion',lease))
+  expect((await persistedRpc.rpc('iniciar_envio_ta_homologacion',lease)).data).toMatchObject({nuevo_envio:false})
 })

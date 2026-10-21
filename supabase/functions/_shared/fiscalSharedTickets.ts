@@ -3,6 +3,7 @@ import { encryptFiscalTicket, decryptFiscalTicket, validateFiscalTicketKey } fro
 import type { FiscalTicketCipherContext } from './fiscalTicketCipher.ts'
 import type { WsaaTicketEnvelope, WsaaTicketLoader } from './fiscalTicketCache.ts'
 import type { FiscalWorkerBinding } from './fiscalWorkerAuthorization.ts'
+import type { GuardedWsaaTicketLoader } from './fiscalWsaa.ts'
 
 export interface FiscalTicketKeys {
   active:()=>Promise<{id:string;key:CryptoKey}>
@@ -19,8 +20,9 @@ function envelope(b:Readonly<FiscalWorkerBinding>,ta:{token:string;sign:string;e
 /** Fuente para la caché local, después del gate Auth/tenant. SQL comparte sólo
  * sobres cifrados. Ante renovación incierta no libera/reintenta por timeout.
  * Custodia real de clave de cifrado y certificado/CMS todavía debe provisionarse. */
-export function createSharedFiscalTicketLoader(db:FiscalRpc,keys:FiscalTicketKeys,wsaa:WsaaTicketLoader):WsaaTicketLoader {
+export function createSharedFiscalTicketLoader(db:FiscalRpc,keys:FiscalTicketKeys,wsaa:GuardedWsaaTicketLoader):WsaaTicketLoader {
   return async(binding,signal)=>{
+    let cancelPrepared:(()=>Promise<void>)|undefined,sendAttempted=false
     try {
       if(signal.aborted)return fail()
       const id=crypto.randomUUID(),args={p_operacion_id:binding.operacion_id,p_credencial_id:binding.credencial_id,
@@ -39,12 +41,23 @@ export function createSharedFiscalTicketLoader(db:FiscalRpc,keys:FiscalTicketKey
         return envelope(binding,await decryptFiscalTicket(cipher,context,key,cipher.keyId))
       }
       if(grant.estado!=='RENOVAR'||grant.nuevo_intento!==true||grant.intento_id!==id
-        ||!Number.isSafeInteger(grant.revision)||Number(grant.revision)<1||signal.aborted)return fail()
+        ||!Number.isSafeInteger(grant.revision)||Number(grant.revision)<1)return fail()
+      const lease={...args,p_intento_id:id,p_generacion:grant.revision}
+      cancelPrepared=async()=>{await call('cancelar_preparacion_ta_homologacion',lease)}
+      if(signal.aborted)return fail()
       const key=await keys.active()
       validateFiscalTicketKey(context,key.key,key.id)
       if(signal.aborted)return fail()
-      const ta=await wsaa(binding,signal)
-      if(ta.entorno!==binding.entorno||ta.servicio!==binding.servicio||ta.cuitEmisor!==binding.cuit_emisor
+      let sendAuthorized=false
+      const ta=await wsaa(binding,signal,async()=>{
+        if(sendAttempted||signal.aborted)return fail()
+        // Se conserva incertidumbre incluso si se pierde el ACK de esta RPC.
+        sendAttempted=true
+        const ack=await call('iniciar_envio_ta_homologacion',lease)
+        if(ack.estado!=='ENVIO_INCIERTO'||ack.nuevo_envio!==true||ack.intento_id!==id||ack.revision!==grant.revision)return fail()
+        sendAuthorized=true
+      })
+      if(!sendAuthorized||ta.entorno!==binding.entorno||ta.servicio!==binding.servicio||ta.cuitEmisor!==binding.cuit_emisor
         ||ta.credencialId!==binding.credencial_id||ta.certificadoSha256!==binding.certificado_sha256)return fail()
       // Si llegó TA válido después de abortar al consumidor, conservar el sobre
       // evita perderlo y volver a pedir uno. No vuelve a llamar a WSAA.
@@ -53,6 +66,11 @@ export function createSharedFiscalTicketLoader(db:FiscalRpc,keys:FiscalTicketKey
       if(saved.estado!=='DISPONIBLE'||saved.intento_id!==id||saved.revision!==grant.revision
         ||typeof saved.cifrado_sha256!=='string'||!/^[0-9a-f]{64}$/.test(saved.cifrado_sha256))return fail()
       return envelope(binding,ta)
-    }catch{return fail()}
+    }catch{
+      // Sólo una preparación que no solicitó permiso de envío puede liberarse.
+      // SQL decide por CAS; no se cancela una solicitud que pudo llegar a WSAA.
+      if(cancelPrepared&&!sendAttempted)await cancelPrepared().catch(()=>{})
+      return fail()
+    }
   }
 }

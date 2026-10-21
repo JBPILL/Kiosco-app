@@ -3,7 +3,7 @@ import type { Element as XmlElement } from '@xmldom/xmldom'
 import { normalizeWsaaDn } from './fiscalWsaaDn.ts'
 import { prepareWsaaRequest } from './fiscalWsaaCms.ts'
 import type { PrivateFiscalSigner, PreparedWsaaRequest } from './fiscalWsaaCms.ts'
-import type { PrivateWsaaTicket, WsaaTicketLoader, WsaaTicketEnvelope } from './fiscalTicketCache.ts'
+import type { PrivateWsaaTicket, WsaaTicketEnvelope } from './fiscalTicketCache.ts'
 import type { FiscalWorkerBinding } from './fiscalWorkerAuthorization.ts'
 
 const SOAP='http://schemas.xmlsoap.org/soap/envelope/',WSAA='http://wsaa.view.sua.dvadac.desein.afip.gov'
@@ -88,14 +88,19 @@ export async function loginFiscalWsaa(prepared:PreparedWsaaRequest,fetcher:typeo
   }
 }
 export type PrivateFiscalCustody=(binding:Readonly<FiscalWorkerBinding>,signal:AbortSignal)=>Promise<PrivateFiscalSigner>
+export type GuardedWsaaTicketLoader=(binding:Readonly<FiscalWorkerBinding>,signal:AbortSignal,beforeSend:()=>Promise<void>)=>Promise<WsaaTicketEnvelope>
 /** Integrar sólo después del gate Auth y del permiso único de renovación TA.
  * No lee filesystem/.env y no tiene fallback de certificado ni de entorno. */
-export function createWsaaTicketSource(custody:PrivateFiscalCustody,fetcher:typeof fetch):WsaaTicketLoader {
-  return async(binding,signal)=>{
+export function createWsaaTicketSource(custody:PrivateFiscalCustody,fetcher:typeof fetch):GuardedWsaaTicketLoader {
+  return async(binding,signal,beforeSend)=>{
     try {
       if(signal.aborted||binding.entorno!=='HOMOLOGACION'||binding.servicio!=='wsfe')return invalid()
       const material=await deadline(custody(binding,signal),signal)
       const prepared=await deadline(prepareWsaaRequest(material,{credentialId:binding.credencial_id,certificateSha256:binding.certificado_sha256}),signal)
+      // La autorización durable se obtiene después de preparar/firma y antes
+      // de cualquier transporte. Un ACK perdido nunca concede otro envío.
+      await beforeSend()
+      if(signal.aborted)return invalid()
       const ticket=await loginFiscalWsaa(prepared,fetcher,signal)
       return Object.freeze(Object.defineProperties({entorno:'HOMOLOGACION',servicio:'wsfe',cuitEmisor:binding.cuit_emisor,
         credencialId:binding.credencial_id,certificadoSha256:binding.certificado_sha256,expiresAt:ticket.expiresAt},{

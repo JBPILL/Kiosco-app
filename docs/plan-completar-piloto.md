@@ -144,3 +144,12 @@ Verificación posterior de custodia y corrección de conteo Envases: 2514 PASS /
 1 skipped / 234 archivos, con dos trabajadores y mismos timeouts, build final
 PASS. Se conservan los fallos previos de timeout y la regresión real del conteo.
 Nuevo lector sin instalación SQL/Edge, provisión real ni llamadas fiscales.
+
+Recuperación TA previa a red preparada en SQL 007: PREPARADA cancelable con
+historial, permiso único de envío y recuperación de metadata tras ACK perdido.
+118 pruebas enfocadas y quince carreras PostgreSQL locales PASS; build PASS.
+La incertidumbre posterior al permiso no se libera por timeout. Sin instalación
+ni llamada ARCA real; endpoint y aceptación hospedada aún pendientes.
+Cierre posterior: suite completa 2532 PASS / 1 skipped / 234 archivos, build PASS;
+Edge local cuatro aserciones PASS. Incremento de recuperación TA listo para revisión
+en rama del piloto; no se instaló SQL 007 ni se activó un endpoint fiscal.

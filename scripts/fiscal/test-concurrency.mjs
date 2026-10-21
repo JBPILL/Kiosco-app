@@ -95,7 +95,7 @@ try {
     ...readdirSync(join(bootstrap,'steps')).sort().map(file=>join(bootstrap,'steps',file)),join(bootstrap,'900_final_security.sql'),
     join(root,'supabase/pilot-fiscal/001_fiscal_journal.sql'),join(root,'supabase/pilot-fiscal/002_fiscal_reservations.sql'),
     join(root,'supabase/pilot-fiscal/003_fiscal_requests.sql'),join(root,'supabase/pilot-fiscal/004_fiscal_reconciliation.sql'),
-    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql')]) {
+    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql')]) {
     await observer.query(readFileSync(file,'utf8'))
   }
   async function fixture() {
@@ -216,6 +216,7 @@ try {
   // por separado. Este fixture jamás representa un TA de ARCA.
   const cipher={version:1,keyId:randomUUID(),nonce:'0'.repeat(24),ciphertext:'0'.repeat(32),expiresAt:Date.now()+120000}
   await start(a)
+  await a.query('SELECT iniciar_envio_ta_homologacion($1,$2,$3,1,$4,$5)',[first.id,credentialA,fingerprint,taAttempt,taLease.revision])
   await a.query('SELECT confirmar_ta_homologacion($1,$2,$3,1,$4,$5,$6::jsonb)',[first.id,credentialA,fingerprint,taAttempt,taLease.revision,JSON.stringify(cipher)])
   await start(b);const pendingRead=capture(acquire(b,other.id,credentialB,randomUUID()))
   await waitForLock(observer,b);await a.query('COMMIT')
@@ -223,6 +224,43 @@ try {
   assert.equal(shared.value.nuevo_intento,false);assert.deepEqual(shared.value.cifrado,cipher);await b.query('COMMIT')
   assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_ta_intentos_homologacion')).rows[0].n,1)
   cases.push('TA_confirmado_compartido_sin_nuevo_intento')
+  // Una cancelación sólo gana antes de la intención durable; ambas operaciones
+  // bloquean la misma fila global incluso desde comercios distintos.
+  async function recoveryBinding(huella,revision){
+    await observer.query('UPDATE fiscal_emisores_homologacion SET certificado_sha256=$1,revision=$2 WHERE kiosco_id=ANY($3::uuid[])',[huella,revision,[f.kid,foreign.kid]])
+    const call=async(client,fn,operation,credential,id,generation)=>{
+      const base=[operation,credential,huella,revision,id]
+      if(generation!==undefined)base.push(generation)
+      return (await client.query(`SELECT ${fn}(${base.map((_,i)=>'$'+(i+1)).join(',')}) ack`,base)).rows[0].ack
+    }
+    return call
+  }
+  let callTa=await recoveryBinding('c'.repeat(64),2),raceId=randomUUID()
+  await start(a);let lease=await callTa(a,'solicitar_ta_homologacion',first.id,credentialA,raceId);await a.query('COMMIT')
+  await start(a);const send=await callTa(a,'iniciar_envio_ta_homologacion',first.id,credentialA,raceId,lease.revision)
+  assert.equal(send.nuevo_envio,true)
+  await start(b);let competingTa=capture(callTa(b,'cancelar_preparacion_ta_homologacion',other.id,credentialB,raceId,lease.revision))
+  await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await competingTa).error?.code,'40001');await b.query('ROLLBACK')
+  cases.push('TA_envio_gana_cancelacion_no_libera_incertidumbre')
+  callTa=await recoveryBinding('d'.repeat(64),3);raceId=randomUUID()
+  await start(a);lease=await callTa(a,'solicitar_ta_homologacion',first.id,credentialA,raceId);await a.query('COMMIT')
+  await start(a);const cancelled=await callTa(a,'cancelar_preparacion_ta_homologacion',first.id,credentialA,raceId,lease.revision)
+  await start(b);competingTa=capture(callTa(b,'iniciar_envio_ta_homologacion',other.id,credentialB,raceId,lease.revision))
+  await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await competingTa).error?.code,'40001');await b.query('ROLLBACK')
+  const newId=randomUUID()
+  await start(a);const nextTa=await callTa(a,'solicitar_ta_homologacion',first.id,credentialA,newId);await a.query('COMMIT')
+  assert.equal(nextTa.revision,2)
+  await start(b);assert.deepEqual(await callTa(b,'cancelar_preparacion_ta_homologacion',other.id,credentialB,raceId,lease.revision),cancelled);await b.query('COMMIT')
+  const audit=(await observer.query('SELECT cancelado_en,envio_iniciado_en FROM fiscal_ta_intentos_homologacion WHERE id=$1',[raceId])).rows[0]
+  assert(audit.cancelado_en);assert.equal(audit.envio_iniciado_en,null)
+  cases.push('TA_cancelacion_gana_envio_obsoleto_rechazado_historial_conservado')
+  await start(a);assert.equal((await callTa(a,'iniciar_envio_ta_homologacion',first.id,credentialA,newId,nextTa.revision)).nuevo_envio,true)
+  await start(b);competingTa=capture(callTa(b,'iniciar_envio_ta_homologacion',other.id,credentialB,newId,nextTa.revision))
+  await waitForLock(observer,b);await a.query('COMMIT')
+  const secondSend=await competingTa;assert(!secondSend.error);assert.equal(secondSend.value.nuevo_envio,false);await b.query('COMMIT')
+  cases.push('TA_dos_trabajadores_solo_un_permiso_de_envio')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',

@@ -428,3 +428,12 @@ La rotación AES conserva IDs antiguos durante vigencia de los sobres; si falta
 la clave correcta se falla, no se usa otra. Se verificó formato .NET con material
 sintético y UTF-8. Los adaptadores no se instalan ni reciben material real hasta
 el gate autorizado. El frontend no contiene prefijos de este lector/keyring.
+
+## 21/10/2026 — Separar preparación TA de intención de envío
+
+Reservar un certificado no significa haber contactado WSAA. La nueva preparación
+se puede cancelar con auditoría y CAS antes de registrar intención. El permiso de
+envío se concede una sola vez, después de validar custodia y firmar; ACK perdido
+mantiene incertidumbre. Una cancelación antigua no libera una reserva nueva.
+No se libera por reloj una solicitud que pudo llegar a ARCA. SQL 007 y proveedor
+preparados localmente; el gate de instalación/custodia real no se amplía.

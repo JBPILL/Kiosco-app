@@ -786,3 +786,51 @@ el informe previo fallido. Build final PASS, 634 módulos; lint enfocado sin
 errores, cinco avisos react(refs) previos. Manifiesto histórico 43 SQL PASS;
 escaneo 1197 archivos, 46 candidatos, delta 0. Este PASS local no cierra PR03
 hospedado ni habilita la emisión. Código de recuperación TA aún pendiente.
+
+### F04 — recuperación de preparación TA e intención de red — 21/10/2026
+
+Se implementó SQL 007 incremental (preparado, sin instalación remota). La reserva
+comienza PREPARADA; sólo iniciar_envio_ta_homologacion, por CAS de intento y
+revisión, pasa a ENVIO_INCIERTO y concede nuevo_envio una vez. Repetir su ACK no
+concede transporte. El proveedor firma primero y exige ese permiso antes de red.
+Si falla keyring/custodia/firma sin solicitar intención, se intenta cancelar la
+preparación; si hubo intención o ACK de intención perdido, no se cancela/reintenta.
+Consulta privada sin secretos permite recuperar metadata tras ACK de reserva
+perdido y cancelar explícitamente por CAS. Intentos cancelados quedan auditados
+con fecha, nunca se reutilizan; su replay no altera generaciones posteriores.
+Migrar conserva los intentos inciertos del contrato anterior como enviados.
+
+Validación parcial: 118 pruebas enfocadas PASS (persistencia y WSAA). Quince
+carreras PostgreSQL 17.11 locales PASS, incluidas enviar/cancelar en ambos órdenes
+y dos trabajadores solicitando permiso de envío. Contenedor propio detenido;
+datos conservados y contenedores existentes intactos. Evidencia fuera de Git:
+fiscal-ta-recovery-concurrency-20261021.json. Build final PASS, 634 módulos;
+el primer intento había fallado por tipos de fixtures y se corrigió usando el
+validador real de binding, sin casts. Lint enfocado sin errores, un aviso previo
+de control-regex del parser. Suite completa en ejecución: no afirmar PASS aún.
+
+Límite: ENVIO_INCIERTO posterior a intención permanece bloqueado sin liberación
+por timeout. La nueva recuperación sólo acredita la frontera previa al envío;
+no inventa consulta de TA a ARCA ni prueba la no emisión de una respuesta perdida.
+Endpoint operativo, instalación/provisión y aceptación hospedada siguen pendientes.
+
+Edge Runtime local v1.77.4 PASS, cuatro aserciones: recorrido con custodia PKCS8,
+firma y AES-GCM reales sobre fixture sintético, un permiso durable simulado y una
+llamada WSAA mock, replay sin nueva renovación; permiso rechazado impide red.
+SQL/Auth/ARCA se simulan en ese recorrido; carreras SQL se acreditan separadas.
+Evidencia: fiscal-ta-recovery-edge-result.json. Primer acceso al contenedor recién
+arrancado terminó prematuramente; se verificó detenido, se reinició sólo ese
+contenedor y el recorrido terminó PASS. Contenedor propio confirmado exited.
+Docker había cerrado el motor y se reabrió para este ensayo; ningún SQL remoto.
+Escaneo 1198 archivos, 46 candidatos, delta 0; manifiesto histórico 43 SQL PASS.
+
+Cierre del incremento de recuperación TA (21/10): suite completa 2532 PASS /
+1 skipped / 234 archivos, exit 0, dos trabajadores y sin relajar timeouts.
+Informe durable fuera de Git: pilot-ta-recovery-suite-results.json. Build final
+PASS (634 módulos), 118 casos enfocados, quince carreras PostgreSQL y cuatro
+aserciones Edge local PASS. Escaneo sin candidatos nuevos y manifiesto 43 SQL
+intacto. No hay cambios de código posteriores a esas comprobaciones. SQL 001–007
+siguen preparados, no instalados; sin credenciales reales ni llamada fiscal nueva.
+Próximo gate de implementación: endpoint privado de consulta/recuperación con
+Auth real, CORS y cuerpo acotados, configuración Staging cerrada y salida sin
+secretos. Instalar/provisionar y ejecutar aceptación hospedada requieren su gate.

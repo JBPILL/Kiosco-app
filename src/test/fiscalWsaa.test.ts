@@ -93,7 +93,7 @@ it('integra custodia sintética, firma CMS y respuesta ligada al identificador r
     return response(soap(inner(id)))
   })
   const source=createWsaaTicketSource(async()=>signer.material,fetcher)
-  const ticket=await source(binding,new AbortController().signal)
+  const ticket=await source(binding,new AbortController().signal,async()=>{})
   expect(ticket.token).toBe('SYNTHETIC_TOKEN');expect(JSON.stringify(ticket)).not.toContain('SYNTHETIC')
   expect(fetcher).toHaveBeenCalledTimes(1)
 })
@@ -101,6 +101,15 @@ it('un fallo de custodia no llega a red ni revela el mensaje de origen',async()=
   const fetcher=vi.fn<typeof fetch>(),source=createWsaaTicketSource(async()=>{throw new Error('SYNTHETIC_PRIVATE_CUSTODY')},fetcher)
   const binding:FiscalWorkerBinding={version:1,entorno:'HOMOLOGACION',servicio:'wsfe',operacion_id:crypto.randomUUID(),kiosco_id:crypto.randomUUID(),usuario_id:crypto.randomUUID(),
     cuit_emisor:'20123456786',punto_venta:2,credencial_id:signer.material.credentialId,certificado_sha256:signer.fingerprint,revision:1}
-  await expect(source(binding,new AbortController().signal)).rejects.toThrow('FISCAL_WSAA_NO_CONFIRMADO')
+  await expect(source(binding,new AbortController().signal,async()=>{})).rejects.toThrow('FISCAL_WSAA_NO_CONFIRMADO')
   expect(fetcher).not.toHaveBeenCalled()
+})
+
+it.each(['rechazado','abortado'])('permiso durable %s después de firmar impide el transporte',async mode=>{
+  const binding:FiscalWorkerBinding={version:1,entorno:'HOMOLOGACION',servicio:'wsfe',operacion_id:crypto.randomUUID(),kiosco_id:crypto.randomUUID(),usuario_id:crypto.randomUUID(),
+    cuit_emisor:'20123456786',punto_venta:2,credencial_id:signer.material.credentialId,certificado_sha256:signer.fingerprint,revision:1}
+  const fetcher=vi.fn<typeof fetch>(),custody=vi.fn(async()=>signer.material),controller=new AbortController()
+  const guard=vi.fn(async()=>{if(mode==='abortado')controller.abort();else throw new Error('SYNTHETIC_ACK_LOST')})
+  await expect(createWsaaTicketSource(custody,fetcher)(binding,controller.signal,guard)).rejects.toThrow('FISCAL_WSAA_NO_CONFIRMADO')
+  expect(custody).toHaveBeenCalledOnce();expect(guard).toHaveBeenCalledOnce();expect(fetcher).not.toHaveBeenCalled()
 })
