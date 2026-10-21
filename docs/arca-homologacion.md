@@ -1,6 +1,10 @@
 # Preparar ARCA en homologación
 
 Estado: preparación local disponible; **no hay emisión fiscal activada**.
+Actualización 20/10/2026: certificado recibido, par criptográfico comprobado y
+WSAA homologación PASS tras la autorización WSASS de `wsfe` por el titular.
+WSFE aún no se consultó ni se emitieron comprobantes. Los resultados históricos
+inferiores se conservan.
 En el ensayo asistido del 18/10 ya se generaron la clave y el CSR del titular;
 para retomarlo se conservan esos mismos archivos, sin repetir el paso 1.
 Homologación significa conversar con los servicios de prueba de ARCA y recibir
@@ -101,3 +105,94 @@ Herramienta publicada en master en 72839fa junto con la corrección del Excel
 611 módulos. Pruebas nativas de cifrado/CSR/ACL PASS. Audit 0; escaneo de fuentes
 sin secretos nuevos. Ambos checks Vercel success. Estos resultados validan el
 código y la preparación local, no la emisión de un certificado ni un CAE de ARCA.
+
+## Certificado y ensayo WSAA — 20/10/2026
+
+El titular proporcionó el certificado público emitido por Computadores Test.
+Formato X.509 PASS; CN `KioskoPOSHomologacion20261018`, RSA 3072, vigencia
+20/10/2026 16:21:18 UTC a 19/10/2028 16:21:18 UTC. Comparación SPKI derivado
+de la clave original descifrada sólo en memoria: `CERTIFICATE_PRIVATE_KEY_MATCH=PASS`.
+No se regeneró clave ni CSR; el certificado recibido se conservó fuera del checkout.
+
+La herramienta local `scripts/probar-wsaa-homologacion.ps1` usa PowerShell 7.4+
+y las APIs criptográficas de .NET ya disponibles, sin dependencias nuevas.
+Recibe rutas mediante `-Certificado`, `-ClaveCifrada` y `-ProteccionDpapi`;
+`-Servicio` es `wsfe` por defecto. No requiere variables de entorno nuevas.
+Sin `-Conectar` sólo valida el par, construye el TRA y verifica la firma CMS.
+Con `-Conectar` hace un único POST al endpoint fijo de homologación, sin
+redirecciones, sin persistir el ticket ni emitir comprobantes. No ejecutarla con
+transcripción, depuración de variables o captura de memoria habilitada.
+
+Con autorización expresa del titular se ejecutó una única llamada. Resultado:
+
+```text
+CERT_KEY_MATCH=PASS
+TRA_GENERATION=PASS
+CMS_SIGNATURE=PASS
+WSAA_HOMOLOGACION=FAIL
+STAGE=LOGIN_CMS
+CODE=WSAA_FAULT:ns1:coe.notAuthorized
+TOKEN_RECEIVED=false
+SIGN_RECEIVED=false
+WSFE_READY=false
+```
+
+No interpretar el rechazo como autenticación completada. El diagnóstico apunta
+a la autorización del certificado para `wsfe`; comprobar en WSASS **Crear
+Autorización a Servicio**, seleccionar el alias existente, el contribuyente
+representado y el servicio correspondiente. No cambiar el certificado ni la clave
+para resolver un permiso. [Instrucciones oficiales](https://www.afip.gob.ar/ws/WSASS/html/crearautorizacion.html).
+No se reintentó tras el rechazo ni se hizo una llamada a WSFE.
+
+La Edge legacy continúa sin desplegarse: no constituye una pasarela fiscal segura.
+El diagnóstico local no modifica Supabase, Staging, master ni Production.
+No hubo commit, push o deploy de este bloque por restricción expresa del titular.
+
+### Autorización resuelta y autenticación real confirmada
+El titular creó la autorización del mismo alias al servicio `ws://wsfe` y confirmó
+el contribuyente representado. Se hizo un único reintento tras ese cambio externo:
+`WSAA_HOMOLOGACION=PASS`, `TOKEN_RECEIVED=true`, `SIGN_RECEIVED=true`;
+`expirationTime=2026-10-21T04:41:57.766Z` (01:41 hora argentina).
+El TA sólo existió en memoria del proceso de diagnóstico; no se registró en
+Supabase, disco, logs ni Git. No volver a solicitar otro TA a ciegas: WSAA puede
+rechazar solicitudes mientras haya un ticket vigente.
+
+`PrepareWsfeDiagnostic` prepara una consulta `FEParamGetPtosVenta` usando el TA
+en memoria y un CUIT representado con dígito verificador válido; rechaza TA
+vencido/próximo a vencer. El endpoint y SOAPAction están fijados a homologación.
+No ejecuta la consulta ni puede emitir comprobantes. Su contrato se verificó contra
+la [operación oficial](https://wswhomo.afip.gov.ar/wsfev1/service.asmx?op=FEParamGetPtosVenta).
+Falta probar WSFE real y diseñar custodia/caché servidor, autorización por comercio,
+numeración y recuperación antes de activar facturación en el sistema.
+
+Validación local: suite completa 2106 PASS / 1 skipped / 220 archivos (224,91 s),
+build PASS (632 módulos), manifiesto histórico 43 SQL PASS, diff PASS y escaneo
+sin candidatos nuevos. Esa suite precede a la preparación posterior del diagnóstico
+WSFE; las pruebas dirigidas se vuelven a ejecutar para ese agregado.
+Pruebas dirigidas finales: 4 PASS / 2 archivos, incluidas 17 comprobaciones
+criptográficas/protocolo con datos sintéticos y el contrato de no emisión.
+
+### Informe del bloque local
+- Inspeccionados: package.json, .gitignore, preparación criptográfica PowerShell,
+  documentación ARCA, Edge legacy afip-wsfe, tipos/store AFIP, pruebas existentes,
+  índice e historial de extensiones criptográficas (sin archivos privados encontrados).
+- Modificados: .gitignore, este documento y DECISIONS.md. Agregados:
+  scripts/arca/WsaaHomologacion.cs, scripts/probar-wsaa-homologacion.ps1 y
+  src/test/wsaaHomologacion.test.ts. El plan general del piloto se agregó aparte.
+- Dependencias nuevas: ninguna. Variables de entorno nuevas: ninguna.
+- Riesgos pendientes: WSFE aún no validado en red; no existe todavía una pasarela
+  fiscal nueva con caché privada, permisos por comercio e idempotencia de emisión.
+- Próximo paso: ensayo de consulta WSFE no transaccional con un TA vigente dentro
+  del mismo proceso autorizado; no generar comprobantes como prueba de conectividad.
+
+| Gate | Resultado |
+|---|---|
+| CERT_KEY_MATCH | PASS |
+| SECRET_SAFETY | PASS para archivos/ejecución revisados; no sustituye auditoría integral del historial |
+| TRA_GENERATION | PASS |
+| CMS_SIGNATURE | PASS |
+| WSAA_LOGIN_CMS | PASS real, homologación |
+| TOKEN_RECEIVED | PASS |
+| SIGN_RECEIVED | PASS |
+| WSFE_READY | PENDIENTE: solicitud preparada, ejecución no realizada |
+| TESTS | PASS con el alcance y orden indicados arriba |
