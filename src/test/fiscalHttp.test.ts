@@ -224,3 +224,37 @@ it('estado compartido no contiene identificador ni revisión de otra operación'
   const r=await f.handler(request());expect(r.status).toBe(200)
   expect((await r.json()).resultado).toEqual({estado:'COMPARTIDA',intento_id:null,revision:0})
 })
+
+it('HTTP recupera constancia con Auth original y sin custodia/TA/red fiscal',async()=>{
+ const f=fixture(),sale=crypto.randomUUID(),actor=crypto.randomUUID(),solicitud=await freezeFiscalRequest(wsfeSample)
+ const receipt={version:1,entorno:'HOMOLOGACION',estado:'AUTORIZADA',operacion_id:op,venta_id:sale,solicitud,autorizacion:{cae:'11111111111111',vencimiento:'20261031',procesado_en:null}}
+ f.getUser.mockResolvedValue({data:{user:{id:actor}},error:null});f.rpc.mockResolvedValue({data:receipt,error:null})
+ const response=await f.handler(request(JSON.stringify({accion:'CONSTANCIA_COMPROBANTE',venta_id:sale,operacion_id:op})))
+ expect(response.status).toBe(200);expect((await response.json()).resultado).toEqual(receipt)
+ expect(f.getUser).toHaveBeenCalledTimes(1)
+ expect(f.rpc).toHaveBeenCalledExactlyOnceWith('cargar_constancia_fiscal_homologacion',{p_actor_auth_id:actor,p_venta_id:sale,p_operacion_id:op})
+ expect(f.fetcher).not.toHaveBeenCalled();expect(f.read.mock.calls.some(([key])=>/CUSTODY|CREDENTIAL|TICKET|KEYRING/.test(key))).toBe(false)
+})
+it('HTTP constancia no entrega datos de otra venta ni errores privados',async()=>{
+ const f=fixture(),sale=crypto.randomUUID()
+ f.rpc.mockResolvedValue({data:{venta_id:crypto.randomUUID(),estado:'AUTORIZADA'},error:null})
+ const response=await f.handler(request(JSON.stringify({accion:'CONSTANCIA_COMPROBANTE',venta_id:sale,operacion_id:op})))
+ expect(response.status).toBe(409);expect((await response.json()).codigo).toBe('OPERACION_NO_CONFIRMADA');expect(f.fetcher).not.toHaveBeenCalled()
+})
+it('HTTP constancia rechaza sesión inválida antes de leer ledger',async()=>{
+ const f=fixture();f.getUser.mockResolvedValue({data:{user:null},error:new Error('private')})
+ expect((await f.handler(request(JSON.stringify({accion:'CONSTANCIA_COMPROBANTE',venta_id:crypto.randomUUID(),operacion_id:op})))).status).toBe(409)
+ expect(f.rpc).not.toHaveBeenCalled()
+})
+
+it('HTTP constancia rechaza un cuerpo con hash ajeno y nunca devuelve CAE parcial',async()=>{
+ const f=fixture(),sale=crypto.randomUUID(),solicitud=await freezeFiscalRequest(wsfeSample)
+ f.rpc.mockResolvedValue({data:{version:1,entorno:'HOMOLOGACION',estado:'AUTORIZADA',operacion_id:op,venta_id:sale,solicitud:{...solicitud,sha256:'a'.repeat(64)},autorizacion:{cae:'11111111111111',vencimiento:'20261031',procesado_en:null}},error:null})
+ const response=await f.handler(request(JSON.stringify({accion:'CONSTANCIA_COMPROBANTE',venta_id:sale,operacion_id:op})))
+ expect(response.status).toBe(409);expect(await response.text()).not.toContain('11111111111111');expect(f.fetcher).not.toHaveBeenCalled()
+})
+it('HTTP constancia no confunde error de RPC con resultado autorizado',async()=>{
+ const f=fixture();f.rpc.mockResolvedValue({data:{estado:'AUTORIZADA'},error:new Error('PRIVATE_LEDGER_ERROR')})
+ const response=await f.handler(request(JSON.stringify({accion:'CONSTANCIA_COMPROBANTE',venta_id:crypto.randomUUID(),operacion_id:op})))
+ expect(response.status).toBe(409);expect(await response.text()).not.toContain('PRIVATE_LEDGER_ERROR')
+})

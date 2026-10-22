@@ -14,6 +14,7 @@ import { createFiscalTicketCache } from '../../supabase/functions/_shared/fiscal
 import type { FiscalAuthClient } from '../../supabase/functions/_shared/fiscalWorkerAuthorization'
 import type { WsaaTicketLoader } from '../../supabase/functions/_shared/fiscalTicketCache'
 import { vi } from 'vitest'
+import { validateFiscalReceipt } from '../../supabase/functions/_shared/fiscalReceipt'
 
 const db=new PGlite(),kid=crypto.randomUUID(),actor=crypto.randomUUID(),owner=crypto.randomUUID(),sale=crypto.randomUUID(),product=crypto.randomUUID(),op=crypto.randomUUID(),credential=crypto.randomUUID()
 beforeAll(async()=>{
@@ -288,4 +289,55 @@ it('persistencia sin commit no produce revisión aunque un ACK falso diga éxito
  f.rpc.mockImplementation((name,args)=>name==='persistir_preparacion_fiscal_homologacion'?Promise.resolve({data:{estado:'RESERVADA'},error:null}):base(name,args))
  await expect(f.run()).rejects.toThrow();expect(f.fetcher).toHaveBeenCalledTimes(1)
  await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_solicitudes_homologacion')).rows[0].n).toBe(0)
+})
+
+async function authorizeReceipt() {
+ const p=await prepared();await save(p.canonico,p.sha256)
+ const frozen=await requestFromPreparedFiscalData(p,1),canonical=await serializeFiscalRequest(frozen)
+ await db.query('SELECT persistir_preparacion_fiscal_homologacion($1,$2,$3,$4,0,clock_timestamp())',[actor,op,canonical,frozen.sha256])
+ const permission=crypto.randomUUID(),attempt=crypto.randomUUID()
+ await admin(`INSERT INTO fiscal_permisos_emision_homologacion(operacion_id,autorizacion_id,solicitud_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,creado_en,vence_en)
+ VALUES($1,$2,$3,$4,$5,1,true,clock_timestamp(),clock_timestamp()+interval '30 minutes')`,[op,permission,frozen.sha256,credential,'a'.repeat(64)])
+ await db.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1)',[op,actor,crypto.randomUUID(),frozen.sha256])
+ await db.query('SELECT registrar_envio_revisado_homologacion($1,$2,$3,$4,$5,0,clock_timestamp())',[actor,op,attempt,frozen.sha256,permission])
+ // Autorización sintética validada por el ledger; no se contacta ARCA.
+ await db.query('SELECT registrar_reconciliacion_fiscal_homologacion($1,$2,$3,$4,1,$5::jsonb)',[crypto.randomUUID(),op,attempt,frozen.sha256,JSON.stringify({estado:'AUTORIZACION_COINCIDENTE',cae:'11111111111111',vencimiento:'20261031',procesadoEn:null,solicitudSha256:frozen.sha256,puedeReenviar:false})])
+ return frozen
+}
+async function storedReceipt(who=actor,which=sale,operation=op){return (await db.query<{data:unknown}>('SELECT cargar_constancia_fiscal_homologacion($1,$2,$3) data',[who,which,operation])).rows[0].data}
+it('constancia privada recupera cuerpo/CAE durable y no altera negocio, sin catálogo/emisor habilitados',async()=>{
+ const frozen=await authorizeReceipt()
+ await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false');await admin('UPDATE fiscal_parametros_homologacion SET habilitado=false')
+ expect(await resolve()).toMatchObject({estado:'AUTORIZADA',operacion_id:op})
+ const result=await validateFiscalReceipt(await storedReceipt(),{operationId:op,saleId:sale})
+ expect(result.solicitud).toEqual(frozen);expect(result.autorizacion).toEqual({cae:'11111111111111',vencimiento:'20261031',procesado_en:null})
+ expect(await storedReceipt()).toEqual(result)
+ await db.exec('RESET ROLE')
+ for(const table of ['movimientos_stock','movimientos_caja'])expect((await db.query<{n:number}>(`SELECT count(*)::int n FROM ${table}`)).rows[0].n).toBe(0)
+ expect((await db.query<{total:string}>('SELECT total::text FROM ventas')).rows[0].total).toBe('123.45')
+})
+it('constancia no existe con datos preparados ni con sólo revisión aprobada',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256);await denied(()=>storedReceipt())
+ const frozen=await requestFromPreparedFiscalData(p,1)
+ await db.query('SELECT persistir_preparacion_fiscal_homologacion($1,$2,$3,$4,0,clock_timestamp())',[actor,op,await serializeFiscalRequest(frozen),frozen.sha256])
+ await db.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1)',[op,actor,crypto.randomUUID(),frozen.sha256])
+ await denied(()=>storedReceipt())
+})
+it.each(['anon','authenticated'])('constancia privada deniega rol %s incluso con UUID conocidos',async role=>{
+ await authorizeReceipt();await db.exec(`SET ROLE ${role}`);await denied(()=>storedReceipt())
+})
+it('constancia deniega venta/operación ajenas y cuenta reasignada',async()=>{
+ await authorizeReceipt();await denied(()=>storedReceipt(actor,crypto.randomUUID()));await denied(()=>storedReceipt(actor,sale,crypto.randomUUID()))
+ const other=crypto.randomUUID();await admin('INSERT INTO auth.users VALUES($1)',[other]);await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner])
+ await denied(()=>storedReceipt(other));await denied(()=>storedReceipt(actor))
+})
+it.each(["rol='CAJERO'","activo=false","es_superadmin=true,kiosco_id=null"])('constancia deniega perfil con %s',async change=>{
+ await authorizeReceipt();await admin(`UPDATE usuarios SET ${change} WHERE id=$1`,[owner]);await denied(()=>storedReceipt())
+})
+it('constancia no permite consultar un comercio suspendido',async()=>{
+ await authorizeReceipt();await admin("UPDATE kioscos SET estado_suscripcion='SUSPENDIDO' WHERE id=$1",[kid]);await denied(()=>storedReceipt())
+})
+
+it.each(["solicitud_sha256=repeat('f',64)","resultado='{}'::jsonb","intento_id=gen_random_uuid()"] )('constancia falla cerrada ante ledger inconsistente: %s',async change=>{
+ await authorizeReceipt();await admin(`UPDATE fiscal_autorizaciones_homologacion SET ${change} WHERE operacion_id=$1`,[op]);await denied(()=>storedReceipt())
 })

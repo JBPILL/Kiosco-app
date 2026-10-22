@@ -103,3 +103,11 @@ it('preparar cuerpo conserva operación y valida la revisión pública recibida'
  f.send.mockResolvedValue(envelope({...r,operacion_id:crypto.randomUUID()}))
  await expect(f.client.prepare(r.operacion_id)).rejects.toThrow()
 })
+
+it('cliente recupera constancia vinculada a venta/operación sin persistir datos fiscales',async()=>{
+ const f=fixture(),operationId=crypto.randomUUID(),receipt={version:1,entorno:'HOMOLOGACION',estado:'AUTORIZADA',operacion_id:operationId,venta_id:scope.saleId,solicitud:await freezeFiscalRequest(wsfeSample),autorizacion:{cae:'11111111111111',vencimiento:'20261031',procesado_en:null}}
+ f.send.mockResolvedValue(envelope(receipt));expect(await f.client.receipt(operationId)).toEqual(receipt)
+ expect(f.send).toHaveBeenCalledExactlyOnceWith({accion:'CONSTANCIA_COMPROBANTE',operacion_id:operationId,venta_id:scope.saleId});expect(f.map.size).toBe(0)
+ f.send.mockResolvedValue(envelope({...receipt,venta_id:crypto.randomUUID()}));await expect(f.client.receipt(operationId)).rejects.toThrow()
+ f.send.mockResolvedValue(envelope({...receipt,operacion_id:crypto.randomUUID()}));await expect(f.client.receipt(operationId)).rejects.toThrow()
+})

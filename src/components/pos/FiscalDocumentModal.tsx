@@ -3,6 +3,8 @@ import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { FiscalPreparationForm } from './FiscalPreparationForm'
 import { FiscalOwnerReviewPanel } from './FiscalOwnerReviewPanel'
+import { FiscalReceiptPanel } from './FiscalReceiptPanel'
+import type { FiscalReceipt } from '../../../supabase/functions/_shared/fiscalReceipt'
 import type { FiscalClient, FiscalClientScope } from '../../lib/fiscalClient'
 import type { FiscalPreparationContext, FiscalPreparationInput, FiscalSaleResolution } from '../../../supabase/functions/_shared/fiscalPreparationContract'
 import type { FiscalOwnerReview } from '../../../supabase/functions/_shared/fiscalOwnerReview'
@@ -19,6 +21,7 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
   const [context, setContext] = useState<FiscalPreparationContext | null>(null)
   const [resolution, setResolution] = useState<Readonly<FiscalSaleResolution> | null>(null)
   const [review, setReview] = useState<Readonly<FiscalOwnerReview> | null>(null)
+  const [receipt, setReceipt] = useState<Readonly<FiscalReceipt> | null>(null)
   const [approvalId, setApprovalId] = useState('')
   const [busy, setBusy] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -34,7 +37,7 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
   const load = useCallback(async (api: FiscalClient) => {
     const current = ++generation.current
     let stateRecovered = false
-    setBusy(true); setError(''); setContext(null); setReview(null); setResolution(null)
+    setBusy(true); setError(''); setContext(null); setReview(null); setReceipt(null); setResolution(null)
     try {
       const state = await api.resolve()
       if (generation.current !== current) return
@@ -48,7 +51,11 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
           if (generation.current !== current) return
           setContext(values)
         }
-      } else if (['RESERVADA', 'ENVIO_INCIERTO', 'AUTORIZADA'].includes(state.estado) && state.operacion_id) {
+      } else if (state.estado === 'AUTORIZADA' && state.operacion_id) {
+        const values = await api.receipt(state.operacion_id)
+        if (generation.current !== current) return
+        setReceipt(values)
+      } else if (['RESERVADA', 'ENVIO_INCIERTO'].includes(state.estado) && state.operacion_id) {
         const values = await api.review(state.operacion_id)
         if (generation.current !== current) return
         setApprovalId(values.aprobacion?.id ?? (values.estado === 'RESERVADA' ? api.approvalId(values) : ''))
@@ -104,7 +111,8 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
       {!busy && resolution?.estado === 'REGISTRO_FISCAL_HEREDADO' && <p role="status">Existe un registro fiscal anterior. Consultá la constancia original; no se preparará otro comprobante desde esta venta.</p>}
       {!busy && resolution?.estado === 'REQUIERE_REVISION' && <p role="status">La operación existente requiere revisión de su identidad o contexto. No se iniciará otra preparación.</p>}
       {!busy && resolution?.estado === 'NO_DISPONIBLE' && <p role="status">Esta venta no está disponible para preparar un comprobante fiscal.</p>}
-      {!busy && resolution?.estado === 'AUTORIZADA' && !review && <p role="status">La operación figura autorizada en el servidor. Falta recuperar su constancia fiscal; no se iniciará otra preparación.</p>}
+      {!busy && resolution?.estado === 'AUTORIZADA' && !receipt && <p role="status">La operación figura autorizada en el servidor. Falta recuperar su constancia fiscal; no se iniciará otra preparación.</p>}
+      {!busy && receipt && <FiscalReceiptPanel receipt={receipt} />}
       {!busy && review && client && <FiscalOwnerReviewPanel review={review} approvalId={approvalId} onApprove={command => client.approve(review, command.id)} />}
       {!busy && client && <Button variant="secondary" disabled={saving || preparing} onClick={() => { void load(client) }}>Volver a consultar estado</Button>}
     </div>

@@ -1,5 +1,6 @@
 import type { FiscalPreparationInput, FiscalPreparationContext } from '../../supabase/functions/_shared/fiscalPreparationContract'
 import { prepareFiscalData } from '../../supabase/functions/_shared/fiscalPreparation'
+import { validateFiscalReceipt } from '../../supabase/functions/_shared/fiscalReceipt'
 import type { FiscalOwnerReview } from '../../supabase/functions/_shared/fiscalOwnerReview'
 import { validateFiscalPreparationContext, validateFiscalSaleResolution } from '../../supabase/functions/_shared/fiscalPreparationPublic'
 import { validateFiscalOwnerApproval, validatePublicFiscalOwnerReview } from '../../supabase/functions/_shared/fiscalOwnerReview'
@@ -43,6 +44,10 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
   }
   return {
     pending,
+    async receipt(operationId: string) {
+      if (!uuid(operationId)) return fail()
+      return validateFiscalReceipt(await invoke({ accion: 'CONSTANCIA_COMPROBANTE', venta_id: sale, operacion_id: operationId }), { operationId, saleId: sale })
+    },
     async resolve() {
       const result = validateFiscalSaleResolution(await invoke({ accion: 'RESOLVER_VENTA', venta_id: sale }), sale)
       if (result.operacion_id) {

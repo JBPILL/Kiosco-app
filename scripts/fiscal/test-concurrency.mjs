@@ -95,7 +95,7 @@ try {
     ...readdirSync(join(bootstrap,'steps')).sort().map(file=>join(bootstrap,'steps',file)),join(bootstrap,'900_final_security.sql'),
     join(root,'supabase/pilot-fiscal/001_fiscal_journal.sql'),join(root,'supabase/pilot-fiscal/002_fiscal_reservations.sql'),
     join(root,'supabase/pilot-fiscal/003_fiscal_requests.sql'),join(root,'supabase/pilot-fiscal/004_fiscal_reconciliation.sql'),
-    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql'),join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql'),join(root,'supabase/pilot-fiscal/013_fiscal_preparation_source.sql')]) {
+    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql'),join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql'),join(root,'supabase/pilot-fiscal/013_fiscal_preparation_source.sql'),join(root,'supabase/pilot-fiscal/014_fiscal_receipt.sql')]) {
     await observer.query(readFileSync(file,'utf8'))
     if(file.endsWith('011_fiscal_owner_review.sql')){
       await observer.query('SELECT fiscal_exigir_actor_preparacion($1,$2)',[randomUUID(),randomUUID()])
@@ -394,6 +394,25 @@ try {
   const sourceAfter=await waitingSource;assert(!sourceAfter.error)
   assert.deepEqual(sourceAfter.value.rows[0].data,{operacion_id:sourcePreparation.operation,estado:'CUERPO_EXISTENTE',contexto:null,canonico:null,preparacion_sha256:null});await b.query('COMMIT')
   cases.push('fuente_espera_reserva_y_recupera_cuerpo_sin_pedir_otra_numeracion')
+  const receiptPermission=randomUUID(),receiptAttempt=randomUUID()
+  await observer.query(`INSERT INTO fiscal_permisos_emision_homologacion(operacion_id,autorizacion_id,solicitud_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,creado_en,vence_en)
+    SELECT $1,$2,$3,credencial_id,certificado_sha256,revision,true,clock_timestamp(),clock_timestamp()+interval '30 minutes' FROM fiscal_emisores_homologacion WHERE kiosco_id=$4`,[sourcePreparation.operation,receiptPermission,sourceHash,sourcePreparation.kid])
+  await start(a)
+  await a.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1)',[sourcePreparation.operation,sourcePreparation.auth,randomUUID(),sourceHash])
+  await a.query('SELECT registrar_envio_revisado_homologacion($1,$2,$3,$4,$5,0,clock_timestamp())',[sourcePreparation.auth,sourcePreparation.operation,receiptAttempt,sourceHash,receiptPermission])
+  await a.query('SELECT registrar_reconciliacion_fiscal_homologacion($1,$2,$3,$4,1,$5::jsonb)',[randomUUID(),sourcePreparation.operation,receiptAttempt,sourceHash,JSON.stringify({estado:'AUTORIZACION_COINCIDENTE',cae:'11111111111111',vencimiento:'20261031',procesadoEn:null,solicitudSha256:sourceHash,puedeReenviar:false})])
+  await start(b);const waitingReceipt=capture(b.query('SELECT cargar_constancia_fiscal_homologacion($1,$2,$3) data',[sourcePreparation.auth,sourcePreparation.sale,sourcePreparation.operation]))
+  await waitForLock(observer,b);await a.query('COMMIT')
+  const receiptAfter=await waitingReceipt;assert(!receiptAfter.error);assert.equal(receiptAfter.value.rows[0].data.autorizacion.cae,'11111111111111')
+  assert.equal(receiptAfter.value.rows[0].data.solicitud.sha256,sourceHash);await b.query('COMMIT')
+  cases.push('constancia_espera_cierre_atomico_y_recupera_CAE_guardado')
+  const receiptReplacement=randomUUID();await observer.query('INSERT INTO auth.users VALUES($1)',[receiptReplacement])
+  await a.query('BEGIN');await a.query('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[receiptReplacement,sourcePreparation.owner])
+  await start(b);const reassignedReceipt=capture(b.query('SELECT cargar_constancia_fiscal_homologacion($1,$2,$3)',[sourcePreparation.auth,sourcePreparation.sale,sourcePreparation.operation]))
+  await waitForLock(observer,b);await a.query('COMMIT');assert.equal((await reassignedReceipt).error?.code,'42501');await b.query('ROLLBACK')
+  await start(b);const foreignReceipt=await capture(b.query('SELECT cargar_constancia_fiscal_homologacion($1,$2,$3)',[receiptReplacement,sourcePreparation.sale,sourcePreparation.operation]))
+  assert.equal(foreignReceipt.error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('Auth_reasignado_durante_lectura_no_revela_constancia_a_ninguna_cuenta')
   const returnedPreparation=await preparationFixture(98)
   await start(a);await savePreparation(a,returnedPreparation);await a.query('COMMIT')
   await a.query('BEGIN');await a.query("SELECT set_config('request.jwt.claim.sub',$1,true)",[returnedPreparation.auth])

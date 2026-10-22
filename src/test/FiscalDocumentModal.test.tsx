@@ -12,7 +12,8 @@ function fixture(){
  const resolve=vi.fn<FiscalClient['resolve']>().mockResolvedValue(empty)
  const context=vi.fn<FiscalClient['context']>().mockResolvedValue({version:1,venta_id:scope.saleId,total:'123.45',cuit_emisor:wsfeSample.cuitEmisor,punto_venta:7,incluye_recepcion_envases:false,revision_parametros:1,condiciones:[{id:5,descripcion:'Ensayo',comprobantes:[11]}],alicuotas:[]})
  const review=vi.fn<FiscalClient['review']>().mockResolvedValue({operacion_id:operation,estado:'RESERVADA',revision:1,solicitud:{version:1,solicitud:wsfeSample,sha256:'a'.repeat(64)},aprobacion:null})
- const client:FiscalClient={resolve,context,review,prepare:vi.fn(async()=>review(operation)),pending:vi.fn(()=>null),save:vi.fn(async()=>saved),approvalId:vi.fn(()=>approval),approve:vi.fn<FiscalClient['approve']>(async()=>({id:approval,operacion_id:operation,solicitud_sha256:'a'.repeat(64),revision:1,aprobada:true,vence_en:new Date(Date.now()+600000).toISOString(),emision_habilitada:false}))}
+ const receipt=vi.fn<FiscalClient['receipt']>().mockRejectedValue(new Error('SYNTHETIC_UNAVAILABLE'))
+ const client:FiscalClient={resolve,context,review,receipt,prepare:vi.fn(async()=>review(operation)),pending:vi.fn(()=>null),save:vi.fn(async()=>saved),approvalId:vi.fn(()=>approval),approve:vi.fn<FiscalClient['approve']>(async()=>({id:approval,operacion_id:operation,solicitud_sha256:'a'.repeat(64),revision:1,aprobada:true,vence_en:new Date(Date.now()+600000).toISOString(),emision_habilitada:false}))}
  return {client,resolve,context,review}
 }
 it('abre carga explícita desde una venta sin datos fiscales previos',async()=>{
@@ -86,4 +87,26 @@ it('cuerpo sin confirmación conserva estado e identidad para consulta',async()=
  fireEvent.click(await screen.findByRole('button',{name:'Preparar comprobante para revisar'}))
  await screen.findByRole('alert');expect(f.client.prepare).toHaveBeenCalledExactlyOnceWith(operation)
  expect(f.client.save).not.toHaveBeenCalled();expect(screen.queryByRole('form')).toBeNull()
+})
+
+it('muestra constancia de homologación recuperada sin controles de aprobar ni emitir',async()=>{
+ const f=fixture();f.resolve.mockResolvedValue({...saved,estado:'AUTORIZADA'})
+ vi.mocked(f.client.receipt).mockResolvedValue({version:1,entorno:'HOMOLOGACION',estado:'AUTORIZADA',operacion_id:operation,venta_id:scope.saleId,solicitud:{version:1,solicitud:wsfeSample,sha256:'a'.repeat(64)},autorizacion:{cae:'11111111111111',vencimiento:'20261031',procesado_en:null}})
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ await screen.findByRole('region',{name:'Constancia fiscal de homologación'})
+ expect(screen.getByText('11111111111111')).toBeTruthy();expect(screen.getByText('31/10/2026')).toBeTruthy()
+ expect(screen.getByText(/sin validez fiscal/)).toBeTruthy();expect(screen.getByText('No informadas')).toBeTruthy()
+ expect(f.client.receipt).toHaveBeenCalledExactlyOnceWith(operation);expect(f.review).not.toHaveBeenCalled()
+ expect(screen.queryByRole('checkbox')).toBeNull();expect(screen.queryByRole('form')).toBeNull();expect(f.client.approve).not.toHaveBeenCalled()
+})
+it('constancia tardía no aparece al seleccionar otra venta',async()=>{
+ const first=fixture(),second=fixture();first.resolve.mockResolvedValue({...saved,estado:'AUTORIZADA'})
+ let finish!:(value:Awaited<ReturnType<FiscalClient['receipt']>>)=>void
+ vi.mocked(first.client.receipt).mockReturnValue(new Promise(done=>{finish=done}))
+ const view=render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={first.client} />)
+ await waitFor(()=>expect(first.client.receipt).toHaveBeenCalledTimes(1))
+ view.rerender(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={{...scope,saleId:'66666666-6666-4666-8666-666666666666'}} client={second.client} />)
+ await screen.findByRole('form')
+ await act(async()=>finish({version:1,entorno:'HOMOLOGACION',estado:'AUTORIZADA',operacion_id:operation,venta_id:scope.saleId,solicitud:{version:1,solicitud:wsfeSample,sha256:'a'.repeat(64)},autorizacion:{cae:'11111111111111',vencimiento:'20261031',procesado_en:null}}))
+ expect(screen.queryByText('11111111111111')).toBeNull()
 })
