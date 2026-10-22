@@ -11,6 +11,7 @@ import { withFiscalDeadline } from './fiscalVoucherXml.ts'
 import { validateFiscalOwnerReview, validateFiscalOwnerApproval } from './fiscalOwnerReview.ts'
 import { loadFiscalPreparation, resolveFiscalSale, saveFiscalPreparation } from './fiscalPreparationService.ts'
 import { parseFiscalJson } from './fiscalStrictJson.ts'
+import { prepareFiscalVoucher } from './fiscalPreparationWorker.ts'
 
 const origin='https://kiosco-app-staging.vercel.app'
 const invalid=():never=>{throw new Error('FISCAL_SOLICITUD_INVALIDA')}
@@ -22,6 +23,7 @@ type FiscalHttpCommand=
   | {accion:'CONCILIAR';operacion_id:string;observacion_id:string}
   | {accion:'ESTADO_TA';operacion_id:string}
   | {accion:'REVISAR_COMPROBANTE';operacion_id:string}
+  | {accion:'PREPARAR_COMPROBANTE';operacion_id:string}
   | {accion:'APROBAR_REVISION';operacion_id:string;revision_id:string;solicitud_sha256:string;revision:number}
   | {accion:'CANCELAR_PREPARACION_TA';operacion_id:string;intento_id:string;revision:number}
 
@@ -52,6 +54,7 @@ async function command(request:Request):Promise<FiscalHttpCommand> {
     const op=b.operacion_id.toLowerCase()
     if(b.accion==='ESTADO_TA'&&keys.length===2)return {accion:b.accion,operacion_id:op}
     if(b.accion==='REVISAR_COMPROBANTE'&&keys.length===2)return {accion:b.accion,operacion_id:op}
+    if(b.accion==='PREPARAR_COMPROBANTE'&&keys.length===2)return {accion:b.accion,operacion_id:op}
     if(b.accion==='APROBAR_REVISION'&&keys.length===5&&uuid(b.revision_id)&&typeof b.solicitud_sha256==='string'&&/^[0-9a-f]{64}$/.test(b.solicitud_sha256)&&Number.isSafeInteger(b.revision)&&Number(b.revision)>0)
       return {accion:b.accion,operacion_id:op,revision_id:b.revision_id.toLowerCase(),solicitud_sha256:b.solicitud_sha256,revision:Number(b.revision)}
     if(b.accion==='CONCILIAR'&&keys.length===3&&uuid(b.observacion_id))return {accion:b.accion,operacion_id:op,observacion_id:b.observacion_id.toLowerCase()}
@@ -79,7 +82,7 @@ export interface FiscalHttpDependencies {
   fetcher:typeof fetch
 }
 /** Sólo homologación: preparación de datos, consulta, revisión y recuperación.
- * Deshabilitado por defecto; no reserva cuerpos finales ni envía facturas. */
+ * Deshabilitado por defecto; reservar cuerpo tiene otro gate. No envía facturas. */
 export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Request)=>Promise<Response> {
   const cache=createFiscalTicketCache()
   return async request=>{
@@ -104,6 +107,11 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
         result=cmd.accion==='RESOLVER_VENTA'?await resolveFiscalSale(preparation,token,cmd.venta_id)
           :cmd.accion==='DATOS_FISCALES_VENTA'?await loadFiscalPreparation(preparation,token,cmd.venta_id)
           :await saveFiscalPreparation(preparation,token,cmd.venta_id,cmd.operacion_id,cmd.entrada)
+      }else if(cmd.accion==='PREPARAR_COMPROBANTE'){
+        result=await prepareFiscalVoucher({admin,readSecret:deps.readSecret,cache,fetcher:deps.fetcher,
+          load:(binding,signal)=>createSharedFiscalTicketLoader(admin,createPrivateFiscalTicketKeys(deps.readSecret),
+            createWsaaTicketSource(createPrivateFiscalCustody(deps.readSecret),deps.fetcher))(binding,signal),
+        },token,cmd.operacion_id)
       }else if(cmd.accion==='CONCILIAR'){
         const load=createSharedFiscalTicketLoader(admin,createPrivateFiscalTicketKeys(deps.readSecret),
           createWsaaTicketSource(createPrivateFiscalCustody(deps.readSecret),deps.fetcher))
@@ -132,6 +140,7 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
       }
       return json({version:1,entorno:'HOMOLOGACION',emision_habilitada:false,resultado:result})
     }catch(error){
+      if(error instanceof Error&&error.message==='FISCAL_PREPARACION_CUERPO_NO_HABILITADA')return json({codigo:'PREPARACION_CUERPO_NO_HABILITADA'},503)
       if(error instanceof Error&&error.message==='FISCAL_CONSULTA_NO_AUTORIZADA')return json({codigo:'CONSULTA_NO_AUTORIZADA'},403)
       return json({codigo:'OPERACION_NO_CONFIRMADA',error:'Conservá los identificadores originales y revisá el estado antes de reintentar.'},409)
     }

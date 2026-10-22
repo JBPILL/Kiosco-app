@@ -22,9 +22,11 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
   const [approvalId, setApprovalId] = useState('')
   const [busy, setBusy] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [preparing, setPreparing] = useState(false)
   const [error, setError] = useState('')
   const generation = useRef(0)
   const saveInFlight = useRef(false)
+  const preparationInFlight = useRef(false)
   const alive = useRef(true)
   const cancelRequests = useCallback(() => { alive.current = false; generation.current++ }, [])
   const [pendingInput, setPendingInput] = useState<FiscalPreparationInput | null>(null)
@@ -77,9 +79,20 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
     setSaving(true)
     const current = generation.current
     try {
-      await client.save(input)
+      await client.save(input, context ?? undefined)
       if (generation.current === current) await load(client)
     } finally { saveInFlight.current = false; if (alive.current) setSaving(false) }
+  }
+  async function prepareBody() {
+    if (!client || !resolution?.operacion_id || preparationInFlight.current) return
+    preparationInFlight.current = true; setPreparing(true); setError('')
+    const current = generation.current
+    try {
+      await client.prepare(resolution.operacion_id)
+      if (generation.current === current) await load(client)
+    } catch {
+      if (generation.current === current) setError('No se confirmó la preparación del comprobante. Volvé a consultar su estado; no prepares otro comprobante para esta venta.')
+    } finally { preparationInFlight.current = false; if (alive.current) setPreparing(false) }
   }
   return <Modal isOpen onClose={onClose} title="Preparación y revisión fiscal · Homologación" size="xl" footer={<Button variant="secondary" onClick={onClose}>Cerrar</Button>}>
     <div className="space-y-4">
@@ -87,13 +100,13 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
       {error && <p role="alert">{error}</p>}
       {!busy && context && <FiscalPreparationForm context={context} onPrepare={save} />}
       {!busy && resolution?.estado === 'SIN_PREPARACION' && hasLocalRecord && <div className="space-y-3"><p>Este equipo conserva un guardado pendiente. Recuperá el mismo intento antes de cargar otros datos.</p>{pendingInput && <Button loading={saving} onClick={() => { const current = generation.current; void save(pendingInput).catch(() => { if (generation.current === current) setError('No se confirmó el guardado. Volvé a consultar su estado antes de reintentar.') }) }}>Reintentar datos guardados</Button>}</div>}
-      {!busy && resolution?.estado === 'DATOS_PREPARADOS' && <p role="status">Datos fiscales guardados. Todavía falta preparar el cuerpo del comprobante para revisión; no se emitió una factura ni se obtuvo un CAE.</p>}
+      {!busy && resolution?.estado === 'DATOS_PREPARADOS' && <div className="space-y-3"><p role="status">Datos fiscales guardados. Todavía falta preparar el cuerpo del comprobante para revisión; no se emitió una factura ni se obtuvo un CAE.</p>{client && <Button loading={preparing} onClick={() => { void prepareBody() }}>Preparar comprobante para revisar</Button>}</div>}
       {!busy && resolution?.estado === 'REGISTRO_FISCAL_HEREDADO' && <p role="status">Existe un registro fiscal anterior. Consultá la constancia original; no se preparará otro comprobante desde esta venta.</p>}
       {!busy && resolution?.estado === 'REQUIERE_REVISION' && <p role="status">La operación existente requiere revisión de su identidad o contexto. No se iniciará otra preparación.</p>}
       {!busy && resolution?.estado === 'NO_DISPONIBLE' && <p role="status">Esta venta no está disponible para preparar un comprobante fiscal.</p>}
       {!busy && resolution?.estado === 'AUTORIZADA' && !review && <p role="status">La operación figura autorizada en el servidor. Falta recuperar su constancia fiscal; no se iniciará otra preparación.</p>}
       {!busy && review && client && <FiscalOwnerReviewPanel review={review} approvalId={approvalId} onApprove={command => client.approve(review, command.id)} />}
-      {!busy && client && <Button variant="secondary" disabled={saving} onClick={() => { void load(client) }}>Volver a consultar estado</Button>}
+      {!busy && client && <Button variant="secondary" disabled={saving || preparing} onClick={() => { void load(client) }}>Volver a consultar estado</Button>}
     </div>
   </Modal>
 }

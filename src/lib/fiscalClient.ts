@@ -1,4 +1,5 @@
-import type { FiscalPreparationInput } from '../../supabase/functions/_shared/fiscalPreparationContract'
+import type { FiscalPreparationInput, FiscalPreparationContext } from '../../supabase/functions/_shared/fiscalPreparationContract'
+import { prepareFiscalData } from '../../supabase/functions/_shared/fiscalPreparation'
 import type { FiscalOwnerReview } from '../../supabase/functions/_shared/fiscalOwnerReview'
 import { validateFiscalPreparationContext, validateFiscalSaleResolution } from '../../supabase/functions/_shared/fiscalPreparationPublic'
 import { validateFiscalOwnerApproval, validatePublicFiscalOwnerReview } from '../../supabase/functions/_shared/fiscalOwnerReview'
@@ -55,13 +56,21 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
       if (value.venta_id !== sale) return fail()
       return value
     },
-    async save(input: FiscalPreparationInput) {
+    async save(input: FiscalPreparationInput, context?: FiscalPreparationContext) {
+      const candidate = structuredClone(input)
       let original = pending()
-      if (original && (original.input === null || JSON.stringify(original.input) !== JSON.stringify(input))) return fail()
+      if (original && (original.input === null || JSON.stringify(original.input) !== JSON.stringify(candidate))) return fail()
       if (!original) {
-        original = { version: 1, operationId: crypto.randomUUID(), input: structuredClone(input) }
-        if (JSON.stringify(original).length > 65536) return fail()
-        write(key, original)
+        if (!context || context.venta_id !== sale) return fail()
+        await prepareFiscalData(context, candidate)
+        // La validación es asíncrona: otro intento pudo guardar identidad mientras.
+        original = pending()
+        if (original && (original.input === null || JSON.stringify(original.input) !== JSON.stringify(candidate))) return fail()
+        if (!original) {
+          original = { version: 1, operationId: crypto.randomUUID(), input: candidate }
+          if (JSON.stringify(original).length > 65536) return fail()
+          write(key, original)
+        }
       }
       const ack = object(await invoke({ accion: 'GUARDAR_DATOS_FISCALES', venta_id: sale, operacion_id: original.operationId, entrada: original.input }), ['operacion_id', 'venta_id', 'preparacion_sha256', 'estado', 'emision_habilitada'])
       if (ack.operacion_id !== original.operationId || ack.venta_id !== sale || ack.estado !== 'DATOS_PREPARADOS' || ack.emision_habilitada !== false
@@ -75,6 +84,10 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
     async review(operationId: string) {
       if (!uuid(operationId)) return fail()
       return validatePublicFiscalOwnerReview(await invoke({ accion: 'REVISAR_COMPROBANTE', operacion_id: operationId }), operationId)
+    },
+    async prepare(operationId: string) {
+      if (!uuid(operationId)) return fail()
+      return validatePublicFiscalOwnerReview(await invoke({ accion: 'PREPARAR_COMPROBANTE', operacion_id: operationId }), operationId)
     },
     approvalId(review: FiscalOwnerReview) {
       const name = `${key}:review:${review.operacion_id}:${review.revision}:${review.solicitud.sha256}`

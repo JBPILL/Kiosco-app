@@ -3,7 +3,7 @@ export { validateFiscalPreparationContext } from './fiscalPreparationPublic.ts'
 import { freezeFiscalRequest } from './fiscalReconciliation.ts'
 import type { FiscalRequestData, FrozenFiscalRequest } from './fiscalReconciliation.ts'
 import type { FiscalPreparationContext, FiscalPreparationInput, FiscalIssuerCondition } from './fiscalPreparationContract.ts'
-import { verifyFiscalEmissionRequest } from './fiscalWsfeEmission.ts'
+import { verifyFiscalEmissionRequest } from './fiscalEmissionContract.ts'
 
 const fail=():never=>{throw new Error('FISCAL_DATOS_EXPLICITOS_INVALIDOS')}
 function object(value:unknown,keys:readonly string[]):Record<string,unknown> {
@@ -51,4 +51,16 @@ export async function requestFromPreparedFiscalData(prepared:Readonly<PreparedFi
  const base={version:prepared.version,venta_id:prepared.venta_id,condicionEmisor:prepared.condicionEmisor,revision_parametros:prepared.revision_parametros,datos:prepared.datos}
  if(JSON.stringify(base)!==prepared.canonico)return fail()
  return freezeFiscalRequest({...prepared.datos,numero})
+}
+/** Verificación de datos guardados sin confiar en orden JSONB ni reconstruir
+ * importes por inferencia. El canónico original debe coincidir byte por byte. */
+export async function verifySavedFiscalPreparation(context:FiscalPreparationContext,canonico:unknown,hash:unknown):Promise<Readonly<PreparedFiscalData>> {
+ if(typeof canonico!=='string'||new TextEncoder().encode(canonico).length>262144||typeof hash!=='string'||!/^[0-9a-f]{64}$/.test(hash))return fail()
+ const root=object(JSON.parse(canonico),['version','venta_id','condicionEmisor','revision_parametros','datos'])
+ const data=object(root.datos,['version','entorno','cuitEmisor','puntoVenta','tipoComprobante','concepto','tipoDocumento','numeroDocumento','condicionIvaReceptor','fecha','servicioDesde','servicioHasta','vencimientoPago','moneda','cotizacion','importes','iva','tributos'])
+ const {version:_v,entorno:_e,cuitEmisor:_c,puntoVenta:_p,importes,...input}=data
+ const {total:_t,...amounts}=object(importes,['total','neto','iva','noGravado','exento','tributos'])
+ const verified=await prepareFiscalData(context,{condicionEmisor:root.condicionEmisor,datos:{...input,importes:amounts}})
+ if(verified.canonico!==canonico||verified.sha256!==hash)return fail()
+ return verified
 }

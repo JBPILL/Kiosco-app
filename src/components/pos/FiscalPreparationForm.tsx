@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../ui/Button'
 import type { FiscalIssuerCondition, FiscalPreparationContext, FiscalPreparationInput } from '../../../supabase/functions/_shared/fiscalPreparationContract'
+import { prepareFiscalData } from '../../../supabase/functions/_shared/fiscalPreparation'
 
 interface Props {
   context: FiscalPreparationContext
@@ -79,7 +80,9 @@ function PreparationBody({ context, onPrepare }: Props) {
           }),
         },
       }
-      await onPrepare(input)
+      try { await prepareFiscalData(context, input) }
+      catch { throw new PreparationInputError('Revisá el receptor, las fechas y el desglose fiscal. Los importes y el detalle deben coincidir con el total de la venta.') }
+      if (mounted.current) await onPrepare(input)
     } catch (cause) {
       // Sólo errores locales conocidos se muestran; el adaptador no debe filtrar respuestas privadas.
       if (mounted.current) setError(cause instanceof PreparationInputError

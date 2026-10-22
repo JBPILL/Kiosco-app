@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { expect, it } from 'vitest'
-import { prepareFiscalData, requestFromPreparedFiscalData, validateFiscalPreparationContext } from '../../supabase/functions/_shared/fiscalPreparation'
+import { prepareFiscalData, requestFromPreparedFiscalData, validateFiscalPreparationContext, verifySavedFiscalPreparation } from '../../supabase/functions/_shared/fiscalPreparation'
 import type { FiscalPreparationContext, FiscalPreparationInput } from '../../supabase/functions/_shared/fiscalPreparationContract'
 import { wsfeSample } from './fixtures/fiscalWsfe'
 
@@ -64,4 +64,11 @@ it('cambio del hash/datos de preparación y numeración inválida no crean cuerp
  await expect(requestFromPreparedFiscalData({...p,sha256:'0'.repeat(64)},1)).rejects.toThrow()
  await expect(requestFromPreparedFiscalData({...p,datos:{...p.datos,fecha:'20261022'}},1)).rejects.toThrow()
  for(const n of [0,1.1,NaN,100000000])await expect(requestFromPreparedFiscalData(p,n)).rejects.toThrow()
+})
+it('datos guardados se verifican contra su canónico exacto y contexto actual',async()=>{
+ const p=await prepareFiscalData(context,input())
+ expect(await verifySavedFiscalPreparation(context,p.canonico,p.sha256)).toEqual(p)
+ await expect(verifySavedFiscalPreparation({...context,revision_parametros:2},p.canonico,p.sha256)).rejects.toThrow()
+ await expect(verifySavedFiscalPreparation(context,p.canonico,'0'.repeat(64))).rejects.toThrow()
+ await expect(verifySavedFiscalPreparation(context,' '+p.canonico,p.sha256)).rejects.toThrow()
 })

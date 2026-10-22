@@ -95,7 +95,7 @@ try {
     ...readdirSync(join(bootstrap,'steps')).sort().map(file=>join(bootstrap,'steps',file)),join(bootstrap,'900_final_security.sql'),
     join(root,'supabase/pilot-fiscal/001_fiscal_journal.sql'),join(root,'supabase/pilot-fiscal/002_fiscal_reservations.sql'),
     join(root,'supabase/pilot-fiscal/003_fiscal_requests.sql'),join(root,'supabase/pilot-fiscal/004_fiscal_reconciliation.sql'),
-    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql'),join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql')]) {
+    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql'),join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql'),join(root,'supabase/pilot-fiscal/013_fiscal_preparation_source.sql')]) {
     await observer.query(readFileSync(file,'utf8'))
     if(file.endsWith('011_fiscal_owner_review.sql')){
       await observer.query('SELECT fiscal_exigir_actor_preparacion($1,$2)',[randomUUID(),randomUUID()])
@@ -382,6 +382,26 @@ try {
   await start(b);const foreignReview=await capture(b.query('SELECT cargar_revision_fiscal_homologacion($1,$2)',[reviewedPreparation.operation,replacementAuth]));assert.equal(foreignReview.error?.code,'42501');await b.query('ROLLBACK')
   await start(b);const foreignApproval=await capture(b.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1)',[reviewedPreparation.operation,replacementAuth,randomUUID(),preparedHash]));assert.equal(foreignApproval.error?.code,'42501');await b.query('ROLLBACK')
   cases.push('Auth_nuevo_no_revisa_ni_aprueba_preparacion_del_Auth_original')
+  const sourcePreparation=await preparationFixture(97)
+  await start(a);await savePreparation(a,sourcePreparation);await a.query('COMMIT')
+  await start(a)
+  const sourceBefore=(await a.query('SELECT cargar_fuente_preparacion_homologacion($1,$2) data',[sourcePreparation.auth,sourcePreparation.operation])).rows[0].data
+  assert.equal(sourceBefore.estado,'DATOS_PREPARADOS');assert.equal(sourceBefore.preparacion_sha256,sourcePreparation.hash)
+  const sourceBody=JSON.stringify({...JSON.parse(sourcePreparation.canonical).datos,numero:1}),sourceHash=createHash('sha256').update(sourceBody).digest('hex')
+  await a.query('SELECT persistir_preparacion_fiscal_homologacion($1,$2,$3,$4,0,clock_timestamp())',[sourcePreparation.auth,sourcePreparation.operation,sourceBody,sourceHash])
+  await start(b);const waitingSource=capture(b.query('SELECT cargar_fuente_preparacion_homologacion($1,$2) data',[sourcePreparation.auth,sourcePreparation.operation]))
+  await waitForLock(observer,b);await a.query('COMMIT')
+  const sourceAfter=await waitingSource;assert(!sourceAfter.error)
+  assert.deepEqual(sourceAfter.value.rows[0].data,{operacion_id:sourcePreparation.operation,estado:'CUERPO_EXISTENTE',contexto:null,canonico:null,preparacion_sha256:null});await b.query('COMMIT')
+  cases.push('fuente_espera_reserva_y_recupera_cuerpo_sin_pedir_otra_numeracion')
+  const returnedPreparation=await preparationFixture(98)
+  await start(a);await savePreparation(a,returnedPreparation);await a.query('COMMIT')
+  await a.query('BEGIN');await a.query("SELECT set_config('request.jwt.claim.sub',$1,true)",[returnedPreparation.auth])
+  await a.query('INSERT INTO devoluciones_venta(venta_id,kiosco_id) VALUES($1,$2)',[returnedPreparation.sale,returnedPreparation.kid])
+  await start(b);const waitingReturnSource=capture(b.query('SELECT cargar_fuente_preparacion_homologacion($1,$2)',[returnedPreparation.auth,returnedPreparation.operation]))
+  await waitForLock(observer,b);await a.query('COMMIT');assert.equal((await waitingReturnSource).error?.code,'22023');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[returnedPreparation.operation])).rows[0].n,0)
+  cases.push('devolucion_durante_espera_fuente_bloquea_antes_consulta_numeracion')
   const replacedActor=await preparationFixture(91),newActor=randomUUID()
   await observer.query('INSERT INTO auth.users VALUES($1)',[newActor])
   await a.query('BEGIN');await a.query('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[newActor,replacedActor.owner])

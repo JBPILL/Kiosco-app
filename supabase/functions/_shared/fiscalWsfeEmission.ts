@@ -1,6 +1,8 @@
 import type { Element as XmlElement } from '@xmldom/xmldom'
 import { normalizeFiscalSeries, verifyFiscalRequest, escapeFiscalXml, buildFiscalAuthXml } from './fiscalReconciliation.ts'
 import type { FiscalSeries, FrozenFiscalRequest } from './fiscalReconciliation.ts'
+import { verifyFiscalEmissionRequest } from './fiscalEmissionContract.ts'
+export { verifyFiscalEmissionRequest } from './fiscalEmissionContract.ts'
 import type { PrivateWsaaTicket } from './fiscalTicketCache.ts'
 import { parseFiscalXmlRoot, fiscalXmlSchema as schema, fiscalXmlOne as one, fiscalXmlChildren as children, withFiscalDeadline as deadline } from './fiscalVoucherXml.ts'
 
@@ -60,19 +62,10 @@ export function decodeLastFiscalNumber(xml:string,expected:unknown):number {
   if(errors.length||integer(r,'PtoVta',99998)!==s.puntoVenta||integer(r,'CbteTipo',11)!==s.tipoComprobante)return fail()
   return integer(r,'CbteNro')
 }
-export async function consultLastFiscalNumber(expected:unknown,ticket:PrivateWsaaTicket,fetcher:typeof fetch,timeoutMs=15000):Promise<{ultimo:number;consultado_en:string}> {
+export async function consultLastFiscalNumber(expected:unknown,ticket:PrivateWsaaTicket,fetcher:typeof fetch,timeoutMs=15000,beforeSend?:()=>Promise<void>):Promise<{ultimo:number;consultado_en:string}> {
   const s=series(expected),req=request('FECompUltimoAutorizado',buildFiscalAuthXml(s,ticket)+`<PtoVta>${s.puntoVenta}</PtoVta><CbteTipo>${s.tipoComprobante}</CbteTipo>`)
-  const xml=await post(req,fetcher,timeoutMs,ticket.expiresAt)
+  const xml=await post(req,fetcher,timeoutMs,ticket.expiresAt,beforeSend)
   return {ultimo:decodeLastFiscalNumber(xml,s),consultado_en:new Date().toISOString()}
-}
-/** Un comprobante por cuerpo persistido. Sin defaults de IVA ni redondeos. */
-export async function verifyFiscalEmissionRequest(input:unknown):Promise<FrozenFiscalRequest> {
-  const frozen=await verifyFiscalRequest(input),s=frozen.solicitud
-  series({entorno:s.entorno,cuitEmisor:s.cuitEmisor,puntoVenta:s.puntoVenta,tipoComprobante:s.tipoComprobante})
-  if(s.condicionIvaReceptor>99||s.vencimientoPago&&s.vencimientoPago<s.fecha
-    ||s.tributos.some(t=>t.id>32767||t.descripcion.length>80||!/^(0|[1-9]\d{0,2})\.\d{2}00$/.test(t.alicuota)))return fail()
-  for(const t of s.tributos)escapeFiscalXml(t.descripcion)
-  return frozen
 }
 export async function buildFiscalEmissionRequest(input:unknown,ticket:PrivateWsaaTicket):Promise<Request> {
   const frozen=await verifyFiscalEmissionRequest(input),s=frozen.solicitud

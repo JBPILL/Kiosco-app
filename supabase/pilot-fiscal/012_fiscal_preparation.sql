@@ -82,6 +82,7 @@ BEGIN
  venta:=public.fiscal_venta_preparacion_homologacion(p_actor_auth_id,p_venta_id);
  IF venta.estado IS DISTINCT FROM 'COMPLETADA' OR venta.total IS NULL OR venta.total<=0
   OR nullif(btrim(to_jsonb(venta)->>'afip_cae'),'') IS NOT NULL
+  OR EXISTS(SELECT 1 FROM public.devoluciones_venta WHERE venta_id=venta.id)
   OR NOT EXISTS(SELECT 1 FROM public.detalles_venta WHERE venta_id=venta.id) THEN
   RAISE EXCEPTION 'Venta no disponible para preparación fiscal.' USING ERRCODE='22023'; END IF;
  SELECT * INTO emisor FROM public.fiscal_emisores_homologacion WHERE kiosco_id=venta.kiosco_id AND habilitado FOR SHARE;

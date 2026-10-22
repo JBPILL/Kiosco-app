@@ -5,6 +5,7 @@ import type { FiscalAuthClient, FiscalWorkerBinding } from '../../supabase/funct
 import { FISCAL_STAGING_URL } from '../../supabase/functions/_shared/fiscalSupabaseAdmin'
 import { freezeFiscalRequest } from '../../supabase/functions/_shared/fiscalReconciliation'
 import { wsfeSample } from './fixtures/fiscalWsfe'
+import { prepareFiscalData } from '../../supabase/functions/_shared/fiscalPreparation'
 
 const op=crypto.randomUUID(),attempt=crypto.randomUUID(),observation=crypto.randomUUID()
 const binding:FiscalWorkerBinding={version:1,entorno:'HOMOLOGACION',servicio:'wsfe',operacion_id:op,kiosco_id:crypto.randomUUID(),usuario_id:crypto.randomUUID(),
@@ -74,6 +75,25 @@ async function reviewFixture(){
   f.rpc.mockImplementation(async name=>({data:name==='autorizar_consulta_fiscal_homologacion'?binding:name==='cargar_revision_fiscal_homologacion'?ctx:ack,error:null}))
   return {...f,ctx,ack,actorAuthId,body:{accion:'APROBAR_REVISION',operacion_id:op,revision_id:id,solicitud_sha256:frozen.sha256,revision:1}}
 }
+it('PREPARAR_COMPROBANTE recupera cuerpo existente sin gate de consulta, TA ni red',async()=>{
+ const f=await reviewFixture()
+ f.rpc.mockImplementation(async name=>({data:name==='autorizar_consulta_fiscal_homologacion'?binding:name==='cargar_fuente_preparacion_homologacion'
+  ?{operacion_id:op,estado:'CUERPO_EXISTENTE',contexto:null,canonico:null,preparacion_sha256:null}:f.ctx,error:null}))
+ const response=await f.handler(request(JSON.stringify({accion:'PREPARAR_COMPROBANTE',operacion_id:op})))
+ expect(response.status).toBe(200);expect((await response.json()).resultado.solicitud.sha256).toBe(f.ctx.solicitud.sha256)
+ expect(f.getUser).toHaveBeenCalledTimes(1);expect(f.fetcher).not.toHaveBeenCalled()
+ expect(f.read.mock.calls.some(([key])=>/CUSTODY|KEYRING|TICKET_KEYS/.test(key))).toBe(false)
+})
+it('PREPARAR_COMPROBANTE nuevo exige gate privado antes de instanciar custodia',async()=>{
+ const f=await reviewFixture(),context={version:1 as const,venta_id:crypto.randomUUID(),total:'123.45',cuit_emisor:binding.cuit_emisor,punto_venta:binding.punto_venta,incluye_recepcion_envases:false,revision_parametros:1,condiciones:[{id:5,descripcion:'Ensayo',comprobantes:[11]}],alicuotas:[]}
+ const {version:_v,entorno:_e,cuitEmisor:_c,puntoVenta:_p,numero:_n,...data}=wsfeSample
+ const {total:_t,...importes}=data.importes
+ const prepared=await prepareFiscalData(context,{condicionEmisor:'MONOTRIBUTO',datos:{...data,importes}})
+ f.rpc.mockImplementation(async name=>({data:name==='autorizar_consulta_fiscal_homologacion'?binding:{operacion_id:op,estado:'DATOS_PREPARADOS',contexto:context,canonico:prepared.canonico,preparacion_sha256:prepared.sha256},error:null}))
+ const response=await f.handler(request(JSON.stringify({accion:'PREPARAR_COMPROBANTE',operacion_id:op})))
+ expect(response.status).toBe(503);expect((await response.json()).codigo).toBe('PREPARACION_CUERPO_NO_HABILITADA')
+ expect(f.fetcher).not.toHaveBeenCalled();expect(f.read.mock.calls.some(([key])=>/CUSTODY|KEYRING|TICKET_KEYS/.test(key))).toBe(false)
+})
 it('revisión devuelve cuerpo validado sin credenciales, TA ni consultas a ARCA',async()=>{
   const f=await reviewFixture(),r=await f.handler(request(JSON.stringify({accion:'REVISAR_COMPROBANTE',operacion_id:op})))
   expect(r.status).toBe(200);expect((await r.json()).resultado).toEqual(f.ctx)

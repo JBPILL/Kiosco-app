@@ -33,3 +33,8 @@ it('no deja al SDK elegir credenciales si falta el token de la sesión comprobad
  mocks.session.mockResolvedValue({data:{session:{user:{id:scope.authId}}},error:null})
  await expect(createFiscalBrowserClient(scope).resolve()).rejects.toThrow('FISCAL_SESION_CAMBIO');expect(mocks.invoke).not.toHaveBeenCalled()
 })
+it('preparar cuerpo usa timeout acotado mayor y la misma sesión fijada',async()=>{
+ // La fixture devuelve estado de venta, no revisión: debe rechazarse ese DTO.
+ await expect(createFiscalBrowserClient(scope).prepare(scope.saleId)).rejects.toThrow()
+ expect(mocks.invoke).toHaveBeenCalledExactlyOnceWith('arca-homologacion',{body:{accion:'PREPARAR_COMPROBANTE',operacion_id:scope.saleId},timeout:40000,headers:{Authorization:'Bearer SYNTHETIC_BROWSER_SESSION'}})
+})

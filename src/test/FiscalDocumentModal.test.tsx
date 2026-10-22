@@ -12,7 +12,7 @@ function fixture(){
  const resolve=vi.fn<FiscalClient['resolve']>().mockResolvedValue(empty)
  const context=vi.fn<FiscalClient['context']>().mockResolvedValue({version:1,venta_id:scope.saleId,total:'123.45',cuit_emisor:wsfeSample.cuitEmisor,punto_venta:7,incluye_recepcion_envases:false,revision_parametros:1,condiciones:[{id:5,descripcion:'Ensayo',comprobantes:[11]}],alicuotas:[]})
  const review=vi.fn<FiscalClient['review']>().mockResolvedValue({operacion_id:operation,estado:'RESERVADA',revision:1,solicitud:{version:1,solicitud:wsfeSample,sha256:'a'.repeat(64)},aprobacion:null})
- const client:FiscalClient={resolve,context,review,pending:vi.fn(()=>null),save:vi.fn(async()=>saved),approvalId:vi.fn(()=>approval),approve:vi.fn<FiscalClient['approve']>(async()=>({id:approval,operacion_id:operation,solicitud_sha256:'a'.repeat(64),revision:1,aprobada:true,vence_en:new Date(Date.now()+600000).toISOString(),emision_habilitada:false}))}
+ const client:FiscalClient={resolve,context,review,prepare:vi.fn(async()=>review(operation)),pending:vi.fn(()=>null),save:vi.fn(async()=>saved),approvalId:vi.fn(()=>approval),approve:vi.fn<FiscalClient['approve']>(async()=>({id:approval,operacion_id:operation,solicitud_sha256:'a'.repeat(64),revision:1,aprobada:true,vence_en:new Date(Date.now()+600000).toISOString(),emision_habilitada:false}))}
  return {client,resolve,context,review}
 }
 it('abre carga explícita desde una venta sin datos fiscales previos',async()=>{
@@ -72,4 +72,18 @@ it('no pierde el estado autorizado si falla la carga de la constancia',async()=>
  expect((await screen.findByRole('alert')).textContent).toContain('Se recuperó el estado fiscal')
  expect(screen.getByText(/La operación figura autorizada en el servidor/)).toBeTruthy()
  expect(screen.queryByRole('form')).toBeNull();expect(f.client.save).not.toHaveBeenCalled()
+})
+it('preparar cuerpo usa la operación original y abre revisión sin aprobar ni emitir',async()=>{
+ const f=fixture();f.resolve.mockResolvedValueOnce(saved).mockResolvedValue({...saved,estado:'RESERVADA'})
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ fireEvent.click(await screen.findByRole('button',{name:'Preparar comprobante para revisar'}))
+ await screen.findByRole('checkbox');expect(f.client.prepare).toHaveBeenCalledExactlyOnceWith(operation)
+ expect(f.client.approve).not.toHaveBeenCalled();expect(f.client.save).not.toHaveBeenCalled()
+})
+it('cuerpo sin confirmación conserva estado e identidad para consulta',async()=>{
+ const f=fixture();f.resolve.mockResolvedValue(saved);vi.mocked(f.client.prepare).mockRejectedValue(new Error('lost'))
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ fireEvent.click(await screen.findByRole('button',{name:'Preparar comprobante para revisar'}))
+ await screen.findByRole('alert');expect(f.client.prepare).toHaveBeenCalledExactlyOnceWith(operation)
+ expect(f.client.save).not.toHaveBeenCalled();expect(screen.queryByRole('form')).toBeNull()
 })

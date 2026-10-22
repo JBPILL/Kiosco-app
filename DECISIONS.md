@@ -510,3 +510,8 @@ Persistir UUID y datos exactos en el equipo antes de POST, con aislamiento por A
 Una preparación 012 no se revisa/aprueba ni consume con el Auth nuevo de un perfil reasignado, aun con UUID conocido o revisión histórica ajena. Guard privado SQL compartido en getter y envío/consumo; compatibilidad de 011 anterior a tabla opcional preservada. Evaluar expiraciones después de completar guards/locks.
 
 Fijar además el header de sesión verificada en el cliente para que la selección posterior del SDK no cambie la cuenta del envío. Es un control de consistencia cliente; Auth.getUser y DB siguen autorizando cada petición. No persistir ese token. La suite anterior al refuerzo se conserva y no se atribuye al código posterior.
+## 22/10/2026 — Validar antes del pendiente y separar numeración de emisión
+
+Reutilizar reglas puras, sin transporte/TA/custodia, antes del primer UUID/cuerpo persistido en el navegador: rechazo local permite corrección. Copiar antes de await y reconsultar identidad local al finalizar evita cambiar el cuerpo o crear UUID distintos en validaciones simultáneas. No borrar ni reemplazar intentos enviados que sigan inciertos.
+
+Preparación de cuerpo requiere gate privado independiente ARCA_HOMO_PREPARATION_ENABLED, inicialmente cerrado y sin autorizar consultas reales por tener código listo. Recuperar cuerpo existente antes de TA/red; para uno nuevo, verificar fuente/Auth original, consultar último número, persistir inmutable y confirmar leyendo DB. Esa acción no emite ni aprueba. Una respuesta/ACK sin cuerpo durable no es éxito y una devolución previa impide siquiera la consulta de numeración. Claves y autorización remota siguen siendo gates distintos.

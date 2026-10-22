@@ -9,6 +9,11 @@ import { prepareFiscalData, requestFromPreparedFiscalData } from '../../supabase
 import { freezeFiscalRequest, serializeFiscalRequest } from '../../supabase/functions/_shared/fiscalReconciliation'
 import type { FiscalPreparationContext, FiscalPreparationInput } from '../../supabase/functions/_shared/fiscalPreparationContract'
 import { wsfeSample } from './fixtures/fiscalWsfe'
+import { prepareFiscalVoucher } from '../../supabase/functions/_shared/fiscalPreparationWorker'
+import { createFiscalTicketCache } from '../../supabase/functions/_shared/fiscalTicketCache'
+import type { FiscalAuthClient } from '../../supabase/functions/_shared/fiscalWorkerAuthorization'
+import type { WsaaTicketLoader } from '../../supabase/functions/_shared/fiscalTicketCache'
+import { vi } from 'vitest'
 
 const db=new PGlite(),kid=crypto.randomUUID(),actor=crypto.randomUUID(),owner=crypto.randomUUID(),sale=crypto.randomUUID(),product=crypto.randomUUID(),op=crypto.randomUUID(),credential=crypto.randomUUID()
 beforeAll(async()=>{
@@ -55,6 +60,24 @@ async function save(canonical:string,hash:string,id=op,who=actor,which=sale){
 async function denied(run:()=>Promise<unknown>){await db.exec('SAVEPOINT denied');await expect(run()).rejects.toThrow();await db.exec('ROLLBACK TO SAVEPOINT denied; RELEASE SAVEPOINT denied')}
 async function admin(sql:string,args:unknown[]=[]){await db.exec('RESET ROLE');await db.query(sql,args);await db.exec('SET ROLE service_role')}
 const hash=(text:string)=>createHash('sha256').update(text).digest('hex')
+function workerFixture(){
+ const flags:Record<string,string>={SUPABASE_URL:'https://acoyfwwmhaeruciyedri.supabase.co',ARCA_HOMO_BACKEND_ENABLED:'true',ARCA_HOMO_PREPARATION_ENABLED:'true'}
+ const mapping:Record<string,string[]>={autorizar_consulta_fiscal_homologacion:['p_actor_auth_id','p_operacion_id'],cargar_fuente_preparacion_homologacion:['p_actor_auth_id','p_operacion_id'],cargar_revision_fiscal_homologacion:['p_operacion_id','p_actor_auth_id'],persistir_preparacion_fiscal_homologacion:['p_actor_auth_id','p_operacion_id','p_canonico','p_sha','p_ultimo_autorizado','p_consultado_en']}
+ const rpc=vi.fn<FiscalAuthClient['rpc']>(async(name,args)=>{
+  const keys=mapping[name];if(!keys)throw new Error('UNEXPECTED_PRIVATE_RPC')
+  await db.exec('SAVEPOINT worker_rpc')
+  try{const result=await db.query<{data:unknown}>(`SELECT ${name}(${keys.map((_,i)=>'$'+(i+1)).join(',')}) data`,keys.map(key=>args[key]));await db.exec('RELEASE SAVEPOINT worker_rpc');return {data:result.rows[0].data,error:null}}
+  catch{await db.exec('ROLLBACK TO SAVEPOINT worker_rpc; RELEASE SAVEPOINT worker_rpc');return {data:null,error:new Error('SQL_DENIED')}}
+ })
+ const getUser=vi.fn<FiscalAuthClient['auth']['getUser']>(async()=>({data:{user:{id:actor}},error:null}))
+ const load=vi.fn<WsaaTicketLoader>(async binding=>({entorno:'HOMOLOGACION',servicio:'wsfe',cuitEmisor:binding.cuit_emisor,credencialId:binding.credencial_id,certificadoSha256:binding.certificado_sha256,token:'SYNTHETIC_TA',sign:'SYNTHETIC_SIGN',expiresAt:Date.now()+120000}))
+ const fetcher=vi.fn<typeof fetch>(async request=>{
+  expect((request as Request).headers.get('SOAPAction')).toContain('FECompUltimoAutorizado')
+  return new Response('<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><FECompUltimoAutorizadoResponse xmlns="http://ar.gov.afip.dif.FEV1/"><FECompUltimoAutorizadoResult><PtoVta>7</PtoVta><CbteTipo>11</CbteTipo><CbteNro>0</CbteNro></FECompUltimoAutorizadoResult></FECompUltimoAutorizadoResponse></s:Body></s:Envelope>',{headers:{'content-type':'text/xml'}})
+ })
+ const deps={admin:{auth:{getUser},rpc},readSecret:(key:string)=>flags[key],cache:createFiscalTicketCache(),load,fetcher}
+ return {flags,rpc,getUser,load,fetcher,run:()=>prepareFiscalVoucher(deps,'SYNTHETIC_JWT',op)}
+}
 it('devuelve sólo identidad/total/parámetros públicos desde servidor',async()=>{
  const c=await context();expect(c).toEqual({version:1,venta_id:sale,total:'123.45',cuit_emisor:wsfeSample.cuitEmisor,punto_venta:7,incluye_recepcion_envases:false,revision_parametros:1,
  condiciones:[{id:5,descripcion:'Ensayo',comprobantes:[11]}],alicuotas:[]})
@@ -203,4 +226,66 @@ it('una revisión ajena histórica tampoco permite consumo directo del permiso n
  await denied(()=>db.query('UPDATE fiscal_permisos_emision_homologacion SET usado_por_intento=$1,usado_en=clock_timestamp() WHERE operacion_id=$2',[crypto.randomUUID(),op]))
  expect((await db.query<{usado_por_intento:string|null}>('SELECT usado_por_intento FROM fiscal_permisos_emision_homologacion')).rows[0].usado_por_intento).toBeNull()
  expect((await db.query<{estado:string}>('SELECT estado FROM fiscal_reservas_homologacion')).rows[0].estado).toBe('RESERVADA')
+})
+it('worker de preparación exige gate propio antes de TA o consulta',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256)
+ const f=workerFixture();f.flags.ARCA_HOMO_PREPARATION_ENABLED='false'
+ await expect(f.run()).rejects.toThrow('FISCAL_PREPARACION_CUERPO_NO_HABILITADA')
+ expect(f.load).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled()
+})
+it('worker prepara cuerpo exacto una vez y replay no consulta ni emite',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256);const f=workerFixture()
+ const result=await f.run();expect(result.estado).toBe('RESERVADA');expect(result.aprobacion).toBeNull();expect(result.solicitud.solicitud.numero).toBe(1)
+ expect(f.getUser).toHaveBeenCalledTimes(1);expect(f.load).toHaveBeenCalledTimes(1);expect(f.fetcher).toHaveBeenCalledTimes(1)
+ expect(JSON.stringify(result)).not.toMatch(/SYNTHETIC_TA|SYNTHETIC_SIGN|credencial_id/)
+ f.flags.ARCA_HOMO_PREPARATION_ENABLED='false';expect(await f.run()).toEqual(result)
+ expect(f.load).toHaveBeenCalledTimes(1);expect(f.fetcher).toHaveBeenCalledTimes(1)
+ await db.exec('RESET ROLE')
+ for(const table of ['movimientos_stock','movimientos_caja','fiscal_permisos_emision_homologacion'])expect((await db.query<{n:number}>(`SELECT count(*)::int n FROM ${table}`)).rows[0].n).toBe(0)
+})
+it('ACK perdido de persistencia se recupera por cuerpo durable sin segunda consulta',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256);const f=workerFixture(),base=f.rpc.getMockImplementation()!
+ f.rpc.mockImplementation(async(name,args)=>{const result=await base(name,args);return name==='persistir_preparacion_fiscal_homologacion'?{data:null,error:new Error('lost')}:result})
+ expect((await f.run()).estado).toBe('RESERVADA');expect(f.fetcher).toHaveBeenCalledTimes(1)
+ expect((await f.run()).estado).toBe('RESERVADA');expect(f.fetcher).toHaveBeenCalledTimes(1)
+})
+it.each(['actor','emisor'])('cambio de %s durante TA se rechaza antes de consulta de numeración',async mode=>{
+ const p=await prepared();await save(p.canonico,p.sha256);const f=workerFixture(),base=f.load.getMockImplementation()!
+ f.load.mockImplementation(async(binding,signal)=>{
+  if(mode==='emisor')await admin('UPDATE fiscal_emisores_homologacion SET revision=2')
+  else {const other=crypto.randomUUID();await admin('INSERT INTO auth.users VALUES($1)',[other]);await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner])}
+  return base(binding,signal)
+ })
+ await expect(f.run()).rejects.toThrow();expect(f.fetcher).not.toHaveBeenCalled();expect(f.getUser).toHaveBeenCalledTimes(1)
+})
+it('cambio de emisor tras consulta no guarda un cuerpo ni usa otra identidad',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256);const f=workerFixture(),base=f.fetcher.getMockImplementation()!
+ f.fetcher.mockImplementation(async(request,options)=>{const result=await base(request,options);await admin('UPDATE fiscal_emisores_homologacion SET revision=2');return result})
+ await expect(f.run()).rejects.toThrow();expect(f.fetcher).toHaveBeenCalledTimes(1)
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_solicitudes_homologacion')).rows[0].n).toBe(0)
+})
+it('sin datos explícitos no consulta, y overflow no reserva otro número',async()=>{
+ const missing=workerFixture();await expect(missing.run()).rejects.toThrow();expect(missing.load).not.toHaveBeenCalled()
+ const p=await prepared();await save(p.canonico,p.sha256);const f=workerFixture(),base=f.fetcher.getMockImplementation()!
+ f.fetcher.mockImplementation(async(request,options)=>{const result=await base(request,options);return new Response((await result.text()).replace('<CbteNro>0</CbteNro>','<CbteNro>99999999</CbteNro>'),{headers:{'content-type':'text/xml'}})})
+ await expect(f.run()).rejects.toThrow();expect(f.fetcher).toHaveBeenCalledTimes(1)
+})
+it('fuente privada recupera cuerpo existente aunque venciera el catálogo',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256);const f=workerFixture();await f.run()
+ await admin('UPDATE fiscal_parametros_homologacion SET habilitado=false')
+ const result=await db.query<{data:unknown}>('SELECT cargar_fuente_preparacion_homologacion($1,$2) data',[actor,op])
+ expect(result.rows[0].data).toEqual({operacion_id:op,estado:'CUERPO_EXISTENTE',contexto:null,canonico:null,preparacion_sha256:null})
+})
+it('devolución previa bloquea datos y devolución posterior a datos bloquea antes de TA',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256)
+ await admin("SELECT set_config('request.jwt.claim.sub',$1,true)",[actor])
+ await admin('INSERT INTO devoluciones_venta(venta_id,kiosco_id) VALUES($1,$2)',[sale,kid])
+ await denied(()=>context());const f=workerFixture();await expect(f.run()).rejects.toThrow()
+ expect(f.load).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled()
+})
+it('persistencia sin commit no produce revisión aunque un ACK falso diga éxito',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256);const f=workerFixture(),base=f.rpc.getMockImplementation()!
+ f.rpc.mockImplementation((name,args)=>name==='persistir_preparacion_fiscal_homologacion'?Promise.resolve({data:{estado:'RESERVADA'},error:null}):base(name,args))
+ await expect(f.run()).rejects.toThrow();expect(f.fetcher).toHaveBeenCalledTimes(1)
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_solicitudes_homologacion')).rows[0].n).toBe(0)
 })
