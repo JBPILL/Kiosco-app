@@ -10,6 +10,8 @@ const rpcNames=new Set([
   'cancelar_preparacion_ta_homologacion','consultar_preparacion_ta_homologacion',
   'cargar_preparacion_envio_homologacion','registrar_envio_revisado_homologacion',
   'cargar_revision_fiscal_homologacion','aprobar_revision_fiscal_homologacion',
+  'cargar_datos_preparacion_homologacion','guardar_datos_preparacion_homologacion',
+  'persistir_preparacion_fiscal_homologacion',
 ])
 const fail=():never=>{throw new Error('FISCAL_SERVICIO_PRIVADO_NO_DISPONIBLE')}
 

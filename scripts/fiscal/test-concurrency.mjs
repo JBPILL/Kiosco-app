@@ -95,7 +95,7 @@ try {
     ...readdirSync(join(bootstrap,'steps')).sort().map(file=>join(bootstrap,'steps',file)),join(bootstrap,'900_final_security.sql'),
     join(root,'supabase/pilot-fiscal/001_fiscal_journal.sql'),join(root,'supabase/pilot-fiscal/002_fiscal_reservations.sql'),
     join(root,'supabase/pilot-fiscal/003_fiscal_requests.sql'),join(root,'supabase/pilot-fiscal/004_fiscal_reconciliation.sql'),
-    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql')]) {
+    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql'),join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql')]) {
     await observer.query(readFileSync(file,'utf8'))
   }
   async function fixture() {
@@ -342,6 +342,48 @@ try {
     assert.equal((await observer.query('SELECT usado_por_intento FROM fiscal_permisos_emision_homologacion WHERE operacion_id=$1',[late.op])).rows[0].usado_por_intento,null)
     cases.push(kind+'_vence_esperando_lock_no_consume_ni_envia')
   }
+  await observer.query(`INSERT INTO fiscal_parametros_homologacion(revision,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en,habilitado)
+    VALUES(1,'[{"id":5,"descripcion":"Ensayo","comprobantes":[11]}]','[]',repeat('b',64),clock_timestamp()-interval '1 hour',clock_timestamp()+interval '1 hour',true)`)
+  async function preparationFixture(point) {
+    const f=await fixture(),product=randomUUID(),operation=randomUUID()
+    await observer.query("INSERT INTO productos(id,kiosco_id,descripcion,precio_venta) VALUES($1,$2,'Ensayo',123.45)",[product,f.kid])
+    await observer.query('INSERT INTO detalles_venta(venta_id,producto_id,cantidad,precio_unitario,subtotal) VALUES($1,$2,1,123.45,123.45)',[f.sale,product])
+    await observer.query('INSERT INTO fiscal_emisores_homologacion(kiosco_id,cuit_emisor,punto_venta,credencial_id,certificado_sha256,habilitado) VALUES($1,$2,$3,$4,$5,true)',[f.kid,issuer,point,randomUUID(),'c'.repeat(64)])
+    const datos={version:1,entorno:'HOMOLOGACION',cuitEmisor:issuer,puntoVenta:point,tipoComprobante:11,concepto:1,tipoDocumento:99,numeroDocumento:'0',condicionIvaReceptor:5,
+      fecha:'20261021',servicioDesde:null,servicioHasta:null,vencimientoPago:null,moneda:'PES',cotizacion:'1',importes:{total:'123.45',neto:'123.45',iva:'0.00',noGravado:'0.00',exento:'0.00',tributos:'0.00'},iva:[],tributos:[]}
+    const canonical=JSON.stringify({version:1,venta_id:f.sale,condicionEmisor:'MONOTRIBUTO',revision_parametros:1,datos})
+    return {...f,operation,canonical,hash:createHash('sha256').update(canonical).digest('hex')}
+  }
+  const savePreparation=async(client,f)=>(await client.query('SELECT guardar_datos_preparacion_homologacion($1,$2,$3,$4,$5) ack',[f.auth,f.sale,f.operation,f.canonical,f.hash])).rows[0].ack
+  const samePreparation=await preparationFixture(90)
+  await start(a);const firstPreparation=await savePreparation(a,samePreparation)
+  await start(b);const duplicatePreparation=capture(savePreparation(b,samePreparation))
+  await waitForLock(observer,b);await a.query('COMMIT')
+  const secondPreparation=await duplicatePreparation;assert(!secondPreparation.error);assert.deepEqual(secondPreparation.value,firstPreparation);await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_preparaciones_homologacion WHERE operacion_id=$1',[samePreparation.operation])).rows[0].n,1)
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[samePreparation.operation])).rows[0].n,0)
+  cases.push('dos_workers_preparacion_explicita_un_ACK_sin_reserva')
+  const replacedActor=await preparationFixture(91),newActor=randomUUID()
+  await observer.query('INSERT INTO auth.users VALUES($1)',[newActor])
+  await a.query('BEGIN');await a.query('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[newActor,replacedActor.owner])
+  await start(b);const blockedActor=capture(savePreparation(b,replacedActor));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await blockedActor).error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('Auth_reasignado_durante_espera_no_crea_preparacion')
+  const changedSale=await preparationFixture(92)
+  await a.query('BEGIN');await a.query('UPDATE ventas SET total=124 WHERE id=$1',[changedSale.sale])
+  await start(b);const blockedSale=capture(savePreparation(b,changedSale));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await blockedSale).error?.code,'22023');await b.query('ROLLBACK')
+  cases.push('venta_cambia_durante_espera_no_guarda_importe_anterior')
+  const expiredCatalog=await preparationFixture(93)
+  await observer.query('UPDATE fiscal_parametros_homologacion SET habilitado=false')
+  await observer.query(`INSERT INTO fiscal_parametros_homologacion SELECT 2,condiciones,alicuotas,fuente_sha256,clock_timestamp()-interval '1 hour',clock_timestamp()+interval '3 seconds',true FROM fiscal_parametros_homologacion WHERE revision=1`)
+  await a.query('BEGIN');await a.query('SELECT revision FROM fiscal_parametros_homologacion WHERE revision=2 FOR UPDATE')
+  await start(b);const blockedCatalog=capture(b.query('SELECT cargar_datos_preparacion_homologacion($1,$2)',[expiredCatalog.auth,expiredCatalog.sale]));await waitForLock(observer,b)
+  const catalogDeadline=Date.now()+7000;let catalogExpired=false
+  while(Date.now()<catalogDeadline){catalogExpired=(await observer.query('SELECT vence_en<=clock_timestamp() expired FROM fiscal_parametros_homologacion WHERE revision=2')).rows[0].expired;if(catalogExpired)break;await delay(40)}
+  assert(catalogExpired);await a.query('COMMIT');assert.equal((await blockedCatalog).error?.code,'22023');await b.query('ROLLBACK')
+  cases.push('parametros_vencen_esperando_lock_no_devuelve_contexto_vigente')
+  for(const f of [replacedActor,changedSale,expiredCatalog])assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_operaciones_homologacion WHERE venta_id=$1',[f.sale])).rows[0].n,0)
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
