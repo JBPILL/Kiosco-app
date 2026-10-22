@@ -489,3 +489,9 @@ infiere IVA ni se habilita emisión por aprobar. Backend preparado; UI, provisi�
 instalación requieren aún integración/aceptación y sus gates correspondientes.
 
 La identidad de Auth verificada acompaña cada RPC de revisión y la intención de envío. No se vuelve a inferir desde usuario_id entre peticiones. La entrada de envío sin actor queda revocada al rol de servicio; el wrapper valida y mantiene locks hasta consumir. Reasignar un perfil no puede atribuir a su cuenta nueva una confirmación iniciada por la anterior.
+
+## 22/10/2026 — Datos fiscales explícitos y envases pendientes de criterio contable
+
+Se descarta reutilizar punto de venta, IVA global, receptor o fechas predeterminados del adaptador fiscal heredado. La preparación debe combinar identidad/total/snapshot de servidor con datos declarados expresamente por Dueño y parámetros acreditados/versionados. Su hash previo a numeración no sustituye el cuerpo final, la revisión SQL 011 ni el permiso privado. Los componentes visuales preparados no acreditan persistencia ni aceptación hospedada hasta integrar esos contratos.
+
+El titular confirmó que consultará con el contador cómo deben figurar los envases recibidos y descontados del ticket. Hasta disponer de ese criterio, bloquear esas ventas para preparación fiscal, preservando sus datos comerciales. No inferir tratamiento IVA ni cambiar el total. Las demás ventas pueden avanzar en desarrollo local. Se conserva la prohibición actual de instalar SQL/Edge fiscal remoto antes de resolver preparación y revisión; ningún componente habilita emisión.

@@ -1194,3 +1194,34 @@ para este incremento. Sin nuevas dependencias, instalación SQL/Edge, provisión
 claves, tráfico ARCA autenticado, emisión real ni frontend/deploy nuevo. PR03 sigue
 PARCIAL: faltan preparación fiscal y UI, rechazos/NC y aceptación hospedada. No
 cambia master/Production; impresora/cajón y Point permanecen diferidos.
+
+### F08 — preparación explícita + pantalla (en implementación)
+
+Mantener prohibida la instalación remota. Primero definir DTO sin número/CUIT/punto/
+total editables, ligado al contexto de venta y parámetros del servidor. Condición
+fiscal del emisor, receptor, concepto/fechas y desglose requieren selección explícita;
+ningún default del afipStore heredado. Validar A/B/C contra condición declarada y
+catálogo versionado de condiciones/alícuotas antes de TA. El catálogo no se presume
+acreditado por la tabla antigua de IVA global. Las consultas de parámetros reales
+conservan autorización específica. Construir cuerpo sólo después de consultar el
+último número por el circuito privado habilitado; persistir/reintentar el mismo
+cuerpo antes de revisión. La pantalla reutiliza Modal/HistorialTickets y separa
+preparación, revisión y aprobación de emisión/CAE. Recepción de envases en factura:
+se preguntó por el criterio contable, pendiente; no inventar su tratamiento.
+Fuentes oficiales reabiertas: página ARCA y manual enlazado v4.7 de 203 páginas;
+no se adopta un supuesto v4.8 desde resultados secundarios.
+
+### 22/10/2026 — F08: preparación explícita y revisión visual, integración aún abierta
+
+Decisión confirmada por el titular: el tratamiento fiscal de envases vacíos descontados del ticket está pendiente de definir con su contador. Esas ventas se bloquean en la preparación; no se inventa un descuento gravado/exento ni se altera su total. Este bloqueo no se extiende a las ventas sin recepción de envases.
+
+Primer incremento local: contrato público de preparación sin CUIT/punto/total/número editables; validación cerrada de datos explícitos, compatibilidad de clase/condición y catálogo versionado suministrado por servidor. El hash de preparación no es el hash final ni una autorización; el número provisional usado para validación estructural se elimina y nunca se reserva/emite. No se cargó catálogo real ni se acreditaron alícuotas desde fixtures.
+
+Componentes FiscalPreparationForm y FiscalOwnerReviewPanel preparados, con controles del tema existente. Fechas dd/mm/aaaa, selección explícita de receptor/emisor/concepto/moneda, importes obligatorios y detalle IVA/tributos. Revisión muestra cuerpo completo; aprobación exige acción humana y ACK del cuerpo/revisión exactos. Respuesta tardía no aprueba otro cuerpo, la aprobación vence en pantalla y no se muestra como CAE. Sin errores privados en mensajes del formulario.
+
+Validación local dirigida: 203 PASS en 6 archivos, incluidas 43 pruebas nuevas de este incremento; oxlint dirigido PASS. Hubo un inicio de Vitest impedido por spawn EPERM y tres fallas iniciales de matchers no instalados; se corrigieron usando comprobaciones DOM existentes y se volvió a ejecutar. Build inicial PASS anterior al formulario; compilación posterior debe acreditarse por separado.
+
+Estado deliberadamente PARCIAL: componentes aún no conectados a HistorialTicketsModal; faltan contexto fiscal autenticado/catálogo acreditado, persistencia de preparación vinculada a snapshot/actor/emisor, resolución de operación desde venta, identificadores durables antes del POST, consulta privada de último número y enlace al cuerpo SQL 003/011. Clasificación del emisor es declarada por Dueño, no verificación de padrón. El catálogo sintético no acredita compatibilidad fiscal real ni cálculo de alícuotas. No cerrar preparación/UI ni aceptación E2E con estas pruebas aisladas. La suite global 2703 PASS corresponde al HEAD f50c974, no a este trabajo local.
+
+Sin SQL fiscal nuevo instalado, Edge desplegado/habilitado, provisión de claves, llamadas autenticadas a ARCA, emisión, merge ni cambios en master/Production. Mantener primer CAE y aceptación hospedada pendientes. Impresora/cajón y Point continúan diferidos. Próximo paso: completar persistencia y adaptación autenticada antes de conectar/activar la pantalla.
+Cierre local de este incremento F08: build posterior al formulario PASS (634 módulos), oxlint dirigido PASS, manifiesto histórico 43 SQL PASS y escaneo 1220 archivos/47 candidatos, delta 0 respecto a F07. Evidencias: pilot-fiscal-explicit-preparation-ui-targeted.log, pilot-fiscal-explicit-preparation-ui-final-build.log y pilot-fiscal-explicit-preparation-ui-scan-verified.log fuera de Git. No se ejecutó nuevamente la suite global; 203 PASS es la selección dirigida actual. No se desplegaron los componentes ni se integraron al flujo operativo.
