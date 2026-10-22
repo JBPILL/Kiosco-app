@@ -55,10 +55,9 @@ DROP TRIGGER IF EXISTS fiscal_parametros_inmutables ON public.fiscal_parametros_
 CREATE TRIGGER fiscal_parametros_inmutables BEFORE UPDATE OR DELETE ON public.fiscal_parametros_homologacion
  FOR EACH ROW EXECUTE FUNCTION public.fiscal_parametros_inmutables();
 
-CREATE OR REPLACE FUNCTION public.cargar_datos_preparacion_homologacion(p_actor_auth_id uuid,p_venta_id uuid)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+CREATE OR REPLACE FUNCTION public.fiscal_venta_preparacion_homologacion(p_actor_auth_id uuid,p_venta_id uuid)
+RETURNS public.ventas LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 DECLARE perfil public.usuarios%ROWTYPE; venta public.ventas%ROWTYPE;
- emisor public.fiscal_emisores_homologacion%ROWTYPE; parametros public.fiscal_parametros_homologacion%ROWTYPE;
 BEGIN
  IF NOT coalesce(auth.role()='service_role',false) OR current_setting('transaction_isolation')<>'read committed' THEN
   RAISE EXCEPTION 'Trabajador privado con aislamiento compatible requerido.' USING ERRCODE='42501'; END IF;
@@ -70,10 +69,22 @@ BEGIN
  PERFORM 1 FROM public.kioscos WHERE id=perfil.kiosco_id AND estado_suscripcion='ACTIVO' FOR SHARE;
  IF NOT FOUND THEN RAISE EXCEPTION 'Preparación fiscal no autorizada.' USING ERRCODE='42501'; END IF;
  SELECT * INTO venta FROM public.ventas WHERE id=p_venta_id AND kiosco_id=perfil.kiosco_id FOR UPDATE;
- IF NOT FOUND OR venta.estado IS DISTINCT FROM 'COMPLETADA' OR venta.total IS NULL OR venta.total<=0
+ IF NOT FOUND THEN RAISE EXCEPTION 'Preparación fiscal no autorizada.' USING ERRCODE='42501'; END IF;
+ RETURN venta;
+END $$;
+REVOKE ALL ON FUNCTION public.fiscal_venta_preparacion_homologacion(uuid,uuid) FROM PUBLIC,anon,authenticated,service_role;
+
+CREATE OR REPLACE FUNCTION public.cargar_datos_preparacion_homologacion(p_actor_auth_id uuid,p_venta_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+DECLARE venta public.ventas%ROWTYPE;
+ emisor public.fiscal_emisores_homologacion%ROWTYPE; parametros public.fiscal_parametros_homologacion%ROWTYPE;
+BEGIN
+ venta:=public.fiscal_venta_preparacion_homologacion(p_actor_auth_id,p_venta_id);
+ IF venta.estado IS DISTINCT FROM 'COMPLETADA' OR venta.total IS NULL OR venta.total<=0
+  OR nullif(btrim(to_jsonb(venta)->>'afip_cae'),'') IS NOT NULL
   OR NOT EXISTS(SELECT 1 FROM public.detalles_venta WHERE venta_id=venta.id) THEN
   RAISE EXCEPTION 'Venta no disponible para preparación fiscal.' USING ERRCODE='22023'; END IF;
- SELECT * INTO emisor FROM public.fiscal_emisores_homologacion WHERE kiosco_id=perfil.kiosco_id AND habilitado FOR SHARE;
+ SELECT * INTO emisor FROM public.fiscal_emisores_homologacion WHERE kiosco_id=venta.kiosco_id AND habilitado FOR SHARE;
  IF NOT FOUND OR emisor.punto_venta>99998 THEN RAISE EXCEPTION 'Emisor fiscal no disponible.' USING ERRCODE='42501'; END IF;
  SELECT * INTO parametros FROM public.fiscal_parametros_homologacion
   WHERE habilitado AND consultado_en<=clock_timestamp() AND vence_en>clock_timestamp() ORDER BY revision DESC LIMIT 1 FOR SHARE;
@@ -83,6 +94,37 @@ BEGIN
   'cuit_emisor',emisor.cuit_emisor,'punto_venta',emisor.punto_venta,'revision_parametros',parametros.revision,
   'incluye_recepcion_envases',EXISTS(SELECT 1 FROM public.detalles_venta WHERE venta_id=venta.id AND es_devolucion_envase),
   'condiciones',parametros.condiciones,'alicuotas',parametros.alicuotas);
+END $$;
+
+CREATE OR REPLACE FUNCTION public.resolver_preparacion_fiscal_homologacion(p_actor_auth_id uuid,p_venta_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+DECLARE venta public.ventas%ROWTYPE; op public.fiscal_operaciones_homologacion%ROWTYPE;
+ previa public.fiscal_preparaciones_homologacion%ROWTYPE; reserva public.fiscal_reservas_homologacion%ROWTYPE;
+ estado text; operacion uuid; preparacion_sha text;
+BEGIN
+ venta:=public.fiscal_venta_preparacion_homologacion(p_actor_auth_id,p_venta_id);
+ IF nullif(btrim(to_jsonb(venta)->>'afip_cae'),'') IS NOT NULL THEN estado:='REGISTRO_FISCAL_HEREDADO';
+ ELSE
+  SELECT * INTO op FROM public.fiscal_operaciones_homologacion WHERE kiosco_id=venta.kiosco_id AND venta_id=venta.id AND entorno='HOMOLOGACION' FOR UPDATE;
+  IF NOT FOUND THEN
+   estado:=CASE WHEN venta.estado='COMPLETADA' AND venta.total>0 AND EXISTS(SELECT 1 FROM public.detalles_venta WHERE venta_id=venta.id) THEN 'SIN_PREPARACION' ELSE 'NO_DISPONIBLE' END;
+  ELSE
+   SELECT * INTO previa FROM public.fiscal_preparaciones_homologacion WHERE operacion_id=op.id;
+   IF NOT FOUND OR previa.actor_auth_id IS DISTINCT FROM p_actor_auth_id
+    OR op.usuario_id IS DISTINCT FROM (SELECT id FROM public.usuarios WHERE auth_user_id=p_actor_auth_id AND activo) THEN
+    estado:='REQUIERE_REVISION';
+   ELSE
+    BEGIN
+     op:=public.fiscal_operacion_vigente_homologacion(op.id);
+     SELECT * INTO reserva FROM public.fiscal_reservas_homologacion WHERE operacion_id=op.id FOR SHARE;
+     estado:=CASE WHEN FOUND THEN reserva.estado ELSE 'DATOS_PREPARADOS' END;
+     operacion:=op.id;preparacion_sha:=previa.preparacion_sha256;
+    EXCEPTION WHEN SQLSTATE '22023' OR SQLSTATE '42501' THEN estado:='REQUIERE_REVISION';
+    END;
+   END IF;
+  END IF;
+ END IF;
+ RETURN jsonb_build_object('venta_id',venta.id,'estado',estado,'operacion_id',operacion,'preparacion_sha256',preparacion_sha,'emision_habilitada',false);
 END $$;
 
 CREATE OR REPLACE FUNCTION public.guardar_datos_preparacion_homologacion(p_actor_auth_id uuid,p_venta_id uuid,p_operacion_id uuid,p_canonico text,p_sha text)
@@ -162,4 +204,6 @@ REVOKE ALL ON FUNCTION public.cargar_datos_preparacion_homologacion(uuid,uuid),p
 GRANT EXECUTE ON FUNCTION public.cargar_datos_preparacion_homologacion(uuid,uuid),public.guardar_datos_preparacion_homologacion(uuid,uuid,uuid,text,text) TO service_role;
 REVOKE ALL ON FUNCTION public.persistir_preparacion_fiscal_homologacion(uuid,uuid,text,text,integer,timestamptz) FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.persistir_preparacion_fiscal_homologacion(uuid,uuid,text,text,integer,timestamptz) TO service_role;
+REVOKE ALL ON FUNCTION public.resolver_preparacion_fiscal_homologacion(uuid,uuid) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.resolver_preparacion_fiscal_homologacion(uuid,uuid) TO service_role;
 COMMIT;

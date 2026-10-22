@@ -7,12 +7,13 @@ import { formatPrecio, formatFecha, labelMedioPago } from '../../lib/utils'
 import { useDevolucionStore, type VentaConDetalles, limpiarCodigoTicket } from '../../stores/devolucionStore'
 import { useAuthStore } from '../../stores/authStore'
 import { TicketReceiptModal, type TicketData } from './TicketReceiptModal'
+import { FiscalDocumentModal } from './FiscalDocumentModal'
 import { ventaToTicketData } from '../../lib/ticketUtils'
 import { useAFIPStore, validarCUIT } from '../../stores/afipStore'
 import type { TipoDocumentoAFIP } from '../../types/afip'
 import toast from 'react-hot-toast'
 import { errorDevolucionFueraDeAlcance, kioskoPilotStrictScopeActivo } from '../../lib/kioskPilotScope'
-import { devolucionesEfectivoActivas } from '../../lib/pilotExpansion'
+import { devolucionesEfectivoActivas, revisionFiscalHomologacionActiva } from '../../lib/pilotExpansion'
 
 interface HistorialTicketsModalProps {
   isOpen: boolean
@@ -31,7 +32,7 @@ const MEDIOS_FILTRO = [
 
 export function HistorialTicketsModal({
   isOpen,
-  onClose,
+  onClose: cerrarPadre,
   onIniciarDevolucion,
 }: HistorialTicketsModalProps) {
   const { usuario, kiosco } = useAuthStore()
@@ -44,6 +45,10 @@ export function HistorialTicketsModal({
   const [busqueda, setBusqueda] = useState('')
   const [filtroMedio, setFiltroMedio] = useState<string>('TODOS')
   const [ticketSeleccionado, setTicketSeleccionado] = useState<TicketData | null>(null)
+  const [ventaFiscal, setVentaFiscal] = useState<VentaConDetalles | null>(null)
+  const onClose = useCallback(() => { setVentaFiscal(null); cerrarPadre() }, [cerrarPadre])
+  const revisionFiscal = revisionFiscalHomologacionActiva()
+  const puedeRevisarFiscal = revisionFiscal && usuario?.rol === 'DUEÑO' && usuario.activo && !usuario.es_superadmin && !!usuario.auth_user_id && !!usuario.kiosco_id
 
   // Estados para Facturación AFIP Diferida
   const [ventaParaFacturar, setVentaParaFacturar] = useState<VentaConDetalles | null>(null)
@@ -376,7 +381,8 @@ export function HistorialTicketsModal({
 
                       <div className="grid grid-cols-1 min-[420px]:grid-cols-3 gap-2 [&>button]:min-h-10 [&>button]:justify-center [&>button]:text-center [&>button]:leading-tight">
                         {/* Botón Facturar ARCA si no fue facturada aún y no está anulada */}
-                        {!esAnulada && !v.afip_cae && (
+                        {!esAnulada && puedeRevisarFiscal && <Button size="sm" onClick={() => setVentaFiscal(v)}>Preparar / revisar ARCA</Button>}
+                        {!revisionFiscal && !esAnulada && !v.afip_cae && (
                           <button
                             type="button"
                             disabled={!afipConfig?.habilitado || cantArticulos === 0}
@@ -571,6 +577,7 @@ export function HistorialTicketsModal({
       )}
 
       {/* Visor de comprobante para impresión térmica y WhatsApp */}
+      {isOpen && ventaFiscal && puedeRevisarFiscal && usuario?.auth_user_id && usuario.kiosco_id && <FiscalDocumentModal isOpen onClose={() => setVentaFiscal(null)} scope={{ authId: usuario.auth_user_id, kioskId: usuario.kiosco_id, saleId: ventaFiscal.id }} />}
       <TicketReceiptModal
         isOpen={Boolean(ticketSeleccionado)}
         onClose={() => setTicketSeleccionado(null)}

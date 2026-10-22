@@ -1,6 +1,7 @@
 import type { FiscalAuthClient } from './fiscalWorkerAuthorization.ts'
-import type { FiscalPreparationContext } from './fiscalPreparationContract.ts'
+import type { FiscalPreparationContext, FiscalSaleResolution } from './fiscalPreparationContract.ts'
 import { prepareFiscalData, validateFiscalPreparationContext } from './fiscalPreparation.ts'
+import { validateFiscalSaleResolution } from './fiscalPreparationPublic.ts'
 
 export interface FiscalPreparationDependencies {
  admin:FiscalAuthClient
@@ -29,6 +30,14 @@ async function context(deps:FiscalPreparationDependencies,actorAuthId:string,sal
 /** Auth real una sola vez por acción. El DTO nunca contiene custodia, TA ni binding privado. */
 export async function loadFiscalPreparation(deps:FiscalPreparationDependencies,token:string,sale:string):Promise<FiscalPreparationContext> {
  try{return await context(deps,await actor(deps,token,sale),sale)}catch{return fail()}
+}
+export async function resolveFiscalSale(deps:FiscalPreparationDependencies,token:string,sale:string):Promise<Readonly<FiscalSaleResolution>> {
+ try{
+  const actorAuthId=await actor(deps,token,sale)
+  const response=await deps.admin.rpc('resolver_preparacion_fiscal_homologacion',{p_actor_auth_id:actorAuthId,p_venta_id:sale})
+  if(response.error)return fail()
+  return validateFiscalSaleResolution(response.data,sale)
+ }catch{return fail()}
 }
 /** No reserva número, no solicita TA y no llama ARCA. El llamador conserva el
  * UUID original antes del POST; errores y ACK perdido nunca crean otro UUID. */

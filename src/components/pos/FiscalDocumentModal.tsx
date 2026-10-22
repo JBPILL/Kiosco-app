@@ -1,0 +1,99 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Modal } from '../ui/Modal'
+import { Button } from '../ui/Button'
+import { FiscalPreparationForm } from './FiscalPreparationForm'
+import { FiscalOwnerReviewPanel } from './FiscalOwnerReviewPanel'
+import type { FiscalClient, FiscalClientScope } from '../../lib/fiscalClient'
+import type { FiscalPreparationContext, FiscalPreparationInput, FiscalSaleResolution } from '../../../supabase/functions/_shared/fiscalPreparationContract'
+import type { FiscalOwnerReview } from '../../../supabase/functions/_shared/fiscalOwnerReview'
+
+interface Props { isOpen: boolean; onClose: () => void; scope: FiscalClientScope; client?: FiscalClient }
+export function FiscalDocumentModal(props: Props) {
+  if (!props.isOpen) return null
+  return <DocumentBody key={`${props.scope.authId}:${props.scope.kioskId}:${props.scope.saleId}`} {...props} />
+}
+function DocumentBody({ onClose, scope, client: provided }: Props) {
+  const { authId, kioskId, saleId } = scope
+  const [loadedClient, setClient] = useState<FiscalClient | null>(null)
+  const client = provided ?? loadedClient
+  const [context, setContext] = useState<FiscalPreparationContext | null>(null)
+  const [resolution, setResolution] = useState<Readonly<FiscalSaleResolution> | null>(null)
+  const [review, setReview] = useState<Readonly<FiscalOwnerReview> | null>(null)
+  const [approvalId, setApprovalId] = useState('')
+  const [busy, setBusy] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const generation = useRef(0)
+  const saveInFlight = useRef(false)
+  const alive = useRef(true)
+  const cancelRequests = useCallback(() => { alive.current = false; generation.current++ }, [])
+  const [pendingInput, setPendingInput] = useState<FiscalPreparationInput | null>(null)
+  const [hasLocalRecord, setHasLocalRecord] = useState(false)
+  const load = useCallback(async (api: FiscalClient) => {
+    const current = ++generation.current
+    let stateRecovered = false
+    setBusy(true); setError(''); setContext(null); setReview(null); setResolution(null)
+    try {
+      const state = await api.resolve()
+      if (generation.current !== current) return
+      stateRecovered = true
+      setResolution(state)
+      if (state.estado === 'SIN_PREPARACION') {
+        const pending = api.pending()
+        setHasLocalRecord(!!pending); setPendingInput(pending?.input ?? null)
+        if (!pending) {
+          const values = await api.context()
+          if (generation.current !== current) return
+          setContext(values)
+        }
+      } else if (['RESERVADA', 'ENVIO_INCIERTO', 'AUTORIZADA'].includes(state.estado) && state.operacion_id) {
+        const values = await api.review(state.operacion_id)
+        if (generation.current !== current) return
+        setApprovalId(values.aprobacion?.id ?? (values.estado === 'RESERVADA' ? api.approvalId(values) : ''))
+        setReview(values)
+      }
+    } catch {
+      if (generation.current === current) setError(stateRecovered
+        ? 'Se recuperó el estado fiscal, pero no se pudieron cargar sus datos. Volvé a consultar; no prepares otro comprobante.'
+        : 'No se pudo confirmar el estado fiscal. Conservá la venta y volvé a consultar; no prepares otro comprobante.')
+    } finally { if (generation.current === current) setBusy(false) }
+  }, [])
+  useEffect(() => {
+    let active = true
+    alive.current = true
+    if (provided) { void Promise.resolve().then(() => { if (active) return load(provided) }) }
+    else {
+      void import('../../lib/fiscalBrowserClient').then(module => {
+        if (!active) return
+        const api = module.createFiscalBrowserClient({ authId, kioskId, saleId })
+        setClient(api); return load(api)
+      }).catch(() => { if (active) { setError('La preparación fiscal de homologación todavía no está disponible.'); setBusy(false) } })
+    }
+    return () => { active = false; cancelRequests() }
+  }, [provided, authId, kioskId, saleId, load, cancelRequests])
+  async function save(input: FiscalPreparationInput) {
+    if (!client || saveInFlight.current) return
+    saveInFlight.current = true
+    setSaving(true)
+    const current = generation.current
+    try {
+      await client.save(input)
+      if (generation.current === current) await load(client)
+    } finally { saveInFlight.current = false; if (alive.current) setSaving(false) }
+  }
+  return <Modal isOpen onClose={onClose} title="Preparación y revisión fiscal · Homologación" size="xl" footer={<Button variant="secondary" onClick={onClose}>Cerrar</Button>}>
+    <div className="space-y-4">
+      {busy && <p role="status">Consultando el estado fiscal de la venta…</p>}
+      {error && <p role="alert">{error}</p>}
+      {!busy && context && <FiscalPreparationForm context={context} onPrepare={save} />}
+      {!busy && resolution?.estado === 'SIN_PREPARACION' && hasLocalRecord && <div className="space-y-3"><p>Este equipo conserva un guardado pendiente. Recuperá el mismo intento antes de cargar otros datos.</p>{pendingInput && <Button loading={saving} onClick={() => { const current = generation.current; void save(pendingInput).catch(() => { if (generation.current === current) setError('No se confirmó el guardado. Volvé a consultar su estado antes de reintentar.') }) }}>Reintentar datos guardados</Button>}</div>}
+      {!busy && resolution?.estado === 'DATOS_PREPARADOS' && <p role="status">Datos fiscales guardados. Todavía falta preparar el cuerpo del comprobante para revisión; no se emitió una factura ni se obtuvo un CAE.</p>}
+      {!busy && resolution?.estado === 'REGISTRO_FISCAL_HEREDADO' && <p role="status">Existe un registro fiscal anterior. Consultá la constancia original; no se preparará otro comprobante desde esta venta.</p>}
+      {!busy && resolution?.estado === 'REQUIERE_REVISION' && <p role="status">La operación existente requiere revisión de su identidad o contexto. No se iniciará otra preparación.</p>}
+      {!busy && resolution?.estado === 'NO_DISPONIBLE' && <p role="status">Esta venta no está disponible para preparar un comprobante fiscal.</p>}
+      {!busy && resolution?.estado === 'AUTORIZADA' && !review && <p role="status">La operación figura autorizada en el servidor. Falta recuperar su constancia fiscal; no se iniciará otra preparación.</p>}
+      {!busy && review && client && <FiscalOwnerReviewPanel review={review} approvalId={approvalId} onApprove={command => client.approve(review, command.id)} />}
+      {!busy && client && <Button variant="secondary" disabled={saving} onClick={() => { void load(client) }}>Volver a consultar estado</Button>}
+    </div>
+  </Modal>
+}

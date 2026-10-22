@@ -97,6 +97,10 @@ try {
     join(root,'supabase/pilot-fiscal/003_fiscal_requests.sql'),join(root,'supabase/pilot-fiscal/004_fiscal_reconciliation.sql'),
     join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql'),join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql')]) {
     await observer.query(readFileSync(file,'utf8'))
+    if(file.endsWith('011_fiscal_owner_review.sql')){
+      await observer.query('SELECT fiscal_exigir_actor_preparacion($1,$2)',[randomUUID(),randomUUID()])
+      cases.push('SQL011_antes_SQL012_sin_dependencia_de_tabla_opcional')
+    }
   }
   async function fixture() {
     const f={kid:randomUUID(),auth:randomUUID(),owner:randomUUID(),sale:randomUUID()}
@@ -363,6 +367,21 @@ try {
   assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_preparaciones_homologacion WHERE operacion_id=$1',[samePreparation.operation])).rows[0].n,1)
   assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[samePreparation.operation])).rows[0].n,0)
   cases.push('dos_workers_preparacion_explicita_un_ACK_sin_reserva')
+  const resolvingPreparation=await preparationFixture(95)
+  await start(a);await savePreparation(a,resolvingPreparation)
+  await start(b);const waitingResolution=capture(b.query('SELECT resolver_preparacion_fiscal_homologacion($1,$2) ack',[resolvingPreparation.auth,resolvingPreparation.sale]))
+  await waitForLock(observer,b);await a.query('COMMIT')
+  const resolvedPreparation=await waitingResolution;assert(!resolvedPreparation.error)
+  assert.equal(resolvedPreparation.value.rows[0].ack.estado,'DATOS_PREPARADOS');assert.equal(resolvedPreparation.value.rows[0].ack.operacion_id,resolvingPreparation.operation);await b.query('COMMIT')
+  cases.push('resolver_espera_guardado_y_recupera_identidad_original')
+  const reviewedPreparation=await preparationFixture(96)
+  await start(a);await savePreparation(a,reviewedPreparation)
+  const preparedBody=JSON.stringify({...JSON.parse(reviewedPreparation.canonical).datos,numero:1}),preparedHash=createHash('sha256').update(preparedBody).digest('hex')
+  await a.query('SELECT persistir_preparacion_fiscal_homologacion($1,$2,$3,$4,0,clock_timestamp())',[reviewedPreparation.auth,reviewedPreparation.operation,preparedBody,preparedHash]);await a.query('COMMIT')
+  const replacementAuth=randomUUID();await observer.query('INSERT INTO auth.users VALUES($1)',[replacementAuth]);await observer.query('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[replacementAuth,reviewedPreparation.owner])
+  await start(b);const foreignReview=await capture(b.query('SELECT cargar_revision_fiscal_homologacion($1,$2)',[reviewedPreparation.operation,replacementAuth]));assert.equal(foreignReview.error?.code,'42501');await b.query('ROLLBACK')
+  await start(b);const foreignApproval=await capture(b.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1)',[reviewedPreparation.operation,replacementAuth,randomUUID(),preparedHash]));assert.equal(foreignApproval.error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('Auth_nuevo_no_revisa_ni_aprueba_preparacion_del_Auth_original')
   const replacedActor=await preparationFixture(91),newActor=randomUUID()
   await observer.query('INSERT INTO auth.users VALUES($1)',[newActor])
   await a.query('BEGIN');await a.query('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[newActor,replacedActor.owner])
@@ -383,6 +402,15 @@ try {
   while(Date.now()<catalogDeadline){catalogExpired=(await observer.query('SELECT vence_en<=clock_timestamp() expired FROM fiscal_parametros_homologacion WHERE revision=2')).rows[0].expired;if(catalogExpired)break;await delay(40)}
   assert(catalogExpired);await a.query('COMMIT');assert.equal((await blockedCatalog).error?.code,'22023');await b.query('ROLLBACK')
   cases.push('parametros_vencen_esperando_lock_no_devuelve_contexto_vigente')
+  await observer.query('ALTER TABLE ventas ADD COLUMN afip_cae text')
+  await observer.query(`INSERT INTO fiscal_parametros_homologacion SELECT 3,condiciones,alicuotas,fuente_sha256,clock_timestamp()-interval '1 hour',clock_timestamp()+interval '1 hour',true FROM fiscal_parametros_homologacion WHERE revision=1`)
+  const legacyInvoice=await preparationFixture(94)
+  await start(a);assert.equal((await a.query('SELECT cargar_datos_preparacion_homologacion($1,$2) ctx',[legacyInvoice.auth,legacyInvoice.sale])).rows[0].ctx.revision_parametros,3);await a.query('COMMIT')
+  await a.query('BEGIN');await a.query("UPDATE ventas SET afip_cae='SYNTHETIC_REGISTERED_CAE' WHERE id=$1",[legacyInvoice.sale])
+  await start(b);const waitingLegacy=capture(b.query('SELECT cargar_datos_preparacion_homologacion($1,$2)',[legacyInvoice.auth,legacyInvoice.sale]))
+  await waitForLock(observer,b);await a.query('COMMIT');assert.equal((await waitingLegacy).error?.code,'22023');await b.query('ROLLBACK')
+  await start(b);assert.equal((await b.query('SELECT resolver_preparacion_fiscal_homologacion($1,$2) ack',[legacyInvoice.auth,legacyInvoice.sale])).rows[0].ack.estado,'REGISTRO_FISCAL_HEREDADO');await b.query('COMMIT')
+  cases.push('CAE_heredado_confirmado_durante_espera_impide_nueva_preparacion')
   for(const f of [replacedActor,changedSale,expiredCatalog])assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_operaciones_homologacion WHERE venta_id=$1',[f.sale])).rows[0].n,0)
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')

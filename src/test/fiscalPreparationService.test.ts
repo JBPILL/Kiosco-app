@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest'
-import { loadFiscalPreparation, saveFiscalPreparation } from '../../supabase/functions/_shared/fiscalPreparationService'
+import { loadFiscalPreparation, saveFiscalPreparation, resolveFiscalSale } from '../../supabase/functions/_shared/fiscalPreparationService'
 import type { FiscalPreparationContext } from '../../supabase/functions/_shared/fiscalPreparationContract'
 import type { FiscalAuthClient } from '../../supabase/functions/_shared/fiscalWorkerAuthorization'
 import { wsfeSample } from './fixtures/fiscalWsfe'
@@ -66,12 +66,28 @@ it('compone SDK real con Auth/contexto/guardado mock, sólo destinos permitidos 
   const request=new Request(input),path=new URL(request.url).pathname;paths.push(path)
   expect(new URL(request.url).origin).toBe(FISCAL_STAGING_URL);expect(request.redirect).toBe('error')
   if(path==='/auth/v1/user')return new Response(JSON.stringify({id:actor}),{headers:{'content-type':'application/json'}})
+  if(path.endsWith('/resolver_preparacion_fiscal_homologacion'))return new Response(JSON.stringify({venta_id:sale,estado:'SIN_PREPARACION',operacion_id:null,preparacion_sha256:null,emision_habilitada:false}),{headers:{'content-type':'application/json'}})
   if(path.endsWith('/cargar_datos_preparacion_homologacion'))return new Response(JSON.stringify(context),{headers:{'content-type':'application/json'}})
   expect(path).toBe('/rest/v1/rpc/guardar_datos_preparacion_homologacion')
   const args=await request.json() as Record<string,unknown>
   return new Response(JSON.stringify({operacion_id:args.p_operacion_id,venta_id:args.p_venta_id,preparacion_sha256:args.p_sha,estado:'DATOS_PREPARADOS',emision_habilitada:false}),{headers:{'content-type':'application/json'}})
  })
  const f=fixture(),deps={...f.deps,admin:createFiscalSupabaseAdmin(FISCAL_STAGING_URL,'SYNTHETIC_PRIVATE_SERVICE_VALUE',fetcher)}
+ expect((await resolveFiscalSale(deps,'SYNTHETIC_JWT',sale)).estado).toBe('SIN_PREPARACION')
  expect((await saveFiscalPreparation(deps,'SYNTHETIC_JWT',sale,operation,input())).operacion_id).toBe(operation)
- expect(paths).toEqual(['/auth/v1/user','/rest/v1/rpc/cargar_datos_preparacion_homologacion','/rest/v1/rpc/guardar_datos_preparacion_homologacion'])
+ expect(paths).toEqual(['/auth/v1/user','/rest/v1/rpc/resolver_preparacion_fiscal_homologacion','/auth/v1/user','/rest/v1/rpc/cargar_datos_preparacion_homologacion','/rest/v1/rpc/guardar_datos_preparacion_homologacion'])
+})
+it.each(['SIN_PREPARACION','REGISTRO_FISCAL_HEREDADO','REQUIERE_REVISION','NO_DISPONIBLE'])('resuelve estado %s sin inventar operación',async estado=>{
+ const f=fixture(),expected={venta_id:sale,estado,operacion_id:null,preparacion_sha256:null,emision_habilitada:false}
+ f.rpc.mockResolvedValue({data:expected,error:null})
+ expect(await resolveFiscalSale(f.deps,'SYNTHETIC_JWT',sale)).toEqual(expected)
+ expect(f.getUser).toHaveBeenCalledTimes(1);expect(f.rpc).toHaveBeenCalledExactlyOnceWith('resolver_preparacion_fiscal_homologacion',{p_actor_auth_id:actor,p_venta_id:sale})
+})
+it.each(['DATOS_PREPARADOS','RESERVADA','ENVIO_INCIERTO','AUTORIZADA'])('recupera identidad/estado %s existentes',async estado=>{
+ const f=fixture(),expected={venta_id:sale,estado,operacion_id:operation,preparacion_sha256:'a'.repeat(64),emision_habilitada:false}
+ f.rpc.mockResolvedValue({data:expected,error:null});expect(await resolveFiscalSale(f.deps,'SYNTHETIC_JWT',sale)).toEqual(expected)
+})
+it.each([{estado:'SIN_PREPARACION',operacion_id:operation,preparacion_sha256:null},{estado:'AUTORIZADA',operacion_id:null,preparacion_sha256:null},{estado:'UNKNOWN',operacion_id:null,preparacion_sha256:null}])('resolver no acepta estado incoherente %j',async bad=>{
+ const f=fixture();f.rpc.mockResolvedValue({data:{venta_id:sale,emision_habilitada:false,...bad},error:null})
+ await expect(resolveFiscalSale(f.deps,'SYNTHETIC_JWT',sale)).rejects.toThrow('FISCAL_PREPARACION_NO_CONFIRMADA')
 })

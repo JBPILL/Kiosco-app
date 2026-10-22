@@ -18,8 +18,10 @@ beforeAll(async()=>{
  CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.role',true),'') $$;`)
  const root='supabase/bootstrap'
  for(const file of [join(root,'001_domain.sql'),join(root,'002_identity_helpers.sql'),...readdirSync(join(root,'steps')).sort().map(n=>join(root,'steps',n)),join(root,'900_final_security.sql')])await db.exec(readFileSync(file,'utf8'))
+ await db.exec('ALTER TABLE ventas ADD COLUMN afip_cae text')
  for(const file of readdirSync('supabase/pilot-fiscal').filter(n=>/^\d{3}_.*\.sql$/.test(n)).sort()){
   const sql=readFileSync(join('supabase/pilot-fiscal',file),'utf8');await db.exec(sql);await db.exec(sql)
+  if(file==='011_fiscal_owner_review.sql')await db.query('SELECT fiscal_exigir_actor_preparacion($1,$2)',[crypto.randomUUID(),crypto.randomUUID()])
  }
  await db.query('INSERT INTO auth.users VALUES($1)',[actor])
  await db.query("INSERT INTO kioscos(id,nombre) VALUES($1,'Preparación sintética')",[kid])
@@ -46,6 +48,7 @@ function input():FiscalPreparationInput {
  return {condicionEmisor:'MONOTRIBUTO',datos:{...data,importes}}
 }
 async function prepared(){return prepareFiscalData(await context(),input())}
+async function resolve(who=actor,which=sale){return (await db.query<{data:Record<string,unknown>}>('SELECT resolver_preparacion_fiscal_homologacion($1,$2) data',[who,which])).rows[0].data}
 async function save(canonical:string,hash:string,id=op,who=actor,which=sale){
  return (await db.query<{data:Record<string,unknown>}>('SELECT guardar_datos_preparacion_homologacion($1,$2,$3,$4,$5) data',[who,which,id,canonical,hash])).rows[0].data
 }
@@ -141,4 +144,63 @@ it.each(['fecha','actor','emisor','parametros'])('cambio de %s no permite reserv
  const canonical=await serializeFiscalRequest(frozen)
  await denied(()=>db.query('SELECT persistir_preparacion_fiscal_homologacion($1,$2,$3,$4,0,clock_timestamp())',[mode==='actor'?crypto.randomUUID():actor,op,canonical,frozen.sha256]))
  await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_reservas_homologacion')).rows[0].n).toBe(0)
+})
+it('resolver una venta sin preparación no crea operación ni exige parámetros/emisor activos',async()=>{
+ await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false');await admin('UPDATE fiscal_parametros_homologacion SET habilitado=false')
+ expect(await resolve()).toEqual({venta_id:sale,estado:'SIN_PREPARACION',operacion_id:null,preparacion_sha256:null,emision_habilitada:false})
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_operaciones_homologacion')).rows[0].n).toBe(0)
+})
+it('recupera identidad/estado originales desde venta, sin volver a preparar ni exigir catálogo',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256)
+ const expected={venta_id:sale,estado:'DATOS_PREPARADOS',operacion_id:op,preparacion_sha256:p.sha256,emision_habilitada:false}
+ expect(await resolve()).toEqual(expected)
+ const frozen=await requestFromPreparedFiscalData(p,1),canonical=await serializeFiscalRequest(frozen)
+ await db.query('SELECT persistir_preparacion_fiscal_homologacion($1,$2,$3,$4,0,clock_timestamp())',[actor,op,canonical,frozen.sha256])
+ await admin('UPDATE fiscal_parametros_homologacion SET habilitado=false');await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false')
+ expect(await resolve()).toEqual({...expected,estado:'RESERVADA'})
+})
+it('registro CAE heredado bloquea preparación y se informa sin inventar su validez ni exponerlo',async()=>{
+ const p=await prepared();await admin("UPDATE ventas SET afip_cae='SYNTHETIC_REGISTERED_CAE' WHERE id=$1",[sale])
+ await denied(()=>context());await denied(()=>save(p.canonico,p.sha256))
+ expect(await resolve()).toEqual({venta_id:sale,estado:'REGISTRO_FISCAL_HEREDADO',operacion_id:null,preparacion_sha256:null,emision_habilitada:false})
+})
+it('no atribuye una preparación al nuevo Auth de un perfil reasignado ni revela su identificador',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256)
+ const other=crypto.randomUUID();await admin('INSERT INTO auth.users VALUES($1)',[other]);await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner])
+ await denied(()=>resolve(actor));expect(await resolve(other)).toEqual({venta_id:sale,estado:'REQUIERE_REVISION',operacion_id:null,preparacion_sha256:null,emision_habilitada:false})
+ await denied(()=>resolve(other,crypto.randomUUID()))
+})
+it.each(['anon','authenticated'])('resolver rechaza rol %s antes de consultar existencia',async role=>{
+ await db.exec(`SET ROLE ${role}`);await denied(()=>resolve())
+})
+it('cambiar el snapshot después de preparar requiere revisión y no simula datos utilizables',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256);await admin('UPDATE detalles_venta SET cantidad=2 WHERE venta_id=$1',[sale])
+ expect(await resolve()).toEqual({venta_id:sale,estado:'REQUIERE_REVISION',operacion_id:null,preparacion_sha256:null,emision_habilitada:false})
+})
+it('UUID conocido no permite que el nuevo Auth de un perfil revise o apruebe preparación de otro Auth',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256)
+ const frozen=await requestFromPreparedFiscalData(p,1),canonical=await serializeFiscalRequest(frozen)
+ await db.query('SELECT persistir_preparacion_fiscal_homologacion($1,$2,$3,$4,0,clock_timestamp())',[actor,op,canonical,frozen.sha256])
+ const other=crypto.randomUUID();await admin('INSERT INTO auth.users VALUES($1)',[other]);await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner])
+ await denied(()=>db.query('SELECT cargar_revision_fiscal_homologacion($1,$2)',[op,other]))
+ await denied(()=>db.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1)',[op,other,crypto.randomUUID(),frozen.sha256]))
+})
+it('una revisión ajena histórica tampoco permite consumo directo del permiso ni envío privado',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256)
+ const frozen=await requestFromPreparedFiscalData(p,1),canonical=await serializeFiscalRequest(frozen)
+ await db.query('SELECT persistir_preparacion_fiscal_homologacion($1,$2,$3,$4,0,clock_timestamp())',[actor,op,canonical,frozen.sha256])
+ const other=crypto.randomUUID(),permission=crypto.randomUUID()
+ await admin('INSERT INTO auth.users VALUES($1)',[other]);await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner])
+ // Datos sintéticos con privilegio de fixture: simulan revisión creada antes del refuerzo.
+ await admin(`WITH instante AS MATERIALIZED (SELECT clock_timestamp() t)
+ INSERT INTO fiscal_revisiones_homologacion(id,operacion_id,usuario_id,actor_auth_id,solicitud_sha256,solicitud_revision,credencial_id,certificado_sha256,emisor_revision,creado_en,vence_en)
+ SELECT $1,$2,$3,$4,$5,1,$6,$7,1,t,t+interval '10 minutes' FROM instante`,[crypto.randomUUID(),op,owner,other,frozen.sha256,credential,'a'.repeat(64)])
+ await admin(`WITH instante AS MATERIALIZED (SELECT clock_timestamp() t)
+ INSERT INTO fiscal_permisos_emision_homologacion(operacion_id,autorizacion_id,solicitud_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,creado_en,vence_en)
+ SELECT $1,$2,$3,$4,$5,1,true,t,t+interval '30 minutes' FROM instante`,[op,permission,frozen.sha256,credential,'a'.repeat(64)])
+ await denied(()=>db.query('SELECT registrar_envio_revisado_homologacion($1,$2,$3,$4,$5,0,clock_timestamp())',[other,op,crypto.randomUUID(),frozen.sha256,permission]))
+ await db.exec('RESET ROLE')
+ await denied(()=>db.query('UPDATE fiscal_permisos_emision_homologacion SET usado_por_intento=$1,usado_en=clock_timestamp() WHERE operacion_id=$2',[crypto.randomUUID(),op]))
+ expect((await db.query<{usado_por_intento:string|null}>('SELECT usado_por_intento FROM fiscal_permisos_emision_homologacion')).rows[0].usado_por_intento).toBeNull()
+ expect((await db.query<{estado:string}>('SELECT estado FROM fiscal_reservas_homologacion')).rows[0].estado).toBe('RESERVADA')
 })

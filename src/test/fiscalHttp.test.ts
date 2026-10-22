@@ -26,6 +26,46 @@ function request(body:BodyInit=JSON.stringify({accion:'ESTADO_TA',operacion_id:o
   return new Request(url,init)
 }
 afterEach(()=>vi.useRealTimers())
+function preparationFixture(){
+ const f=fixture(),sale=crypto.randomUUID(),actor=crypto.randomUUID()
+ const context={version:1,venta_id:sale,total:'123.45',cuit_emisor:wsfeSample.cuitEmisor,punto_venta:7,incluye_recepcion_envases:false,revision_parametros:1,condiciones:[{id:5,descripcion:'Ensayo',comprobantes:[11]}],alicuotas:[]}
+ const {version:_v,entorno:_e,cuitEmisor:_c,puntoVenta:_p,numero:_n,...data}=wsfeSample
+ const {total:_t,...importes}=data.importes
+ const entrada={condicionEmisor:'MONOTRIBUTO',datos:{...data,importes}}
+ f.getUser.mockResolvedValue({data:{user:{id:actor}},error:null})
+ f.rpc.mockImplementation(async(name,args)=>({data:name==='resolver_preparacion_fiscal_homologacion'
+  ?{venta_id:sale,estado:'SIN_PREPARACION',operacion_id:null,preparacion_sha256:null,emision_habilitada:false}
+  :name==='cargar_datos_preparacion_homologacion'?context
+  :{venta_id:sale,operacion_id:args.p_operacion_id,preparacion_sha256:args.p_sha,estado:'DATOS_PREPARADOS',emision_habilitada:false},error:null}))
+ return {...f,sale,actor,entrada}
+}
+it.each(['RESOLVER_VENTA','DATOS_FISCALES_VENTA'])('HTTP %s usa venta y Auth real sin custodia ni ARCA',async accion=>{
+ const f=preparationFixture(),response=await f.handler(request(JSON.stringify({accion,venta_id:f.sale})))
+ expect(response.status).toBe(200);expect(f.getUser).toHaveBeenCalledTimes(1)
+ expect(f.rpc).toHaveBeenCalledExactlyOnceWith(accion==='RESOLVER_VENTA'?'resolver_preparacion_fiscal_homologacion':'cargar_datos_preparacion_homologacion',{p_actor_auth_id:f.actor,p_venta_id:f.sale})
+ expect(f.fetcher).not.toHaveBeenCalled();expect(f.read.mock.calls.some(([key])=>/CUSTODY|CREDENTIAL|TICKET|KEYRING/.test(key))).toBe(false)
+})
+it('HTTP guarda datos anidados y devuelve sólo ACK, sin reservar ni emitir',async()=>{
+ const f=preparationFixture(),response=await f.handler(request(JSON.stringify({accion:'GUARDAR_DATOS_FISCALES',venta_id:f.sale,operacion_id:op,entrada:f.entrada})))
+ expect(response.status).toBe(200);expect((await response.json()).resultado).toMatchObject({estado:'DATOS_PREPARADOS',operacion_id:op,emision_habilitada:false})
+ expect(f.getUser).toHaveBeenCalledTimes(1);expect(f.rpc.mock.calls.map(([name])=>name)).toEqual(['cargar_datos_preparacion_homologacion','guardar_datos_preparacion_homologacion'])
+ expect(f.fetcher).not.toHaveBeenCalled()
+})
+it('HTTP admite detalle válido de preparación mayor a 2KiB con límite propio de 64KiB',async()=>{
+ const f=preparationFixture(),entrada={...f.entrada,datos:{...f.entrada.datos,tributos:Array.from({length:25},(_,i)=>({id:1,descripcion:'Tributo sintético '+i,base:'0.00',alicuota:'0.0000',importe:'0.00'}))}}
+ const body=JSON.stringify({accion:'GUARDAR_DATOS_FISCALES',venta_id:f.sale,operacion_id:op,entrada})
+ expect(new TextEncoder().encode(body).length).toBeGreaterThan(2048)
+ expect((await f.handler(request(body))).status).toBe(200)
+})
+it.each(['"fecha":"20261021","fecha":"20261022"','"fecha":"20261021","\\u0066echa":"20261022"'])('HTTP rechaza claves anidadas duplicadas antes de Auth: %s',duplicate=>{
+ const f=preparationFixture(),body=`{"accion":"GUARDAR_DATOS_FISCALES","venta_id":"${f.sale}","operacion_id":"${op}","entrada":{"datos":{${duplicate}}}}`
+ return f.handler(request(body)).then(response=>{expect(response.status).toBe(400);expect(f.factory).not.toHaveBeenCalled();expect(f.getUser).not.toHaveBeenCalled()})
+})
+it('HTTP rechaza tamaño/profundidad excesivos y metadatos fuera del DTO antes de Auth',async()=>{
+ for(const body of [' '.repeat(65537),JSON.stringify({accion:'RESOLVER_VENTA',venta_id:crypto.randomUUID(),actor_auth_id:crypto.randomUUID()}),`{"accion":"GUARDAR_DATOS_FISCALES","entrada":${'['.repeat(20)}0${']'.repeat(20)}}`]){
+  const f=preparationFixture();expect((await f.handler(request(body))).status).toBe(400);expect(f.factory).not.toHaveBeenCalled()
+ }
+})
 async function reviewFixture(){
   const f=fixture(),frozen=await freezeFiscalRequest(wsfeSample),id=crypto.randomUUID(),actorAuthId=crypto.randomUUID()
   f.getUser.mockResolvedValue({data:{user:{id:actorAuthId}},error:null})

@@ -26,10 +26,15 @@ export interface FiscalOwnerReview {
  solicitud:FrozenFiscalRequest;aprobacion:Readonly<FiscalOwnerApproval>|null
 }
 /** DTO explícito: ningún binding de custodia, respuesta cruda ni permiso de emisión. */
-export async function validateFiscalOwnerReview(input:unknown,binding:FiscalWorkerBinding):Promise<Readonly<FiscalOwnerReview>> {
+export async function validatePublicFiscalOwnerReview(input:unknown,operationId:string):Promise<Readonly<FiscalOwnerReview>> {
   const c=object(input,['operacion_id','estado','revision','solicitud','aprobacion']),frozen=await verifyFiscalRequest(c.solicitud)
-  if(c.operacion_id!==binding.operacion_id||!['RESERVADA','ENVIO_INCIERTO','AUTORIZADA'].includes(String(c.estado))
-   ||c.revision!==(c.estado==='AUTORIZADA'?2:1)||frozen.solicitud.cuitEmisor!==binding.cuit_emisor||frozen.solicitud.puntoVenta!==binding.punto_venta)return fail()
-  const approval=c.aprobacion===null?null:validateFiscalOwnerApproval(c.aprobacion,binding.operacion_id,frozen.sha256,Number(c.revision))
-  return Object.freeze({operacion_id:binding.operacion_id,estado:c.estado as FiscalOwnerReview['estado'],revision:Number(c.revision),solicitud:frozen,aprobacion:approval})
+  if(!uuid(operationId)||c.operacion_id!==operationId||!['RESERVADA','ENVIO_INCIERTO','AUTORIZADA'].includes(String(c.estado))
+   ||c.revision!==(c.estado==='AUTORIZADA'?2:1))return fail()
+  const approval=c.aprobacion===null?null:validateFiscalOwnerApproval(c.aprobacion,operationId,frozen.sha256,Number(c.revision))
+  return Object.freeze({operacion_id:operationId,estado:c.estado as FiscalOwnerReview['estado'],revision:Number(c.revision),solicitud:frozen,aprobacion:approval})
+}
+export async function validateFiscalOwnerReview(input:unknown,binding:FiscalWorkerBinding):Promise<Readonly<FiscalOwnerReview>> {
+ const review=await validatePublicFiscalOwnerReview(input,binding.operacion_id)
+ if(review.solicitud.solicitud.cuitEmisor!==binding.cuit_emisor||review.solicitud.solicitud.puntoVenta!==binding.punto_venta)return fail()
+ return review
 }

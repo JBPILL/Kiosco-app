@@ -500,3 +500,13 @@ El titular confirmó que consultará con el contador cómo deben figurar los env
 Conservar datos fiscales declarados y canónico/hash en una preparación privada inmutable, creada atómicamente con la operación/snapshot y ligada al Auth verificado y emisor originales. Reutilizar el validador SQL final para no duplicar sus reglas, sin persistir ni reservar el número estructural. El cuerpo final sólo puede enlazarse por el nuevo adaptador si coincide exactamente con esa preparación, agregando el número observado por el servidor. Replay conserva UUID y ACK; un cambio requiere resolución explícita, no renumerar ni reemplazar datos silenciosamente.
 
 El catálogo privado se provisionará con fuente/revisión/vigencia explícitas, sin valores habilitados por defecto. Su SHA de fuente no equivale a autenticación ni consulta ARCA real. No reutilizar IVA global heredado ni habilitar remotamente por disponer de estas tablas. La adaptación HTTP/UI y el gate de consulta de numeración permanecen pendientes.
+## 22/10/2026 — Recuperar desde venta antes de preparar otra solicitud
+
+El flujo público recupera la operación/estado originales por venta, sin exigir emisor o catálogo activo sólo para leer ese estado. Registro fiscal heredado no vacío impide nueva preparación y requiere constancia original; no equivale por sí solo a CAE válido. Auth no probado o snapshot cambiado conduce a revisión, sin atribuir el intento a una cuenta nueva.
+
+Persistir UUID y datos exactos en el equipo antes de POST, con aislamiento por Auth/comercio/venta; mantenerlos ante ACK perdido y retirar datos del receptor cuando el servidor confirme ese mismo guardado. No crear otro UUID ni sustituir datos al reintentar. Aprobación visual conserva identidad propia y nunca implica emisión. Integración de historial detrás de flag explícito inicialmente apagado; no fallback al adaptador fiscal heredado. Consulta privada de numeración y unión al cuerpo final siguen siendo gate pendiente antes de activar.
+## 22/10/2026 — Auth original también en revisión y consumo, no sólo en resolución visual
+
+Una preparación 012 no se revisa/aprueba ni consume con el Auth nuevo de un perfil reasignado, aun con UUID conocido o revisión histórica ajena. Guard privado SQL compartido en getter y envío/consumo; compatibilidad de 011 anterior a tabla opcional preservada. Evaluar expiraciones después de completar guards/locks.
+
+Fijar además el header de sesión verificada en el cliente para que la selección posterior del SDK no cambie la cuenta del envío. Es un control de consistencia cliente; Auth.getUser y DB siguen autorizando cada petición. No persistir ese token. La suite anterior al refuerzo se conserva y no se atribuye al código posterior.

@@ -9,11 +9,16 @@ import { createWsaaTicketSource } from './fiscalWsaa.ts'
 import { FISCAL_STAGING_URL } from './fiscalSupabaseAdmin.ts'
 import { withFiscalDeadline } from './fiscalVoucherXml.ts'
 import { validateFiscalOwnerReview, validateFiscalOwnerApproval } from './fiscalOwnerReview.ts'
+import { loadFiscalPreparation, resolveFiscalSale, saveFiscalPreparation } from './fiscalPreparationService.ts'
+import { parseFiscalJson } from './fiscalStrictJson.ts'
 
 const origin='https://kiosco-app-staging.vercel.app'
 const invalid=():never=>{throw new Error('FISCAL_SOLICITUD_INVALIDA')}
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 type FiscalHttpCommand=
+  | {accion:'RESOLVER_VENTA';venta_id:string}
+  | {accion:'DATOS_FISCALES_VENTA';venta_id:string}
+  | {accion:'GUARDAR_DATOS_FISCALES';venta_id:string;operacion_id:string;entrada:unknown}
   | {accion:'CONCILIAR';operacion_id:string;observacion_id:string}
   | {accion:'ESTADO_TA';operacion_id:string}
   | {accion:'REVISAR_COMPROBANTE';operacion_id:string}
@@ -24,7 +29,7 @@ async function command(request:Request):Promise<FiscalHttpCommand> {
   if(!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(request.headers.get('content-type')??'')
     ||!['', 'identity'].includes(request.headers.get('content-encoding')??''))return invalid()
   const length=request.headers.get('content-length')
-  if(length!==null&&(!/^\d+$/.test(length)||Number(length)>2048))return invalid()
+  if(length!==null&&(!/^\d+$/.test(length)||Number(length)>65536))return invalid()
   const reader=request.body?.getReader();if(!reader)return invalid()
   const controller=new AbortController(),abort=()=>controller.abort(),timer=setTimeout(abort,3000)
   request.signal.addEventListener('abort',abort,{once:true})
@@ -32,14 +37,18 @@ async function command(request:Request):Promise<FiscalHttpCommand> {
     if(request.signal.aborted)return invalid()
     const chunks:Uint8Array[]=[];let size=0
     while(true){const part=await withFiscalDeadline(reader.read(),controller.signal);if(part.done)break
-      size+=part.value.length;if(size>2048)return invalid();chunks.push(part.value)}
+      size+=part.value.length;if(size>65536)return invalid();chunks.push(part.value)}
     const bytes=new Uint8Array(size);let offset=0
     for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length}
-    const text=new TextDecoder('utf-8',{fatal:true}).decode(bytes),parsed:unknown=JSON.parse(text)
+    const text=new TextDecoder('utf-8',{fatal:true}).decode(bytes),parsed:unknown=parseFiscalJson(text)
     if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))return invalid()
     const b=parsed as Record<string,unknown>,keys=Object.keys(b)
-    // Rechaza propiedades duplicadas, incluidas sus representaciones escapadas.
-    if((text.match(/"(?:[^"\\]|\\.)*"\s*:/g)?.length??0)!==keys.length||!uuid(b.operacion_id))return invalid()
+    if((b.accion==='RESOLVER_VENTA'||b.accion==='DATOS_FISCALES_VENTA')&&keys.length===2&&uuid(b.venta_id)&&size<=2048&&(length===null||Number(length)<=2048))
+      return b.accion==='RESOLVER_VENTA'?{accion:'RESOLVER_VENTA',venta_id:b.venta_id.toLowerCase()}:{accion:'DATOS_FISCALES_VENTA',venta_id:b.venta_id.toLowerCase()}
+    if(b.accion==='GUARDAR_DATOS_FISCALES'&&keys.length===4&&keys.every(k=>['accion','venta_id','operacion_id','entrada'].includes(k))
+      &&uuid(b.venta_id)&&uuid(b.operacion_id)&&b.entrada&&typeof b.entrada==='object'&&!Array.isArray(b.entrada))
+      return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_id:b.operacion_id.toLowerCase(),entrada:b.entrada}
+    if(size>2048||length!==null&&Number(length)>2048||!uuid(b.operacion_id))return invalid()
     const op=b.operacion_id.toLowerCase()
     if(b.accion==='ESTADO_TA'&&keys.length===2)return {accion:b.accion,operacion_id:op}
     if(b.accion==='REVISAR_COMPROBANTE'&&keys.length===2)return {accion:b.accion,operacion_id:op}
@@ -69,8 +78,8 @@ export interface FiscalHttpDependencies {
   createAdmin:(url:string)=>FiscalAuthClient
   fetcher:typeof fetch
 }
-/** Sólo homologación: consulta, revisión humana y recuperación. Deshabilitado
- * salvo configuración privada explícita; no prepara cuerpos ni envía facturas. */
+/** Sólo homologación: preparación de datos, consulta, revisión y recuperación.
+ * Deshabilitado por defecto; no reserva cuerpos finales ni envía facturas. */
 export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Request)=>Promise<Response> {
   const cache=createFiscalTicketCache()
   return async request=>{
@@ -90,7 +99,12 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
       try{cmd=await command(request)}catch{return json({codigo:'SOLICITUD_INVALIDA'},400)}
       const admin=deps.createAdmin(FISCAL_STAGING_URL),token=auth.slice(7)
       let result:unknown
-      if(cmd.accion==='CONCILIAR'){
+      if(cmd.accion==='RESOLVER_VENTA'||cmd.accion==='DATOS_FISCALES_VENTA'||cmd.accion==='GUARDAR_DATOS_FISCALES'){
+        const preparation={admin,readSecret:deps.readSecret}
+        result=cmd.accion==='RESOLVER_VENTA'?await resolveFiscalSale(preparation,token,cmd.venta_id)
+          :cmd.accion==='DATOS_FISCALES_VENTA'?await loadFiscalPreparation(preparation,token,cmd.venta_id)
+          :await saveFiscalPreparation(preparation,token,cmd.venta_id,cmd.operacion_id,cmd.entrada)
+      }else if(cmd.accion==='CONCILIAR'){
         const load=createSharedFiscalTicketLoader(admin,createPrivateFiscalTicketKeys(deps.readSecret),
           createWsaaTicketSource(createPrivateFiscalCustody(deps.readSecret),deps.fetcher))
         result=await reconcileAuthorizedFiscalVoucher(admin,token,cmd.operacion_id,cmd.observacion_id,cache,load,deps.fetcher)

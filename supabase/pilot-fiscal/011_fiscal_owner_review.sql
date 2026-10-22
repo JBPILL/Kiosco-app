@@ -38,6 +38,19 @@ DROP TRIGGER IF EXISTS fiscal_revision_inmutable ON public.fiscal_revisiones_hom
 CREATE TRIGGER fiscal_revision_inmutable BEFORE UPDATE OR DELETE ON public.fiscal_revisiones_homologacion
  FOR EACH ROW EXECUTE FUNCTION public.fiscal_revision_inmutable();
 
+-- Preparaciones 012 conservan Auth de origen; el perfil puede ser reasignado.
+-- El helper es privado y no concede acceso. 011 también funciona antes de 012.
+CREATE OR REPLACE FUNCTION public.fiscal_exigir_actor_preparacion(p_operacion_id uuid,p_actor_auth_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN
+ IF p_operacion_id IS NULL OR p_actor_auth_id IS NULL THEN
+  RAISE EXCEPTION 'Identidad de preparación no autorizada.' USING ERRCODE='42501'; END IF;
+ IF to_regclass('public.fiscal_preparaciones_homologacion') IS NOT NULL THEN
+  IF EXISTS(SELECT 1 FROM public.fiscal_preparaciones_homologacion WHERE operacion_id=p_operacion_id AND actor_auth_id IS DISTINCT FROM p_actor_auth_id) THEN
+   RAISE EXCEPTION 'Identidad de preparación no autorizada.' USING ERRCODE='42501'; END IF;
+ END IF;
+END $$;
+REVOKE ALL ON FUNCTION public.fiscal_exigir_actor_preparacion(uuid,uuid) FROM PUBLIC,anon,authenticated,service_role;
+
 CREATE OR REPLACE FUNCTION public.cargar_revision_fiscal_homologacion(p_operacion_id uuid,p_actor_auth_id uuid)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 DECLARE binding jsonb; usuario uuid; solicitud public.fiscal_solicitudes_homologacion%ROWTYPE;
@@ -45,6 +58,7 @@ DECLARE binding jsonb; usuario uuid; solicitud public.fiscal_solicitudes_homolog
 BEGIN
  IF NOT coalesce(auth.role()='service_role',false) THEN RAISE EXCEPTION 'Trabajador fiscal privado requerido.' USING ERRCODE='42501'; END IF;
  binding:=public.autorizar_consulta_fiscal_homologacion(p_actor_auth_id,p_operacion_id);
+ PERFORM public.fiscal_exigir_actor_preparacion(p_operacion_id,p_actor_auth_id);
  usuario:=(binding->>'usuario_id')::uuid;
  -- El gate ya tomó perfil → comercio → venta → operación → emisor.
  SELECT * INTO solicitud FROM public.fiscal_solicitudes_homologacion WHERE operacion_id=p_operacion_id FOR UPDATE;
@@ -111,7 +125,8 @@ BEGIN
    AND r.credencial_id=NEW.credencial_id AND r.certificado_sha256=NEW.certificado_sha256 AND r.emisor_revision=NEW.emisor_revision
    AND r.creado_en<=clock_timestamp() AND r.vence_en>clock_timestamp()
   ORDER BY r.creado_en DESC,r.id LIMIT 1 FOR SHARE OF r;
-  -- clock_timestamp después de adquirir el lock: la espera no renueva permisos.
+  -- Evaluar vigencia después de todos los locks/guards: no renovarla por espera.
+  IF revision.id IS NOT NULL THEN PERFORM public.fiscal_exigir_actor_preparacion(NEW.operacion_id,revision.actor_auth_id); END IF;
   instante:=clock_timestamp();
   IF revision.id IS NULL OR revision.creado_en>instante OR revision.vence_en<=instante
    OR NOT NEW.habilitado OR NEW.creado_en>instante OR NEW.vence_en<=instante THEN
@@ -128,6 +143,7 @@ CREATE TRIGGER fiscal_revision_antes_envio BEFORE UPDATE ON public.fiscal_permis
 CREATE OR REPLACE FUNCTION public.registrar_envio_revisado_homologacion(p_actor_auth_id uuid,p_operacion_id uuid,p_intento_id uuid,p_sha text,p_autorizacion_id uuid,p_ultimo_autorizado integer,p_consultado_en timestamptz)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$ BEGIN
  PERFORM public.autorizar_consulta_fiscal_homologacion(p_actor_auth_id,p_operacion_id);
+ PERFORM public.fiscal_exigir_actor_preparacion(p_operacion_id,p_actor_auth_id);
  RETURN public.registrar_envio_fiscal_homologacion(p_operacion_id,p_intento_id,p_sha,p_autorizacion_id,p_ultimo_autorizado,p_consultado_en);
 END $$;
 REVOKE ALL ON FUNCTION public.registrar_envio_fiscal_homologacion(uuid,uuid,text,uuid,integer,timestamptz) FROM PUBLIC,anon,authenticated,service_role;

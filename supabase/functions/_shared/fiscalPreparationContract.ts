@@ -20,3 +20,10 @@ export interface FiscalPreparationContext {
  condiciones:readonly {id:number;descripcion:string;comprobantes:readonly number[]}[]
  alicuotas:readonly {id:number;descripcion:string}[]
 }
+export interface FiscalSaleResolution {
+ venta_id:string
+ estado:'SIN_PREPARACION'|'NO_DISPONIBLE'|'REGISTRO_FISCAL_HEREDADO'|'REQUIERE_REVISION'|'DATOS_PREPARADOS'|'RESERVADA'|'ENVIO_INCIERTO'|'AUTORIZADA'
+ operacion_id:string|null
+ preparacion_sha256:string|null
+ emision_habilitada:false
+}
