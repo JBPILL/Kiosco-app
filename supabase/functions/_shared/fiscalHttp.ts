@@ -12,13 +12,14 @@ import { validateFiscalOwnerReview, validateFiscalOwnerApproval } from './fiscal
 import { loadFiscalPreparation, resolveFiscalSale, saveFiscalPreparation } from './fiscalPreparationService.ts'
 import { parseFiscalJson } from './fiscalStrictJson.ts'
 import { prepareFiscalVoucher } from './fiscalPreparationWorker.ts'
-import { loadFiscalReceipt } from './fiscalReceiptService.ts'
+import { loadFiscalReceipt, loadFiscalDiagnosis } from './fiscalReceiptService.ts'
 
 const origin='https://kiosco-app-staging.vercel.app'
 const invalid=():never=>{throw new Error('FISCAL_SOLICITUD_INVALIDA')}
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 type FiscalHttpCommand=
   | {accion:'CONSTANCIA_COMPROBANTE';venta_id:string;operacion_id:string}
+  | {accion:'DIAGNOSTICO_COMPROBANTE';venta_id:string;operacion_id:string}
   | {accion:'RESOLVER_VENTA';venta_id:string}
   | {accion:'DATOS_FISCALES_VENTA';venta_id:string}
   | {accion:'GUARDAR_DATOS_FISCALES';venta_id:string;operacion_id:string;entrada:unknown}
@@ -55,6 +56,7 @@ async function command(request:Request):Promise<FiscalHttpCommand> {
     if(size>2048||length!==null&&Number(length)>2048||!uuid(b.operacion_id))return invalid()
     const op=b.operacion_id.toLowerCase()
     if(b.accion==='CONSTANCIA_COMPROBANTE'&&keys.length===3&&uuid(b.venta_id))return {accion:b.accion,operacion_id:op,venta_id:b.venta_id.toLowerCase()}
+    if(b.accion==='DIAGNOSTICO_COMPROBANTE'&&keys.length===3&&uuid(b.venta_id))return {accion:b.accion,operacion_id:op,venta_id:b.venta_id.toLowerCase()}
     if(b.accion==='ESTADO_TA'&&keys.length===2)return {accion:b.accion,operacion_id:op}
     if(b.accion==='REVISAR_COMPROBANTE'&&keys.length===2)return {accion:b.accion,operacion_id:op}
     if(b.accion==='PREPARAR_COMPROBANTE'&&keys.length===2)return {accion:b.accion,operacion_id:op}
@@ -107,6 +109,8 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
       let result:unknown
       if(cmd.accion==='CONSTANCIA_COMPROBANTE'){
         result=await loadFiscalReceipt(admin,token,cmd.venta_id,cmd.operacion_id)
+      }else if(cmd.accion==='DIAGNOSTICO_COMPROBANTE'){
+        result=await loadFiscalDiagnosis(admin,token,cmd.venta_id,cmd.operacion_id)
       }else if(cmd.accion==='RESOLVER_VENTA'||cmd.accion==='DATOS_FISCALES_VENTA'||cmd.accion==='GUARDAR_DATOS_FISCALES'){
         const preparation={admin,readSecret:deps.readSecret}
         result=cmd.accion==='RESOLVER_VENTA'?await resolveFiscalSale(preparation,token,cmd.venta_id)

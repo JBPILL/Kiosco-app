@@ -258,3 +258,23 @@ it('HTTP constancia no confunde error de RPC con resultado autorizado',async()=>
  const response=await f.handler(request(JSON.stringify({accion:'CONSTANCIA_COMPROBANTE',venta_id:crypto.randomUUID(),operacion_id:op})))
  expect(response.status).toBe(409);expect(await response.text()).not.toContain('PRIVATE_LEDGER_ERROR')
 })
+
+it('HTTP diagnóstico usa Auth real y getter activo, sin TA/ARCA ni auditoría histórica directa',async()=>{
+ const f=fixture(),sale=crypto.randomUUID(),actor=crypto.randomUUID(),diagnosis={version:1,entorno:'HOMOLOGACION',operacion_id:op,venta_id:sale,solicitud_sha256:'a'.repeat(64),estado:'ENVIO_INCIERTO',recepcion:null,ultima_consulta:null,puedeReenviar:false}
+ f.getUser.mockResolvedValue({data:{user:{id:actor}},error:null});f.rpc.mockResolvedValue({data:diagnosis,error:null})
+ const response=await f.handler(request(JSON.stringify({accion:'DIAGNOSTICO_COMPROBANTE',venta_id:sale,operacion_id:op})))
+ expect(response.status).toBe(200);expect((await response.json()).resultado).toEqual(diagnosis);expect(f.getUser).toHaveBeenCalledTimes(1)
+ expect(f.rpc).toHaveBeenCalledExactlyOnceWith('cargar_diagnostico_fiscal_homologacion',{p_actor_auth_id:actor,p_venta_id:sale,p_operacion_id:op})
+ expect(f.fetcher).not.toHaveBeenCalled();expect(f.read.mock.calls.some(([key])=>/CUSTODY|CREDENTIAL|TICKET|KEYRING/.test(key))).toBe(false)
+})
+it('HTTP diagnóstico no expone campos privados ni respuestas parciales',async()=>{
+ const f=fixture(),sale=crypto.randomUUID();f.rpc.mockResolvedValue({data:{estado:'ENVIO_INCIERTO',token:'PRIVATE_SENTINEL'},error:null})
+ const response=await f.handler(request(JSON.stringify({accion:'DIAGNOSTICO_COMPROBANTE',venta_id:sale,operacion_id:op})))
+ expect(response.status).toBe(409);expect(await response.text()).not.toContain('PRIVATE_SENTINEL')
+})
+it('HTTP diagnóstico exige sesión y contrato cerrado antes de acceder',async()=>{
+ const f=fixture(),sale=crypto.randomUUID()
+ expect((await f.handler(request(JSON.stringify({accion:'DIAGNOSTICO_COMPROBANTE',venta_id:sale,operacion_id:op,extra:true})))).status).toBe(400)
+ expect(f.getUser).not.toHaveBeenCalled();f.getUser.mockResolvedValue({data:{user:null},error:new Error('private')})
+ expect((await f.handler(request(JSON.stringify({accion:'DIAGNOSTICO_COMPROBANTE',venta_id:sale,operacion_id:op})))).status).toBe(409);expect(f.rpc).not.toHaveBeenCalled()
+})

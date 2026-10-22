@@ -16,6 +16,7 @@ const rpcNames=new Set([
   'cargar_fuente_preparacion_homologacion',
   'cargar_constancia_fiscal_homologacion',
   'registrar_respuesta_emision_homologacion','cargar_respuesta_emision_homologacion',
+  'cargar_diagnostico_fiscal_homologacion',
 ])
 const fail=():never=>{throw new Error('FISCAL_SERVICIO_PRIVADO_NO_DISPONIBLE')}
 

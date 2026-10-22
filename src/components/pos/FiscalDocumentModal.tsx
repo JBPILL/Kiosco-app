@@ -5,6 +5,8 @@ import { FiscalPreparationForm } from './FiscalPreparationForm'
 import { FiscalOwnerReviewPanel } from './FiscalOwnerReviewPanel'
 import { FiscalReceiptPanel } from './FiscalReceiptPanel'
 import type { FiscalReceipt } from '../../../supabase/functions/_shared/fiscalReceipt'
+import type { FiscalDiagnosis } from '../../../supabase/functions/_shared/fiscalDiagnosis'
+import { FiscalDiagnosisPanel } from './FiscalDiagnosisPanel'
 import type { FiscalClient, FiscalClientScope } from '../../lib/fiscalClient'
 import type { FiscalPreparationContext, FiscalPreparationInput, FiscalSaleResolution } from '../../../supabase/functions/_shared/fiscalPreparationContract'
 import type { FiscalOwnerReview } from '../../../supabase/functions/_shared/fiscalOwnerReview'
@@ -22,6 +24,8 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
   const [resolution, setResolution] = useState<Readonly<FiscalSaleResolution> | null>(null)
   const [review, setReview] = useState<Readonly<FiscalOwnerReview> | null>(null)
   const [receipt, setReceipt] = useState<Readonly<FiscalReceipt> | null>(null)
+  const [diagnosis, setDiagnosis] = useState<Readonly<FiscalDiagnosis> | null>(null)
+  const [diagnosisError, setDiagnosisError] = useState('')
   const [approvalId, setApprovalId] = useState('')
   const [busy, setBusy] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -37,12 +41,25 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
   const load = useCallback(async (api: FiscalClient) => {
     const current = ++generation.current
     let stateRecovered = false
-    setBusy(true); setError(''); setContext(null); setReview(null); setReceipt(null); setResolution(null)
+    setBusy(true); setError(''); setDiagnosisError(''); setDiagnosis(null); setContext(null); setReview(null); setReceipt(null); setResolution(null)
     try {
-      const state = await api.resolve()
+      let state = await api.resolve()
       if (generation.current !== current) return
       stateRecovered = true
       setResolution(state)
+      let loadedDiagnosis: Readonly<FiscalDiagnosis> | null = null
+      if (['ENVIO_INCIERTO', 'AUTORIZADA'].includes(state.estado) && state.operacion_id) {
+        try {
+          const values = await api.diagnosis(state.operacion_id)
+          if (generation.current !== current) return
+          if (values.estado === 'RESERVADA' || state.estado === 'AUTORIZADA' && values.estado !== 'AUTORIZADA') throw new Error('FISCAL_ESTADO_NO_CONFIRMADO')
+          loadedDiagnosis = values; setDiagnosis(values)
+          if (values.estado === 'AUTORIZADA') { state = { ...state, estado: 'AUTORIZADA' }; setResolution(state) }
+        } catch {
+          if (generation.current !== current) return
+          setDiagnosisError('No se pudo confirmar el diagnóstico de recepción y consulta. Volvé a consultar el estado; conservá la operación original.')
+        }
+      }
       if (state.estado === 'SIN_PREPARACION') {
         const pending = api.pending()
         setHasLocalRecord(!!pending); setPendingInput(pending?.input ?? null)
@@ -54,10 +71,13 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
       } else if (state.estado === 'AUTORIZADA' && state.operacion_id) {
         const values = await api.receipt(state.operacion_id)
         if (generation.current !== current) return
+        if (loadedDiagnosis && values.solicitud.sha256 !== loadedDiagnosis.solicitud_sha256) throw new Error('FISCAL_ESTADO_NO_CONFIRMADO')
         setReceipt(values)
       } else if (['RESERVADA', 'ENVIO_INCIERTO'].includes(state.estado) && state.operacion_id) {
         const values = await api.review(state.operacion_id)
         if (generation.current !== current) return
+        if (state.estado === 'ENVIO_INCIERTO' && values.estado === 'RESERVADA') throw new Error('FISCAL_ESTADO_NO_CONFIRMADO')
+        if (loadedDiagnosis && values.solicitud.sha256 !== loadedDiagnosis.solicitud_sha256) throw new Error('FISCAL_ESTADO_NO_CONFIRMADO')
         setApprovalId(values.aprobacion?.id ?? (values.estado === 'RESERVADA' ? api.approvalId(values) : ''))
         setReview(values)
       }
@@ -105,6 +125,8 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
     <div className="space-y-4">
       {busy && <p role="status">Consultando el estado fiscal de la venta…</p>}
       {error && <p role="alert">{error}</p>}
+      {diagnosisError && <p role="alert">{diagnosisError}</p>}
+      {!busy && diagnosis && <FiscalDiagnosisPanel diagnosis={diagnosis} />}
       {!busy && context && <FiscalPreparationForm context={context} onPrepare={save} />}
       {!busy && resolution?.estado === 'SIN_PREPARACION' && hasLocalRecord && <div className="space-y-3"><p>Este equipo conserva un guardado pendiente. Recuperá el mismo intento antes de cargar otros datos.</p>{pendingInput && <Button loading={saving} onClick={() => { const current = generation.current; void save(pendingInput).catch(() => { if (generation.current === current) setError('No se confirmó el guardado. Volvé a consultar su estado antes de reintentar.') }) }}>Reintentar datos guardados</Button>}</div>}
       {!busy && resolution?.estado === 'DATOS_PREPARADOS' && <div className="space-y-3"><p role="status">Datos fiscales guardados. Todavía falta preparar el cuerpo del comprobante para revisión; no se emitió una factura ni se obtuvo un CAE.</p>{client && <Button loading={preparing} onClick={() => { void prepareBody() }}>Preparar comprobante para revisar</Button>}</div>}

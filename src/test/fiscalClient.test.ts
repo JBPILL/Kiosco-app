@@ -111,3 +111,11 @@ it('cliente recupera constancia vinculada a venta/operación sin persistir datos
  f.send.mockResolvedValue(envelope({...receipt,venta_id:crypto.randomUUID()}));await expect(f.client.receipt(operationId)).rejects.toThrow()
  f.send.mockResolvedValue(envelope({...receipt,operacion_id:crypto.randomUUID()}));await expect(f.client.receipt(operationId)).rejects.toThrow()
 })
+
+it('cliente consulta diagnóstico por venta/operación sin persistirlo y rechaza otro scope',async()=>{
+ const f=fixture(),operationId=crypto.randomUUID(),diagnosis={version:1,entorno:'HOMOLOGACION',operacion_id:operationId,venta_id:scope.saleId,solicitud_sha256:'a'.repeat(64),estado:'ENVIO_INCIERTO',recepcion:null,ultima_consulta:null,puedeReenviar:false}
+ f.send.mockResolvedValue(envelope(diagnosis));expect(await f.client.diagnosis(operationId)).toEqual(diagnosis)
+ expect(f.send).toHaveBeenCalledExactlyOnceWith({accion:'DIAGNOSTICO_COMPROBANTE',operacion_id:operationId,venta_id:scope.saleId});expect(f.map.size).toBe(0)
+ f.send.mockResolvedValue(envelope({...diagnosis,venta_id:crypto.randomUUID()}));await expect(f.client.diagnosis(operationId)).rejects.toThrow()
+ f.send.mockResolvedValue(envelope({...diagnosis,operacion_id:crypto.randomUUID()}));await expect(f.client.diagnosis(operationId)).rejects.toThrow()
+})

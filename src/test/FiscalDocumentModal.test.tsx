@@ -13,8 +13,9 @@ function fixture(){
  const context=vi.fn<FiscalClient['context']>().mockResolvedValue({version:1,venta_id:scope.saleId,total:'123.45',cuit_emisor:wsfeSample.cuitEmisor,punto_venta:7,incluye_recepcion_envases:false,revision_parametros:1,condiciones:[{id:5,descripcion:'Ensayo',comprobantes:[11]}],alicuotas:[]})
  const review=vi.fn<FiscalClient['review']>().mockResolvedValue({operacion_id:operation,estado:'RESERVADA',revision:1,solicitud:{version:1,solicitud:wsfeSample,sha256:'a'.repeat(64)},aprobacion:null})
  const receipt=vi.fn<FiscalClient['receipt']>().mockRejectedValue(new Error('SYNTHETIC_UNAVAILABLE'))
- const client:FiscalClient={resolve,context,review,receipt,prepare:vi.fn(async()=>review(operation)),pending:vi.fn(()=>null),save:vi.fn(async()=>saved),approvalId:vi.fn(()=>approval),approve:vi.fn<FiscalClient['approve']>(async()=>({id:approval,operacion_id:operation,solicitud_sha256:'a'.repeat(64),revision:1,aprobada:true,vence_en:new Date(Date.now()+600000).toISOString(),emision_habilitada:false}))}
- return {client,resolve,context,review}
+ const diagnosis=vi.fn<FiscalClient['diagnosis']>().mockResolvedValue({version:1,entorno:'HOMOLOGACION',operacion_id:operation,venta_id:scope.saleId,solicitud_sha256:'a'.repeat(64),estado:'AUTORIZADA',recepcion:null,ultima_consulta:{estado:'AUTORIZACION_COINCIDENTE',codigo:null},puedeReenviar:false})
+ const client:FiscalClient={resolve,context,review,receipt,diagnosis,prepare:vi.fn(async()=>review(operation)),pending:vi.fn(()=>null),save:vi.fn(async()=>saved),approvalId:vi.fn(()=>approval),approve:vi.fn<FiscalClient['approve']>(async()=>({id:approval,operacion_id:operation,solicitud_sha256:'a'.repeat(64),revision:1,aprobada:true,vence_en:new Date(Date.now()+600000).toISOString(),emision_habilitada:false}))}
+ return {client,resolve,context,review,diagnosis}
 }
 it('abre carga explícita desde una venta sin datos fiscales previos',async()=>{
  const f=fixture();render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
@@ -109,4 +110,65 @@ it('constancia tardía no aparece al seleccionar otra venta',async()=>{
  await screen.findByRole('form')
  await act(async()=>finish({version:1,entorno:'HOMOLOGACION',estado:'AUTORIZADA',operacion_id:operation,venta_id:scope.saleId,solicitud:{version:1,solicitud:wsfeSample,sha256:'a'.repeat(64)},autorizacion:{cae:'11111111111111',vencimiento:'20261031',procesado_en:null}}))
  expect(screen.queryByText('11111111111111')).toBeNull()
+})
+
+function uncertain(f:ReturnType<typeof fixture>){
+ f.resolve.mockResolvedValue({...saved,estado:'ENVIO_INCIERTO'});f.review.mockResolvedValue({operacion_id:operation,estado:'ENVIO_INCIERTO',revision:1,solicitud:{version:1,solicitud:wsfeSample,sha256:'a'.repeat(64)},aprobacion:null})
+ f.diagnosis.mockResolvedValue({version:1,entorno:'HOMOLOGACION',operacion_id:operation,venta_id:scope.saleId,solicitud_sha256:'a'.repeat(64),estado:'ENVIO_INCIERTO',recepcion:{estado:'RECHAZO_RECIBIDO',codigos:[10017],puedeReenviar:false},ultima_consulta:{estado:'CONCILIAR',codigo:'SIN_CONFIRMACION'},puedeReenviar:false})
+}
+it('muestra rechazo recibido y consulta no confirmada sin aprobar, reenviar ni preparar',async()=>{
+ const f=fixture();uncertain(f)
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ await screen.findByRole('region',{name:'Diagnóstico fiscal'});expect(screen.getByText(/Se recibió un rechazo/)).toBeTruthy();expect(screen.getByText('10017')).toBeTruthy()
+ expect(screen.getByText('La consulta no confirmó la autorización.')).toBeTruthy();expect(screen.queryByRole('checkbox')).toBeNull();expect(screen.queryByRole('form')).toBeNull()
+ expect(f.client.approve).not.toHaveBeenCalled();expect(f.client.prepare).not.toHaveBeenCalled();expect(f.client.save).not.toHaveBeenCalled()
+})
+it('falta de recepción no se presenta como rechazo',async()=>{
+ const f=fixture();uncertain(f);f.diagnosis.mockResolvedValue({...await f.diagnosis(operation),recepcion:null,ultima_consulta:null});f.diagnosis.mockClear()
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ await screen.findByText('No hay una respuesta de emisión registrada. Eso no confirma un rechazo.');expect(screen.queryByText(/Se recibió un rechazo/)).toBeNull()
+})
+it('fallo de diagnóstico no oculta constancia autorizada ni muestra error privado',async()=>{
+ const f=fixture();f.resolve.mockResolvedValue({...saved,estado:'AUTORIZADA'});f.diagnosis.mockRejectedValue(new Error('PRIVATE_SENTINEL'))
+ vi.mocked(f.client.receipt).mockResolvedValue({version:1,entorno:'HOMOLOGACION',estado:'AUTORIZADA',operacion_id:operation,venta_id:scope.saleId,solicitud:{version:1,solicitud:wsfeSample,sha256:'a'.repeat(64)},autorizacion:{cae:'11111111111111',vencimiento:'20261031',procesado_en:null}})
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ await screen.findByRole('region',{name:'Constancia fiscal de homologación'});expect((await screen.findByRole('alert')).textContent).not.toContain('PRIVATE_SENTINEL')
+ expect(screen.queryByRole('form')).toBeNull()
+})
+it('diagnóstico atrasado no revierte autorización a estado incierto',async()=>{
+ const f=fixture();uncertain(f);f.resolve.mockResolvedValue({...saved,estado:'AUTORIZADA'})
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ await screen.findByText(/La operación figura autorizada en el servidor/);expect(screen.queryByRole('checkbox')).toBeNull();expect(screen.queryByRole('region',{name:'Diagnóstico fiscal'})).toBeNull()
+})
+it('hash de diagnóstico distinto no muestra controles de revisión',async()=>{
+ const f=fixture();uncertain(f);f.diagnosis.mockResolvedValue({...await f.diagnosis(operation),solicitud_sha256:'b'.repeat(64)});f.diagnosis.mockClear()
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ await screen.findByRole('alert');expect(screen.queryByRole('checkbox')).toBeNull()
+})
+it('diagnóstico tardío no aparece en otra venta',async()=>{
+ const first=fixture(),second=fixture();uncertain(first)
+ let finish!:(value:Awaited<ReturnType<FiscalClient['diagnosis']>>)=>void
+ const value=await first.diagnosis(operation);first.diagnosis.mockClear();first.diagnosis.mockReturnValue(new Promise(done=>{finish=done}))
+ const view=render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={first.client} />)
+ await waitFor(()=>expect(first.diagnosis).toHaveBeenCalledTimes(1))
+ view.rerender(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={{...scope,saleId:'66666666-6666-4666-8666-666666666666'}} client={second.client} />)
+ await screen.findByRole('form');await act(async()=>finish(value));expect(screen.queryByRole('region',{name:'Diagnóstico fiscal'})).toBeNull()
+})
+
+it('aprobación recibida no se presenta como autorización conciliada',async()=>{
+ const f=fixture();uncertain(f);f.diagnosis.mockResolvedValue({...await f.diagnosis(operation),recepcion:{estado:'APROBACION_RECIBIDA',codigos:[],puedeReenviar:false}});f.diagnosis.mockClear()
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ await screen.findByText('Se recibió una aprobación, pero aún falta confirmar la autorización mediante conciliación.')
+ expect(screen.queryByRole('region',{name:'Constancia fiscal de homologación'})).toBeNull();expect(screen.queryByRole('checkbox')).toBeNull()
+})
+it('autorización confirmada durante el diagnóstico recupera constancia sin abrir revisión',async()=>{
+ const f=fixture();f.resolve.mockResolvedValue({...saved,estado:'ENVIO_INCIERTO'})
+ vi.mocked(f.client.receipt).mockResolvedValue({version:1,entorno:'HOMOLOGACION',estado:'AUTORIZADA',operacion_id:operation,venta_id:scope.saleId,solicitud:{version:1,solicitud:wsfeSample,sha256:'a'.repeat(64)},autorizacion:{cae:'11111111111111',vencimiento:'20261031',procesado_en:null}})
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ await screen.findByRole('region',{name:'Constancia fiscal de homologación'});expect(f.review).not.toHaveBeenCalled();expect(screen.queryByRole('checkbox')).toBeNull()
+})
+it('revisión reservada obsoleta no habilita aprobación de un envío incierto',async()=>{
+ const f=fixture();uncertain(f);f.review.mockResolvedValue({...await f.review(operation),estado:'RESERVADA'});f.review.mockClear()
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ await screen.findByRole('alert');expect(screen.queryByRole('checkbox')).toBeNull();expect(f.client.approve).not.toHaveBeenCalled()
 })
