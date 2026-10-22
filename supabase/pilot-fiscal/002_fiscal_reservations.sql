@@ -72,7 +72,7 @@ BEGIN
   snapshot:=jsonb_build_object('version',1,'venta_id',venta.id,'kiosco_id',venta.kiosco_id,
     'total',venta.total,'fecha_hora',to_char(venta.fecha_hora AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),'detalles',detalles);
   SELECT * INTO op FROM public.fiscal_operaciones_homologacion WHERE id=p_operacion_id FOR UPDATE;
-  IF op.venta_snapshot IS DISTINCT FROM snapshot THEN
+  IF op.estado IS DISTINCT FROM 'PREPARADA' OR op.venta_snapshot IS DISTINCT FROM snapshot THEN
     RAISE EXCEPTION 'Cambió el contenido de la venta fiscal.' USING ERRCODE='22023';
   END IF;
   RETURN op;

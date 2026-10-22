@@ -95,7 +95,7 @@ try {
     ...readdirSync(join(bootstrap,'steps')).sort().map(file=>join(bootstrap,'steps',file)),join(bootstrap,'900_final_security.sql'),
     join(root,'supabase/pilot-fiscal/001_fiscal_journal.sql'),join(root,'supabase/pilot-fiscal/002_fiscal_reservations.sql'),
     join(root,'supabase/pilot-fiscal/003_fiscal_requests.sql'),join(root,'supabase/pilot-fiscal/004_fiscal_reconciliation.sql'),
-    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql'),join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql'),join(root,'supabase/pilot-fiscal/013_fiscal_preparation_source.sql'),join(root,'supabase/pilot-fiscal/014_fiscal_receipt.sql'),join(root,'supabase/pilot-fiscal/015_fiscal_emission_receipts.sql'),join(root,'supabase/pilot-fiscal/016_fiscal_diagnosis.sql')]) {
+    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql'),join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql'),join(root,'supabase/pilot-fiscal/013_fiscal_preparation_source.sql'),join(root,'supabase/pilot-fiscal/014_fiscal_receipt.sql'),join(root,'supabase/pilot-fiscal/015_fiscal_emission_receipts.sql'),join(root,'supabase/pilot-fiscal/016_fiscal_diagnosis.sql'),join(root,'supabase/pilot-fiscal/017_fiscal_preparation_cancellation.sql')]) {
     await observer.query(readFileSync(file,'utf8'))
     if(file.endsWith('011_fiscal_owner_review.sql')){
       await observer.query('SELECT fiscal_exigir_actor_preparacion($1,$2)',[randomUUID(),randomUUID()])
@@ -381,6 +381,55 @@ try {
   assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_preparaciones_homologacion WHERE operacion_id=$1',[samePreparation.operation])).rows[0].n,1)
   assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[samePreparation.operation])).rows[0].n,0)
   cases.push('dos_workers_preparacion_explicita_un_ACK_sin_reserva')
+  const cancelPreparation=async(client,f)=>(await client.query('SELECT cancelar_preparacion_fiscal_homologacion($1,$2,$3) ack',[f.auth,f.sale,f.operation])).rows[0].ack
+  const persistPrepared=async(client,f)=>{
+    const body=JSON.stringify({...JSON.parse(f.canonical).datos,numero:1}),hash=createHash('sha256').update(body).digest('hex')
+    return client.query('SELECT persistir_preparacion_fiscal_homologacion($1,$2,$3,$4,0,clock_timestamp())',[f.auth,f.operation,body,hash])
+  }
+  const cancelBeforeSave=await preparationFixture(101)
+  await start(a);await cancelPreparation(a,cancelBeforeSave)
+  await start(b);const lateSave=capture(savePreparation(b,cancelBeforeSave));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await lateSave).error?.code,'55000');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_operaciones_homologacion WHERE id=$1',[cancelBeforeSave.operation])).rows[0].n,0)
+  cases.push('cancelacion_antes_guardado_tardio_no_crea_operacion')
+  const saveBeforeCancel=await preparationFixture(102)
+  await start(a);await savePreparation(a,saveBeforeCancel)
+  await start(b);const cancelAfterSave=capture(cancelPreparation(b,saveBeforeCancel));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await cancelAfterSave).value?.estado,'CANCELADA');await b.query('COMMIT')
+  const correctedPreparation={...saveBeforeCancel,operation:randomUUID()};await start(a);await savePreparation(a,correctedPreparation);await a.query('COMMIT')
+  assert.equal((await observer.query("SELECT count(*)::int n FROM fiscal_operaciones_homologacion WHERE venta_id=$1 AND estado='PREPARADA'",[saveBeforeCancel.sale])).rows[0].n,1)
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_operaciones_homologacion WHERE venta_id=$1',[saveBeforeCancel.sale])).rows[0].n,2)
+  cases.push('guardado_antes_cancelacion_preserva_hechos_y_admite_identidad_corregida')
+  const cancelBeforeNumber=await preparationFixture(103)
+  await start(a);await savePreparation(a,cancelBeforeNumber);await a.query('COMMIT')
+  await start(a);await cancelPreparation(a,cancelBeforeNumber)
+  await start(b);const lateNumber=capture(persistPrepared(b,cancelBeforeNumber));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await lateNumber).error?.code,'22023');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[cancelBeforeNumber.operation])).rows[0].n,0)
+  cases.push('cancelacion_antes_reserva_impide_cuerpo_numero_del_worker_tardio')
+  const numberBeforeCancel=await preparationFixture(104)
+  await start(a);await savePreparation(a,numberBeforeCancel);await a.query('COMMIT')
+  await start(a);await persistPrepared(a,numberBeforeCancel)
+  await start(b);const lateCancel=capture(cancelPreparation(b,numberBeforeCancel));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await lateCancel).error?.code,'55000');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_cancelaciones_preparacion_homologacion WHERE operacion_id=$1',[numberBeforeCancel.operation])).rows[0].n,0)
+  cases.push('reserva_antes_cancelacion_no_libera_numero_ni_deja_cancelacion')
+  const globalCancel=await preparationFixture(105),otherSale={...await preparationFixture(106),operation:globalCancel.operation}
+  await start(a);await cancelPreparation(a,globalCancel)
+  await start(b);const foreignLateSave=capture(savePreparation(b,otherSale));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await foreignLateSave).error?.code,'55000');await b.query('ROLLBACK')
+  cases.push('UUID_global_cancelado_impide_guardado_concurrente_en_otra_venta')
+  const globalOtherCancel=await preparationFixture(107),winningSale={...await preparationFixture(108),operation:globalOtherCancel.operation}
+  await start(a);await savePreparation(a,winningSale)
+  await start(b);const foreignLateCancel=capture(cancelPreparation(b,globalOtherCancel));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await foreignLateCancel).error?.code,'42501');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_cancelaciones_preparacion_homologacion WHERE operacion_id=$1',[globalOtherCancel.operation])).rows[0].n,0)
+  cases.push('UUID_global_guardado_impide_cancelacion_concurrente_desde_otra_venta')
+  const duplicateCancel=await preparationFixture(109)
+  await start(a);const firstCancel=await cancelPreparation(a,duplicateCancel)
+  await start(b);const pendingDuplicateCancel=capture(cancelPreparation(b,duplicateCancel));await waitForLock(observer,b);await a.query('COMMIT')
+  const duplicateCancelResult=await pendingDuplicateCancel;assert(!duplicateCancelResult.error);assert.deepEqual(duplicateCancelResult.value,firstCancel);await b.query('COMMIT')
+  cases.push('dos_cancelaciones_mismo_UUID_recuperan_ACK_identico_sin_borrar_historia')
   const resolvingPreparation=await preparationFixture(95)
   await start(a);await savePreparation(a,resolvingPreparation)
   await start(b);const waitingResolution=capture(b.query('SELECT resolver_preparacion_fiscal_homologacion($1,$2) ack',[resolvingPreparation.auth,resolvingPreparation.sale]))

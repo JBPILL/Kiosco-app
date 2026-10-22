@@ -380,3 +380,78 @@ it('diagnóstico no reutiliza permiso histórico del worker para comercio suspen
  await db.query('SELECT registrar_respuesta_emision_homologacion($1,$2,$3,$4,$5::jsonb)',[actor,op,attempt,frozen.sha256,JSON.stringify({estado:'RECHAZO_RECIBIDO',codigos:[],puedeReenviar:false})])
  await denied(()=>diagnosis())
 })
+
+async function cancelPreparation(operation=op,who=actor,which=sale){return (await db.query<{data:unknown}>('SELECT cancelar_preparacion_fiscal_homologacion($1,$2,$3) data',[who,which,operation])).rows[0].data}
+async function cancelledPreparation(operation=op,who=actor,which=sale){return (await db.query<{data:unknown}>('SELECT consultar_cancelacion_preparacion_homologacion($1,$2,$3) data',[who,which,operation])).rows[0].data}
+it('cancela UUID aún no guardado, conserva ACK y bloquea guardado tardío antes de nueva preparación',async()=>{
+ const p=await prepared(),expected={operacion_id:op,venta_id:sale,estado:'CANCELADA',emision_habilitada:false}
+ expect(await cancelledPreparation()).toBeNull();expect(await cancelPreparation()).toEqual(expected);expect(await cancelPreparation()).toEqual(expected)
+ expect(await cancelledPreparation()).toEqual(expected);await denied(()=>save(p.canonico,p.sha256))
+ const next=crypto.randomUUID();await save(p.canonico,p.sha256,next);expect(await resolve()).toMatchObject({estado:'DATOS_PREPARADOS',operacion_id:next})
+ expect(await cancelPreparation()).toEqual(expected)
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_cancelaciones_preparacion_homologacion')).rows[0].n).toBe(1)
+ expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_reservas_homologacion')).rows[0].n).toBe(0)
+})
+it('cancela datos sin número y permite corregir en otra identidad conservando hechos originales',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256);await cancelPreparation()
+ expect(await resolve()).toMatchObject({estado:'SIN_PREPARACION',operacion_id:null})
+ const changed=input();changed.datos.fecha='20261022';const corrected=await prepareFiscalData(await context(),changed),next=crypto.randomUUID()
+ await save(corrected.canonico,corrected.sha256,next);expect(await resolve()).toMatchObject({operacion_id:next,estado:'DATOS_PREPARADOS'})
+ await denied(()=>save(p.canonico,p.sha256));await expect(workerFixture().run()).rejects.toThrow()
+ await db.exec('RESET ROLE')
+ const history=(await db.query<{id:string;estado:string}>('SELECT id,estado FROM fiscal_operaciones_homologacion ORDER BY estado')).rows
+ expect(history).toEqual([{id:op,estado:'CANCELADA'},{id:next,estado:'PREPARADA'}])
+ expect((await db.query<{canonico:string}>('SELECT canonico FROM fiscal_preparaciones_homologacion WHERE operacion_id=$1',[op])).rows[0].canonico).toBe(p.canonico)
+ for(const table of ['movimientos_stock','movimientos_caja','fiscal_reservas_homologacion'])expect((await db.query<{n:number}>(`SELECT count(*)::int n FROM ${table}`)).rows[0].n).toBe(0)
+})
+it.each(['RESERVADA','ENVIO_INCIERTO','AUTORIZADA'])('cancelación sin número rechaza estado %s sin modificar reserva/CAE',async state=>{
+ if(state==='RESERVADA'){const p=await prepared();await save(p.canonico,p.sha256);await workerFixture().run()}else await authorizeReceipt(state==='AUTORIZADA')
+ await denied(()=>cancelPreparation());expect(await cancelledPreparation()).toBeNull();expect(await resolve()).toMatchObject({estado:state,operacion_id:op})
+})
+it('cancela preparación aunque emisor/catálogo dejen de estar habilitados',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256);await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false');await admin('UPDATE fiscal_parametros_homologacion SET habilitado=false')
+ expect(await cancelPreparation()).toMatchObject({estado:'CANCELADA'});expect(await resolve()).toMatchObject({estado:'SIN_PREPARACION'})
+})
+it.each(['anon','authenticated'])('cancelación fiscal no permite RPC de rol %s',async role=>{
+ await db.exec(`SET ROLE ${role}`);await denied(()=>cancelPreparation());await denied(()=>cancelledPreparation())
+})
+it.each(['anon','authenticated','service_role'])('auditoría de cancelación no es tabla accesible para %s',async role=>{
+ await cancelPreparation();await db.exec(`RESET ROLE; SET ROLE ${role}`)
+ await denied(()=>db.query('SELECT * FROM fiscal_cancelaciones_preparacion_homologacion'))
+ await denied(()=>db.query('DELETE FROM fiscal_cancelaciones_preparacion_homologacion'))
+})
+it('cancelación no atribuye preparación a otro Auth ni permite mirar cancelación tras reasignación',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256);await denied(()=>cancelPreparation(op,crypto.randomUUID()))
+ await cancelPreparation();const replacement=crypto.randomUUID();await admin('INSERT INTO auth.users VALUES($1)',[replacement]);await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[replacement,owner])
+ await denied(()=>cancelPreparation(op,replacement));await denied(()=>cancelledPreparation(op,replacement));await denied(()=>cancelledPreparation())
+})
+it('operación cancelada no admite reactivación, modificación de snapshot ni borrado de auditoría',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256);await cancelPreparation();await db.exec('RESET ROLE')
+ await denied(()=>db.query("UPDATE fiscal_operaciones_homologacion SET estado='PREPARADA' WHERE id=$1",[op]))
+ await denied(()=>db.query("UPDATE fiscal_operaciones_homologacion SET contexto='{}'::jsonb WHERE id=$1",[op]))
+ await denied(()=>db.query('DELETE FROM fiscal_operaciones_homologacion WHERE id=$1',[op]))
+ await denied(()=>db.query('DELETE FROM fiscal_cancelaciones_preparacion_homologacion'))
+ await denied(()=>db.query('UPDATE fiscal_cancelaciones_preparacion_homologacion SET cancelado_en=clock_timestamp()'))
+})
+it('entrada heredada no recrea UUID cancelado ni selecciona arbitrariamente historia cancelada',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256);await cancelPreparation()
+ await db.query("SELECT set_config('request.jwt.claim.sub',$1,true)",[actor]);await db.exec('SET ROLE authenticated')
+ const legacy={version:1,cuit_emisor:wsfeSample.cuitEmisor,punto_venta:7,tipo_comprobante:11,tipo_doc_receptor:99,nro_doc_receptor:'0'}
+ await denied(()=>db.query('SELECT preparar_operacion_fiscal_homologacion($1,$2,$3,$4::jsonb)',[op,kid,sale,JSON.stringify(legacy)]))
+ const next=crypto.randomUUID(),result=(await db.query<{data:{id:string}}>('SELECT preparar_operacion_fiscal_homologacion($1,$2,$3,$4::jsonb) data',[next,kid,sale,JSON.stringify(legacy)])).rows[0].data
+ expect(result.id).toBe(next)
+ await db.exec('SET ROLE service_role');await denied(()=>cancelPreparation(next))
+})
+it('reaplicar SQL017 preserva cancelaciones y unicidad activa sin volver a imponer unicidad histórica',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256);await cancelPreparation();const next=crypto.randomUUID();await save(p.canonico,p.sha256,next)
+ await db.exec('RESET ROLE');const sql=readFileSync('supabase/pilot-fiscal/017_fiscal_preparation_cancellation.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'');await db.exec(sql);await db.exec('SET ROLE service_role')
+ expect(await cancelledPreparation()).toMatchObject({estado:'CANCELADA'});expect(await resolve()).toMatchObject({operacion_id:next,estado:'DATOS_PREPARADOS'})
+ await denied(()=>save(p.canonico,p.sha256,crypto.randomUUID()))
+})
+
+it.each(['omitir','revertir'])('trigger que intenta %s cancelación no produce ACK ni auditoría huérfana',async mode=>{
+ const p=await prepared();await save(p.canonico,p.sha256)
+ await db.exec(`RESET ROLE; CREATE FUNCTION alterar_cancelacion_ensayo() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN ${mode==='omitir'?'RETURN NULL;':"NEW.estado:='PREPARADA'; RETURN NEW;"} END $$;
+ CREATE TRIGGER zz_alterar_cancelacion BEFORE UPDATE ON fiscal_operaciones_homologacion FOR EACH ROW EXECUTE FUNCTION alterar_cancelacion_ensayo(); SET ROLE service_role`)
+ await denied(()=>cancelPreparation());expect(await cancelledPreparation()).toBeNull();expect(await resolve()).toMatchObject({estado:'DATOS_PREPARADOS',operacion_id:op})
+})

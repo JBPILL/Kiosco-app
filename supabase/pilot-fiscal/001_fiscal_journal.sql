@@ -101,6 +101,7 @@ BEGIN
     'total',venta.total,'fecha_hora',to_char(venta.fecha_hora AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),'detalles',detalles);
   contexto:=p_contexto;
   -- Rechazar reutilización de identidad incluso si ya hay otra operación de esta venta.
+  PERFORM pg_advisory_xact_lock(hashtextextended('kioskopos:fiscal:operation:'||p_operacion_id::text,0));
   SELECT * INTO operacion FROM public.fiscal_operaciones_homologacion WHERE id=p_operacion_id FOR UPDATE;
   IF FOUND AND (operacion.kiosco_id IS DISTINCT FROM p_kiosco_id OR operacion.venta_id IS DISTINCT FROM p_venta_id
     OR operacion.contexto IS DISTINCT FROM contexto OR operacion.venta_snapshot IS DISTINCT FROM snapshot) THEN
@@ -109,7 +110,7 @@ BEGIN
   INSERT INTO public.fiscal_operaciones_homologacion(id,kiosco_id,venta_id,usuario_id,contexto,venta_snapshot)
     VALUES(p_operacion_id,p_kiosco_id,p_venta_id,perfil.id,contexto,snapshot) ON CONFLICT DO NOTHING;
   SELECT * INTO operacion FROM public.fiscal_operaciones_homologacion
-    WHERE kiosco_id=p_kiosco_id AND venta_id=p_venta_id AND entorno='HOMOLOGACION' FOR UPDATE;
+    WHERE kiosco_id=p_kiosco_id AND venta_id=p_venta_id AND entorno='HOMOLOGACION' AND estado='PREPARADA' FOR UPDATE;
   IF NOT FOUND OR operacion.contexto IS DISTINCT FROM contexto OR operacion.venta_snapshot IS DISTINCT FROM snapshot THEN
     RAISE EXCEPTION 'La venta ya tiene otra solicitud fiscal o cambió su contenido.' USING ERRCODE='22023';
   END IF;

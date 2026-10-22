@@ -106,7 +106,7 @@ BEGIN
  venta:=public.fiscal_venta_preparacion_homologacion(p_actor_auth_id,p_venta_id);
  IF nullif(btrim(to_jsonb(venta)->>'afip_cae'),'') IS NOT NULL THEN estado:='REGISTRO_FISCAL_HEREDADO';
  ELSE
-  SELECT * INTO op FROM public.fiscal_operaciones_homologacion WHERE kiosco_id=venta.kiosco_id AND venta_id=venta.id AND entorno='HOMOLOGACION' FOR UPDATE;
+  SELECT o.* INTO op FROM public.fiscal_operaciones_homologacion o WHERE o.kiosco_id=venta.kiosco_id AND o.venta_id=venta.id AND o.entorno='HOMOLOGACION' AND o.estado='PREPARADA' FOR UPDATE;
   IF NOT FOUND THEN
    estado:=CASE WHEN venta.estado='COMPLETADA' AND venta.total>0 AND EXISTS(SELECT 1 FROM public.detalles_venta WHERE venta_id=venta.id) THEN 'SIN_PREPARACION' ELSE 'NO_DISPONIBLE' END;
   ELSE
@@ -167,9 +167,10 @@ BEGIN
   'fecha_hora',to_char(venta.fecha_hora AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),'detalles',detalles);
  fiscal_context:=jsonb_build_object('version',1,'cuit_emisor',contexto->>'cuit_emisor','punto_venta',contexto->'punto_venta',
   'tipo_comprobante',cuerpo->'tipoComprobante','tipo_doc_receptor',cuerpo->'tipoDocumento','nro_doc_receptor',cuerpo->>'numeroDocumento');
+ PERFORM pg_advisory_xact_lock(hashtextextended('kioskopos:fiscal:operation:'||p_operacion_id::text,0));
  SELECT * INTO previa FROM public.fiscal_preparaciones_homologacion WHERE operacion_id=p_operacion_id;
  SELECT * INTO op FROM public.fiscal_operaciones_homologacion WHERE id=p_operacion_id FOR UPDATE;
- IF op.id IS NOT NULL AND (previa.operacion_id IS NULL OR op.venta_id IS DISTINCT FROM venta.id OR op.kiosco_id IS DISTINCT FROM perfil.kiosco_id
+ IF op.id IS NOT NULL AND (op.estado IS DISTINCT FROM 'PREPARADA' OR previa.operacion_id IS NULL OR op.venta_id IS DISTINCT FROM venta.id OR op.kiosco_id IS DISTINCT FROM perfil.kiosco_id
   OR op.usuario_id IS DISTINCT FROM perfil.id OR op.contexto IS DISTINCT FROM fiscal_context OR op.venta_snapshot IS DISTINCT FROM snapshot
   OR previa.actor_auth_id IS DISTINCT FROM p_actor_auth_id OR previa.canonico IS DISTINCT FROM p_canonico OR previa.preparacion_sha256 IS DISTINCT FROM p_sha
   OR previa.credencial_id IS DISTINCT FROM emisor.credencial_id OR previa.certificado_sha256 IS DISTINCT FROM emisor.certificado_sha256 OR previa.emisor_revision IS DISTINCT FROM emisor.revision) THEN
