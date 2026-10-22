@@ -16,6 +16,7 @@ import type { WsaaTicketLoader } from '../../supabase/functions/_shared/fiscalTi
 import { vi } from 'vitest'
 import { validateFiscalReceipt } from '../../supabase/functions/_shared/fiscalReceipt'
 import { validateFiscalDiagnosis } from '../../supabase/functions/_shared/fiscalDiagnosis'
+import { cancelFiscalPreparation } from '../../supabase/functions/_shared/fiscalCancellationService'
 
 const db=new PGlite(),kid=crypto.randomUUID(),actor=crypto.randomUUID(),owner=crypto.randomUUID(),sale=crypto.randomUUID(),product=crypto.randomUUID(),op=crypto.randomUUID(),credential=crypto.randomUUID()
 beforeAll(async()=>{
@@ -65,6 +66,7 @@ const hash=(text:string)=>createHash('sha256').update(text).digest('hex')
 function workerFixture(){
  const flags:Record<string,string>={SUPABASE_URL:'https://acoyfwwmhaeruciyedri.supabase.co',ARCA_HOMO_BACKEND_ENABLED:'true',ARCA_HOMO_PREPARATION_ENABLED:'true'}
  const mapping:Record<string,string[]>={autorizar_consulta_fiscal_homologacion:['p_actor_auth_id','p_operacion_id'],cargar_fuente_preparacion_homologacion:['p_actor_auth_id','p_operacion_id'],cargar_revision_fiscal_homologacion:['p_operacion_id','p_actor_auth_id'],persistir_preparacion_fiscal_homologacion:['p_actor_auth_id','p_operacion_id','p_canonico','p_sha','p_ultimo_autorizado','p_consultado_en']}
+ mapping.cancelar_preparacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.consultar_cancelacion_preparacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
  const rpc=vi.fn<FiscalAuthClient['rpc']>(async(name,args)=>{
   const keys=mapping[name];if(!keys)throw new Error('UNEXPECTED_PRIVATE_RPC')
   await db.exec('SAVEPOINT worker_rpc')
@@ -454,4 +456,18 @@ it.each(['omitir','revertir'])('trigger que intenta %s cancelación no produce A
  await db.exec(`RESET ROLE; CREATE FUNCTION alterar_cancelacion_ensayo() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN ${mode==='omitir'?'RETURN NULL;':"NEW.estado:='PREPARADA'; RETURN NEW;"} END $$;
  CREATE TRIGGER zz_alterar_cancelacion BEFORE UPDATE ON fiscal_operaciones_homologacion FOR EACH ROW EXECUTE FUNCTION alterar_cancelacion_ensayo(); SET ROLE service_role`)
  await denied(()=>cancelPreparation());expect(await cancelledPreparation()).toBeNull();expect(await resolve()).toMatchObject({estado:'DATOS_PREPARADOS',operacion_id:op})
+})
+
+it('servicio confirma cancelación SQL tras ACK perdido con una sola identidad y sin red fiscal',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256);const f=workerFixture(),base=f.rpc.getMockImplementation()!
+ f.rpc.mockImplementation(async(name,args)=>{const result=await base(name,args);return name==='cancelar_preparacion_fiscal_homologacion'?{data:null,error:new Error('SYNTHETIC_ACK_LOST')}:result})
+ expect(await cancelFiscalPreparation({auth:{getUser:f.getUser},rpc:f.rpc},'SYNTHETIC_SESSION',sale,op)).toMatchObject({estado:'CANCELADA',operacion_id:op})
+ expect(f.getUser).toHaveBeenCalledTimes(1);expect(f.load).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled();expect(await resolve()).toMatchObject({estado:'SIN_PREPARACION'})
+})
+it('reasignación Auth entre escritura y lectura no confirma cierre para el perfil nuevo',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256);const f=workerFixture(),base=f.rpc.getMockImplementation()!,replacement=crypto.randomUUID()
+ await admin('INSERT INTO auth.users VALUES($1)',[replacement])
+ f.rpc.mockImplementation(async(name,args)=>{const result=await base(name,args);if(name==='cancelar_preparacion_fiscal_homologacion'){await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[replacement,owner]);f.getUser.mockResolvedValue({data:{user:{id:replacement}},error:null})}return result})
+ await expect(cancelFiscalPreparation({auth:{getUser:f.getUser},rpc:f.rpc},'SYNTHETIC_SESSION',sale,op)).rejects.toThrow('FISCAL_CANCELACION_NO_CONFIRMADA')
+ expect(f.getUser).toHaveBeenCalledTimes(1);expect(f.rpc.mock.calls.every(([,args])=>args.p_actor_auth_id===actor)).toBe(true)
 })

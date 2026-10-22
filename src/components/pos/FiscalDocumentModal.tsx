@@ -7,6 +7,7 @@ import { FiscalReceiptPanel } from './FiscalReceiptPanel'
 import type { FiscalReceipt } from '../../../supabase/functions/_shared/fiscalReceipt'
 import type { FiscalDiagnosis } from '../../../supabase/functions/_shared/fiscalDiagnosis'
 import { FiscalDiagnosisPanel } from './FiscalDiagnosisPanel'
+import { FiscalPreparationCancellationPanel } from './FiscalPreparationCancellationPanel'
 import type { FiscalClient, FiscalClientScope } from '../../lib/fiscalClient'
 import type { FiscalPreparationContext, FiscalPreparationInput, FiscalSaleResolution } from '../../../supabase/functions/_shared/fiscalPreparationContract'
 import type { FiscalOwnerReview } from '../../../supabase/functions/_shared/fiscalOwnerReview'
@@ -30,14 +31,17 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
   const [busy, setBusy] = useState(true)
   const [saving, setSaving] = useState(false)
   const [preparing, setPreparing] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
   const [error, setError] = useState('')
   const generation = useRef(0)
   const saveInFlight = useRef(false)
   const preparationInFlight = useRef(false)
+  const cancellationInFlight = useRef(false)
   const alive = useRef(true)
   const cancelRequests = useCallback(() => { alive.current = false; generation.current++ }, [])
   const [pendingInput, setPendingInput] = useState<FiscalPreparationInput | null>(null)
   const [hasLocalRecord, setHasLocalRecord] = useState(false)
+  const [pendingOperationId, setPendingOperationId] = useState<string | null>(null)
   const load = useCallback(async (api: FiscalClient) => {
     const current = ++generation.current
     let stateRecovered = false
@@ -63,6 +67,7 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
       if (state.estado === 'SIN_PREPARACION') {
         const pending = api.pending()
         setHasLocalRecord(!!pending); setPendingInput(pending?.input ?? null)
+        setPendingOperationId(pending?.operationId ?? null)
         if (!pending) {
           const values = await api.context()
           if (generation.current !== current) return
@@ -101,7 +106,7 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
     return () => { active = false; cancelRequests() }
   }, [provided, authId, kioskId, saleId, load, cancelRequests])
   async function save(input: FiscalPreparationInput) {
-    if (!client || saveInFlight.current) return
+    if (!client || saveInFlight.current || cancellationInFlight.current) return
     saveInFlight.current = true
     setSaving(true)
     const current = generation.current
@@ -111,7 +116,7 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
     } finally { saveInFlight.current = false; if (alive.current) setSaving(false) }
   }
   async function prepareBody() {
-    if (!client || !resolution?.operacion_id || preparationInFlight.current) return
+    if (!client || !resolution?.operacion_id || preparationInFlight.current || cancellationInFlight.current) return
     preparationInFlight.current = true; setPreparing(true); setError('')
     const current = generation.current
     try {
@@ -121,6 +126,19 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
       if (generation.current === current) setError('No se confirmó la preparación del comprobante. Volvé a consultar su estado; no prepares otro comprobante para esta venta.')
     } finally { preparationInFlight.current = false; if (alive.current) setPreparing(false) }
   }
+  async function cancelPreparation(operationId: string) {
+    if (!client || cancellationInFlight.current || preparationInFlight.current || saveInFlight.current) return
+    cancellationInFlight.current = true; setCancelling(true); setError('')
+    const current = generation.current
+    try {
+      await client.cancel(operationId)
+      if (generation.current === current) await load(client)
+    } catch {
+      if (generation.current === current) setError('No se confirmó la cancelación. Conservá el intento original y volvé a consultar su estado antes de cargar otros datos.')
+    } finally { cancellationInFlight.current = false; if (alive.current) setCancelling(false) }
+  }
+  const cancelTarget = resolution?.estado === 'DATOS_PREPARADOS' ? resolution.operacion_id
+    : resolution?.estado === 'SIN_PREPARACION' && hasLocalRecord ? pendingOperationId : null
   return <Modal isOpen onClose={onClose} title="Preparación y revisión fiscal · Homologación" size="xl" footer={<Button variant="secondary" onClick={onClose}>Cerrar</Button>}>
     <div className="space-y-4">
       {busy && <p role="status">Consultando el estado fiscal de la venta…</p>}
@@ -128,15 +146,16 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
       {diagnosisError && <p role="alert">{diagnosisError}</p>}
       {!busy && diagnosis && <FiscalDiagnosisPanel diagnosis={diagnosis} />}
       {!busy && context && <FiscalPreparationForm context={context} onPrepare={save} />}
-      {!busy && resolution?.estado === 'SIN_PREPARACION' && hasLocalRecord && <div className="space-y-3"><p>Este equipo conserva un guardado pendiente. Recuperá el mismo intento antes de cargar otros datos.</p>{pendingInput && <Button loading={saving} onClick={() => { const current = generation.current; void save(pendingInput).catch(() => { if (generation.current === current) setError('No se confirmó el guardado. Volvé a consultar su estado antes de reintentar.') }) }}>Reintentar datos guardados</Button>}</div>}
-      {!busy && resolution?.estado === 'DATOS_PREPARADOS' && <div className="space-y-3"><p role="status">Datos fiscales guardados. Todavía falta preparar el cuerpo del comprobante para revisión; no se emitió una factura ni se obtuvo un CAE.</p>{client && <Button loading={preparing} onClick={() => { void prepareBody() }}>Preparar comprobante para revisar</Button>}</div>}
+      {!busy && resolution?.estado === 'SIN_PREPARACION' && hasLocalRecord && <div className="space-y-3"><p>Este equipo conserva un guardado pendiente. Recuperá el mismo intento antes de cargar otros datos.</p>{pendingInput && <Button disabled={cancelling} loading={saving} onClick={() => { const current = generation.current; void save(pendingInput).catch(() => { if (generation.current === current) setError('No se confirmó el guardado. Volvé a consultar su estado antes de reintentar.') }) }}>Reintentar datos guardados</Button>}</div>}
+      {!busy && resolution?.estado === 'DATOS_PREPARADOS' && <div className="space-y-3"><p role="status">Datos fiscales guardados. Todavía falta preparar el cuerpo del comprobante para revisión; no se emitió una factura ni se obtuvo un CAE.</p>{client && <Button disabled={cancelling} loading={preparing} onClick={() => { void prepareBody() }}>Preparar comprobante para revisar</Button>}</div>}
+      {!busy && client && cancelTarget && <FiscalPreparationCancellationPanel key={cancelTarget} disabled={saving || preparing} loading={cancelling} onCancel={() => cancelPreparation(cancelTarget)} />}
       {!busy && resolution?.estado === 'REGISTRO_FISCAL_HEREDADO' && <p role="status">Existe un registro fiscal anterior. Consultá la constancia original; no se preparará otro comprobante desde esta venta.</p>}
       {!busy && resolution?.estado === 'REQUIERE_REVISION' && <p role="status">La operación existente requiere revisión de su identidad o contexto. No se iniciará otra preparación.</p>}
       {!busy && resolution?.estado === 'NO_DISPONIBLE' && <p role="status">Esta venta no está disponible para preparar un comprobante fiscal.</p>}
       {!busy && resolution?.estado === 'AUTORIZADA' && !receipt && <p role="status">La operación figura autorizada en el servidor. Falta recuperar su constancia fiscal; no se iniciará otra preparación.</p>}
       {!busy && receipt && <FiscalReceiptPanel receipt={receipt} />}
       {!busy && review && client && <FiscalOwnerReviewPanel review={review} approvalId={approvalId} onApprove={command => client.approve(review, command.id)} />}
-      {!busy && client && <Button variant="secondary" disabled={saving || preparing} onClick={() => { void load(client) }}>Volver a consultar estado</Button>}
+      {!busy && client && <Button variant="secondary" disabled={saving || preparing || cancelling} onClick={() => { void load(client) }}>Volver a consultar estado</Button>}
     </div>
   </Modal>
 }

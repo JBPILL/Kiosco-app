@@ -14,7 +14,7 @@ function fixture(){
  const review=vi.fn<FiscalClient['review']>().mockResolvedValue({operacion_id:operation,estado:'RESERVADA',revision:1,solicitud:{version:1,solicitud:wsfeSample,sha256:'a'.repeat(64)},aprobacion:null})
  const receipt=vi.fn<FiscalClient['receipt']>().mockRejectedValue(new Error('SYNTHETIC_UNAVAILABLE'))
  const diagnosis=vi.fn<FiscalClient['diagnosis']>().mockResolvedValue({version:1,entorno:'HOMOLOGACION',operacion_id:operation,venta_id:scope.saleId,solicitud_sha256:'a'.repeat(64),estado:'AUTORIZADA',recepcion:null,ultima_consulta:{estado:'AUTORIZACION_COINCIDENTE',codigo:null},puedeReenviar:false})
- const client:FiscalClient={resolve,context,review,receipt,diagnosis,prepare:vi.fn(async()=>review(operation)),pending:vi.fn(()=>null),save:vi.fn(async()=>saved),approvalId:vi.fn(()=>approval),approve:vi.fn<FiscalClient['approve']>(async()=>({id:approval,operacion_id:operation,solicitud_sha256:'a'.repeat(64),revision:1,aprobada:true,vence_en:new Date(Date.now()+600000).toISOString(),emision_habilitada:false}))}
+ const client:FiscalClient={resolve,context,review,receipt,diagnosis,cancel:vi.fn(async()=>({operacion_id:operation,venta_id:scope.saleId,estado:'CANCELADA' as const,emision_habilitada:false as const})),prepare:vi.fn(async()=>review(operation)),pending:vi.fn(()=>null),save:vi.fn(async()=>saved),approvalId:vi.fn(()=>approval),approve:vi.fn<FiscalClient['approve']>(async()=>({id:approval,operacion_id:operation,solicitud_sha256:'a'.repeat(64),revision:1,aprobada:true,vence_en:new Date(Date.now()+600000).toISOString(),emision_habilitada:false}))}
  return {client,resolve,context,review,diagnosis}
 }
 it('abre carga explícita desde una venta sin datos fiscales previos',async()=>{
@@ -79,7 +79,7 @@ it('preparar cuerpo usa la operación original y abre revisión sin aprobar ni e
  const f=fixture();f.resolve.mockResolvedValueOnce(saved).mockResolvedValue({...saved,estado:'RESERVADA'})
  render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
  fireEvent.click(await screen.findByRole('button',{name:'Preparar comprobante para revisar'}))
- await screen.findByRole('checkbox');expect(f.client.prepare).toHaveBeenCalledExactlyOnceWith(operation)
+ await screen.findByLabelText('Revisé el receptor, las fechas, los importes y el detalle fiscal de este comprobante.');expect(f.client.prepare).toHaveBeenCalledExactlyOnceWith(operation)
  expect(f.client.approve).not.toHaveBeenCalled();expect(f.client.save).not.toHaveBeenCalled()
 })
 it('cuerpo sin confirmación conserva estado e identidad para consulta',async()=>{
@@ -171,4 +171,40 @@ it('revisión reservada obsoleta no habilita aprobación de un envío incierto',
  const f=fixture();uncertain(f);f.review.mockResolvedValue({...await f.review(operation),estado:'RESERVADA'});f.review.mockClear()
  render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
  await screen.findByRole('alert');expect(screen.queryByRole('checkbox')).toBeNull();expect(f.client.approve).not.toHaveBeenCalled()
+})
+
+it('cancelar exige confirmación explícita, conserva UUID y vuelve al formulario tras cierre confirmado',async()=>{
+ const f=fixture();f.resolve.mockResolvedValueOnce(saved).mockResolvedValue(empty)
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ const button=await screen.findByRole('button',{name:'Cancelar preparación sin número'});expect(button.hasAttribute('disabled')).toBe(true)
+ fireEvent.click(screen.getByLabelText('Confirmo que quiero cerrar este intento y cargar otra preparación.'));fireEvent.click(button)
+ await screen.findByRole('form');expect(f.client.cancel).toHaveBeenCalledExactlyOnceWith(operation);expect(f.client.prepare).not.toHaveBeenCalled();expect(f.client.approve).not.toHaveBeenCalled()
+})
+it('cancelación incierta conserva intento y no abre otro formulario',async()=>{
+ const f=fixture();f.resolve.mockResolvedValue(saved);vi.mocked(f.client.cancel).mockRejectedValue(new Error('PRIVATE_SENTINEL'))
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ fireEvent.click(await screen.findByLabelText('Confirmo que quiero cerrar este intento y cargar otra preparación.'));fireEvent.click(screen.getByRole('button',{name:'Cancelar preparación sin número'}))
+ expect((await screen.findByRole('alert')).textContent).not.toContain('PRIVATE_SENTINEL');expect(screen.queryByRole('form')).toBeNull();expect(f.client.cancel).toHaveBeenCalledExactlyOnceWith(operation)
+})
+it('guardado pendiente local puede cancelarse con su UUID original',async()=>{
+ const f=fixture();vi.mocked(f.client.pending).mockReturnValueOnce({version:1,operationId:operation,input:null}).mockReturnValue(null)
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ fireEvent.click(await screen.findByLabelText('Confirmo que quiero cerrar este intento y cargar otra preparación.'));fireEvent.click(screen.getByRole('button',{name:'Cancelar preparación sin número'}))
+ await screen.findByRole('form');expect(f.client.cancel).toHaveBeenCalledExactlyOnceWith(operation)
+})
+it.each(['RESERVADA','ENVIO_INCIERTO','AUTORIZADA'] as const)('estado %s no ofrece cancelación sin número',async estado=>{
+ const f=fixture();if(estado==='ENVIO_INCIERTO')uncertain(f);else f.resolve.mockResolvedValue({...saved,estado})
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ await waitFor(()=>expect(screen.queryByText('Consultando el estado fiscal de la venta…')).toBeNull())
+ expect(screen.queryByRole('button',{name:'Cancelar preparación sin número'})).toBeNull();expect(f.client.cancel).not.toHaveBeenCalled()
+})
+it('respuesta tardía de cancelación no cambia otra venta',async()=>{
+ const first=fixture(),second=fixture();first.resolve.mockResolvedValue(saved)
+ let finish!:(value:Awaited<ReturnType<FiscalClient['cancel']>>)=>void
+ vi.mocked(first.client.cancel).mockReturnValue(new Promise(done=>{finish=done}))
+ const view=render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={first.client} />)
+ fireEvent.click(await screen.findByLabelText('Confirmo que quiero cerrar este intento y cargar otra preparación.'));fireEvent.click(screen.getByRole('button',{name:'Cancelar preparación sin número'}))
+ view.rerender(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={{...scope,saleId:'66666666-6666-4666-8666-666666666666'}} client={second.client} />)
+ await screen.findByRole('form');await act(async()=>finish({operacion_id:operation,venta_id:scope.saleId,estado:'CANCELADA',emision_habilitada:false}))
+ expect(first.resolve).toHaveBeenCalledTimes(1);expect(screen.queryByRole('button',{name:'Cancelar preparación sin número'})).toBeNull()
 })

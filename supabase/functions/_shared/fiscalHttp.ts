@@ -13,11 +13,14 @@ import { loadFiscalPreparation, resolveFiscalSale, saveFiscalPreparation } from 
 import { parseFiscalJson } from './fiscalStrictJson.ts'
 import { prepareFiscalVoucher } from './fiscalPreparationWorker.ts'
 import { loadFiscalReceipt, loadFiscalDiagnosis } from './fiscalReceiptService.ts'
+import { cancelFiscalPreparation, loadFiscalPreparationCancellation } from './fiscalCancellationService.ts'
 
 const origin='https://kiosco-app-staging.vercel.app'
 const invalid=():never=>{throw new Error('FISCAL_SOLICITUD_INVALIDA')}
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 type FiscalHttpCommand=
+  | {accion:'CANCELAR_PREPARACION_FISCAL';venta_id:string;operacion_id:string}
+  | {accion:'CANCELACION_PREPARACION_FISCAL';venta_id:string;operacion_id:string}
   | {accion:'CONSTANCIA_COMPROBANTE';venta_id:string;operacion_id:string}
   | {accion:'DIAGNOSTICO_COMPROBANTE';venta_id:string;operacion_id:string}
   | {accion:'RESOLVER_VENTA';venta_id:string}
@@ -55,6 +58,7 @@ async function command(request:Request):Promise<FiscalHttpCommand> {
       return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_id:b.operacion_id.toLowerCase(),entrada:b.entrada}
     if(size>2048||length!==null&&Number(length)>2048||!uuid(b.operacion_id))return invalid()
     const op=b.operacion_id.toLowerCase()
+    if((b.accion==='CANCELAR_PREPARACION_FISCAL'||b.accion==='CANCELACION_PREPARACION_FISCAL')&&keys.length===3&&uuid(b.venta_id))return {accion:b.accion,operacion_id:op,venta_id:b.venta_id.toLowerCase()}
     if(b.accion==='CONSTANCIA_COMPROBANTE'&&keys.length===3&&uuid(b.venta_id))return {accion:b.accion,operacion_id:op,venta_id:b.venta_id.toLowerCase()}
     if(b.accion==='DIAGNOSTICO_COMPROBANTE'&&keys.length===3&&uuid(b.venta_id))return {accion:b.accion,operacion_id:op,venta_id:b.venta_id.toLowerCase()}
     if(b.accion==='ESTADO_TA'&&keys.length===2)return {accion:b.accion,operacion_id:op}
@@ -107,7 +111,10 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
       try{cmd=await command(request)}catch{return json({codigo:'SOLICITUD_INVALIDA'},400)}
       const admin=deps.createAdmin(FISCAL_STAGING_URL),token=auth.slice(7)
       let result:unknown
-      if(cmd.accion==='CONSTANCIA_COMPROBANTE'){
+      if(cmd.accion==='CANCELAR_PREPARACION_FISCAL'||cmd.accion==='CANCELACION_PREPARACION_FISCAL'){
+        result=cmd.accion==='CANCELAR_PREPARACION_FISCAL'?await cancelFiscalPreparation(admin,token,cmd.venta_id,cmd.operacion_id)
+          :await loadFiscalPreparationCancellation(admin,token,cmd.venta_id,cmd.operacion_id)
+      }else if(cmd.accion==='CONSTANCIA_COMPROBANTE'){
         result=await loadFiscalReceipt(admin,token,cmd.venta_id,cmd.operacion_id)
       }else if(cmd.accion==='DIAGNOSTICO_COMPROBANTE'){
         result=await loadFiscalDiagnosis(admin,token,cmd.venta_id,cmd.operacion_id)

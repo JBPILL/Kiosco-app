@@ -2,14 +2,26 @@ import type { FiscalPreparationInput, FiscalPreparationContext } from '../../sup
 import { prepareFiscalData } from '../../supabase/functions/_shared/fiscalPreparation'
 import { validateFiscalReceipt } from '../../supabase/functions/_shared/fiscalReceipt'
 import { validateFiscalDiagnosis } from '../../supabase/functions/_shared/fiscalDiagnosis'
+import { validateFiscalPreparationCancellation } from '../../supabase/functions/_shared/fiscalCancellation'
 import type { FiscalOwnerReview } from '../../supabase/functions/_shared/fiscalOwnerReview'
 import { validateFiscalPreparationContext, validateFiscalSaleResolution } from '../../supabase/functions/_shared/fiscalPreparationPublic'
 import { validateFiscalOwnerApproval, validatePublicFiscalOwnerReview } from '../../supabase/functions/_shared/fiscalOwnerReview'
 
 export interface FiscalClientScope { authId: string; kioskId: string; saleId: string }
 export interface FiscalClientDependencies {
-  storage: Pick<Storage, 'getItem' | 'setItem'>
+  storage: Pick<Storage, 'getItem' | 'setItem'> & Partial<Pick<Storage, 'removeItem'>>
   send: (command: Record<string, unknown>) => Promise<unknown>
+  runExclusive?: <T>(name: string, task: () => Promise<T>) => Promise<T>
+}
+const queues = new WeakMap<object, Map<string, Promise<void>>>()
+function localExclusive<T>(storage: object, name: string, task: () => Promise<T>): Promise<T> {
+  const scopeQueues = queues.get(storage) ?? new Map<string, Promise<void>>()
+  queues.set(storage, scopeQueues)
+  const result = (scopeQueues.get(name) ?? Promise.resolve()).then(task)
+  const settled = result.then(() => {}, () => {})
+  scopeQueues.set(name, settled)
+  void settled.then(() => { if (scopeQueues.get(name) === settled) scopeQueues.delete(name) })
+  return result
 }
 interface Pending { version: 1; operationId: string; input: FiscalPreparationInput | null }
 const uuid = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
@@ -25,14 +37,21 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
   if (![scope.authId, scope.kioskId, scope.saleId].every(uuid)) return fail()
   const sale = scope.saleId.toLowerCase()
   const key = `kioskopos:fiscal:v1:${scope.authId.toLowerCase()}:${scope.kioskId.toLowerCase()}:${sale}`
+  const exclusive = <T,>(task: () => Promise<T>): Promise<T> => deps.runExclusive ? deps.runExclusive(key, task) : localExclusive(deps.storage, key, task)
   const write = (name: string, value: unknown) => {
     const raw = JSON.stringify(value)
     deps.storage.setItem(name, raw)
     if (deps.storage.getItem(name) !== raw) return fail()
   }
+  const retire = () => {
+    if (deps.storage.removeItem) {
+      deps.storage.removeItem(key)
+      if (deps.storage.getItem(key) !== null) return fail()
+    } else write(key, null)
+  }
   const pending = (): Pending | null => {
     const raw = deps.storage.getItem(key)
-    if (raw === null) return null
+    if (raw === null || raw === 'null') return null
     if (raw.length > 65536) return fail()
     const value = object(JSON.parse(raw), ['version', 'operationId', 'input'])
     if (value.version !== 1 || !uuid(value.operationId) || value.input !== null && (!value.input || typeof value.input !== 'object' || Array.isArray(value.input))) return fail()
@@ -42,6 +61,10 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
     const value = object(await deps.send(command), ['version', 'entorno', 'emision_habilitada', 'resultado'])
     if (value.version !== 1 || value.entorno !== 'HOMOLOGACION' || value.emision_habilitada !== false) return fail()
     return value.resultado
+  }
+  const cancellation = async (operationId: string) => {
+    const value = await invoke({ accion: 'CANCELACION_PREPARACION_FISCAL', venta_id: sale, operacion_id: operationId })
+    return value === null ? null : validateFiscalPreparationCancellation(value, sale, operationId)
   }
   return {
     pending,
@@ -54,12 +77,26 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
       return validateFiscalReceipt(await invoke({ accion: 'CONSTANCIA_COMPROBANTE', venta_id: sale, operacion_id: operationId }), { operationId, saleId: sale })
     },
     async resolve() {
-      const result = validateFiscalSaleResolution(await invoke({ accion: 'RESOLVER_VENTA', venta_id: sale }), sale)
-      if (result.operacion_id) {
-        const original = pending()
-        if (original?.operationId === result.operacion_id && original.input !== null) write(key, { ...original, input: null })
-      }
-      return result
+      return exclusive(async () => {
+        const result = validateFiscalSaleResolution(await invoke({ accion: 'RESOLVER_VENTA', venta_id: sale }), sale)
+        const before = pending()
+        if (before && result.operacion_id !== before.operationId && await cancellation(before.operationId)) retire()
+        if (result.operacion_id) {
+          const original = pending()
+          if (original?.operationId === result.operacion_id && original.input !== null) write(key, { ...original, input: null })
+        }
+        return result
+      })
+    },
+    async cancel(operationId: string) {
+      if (!uuid(operationId)) return fail()
+      return exclusive(async () => {
+        try { await invoke({ accion: 'CANCELAR_PREPARACION_FISCAL', venta_id: sale, operacion_id: operationId }) } catch { /* Sólo lectura durable confirma el cierre. */ }
+        const result = await cancellation(operationId)
+        if (!result) return fail()
+        if (pending()?.operationId === operationId) retire()
+        return result
+      })
     },
     async context() {
       const value = validateFiscalPreparationContext(await invoke({ accion: 'DATOS_FISCALES_VENTA', venta_id: sale }))
@@ -68,28 +105,31 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
     },
     async save(input: FiscalPreparationInput, context?: FiscalPreparationContext) {
       const candidate = structuredClone(input)
-      let original = pending()
-      if (original && (original.input === null || JSON.stringify(original.input) !== JSON.stringify(candidate))) return fail()
-      if (!original) {
-        if (!context || context.venta_id !== sale) return fail()
-        await prepareFiscalData(context, candidate)
-        // La validación es asíncrona: otro intento pudo guardar identidad mientras.
-        original = pending()
+      const validationContext = context ? structuredClone(context) : undefined
+      return exclusive(async () => {
+        let original = pending()
         if (original && (original.input === null || JSON.stringify(original.input) !== JSON.stringify(candidate))) return fail()
         if (!original) {
-          original = { version: 1, operationId: crypto.randomUUID(), input: candidate }
-          if (JSON.stringify(original).length > 65536) return fail()
-          write(key, original)
+          if (!validationContext || validationContext.venta_id !== sale) return fail()
+          await prepareFiscalData(validationContext, candidate)
+          // La validación es asíncrona: otro intento pudo guardar identidad mientras.
+          original = pending()
+          if (original && (original.input === null || JSON.stringify(original.input) !== JSON.stringify(candidate))) return fail()
+          if (!original) {
+            original = { version: 1, operationId: crypto.randomUUID(), input: candidate }
+            if (JSON.stringify(original).length > 65536) return fail()
+            write(key, original)
+          }
         }
-      }
-      const ack = object(await invoke({ accion: 'GUARDAR_DATOS_FISCALES', venta_id: sale, operacion_id: original.operationId, entrada: original.input }), ['operacion_id', 'venta_id', 'preparacion_sha256', 'estado', 'emision_habilitada'])
-      if (ack.operacion_id !== original.operationId || ack.venta_id !== sale || ack.estado !== 'DATOS_PREPARADOS' || ack.emision_habilitada !== false
-        || typeof ack.preparacion_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(ack.preparacion_sha256)) return fail()
-      const result = validateFiscalSaleResolution(ack, sale)
-      // Una vez confirmado en servidor, conservar sólo UUID local, sin documento
-      // ni desglose del receptor. Si se pierde el ACK, mantener datos para replay.
-      write(key, { ...original, input: null })
-      return result
+        const ack = object(await invoke({ accion: 'GUARDAR_DATOS_FISCALES', venta_id: sale, operacion_id: original.operationId, entrada: original.input }), ['operacion_id', 'venta_id', 'preparacion_sha256', 'estado', 'emision_habilitada'])
+        if (ack.operacion_id !== original.operationId || ack.venta_id !== sale || ack.estado !== 'DATOS_PREPARADOS' || ack.emision_habilitada !== false
+          || typeof ack.preparacion_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(ack.preparacion_sha256)) return fail()
+        const result = validateFiscalSaleResolution(ack, sale)
+        // Una vez confirmado en servidor, conservar sólo UUID local, sin documento
+        // ni desglose del receptor. Si se pierde el ACK, mantener datos para replay.
+        write(key, { ...original, input: null })
+        return result
+      })
     },
     async review(operationId: string) {
       if (!uuid(operationId)) return fail()
@@ -97,7 +137,7 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
     },
     async prepare(operationId: string) {
       if (!uuid(operationId)) return fail()
-      return validatePublicFiscalOwnerReview(await invoke({ accion: 'PREPARAR_COMPROBANTE', operacion_id: operationId }), operationId)
+      return exclusive(async () => validatePublicFiscalOwnerReview(await invoke({ accion: 'PREPARAR_COMPROBANTE', operacion_id: operationId }), operationId))
     },
     approvalId(review: FiscalOwnerReview) {
       const name = `${key}:review:${review.operacion_id}:${review.revision}:${review.solicitud.sha256}`

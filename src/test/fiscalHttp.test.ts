@@ -278,3 +278,23 @@ it('HTTP diagnóstico exige sesión y contrato cerrado antes de acceder',async()
  expect(f.getUser).not.toHaveBeenCalled();f.getUser.mockResolvedValue({data:{user:null},error:new Error('private')})
  expect((await f.handler(request(JSON.stringify({accion:'DIAGNOSTICO_COMPROBANTE',venta_id:sale,operacion_id:op})))).status).toBe(409);expect(f.rpc).not.toHaveBeenCalled()
 })
+
+it('HTTP cancela preparación y confirma por getter con el mismo Auth, sin TA ni ARCA',async()=>{
+ const f=fixture(),sale=crypto.randomUUID(),actor=crypto.randomUUID(),ack={operacion_id:op,venta_id:sale,estado:'CANCELADA',emision_habilitada:false}
+ f.getUser.mockResolvedValue({data:{user:{id:actor}},error:null});f.rpc.mockImplementation(async name=>name.startsWith('cancelar')?{data:null,error:new Error('SYNTHETIC_ACK_LOST')}:{data:ack,error:null})
+ const response=await f.handler(request(JSON.stringify({accion:'CANCELAR_PREPARACION_FISCAL',venta_id:sale,operacion_id:op})))
+ expect(response.status).toBe(200);expect((await response.json()).resultado).toEqual(ack);expect(f.getUser).toHaveBeenCalledTimes(1)
+ expect(f.rpc.mock.calls).toEqual(['cancelar_preparacion_fiscal_homologacion','consultar_cancelacion_preparacion_homologacion'].map(name=>[name,{p_actor_auth_id:actor,p_venta_id:sale,p_operacion_id:op}]))
+ expect(f.fetcher).not.toHaveBeenCalled();expect(f.read.mock.calls.some(([key])=>/CUSTODY|CREDENTIAL|TICKET|KEYRING/.test(key))).toBe(false)
+})
+it('HTTP lookup de cancelación inexistente devuelve null sin proponer cancelación',async()=>{
+ const f=fixture();f.rpc.mockResolvedValue({data:null,error:null})
+ const response=await f.handler(request(JSON.stringify({accion:'CANCELACION_PREPARACION_FISCAL',venta_id:crypto.randomUUID(),operacion_id:op})))
+ expect(response.status).toBe(200);expect((await response.json()).resultado).toBeNull();expect(f.rpc).toHaveBeenCalledTimes(1);expect(f.fetcher).not.toHaveBeenCalled()
+})
+it('HTTP ACK sin cancelación durable o con sesión inválida nunca declara cierre',async()=>{
+ const f=fixture(),sale=crypto.randomUUID();f.rpc.mockImplementation(async name=>({data:name.startsWith('cancelar')?{estado:'CANCELADA'}:null,error:null}))
+ expect((await f.handler(request(JSON.stringify({accion:'CANCELAR_PREPARACION_FISCAL',venta_id:sale,operacion_id:op})))).status).toBe(409)
+ f.rpc.mockClear();f.getUser.mockResolvedValue({data:{user:null},error:new Error('private')})
+ expect((await f.handler(request(JSON.stringify({accion:'CANCELAR_PREPARACION_FISCAL',venta_id:sale,operacion_id:op})))).status).toBe(409);expect(f.rpc).not.toHaveBeenCalled()
+})

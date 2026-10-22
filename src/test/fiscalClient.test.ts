@@ -82,14 +82,16 @@ it('no crea identidad sin contexto de esta venta',async()=>{
  await expect(f.client.save(input(),{...context,venta_id:crypto.randomUUID()})).rejects.toThrow()
  expect(f.client.pending()).toBeNull();expect(f.send).not.toHaveBeenCalled()
 })
-it('dos validaciones simultáneas conservan un solo UUID antes del ACK',async()=>{
+it('dos guardados simultáneos no escriben otro UUID ni envían un POST paralelo',async()=>{
  const f=fixture(),implementation=f.send.getMockImplementation()!
  let release!:()=>void;const gate=new Promise<void>(done=>{release=done})
  f.send.mockImplementation(async cmd=>{await gate;return implementation(cmd)})
  const first=f.client.save(input(),context),second=f.client.save(input(),context)
- await vi.waitFor(()=>expect(f.send).toHaveBeenCalledTimes(2));release()
- await Promise.all([first,second])
- expect(f.send.mock.calls[0][0]).toEqual(f.send.mock.calls[1][0])
+ const results=Promise.allSettled([first,second])
+ await vi.waitFor(()=>expect(f.send).toHaveBeenCalledTimes(1));release()
+ const completed=await results
+ expect(completed.map(result=>result.status)).toEqual(['fulfilled','rejected'])
+ expect(f.send).toHaveBeenCalledTimes(1);expect(f.client.pending()?.operationId).toBe(f.send.mock.calls[0][0].operacion_id)
 })
 it('el llamador no puede cambiar datos mientras se valida la copia',async()=>{
  const f=fixture(),data=input(),run=f.client.save(data,context)
@@ -118,4 +120,48 @@ it('cliente consulta diagnóstico por venta/operación sin persistirlo y rechaza
  expect(f.send).toHaveBeenCalledExactlyOnceWith({accion:'DIAGNOSTICO_COMPROBANTE',operacion_id:operationId,venta_id:scope.saleId});expect(f.map.size).toBe(0)
  f.send.mockResolvedValue(envelope({...diagnosis,venta_id:crypto.randomUUID()}));await expect(f.client.diagnosis(operationId)).rejects.toThrow()
  f.send.mockResolvedValue(envelope({...diagnosis,operacion_id:crypto.randomUUID()}));await expect(f.client.diagnosis(operationId)).rejects.toThrow()
+})
+
+it('cliente cancela mismo UUID, recupera ACK perdido y retira datos del receptor sólo tras lectura durable',async()=>{
+ const f=fixture();f.send.mockRejectedValueOnce(new Error('lost'));await expect(f.client.save(input(),context)).rejects.toThrow();const original=f.client.pending()!.operationId
+ f.send.mockImplementation(async cmd=>{if(cmd.accion==='CANCELAR_PREPARACION_FISCAL')throw new Error('SYNTHETIC_ACK_LOST');return envelope({operacion_id:original,venta_id:scope.saleId,estado:'CANCELADA',emision_habilitada:false})})
+ expect(await f.client.cancel(original)).toMatchObject({operacion_id:original,estado:'CANCELADA'});expect(f.client.pending()).toBeNull();expect([...f.map.values()].join('')).not.toContain('numeroDocumento')
+ expect(f.send.mock.calls.slice(-2).map(([cmd])=>[cmd.accion,cmd.operacion_id])).toEqual([['CANCELAR_PREPARACION_FISCAL',original],['CANCELACION_PREPARACION_FISCAL',original]])
+})
+it('cancelación sin registro durable o con identidad ajena conserva pendiente exacto',async()=>{
+ const f=fixture();f.send.mockRejectedValueOnce(new Error('lost'));await expect(f.client.save(input(),context)).rejects.toThrow();const before=f.client.pending()!
+ for(const result of [null,{operacion_id:crypto.randomUUID(),venta_id:scope.saleId,estado:'CANCELADA',emision_habilitada:false}]){
+  f.send.mockResolvedValue(envelope(result));await expect(f.client.cancel(before.operationId)).rejects.toThrow();expect(f.client.pending()).toEqual(before)
+ }
+})
+it('resolve tras reinicio recupera cancelación del mismo pendiente antes de permitir datos nuevos',async()=>{
+ const f=fixture();f.send.mockRejectedValueOnce(new Error('lost'));await expect(f.client.save(input(),context)).rejects.toThrow();const original=f.client.pending()!.operationId
+ f.send.mockImplementation(async cmd=>envelope(cmd.accion==='RESOLVER_VENTA'?{venta_id:scope.saleId,estado:'SIN_PREPARACION',operacion_id:null,preparacion_sha256:null,emision_habilitada:false}:{operacion_id:original,venta_id:scope.saleId,estado:'CANCELADA',emision_habilitada:false}))
+ const recovered=createFiscalClient(scope,{storage:f.storage,send:f.send});expect((await recovered.resolve()).estado).toBe('SIN_PREPARACION');expect(recovered.pending()).toBeNull()
+ f.send.mockImplementation(async cmd=>envelope({venta_id:scope.saleId,operacion_id:cmd.operacion_id,preparacion_sha256:'a'.repeat(64),estado:'DATOS_PREPARADOS',emision_habilitada:false}))
+ await recovered.save(input(),context);expect(recovered.pending()!.operationId).not.toBe(original)
+})
+it('cancelar otro intento confirmado no retira el pendiente local actual',async()=>{
+ const f=fixture();f.send.mockRejectedValueOnce(new Error('lost'));await expect(f.client.save(input(),context)).rejects.toThrow();const before=f.client.pending()!,other=crypto.randomUUID()
+ f.send.mockResolvedValue(envelope({operacion_id:other,venta_id:scope.saleId,estado:'CANCELADA',emision_habilitada:false}));await f.client.cancel(other);expect(f.client.pending()).toEqual(before)
+})
+it('dos instancias no dejan que cancelación tardía borre la identidad nueva de una corrección',async()=>{
+ const f=fixture();f.send.mockRejectedValueOnce(new Error('lost'));await expect(f.client.save(input(),context)).rejects.toThrow();const old=f.client.pending()!.operationId
+ let release!:()=>void;const gate=new Promise<void>(done=>{release=done})
+ const other=createFiscalClient(scope,{storage:f.storage,send:f.send})
+ f.send.mockImplementation(async cmd=>{
+  if(cmd.accion==='CANCELAR_PREPARACION_FISCAL'){await gate;return envelope({operacion_id:old,venta_id:scope.saleId,estado:'CANCELADA',emision_habilitada:false})}
+  if(cmd.accion==='CANCELACION_PREPARACION_FISCAL')return envelope({operacion_id:old,venta_id:scope.saleId,estado:'CANCELADA',emision_habilitada:false})
+  return envelope({venta_id:scope.saleId,operacion_id:cmd.operacion_id,preparacion_sha256:'a'.repeat(64),estado:'DATOS_PREPARADOS',emision_habilitada:false})
+ })
+ const cancelling=f.client.cancel(old);await vi.waitFor(()=>expect(f.send.mock.calls.at(-1)?.[0].accion).toBe('CANCELAR_PREPARACION_FISCAL'))
+ const saving=other.save(input(),context);await Promise.resolve();expect(f.client.pending()?.operationId).toBe(old);release()
+ await Promise.all([cancelling,saving]);const current=f.client.pending()!.operationId;expect(current).not.toBe(old)
+ await f.client.cancel(old);expect(f.client.pending()?.operationId).toBe(current)
+})
+it('fallo al retirar datos locales no habilita una identidad nueva hasta recuperar cierre',async()=>{
+ const f=fixture();f.send.mockRejectedValueOnce(new Error('lost'));await expect(f.client.save(input(),context)).rejects.toThrow();const before=f.client.pending()!
+ f.send.mockResolvedValue(envelope({operacion_id:before.operationId,venta_id:scope.saleId,estado:'CANCELADA',emision_habilitada:false}))
+ const badStorage={getItem:f.storage.getItem,setItem:()=>{throw new Error('quota')}}
+ await expect(createFiscalClient(scope,{storage:badStorage,send:f.send}).cancel(before.operationId)).rejects.toThrow();expect(f.client.pending()).toEqual(before)
 })
