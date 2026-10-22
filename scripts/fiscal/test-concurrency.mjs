@@ -95,7 +95,7 @@ try {
     ...readdirSync(join(bootstrap,'steps')).sort().map(file=>join(bootstrap,'steps',file)),join(bootstrap,'900_final_security.sql'),
     join(root,'supabase/pilot-fiscal/001_fiscal_journal.sql'),join(root,'supabase/pilot-fiscal/002_fiscal_reservations.sql'),
     join(root,'supabase/pilot-fiscal/003_fiscal_requests.sql'),join(root,'supabase/pilot-fiscal/004_fiscal_reconciliation.sql'),
-    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql'),join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql'),join(root,'supabase/pilot-fiscal/013_fiscal_preparation_source.sql'),join(root,'supabase/pilot-fiscal/014_fiscal_receipt.sql')]) {
+    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql'),join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql'),join(root,'supabase/pilot-fiscal/013_fiscal_preparation_source.sql'),join(root,'supabase/pilot-fiscal/014_fiscal_receipt.sql'),join(root,'supabase/pilot-fiscal/015_fiscal_emission_receipts.sql')]) {
     await observer.query(readFileSync(file,'utf8'))
     if(file.endsWith('011_fiscal_owner_review.sql')){
       await observer.query('SELECT fiscal_exigir_actor_preparacion($1,$2)',[randomUUID(),randomUUID()])
@@ -288,6 +288,20 @@ try {
   await start(b);const duplicateGrant=capture(markEmission(b,e,sendId));await waitForLock(observer,b);await a.query('COMMIT')
   const recoveredGrant=await duplicateGrant;assert(!recoveredGrant.error);assert.equal(recoveredGrant.value.nuevo_intento,false);assert.equal(recoveredGrant.value.emision_habilitada,false);await b.query('COMMIT')
   cases.push('dos_workers_un_permiso_emision_hash_exacto_ACK_repetido_no_envia')
+  const receivedRejection={estado:'RECHAZO_RECIBIDO',codigos:[10017],puedeReenviar:false}
+  const writeReceipt=async(client,entry,id,response)=>(await client.query('SELECT registrar_respuesta_emision_homologacion($1,$2,$3,$4,$5::jsonb) data',[entry.auth,entry.op,id,entry.hash,JSON.stringify(response)])).rows[0].data
+  await start(a);const firstReceipt=await writeReceipt(a,e,sendId,receivedRejection)
+  await start(b);const duplicateReceipt=capture(writeReceipt(b,e,sendId,receivedRejection))
+  await waitForLock(observer,b);await a.query('COMMIT');const secondReceipt=await duplicateReceipt;assert(!secondReceipt.error)
+  assert.deepEqual(secondReceipt.value,firstReceipt);await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_respuestas_emision_homologacion WHERE operacion_id=$1',[e.op])).rows[0].n,1)
+  cases.push('dos_workers_recepcion_un_registro_ACK_perdido_conserva_identidad')
+  await start(a);await writeReceipt(a,e,sendId,receivedRejection)
+  await start(b);const conflictingReceipt=capture(writeReceipt(b,e,sendId,{...receivedRejection,estado:'APROBACION_RECIBIDA'}))
+  await waitForLock(observer,b);await a.query('COMMIT');assert.equal((await conflictingReceipt).error?.code,'22023');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT estado FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[e.op])).rows[0].estado,'ENVIO_INCIERTO')
+  assert.deepEqual((await observer.query('SELECT respuesta FROM fiscal_respuestas_emision_homologacion WHERE operacion_id=$1',[e.op])).rows[0].respuesta,receivedRejection)
+  cases.push('recepcion_contradictoria_tras_espera_no_sobrescribe_ni_libera_reserva')
   const revoked=await emissionFixture(82,41)
   await start(a);assert.equal((await a.query('SELECT cargar_preparacion_envio_homologacion($1) ctx',[revoked.op])).rows[0].ctx.permiso,revoked.grant);await a.query('COMMIT')
   await observer.query('UPDATE fiscal_permisos_emision_homologacion SET habilitado=false WHERE operacion_id=$1',[revoked.op])

@@ -47,6 +47,8 @@ async function allow(mode='ok',reviewed=true) {
   if(reviewed)await db.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1)',[op,actor,crypto.randomUUID(),hash])
 }
 const mapping:Record<string,string[]>={
+  registrar_respuesta_emision_homologacion:['p_actor_auth_id','p_operacion_id','p_intento_id','p_sha','p_respuesta'],
+  cargar_respuesta_emision_homologacion:['p_actor_auth_id','p_operacion_id','p_intento_id','p_sha'],
   autorizar_consulta_fiscal_homologacion:['p_actor_auth_id','p_operacion_id'],cargar_preparacion_envio_homologacion:['p_operacion_id'],
   cargar_revision_fiscal_homologacion:['p_operacion_id','p_actor_auth_id'],aprobar_revision_fiscal_homologacion:['p_operacion_id','p_actor_auth_id','p_id','p_sha','p_revision'],
   registrar_envio_revisado_homologacion:['p_actor_auth_id','p_operacion_id','p_intento_id','p_sha','p_autorizacion_id','p_ultimo_autorizado','p_consultado_en'],
@@ -58,7 +60,7 @@ function fixture(){
   const rpc=vi.fn<FiscalAuthClient['rpc']>(async(name,args)=>{
     const names=mapping[name];if(!names)throw new Error('SYNTHETIC_UNEXPECTED_RPC')
     await db.exec('SAVEPOINT rpc_call')
-    try {const r=await db.query<{data:unknown}>(`SELECT ${name}(${names.map((k,i)=>'$'+(i+1)+(k==='p_decision'?'::jsonb':'')).join(',')}) data`,names.map(k=>k==='p_decision'?JSON.stringify(args[k]):args[k]));await db.exec('RELEASE SAVEPOINT rpc_call');return {data:r.rows[0].data,error:null}}
+    try {const r=await db.query<{data:unknown}>(`SELECT ${name}(${names.map((k,i)=>'$'+(i+1)+(['p_decision','p_respuesta'].includes(k)?'::jsonb':'')).join(',')}) data`,names.map(k=>['p_decision','p_respuesta'].includes(k)?JSON.stringify(args[k]):args[k]));await db.exec('RELEASE SAVEPOINT rpc_call');return {data:r.rows[0].data,error:null}}
     catch{await db.exec('ROLLBACK TO SAVEPOINT rpc_call; RELEASE SAVEPOINT rpc_call');return {data:null,error:new Error('SYNTHETIC_SQL_REJECTED')}}
   })
   const getUser=vi.fn<FiscalAuthClient['auth']['getUser']>(async()=>({data:{user:{id:actor}},error:null}))
@@ -248,4 +250,89 @@ it('reasignación antes del envío no usa la aprobación válida de la cuenta nu
 it('service_role no puede saltar el actor usando la entrada anterior de envío',async()=>{
   await allow()
   await deniedSql(()=>db.query('SELECT registrar_envio_fiscal_homologacion($1,$2,$3,$4,0,clock_timestamp())',[op,crypto.randomUUID(),hash,permission]),/permission denied/)
+})
+
+const auditRead=async(attempt:string,who=actor)=>(await db.query<{data:unknown}>('SELECT cargar_respuesta_emision_homologacion($1,$2,$3,$4) data',[who,op,attempt,hash])).rows[0].data
+const auditWrite=async(attempt:string,response:unknown,who=actor,sha=hash)=>(await db.query<{data:unknown}>('SELECT registrar_respuesta_emision_homologacion($1,$2,$3,$4,$5::jsonb) data',[who,op,attempt,sha,JSON.stringify(response)])).rows[0].data
+const rejection={estado:'RECHAZO_RECIBIDO',codigos:[10017],puedeReenviar:false}
+async function intentOnly(attempt=crypto.randomUUID()){
+ await allow();await db.query('SELECT registrar_envio_revisado_homologacion($1,$2,$3,$4,$5,0,clock_timestamp())',[actor,op,attempt,hash,permission]);return attempt
+}
+it('guarda recepción una sola vez y replay conserva auditoría sin liberar numeración',async()=>{
+ const attempt=await intentOnly(),first=await auditWrite(attempt,rejection)
+ expect(await auditWrite(attempt,rejection)).toEqual(first);expect(await auditRead(attempt)).toEqual(first)
+ expect((await state()).estado).toBe('ENVIO_INCIERTO')
+ await db.exec('RESET ROLE')
+ expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_respuestas_emision_homologacion')).rows[0].n).toBe(1)
+ for(const table of ['movimientos_stock','movimientos_caja'])expect((await db.query<{n:number}>(`SELECT count(*)::int n FROM ${table}`)).rows[0].n).toBe(0)
+ await deniedSql(()=>db.query('UPDATE fiscal_respuestas_emision_homologacion SET respuesta=respuesta'),/inmutable/)
+ await deniedSql(()=>db.query('DELETE FROM fiscal_respuestas_emision_homologacion'),/inmutable/)
+})
+it('respuesta contradictoria no reemplaza rechazo original',async()=>{
+ const attempt=await intentOnly();await auditWrite(attempt,rejection)
+ await deniedSql(()=>auditWrite(attempt,{...rejection,estado:'APROBACION_RECIBIDA'}),/contradictoria/)
+ expect(await auditRead(attempt)).toMatchObject({respuesta:rejection})
+})
+it('sin intención consumida no se registra recepción y otro intento/hash/Auth no accede',async()=>{
+ await allow();const attempt=crypto.randomUUID();await deniedSql(()=>auditWrite(attempt,rejection),/no autorizado/)
+ await db.query('SELECT registrar_envio_revisado_homologacion($1,$2,$3,$4,$5,0,clock_timestamp())',[actor,op,attempt,hash,permission])
+ await deniedSql(()=>auditWrite(crypto.randomUUID(),rejection),/no autorizado/)
+ await deniedSql(()=>auditWrite(attempt,rejection,actor,'b'.repeat(64)),/no autorizado/)
+ await deniedSql(()=>auditWrite(attempt,rejection,crypto.randomUUID()),/no autorizado/)
+})
+it.each(['anon','authenticated','service_role'])('tabla de recepción no admite acceso directo de %s',async role=>{
+ const attempt=await intentOnly();await auditWrite(attempt,rejection);await db.exec(`RESET ROLE; SET ROLE ${role}`)
+ await deniedSql(()=>db.query('SELECT * FROM fiscal_respuestas_emision_homologacion'),/permission denied/)
+ await deniedSql(()=>db.query('UPDATE fiscal_respuestas_emision_homologacion SET respuesta=respuesta'),/permission denied/)
+ if(role!=='service_role')await deniedSql(()=>auditRead(attempt),/permission denied/)
+})
+it.each([null,{}, {...rejection,puedeReenviar:true}, {...rejection,codigos:[0]}, {...rejection,codigos:[1.5]}, {...rejection,codigos:['10017']}, {...rejection,codigos:[2147483648]}, {...rejection,codigos:Array(201).fill(1)}, {...rejection,cae:'11111111111111'}])('SQL rechaza datos fuera del contrato de recepción %#',async response=>{
+ const attempt=await intentOnly();await deniedSql(()=>auditWrite(attempt,response),/inválid|Demasiados/)
+ expect(await auditRead(attempt)).toBeNull()
+})
+it('recepción tardía conserva Auth original aunque roten/revoquen emisor y perfil',async()=>{
+ const attempt=await intentOnly(),replacement=await reassignAuth()
+ await db.exec('RESET ROLE; UPDATE fiscal_emisores_homologacion SET habilitado=false,revision=2; UPDATE fiscal_permisos_emision_homologacion SET habilitado=false; SET ROLE service_role')
+ expect(await auditWrite(attempt,rejection)).toMatchObject({respuesta:rejection})
+ await deniedSql(()=>auditRead(attempt,replacement),/no autorizado/)
+ expect((await state()).estado).toBe('ENVIO_INCIERTO')
+})
+it('worker conserva rechazo recibido y consulta completa sin permitir otro envío',async()=>{
+ await allow();const f=fixture(),normal=f.fetcher.getMockImplementation()!,attempt=crypto.randomUUID()
+ f.fetcher.mockImplementation(async(input,init)=>{
+  const action=(input as Request).headers.get('SOAPAction')
+  if(action?.includes('FECAESolicitar'))return new Response(wsfeReceipt('R').replace('</FECAEDetResponse>','<Observaciones><Obs><Code>10017</Code><Msg>SYNTHETIC_PRIVATE</Msg></Obs></Observaciones></FECAEDetResponse>'),{headers:{'Content-Type':'text/xml'}})
+  if(action?.includes('FECompConsultar'))return new Response(wsfeSoap('FECompConsultar','<Errors><Err><Code>602</Code><Msg>Ensayo sin datos</Msg></Err></Errors>'),{headers:{'Content-Type':'text/xml'}})
+  return normal(input,init)
+ })
+ const observation=crypto.randomUUID();expect((await f.run(attempt,observation)).estado).toBe('PENDIENTE_CONCILIACION')
+ expect(await auditRead(attempt)).toMatchObject({respuesta:rejection});expect((await state()).estado).toBe('ENVIO_INCIERTO')
+ await f.run(attempt,observation);expect(f.fetcher).toHaveBeenCalledTimes(3)
+})
+it('ACK de auditoría perdido recupera registro antes de confirmar resultado fiscal',async()=>{
+ await allow();const f=fixture(),base=f.rpc.getMockImplementation()!,attempt=crypto.randomUUID()
+ f.rpc.mockImplementation(async(name,args)=>{const r=await base(name,args);return name==='registrar_respuesta_emision_homologacion'?{data:null,error:new Error('SYNTHETIC_ACK_LOST')}:r})
+ expect((await f.run(attempt)).estado).toBe('AUTORIZADA');expect(await auditRead(attempt)).toMatchObject({respuesta:{estado:'APROBACION_RECIBIDA'}})
+ expect(f.fetcher).toHaveBeenCalledTimes(3)
+})
+it('ACK falso de auditoría no oculta la falta de registro, pero igual concilia CAE',async()=>{
+ await allow();const f=fixture(),base=f.rpc.getMockImplementation()!,attempt=crypto.randomUUID()
+ f.rpc.mockImplementation(async(name,args)=>name==='registrar_respuesta_emision_homologacion'?{data:{registrada:true},error:null}:base(name,args))
+ await expect(f.run(attempt)).rejects.toThrow('FISCAL_RESPUESTA_NO_CONFIRMADA')
+ expect((await state()).estado).toBe('AUTORIZADA');expect(f.fetcher).toHaveBeenCalledTimes(3);expect(await auditRead(attempt)).toBeNull()
+})
+it('timeout sin recepción no inventa rechazo ni aprobación, y concilia antes de continuar',async()=>{
+ await allow();const f=fixture(),normal=f.fetcher.getMockImplementation()!,attempt=crypto.randomUUID()
+ f.fetcher.mockImplementation((input,init)=>(input as Request).headers.get('SOAPAction')?.includes('FECAESolicitar')?Promise.reject(new Error('SYNTHETIC_LOST')):normal(input,init))
+ expect((await f.run(attempt)).estado).toBe('AUTORIZADA');expect(await auditRead(attempt)).toBeNull()
+ expect(f.fetcher).toHaveBeenCalledTimes(3)
+})
+
+it('recepción de rechazo y autorización posterior por consulta completa conservan ambas evidencias',async()=>{
+ await allow();const f=fixture(),normal=f.fetcher.getMockImplementation()!,attempt=crypto.randomUUID()
+ f.fetcher.mockImplementation((input,init)=>(input as Request).headers.get('SOAPAction')?.includes('FECAESolicitar')
+  ?Promise.resolve(new Response(wsfeReceipt('R'),{headers:{'Content-Type':'text/xml'}})):normal(input,init))
+ expect((await f.run(attempt)).estado).toBe('AUTORIZADA')
+ expect(await auditRead(attempt)).toMatchObject({respuesta:{estado:'RECHAZO_RECIBIDO',codigos:[],puedeReenviar:false}})
+ expect((await state()).estado).toBe('AUTORIZADA');expect(f.fetcher).toHaveBeenCalledTimes(3)
 })

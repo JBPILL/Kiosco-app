@@ -4,6 +4,8 @@ import type { FiscalSeries, FrozenFiscalRequest } from './fiscalReconciliation.t
 import { verifyFiscalEmissionRequest } from './fiscalEmissionContract.ts'
 export { verifyFiscalEmissionRequest } from './fiscalEmissionContract.ts'
 import type { PrivateWsaaTicket } from './fiscalTicketCache.ts'
+import type { FiscalEmissionReceipt } from './fiscalEmissionReceipt.ts'
+export type { FiscalEmissionReceipt } from './fiscalEmissionReceipt.ts'
 import { parseFiscalXmlRoot, fiscalXmlSchema as schema, fiscalXmlOne as one, fiscalXmlChildren as children, withFiscalDeadline as deadline } from './fiscalVoucherXml.ts'
 
 const SOAP='http://schemas.xmlsoap.org/soap/envelope/',WSFE='http://ar.gov.afip.dif.FEV1/',URL='https://wswhomo.afip.gov.ar/wsfev1/service.asmx'
@@ -81,11 +83,6 @@ export async function buildFiscalEmissionRequest(input:unknown,ticket:PrivateWsa
     +(s.iva.length?'<Iva>'+s.iva.map(t=>'<AlicIva>'+scalar('Id',t.id)+scalar('BaseImp',t.base)+scalar('Importe',t.importe)+'</AlicIva>').join('')+'</Iva>':'')
   const payload=buildFiscalAuthXml(identity,ticket)+`<FeCAEReq><FeCabReq><CantReg>1</CantReg><PtoVta>${s.puntoVenta}</PtoVta><CbteTipo>${s.tipoComprobante}</CbteTipo></FeCabReq><FeDetReq><FECAEDetRequest>${details}</FECAEDetRequest></FeDetReq></FeCAEReq>`
   return request('FECAESolicitar',payload)
-}
-export interface FiscalEmissionReceipt {
-  estado:'APROBACION_RECIBIDA'|'RECHAZO_RECIBIDO'|'SIN_CONFIRMACION'
-  codigos:readonly number[]
-  puedeReenviar:false
 }
 /** El CAE de esta respuesta no basta para cerrar: conciliar el cuerpo completo
  * con FECompConsultar y guardar el resultado mediante CAS antes de confirmarlo. */

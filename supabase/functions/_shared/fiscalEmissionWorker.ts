@@ -9,6 +9,8 @@ import { reconcilePersistedFiscalVoucher } from './fiscalPersistence.ts'
 import type { FiscalReconciliationAck } from './fiscalPersistence.ts'
 import { FISCAL_STAGING_URL } from './fiscalSupabaseAdmin.ts'
 import { validateFiscalOwnerReview } from './fiscalOwnerReview.ts'
+import { persistFiscalEmissionReceipt } from './fiscalEmissionReceiptPersistence.ts'
+import type { FiscalEmissionReceipt } from './fiscalEmissionReceipt.ts'
 
 export interface FiscalEmissionDependencies {
   admin:FiscalAuthClient
@@ -48,8 +50,9 @@ export async function emitAuthorizedFiscalVoucher(deps:FiscalEmissionDependencie
   const last=await consultLastFiscalNumber({entorno:s.entorno,cuitEmisor:s.cuitEmisor,puntoVenta:s.puntoVenta,tipoComprobante:s.tipoComprobante},ticket,deps.fetcher)
   if(last.ultimo!==s.numero-1)return fail()
   let permitted=false
+  let received:FiscalEmissionReceipt|undefined
   try {
-    await sendFiscalEmission(frozen,ticket,deps.fetcher,async()=>{
+    received=await sendFiscalEmission(frozen,ticket,deps.fetcher,async()=>{
       const result=await deps.admin.rpc('registrar_envio_revisado_homologacion',{
         p_actor_auth_id:actorAuthId,p_operacion_id:operationId,p_intento_id:attemptId,p_sha:frozen.sha256,p_autorizacion_id:ctx.permiso,
         p_ultimo_autorizado:last.ultimo,p_consultado_en:last.consultado_en,
@@ -62,6 +65,10 @@ export async function emitAuthorizedFiscalVoucher(deps:FiscalEmissionDependencie
       permitted=true
     })
   }catch{if(!permitted)return fail()}
+  let auditFailed=false
+  if(received)try{await persistFiscalEmissionReceipt(deps.admin,actorAuthId,operationId,attemptId,frozen.sha256,received)}catch{auditFailed=true}
   // Un CAE recibido no confirma importes/IVA: cerrar sólo tras consulta íntegra.
-  return reconcile()
+  const result=await reconcile()
+  if(auditFailed)throw new Error('FISCAL_RESPUESTA_NO_CONFIRMADA')
+  return result
 }
