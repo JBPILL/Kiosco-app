@@ -1,4 +1,4 @@
-import { authorizeFiscalWorker } from './fiscalWorkerAuthorization.ts'
+import { authorizeFiscalActor } from './fiscalWorkerAuthorization.ts'
 import type { FiscalAuthClient } from './fiscalWorkerAuthorization.ts'
 import type { FiscalSecretReader } from './fiscalPrivateCustody.ts'
 import type { WsaaTicketLoader } from './fiscalTicketCache.ts'
@@ -8,6 +8,7 @@ import { consultLastFiscalNumber, sendFiscalEmission, verifyFiscalEmissionReques
 import { reconcilePersistedFiscalVoucher } from './fiscalPersistence.ts'
 import type { FiscalReconciliationAck } from './fiscalPersistence.ts'
 import { FISCAL_STAGING_URL } from './fiscalSupabaseAdmin.ts'
+import { validateFiscalOwnerReview } from './fiscalOwnerReview.ts'
 
 export interface FiscalEmissionDependencies {
   admin:FiscalAuthClient
@@ -23,7 +24,7 @@ const uuid=(value:unknown):value is string=>typeof value==='string'&&/^[0-9a-f]{
 export async function emitAuthorizedFiscalVoucher(deps:FiscalEmissionDependencies,token:string,operationId:string,attemptId:string,observationId:string):Promise<FiscalReconciliationAck> {
   if(deps.readSecret('SUPABASE_URL')!==FISCAL_STAGING_URL||deps.readSecret('ARCA_HOMO_BACKEND_ENABLED')!=='true'
     ||!uuid(operationId)||!uuid(attemptId)||!uuid(observationId))return fail()
-  const binding=await authorizeFiscalWorker(deps.admin,token,operationId)
+  const {binding,actorAuthId}=await authorizeFiscalActor(deps.admin,token,operationId)
   const loaded=await deps.admin.rpc('cargar_preparacion_envio_homologacion',{p_operacion_id:operationId})
   if(loaded.error||!loaded.data||typeof loaded.data!=='object'||Array.isArray(loaded.data))return fail()
   const ctx=loaded.data as Record<string,unknown>,keys=['operacion_id','estado','intento_id','revision','solicitud','resultado','permiso']
@@ -39,14 +40,18 @@ export async function emitAuthorizedFiscalVoucher(deps:FiscalEmissionDependencie
   if(ctx.estado!=='RESERVADA'||ctx.intento_id!==null||ctx.revision!==1||ctx.resultado!==null||!uuid(ctx.permiso)
     ||deps.readSecret('ARCA_HOMO_EMISSION_ENABLED')!=='true')return fail()
   await verifyFiscalEmissionRequest(frozen)
+  const reviewResult=await deps.admin.rpc('cargar_revision_fiscal_homologacion',{p_operacion_id:operationId,p_actor_auth_id:actorAuthId})
+  if(reviewResult.error)return fail()
+  const review=await validateFiscalOwnerReview(reviewResult.data,binding)
+  if(review.estado!=='RESERVADA'||review.solicitud.sha256!==frozen.sha256||!review.aprobacion||Date.parse(review.aprobacion.vence_en)<=Date.now())return fail()
   const ticket=await deps.cache.get(binding,deps.load)
   const last=await consultLastFiscalNumber({entorno:s.entorno,cuitEmisor:s.cuitEmisor,puntoVenta:s.puntoVenta,tipoComprobante:s.tipoComprobante},ticket,deps.fetcher)
   if(last.ultimo!==s.numero-1)return fail()
   let permitted=false
   try {
     await sendFiscalEmission(frozen,ticket,deps.fetcher,async()=>{
-      const result=await deps.admin.rpc('registrar_envio_fiscal_homologacion',{
-        p_operacion_id:operationId,p_intento_id:attemptId,p_sha:frozen.sha256,p_autorizacion_id:ctx.permiso,
+      const result=await deps.admin.rpc('registrar_envio_revisado_homologacion',{
+        p_actor_auth_id:actorAuthId,p_operacion_id:operationId,p_intento_id:attemptId,p_sha:frozen.sha256,p_autorizacion_id:ctx.permiso,
         p_ultimo_autorizado:last.ultimo,p_consultado_en:last.consultado_en,
       })
       if(result.error||!result.data||typeof result.data!=='object'||Array.isArray(result.data))return fail()

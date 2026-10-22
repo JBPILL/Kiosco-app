@@ -373,3 +373,11 @@ este incremento. SQL 001–009 y Edge fiscal continúan sin instalar/activar.
 SQL 010 prepara la exclusión transaccional de devolución/reserva con lock de venta, sin modificar stock/caja. Exige READ COMMITTED; otras snapshots fallan cerradas. 195 pruebas enfocadas y 20 carreras PostgreSQL locales PASS. No instalado; faltan preparación/UI, rechazos y notas de crédito antes de aceptar el piloto fiscal.
 
 Cierre SQL 010: 2666 PASS / 1 skipped / 238 archivos; build, 195 enfocadas, 20 carreras PostgreSQL y oxlint dirigido PASS. Pruebas locales, sin instalación ni emisión real.
+
+### Revisión previa del Dueño (preparada, sin instalar)
+
+SQL 011 vincula aprobación temporal de diez minutos al cuerpo exacto, usuario/Auth y emisor. REVISAR_COMPROBANTE consulta el cuerpo validado; APROBAR_REVISION conserva el recibo por identidad y no renueva vigencia. No acceden a custodia ni a ARCA, ni sustituyen el permiso privado de envío. El worker comprueba antes de TA y DB después del lock. EMITIR sigue fuera del endpoint. 131 enfocadas, 24 carreras PostgreSQL y Edge sintético 3+9 PASS; faltan preparación/UI e instalación/aceptación hospedadas.
+
+Refuerzo posterior: la identidad verificada por Auth se conserva hasta la aprobación/intención de envío, con gate transaccional. La entrada anterior sin actor se revoca a service_role. 155 enfocadas, 24 carreras PostgreSQL y Edge v3 (3+9) PASS. La suite previa de 2697 pruebas precede este refuerzo; cierre integrado final todavía en curso.
+
+Cierre final de revisión + Auth: 2703 PASS / 1 skipped / 238 archivos, 155 enfocadas, 24 carreras PostgreSQL, Edge v3 (3+9), build y oxlint PASS. Backend preparado, sin instalación/provisión ni emisión real; pantalla y preparación fiscal pendientes.

@@ -1089,3 +1089,108 @@ sustituye el estado anterior de suite en curso. Sin instalación SQL/Edge, sin
 emisión real, sin frontend/deploy nuevo ni cambios en master/Production. Próximo:
 preparación fiscal explícita y revisión UI, con resolución de rechazos y los
 gates hospedados pendientes; no reutilizar defaults de punto/IVA del legado.
+
+### Próximo incremento PR03 — revisión humana del cuerpo durable
+
+Preparar revisión/confirmación del cuerpo exacto por el Dueño original, con Auth
+real antes de SQL, sin leer custodia ni llamar a ARCA. La aprobación conserva
+hash, revisión, actor y binding privado del emisor, expira y tiene identidad
+idempotente/auditoría inmutable. No sustituye el permiso privado de emisión de
+SQL 009 ni habilita el flag. El worker debe exigir revisión vigente antes de TA,
+y DB revalidarla al consumir permiso para cerrar carreras/ACK perdido. La UI
+recibirá sólo cuerpo validado, estado y recibo de revisión, nunca credenciales.
+Agregar acciones cerradas de consulta/aprobación al endpoint aún deshabilitado;
+EMITIR sigue fuera del contrato HTTP. Probar roles/tenant, hash/revisión alterados,
+replay, expiración/rotación y ausencia de tráfico ARCA. Mantener historia y planes.
+
+### PR03 F07 — revisión humana ligada al cuerpo, preparada (22/10/2026 UTC)
+
+SQL 011 guarda aprobación inmutable por UUID, operación, usuario/Auth originales,
+hash/revisión del cuerpo y binding privado del emisor. Vence en diez minutos; el
+mismo UUID devuelve el recibo original sin extenderlo. Cambiar hash, revisión,
+Auth o emisor no reinterpreta un recibo anterior. Perfil/tenant se revalidan por
+el gate privado antes de leer el cuerpo. No hay filas ni flags activos por defecto.
+Tablas privadas/RLS, ACL por tabla/columna revocadas y verificación de herencia.
+
+El endpoint preparado incorpora REVISAR_COMPROBANTE/APROBAR_REVISION, con JSON
+cerrado de 2 KiB, Auth.getUser y DTO validado/canónico. No devuelve credencial,
+certificado, TA, permiso privado ni errores crudos. La revisión no solicita TA,
+no toca custodia y no llama a ARCA. EMITIR permanece rechazado. El SDK privado
+permite ahora trece RPC concretas, manteniendo host fijo, sin retries/redirecciones.
+
+El worker exige revisión vigente antes de TA. Consumo de permiso/intención vuelve
+a comprobarla en DB y enlaza revision_aprobada_id, sin sustituir el permiso exacto
+privado de SQL 009. Una consulta/replay de una emisión previa sigue recuperable
+sin renovar revisión ni reenviar. Preparación fiscal/IVA y UI aún pendientes; la
+aprobación humana del cuerpo no acredita corrección tributaria ni punto disponible.
+
+Regresión real en PostgreSQL local: una revisión vencida durante espera de FOR
+SHARE podía consumirse. La prueba roja preservada (fiscal-owner-review-expiry-red-
+20261022.json) detectó ACK habilitado en vez de 42501. Se corrigió revalidando tanto
+revisión como permiso con clock_timestamp DESPUÉS del lock; ambos vencimientos
+ahora revierten intención/consumo. 24 escenarios PostgreSQL 17.11 PASS, incluyendo
+los dos órdenes devolución/reserva y replay concurrente de revisión. Evidencia
+final: fiscal-owner-review-concurrency-final-20261022.json. Contenedores propios
+detenidos, datos conservados, cero conexiones remotas y cero comprobantes reales.
+
+131 pruebas enfocadas PASS. Edge local 3+9 checks PASS (fiscal-owner-review-edge-v2-
+*-result.json), con SDK/CMS/cifrado reales y Auth/SQL/ARCA simulados: consulta,
+aprobación, mismo recibo, un envío mock y una conciliación mock; ninguna lectura de
+credenciales originales. El primer arnés declaró dos workerSafe por una sustitución
+de nombres; se preservó su journal y se corrigió sólo el arnés. Después Docker
+estaba cerrado; se inició la instalación por usuario y se repitió correctamente.
+Build final/suite integrada en curso; no usar todavía un cierre integrado previo
+para aceptar SQL 011. Instalación SQL 001–011/Edge, provisión privada, JWT/RLS/E2E
+hospedados y emisión real conservan sus gates. PR03 PARCIAL; PR02 sin CAE real.
+
+Revisión adicional pendiente antes de cerrar F07: transportar la identidad Auth
+verificada entre las RPC de revisión/consumo. Recibir sólo usuario_id y volver a
+resolver Auth desde el perfil podría atribuir a una cuenta reasignada una petición
+iniciada por la anterior. Preparar getter/aprobación con actor_auth_id verificado y
+wrapper transaccional del consumo que llame al gate con esa identidad, revocando
+la entrada de envío sin actor para service_role. Probar reasignación entre Auth y
+consulta y entre revisión y envío. No modificar fuentes hasta terminar la suite
+actual; su resultado será evidencia previa a este refuerzo, no cierre final.
+
+F07 — refuerzo de identidad completado localmente (22/10/2026 UTC): el servidor
+conserva actorAuthId de Auth.getUser, separado del binding privado. Getter y
+aprobación reciben esa identidad verificada, sin resolverla otra vez desde un
+perfil reasignable. registrar_envio_revisado_homologacion toma el gate y consume
+permiso en la misma transacción, manteniendo el lock del perfil/venta. Se revocó
+registrar_envio_fiscal_homologacion a service_role y se reemplazó en la allowlist
+(trece RPC en total); sólo el wrapper privado lo invoca. Consumidores anteriores
+de authorizeFiscalWorker conservan su contrato. Pruebas de cambio de Auth entre
+autenticación/revisión y entre revisión/envío rechazan la petición anterior,
+incluso con aprobación válida de la cuenta nueva, sin POST fiscal ni consumo.
+
+La suite integrada previa pasó 2697 / 1 skipped / 238 archivos ANTES del refuerzo;
+no es su cierre. Final local dirigido: 155 PASS. PostgreSQL: 24 PASS en
+fiscal-owner-review-actor-concurrency-final-20261022.json. El primer ensayo de este
+refuerzo marcó 23514 en el fixture de plazo máximo por usar dos clock_timestamp;
+se corrigió con una única referencia materializada, sin ampliar diez minutos.
+Se preservan ambos resultados y datos. Edge final v3: 3+9 PASS, contenedores propios
+exited, sin red fiscal real. Build/suite final del actor en curso. Instalación,
+provisión, emisión, aceptación hospedada y UI continúan pendientes con sus gates.
+
+Siguiente integración UI: reutilizar HistorialTicketsModal y ui/Modal, conservando
+estética/tema. Consultar desde la venta seleccionada mediante resolución de la
+operación en servidor, sin pedir UUID técnicos al cajero. Mostrar receptor,
+fecha/concepto, desglose/importes y estado; conservar identidad de aprobación antes
+del POST y recuperar el mismo recibo ante ACK perdido. Confirmar revisión no debe
+mostrarse como factura emitida ni crear otro cobro. Preparación del cuerpo debe
+usar datos fiscales explícitos/snapshot, sin defaults heredados de punto/IVA; no
+habilitar el antiguo afip-wsfe como fallback. Mantener pendientes integración de
+catálogo/tributos/envases, rechazos/NC y gates hospedados; el componente de revisión
+backend preparado no acredita por sí solo esos contratos.
+
+Cierre integrado F07 posterior al refuerzo de identidad: 2703 PASS / 1 skipped /
+238 archivos, salida 0 (pilot-fiscal-owner-review-actor-suite-results.json). La
+omitida sigue siendo la fixture F6 no configurada; ninguna fiscal nueva omitida.
+155 enfocadas, 24 carreras PostgreSQL, Edge final v3 3+9, build 634 módulos,
+oxlint dirigido y manifiesto histórico 43 SQL PASS. Escaneo 1213 archivos/47
+candidatos/delta 0 respecto al cierre SQL 010; backend privado ausente del bundle
+público. Este resultado reemplaza la suite anterior a Auth y los estados en curso
+para este incremento. Sin nuevas dependencias, instalación SQL/Edge, provisión de
+claves, tráfico ARCA autenticado, emisión real ni frontend/deploy nuevo. PR03 sigue
+PARCIAL: faltan preparación fiscal y UI, rechazos/NC y aceptación hospedada. No
+cambia master/Production; impresora/cajón y Point permanecen diferidos.

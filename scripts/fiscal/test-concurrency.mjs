@@ -95,7 +95,7 @@ try {
     ...readdirSync(join(bootstrap,'steps')).sort().map(file=>join(bootstrap,'steps',file)),join(bootstrap,'900_final_security.sql'),
     join(root,'supabase/pilot-fiscal/001_fiscal_journal.sql'),join(root,'supabase/pilot-fiscal/002_fiscal_reservations.sql'),
     join(root,'supabase/pilot-fiscal/003_fiscal_requests.sql'),join(root,'supabase/pilot-fiscal/004_fiscal_reconciliation.sql'),
-    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql')]) {
+    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql')]) {
     await observer.query(readFileSync(file,'utf8'))
   }
   async function fixture() {
@@ -266,19 +266,20 @@ try {
   await waitForLock(observer,b);await a.query('COMMIT')
   const secondSend=await competingTa;assert(!secondSend.error);assert.equal(secondSend.value.nuevo_envio,false);await b.query('COMMIT')
   cases.push('TA_dos_trabajadores_solo_un_permiso_de_envio')
-  async function emissionFixture(point,last){
-    const e=await fixture(),cred=randomUUID(),grant=randomUUID()
+  async function emissionFixture(point,last,reviewed=true){
+    const e=await fixture(),cred=randomUUID(),grant=randomUUID(),reviewId=randomUUID()
     await start(a,'authenticated',e.auth);const operation=await prepare(a,e,randomUUID(),point);await a.query('COMMIT')
     await observer.query(`INSERT INTO fiscal_emisores_homologacion(kiosco_id,cuit_emisor,punto_venta,credencial_id,certificado_sha256,habilitado)
       VALUES($1,$2,$3,$4,$5,true)`,[e.kid,issuer,point,cred,'e'.repeat(64)])
     await start(a);const body=await reserve(a,operation.id,point,last);await a.query('COMMIT')
+    if(reviewed){await start(a);await a.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1)',[operation.id,e.auth,reviewId,body.solicitud_sha256]);await a.query('COMMIT')}
     await observer.query(`INSERT INTO fiscal_permisos_emision_homologacion(operacion_id,autorizacion_id,solicitud_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,vence_en)
       VALUES($1,$2,$3,$4,$5,1,true,clock_timestamp()+interval '30 minutes')`,[operation.id,grant,body.solicitud_sha256,cred,'e'.repeat(64)])
-    return {op:operation.id,hash:body.solicitud_sha256,grant,last}
+    return {op:operation.id,hash:body.solicitud_sha256,grant,last,reviewId,owner:e.owner,auth:e.auth,credential:cred}
   }
   // Series sintéticas independientes: los escenarios previos conservan su pendiente.
   const e=await emissionFixture(81,41),sendId=randomUUID()
-  const markEmission=async(client,entry,id)=>(await client.query('SELECT registrar_envio_fiscal_homologacion($1,$2,$3,$4,$5,clock_timestamp()) ack',[entry.op,id,entry.hash,entry.grant,entry.last])).rows[0].ack
+  const markEmission=async(client,entry,id)=>(await client.query('SELECT registrar_envio_revisado_homologacion($1,$2,$3,$4,$5,$6,clock_timestamp()) ack',[entry.auth,entry.op,id,entry.hash,entry.grant,entry.last])).rows[0].ack
   await start(a);const firstGrant=await markEmission(a,e,sendId);assert.equal(firstGrant.emision_habilitada,true)
   await start(b);const duplicateGrant=capture(markEmission(b,e,sendId));await waitForLock(observer,b);await a.query('COMMIT')
   const recoveredGrant=await duplicateGrant;assert(!recoveredGrant.error);assert.equal(recoveredGrant.value.nuevo_intento,false);assert.equal(recoveredGrant.value.emision_habilitada,false);await b.query('COMMIT')
@@ -311,6 +312,36 @@ try {
   assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[returnFirst.id])).rows[0].n,0)
   assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_series_homologacion WHERE punto_venta=84')).rows[0].n,0)
   cases.push('devolucion_antes_reserva_bloquea_total_original_sin_numero')
+  const unreviewed=await emissionFixture(85,41,false)
+  await start(a);const noReview=await capture(markEmission(a,unreviewed,randomUUID()));assert.equal(noReview.error?.code,'42501');await a.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT estado FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[unreviewed.op])).rows[0].estado,'RESERVADA')
+  assert.equal((await observer.query('SELECT usado_por_intento FROM fiscal_permisos_emision_homologacion WHERE operacion_id=$1',[unreviewed.op])).rows[0].usado_por_intento,null)
+  cases.push('permiso_privado_sin_revision_no_consume_ni_crea_intencion')
+  const reviewed=await emissionFixture(86,41)
+  const reviewAgain=async client=>(await client.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1) ack',[reviewed.op,reviewed.auth,reviewed.reviewId,reviewed.hash])).rows[0].ack
+  await start(a);const originalReview=await reviewAgain(a)
+  await start(b);const duplicateReview=capture(reviewAgain(b));await waitForLock(observer,b);await a.query('COMMIT')
+  const replayReview=await duplicateReview;assert(!replayReview.error);assert.deepEqual(replayReview.value,originalReview);await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_revisiones_homologacion WHERE operacion_id=$1',[reviewed.op])).rows[0].n,1)
+  cases.push('dos_workers_misma_revision_un_ACK_sin_extender_vigencia')
+  // Un lock de auditoría no debe extender la vigencia mientras el envío espera.
+  for(const kind of ['revision','permiso']){
+    const late=await emissionFixture(kind==='revision'?87:88,41,kind!=='revision')
+    if(kind==='revision')await observer.query(`WITH instante AS MATERIALIZED (SELECT clock_timestamp() t)
+      INSERT INTO fiscal_revisiones_homologacion(id,operacion_id,usuario_id,actor_auth_id,solicitud_sha256,solicitud_revision,credencial_id,certificado_sha256,emisor_revision,creado_en,vence_en)
+      SELECT $1,$2,$3,$4,$5,1,$6,$7,1,t-interval '9 minutes 57 seconds',t+interval '3 seconds' FROM instante`,[late.reviewId,late.op,late.owner,late.auth,late.hash,late.credential,'e'.repeat(64)])
+    else await observer.query("UPDATE fiscal_permisos_emision_homologacion SET vence_en=clock_timestamp()+interval '3 seconds' WHERE operacion_id=$1",[late.op])
+    await a.query('BEGIN');await a.query('SELECT id FROM fiscal_revisiones_homologacion WHERE id=$1 FOR UPDATE',[late.reviewId])
+    await start(b);const blockedExpiry=capture(markEmission(b,late,randomUUID()));await waitForLock(observer,b)
+    const expiryTable=kind==='revision'?'fiscal_revisiones_homologacion':'fiscal_permisos_emision_homologacion'
+    const expiryDeadline=Date.now()+7000;let expired=false
+    while(Date.now()<expiryDeadline){expired=(await observer.query(`SELECT vence_en<=clock_timestamp() expired FROM ${expiryTable} WHERE operacion_id=$1`,[late.op])).rows[0].expired;if(expired)break;await delay(40)}
+    assert(expired,'No se confirmó el vencimiento en PostgreSQL.');await a.query('COMMIT')
+    assert.equal((await blockedExpiry).error?.code,'42501');await b.query('ROLLBACK')
+    assert.equal((await observer.query('SELECT estado FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[late.op])).rows[0].estado,'RESERVADA')
+    assert.equal((await observer.query('SELECT usado_por_intento FROM fiscal_permisos_emision_homologacion WHERE operacion_id=$1',[late.op])).rows[0].usado_por_intento,null)
+    cases.push(kind+'_vence_esperando_lock_no_consume_ni_envia')
+  }
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',

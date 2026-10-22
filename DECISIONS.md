@@ -477,3 +477,15 @@ La implementación exige READ COMMITTED para ver commits tras esperar el lock;
 rechaza snapshots fijas explícitamente y no muta ventas para forzar conflictos.
 SQL 010 preparado, sin instalación. Notas de crédito requieren todavía su contrato
 fiscal externo y aceptación; estos guards no lo sustituyen.
+
+## 22/10/2026 UTC — Revisión humana separada del permiso de emisión
+
+La aprobación del Dueño se liga a cuerpo/hash/revisión, usuario/Auth originales y
+binding privado, vence en diez minutos y conserva auditoría/ACK inmutables. No
+extiende vigencia al reintentar ni reemplaza el permiso privado de ensayo. El worker
+la exige antes de TA y DB la revalida al consumir permiso, después de cualquier
+espera de lock. Reasignar Auth o rotar emisor invalida la aprobación vigente. No se
+infiere IVA ni se habilita emisión por aprobar. Backend preparado; UI, provisión e
+instalación requieren aún integración/aceptación y sus gates correspondientes.
+
+La identidad de Auth verificada acompaña cada RPC de revisión y la intención de envío. No se vuelve a inferir desde usuario_id entre peticiones. La entrada de envío sin actor queda revocada al rol de servicio; el wrapper valida y mantiene locks hasta consumir. Reasignar un perfil no puede atribuir a su cuenta nueva una confirmación iniciada por la anterior.

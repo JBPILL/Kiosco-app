@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { randomUUID } from 'node:crypto'
 import { expect, it, vi } from 'vitest'
-import { authorizeFiscalWorker } from '../../supabase/functions/_shared/fiscalWorkerAuthorization'
+import { authorizeFiscalWorker, authorizeFiscalActor } from '../../supabase/functions/_shared/fiscalWorkerAuthorization'
 import type { FiscalAuthClient } from '../../supabase/functions/_shared/fiscalWorkerAuthorization'
 
 const op=randomUUID(),actor=randomUUID()
@@ -10,6 +10,11 @@ const binding={version:1,entorno:'HOMOLOGACION',servicio:'wsfe',operacion_id:op,
 function backend(data:unknown=binding) {
   return {auth:{getUser:vi.fn(async()=>({data:{user:{id:actor}},error:null}))},rpc:vi.fn(async()=>({data,error:null}))}
 }
+it('conserva la identidad Auth verificada para las mutaciones posteriores sin volver a inferirla del perfil',async()=>{
+  const admin=backend(),checked=await authorizeFiscalActor(admin,'SYNTHETIC_JWT',op)
+  expect(checked).toEqual({binding,actorAuthId:actor});expect(Object.isFrozen(checked)).toBe(true)
+  expect(Object.isFrozen(checked.binding)).toBe(true);expect(admin.auth.getUser).toHaveBeenCalledTimes(1)
+})
 it('deriva actor de getUser verificado y pide autorización privada sin usar claims del cliente',async()=>{
   const admin=backend()
   const result=await authorizeFiscalWorker(admin,'SYNTHETIC_JWT',op)

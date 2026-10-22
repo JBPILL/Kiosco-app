@@ -1,5 +1,5 @@
 import type { FiscalAuthClient } from './fiscalWorkerAuthorization.ts'
-import { authorizeFiscalWorker } from './fiscalWorkerAuthorization.ts'
+import { authorizeFiscalActor } from './fiscalWorkerAuthorization.ts'
 import { reconcileAuthorizedFiscalVoucher } from './fiscalAuthorizedReconciliation.ts'
 import { createFiscalTicketCache } from './fiscalTicketCache.ts'
 import { createSharedFiscalTicketLoader } from './fiscalSharedTickets.ts'
@@ -8,6 +8,7 @@ import type { FiscalSecretReader } from './fiscalPrivateCustody.ts'
 import { createWsaaTicketSource } from './fiscalWsaa.ts'
 import { FISCAL_STAGING_URL } from './fiscalSupabaseAdmin.ts'
 import { withFiscalDeadline } from './fiscalVoucherXml.ts'
+import { validateFiscalOwnerReview, validateFiscalOwnerApproval } from './fiscalOwnerReview.ts'
 
 const origin='https://kiosco-app-staging.vercel.app'
 const invalid=():never=>{throw new Error('FISCAL_SOLICITUD_INVALIDA')}
@@ -15,6 +16,8 @@ const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{
 type FiscalHttpCommand=
   | {accion:'CONCILIAR';operacion_id:string;observacion_id:string}
   | {accion:'ESTADO_TA';operacion_id:string}
+  | {accion:'REVISAR_COMPROBANTE';operacion_id:string}
+  | {accion:'APROBAR_REVISION';operacion_id:string;revision_id:string;solicitud_sha256:string;revision:number}
   | {accion:'CANCELAR_PREPARACION_TA';operacion_id:string;intento_id:string;revision:number}
 
 async function command(request:Request):Promise<FiscalHttpCommand> {
@@ -39,13 +42,16 @@ async function command(request:Request):Promise<FiscalHttpCommand> {
     if((text.match(/"(?:[^"\\]|\\.)*"\s*:/g)?.length??0)!==keys.length||!uuid(b.operacion_id))return invalid()
     const op=b.operacion_id.toLowerCase()
     if(b.accion==='ESTADO_TA'&&keys.length===2)return {accion:b.accion,operacion_id:op}
+    if(b.accion==='REVISAR_COMPROBANTE'&&keys.length===2)return {accion:b.accion,operacion_id:op}
+    if(b.accion==='APROBAR_REVISION'&&keys.length===5&&uuid(b.revision_id)&&typeof b.solicitud_sha256==='string'&&/^[0-9a-f]{64}$/.test(b.solicitud_sha256)&&Number.isSafeInteger(b.revision)&&Number(b.revision)>0)
+      return {accion:b.accion,operacion_id:op,revision_id:b.revision_id.toLowerCase(),solicitud_sha256:b.solicitud_sha256,revision:Number(b.revision)}
     if(b.accion==='CONCILIAR'&&keys.length===3&&uuid(b.observacion_id))return {accion:b.accion,operacion_id:op,observacion_id:b.observacion_id.toLowerCase()}
     if(b.accion==='CANCELAR_PREPARACION_TA'&&keys.length===4&&uuid(b.intento_id)&&Number.isSafeInteger(b.revision)&&Number(b.revision)>0)
       return {accion:b.accion,operacion_id:op,intento_id:b.intento_id.toLowerCase(),revision:Number(b.revision)}
     return invalid()
   }finally{clearTimeout(timer);controller.abort();request.signal.removeEventListener('abort',abort);void reader.cancel().catch(()=>{});reader.releaseLock()}
 }
-function taResult(value:unknown,cmd:Exclude<FiscalHttpCommand,{accion:'CONCILIAR'}>):Record<string,unknown> {
+function taResult(value:unknown,cmd:Extract<FiscalHttpCommand,{accion:'ESTADO_TA'|'CANCELAR_PREPARACION_TA'}>):Record<string,unknown> {
   if(!value||typeof value!=='object'||Array.isArray(value))return invalid()
   const v=value as Record<string,unknown>
   if(Object.keys(v).length!==3||!Object.keys(v).every(k=>['estado','intento_id','revision'].includes(k))
@@ -63,8 +69,8 @@ export interface FiscalHttpDependencies {
   createAdmin:(url:string)=>FiscalAuthClient
   fetcher:typeof fetch
 }
-/** Sólo homologación y consultas de operaciones existentes. Deshabilitado salvo
- * configuración privada explícita; no prepara ni envía FECAESolicitar. */
+/** Sólo homologación: consulta, revisión humana y recuperación. Deshabilitado
+ * salvo configuración privada explícita; no prepara cuerpos ni envía facturas. */
 export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Request)=>Promise<Response> {
   const cache=createFiscalTicketCache()
   return async request=>{
@@ -89,13 +95,26 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
           createWsaaTicketSource(createPrivateFiscalCustody(deps.readSecret),deps.fetcher))
         result=await reconcileAuthorizedFiscalVoucher(admin,token,cmd.operacion_id,cmd.observacion_id,cache,load,deps.fetcher)
       }else{
-        const binding=await authorizeFiscalWorker(admin,token,cmd.operacion_id)
+        const {binding,actorAuthId}=await authorizeFiscalActor(admin,token,cmd.operacion_id)
+        if(cmd.accion==='REVISAR_COMPROBANTE'||cmd.accion==='APROBAR_REVISION'){
+          const response=await admin.rpc('cargar_revision_fiscal_homologacion',{p_operacion_id:cmd.operacion_id,p_actor_auth_id:actorAuthId})
+          if(response.error)throw new Error('FISCAL_REVISION_NO_CONFIRMADA')
+          const review=await validateFiscalOwnerReview(response.data,binding)
+          if(cmd.accion==='REVISAR_COMPROBANTE')result=review
+          else{
+            if(review.solicitud.sha256!==cmd.solicitud_sha256)throw new Error('FISCAL_REVISION_NO_CONFIRMADA')
+            const approved=await admin.rpc('aprobar_revision_fiscal_homologacion',{p_operacion_id:cmd.operacion_id,p_actor_auth_id:actorAuthId,p_id:cmd.revision_id,p_sha:cmd.solicitud_sha256,p_revision:cmd.revision})
+            if(approved.error)throw new Error('FISCAL_REVISION_NO_CONFIRMADA')
+            result=validateFiscalOwnerApproval(approved.data,cmd.operacion_id,cmd.solicitud_sha256,cmd.revision,cmd.revision_id)
+          }
+        }else{
         const args={p_operacion_id:cmd.operacion_id,p_credencial_id:binding.credencial_id,p_huella:binding.certificado_sha256,p_revision:binding.revision}
         const response=cmd.accion==='ESTADO_TA'
           ?await admin.rpc('consultar_preparacion_ta_homologacion',args)
           :await admin.rpc('cancelar_preparacion_ta_homologacion',{...args,p_intento_id:cmd.intento_id,p_generacion:cmd.revision})
         if(response.error)throw new Error('FISCAL_RECUPERACION_NO_CONFIRMADA')
         result=taResult(response.data,cmd)
+        }
       }
       return json({version:1,entorno:'HOMOLOGACION',emision_habilitada:false,resultado:result})
     }catch(error){

@@ -4,6 +4,13 @@ import { createFiscalSupabaseAdmin, FISCAL_STAGING_URL } from '../../supabase/fu
 
 const secret='SYNTHETIC_PRIVATE_SERVICE_SECRET',actor=crypto.randomUUID()
 afterEach(()=>vi.useRealTimers())
+it.each(['cargar_revision_fiscal_homologacion','aprobar_revision_fiscal_homologacion','registrar_envio_revisado_homologacion'])('RPC de revisión %s usa sólo el host privado previsto',async name=>{
+  const requests:Request[]=[],fetcher=vi.fn<typeof fetch>(async input=>{requests.push(input as Request);return Response.json({emision_habilitada:false})})
+  const admin=createFiscalSupabaseAdmin(FISCAL_STAGING_URL,secret,fetcher)
+  expect((await admin.rpc(name,{p_operacion_id:crypto.randomUUID()})).error).toBeNull()
+  expect(requests).toHaveLength(1);expect(requests[0].url).toBe(FISCAL_STAGING_URL+'/rest/v1/rpc/'+name)
+  expect(requests[0].headers.get('authorization')).toBe('Bearer '+secret)
+})
 it('SDK verifica JWT en Auth remoto sin conservarlo como credencial de RPC',async()=>{
   const requests:Request[]=[]
   const fetcher=vi.fn<typeof fetch>(async input=>{
@@ -21,7 +28,7 @@ it('SDK verifica JWT en Auth remoto sin conservarlo como credencial de RPC',asyn
 it.each(['https://lllkjnqpltnwvxzphncr.supabase.co',FISCAL_STAGING_URL+'/',FISCAL_STAGING_URL+'.evil.invalid'])('destino %s falla antes de red',url=>{
   const fetcher=vi.fn<typeof fetch>();expect(()=>createFiscalSupabaseAdmin(url,secret,fetcher)).toThrow('FISCAL_SERVICIO_PRIVADO_NO_DISPONIBLE');expect(fetcher).not.toHaveBeenCalled()
 })
-it.each(['FECAESolicitar','confirmar_checkout_envases','usuarios','consultar_preparacion_ta_homologacion?x=1'])('RPC %s no está permitida',async name=>{
+it.each(['FECAESolicitar','registrar_envio_fiscal_homologacion','confirmar_checkout_envases','usuarios','consultar_preparacion_ta_homologacion?x=1'])('RPC %s no está permitida',async name=>{
   const fetcher=vi.fn<typeof fetch>(),admin=createFiscalSupabaseAdmin(FISCAL_STAGING_URL,secret,fetcher)
   await expect(admin.rpc(name,{})).rejects.toThrow('FISCAL_SERVICIO_PRIVADO_NO_DISPONIBLE');expect(fetcher).not.toHaveBeenCalled()
 })

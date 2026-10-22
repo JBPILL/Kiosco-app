@@ -3,6 +3,8 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { createFiscalHttpHandler } from '../../supabase/functions/_shared/fiscalHttp'
 import type { FiscalAuthClient, FiscalWorkerBinding } from '../../supabase/functions/_shared/fiscalWorkerAuthorization'
 import { FISCAL_STAGING_URL } from '../../supabase/functions/_shared/fiscalSupabaseAdmin'
+import { freezeFiscalRequest } from '../../supabase/functions/_shared/fiscalReconciliation'
+import { wsfeSample } from './fixtures/fiscalWsfe'
 
 const op=crypto.randomUUID(),attempt=crypto.randomUUID(),observation=crypto.randomUUID()
 const binding:FiscalWorkerBinding={version:1,entorno:'HOMOLOGACION',servicio:'wsfe',operacion_id:op,kiosco_id:crypto.randomUUID(),usuario_id:crypto.randomUUID(),
@@ -24,6 +26,49 @@ function request(body:BodyInit=JSON.stringify({accion:'ESTADO_TA',operacion_id:o
   return new Request(url,init)
 }
 afterEach(()=>vi.useRealTimers())
+async function reviewFixture(){
+  const f=fixture(),frozen=await freezeFiscalRequest(wsfeSample),id=crypto.randomUUID(),actorAuthId=crypto.randomUUID()
+  f.getUser.mockResolvedValue({data:{user:{id:actorAuthId}},error:null})
+  const ctx={operacion_id:op,estado:'RESERVADA',revision:1,solicitud:frozen,aprobacion:null}
+  const ack={id,operacion_id:op,solicitud_sha256:frozen.sha256,revision:1,aprobada:true,vence_en:new Date(Date.now()+600000).toISOString(),emision_habilitada:false}
+  f.rpc.mockImplementation(async name=>({data:name==='autorizar_consulta_fiscal_homologacion'?binding:name==='cargar_revision_fiscal_homologacion'?ctx:ack,error:null}))
+  return {...f,ctx,ack,actorAuthId,body:{accion:'APROBAR_REVISION',operacion_id:op,revision_id:id,solicitud_sha256:frozen.sha256,revision:1}}
+}
+it('revisión devuelve cuerpo validado sin credenciales, TA ni consultas a ARCA',async()=>{
+  const f=await reviewFixture(),r=await f.handler(request(JSON.stringify({accion:'REVISAR_COMPROBANTE',operacion_id:op})))
+  expect(r.status).toBe(200);expect((await r.json()).resultado).toEqual(f.ctx)
+  expect(f.rpc).toHaveBeenLastCalledWith('cargar_revision_fiscal_homologacion',{p_operacion_id:op,p_actor_auth_id:f.actorAuthId})
+  expect(f.fetcher).not.toHaveBeenCalled();expect(f.read.mock.calls.map(c=>c[0])).toEqual(['SUPABASE_URL','ARCA_HOMO_BACKEND_ENABLED'])
+})
+it('aprobar envía hash/revisión/identidad originales y no habilita emisión',async()=>{
+  const f=await reviewFixture(),r=await f.handler(request(JSON.stringify(f.body)))
+  expect(r.status).toBe(200);expect((await r.json()).resultado).toEqual(f.ack)
+  expect(f.rpc).toHaveBeenLastCalledWith('aprobar_revision_fiscal_homologacion',{p_operacion_id:op,p_actor_auth_id:f.actorAuthId,p_id:f.ack.id,p_sha:f.ack.solicitud_sha256,p_revision:1})
+  expect(f.getUser).toHaveBeenCalledOnce();expect(f.fetcher).not.toHaveBeenCalled();expect(f.read).toHaveBeenCalledTimes(2)
+})
+it('hash del formulario cambiado no llega a aprobar SQL',async()=>{
+  const f=await reviewFixture(),r=await f.handler(request(JSON.stringify({...f.body,solicitud_sha256:'0'.repeat(64)})))
+  expect(r.status).toBe(409);expect(f.rpc).toHaveBeenCalledTimes(2);expect(f.fetcher).not.toHaveBeenCalled()
+})
+it.each(['campo_privado','hash','emisor','revision'])('respuesta de revisión alterada en %s no se devuelve al navegador',async mode=>{
+  const f=await reviewFixture(),ctx:Record<string,unknown>={...f.ctx}
+  if(mode==='campo_privado')ctx.secreto='SYNTHETIC_PRIVATE'
+  if(mode==='hash')ctx.solicitud={...f.ctx.solicitud,sha256:'0'.repeat(64)}
+  if(mode==='emisor')ctx.solicitud=await freezeFiscalRequest({...wsfeSample,puntoVenta:3})
+  if(mode==='revision')ctx.revision=2
+  f.rpc.mockImplementation(async name=>({data:name==='autorizar_consulta_fiscal_homologacion'?binding:ctx,error:null}))
+  const r=await f.handler(request(JSON.stringify({accion:'REVISAR_COMPROBANTE',operacion_id:op})))
+  expect(r.status).toBe(409);expect(await r.text()).not.toContain('SYNTHETIC');expect(f.fetcher).not.toHaveBeenCalled()
+})
+it.each(['identidad','emision','extra'])('ACK de aprobación alterado en %s se rechaza',async mode=>{
+  const f=await reviewFixture(),ack={...f.ack,...(mode==='identidad'?{id:crypto.randomUUID()}:mode==='emision'?{emision_habilitada:true}:{secreto:'SYNTHETIC_PRIVATE'})}
+  f.rpc.mockImplementation(async name=>({data:name==='autorizar_consulta_fiscal_homologacion'?binding:name==='cargar_revision_fiscal_homologacion'?f.ctx:ack,error:null}))
+  const r=await f.handler(request(JSON.stringify(f.body)));expect(r.status).toBe(409);expect(await r.text()).not.toContain('SYNTHETIC');expect(f.fetcher).not.toHaveBeenCalled()
+})
+it.each([{revision_id:'no-uuid'},{revision:0},{revision:1.1},{solicitud_sha256:'B'.repeat(64)},{usuario_id:crypto.randomUUID()}])('aprobación mal formada %# falla antes de Auth',async change=>{
+  const f=await reviewFixture(),r=await f.handler(request(JSON.stringify({...f.body,...change})))
+  expect(r.status).toBe(400);expect(f.getUser).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled()
+})
 it('preflight permitido no lee configuración, Auth ni credenciales y nunca usa wildcard',async()=>{
   const f=fixture(),r=await f.handler(request('',{},'OPTIONS'))
   expect(r.status).toBe(204);expect(r.headers.get('access-control-allow-origin')).toBe(origin)
