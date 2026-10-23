@@ -483,3 +483,13 @@ describe('afipStore.emitirFacturaVenta - Edge Function y contingencia', () => {
     })
   })
 })
+
+it('piloto estricto bloquea comprobante de demostración antes de cargar configuración o fabricar CAE',async()=>{
+ vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE','true')
+ useAFIPStore.setState({config:null})
+ expect(await useAFIPStore.getState().emitirComprobantePrueba()).toBeNull()
+ expect(invocacionesA('afip-wsfe')).toHaveLength(0)
+ expect(llamadasA('comprobantes_afip','insert')).toHaveLength(0)
+ expect(llamadasA('kioscos','select')).toHaveLength(0)
+ expect(localStorage.getItem(claveLocal)).toBeNull()
+})

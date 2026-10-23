@@ -605,3 +605,6 @@ Con hechos 022, la revisión requiere el hash de presentación que confirmó el 
 
 ### 23/10/2026 — Captura histórica antes de confirmar revisión
 La pantalla usa IDs/importes del snapshot, pide datos explícitos de representación y muestra los hechos guardados antes de aprobar su hash. No reconstruye descripciones desde catálogo actual ni persiste PII en navegador; respuesta pública transmite canónico/hash y deriva datos verificados. Una sucesora vuelve a captura sin herencia. Obligación global en servidor antes de intención/TA sigue pendiente y bloquea activación.
+
+### 23/10/2026 — Toda intención nueva requiere preparación y representación revisadas
+Sin excepción heredada: SQL 025 valida preparación/hechos/revisión/Auth/cuerpo/emisor/parámetros antes de TA y dentro de la transición a intención. Revocar helper directo, preservar replay histórico sin reconstrucción y verificar vigencias después del último lock. Retirar localmente afip-wsfe con 410 y bloquear demostración CAE en piloto estricto; no suponer retirada remota ni autorizarla implícitamente. Producción/primera emisión y aceptación hospedada conservan sus gates.

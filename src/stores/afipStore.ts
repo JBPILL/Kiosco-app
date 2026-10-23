@@ -507,6 +507,10 @@ export const useAFIPStore = create<AFIPState>((set, get) => ({
   },
 
   emitirComprobantePrueba: async () => {
+    if (kioskoPilotStrictScopeActivo()) {
+      toast.error(ERROR_FACTURACION_FUERA_DE_ALCANCE)
+      return null
+    }
     let config = get().config
     if (!config) {
       config = await get().cargarConfiguracion()
