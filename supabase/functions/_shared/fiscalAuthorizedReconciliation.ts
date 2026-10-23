@@ -1,5 +1,5 @@
 import { authorizeFiscalActor, validateFiscalWorkerBinding } from './fiscalWorkerAuthorization.ts'
-import type { FiscalAuthClient } from './fiscalWorkerAuthorization.ts'
+import type { FiscalAuthClient, FiscalWorkerBinding } from './fiscalWorkerAuthorization.ts'
 import { reconcilePersistedFiscalVoucher } from './fiscalPersistence.ts'
 import type { FiscalReconciliationAck } from './fiscalPersistence.ts'
 import { createFiscalTicketCache } from './fiscalTicketCache.ts'
@@ -12,20 +12,30 @@ export async function reconcileAuthorizedFiscalVoucher(
   cache:ReturnType<typeof createFiscalTicketCache>, load:WsaaTicketLoader, fetcher:typeof fetch,
   beforeConsult?:()=>Promise<void>,
 ):Promise<FiscalReconciliationAck> {
-  const checked: FiscalAuthClient = { auth: admin.auth, rpc: (name,args) => admin.rpc(name === 'autorizar_consulta_fiscal_homologacion' ? 'autorizar_conciliacion_revisada_homologacion' : name,args) }
-  const {binding,actorAuthId}=await authorizeFiscalActor(checked,token,operationId)
-  const revalidate=async()=>{
+  const {binding,actorAuthId}=await authorizeFiscalActor(admin,token,operationId)
+  return reconcileVerifiedFiscalVoucher(admin,actorAuthId,binding,observationId,cache,load,fetcher,beforeConsult)
+}
+/** Sólo composición privada: reutiliza el Auth capturado por el llamador, pero
+ * SQL 020 vuelve a acreditar esa identidad y el binding antes de cualquier lectura. */
+export async function reconcileVerifiedFiscalVoucher(
+  admin: FiscalAuthClient, actorAuthId:string, expected:Readonly<FiscalWorkerBinding>, observationId:string,
+  cache:ReturnType<typeof createFiscalTicketCache>, load:WsaaTicketLoader, fetcher:typeof fetch,
+  beforeConsult?:()=>Promise<void>,
+):Promise<FiscalReconciliationAck> {
+  const binding=validateFiscalWorkerBinding(expected,expected.operacion_id),operationId=binding.operacion_id
+  const revalidate=async(checkGate=true)=>{
     try {
-    await beforeConsult?.()
-    const response=await admin.rpc('autorizar_conciliacion_revisada_homologacion',{p_actor_auth_id:actorAuthId,p_operacion_id:operationId})
-    if(response.error)throw new Error('FISCAL_CONSULTA_NO_AUTORIZADA')
-    const fresh=validateFiscalWorkerBinding(response.data,operationId)
-    if(Object.entries(binding).some(([key,value])=>fresh[key as keyof typeof fresh]!==value))throw new Error('FISCAL_CONSULTA_NO_AUTORIZADA')
+      if(checkGate)await beforeConsult?.()
+      const response=await admin.rpc('autorizar_conciliacion_revisada_homologacion',{p_actor_auth_id:actorAuthId,p_operacion_id:operationId})
+      if(response.error)throw new Error('FISCAL_CONSULTA_NO_AUTORIZADA')
+      const fresh=validateFiscalWorkerBinding(response.data,operationId)
+      if(Object.entries(binding).some(([key,value])=>fresh[key as keyof typeof fresh]!==value))throw new Error('FISCAL_CONSULTA_NO_AUTORIZADA')
     } catch(error) {
       if(error instanceof Error&&error.message==='FISCAL_CONCILIACION_NO_HABILITADA')throw new Error('FISCAL_CONCILIACION_NO_HABILITADA')
       throw new Error('FISCAL_CONSULTA_NO_AUTORIZADA')
     }
   }
+  await revalidate(false)
   const durable = { rpc: (name:string,args:Record<string,unknown>) => name === 'registrar_reconciliacion_fiscal_homologacion'
     ? admin.rpc('registrar_conciliacion_revisada_homologacion',{...args,p_actor_auth_id:actorAuthId,p_binding:binding})
     : admin.rpc(name,args) }

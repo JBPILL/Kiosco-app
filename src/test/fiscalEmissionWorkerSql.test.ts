@@ -49,6 +49,8 @@ async function allow(mode='ok',reviewed=true) {
 const mapping:Record<string,string[]>={
   registrar_respuesta_emision_homologacion:['p_actor_auth_id','p_operacion_id','p_intento_id','p_sha','p_respuesta'],
   cargar_respuesta_emision_homologacion:['p_actor_auth_id','p_operacion_id','p_intento_id','p_sha'],
+  autorizar_conciliacion_revisada_homologacion:['p_actor_auth_id','p_operacion_id'],
+  registrar_conciliacion_revisada_homologacion:['p_actor_auth_id','p_binding','p_id','p_operacion_id','p_intento_id','p_sha','p_revision','p_decision'],
   autorizar_consulta_fiscal_homologacion:['p_actor_auth_id','p_operacion_id'],cargar_preparacion_envio_homologacion:['p_operacion_id'],
   cargar_revision_fiscal_homologacion:['p_operacion_id','p_actor_auth_id'],aprobar_revision_fiscal_homologacion:['p_operacion_id','p_actor_auth_id','p_id','p_sha','p_revision'],
   registrar_envio_revisado_homologacion:['p_actor_auth_id','p_operacion_id','p_intento_id','p_sha','p_autorizacion_id','p_ultimo_autorizado','p_consultado_en'],
@@ -56,11 +58,11 @@ const mapping:Record<string,string[]>={
   registrar_reconciliacion_fiscal_homologacion:['p_id','p_operacion_id','p_intento_id','p_sha','p_revision','p_decision'],
 }
 function fixture(){
-  const flags:Record<string,string>={SUPABASE_URL:'https://acoyfwwmhaeruciyedri.supabase.co',ARCA_HOMO_BACKEND_ENABLED:'true',ARCA_HOMO_EMISSION_ENABLED:'true'}
+  const flags:Record<string,string>={SUPABASE_URL:'https://acoyfwwmhaeruciyedri.supabase.co',ARCA_HOMO_BACKEND_ENABLED:'true',ARCA_HOMO_EMISSION_ENABLED:'true',ARCA_HOMO_RECONCILIATION_ENABLED:'true'}
   const rpc=vi.fn<FiscalAuthClient['rpc']>(async(name,args)=>{
     const names=mapping[name];if(!names)throw new Error('SYNTHETIC_UNEXPECTED_RPC')
     await db.exec('SAVEPOINT rpc_call')
-    try {const r=await db.query<{data:unknown}>(`SELECT ${name}(${names.map((k,i)=>'$'+(i+1)+(['p_decision','p_respuesta'].includes(k)?'::jsonb':'')).join(',')}) data`,names.map(k=>['p_decision','p_respuesta'].includes(k)?JSON.stringify(args[k]):args[k]));await db.exec('RELEASE SAVEPOINT rpc_call');return {data:r.rows[0].data,error:null}}
+    try {const r=await db.query<{data:unknown}>(`SELECT ${name}(${names.map((k,i)=>'$'+(i+1)+(['p_decision','p_respuesta','p_binding'].includes(k)?'::jsonb':'')).join(',')}) data`,names.map(k=>['p_decision','p_respuesta','p_binding'].includes(k)?JSON.stringify(args[k]):args[k]));await db.exec('RELEASE SAVEPOINT rpc_call');return {data:r.rows[0].data,error:null}}
     catch{await db.exec('ROLLBACK TO SAVEPOINT rpc_call; RELEASE SAVEPOINT rpc_call');return {data:null,error:new Error('SYNTHETIC_SQL_REJECTED')}}
   })
   const getUser=vi.fn<FiscalAuthClient['auth']['getUser']>(async()=>({data:{user:{id:actor}},error:null}))
@@ -81,7 +83,7 @@ it.each(['hash','credencial','huella','revision','deshabilitado','vencido','futu
 })
 it('flags privados/proyecto/actor cierran antes de transporte',async()=>{
   await allow()
-  for(const patch of [{SUPABASE_URL:'https://lllkjnqpltnwvxzphncr.supabase.co'},{ARCA_HOMO_BACKEND_ENABLED:'false'},{ARCA_HOMO_EMISSION_ENABLED:'false'}]){
+  for(const patch of [{SUPABASE_URL:'https://lllkjnqpltnwvxzphncr.supabase.co'},{ARCA_HOMO_BACKEND_ENABLED:'false'},{ARCA_HOMO_EMISSION_ENABLED:'false'},{ARCA_HOMO_RECONCILIATION_ENABLED:'false'}]){
     const f=fixture();Object.assign(f.flags,patch);await expect(f.run()).rejects.toThrow();expect(f.fetcher).not.toHaveBeenCalled();expect(f.load).not.toHaveBeenCalled()
   }
   const f=fixture();f.getUser.mockResolvedValue({data:{user:{id:crypto.randomUUID()}},error:null});await expect(f.run()).rejects.toThrow();expect(f.load).not.toHaveBeenCalled()
@@ -335,4 +337,50 @@ it('recepción de rechazo y autorización posterior por consulta completa conser
  expect((await f.run(attempt)).estado).toBe('AUTORIZADA')
  expect(await auditRead(attempt)).toMatchObject({respuesta:{estado:'RECHAZO_RECIBIDO',codigos:[],puedeReenviar:false}})
  expect((await state()).estado).toBe('AUTORIZADA');expect(f.fetcher).toHaveBeenCalledTimes(3)
+})
+
+it.each(['actor','emisor'])('recuperación interna revalida %s después de TA sin emitir ni adoptar otra cuenta',async mode=>{
+ const attempt=await intentOnly(),f=fixture(),load=f.load.getMockImplementation()!
+ f.load.mockImplementation(async (b,signal)=>{
+  const result=await load(b,signal)
+  if(mode==='actor')await reassignAuth()
+  else await db.exec('RESET ROLE; UPDATE fiscal_emisores_homologacion SET revision=2; SET ROLE service_role')
+  return result
+ })
+ await expect(f.run(attempt)).rejects.toThrow('FISCAL_CONSULTA_NO_AUTORIZADA')
+ expect(f.getUser).toHaveBeenCalledTimes(1);expect(f.fetcher).not.toHaveBeenCalled();expect((await state()).estado).toBe('ENVIO_INCIERTO')
+ for(const [name,args] of f.rpc.mock.calls)if(name==='autorizar_conciliacion_revisada_homologacion')expect(args.p_actor_auth_id).toBe(actor)
+})
+it('reasignación después del POST conserva respuesta del actor original y no concilia con la cuenta nueva',async()=>{
+ await allow();const f=fixture(),original=f.fetcher.getMockImplementation()!,attempt=crypto.randomUUID()
+ f.fetcher.mockImplementation(async(request,init)=>{
+  const response=await original(request,init)
+  if((request as Request).headers.get('SOAPAction')?.includes('FECAESolicitar'))await reassignAuth()
+  return response
+ })
+ await expect(f.run(attempt)).rejects.toThrow('FISCAL_CONSULTA_NO_AUTORIZADA')
+ expect(f.getUser).toHaveBeenCalledTimes(1)
+ expect(f.fetcher.mock.calls.map(([r])=>(r as Request).headers.get('SOAPAction'))).toEqual(['"http://ar.gov.afip.dif.FEV1/FECompUltimoAutorizado"','"http://ar.gov.afip.dif.FEV1/FECAESolicitar"'])
+ expect(await auditRead(attempt)).toMatchObject({respuesta:{estado:'APROBACION_RECIBIDA'}})
+ expect((await state()).estado).toBe('ENVIO_INCIERTO')
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_autorizaciones_homologacion')).rows[0].n).toBe(0)
+})
+it('worker usa sólo registro ligado en conciliación y recupera ACK perdido sin otra consulta',async()=>{
+ await allow();const f=fixture(),original=f.rpc.getMockImplementation()!,attempt=crypto.randomUUID(),observation=crypto.randomUUID()
+ f.rpc.mockImplementation(async(name,args)=>{
+  if(name==='registrar_reconciliacion_fiscal_homologacion')throw new Error('UNBOUND_WRITE_FORBIDDEN')
+  const result=await original(name,args)
+  return name==='registrar_conciliacion_revisada_homologacion'?{data:null,error:new Error('SYNTHETIC_ACK_LOST')}:result
+ })
+ const result=await f.run(attempt,observation);expect(result.estado).toBe('AUTORIZADA')
+ const writes=f.rpc.mock.calls.filter(([name])=>name==='registrar_conciliacion_revisada_homologacion')
+ expect(writes).toHaveLength(1);expect(writes[0][1]).toMatchObject({p_actor_auth_id:actor,p_id:observation,p_binding:{operacion_id:op,credencial_id:credential,revision:1}})
+ f.flags.ARCA_HOMO_EMISSION_ENABLED='false';f.flags.ARCA_HOMO_RECONCILIATION_ENABLED='false'
+ expect(await f.run(attempt,observation)).toEqual(result);expect(f.fetcher).toHaveBeenCalledTimes(3)
+ expect(f.getUser).toHaveBeenCalledTimes(2)
+})
+it('recuperación interna con gate de consulta cerrado conserva intención y no lee TA',async()=>{
+ const attempt=await intentOnly(),f=fixture();delete f.flags.ARCA_HOMO_RECONCILIATION_ENABLED
+ await expect(f.run(attempt)).rejects.toThrow('FISCAL_CONCILIACION_NO_HABILITADA')
+ expect(f.load).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled();expect((await state()).estado).toBe('ENVIO_INCIERTO')
 })

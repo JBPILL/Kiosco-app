@@ -5,7 +5,7 @@ import type { WsaaTicketLoader } from './fiscalTicketCache.ts'
 import { createFiscalTicketCache } from './fiscalTicketCache.ts'
 import { verifyFiscalRequest } from './fiscalReconciliation.ts'
 import { consultLastFiscalNumber, sendFiscalEmission, verifyFiscalEmissionRequest } from './fiscalWsfeEmission.ts'
-import { reconcilePersistedFiscalVoucher } from './fiscalPersistence.ts'
+import { reconcileVerifiedFiscalVoucher } from './fiscalAuthorizedReconciliation.ts'
 import type { FiscalReconciliationAck } from './fiscalPersistence.ts'
 import { FISCAL_STAGING_URL } from './fiscalSupabaseAdmin.ts'
 import { validateFiscalOwnerReview } from './fiscalOwnerReview.ts'
@@ -33,14 +33,15 @@ export async function emitAuthorizedFiscalVoucher(deps:FiscalEmissionDependencie
   if(Object.keys(ctx).length!==keys.length||Object.keys(ctx).some(k=>!keys.includes(k))||ctx.operacion_id!==operationId)return fail()
   const frozen=await verifyFiscalRequest(ctx.solicitud),s=frozen.solicitud
   if(s.cuitEmisor!==binding.cuit_emisor||s.puntoVenta!==binding.punto_venta)return fail()
-  const reconcile=()=>reconcilePersistedFiscalVoucher(deps.admin,operationId,observationId,()=>deps.cache.get(binding,deps.load),deps.fetcher,{cuitEmisor:binding.cuit_emisor,puntoVenta:binding.punto_venta})
+  const reconciliationEnabled=async()=>{if(deps.readSecret('ARCA_HOMO_RECONCILIATION_ENABLED')!=='true')throw new Error('FISCAL_CONCILIACION_NO_HABILITADA')}
+  const reconcile=()=>reconcileVerifiedFiscalVoucher(deps.admin,actorAuthId,binding,observationId,deps.cache,deps.load,deps.fetcher,reconciliationEnabled)
   if(ctx.estado==='ENVIO_INCIERTO'||ctx.estado==='AUTORIZADA'){
     if(!uuid(ctx.intento_id)||ctx.permiso!==null||ctx.revision!==(ctx.estado==='AUTORIZADA'?2:1)
       ||(ctx.resultado!==null)!==(ctx.estado==='AUTORIZADA'))return fail()
     return reconcile()
   }
   if(ctx.estado!=='RESERVADA'||ctx.intento_id!==null||ctx.revision!==1||ctx.resultado!==null||!uuid(ctx.permiso)
-    ||deps.readSecret('ARCA_HOMO_EMISSION_ENABLED')!=='true')return fail()
+    ||deps.readSecret('ARCA_HOMO_EMISSION_ENABLED')!=='true'||deps.readSecret('ARCA_HOMO_RECONCILIATION_ENABLED')!=='true')return fail()
   await verifyFiscalEmissionRequest(frozen)
   const reviewResult=await deps.admin.rpc('cargar_revision_fiscal_homologacion',{p_operacion_id:operationId,p_actor_auth_id:actorAuthId})
   if(reviewResult.error)return fail()
