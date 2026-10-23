@@ -1,3 +1,6 @@
+import { prepareFiscalData,requestFromPreparedFiscalData } from '../../supabase/functions/_shared/fiscalPreparation'
+import { prepareFiscalPresentationFacts } from '../../supabase/functions/_shared/fiscalPresentation'
+import type { FiscalPreparationContext } from '../../supabase/functions/_shared/fiscalPreparationContract'
 // @vitest-environment node
 // SQL real embebido; Auth/TA/transporte simulados. No acredita JWT hospedado.
 import { readdirSync, readFileSync } from 'node:fs'
@@ -12,7 +15,7 @@ import type { FiscalAuthClient } from '../../supabase/functions/_shared/fiscalWo
 import { wsfeSample, wsfeLast, wsfeReceipt, wsfeConsult, wsfeSoap } from './fixtures/fiscalWsfe'
 
 const db=new PGlite(),kid=crypto.randomUUID(),actor=crypto.randomUUID(),owner=crypto.randomUUID(),sale=crypto.randomUUID(),op=crypto.randomUUID(),credential=crypto.randomUUID(),permission=crypto.randomUUID()
-let hash:string,canonical:string
+let hash:string,canonical:string,presentationSha:string
 beforeAll(async()=>{
   await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
     CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid PRIMARY KEY);
@@ -26,15 +29,25 @@ beforeAll(async()=>{
   await db.query('INSERT INTO auth.users VALUES($1)',[actor]);await db.query("INSERT INTO kioscos(id,nombre) VALUES($1,'Emisión sintética')",[kid])
   await db.query("INSERT INTO usuarios(id,auth_user_id,kiosco_id,nombre,rol) VALUES($1,$2,$3,'Dueño sintético','DUEÑO')",[owner,actor,kid])
   await db.query('INSERT INTO ventas(id,kiosco_id,usuario_id,total) VALUES($1,$2,$3,123.45)',[sale,kid,owner]);await db.query("SELECT set_config('request.jwt.claim.sub',$1,false)",[actor])
-  const frozen=await freezeFiscalRequest(wsfeSample);hash=frozen.sha256;canonical=await serializeFiscalRequest(frozen)
+  const product=crypto.randomUUID();await db.query('INSERT INTO productos(id,kiosco_id,descripcion,precio_venta) VALUES($1,$2,$3,123.45)',[product,kid,'Ensayo']);await db.query('INSERT INTO detalles_venta(venta_id,producto_id,cantidad,precio_unitario,subtotal) VALUES($1,$2,1,123.45,123.45)',[sale,product])
 },120000)
 beforeEach(async()=>{
-  await db.exec('BEGIN; SET ROLE authenticated')
-  await db.query('SELECT preparar_operacion_fiscal_homologacion($1,$2,$3,$4::jsonb)',[op,kid,sale,JSON.stringify({version:1,cuit_emisor:wsfeSample.cuitEmisor,punto_venta:2,tipo_comprobante:11,tipo_doc_receptor:99,nro_doc_receptor:'0'})])
-  await db.exec('RESET ROLE')
+  await db.exec('BEGIN')
   await db.query(`INSERT INTO fiscal_emisores_homologacion(kiosco_id,cuit_emisor,punto_venta,credencial_id,certificado_sha256,habilitado) VALUES($1,$2,2,$3,$4,true)`,[kid,wsfeSample.cuitEmisor,credential,'a'.repeat(64)])
-  await db.exec("SET ROLE service_role; SELECT set_config('request.jwt.claim.role','service_role',true)")
-  await db.query('SELECT persistir_solicitud_fiscal_homologacion($1,$2,$3,0,clock_timestamp())',[op,canonical,hash])
+  await db.exec(`INSERT INTO fiscal_parametros_homologacion(revision,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en,habilitado)
+   VALUES(1,'[{"id":5,"descripcion":"Ensayo","comprobantes":[11]}]','[]',repeat('b',64),clock_timestamp()-interval '1 hour',clock_timestamp()+interval '1 hour',true);
+   SET ROLE service_role; SELECT set_config('request.jwt.claim.role','service_role',true);`)
+  const context=(await db.query<{data:FiscalPreparationContext}>('SELECT cargar_datos_preparacion_homologacion($1,$2) data',[actor,sale])).rows[0].data
+  const {version:_v,entorno:_e,cuitEmisor:_c,puntoVenta:_p,numero:_n,...data}=wsfeSample
+  const {total:_total,...importes}=data.importes
+  const prepared=await prepareFiscalData(context,{condicionEmisor:'MONOTRIBUTO',datos:{...data,importes}})
+  await db.query('SELECT guardar_datos_preparacion_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,prepared.canonico,prepared.sha256])
+  const frozen=await requestFromPreparedFiscalData(prepared,1);hash=frozen.sha256;canonical=await serializeFiscalRequest(frozen)
+  await db.query('SELECT persistir_preparacion_fiscal_homologacion($1,$2,$3,$4,0,clock_timestamp())',[actor,op,canonical,hash])
+  const source=(await db.query<{data:{lineas:{detalle_id:string}[]}}>('SELECT cargar_contexto_presentacion_homologacion($1,$2,$3) data',[actor,sale,op])).rows[0].data
+  const facts=await prepareFiscalPresentationFacts({version:1,emisor:{razon_social:'Ensayo',domicilio_comercial:'Calle 1',ingresos_brutos:'Exento',inicio_actividades:'20200101'},receptor:{nombre:'Consumidor final',domicilio:'Sin identificar'},lineas:source.lineas.map(x=>({detalle_id:x.detalle_id,descripcion:'Ensayo'})),otros_impuestos_nacionales_indirectos:'0.00'})
+  presentationSha=facts.sha256
+  await db.query('SELECT guardar_presentacion_fiscal_homologacion($1,$2,$3,$4,$5,$6)',[actor,sale,op,hash,facts.canonico,facts.sha256])
 })
 afterEach(async()=>{await db.exec('ROLLBACK; RESET ROLE')})
 afterAll(async()=>{await db.close()})
@@ -44,13 +57,14 @@ async function allow(mode='ok',reviewed=true) {
     VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp()-($8::int*interval '1 minute'),clock_timestamp()+($9::int*interval '1 minute'))`,
     [op,permission,mode==='hash'?'0'.repeat(64):hash,mode==='credencial'?crypto.randomUUID():credential,mode==='huella'?'b'.repeat(64):'a'.repeat(64),mode==='revision'?2:1,mode!=='deshabilitado',mode==='futuro'?-120:mode==='vencido'?120:0,mode==='futuro'?150:mode==='vencido'?-90:30])
   await db.exec('SET ROLE service_role')
-  if(reviewed)await db.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1)',[op,actor,crypto.randomUUID(),hash])
+  if(reviewed)await review()
 }
 const mapping:Record<string,string[]>={
   registrar_respuesta_emision_homologacion:['p_actor_auth_id','p_operacion_id','p_intento_id','p_sha','p_respuesta'],
   cargar_respuesta_emision_homologacion:['p_actor_auth_id','p_operacion_id','p_intento_id','p_sha'],
   autorizar_conciliacion_revisada_homologacion:['p_actor_auth_id','p_operacion_id'],
   registrar_conciliacion_revisada_homologacion:['p_actor_auth_id','p_binding','p_id','p_operacion_id','p_intento_id','p_sha','p_revision','p_decision'],
+  autorizar_envio_presentado_homologacion:['p_actor_auth_id','p_operacion_id','p_sha','p_revision_id'],
   autorizar_consulta_fiscal_homologacion:['p_actor_auth_id','p_operacion_id'],cargar_preparacion_envio_homologacion:['p_operacion_id'],
   cargar_revision_fiscal_homologacion:['p_operacion_id','p_actor_auth_id'],aprobar_revision_fiscal_homologacion:['p_operacion_id','p_actor_auth_id','p_id','p_sha','p_revision'],
   registrar_envio_revisado_homologacion:['p_actor_auth_id','p_operacion_id','p_intento_id','p_sha','p_autorizacion_id','p_ultimo_autorizado','p_consultado_en'],
@@ -159,7 +173,7 @@ it('sin revisión humana vigente no pide TA ni consulta numeración',async()=>{
   expect(f.load).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled()
 })
 async function review(id=crypto.randomUUID(),sha=hash,revision=1,actorId=actor) {
-  return (await db.query<{ack:Record<string,unknown>}>('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,$5) ack',[op,actorId,id,sha,revision])).rows[0].ack
+  return (await db.query<{ack:Record<string,unknown>}>('SELECT aprobar_revision_presentacion_homologacion($1,$2,$3,$4,$5,$6,$7) ack',[actorId,sale,op,id,sha,revision,presentationSha])).rows[0].ack
 }
 async function readReview(actorId=actor) {
   return (await db.query<{ctx:Record<string,unknown>}>('SELECT cargar_revision_fiscal_homologacion($1,$2) ctx',[op,actorId])).rows[0].ctx
@@ -171,7 +185,7 @@ async function deniedSql(action:()=>Promise<unknown>,message:RegExp) {
 it('revisión recuperable conserva identidad, vencimiento e historia sin otorgar permiso privado',async()=>{
   expect((await readReview()).aprobacion).toBeNull()
   const id=crypto.randomUUID(),ack=await review(id)
-  expect(await review(id)).toEqual(ack);expect((await readReview()).aprobacion).toEqual(ack)
+  expect(await review(id)).toEqual(ack);expect((await readReview()).aprobacion).toEqual((({presentacion_sha256:_sha,...base})=>base)(ack))
   expect(ack.emision_habilitada).toBe(false)
   await db.exec('RESET ROLE')
   expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_revisiones_homologacion')).rows[0].n).toBe(1)
@@ -217,17 +231,17 @@ it('cambiar emisor después de leer revisión impide consumo y revierte intenci�
 it('rotar el emisor no reinterpreta un ACK de revisión anterior como aprobación nueva',async()=>{
   const id=crypto.randomUUID();await review(id);await db.exec('RESET ROLE; UPDATE fiscal_emisores_homologacion SET revision=2; SET ROLE service_role')
   expect((await readReview()).aprobacion).toBeNull()
-  await deniedSql(()=>review(id),/Identidad de revisión/)
-  expect((await review()).aprobada).toBe(true)
+  await deniedSql(()=>review(id),/Identidad de revisión|Cambió el emisor/)
+  await deniedSql(()=>review(),/Cambió el emisor/)
 })
 it('reasignar Auth del perfil no conserva como vigente la aprobación de otra identidad',async()=>{
   const id=crypto.randomUUID();await review(id);await db.exec('RESET ROLE')
   const replacement=crypto.randomUUID();await db.query('INSERT INTO auth.users VALUES($1)',[replacement])
   await db.query('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[replacement,owner]);await db.exec('SET ROLE service_role')
   await deniedSql(()=>readReview(),/no autorizada/)
-  expect((await readReview(replacement)).aprobacion).toBeNull()
-  await deniedSql(()=>review(id,hash,1,replacement),/Identidad de revisión/)
-  expect((await review(crypto.randomUUID(),hash,1,replacement)).aprobada).toBe(true)
+  await deniedSql(()=>readReview(replacement),/Identidad de preparación/)
+  await deniedSql(()=>review(id,hash,1,replacement),/Identidad de preparación|no autorizada/)
+  await deniedSql(()=>review(crypto.randomUUID(),hash,1,replacement),/Identidad de preparación|no autorizada/)
 })
 async function reassignAuth() {
   const replacement=crypto.randomUUID();await db.exec('RESET ROLE');await db.query('INSERT INTO auth.users VALUES($1)',[replacement])
@@ -240,11 +254,11 @@ it('reasignación entre Auth y revisión no atribuye la petición anterior al nu
   await expect(f.run()).rejects.toThrow();expect(f.getUser).toHaveBeenCalledTimes(1)
   expect(f.load).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled()
 })
-it('reasignación antes del envío no usa la aprobación válida de la cuenta nueva para la petición vieja',async()=>{
+it('reasignación antes del envío bloquea tanto aprobación nueva como petición vieja',async()=>{
   await allow();const f=fixture(),base=f.fetcher.getMockImplementation()!
   f.fetcher.mockImplementation(async(input,init)=>{
     const result=await base(input,init),replacement=await reassignAuth()
-    await review(crypto.randomUUID(),hash,1,replacement);return result
+    await deniedSql(()=>review(crypto.randomUUID(),hash,1,replacement),/Identidad de preparación|no autorizada/);return result
   })
   await expect(f.run()).rejects.toThrow();expect(f.fetcher).toHaveBeenCalledTimes(1)
   expect(await state()).toEqual({estado:'RESERVADA',usado_por_intento:null})
@@ -383,4 +397,16 @@ it('recuperación interna con gate de consulta cerrado conserva intención y no 
  const attempt=await intentOnly(),f=fixture();delete f.flags.ARCA_HOMO_RECONCILIATION_ENABLED
  await expect(f.run(attempt)).rejects.toThrow('FISCAL_CONCILIACION_NO_HABILITADA')
  expect(f.load).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled();expect((await state()).estado).toBe('ENVIO_INCIERTO')
+})
+
+
+it.each(['missing','extra','body','revision','error'])('guard previo a TA %s no permite transporte ni intención',async mode=>{
+ await allow();const f=fixture(),base=f.rpc.getMockImplementation()!
+ f.rpc.mockImplementation(async(name,args)=>{
+  const r=await base(name,args);if(name!=='autorizar_envio_presentado_homologacion')return r
+  const value=r.data as Record<string,unknown>
+  return mode==='error'?{data:null,error:new Error('SYNTHETIC_GUARD_ERROR')}:{data:mode==='missing'?null:{...value,...(mode==='extra'?{extra:true}:mode==='body'?{solicitud_sha256:'b'.repeat(64)}:{revision_id:crypto.randomUUID()})},error:null}
+ })
+ await expect(f.run()).rejects.toThrow();expect(f.load).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled()
+ expect(await state()).toEqual({estado:'RESERVADA',usado_por_intento:null})
 })

@@ -18,6 +18,7 @@ const transportErrors = []
 let created = false
 let containerId
 let port
+let requiredPresentationInstalledAfterCase=null
 let evidence
 const evidenceIndex = process.argv.indexOf('--evidence')
 const evidencePath = evidenceIndex >= 0 ? resolve(process.argv[evidenceIndex+1] ?? '') : null
@@ -725,6 +726,83 @@ try {
   await start(b);const latePresentation=capture(reviewBeforePresentation.write(b));await waitForLock(observer,b);await a.query('COMMIT')
   assert.equal((await latePresentation).error?.code,'55000');await b.query('ROLLBACK')
   cases.push('revision_primero_impide_agregar_hechos_tardios_durante_espera')
+  // Actualización sobre historia previa: los escenarios anteriores acreditan 001–024.
+  requiredPresentationInstalledAfterCase=cases.length
+  const historyBefore=(await observer.query('SELECT jsonb_agg(to_jsonb(r) ORDER BY operacion_id) value FROM fiscal_reservas_homologacion r')).rows[0].value
+  await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/025_fiscal_required_presentation.sql'),'utf8'))
+  await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/025_fiscal_required_presentation.sql'),'utf8'))
+  assert.deepEqual((await observer.query('SELECT jsonb_agg(to_jsonb(r) ORDER BY operacion_id) value FROM fiscal_reservas_homologacion r')).rows[0].value,historyBefore)
+  await start(a);const oldReplay=await markEmission(a,e,sendId);assert.equal(oldReplay.nuevo_intento,false);await a.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_presentaciones_homologacion WHERE operacion_id=$1',[e.op])).rows[0].n,0)
+  cases.push('025_instalacion_repetida_preserva_historia_y_replay_heredado_sin_crear_hechos')
+  const newLegacy=await emissionFixture(141,0)
+  await start(a);const forbiddenLegacy=await capture(markEmission(a,newLegacy,randomUUID()));assert.equal(forbiddenLegacy.error?.code,'42501');await a.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT estado FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[newLegacy.op])).rows[0].estado,'RESERVADA')
+  cases.push('025_operacion_heredada_nueva_sin_012_no_crea_intencion_aunque_tenga_permiso_revision')
+  await start(a);const directIntent=await capture(a.query('SELECT registrar_intento_fiscal_homologacion($1,$2)',[boundReview.operation,randomUUID()]));assert.equal(directIntent.error?.code,'42501');await a.query('ROLLBACK')
+  cases.push('025_helper_directo_cerrado_incluso_con_hechos_y_revision_validos')
+  async function strictPresentationFixture(point){
+    const f=await presentationFixture(point),revision=randomUUID(),grant=randomUUID()
+    await start(a);await f.write(a)
+    await a.query('SELECT aprobar_revision_presentacion_homologacion($1,$2,$3,$4,$5,1,$6)',[f.auth,f.sale,f.operation,revision,f.body,f.sha]);await a.query('COMMIT')
+    await observer.query(`INSERT INTO fiscal_permisos_emision_homologacion(operacion_id,autorizacion_id,solicitud_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,vence_en)
+      SELECT $1,$2,$3,credencial_id,certificado_sha256,revision,true,clock_timestamp()+interval '30 minutes' FROM fiscal_emisores_homologacion WHERE kiosco_id=$4`,[f.operation,grant,f.body,f.kid])
+    const authorize=async(client)=>(await client.query('SELECT autorizar_envio_presentado_homologacion($1,$2,$3,$4) ack',[f.auth,f.operation,f.body,revision])).rows[0].ack
+    const send=async(client,attempt)=>(await client.query('SELECT registrar_envio_revisado_homologacion($1,$2,$3,$4,$5,0,clock_timestamp()) ack',[f.auth,f.operation,attempt,f.body,grant])).rows[0].ack
+    return {...f,revision,grant,authorize,send}
+  }
+  const strict=await strictPresentationFixture(142),strictAttempt=randomUUID()
+  await start(a);assert.equal((await strict.authorize(a)).presentacion_sha256,strict.sha);await a.query('COMMIT')
+  await start(a);const strictFirst=await strict.send(a,strictAttempt);assert.equal(strictFirst.nuevo_intento,true)
+  await start(b);const strictDuplicate=capture(strict.send(b,strictAttempt));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await strictDuplicate).value.nuevo_intento,false);await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT revision_aprobada_id FROM fiscal_permisos_emision_homologacion WHERE operacion_id=$1',[strict.operation])).rows[0].revision_aprobada_id,strict.revision)
+  cases.push('025_dos_workers_intencion_completa_mismo_intento_un_consumo_revision_exacta')
+  const strictExpired=await strictPresentationFixture(143)
+  await observer.query('ALTER TABLE fiscal_revisiones_homologacion DISABLE TRIGGER fiscal_revision_inmutable')
+  await observer.query("UPDATE fiscal_revisiones_homologacion SET creado_en=clock_timestamp()-interval '1 minute',vence_en=clock_timestamp()+interval '2 seconds' WHERE id=$1",[strictExpired.revision])
+  await observer.query('ALTER TABLE fiscal_revisiones_homologacion ENABLE TRIGGER fiscal_revision_inmutable')
+  await a.query('BEGIN');await a.query('SELECT id FROM fiscal_operaciones_homologacion WHERE id=$1 FOR UPDATE',[strictExpired.operation])
+  await start(b);const lateStrict=capture(strictExpired.authorize(b));await waitForLock(observer,b)
+  const strictDeadline=Date.now()+7000;let strictReviewExpired=false
+  while(Date.now()<strictDeadline){strictReviewExpired=(await observer.query('SELECT vence_en<=clock_timestamp() expired FROM fiscal_revisiones_homologacion WHERE id=$1',[strictExpired.revision])).rows[0].expired;if(strictReviewExpired)break;await delay(40)}
+  assert(strictReviewExpired);await a.query('COMMIT');assert.equal((await lateStrict).error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('025_revision_ligada_vence_esperando_lock_no_autoriza_TA_ni_intencion')
+  const strictActor=await strictPresentationFixture(144),strictNewActor=randomUUID()
+  await observer.query('INSERT INTO auth.users VALUES($1)',[strictNewActor])
+  await a.query('BEGIN');await a.query('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[strictNewActor,strictActor.owner])
+  await start(b);const lateStrictActor=capture(strictActor.authorize(b));await waitForLock(observer,b);await a.query('COMMIT');assert.equal((await lateStrictActor).error?.code,'42501');await b.query('ROLLBACK')
+  await start(b);const newStrictActor=await capture(b.query('SELECT autorizar_envio_presentado_homologacion($1,$2,$3,$4)',[strictNewActor,strictActor.operation,strictActor.body,strictActor.revision]));assert.equal(newStrictActor.error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('025_Auth_reasignado_esperando_no_autoriza_cuenta_original_ni_nueva')
+  const strictIssuer=await strictPresentationFixture(145)
+  await a.query('BEGIN');await a.query('UPDATE fiscal_emisores_homologacion SET revision=revision+1 WHERE kiosco_id=$1',[strictIssuer.kid])
+  await start(b);const lateStrictIssuer=capture(strictIssuer.authorize(b));await waitForLock(observer,b);await a.query('COMMIT');assert.equal((await lateStrictIssuer).error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('025_emisor_rota_esperando_lock_no_autoriza_hechos_revision_anteriores')
+  const strictRollback=await strictPresentationFixture(146)
+  await start(a);await strictRollback.send(a,randomUUID());await a.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT estado FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[strictRollback.operation])).rows[0].estado,'RESERVADA')
+  assert.equal((await observer.query('SELECT usado_por_intento FROM fiscal_permisos_emision_homologacion WHERE operacion_id=$1',[strictRollback.operation])).rows[0].usado_por_intento,null)
+  cases.push('025_rollback_intencion_restituye_reserva_permiso_y_conserva_revision_hechos')
+  const strictLinkExpired=await strictPresentationFixture(147)
+  await observer.query('ALTER TABLE fiscal_revisiones_homologacion DISABLE TRIGGER fiscal_revision_inmutable')
+  await observer.query("UPDATE fiscal_revisiones_homologacion SET creado_en=clock_timestamp()-interval '1 minute',vence_en=clock_timestamp()+interval '2 seconds' WHERE id=$1",[strictLinkExpired.revision])
+  await observer.query('ALTER TABLE fiscal_revisiones_homologacion ENABLE TRIGGER fiscal_revision_inmutable')
+  await a.query('BEGIN');await a.query('SELECT revision_id FROM fiscal_revisiones_presentacion_homologacion WHERE revision_id=$1 FOR UPDATE',[strictLinkExpired.revision])
+  await start(b);const lateStrictLink=capture(strictLinkExpired.authorize(b));await waitForLock(observer,b)
+  const strictLinkDeadline=Date.now()+7000;let strictLinkReviewExpired=false
+  while(Date.now()<strictLinkDeadline){strictLinkReviewExpired=(await observer.query('SELECT vence_en<=clock_timestamp() expired FROM fiscal_revisiones_homologacion WHERE id=$1',[strictLinkExpired.revision])).rows[0].expired;if(strictLinkReviewExpired)break;await delay(40)}
+  assert(strictLinkReviewExpired);await a.query('COMMIT');assert.equal((await lateStrictLink).error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('025_revision_vence_esperando_ultimo_lock_del_vinculo_no_autoriza_TA')
+  const strictCatalogExpired=await strictPresentationFixture(148)
+  await observer.query('ALTER TABLE fiscal_parametros_homologacion DISABLE TRIGGER fiscal_parametros_inmutables')
+  await observer.query("UPDATE fiscal_parametros_homologacion SET vence_en=clock_timestamp()+interval '2 seconds' WHERE revision=1")
+  await observer.query('ALTER TABLE fiscal_parametros_homologacion ENABLE TRIGGER fiscal_parametros_inmutables')
+  await a.query('BEGIN');await a.query('SELECT revision_id FROM fiscal_revisiones_presentacion_homologacion WHERE revision_id=$1 FOR UPDATE',[strictCatalogExpired.revision])
+  await start(b);const lateStrictCatalog=capture(strictCatalogExpired.authorize(b));await waitForLock(observer,b)
+  const strictCatalogDeadline=Date.now()+7000;let strictCatalogExpiredNow=false
+  while(Date.now()<strictCatalogDeadline){strictCatalogExpiredNow=(await observer.query('SELECT vence_en<=clock_timestamp() expired FROM fiscal_parametros_homologacion WHERE revision=1')).rows[0].expired;if(strictCatalogExpiredNow)break;await delay(40)}
+  assert(strictCatalogExpiredNow);await a.query('COMMIT');assert.equal((await lateStrictCatalog).error?.code,'22023');await b.query('ROLLBACK')
+  cases.push('025_parametros_vencen_esperando_ultimo_lock_no_autoriza_TA')
   const expiredCatalog=await preparationFixture(93)
   await observer.query('UPDATE fiscal_parametros_homologacion SET habilitado=false')
   await observer.query(`INSERT INTO fiscal_parametros_homologacion SELECT 2,condiciones,alicuotas,fuente_sha256,clock_timestamp()-interval '1 hour',clock_timestamp()+interval '3 seconds',true FROM fiscal_parametros_homologacion WHERE revision=1`)
@@ -748,7 +826,7 @@ try {
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
-    cases,caseCount:cases.length,externalRequests:0,invoicesIssued:0}
+    cases,caseCount:cases.length,requiredPresentationInstalledAfterCase,postRequiredPresentationCaseCount:requiredPresentationInstalledAfterCase===null?0:cases.length-requiredPresentationInstalledAfterCase,externalRequests:0,invoicesIssued:0}
 } catch(error) {
   console.error('FISCAL_CONCURRENCY=FAIL; CODE='+(error?.code??error?.name??'UNKNOWN')+'; STEP='+cases.length+'; DETAIL='+error.message)
   evidence={status:'FAIL',testedAt:new Date().toISOString(),containerId,containerName:name,port,cases,code:error?.code??error?.name??'UNKNOWN'}

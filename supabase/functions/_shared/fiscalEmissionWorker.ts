@@ -47,6 +47,11 @@ export async function emitAuthorizedFiscalVoucher(deps:FiscalEmissionDependencie
   if(reviewResult.error)return fail()
   const review=await validateFiscalOwnerReview(reviewResult.data,binding)
   if(review.estado!=='RESERVADA'||review.solicitud.sha256!==frozen.sha256||!review.aprobacion||Date.parse(review.aprobacion.vence_en)<=Date.now())return fail()
+  const presented=await deps.admin.rpc('autorizar_envio_presentado_homologacion',{p_actor_auth_id:actorAuthId,p_operacion_id:operationId,p_sha:frozen.sha256,p_revision_id:review.aprobacion.id})
+  if(presented.error||!presented.data||typeof presented.data!=='object'||Array.isArray(presented.data))return fail()
+  const guard=presented.data as Record<string,unknown>
+  if(Object.keys(guard).length!==5||guard.operacion_id!==operationId||guard.solicitud_sha256!==frozen.sha256||guard.revision_id!==review.aprobacion.id
+    ||typeof guard.presentacion_sha256!=='string'||!/^[0-9a-f]{64}$/.test(guard.presentacion_sha256)||guard.emision_habilitada!==false)return fail()
   const ticket=await deps.cache.get(binding,deps.load)
   const last=await consultLastFiscalNumber({entorno:s.entorno,cuitEmisor:s.cuitEmisor,puntoVenta:s.puntoVenta,tipoComprobante:s.tipoComprobante},ticket,deps.fetcher)
   if(last.ultimo!==s.numero-1)return fail()

@@ -32,17 +32,22 @@ RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,publi
 END $$;
 CREATE OR REPLACE FUNCTION public.cargar_revision_presentacion_homologacion(p_actor_auth_id uuid,p_venta_id uuid,p_operacion_id uuid,p_revision_id uuid)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
-DECLARE datos jsonb; contexto jsonb; revision public.fiscal_revisiones_homologacion%ROWTYPE; vinculo public.fiscal_revisiones_presentacion_homologacion%ROWTYPE;
+DECLARE datos jsonb; contexto jsonb; binding jsonb; revision public.fiscal_revisiones_homologacion%ROWTYPE; vinculo public.fiscal_revisiones_presentacion_homologacion%ROWTYPE;
 BEGIN
  datos:=public.cargar_presentacion_fiscal_homologacion(p_actor_auth_id,p_venta_id,p_operacion_id);
  contexto:=public.cargar_revision_fiscal_homologacion(p_operacion_id,p_actor_auth_id);
  IF datos IS NULL THEN RAISE EXCEPTION 'Faltan hechos de representación.' USING ERRCODE='55000'; END IF;
+ binding:=public.autorizar_consulta_fiscal_homologacion(p_actor_auth_id,p_operacion_id);
+ IF NOT EXISTS(SELECT 1 FROM public.fiscal_preparaciones_homologacion p WHERE p.operacion_id=p_operacion_id AND p.actor_auth_id=p_actor_auth_id
+  AND p.credencial_id::text=binding->>'credencial_id' AND p.certificado_sha256=binding->>'certificado_sha256' AND p.emisor_revision=(binding->>'revision')::integer) THEN
+  RAISE EXCEPTION 'Cambió el emisor de la preparación; corregir antes de aprobar.' USING ERRCODE='42501'; END IF;
  SELECT * INTO vinculo FROM public.fiscal_revisiones_presentacion_homologacion WHERE revision_id=p_revision_id FOR SHARE;
  IF NOT FOUND THEN RETURN NULL; END IF;
  SELECT * INTO revision FROM public.fiscal_revisiones_homologacion WHERE id=p_revision_id FOR SHARE;
  IF vinculo.operacion_id IS DISTINCT FROM p_operacion_id OR vinculo.presentacion_sha256 IS DISTINCT FROM datos->>'presentacion_sha256'
   OR revision.operacion_id IS DISTINCT FROM p_operacion_id OR revision.actor_auth_id IS DISTINCT FROM p_actor_auth_id
-  OR revision.solicitud_sha256 IS DISTINCT FROM datos->>'solicitud_sha256' THEN
+  OR revision.solicitud_sha256 IS DISTINCT FROM datos->>'solicitud_sha256'
+  OR revision.credencial_id::text IS DISTINCT FROM binding->>'credencial_id' OR revision.certificado_sha256 IS DISTINCT FROM binding->>'certificado_sha256' OR revision.emisor_revision IS DISTINCT FROM (binding->>'revision')::integer THEN
   RAISE EXCEPTION 'Revisión de representación incoherente.' USING ERRCODE='42501'; END IF;
  RETURN jsonb_build_object('id',revision.id,'operacion_id',revision.operacion_id,'solicitud_sha256',revision.solicitud_sha256,'revision',revision.solicitud_revision,
  'aprobada',true,'vence_en',revision.vence_en,'emision_habilitada',false,'presentacion_sha256',vinculo.presentacion_sha256);

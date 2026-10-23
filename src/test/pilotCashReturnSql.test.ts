@@ -1,8 +1,11 @@
+import { prepareFiscalData,requestFromPreparedFiscalData } from '../../supabase/functions/_shared/fiscalPreparation'
+import { prepareFiscalPresentationFacts } from '../../supabase/functions/_shared/fiscalPresentation'
+import type { FiscalPreparationContext } from '../../supabase/functions/_shared/fiscalPreparationContract'
 // @vitest-environment node
 import { readFileSync, readdirSync } from 'node:fs'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest'
-import { freezeFiscalRequest, serializeFiscalRequest } from '../../supabase/functions/_shared/fiscalReconciliation'
+import { serializeFiscalRequest } from '../../supabase/functions/_shared/fiscalReconciliation'
 import { wsfeSample } from './fixtures/fiscalWsfe'
 
 const db = new PGlite()
@@ -85,26 +88,46 @@ beforeEach(async()=>{ await db.exec('RESET ROLE; BEGIN;'); await actor() })
 afterEach(async()=>{ await db.exec('ROLLBACK; RESET ROLE;') })
 afterAll(async()=>{ await db.close() })
 
+let fiscalPrepared:Awaited<ReturnType<typeof prepareFiscalData>>
 async function prepararFiscal() {
-  await actor(owner)
-  await db.query('SELECT preparar_operacion_fiscal_homologacion($1,$2,$3,$4::jsonb)',[id(200),kid,venta,JSON.stringify({version:1,cuit_emisor:wsfeSample.cuitEmisor,punto_venta:2,tipo_comprobante:11,tipo_doc_receptor:99,nro_doc_receptor:'0'})])
+  await actor(owner,'service_role');await db.exec('RESET ROLE')
+  await db.query(`INSERT INTO fiscal_emisores_homologacion(kiosco_id,cuit_emisor,punto_venta,credencial_id,certificado_sha256,habilitado) VALUES($1,$2,2,$3,repeat('a',64),true)`,[kid,wsfeSample.cuitEmisor,id(202)])
+  await db.exec(`INSERT INTO fiscal_parametros_homologacion(revision,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en,habilitado)
+   VALUES(1,'[{"id":5,"descripcion":"Ensayo","comprobantes":[11]}]','[]',repeat('b',64),clock_timestamp()-interval '1 hour',clock_timestamp()+interval '1 hour',true); SET ROLE service_role;`)
+  const context=(await db.query<{data:FiscalPreparationContext}>('SELECT cargar_datos_preparacion_homologacion($1,$2) data',[owner,venta])).rows[0].data
+  const {version:_v,entorno:_e,cuitEmisor:_c,puntoVenta:_p,numero:_n,...datos}=wsfeSample
+  const {total:_total,...importes}=datos.importes
+  fiscalPrepared=await prepareFiscalData(context,{condicionEmisor:'MONOTRIBUTO',datos:{...datos,importes:{...importes,neto:'1.00'}}})
+  await db.query('SELECT guardar_datos_preparacion_homologacion($1,$2,$3,$4,$5)',[owner,venta,id(200),fiscalPrepared.canonico,fiscalPrepared.sha256])
 }
 async function reservarFiscal() {
-  const frozen=await freezeFiscalRequest({...wsfeSample,importes:{...wsfeSample.importes,total:'1.00',neto:'1.00'}})
+  const frozen=await requestFromPreparedFiscalData(fiscalPrepared,1)
   await actor(owner,'service_role')
-  return db.query('SELECT persistir_solicitud_fiscal_homologacion($1,$2,$3,0,clock_timestamp())',[id(200),await serializeFiscalRequest(frozen),frozen.sha256])
+  await db.query('SELECT persistir_preparacion_fiscal_homologacion($1,$2,$3,$4,0,clock_timestamp())',[owner,id(200),await serializeFiscalRequest(frozen),frozen.sha256])
+  return frozen
 }
+async function intentarFiscal(frozen:Awaited<ReturnType<typeof requestFromPreparedFiscalData>>){
+  const facts=await prepareFiscalPresentationFacts({version:1,emisor:{razon_social:'Ensayo',domicilio_comercial:'Calle 1',ingresos_brutos:'Exento',inicio_actividades:'20200101'},receptor:{nombre:'Consumidor final',domicilio:'Sin identificar'},lineas:[{detalle_id:detalle,descripcion:'Artículo de ensayo'}],otros_impuestos_nacionales_indirectos:'0.00'})
+  await db.query('SELECT guardar_presentacion_fiscal_homologacion($1,$2,$3,$4,$5,$6)',[owner,venta,id(200),frozen.sha256,facts.canonico,facts.sha256])
+  await db.query('SELECT aprobar_revision_presentacion_homologacion($1,$2,$3,$4,$5,1,$6)',[owner,venta,id(200),id(203),frozen.sha256,facts.sha256])
+  await db.exec('RESET ROLE')
+  await db.query(`INSERT INTO fiscal_permisos_emision_homologacion(operacion_id,autorizacion_id,solicitud_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,vence_en)
+   VALUES($1,$2,$3,$4,repeat('a',64),1,true,clock_timestamp()+interval '10 minutes')`,[id(200),id(204),frozen.sha256,id(202)])
+  await actor(owner,'service_role')
+  await db.query('SELECT registrar_envio_revisado_homologacion($1,$2,$3,$4,$5,0,clock_timestamp())',[owner,id(200),id(201),frozen.sha256,id(204)])
+}
+
 it.each(['RESERVADA','ENVIO_INCIERTO','AUTORIZADA'])('devolución común rechazada sin stock/caja cuando la factura está %s',async fase=>{
-  await prepararFiscal();await reservarFiscal()
-  if(fase!=='RESERVADA')await db.query('SELECT registrar_intento_fiscal_homologacion($1,$2)',[id(200),id(201)])
-  if(fase==='AUTORIZADA')await db.exec("RESET ROLE; UPDATE fiscal_reservas_homologacion SET estado='AUTORIZADA'")
+  await prepararFiscal();const frozen=await reservarFiscal()
+  if(fase!=='RESERVADA')await intentarFiscal(frozen)
+  if(fase==='AUTORIZADA')await db.query('SELECT registrar_reconciliacion_fiscal_homologacion($1,$2,$3,$4,1,$5::jsonb)',[id(205),id(200),id(201),frozen.sha256,JSON.stringify({estado:'AUTORIZACION_COINCIDENTE',cae:'11111111111111',vencimiento:'20261031',procesadoEn:null,solicitudSha256:frozen.sha256,puedeReenviar:false})])
   await actor(cashier)
   await rechazo(()=>devolver(),/facturación reservada o confirmada/)
   expect(await estado()).toEqual({stock:'2.000',lote:'0.000',devoluciones:0,egresos:0})
 })
 it('devolver antes de reservar impide fiscalizar el total original y no consume número',async()=>{
   await prepararFiscal();await actor(cashier);await devolver()
-  await rechazo(()=>reservarFiscal(),/tiene devoluciones/)
+  await rechazo(()=>reservarFiscal(),/tiene devoluciones|Venta no disponible/)
   await db.exec('RESET ROLE')
   expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_reservas_homologacion')).rows[0].n).toBe(0)
   expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_series_homologacion')).rows[0].n).toBe(0)
@@ -122,7 +145,8 @@ it.each(['anon','authenticated','service_role'])('los helpers de trigger no son 
 it.each(['REPEATABLE READ','SERIALIZABLE'])('snapshot fija %s falla cerrada sin devolución ni reserva',async isolation=>{
   await db.exec(`ROLLBACK; RESET ROLE; BEGIN ISOLATION LEVEL ${isolation}`)
   await actor(cashier);await rechazo(()=>devolver(),/requiere READ COMMITTED/)
-  await prepararFiscal();await rechazo(()=>reservarFiscal(),/requiere READ COMMITTED/)
+  await rechazo(()=>prepararFiscal(),/aislamiento compatible/)
+  await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_reservas_homologacion')).rows[0].n).toBe(0)
   expect(await estado()).toEqual({stock:'2.000',lote:'0.000',devoluciones:0,egresos:0})
 })
 

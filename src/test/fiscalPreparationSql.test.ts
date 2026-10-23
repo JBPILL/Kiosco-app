@@ -1,3 +1,4 @@
+import { emitAuthorizedFiscalVoucher } from '../../supabase/functions/_shared/fiscalEmissionWorker'
 import { validateFiscalPresentationContext } from '../../supabase/functions/_shared/fiscalPresentationContext'
 import { prepareFiscalPresentationFacts } from '../../supabase/functions/_shared/fiscalPresentation'
 import { correctRejectedFiscalVoucher } from '../../supabase/functions/_shared/fiscalRejectedCorrection'
@@ -80,6 +81,7 @@ function workerFixture(){
  mapping.sustituir_reserva_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_sucesora_id','p_anterior_sha','p_canonico','p_sha'];mapping.consultar_sustitucion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
  mapping.cancelar_preparacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.consultar_cancelacion_preparacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
  mapping.cargar_contexto_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.cargar_presentacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.guardar_presentacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_solicitud_sha','p_canonico','p_sha'];mapping.cargar_revision_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_revision_id'];mapping.aprobar_revision_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_revision_id','p_solicitud_sha','p_revision','p_presentacion_sha']
+ mapping.cargar_preparacion_envio_homologacion=['p_operacion_id'];mapping.autorizar_envio_presentado_homologacion=['p_actor_auth_id','p_operacion_id','p_sha','p_revision_id'];mapping.registrar_envio_revisado_homologacion=['p_actor_auth_id','p_operacion_id','p_intento_id','p_sha','p_autorizacion_id','p_ultimo_autorizado','p_consultado_en']
  const rpc=vi.fn<FiscalAuthClient['rpc']>(async(name,args)=>{
   const keys=mapping[name];if(!keys)throw new Error('UNEXPECTED_PRIVATE_RPC')
   await db.exec('SAVEPOINT worker_rpc')
@@ -307,6 +309,13 @@ it('persistencia sin commit no produce revisión aunque un ACK falso diga éxito
  await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_solicitudes_homologacion')).rows[0].n).toBe(0)
 })
 
+async function approvePreparedPresentation(operation:string,sha:string,id=crypto.randomUUID()){
+ const source=(await db.query<{data:{lineas:{detalle_id:string}[]}}>('SELECT cargar_contexto_presentacion_homologacion($1,$2,$3) data',[actor,sale,operation])).rows[0].data
+ const facts=await prepareFiscalPresentationFacts({version:1,emisor:{razon_social:'Ensayo',domicilio_comercial:'Calle 1',ingresos_brutos:'Exento',inicio_actividades:'20200101'},receptor:{nombre:'Consumidor final',domicilio:'Sin identificar'},lineas:source.lineas.map(x=>({detalle_id:x.detalle_id,descripcion:'Ensayo histórico'})),otros_impuestos_nacionales_indirectos:'0.00'})
+ await db.query('SELECT guardar_presentacion_fiscal_homologacion($1,$2,$3,$4,$5,$6)',[actor,sale,operation,sha,facts.canonico,facts.sha256])
+ await db.query('SELECT aprobar_revision_presentacion_homologacion($1,$2,$3,$4,$5,1,$6)',[actor,sale,operation,id,sha,facts.sha256])
+ return {id,sha:facts.sha256}
+}
 async function authorizeReceipt(finalize=true) {
  const p=await prepared();await save(p.canonico,p.sha256)
  const frozen=await requestFromPreparedFiscalData(p,1),canonical=await serializeFiscalRequest(frozen)
@@ -314,7 +323,7 @@ async function authorizeReceipt(finalize=true) {
  const permission=crypto.randomUUID(),attempt=crypto.randomUUID()
  await admin(`INSERT INTO fiscal_permisos_emision_homologacion(operacion_id,autorizacion_id,solicitud_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,creado_en,vence_en)
  VALUES($1,$2,$3,$4,$5,1,true,clock_timestamp(),clock_timestamp()+interval '30 minutes')`,[op,permission,frozen.sha256,credential,'a'.repeat(64)])
- await db.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1)',[op,actor,crypto.randomUUID(),frozen.sha256])
+ await approvePreparedPresentation(op,frozen.sha256)
  await db.query('SELECT registrar_envio_revisado_homologacion($1,$2,$3,$4,$5,0,clock_timestamp())',[actor,op,attempt,frozen.sha256,permission])
  // Autorización sintética validada por el ledger; no se contacta ARCA.
  if(finalize)await db.query('SELECT registrar_reconciliacion_fiscal_homologacion($1,$2,$3,$4,1,$5::jsonb)',[crypto.randomUUID(),op,attempt,frozen.sha256,JSON.stringify({estado:'AUTORIZACION_COINCIDENTE',cae:'11111111111111',vencimiento:'20261031',procesadoEn:null,solicitudSha256:frozen.sha256,puedeReenviar:false})])
@@ -336,7 +345,7 @@ it('constancia no existe con datos preparados ni con sólo revisión aprobada',a
  const p=await prepared();await save(p.canonico,p.sha256);await denied(()=>storedReceipt())
  const frozen=await requestFromPreparedFiscalData(p,1)
  await db.query('SELECT persistir_preparacion_fiscal_homologacion($1,$2,$3,$4,0,clock_timestamp())',[actor,op,await serializeFiscalRequest(frozen),frozen.sha256])
- await db.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1)',[op,actor,crypto.randomUUID(),frozen.sha256])
+ await approvePreparedPresentation(op,frozen.sha256)
  await denied(()=>storedReceipt())
 })
 it.each(['anon','authenticated'])('constancia privada deniega rol %s incluso con UUID conocidos',async role=>{
@@ -541,7 +550,7 @@ it.each(['actor','hash','sucesora','tipo','total','parametros','emisor','envases
   canon=JSON.stringify(changed)
  }
  if(mode==='emisor')await admin('UPDATE fiscal_emisores_homologacion SET revision=2')
- if(mode==='intento')await db.query('SELECT registrar_intento_fiscal_homologacion($1,$2)',[op,crypto.randomUUID()])
+ if(mode==='intento')await rejectPreparedOperation(op,f.frozen.sha256,'AUSENTE')
  await denied(()=>f.replace(id,canon,hash(canon),who,oldHash))
  expect((await f.read()).rows[0].data).toBeNull()
  await db.exec('RESET ROLE')
@@ -680,7 +689,7 @@ async function rejectPreparedOperation(operationId:string,sha:string,state='RECH
  const attempt=crypto.randomUUID(),permission=crypto.randomUUID()
  await admin(`INSERT INTO fiscal_permisos_emision_homologacion(operacion_id,autorizacion_id,solicitud_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,vence_en)
  VALUES($1,$2,$3,$4,repeat('a',64),1,true,clock_timestamp()+interval '10 minutes')`,[operationId,permission,sha,credential])
- await db.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1)',[operationId,actor,crypto.randomUUID(),sha])
+ await approvePreparedPresentation(operationId,sha)
  await db.query('SELECT registrar_envio_revisado_homologacion($1,$2,$3,$4,$5,0,clock_timestamp())',[actor,operationId,attempt,sha,permission])
  if(state!=='AUSENTE')await db.query('SELECT registrar_respuesta_emision_homologacion($1,$2,$3,$4,$5::jsonb)',[actor,operationId,attempt,sha,JSON.stringify({estado:state,codigos:[10017],puedeReenviar:false})])
  await db.query('SELECT registrar_reconciliacion_fiscal_homologacion($1,$2,$3,$4,1,$5::jsonb)',[crypto.randomUUID(),operationId,attempt,sha,JSON.stringify({estado:'CONCILIAR',codigo:'SIN_CONFIRMACION',puedeReenviar:false})])
@@ -1168,4 +1177,39 @@ it('cliente→HTTP→SQL captura y aprueba hechos exactos sin persistir PII loca
  expect(commands).not.toContain('APROBAR_REVISION');expect(worker.fetcher).not.toHaveBeenCalled();expect(worker.load).not.toHaveBeenCalled()
  expect([...map.values()].join(' ')).not.toContain(f.facts.emisor.razon_social)
  expect([...map.values()].join(' ')).not.toContain(f.facts.lineas[0].descripcion)
+})
+
+
+
+it('preparación explícita sin hechos no pide TA ni red ni crea intención aunque tenga permiso y aprobación antigua',async()=>{
+ const f=await reservedReplacementFixture(),worker=workerFixture(),permission=crypto.randomUUID()
+ await db.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1)',[op,actor,crypto.randomUUID(),f.frozen.sha256])
+ await admin(`INSERT INTO fiscal_permisos_emision_homologacion(operacion_id,autorizacion_id,solicitud_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,vence_en)
+ VALUES($1,$2,$3,$4,repeat('a',64),1,true,clock_timestamp()+interval '10 minutes')`,[op,permission,f.frozen.sha256,credential])
+ worker.flags.ARCA_HOMO_EMISSION_ENABLED='true';worker.flags.ARCA_HOMO_RECONCILIATION_ENABLED='true'
+ await expect(emitAuthorizedFiscalVoucher(worker.deps,'SYNTHETIC_JWT',op,crypto.randomUUID(),crypto.randomUUID())).rejects.toThrow()
+ expect(worker.load).not.toHaveBeenCalled();expect(worker.fetcher).not.toHaveBeenCalled()
+ await denied(()=>db.query('SELECT registrar_envio_revisado_homologacion($1,$2,$3,$4,$5,0,clock_timestamp())',[actor,op,crypto.randomUUID(),f.frozen.sha256,permission]))
+ await db.exec('RESET ROLE');expect((await db.query<{estado:string;intento_id:string|null}>('SELECT estado,intento_id FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[op])).rows[0]).toEqual({estado:'RESERVADA',intento_id:null})
+})
+it('guard previo a TA confirma cuerpo y revisión ligados, y deniega helper directo incluso con hechos válidos',async()=>{
+ const f=await presentationReviewFixture();await f.approve()
+ const call=(sha=f.frozen.sha256,id=f.id)=>db.query<{data:Record<string,unknown>}>('SELECT autorizar_envio_presentado_homologacion($1,$2,$3,$4) data',[actor,op,sha,id])
+ expect((await call()).rows[0].data).toEqual({operacion_id:op,solicitud_sha256:f.frozen.sha256,presentacion_sha256:f.proposal.sha256,revision_id:f.id,emision_habilitada:false})
+ await denied(()=>call('b'.repeat(64)));await denied(()=>call(f.frozen.sha256,crypto.randomUUID()))
+ await denied(()=>db.query('SELECT registrar_intento_fiscal_homologacion($1,$2)',[op,crypto.randomUUID()]))
+ await denied(()=>db.query('SELECT fiscal_exigir_presentacion_envio($1,$2,$3,$4)',[actor,op,f.frozen.sha256,f.id]))
+})
+it('un cambio de parámetros después de revisión bloquea intención y no usa permiso',async()=>{
+ const f=await presentationReviewFixture();await f.approve();const permission=await presentationPermission(f)
+ await admin('UPDATE fiscal_parametros_homologacion SET habilitado=false')
+ await denied(()=>permission.send())
+ await db.exec('RESET ROLE');expect((await db.query<{usado_por_intento:string|null}>('SELECT usado_por_intento FROM fiscal_permisos_emision_homologacion WHERE operacion_id=$1',[op])).rows[0].usado_por_intento).toBeNull()
+})
+it('un cuerpo persistido por entrada heredada no puede saltar los datos explícitos aprobados',async()=>{
+ const p=await prepared();await save(p.canonico,p.sha256)
+ const original=await requestFromPreparedFiscalData(p,1),changed=await freezeFiscalRequest({...original.solicitud,fecha:'20261023'}),canonical=await serializeFiscalRequest(changed)
+ await db.query('SELECT persistir_solicitud_fiscal_homologacion($1,$2,$3,0,clock_timestamp())',[op,canonical,changed.sha256])
+ const review=await approvePreparedPresentation(op,changed.sha256)
+ await denied(()=>db.query('SELECT autorizar_envio_presentado_homologacion($1,$2,$3,$4)',[actor,op,changed.sha256,review.id]))
 })
