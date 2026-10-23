@@ -1058,6 +1058,60 @@ it('representación inicial se bloquea después de una revisión humana',async()
 })
 it('representación ya guardada admite replay tras revisión humana, sin cambiar aprobación',async()=>{
  const f=await presentationFixture(),ack=(await f.write()).rows[0].data
- await db.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1)',[op,actor,crypto.randomUUID(),f.frozen.sha256])
+ await db.query('SELECT aprobar_revision_presentacion_homologacion($1,$2,$3,$4,$5,1,$6)',[actor,sale,op,crypto.randomUUID(),f.frozen.sha256,f.proposal.sha256])
  expect((await f.write()).rows[0].data).toEqual(ack)
+})
+
+async function presentationReviewFixture(){
+ const f=await presentationFixture();await f.write();const id=crypto.randomUUID()
+ const approve=(sha=f.proposal.sha256,who=actor,revisionId=id)=>db.query<{data:Record<string,unknown>}>('SELECT aprobar_revision_presentacion_homologacion($1,$2,$3,$4,$5,1,$6) data',[who,sale,op,revisionId,f.frozen.sha256,sha])
+ const read=()=>db.query<{data:unknown}>('SELECT cargar_revision_presentacion_homologacion($1,$2,$3,$4) data',[actor,sale,op,id])
+ return {...f,id,approve,readReview:read}
+}
+it('revisión de representación exige hash visto, confirma durable y replay no extiende vigencia',async()=>{
+ const f=await presentationReviewFixture();expect((await f.readReview()).rows[0].data).toBeNull()
+ await denied(()=>f.approve('b'.repeat(64)));expect((await f.readReview()).rows[0].data).toBeNull()
+ const ack=(await f.approve()).rows[0].data
+ expect(ack).toMatchObject({id:f.id,operacion_id:op,presentacion_sha256:f.proposal.sha256,solicitud_sha256:f.frozen.sha256,emision_habilitada:false})
+ expect((await f.readReview()).rows[0].data).toEqual(ack);expect((await f.approve()).rows[0].data).toEqual(ack)
+})
+it('ruta antigua no puede aprobar representación sin hash esperado',async()=>{
+ const f=await presentationReviewFixture()
+ await denied(()=>db.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1)',[op,actor,f.id,f.frozen.sha256]))
+ expect((await f.readReview()).rows[0].data).toBeNull()
+ await denied(()=>db.query('SELECT fiscal_aprobar_revision_sin_presentacion($1,$2,$3,$4,1)',[op,actor,f.id,f.frozen.sha256]))
+})
+it('revisión de representación deniega cuenta ajena y no conserva aprobación parcial por trigger omitido',async()=>{
+ const f=await presentationReviewFixture();await denied(()=>f.approve(f.proposal.sha256,crypto.randomUUID()))
+ await admin('CREATE FUNCTION ignore_review_link_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$')
+ await admin('CREATE TRIGGER ignore_review_link BEFORE INSERT ON fiscal_revisiones_presentacion_homologacion FOR EACH ROW EXECUTE FUNCTION ignore_review_link_test()')
+ await denied(()=>f.approve());expect((await f.readReview()).rows[0].data).toBeNull()
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_revisiones_homologacion WHERE id=$1',[f.id])).rows[0].n).toBe(0)
+})
+it.each(['anon','authenticated','service_role'])('vínculo de revisión no expone tabla ni escritura directa a %s',async role=>{
+ const f=await presentationReviewFixture();await f.approve();await db.exec(`SET ROLE ${role}`)
+ await denied(()=>db.query('SELECT * FROM fiscal_revisiones_presentacion_homologacion'))
+ if(role!=='service_role'){await denied(()=>f.approve());await denied(()=>f.readReview())}
+})
+
+async function presentationPermission(f:Awaited<ReturnType<typeof presentationReviewFixture>>){
+ const permission=crypto.randomUUID(),attempt=crypto.randomUUID()
+ await admin(`INSERT INTO fiscal_permisos_emision_homologacion(operacion_id,autorizacion_id,solicitud_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,vence_en)
+ VALUES($1,$2,$3,$4,$5,1,true,clock_timestamp()+interval '30 minutes')`,[op,permission,f.frozen.sha256,credential,'a'.repeat(64)])
+ return {attempt,send:()=>db.query<{data:Record<string,unknown>}>('SELECT registrar_envio_revisado_homologacion($1,$2,$3,$4,$5,0,clock_timestamp()) data',[actor,op,attempt,f.frozen.sha256,permission])}
+}
+it('consumo exige la misma revisión ligada al hash histórico y conserva IDs exactos',async()=>{
+ const f=await presentationReviewFixture();await f.approve();const permission=await presentationPermission(f)
+ expect((await permission.send()).rows[0].data).toMatchObject({estado:'ENVIO_INCIERTO',nuevo_intento:true})
+ await db.exec('RESET ROLE')
+ expect((await db.query<{revision_aprobada_id:string;usado_por_intento:string}>('SELECT revision_aprobada_id,usado_por_intento FROM fiscal_permisos_emision_homologacion WHERE operacion_id=$1',[op])).rows[0]).toEqual({revision_aprobada_id:f.id,usado_por_intento:permission.attempt})
+})
+it('consumo no elige otra aprobación sin vínculo aunque sea más reciente; revierte intención',async()=>{
+ const f=await presentationReviewFixture();await f.approve();const permission=await presentationPermission(f)
+ // Simula historia inconsistente privilegiada; helper no es ejecutable por service_role.
+ await admin('SELECT fiscal_aprobar_revision_sin_presentacion($1,$2,$3,$4,1)',[op,actor,crypto.randomUUID(),f.frozen.sha256])
+ await denied(()=>permission.send())
+ await db.exec('RESET ROLE')
+ expect((await db.query<{estado:string;intento_id:string|null}>('SELECT estado,intento_id FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[op])).rows[0]).toEqual({estado:'RESERVADA',intento_id:null})
+ expect((await db.query<{usado_por_intento:string|null}>('SELECT usado_por_intento FROM fiscal_permisos_emision_homologacion WHERE operacion_id=$1',[op])).rows[0].usado_por_intento).toBeNull()
 })

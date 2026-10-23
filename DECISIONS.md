@@ -599,3 +599,6 @@ Si otra terminal ya autorizó exactamente el cuerpo, su constancia puede cerrar 
 
 ### 23/10/2026 — Datos de representación fiscal históricos
 No reconstruir comprobantes desde configuración o catálogo actuales. SQL 022 captura hechos explícitos inmutables por Auth/cuerpo/hash antes de revisión/intención; una corrección exige sucesora auditada, sin alterar historia ni heredar aprobación. El guardado no acredita vínculo a revisión/permiso hasta integrarlo y no habilita emisión. Envases descontados continúan bloqueados por tratamiento pendiente del contador.
+
+### 23/10/2026 — Aprobación de representación exacta
+Con hechos 022, la revisión requiere el hash de presentación que confirmó el Dueño además del cuerpo fiscal. Conservar vínculo inmutable y verificar el mismo ID al consumir permiso; no promover una aprobación antigua a aprobación de datos nuevos. Compatibilidad histórica sin hechos no acredita obligatoriedad para nuevas preparaciones: integrar captura/UI y guard obligatorio antes de activar.

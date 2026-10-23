@@ -95,7 +95,7 @@ try {
     ...readdirSync(join(bootstrap,'steps')).sort().map(file=>join(bootstrap,'steps',file)),join(bootstrap,'900_final_security.sql'),
     join(root,'supabase/pilot-fiscal/001_fiscal_journal.sql'),join(root,'supabase/pilot-fiscal/002_fiscal_reservations.sql'),
     join(root,'supabase/pilot-fiscal/003_fiscal_requests.sql'),join(root,'supabase/pilot-fiscal/004_fiscal_reconciliation.sql'),
-    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql'),join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql'),join(root,'supabase/pilot-fiscal/013_fiscal_preparation_source.sql'),join(root,'supabase/pilot-fiscal/014_fiscal_receipt.sql'),join(root,'supabase/pilot-fiscal/015_fiscal_emission_receipts.sql'),join(root,'supabase/pilot-fiscal/016_fiscal_diagnosis.sql'),join(root,'supabase/pilot-fiscal/017_fiscal_preparation_cancellation.sql'),join(root,'supabase/pilot-fiscal/018_fiscal_reserved_replacement.sql'),join(root,'supabase/pilot-fiscal/019_fiscal_rejected_correction.sql'),join(root,'supabase/pilot-fiscal/020_fiscal_reconciliation_actor.sql'),join(root,'supabase/pilot-fiscal/021_fiscal_observation_receipt.sql'),join(root,'supabase/pilot-fiscal/022_fiscal_presentation_facts.sql')]) {
+    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql'),join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql'),join(root,'supabase/pilot-fiscal/013_fiscal_preparation_source.sql'),join(root,'supabase/pilot-fiscal/014_fiscal_receipt.sql'),join(root,'supabase/pilot-fiscal/015_fiscal_emission_receipts.sql'),join(root,'supabase/pilot-fiscal/016_fiscal_diagnosis.sql'),join(root,'supabase/pilot-fiscal/017_fiscal_preparation_cancellation.sql'),join(root,'supabase/pilot-fiscal/018_fiscal_reserved_replacement.sql'),join(root,'supabase/pilot-fiscal/019_fiscal_rejected_correction.sql'),join(root,'supabase/pilot-fiscal/020_fiscal_reconciliation_actor.sql'),join(root,'supabase/pilot-fiscal/021_fiscal_observation_receipt.sql'),join(root,'supabase/pilot-fiscal/022_fiscal_presentation_facts.sql'),join(root,'supabase/pilot-fiscal/023_fiscal_presentation_review.sql')]) {
     await observer.query(readFileSync(file,'utf8'))
     if(file.endsWith('011_fiscal_owner_review.sql')){
       await observer.query('SELECT fiscal_exigir_actor_preparacion($1,$2)',[randomUUID(),randomUUID()])
@@ -674,7 +674,7 @@ try {
     const canonical=(await observer.query('SELECT fiscal_json_canonico_homologacion($1::jsonb) value',[JSON.stringify(facts)])).rows[0].value
     const sha=createHash('sha256').update(canonical).digest('hex')
     const write=async(client)=>(await client.query('SELECT guardar_presentacion_fiscal_homologacion($1,$2,$3,$4,$5,$6) ack',[f.auth,f.sale,f.operation,body,canonical,sha])).rows[0].ack
-    return {...f,write,sha}
+    return {...f,write,sha,body}
   }
   const presentationDuplicate=await presentationFixture(135)
   await start(a);const presentationAck=await presentationDuplicate.write(a)
@@ -699,6 +699,22 @@ try {
   await start(b);const blockedPresentationIssuer=capture(presentationIssuer.write(b));await waitForLock(observer,b);await a.query('COMMIT')
   assert.equal((await blockedPresentationIssuer).error?.code,'42501');await b.query('ROLLBACK')
   cases.push('representacion_emisor_revocado_esperando_no_guarda_hechos')
+  const boundReview=await presentationFixture(139),boundReviewId=randomUUID()
+  await start(a);await boundReview.write(a);await a.query('COMMIT')
+  const approveBound=async(client,sha=boundReview.sha)=>(await client.query('SELECT aprobar_revision_presentacion_homologacion($1,$2,$3,$4,$5,1,$6) ack',[boundReview.auth,boundReview.sale,boundReview.operation,boundReviewId,boundReview.body,sha])).rows[0].ack
+  await start(a);const boundApproval=await approveBound(a)
+  await start(b);const duplicateBoundApproval=capture(approveBound(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.deepEqual((await duplicateBoundApproval).value,boundApproval);await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_revisiones_presentacion_homologacion WHERE revision_id=$1',[boundReviewId])).rows[0].n,1)
+  cases.push('revision_representacion_dos_workers_mismo_UUID_un_ACK_sin_renovar_vigencia')
+  await start(a);const changedRepresentation=await capture(approveBound(a,'d'.repeat(64)));assert.equal(changedRepresentation.error?.code,'40001');await a.query('ROLLBACK')
+  await start(a);const oldApprovalPath=await capture(a.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1)',[boundReview.operation,boundReview.auth,randomUUID(),boundReview.body]));assert.equal(oldApprovalPath.error?.code,'42501');await a.query('ROLLBACK')
+  cases.push('revision_representacion_hash_distinto_y_ruta_antigua_no_aprueban')
+  const reviewBeforePresentation=await presentationFixture(140)
+  await start(a);await a.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1)',[reviewBeforePresentation.operation,reviewBeforePresentation.auth,randomUUID(),reviewBeforePresentation.body])
+  await start(b);const latePresentation=capture(reviewBeforePresentation.write(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await latePresentation).error?.code,'55000');await b.query('ROLLBACK')
+  cases.push('revision_primero_impide_agregar_hechos_tardios_durante_espera')
   const expiredCatalog=await preparationFixture(93)
   await observer.query('UPDATE fiscal_parametros_homologacion SET habilitado=false')
   await observer.query(`INSERT INTO fiscal_parametros_homologacion SELECT 2,condiciones,alicuotas,fuente_sha256,clock_timestamp()-interval '1 hour',clock_timestamp()+interval '3 seconds',true FROM fiscal_parametros_homologacion WHERE revision=1`)
