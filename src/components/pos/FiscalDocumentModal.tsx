@@ -7,6 +7,7 @@ import { Button } from '../ui/Button'
 import { FiscalPreparationForm } from './FiscalPreparationForm'
 import { FiscalOwnerReviewPanel } from './FiscalOwnerReviewPanel'
 import { FiscalReceiptPanel } from './FiscalReceiptPanel'
+import { FiscalRepresentationExport } from './FiscalRepresentationExport'
 import type { FiscalReceipt } from '../../../supabase/functions/_shared/fiscalReceipt'
 import type { FiscalDiagnosis } from '../../../supabase/functions/_shared/fiscalDiagnosis'
 import { FiscalDiagnosisPanel } from './FiscalDiagnosisPanel'
@@ -286,6 +287,7 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
       {!busy && resolution?.estado === 'NO_DISPONIBLE' && <p role="status">Esta venta no está disponible para preparar un comprobante fiscal.</p>}
       {!busy && resolution?.estado === 'AUTORIZADA' && !receipt && <p role="status">La operación figura autorizada en el servidor. Falta recuperar su constancia fiscal; no se iniciará otra preparación.</p>}
       {!busy && receipt && <FiscalReceiptPanel receipt={receipt} />}
+      {!busy && receipt && client && <FiscalRepresentationExport client={client} receipt={receipt} />}
       {!busy&&review?.estado==='RESERVADA'&&presentationContext&&!presentation&&!review.aprobacion&&!correcting&&!hasPendingReplacement&&!hasPendingObservation&&!reconciling&&!replacing&&<FiscalPresentationForm key={`${review.operacion_id}:${review.solicitud.sha256}`} context={presentationContext} disabled={saving} onSave={savePresentation}/>}
       {!busy && review && client && (review.estado!=='RESERVADA'||presentation) && !correcting && !hasPendingReplacement && !hasPendingObservation && !reconciling && !replacing && <FiscalOwnerReviewPanel review={review} presentation={presentation??undefined} approvalId={approvalId} onApprove={command => {if(!presentation)throw new Error('FISCAL_REPRESENTACION_REQUERIDA');return client.approvePresentation(review,presentation,command.id)}} />}
       {!busy && client && canCorrectRejected && !correcting && !hasPendingReplacement && !hasPendingObservation && <Button variant="secondary" disabled={reconciling} loading={replacing} onClick={() => { void beginCorrection() }}>Corregir datos del comprobante rechazado</Button>}
