@@ -68,4 +68,3 @@ export async function validateFiscalPresentationRecord(input:unknown,sale:string
  const prepared=await prepareFiscalPresentationFacts(parseFiscalJson(proposal.canonico))
  return Object.freeze({operacion_id:operation,venta_id:sale,solicitud_sha256:v.solicitud_sha256,presentacion_sha256:proposal.sha256,estado:'DATOS_REPRESENTACION_GUARDADOS',emision_habilitada:false,canonico:proposal.canonico,datos:prepared.datos})
 }
-
