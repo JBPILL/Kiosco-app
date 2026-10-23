@@ -1,3 +1,6 @@
+import { FiscalPresentationForm } from './FiscalPresentationForm'
+import type { FiscalPresentationContext } from '../../../supabase/functions/_shared/fiscalPresentationContext'
+import type { FiscalPresentationFacts,FiscalPresentationRecord } from '../../../supabase/functions/_shared/fiscalPresentation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
@@ -24,6 +27,8 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
   const [context, setContext] = useState<FiscalPreparationContext | null>(null)
   const [resolution, setResolution] = useState<Readonly<FiscalSaleResolution> | null>(null)
   const [review, setReview] = useState<Readonly<FiscalOwnerReview> | null>(null)
+  const [presentation,setPresentation]=useState<Readonly<FiscalPresentationRecord>|null>(null)
+  const [presentationContext,setPresentationContext]=useState<Readonly<FiscalPresentationContext>|null>(null)
   const [receipt, setReceipt] = useState<Readonly<FiscalReceipt> | null>(null)
   const [diagnosis, setDiagnosis] = useState<Readonly<FiscalDiagnosis> | null>(null)
   const [hasPendingObservation, setHasPendingObservation] = useState(false)
@@ -57,7 +62,7 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
     const current = ++generation.current
     let stateRecovered = false
     setDiscardConfirmed(false); setCorrecting(false); setCorrectionConfirmed(false); setHasPendingReplacement(false); setHasPendingObservation(false); setConsultConfirmed(false)
-    setBusy(true); setError(''); setDiagnosisError(''); setDiagnosis(null); setContext(null); setReview(null); setReceipt(null); setResolution(null)
+    setBusy(true); setError(''); setDiagnosisError(''); setDiagnosis(null); setContext(null); setReview(null); setPresentation(null); setPresentationContext(null); setReceipt(null); setResolution(null)
     try {
       let state = await api.resolve()
       if (generation.current !== current) return
@@ -95,10 +100,24 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
         if (loadedDiagnosis && values.solicitud.sha256 !== loadedDiagnosis.solicitud_sha256) throw new Error('FISCAL_ESTADO_NO_CONFIRMADO')
         setReceipt(values)
       } else if (['RESERVADA', 'ENVIO_INCIERTO'].includes(state.estado) && state.operacion_id) {
-        const values = await api.review(state.operacion_id)
+        let values = await api.review(state.operacion_id)
         if (generation.current !== current) return
         if (state.estado === 'ENVIO_INCIERTO' && values.estado === 'RESERVADA') throw new Error('FISCAL_ESTADO_NO_CONFIRMADO')
         if (loadedDiagnosis && values.solicitud.sha256 !== loadedDiagnosis.solicitud_sha256) throw new Error('FISCAL_ESTADO_NO_CONFIRMADO')
+        if(values.estado==='RESERVADA'){
+          const [source,record]=await Promise.all([api.presentationContext(state.operacion_id),api.presentation(state.operacion_id)])
+          if(generation.current!==current)return
+          if(source.solicitud_sha256!==values.solicitud.sha256||record&&record.solicitud_sha256!==values.solicitud.sha256)throw new Error('FISCAL_REPRESENTACION_DISTINTA')
+          setPresentationContext(source);setPresentation(record)
+          if(record&&values.aprobacion){
+            const bound=await api.presentationApproval(values,record,values.aprobacion.id)
+            if(generation.current!==current)return
+            if(!bound)throw new Error('FISCAL_APROBACION_NO_LIGADA')
+            values={...values,aprobacion:bound}
+          }else if(!record&&values.aprobacion){
+            setError('La revisión anterior no incluye datos históricos de representación. Usá la corrección conservando el número para preparar una nueva revisión.')
+          }
+        }
         setApprovalId(values.aprobacion?.id ?? (values.estado === 'RESERVADA' ? api.approvalId(values) : ''))
         setReview(values)
       }
@@ -134,6 +153,13 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
       await client.save(input, context ?? undefined)
       if (generation.current === current) await load(client)
     } finally { saveInFlight.current = false; if (alive.current) setSaving(false) }
+  }
+  async function savePresentation(facts:FiscalPresentationFacts){
+    if(!client||!review||!presentationContext||saveInFlight.current||replacementInFlight.current||reconciliationInFlight.current)return
+    saveInFlight.current=true;setSaving(true)
+    const current=generation.current
+    try{await client.savePresentation(review,presentationContext,facts);if(generation.current===current)await load(client)}
+    finally{saveInFlight.current=false;if(alive.current)setSaving(false)}
   }
   async function prepareBody() {
     if (!client || !resolution?.operacion_id || preparationInFlight.current || cancellationInFlight.current || replacementInFlight.current || reconciliationInFlight.current) return
@@ -260,7 +286,8 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
       {!busy && resolution?.estado === 'NO_DISPONIBLE' && <p role="status">Esta venta no está disponible para preparar un comprobante fiscal.</p>}
       {!busy && resolution?.estado === 'AUTORIZADA' && !receipt && <p role="status">La operación figura autorizada en el servidor. Falta recuperar su constancia fiscal; no se iniciará otra preparación.</p>}
       {!busy && receipt && <FiscalReceiptPanel receipt={receipt} />}
-      {!busy && review && client && !correcting && !hasPendingReplacement && !hasPendingObservation && !reconciling && !replacing && <FiscalOwnerReviewPanel review={review} approvalId={approvalId} onApprove={command => client.approve(review, command.id)} />}
+      {!busy&&review?.estado==='RESERVADA'&&presentationContext&&!presentation&&!review.aprobacion&&!correcting&&!hasPendingReplacement&&!hasPendingObservation&&!reconciling&&!replacing&&<FiscalPresentationForm key={`${review.operacion_id}:${review.solicitud.sha256}`} context={presentationContext} disabled={saving} onSave={savePresentation}/>}
+      {!busy && review && client && (review.estado!=='RESERVADA'||presentation) && !correcting && !hasPendingReplacement && !hasPendingObservation && !reconciling && !replacing && <FiscalOwnerReviewPanel review={review} presentation={presentation??undefined} approvalId={approvalId} onApprove={command => {if(!presentation)throw new Error('FISCAL_REPRESENTACION_REQUERIDA');return client.approvePresentation(review,presentation,command.id)}} />}
       {!busy && client && canCorrectRejected && !correcting && !hasPendingReplacement && !hasPendingObservation && <Button variant="secondary" disabled={reconciling} loading={replacing} onClick={() => { void beginCorrection() }}>Corregir datos del comprobante rechazado</Button>}
       {!busy && client && review?.estado === 'RESERVADA' && resolution?.estado === 'RESERVADA' && !correcting && !hasPendingReplacement && <Button variant="secondary" disabled={reconciling} loading={replacing} onClick={() => { void beginCorrection() }}>Corregir datos conservando el número</Button>}
       {!busy && client && <Button variant="secondary" disabled={saving || preparing || cancelling || replacing || correcting || reconciling} onClick={() => { void load(client) }}>Volver a consultar estado</Button>}

@@ -95,7 +95,7 @@ try {
     ...readdirSync(join(bootstrap,'steps')).sort().map(file=>join(bootstrap,'steps',file)),join(bootstrap,'900_final_security.sql'),
     join(root,'supabase/pilot-fiscal/001_fiscal_journal.sql'),join(root,'supabase/pilot-fiscal/002_fiscal_reservations.sql'),
     join(root,'supabase/pilot-fiscal/003_fiscal_requests.sql'),join(root,'supabase/pilot-fiscal/004_fiscal_reconciliation.sql'),
-    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql'),join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql'),join(root,'supabase/pilot-fiscal/013_fiscal_preparation_source.sql'),join(root,'supabase/pilot-fiscal/014_fiscal_receipt.sql'),join(root,'supabase/pilot-fiscal/015_fiscal_emission_receipts.sql'),join(root,'supabase/pilot-fiscal/016_fiscal_diagnosis.sql'),join(root,'supabase/pilot-fiscal/017_fiscal_preparation_cancellation.sql'),join(root,'supabase/pilot-fiscal/018_fiscal_reserved_replacement.sql'),join(root,'supabase/pilot-fiscal/019_fiscal_rejected_correction.sql'),join(root,'supabase/pilot-fiscal/020_fiscal_reconciliation_actor.sql'),join(root,'supabase/pilot-fiscal/021_fiscal_observation_receipt.sql'),join(root,'supabase/pilot-fiscal/022_fiscal_presentation_facts.sql'),join(root,'supabase/pilot-fiscal/023_fiscal_presentation_review.sql')]) {
+    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql'),join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql'),join(root,'supabase/pilot-fiscal/013_fiscal_preparation_source.sql'),join(root,'supabase/pilot-fiscal/014_fiscal_receipt.sql'),join(root,'supabase/pilot-fiscal/015_fiscal_emission_receipts.sql'),join(root,'supabase/pilot-fiscal/016_fiscal_diagnosis.sql'),join(root,'supabase/pilot-fiscal/017_fiscal_preparation_cancellation.sql'),join(root,'supabase/pilot-fiscal/018_fiscal_reserved_replacement.sql'),join(root,'supabase/pilot-fiscal/019_fiscal_rejected_correction.sql'),join(root,'supabase/pilot-fiscal/020_fiscal_reconciliation_actor.sql'),join(root,'supabase/pilot-fiscal/021_fiscal_observation_receipt.sql'),join(root,'supabase/pilot-fiscal/022_fiscal_presentation_facts.sql'),join(root,'supabase/pilot-fiscal/023_fiscal_presentation_review.sql'),join(root,'supabase/pilot-fiscal/024_fiscal_presentation_source.sql')]) {
     await observer.query(readFileSync(file,'utf8'))
     if(file.endsWith('011_fiscal_owner_review.sql')){
       await observer.query('SELECT fiscal_exigir_actor_preparacion($1,$2)',[randomUUID(),randomUUID()])
@@ -682,6 +682,12 @@ try {
   assert.deepEqual((await duplicatePresentation).value,presentationAck);await b.query('COMMIT')
   assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_presentaciones_homologacion WHERE operacion_id=$1',[presentationDuplicate.operation])).rows[0].n,1)
   cases.push('representacion_dos_guardados_un_ACK_historico_sin_emision')
+  await start(a);const historicalPresentation=(await a.query('SELECT cargar_contexto_presentacion_homologacion($1,$2,$3) value',[presentationDuplicate.auth,presentationDuplicate.sale,presentationDuplicate.operation])).rows[0].value;await a.query('COMMIT')
+  assert.equal(historicalPresentation.lineas[0].cantidad,'1.000');assert.equal(historicalPresentation.lineas[0].precio_unitario,'123.45')
+  assert.deepEqual(Object.keys(historicalPresentation).sort(),['lineas','operacion_id','solicitud_sha256','venta_id'])
+  await observer.query("UPDATE productos SET descripcion='Nombre posterior',precio_venta=999 WHERE id IN(SELECT producto_id FROM detalles_venta WHERE venta_id=$1)",[presentationDuplicate.sale])
+  await start(a);assert.deepEqual((await a.query('SELECT cargar_contexto_presentacion_homologacion($1,$2,$3) value',[presentationDuplicate.auth,presentationDuplicate.sale,presentationDuplicate.operation])).rows[0].value,historicalPresentation);await a.query('COMMIT')
+  cases.push('fuente_representacion_historica_no_cambia_con_catalogo_actual')
   const presentationRollback=await presentationFixture(136)
   await start(a);await presentationRollback.write(a)
   await start(b);const presentationRetry=capture(presentationRollback.write(b));await waitForLock(observer,b);await a.query('ROLLBACK')
@@ -694,6 +700,10 @@ try {
   assert.equal((await blockedPresentationActor).error?.code,'42501');await b.query('ROLLBACK')
   assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_presentaciones_homologacion WHERE operacion_id=$1',[presentationActor.operation])).rows[0].n,0)
   cases.push('representacion_Auth_reasignado_esperando_no_guarda_hechos')
+  for(const actor of [presentationActor.auth,presentationNewActor]){
+    await start(a);const sourceDenied=await capture(a.query('SELECT cargar_contexto_presentacion_homologacion($1,$2,$3)',[actor,presentationActor.sale,presentationActor.operation]));assert.equal(sourceDenied.error?.code,'42501');await a.query('ROLLBACK')
+  }
+  cases.push('fuente_representacion_Auth_reasignado_no_revela_lineas_a_ninguna_cuenta')
   const presentationIssuer=await presentationFixture(138)
   await a.query('BEGIN');await a.query('UPDATE fiscal_emisores_homologacion SET habilitado=false WHERE kiosco_id=$1',[presentationIssuer.kid])
   await start(b);const blockedPresentationIssuer=capture(presentationIssuer.write(b));await waitForLock(observer,b);await a.query('COMMIT')

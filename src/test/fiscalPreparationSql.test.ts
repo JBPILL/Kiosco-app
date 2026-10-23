@@ -1,3 +1,4 @@
+import { validateFiscalPresentationContext } from '../../supabase/functions/_shared/fiscalPresentationContext'
 import { prepareFiscalPresentationFacts } from '../../supabase/functions/_shared/fiscalPresentation'
 import { correctRejectedFiscalVoucher } from '../../supabase/functions/_shared/fiscalRejectedCorrection'
 import { createFiscalClient } from '../lib/fiscalClient'
@@ -78,6 +79,7 @@ function workerFixture(){
  mapping.cargar_datos_preparacion_homologacion=['p_actor_auth_id','p_venta_id'];mapping.resolver_preparacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id']
  mapping.sustituir_reserva_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_sucesora_id','p_anterior_sha','p_canonico','p_sha'];mapping.consultar_sustitucion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
  mapping.cancelar_preparacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.consultar_cancelacion_preparacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
+ mapping.cargar_contexto_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.cargar_presentacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.guardar_presentacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_solicitud_sha','p_canonico','p_sha'];mapping.cargar_revision_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_revision_id'];mapping.aprobar_revision_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_revision_id','p_solicitud_sha','p_revision','p_presentacion_sha']
  const rpc=vi.fn<FiscalAuthClient['rpc']>(async(name,args)=>{
   const keys=mapping[name];if(!keys)throw new Error('UNEXPECTED_PRIVATE_RPC')
   await db.exec('SAVEPOINT worker_rpc')
@@ -1114,4 +1116,56 @@ it('consumo no elige otra aprobación sin vínculo aunque sea más reciente; rev
  await db.exec('RESET ROLE')
  expect((await db.query<{estado:string;intento_id:string|null}>('SELECT estado,intento_id FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[op])).rows[0]).toEqual({estado:'RESERVADA',intento_id:null})
  expect((await db.query<{usado_por_intento:string|null}>('SELECT usado_por_intento FROM fiscal_permisos_emision_homologacion WHERE operacion_id=$1',[op])).rows[0].usado_por_intento).toBeNull()
+})
+
+it('fuente de representación usa snapshot inmutable, no catálogo actual, y no incluye identidad privada',async()=>{
+ const f=await presentationFixture()
+ const load=()=>db.query<{data:unknown}>('SELECT cargar_contexto_presentacion_homologacion($1,$2,$3) data',[actor,sale,op])
+ const context=validateFiscalPresentationContext((await load()).rows[0].data,sale,op)
+ expect(context.lineas).toEqual([{detalle_id:f.facts.lineas[0].detalle_id,cantidad:'1.000',precio_unitario:'123.45',subtotal:'123.45'}])
+ await admin("UPDATE productos SET descripcion='Nombre modificado',precio_venta=999 WHERE id=$1",[product])
+ expect((await load()).rows[0].data).toEqual(context)
+ await denied(()=>db.query('SELECT cargar_contexto_presentacion_homologacion($1,$2,$3)',[crypto.randomUUID(),sale,op]))
+ expect(Object.keys(context)).toEqual(['venta_id','operacion_id','solicitud_sha256','lineas'])
+})
+it('HTTP+SQL guarda hechos y aprueba el hash mostrado, recuperando ACK perdido sin TA o red',async()=>{
+ const f=await presentationFixture(),worker=workerFixture(),base=worker.rpc.getMockImplementation()!,revision=crypto.randomUUID()
+ worker.rpc.mockImplementation(async(name,args)=>{const result=await base(name,args);return ['guardar_presentacion_fiscal_homologacion','aprobar_revision_presentacion_homologacion'].includes(name)?{data:null,error:new Error('SYNTHETIC_ACK_LOST')}:result})
+ const handler=createFiscalHttpHandler({readSecret:key=>worker.flags[key],createAdmin:()=>worker.admin,fetcher:worker.fetcher})
+ const send=async(command:unknown)=>{
+  const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify(command)}))
+  expect(response.status).toBe(200);return (await response.json()).resultado
+ }
+ const source=await send({accion:'CONTEXTO_REPRESENTACION',venta_id:sale,operacion_id:op})
+ expect(source.solicitud_sha256).toBe(f.frozen.sha256)
+ expect(await send({accion:'DATOS_REPRESENTACION',venta_id:sale,operacion_id:op})).toBeNull()
+ const record=await send({accion:'GUARDAR_REPRESENTACION',venta_id:sale,operacion_id:op,solicitud_sha256:f.frozen.sha256,propuesta:{canonico:f.proposal.canonico,sha256:f.proposal.sha256}})
+ expect(record.presentacion_sha256).toBe(f.proposal.sha256)
+ const identity={venta_id:sale,operacion_id:op,revision_id:revision,solicitud_sha256:f.frozen.sha256,revision:1,presentacion_sha256:f.proposal.sha256}
+ expect(await send({accion:'APROBACION_REPRESENTACION',...identity})).toBeNull()
+ const approved=await send({accion:'APROBAR_REPRESENTACION',...identity})
+ expect(approved.presentacion_sha256).toBe(f.proposal.sha256)
+ expect(await send({accion:'APROBACION_REPRESENTACION',...identity})).toEqual(approved)
+ expect(worker.getUser).toHaveBeenCalledTimes(6);expect(worker.load).not.toHaveBeenCalled();expect(worker.fetcher).not.toHaveBeenCalled()
+})
+it('cliente→HTTP→SQL captura y aprueba hechos exactos sin persistir PII local ni usar aprobación anterior',async()=>{
+ const f=await presentationFixture(),worker=workerFixture(),handler=createFiscalHttpHandler({readSecret:key=>worker.flags[key],createAdmin:()=>worker.admin,fetcher:worker.fetcher}),map=new Map<string,string>(),commands:string[]=[]
+ const api=createFiscalClient({authId:actor,kioskId:kid,saleId:sale},{storage:{getItem:key=>map.get(key)??null,setItem:(key,value)=>{map.set(key,value)},removeItem:key=>{map.delete(key)}},send:async command=>{
+  commands.push(String(command.accion))
+  const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify(command)}))
+  if(response.status!==200)throw new Error('SYNTHETIC_UNCONFIRMED')
+  const body=await response.json()
+  if(command.accion==='GUARDAR_REPRESENTACION'||command.accion==='APROBAR_REPRESENTACION')throw new Error('SYNTHETIC_LOST_RESPONSE')
+  return body
+ }})
+ const review=await api.review(op),source=await api.presentationContext(op)
+ expect(await api.presentation(op)).toBeNull()
+ const record=await api.savePresentation(review,source,f.facts)
+ expect(record.datos.emisor.razon_social).toBe(f.facts.emisor.razon_social)
+ const id=api.approvalId(review),approval=await api.approvePresentation(review,record,id)
+ expect(approval.presentacion_sha256).toBe(record.presentacion_sha256)
+ expect(await api.presentationApproval(review,record,id)).toEqual(approval)
+ expect(commands).not.toContain('APROBAR_REVISION');expect(worker.fetcher).not.toHaveBeenCalled();expect(worker.load).not.toHaveBeenCalled()
+ expect([...map.values()].join(' ')).not.toContain(f.facts.emisor.razon_social)
+ expect([...map.values()].join(' ')).not.toContain(f.facts.lineas[0].descripcion)
 })

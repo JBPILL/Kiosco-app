@@ -602,3 +602,6 @@ No reconstruir comprobantes desde configuración o catálogo actuales. SQL 022 c
 
 ### 23/10/2026 — Aprobación de representación exacta
 Con hechos 022, la revisión requiere el hash de presentación que confirmó el Dueño además del cuerpo fiscal. Conservar vínculo inmutable y verificar el mismo ID al consumir permiso; no promover una aprobación antigua a aprobación de datos nuevos. Compatibilidad histórica sin hechos no acredita obligatoriedad para nuevas preparaciones: integrar captura/UI y guard obligatorio antes de activar.
+
+### 23/10/2026 — Captura histórica antes de confirmar revisión
+La pantalla usa IDs/importes del snapshot, pide datos explícitos de representación y muestra los hechos guardados antes de aprobar su hash. No reconstruye descripciones desde catálogo actual ni persiste PII en navegador; respuesta pública transmite canónico/hash y deriva datos verificados. Una sucesora vuelve a captura sin herencia. Obligación global en servidor antes de intención/TA sigue pendiente y bloquea activación.

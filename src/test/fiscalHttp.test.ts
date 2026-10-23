@@ -435,3 +435,10 @@ it('HTTP getter no confunde error con ausencia ni expone datos privados',async()
  const response=await f.handler(request(JSON.stringify({accion:'CONSULTAR_CONCILIACION',venta_id:crypto.randomUUID(),operacion_id:op,observacion_id:observation})))
  expect(response.status).toBe(409);expect(await response.text()).not.toContain('PRIVATE_OBSERVATION_DETAIL');expect(f.fetcher).not.toHaveBeenCalled()
 })
+it.each([
+ {accion:'CONTEXTO_REPRESENTACION',venta_id:crypto.randomUUID(),operacion_id:op,actor_auth_id:crypto.randomUUID()},
+ {accion:'GUARDAR_REPRESENTACION',venta_id:crypto.randomUUID(),operacion_id:op,solicitud_sha256:'a'.repeat(64),propuesta:{},extra:true},
+ {accion:'APROBAR_REPRESENTACION',venta_id:crypto.randomUUID(),operacion_id:op,revision_id:crypto.randomUUID(),solicitud_sha256:'a'.repeat(64),revision:2,presentacion_sha256:'b'.repeat(64)}
+])('representación rechaza metadatos extra/revisión no admitida antes de Auth',async body=>{
+ const f=fixture();expect((await f.handler(request(JSON.stringify(body)))).status).toBe(400);expect(f.getUser).not.toHaveBeenCalled();expect(f.factory).not.toHaveBeenCalled()
+})

@@ -14,7 +14,9 @@ function fixture(){
  const review=vi.fn<FiscalClient['review']>().mockResolvedValue({operacion_id:operation,estado:'RESERVADA',revision:1,solicitud:{version:1,solicitud:wsfeSample,sha256:'a'.repeat(64)},aprobacion:null})
  const receipt=vi.fn<FiscalClient['receipt']>().mockRejectedValue(new Error('SYNTHETIC_UNAVAILABLE'))
  const diagnosis=vi.fn<FiscalClient['diagnosis']>().mockResolvedValue({version:1,entorno:'HOMOLOGACION',operacion_id:operation,venta_id:scope.saleId,solicitud_sha256:'a'.repeat(64),estado:'AUTORIZADA',recepcion:null,ultima_consulta:{estado:'AUTORIZACION_COINCIDENTE',codigo:null},puedeReenviar:false})
- const client:FiscalClient={pendingObservation:vi.fn(()=>null),reconcile:vi.fn(),retryReconciliation:vi.fn(),rejectedCorrection:vi.fn(async()=>null),cancelReplacement:vi.fn(),pendingReplacement:vi.fn(()=>null),replace:vi.fn(),retryReplacement:vi.fn(),resolve,context,review,receipt,diagnosis,cancel:vi.fn(async()=>({operacion_id:operation,venta_id:scope.saleId,estado:'CANCELADA' as const,emision_habilitada:false as const})),prepare:vi.fn(async()=>review(operation)),pending:vi.fn(()=>null),save:vi.fn(async()=>saved),approvalId:vi.fn(()=>approval),approve:vi.fn<FiscalClient['approve']>(async()=>({id:approval,operacion_id:operation,solicitud_sha256:'a'.repeat(64),revision:1,aprobada:true,vence_en:new Date(Date.now()+600000).toISOString(),emision_habilitada:false}))}
+ const presentationRecord={operacion_id:operation,venta_id:scope.saleId,solicitud_sha256:'a'.repeat(64),presentacion_sha256:'b'.repeat(64),estado:'DATOS_REPRESENTACION_GUARDADOS' as const,emision_habilitada:false as const,canonico:'{}',datos:{version:1 as const,emisor:{razon_social:'Emisor histórico',domicilio_comercial:'Calle 1',ingresos_brutos:'Exento',inicio_actividades:'20200101'},receptor:{nombre:'Receptor histórico',domicilio:'Calle 2'},lineas:[{detalle_id:operation,descripcion:'Artículo histórico'}],otros_impuestos_nacionales_indirectos:'0.00'}}
+ const boundApproval={id:approval,operacion_id:operation,solicitud_sha256:'a'.repeat(64),revision:1,aprobada:true as const,vence_en:new Date(Date.now()+600000).toISOString(),emision_habilitada:false as const,presentacion_sha256:'b'.repeat(64)}
+ const client:FiscalClient={presentationContext:vi.fn(async()=>({venta_id:scope.saleId,operacion_id:operation,solicitud_sha256:"a".repeat(64),lineas:[{detalle_id:operation,cantidad:"1.000",precio_unitario:"123.45",subtotal:"123.45"}]})),presentation:vi.fn(async()=>presentationRecord),savePresentation:vi.fn(async()=>presentationRecord),presentationApproval:vi.fn(async()=>boundApproval),approvePresentation:vi.fn(async()=>boundApproval),pendingObservation:vi.fn(()=>null),reconcile:vi.fn(),retryReconciliation:vi.fn(),rejectedCorrection:vi.fn(async()=>null),cancelReplacement:vi.fn(),pendingReplacement:vi.fn(()=>null),replace:vi.fn(),retryReplacement:vi.fn(),resolve,context,review,receipt,diagnosis,cancel:vi.fn(async()=>({operacion_id:operation,venta_id:scope.saleId,estado:'CANCELADA' as const,emision_habilitada:false as const})),prepare:vi.fn(async()=>review(operation)),pending:vi.fn(()=>null),save:vi.fn(async()=>saved),approvalId:vi.fn(()=>approval),approve:vi.fn<FiscalClient['approve']>(async()=>({id:approval,operacion_id:operation,solicitud_sha256:'a'.repeat(64),revision:1,aprobada:true,vence_en:new Date(Date.now()+600000).toISOString(),emision_habilitada:false}))}
  return {client,resolve,context,review,diagnosis}
 }
 it('abre carga explícita desde una venta sin datos fiscales previos',async()=>{
@@ -33,7 +35,7 @@ it('recupera revisión existente y aprueba sin emitir ni cargar un formulario nu
  render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
  fireEvent.click(await screen.findByRole('checkbox'));fireEvent.click(screen.getByRole('button',{name:'Aprobar revisión'}))
  await waitFor(()=>expect(screen.getByText(/todavía no se emitió desde esta pantalla/)).toBeTruthy())
- expect(f.client.approve).toHaveBeenCalledTimes(1);expect(f.context).not.toHaveBeenCalled();expect(f.client.save).not.toHaveBeenCalled()
+ expect(f.client.approvePresentation).toHaveBeenCalledTimes(1);expect(f.context).not.toHaveBeenCalled();expect(f.client.save).not.toHaveBeenCalled()
 })
 it('ignora respuesta tardía de otra venta al cambiar selección',async()=>{
  const first=fixture(),second=fixture();let resolve!:(value:typeof empty)=>void
@@ -66,7 +68,7 @@ it('guardar desde el formulario pasa a datos preparados, sin indicar factura emi
  for(const label of ['IVA total','No gravado','Exento','Otros tributos total'])change(label,'0')
  fireEvent.submit(screen.getByRole('form'))
  await screen.findByText(/Todavía falta preparar el cuerpo/)
- expect(f.client.save).toHaveBeenCalledTimes(1);expect(f.client.approve).not.toHaveBeenCalled();expect(screen.queryByRole('form')).toBeNull()
+ expect(f.client.save).toHaveBeenCalledTimes(1);expect(f.client.approvePresentation).not.toHaveBeenCalled();expect(screen.queryByRole('form')).toBeNull()
 })
 it('no pierde el estado autorizado si falla la carga de la constancia',async()=>{
  const f=fixture();f.resolve.mockResolvedValue({...saved,estado:'AUTORIZADA'});f.review.mockRejectedValue(new Error('private'))
@@ -79,8 +81,8 @@ it('preparar cuerpo usa la operación original y abre revisión sin aprobar ni e
  const f=fixture();f.resolve.mockResolvedValueOnce(saved).mockResolvedValue({...saved,estado:'RESERVADA'})
  render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
  fireEvent.click(await screen.findByRole('button',{name:'Preparar comprobante para revisar'}))
- await screen.findByLabelText('Revisé el receptor, las fechas, los importes y el detalle fiscal de este comprobante.');expect(f.client.prepare).toHaveBeenCalledExactlyOnceWith(operation)
- expect(f.client.approve).not.toHaveBeenCalled();expect(f.client.save).not.toHaveBeenCalled()
+ await screen.findByLabelText(/Revisé el receptor, las fechas, los importes y el detalle fiscal/);expect(f.client.prepare).toHaveBeenCalledExactlyOnceWith(operation)
+ expect(f.client.approvePresentation).not.toHaveBeenCalled();expect(f.client.save).not.toHaveBeenCalled()
 })
 it('cuerpo sin confirmación conserva estado e identidad para consulta',async()=>{
  const f=fixture();f.resolve.mockResolvedValue(saved);vi.mocked(f.client.prepare).mockRejectedValue(new Error('lost'))
@@ -98,7 +100,7 @@ it('muestra constancia de homologación recuperada sin controles de aprobar ni e
  expect(screen.getByText('11111111111111')).toBeTruthy();expect(screen.getByText('31/10/2026')).toBeTruthy()
  expect(screen.getByText(/sin validez fiscal/)).toBeTruthy();expect(screen.getByText('No informadas')).toBeTruthy()
  expect(f.client.receipt).toHaveBeenCalledExactlyOnceWith(operation);expect(f.review).not.toHaveBeenCalled()
- expect(screen.queryByRole('checkbox',{name:'Revisé el receptor, las fechas, los importes y el detalle fiscal de este comprobante.'})).toBeNull();expect(screen.queryByRole('form')).toBeNull();expect(f.client.approve).not.toHaveBeenCalled()
+ expect(screen.queryByRole('checkbox',{name:'Revisé el receptor, las fechas, los importes y el detalle fiscal de este comprobante.'})).toBeNull();expect(screen.queryByRole('form')).toBeNull();expect(f.client.approvePresentation).not.toHaveBeenCalled()
 })
 it('constancia tardía no aparece al seleccionar otra venta',async()=>{
  const first=fixture(),second=fixture();first.resolve.mockResolvedValue({...saved,estado:'AUTORIZADA'})
@@ -121,7 +123,7 @@ it('muestra rechazo recibido y consulta no confirmada sin aprobar, reenviar ni p
  render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
  await screen.findByRole('region',{name:'Diagnóstico fiscal'});expect(screen.getByText(/Se recibió un rechazo/)).toBeTruthy();expect(screen.getByText('10017')).toBeTruthy()
  expect(screen.getByText('La consulta no confirmó la autorización.')).toBeTruthy();expect(screen.queryByRole('checkbox',{name:'Revisé el receptor, las fechas, los importes y el detalle fiscal de este comprobante.'})).toBeNull();expect(screen.queryByRole('form')).toBeNull()
- expect(f.client.approve).not.toHaveBeenCalled();expect(f.client.prepare).not.toHaveBeenCalled();expect(f.client.save).not.toHaveBeenCalled()
+ expect(f.client.approvePresentation).not.toHaveBeenCalled();expect(f.client.prepare).not.toHaveBeenCalled();expect(f.client.save).not.toHaveBeenCalled()
 })
 it('falta de recepción no se presenta como rechazo',async()=>{
  const f=fixture();uncertain(f);f.diagnosis.mockResolvedValue({...await f.diagnosis(operation),recepcion:null,ultima_consulta:null});f.diagnosis.mockClear()
@@ -170,7 +172,7 @@ it('autorización confirmada durante el diagnóstico recupera constancia sin abr
 it('revisión reservada obsoleta no habilita aprobación de un envío incierto',async()=>{
  const f=fixture();uncertain(f);f.review.mockResolvedValue({...await f.review(operation),estado:'RESERVADA'});f.review.mockClear()
  render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
- await screen.findByRole('alert');expect(screen.queryByRole('checkbox',{name:'Revisé el receptor, las fechas, los importes y el detalle fiscal de este comprobante.'})).toBeNull();expect(f.client.approve).not.toHaveBeenCalled()
+ await screen.findByRole('alert');expect(screen.queryByRole('checkbox',{name:'Revisé el receptor, las fechas, los importes y el detalle fiscal de este comprobante.'})).toBeNull();expect(f.client.approvePresentation).not.toHaveBeenCalled()
 })
 
 it('cancelar exige confirmación explícita, conserva UUID y vuelve al formulario tras cierre confirmado',async()=>{
@@ -178,7 +180,7 @@ it('cancelar exige confirmación explícita, conserva UUID y vuelve al formulari
  render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
  const button=await screen.findByRole('button',{name:'Cancelar preparación sin número'});expect(button.hasAttribute('disabled')).toBe(true)
  fireEvent.click(screen.getByLabelText('Confirmo que quiero cerrar este intento y cargar otra preparación.'));fireEvent.click(button)
- await screen.findByRole('form');expect(f.client.cancel).toHaveBeenCalledExactlyOnceWith(operation);expect(f.client.prepare).not.toHaveBeenCalled();expect(f.client.approve).not.toHaveBeenCalled()
+ await screen.findByRole('form');expect(f.client.cancel).toHaveBeenCalledExactlyOnceWith(operation);expect(f.client.prepare).not.toHaveBeenCalled();expect(f.client.approvePresentation).not.toHaveBeenCalled()
 })
 it('cancelación incierta conserva intento y no abre otro formulario',async()=>{
  const f=fixture();f.resolve.mockResolvedValue(saved);vi.mocked(f.client.cancel).mockRejectedValue(new Error('PRIVATE_SENTINEL'))
@@ -221,6 +223,7 @@ it('corrección exige confirmación, formulario sin defaults y nueva revisión s
  const f=fixture(),next='77777777-7777-4777-8777-777777777777';f.resolve.mockResolvedValue({...saved,estado:'RESERVADA'})
  vi.mocked(f.client.replace).mockImplementation(async()=>{
   f.resolve.mockResolvedValue({...saved,estado:'RESERVADA',operacion_id:next});f.review.mockResolvedValue({operacion_id:next,estado:'RESERVADA',revision:1,solicitud:{version:1,solicitud:wsfeSample,sha256:'b'.repeat(64)},aprobacion:null})
+  vi.mocked(f.client.presentationContext).mockResolvedValue({venta_id:scope.saleId,operacion_id:next,solicitud_sha256:'b'.repeat(64),lineas:[{detalle_id:operation,cantidad:'1.000',precio_unitario:'123.45',subtotal:'123.45'}]});vi.mocked(f.client.presentation).mockResolvedValue(null)
   return {operacion_id:operation,sucesora_id:next,venta_id:scope.saleId,anterior_sha256:'a'.repeat(64),preparacion_sha256:'c'.repeat(64),sucesora_sha256:'b'.repeat(64),numero:1,estado:'SUSTITUIDA',emision_habilitada:false}
  })
  render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
@@ -231,8 +234,8 @@ it('corrección exige confirmación, formulario sin defaults y nueva revisión s
  fireEvent.click(screen.getByLabelText('Confirmo que quiero sustituir esta preparación conservando su número.'))
  fireEvent.submit(screen.getByRole('form'))
  await waitFor(()=>expect(f.review).toHaveBeenLastCalledWith(next))
- expect(f.client.replace).toHaveBeenCalledTimes(1);expect(f.client.save).not.toHaveBeenCalled();expect(f.client.approve).not.toHaveBeenCalled();expect(f.client.prepare).not.toHaveBeenCalled()
- await screen.findByRole('button',{name:'Aprobar revisión'});expect(screen.queryByRole('form')).toBeNull()
+ expect(f.client.replace).toHaveBeenCalledTimes(1);expect(f.client.save).not.toHaveBeenCalled();expect(f.client.approvePresentation).not.toHaveBeenCalled();expect(f.client.prepare).not.toHaveBeenCalled()
+ await screen.findByRole('form',{name:'Datos históricos del comprobante'});expect(screen.queryByRole('button',{name:'Aprobar revisión'})).toBeNull()
 })
 function pendingCorrection(){return {version:1 as const,operationId:operation,successorId:'77777777-7777-4777-8777-777777777777',previousHash:'a'.repeat(64),numero:1,proposal:{canonico:'SYNTHETIC_PENDING_VALIDATED_BY_CLIENT',sha256:'c'.repeat(64)}}}
 it('pendiente al reabrir oculta aprobación y permite sólo reintentar o descartar la misma propuesta',async()=>{
@@ -290,7 +293,7 @@ it('rechazo requiere confirmación explícita antes de consultar/corregir y lueg
  fireEvent.click(screen.getByLabelText('Confirmo la corrección del rechazo y las consultas de recuperación en ARCA de homologación, sin emitir.'))
  fireEvent.submit(screen.getByRole('form'))
  await waitFor(()=>expect(f.client.replace).toHaveBeenCalledTimes(1));expect(vi.mocked(f.client.replace).mock.calls[0][3]).toBe('RECHAZO')
- expect(f.client.prepare).not.toHaveBeenCalled();expect(f.client.approve).not.toHaveBeenCalled();expect(f.client.save).not.toHaveBeenCalled()
+ expect(f.client.prepare).not.toHaveBeenCalled();expect(f.client.approvePresentation).not.toHaveBeenCalled();expect(f.client.save).not.toHaveBeenCalled()
  for(const alert of await screen.findAllByRole('alert'))expect(alert.textContent).not.toContain('SYNTHETIC_GATE_CLOSED')
 })
 it.each(['SIN_CONFIRMACION','APROBACION_RECIBIDA','SIN_RECEPCION','DATOS_DISTINTOS','CONSULTA_DISTINTA'] as const)('no ofrece corrección R ante %s',async mode=>{
@@ -307,7 +310,7 @@ it('pendiente R al abrir sólo consulta estado; reintentar exige confirmación y
  const retry=await screen.findByRole('button',{name:'Reintentar corrección guardada'})
  expect((retry as HTMLButtonElement).disabled).toBe(true);expect(f.client.retryReplacement).not.toHaveBeenCalled();expect(f.review).not.toHaveBeenCalled()
  fireEvent.click(screen.getByLabelText('Autorizo consultar el estado en ARCA de homologación para recuperar esta corrección, sin emitir.'));fireEvent.click(retry)
- await waitFor(()=>expect(f.client.retryReplacement).toHaveBeenCalledTimes(1));expect(f.client.approve).not.toHaveBeenCalled();expect(f.client.prepare).not.toHaveBeenCalled()
+ await waitFor(()=>expect(f.client.retryReplacement).toHaveBeenCalledTimes(1));expect(f.client.approvePresentation).not.toHaveBeenCalled();expect(f.client.prepare).not.toHaveBeenCalled()
 })
 
 it('corrección R confirmada vuelve a la sucesora sin aprobación heredada ni envío automático',async()=>{
@@ -315,14 +318,15 @@ it('corrección R confirmada vuelve a la sucesora sin aprobación heredada ni en
  vi.mocked(f.client.replace).mockImplementation(async()=>{
   f.resolve.mockResolvedValue({...saved,estado:'RESERVADA',operacion_id:next})
   f.review.mockResolvedValue({operacion_id:next,estado:'RESERVADA',revision:1,solicitud:{version:1,solicitud:wsfeSample,sha256:'b'.repeat(64)},aprobacion:null})
+  vi.mocked(f.client.presentationContext).mockResolvedValue({venta_id:scope.saleId,operacion_id:next,solicitud_sha256:'b'.repeat(64),lineas:[{detalle_id:operation,cantidad:'1.000',precio_unitario:'123.45',subtotal:'123.45'}]});vi.mocked(f.client.presentation).mockResolvedValue(null)
   return {operacion_id:operation,sucesora_id:next,venta_id:scope.saleId,anterior_sha256:'a'.repeat(64),preparacion_sha256:'c'.repeat(64),sucesora_sha256:'b'.repeat(64),numero:1,estado:'RECHAZO_CORREGIDO',emision_habilitada:false}
  })
  render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
  fireEvent.click(await screen.findByRole('button',{name:'Corregir datos del comprobante rechazado'}));await screen.findByRole('form')
  fillCorrection();fireEvent.click(screen.getByLabelText('Confirmo la corrección del rechazo y las consultas de recuperación en ARCA de homologación, sin emitir.'));fireEvent.submit(screen.getByRole('form'))
- await screen.findByRole('button',{name:'Aprobar revisión'});expect(f.review).toHaveBeenLastCalledWith(next)
- expect(f.client.approve).not.toHaveBeenCalled();expect(f.client.prepare).not.toHaveBeenCalled();expect(f.client.save).not.toHaveBeenCalled()
- expect(screen.queryByRole('form')).toBeNull();expect(screen.queryByText('Corregir un comprobante rechazado')).toBeNull()
+ await screen.findByRole('form',{name:'Datos históricos del comprobante'});expect(f.review).toHaveBeenLastCalledWith(next)
+ expect(f.client.approvePresentation).not.toHaveBeenCalled();expect(f.client.prepare).not.toHaveBeenCalled();expect(f.client.save).not.toHaveBeenCalled()
+ expect(screen.queryByRole('button',{name:'Aprobar revisión'})).toBeNull();expect(screen.queryByText('Corregir un comprobante rechazado')).toBeNull()
 })
 
 const consultLabel='Confirmo que quiero consultar ARCA en homologación, sin reenviar la factura ni volver a cobrar.'
@@ -334,7 +338,7 @@ it('consulta incierta requiere confirmación y no aprueba ni prepara otra factur
  fireEvent.click(button);expect(f.client.reconcile).not.toHaveBeenCalled()
  fireEvent.click(screen.getByLabelText(consultLabel));fireEvent.click(button)
  const retry=await screen.findByRole('button',{name:'Recuperar consulta guardada'});expect((retry as HTMLButtonElement).disabled).toBe(true)
- expect(f.client.reconcile).toHaveBeenCalledTimes(1);expect(f.client.approve).not.toHaveBeenCalled();expect(f.client.prepare).not.toHaveBeenCalled();expect(f.client.replace).not.toHaveBeenCalled()
+ expect(f.client.reconcile).toHaveBeenCalledTimes(1);expect(f.client.approvePresentation).not.toHaveBeenCalled();expect(f.client.prepare).not.toHaveBeenCalled();expect(f.client.replace).not.toHaveBeenCalled()
  expect(screen.queryByRole('button',{name:'Corregir datos del comprobante rechazado'})).toBeNull()
  expect((await screen.findByRole('alert')).textContent).not.toContain('PRIVATE_QUERY_DETAIL')
 })
@@ -377,5 +381,26 @@ it('consulta con ACK pendiente no degrada autorización recuperada ni muestra CA
  render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
  fireEvent.click(await screen.findByLabelText(consultLabel));fireEvent.click(screen.getByRole('button',{name:'Consultar en ARCA sin reenviar'}))
  await screen.findByRole('region',{name:'Constancia fiscal de homologación'});expect(f.client.receipt).toHaveBeenCalledExactlyOnceWith(operation)
- expect(screen.queryByRole('button',{name:'Consultar en ARCA sin reenviar'})).toBeNull();expect(f.client.approve).not.toHaveBeenCalled();expect(f.client.prepare).not.toHaveBeenCalled()
+ expect(screen.queryByRole('button',{name:'Consultar en ARCA sin reenviar'})).toBeNull();expect(f.client.approvePresentation).not.toHaveBeenCalled();expect(f.client.prepare).not.toHaveBeenCalled()
+})
+
+it('sin hechos muestra captura y no permite aprobar; guardar recupera datos históricos antes de confirmación',async()=>{
+ const f=fixture();f.resolve.mockResolvedValue({...saved,estado:'RESERVADA'})
+ const stored=await f.client.presentation(operation)
+ vi.mocked(f.client.presentation).mockResolvedValueOnce(null).mockResolvedValue(stored)
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client}/> )
+ const form=await screen.findByRole('form',{name:'Datos históricos del comprobante'})
+ expect(screen.queryByRole('button',{name:'Aprobar revisión'})).toBeNull()
+ const change=(label:string,value:string)=>fireEvent.change(screen.getByLabelText(label),{target:{value}})
+ change('Razón social del emisor','Nombre original');change('Domicilio comercial','Calle 1');change('Inscripción en Ingresos Brutos','Exento');change('Inicio de actividades','20/10/2026')
+ change('Nombre o razón social del receptor','Consumidor final');change('Domicilio del receptor','Sin identificar');change('Descripción del artículo 1','Descripción original');change('Otros impuestos nacionales indirectos contenidos','0')
+ fireEvent.submit(form)
+ await screen.findByRole('button',{name:'Aprobar revisión'})
+ expect(f.client.savePresentation).toHaveBeenCalledTimes(1);expect(f.client.approvePresentation).not.toHaveBeenCalled();expect(f.client.approve).not.toHaveBeenCalled()
+ expect(screen.getByText('1. Artículo histórico')).toBeTruthy()
+})
+it('fallo al cargar hechos no muestra aprobación ni reemplaza datos por configuración actual',async()=>{
+ const f=fixture();f.resolve.mockResolvedValue({...saved,estado:'RESERVADA'});vi.mocked(f.client.presentation).mockRejectedValue(new Error('PRIVATE_SECRET'))
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client}/>)
+ const alert=await screen.findByRole('alert');expect(alert.textContent).not.toContain('PRIVATE_SECRET');expect(screen.queryByRole('button',{name:'Aprobar revisión'})).toBeNull();expect(screen.queryByRole('form')).toBeNull()
 })

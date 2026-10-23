@@ -1,3 +1,8 @@
+import { validateFiscalPresentationContext } from '../../supabase/functions/_shared/fiscalPresentationContext'
+import type { FiscalPresentationContext } from '../../supabase/functions/_shared/fiscalPresentationContext'
+import { prepareFiscalPresentationFacts,validateFiscalPresentationRecord } from '../../supabase/functions/_shared/fiscalPresentation'
+import type { FiscalPresentationRecord } from '../../supabase/functions/_shared/fiscalPresentation'
+import { validateFiscalPresentationApproval } from '../../supabase/functions/_shared/fiscalPresentationReview'
 import { validateFiscalReconciliationAck } from '../../supabase/functions/_shared/fiscalReconciliationContract'
 import type { FiscalRejectedCorrection } from '../../supabase/functions/_shared/fiscalRejectedCorrectionContract'
 import { validateFiscalRejectedCorrection } from '../../supabase/functions/_shared/fiscalRejectedCorrectionContract'
@@ -326,6 +331,55 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
     async rejectedCorrection(operationId: string) {
       if (!uuid(operationId)) return fail()
       return rejectedCorrection(operationId)
+    },
+    async presentationContext(operationId:string){
+      if(!uuid(operationId))return fail()
+      return validateFiscalPresentationContext(await invoke({accion:'CONTEXTO_REPRESENTACION',venta_id:sale,operacion_id:operationId}),sale,operationId)
+    },
+    async presentation(operationId:string){
+      if(!uuid(operationId))return fail()
+      const value=await invoke({accion:'DATOS_REPRESENTACION',venta_id:sale,operacion_id:operationId})
+      return value===null?null:validateFiscalPresentationRecord(value,sale,operationId)
+    },
+    async savePresentation(review:FiscalOwnerReview,context:FiscalPresentationContext,input:unknown){
+      const contextSnapshot=structuredClone(context),inputSnapshot=structuredClone(input)
+      const captured=await validatePublicFiscalOwnerReview(structuredClone(review),review.operacion_id)
+      const source=validateFiscalPresentationContext(contextSnapshot,sale,captured.operacion_id)
+      const proposal=await prepareFiscalPresentationFacts(inputSnapshot)
+      if(proposal.datos.emisor.inicio_actividades>captured.solicitud.solicitud.fecha||BigInt(proposal.datos.otros_impuestos_nacionales_indirectos.replace('.',''))>BigInt(captured.solicitud.solicitud.importes.total.replace('.',''))-BigInt(captured.solicitud.solicitud.importes.iva.replace('.','')))return fail()
+      if(captured.estado!=='RESERVADA'||captured.aprobacion||source.solicitud_sha256!==captured.solicitud.sha256
+        ||proposal.datos.lineas.map(x=>x.detalle_id).join(',')!==source.lineas.map(x=>x.detalle_id).join(','))return fail()
+      return exclusive(async()=>{
+        const active=pending()
+        if(pendingReplacement()||pendingObservation()||active&&active.operationId!==captured.operacion_id)return fail()
+        try{await invoke({accion:'GUARDAR_REPRESENTACION',venta_id:sale,operacion_id:captured.operacion_id,solicitud_sha256:captured.solicitud.sha256,propuesta:{canonico:proposal.canonico,sha256:proposal.sha256}})}catch{/* Recuperar por la operación durable, sin otro ID ni datos locales del receptor. */}
+        const value=await invoke({accion:'DATOS_REPRESENTACION',venta_id:sale,operacion_id:captured.operacion_id})
+        const record=await validateFiscalPresentationRecord(value,sale,captured.operacion_id)
+        if(record.solicitud_sha256!==captured.solicitud.sha256||record.presentacion_sha256!==proposal.sha256||record.canonico!==proposal.canonico)return fail()
+        return record
+      })
+    },
+    async presentationApproval(review:FiscalOwnerReview,presentation:FiscalPresentationRecord,id:string){
+      const expected={operation:review.operacion_id,bodySha:review.solicitud.sha256,presentationSha:presentation.presentacion_sha256}
+      if(!uuid(id)||!fiscalSha(expected.presentationSha)||presentation.solicitud_sha256!==expected.bodySha||presentation.operacion_id!==expected.operation||presentation.venta_id!==sale)return fail()
+      const value=await invoke({accion:'APROBACION_REPRESENTACION',venta_id:sale,operacion_id:expected.operation,revision_id:id,solicitud_sha256:expected.bodySha,revision:1,presentacion_sha256:expected.presentationSha})
+      return value===null?null:validateFiscalPresentationApproval(value,expected.operation,expected.bodySha,1,id,expected.presentationSha)
+    },
+    async approvePresentation(review:FiscalOwnerReview,presentation:FiscalPresentationRecord,id:string){
+      const snapshot=structuredClone(presentation)
+      const captured=await validatePublicFiscalOwnerReview(structuredClone(review),review.operacion_id)
+      const {datos:_derived,...wire}=snapshot,record=await validateFiscalPresentationRecord(wire,sale,captured.operacion_id)
+      const expectedId=this.approvalId(captured)
+      if(captured.estado!=='RESERVADA'||record.solicitud_sha256!==captured.solicitud.sha256||id!==expectedId)return fail()
+      return exclusive(async()=>{
+        const active=pending()
+        if(pendingReplacement()||pendingObservation()||active&&active.operationId!==captured.operacion_id)return fail()
+        const identity={venta_id:sale,operacion_id:captured.operacion_id,revision_id:id,solicitud_sha256:captured.solicitud.sha256,revision:1,presentacion_sha256:record.presentacion_sha256}
+        try{await invoke({accion:'APROBAR_REPRESENTACION',...identity})}catch{/* Leer mismo UUID antes de atribuir aprobación. */}
+        const result=validateFiscalPresentationApproval(await invoke({accion:'APROBACION_REPRESENTACION',...identity}),captured.operacion_id,captured.solicitud.sha256,1,id,record.presentacion_sha256)
+        write(`${key}:review:${captured.operacion_id}:${captured.revision}:${captured.solicitud.sha256}`,{id,expires:result.vence_en})
+        return result
+      })
     },
     async review(operationId: string) {
       if (!uuid(operationId)) return fail()
