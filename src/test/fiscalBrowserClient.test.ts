@@ -113,3 +113,18 @@ it('navegador conserva propuesta R bajo Web Lock, timeout acotado y token origin
  expect(mocks.lock).toHaveBeenCalledTimes(1);expect(api.pendingReplacement()).toBeNull();expect(api.pending()?.operationId).toBe(result.sucesora_id)
  expect(mocks.invoke.mock.calls.map(([,args])=>args.body.accion)).toEqual(['CORRECCION_RECHAZO_FISCAL','CORREGIR_RECHAZO_FISCAL','CORRECCION_RECHAZO_FISCAL'])
 })
+
+it('consulta navegador usa mismo Web Lock, token original y timeout por acción',async()=>{
+ const f=await browserCorrection();let ack:Record<string,unknown>|null=null
+ mocks.invoke.mockImplementation(async(_name,args)=>{
+  const cmd=args.body;expect(args.headers.Authorization).toBe('Bearer SYNTHETIC_BROWSER_SESSION')
+  if(cmd.accion==='CONCILIAR'){
+   expect(args.timeout).toBe(40000);expect(localStorage.getItem(`kioskopos:fiscal:v1:${scope.authId}:${scope.kioskId}:${scope.saleId}:reconciliation`)).not.toBeNull()
+   ack={version:1,operacion_id:cmd.operacion_id,numero:1,estado:'PENDIENTE_CONCILIACION',solicitud_sha256:f.review.solicitud.sha256,revision:1,emision_habilitada:false}
+  }else expect(args.timeout).toBe(15000)
+  return {data:{version:1,entorno:'HOMOLOGACION',emision_habilitada:false,resultado:ack},error:null}
+ })
+ const api=createFiscalBrowserClient(scope);await api.reconcile({...f.review,estado:'ENVIO_INCIERTO'})
+ expect(api.pendingObservation()).toBeNull();expect(mocks.lock).toHaveBeenCalledTimes(1)
+ expect(mocks.invoke.mock.calls.map(([,args])=>args.body.accion)).toEqual(['CONSULTAR_CONCILIACION','CONCILIAR','CONSULTAR_CONCILIACION'])
+})

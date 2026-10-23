@@ -1,3 +1,4 @@
+import { loadFiscalObservation } from './fiscalObservationService.ts'
 import { correctRejectedFiscalVoucher } from './fiscalRejectedCorrection.ts'
 import { loadFiscalRejectedCorrection } from './fiscalRejectedCorrectionService.ts'
 import { loadFiscalReplacement, replaceFiscalPreparation } from './fiscalReplacementService.ts'
@@ -22,6 +23,7 @@ const origin='https://kiosco-app-staging.vercel.app'
 const invalid=():never=>{throw new Error('FISCAL_SOLICITUD_INVALIDA')}
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 type FiscalHttpCommand=
+  | {accion:'CONSULTAR_CONCILIACION';venta_id:string;operacion_id:string;observacion_id:string}
   | {accion:'CORRECCION_RECHAZO_FISCAL';venta_id:string;operacion_id:string}
   | {accion:'SUSTITUIR_PREPARACION_FISCAL';venta_id:string;operacion_id:string;sucesora_id:string;anterior_sha256:string;propuesta:unknown}
   | {accion:'CORREGIR_RECHAZO_FISCAL';venta_id:string;operacion_id:string;sucesora_id:string;anterior_sha256:string;propuesta:unknown}
@@ -69,6 +71,7 @@ async function command(request:Request):Promise<FiscalHttpCommand> {
       return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_id:b.operacion_id.toLowerCase(),sucesora_id:b.sucesora_id.toLowerCase(),anterior_sha256:b.anterior_sha256,propuesta:b.propuesta}
     if(size>2048||length!==null&&Number(length)>2048||!uuid(b.operacion_id))return invalid()
     const op=b.operacion_id.toLowerCase()
+    if(b.accion==='CONSULTAR_CONCILIACION'&&keys.length===4&&uuid(b.venta_id)&&uuid(b.observacion_id))return {accion:b.accion,operacion_id:op,venta_id:b.venta_id.toLowerCase(),observacion_id:b.observacion_id.toLowerCase()}
     if(b.accion==='CORRECCION_RECHAZO_FISCAL'&&keys.length===3&&uuid(b.venta_id))return {accion:b.accion,operacion_id:op,venta_id:b.venta_id.toLowerCase()}
     if(b.accion==='SUSTITUCION_PREPARACION_FISCAL'&&keys.length===3&&uuid(b.venta_id))return {accion:b.accion,operacion_id:op,venta_id:b.venta_id.toLowerCase()}
     if((b.accion==='CANCELAR_PREPARACION_FISCAL'||b.accion==='CANCELACION_PREPARACION_FISCAL')&&keys.length===3&&uuid(b.venta_id))return {accion:b.accion,operacion_id:op,venta_id:b.venta_id.toLowerCase()}
@@ -124,7 +127,9 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
       try{cmd=await command(request)}catch{return json({codigo:'SOLICITUD_INVALIDA'},400)}
       const admin=deps.createAdmin(FISCAL_STAGING_URL),token=auth.slice(7)
       let result:unknown
-      if(cmd.accion==='CORREGIR_RECHAZO_FISCAL'){
+      if(cmd.accion==='CONSULTAR_CONCILIACION'){
+        result=await loadFiscalObservation(admin,token,cmd.venta_id,cmd.operacion_id,cmd.observacion_id)
+      }else if(cmd.accion==='CORREGIR_RECHAZO_FISCAL'){
         result=await correctRejectedFiscalVoucher({admin,readSecret:deps.readSecret,cache,fetcher:deps.fetcher,
           load:(binding,signal)=>createSharedFiscalTicketLoader(admin,createPrivateFiscalTicketKeys(deps.readSecret),
             createWsaaTicketSource(createPrivateFiscalCustody(deps.readSecret),deps.fetcher))(binding,signal),

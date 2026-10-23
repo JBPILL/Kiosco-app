@@ -72,6 +72,8 @@ function workerFixture(){
  const flags:Record<string,string>={SUPABASE_URL:'https://acoyfwwmhaeruciyedri.supabase.co',ARCA_HOMO_BACKEND_ENABLED:'true',ARCA_HOMO_PREPARATION_ENABLED:'true'}
  const mapping:Record<string,string[]>={autorizar_consulta_fiscal_homologacion:['p_actor_auth_id','p_operacion_id'],cargar_fuente_preparacion_homologacion:['p_actor_auth_id','p_operacion_id'],cargar_revision_fiscal_homologacion:['p_operacion_id','p_actor_auth_id'],persistir_preparacion_fiscal_homologacion:['p_actor_auth_id','p_operacion_id','p_canonico','p_sha','p_ultimo_autorizado','p_consultado_en']}
  mapping.cargar_fuente_correccion_rechazo_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.corregir_rechazo_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_sucesora_id','p_intento_id','p_anterior_sha','p_canonico','p_sha','p_verificacion'];mapping.consultar_correccion_rechazo_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
+ mapping.cargar_observacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_id'];mapping.cargar_constancia_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
+ mapping.autorizar_conciliacion_revisada_homologacion=['p_actor_auth_id','p_operacion_id'];mapping.cargar_contexto_conciliacion_homologacion=['p_operacion_id'];mapping.consultar_reconciliacion_homologacion=['p_operacion_id','p_id'];mapping.registrar_conciliacion_revisada_homologacion=['p_actor_auth_id','p_binding','p_id','p_operacion_id','p_intento_id','p_sha','p_revision','p_decision']
  mapping.cargar_datos_preparacion_homologacion=['p_actor_auth_id','p_venta_id'];mapping.resolver_preparacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id']
  mapping.sustituir_reserva_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_sucesora_id','p_anterior_sha','p_canonico','p_sha'];mapping.consultar_sustitucion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
  mapping.cancelar_preparacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.consultar_cancelacion_preparacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
@@ -929,4 +931,61 @@ it.each(['anon','authenticated'])('SQL 020 no concede consultas/registro privado
  await db.exec(`RESET ROLE; SET ROLE ${role}`)
  await denied(()=>db.query('SELECT autorizar_conciliacion_revisada_homologacion($1,$2)',[actor,op]))
  await denied(()=>db.query('SELECT registrar_conciliacion_revisada_homologacion($1,$2::jsonb,$3,$4,$5,$6,1,$7::jsonb)',[actor,'{}',crypto.randomUUID(),op,crypto.randomUUID(),'a'.repeat(64),'{}']))
+})
+
+it('SQL 021 recupera observación pendiente histórica aún con emisor revocado y rechazo corregido',async()=>{
+ const f=await rejectedCorrectionFixture();await db.exec('RESET ROLE');const id=(await db.query<{id:string}>('SELECT id FROM fiscal_reconciliaciones_homologacion WHERE operacion_id=$1',[op])).rows[0].id;await db.exec('SET ROLE service_role')
+ const read=()=>db.query<{data:Record<string,unknown>|null}>('SELECT cargar_observacion_fiscal_homologacion($1,$2,$3,$4) data',[actor,sale,op,id])
+ const before=(await read()).rows[0].data;expect(before).toMatchObject({operacion_id:op,estado:'PENDIENTE_CONCILIACION',solicitud_sha256:f.frozen.sha256})
+ await f.run();await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false,revision=revision+1')
+ expect((await read()).rows[0].data).toEqual(before)
+ expect((await db.query<{data:unknown}>('SELECT cargar_observacion_fiscal_homologacion($1,$2,$3,$4) data',[actor,sale,op,crypto.randomUUID()])).rows[0].data).toBeNull()
+ const other=crypto.randomUUID();await admin('INSERT INTO auth.users VALUES($1)',[other]);await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner])
+ await denied(()=>read());await denied(()=>db.query('SELECT cargar_observacion_fiscal_homologacion($1,$2,$3,$4)',[other,sale,op,id]))
+})
+it('SQL 021 lectura autorizada exige constancia durable y nunca devuelve campos privados',async()=>{
+ const f=await rejectedCorrectionFixture('SIN_CONFIRMACION'),id=crypto.randomUUID()
+ const ack=(await db.query<{data:Record<string,unknown>}>('SELECT registrar_reconciliacion_fiscal_homologacion($1,$2,$3,$4,1,$5::jsonb) data',[id,op,f.attempt,f.frozen.sha256,JSON.stringify({estado:'AUTORIZACION_COINCIDENTE',solicitudSha256:f.frozen.sha256,cae:'11111111111111',vencimiento:'20261031',procesadoEn:null,puedeReenviar:false})])).rows[0].data
+ const read=()=>db.query<{data:unknown}>('SELECT cargar_observacion_fiscal_homologacion($1,$2,$3,$4) data',[actor,sale,op,id])
+ expect((await read()).rows[0].data).toEqual(ack);await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false');expect((await read()).rows[0].data).toEqual(ack)
+ await denied(()=>db.query('SELECT cargar_observacion_fiscal_homologacion($1,$2,$3,$4)',[actor,crypto.randomUUID(),op,id]))
+ await db.exec('RESET ROLE; ALTER TABLE fiscal_autorizaciones_homologacion DISABLE TRIGGER USER; DELETE FROM fiscal_autorizaciones_homologacion; ALTER TABLE fiscal_autorizaciones_homologacion ENABLE TRIGGER USER; SET ROLE service_role')
+ await denied(()=>read())
+})
+it.each(['anon','authenticated'])('SQL 021 no permite lectura directa a %s',async role=>{
+ await db.exec(`RESET ROLE; SET ROLE ${role}`)
+ await denied(()=>db.query('SELECT cargar_observacion_fiscal_homologacion($1,$2,$3,$4)',[actor,sale,op,crypto.randomUUID()]))
+})
+
+it('cliente→HTTP→SQL recupera observación confirmada después de gate cerrado sin nueva red',async()=>{
+ const f=await rejectedWorkerFixture(),commands:Record<string,unknown>[]=[]
+ f.flags.ARCA_HOMO_RECONCILIATION_ENABLED='false'
+ const handler=createFiscalHttpHandler({readSecret:key=>f.flags[key],createAdmin:()=>f.admin,fetcher:f.fetcher})
+ const send=async(cmd:Record<string,unknown>)=>{
+  commands.push(cmd);const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify(cmd)}))
+  if(!response.ok)throw new Error('HTTP_NOT_CONFIRMED');return response.json()
+ }
+ const map=new Map<string,string>(),storage={getItem:(key:string)=>map.get(key)??null,setItem:(key:string,value:string)=>{map.set(key,value)},removeItem:(key:string)=>{map.delete(key)}}
+ const api=createFiscalClient({authId:actor,kioskId:kid,saleId:sale},{storage,send}),r=await api.review(op)
+ await expect(api.reconcile(r)).rejects.toThrow();const record=api.pendingObservation()!;expect(f.fetcher).not.toHaveBeenCalled()
+ const binding=(await db.query<{data:unknown}>('SELECT autorizar_conciliacion_revisada_homologacion($1,$2) data',[actor,op])).rows[0].data
+ await db.query('SELECT registrar_conciliacion_revisada_homologacion($1,$2::jsonb,$3,$4,$5,$6,1,$7::jsonb)',[actor,JSON.stringify(binding),record.observationId,op,f.attempt,f.frozen.sha256,JSON.stringify({estado:'AUTORIZACION_COINCIDENTE',solicitudSha256:f.frozen.sha256,cae:'11111111111111',vencimiento:'20261031',procesadoEn:null,puedeReenviar:false})])
+ await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false');commands.length=0
+ const reopened=createFiscalClient({authId:actor,kioskId:kid,saleId:sale},{storage,send});expect((await reopened.resolve()).estado).toBe('AUTORIZADA');expect(reopened.pendingObservation()).toBeNull()
+ expect((await reopened.receipt(op)).solicitud.sha256).toBe(record.hash)
+ expect(commands.some(c=>c.accion==='CONCILIAR')).toBe(false);expect(f.fetcher).not.toHaveBeenCalled()
+})
+it('otra terminal corrige R: obs no ejecutada se cierra sólo por transición durable del mismo cuerpo',async()=>{
+ const f=await rejectedWorkerFixture();f.flags.ARCA_HOMO_RECONCILIATION_ENABLED='false'
+ const handler=createFiscalHttpHandler({readSecret:key=>f.flags[key],createAdmin:()=>f.admin,fetcher:f.fetcher}),commands:Record<string,unknown>[]=[]
+ const send=async(cmd:Record<string,unknown>)=>{
+  commands.push(cmd);const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify(cmd)}))
+  if(!response.ok)throw new Error('HTTP_NOT_CONFIRMED');return response.json()
+ }
+ const map=new Map<string,string>(),storage={getItem:(key:string)=>map.get(key)??null,setItem:(key:string,value:string)=>{map.set(key,value)},removeItem:(key:string)=>{map.delete(key)}}
+ const api=createFiscalClient({authId:actor,kioskId:kid,saleId:sale},{storage,send});await expect(api.reconcile(await api.review(op))).rejects.toThrow();const record=api.pendingObservation()!
+ const closed=await f.run();f.fetcher.mockClear();commands.length=0
+ expect((await api.resolve()).operacion_id).toBe(closed.sucesora_id);expect(api.pendingObservation()).toBeNull()
+ expect(commands.some(c=>c.accion==='CONCILIAR')).toBe(false);expect(f.fetcher).not.toHaveBeenCalled()
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_reconciliaciones_homologacion WHERE id=$1',[record.observationId])).rows[0].n).toBe(0)
 })

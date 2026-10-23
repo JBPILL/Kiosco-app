@@ -6,18 +6,9 @@ import { consultFiscalVoucher } from './fiscalVoucherXml.ts'
 export interface FiscalRpc {
   rpc(name: string, args: Record<string, unknown>): Promise<{data: unknown; error: unknown}>
 }
-export interface FiscalReconciliationAck {
-  version: 1
-  operacion_id: string
-  numero: number
-  estado: 'AUTORIZADA' | 'PENDIENTE_CONCILIACION'
-  solicitud_sha256: string
-  revision: 1 | 2
-  emision_habilitada: false
-  cae?: string
-  vencimiento?: string
-  procesado_en?: string | null
-}
+import { validateFiscalReconciliationAck as ack } from './fiscalReconciliationContract.ts'
+import type { FiscalReconciliationAck } from './fiscalReconciliationContract.ts'
+export type { FiscalReconciliationAck } from './fiscalReconciliationContract.ts'
 const fail = (): never => { throw new Error('FISCAL_PERSISTENCIA_NO_CONFIRMADA') }
 function record(value: unknown): Record<string,unknown> {
   if(!value || typeof value!=='object' || Array.isArray(value))return fail()
@@ -25,22 +16,6 @@ function record(value: unknown): Record<string,unknown> {
 }
 function uuid(value: unknown): value is string {
   return typeof value==='string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
-}
-function ack(value: unknown, op: string, sha?: string): FiscalReconciliationAck {
-  const obj=record(value)
-  if(obj.version!==1 || obj.operacion_id!==op || obj.emision_habilitada!==false
-    || !Number.isSafeInteger(obj.numero) || Number(obj.numero)<1 || Number(obj.numero)>99999999
-    || typeof obj.solicitud_sha256!=='string' || !/^[0-9a-f]{64}$/.test(obj.solicitud_sha256)
-    || (sha!==undefined && sha!==obj.solicitud_sha256))return fail()
-  const fields=['version','operacion_id','numero','estado','solicitud_sha256','revision','emision_habilitada']
-  if(obj.estado==='AUTORIZADA') {
-    fields.push('cae','vencimiento','procesado_en')
-    if(obj.revision!==2 || typeof obj.cae!=='string' || !/^[0-9]{14}$/.test(obj.cae) || /^0+$/.test(obj.cae)
-      || typeof obj.vencimiento!=='string' || !/^[0-9]{8}$/.test(obj.vencimiento)
-      || (obj.procesado_en!==null && (typeof obj.procesado_en!=='string' || !/^[0-9]{14}$/.test(obj.procesado_en))))return fail()
-  } else if(obj.estado!=='PENDIENTE_CONCILIACION' || obj.revision!==1)return fail()
-  if(Object.keys(obj).some(key=>!fields.includes(key)))return fail()
-  return Object.freeze({...obj}) as unknown as FiscalReconciliationAck
 }
 /** Un ID representa una observación: replay recupera su ACK histórico sin red.
  * Para otra consulta pendiente se necesita otro ID; nunca se reenvía FECAESolicitar. */

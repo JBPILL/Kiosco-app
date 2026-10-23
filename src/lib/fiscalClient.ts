@@ -1,3 +1,4 @@
+import { validateFiscalReconciliationAck } from '../../supabase/functions/_shared/fiscalReconciliationContract'
 import type { FiscalRejectedCorrection } from '../../supabase/functions/_shared/fiscalRejectedCorrectionContract'
 import { validateFiscalRejectedCorrection } from '../../supabase/functions/_shared/fiscalRejectedCorrectionContract'
 import { fiscalSha, validateFiscalReplacement, validateFiscalReplacementProposal } from '../../supabase/functions/_shared/fiscalReplacement'
@@ -28,6 +29,7 @@ function localExclusive<T>(storage: object, name: string, task: () => Promise<T>
   return result
 }
 interface PendingReplacement { version: 1 | 2; kind?: 'RECHAZO'; operationId: string; successorId: string; previousHash: string; numero: number; proposal: FiscalReplacementProposal }
+interface PendingObservation { version: 1; operationId: string; observationId: string; hash: string; numero: number }
 interface Pending { version: 1; operationId: string; input: FiscalPreparationInput | null }
 const uuid = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 const fail = (): never => { throw new Error('FISCAL_CLIENTE_NO_CONFIRMADO') }
@@ -55,6 +57,19 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
     } else write(name, null)
   }
   const retire = () => erase(key)
+  const observationKey = `${key}:reconciliation`
+  const pendingObservation = (): PendingObservation | null => {
+    const raw = deps.storage.getItem(observationKey)
+    if (raw === null || raw === 'null') return null
+    if (raw.length > 2048) return fail()
+    const v = object(JSON.parse(raw), ['version', 'operationId', 'observationId', 'hash', 'numero'])
+    if (v.version !== 1 || !uuid(v.operationId) || !uuid(v.observationId) || !fiscalSha(v.hash) || !Number.isSafeInteger(v.numero) || Number(v.numero) < 1 || Number(v.numero) > 99999999) return fail()
+    return v as unknown as PendingObservation
+  }
+  const retireObservation = (record: PendingObservation) => {
+    if (JSON.stringify(pendingObservation()) !== JSON.stringify(record)) return fail()
+    erase(observationKey)
+  }
   const replacementKey = `${key}:replacement`
   const pending = (): Pending | null => {
     const raw = deps.storage.getItem(key)
@@ -90,6 +105,21 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
     return value === null ? null : validateFiscalRejectedCorrection(value, sale, operationId)
   }
   const correctionClosure = (record: PendingReplacement) => record.version === 2 ? rejectedCorrection(record.operationId) : replacement(record.operationId)
+  const observation = async (record: PendingObservation) => {
+    const raw = await invoke({ accion: 'CONSULTAR_CONCILIACION', venta_id: sale, operacion_id: record.operationId, observacion_id: record.observationId })
+    if (raw === null) return null
+    const result = validateFiscalReconciliationAck(raw, record.operationId, record.hash)
+    if (result.numero !== record.numero) return fail()
+    return result
+  }
+  const submitObservation = async (record: PendingObservation) => {
+    const prior = await observation(record)
+    if (prior) { retireObservation(record); return prior }
+    try { await invoke({ accion: 'CONCILIAR', operacion_id: record.operationId, observacion_id: record.observationId }) } catch { /* Nunca reemplazar el ID ni confiar en ACK del POST. */ }
+    const result = await observation(record)
+    if (!result) return fail()
+    retireObservation(record); return result
+  }
   const retireReplacement = (record: PendingReplacement) => {
     const stored = pendingReplacement()
     if (!stored || JSON.stringify(stored) !== JSON.stringify(record)) return fail()
@@ -129,9 +159,30 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
   return {
     pending,
     pendingReplacement,
+    pendingObservation,
+    async reconcile(review: FiscalOwnerReview) {
+      const captured = structuredClone(review)
+      return exclusive(async () => {
+        if (pendingReplacement() || captured.estado !== 'ENVIO_INCIERTO' || captured.revision !== 1) return fail()
+        await validatePublicFiscalOwnerReview(captured, captured.operacion_id)
+        const primary = pending()
+        if (primary && primary.operationId !== captured.operacion_id) return fail()
+        let record = pendingObservation()
+        if (record && (record.operationId !== captured.operacion_id || record.hash !== captured.solicitud.sha256 || record.numero !== captured.solicitud.solicitud.numero)) return fail()
+        if (!record) {
+          record = { version: 1, operationId: captured.operacion_id, observationId: crypto.randomUUID(), hash: captured.solicitud.sha256, numero: captured.solicitud.solicitud.numero }
+          write(observationKey, record)
+        }
+        return submitObservation(record)
+      })
+    },
+    async retryReconciliation() {
+      return exclusive(async () => { if (pendingReplacement()) return fail(); const record = pendingObservation(); if (!record) return fail(); return submitObservation(record) })
+    },
     async replace(review: FiscalOwnerReview, input: FiscalPreparationInput, context: FiscalPreparationContext, kind: 'RESERVA' | 'RECHAZO' = 'RESERVA') {
       const originalReview = structuredClone(review), candidate = structuredClone(input), validationContext = structuredClone(context)
       return exclusive(async () => {
+        if (pendingObservation()) return fail()
         if (!uuid(originalReview.operacion_id) || !['RESERVA', 'RECHAZO'].includes(kind) || originalReview.estado !== (kind === 'RECHAZO' ? 'ENVIO_INCIERTO' : 'RESERVADA') || originalReview.revision !== 1
           || !fiscalSha(originalReview.solicitud.sha256) || validationContext.venta_id !== sale) return fail()
         const previous = pending()
@@ -156,6 +207,7 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
     },
     async cancelReplacement() {
       return exclusive(async () => {
+        if (pendingObservation()) return fail()
         const record = pendingReplacement()
         if (!record) return fail()
         await validateFiscalReplacementProposal(record.proposal, sale)
@@ -175,7 +227,7 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
       })
     },
     async retryReplacement() {
-      return exclusive(async () => { const record = pendingReplacement(); if (!record) return fail(); return submitReplacement(record) })
+      return exclusive(async () => { if (pendingObservation()) return fail(); const record = pendingReplacement(); if (!record) return fail(); return submitReplacement(record) })
     },
     async diagnosis(operationId: string) {
       if (!uuid(operationId)) return fail()
@@ -188,6 +240,19 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
     async resolve() {
       return exclusive(async () => {
         let result = validateFiscalSaleResolution(await invoke({ accion: 'RESOLVER_VENTA', venta_id: sale }), sale)
+        const observed = pendingObservation()
+        if (observed) {
+          const stored = await observation(observed)
+          if (stored) retireObservation(observed)
+          else if (result.estado === 'AUTORIZADA' && result.operacion_id === observed.operationId) {
+            const receipt = await validateFiscalReceipt(await invoke({ accion: 'CONSTANCIA_COMPROBANTE', venta_id: sale, operacion_id: observed.operationId }), { operationId: observed.operationId, saleId: sale })
+            if (receipt.solicitud.sha256 !== observed.hash || receipt.solicitud.solicitud.numero !== observed.numero) return fail()
+            retireObservation(observed)
+          } else if (result.operacion_id !== observed.operationId) {
+            const closed = await replacement(observed.operationId) ?? await rejectedCorrection(observed.operationId)
+            if (closed && closed.anterior_sha256 === observed.hash && closed.numero === observed.numero) retireObservation(observed)
+          }
+        }
         const correction = pendingReplacement()
         if (correction) {
           await validateFiscalReplacementProposal(correction.proposal, sale)
@@ -216,7 +281,7 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
     async cancel(operationId: string) {
       if (!uuid(operationId)) return fail()
       return exclusive(async () => {
-        if (pendingReplacement()) return fail()
+        if (pendingReplacement() || pendingObservation()) return fail()
         try { await invoke({ accion: 'CANCELAR_PREPARACION_FISCAL', venta_id: sale, operacion_id: operationId }) } catch { /* Sólo lectura durable confirma el cierre. */ }
         const result = await cancellation(operationId)
         if (!result) return fail()
@@ -233,7 +298,7 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
       const candidate = structuredClone(input)
       const validationContext = context ? structuredClone(context) : undefined
       return exclusive(async () => {
-        if (pendingReplacement()) return fail()
+        if (pendingReplacement() || pendingObservation()) return fail()
         let original = pending()
         if (original && (original.input === null || JSON.stringify(original.input) !== JSON.stringify(candidate))) return fail()
         if (!original) {
@@ -268,7 +333,7 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
     },
     async prepare(operationId: string) {
       if (!uuid(operationId)) return fail()
-      return exclusive(async () => { if (pendingReplacement()) return fail(); return validatePublicFiscalOwnerReview(await invoke({ accion: 'PREPARAR_COMPROBANTE', operacion_id: operationId }), operationId) })
+      return exclusive(async () => { if (pendingReplacement() || pendingObservation()) return fail(); return validatePublicFiscalOwnerReview(await invoke({ accion: 'PREPARAR_COMPROBANTE', operacion_id: operationId }), operationId) })
     },
     approvalId(review: FiscalOwnerReview) {
       const name = `${key}:review:${review.operacion_id}:${review.revision}:${review.solicitud.sha256}`
@@ -287,7 +352,7 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
       const expectedId = this.approvalId(review)
       return exclusive(async () => {
         const active = pending()
-        if (pendingReplacement() || active && active.operationId !== captured.operacion_id || !uuid(id) || expectedId !== id) return fail()
+        if (pendingReplacement() || pendingObservation() || active && active.operationId !== captured.operacion_id || !uuid(id) || expectedId !== id) return fail()
         const result = validateFiscalOwnerApproval(await invoke({ accion: 'APROBAR_REVISION', operacion_id: captured.operacion_id, revision_id: id, solicitud_sha256: captured.solicitud.sha256, revision: captured.revision }), captured.operacion_id, captured.solicitud.sha256, captured.revision, id)
         write(`${key}:review:${captured.operacion_id}:${captured.revision}:${captured.solicitud.sha256}`, { id, expires: result.vence_en })
         return result

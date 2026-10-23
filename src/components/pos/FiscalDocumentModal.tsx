@@ -26,6 +26,10 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
   const [review, setReview] = useState<Readonly<FiscalOwnerReview> | null>(null)
   const [receipt, setReceipt] = useState<Readonly<FiscalReceipt> | null>(null)
   const [diagnosis, setDiagnosis] = useState<Readonly<FiscalDiagnosis> | null>(null)
+  const [hasPendingObservation, setHasPendingObservation] = useState(false)
+  const [consultConfirmed, setConsultConfirmed] = useState(false)
+  const [reconciling, setReconciling] = useState(false)
+  const reconciliationInFlight = useRef(false)
   const [diagnosisError, setDiagnosisError] = useState('')
   const [approvalId, setApprovalId] = useState('')
   const [busy, setBusy] = useState(true)
@@ -52,7 +56,7 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
   const load = useCallback(async (api: FiscalClient) => {
     const current = ++generation.current
     let stateRecovered = false
-    setDiscardConfirmed(false); setCorrecting(false); setCorrectionConfirmed(false); setHasPendingReplacement(false)
+    setDiscardConfirmed(false); setCorrecting(false); setCorrectionConfirmed(false); setHasPendingReplacement(false); setHasPendingObservation(false); setConsultConfirmed(false)
     setBusy(true); setError(''); setDiagnosisError(''); setDiagnosis(null); setContext(null); setReview(null); setReceipt(null); setResolution(null)
     try {
       let state = await api.resolve()
@@ -61,7 +65,8 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
       setResolution(state)
       const correction = api.pendingReplacement()
       setHasPendingReplacement(!!correction); setCorrectionKind(correction?.version === 2 ? 'RECHAZO' : 'RESERVA')
-      if (correction) return
+      const observation = api.pendingObservation(); setHasPendingObservation(!!observation)
+      if (correction || observation) return
       let loadedDiagnosis: Readonly<FiscalDiagnosis> | null = null
       if (['ENVIO_INCIERTO', 'AUTORIZADA'].includes(state.estado) && state.operacion_id) {
         try {
@@ -99,6 +104,7 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
       }
     } catch {
       if (generation.current === current) {
+        try { setHasPendingObservation(!!api.pendingObservation()) } catch { /* Conservar también registros ilegibles. */ }
         try { const correction = api.pendingReplacement(); setHasPendingReplacement(!!correction); setCorrectionKind(correction?.version === 2 ? 'RECHAZO' : 'RESERVA') } catch { /* El error permanece; no se descartan registros ilegibles. */ }
         setError(stateRecovered
           ? 'Se recuperó el estado fiscal, pero no se pudieron cargar sus datos. Volvé a consultar; no prepares otro comprobante.'
@@ -120,7 +126,7 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
     return () => { active = false; cancelRequests() }
   }, [provided, authId, kioskId, saleId, load, cancelRequests])
   async function save(input: FiscalPreparationInput) {
-    if (!client || saveInFlight.current || cancellationInFlight.current || replacementInFlight.current) return
+    if (!client || saveInFlight.current || cancellationInFlight.current || replacementInFlight.current || reconciliationInFlight.current) return
     saveInFlight.current = true
     setSaving(true)
     const current = generation.current
@@ -130,7 +136,7 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
     } finally { saveInFlight.current = false; if (alive.current) setSaving(false) }
   }
   async function prepareBody() {
-    if (!client || !resolution?.operacion_id || preparationInFlight.current || cancellationInFlight.current || replacementInFlight.current) return
+    if (!client || !resolution?.operacion_id || preparationInFlight.current || cancellationInFlight.current || replacementInFlight.current || reconciliationInFlight.current) return
     preparationInFlight.current = true; setPreparing(true); setError('')
     const current = generation.current
     try {
@@ -141,7 +147,7 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
     } finally { preparationInFlight.current = false; if (alive.current) setPreparing(false) }
   }
   async function cancelPreparation(operationId: string) {
-    if (!client || cancellationInFlight.current || preparationInFlight.current || saveInFlight.current || replacementInFlight.current) return
+    if (!client || cancellationInFlight.current || preparationInFlight.current || saveInFlight.current || replacementInFlight.current || reconciliationInFlight.current) return
     cancellationInFlight.current = true; setCancelling(true); setError('')
     const current = generation.current
     try {
@@ -156,8 +162,8 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
     && diagnosis.recepcion?.estado === 'RECHAZO_RECIBIDO'
     && !['DATOS_DISTINTOS', 'CONSULTA_DISTINTA'].includes(diagnosis.ultima_consulta?.codigo ?? '')
   async function beginCorrection() {
-    if (!client || !review || !(review.estado === 'RESERVADA' && resolution?.estado === 'RESERVADA' || canCorrectRejected) || replacementInFlight.current) return
-    replacementInFlight.current = true; setReplacing(true); setError('')
+    if (!client || !review || !(review.estado === 'RESERVADA' && resolution?.estado === 'RESERVADA' || canCorrectRejected) || replacementInFlight.current || reconciliationInFlight.current) return
+    replacementInFlight.current = true; setReplacing(true); setError(''); setConsultConfirmed(false)
     const current = generation.current
     try {
       const values = await client.context()
@@ -167,7 +173,7 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
     } finally { replacementInFlight.current = false; if (alive.current) setReplacing(false) }
   }
   async function replacePreparation(input?: FiscalPreparationInput) {
-    if (!client || replacementInFlight.current || saveInFlight.current || preparationInFlight.current || cancellationInFlight.current) return
+    if (!client || replacementInFlight.current || saveInFlight.current || preparationInFlight.current || cancellationInFlight.current || reconciliationInFlight.current) return
     if (!input && correctionKind === 'RECHAZO' && !correctionConfirmed) return
     if (input && (!review || !context || !correcting || !correctionConfirmed)) return
     replacementInFlight.current = true; setReplacing(true); setError('')
@@ -190,7 +196,7 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
     } finally { replacementInFlight.current = false; if (alive.current) setReplacing(false) }
   }
   async function discardReplacement() {
-    if (!client || !discardConfirmed || replacementInFlight.current) return
+    if (!client || !discardConfirmed || replacementInFlight.current || reconciliationInFlight.current) return
     replacementInFlight.current = true; setReplacing(true); setError('')
     const current = generation.current
     try {
@@ -200,6 +206,23 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
       if (generation.current === current) setError('No se confirmó el descarte de la propuesta. Conservá el intento y consultá el estado. El número original no se cancela.')
     } finally { replacementInFlight.current = false; if (alive.current) setReplacing(false) }
   }
+  async function reconcile() {
+    if (!client || !consultConfirmed || reconciliationInFlight.current || replacementInFlight.current || preparationInFlight.current || saveInFlight.current || cancellationInFlight.current) return
+    if (!hasPendingObservation && (!review || review.estado !== 'ENVIO_INCIERTO' || resolution?.estado !== 'ENVIO_INCIERTO')) return
+    reconciliationInFlight.current = true; setReconciling(true); setError('')
+    const current = generation.current
+    try {
+      if (hasPendingObservation) await client.retryReconciliation()
+      else if (review) await client.reconcile(review)
+      if (generation.current === current) await load(client)
+    } catch {
+      if (generation.current === current) {
+        try { setHasPendingObservation(!!client.pendingObservation()) } catch { /* No borrar datos inciertos. */ }
+        setConsultConfirmed(false)
+        setError('No se confirmó la consulta. Conservá el intento guardado y volvé a consultar su estado. No reenvíes la factura ni vuelvas a cobrar.')
+      }
+    } finally { reconciliationInFlight.current = false; if (alive.current) setReconciling(false) }
+  }
   const cancelTarget = resolution?.estado === 'DATOS_PREPARADOS' ? resolution.operacion_id
     : resolution?.estado === 'SIN_PREPARACION' && hasLocalRecord ? pendingOperationId : null
   return <Modal isOpen onClose={onClose} title="Preparación y revisión fiscal · Homologación" size="xl" footer={<Button variant="secondary" onClick={onClose}>Cerrar</Button>}>
@@ -208,6 +231,12 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
       {error && <p role="alert">{error}</p>}
       {diagnosisError && <p role="alert">{diagnosisError}</p>}
       {!busy && diagnosis && <FiscalDiagnosisPanel diagnosis={diagnosis} />}
+      {!busy && client && !hasPendingReplacement && !correcting && (hasPendingObservation || review?.estado === 'ENVIO_INCIERTO' && resolution?.estado === 'ENVIO_INCIERTO') && <section aria-label="Consultar resultado en ARCA" className="rounded-lg border p-4 space-y-3">
+        <h3 className="font-bold">{hasPendingObservation ? 'Consulta fiscal pendiente' : 'Consultar el resultado del envío'}</h3>
+        <p>{hasPendingObservation ? 'Este equipo conserva una consulta pendiente. Se recuperará el mismo intento; no se enviará otra factura.' : 'Se consultará el comprobante original en ARCA de homologación. Esta acción no reenvía la factura ni modifica el cobro, el stock o la caja.'}</p>
+        <label className="flex items-start gap-2"><input type="checkbox" checked={consultConfirmed} disabled={reconciling} onChange={event => setConsultConfirmed(event.target.checked)} />Confirmo que quiero consultar ARCA en homologación, sin reenviar la factura ni volver a cobrar.</label>
+        <Button disabled={!consultConfirmed} loading={reconciling} onClick={() => { void reconcile() }}>{hasPendingObservation ? 'Recuperar consulta guardada' : 'Consultar en ARCA sin reenviar'}</Button>
+      </section>}
       {!busy && hasPendingReplacement && <section className="rounded-lg border p-4 space-y-3" aria-label="Corrección fiscal pendiente">
         <p role="status">Este equipo conserva una corrección pendiente. Se recuperará la misma propuesta y el mismo número; no apruebes el cuerpo anterior.</p>
         {correctionKind === 'RECHAZO' && <label className="flex items-start gap-2"><input type="checkbox" checked={correctionConfirmed} disabled={replacing} onChange={event => setCorrectionConfirmed(event.target.checked)} />Autorizo consultar el estado en ARCA de homologación para recuperar esta corrección, sin emitir.</label>}
@@ -231,10 +260,10 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
       {!busy && resolution?.estado === 'NO_DISPONIBLE' && <p role="status">Esta venta no está disponible para preparar un comprobante fiscal.</p>}
       {!busy && resolution?.estado === 'AUTORIZADA' && !receipt && <p role="status">La operación figura autorizada en el servidor. Falta recuperar su constancia fiscal; no se iniciará otra preparación.</p>}
       {!busy && receipt && <FiscalReceiptPanel receipt={receipt} />}
-      {!busy && review && client && !correcting && !hasPendingReplacement && !replacing && <FiscalOwnerReviewPanel review={review} approvalId={approvalId} onApprove={command => client.approve(review, command.id)} />}
-      {!busy && client && canCorrectRejected && !correcting && !hasPendingReplacement && <Button variant="secondary" loading={replacing} onClick={() => { void beginCorrection() }}>Corregir datos del comprobante rechazado</Button>}
-      {!busy && client && review?.estado === 'RESERVADA' && resolution?.estado === 'RESERVADA' && !correcting && !hasPendingReplacement && <Button variant="secondary" loading={replacing} onClick={() => { void beginCorrection() }}>Corregir datos conservando el número</Button>}
-      {!busy && client && <Button variant="secondary" disabled={saving || preparing || cancelling || replacing || correcting} onClick={() => { void load(client) }}>Volver a consultar estado</Button>}
+      {!busy && review && client && !correcting && !hasPendingReplacement && !hasPendingObservation && !reconciling && !replacing && <FiscalOwnerReviewPanel review={review} approvalId={approvalId} onApprove={command => client.approve(review, command.id)} />}
+      {!busy && client && canCorrectRejected && !correcting && !hasPendingReplacement && !hasPendingObservation && <Button variant="secondary" disabled={reconciling} loading={replacing} onClick={() => { void beginCorrection() }}>Corregir datos del comprobante rechazado</Button>}
+      {!busy && client && review?.estado === 'RESERVADA' && resolution?.estado === 'RESERVADA' && !correcting && !hasPendingReplacement && <Button variant="secondary" disabled={reconciling} loading={replacing} onClick={() => { void beginCorrection() }}>Corregir datos conservando el número</Button>}
+      {!busy && client && <Button variant="secondary" disabled={saving || preparing || cancelling || replacing || correcting || reconciling} onClick={() => { void load(client) }}>Volver a consultar estado</Button>}
     </div>
   </Modal>
 }

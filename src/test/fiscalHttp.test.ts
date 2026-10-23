@@ -417,3 +417,21 @@ it('conciliación nueva con gate cerrado no lee custodia ni inicia consulta fisc
  expect(f.fetcher).not.toHaveBeenCalled();expect(f.getUser).toHaveBeenCalledTimes(1)
  expect(f.read.mock.calls.some(([key])=>/CUSTODY|CREDENTIAL|TICKET|KEYRING/.test(key))).toBe(false)
 })
+
+it('HTTP lee observación durable con Auth original sin gate de consultas, custodia o WSFE',async()=>{
+ const f=fixture(),sale=crypto.randomUUID(),actor=crypto.randomUUID();f.getUser.mockResolvedValue({data:{user:{id:actor}},error:null});f.rpc.mockResolvedValue({data:pending,error:null})
+ const cmd={accion:'CONSULTAR_CONCILIACION',venta_id:sale,operacion_id:op,observacion_id:observation}
+ const response=await f.handler(request(JSON.stringify(cmd)));expect(response.status).toBe(200);expect((await response.json()).resultado).toEqual(pending)
+ expect(f.rpc).toHaveBeenCalledExactlyOnceWith('cargar_observacion_fiscal_homologacion',{p_actor_auth_id:actor,p_venta_id:sale,p_operacion_id:op,p_id:observation})
+ expect(f.getUser).toHaveBeenCalledTimes(1);expect(f.fetcher).not.toHaveBeenCalled();expect(f.read.mock.calls.map(([key])=>key)).toEqual(['SUPABASE_URL','ARCA_HOMO_BACKEND_ENABLED'])
+ f.rpc.mockResolvedValue({data:null,error:null});expect((await (await f.handler(request(JSON.stringify(cmd)))).json()).resultado).toBeNull()
+})
+it.each([{actor_auth_id:crypto.randomUUID()},{binding:{}},{observacion_id:'bad'}])('HTTP getter observación rechaza datos extra/ID inválido: %j',async patch=>{
+ const f=fixture();expect((await f.handler(request(JSON.stringify({accion:'CONSULTAR_CONCILIACION',venta_id:crypto.randomUUID(),operacion_id:op,observacion_id:observation,...patch})))).status).toBe(400)
+ expect(f.getUser).not.toHaveBeenCalled();expect(f.rpc).not.toHaveBeenCalled()
+})
+it('HTTP getter no confunde error con ausencia ni expone datos privados',async()=>{
+ const f=fixture();f.rpc.mockResolvedValue({data:null,error:new Error('PRIVATE_OBSERVATION_DETAIL')})
+ const response=await f.handler(request(JSON.stringify({accion:'CONSULTAR_CONCILIACION',venta_id:crypto.randomUUID(),operacion_id:op,observacion_id:observation})))
+ expect(response.status).toBe(409);expect(await response.text()).not.toContain('PRIVATE_OBSERVATION_DETAIL');expect(f.fetcher).not.toHaveBeenCalled()
+})

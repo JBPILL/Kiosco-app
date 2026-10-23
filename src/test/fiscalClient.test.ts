@@ -379,3 +379,82 @@ it('versión desconocida o v2 sin clase explícita no ejecuta POST',async()=>{
   f.map.set(entry[0],entry[1])
  }
 })
+
+async function observationFixture(){
+ const f=fixture(),r=await review();r.estado='ENVIO_INCIERTO'
+ const flags={commit:true,loseWrite:false,loseReadAfterCommit:false};let stored:Record<string,unknown>|null=null
+ f.send.mockImplementation(async cmd=>{
+  if(cmd.accion==='CONCILIAR'){
+   if(flags.commit)stored={version:1,operacion_id:r.operacion_id,numero:r.solicitud.solicitud.numero,estado:'PENDIENTE_CONCILIACION',solicitud_sha256:r.solicitud.sha256,revision:1,emision_habilitada:false}
+   if(flags.loseWrite)throw new Error('SYNTHETIC_ACK_LOST')
+   return envelope(stored)
+  }
+  if(cmd.accion==='CONSULTAR_CONCILIACION'){
+   if(stored&&flags.loseReadAfterCommit)throw new Error('SYNTHETIC_READ_LOST')
+   return envelope(stored)
+  }
+  if(cmd.accion==='RESOLVER_VENTA')return envelope({venta_id:scope.saleId,operacion_id:r.operacion_id,estado:'ENVIO_INCIERTO',preparacion_sha256:'a'.repeat(64),emision_habilitada:false})
+  throw new Error('UNEXPECTED_OBSERVATION_COMMAND')
+ })
+ return {...f,r,flags,run:()=>f.client.reconcile(r)}
+}
+it('consulta guarda UUID/hash/número sin PII antes de POST y confirma sólo por GET',async()=>{
+ const f=await observationFixture(),impl=f.send.getMockImplementation()!
+ f.send.mockImplementation(async c=>{if(c.accion==='CONCILIAR')expect(f.client.pendingObservation()).toMatchObject({version:1,operationId:f.r.operacion_id,observationId:c.observacion_id,hash:f.r.solicitud.sha256,numero:1});return impl(c)})
+ expect((await f.run()).estado).toBe('PENDIENTE_CONCILIACION');expect(f.client.pendingObservation()).toBeNull()
+ expect(f.send.mock.calls.map(([c])=>c.accion)).toEqual(['CONSULTAR_CONCILIACION','CONCILIAR','CONSULTAR_CONCILIACION'])
+ expect([...f.map.values()].join('')).not.toMatch(/numeroDocumento|canonico|cae/)
+})
+it('ACK perdido y lectura fallida conservan registro; reabrir sólo recupera GET del mismo UUID',async()=>{
+ const f=await observationFixture();f.flags.loseWrite=true;f.flags.loseReadAfterCommit=true
+ await expect(f.run()).rejects.toThrow();const pending=f.client.pendingObservation()!
+ f.flags.loseReadAfterCommit=false;f.send.mockClear()
+ const next=createFiscalClient(scope,{storage:f.storage,send:f.send});await next.resolve()
+ expect(next.pendingObservation()).toBeNull();expect(f.send.mock.calls.some(([c])=>c.accion==='CONCILIAR')).toBe(false)
+ expect(f.send.mock.calls.find(([c])=>c.accion==='CONSULTAR_CONCILIACION')![0].observacion_id).toBe(pending.observationId)
+})
+it('consulta sin commit mantiene UUID y reintento explícito usa exactamente el mismo intento',async()=>{
+ const f=await observationFixture();f.flags.commit=false;await expect(f.run()).rejects.toThrow();const pending=f.client.pendingObservation()!
+ await f.client.resolve();expect(f.client.pendingObservation()).toEqual(pending)
+ expect(f.send.mock.calls.filter(([c])=>c.accion==='CONCILIAR')).toHaveLength(1)
+ f.flags.commit=true;await f.client.retryReconciliation()
+ const posts=f.send.mock.calls.filter(([c])=>c.accion==='CONCILIAR');expect(posts).toHaveLength(2);expect(posts[0]).toEqual(posts[1]);expect(f.client.pendingObservation()).toBeNull()
+})
+it('ACK positivo falso sin registro durable no borra observación',async()=>{
+ const f=await observationFixture();f.flags.commit=false;const original=f.send.getMockImplementation()!
+ f.send.mockImplementation(c=>c.accion==='CONCILIAR'?Promise.resolve(envelope({version:1,operacion_id:f.r.operacion_id,numero:1,estado:'AUTORIZADA',solicitud_sha256:f.r.solicitud.sha256,revision:2,cae:'11111111111111',vencimiento:'20261031',procesado_en:null,emision_habilitada:false})):original(c))
+ await expect(f.run()).rejects.toThrow();expect(f.client.pendingObservation()).not.toBeNull()
+})
+it('lectura inicial incierta no dispara POST y registro local queda intacto',async()=>{
+ const f=await observationFixture();f.send.mockRejectedValue(new Error('offline'))
+ await expect(f.run()).rejects.toThrow('offline');const before=f.client.pendingObservation()
+ await expect(f.client.retryReconciliation()).rejects.toThrow('offline');expect(f.client.pendingObservation()).toEqual(before)
+ expect(f.send.mock.calls.every(([c])=>c.accion==='CONSULTAR_CONCILIACION')).toBe(true)
+})
+it.each(['hash','numero','privado','operacion'])('getter de observación %s incoherente no retira registro',async mode=>{
+ const f=await observationFixture();f.flags.commit=false;await expect(f.run()).rejects.toThrow();const record=f.client.pendingObservation()!
+ const data:Record<string,unknown>={version:1,operacion_id:record.operationId,numero:record.numero,estado:'PENDIENTE_CONCILIACION',solicitud_sha256:record.hash,revision:1,emision_habilitada:false}
+ if(mode==='hash')data.solicitud_sha256='b'.repeat(64);if(mode==='numero')data.numero=2;if(mode==='privado')data.binding={key:'PRIVATE'};if(mode==='operacion')data.operacion_id=crypto.randomUUID()
+ f.send.mockResolvedValue(envelope(data));await expect(f.client.retryReconciliation()).rejects.toThrow();expect(f.client.pendingObservation()).toEqual(record)
+})
+it('observación incierta bloquea corrección, guardado, aprobación y cancelación',async()=>{
+ const f=await observationFixture();f.flags.commit=false;await expect(f.run()).rejects.toThrow();const record=f.client.pendingObservation(),count=f.send.mock.calls.length
+ await expect(f.client.save(input(),context)).rejects.toThrow();await expect(f.client.prepare(f.r.operacion_id)).rejects.toThrow();await expect(f.client.cancel(f.r.operacion_id)).rejects.toThrow()
+ await expect(f.client.replace(f.r,input(),context,'RECHAZO')).rejects.toThrow();await expect(f.client.approve(f.r,crypto.randomUUID())).rejects.toThrow()
+ expect(f.send.mock.calls.length).toBe(count);expect(f.client.pendingObservation()).toEqual(record)
+})
+it('error de almacenamiento antes de consulta no envía nada',async()=>{
+ const f=await observationFixture(),api=createFiscalClient(scope,{storage:{getItem:f.storage.getItem,setItem:()=>{throw new Error('quota')}},send:f.send})
+ await expect(api.reconcile(f.r)).rejects.toThrow('quota');expect(f.send).not.toHaveBeenCalled()
+})
+it('constancia autorizada por otra consulta cierra intento local obsoleto sin atribuirle ejecución',async()=>{
+ const f=await observationFixture();f.flags.commit=false;await expect(f.run()).rejects.toThrow();f.send.mockClear()
+ f.send.mockImplementation(async c=>envelope(c.accion==='RESOLVER_VENTA'?{venta_id:scope.saleId,operacion_id:f.r.operacion_id,estado:'AUTORIZADA',preparacion_sha256:'a'.repeat(64),emision_habilitada:false}:c.accion==='CONSTANCIA_COMPROBANTE'?{version:1,entorno:'HOMOLOGACION',estado:'AUTORIZADA',operacion_id:f.r.operacion_id,venta_id:scope.saleId,solicitud:f.r.solicitud,autorizacion:{cae:'11111111111111',vencimiento:'20261031',procesado_en:null}}:null))
+ expect((await f.client.resolve()).estado).toBe('AUTORIZADA');expect(f.client.pendingObservation()).toBeNull();expect(f.send.mock.calls.some(([c])=>c.accion==='CONCILIAR')).toBe(false)
+})
+it('ACK atrasado no elimina otra observación guardada',async()=>{
+ const f=await observationFixture();f.flags.commit=false;await expect(f.run()).rejects.toThrow();const record=f.client.pendingObservation()!,key=[...f.map.keys()].find(k=>k.endsWith(':reconciliation'))!
+ const newer={...record,observationId:crypto.randomUUID()}
+ f.send.mockImplementation(async()=>{f.map.set(key,JSON.stringify(newer));return envelope({version:1,operacion_id:record.operationId,numero:1,estado:'PENDIENTE_CONCILIACION',solicitud_sha256:record.hash,revision:1,emision_habilitada:false})})
+ await expect(f.client.retryReconciliation()).rejects.toThrow();expect(f.client.pendingObservation()).toEqual(newer)
+})

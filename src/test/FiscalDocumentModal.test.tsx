@@ -14,7 +14,7 @@ function fixture(){
  const review=vi.fn<FiscalClient['review']>().mockResolvedValue({operacion_id:operation,estado:'RESERVADA',revision:1,solicitud:{version:1,solicitud:wsfeSample,sha256:'a'.repeat(64)},aprobacion:null})
  const receipt=vi.fn<FiscalClient['receipt']>().mockRejectedValue(new Error('SYNTHETIC_UNAVAILABLE'))
  const diagnosis=vi.fn<FiscalClient['diagnosis']>().mockResolvedValue({version:1,entorno:'HOMOLOGACION',operacion_id:operation,venta_id:scope.saleId,solicitud_sha256:'a'.repeat(64),estado:'AUTORIZADA',recepcion:null,ultima_consulta:{estado:'AUTORIZACION_COINCIDENTE',codigo:null},puedeReenviar:false})
- const client:FiscalClient={rejectedCorrection:vi.fn(async()=>null),cancelReplacement:vi.fn(),pendingReplacement:vi.fn(()=>null),replace:vi.fn(),retryReplacement:vi.fn(),resolve,context,review,receipt,diagnosis,cancel:vi.fn(async()=>({operacion_id:operation,venta_id:scope.saleId,estado:'CANCELADA' as const,emision_habilitada:false as const})),prepare:vi.fn(async()=>review(operation)),pending:vi.fn(()=>null),save:vi.fn(async()=>saved),approvalId:vi.fn(()=>approval),approve:vi.fn<FiscalClient['approve']>(async()=>({id:approval,operacion_id:operation,solicitud_sha256:'a'.repeat(64),revision:1,aprobada:true,vence_en:new Date(Date.now()+600000).toISOString(),emision_habilitada:false}))}
+ const client:FiscalClient={pendingObservation:vi.fn(()=>null),reconcile:vi.fn(),retryReconciliation:vi.fn(),rejectedCorrection:vi.fn(async()=>null),cancelReplacement:vi.fn(),pendingReplacement:vi.fn(()=>null),replace:vi.fn(),retryReplacement:vi.fn(),resolve,context,review,receipt,diagnosis,cancel:vi.fn(async()=>({operacion_id:operation,venta_id:scope.saleId,estado:'CANCELADA' as const,emision_habilitada:false as const})),prepare:vi.fn(async()=>review(operation)),pending:vi.fn(()=>null),save:vi.fn(async()=>saved),approvalId:vi.fn(()=>approval),approve:vi.fn<FiscalClient['approve']>(async()=>({id:approval,operacion_id:operation,solicitud_sha256:'a'.repeat(64),revision:1,aprobada:true,vence_en:new Date(Date.now()+600000).toISOString(),emision_habilitada:false}))}
  return {client,resolve,context,review,diagnosis}
 }
 it('abre carga explícita desde una venta sin datos fiscales previos',async()=>{
@@ -98,7 +98,7 @@ it('muestra constancia de homologación recuperada sin controles de aprobar ni e
  expect(screen.getByText('11111111111111')).toBeTruthy();expect(screen.getByText('31/10/2026')).toBeTruthy()
  expect(screen.getByText(/sin validez fiscal/)).toBeTruthy();expect(screen.getByText('No informadas')).toBeTruthy()
  expect(f.client.receipt).toHaveBeenCalledExactlyOnceWith(operation);expect(f.review).not.toHaveBeenCalled()
- expect(screen.queryByRole('checkbox')).toBeNull();expect(screen.queryByRole('form')).toBeNull();expect(f.client.approve).not.toHaveBeenCalled()
+ expect(screen.queryByRole('checkbox',{name:'Revisé el receptor, las fechas, los importes y el detalle fiscal de este comprobante.'})).toBeNull();expect(screen.queryByRole('form')).toBeNull();expect(f.client.approve).not.toHaveBeenCalled()
 })
 it('constancia tardía no aparece al seleccionar otra venta',async()=>{
  const first=fixture(),second=fixture();first.resolve.mockResolvedValue({...saved,estado:'AUTORIZADA'})
@@ -120,7 +120,7 @@ it('muestra rechazo recibido y consulta no confirmada sin aprobar, reenviar ni p
  const f=fixture();uncertain(f)
  render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
  await screen.findByRole('region',{name:'Diagnóstico fiscal'});expect(screen.getByText(/Se recibió un rechazo/)).toBeTruthy();expect(screen.getByText('10017')).toBeTruthy()
- expect(screen.getByText('La consulta no confirmó la autorización.')).toBeTruthy();expect(screen.queryByRole('checkbox')).toBeNull();expect(screen.queryByRole('form')).toBeNull()
+ expect(screen.getByText('La consulta no confirmó la autorización.')).toBeTruthy();expect(screen.queryByRole('checkbox',{name:'Revisé el receptor, las fechas, los importes y el detalle fiscal de este comprobante.'})).toBeNull();expect(screen.queryByRole('form')).toBeNull()
  expect(f.client.approve).not.toHaveBeenCalled();expect(f.client.prepare).not.toHaveBeenCalled();expect(f.client.save).not.toHaveBeenCalled()
 })
 it('falta de recepción no se presenta como rechazo',async()=>{
@@ -138,12 +138,12 @@ it('fallo de diagnóstico no oculta constancia autorizada ni muestra error priva
 it('diagnóstico atrasado no revierte autorización a estado incierto',async()=>{
  const f=fixture();uncertain(f);f.resolve.mockResolvedValue({...saved,estado:'AUTORIZADA'})
  render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
- await screen.findByText(/La operación figura autorizada en el servidor/);expect(screen.queryByRole('checkbox')).toBeNull();expect(screen.queryByRole('region',{name:'Diagnóstico fiscal'})).toBeNull()
+ await screen.findByText(/La operación figura autorizada en el servidor/);expect(screen.queryByRole('checkbox',{name:'Revisé el receptor, las fechas, los importes y el detalle fiscal de este comprobante.'})).toBeNull();expect(screen.queryByRole('region',{name:'Diagnóstico fiscal'})).toBeNull()
 })
 it('hash de diagnóstico distinto no muestra controles de revisión',async()=>{
  const f=fixture();uncertain(f);f.diagnosis.mockResolvedValue({...await f.diagnosis(operation),solicitud_sha256:'b'.repeat(64)});f.diagnosis.mockClear()
  render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
- await screen.findByRole('alert');expect(screen.queryByRole('checkbox')).toBeNull()
+ await screen.findByRole('alert');expect(screen.queryByRole('checkbox',{name:'Revisé el receptor, las fechas, los importes y el detalle fiscal de este comprobante.'})).toBeNull()
 })
 it('diagnóstico tardío no aparece en otra venta',async()=>{
  const first=fixture(),second=fixture();uncertain(first)
@@ -159,18 +159,18 @@ it('aprobación recibida no se presenta como autorización conciliada',async()=>
  const f=fixture();uncertain(f);f.diagnosis.mockResolvedValue({...await f.diagnosis(operation),recepcion:{estado:'APROBACION_RECIBIDA',codigos:[],puedeReenviar:false}});f.diagnosis.mockClear()
  render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
  await screen.findByText('Se recibió una aprobación, pero aún falta confirmar la autorización mediante conciliación.')
- expect(screen.queryByRole('region',{name:'Constancia fiscal de homologación'})).toBeNull();expect(screen.queryByRole('checkbox')).toBeNull()
+ expect(screen.queryByRole('region',{name:'Constancia fiscal de homologación'})).toBeNull();expect(screen.queryByRole('checkbox',{name:'Revisé el receptor, las fechas, los importes y el detalle fiscal de este comprobante.'})).toBeNull()
 })
 it('autorización confirmada durante el diagnóstico recupera constancia sin abrir revisión',async()=>{
  const f=fixture();f.resolve.mockResolvedValue({...saved,estado:'ENVIO_INCIERTO'})
  vi.mocked(f.client.receipt).mockResolvedValue({version:1,entorno:'HOMOLOGACION',estado:'AUTORIZADA',operacion_id:operation,venta_id:scope.saleId,solicitud:{version:1,solicitud:wsfeSample,sha256:'a'.repeat(64)},autorizacion:{cae:'11111111111111',vencimiento:'20261031',procesado_en:null}})
  render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
- await screen.findByRole('region',{name:'Constancia fiscal de homologación'});expect(f.review).not.toHaveBeenCalled();expect(screen.queryByRole('checkbox')).toBeNull()
+ await screen.findByRole('region',{name:'Constancia fiscal de homologación'});expect(f.review).not.toHaveBeenCalled();expect(screen.queryByRole('checkbox',{name:'Revisé el receptor, las fechas, los importes y el detalle fiscal de este comprobante.'})).toBeNull()
 })
 it('revisión reservada obsoleta no habilita aprobación de un envío incierto',async()=>{
  const f=fixture();uncertain(f);f.review.mockResolvedValue({...await f.review(operation),estado:'RESERVADA'});f.review.mockClear()
  render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
- await screen.findByRole('alert');expect(screen.queryByRole('checkbox')).toBeNull();expect(f.client.approve).not.toHaveBeenCalled()
+ await screen.findByRole('alert');expect(screen.queryByRole('checkbox',{name:'Revisé el receptor, las fechas, los importes y el detalle fiscal de este comprobante.'})).toBeNull();expect(f.client.approve).not.toHaveBeenCalled()
 })
 
 it('cancelar exige confirmación explícita, conserva UUID y vuelve al formulario tras cierre confirmado',async()=>{
@@ -323,4 +323,59 @@ it('corrección R confirmada vuelve a la sucesora sin aprobación heredada ni en
  await screen.findByRole('button',{name:'Aprobar revisión'});expect(f.review).toHaveBeenLastCalledWith(next)
  expect(f.client.approve).not.toHaveBeenCalled();expect(f.client.prepare).not.toHaveBeenCalled();expect(f.client.save).not.toHaveBeenCalled()
  expect(screen.queryByRole('form')).toBeNull();expect(screen.queryByText('Corregir un comprobante rechazado')).toBeNull()
+})
+
+const consultLabel='Confirmo que quiero consultar ARCA en homologación, sin reenviar la factura ni volver a cobrar.'
+function pendingQuery(){return {version:1 as const,operationId:operation,observationId:'88888888-8888-4888-8888-888888888888',hash:'a'.repeat(64),numero:1}}
+it('consulta incierta requiere confirmación y no aprueba ni prepara otra factura',async()=>{
+ const f=fixture();uncertain(f);vi.mocked(f.client.reconcile).mockImplementation(async()=>{vi.mocked(f.client.pendingObservation).mockReturnValue(pendingQuery());throw new Error('PRIVATE_QUERY_DETAIL')})
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ const button=await screen.findByRole('button',{name:'Consultar en ARCA sin reenviar'});expect((button as HTMLButtonElement).disabled).toBe(true)
+ fireEvent.click(button);expect(f.client.reconcile).not.toHaveBeenCalled()
+ fireEvent.click(screen.getByLabelText(consultLabel));fireEvent.click(button)
+ const retry=await screen.findByRole('button',{name:'Recuperar consulta guardada'});expect((retry as HTMLButtonElement).disabled).toBe(true)
+ expect(f.client.reconcile).toHaveBeenCalledTimes(1);expect(f.client.approve).not.toHaveBeenCalled();expect(f.client.prepare).not.toHaveBeenCalled();expect(f.client.replace).not.toHaveBeenCalled()
+ expect(screen.queryByRole('button',{name:'Corregir datos del comprobante rechazado'})).toBeNull()
+ expect((await screen.findByRole('alert')).textContent).not.toContain('PRIVATE_QUERY_DETAIL')
+})
+it('consulta guardada al reabrir sólo ofrece recuperación confirmada y no carga cuerpo anterior',async()=>{
+ const f=fixture();uncertain(f);vi.mocked(f.client.pendingObservation).mockReturnValue(pendingQuery())
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ const button=await screen.findByRole('button',{name:'Recuperar consulta guardada'});expect((button as HTMLButtonElement).disabled).toBe(true)
+ expect(f.client.retryReconciliation).not.toHaveBeenCalled();expect(f.review).not.toHaveBeenCalled();expect(f.diagnosis).not.toHaveBeenCalled()
+ fireEvent.click(screen.getByLabelText(consultLabel));fireEvent.click(button)
+ await waitFor(()=>expect(f.client.retryReconciliation).toHaveBeenCalledTimes(1));expect(f.client.reconcile).not.toHaveBeenCalled()
+})
+it('falla de resolución conserva acceso a consulta local sin interpretar ausencia como cancelación',async()=>{
+ const f=fixture();f.resolve.mockRejectedValue(new Error('offline'));vi.mocked(f.client.pendingObservation).mockReturnValue(pendingQuery())
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ await screen.findByRole('button',{name:'Recuperar consulta guardada'});expect(f.client.retryReconciliation).not.toHaveBeenCalled();expect(f.client.cancel).not.toHaveBeenCalled()
+})
+it.each(['SIN_PREPARACION','RESERVADA','AUTORIZADA','NO_DISPONIBLE'] as const)('estado %s no ofrece consultar un envío nuevo',async estado=>{
+ const f=fixture();f.resolve.mockResolvedValue({...saved,estado});render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ await waitFor(()=>expect(screen.queryByText('Consultando el estado fiscal de la venta…')).toBeNull())
+ expect(screen.queryByRole('button',{name:'Consultar en ARCA sin reenviar'})).toBeNull();expect(f.client.reconcile).not.toHaveBeenCalled()
+})
+it('respuesta tardía de consulta no recarga otra venta seleccionada',async()=>{
+ const first=fixture(),second=fixture();uncertain(first);let finish!:(v:Awaited<ReturnType<FiscalClient['reconcile']>>)=>void
+ vi.mocked(first.client.reconcile).mockReturnValue(new Promise(done=>{finish=done}))
+ const view=render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={first.client} />)
+ fireEvent.click(await screen.findByLabelText(consultLabel));fireEvent.click(screen.getByRole('button',{name:'Consultar en ARCA sin reenviar'}))
+ view.rerender(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={{...scope,saleId:'66666666-6666-4666-8666-666666666666'}} client={second.client} />)
+ await screen.findByRole('form');await act(async()=>finish({version:1,operacion_id:operation,numero:1,estado:'PENDIENTE_CONCILIACION',solicitud_sha256:'a'.repeat(64),revision:1,emision_habilitada:false}))
+ expect(first.resolve).toHaveBeenCalledTimes(1);expect(screen.queryByRole('button',{name:'Recuperar consulta guardada'})).toBeNull()
+})
+
+it('consulta con ACK pendiente no degrada autorización recuperada ni muestra CAE del ACK',async()=>{
+ const f=fixture();uncertain(f)
+ vi.mocked(f.client.reconcile).mockImplementation(async()=>{
+  f.resolve.mockResolvedValue({...saved,estado:'AUTORIZADA'})
+  f.diagnosis.mockResolvedValue({version:1,entorno:'HOMOLOGACION',operacion_id:operation,venta_id:scope.saleId,solicitud_sha256:'a'.repeat(64),estado:'AUTORIZADA',recepcion:null,ultima_consulta:{estado:'AUTORIZACION_COINCIDENTE',codigo:null},puedeReenviar:false})
+  vi.mocked(f.client.receipt).mockResolvedValue({version:1,entorno:'HOMOLOGACION',estado:'AUTORIZADA',operacion_id:operation,venta_id:scope.saleId,solicitud:{version:1,solicitud:wsfeSample,sha256:'a'.repeat(64)},autorizacion:{cae:'11111111111111',vencimiento:'20261031',procesado_en:null}})
+  return {version:1,operacion_id:operation,numero:1,estado:'PENDIENTE_CONCILIACION',solicitud_sha256:'a'.repeat(64),revision:1,emision_habilitada:false}
+ })
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ fireEvent.click(await screen.findByLabelText(consultLabel));fireEvent.click(screen.getByRole('button',{name:'Consultar en ARCA sin reenviar'}))
+ await screen.findByRole('region',{name:'Constancia fiscal de homologación'});expect(f.client.receipt).toHaveBeenCalledExactlyOnceWith(operation)
+ expect(screen.queryByRole('button',{name:'Consultar en ARCA sin reenviar'})).toBeNull();expect(f.client.approve).not.toHaveBeenCalled();expect(f.client.prepare).not.toHaveBeenCalled()
 })
