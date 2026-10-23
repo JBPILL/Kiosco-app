@@ -298,3 +298,45 @@ it('HTTP ACK sin cancelación durable o con sesión inválida nunca declara cier
  f.rpc.mockClear();f.getUser.mockResolvedValue({data:{user:null},error:new Error('private')})
  expect((await f.handler(request(JSON.stringify({accion:'CANCELAR_PREPARACION_FISCAL',venta_id:sale,operacion_id:op})))).status).toBe(409);expect(f.rpc).not.toHaveBeenCalled()
 })
+
+async function replacementHttpFixture(){
+ const f=preparationFixture(),successor=crypto.randomUUID()
+ const c={version:1 as const,venta_id:f.sale,total:'123.45',cuit_emisor:wsfeSample.cuitEmisor,punto_venta:7,incluye_recepcion_envases:false,revision_parametros:1,condiciones:[{id:5,descripcion:'Ensayo',comprobantes:[11]}],alicuotas:[]}
+ const p=await prepareFiscalData(c,f.entrada),proposal={canonico:p.canonico,sha256:p.sha256}
+ const ack={operacion_id:op,sucesora_id:successor,venta_id:f.sale,anterior_sha256:'a'.repeat(64),preparacion_sha256:p.sha256,sucesora_sha256:'b'.repeat(64),numero:1,estado:'SUSTITUIDA',emision_habilitada:false}
+ const command={accion:'SUSTITUIR_PREPARACION_FISCAL',venta_id:f.sale,operacion_id:op,sucesora_id:successor,anterior_sha256:'a'.repeat(64),propuesta:proposal}
+ f.rpc.mockImplementation(async()=>({data:ack,error:null}))
+ return {...f,ack,command}
+}
+it('HTTP sustituye con lectura durable y un Auth, sin TA/ARCA/permiso automático',async()=>{
+ const f=await replacementHttpFixture();f.rpc.mockResolvedValueOnce({data:null,error:new Error('SYNTHETIC_ACK_LOST')})
+ const response=await f.handler(request(JSON.stringify(f.command)))
+ expect(response.status).toBe(200);expect((await response.json()).resultado).toEqual(f.ack)
+ expect(f.getUser).toHaveBeenCalledTimes(1);expect(f.rpc.mock.calls.map(([name])=>name)).toEqual(['sustituir_reserva_fiscal_homologacion','consultar_sustitucion_fiscal_homologacion'])
+ for(const [,args] of f.rpc.mock.calls)expect(args.p_actor_auth_id).toBe(f.actor)
+ expect(f.fetcher).not.toHaveBeenCalled();expect(f.read.mock.calls.some(([key])=>/CUSTODY|CREDENTIAL|TICKET|KEYRING/.test(key))).toBe(false)
+})
+it('HTTP consulta sustitución inexistente sin escribir',async()=>{
+ const f=await replacementHttpFixture();f.rpc.mockResolvedValue({data:null,error:null})
+ const response=await f.handler(request(JSON.stringify({accion:'SUSTITUCION_PREPARACION_FISCAL',venta_id:f.sale,operacion_id:op})))
+ expect(response.status).toBe(200);expect((await response.json()).resultado).toBeNull()
+ expect(f.rpc).toHaveBeenCalledExactlyOnceWith('consultar_sustitucion_fiscal_homologacion',{p_actor_auth_id:f.actor,p_venta_id:f.sale,p_operacion_id:op})
+})
+it.each(['extra','misma-identidad','hash','identidad','propuesta','demasiado-grande'])('HTTP rechaza DTO de sustitución %s antes de Auth',async mode=>{
+ const f=await replacementHttpFixture(),cmd:Record<string,unknown>={...f.command}
+ if(mode==='extra')cmd.binding={credencial:'PRIVATE'}
+ if(mode==='misma-identidad')cmd.sucesora_id=op
+ if(mode==='hash')cmd.anterior_sha256='INVALID'
+ if(mode==='identidad')cmd.operacion_id='INVALID'
+ if(mode==='propuesta')cmd.propuesta=[]
+ if(mode==='demasiado-grande')cmd.propuesta={canonico:'a'.repeat(65536),sha256:'a'.repeat(64)}
+ expect((await f.handler(request(JSON.stringify(cmd)))).status).toBe(400);expect(f.getUser).not.toHaveBeenCalled();expect(f.rpc).not.toHaveBeenCalled()
+})
+it('HTTP propuesta con duplicados internos o ACK sin registro devuelve error genérico sin filtrar texto privado',async()=>{
+ const f=await replacementHttpFixture();f.command.propuesta.canonico=f.command.propuesta.canonico.replace('"version":1','"version":1,"version":1')
+ const bytes=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(f.command.propuesta.canonico)))
+ f.command.propuesta.sha256=[...bytes].map(b=>b.toString(16).padStart(2,'0')).join('')
+ expect((await f.handler(request(JSON.stringify(f.command)))).status).toBe(409);expect(f.getUser).not.toHaveBeenCalled()
+ const g=await replacementHttpFixture();g.rpc.mockResolvedValueOnce({data:g.ack,error:null}).mockResolvedValueOnce({data:null,error:new Error('PRIVATE_TOKEN')})
+ const response=await g.handler(request(JSON.stringify(g.command)));expect(response.status).toBe(409);expect(await response.text()).not.toContain('PRIVATE_TOKEN')
+})

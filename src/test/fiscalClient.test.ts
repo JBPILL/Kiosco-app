@@ -165,3 +165,141 @@ it('fallo al retirar datos locales no habilita una identidad nueva hasta recuper
  const badStorage={getItem:f.storage.getItem,setItem:()=>{throw new Error('quota')}}
  await expect(createFiscalClient(scope,{storage:badStorage,send:f.send}).cancel(before.operationId)).rejects.toThrow();expect(f.client.pending()).toEqual(before)
 })
+
+async function replacementFixture(){
+ const f=fixture(),r=await review(),flags={commit:true,loseWrite:false,loseRead:false,wrongRead:false}
+ r.solicitud=await freezeFiscalRequest({...wsfeSample,puntoVenta:context.punto_venta})
+ const cancelled=new Set<string>()
+ let saved:Record<string,unknown>|null=null
+ f.send.mockImplementation(async cmd=>{
+  if(cmd.accion==='SUSTITUIR_PREPARACION_FISCAL'){
+   const proposal=cmd.propuesta as {sha256:string}
+   if(flags.commit)saved={operacion_id:r.operacion_id,sucesora_id:cmd.sucesora_id,venta_id:scope.saleId,anterior_sha256:r.solicitud.sha256,
+    preparacion_sha256:proposal.sha256,sucesora_sha256:'b'.repeat(64),numero:r.solicitud.solicitud.numero,estado:'SUSTITUIDA',emision_habilitada:false}
+   if(flags.loseWrite)throw new Error('SYNTHETIC_ACK_LOST')
+   return envelope(saved)
+  }
+  if(cmd.accion==='SUSTITUCION_PREPARACION_FISCAL'){
+   if(flags.loseRead)throw new Error('SYNTHETIC_READ_LOST')
+   return envelope(saved&&cmd.operacion_id===r.operacion_id?(flags.wrongRead?{...saved,preparacion_sha256:'c'.repeat(64)}:saved):null)
+  }
+  if(cmd.accion==='CANCELAR_PREPARACION_FISCAL'){
+   if(saved?.sucesora_id===cmd.operacion_id)throw new Error('BODY_RESERVED')
+   cancelled.add(String(cmd.operacion_id));return envelope(null)
+  }
+  if(cmd.accion==='CANCELACION_PREPARACION_FISCAL')return envelope(cancelled.has(String(cmd.operacion_id))?{operacion_id:cmd.operacion_id,venta_id:scope.saleId,estado:'CANCELADA',emision_habilitada:false}:null)
+  if(cmd.accion==='RESOLVER_VENTA')return envelope({venta_id:scope.saleId,operacion_id:saved?.sucesora_id??r.operacion_id,preparacion_sha256:'a'.repeat(64),estado:'RESERVADA',emision_habilitada:false})
+  throw new Error('UNEXPECTED_COMMAND')
+ })
+ return {...f,r,flags,replace:()=>f.client.replace(r,input(),context)}
+}
+it('sustitución guarda propuesta/UUID antes del POST y retira datos sólo después de lectura',async()=>{
+ const f=await replacementFixture(),impl=f.send.getMockImplementation()!
+ f.send.mockImplementation(async cmd=>{
+  if(cmd.accion==='SUSTITUIR_PREPARACION_FISCAL'){
+   const stored=f.client.pendingReplacement();expect(stored?.successorId).toBe(cmd.sucesora_id);expect(stored?.proposal).toEqual(cmd.propuesta)
+   expect(f.client.pending()).toBeNull()
+  }
+  return impl(cmd)
+ })
+ const ack=await f.replace();expect(f.client.pendingReplacement()).toBeNull();expect(f.client.pending()).toEqual({version:1,operationId:ack.sucesora_id,input:null})
+ expect([...f.map.values()].join('')).not.toContain('numeroDocumento')
+})
+it('respuesta de escritura perdida recupera cierre sin duplicar preparación',async()=>{
+ const f=await replacementFixture();f.flags.loseWrite=true
+ const ack=await f.replace();expect(ack.estado).toBe('SUSTITUIDA');expect(f.client.pendingReplacement()).toBeNull()
+ expect(f.send.mock.calls.filter(([cmd])=>cmd.accion==='SUSTITUIR_PREPARACION_FISCAL')).toHaveLength(1)
+})
+it('reinicio consulta sustitución confirmada y retira propuesta sin otro POST',async()=>{
+ const f=await replacementFixture();f.flags.loseRead=true;await expect(f.replace()).rejects.toThrow()
+ const stored=f.client.pendingReplacement();expect(stored).not.toBeNull();f.flags.loseRead=false
+ const api=createFiscalClient(scope,{storage:f.storage,send:f.send}),state=await api.resolve()
+ expect(state.operacion_id).toBe(stored?.successorId);expect(api.pendingReplacement()).toBeNull();expect(api.pending()?.input).toBeNull()
+ expect(f.send.mock.calls.filter(([cmd])=>cmd.accion==='SUSTITUIR_PREPARACION_FISCAL')).toHaveLength(1)
+})
+it('reintento de propuesta no confirmada conserva canónico y UUID tras reinicio',async()=>{
+ const f=await replacementFixture();f.flags.commit=false;await expect(f.replace()).rejects.toThrow()
+ const first=f.send.mock.calls[0][0],api=createFiscalClient(scope,{storage:f.storage,send:f.send});f.flags.commit=true
+ await api.retryReplacement()
+ const writes=f.send.mock.calls.filter(([cmd])=>cmd.accion==='SUSTITUIR_PREPARACION_FISCAL');expect(writes).toHaveLength(2);expect(writes[1][0]).toEqual(first)
+})
+it('otra propuesta o revisión no reemplaza un intento incierto',async()=>{
+ const f=await replacementFixture();f.flags.commit=false;await expect(f.replace()).rejects.toThrow()
+ const changed=input();changed.datos.fecha='20261023'
+ await expect(f.client.replace(f.r,changed,context)).rejects.toThrow();await expect(f.client.replace({...f.r,operacion_id:crypto.randomUUID()},input(),context)).rejects.toThrow()
+ expect(f.send.mock.calls.filter(([cmd])=>cmd.accion==='SUSTITUIR_PREPARACION_FISCAL')).toHaveLength(1)
+})
+it('dos instancias coordinadas crean una sola sucesora y la revisión anterior no se aprueba',async()=>{
+ const f=await replacementFixture(),other=createFiscalClient(scope,{storage:f.storage,send:f.send}),approval=f.client.approvalId(f.r)
+ const results=await Promise.allSettled([f.replace(),other.replace(f.r,input(),context)])
+ expect(results.filter(v=>v.status==='fulfilled')).toHaveLength(1);expect(f.send.mock.calls.filter(([cmd])=>cmd.accion==='SUSTITUIR_PREPARACION_FISCAL')).toHaveLength(1)
+ await expect(other.approve(f.r,approval)).rejects.toThrow();expect(f.send.mock.calls.some(([cmd])=>cmd.accion==='APROBAR_REVISION')).toBe(false)
+})
+it('propuesta incierta bloquea guardar, preparar, cancelar y aprobar el cuerpo previo',async()=>{
+ const f=await replacementFixture(),approval=f.client.approvalId(f.r);f.flags.commit=false;await expect(f.replace()).rejects.toThrow();f.send.mockClear()
+ await expect(f.client.save(input(),context)).rejects.toThrow();await expect(f.client.prepare(f.r.operacion_id)).rejects.toThrow()
+ await expect(f.client.cancel(f.r.operacion_id)).rejects.toThrow();await expect(f.client.approve(f.r,approval)).rejects.toThrow()
+ expect(f.send).not.toHaveBeenCalled()
+})
+it('sin almacenamiento confirmado no envía y datos inválidos no crean propuesta',async()=>{
+ const f=await replacementFixture();await expect(f.client.replace(f.r,{...input(),datos:{...input().datos,fecha:'INVALID'}},context)).rejects.toThrow()
+ expect(f.client.pendingReplacement()).toBeNull();f.storage.setItem=()=>{throw new Error('QUOTA')};await expect(f.replace()).rejects.toThrow();expect(f.send).not.toHaveBeenCalled()
+})
+it('lectura con hash ajeno no elimina la propuesta ni declara éxito',async()=>{
+ const f=await replacementFixture();f.flags.wrongRead=true;await expect(f.replace()).rejects.toThrow();expect(f.client.pendingReplacement()).not.toBeNull();expect(f.client.pending()).toBeNull()
+})
+it('fallo al retirar propuesta mantiene recuperación con la misma identidad',async()=>{
+ const f=await replacementFixture(),set=f.storage.setItem
+ f.storage.setItem=(key,value)=>{if(key.endsWith(':replacement')&&value==='null')throw new Error('QUOTA');set(key,value)}
+ await expect(f.replace()).rejects.toThrow();const next=f.client.pending()?.operationId;expect(next).toBe(f.client.pendingReplacement()?.successorId)
+ f.storage.setItem=set;await f.client.resolve();expect(f.client.pendingReplacement()).toBeNull();expect(f.client.pending()?.operationId).toBe(next)
+})
+it('propuesta y contexto se copian antes de esperar el lock',async()=>{
+ const f=await replacementFixture(),candidate=input(),ctx={...context},promise=f.client.replace(f.r,candidate,ctx)
+ candidate.datos.fecha='INVALID';ctx.total='1.00';await promise
+ const cmd=f.send.mock.calls[0][0],p=cmd.propuesta as {canonico:string};expect(JSON.parse(p.canonico).datos.importes.total).toBe('123.45')
+})
+
+it('descarta sólo UUID sucesor no creado y permite nueva propuesta sin liberar número',async()=>{
+ const f=await replacementFixture();f.flags.commit=false;await expect(f.replace()).rejects.toThrow()
+ const previous=f.client.pendingReplacement()!;expect(await f.client.cancelReplacement()).toBe('DESCARTADA');expect(f.client.pendingReplacement()).toBeNull()
+ const command=f.send.mock.calls.find(([cmd])=>cmd.accion==='CANCELAR_PREPARACION_FISCAL')![0]
+ expect(command.operacion_id).toBe(previous.successorId);expect(command.operacion_id).not.toBe(f.r.operacion_id)
+ f.flags.commit=true;const next=await f.replace();expect(next.sucesora_id).not.toBe(previous.successorId);expect(next.numero).toBe(previous.numero)
+})
+it('si sustitución ganó el descarte, recupera su cierre sin cancelar cuerpo/número',async()=>{
+ const f=await replacementFixture();f.flags.loseRead=true;await expect(f.replace()).rejects.toThrow();f.flags.loseRead=false
+ expect(await f.client.cancelReplacement()).toBe('RECUPERADA');expect(f.client.pendingReplacement()).toBeNull()
+ expect(f.send.mock.calls.some(([cmd])=>cmd.accion==='CANCELAR_PREPARACION_FISCAL')).toBe(false)
+})
+it('otra serie se rechaza localmente antes de crear pendiente o enviar',async()=>{
+ const f=await replacementFixture();await expect(f.client.replace(f.r,input(),{...context,punto_venta:8})).rejects.toThrow()
+ expect(f.client.pendingReplacement()).toBeNull();expect(f.send).not.toHaveBeenCalled()
+})
+it('respuesta tardía de sustitución no borra una propuesta/identidad nueva del almacenamiento',async()=>{
+ const f=await replacementFixture();f.flags.loseRead=true;await expect(f.replace()).rejects.toThrow();f.flags.loseRead=false
+ const old=f.client.pendingReplacement()!,third=crypto.randomUUID(),newer={...old,operationId:third,successorId:crypto.randomUUID()},impl=f.send.getMockImplementation()!
+ f.send.mockImplementation(async cmd=>{
+  const answer=await impl(cmd)
+  if(cmd.accion==='SUSTITUCION_PREPARACION_FISCAL'){
+   const correctionKey=[...f.map.keys()].find(key=>key.endsWith(':replacement'))!
+   f.map.set(correctionKey,JSON.stringify(newer));f.map.set(correctionKey.slice(0,-':replacement'.length),JSON.stringify({version:1,operationId:third,input:null}))
+  }
+  return answer
+ })
+ await expect(f.client.retryReplacement()).rejects.toThrow();expect(f.client.pendingReplacement()).toEqual(newer);expect(f.client.pending()?.operationId).toBe(third)
+})
+it('otra terminal ganó: conserva propuesta ajena al ACK y permite descartar sólo UUID local',async()=>{
+ const f=await replacementFixture();f.flags.commit=false;await expect(f.replace()).rejects.toThrow();const local=f.client.pendingReplacement()!,winner=crypto.randomUUID(),impl=f.send.getMockImplementation()!
+ const winning={operacion_id:f.r.operacion_id,sucesora_id:winner,venta_id:scope.saleId,anterior_sha256:local.previousHash,preparacion_sha256:'d'.repeat(64),sucesora_sha256:'e'.repeat(64),numero:local.numero,estado:'SUSTITUIDA',emision_habilitada:false}
+ f.send.mockImplementation(async cmd=>{
+  if(cmd.accion==='RESOLVER_VENTA')return envelope({venta_id:scope.saleId,operacion_id:winner,preparacion_sha256:'d'.repeat(64),estado:'RESERVADA',emision_habilitada:false})
+  if(cmd.accion==='SUSTITUCION_PREPARACION_FISCAL'&&cmd.operacion_id===f.r.operacion_id)return envelope(winning)
+  return impl(cmd)
+ })
+ expect((await f.client.resolve()).operacion_id).toBe(winner);expect(f.client.pendingReplacement()).toEqual(local)
+ expect(await f.client.cancelReplacement()).toBe('DESCARTADA');expect(f.client.pendingReplacement()).toBeNull()
+ const cancel=f.send.mock.calls.find(([cmd])=>cmd.accion==='CANCELAR_PREPARACION_FISCAL')![0]
+ expect(cancel.operacion_id).toBe(local.successorId);expect(cancel.operacion_id).not.toBe(winner)
+ expect((await f.client.resolve()).operacion_id).toBe(winner)
+})

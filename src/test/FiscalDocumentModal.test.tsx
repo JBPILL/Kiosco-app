@@ -14,7 +14,7 @@ function fixture(){
  const review=vi.fn<FiscalClient['review']>().mockResolvedValue({operacion_id:operation,estado:'RESERVADA',revision:1,solicitud:{version:1,solicitud:wsfeSample,sha256:'a'.repeat(64)},aprobacion:null})
  const receipt=vi.fn<FiscalClient['receipt']>().mockRejectedValue(new Error('SYNTHETIC_UNAVAILABLE'))
  const diagnosis=vi.fn<FiscalClient['diagnosis']>().mockResolvedValue({version:1,entorno:'HOMOLOGACION',operacion_id:operation,venta_id:scope.saleId,solicitud_sha256:'a'.repeat(64),estado:'AUTORIZADA',recepcion:null,ultima_consulta:{estado:'AUTORIZACION_COINCIDENTE',codigo:null},puedeReenviar:false})
- const client:FiscalClient={resolve,context,review,receipt,diagnosis,cancel:vi.fn(async()=>({operacion_id:operation,venta_id:scope.saleId,estado:'CANCELADA' as const,emision_habilitada:false as const})),prepare:vi.fn(async()=>review(operation)),pending:vi.fn(()=>null),save:vi.fn(async()=>saved),approvalId:vi.fn(()=>approval),approve:vi.fn<FiscalClient['approve']>(async()=>({id:approval,operacion_id:operation,solicitud_sha256:'a'.repeat(64),revision:1,aprobada:true,vence_en:new Date(Date.now()+600000).toISOString(),emision_habilitada:false}))}
+ const client:FiscalClient={cancelReplacement:vi.fn(),pendingReplacement:vi.fn(()=>null),replace:vi.fn(),retryReplacement:vi.fn(),resolve,context,review,receipt,diagnosis,cancel:vi.fn(async()=>({operacion_id:operation,venta_id:scope.saleId,estado:'CANCELADA' as const,emision_habilitada:false as const})),prepare:vi.fn(async()=>review(operation)),pending:vi.fn(()=>null),save:vi.fn(async()=>saved),approvalId:vi.fn(()=>approval),approve:vi.fn<FiscalClient['approve']>(async()=>({id:approval,operacion_id:operation,solicitud_sha256:'a'.repeat(64),revision:1,aprobada:true,vence_en:new Date(Date.now()+600000).toISOString(),emision_habilitada:false}))}
  return {client,resolve,context,review,diagnosis}
 }
 it('abre carga explícita desde una venta sin datos fiscales previos',async()=>{
@@ -207,4 +207,76 @@ it('respuesta tardía de cancelación no cambia otra venta',async()=>{
  view.rerender(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={{...scope,saleId:'66666666-6666-4666-8666-666666666666'}} client={second.client} />)
  await screen.findByRole('form');await act(async()=>finish({operacion_id:operation,venta_id:scope.saleId,estado:'CANCELADA',emision_habilitada:false}))
  expect(first.resolve).toHaveBeenCalledTimes(1);expect(screen.queryByRole('button',{name:'Cancelar preparación sin número'})).toBeNull()
+})
+
+
+
+function fillCorrection(){
+ const change=(label:string,value:string)=>fireEvent.change(screen.getByLabelText(label),{target:{value}})
+ change('Condición fiscal del emisor','MONOTRIBUTO');change('Tipo de comprobante','11');change('Concepto','1');change('Fecha del comprobante','23/10/2026')
+ change('Documento del receptor','99');change('Número de documento (cero si corresponde)','0');change('Condición IVA del receptor','5');change('Moneda / cotización','PES');change('Neto','123,45')
+ for(const label of ['IVA total','No gravado','Exento','Otros tributos total'])change(label,'0')
+}
+it('corrección exige confirmación, formulario sin defaults y nueva revisión sin aprobar la anterior',async()=>{
+ const f=fixture(),next='77777777-7777-4777-8777-777777777777';f.resolve.mockResolvedValue({...saved,estado:'RESERVADA'})
+ vi.mocked(f.client.replace).mockImplementation(async()=>{
+  f.resolve.mockResolvedValue({...saved,estado:'RESERVADA',operacion_id:next});f.review.mockResolvedValue({operacion_id:next,estado:'RESERVADA',revision:1,solicitud:{version:1,solicitud:wsfeSample,sha256:'b'.repeat(64)},aprobacion:null})
+  return {operacion_id:operation,sucesora_id:next,venta_id:scope.saleId,anterior_sha256:'a'.repeat(64),preparacion_sha256:'c'.repeat(64),sucesora_sha256:'b'.repeat(64),numero:1,estado:'SUSTITUIDA',emision_habilitada:false}
+ })
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ fireEvent.click(await screen.findByRole('button',{name:'Corregir datos conservando el número'}));await screen.findByRole('form')
+ expect(screen.queryByRole('button',{name:'Aprobar revisión'})).toBeNull()
+ expect((screen.getByLabelText('Condición fiscal del emisor') as HTMLSelectElement).value).toBe('')
+ fillCorrection();fireEvent.submit(screen.getByRole('form'));expect(f.client.replace).not.toHaveBeenCalled()
+ fireEvent.click(screen.getByLabelText('Confirmo que quiero sustituir esta preparación conservando su número.'))
+ fireEvent.submit(screen.getByRole('form'))
+ await waitFor(()=>expect(f.review).toHaveBeenLastCalledWith(next))
+ expect(f.client.replace).toHaveBeenCalledTimes(1);expect(f.client.save).not.toHaveBeenCalled();expect(f.client.approve).not.toHaveBeenCalled();expect(f.client.prepare).not.toHaveBeenCalled()
+ await screen.findByRole('button',{name:'Aprobar revisión'});expect(screen.queryByRole('form')).toBeNull()
+})
+function pendingCorrection(){return {version:1 as const,operationId:operation,successorId:'77777777-7777-4777-8777-777777777777',previousHash:'a'.repeat(64),numero:1,proposal:{canonico:'SYNTHETIC_PENDING_VALIDATED_BY_CLIENT',sha256:'c'.repeat(64)}}}
+it('pendiente al reabrir oculta aprobación y permite sólo reintentar o descartar la misma propuesta',async()=>{
+ const f=fixture();f.resolve.mockResolvedValue({...saved,estado:'RESERVADA'});vi.mocked(f.client.pendingReplacement).mockReturnValue(pendingCorrection())
+ vi.mocked(f.client.retryReplacement).mockImplementation(async()=>{throw new Error('PRIVATE_DETAIL')})
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ const retry=await screen.findByRole('button',{name:'Reintentar corrección guardada'});expect(f.review).not.toHaveBeenCalled();expect(f.context).not.toHaveBeenCalled();expect(screen.queryByRole('form')).toBeNull()
+ expect(screen.queryByRole('button',{name:'Aprobar revisión'})).toBeNull()
+ fireEvent.click(retry);await waitFor(()=>expect(f.client.retryReplacement).toHaveBeenCalledTimes(1))
+ expect((await screen.findByRole('alert')).textContent).not.toContain('PRIVATE_DETAIL');expect(screen.getByRole('button',{name:'Reintentar corrección guardada'})).toBeTruthy()
+})
+it('descarte de propuesta requiere confirmación y conserva revisión del número original',async()=>{
+ const f=fixture();f.resolve.mockResolvedValue({...saved,estado:'RESERVADA'});vi.mocked(f.client.pendingReplacement).mockReturnValue(pendingCorrection())
+ vi.mocked(f.client.cancelReplacement).mockImplementation(async()=>{vi.mocked(f.client.pendingReplacement).mockReturnValue(null);return 'DESCARTADA'})
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ const discard=await screen.findByRole('button',{name:'Descartar propuesta no confirmada'});expect((discard as HTMLButtonElement).disabled).toBe(true)
+ fireEvent.click(screen.getByLabelText('Quiero descartar sólo la propuesta no confirmada.'));fireEvent.click(discard)
+ await screen.findByRole('button',{name:'Aprobar revisión'});expect(f.client.cancelReplacement).toHaveBeenCalledTimes(1);expect(f.client.cancel).not.toHaveBeenCalled();expect(f.client.save).not.toHaveBeenCalled()
+})
+it('contexto de corrección tardío no abre formulario en otra venta',async()=>{
+ const first=fixture(),second=fixture();first.resolve.mockResolvedValue({...saved,estado:'RESERVADA'})
+ let done!:(value:Awaited<ReturnType<FiscalClient['context']>>)=>void;first.context.mockReturnValue(new Promise(resolve=>{done=resolve}))
+ second.resolve.mockResolvedValue({...empty,estado:'REGISTRO_FISCAL_HEREDADO'})
+ const view=render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={first.client} />)
+ fireEvent.click(await screen.findByRole('button',{name:'Corregir datos conservando el número'}));await waitFor(()=>expect(first.context).toHaveBeenCalledTimes(1))
+ view.rerender(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={{...scope,saleId:'66666666-6666-4666-8666-666666666666'}} client={second.client} />)
+ await screen.findByText(/Existe un registro fiscal anterior/)
+ await act(async()=>done({version:1,venta_id:scope.saleId,total:'123.45',cuit_emisor:wsfeSample.cuitEmisor,punto_venta:7,incluye_recepcion_envases:false,revision_parametros:1,condiciones:[],alicuotas:[]}))
+ expect(screen.queryByRole('form')).toBeNull();expect(first.client.replace).not.toHaveBeenCalled()
+})
+it('reintento de corrección tardío no reemplaza la pantalla de otra venta',async()=>{
+ const first=fixture(),second=fixture();first.resolve.mockResolvedValue({...saved,estado:'RESERVADA'});vi.mocked(first.client.pendingReplacement).mockReturnValue(pendingCorrection())
+ let done!:(value:Awaited<ReturnType<FiscalClient['retryReplacement']>>)=>void;vi.mocked(first.client.retryReplacement).mockReturnValue(new Promise(resolve=>{done=resolve}))
+ second.resolve.mockResolvedValue({...empty,estado:'REGISTRO_FISCAL_HEREDADO'})
+ const view=render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={first.client} />)
+ fireEvent.click(await screen.findByRole('button',{name:'Reintentar corrección guardada'}));await waitFor(()=>expect(first.client.retryReplacement).toHaveBeenCalledTimes(1))
+ view.rerender(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={{...scope,saleId:'66666666-6666-4666-8666-666666666666'}} client={second.client} />)
+ await screen.findByText(/Existe un registro fiscal anterior/)
+ await act(async()=>done({operacion_id:operation,sucesora_id:pendingCorrection().successorId,venta_id:scope.saleId,anterior_sha256:'a'.repeat(64),preparacion_sha256:'c'.repeat(64),sucesora_sha256:'b'.repeat(64),numero:1,estado:'SUSTITUIDA',emision_habilitada:false}))
+ expect(first.resolve).toHaveBeenCalledTimes(1);expect(screen.queryByRole('form')).toBeNull();expect(screen.queryByRole('button',{name:'Aprobar revisión'})).toBeNull()
+})
+it('error de resolución conserva acceso a recuperar/descartar una propuesta local',async()=>{
+ const f=fixture();f.resolve.mockRejectedValue(new Error('PRIVATE_NETWORK'));vi.mocked(f.client.pendingReplacement).mockReturnValue(pendingCorrection())
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ expect(await screen.findByRole('button',{name:'Reintentar corrección guardada'})).toBeTruthy();expect(screen.queryByRole('button',{name:'Aprobar revisión'})).toBeNull()
+ expect((await screen.findByRole('alert')).textContent).not.toContain('PRIVATE_NETWORK');expect(f.context).not.toHaveBeenCalled();expect(f.review).not.toHaveBeenCalled()
 })

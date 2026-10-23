@@ -442,8 +442,8 @@ try {
     await start(a);await savePreparation(a,f);await persistPrepared(a,f);await a.query('COMMIT')
     const oldHash=(await observer.query('SELECT solicitud_sha256 FROM fiscal_solicitudes_homologacion WHERE operacion_id=$1',[f.operation])).rows[0].solicitud_sha256
     const data=JSON.parse(f.canonical);data.datos.fecha='20261023'
-    const canonical=JSON.stringify(data),successor=randomUUID(),hash=createHash('sha256').update(canonical).digest('hex')
-    const replace=async(client)=>(await client.query('SELECT sustituir_reserva_fiscal_homologacion($1,$2,$3,$4,$5,$6,$7) ack',[f.auth,f.sale,f.operation,successor,oldHash,canonical,hash])).rows[0].ack
+    const canonical=JSON.stringify(data),successor=randomUUID()
+    const replace=async(client,candidate=successor,proposal=canonical)=>(await client.query('SELECT sustituir_reserva_fiscal_homologacion($1,$2,$3,$4,$5,$6,$7) ack',[f.auth,f.sale,f.operation,candidate,oldHash,proposal,createHash('sha256').update(proposal).digest('hex')])).rows[0].ack
     const permission=randomUUID()
     await observer.query(`INSERT INTO fiscal_permisos_emision_homologacion(operacion_id,autorizacion_id,solicitud_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,vence_en)
       SELECT $1,$2,$3,credencial_id,certificado_sha256,revision,true,clock_timestamp()+interval '30 minutes' FROM fiscal_emisores_homologacion WHERE kiosco_id=$4`,[f.operation,permission,oldHash,f.kid])
@@ -476,6 +476,26 @@ try {
   assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_operaciones_homologacion WHERE id=$1',[replacementRollback.successor])).rows[0].n,0)
   cases.push('rollback_sustitucion_restituye_reserva_y_no_deja_sucesora')
 
+  const discardWins=await replacementFixture(115)
+  await start(a);await cancelPreparation(a,{...discardWins,operation:discardWins.successor})
+  await start(b);const discardedReplacement=capture(discardWins.replace(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await discardedReplacement).error?.code,'55000');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT estado FROM fiscal_operaciones_homologacion WHERE id=$1',[discardWins.operation])).rows[0].estado,'PREPARADA')
+  assert.equal((await observer.query('SELECT operacion_id FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[discardWins.operation])).rows[0].operacion_id,discardWins.operation)
+  cases.push('descarte_sucesora_gana_sustitucion_tardia_conserva_reserva_original')
+  const replacementBeforeDiscard=await replacementFixture(116)
+  await start(a);await replacementBeforeDiscard.replace(a)
+  await start(b);const lateDiscard=capture(cancelPreparation(b,{...replacementBeforeDiscard,operation:replacementBeforeDiscard.successor}));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await lateDiscard).error?.code,'55000');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_cancelaciones_preparacion_homologacion WHERE operacion_id=$1',[replacementBeforeDiscard.successor])).rows[0].n,0)
+  cases.push('sustitucion_gana_descarte_no_cancela_cuerpo_ni_numero_sucesor')
+  const differentReplacement=await replacementFixture(117),competingId=randomUUID()
+  const competingData=JSON.parse(differentReplacement.canonical);competingData.datos.fecha='20261024'
+  await start(a);await differentReplacement.replace(a)
+  await start(b);const competingReplacement=capture(differentReplacement.replace(b,competingId,JSON.stringify(competingData)));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await competingReplacement).error?.code,'40001');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_operaciones_homologacion WHERE id=$1',[competingId])).rows[0].n,0)
+  cases.push('dos_terminales_propuestas_distintas_una_sustitucion_sin_cuerpo_parcial')
   const reviewedPreparation=await preparationFixture(96)
   await start(a);await savePreparation(a,reviewedPreparation)
   const preparedBody=JSON.stringify({...JSON.parse(reviewedPreparation.canonical).datos,numero:1}),preparedHash=createHash('sha256').update(preparedBody).digest('hex')

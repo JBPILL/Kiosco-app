@@ -29,6 +29,37 @@ END $$;
 DROP TRIGGER IF EXISTS fiscal_sustitucion_inmutable ON public.fiscal_sustituciones_homologacion;
 CREATE TRIGGER fiscal_sustitucion_inmutable BEFORE UPDATE OR DELETE ON public.fiscal_sustituciones_homologacion
  FOR EACH ROW EXECUTE FUNCTION public.fiscal_revision_inmutable();
+-- Mismo canónico compacto/ordenado que fiscalReconciliation.ts. JSONB::text
+-- añade espacios y NO produce el hash que verifica la revisión del navegador.
+CREATE OR REPLACE FUNCTION public.fiscal_json_canonico_homologacion(p_valor jsonb,p_profundidad integer DEFAULT 0)
+RETURNS text LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+DECLARE resultado text;
+BEGIN
+ IF p_profundidad IS NULL OR p_profundidad<0 OR p_profundidad>12 OR p_valor IS NULL THEN
+  RAISE EXCEPTION 'Canónico fiscal inválido.' USING ERRCODE='22023'; END IF;
+ CASE jsonb_typeof(p_valor)
+ WHEN 'object' THEN
+  SELECT '{'||coalesce(string_agg(to_jsonb(e.key)::text||':'||public.fiscal_json_canonico_homologacion(e.value,p_profundidad+1),',' ORDER BY e.key COLLATE "C"),'')||'}'
+   INTO resultado FROM jsonb_each(p_valor) e;
+ WHEN 'array' THEN
+  SELECT '['||coalesce(string_agg(public.fiscal_json_canonico_homologacion(e.value,p_profundidad+1),',' ORDER BY e.ordinality),'')||']'
+   INTO resultado FROM jsonb_array_elements(p_valor) WITH ORDINALITY e;
+ WHEN 'number' THEN
+  IF p_valor::text !~ '^(0|[1-9][0-9]*)$' THEN RAISE EXCEPTION 'Número canónico no normalizado.' USING ERRCODE='22023'; END IF;
+  resultado:=p_valor::text;
+ ELSE resultado:=p_valor::text;
+ END CASE;
+ RETURN resultado;
+END $$;
+REVOKE ALL ON FUNCTION public.fiscal_json_canonico_homologacion(jsonb,integer) FROM PUBLIC,anon,authenticated,service_role;
+-- No reescribir cuerpos históricos de una revisión previa incompatible.
+DO $$ BEGIN
+ IF EXISTS(SELECT 1 FROM public.fiscal_sustituciones_homologacion x
+  JOIN public.fiscal_solicitudes_homologacion s ON s.operacion_id=x.sucesora_id
+  WHERE s.cuerpo_canonico IS DISTINCT FROM public.fiscal_json_canonico_homologacion(s.cuerpo)) THEN
+  RAISE EXCEPTION 'Hay sustituciones de una revisión canónica anterior; requieren revisión explícita antes de instalar.' USING ERRCODE='55000';
+ END IF;
+END $$;
 CREATE OR REPLACE FUNCTION public.fiscal_operacion_conservar_cancelacion() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 DECLARE cancelacion public.fiscal_cancelaciones_preparacion_homologacion%ROWTYPE;
@@ -142,7 +173,7 @@ BEGIN
  IF cuerpo->>'cuitEmisor' IS DISTINCT FROM reserva.cuit_emisor OR (cuerpo->>'puntoVenta')::integer IS DISTINCT FROM reserva.punto_venta
   OR (cuerpo->>'tipoComprobante')::integer IS DISTINCT FROM reserva.tipo_comprobante THEN
   RAISE EXCEPTION 'La sustitución conserva la serie y el número.' USING ERRCODE='22023'; END IF;
- canonico:=cuerpo::text;sha:=encode(sha256(convert_to(canonico,'UTF8')),'hex');
+ canonico:=public.fiscal_json_canonico_homologacion(cuerpo);sha:=encode(sha256(convert_to(canonico,'UTF8')),'hex');
  INSERT INTO public.fiscal_sustituciones_homologacion(operacion_id,sucesora_id,venta_id,actor_auth_id,anterior_sha256,preparacion_sha256,sucesora_sha256,reserva_original)
   VALUES(p_operacion_id,p_sucesora_id,venta.id,p_actor_auth_id,p_anterior_sha,p_sha,sha,to_jsonb(reserva));
  UPDATE public.fiscal_operaciones_homologacion SET estado='SUSTITUIDA' WHERE id=p_operacion_id AND estado='PREPARADA';

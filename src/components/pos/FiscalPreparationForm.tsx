@@ -4,6 +4,8 @@ import type { FiscalIssuerCondition, FiscalPreparationContext, FiscalPreparation
 import { prepareFiscalData } from '../../../supabase/functions/_shared/fiscalPreparation'
 
 interface Props {
+  disabled?: boolean
+  submitLabel?: string
   context: FiscalPreparationContext
   onPrepare: (input: FiscalPreparationInput) => Promise<void>
 }
@@ -28,10 +30,10 @@ function decimal(value: string, precision = 2): string {
 }
 /** Contexto obtenido del servidor. Ningún dato del afipStore heredado se usa aquí.
  * La validación definitiva y la conservación idempotente corresponden al padre/servidor. */
-export function FiscalPreparationForm({ context, onPrepare }: Props) {
-  return <PreparationBody key={`${context.venta_id}:${context.revision_parametros}:${context.cuit_emisor}:${context.punto_venta}:${context.total}`} context={context} onPrepare={onPrepare} />
+export function FiscalPreparationForm({ context, onPrepare, disabled, submitLabel }: Props) {
+  return <PreparationBody key={`${context.venta_id}:${context.revision_parametros}:${context.cuit_emisor}:${context.punto_venta}:${context.total}`} context={context} onPrepare={onPrepare} disabled={disabled} submitLabel={submitLabel} />
 }
-function PreparationBody({ context, onPrepare }: Props) {
+function PreparationBody({ context, onPrepare, disabled, submitLabel }: Props) {
   const [issuer, setIssuer] = useState('')
   const [type, setType] = useState('')
   const [concept, setConcept] = useState('')
@@ -55,7 +57,7 @@ function PreparationBody({ context, onPrepare }: Props) {
   const services = concept === '2' || concept === '3'
   async function submit(event: React.FormEvent) {
     event.preventDefault()
-    if (inFlight.current || context.incluye_recepcion_envases) return
+    if (disabled || inFlight.current || context.incluye_recepcion_envases) return
     inFlight.current = true
     setError('')
     setBusy(true)
@@ -95,7 +97,7 @@ function PreparationBody({ context, onPrepare }: Props) {
     <p>Completá los datos fiscales de esta venta. Guardar la preparación no emite una factura ni obtiene un CAE.</p>
     <dl className="grid grid-cols-2 gap-3 rounded-lg border p-3"><div><dt>CUIT del emisor</dt><dd className="font-bold">{context.cuit_emisor}</dd></div><div><dt>Punto de venta</dt><dd className="font-bold">{context.punto_venta}</dd></div><div><dt>Total de la venta</dt><dd className="font-bold">$ {context.total.replace('.', ',')}</dd></div></dl>
     {context.incluye_recepcion_envases && <p role="alert">Esta venta recibió envases descontados del ticket. Falta definir con el contador su tratamiento fiscal.</p>}
-    <fieldset disabled={busy || context.incluye_recepcion_envases} className="space-y-4">
+    <fieldset disabled={disabled || busy || context.incluye_recepcion_envases} className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {field('Condición fiscal del emisor', issuer, value => { setIssuer(value); setType(''); setCondition('') }, [['MONOTRIBUTO', 'Monotributo'], ['RESPONSABLE_INSCRIPTO', 'Responsable inscripto'], ['EXENTO', 'Exento']])}
         {field('Tipo de comprobante', type, value => { setType(value); setCondition('') }, issuer === 'RESPONSABLE_INSCRIPTO' ? [['1', 'Factura A'], ['6', 'Factura B']] : issuer ? [['11', 'Factura C']] : [])}
@@ -116,7 +118,7 @@ function PreparationBody({ context, onPrepare }: Props) {
         <Button type="button" variant="secondary" onClick={() => setVat(rows => rows.filter(row => row.key !== line.key))}>Quitar línea IVA {index + 1}</Button>
       </div>)}<Button type="button" variant="secondary" disabled={vat.length >= 100 || type === '11' || !type} onClick={() => setVat(rows => [...rows, { key: nextKey.current++, id: '', base: '', importe: '' }])}>Agregar alícuota IVA</Button></section>
       <details><summary>Otros tributos</summary><div className="space-y-2">{tax.map((line, index) => <div key={line.key} className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-lg border p-3">{(['id', 'descripcion', 'base', 'alicuota', 'importe'] as const).map(name => <label key={name}>{({ id: 'Código ARCA', descripcion: 'Descripción', base: 'Base', alicuota: 'Alícuota', importe: 'Importe' })[name]} tributo {index + 1}<input className={inputStyle} required value={line[name]} onChange={event => setTax(rows => rows.map(row => row.key === line.key ? { ...row, [name]: event.target.value } : row))} /></label>)}<Button type="button" variant="secondary" onClick={() => setTax(rows => rows.filter(row => row.key !== line.key))}>Quitar tributo {index + 1}</Button></div>)}<Button type="button" variant="secondary" disabled={tax.length >= 100} onClick={() => setTax(rows => [...rows, { key: nextKey.current++, id: '', descripcion: '', base: '', alicuota: '', importe: '' }])}>Agregar tributo</Button></div></details>
-      <Button type="submit" fullWidth loading={busy}>Guardar preparación y revisar</Button>
+      <Button type="submit" fullWidth loading={busy}>{submitLabel ?? 'Guardar preparación y revisar'}</Button>
     </fieldset>
     {error && <p role="alert">{error}</p>}
   </form>

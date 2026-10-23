@@ -65,3 +65,35 @@ it('mutar scope original no permite adoptar otra cuenta al esperar un lock',asyn
  mutable.authId=replacement;mocks.session.mockResolvedValue({data:{session:{user:{id:replacement},access_token:'SYNTHETIC_BROWSER_SESSION'}},error:null})
  await expect(api.resolve()).rejects.toThrow('FISCAL_SESION_CAMBIO');expect(mocks.invoke).not.toHaveBeenCalled();expect(localStorage.length).toBe(0)
 })
+
+import { freezeFiscalRequest } from '../../supabase/functions/_shared/fiscalReconciliation'
+import { wsfeSample } from './fixtures/fiscalWsfe'
+async function browserCorrection(){
+ const {version:_v,entorno:_e,cuitEmisor:_c,puntoVenta:_p,numero:_n,...data}=wsfeSample
+ const {total:_t,...importes}=data.importes
+ return {review:{operacion_id:scope.saleId,estado:'RESERVADA' as const,revision:1,solicitud:await freezeFiscalRequest(wsfeSample),aprobacion:null},
+  input:{condicionEmisor:'MONOTRIBUTO' as const,datos:{...data,importes}},
+  context:{version:1 as const,venta_id:scope.saleId,total:'123.45',cuit_emisor:wsfeSample.cuitEmisor,punto_venta:2,incluye_recepcion_envases:false,revision_parametros:1,condiciones:[{id:5,descripcion:'Ensayo',comprobantes:[11]}],alicuotas:[]}}
+}
+it('sustitución navegador usa Web Lock, token fijado y retiro real de datos tras lectura',async()=>{
+ const f=await browserCorrection();let ack:Record<string,unknown>|null=null
+ mocks.invoke.mockImplementation(async(_name,args)=>{
+  const cmd=args.body;expect(args.headers.Authorization).toBe('Bearer SYNTHETIC_BROWSER_SESSION')
+  if(cmd.accion==='SUSTITUIR_PREPARACION_FISCAL'){
+   expect(localStorage.getItem(`kioskopos:fiscal:v1:${scope.authId}:${scope.kioskId}:${scope.saleId}:replacement`)).not.toBeNull()
+   ack={operacion_id:cmd.operacion_id,sucesora_id:cmd.sucesora_id,venta_id:scope.saleId,anterior_sha256:cmd.anterior_sha256,preparacion_sha256:cmd.propuesta.sha256,sucesora_sha256:'b'.repeat(64),numero:1,estado:'SUSTITUIDA',emision_habilitada:false}
+  }
+  return {data:{version:1,entorno:'HOMOLOGACION',emision_habilitada:false,resultado:ack},error:null}
+ })
+ const client=createFiscalBrowserClient(scope),result=await client.replace(f.review,f.input,f.context)
+ expect(mocks.lock).toHaveBeenCalledTimes(1);expect(mocks.invoke.mock.calls.map(([,args])=>args.body.accion)).toEqual(['SUSTITUIR_PREPARACION_FISCAL','SUSTITUCION_PREPARACION_FISCAL'])
+ expect(client.pendingReplacement()).toBeNull();expect(client.pending()?.operationId).toBe(result.sucesora_id);expect([...Array(localStorage.length)].map((_,i)=>localStorage.getItem(localStorage.key(i)!)).join('')).not.toContain('numeroDocumento')
+})
+it('sustitución sin Web Locks o con flag revocado esperando no persiste ni envía',async()=>{
+ const f=await browserCorrection(),client=createFiscalBrowserClient(scope)
+ Object.defineProperty(navigator,'locks',{configurable:true,value:undefined})
+ await expect(client.replace(f.review,f.input,f.context)).rejects.toThrow('FISCAL_COORDINACION_NO_DISPONIBLE');expect(localStorage.length).toBe(0)
+ Object.defineProperty(navigator,'locks',{configurable:true,value:{request:mocks.lock}})
+ mocks.lock.mockImplementation(async(_name,_options,task)=>{vi.stubEnv('VITE_KIOSKO_ARCA_REVISION_HOMO','false');return task()})
+ await expect(client.replace(f.review,f.input,f.context)).rejects.toThrow('FISCAL_NO_HABILITADO');expect(localStorage.length).toBe(0);expect(mocks.session).not.toHaveBeenCalled();expect(mocks.invoke).not.toHaveBeenCalled()
+})

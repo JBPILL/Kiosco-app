@@ -1,3 +1,7 @@
+import { createFiscalClient } from '../lib/fiscalClient'
+import { createFiscalHttpHandler } from '../../supabase/functions/_shared/fiscalHttp'
+import { replaceFiscalPreparation } from '../../supabase/functions/_shared/fiscalReplacementService'
+import { validatePublicFiscalOwnerReview } from '../../supabase/functions/_shared/fiscalOwnerReview'
 // @vitest-environment node
 // PostgreSQL embebido con parámetros sintéticos: no acredita ARCA ni JWT hospedados.
 import { readdirSync, readFileSync } from 'node:fs'
@@ -66,6 +70,8 @@ const hash=(text:string)=>createHash('sha256').update(text).digest('hex')
 function workerFixture(){
  const flags:Record<string,string>={SUPABASE_URL:'https://acoyfwwmhaeruciyedri.supabase.co',ARCA_HOMO_BACKEND_ENABLED:'true',ARCA_HOMO_PREPARATION_ENABLED:'true'}
  const mapping:Record<string,string[]>={autorizar_consulta_fiscal_homologacion:['p_actor_auth_id','p_operacion_id'],cargar_fuente_preparacion_homologacion:['p_actor_auth_id','p_operacion_id'],cargar_revision_fiscal_homologacion:['p_operacion_id','p_actor_auth_id'],persistir_preparacion_fiscal_homologacion:['p_actor_auth_id','p_operacion_id','p_canonico','p_sha','p_ultimo_autorizado','p_consultado_en']}
+ mapping.cargar_datos_preparacion_homologacion=['p_actor_auth_id','p_venta_id'];mapping.resolver_preparacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id']
+ mapping.sustituir_reserva_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_sucesora_id','p_anterior_sha','p_canonico','p_sha'];mapping.consultar_sustitucion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
  mapping.cancelar_preparacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.consultar_cancelacion_preparacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
  const rpc=vi.fn<FiscalAuthClient['rpc']>(async(name,args)=>{
   const keys=mapping[name];if(!keys)throw new Error('UNEXPECTED_PRIVATE_RPC')
@@ -80,7 +86,7 @@ function workerFixture(){
   return new Response('<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><FECompUltimoAutorizadoResponse xmlns="http://ar.gov.afip.dif.FEV1/"><FECompUltimoAutorizadoResult><PtoVta>7</PtoVta><CbteTipo>11</CbteTipo><CbteNro>0</CbteNro></FECompUltimoAutorizadoResult></FECompUltimoAutorizadoResponse></s:Body></s:Envelope>',{headers:{'content-type':'text/xml'}})
  })
  const deps={admin:{auth:{getUser},rpc},readSecret:(key:string)=>flags[key],cache:createFiscalTicketCache(),load,fetcher}
- return {flags,rpc,getUser,load,fetcher,run:()=>prepareFiscalVoucher(deps,'SYNTHETIC_JWT',op)}
+ return {admin:{auth:{getUser},rpc},flags,rpc,getUser,load,fetcher,run:()=>prepareFiscalVoucher(deps,'SYNTHETIC_JWT',op)}
 }
 it('devuelve sólo identidad/total/parámetros públicos desde servidor',async()=>{
  const c=await context();expect(c).toEqual({version:1,venta_id:sale,total:'123.45',cuit_emisor:wsfeSample.cuitEmisor,punto_venta:7,incluye_recepcion_envases:false,revision_parametros:1,
@@ -579,4 +585,86 @@ it('reinstalar SQL 018 conserva sustituciones existentes y ACK sin reactivar his
  const sql=readFileSync('supabase/pilot-fiscal/018_fiscal_reserved_replacement.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
  await db.exec(sql);await db.exec('RELEASE SAVEPOINT migration; SET ROLE service_role')
  expect((await f.read()).rows[0].data).toEqual(ack);expect((await f.replace()).rows[0].data).toEqual(ack)
+})
+
+it('servicio+SQL recuperan sustitución tras ACK perdido y la revisión sucesora verifica hash canónico real',async()=>{
+ const f=await reservedReplacementFixture(),worker=workerFixture(),impl=worker.rpc.getMockImplementation()!
+ worker.rpc.mockImplementation(async(name,args)=>{
+  const result=await impl(name,args)
+  return name==='sustituir_reserva_fiscal_homologacion'?{data:null,error:new Error('SYNTHETIC_ACK_LOST')}:result
+ })
+ const ack=await replaceFiscalPreparation(worker.admin,'SYNTHETIC_JWT',sale,op,f.successor,f.frozen.sha256,{canonico:f.next,sha256:f.nextHash})
+ const raw=(await db.query<{data:unknown}>('SELECT cargar_revision_fiscal_homologacion($1,$2) data',[f.successor,actor])).rows[0].data
+ const review=await validatePublicFiscalOwnerReview(raw,f.successor)
+ expect(review.solicitud.sha256).toBe(ack.sucesora_sha256);expect(review.solicitud.solicitud.numero).toBe(1);expect(review.solicitud.solicitud.fecha).toBe('20261023')
+ expect(worker.getUser).toHaveBeenCalledTimes(1);expect(worker.load).not.toHaveBeenCalled();expect(worker.fetcher).not.toHaveBeenCalled()
+})
+it('canónico SQL coincide con revisión para descripciones Unicode, comillas y saltos escapados',async()=>{
+ const f=await reservedReplacementFixture(),data=JSON.parse(f.next)
+ data.datos.tributos=[{id:1,descripcion:'Tributo “ensayo” ñ 漢字 " / \\ salto\nfinal',base:'0.00',alicuota:'0.0000',importe:'0.00'}]
+ const canon=JSON.stringify(data),sha=hash(canon);await f.replace(f.successor,canon,sha)
+ const raw=(await db.query<{data:unknown}>('SELECT cargar_revision_fiscal_homologacion($1,$2) data',[f.successor,actor])).rows[0].data
+ const review=await validatePublicFiscalOwnerReview(raw,f.successor)
+ expect(review.solicitud.solicitud.tributos[0].descripcion).toBe(data.datos.tributos[0].descripcion)
+})
+
+it('cliente→HTTP→SQL recupera respuesta perdida y abre revisión real de sucesora sin TA/ARCA',async()=>{
+ await reservedReplacementFixture();const worker=workerFixture(),fetcher=vi.fn<typeof fetch>()
+ const handler=createFiscalHttpHandler({readSecret:key=>worker.flags[key],createAdmin:()=>worker.admin,fetcher})
+ const map=new Map<string,string>(),storage={getItem:(key:string)=>map.get(key)??null,setItem:(key:string,value:string)=>{map.set(key,value)},removeItem:(key:string)=>{map.delete(key)}}
+ const send=vi.fn(async(command:Record<string,unknown>)=>{
+  const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{
+   method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify(command)}))
+  expect(response.status).toBe(200);const result=await response.json()
+  if(command.accion==='SUSTITUIR_PREPARACION_FISCAL')throw new Error('SYNTHETIC_RESPONSE_LOST_AFTER_COMMIT')
+  return result
+ })
+ const api=createFiscalClient({authId:actor,kioskId:kid,saleId:sale},{storage,send})
+ const reviewed=await api.review(op),ctx=await api.context(),next=input();next.datos.fecha='20261023'
+ const ack=await api.replace(reviewed,next,ctx),review=await api.review(ack.sucesora_id)
+ expect(review.operacion_id).not.toBe(op);expect(review.solicitud.sha256).toBe(ack.sucesora_sha256);expect(review.aprobacion).toBeNull()
+ expect(review.solicitud.solicitud.numero).toBe(reviewed.solicitud.solicitud.numero);expect(review.solicitud.solicitud.fecha).toBe('20261023')
+ expect(api.pendingReplacement()).toBeNull();expect([...map.values()].join('')).not.toContain('numeroDocumento')
+ expect((await api.resolve()).operacion_id).toBe(ack.sucesora_id)
+ expect(send.mock.calls.filter(([cmd])=>cmd.accion==='SUSTITUIR_PREPARACION_FISCAL')).toHaveLength(1)
+ expect(fetcher).not.toHaveBeenCalled();expect(worker.load).not.toHaveBeenCalled();expect(worker.fetcher).not.toHaveBeenCalled()
+ await db.exec('RESET ROLE');expect((await db.query<{total:string}>('SELECT total FROM ventas WHERE id=$1',[sale])).rows[0].total).toBe('123.45')
+})
+it('instalación rechaza cuerpos sucesores de revisión canónica anterior sin reescribir historia',async()=>{
+ const f=await reservedReplacementFixture();await f.replace()
+ await db.exec('RESET ROLE; SET CONSTRAINTS ALL IMMEDIATE')
+ await db.exec('ALTER TABLE fiscal_sustituciones_homologacion DISABLE TRIGGER fiscal_sustitucion_inmutable')
+ await db.query("UPDATE fiscal_solicitudes_homologacion SET cuerpo_canonico=cuerpo::text,solicitud_sha256=encode(sha256(convert_to(cuerpo::text,'UTF8')),'hex') WHERE operacion_id=$1",[f.successor])
+ await db.query('UPDATE fiscal_reservas_homologacion r SET solicitud_sha256=s.solicitud_sha256 FROM fiscal_solicitudes_homologacion s WHERE s.operacion_id=r.operacion_id AND r.operacion_id=$1',[f.successor])
+ await db.query('UPDATE fiscal_sustituciones_homologacion x SET sucesora_sha256=s.solicitud_sha256 FROM fiscal_solicitudes_homologacion s WHERE s.operacion_id=x.sucesora_id AND x.operacion_id=$1',[op])
+ await db.exec('ALTER TABLE fiscal_sustituciones_homologacion ENABLE TRIGGER fiscal_sustitucion_inmutable')
+ const before=(await db.query<{canon:string}>('SELECT cuerpo_canonico canon FROM fiscal_solicitudes_homologacion WHERE operacion_id=$1',[f.successor])).rows[0].canon
+ const sql=readFileSync('supabase/pilot-fiscal/018_fiscal_reserved_replacement.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
+ await denied(()=>db.exec(sql))
+ expect((await db.query<{canon:string}>('SELECT cuerpo_canonico canon FROM fiscal_solicitudes_homologacion WHERE operacion_id=$1',[f.successor])).rows[0].canon).toBe(before)
+})
+it('dos almacenes cliente→HTTP→SQL: perdedora descarta sólo su propuesta y recupera revisión ganadora',async()=>{
+ await reservedReplacementFixture();const worker=workerFixture(),fetcher=vi.fn<typeof fetch>()
+ const handler=createFiscalHttpHandler({readSecret:key=>worker.flags[key],createAdmin:()=>worker.admin,fetcher})
+ const commands:Record<string,unknown>[]=[]
+ const send=async(command:Record<string,unknown>)=>{
+  commands.push(command)
+  const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{
+   method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify(command)}))
+  if(!response.ok)throw new Error('SYNTHETIC_HTTP_CONFLICT')
+  return response.json()
+ }
+ const api=()=>{const map=new Map<string,string>();return createFiscalClient({authId:actor,kioskId:kid,saleId:sale},{storage:{getItem:key=>map.get(key)??null,setItem:(key,value)=>{map.set(key,value)},removeItem:key=>{map.delete(key)}},send})}
+ const first=api(),second=api(),review=await first.review(op),ctx=await first.context(),a=input(),b=input();a.datos.fecha='20261023';b.datos.fecha='20261024'
+ const won=await first.replace(review,a,ctx)
+ await expect(second.replace(review,b,ctx)).rejects.toThrow();const local=second.pendingReplacement()!
+ expect((await second.resolve()).operacion_id).toBe(won.sucesora_id);expect(second.pendingReplacement()).not.toBeNull()
+ expect(await second.cancelReplacement()).toBe('DESCARTADA');expect(second.pendingReplacement()).toBeNull()
+ const state=await second.resolve(),current=await second.review(state.operacion_id!)
+ expect(current.operacion_id).toBe(won.sucesora_id);expect(current.solicitud.sha256).toBe(won.sucesora_sha256);expect(current.solicitud.solicitud.fecha).toBe('20261023')
+ expect(commands.filter(cmd=>cmd.accion==='CANCELAR_PREPARACION_FISCAL').map(cmd=>cmd.operacion_id)).toEqual([local.successorId])
+ expect(fetcher).not.toHaveBeenCalled();expect(worker.load).not.toHaveBeenCalled()
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_reservas_homologacion')).rows[0].n).toBe(1)
+ expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_operaciones_homologacion WHERE id=$1',[local.successorId])).rows[0].n).toBe(0)
+ expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_cancelaciones_preparacion_homologacion WHERE operacion_id=$1',[local.successorId])).rows[0].n).toBe(1)
 })
