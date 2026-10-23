@@ -33,6 +33,7 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
   const [preparing, setPreparing] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [discardConfirmed, setDiscardConfirmed] = useState(false)
+  const [correctionKind, setCorrectionKind] = useState<'RESERVA' | 'RECHAZO'>('RESERVA')
   const [correcting, setCorrecting] = useState(false)
   const [correctionConfirmed, setCorrectionConfirmed] = useState(false)
   const [replacing, setReplacing] = useState(false)
@@ -59,7 +60,7 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
       stateRecovered = true
       setResolution(state)
       const correction = api.pendingReplacement()
-      setHasPendingReplacement(!!correction)
+      setHasPendingReplacement(!!correction); setCorrectionKind(correction?.version === 2 ? 'RECHAZO' : 'RESERVA')
       if (correction) return
       let loadedDiagnosis: Readonly<FiscalDiagnosis> | null = null
       if (['ENVIO_INCIERTO', 'AUTORIZADA'].includes(state.estado) && state.operacion_id) {
@@ -98,7 +99,7 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
       }
     } catch {
       if (generation.current === current) {
-        try { setHasPendingReplacement(!!api.pendingReplacement()) } catch { /* El error permanece; no se descartan registros ilegibles. */ }
+        try { const correction = api.pendingReplacement(); setHasPendingReplacement(!!correction); setCorrectionKind(correction?.version === 2 ? 'RECHAZO' : 'RESERVA') } catch { /* El error permanece; no se descartan registros ilegibles. */ }
         setError(stateRecovered
           ? 'Se recuperó el estado fiscal, pero no se pudieron cargar sus datos. Volvé a consultar; no prepares otro comprobante.'
           : 'No se pudo confirmar el estado fiscal. Conservá la venta y volvé a consultar; no prepares otro comprobante.')
@@ -150,24 +151,32 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
       if (generation.current === current) setError('No se confirmó la cancelación. Conservá el intento original y volvé a consultar su estado antes de cargar otros datos.')
     } finally { cancellationInFlight.current = false; if (alive.current) setCancelling(false) }
   }
+  const canCorrectRejected = resolution?.estado === 'ENVIO_INCIERTO' && review?.estado === 'ENVIO_INCIERTO'
+    && diagnosis?.estado === 'ENVIO_INCIERTO' && diagnosis.solicitud_sha256 === review.solicitud.sha256
+    && diagnosis.recepcion?.estado === 'RECHAZO_RECIBIDO'
+    && !['DATOS_DISTINTOS', 'CONSULTA_DISTINTA'].includes(diagnosis.ultima_consulta?.codigo ?? '')
   async function beginCorrection() {
-    if (!client || !review || review.estado !== 'RESERVADA' || resolution?.estado !== 'RESERVADA' || replacementInFlight.current) return
+    if (!client || !review || !(review.estado === 'RESERVADA' && resolution?.estado === 'RESERVADA' || canCorrectRejected) || replacementInFlight.current) return
     replacementInFlight.current = true; setReplacing(true); setError('')
     const current = generation.current
     try {
       const values = await client.context()
-      if (generation.current === current) { setContext(values); setCorrecting(true); setCorrectionConfirmed(false) }
+      if (generation.current === current) { setContext(values); setCorrecting(true); setCorrectionKind(canCorrectRejected ? 'RECHAZO' : 'RESERVA'); setCorrectionConfirmed(false) }
     } catch {
       if (generation.current === current) setError('No se pudieron cargar los datos para corregir. Conservá la preparación y consultá su estado.')
     } finally { replacementInFlight.current = false; if (alive.current) setReplacing(false) }
   }
   async function replacePreparation(input?: FiscalPreparationInput) {
     if (!client || replacementInFlight.current || saveInFlight.current || preparationInFlight.current || cancellationInFlight.current) return
+    if (!input && correctionKind === 'RECHAZO' && !correctionConfirmed) return
     if (input && (!review || !context || !correcting || !correctionConfirmed)) return
     replacementInFlight.current = true; setReplacing(true); setError('')
     const current = generation.current
     try {
-      if (input && review && context) await client.replace(review, input, context)
+      if (input && review && context) {
+        if (correctionKind === 'RECHAZO') { if (!canCorrectRejected) return; await client.replace(review, input, context, 'RECHAZO') }
+        else await client.replace(review, input, context)
+      }
       else await client.retryReplacement()
       if (generation.current === current) await load(client)
     } catch {
@@ -201,15 +210,16 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
       {!busy && diagnosis && <FiscalDiagnosisPanel diagnosis={diagnosis} />}
       {!busy && hasPendingReplacement && <section className="rounded-lg border p-4 space-y-3" aria-label="Corrección fiscal pendiente">
         <p role="status">Este equipo conserva una corrección pendiente. Se recuperará la misma propuesta y el mismo número; no apruebes el cuerpo anterior.</p>
-        <Button loading={replacing} onClick={() => { void replacePreparation().catch(() => {}) }}>Reintentar corrección guardada</Button>
+        {correctionKind === 'RECHAZO' && <label className="flex items-start gap-2"><input type="checkbox" checked={correctionConfirmed} disabled={replacing} onChange={event => setCorrectionConfirmed(event.target.checked)} />Autorizo consultar el estado en ARCA de homologación para recuperar esta corrección, sin emitir.</label>}
+        <Button disabled={correctionKind === 'RECHAZO' && !correctionConfirmed} loading={replacing} onClick={() => { void replacePreparation().catch(() => {}) }}>Reintentar corrección guardada</Button>
         <p>Si la propuesta todavía no se guardó en el servidor, podés descartarla para corregir sus datos. Si ya se confirmó, se recuperará esa preparación. El número reservado se conserva en ambos casos.</p>
         <label className="flex items-start gap-2"><input type="checkbox" checked={discardConfirmed} disabled={replacing} onChange={event => setDiscardConfirmed(event.target.checked)} />Quiero descartar sólo la propuesta no confirmada.</label>
         <Button variant="secondary" disabled={!discardConfirmed} loading={replacing} onClick={() => { void discardReplacement() }}>Descartar propuesta no confirmada</Button>
       </section>}
       {!busy && correcting && <section className="rounded-lg border p-4 space-y-3" aria-label="Confirmar corrección fiscal">
-        <h3 className="font-bold">Corregir datos antes del envío</h3>
+        <h3 className="font-bold">{correctionKind === 'RECHAZO' ? 'Corregir un comprobante rechazado' : 'Corregir datos antes del envío'}</h3>
         <p>Se conserva el número, la venta y el historial. La nueva preparación necesita otra revisión y no hereda permiso de emisión. Completá nuevamente los datos; el tipo de comprobante y la serie deben mantenerse.</p>
-        <label className="flex items-start gap-2"><input type="checkbox" checked={correctionConfirmed} disabled={replacing} onChange={event => setCorrectionConfirmed(event.target.checked)} />Confirmo que quiero sustituir esta preparación conservando su número.</label>
+        <label className="flex items-start gap-2"><input type="checkbox" checked={correctionConfirmed} disabled={replacing} onChange={event => setCorrectionConfirmed(event.target.checked)} />{correctionKind === 'RECHAZO' ? 'Confirmo la corrección del rechazo y las consultas de recuperación en ARCA de homologación, sin emitir.' : 'Confirmo que quiero sustituir esta preparación conservando su número.'}</label>
         <Button variant="secondary" disabled={replacing} onClick={() => { setCorrecting(false); setContext(null); setCorrectionConfirmed(false) }}>Volver a la revisión anterior</Button>
       </section>}
       {!busy && context && !hasPendingReplacement && <FiscalPreparationForm context={context} onPrepare={correcting ? replacePreparation : save} disabled={correcting && (!correctionConfirmed || replacing)} submitLabel={correcting ? 'Guardar corrección y revisar de nuevo' : undefined} />}
@@ -222,6 +232,7 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
       {!busy && resolution?.estado === 'AUTORIZADA' && !receipt && <p role="status">La operación figura autorizada en el servidor. Falta recuperar su constancia fiscal; no se iniciará otra preparación.</p>}
       {!busy && receipt && <FiscalReceiptPanel receipt={receipt} />}
       {!busy && review && client && !correcting && !hasPendingReplacement && !replacing && <FiscalOwnerReviewPanel review={review} approvalId={approvalId} onApprove={command => client.approve(review, command.id)} />}
+      {!busy && client && canCorrectRejected && !correcting && !hasPendingReplacement && <Button variant="secondary" loading={replacing} onClick={() => { void beginCorrection() }}>Corregir datos del comprobante rechazado</Button>}
       {!busy && client && review?.estado === 'RESERVADA' && resolution?.estado === 'RESERVADA' && !correcting && !hasPendingReplacement && <Button variant="secondary" loading={replacing} onClick={() => { void beginCorrection() }}>Corregir datos conservando el número</Button>}
       {!busy && client && <Button variant="secondary" disabled={saving || preparing || cancelling || replacing || correcting} onClick={() => { void load(client) }}>Volver a consultar estado</Button>}
     </div>

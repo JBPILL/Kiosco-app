@@ -1,3 +1,4 @@
+import type { FiscalRejectedCorrection } from '../../supabase/functions/_shared/fiscalRejectedCorrectionContract'
 import { validateFiscalRejectedCorrection } from '../../supabase/functions/_shared/fiscalRejectedCorrectionContract'
 import { fiscalSha, validateFiscalReplacement, validateFiscalReplacementProposal } from '../../supabase/functions/_shared/fiscalReplacement'
 import type { FiscalReplacement, FiscalReplacementProposal } from '../../supabase/functions/_shared/fiscalReplacement'
@@ -26,7 +27,7 @@ function localExclusive<T>(storage: object, name: string, task: () => Promise<T>
   void settled.then(() => { if (scopeQueues.get(name) === settled) scopeQueues.delete(name) })
   return result
 }
-interface PendingReplacement { version: 1; operationId: string; successorId: string; previousHash: string; numero: number; proposal: FiscalReplacementProposal }
+interface PendingReplacement { version: 1 | 2; kind?: 'RECHAZO'; operationId: string; successorId: string; previousHash: string; numero: number; proposal: FiscalReplacementProposal }
 interface Pending { version: 1; operationId: string; input: FiscalPreparationInput | null }
 const uuid = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 const fail = (): never => { throw new Error('FISCAL_CLIENTE_NO_CONFIRMADO') }
@@ -72,9 +73,11 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
     const raw = deps.storage.getItem(replacementKey)
     if (raw === null || raw === 'null') return null
     if (raw.length > 65536) return fail()
-    const v = object(JSON.parse(raw), ['version', 'operationId', 'successorId', 'previousHash', 'numero', 'proposal'])
+    const parsed: unknown = JSON.parse(raw)
+    const rejected = !!parsed && typeof parsed === 'object' && 'version' in parsed && parsed.version === 2
+    const v = object(parsed, rejected ? ['version', 'kind', 'operationId', 'successorId', 'previousHash', 'numero', 'proposal'] : ['version', 'operationId', 'successorId', 'previousHash', 'numero', 'proposal'])
     const proposal = object(v.proposal, ['canonico', 'sha256'])
-    if (v.version !== 1 || !uuid(v.operationId) || !uuid(v.successorId) || v.operationId === v.successorId || !fiscalSha(v.previousHash)
+    if ((rejected ? v.version !== 2 || v.kind !== 'RECHAZO' : v.version !== 1) || !uuid(v.operationId) || !uuid(v.successorId) || v.operationId === v.successorId || !fiscalSha(v.previousHash)
       || !Number.isSafeInteger(v.numero) || Number(v.numero) < 1 || Number(v.numero) > 99999999 || typeof proposal.canonico !== 'string' || !fiscalSha(proposal.sha256)) return fail()
     return v as unknown as PendingReplacement
   }
@@ -82,15 +85,20 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
     const value = await invoke({ accion: 'SUSTITUCION_PREPARACION_FISCAL', venta_id: sale, operacion_id: operationId })
     return value === null ? null : validateFiscalReplacement(value, sale, operationId)
   }
+  const rejectedCorrection = async (operationId: string) => {
+    const value = await invoke({ accion: 'CORRECCION_RECHAZO_FISCAL', venta_id: sale, operacion_id: operationId })
+    return value === null ? null : validateFiscalRejectedCorrection(value, sale, operationId)
+  }
+  const correctionClosure = (record: PendingReplacement) => record.version === 2 ? rejectedCorrection(record.operationId) : replacement(record.operationId)
   const retireReplacement = (record: PendingReplacement) => {
     const stored = pendingReplacement()
     if (!stored || JSON.stringify(stored) !== JSON.stringify(record)) return fail()
     erase(replacementKey)
   }
-  const matchesReplacement = (record: PendingReplacement, result: Readonly<FiscalReplacement>) =>
-    result.sucesora_id === record.successorId && result.anterior_sha256 === record.previousHash
+  const matchesReplacement = (record: PendingReplacement, result: Readonly<FiscalReplacement | FiscalRejectedCorrection>) =>
+    (record.version === 2 ? result.estado === 'RECHAZO_CORREGIDO' : result.estado === 'SUSTITUIDA') && result.sucesora_id === record.successorId && result.anterior_sha256 === record.previousHash
     && result.preparacion_sha256 === record.proposal.sha256 && result.numero === record.numero
-  const finishReplacement = (record: PendingReplacement, result: Readonly<FiscalReplacement>) => {
+  const finishReplacement = (record: PendingReplacement, result: Readonly<FiscalReplacement | FiscalRejectedCorrection>) => {
     if (!matchesReplacement(record, result)) return fail()
     const stored = pendingReplacement()
     if (!stored || JSON.stringify(stored) !== JSON.stringify(record)) return fail()
@@ -99,15 +107,17 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
     retireReplacement(record)
   }
   const replacementCommand = (record: PendingReplacement) => {
-    const command = { accion: 'SUSTITUIR_PREPARACION_FISCAL', venta_id: sale, operacion_id: record.operationId,
+    const command = { accion: record.version === 2 ? 'CORREGIR_RECHAZO_FISCAL' : 'SUSTITUIR_PREPARACION_FISCAL', venta_id: sale, operacion_id: record.operationId,
       sucesora_id: record.successorId, anterior_sha256: record.previousHash, propuesta: record.proposal }
     if (new TextEncoder().encode(JSON.stringify(command)).length > 65536) return fail()
     return command
   }
   const submitReplacement = async (record: PendingReplacement) => {
     await validateFiscalReplacementProposal(record.proposal, sale)
+    const already = record.version === 2 ? await correctionClosure(record) : null
+    if (already) { finishReplacement(record, already); return already }
     try { await invoke(replacementCommand(record)) } catch { /* Confirmar por lectura durable, nunca crear otra identidad. */ }
-    const result = await replacement(record.operationId)
+    const result = await correctionClosure(record)
     if (!result) return fail()
     finishReplacement(record, result)
     return result
@@ -119,10 +129,10 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
   return {
     pending,
     pendingReplacement,
-    async replace(review: FiscalOwnerReview, input: FiscalPreparationInput, context: FiscalPreparationContext) {
+    async replace(review: FiscalOwnerReview, input: FiscalPreparationInput, context: FiscalPreparationContext, kind: 'RESERVA' | 'RECHAZO' = 'RESERVA') {
       const originalReview = structuredClone(review), candidate = structuredClone(input), validationContext = structuredClone(context)
       return exclusive(async () => {
-        if (!uuid(originalReview.operacion_id) || originalReview.estado !== 'RESERVADA' || originalReview.revision !== 1
+        if (!uuid(originalReview.operacion_id) || !['RESERVA', 'RECHAZO'].includes(kind) || originalReview.estado !== (kind === 'RECHAZO' ? 'ENVIO_INCIERTO' : 'RESERVADA') || originalReview.revision !== 1
           || !fiscalSha(originalReview.solicitud.sha256) || validationContext.venta_id !== sale) return fail()
         const previous = pending()
         if (previous && previous.operationId !== originalReview.operacion_id) return fail()
@@ -132,10 +142,10 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
         if (prepared.datos.cuitEmisor !== previousBody.cuitEmisor || prepared.datos.puntoVenta !== previousBody.puntoVenta
           || prepared.datos.tipoComprobante !== previousBody.tipoComprobante) return fail()
         let record = pendingReplacement()
-        if (record && (record.operationId !== originalReview.operacion_id || record.previousHash !== originalReview.solicitud.sha256
+        if (record && ((record.version === 2) !== (kind === 'RECHAZO') || record.operationId !== originalReview.operacion_id || record.previousHash !== originalReview.solicitud.sha256
           || record.proposal.canonico !== prepared.canonico || record.proposal.sha256 !== prepared.sha256)) return fail()
         if (!record) {
-          record = { version: 1, operationId: originalReview.operacion_id, successorId: crypto.randomUUID(), previousHash: originalReview.solicitud.sha256,
+          record = { version: kind === 'RECHAZO' ? 2 : 1, ...(kind === 'RECHAZO' ? {kind: 'RECHAZO' as const} : {}), operationId: originalReview.operacion_id, successorId: crypto.randomUUID(), previousHash: originalReview.solicitud.sha256,
             numero: originalReview.solicitud.solicitud.numero, proposal: { canonico: prepared.canonico, sha256: prepared.sha256 } }
           if (JSON.stringify(record).length > 65536) return fail()
           replacementCommand(record)
@@ -149,7 +159,7 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
         const record = pendingReplacement()
         if (!record) return fail()
         await validateFiscalReplacementProposal(record.proposal, sale)
-        const closed = await replacement(record.operationId)
+        const closed = await correctionClosure(record)
         if (closed && matchesReplacement(record, closed)) { finishReplacement(record, closed); return 'RECUPERADA' as const }
         // Cerrar el UUID sucesor aún no creado impide que un POST tardío lo use.
         // SQL 017 rechaza si la sustitución ya reservó cuerpo: nunca cancela número.
@@ -158,7 +168,7 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
           retireReplacement(record)
           return 'DESCARTADA' as const
         }
-        const recovered = await replacement(record.operationId)
+        const recovered = await correctionClosure(record)
         if (!recovered) return fail()
         finishReplacement(record, recovered)
         return 'RECUPERADA' as const
@@ -181,7 +191,7 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
         const correction = pendingReplacement()
         if (correction) {
           await validateFiscalReplacementProposal(correction.proposal, sale)
-          const closed = await replacement(correction.operationId)
+          const closed = await correctionClosure(correction)
           if (closed && matchesReplacement(correction, closed)) finishReplacement(correction, closed)
           else if (await cancellation(correction.successorId)) retireReplacement(correction)
           if (!pendingReplacement()) result = validateFiscalSaleResolution(await invoke({ accion: 'RESOLVER_VENTA', venta_id: sale }), sale)
@@ -191,7 +201,7 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
           const before = pending()
           if (!before || result.operacion_id === before.operationId) break
           if (await cancellation(before.operationId)) { retire(); break }
-          const closed = await replacement(before.operationId)
+          const closed = await replacement(before.operationId) ?? await rejectedCorrection(before.operationId)
           if (!closed) break
           write(key, { version: 1, operationId: closed.sucesora_id, input: null })
           if (hop === 15) return fail()
@@ -250,8 +260,7 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
     },
     async rejectedCorrection(operationId: string) {
       if (!uuid(operationId)) return fail()
-      const result = await invoke({ accion: 'CORRECCION_RECHAZO_FISCAL', venta_id: sale, operacion_id: operationId })
-      return result === null ? null : validateFiscalRejectedCorrection(result, sale, operationId)
+      return rejectedCorrection(operationId)
     },
     async review(operationId: string) {
       if (!uuid(operationId)) return fail()

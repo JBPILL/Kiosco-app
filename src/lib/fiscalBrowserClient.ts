@@ -24,7 +24,7 @@ export function createFiscalBrowserClient(scope: FiscalClientScope): FiscalClien
       // Fijar el token de la sesión comprobada: el SDK no debe elegir otra cuenta
       // si cambia la sesión entre esta comprobación y el fetch de Functions.
       const { data, error } = await supabase.functions.invoke('arca-homologacion', {
-        body: command, timeout: command.accion === 'PREPARAR_COMPROBANTE' ? 40000 : 15000, headers: { Authorization: `Bearer ${original.access_token}` },
+        body: command, timeout: ['PREPARAR_COMPROBANTE', 'CORREGIR_RECHAZO_FISCAL'].includes(String(command.accion)) ? 40000 : 15000, headers: { Authorization: `Bearer ${original.access_token}` },
       })
       if (error) throw new Error('FISCAL_RESPUESTA_NO_CONFIRMADA')
       return data

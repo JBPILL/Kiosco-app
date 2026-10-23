@@ -1,3 +1,4 @@
+import { correctRejectedFiscalVoucher } from './fiscalRejectedCorrection.ts'
 import { loadFiscalRejectedCorrection } from './fiscalRejectedCorrectionService.ts'
 import { loadFiscalReplacement, replaceFiscalPreparation } from './fiscalReplacementService.ts'
 import type { FiscalAuthClient } from './fiscalWorkerAuthorization.ts'
@@ -23,6 +24,7 @@ const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{
 type FiscalHttpCommand=
   | {accion:'CORRECCION_RECHAZO_FISCAL';venta_id:string;operacion_id:string}
   | {accion:'SUSTITUIR_PREPARACION_FISCAL';venta_id:string;operacion_id:string;sucesora_id:string;anterior_sha256:string;propuesta:unknown}
+  | {accion:'CORREGIR_RECHAZO_FISCAL';venta_id:string;operacion_id:string;sucesora_id:string;anterior_sha256:string;propuesta:unknown}
   | {accion:'SUSTITUCION_PREPARACION_FISCAL';venta_id:string;operacion_id:string}
   | {accion:'CANCELAR_PREPARACION_FISCAL';venta_id:string;operacion_id:string}
   | {accion:'CANCELACION_PREPARACION_FISCAL';venta_id:string;operacion_id:string}
@@ -61,7 +63,7 @@ async function command(request:Request):Promise<FiscalHttpCommand> {
     if(b.accion==='GUARDAR_DATOS_FISCALES'&&keys.length===4&&keys.every(k=>['accion','venta_id','operacion_id','entrada'].includes(k))
       &&uuid(b.venta_id)&&uuid(b.operacion_id)&&b.entrada&&typeof b.entrada==='object'&&!Array.isArray(b.entrada))
       return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_id:b.operacion_id.toLowerCase(),entrada:b.entrada}
-    if(b.accion==='SUSTITUIR_PREPARACION_FISCAL'&&keys.length===6&&keys.every(k=>['accion','venta_id','operacion_id','sucesora_id','anterior_sha256','propuesta'].includes(k))
+    if((b.accion==='SUSTITUIR_PREPARACION_FISCAL'||b.accion==='CORREGIR_RECHAZO_FISCAL')&&keys.length===6&&keys.every(k=>['accion','venta_id','operacion_id','sucesora_id','anterior_sha256','propuesta'].includes(k))
       &&uuid(b.venta_id)&&uuid(b.operacion_id)&&uuid(b.sucesora_id)&&b.operacion_id!==b.sucesora_id&&typeof b.anterior_sha256==='string'&&/^[0-9a-f]{64}$/.test(b.anterior_sha256)
       &&b.propuesta&&typeof b.propuesta==='object'&&!Array.isArray(b.propuesta))
       return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_id:b.operacion_id.toLowerCase(),sucesora_id:b.sucesora_id.toLowerCase(),anterior_sha256:b.anterior_sha256,propuesta:b.propuesta}
@@ -122,7 +124,12 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
       try{cmd=await command(request)}catch{return json({codigo:'SOLICITUD_INVALIDA'},400)}
       const admin=deps.createAdmin(FISCAL_STAGING_URL),token=auth.slice(7)
       let result:unknown
-      if(cmd.accion==='CORRECCION_RECHAZO_FISCAL'){
+      if(cmd.accion==='CORREGIR_RECHAZO_FISCAL'){
+        result=await correctRejectedFiscalVoucher({admin,readSecret:deps.readSecret,cache,fetcher:deps.fetcher,
+          load:(binding,signal)=>createSharedFiscalTicketLoader(admin,createPrivateFiscalTicketKeys(deps.readSecret),
+            createWsaaTicketSource(createPrivateFiscalCustody(deps.readSecret),deps.fetcher))(binding,signal),
+        },token,cmd.venta_id,cmd.operacion_id,cmd.sucesora_id,cmd.anterior_sha256,cmd.propuesta)
+      }else if(cmd.accion==='CORRECCION_RECHAZO_FISCAL'){
         result=await loadFiscalRejectedCorrection(admin,token,cmd.venta_id,cmd.operacion_id)
       }else if(cmd.accion==='SUSTITUIR_PREPARACION_FISCAL'||cmd.accion==='SUSTITUCION_PREPARACION_FISCAL'){
         result=cmd.accion==='SUSTITUIR_PREPARACION_FISCAL'?await replaceFiscalPreparation(admin,token,cmd.venta_id,cmd.operacion_id,cmd.sucesora_id,cmd.anterior_sha256,cmd.propuesta)
@@ -172,6 +179,7 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
       }
       return json({version:1,entorno:'HOMOLOGACION',emision_habilitada:false,resultado:result})
     }catch(error){
+      if(error instanceof Error&&error.message==='FISCAL_CORRECCION_RECHAZO_NO_HABILITADA')return json({codigo:'CORRECCION_RECHAZO_NO_HABILITADA'},503)
       if(error instanceof Error&&error.message==='FISCAL_PREPARACION_CUERPO_NO_HABILITADA')return json({codigo:'PREPARACION_CUERPO_NO_HABILITADA'},503)
       if(error instanceof Error&&error.message==='FISCAL_CONSULTA_NO_AUTORIZADA')return json({codigo:'CONSULTA_NO_AUTORIZADA'},403)
       return json({codigo:'OPERACION_NO_CONFIRMADA',error:'Conservá los identificadores originales y revisá el estado antes de reintentar.'},409)

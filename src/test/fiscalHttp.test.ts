@@ -386,3 +386,25 @@ it.each([{actor_auth_id:crypto.randomUUID()},{propuesta:{canonico:'x'}},{venta_i
  const f=rejectedCorrectionFixture(),response=await f.handler(request(JSON.stringify({...f.body,...patch})))
  expect(response.status).toBe(400);expect(f.getUser).not.toHaveBeenCalled();expect(f.factory).not.toHaveBeenCalled()
 })
+
+it('HTTP corrección R cerrada por defecto no carga custodia ni consulta WSFE',async()=>{
+ const f=await replacementHttpFixture();f.rpc.mockResolvedValue({data:null,error:null})
+ const response=await f.handler(request(JSON.stringify({...f.command,accion:'CORREGIR_RECHAZO_FISCAL'})))
+ expect(response.status).toBe(503);expect((await response.json()).codigo).toBe('CORRECCION_RECHAZO_NO_HABILITADA')
+ expect(f.getUser).toHaveBeenCalledTimes(1)
+ expect(f.rpc).toHaveBeenCalledExactlyOnceWith('consultar_correccion_rechazo_homologacion',{p_actor_auth_id:f.actor,p_venta_id:f.sale,p_operacion_id:op})
+ expect(f.fetcher).not.toHaveBeenCalled();expect(f.read.mock.calls.some(([key])=>/CUSTODY|CREDENTIAL|TICKET|KEYRING/.test(key))).toBe(false)
+})
+it('HTTP corrección R recupera cierre antes del gate y no trata un ACK de reserva como rechazo',async()=>{
+ const f=await replacementHttpFixture(),p=await freezeFiscalRequest({...wsfeSample,puntoVenta:7,numero:1})
+ const ack={...f.ack,estado:'RECHAZO_CORREGIDO',sucesora_sha256:p.sha256}
+ f.rpc.mockResolvedValue({data:ack,error:null})
+ const response=await f.handler(request(JSON.stringify({...f.command,accion:'CORREGIR_RECHAZO_FISCAL'})))
+ expect(response.status).toBe(200);expect((await response.json()).resultado).toEqual(ack);expect(f.fetcher).not.toHaveBeenCalled();expect(f.rpc).toHaveBeenCalledTimes(1)
+ f.rpc.mockResolvedValue({data:f.ack,error:null})
+ expect((await f.handler(request(JSON.stringify({...f.command,accion:'CORREGIR_RECHAZO_FISCAL'})))).status).toBe(409)
+})
+it.each([{actor_auth_id:crypto.randomUUID()},{verificacion:{codigo:602}},{sucesora_id:op},{propuesta:[]}])('HTTP corrección R no admite prueba o identidad del navegador: %j',async patch=>{
+ const f=await replacementHttpFixture(),response=await f.handler(request(JSON.stringify({...f.command,accion:'CORREGIR_RECHAZO_FISCAL',...patch})))
+ expect(response.status).toBe(400);expect(f.getUser).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled()
+})

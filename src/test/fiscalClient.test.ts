@@ -166,20 +166,22 @@ it('fallo al retirar datos locales no habilita una identidad nueva hasta recuper
  await expect(createFiscalClient(scope,{storage:badStorage,send:f.send}).cancel(before.operationId)).rejects.toThrow();expect(f.client.pending()).toEqual(before)
 })
 
-async function replacementFixture(){
+async function replacementFixture(kind: 'RESERVA' | 'RECHAZO' = 'RESERVA'){
  const f=fixture(),r=await review(),flags={commit:true,loseWrite:false,loseRead:false,wrongRead:false}
  r.solicitud=await freezeFiscalRequest({...wsfeSample,puntoVenta:context.punto_venta})
+ if(kind==='RECHAZO')r.estado='ENVIO_INCIERTO'
  const cancelled=new Set<string>()
  let saved:Record<string,unknown>|null=null
  f.send.mockImplementation(async cmd=>{
-  if(cmd.accion==='SUSTITUIR_PREPARACION_FISCAL'){
+  if(cmd.accion===(kind==='RECHAZO'?'CORREGIR_RECHAZO_FISCAL':'SUSTITUIR_PREPARACION_FISCAL')){
    const proposal=cmd.propuesta as {sha256:string}
    if(flags.commit)saved={operacion_id:r.operacion_id,sucesora_id:cmd.sucesora_id,venta_id:scope.saleId,anterior_sha256:r.solicitud.sha256,
-    preparacion_sha256:proposal.sha256,sucesora_sha256:'b'.repeat(64),numero:r.solicitud.solicitud.numero,estado:'SUSTITUIDA',emision_habilitada:false}
+    preparacion_sha256:proposal.sha256,sucesora_sha256:'b'.repeat(64),numero:r.solicitud.solicitud.numero,estado:kind==='RECHAZO'?'RECHAZO_CORREGIDO':'SUSTITUIDA',emision_habilitada:false}
    if(flags.loseWrite)throw new Error('SYNTHETIC_ACK_LOST')
    return envelope(saved)
   }
-  if(cmd.accion==='SUSTITUCION_PREPARACION_FISCAL'){
+  if(cmd.accion==='SUSTITUCION_PREPARACION_FISCAL'||cmd.accion==='CORRECCION_RECHAZO_FISCAL'){
+   if(cmd.accion!==(kind==='RECHAZO'?'CORRECCION_RECHAZO_FISCAL':'SUSTITUCION_PREPARACION_FISCAL'))return envelope(null)
    if(flags.loseRead)throw new Error('SYNTHETIC_READ_LOST')
    return envelope(saved&&cmd.operacion_id===r.operacion_id?(flags.wrongRead?{...saved,preparacion_sha256:'c'.repeat(64)}:saved):null)
   }
@@ -191,7 +193,7 @@ async function replacementFixture(){
   if(cmd.accion==='RESOLVER_VENTA')return envelope({venta_id:scope.saleId,operacion_id:saved?.sucesora_id??r.operacion_id,preparacion_sha256:'a'.repeat(64),estado:'RESERVADA',emision_habilitada:false})
   throw new Error('UNEXPECTED_COMMAND')
  })
- return {...f,r,flags,replace:()=>f.client.replace(r,input(),context)}
+ return {...f,r,flags,replace:()=>f.client.replace(r,input(),context,kind)}
 }
 it('sustitución guarda propuesta/UUID antes del POST y retira datos sólo después de lectura',async()=>{
  const f=await replacementFixture(),impl=f.send.getMockImplementation()!
@@ -324,4 +326,56 @@ it('consulta R inválida no envía y respuesta de otra venta no modifica almacen
  const f=fixture();await expect(f.client.rejectedCorrection('invalid')).rejects.toThrow();expect(f.send).not.toHaveBeenCalled()
  f.send.mockResolvedValue(envelope({operacion_id:crypto.randomUUID(),venta_id:crypto.randomUUID()}))
  await expect(f.client.rejectedCorrection(crypto.randomUUID())).rejects.toThrow();expect(f.map.size).toBe(0)
+})
+
+it('rechazo guarda propuesta v2 explícita antes de POST y nunca usa la ruta de reserva',async()=>{
+ const f=await replacementFixture('RECHAZO'),impl=f.send.getMockImplementation()!
+ f.send.mockImplementation(async cmd=>{
+  if(cmd.accion==='CORREGIR_RECHAZO_FISCAL')expect(f.client.pendingReplacement()).toMatchObject({version:2,kind:'RECHAZO',successorId:cmd.sucesora_id,proposal:cmd.propuesta})
+  return impl(cmd)
+ })
+ const ack=await f.replace();expect(ack.estado).toBe('RECHAZO_CORREGIDO');expect(f.client.pendingReplacement()).toBeNull()
+ expect(f.send.mock.calls.map(([c])=>c.accion)).toEqual(['CORRECCION_RECHAZO_FISCAL','CORREGIR_RECHAZO_FISCAL','CORRECCION_RECHAZO_FISCAL'])
+ expect(f.client.pending()?.operationId).toBe(ack.sucesora_id)
+})
+it('rechazo ACK perdido se recupera al reabrir sin POST ni nuevas consultas fiscales',async()=>{
+ const f=await replacementFixture('RECHAZO');f.flags.loseWrite=true
+ const impl=f.send.getMockImplementation()!;let written=false
+ f.send.mockImplementation(async cmd=>{if(cmd.accion==='CORREGIR_RECHAZO_FISCAL'){written=true;return impl(cmd)}if(written&&cmd.accion==='CORRECCION_RECHAZO_FISCAL')throw new Error('lost read');return impl(cmd)})
+ await expect(f.replace()).rejects.toThrow();const original=f.client.pendingReplacement()!
+ f.send.mockImplementation(impl);f.send.mockClear()
+ const reopened=createFiscalClient(scope,{storage:f.storage,send:f.send});await reopened.resolve()
+ expect(reopened.pending()?.operationId).toBe(original.successorId);expect(reopened.pendingReplacement()).toBeNull()
+ expect(f.send.mock.calls.some(([c])=>c.accion==='CORREGIR_RECHAZO_FISCAL')).toBe(false)
+})
+it('rechazo no confirmado conserva la misma propuesta y UUID al reintentar explícitamente',async()=>{
+ const f=await replacementFixture('RECHAZO');f.flags.commit=false
+ await expect(f.replace()).rejects.toThrow();const before=f.client.pendingReplacement()!
+ const reopened=createFiscalClient(scope,{storage:f.storage,send:f.send});f.flags.commit=true
+ const ack=await reopened.retryReplacement();expect(ack.sucesora_id).toBe(before.successorId)
+ const writes=f.send.mock.calls.filter(([c])=>c.accion==='CORREGIR_RECHAZO_FISCAL');expect(writes).toHaveLength(2);expect(writes[0]).toEqual(writes[1])
+})
+it('descarte de rechazo cierra sólo la sucesora no creada, conservando cuerpo original',async()=>{
+ const f=await replacementFixture('RECHAZO');f.flags.commit=false
+ await expect(f.replace()).rejects.toThrow();const record=f.client.pendingReplacement()!
+ expect(await f.client.cancelReplacement()).toBe('DESCARTADA');expect(f.client.pendingReplacement()).toBeNull()
+ const writes=f.send.mock.calls.filter(([c])=>c.accion==='CANCELAR_PREPARACION_FISCAL')
+ expect(writes).toHaveLength(1);expect(writes[0][0].operacion_id).toBe(record.successorId)
+ expect(writes[0][0].operacion_id).not.toBe(f.r.operacion_id)
+})
+it('propuesta R impide aprobar, preparar, guardar, cancelar y convertirla en reserva',async()=>{
+ const f=await replacementFixture('RECHAZO');f.flags.commit=false;await expect(f.replace()).rejects.toThrow()
+ const record=f.client.pendingReplacement()!,count=f.send.mock.calls.length
+ await expect(f.client.save(input(),context)).rejects.toThrow();await expect(f.client.prepare(f.r.operacion_id)).rejects.toThrow()
+ await expect(f.client.cancel(f.r.operacion_id)).rejects.toThrow();await expect(f.client.replace({...f.r,estado:'RESERVADA'},input(),context)).rejects.toThrow()
+ await expect(f.client.approve(f.r,crypto.randomUUID())).rejects.toThrow()
+ expect(f.send.mock.calls.length).toBe(count);expect(f.client.pendingReplacement()).toEqual(record)
+})
+it('versión desconocida o v2 sin clase explícita no ejecuta POST',async()=>{
+ const f=await replacementFixture('RECHAZO');f.flags.commit=false;await expect(f.replace()).rejects.toThrow()
+ const entry=[...f.map.entries()].find(([key])=>key.endsWith(':replacement'))!
+ for(const bad of [{...f.client.pendingReplacement(),version:3},{...f.client.pendingReplacement(),kind:undefined}]){
+  f.map.set(entry[0],JSON.stringify(bad));f.send.mockClear();await expect(f.client.retryReplacement()).rejects.toThrow();expect(f.send).not.toHaveBeenCalled()
+  f.map.set(entry[0],entry[1])
+ }
 })

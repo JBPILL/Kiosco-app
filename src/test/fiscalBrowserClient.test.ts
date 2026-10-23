@@ -97,3 +97,19 @@ it('sustituciÃ³n sin Web Locks o con flag revocado esperando no persiste ni envÃ
  mocks.lock.mockImplementation(async(_name,_options,task)=>{vi.stubEnv('VITE_KIOSKO_ARCA_REVISION_HOMO','false');return task()})
  await expect(client.replace(f.review,f.input,f.context)).rejects.toThrow('FISCAL_NO_HABILITADO');expect(localStorage.length).toBe(0);expect(mocks.session).not.toHaveBeenCalled();expect(mocks.invoke).not.toHaveBeenCalled()
 })
+
+it('navegador conserva propuesta R bajo Web Lock, timeout acotado y token original',async()=>{
+ const f=await browserCorrection();let ack:Record<string,unknown>|null=null
+ mocks.invoke.mockImplementation(async(_name,args)=>{
+  const cmd=args.body;expect(args.headers.Authorization).toBe('Bearer SYNTHETIC_BROWSER_SESSION')
+  if(cmd.accion==='CORREGIR_RECHAZO_FISCAL'){
+   expect(args.timeout).toBe(40000)
+   expect(JSON.parse(localStorage.getItem(`kioskopos:fiscal:v1:${scope.authId}:${scope.kioskId}:${scope.saleId}:replacement`)!)).toMatchObject({version:2,kind:'RECHAZO'})
+   ack={operacion_id:cmd.operacion_id,sucesora_id:cmd.sucesora_id,venta_id:scope.saleId,anterior_sha256:cmd.anterior_sha256,preparacion_sha256:cmd.propuesta.sha256,sucesora_sha256:'b'.repeat(64),numero:1,estado:'RECHAZO_CORREGIDO',emision_habilitada:false}
+  }else expect(args.timeout).toBe(15000)
+  return {data:{version:1,entorno:'HOMOLOGACION',emision_habilitada:false,resultado:ack},error:null}
+ })
+ const api=createFiscalBrowserClient(scope),result=await api.replace({...f.review,estado:'ENVIO_INCIERTO'},f.input,f.context,'RECHAZO')
+ expect(mocks.lock).toHaveBeenCalledTimes(1);expect(api.pendingReplacement()).toBeNull();expect(api.pending()?.operationId).toBe(result.sucesora_id)
+ expect(mocks.invoke.mock.calls.map(([,args])=>args.body.accion)).toEqual(['CORRECCION_RECHAZO_FISCAL','CORREGIR_RECHAZO_FISCAL','CORRECCION_RECHAZO_FISCAL'])
+})

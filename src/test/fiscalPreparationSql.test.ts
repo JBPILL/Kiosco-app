@@ -863,3 +863,53 @@ it('inserción de sucesora omitida por trigger revierte archivo de rechazo y con
  expect(await resolve()).toMatchObject({estado:'ENVIO_INCIERTO',operacion_id:op})
  await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_operaciones_homologacion WHERE id=$1',[f.successor])).rows[0].n).toBe(0)
 })
+
+it('cliente→HTTP→SQL guarda propuesta R con gate cerrado y recupera cierre privado tras reinicio sin consultar otra vez',async()=>{
+ const f=await rejectedWorkerFixture();f.flags.ARCA_HOMO_REJECTION_RECOVERY_ENABLED='false'
+ const handler=createFiscalHttpHandler({readSecret:key=>f.flags[key],createAdmin:()=>f.admin,fetcher:f.fetcher})
+ const commands:Record<string,unknown>[]=[]
+ const send=async(command:Record<string,unknown>)=>{
+  commands.push(command)
+  const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{
+   method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify(command)}))
+  if(!response.ok)throw new Error('SYNTHETIC_HTTP_CONFLICT')
+  return response.json()
+ }
+ const map=new Map<string,string>(),storage={getItem:(key:string)=>map.get(key)??null,setItem:(key:string,value:string)=>{map.set(key,value)},removeItem:(key:string)=>{map.delete(key)}}
+ const api=createFiscalClient({authId:actor,kioskId:kid,saleId:sale},{storage,send}),review=await api.review(op),ctx=await api.context(),candidate=input();candidate.datos.fecha='20261023'
+ await expect(api.replace(review,candidate,ctx,'RECHAZO')).rejects.toThrow()
+ const pending=api.pendingReplacement()!;expect(pending).toMatchObject({version:2,kind:'RECHAZO'});expect(f.fetcher).not.toHaveBeenCalled()
+ f.flags.ARCA_HOMO_REJECTION_RECOVERY_ENABLED='true'
+ const closed=await correctRejectedFiscalVoucher(f.deps,'SYNTHETIC_JWT',sale,op,pending.successorId,pending.previousHash,pending.proposal)
+ expect(f.fetcher).toHaveBeenCalledTimes(2);f.flags.ARCA_HOMO_REJECTION_RECOVERY_ENABLED='false';f.fetcher.mockClear();commands.length=0
+ const reopened=createFiscalClient({authId:actor,kioskId:kid,saleId:sale},{storage,send})
+ expect((await reopened.resolve()).operacion_id).toBe(closed.sucesora_id);expect(reopened.pendingReplacement()).toBeNull();expect(f.fetcher).not.toHaveBeenCalled()
+ const reviewed=await reopened.review(closed.sucesora_id);expect(reviewed.solicitud.sha256).toBe(closed.sucesora_sha256);expect(reviewed.aprobacion).toBeNull()
+ expect(commands.some(c=>c.accion==='CORREGIR_RECHAZO_FISCAL')).toBe(false)
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_permisos_emision_homologacion WHERE operacion_id=$1',[closed.sucesora_id])).rows[0].n).toBe(0)
+})
+
+it('dos terminales R conservan propuestas distintas y la perdedora descarta sólo su UUID tras cierre ganador',async()=>{
+ const f=await rejectedWorkerFixture();f.flags.ARCA_HOMO_REJECTION_RECOVERY_ENABLED='false'
+ const handler=createFiscalHttpHandler({readSecret:key=>f.flags[key],createAdmin:()=>f.admin,fetcher:f.fetcher})
+ const commands:Record<string,unknown>[]=[]
+ const send=async(command:Record<string,unknown>)=>{
+  commands.push(command)
+  const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{
+   method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify(command)}))
+  if(!response.ok)throw new Error('SYNTHETIC_HTTP_CONFLICT')
+  return response.json()
+ }
+ const api=()=>{const map=new Map<string,string>();return createFiscalClient({authId:actor,kioskId:kid,saleId:sale},{storage:{getItem:key=>map.get(key)??null,setItem:(key,value)=>{map.set(key,value)},removeItem:key=>{map.delete(key)}},send})}
+ const first=api(),second=api(),r=await first.review(op),ctx=await first.context(),a=input(),b=input();a.datos.fecha='20261023';b.datos.fecha='20261024'
+ await expect(first.replace(r,a,ctx,'RECHAZO')).rejects.toThrow();await expect(second.replace(r,b,ctx,'RECHAZO')).rejects.toThrow()
+ const winner=first.pendingReplacement()!,loser=second.pendingReplacement()!;expect(winner.successorId).not.toBe(loser.successorId)
+ f.flags.ARCA_HOMO_REJECTION_RECOVERY_ENABLED='true'
+ const closed=await correctRejectedFiscalVoucher(f.deps,'SYNTHETIC_JWT',sale,op,winner.successorId,winner.previousHash,winner.proposal)
+ f.flags.ARCA_HOMO_REJECTION_RECOVERY_ENABLED='false';f.fetcher.mockClear();commands.length=0
+ expect((await second.resolve()).operacion_id).toBe(closed.sucesora_id);expect(second.pendingReplacement()).toEqual(loser)
+ expect(await second.cancelReplacement()).toBe('DESCARTADA');expect(second.pendingReplacement()).toBeNull()
+ expect((await second.resolve()).operacion_id).toBe(closed.sucesora_id);expect((await second.review(closed.sucesora_id)).solicitud.sha256).toBe(closed.sucesora_sha256)
+ expect(commands.filter(c=>c.accion==='CANCELAR_PREPARACION_FISCAL').map(c=>c.operacion_id)).toEqual([loser.successorId]);expect(f.fetcher).not.toHaveBeenCalled()
+ expect((await first.resolve()).operacion_id).toBe(closed.sucesora_id);expect(first.pendingReplacement()).toBeNull()
+})

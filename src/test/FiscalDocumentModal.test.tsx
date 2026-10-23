@@ -280,3 +280,47 @@ it('error de resolución conserva acceso a recuperar/descartar una propuesta loc
  expect(await screen.findByRole('button',{name:'Reintentar corrección guardada'})).toBeTruthy();expect(screen.queryByRole('button',{name:'Aprobar revisión'})).toBeNull()
  expect((await screen.findByRole('alert')).textContent).not.toContain('PRIVATE_NETWORK');expect(f.context).not.toHaveBeenCalled();expect(f.review).not.toHaveBeenCalled()
 })
+
+it('rechazo requiere confirmación explícita antes de consultar/corregir y luego nueva revisión',async()=>{
+ const f=fixture();uncertain(f)
+ vi.mocked(f.client.replace).mockImplementation(async()=>{throw new Error('SYNTHETIC_GATE_CLOSED')})
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ fireEvent.click(await screen.findByRole('button',{name:'Corregir datos del comprobante rechazado'}))
+ await screen.findByRole('form');fillCorrection();fireEvent.submit(screen.getByRole('form'));expect(f.client.replace).not.toHaveBeenCalled()
+ fireEvent.click(screen.getByLabelText('Confirmo la corrección del rechazo y las consultas de recuperación en ARCA de homologación, sin emitir.'))
+ fireEvent.submit(screen.getByRole('form'))
+ await waitFor(()=>expect(f.client.replace).toHaveBeenCalledTimes(1));expect(vi.mocked(f.client.replace).mock.calls[0][3]).toBe('RECHAZO')
+ expect(f.client.prepare).not.toHaveBeenCalled();expect(f.client.approve).not.toHaveBeenCalled();expect(f.client.save).not.toHaveBeenCalled()
+ for(const alert of await screen.findAllByRole('alert'))expect(alert.textContent).not.toContain('SYNTHETIC_GATE_CLOSED')
+})
+it.each(['SIN_CONFIRMACION','APROBACION_RECIBIDA','SIN_RECEPCION','DATOS_DISTINTOS','CONSULTA_DISTINTA'] as const)('no ofrece corrección R ante %s',async mode=>{
+ const f=fixture();uncertain(f);const d=await f.diagnosis(operation)
+ f.diagnosis.mockResolvedValue({...d,recepcion:mode==='SIN_RECEPCION'?null:mode==='SIN_CONFIRMACION'||mode==='APROBACION_RECIBIDA'?{estado:mode,codigos:[],puedeReenviar:false}:d.recepcion,
+  ultima_consulta:mode==='DATOS_DISTINTOS'||mode==='CONSULTA_DISTINTA'?{estado:'CONCILIAR',codigo:mode}:d.ultima_consulta})
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ await waitFor(()=>expect(screen.queryByText('Consultando el estado fiscal de la venta…')).toBeNull())
+ expect(screen.queryByRole('button',{name:'Corregir datos del comprobante rechazado'})).toBeNull();expect(f.context).not.toHaveBeenCalled()
+})
+it('pendiente R al abrir sólo consulta estado; reintentar exige confirmación y no aprueba cuerpo viejo',async()=>{
+ const f=fixture();uncertain(f);vi.mocked(f.client.pendingReplacement).mockReturnValue({...pendingCorrection(),version:2,kind:'RECHAZO'})
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ const retry=await screen.findByRole('button',{name:'Reintentar corrección guardada'})
+ expect((retry as HTMLButtonElement).disabled).toBe(true);expect(f.client.retryReplacement).not.toHaveBeenCalled();expect(f.review).not.toHaveBeenCalled()
+ fireEvent.click(screen.getByLabelText('Autorizo consultar el estado en ARCA de homologación para recuperar esta corrección, sin emitir.'));fireEvent.click(retry)
+ await waitFor(()=>expect(f.client.retryReplacement).toHaveBeenCalledTimes(1));expect(f.client.approve).not.toHaveBeenCalled();expect(f.client.prepare).not.toHaveBeenCalled()
+})
+
+it('corrección R confirmada vuelve a la sucesora sin aprobación heredada ni envío automático',async()=>{
+ const f=fixture();uncertain(f);const next='77777777-7777-4777-8777-777777777777'
+ vi.mocked(f.client.replace).mockImplementation(async()=>{
+  f.resolve.mockResolvedValue({...saved,estado:'RESERVADA',operacion_id:next})
+  f.review.mockResolvedValue({operacion_id:next,estado:'RESERVADA',revision:1,solicitud:{version:1,solicitud:wsfeSample,sha256:'b'.repeat(64)},aprobacion:null})
+  return {operacion_id:operation,sucesora_id:next,venta_id:scope.saleId,anterior_sha256:'a'.repeat(64),preparacion_sha256:'c'.repeat(64),sucesora_sha256:'b'.repeat(64),numero:1,estado:'RECHAZO_CORREGIDO',emision_habilitada:false}
+ })
+ render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client} />)
+ fireEvent.click(await screen.findByRole('button',{name:'Corregir datos del comprobante rechazado'}));await screen.findByRole('form')
+ fillCorrection();fireEvent.click(screen.getByLabelText('Confirmo la corrección del rechazo y las consultas de recuperación en ARCA de homologación, sin emitir.'));fireEvent.submit(screen.getByRole('form'))
+ await screen.findByRole('button',{name:'Aprobar revisión'});expect(f.review).toHaveBeenLastCalledWith(next)
+ expect(f.client.approve).not.toHaveBeenCalled();expect(f.client.prepare).not.toHaveBeenCalled();expect(f.client.save).not.toHaveBeenCalled()
+ expect(screen.queryByRole('form')).toBeNull();expect(screen.queryByText('Corregir un comprobante rechazado')).toBeNull()
+})
