@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, expect, it, vi } from 'vitest'
-import { consultFiscalVoucher, decodeFiscalVoucherXml } from '../../supabase/functions/_shared/fiscalVoucherXml'
+import { consultFiscalVoucherAbsence, decodeFiscalVoucherAbsenceXml, consultFiscalVoucher, decodeFiscalVoucherXml } from '../../supabase/functions/_shared/fiscalVoucherXml'
 import { freezeFiscalRequest, reconcileFiscalVoucher } from '../../supabase/functions/_shared/fiscalReconciliation'
 import type { FiscalIdentity, FiscalRequestData } from '../../supabase/functions/_shared/fiscalReconciliation'
 
@@ -129,4 +129,35 @@ it('hash inválido no permite llamar a la red',async()=>{
   const fetcher=vi.fn<typeof fetch>(async()=>response(xml()))
   expect((await consultFiscalVoucher(expected,ticket(),fetcher)).estado).toBe('CONCILIAR')
   expect(fetcher).not.toHaveBeenCalled()
+})
+
+
+const absent=(middle='')=>prefix+middle+'<Errors><Err><Code>602</Code><Msg>Ensayo: no hay datos</Msg></Err></Errors>'+suffix
+it.each(['','<ResultGet xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true"/>','<ResultGet xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="1"/>'])('ausencia acepta sólo 602 sin comprobante: %s',middle=>{
+ const result=decodeFiscalVoucherAbsenceXml(absent(middle),key);expect(result).toEqual({estado:'NO_ENCONTRADO',codigo:602,consulta:key});expect(Object.isFrozen(result.consulta)).toBe(true)
+})
+it.each([
+ ()=>xml(),()=>absent('<ResultGet>'+detail+'</ResultGet>'),()=>absent('<ResultGet/>'),()=>absent('<ResultGet xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="false"/>'),
+ ()=>absent('<ResultGet xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" otro="dato"/>'),()=>absent().replace('<Code>602','<Code>600'),
+ ()=>absent().replace('</Errors>','<Err><Code>602</Code><Msg>Duplicado</Msg></Err></Errors>'),()=>prefix+suffix,
+ ()=>prefix+'<s:Fault><faultcode>602</faultcode></s:Fault>'+suffix,()=>absent().replace('FECompConsultarResponse','FECAESolicitarResponse'),
+ ()=>absent().replace('http://ar.gov.afip.dif.FEV1/','https://otro.example/'),()=>absent().replace('<Code>602</Code>','<Code>602</Code><Code>602</Code>'),
+ ()=>absent().replace('Ensayo: no hay datos','x'.repeat(4097))
+])('ausencia rechaza respuesta contradictoria/no soportada %#',source=>{expect(()=>decodeFiscalVoucherAbsenceXml(source(),key)).toThrow()})
+it('consulta negativa fija solicitud/serie/número, sin devolver XML ni Token/Sign',async()=>{
+ const fetcher=vi.fn<typeof fetch>(async input=>{
+  const req=input as Request;expect(req.url).toBe('https://wswhomo.afip.gov.ar/wsfev1/service.asmx');expect(req.redirect).toBe('error')
+  expect(req.headers.get('SOAPAction')).toContain('FECompConsultar');const body=await req.clone().text();expect(body).toContain('<CbteNro>42</CbteNro>');return response(absent())
+ }),before=vi.fn(async()=>{})
+ const result=await consultFiscalVoucherAbsence(await freezeFiscalRequest(sample),ticket(),fetcher,15000,before)
+ expect(result).toMatchObject({estado:'NO_ENCONTRADO',codigo:602,consulta:key});expect(Number.isFinite(Date.parse(result.consultado_en))).toBe(true)
+ expect(JSON.stringify(result)).not.toMatch(/SYNTHETIC_TOKEN|SYNTHETIC_SIGN|Envelope/);expect(before).toHaveBeenCalledTimes(1);expect(fetcher).toHaveBeenCalledTimes(1)
+})
+it('revalidación fallida antes de consultar no llega a red ni produce ausencia',async()=>{
+ const fetcher=vi.fn<typeof fetch>()
+ await expect(consultFiscalVoucherAbsence(await freezeFiscalRequest(sample),ticket(),fetcher,15000,async()=>{throw new Error('REVOKED')})).rejects.toThrow()
+ expect(fetcher).not.toHaveBeenCalled()
+})
+it.each([400,401,403,409,500])('HTTP %s nunca produce prueba negativa',async status=>{
+ await expect(consultFiscalVoucherAbsence(await freezeFiscalRequest(sample),ticket(),vi.fn(async()=>response(absent(),status)))).rejects.toThrow()
 })

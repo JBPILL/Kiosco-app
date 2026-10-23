@@ -1,3 +1,4 @@
+import { correctRejectedFiscalVoucher } from '../../supabase/functions/_shared/fiscalRejectedCorrection'
 import { createFiscalClient } from '../lib/fiscalClient'
 import { createFiscalHttpHandler } from '../../supabase/functions/_shared/fiscalHttp'
 import { replaceFiscalPreparation } from '../../supabase/functions/_shared/fiscalReplacementService'
@@ -70,13 +71,14 @@ const hash=(text:string)=>createHash('sha256').update(text).digest('hex')
 function workerFixture(){
  const flags:Record<string,string>={SUPABASE_URL:'https://acoyfwwmhaeruciyedri.supabase.co',ARCA_HOMO_BACKEND_ENABLED:'true',ARCA_HOMO_PREPARATION_ENABLED:'true'}
  const mapping:Record<string,string[]>={autorizar_consulta_fiscal_homologacion:['p_actor_auth_id','p_operacion_id'],cargar_fuente_preparacion_homologacion:['p_actor_auth_id','p_operacion_id'],cargar_revision_fiscal_homologacion:['p_operacion_id','p_actor_auth_id'],persistir_preparacion_fiscal_homologacion:['p_actor_auth_id','p_operacion_id','p_canonico','p_sha','p_ultimo_autorizado','p_consultado_en']}
+ mapping.cargar_fuente_correccion_rechazo_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.corregir_rechazo_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_sucesora_id','p_intento_id','p_anterior_sha','p_canonico','p_sha','p_verificacion'];mapping.consultar_correccion_rechazo_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
  mapping.cargar_datos_preparacion_homologacion=['p_actor_auth_id','p_venta_id'];mapping.resolver_preparacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id']
  mapping.sustituir_reserva_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_sucesora_id','p_anterior_sha','p_canonico','p_sha'];mapping.consultar_sustitucion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
  mapping.cancelar_preparacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.consultar_cancelacion_preparacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
  const rpc=vi.fn<FiscalAuthClient['rpc']>(async(name,args)=>{
   const keys=mapping[name];if(!keys)throw new Error('UNEXPECTED_PRIVATE_RPC')
   await db.exec('SAVEPOINT worker_rpc')
-  try{const result=await db.query<{data:unknown}>(`SELECT ${name}(${keys.map((_,i)=>'$'+(i+1)).join(',')}) data`,keys.map(key=>args[key]));await db.exec('RELEASE SAVEPOINT worker_rpc');return {data:result.rows[0].data,error:null}}
+  try{const result=await db.query<{data:unknown}>(`SELECT ${name}(${keys.map((_,i)=>'$'+(i+1)).join(',')}) data`,keys.map(key=>typeof args[key]==='object'&&args[key]!==null?JSON.stringify(args[key]):args[key]));await db.exec('RELEASE SAVEPOINT worker_rpc');return {data:result.rows[0].data,error:null}}
   catch{await db.exec('ROLLBACK TO SAVEPOINT worker_rpc; RELEASE SAVEPOINT worker_rpc');return {data:null,error:new Error('SQL_DENIED')}}
  })
  const getUser=vi.fn<FiscalAuthClient['auth']['getUser']>(async()=>({data:{user:{id:actor}},error:null}))
@@ -86,7 +88,7 @@ function workerFixture(){
   return new Response('<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><FECompUltimoAutorizadoResponse xmlns="http://ar.gov.afip.dif.FEV1/"><FECompUltimoAutorizadoResult><PtoVta>7</PtoVta><CbteTipo>11</CbteTipo><CbteNro>0</CbteNro></FECompUltimoAutorizadoResult></FECompUltimoAutorizadoResponse></s:Body></s:Envelope>',{headers:{'content-type':'text/xml'}})
  })
  const deps={admin:{auth:{getUser},rpc},readSecret:(key:string)=>flags[key],cache:createFiscalTicketCache(),load,fetcher}
- return {admin:{auth:{getUser},rpc},flags,rpc,getUser,load,fetcher,run:()=>prepareFiscalVoucher(deps,'SYNTHETIC_JWT',op)}
+ return {deps,admin:{auth:{getUser},rpc},flags,rpc,getUser,load,fetcher,run:()=>prepareFiscalVoucher(deps,'SYNTHETIC_JWT',op)}
 }
 it('devuelve sólo identidad/total/parámetros públicos desde servidor',async()=>{
  const c=await context();expect(c).toEqual({version:1,venta_id:sale,total:'123.45',cuit_emisor:wsfeSample.cuitEmisor,punto_venta:7,incluye_recepcion_envases:false,revision_parametros:1,
@@ -667,4 +669,197 @@ it('dos almacenes cliente→HTTP→SQL: perdedora descarta sólo su propuesta y 
  await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_reservas_homologacion')).rows[0].n).toBe(1)
  expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_operaciones_homologacion WHERE id=$1',[local.successorId])).rows[0].n).toBe(0)
  expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_cancelaciones_preparacion_homologacion WHERE operacion_id=$1',[local.successorId])).rows[0].n).toBe(1)
+})
+
+async function rejectPreparedOperation(operationId:string,sha:string,state='RECHAZO_RECIBIDO'){
+ const attempt=crypto.randomUUID(),permission=crypto.randomUUID()
+ await admin(`INSERT INTO fiscal_permisos_emision_homologacion(operacion_id,autorizacion_id,solicitud_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,vence_en)
+ VALUES($1,$2,$3,$4,repeat('a',64),1,true,clock_timestamp()+interval '10 minutes')`,[operationId,permission,sha,credential])
+ await db.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1)',[operationId,actor,crypto.randomUUID(),sha])
+ await db.query('SELECT registrar_envio_revisado_homologacion($1,$2,$3,$4,$5,0,clock_timestamp())',[actor,operationId,attempt,sha,permission])
+ if(state!=='AUSENTE')await db.query('SELECT registrar_respuesta_emision_homologacion($1,$2,$3,$4,$5::jsonb)',[actor,operationId,attempt,sha,JSON.stringify({estado:state,codigos:[10017],puedeReenviar:false})])
+ await db.query('SELECT registrar_reconciliacion_fiscal_homologacion($1,$2,$3,$4,1,$5::jsonb)',[crypto.randomUUID(),operationId,attempt,sha,JSON.stringify({estado:'CONCILIAR',codigo:'SIN_CONFIRMACION',puedeReenviar:false})])
+ return attempt
+}
+async function rejectedCorrectionFixture(state='RECHAZO_RECIBIDO'){
+ const f=await reservedReplacementFixture(),attempt=await rejectPreparedOperation(op,f.frozen.sha256,state)
+ const proof={version:1,resultado:'NO_ENCONTRADO',consulta:{entorno:'HOMOLOGACION',cuitEmisor:wsfeSample.cuitEmisor,puntoVenta:7,tipoComprobante:11,numero:1},codigo:602,
+  consultado_en:new Date(Date.now()-50).toISOString(),ultimo_autorizado:0,ultimo_consultado_en:new Date().toISOString()}
+ const run=(check:unknown=proof,canon=f.next,sha=f.nextHash,who=actor,successor=f.successor)=>db.query<{data:Record<string,unknown>}>(
+  'SELECT corregir_rechazo_fiscal_homologacion($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) data',[who,sale,op,successor,attempt,f.frozen.sha256,canon,sha,JSON.stringify(check)])
+ const read=()=>db.query<{data:Record<string,unknown>|null}>('SELECT consultar_correccion_rechazo_homologacion($1,$2,$3) data',[actor,sale,op])
+ return {...f,attempt,proof,run,read}
+}
+it('R+ausencia+número frescos crean sucesora sin borrar intento/recepción/consulta ni avanzar serie',async()=>{
+ const f=await rejectedCorrectionFixture();await db.exec('RESET ROLE')
+ const before=(await db.query<{data:Record<string,unknown>}>('SELECT to_jsonb(r) data FROM fiscal_reservas_homologacion r WHERE operacion_id=$1',[op])).rows[0].data
+ const series=(await db.query<{data:unknown}>('SELECT to_jsonb(s) data FROM fiscal_series_homologacion s')).rows[0].data
+ await db.exec('SET ROLE service_role');const ack=(await f.run()).rows[0].data
+ expect(ack).toMatchObject({operacion_id:op,sucesora_id:f.successor,numero:1,estado:'RECHAZO_CORREGIDO',emision_habilitada:false})
+ expect((await f.run()).rows[0].data).toEqual(ack);expect((await f.read()).rows[0].data).toEqual(ack)
+ const historical=(await db.query<{data:{respuesta:unknown}}>('SELECT cargar_respuesta_emision_homologacion($1,$2,$3,$4) data',[actor,op,f.attempt,f.frozen.sha256])).rows[0].data
+ expect(historical.respuesta).toMatchObject({estado:'RECHAZO_RECIBIDO',puedeReenviar:false})
+ const review=await validatePublicFiscalOwnerReview((await db.query<{data:unknown}>('SELECT cargar_revision_fiscal_homologacion($1,$2) data',[f.successor,actor])).rows[0].data,f.successor)
+ expect(review.solicitud.sha256).toBe(ack.sucesora_sha256);expect(review.aprobacion).toBeNull();expect(review.solicitud.solicitud.numero).toBe(1)
+ await denied(()=>db.query('SELECT cargar_preparacion_envio_homologacion($1)',[f.successor]))
+ await denied(()=>db.query('SELECT registrar_intento_fiscal_homologacion($1,$2)',[op,crypto.randomUUID()]))
+ await db.exec('RESET ROLE')
+ expect((await db.query<{data:unknown}>('SELECT to_jsonb(s) data FROM fiscal_series_homologacion s')).rows[0].data).toEqual(series)
+ expect((await db.query<{data:unknown}>('SELECT to_jsonb(r) data FROM fiscal_reservas_homologacion r WHERE operacion_id=$1',[op])).rows[0].data).toEqual({...before,estado:'RECHAZO_CORREGIDO'})
+ expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_reservas_homologacion WHERE numero=1')).rows[0].n).toBe(2)
+ expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_reconciliaciones_homologacion WHERE operacion_id=$1',[op])).rows[0].n).toBe(1)
+})
+it.each(['SIN_CONFIRMACION','APROBACION_RECIBIDA','AUSENTE'])('%s no se transforma en rechazo corregible por un 602',async state=>{
+ const f=await rejectedCorrectionFixture(state);await denied(()=>f.run());expect((await f.read()).rows[0].data).toBeNull()
+ await db.exec('RESET ROLE');expect((await db.query<{estado:string}>('SELECT estado FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[op])).rows[0].estado).toBe('ENVIO_INCIERTO')
+})
+it.each(['ausente','codigo','serie','numero','ultimo','orden','vencido','futuro','extra','version'])('prueba %s inválida no archiva ni crea preparación',async mode=>{
+ const f=await rejectedCorrectionFixture();const proof:Record<string,unknown>=structuredClone(f.proof)
+ if(mode==='ausente')delete proof.consultado_en
+ if(mode==='codigo')proof.codigo=600
+ if(mode==='serie')proof.consulta={...f.proof.consulta,puntoVenta:8}
+ if(mode==='numero')proof.consulta={...f.proof.consulta,numero:2}
+ if(mode==='ultimo')proof.ultimo_autorizado=1
+ if(mode==='orden')proof.ultimo_consultado_en=new Date(Date.now()-5000).toISOString()
+ if(mode==='vencido')proof.consultado_en=new Date(Date.now()-180000).toISOString()
+ if(mode==='futuro'){proof.consultado_en=new Date(Date.now()+60000).toISOString();proof.ultimo_consultado_en=proof.consultado_en}
+ if(mode==='extra')proof.binding='PRIVATE'
+ if(mode==='version')proof.version=2
+ await denied(()=>f.run(proof));expect((await f.read()).rows[0].data).toBeNull()
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_operaciones_homologacion WHERE id=$1',[f.successor])).rows[0].n).toBe(0)
+})
+it('datos corregidos incompatibles hacen rollback de archivo, auditoría y cuerpo sucesor',async()=>{
+ const f=await rejectedCorrectionFixture(),changed=JSON.parse(f.next);changed.datos.importes.total='1.00';const canon=JSON.stringify(changed)
+ await denied(()=>f.run(f.proof,canon,hash(canon)));expect((await f.read()).rows[0].data).toBeNull()
+ expect(await resolve()).toMatchObject({estado:'ENVIO_INCIERTO',operacion_id:op})
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_reservas_homologacion')).rows[0].n).toBe(1)
+})
+it.each(['anon','authenticated','service_role'])('rol %s no lee auditoría; roles públicos no corrigen',async role=>{
+ const f=await rejectedCorrectionFixture();await db.exec(`SET ROLE ${role}`)
+ await denied(()=>db.query('SELECT * FROM fiscal_rechazos_corregidos_homologacion'))
+ if(role!=='service_role'){await denied(()=>f.run());await denied(()=>f.read())}
+})
+it('Auth ajeno, evidencia contradictoria y autorización confirmada no se archivan',async()=>{
+ const f=await rejectedCorrectionFixture();await denied(()=>f.run(f.proof,f.next,f.nextHash,crypto.randomUUID()))
+ await db.query('SELECT registrar_reconciliacion_fiscal_homologacion($1,$2,$3,$4,1,$5::jsonb)',[crypto.randomUUID(),op,f.attempt,f.frozen.sha256,JSON.stringify({estado:'CONCILIAR',codigo:'DATOS_DISTINTOS',puedeReenviar:false})])
+ await denied(()=>f.run())
+ await db.query('SELECT registrar_reconciliacion_fiscal_homologacion($1,$2,$3,$4,1,$5::jsonb)',[crypto.randomUUID(),op,f.attempt,f.frozen.sha256,JSON.stringify({estado:'AUTORIZACION_COINCIDENTE',solicitudSha256:f.frozen.sha256,cae:'11111111111111',vencimiento:'20261031',procesadoEn:null,puedeReenviar:false})])
+ await denied(()=>f.run());expect((await f.read()).rows[0].data).toBeNull();expect(await resolve()).toMatchObject({estado:'AUTORIZADA'})
+})
+it('historial de intento rechazado y raíz/auditoría no se reactivan ni borran',async()=>{
+ const f=await rejectedCorrectionFixture();await f.run();await db.exec('RESET ROLE')
+ await denied(()=>db.query('DELETE FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[op]))
+ await denied(()=>db.query("UPDATE fiscal_reservas_homologacion SET estado='ENVIO_INCIERTO' WHERE operacion_id=$1",[op]))
+ await denied(()=>db.query("UPDATE fiscal_operaciones_homologacion SET estado='PREPARADA' WHERE id=$1",[op]))
+ await denied(()=>db.query('DELETE FROM fiscal_rechazos_corregidos_homologacion'))
+})
+it('cadena de rechazos conserva todas las filas del número y una única reserva vigente',async()=>{
+ const f=await rejectedCorrectionFixture(),ack=(await f.run()).rows[0].data
+ const nextAttempt=await rejectPreparedOperation(f.successor,String(ack.sucesora_sha256)),last=crypto.randomUUID(),data=JSON.parse(f.next);data.datos.fecha='20261024'
+ const canon=JSON.stringify(data),proof={...f.proof,consultado_en:new Date(Date.now()-50).toISOString(),ultimo_consultado_en:new Date().toISOString()}
+ await db.query('SELECT corregir_rechazo_fiscal_homologacion($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)',[actor,sale,f.successor,last,nextAttempt,ack.sucesora_sha256,canon,hash(canon),JSON.stringify(proof)])
+ expect((await f.read()).rows[0].data).toEqual(ack);expect(await resolve()).toMatchObject({estado:'RESERVADA',operacion_id:last})
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>("SELECT count(*)::int n FROM fiscal_reservas_homologacion WHERE estado='RECHAZO_CORREGIDO'")).rows[0].n).toBe(2)
+ expect((await db.query<{n:number}>("SELECT count(*)::int n FROM fiscal_reservas_homologacion WHERE estado='RESERVADA'")).rows[0].n).toBe(1)
+})
+
+async function rejectedWorkerFixture(){
+ const f=await rejectedCorrectionFixture(),worker=workerFixture();worker.flags.ARCA_HOMO_REJECTION_RECOVERY_ENABLED='true'
+ const last=worker.fetcher.getMockImplementation()!
+ worker.fetcher.mockImplementation(async request=>{
+  const req=request as Request,action=req.headers.get('SOAPAction')
+  expect(action).not.toContain('FECAESolicitar')
+  if(action?.includes('FECompConsultar'))return new Response('<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><FECompConsultarResponse xmlns="http://ar.gov.afip.dif.FEV1/"><FECompConsultarResult><Errors><Err><Code>602</Code><Msg>Ausencia sintética</Msg></Err></Errors></FECompConsultarResult></FECompConsultarResponse></s:Body></s:Envelope>',{headers:{'content-type':'text/xml'}})
+  return last(req)
+ })
+ const run=()=>correctRejectedFiscalVoucher(worker.deps,'SYNTHETIC_JWT',sale,op,f.successor,f.frozen.sha256,{canonico:f.next,sha256:f.nextHash})
+ return {...f,...worker,run}
+}
+it('worker R consulta ausencia→último, revalida con Auth único y recupera commit tras ACK perdido sin emitir',async()=>{
+ const f=await rejectedWorkerFixture(),impl=f.rpc.getMockImplementation()!
+ f.rpc.mockImplementation(async(name,args)=>{const result=await impl(name,args);return name==='corregir_rechazo_fiscal_homologacion'?{data:null,error:new Error('SYNTHETIC_ACK_LOST')}:result})
+ const result=await f.run();expect(result.estado).toBe('RECHAZO_CORREGIDO');expect(result.sucesora_id).toBe(f.successor)
+ expect(f.getUser).toHaveBeenCalledTimes(1);expect(f.load).toHaveBeenCalledTimes(1)
+ expect(f.fetcher.mock.calls.map(([req])=>(req as Request).headers.get('SOAPAction'))).toEqual(['"http://ar.gov.afip.dif.FEV1/FECompConsultar"','"http://ar.gov.afip.dif.FEV1/FECompUltimoAutorizado"'])
+ const sources=f.rpc.mock.calls.filter(([name])=>name==='cargar_fuente_correccion_rechazo_homologacion');expect(sources).toHaveLength(4)
+ for(const [,args] of f.rpc.mock.calls)if('p_actor_auth_id' in args)expect(args.p_actor_auth_id).toBe(actor)
+ await db.exec('RESET ROLE');const saved=(await db.query<{v:Record<string,unknown>}>('SELECT verificacion v FROM fiscal_rechazos_corregidos_homologacion WHERE operacion_id=$1',[op])).rows[0].v
+ expect(saved).toMatchObject({resultado:'NO_ENCONTRADO',codigo:602,ultimo_autorizado:0});expect(JSON.stringify(saved)).not.toContain('SYNTHETIC_TA')
+})
+it('recuperación R ya confirmada no carga TA ni consulta de nuevo aunque gate/emisor se cierren',async()=>{
+ const f=await rejectedWorkerFixture(),first=await f.run();f.flags.ARCA_HOMO_REJECTION_RECOVERY_ENABLED='false'
+ await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false')
+ f.getUser.mockClear();f.load.mockClear();f.fetcher.mockClear();f.rpc.mockClear()
+ expect(await f.run()).toEqual(first);expect(f.getUser).toHaveBeenCalledTimes(1);expect(f.load).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled()
+ expect(f.rpc.mock.calls.map(([name])=>name)).toEqual(['consultar_correccion_rechazo_homologacion'])
+})
+it('gate R cerrado por defecto impide cargar TA/consultar o corregir',async()=>{
+ const f=await rejectedWorkerFixture();delete f.flags.ARCA_HOMO_REJECTION_RECOVERY_ENABLED
+ await expect(f.run()).rejects.toThrow('FISCAL_CORRECCION_RECHAZO_NO_HABILITADA');expect(f.load).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled()
+ expect((await f.read()).rows[0].data).toBeNull()
+})
+it('revocar gate durante carga de TA falla antes del primer fetch',async()=>{
+ const f=await rejectedWorkerFixture(),load=f.load.getMockImplementation()!
+ f.load.mockImplementation(async(binding,signal)=>{const ticket=await load(binding,signal);f.flags.ARCA_HOMO_REJECTION_RECOVERY_ENABLED='false';return ticket})
+ await expect(f.run()).rejects.toThrow();expect(f.fetcher).not.toHaveBeenCalled();expect((await f.read()).rows[0].data).toBeNull()
+})
+it.each(['aprobacion','codigo','red','ultimo'])('respuesta %s no permite corregir el rechazo',async mode=>{
+ const f=await rejectedWorkerFixture(),impl=f.fetcher.getMockImplementation()!
+ f.fetcher.mockImplementation(async(request,init)=>{
+  const req=request as Request
+  if(mode==='red')throw new Error('PRIVATE_NETWORK')
+  const response=await impl(req,init),xml=await response.text()
+  if(req.headers.get('SOAPAction')?.includes('FECompConsultar'))return new Response(mode==='aprobacion'?xml.replace('<Errors>','<ResultGet><Resultado>A</Resultado></ResultGet><Errors>'):mode==='codigo'?xml.replace('<Code>602</Code>','<Code>600</Code>'):xml,{headers:{'content-type':'text/xml'}})
+  return new Response(mode==='ultimo'?xml.replace('<CbteNro>0</CbteNro>','<CbteNro>1</CbteNro>'):xml,{headers:{'content-type':'text/xml'}})
+ })
+ await expect(f.run()).rejects.toThrow();expect((await f.read()).rows[0].data).toBeNull();expect(f.getUser).toHaveBeenCalledTimes(1)
+ await db.exec('RESET ROLE');expect((await db.query<{estado:string}>('SELECT estado FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[op])).rows[0].estado).toBe('ENVIO_INCIERTO')
+})
+it('Auth reasignado después de verificar sesión no se adopta para corregir ni cargar TA',async()=>{
+ const f=await rejectedWorkerFixture(),other=crypto.randomUUID(),impl=f.rpc.getMockImplementation()!;let swapped=false
+ await admin('INSERT INTO auth.users VALUES($1)',[other])
+ f.rpc.mockImplementation(async(name,args)=>{
+  const result=await impl(name,args)
+  if(name==='consultar_correccion_rechazo_homologacion'&&!swapped){swapped=true;await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner]);f.getUser.mockResolvedValue({data:{user:{id:other}},error:null})}
+  return result
+ })
+ await expect(f.run()).rejects.toThrow();expect(f.getUser).toHaveBeenCalledTimes(1);expect(f.load).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled()
+ for(const [,args] of f.rpc.mock.calls)if('p_actor_auth_id' in args)expect(args.p_actor_auth_id).toBe(actor)
+})
+it('errores privados de Auth/RPC en worker de rechazo se traducen sin filtrar mensajes',async()=>{
+ const f=await rejectedWorkerFixture();f.getUser.mockRejectedValueOnce(new Error('PRIVATE_AUTH_SECRET'))
+ await expect(f.run()).rejects.toThrow('FISCAL_RECHAZO_NO_CONFIRMADO');expect(f.load).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled()
+ f.rpc.mockRejectedValueOnce(new Error('PRIVATE_DATABASE_SECRET'))
+ await expect(f.run()).rejects.toThrow('FISCAL_RECHAZO_NO_CONFIRMADO');expect(f.load).not.toHaveBeenCalled()
+})
+it('worker sólo usa fuente de la venta original antes de TA y no consulta para otro tipo/serie',async()=>{
+ const f=await rejectedWorkerFixture(),p=JSON.parse(f.next);p.datos.puntoVenta=8;const canon=JSON.stringify(p)
+ await expect(correctRejectedFiscalVoucher(f.deps,'SYNTHETIC_JWT',sale,op,f.successor,f.frozen.sha256,{canonico:canon,sha256:hash(canon)})).rejects.toThrow('FISCAL_RECHAZO_NO_CONFIRMADO')
+ expect(f.load).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled()
+ await denied(()=>db.query('SELECT cargar_fuente_correccion_rechazo_homologacion($1,$2,$3)',[actor,crypto.randomUUID(),op]))
+})
+it('sucesora autorizada conserva rechazo anterior y permite recuperar constancia sin duplicar número vigente',async()=>{
+ const f=await rejectedCorrectionFixture(),ack=(await f.run()).rows[0].data,nextSha=String(ack.sucesora_sha256)
+ const attempt=await rejectPreparedOperation(f.successor,nextSha,'AUSENTE')
+ await db.query('SELECT registrar_reconciliacion_fiscal_homologacion($1,$2,$3,$4,1,$5::jsonb)',[crypto.randomUUID(),f.successor,attempt,nextSha,JSON.stringify({estado:'AUTORIZACION_COINCIDENTE',solicitudSha256:nextSha,cae:'11111111111111',vencimiento:'20261031',procesadoEn:null,puedeReenviar:false})])
+ expect((await f.read()).rows[0].data).toEqual(ack)
+ expect((await db.query<{data:{estado:string}}>('SELECT cargar_constancia_fiscal_homologacion($1,$2,$3) data',[actor,sale,f.successor])).rows[0].data.estado).toBe('AUTORIZADA')
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>("SELECT count(*)::int n FROM fiscal_reservas_homologacion WHERE estado='AUTORIZADA'")).rows[0].n).toBe(1)
+ expect((await db.query<{n:number}>("SELECT count(*)::int n FROM fiscal_reservas_homologacion WHERE estado='RECHAZO_CORREGIDO'")).rows[0].n).toBe(1)
+})
+it('reaplicar SQL 019 conserva corrección, FKs e historial sin reactivar el intento rechazado',async()=>{
+ const f=await rejectedCorrectionFixture(),ack=(await f.run()).rows[0].data
+ await db.exec('RESET ROLE; SET CONSTRAINTS ALL IMMEDIATE')
+ const sql=readFileSync('supabase/pilot-fiscal/019_fiscal_rejected_correction.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
+ await db.exec(sql);await db.exec('SET ROLE service_role')
+ expect((await f.read()).rows[0].data).toEqual(ack);expect((await f.run()).rows[0].data).toEqual(ack)
+ await denied(()=>db.query('SELECT cargar_fuente_correccion_rechazo_homologacion($1,$2,$3)',[actor,sale,op]))
+})
+it('inserción de sucesora omitida por trigger revierte archivo de rechazo y conserva reserva original',async()=>{
+ const f=await rejectedCorrectionFixture();await db.exec('RESET ROLE')
+ await db.exec(`CREATE FUNCTION omitir_reserva_corregida() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$;
+ CREATE TRIGGER omitir_reserva_corregida BEFORE INSERT ON fiscal_reservas_homologacion FOR EACH ROW EXECUTE FUNCTION omitir_reserva_corregida()`)
+ await db.exec('SET ROLE service_role');await denied(()=>f.run());expect((await f.read()).rows[0].data).toBeNull()
+ expect(await resolve()).toMatchObject({estado:'ENVIO_INCIERTO',operacion_id:op})
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_operaciones_homologacion WHERE id=$1',[f.successor])).rows[0].n).toBe(0)
 })

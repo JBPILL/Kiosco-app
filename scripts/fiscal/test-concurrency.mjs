@@ -95,7 +95,7 @@ try {
     ...readdirSync(join(bootstrap,'steps')).sort().map(file=>join(bootstrap,'steps',file)),join(bootstrap,'900_final_security.sql'),
     join(root,'supabase/pilot-fiscal/001_fiscal_journal.sql'),join(root,'supabase/pilot-fiscal/002_fiscal_reservations.sql'),
     join(root,'supabase/pilot-fiscal/003_fiscal_requests.sql'),join(root,'supabase/pilot-fiscal/004_fiscal_reconciliation.sql'),
-    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql'),join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql'),join(root,'supabase/pilot-fiscal/013_fiscal_preparation_source.sql'),join(root,'supabase/pilot-fiscal/014_fiscal_receipt.sql'),join(root,'supabase/pilot-fiscal/015_fiscal_emission_receipts.sql'),join(root,'supabase/pilot-fiscal/016_fiscal_diagnosis.sql'),join(root,'supabase/pilot-fiscal/017_fiscal_preparation_cancellation.sql'),join(root,'supabase/pilot-fiscal/018_fiscal_reserved_replacement.sql')]) {
+    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql'),join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql'),join(root,'supabase/pilot-fiscal/013_fiscal_preparation_source.sql'),join(root,'supabase/pilot-fiscal/014_fiscal_receipt.sql'),join(root,'supabase/pilot-fiscal/015_fiscal_emission_receipts.sql'),join(root,'supabase/pilot-fiscal/016_fiscal_diagnosis.sql'),join(root,'supabase/pilot-fiscal/017_fiscal_preparation_cancellation.sql'),join(root,'supabase/pilot-fiscal/018_fiscal_reserved_replacement.sql'),join(root,'supabase/pilot-fiscal/019_fiscal_rejected_correction.sql')]) {
     await observer.query(readFileSync(file,'utf8'))
     if(file.endsWith('011_fiscal_owner_review.sql')){
       await observer.query('SELECT fiscal_exigir_actor_preparacion($1,$2)',[randomUUID(),randomUUID()])
@@ -496,6 +496,65 @@ try {
   assert.equal((await competingReplacement).error?.code,'40001');await b.query('ROLLBACK')
   assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_operaciones_homologacion WHERE id=$1',[competingId])).rows[0].n,0)
   cases.push('dos_terminales_propuestas_distintas_una_sustitucion_sin_cuerpo_parcial')
+  const rejectedFixture=async(point)=>{
+    const f=await replacementFixture(point)
+    await start(a);await f.attempt(a);await a.query('COMMIT')
+    const r=(await observer.query('SELECT intento_id,solicitud_sha256 FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[f.operation])).rows[0]
+    await start(a)
+    await a.query('SELECT registrar_respuesta_emision_homologacion($1,$2,$3,$4,$5::jsonb)',[f.auth,f.operation,r.intento_id,r.solicitud_sha256,JSON.stringify({estado:'RECHAZO_RECIBIDO',codigos:[10017],puedeReenviar:false})])
+    await a.query('SELECT registrar_reconciliacion_fiscal_homologacion($1,$2,$3,$4,1,$5::jsonb)',[randomUUID(),f.operation,r.intento_id,r.solicitud_sha256,JSON.stringify({estado:'CONCILIAR',codigo:'SIN_CONFIRMACION',puedeReenviar:false})]);await a.query('COMMIT')
+    const data=JSON.parse(f.canonical);data.datos.fecha='20261024';const proposal=JSON.stringify(data),sha=createHash('sha256').update(proposal).digest('hex')
+    const proof={version:1,resultado:'NO_ENCONTRADO',consulta:{entorno:'HOMOLOGACION',cuitEmisor:issuer,puntoVenta:point,tipoComprobante:11,numero:1},codigo:602,
+      consultado_en:new Date(Date.now()-5).toISOString(),ultimo_autorizado:0,ultimo_consultado_en:new Date().toISOString()}
+    const correct=async(client,candidate=f.successor,check=proof)=>(await client.query('SELECT corregir_rechazo_fiscal_homologacion($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) ack',[f.auth,f.sale,f.operation,candidate,r.intento_id,r.solicitud_sha256,proposal,sha,JSON.stringify(check)])).rows[0].ack
+    const authorize=async(client)=>client.query('SELECT registrar_reconciliacion_fiscal_homologacion($1,$2,$3,$4,1,$5::jsonb)',[randomUUID(),f.operation,r.intento_id,r.solicitud_sha256,JSON.stringify({estado:'AUTORIZACION_COINCIDENTE',cae:'11111111111111',vencimiento:'20261031',procesadoEn:null,solicitudSha256:r.solicitud_sha256,puedeReenviar:false})])
+    return {...f,correct,authorize,proof}
+  }
+  const rejectionDuplicate=await rejectedFixture(121)
+  await start(a);const rejectionAck=await rejectionDuplicate.correct(a)
+  await start(b);const duplicateRejection=capture(rejectionDuplicate.correct(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.deepEqual((await duplicateRejection).value,rejectionAck);await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_reconciliaciones_homologacion WHERE operacion_id=$1',[rejectionDuplicate.operation])).rows[0].n,1)
+  cases.push('rechazo_dos_correctores_un_ACK_conserva_intento_y_consulta')
+  const authorizationFirst=await rejectedFixture(122)
+  await start(a);await authorizationFirst.authorize(a)
+  await start(b);const lateRejectedCorrection=capture(authorizationFirst.correct(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await lateRejectedCorrection).error?.code,'55000');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_rechazos_corregidos_homologacion WHERE operacion_id=$1',[authorizationFirst.operation])).rows[0].n,0)
+  cases.push('CAE_gana_correccion_rechazo_no_archiva_autorizacion')
+  const correctionFirst=await rejectedFixture(123)
+  await start(a);await correctionFirst.correct(a)
+  await start(b);const lateOriginalAuthorization=capture(correctionFirst.authorize(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await lateOriginalAuthorization).error?.code,'22023');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT estado FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[correctionFirst.successor])).rows[0].estado,'RESERVADA')
+  cases.push('correccion_rechazo_gana_conciliador_original_no_autoriza_cuerpo_distinto')
+  const rejectedRollback=await rejectedFixture(124)
+  await start(a);await rejectedRollback.correct(a)
+  await start(b);const afterRejectedRollback=capture(rejectedRollback.correct(b));await waitForLock(observer,b);await a.query('ROLLBACK')
+  assert(!(await afterRejectedRollback).error);await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_reservas_homologacion r JOIN fiscal_operaciones_homologacion o ON o.id=r.operacion_id WHERE o.venta_id=$1',[rejectedRollback.sale])).rows[0].n,2)
+  cases.push('rollback_correccion_rechazo_sin_perder_reserva_ni_historia')
+  const expiredProof=await rejectedFixture(125)
+  const staleProof={...expiredProof.proof,consultado_en:new Date(Date.now()-119800).toISOString()}
+  await a.query('BEGIN');await a.query('SELECT * FROM ventas WHERE id=$1 FOR UPDATE',[expiredProof.sale])
+  await start(b);const expiredCorrection=capture(expiredProof.correct(b,expiredProof.successor,staleProof));await waitForLock(observer,b);await delay(400);await a.query('COMMIT')
+  assert.equal((await expiredCorrection).error?.code,'22023');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT estado FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[expiredProof.operation])).rows[0].estado,'ENVIO_INCIERTO')
+  cases.push('prueba_rechazo_vence_esperando_lock_no_archiva_numero')
+  const expiryAfterCatalog=await rejectedFixture(126)
+  const catalogProof={...expiryAfterCatalog.proof,consultado_en:new Date(Date.now()-118000).toISOString()}
+  await a.query('BEGIN');await a.query('SELECT revision FROM fiscal_parametros_homologacion WHERE revision=1 FOR UPDATE')
+  await start(b);const catalogWait=capture(expiryAfterCatalog.correct(b,expiryAfterCatalog.successor,catalogProof));await waitForLock(observer,b);await delay(2600);await a.query('COMMIT')
+  const rejectionCatalogExpired=await catalogWait;assert.equal(rejectionCatalogExpired.error?.code,'22023');assert.match(rejectionCatalogExpired.error?.message??'',/venció antes del cierre/);await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT estado FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[expiryAfterCatalog.operation])).rows[0].estado,'ENVIO_INCIERTO')
+  cases.push('prueba_rechazo_vence_esperando_catalogo_rollback_del_archivo_y_sucesora')
+  const rejectionGlobal=await rejectedFixture(127),otherBusiness=await preparationFixture(127)
+  await start(a);await savePreparation(a,otherBusiness);await a.query('COMMIT')
+  await start(a);await rejectionGlobal.correct(a)
+  await start(b);const competingSeries=capture(persistPrepared(b,otherBusiness));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await competingSeries).error?.code,'55000');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_reservas_homologacion WHERE cuit_emisor=$1 AND punto_venta=127 AND estado<>$2',[issuer,'RECHAZO_CORREGIDO'])).rows[0].n,1)
+  cases.push('correccion_rechazo_serie_global_no_deja_numero_libre_para_otro_comercio')
   const reviewedPreparation=await preparationFixture(96)
   await start(a);await savePreparation(a,reviewedPreparation)
   const preparedBody=JSON.stringify({...JSON.parse(reviewedPreparation.canonical).datos,numero:1}),preparedHash=createHash('sha256').update(preparedBody).digest('hex')

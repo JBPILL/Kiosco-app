@@ -140,42 +140,67 @@ function deadline<T>(promise: Promise<T>,signal: AbortSignal): Promise<T> {
   })
 }
 export { children as fiscalXmlChildren, schema as fiscalXmlSchema, one as fiscalXmlOne, deadline as withFiscalDeadline }
-/** fetcher obligatorio: el worker autorizado debe inyectar su transporte.
- * Nunca llama emisión, reenvía una factura, cambia DB ni devuelve XML/Token/Sign. */
-export async function consultFiscalVoucher(
-  expected: FrozenFiscalRequest,ticket: {token:string;sign:string;expiresAt:number},fetcher: typeof fetch,timeoutMs=15000,
-): Promise<FiscalReconciliation> {
-  const controller=new AbortController()
-  let response: Response | undefined
-  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>40000)return {estado:'CONCILIAR',codigo:'SIN_CONFIRMACION',puedeReenviar:false}
-  const timeout=setTimeout(()=>controller.abort(),timeoutMs)
+class FiscalVoucherTransportUnconfirmed extends Error {}
+/** Transporte común acotado: destino/consulta se construyen desde el cuerpo
+ * verificado; ninguna respuesta cruda ni credencial sale de este módulo. */
+async function fetchFiscalVoucherXml(expected:FrozenFiscalRequest,ticket:{token:string;sign:string;expiresAt:number},fetcher:typeof fetch,timeoutMs:number,beforeSend?:()=>Promise<void>):Promise<{xml:string;frozen:FrozenFiscalRequest}> {
+  const controller=new AbortController();let response:Response|undefined
+  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>40000)return invalid()
+  const timer=setTimeout(()=>controller.abort(),timeoutMs)
   try {
     const frozen=await deadline(verifyFiscalRequest(expected),controller.signal)
     const request=await deadline(buildFiscalVoucherQuery(frozen,ticket),controller.signal)
+    if(beforeSend)await deadline(beforeSend(),controller.signal)
+    if(controller.signal.aborted||ticket.expiresAt<=Date.now()+15000)return invalid()
     response=await deadline(fetcher(new Request(request,{signal:controller.signal})),controller.signal)
-    if(response.status!==200 || response.redirected || !/^(text\/xml|application\/soap\+xml)(?:;|$)/i.test(response.headers.get('content-type')??'')) {
-      return {estado:'CONCILIAR',codigo:'SIN_CONFIRMACION',puedeReenviar:false}
-    }
-    const reader=response.body?.getReader()
-    if(!reader)return {estado:'CONCILIAR',codigo:'RESPUESTA_INVALIDA',puedeReenviar:false}
-    const chunks: Uint8Array[]=[]
-    let length=0
+    if(response.status!==200||response.redirected||!/^(text\/xml|application\/soap\+xml)(?:;|$)/i.test(response.headers.get('content-type')??''))throw new FiscalVoucherTransportUnconfirmed()
+    const reader=response.body?.getReader();if(!reader)return invalid()
+    const chunks:Uint8Array[]=[];let length=0
     try {
-      while(true) {
-        const result=await deadline(reader.read(),controller.signal)
-        if(result.done)break
-        length+=result.value.byteLength
-        if(length>MAX_BYTES)return invalid()
-        chunks.push(result.value)
-      }
+      while(true){const part=await deadline(reader.read(),controller.signal);if(part.done)break
+        length+=part.value.byteLength;if(length>MAX_BYTES)return invalid();chunks.push(part.value)}
     }finally{void reader.cancel().catch(()=>{});reader.releaseLock()}
-    const bytes=new Uint8Array(length)
-    let offset=0
+    const bytes=new Uint8Array(length);let offset=0
     for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length}
-    const xml=new TextDecoder('utf-8',{fatal:true}).decode(bytes)
-    const s=frozen.solicitud
-    const consulta={entorno:s.entorno,cuitEmisor:s.cuitEmisor,puntoVenta:s.puntoVenta,tipoComprobante:s.tipoComprobante,numero:s.numero}
-    return await deadline(reconcileFiscalVoucher(decodeFiscalVoucherXml(xml,consulta),frozen),controller.signal)
-  }catch{return {estado:'CONCILIAR',codigo:'RESPUESTA_INVALIDA',puedeReenviar:false}}
-  finally{clearTimeout(timeout);controller.abort();if(response?.body&&!response.body.locked)void response.body.cancel().catch(()=>{})}
+    return {xml:new TextDecoder('utf-8',{fatal:true}).decode(bytes),frozen}
+  }finally{clearTimeout(timer);controller.abort();if(response?.body&&!response.body.locked)void response.body.cancel().catch(()=>{})}
+}
+export interface FiscalVoucherAbsence {
+  estado:'NO_ENCONTRADO';codigo:602;consulta:Readonly<FiscalIdentity>
+}
+/** Únicamente 602 de FECompConsultar, sin comprobante contradictorio. No basta
+ * para reenviar: requiere rechazo recibido y prueba de numeración, en otro gate. */
+export function decodeFiscalVoucherAbsenceXml(xml:string,consulta:FiscalIdentity):Readonly<FiscalVoucherAbsence> {
+  if(!consulta||Object.keys(consulta).length!==5||consulta.entorno!=='HOMOLOGACION'||!/^\d{11}$/.test(consulta.cuitEmisor)
+    ||!Number.isSafeInteger(consulta.puntoVenta)||consulta.puntoVenta<1||consulta.puntoVenta>99998
+    ||![1,6,11].includes(consulta.tipoComprobante)||!Number.isSafeInteger(consulta.numero)||consulta.numero<1||consulta.numero>99999999)return invalid()
+  const root=parseFiscalXmlRoot(xml)
+  if(root.namespaceURI!==SOAP||root.localName!=='Envelope')return invalid()
+  schema(root,['Header','Body'],SOAP);const body=one(root,'Body',true,SOAP)!
+  schema(body,['FECompConsultarResponse']);const response=one(body,'FECompConsultarResponse')!
+  schema(response,['FECompConsultarResult']);const result=one(response,'FECompConsultarResult')!
+  schema(result,['ResultGet','Errors','Events'])
+  const records=one(result,'ResultGet',false)
+  if(records){
+    if(!['true','1'].includes(records.getAttributeNS(XSI,'nil')??'')||children(records).length||records.textContent?.trim())return invalid()
+    for(let i=0;i<records.attributes.length;i++){const a=records.attributes.item(i)!
+      if(a.namespaceURI!=='http://www.w3.org/2000/xmlns/'&&!(a.namespaceURI===XSI&&a.localName==='nil'))return invalid()}
+  }
+  const errors=list(result,'Errors','Err',['Code','Msg'])
+  if(errors.length!==1||number(errors[0],'Code')!==602||!text(errors[0],'Msg')||text(errors[0],'Msg').length>4096)return invalid()
+  for(const event of list(result,'Events','Evt',['Code','Msg'])){if(number(event,'Code')<1||text(event,'Msg').length>4096)return invalid()}
+  return Object.freeze({estado:'NO_ENCONTRADO',codigo:602,consulta:Object.freeze({...consulta})})
+}
+/** Fallos de red/XML nunca producen una prueba negativa ni habilitan corrección. */
+export async function consultFiscalVoucherAbsence(expected:FrozenFiscalRequest,ticket:{token:string;sign:string;expiresAt:number},fetcher:typeof fetch,timeoutMs=15000,beforeSend?:()=>Promise<void>):Promise<Readonly<FiscalVoucherAbsence>&{consultado_en:string}> {
+  const {xml,frozen}=await fetchFiscalVoucherXml(expected,ticket,fetcher,timeoutMs,beforeSend),s=frozen.solicitud
+  return Object.freeze({...decodeFiscalVoucherAbsenceXml(xml,{entorno:s.entorno,cuitEmisor:s.cuitEmisor,puntoVenta:s.puntoVenta,tipoComprobante:s.tipoComprobante,numero:s.numero}),consultado_en:new Date().toISOString()})
+}
+/** Nunca emisión/reenvío/DB: la autorización exige comparar y persistir el cuerpo. */
+export async function consultFiscalVoucher(expected:FrozenFiscalRequest,ticket:{token:string;sign:string;expiresAt:number},fetcher:typeof fetch,timeoutMs=15000):Promise<FiscalReconciliation> {
+  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>40000)return {estado:'CONCILIAR',codigo:'SIN_CONFIRMACION',puedeReenviar:false}
+  try {
+    const {xml,frozen}=await fetchFiscalVoucherXml(expected,ticket,fetcher,timeoutMs),s=frozen.solicitud
+    return await reconcileFiscalVoucher(decodeFiscalVoucherXml(xml,{entorno:s.entorno,cuitEmisor:s.cuitEmisor,puntoVenta:s.puntoVenta,tipoComprobante:s.tipoComprobante,numero:s.numero}),frozen)
+  }catch(error){return {estado:'CONCILIAR',codigo:error instanceof FiscalVoucherTransportUnconfirmed?'SIN_CONFIRMACION':'RESPUESTA_INVALIDA',puedeReenviar:false}}
 }
