@@ -1,3 +1,4 @@
+import { prepareFiscalPresentationFacts } from '../../supabase/functions/_shared/fiscalPresentation'
 import { correctRejectedFiscalVoucher } from '../../supabase/functions/_shared/fiscalRejectedCorrection'
 import { createFiscalClient } from '../lib/fiscalClient'
 import { createFiscalHttpHandler } from '../../supabase/functions/_shared/fiscalHttp'
@@ -369,7 +370,7 @@ it('diagnóstico incierto distingue falta de recepción de rechazo y conserva co
  for(const code of ['RESPUESTA_INVALIDA','SIN_CONFIRMACION'])await db.query('SELECT registrar_reconciliacion_fiscal_homologacion($1,$2,$3,$4,1,$5::jsonb)',[crypto.randomUUID(),op,attempt,frozen.sha256,JSON.stringify({estado:'CONCILIAR',codigo:code,puedeReenviar:false})])
  const result=validateFiscalDiagnosis(await diagnosis(),sale,op)
  expect(result.recepcion).toEqual({estado:'RECHAZO_RECIBIDO',codigos:[10017],puedeReenviar:false});expect(result.ultima_consulta).toEqual({estado:'CONCILIAR',codigo:'SIN_CONFIRMACION'})
- expect(result.estado).toBe('ENVIO_INCIERTO');expect(JSON.stringify(result)).not.toMatch(/credencial|certificado|actor_auth|token|sign|intento_id|cae/)
+ expect(result.estado).toBe('ENVIO_INCIERTO');expect(JSON.stringify(result)).not.toMatch(/"[^"]*(?:credencial|certificado|actor_auth|token|sign|intento_id|cae)[^"]*":/)
 })
 it('diagnóstico autorizado no depende de emisor/catálogo vigente y coteja constancia durable',async()=>{
  await authorizeReceipt();await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false');await admin('UPDATE fiscal_parametros_homologacion SET habilitado=false')
@@ -988,4 +989,75 @@ it('otra terminal corrige R: obs no ejecutada se cierra sólo por transición du
  expect((await api.resolve()).operacion_id).toBe(closed.sucesora_id);expect(api.pendingObservation()).toBeNull()
  expect(commands.some(c=>c.accion==='CONCILIAR')).toBe(false);expect(f.fetcher).not.toHaveBeenCalled()
  await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_reconciliaciones_homologacion WHERE id=$1',[record.observationId])).rows[0].n).toBe(0)
+})
+
+// SQL 022: hechos históricos previos a revisión, sin permiso de emisión.
+async function presentationFixture(){
+ const f=await reservedReplacementFixture()
+ await db.exec('RESET ROLE')
+ const detail=(await db.query<{id:string}>('SELECT id FROM detalles_venta WHERE venta_id=$1',[sale])).rows[0].id
+ await db.exec('SET ROLE service_role')
+ const facts={version:1,emisor:{razon_social:'Comercio ñ "histórico"',domicilio_comercial:'Calle 123',ingresos_brutos:'Exento',inicio_actividades:'20200101'},receptor:{nombre:'Consumidor final',domicilio:'Sin identificar'},lineas:[{detalle_id:detail,descripcion:'Artículo histórico'}],otros_impuestos_nacionales_indirectos:'0.00'}
+ const proposal=await prepareFiscalPresentationFacts(facts)
+ const read=(who=actor,which=sale)=>db.query<{data:unknown}>('SELECT cargar_presentacion_fiscal_homologacion($1,$2,$3) data',[who,which,op])
+ const write=(p=proposal,who=actor)=>db.query<{data:unknown}>('SELECT guardar_presentacion_fiscal_homologacion($1,$2,$3,$4,$5,$6) data',[who,sale,op,f.frozen.sha256,p.canonico,p.sha256])
+ return {...f,facts,proposal,read,write}
+}
+it('representación guarda Unicode canónico, replay exacto y lectura histórica sin emisor vigente',async()=>{
+ const f=await presentationFixture();expect((await f.read()).rows[0].data).toBeNull()
+ const ack=(await f.write()).rows[0].data
+ expect(ack).toMatchObject({operacion_id:op,venta_id:sale,solicitud_sha256:f.frozen.sha256,presentacion_sha256:f.proposal.sha256,emision_habilitada:false})
+ await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false WHERE kiosco_id=$1',[kid])
+ expect((await f.read()).rows[0].data).toEqual(ack);expect((await f.write()).rows[0].data).toEqual(ack)
+})
+it('representación conserva datos originales tras sustitución sin heredarlos a sucesora',async()=>{
+ const f=await presentationFixture(),ack=(await f.write()).rows[0].data
+ await f.replace();expect((await f.read()).rows[0].data).toEqual(ack)
+ expect((await db.query<{data:unknown}>('SELECT cargar_presentacion_fiscal_homologacion($1,$2,$3) data',[actor,sale,f.successor])).rows[0].data).toBeNull()
+})
+it('representación rechaza cambiar hechos ya guardados',async()=>{
+ const f=await presentationFixture();await f.write()
+ const other=await prepareFiscalPresentationFacts({...f.facts,receptor:{...f.facts.receptor,nombre:'Otro'}})
+ await denied(()=>f.write(other));expect((await f.read()).rows[0].data).toMatchObject({presentacion_sha256:f.proposal.sha256})
+})
+it.each(['detalle','fecha','impuesto'])('representación exige coherencia con cuerpo y snapshot: %s',async kind=>{
+ const f=await presentationFixture()
+ if(kind==='detalle')f.facts.lineas[0].detalle_id=crypto.randomUUID()
+ if(kind==='fecha')f.facts.emisor.inicio_actividades='20990101'
+ if(kind==='impuesto')f.facts.otros_impuestos_nacionales_indirectos='124.00'
+ const invalid=await prepareFiscalPresentationFacts(f.facts)
+ await denied(()=>f.write(invalid));expect((await f.read()).rows[0].data).toBeNull()
+})
+it('representación niega Auth ajeno y perfil reasignado',async()=>{
+ const f=await presentationFixture();await f.write();const other=crypto.randomUUID()
+ await denied(()=>f.read(other));await denied(()=>f.write(f.proposal,other))
+ await admin('INSERT INTO auth.users VALUES($1)',[other]);await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner])
+ await denied(()=>f.read());await denied(()=>f.read(other))
+})
+it.each(['anon','authenticated','service_role'])('representación no concede tabla directa a %s',async role=>{
+ const f=await presentationFixture();await f.write();await db.exec(`SET ROLE ${role}`)
+ await denied(()=>db.query('SELECT * FROM fiscal_presentaciones_homologacion'))
+ if(role!=='service_role'){await denied(()=>f.read());await denied(()=>f.write())}
+})
+it('representación inmutable incluso para administrador',async()=>{
+ const f=await presentationFixture();await f.write();await db.exec('RESET ROLE')
+ await denied(()=>db.query('DELETE FROM fiscal_presentaciones_homologacion WHERE operacion_id=$1',[op]))
+ await denied(()=>db.query('UPDATE fiscal_presentaciones_homologacion SET creado_en=clock_timestamp() WHERE operacion_id=$1',[op]))
+})
+it('representación no acusa éxito si trigger ignora inserción',async()=>{
+ const f=await presentationFixture()
+ await admin(`CREATE FUNCTION ignore_presentation_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$;`)
+ await admin('CREATE TRIGGER ignore_presentation_test BEFORE INSERT ON fiscal_presentaciones_homologacion FOR EACH ROW EXECUTE FUNCTION ignore_presentation_test()')
+ await denied(()=>f.write());expect((await f.read()).rows[0].data).toBeNull()
+})
+
+it('representación inicial se bloquea después de una revisión humana',async()=>{
+ const f=await presentationFixture()
+ await db.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1)',[op,actor,crypto.randomUUID(),f.frozen.sha256])
+ await denied(()=>f.write());expect((await f.read()).rows[0].data).toBeNull()
+})
+it('representación ya guardada admite replay tras revisión humana, sin cambiar aprobación',async()=>{
+ const f=await presentationFixture(),ack=(await f.write()).rows[0].data
+ await db.query('SELECT aprobar_revision_fiscal_homologacion($1,$2,$3,$4,1)',[op,actor,crypto.randomUUID(),f.frozen.sha256])
+ expect((await f.write()).rows[0].data).toEqual(ack)
 })

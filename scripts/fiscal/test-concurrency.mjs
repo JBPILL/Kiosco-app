@@ -95,7 +95,7 @@ try {
     ...readdirSync(join(bootstrap,'steps')).sort().map(file=>join(bootstrap,'steps',file)),join(bootstrap,'900_final_security.sql'),
     join(root,'supabase/pilot-fiscal/001_fiscal_journal.sql'),join(root,'supabase/pilot-fiscal/002_fiscal_reservations.sql'),
     join(root,'supabase/pilot-fiscal/003_fiscal_requests.sql'),join(root,'supabase/pilot-fiscal/004_fiscal_reconciliation.sql'),
-    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql'),join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql'),join(root,'supabase/pilot-fiscal/013_fiscal_preparation_source.sql'),join(root,'supabase/pilot-fiscal/014_fiscal_receipt.sql'),join(root,'supabase/pilot-fiscal/015_fiscal_emission_receipts.sql'),join(root,'supabase/pilot-fiscal/016_fiscal_diagnosis.sql'),join(root,'supabase/pilot-fiscal/017_fiscal_preparation_cancellation.sql'),join(root,'supabase/pilot-fiscal/018_fiscal_reserved_replacement.sql'),join(root,'supabase/pilot-fiscal/019_fiscal_rejected_correction.sql'),join(root,'supabase/pilot-fiscal/020_fiscal_reconciliation_actor.sql'),join(root,'supabase/pilot-fiscal/021_fiscal_observation_receipt.sql')]) {
+    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql'),join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql'),join(root,'supabase/pilot-fiscal/013_fiscal_preparation_source.sql'),join(root,'supabase/pilot-fiscal/014_fiscal_receipt.sql'),join(root,'supabase/pilot-fiscal/015_fiscal_emission_receipts.sql'),join(root,'supabase/pilot-fiscal/016_fiscal_diagnosis.sql'),join(root,'supabase/pilot-fiscal/017_fiscal_preparation_cancellation.sql'),join(root,'supabase/pilot-fiscal/018_fiscal_reserved_replacement.sql'),join(root,'supabase/pilot-fiscal/019_fiscal_rejected_correction.sql'),join(root,'supabase/pilot-fiscal/020_fiscal_reconciliation_actor.sql'),join(root,'supabase/pilot-fiscal/021_fiscal_observation_receipt.sql'),join(root,'supabase/pilot-fiscal/022_fiscal_presentation_facts.sql')]) {
     await observer.query(readFileSync(file,'utf8'))
     if(file.endsWith('011_fiscal_owner_review.sql')){
       await observer.query('SELECT fiscal_exigir_actor_preparacion($1,$2)',[randomUUID(),randomUUID()])
@@ -665,6 +665,40 @@ try {
   await start(b);const blockedSale=capture(savePreparation(b,changedSale));await waitForLock(observer,b);await a.query('COMMIT')
   assert.equal((await blockedSale).error?.code,'22023');await b.query('ROLLBACK')
   cases.push('venta_cambia_durante_espera_no_guarda_importe_anterior')
+  async function presentationFixture(point){
+    const f=await preparationFixture(point)
+    await start(a);await savePreparation(a,f);await persistPrepared(a,f);await a.query('COMMIT')
+    const body=(await observer.query('SELECT solicitud_sha256 FROM fiscal_solicitudes_homologacion WHERE operacion_id=$1',[f.operation])).rows[0].solicitud_sha256
+    const detail=(await observer.query('SELECT id FROM detalles_venta WHERE venta_id=$1',[f.sale])).rows[0].id
+    const facts={version:1,emisor:{razon_social:'Comercio ñ',domicilio_comercial:'Calle 1',ingresos_brutos:'Exento',inicio_actividades:'20200101'},receptor:{nombre:'Consumidor final',domicilio:'Sin identificar'},lineas:[{detalle_id:detail,descripcion:'Artículo'}],otros_impuestos_nacionales_indirectos:'0.00'}
+    const canonical=(await observer.query('SELECT fiscal_json_canonico_homologacion($1::jsonb) value',[JSON.stringify(facts)])).rows[0].value
+    const sha=createHash('sha256').update(canonical).digest('hex')
+    const write=async(client)=>(await client.query('SELECT guardar_presentacion_fiscal_homologacion($1,$2,$3,$4,$5,$6) ack',[f.auth,f.sale,f.operation,body,canonical,sha])).rows[0].ack
+    return {...f,write,sha}
+  }
+  const presentationDuplicate=await presentationFixture(135)
+  await start(a);const presentationAck=await presentationDuplicate.write(a)
+  await start(b);const duplicatePresentation=capture(presentationDuplicate.write(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.deepEqual((await duplicatePresentation).value,presentationAck);await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_presentaciones_homologacion WHERE operacion_id=$1',[presentationDuplicate.operation])).rows[0].n,1)
+  cases.push('representacion_dos_guardados_un_ACK_historico_sin_emision')
+  const presentationRollback=await presentationFixture(136)
+  await start(a);await presentationRollback.write(a)
+  await start(b);const presentationRetry=capture(presentationRollback.write(b));await waitForLock(observer,b);await a.query('ROLLBACK')
+  assert.equal((await presentationRetry).value.presentacion_sha256,presentationRollback.sha);await b.query('COMMIT')
+  cases.push('representacion_rollback_primer_guardado_segundo_confirma_mismo_hash')
+  const presentationActor=await presentationFixture(137),presentationNewActor=randomUUID()
+  await observer.query('INSERT INTO auth.users VALUES($1)',[presentationNewActor])
+  await a.query('BEGIN');await a.query('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[presentationNewActor,presentationActor.owner])
+  await start(b);const blockedPresentationActor=capture(presentationActor.write(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await blockedPresentationActor).error?.code,'42501');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_presentaciones_homologacion WHERE operacion_id=$1',[presentationActor.operation])).rows[0].n,0)
+  cases.push('representacion_Auth_reasignado_esperando_no_guarda_hechos')
+  const presentationIssuer=await presentationFixture(138)
+  await a.query('BEGIN');await a.query('UPDATE fiscal_emisores_homologacion SET habilitado=false WHERE kiosco_id=$1',[presentationIssuer.kid])
+  await start(b);const blockedPresentationIssuer=capture(presentationIssuer.write(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await blockedPresentationIssuer).error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('representacion_emisor_revocado_esperando_no_guarda_hechos')
   const expiredCatalog=await preparationFixture(93)
   await observer.query('UPDATE fiscal_parametros_homologacion SET habilitado=false')
   await observer.query(`INSERT INTO fiscal_parametros_homologacion SELECT 2,condiciones,alicuotas,fuente_sha256,clock_timestamp()-interval '1 hour',clock_timestamp()+interval '3 seconds',true FROM fiscal_parametros_homologacion WHERE revision=1`)
