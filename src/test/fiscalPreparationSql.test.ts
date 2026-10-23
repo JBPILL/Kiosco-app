@@ -471,3 +471,112 @@ it('reasignación Auth entre escritura y lectura no confirma cierre para el perf
  await expect(cancelFiscalPreparation({auth:{getUser:f.getUser},rpc:f.rpc},'SYNTHETIC_SESSION',sale,op)).rejects.toThrow('FISCAL_CANCELACION_NO_CONFIRMADA')
  expect(f.getUser).toHaveBeenCalledTimes(1);expect(f.rpc.mock.calls.every(([,args])=>args.p_actor_auth_id===actor)).toBe(true)
 })
+
+// Sustitución reservada: SQL local sin ARCA, TA ni permiso de emisión heredado.
+async function reservedReplacementFixture(){
+ const p=await prepared();await save(p.canonico,p.sha256)
+ const frozen=await requestFromPreparedFiscalData(p,1),canonical=await serializeFiscalRequest(frozen)
+ await db.query('SELECT persistir_preparacion_fiscal_homologacion($1,$2,$3,$4,0,clock_timestamp())',[actor,op,canonical,frozen.sha256])
+ const changed=JSON.parse(p.canonico);changed.datos.fecha='20261023'
+ const successor=crypto.randomUUID(),next=JSON.stringify(changed),nextHash=hash(next)
+ const replace=(id=successor,canon=next,sha=nextHash,who=actor,oldHash=frozen.sha256)=>db.query<{data:Record<string,unknown>}>(
+  'SELECT sustituir_reserva_fiscal_homologacion($1,$2,$3,$4,$5,$6,$7) data',[who,sale,op,id,oldHash,canon,sha])
+ const read=()=>db.query<{data:Record<string,unknown>}>('SELECT consultar_sustitucion_fiscal_homologacion($1,$2,$3) data',[actor,sale,op])
+ return {p,frozen,canonical,successor,next,nextHash,replace,read}
+}
+it('sustituye reservada conservando número, fecha y cuerpo original; replay recupera el mismo cierre',async()=>{
+ const f=await reservedReplacementFixture()
+ await db.exec('RESET ROLE')
+ const before=(await db.query<{data:Record<string,unknown>}>('SELECT to_jsonb(r) data FROM fiscal_reservas_homologacion r')).rows[0].data as Record<string,unknown>
+ const series=(await db.query<{data:Record<string,unknown>}>('SELECT to_jsonb(s) data FROM fiscal_series_homologacion s')).rows[0].data
+ await db.exec('SET ROLE service_role')
+ const ack=(await f.replace()).rows[0].data
+ expect(ack).toMatchObject({operacion_id:op,sucesora_id:f.successor,venta_id:sale,numero:1,estado:'SUSTITUIDA',emision_habilitada:false,anterior_sha256:f.frozen.sha256,preparacion_sha256:f.nextHash})
+ expect((await f.read()).rows[0].data).toEqual(ack);expect((await f.replace()).rows[0].data).toEqual(ack)
+ expect(await resolve()).toMatchObject({estado:'RESERVADA',operacion_id:f.successor})
+ await denied(()=>db.query('SELECT registrar_intento_fiscal_homologacion($1,$2)',[op,crypto.randomUUID()]))
+ await denied(()=>db.query('SELECT cargar_preparacion_envio_homologacion($1)',[f.successor]))
+ await db.exec('RESET ROLE')
+ expect((await db.query<{data:Record<string,unknown>}>('SELECT to_jsonb(s) data FROM fiscal_series_homologacion s')).rows[0].data).toEqual(series)
+ const after=(await db.query<{data:Record<string,unknown>}>('SELECT to_jsonb(r) data FROM fiscal_reservas_homologacion r')).rows[0].data as Record<string,unknown>
+ expect(after).toEqual({...before,operacion_id:f.successor,solicitud_sha256:ack.sucesora_sha256})
+ expect((await db.query<{cuerpo_canonico:string}>('SELECT cuerpo_canonico FROM fiscal_solicitudes_homologacion WHERE operacion_id=$1',[op])).rows[0].cuerpo_canonico).toBe(f.canonical)
+ expect((await db.query<{canonico:string}>('SELECT canonico FROM fiscal_preparaciones_homologacion WHERE operacion_id=$1',[op])).rows[0].canonico).toBe(f.p.canonico)
+ expect((await db.query<{estado:string}>('SELECT estado FROM fiscal_operaciones_homologacion WHERE id=$1',[op])).rows[0].estado).toBe('SUSTITUIDA')
+ expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_revisiones_homologacion WHERE operacion_id=$1',[f.successor])).rows[0].n).toBe(0)
+})
+it.each(['anon','authenticated'])('sustitución privada deniega rol %s y lectura directa de auditoría',async role=>{
+ const f=await reservedReplacementFixture();await db.exec(`SET ROLE ${role}`)
+ await denied(()=>f.replace());await denied(()=>f.read());await denied(()=>db.query('SELECT * FROM fiscal_sustituciones_homologacion'))
+})
+it.each(['actor','hash','sucesora','tipo','total','parametros','emisor','envases','intento'])('sustitución rechaza %s y no deja estado parcial',async mode=>{
+ const f=await reservedReplacementFixture();let canon=f.next,id=f.successor,who=actor,oldHash=f.frozen.sha256
+ if(mode==='actor')who=crypto.randomUUID()
+ if(mode==='hash')oldHash='c'.repeat(64)
+ if(mode==='sucesora')id=op
+ if(['tipo','total','parametros','envases'].includes(mode)){
+  const changed=JSON.parse(canon)
+  if(mode==='tipo')changed.datos.tipoComprobante=6
+  if(mode==='total')changed.datos.importes.total='1.00'
+  if(mode==='parametros')changed.revision_parametros=99
+  if(mode==='envases'){
+   // Corrupción privilegiada para probar el guard de preparación incluso sin formulario.
+   await admin('ALTER TABLE detalles_venta DISABLE TRIGGER fiscal_detalles_reservados')
+   await admin('UPDATE detalles_venta SET es_devolucion_envase=true WHERE venta_id=$1',[sale])
+   await admin('ALTER TABLE detalles_venta ENABLE TRIGGER fiscal_detalles_reservados')
+  }
+  canon=JSON.stringify(changed)
+ }
+ if(mode==='emisor')await admin('UPDATE fiscal_emisores_homologacion SET revision=2')
+ if(mode==='intento')await db.query('SELECT registrar_intento_fiscal_homologacion($1,$2)',[op,crypto.randomUUID()])
+ await denied(()=>f.replace(id,canon,hash(canon),who,oldHash))
+ expect((await f.read()).rows[0].data).toBeNull()
+ await db.exec('RESET ROLE')
+ expect((await db.query<{estado:string}>('SELECT estado FROM fiscal_operaciones_homologacion WHERE id=$1',[op])).rows[0].estado).toBe('PREPARADA')
+ expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_operaciones_homologacion WHERE id=$1',[f.successor])).rows[0].n).toBe(0)
+ expect((await db.query<{operacion_id:string}>('SELECT operacion_id FROM fiscal_reservas_homologacion')).rows[0].operacion_id).toBe(op)
+})
+it('revoca permiso anterior sin borrarlo y no hereda autorización en la sucesora',async()=>{
+ const f=await reservedReplacementFixture()
+ await admin(`INSERT INTO fiscal_permisos_emision_homologacion(operacion_id,autorizacion_id,solicitud_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,vence_en)
+ VALUES($1,$2,$3,$4,repeat('a',64),1,true,clock_timestamp()+interval '10 minutes')`,[op,crypto.randomUUID(),f.frozen.sha256,credential])
+ await f.replace();await db.exec('RESET ROLE')
+ expect((await db.query('SELECT habilitado,usado_por_intento FROM fiscal_permisos_emision_homologacion WHERE operacion_id=$1',[op])).rows[0]).toEqual({habilitado:false,usado_por_intento:null})
+ expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_permisos_emision_homologacion WHERE operacion_id=$1',[f.successor])).rows[0].n).toBe(0)
+})
+it('historial de sustitución inmutable y replay con otra identidad/datos rechazado',async()=>{
+ const f=await reservedReplacementFixture();await f.replace()
+ await denied(()=>f.replace(crypto.randomUUID()));const changed=JSON.parse(f.next);changed.datos.fecha='20261024';const canon=JSON.stringify(changed)
+ await denied(()=>f.replace(f.successor,canon,hash(canon)))
+ await admin('SELECT 1')
+ await db.exec('RESET ROLE')
+ await denied(()=>db.query('DELETE FROM fiscal_sustituciones_homologacion'))
+ await denied(()=>db.query("UPDATE fiscal_operaciones_homologacion SET estado='PREPARADA' WHERE id=$1",[op]))
+})
+it('sustituciones encadenadas conservan ACK históricos y una única reserva activa',async()=>{
+ const f=await reservedReplacementFixture();const first=(await f.replace()).rows[0].data
+ const changed=JSON.parse(f.next);changed.datos.fecha='20261024';const canon=JSON.stringify(changed),last=crypto.randomUUID()
+ await db.query('SELECT sustituir_reserva_fiscal_homologacion($1,$2,$3,$4,$5,$6,$7)',[actor,sale,f.successor,last,first.sucesora_sha256,canon,hash(canon)])
+ expect((await f.read()).rows[0].data).toEqual(first);expect((await f.replace()).rows[0].data).toEqual(first)
+ expect(await resolve()).toMatchObject({estado:'RESERVADA',operacion_id:last})
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_reservas_homologacion')).rows[0].n).toBe(1)
+})
+it('transferencia omitida por trigger no confirma ACK y revierte operación, cuerpo y auditoría',async()=>{
+ const f=await reservedReplacementFixture()
+ await db.exec('RESET ROLE')
+ await db.exec(`CREATE FUNCTION omitir_transferencia_ensayo() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$;
+ CREATE TRIGGER omitir_transferencia_ensayo BEFORE UPDATE OF operacion_id ON fiscal_reservas_homologacion FOR EACH ROW EXECUTE FUNCTION omitir_transferencia_ensayo()`)
+ await db.exec('SET ROLE service_role')
+ await denied(()=>f.replace());expect((await f.read()).rows[0].data).toBeNull()
+ expect(await resolve()).toMatchObject({estado:'RESERVADA',operacion_id:op})
+ await db.exec('RESET ROLE')
+ expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_solicitudes_homologacion WHERE operacion_id=$1',[f.successor])).rows[0].n).toBe(0)
+})
+it('reinstalar SQL 018 conserva sustituciones existentes y ACK sin reactivar historial',async()=>{
+ const f=await reservedReplacementFixture(),ack=(await f.replace()).rows[0].data
+ await db.exec('RESET ROLE; SET CONSTRAINTS ALL IMMEDIATE');await db.exec('SAVEPOINT migration')
+ // El archivo transaccional no debe cerrar la transacción externa de fixture.
+ const sql=readFileSync('supabase/pilot-fiscal/018_fiscal_reserved_replacement.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
+ await db.exec(sql);await db.exec('RELEASE SAVEPOINT migration; SET ROLE service_role')
+ expect((await f.read()).rows[0].data).toEqual(ack);expect((await f.replace()).rows[0].data).toEqual(ack)
+})
