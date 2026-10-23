@@ -95,7 +95,7 @@ try {
     ...readdirSync(join(bootstrap,'steps')).sort().map(file=>join(bootstrap,'steps',file)),join(bootstrap,'900_final_security.sql'),
     join(root,'supabase/pilot-fiscal/001_fiscal_journal.sql'),join(root,'supabase/pilot-fiscal/002_fiscal_reservations.sql'),
     join(root,'supabase/pilot-fiscal/003_fiscal_requests.sql'),join(root,'supabase/pilot-fiscal/004_fiscal_reconciliation.sql'),
-    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql'),join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql'),join(root,'supabase/pilot-fiscal/013_fiscal_preparation_source.sql'),join(root,'supabase/pilot-fiscal/014_fiscal_receipt.sql'),join(root,'supabase/pilot-fiscal/015_fiscal_emission_receipts.sql'),join(root,'supabase/pilot-fiscal/016_fiscal_diagnosis.sql'),join(root,'supabase/pilot-fiscal/017_fiscal_preparation_cancellation.sql'),join(root,'supabase/pilot-fiscal/018_fiscal_reserved_replacement.sql'),join(root,'supabase/pilot-fiscal/019_fiscal_rejected_correction.sql')]) {
+    join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),join(root,'supabase/pilot-fiscal/006_fiscal_shared_tickets.sql'),join(root,'supabase/pilot-fiscal/007_fiscal_ticket_recovery.sql'),join(root,'supabase/pilot-fiscal/008_fiscal_ticket_ownership.sql'),join(root,'supabase/pilot-fiscal/009_fiscal_emission_permission.sql'),join(root,'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql'),join(root,'supabase/pilot-fiscal/011_fiscal_owner_review.sql'),join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql'),join(root,'supabase/pilot-fiscal/013_fiscal_preparation_source.sql'),join(root,'supabase/pilot-fiscal/014_fiscal_receipt.sql'),join(root,'supabase/pilot-fiscal/015_fiscal_emission_receipts.sql'),join(root,'supabase/pilot-fiscal/016_fiscal_diagnosis.sql'),join(root,'supabase/pilot-fiscal/017_fiscal_preparation_cancellation.sql'),join(root,'supabase/pilot-fiscal/018_fiscal_reserved_replacement.sql'),join(root,'supabase/pilot-fiscal/019_fiscal_rejected_correction.sql'),join(root,'supabase/pilot-fiscal/020_fiscal_reconciliation_actor.sql')]) {
     await observer.query(readFileSync(file,'utf8'))
     if(file.endsWith('011_fiscal_owner_review.sql')){
       await observer.query('SELECT fiscal_exigir_actor_preparacion($1,$2)',[randomUUID(),randomUUID()])
@@ -510,6 +510,34 @@ try {
     const authorize=async(client)=>client.query('SELECT registrar_reconciliacion_fiscal_homologacion($1,$2,$3,$4,1,$5::jsonb)',[randomUUID(),f.operation,r.intento_id,r.solicitud_sha256,JSON.stringify({estado:'AUTORIZACION_COINCIDENTE',cae:'11111111111111',vencimiento:'20261031',procesadoEn:null,solicitudSha256:r.solicitud_sha256,puedeReenviar:false})])
     return {...f,correct,authorize,proof}
   }
+  const boundReconciliation=async(client,f,expected,id)=>{
+    const intentRow=(await observer.query('SELECT intento_id,solicitud_sha256 FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[f.operation])).rows[0]
+    return client.query('SELECT registrar_conciliacion_revisada_homologacion($1,$2::jsonb,$3,$4,$5,$6,1,$7::jsonb) data',
+      [f.auth,JSON.stringify(expected),id,f.operation,intentRow.intento_id,intentRow.solicitud_sha256,JSON.stringify({estado:'CONCILIAR',codigo:'SIN_CONFIRMACION',puedeReenviar:false})])
+  }
+  const boundIdentity=await rejectedFixture(131),boundNewAuth=randomUUID(),boundObservation=randomUUID()
+  await observer.query('INSERT INTO auth.users VALUES($1)',[boundNewAuth])
+  await start(a);const boundExpected=(await a.query('SELECT autorizar_conciliacion_revisada_homologacion($1,$2) data',[boundIdentity.auth,boundIdentity.operation])).rows[0].data;await a.query('COMMIT')
+  await a.query('BEGIN');await a.query('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[boundNewAuth,boundIdentity.owner])
+  await start(b);const pendingBoundIdentity=capture(boundReconciliation(b,boundIdentity,boundExpected,boundObservation));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await pendingBoundIdentity).error?.code,'42501');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_reconciliaciones_homologacion WHERE id=$1',[boundObservation])).rows[0].n,0)
+  cases.push('conciliacion_Auth_reasignado_primero_bloquea_registro_con_binding_anterior')
+  const boundFirst=await rejectedFixture(132),laterBoundAuth=randomUUID(),firstBoundObservation=randomUUID()
+  await observer.query('INSERT INTO auth.users VALUES($1)',[laterBoundAuth])
+  await start(a);const firstBoundExpected=(await a.query('SELECT autorizar_conciliacion_revisada_homologacion($1,$2) data',[boundFirst.auth,boundFirst.operation])).rows[0].data
+  await boundReconciliation(a,boundFirst,firstBoundExpected,firstBoundObservation)
+  await b.query('BEGIN');const pendingBoundSwap=capture(b.query('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[laterBoundAuth,boundFirst.owner]));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await pendingBoundSwap).error,undefined);await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_reconciliaciones_homologacion WHERE id=$1',[firstBoundObservation])).rows[0].n,1)
+  cases.push('conciliacion_primero_retiene_lock_Auth_hasta_commit_sin_atribuir_actor_nuevo')
+  const rotatedBound=await rejectedFixture(133),rotatedBoundObservation=randomUUID()
+  await start(a);const rotatedExpected=(await a.query('SELECT autorizar_conciliacion_revisada_homologacion($1,$2) data',[rotatedBound.auth,rotatedBound.operation])).rows[0].data;await a.query('COMMIT')
+  await a.query('BEGIN');await a.query('UPDATE fiscal_emisores_homologacion SET revision=revision+1 WHERE kiosco_id=$1',[rotatedBound.kid])
+  await start(b);const pendingBoundRotation=capture(boundReconciliation(b,rotatedBound,rotatedExpected,rotatedBoundObservation));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await pendingBoundRotation).error?.code,'42501');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_reconciliaciones_homologacion WHERE id=$1',[rotatedBoundObservation])).rows[0].n,0)
+  cases.push('conciliacion_emisor_rota_esperando_lock_no_registra_binding_obsoleto')
   const rejectionDuplicate=await rejectedFixture(121)
   await start(a);const rejectionAck=await rejectionDuplicate.correct(a)
   await start(b);const duplicateRejection=capture(rejectionDuplicate.correct(b));await waitForLock(observer,b);await a.query('COMMIT')

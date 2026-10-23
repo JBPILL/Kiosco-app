@@ -16,7 +16,7 @@ function fixture(overrides:Record<string,string|undefined>={}) {
   const secrets:Record<string,string|undefined>={SUPABASE_URL:FISCAL_STAGING_URL,ARCA_HOMO_BACKEND_ENABLED:'true',...overrides}
   const read=vi.fn((name:string)=>secrets[name]),fetcher=vi.fn<typeof fetch>()
   const getUser=vi.fn<FiscalAuthClient['auth']['getUser']>(async()=>({data:{user:{id:crypto.randomUUID()}},error:null}))
-  const rpc=vi.fn<FiscalAuthClient['rpc']>(async name=>({data:name==='autorizar_consulta_fiscal_homologacion'?binding:
+  const rpc=vi.fn<FiscalAuthClient['rpc']>(async name=>({data:(name==='autorizar_consulta_fiscal_homologacion'||name==='autorizar_conciliacion_revisada_homologacion')?binding:
     name==='consultar_reconciliacion_homologacion'?pending:{estado:'PREPARADA',intento_id:attempt,revision:1},error:null}))
   const factory=vi.fn(()=>({auth:{getUser},rpc})),handler=createFiscalHttpHandler({readSecret:read,createAdmin:factory,fetcher})
   return {handler,read,factory,getUser,rpc,fetcher}
@@ -72,12 +72,12 @@ async function reviewFixture(){
   f.getUser.mockResolvedValue({data:{user:{id:actorAuthId}},error:null})
   const ctx={operacion_id:op,estado:'RESERVADA',revision:1,solicitud:frozen,aprobacion:null}
   const ack={id,operacion_id:op,solicitud_sha256:frozen.sha256,revision:1,aprobada:true,vence_en:new Date(Date.now()+600000).toISOString(),emision_habilitada:false}
-  f.rpc.mockImplementation(async name=>({data:name==='autorizar_consulta_fiscal_homologacion'?binding:name==='cargar_revision_fiscal_homologacion'?ctx:ack,error:null}))
+  f.rpc.mockImplementation(async name=>({data:(name==='autorizar_consulta_fiscal_homologacion'||name==='autorizar_conciliacion_revisada_homologacion')?binding:name==='cargar_revision_fiscal_homologacion'?ctx:ack,error:null}))
   return {...f,ctx,ack,actorAuthId,body:{accion:'APROBAR_REVISION',operacion_id:op,revision_id:id,solicitud_sha256:frozen.sha256,revision:1}}
 }
 it('PREPARAR_COMPROBANTE recupera cuerpo existente sin gate de consulta, TA ni red',async()=>{
  const f=await reviewFixture()
- f.rpc.mockImplementation(async name=>({data:name==='autorizar_consulta_fiscal_homologacion'?binding:name==='cargar_fuente_preparacion_homologacion'
+ f.rpc.mockImplementation(async name=>({data:(name==='autorizar_consulta_fiscal_homologacion'||name==='autorizar_conciliacion_revisada_homologacion')?binding:name==='cargar_fuente_preparacion_homologacion'
   ?{operacion_id:op,estado:'CUERPO_EXISTENTE',contexto:null,canonico:null,preparacion_sha256:null}:f.ctx,error:null}))
  const response=await f.handler(request(JSON.stringify({accion:'PREPARAR_COMPROBANTE',operacion_id:op})))
  expect(response.status).toBe(200);expect((await response.json()).resultado.solicitud.sha256).toBe(f.ctx.solicitud.sha256)
@@ -89,7 +89,7 @@ it('PREPARAR_COMPROBANTE nuevo exige gate privado antes de instanciar custodia',
  const {version:_v,entorno:_e,cuitEmisor:_c,puntoVenta:_p,numero:_n,...data}=wsfeSample
  const {total:_t,...importes}=data.importes
  const prepared=await prepareFiscalData(context,{condicionEmisor:'MONOTRIBUTO',datos:{...data,importes}})
- f.rpc.mockImplementation(async name=>({data:name==='autorizar_consulta_fiscal_homologacion'?binding:{operacion_id:op,estado:'DATOS_PREPARADOS',contexto:context,canonico:prepared.canonico,preparacion_sha256:prepared.sha256},error:null}))
+ f.rpc.mockImplementation(async name=>({data:(name==='autorizar_consulta_fiscal_homologacion'||name==='autorizar_conciliacion_revisada_homologacion')?binding:{operacion_id:op,estado:'DATOS_PREPARADOS',contexto:context,canonico:prepared.canonico,preparacion_sha256:prepared.sha256},error:null}))
  const response=await f.handler(request(JSON.stringify({accion:'PREPARAR_COMPROBANTE',operacion_id:op})))
  expect(response.status).toBe(503);expect((await response.json()).codigo).toBe('PREPARACION_CUERPO_NO_HABILITADA')
  expect(f.fetcher).not.toHaveBeenCalled();expect(f.read.mock.calls.some(([key])=>/CUSTODY|KEYRING|TICKET_KEYS/.test(key))).toBe(false)
@@ -116,13 +116,13 @@ it.each(['campo_privado','hash','emisor','revision'])('respuesta de revisión al
   if(mode==='hash')ctx.solicitud={...f.ctx.solicitud,sha256:'0'.repeat(64)}
   if(mode==='emisor')ctx.solicitud=await freezeFiscalRequest({...wsfeSample,puntoVenta:3})
   if(mode==='revision')ctx.revision=2
-  f.rpc.mockImplementation(async name=>({data:name==='autorizar_consulta_fiscal_homologacion'?binding:ctx,error:null}))
+  f.rpc.mockImplementation(async name=>({data:(name==='autorizar_consulta_fiscal_homologacion'||name==='autorizar_conciliacion_revisada_homologacion')?binding:ctx,error:null}))
   const r=await f.handler(request(JSON.stringify({accion:'REVISAR_COMPROBANTE',operacion_id:op})))
   expect(r.status).toBe(409);expect(await r.text()).not.toContain('SYNTHETIC');expect(f.fetcher).not.toHaveBeenCalled()
 })
 it.each(['identidad','emision','extra'])('ACK de aprobación alterado en %s se rechaza',async mode=>{
   const f=await reviewFixture(),ack={...f.ack,...(mode==='identidad'?{id:crypto.randomUUID()}:mode==='emision'?{emision_habilitada:true}:{secreto:'SYNTHETIC_PRIVATE'})}
-  f.rpc.mockImplementation(async name=>({data:name==='autorizar_consulta_fiscal_homologacion'?binding:name==='cargar_revision_fiscal_homologacion'?f.ctx:ack,error:null}))
+  f.rpc.mockImplementation(async name=>({data:(name==='autorizar_consulta_fiscal_homologacion'||name==='autorizar_conciliacion_revisada_homologacion')?binding:name==='cargar_revision_fiscal_homologacion'?f.ctx:ack,error:null}))
   const r=await f.handler(request(JSON.stringify(f.body)));expect(r.status).toBe(409);expect(await r.text()).not.toContain('SYNTHETIC');expect(f.fetcher).not.toHaveBeenCalled()
 })
 it.each([{revision_id:'no-uuid'},{revision:0},{revision:1.1},{solicitud_sha256:'B'.repeat(64)},{usuario_id:crypto.randomUUID()}])('aprobación mal formada %# falla antes de Auth',async change=>{
@@ -200,15 +200,15 @@ it('estado TA sólo devuelve metadata validada y usa el binding privado, sin WSA
   expect(f.fetcher).not.toHaveBeenCalled();expect(f.read).toHaveBeenCalledTimes(2)
 })
 it('cancelar requiere intento/revisión originales y nunca reintenta al fallar',async()=>{
-  const f=fixture();f.rpc.mockImplementation(async name=>({data:name==='autorizar_consulta_fiscal_homologacion'?binding:{estado:'CANCELADA',intento_id:attempt,revision:3},error:null}))
+  const f=fixture();f.rpc.mockImplementation(async name=>({data:(name==='autorizar_consulta_fiscal_homologacion'||name==='autorizar_conciliacion_revisada_homologacion')?binding:{estado:'CANCELADA',intento_id:attempt,revision:3},error:null}))
   const body=JSON.stringify({accion:'CANCELAR_PREPARACION_TA',operacion_id:op,intento_id:attempt,revision:3})
   expect((await f.handler(request(body))).status).toBe(200)
   expect(f.rpc).toHaveBeenLastCalledWith('cancelar_preparacion_ta_homologacion',{p_operacion_id:op,p_credencial_id:binding.credencial_id,p_huella:binding.certificado_sha256,p_revision:1,p_intento_id:attempt,p_generacion:3})
-  f.rpc.mockClear();f.rpc.mockImplementation(async name=>({data:name==='autorizar_consulta_fiscal_homologacion'?binding:null,error:name==='autorizar_consulta_fiscal_homologacion'?null:{message:'SYNTHETIC_SECRET'}}))
+  f.rpc.mockClear();f.rpc.mockImplementation(async name=>({data:(name==='autorizar_consulta_fiscal_homologacion'||name==='autorizar_conciliacion_revisada_homologacion')?binding:null,error:name==='autorizar_consulta_fiscal_homologacion'?null:{message:'SYNTHETIC_SECRET'}}))
   const r=await f.handler(request(body));expect(r.status).toBe(409);expect(f.rpc).toHaveBeenCalledTimes(2);expect(await r.text()).not.toContain('SYNTHETIC');expect(f.fetcher).not.toHaveBeenCalled()
 })
 it.each([{estado:'PREPARADA',intento_id:attempt,revision:1,token:'SYNTHETIC_PRIVATE'}, {estado:'VACIO',intento_id:attempt,revision:1},{estado:'PREPARADA',intento_id:null,revision:1}])('respuesta TA inválida %# no se refleja',async result=>{
-  const f=fixture();f.rpc.mockImplementation(async name=>({data:name==='autorizar_consulta_fiscal_homologacion'?binding:result,error:null}))
+  const f=fixture();f.rpc.mockImplementation(async name=>({data:(name==='autorizar_consulta_fiscal_homologacion'||name==='autorizar_conciliacion_revisada_homologacion')?binding:result,error:null}))
   const r=await f.handler(request());expect(r.status).toBe(409);expect(await r.text()).not.toContain('SYNTHETIC')
 })
 it('replay conciliado no lee secretos ni consulta ARCA, y mantiene emisión deshabilitada',async()=>{
@@ -220,7 +220,7 @@ it('replay conciliado no lee secretos ni consulta ARCA, y mantiene emisión desh
 })
 
 it('estado compartido no contiene identificador ni revisión de otra operación',async()=>{
-  const f=fixture();f.rpc.mockImplementation(async name=>({data:name==='autorizar_consulta_fiscal_homologacion'?binding:{estado:'COMPARTIDA',intento_id:null,revision:0},error:null}))
+  const f=fixture();f.rpc.mockImplementation(async name=>({data:(name==='autorizar_consulta_fiscal_homologacion'||name==='autorizar_conciliacion_revisada_homologacion')?binding:{estado:'COMPARTIDA',intento_id:null,revision:0},error:null}))
   const r=await f.handler(request());expect(r.status).toBe(200)
   expect((await r.json()).resultado).toEqual({estado:'COMPARTIDA',intento_id:null,revision:0})
 })
@@ -407,4 +407,13 @@ it('HTTP corrección R recupera cierre antes del gate y no trata un ACK de reser
 it.each([{actor_auth_id:crypto.randomUUID()},{verificacion:{codigo:602}},{sucesora_id:op},{propuesta:[]}])('HTTP corrección R no admite prueba o identidad del navegador: %j',async patch=>{
  const f=await replacementHttpFixture(),response=await f.handler(request(JSON.stringify({...f.command,accion:'CORREGIR_RECHAZO_FISCAL',...patch})))
  expect(response.status).toBe(400);expect(f.getUser).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled()
+})
+
+it('conciliación nueva con gate cerrado no lee custodia ni inicia consulta fiscal',async()=>{
+ const f=fixture(),frozen=await freezeFiscalRequest(wsfeSample)
+ f.rpc.mockImplementation(async name=>({data:(name==='autorizar_consulta_fiscal_homologacion'||name==='autorizar_conciliacion_revisada_homologacion')?binding:name==='consultar_reconciliacion_homologacion'?null:{operacion_id:op,intento_id:attempt,revision:1,solicitud:frozen,resultado:null},error:null}))
+ const response=await f.handler(request(JSON.stringify({accion:'CONCILIAR',operacion_id:op,observacion_id:observation})))
+ expect(response.status).toBe(503);expect((await response.json()).codigo).toBe('CONCILIACION_NO_HABILITADA')
+ expect(f.fetcher).not.toHaveBeenCalled();expect(f.getUser).toHaveBeenCalledTimes(1)
+ expect(f.read.mock.calls.some(([key])=>/CUSTODY|CREDENTIAL|TICKET|KEYRING/.test(key))).toBe(false)
 })

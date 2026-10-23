@@ -154,7 +154,9 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
       }else if(cmd.accion==='CONCILIAR'){
         const load=createSharedFiscalTicketLoader(admin,createPrivateFiscalTicketKeys(deps.readSecret),
           createWsaaTicketSource(createPrivateFiscalCustody(deps.readSecret),deps.fetcher))
-        result=await reconcileAuthorizedFiscalVoucher(admin,token,cmd.operacion_id,cmd.observacion_id,cache,load,deps.fetcher)
+        result=await reconcileAuthorizedFiscalVoucher(admin,token,cmd.operacion_id,cmd.observacion_id,cache,load,deps.fetcher,async()=>{
+          if(deps.readSecret('ARCA_HOMO_RECONCILIATION_ENABLED')!=='true')throw new Error('FISCAL_CONCILIACION_NO_HABILITADA')
+        })
       }else{
         const {binding,actorAuthId}=await authorizeFiscalActor(admin,token,cmd.operacion_id)
         if(cmd.accion==='REVISAR_COMPROBANTE'||cmd.accion==='APROBAR_REVISION'){
@@ -179,6 +181,7 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
       }
       return json({version:1,entorno:'HOMOLOGACION',emision_habilitada:false,resultado:result})
     }catch(error){
+      if(error instanceof Error&&error.message==='FISCAL_CONCILIACION_NO_HABILITADA')return json({codigo:'CONCILIACION_NO_HABILITADA'},503)
       if(error instanceof Error&&error.message==='FISCAL_CORRECCION_RECHAZO_NO_HABILITADA')return json({codigo:'CORRECCION_RECHAZO_NO_HABILITADA'},503)
       if(error instanceof Error&&error.message==='FISCAL_PREPARACION_CUERPO_NO_HABILITADA')return json({codigo:'PREPARACION_CUERPO_NO_HABILITADA'},503)
       if(error instanceof Error&&error.message==='FISCAL_CONSULTA_NO_AUTORIZADA')return json({codigo:'CONSULTA_NO_AUTORIZADA'},403)

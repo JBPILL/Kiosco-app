@@ -38,7 +38,7 @@ beforeAll(async()=>{
     ...readdirSync(join(root,'steps')).sort().map(name=>join(root,'steps',name)),join(root,'900_final_security.sql')]) {
     await db.exec(readFileSync(file,'utf8'))
   }
-  for(const file of ['001_fiscal_journal.sql','002_fiscal_reservations.sql','003_fiscal_requests.sql','004_fiscal_reconciliation.sql','005_fiscal_worker_authorization.sql','006_fiscal_shared_tickets.sql','007_fiscal_ticket_recovery.sql','008_fiscal_ticket_ownership.sql']) {
+  for(const file of ['001_fiscal_journal.sql','002_fiscal_reservations.sql','003_fiscal_requests.sql','004_fiscal_reconciliation.sql','005_fiscal_worker_authorization.sql','006_fiscal_shared_tickets.sql','007_fiscal_ticket_recovery.sql','008_fiscal_ticket_ownership.sql','020_fiscal_reconciliation_actor.sql']) {
     const sql=readFileSync(join('supabase/pilot-fiscal',file),'utf8')
     await db.exec(sql); await db.exec(sql)
   }
@@ -242,6 +242,8 @@ it.each(['fiscal_autorizaciones_homologacion','fiscal_series_homologacion','fisc
 const persistedRpc: FiscalRpc={async rpc(name,args){
   const allowed:Record<string,string[]>={
     autorizar_consulta_fiscal_homologacion:['p_actor_auth_id','p_operacion_id'],
+    autorizar_conciliacion_revisada_homologacion:['p_actor_auth_id','p_operacion_id'],
+    registrar_conciliacion_revisada_homologacion:['p_actor_auth_id','p_binding','p_id','p_operacion_id','p_intento_id','p_sha','p_revision','p_decision'],
     solicitar_ta_homologacion:['p_operacion_id','p_credencial_id','p_huella','p_revision','p_intento_id'],
     iniciar_envio_ta_homologacion:['p_operacion_id','p_credencial_id','p_huella','p_revision','p_intento_id','p_generacion'],
     cancelar_preparacion_ta_homologacion:['p_operacion_id','p_credencial_id','p_huella','p_revision','p_intento_id','p_generacion'],
@@ -252,7 +254,7 @@ const persistedRpc: FiscalRpc={async rpc(name,args){
     registrar_reconciliacion_fiscal_homologacion:['p_id','p_operacion_id','p_intento_id','p_sha','p_revision','p_decision'],
   }
   const keys=allowed[name]; if(!keys)throw new Error('RPC no permitida en fixture')
-  const isJson=(key:string)=>key==='p_decision'||key==='p_cifrado'
+  const isJson=(key:string)=>key==='p_decision'||key==='p_cifrado'||key==='p_binding'
   const values=keys.map(key=>isJson(key)?JSON.stringify(args[key]):args[key])
   const placeholders=keys.map((key,index)=>'$'+(index+1)+(isJson(key)?'::jsonb':''))
   const result=await db.query<{ack:unknown}>(`SELECT ${name}(${placeholders.join(',')}) ack`,values)
@@ -278,8 +280,8 @@ it('integra SOAP mock, comparación y SQL: recuperar ACK perdido no consulta otr
     return result
   }}
   const id=randomUUID()
-  await expect(reconcilePersistedFiscalVoucher(connection,op,id,ticket(),fetcher)).rejects.toThrow('FISCAL_PERSISTENCIA_NO_CONFIRMADA')
   const ack=await reconcilePersistedFiscalVoucher(connection,op,id,ticket(),fetcher)
+  expect(await reconcilePersistedFiscalVoucher(connection,op,id,ticket(),fetcher)).toEqual(ack)
   expect(ack.estado).toBe('AUTORIZADA');expect(fetcher).toHaveBeenCalledTimes(1)
   expect(await reconcilePersistedFiscalVoucher(connection,op,randomUUID(),ticket(),fetcher)).toEqual(ack)
   expect(fetcher).toHaveBeenCalledTimes(1)
@@ -630,6 +632,7 @@ it('HTTP + SDK real + SQL + CMS/PKCS8: autoriza consulta existente, replay no du
   const keyId=randomUUID(),raw=crypto.getRandomValues(new Uint8Array(32))
   protectedFixture.secrets.ARCA_HOMO_TA_ACTIVE_KEY_ID=keyId
   protectedFixture.secrets.ARCA_HOMO_BACKEND_ENABLED='true'
+  protectedFixture.secrets.ARCA_HOMO_RECONCILIATION_ENABLED='true'
   protectedFixture.secrets['ARCA_HOMO_TA_KEY_'+keyId.replace(/-/g,'').toUpperCase()]=btoa(String.fromCharCode(...raw));raw.fill(0)
   const read=vi.fn((name:string)=>protectedFixture.secrets[name]),fetcher=vi.fn<typeof fetch>(async input=>syntheticHttpNetwork(input as Request))
   const handler=createFiscalHttpHandler({readSecret:read,createAdmin:url=>createFiscalSupabaseAdmin(url,httpServiceSecret,fetcher),fetcher})
@@ -720,4 +723,41 @@ it('historia sin origen no se reasigna durante migración/replay ni habilita can
   await denied(()=>persistedRpc.rpc('cancelar_preparacion_ta_homologacion',lease));await denied(()=>persistedRpc.rpc('iniciar_envio_ta_homologacion',lease))
   await db.exec('RESET ROLE')
   expect((await db.query<{operacion_origen_id:null}>('SELECT operacion_origen_id FROM fiscal_ta_intentos_homologacion')).rows[0].operacion_origen_id).toBeNull()
+})
+
+it('ACK de conciliación sin commit o getter fallido no confirma autorización',async()=>{
+ await persist();await intent();const fetcher=vi.fn<typeof fetch>(async()=>new Response(fiscalXml(),{headers:{'content-type':'text/xml'}})),id=randomUUID()
+ const falseAck:FiscalRpc={async rpc(name,args){if(name==='registrar_reconciliacion_fiscal_homologacion')return {data:{version:1,operacion_id:op,numero:1,estado:'AUTORIZADA',solicitud_sha256:digest,revision:2,cae:'11111111111111',vencimiento:'20261031',procesado_en:null,emision_habilitada:false},error:null};return persistedRpc.rpc(name,args)}}
+ await expect(reconcilePersistedFiscalVoucher(falseAck,op,id,ticket(),fetcher)).rejects.toThrow('FISCAL_PERSISTENCIA_NO_CONFIRMADA')
+ let reads=0
+ const unreadable:FiscalRpc={async rpc(name,args){if(name==='consultar_reconciliacion_homologacion'&&++reads>1)throw new Error('PRIVATE_READ_DETAIL');return persistedRpc.rpc(name,args)}}
+ await expect(reconcilePersistedFiscalVoucher(unreadable,op,id,ticket(),fetcher)).rejects.toThrow('FISCAL_PERSISTENCIA_NO_CONFIRMADA')
+ const recovered=await reconcilePersistedFiscalVoucher(persistedRpc,op,id,ticket(),fetcher)
+ expect(recovered.estado).toBe('AUTORIZADA');expect(fetcher).toHaveBeenCalledTimes(2)
+})
+it.each(['emisor','actor'])('revalida %s después de esperar TA sin consultar ni adoptar otra identidad',async mode=>{
+ await persist();await intent();await provisionEmitter()
+ const getUser=vi.fn(async()=>({data:{user:{id:auth}},error:null})),rpc=vi.fn(persistedRpc.rpc.bind(persistedRpc)),admin={auth:{getUser},rpc}
+ const load=vi.fn<WsaaTicketLoader>(async b=>{
+  await db.exec('RESET ROLE')
+  if(mode==='emisor')await db.exec('UPDATE fiscal_emisores_homologacion SET revision=revision+1')
+  else {const other=randomUUID();await db.query('INSERT INTO auth.users VALUES($1)',[other]);await db.query('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner])}
+  await db.exec('SET ROLE service_role')
+  return {entorno:'HOMOLOGACION',servicio:'wsfe',cuitEmisor:b.cuit_emisor,credencialId:b.credencial_id,certificadoSha256:b.certificado_sha256,token:'SYNTHETIC_TOKEN',sign:'SYNTHETIC_SIGN',expiresAt:Date.now()+120000}
+ })
+ const fetcher=vi.fn<typeof fetch>()
+ await denied(()=>reconcileAuthorizedFiscalVoucher(admin,'SYNTHETIC_JWT',op,randomUUID(),createFiscalTicketCache(),load,fetcher))
+ expect(load).toHaveBeenCalledTimes(1);expect(fetcher).not.toHaveBeenCalled();expect(getUser).toHaveBeenCalledTimes(1)
+ for(const [name,args] of rpc.mock.calls)if(name==='autorizar_conciliacion_revisada_homologacion')expect(args.p_actor_auth_id).toBe(auth)
+})
+it('emisor cambia después de consulta: no confirma ledger y conserva el intento',async()=>{
+ await persist();await intent();await provisionEmitter()
+ const admin={...persistedRpc,auth:{getUser:vi.fn(async()=>({data:{user:{id:auth}},error:null}))}}
+ const load:WsaaTicketLoader=async b=>({entorno:'HOMOLOGACION',servicio:'wsfe',cuitEmisor:b.cuit_emisor,credencialId:b.credencial_id,certificadoSha256:b.certificado_sha256,token:'SYNTHETIC_TOKEN',sign:'SYNTHETIC_SIGN',expiresAt:Date.now()+120000})
+ const fetcher=vi.fn<typeof fetch>(async()=>{await db.exec('RESET ROLE; UPDATE fiscal_emisores_homologacion SET revision=revision+1; SET ROLE service_role');return new Response(fiscalXml(),{headers:{'content-type':'text/xml'}})})
+ await expect(reconcileAuthorizedFiscalVoucher(admin,'SYNTHETIC_JWT',op,randomUUID(),createFiscalTicketCache(),load,fetcher)).rejects.toThrow('FISCAL_CONSULTA_NO_AUTORIZADA')
+ await db.exec('RESET ROLE')
+ expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_autorizaciones_homologacion')).rows[0].n).toBe(0)
+ expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_reconciliaciones_homologacion')).rows[0].n).toBe(0)
+ expect((await db.query<{estado:string}>('SELECT estado FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[op])).rows[0].estado).toBe('ENVIO_INCIERTO')
 })

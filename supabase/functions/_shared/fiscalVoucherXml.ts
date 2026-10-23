@@ -197,10 +197,10 @@ export async function consultFiscalVoucherAbsence(expected:FrozenFiscalRequest,t
   return Object.freeze({...decodeFiscalVoucherAbsenceXml(xml,{entorno:s.entorno,cuitEmisor:s.cuitEmisor,puntoVenta:s.puntoVenta,tipoComprobante:s.tipoComprobante,numero:s.numero}),consultado_en:new Date().toISOString()})
 }
 /** Nunca emisión/reenvío/DB: la autorización exige comparar y persistir el cuerpo. */
-export async function consultFiscalVoucher(expected:FrozenFiscalRequest,ticket:{token:string;sign:string;expiresAt:number},fetcher:typeof fetch,timeoutMs=15000):Promise<FiscalReconciliation> {
+export async function consultFiscalVoucher(expected:FrozenFiscalRequest,ticket:{token:string;sign:string;expiresAt:number},fetcher:typeof fetch,timeoutMs=15000,beforeSend?:()=>Promise<void>):Promise<FiscalReconciliation> {
   if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>40000)return {estado:'CONCILIAR',codigo:'SIN_CONFIRMACION',puedeReenviar:false}
   try {
-    const {xml,frozen}=await fetchFiscalVoucherXml(expected,ticket,fetcher,timeoutMs),s=frozen.solicitud
+    const {xml,frozen}=await fetchFiscalVoucherXml(expected,ticket,fetcher,timeoutMs,beforeSend),s=frozen.solicitud
     return await reconcileFiscalVoucher(decodeFiscalVoucherXml(xml,{entorno:s.entorno,cuitEmisor:s.cuitEmisor,puntoVenta:s.puntoVenta,tipoComprobante:s.tipoComprobante,numero:s.numero}),frozen)
   }catch(error){return {estado:'CONCILIAR',codigo:error instanceof FiscalVoucherTransportUnconfirmed?'SIN_CONFIRMACION':'RESPUESTA_INVALIDA',puedeReenviar:false}}
 }

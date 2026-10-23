@@ -913,3 +913,20 @@ it('dos terminales R conservan propuestas distintas y la perdedora descarta sól
  expect(commands.filter(c=>c.accion==='CANCELAR_PREPARACION_FISCAL').map(c=>c.operacion_id)).toEqual([loser.successorId]);expect(f.fetcher).not.toHaveBeenCalled()
  expect((await first.resolve()).operacion_id).toBe(closed.sucesora_id);expect(first.pendingReplacement()).toBeNull()
 })
+
+it('SQL 020 liga conciliación a Auth original de hechos y binding exacto dentro del registro',async()=>{
+ const f=await rejectedCorrectionFixture('SIN_CONFIRMACION')
+ const binding=(await db.query<{data:Record<string,unknown>}>('SELECT autorizar_conciliacion_revisada_homologacion($1,$2) data',[actor,op])).rows[0].data
+ const decision={estado:'CONCILIAR',codigo:'SIN_CONFIRMACION',puedeReenviar:false},id=crypto.randomUUID()
+ const write=(who=actor,b:unknown=binding)=>db.query<{data:unknown}>('SELECT registrar_conciliacion_revisada_homologacion($1,$2::jsonb,$3,$4,$5,$6,1,$7::jsonb) data',[who,JSON.stringify(b),id,op,f.attempt,f.frozen.sha256,JSON.stringify(decision)])
+ await denied(()=>write(actor,{...binding,revision:2}));await denied(()=>write(actor,{...binding,token:'NOT_ALLOWED'}))
+ const ack=(await write()).rows[0].data;expect((await write()).rows[0].data).toEqual(ack)
+ const other=crypto.randomUUID();await admin('INSERT INTO auth.users VALUES($1)',[other]);await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner])
+ await denied(()=>write());await denied(()=>write(other))
+ await denied(()=>db.query('SELECT autorizar_conciliacion_revisada_homologacion($1,$2)',[other,op]))
+})
+it.each(['anon','authenticated'])('SQL 020 no concede consultas/registro privados a %s',async role=>{
+ await db.exec(`RESET ROLE; SET ROLE ${role}`)
+ await denied(()=>db.query('SELECT autorizar_conciliacion_revisada_homologacion($1,$2)',[actor,op]))
+ await denied(()=>db.query('SELECT registrar_conciliacion_revisada_homologacion($1,$2::jsonb,$3,$4,$5,$6,1,$7::jsonb)',[actor,'{}',crypto.randomUUID(),op,crypto.randomUUID(),'a'.repeat(64),'{}']))
+})
