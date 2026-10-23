@@ -340,3 +340,49 @@ it('HTTP propuesta con duplicados internos o ACK sin registro devuelve error gen
  const g=await replacementHttpFixture();g.rpc.mockResolvedValueOnce({data:g.ack,error:null}).mockResolvedValueOnce({data:null,error:new Error('PRIVATE_TOKEN')})
  const response=await g.handler(request(JSON.stringify(g.command)));expect(response.status).toBe(409);expect(await response.text()).not.toContain('PRIVATE_TOKEN')
 })
+
+function rejectedCorrectionFixture(){
+ const f=fixture(),sale=crypto.randomUUID(),actor=crypto.randomUUID()
+ const correction={operacion_id:op,sucesora_id:crypto.randomUUID(),venta_id:sale,anterior_sha256:'a'.repeat(64),preparacion_sha256:'b'.repeat(64),sucesora_sha256:'c'.repeat(64),numero:1,estado:'RECHAZO_CORREGIDO',emision_habilitada:false}
+ f.getUser.mockResolvedValue({data:{user:{id:actor}},error:null})
+ f.rpc.mockResolvedValue({data:correction,error:null})
+ const body={accion:'CORRECCION_RECHAZO_FISCAL',venta_id:sale,operacion_id:op}
+ return {...f,sale,actor,correction,body}
+}
+it('HTTP recupera corrección R durable sin gate de nuevas consultas ni custodia/ARCA',async()=>{
+ const f=rejectedCorrectionFixture(),response=await f.handler(request(JSON.stringify(f.body)))
+ expect(response.status).toBe(200);expect((await response.json()).resultado).toEqual(f.correction)
+ expect(f.getUser).toHaveBeenCalledTimes(1)
+ expect(f.rpc).toHaveBeenCalledExactlyOnceWith('consultar_correccion_rechazo_homologacion',{p_actor_auth_id:f.actor,p_venta_id:f.sale,p_operacion_id:op})
+ expect(f.fetcher).not.toHaveBeenCalled()
+ expect(f.read.mock.calls.map(([key])=>key)).toEqual(['SUPABASE_URL','ARCA_HOMO_BACKEND_ENABLED'])
+})
+it('HTTP diferencia ausencia durable de error de lectura R',async()=>{
+ const f=rejectedCorrectionFixture();f.rpc.mockResolvedValueOnce({data:null,error:null})
+ const absent=await f.handler(request(JSON.stringify(f.body)))
+ expect(absent.status).toBe(200);expect((await absent.json()).resultado).toBeNull()
+ f.rpc.mockResolvedValueOnce({data:null,error:{message:'PRIVATE_DATABASE_DETAIL'}})
+ const failed=await f.handler(request(JSON.stringify(f.body)))
+ expect(failed.status).toBe(409);expect(await failed.text()).not.toContain('PRIVATE_DATABASE_DETAIL')
+ expect(f.fetcher).not.toHaveBeenCalled()
+})
+it.each([
+ {venta_id:crypto.randomUUID()},{operacion_id:crypto.randomUUID()},{sucesora_id:op},
+ {estado:'SUSTITUIDA'},{emision_habilitada:true},{numero:0},{numero:1.5},
+ {anterior_sha256:'x'.repeat(64)},{preparacion_sha256:'x'.repeat(64)},{sucesora_sha256:'x'.repeat(64)},
+ {binding:{secret:'PRIVATE_BINDING'}},{verificacion:{codigo:602}},
+])('HTTP rechaza respuesta R ajena, privada o incoherente: %j',async patch=>{
+ const f=rejectedCorrectionFixture();f.rpc.mockResolvedValue({data:{...f.correction,...patch},error:null})
+ const response=await f.handler(request(JSON.stringify(f.body)))
+ expect(response.status).toBe(409);expect(await response.text()).not.toContain('PRIVATE_BINDING');expect(f.fetcher).not.toHaveBeenCalled()
+})
+it('HTTP no consulta corrección R cuando Auth falla y sanea el error',async()=>{
+ const f=rejectedCorrectionFixture();f.getUser.mockRejectedValue(new Error('PRIVATE_AUTH_DETAIL'))
+ const response=await f.handler(request(JSON.stringify(f.body)))
+ expect(response.status).toBe(409);expect(await response.text()).not.toContain('PRIVATE_AUTH_DETAIL')
+ expect(f.rpc).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled()
+})
+it.each([{actor_auth_id:crypto.randomUUID()},{propuesta:{canonico:'x'}},{venta_id:'invalid'}])('HTTP rechaza metadatos de corrección R antes de Auth: %j',async patch=>{
+ const f=rejectedCorrectionFixture(),response=await f.handler(request(JSON.stringify({...f.body,...patch})))
+ expect(response.status).toBe(400);expect(f.getUser).not.toHaveBeenCalled();expect(f.factory).not.toHaveBeenCalled()
+})

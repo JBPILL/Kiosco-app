@@ -1,3 +1,4 @@
+import { validateFiscalRejectedCorrection } from '../../supabase/functions/_shared/fiscalRejectedCorrectionContract'
 import { fiscalSha, validateFiscalReplacement, validateFiscalReplacementProposal } from '../../supabase/functions/_shared/fiscalReplacement'
 import type { FiscalReplacement, FiscalReplacementProposal } from '../../supabase/functions/_shared/fiscalReplacement'
 import type { FiscalPreparationInput, FiscalPreparationContext } from '../../supabase/functions/_shared/fiscalPreparationContract'
@@ -246,6 +247,11 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
         write(key, { ...original, input: null })
         return result
       })
+    },
+    async rejectedCorrection(operationId: string) {
+      if (!uuid(operationId)) return fail()
+      const result = await invoke({ accion: 'CORRECCION_RECHAZO_FISCAL', venta_id: sale, operacion_id: operationId })
+      return result === null ? null : validateFiscalRejectedCorrection(result, sale, operationId)
     },
     async review(operationId: string) {
       if (!uuid(operationId)) return fail()

@@ -303,3 +303,25 @@ it('otra terminal ganó: conserva propuesta ajena al ACK y permite descartar só
  expect(cancel.operacion_id).toBe(local.successorId);expect(cancel.operacion_id).not.toBe(winner)
  expect((await f.client.resolve()).operacion_id).toBe(winner)
 })
+
+it('consulta corrección R durable con venta capturada, sin modificar datos pendientes',async()=>{
+ const f=fixture(),operation=crypto.randomUUID(),key='kioskopos:fiscal:v1:'+scope.authId+':'+scope.kioskId+':'+scope.saleId
+ f.map.set(key,JSON.stringify({version:1,operationId:operation,input:input()}))
+ const before=[...f.map.entries()]
+ const result={operacion_id:operation,sucesora_id:crypto.randomUUID(),venta_id:scope.saleId,anterior_sha256:'a'.repeat(64),preparacion_sha256:'b'.repeat(64),sucesora_sha256:'c'.repeat(64),numero:1,estado:'RECHAZO_CORREGIDO',emision_habilitada:false}
+ f.send.mockResolvedValue(envelope(result))
+ expect(await f.client.rejectedCorrection(operation)).toEqual(result)
+ expect(f.send).toHaveBeenCalledExactlyOnceWith({accion:'CORRECCION_RECHAZO_FISCAL',venta_id:scope.saleId,operacion_id:operation})
+ expect([...f.map.entries()]).toEqual(before)
+})
+it('ausencia R y respuesta perdida no descartan ninguna propuesta local',async()=>{
+ const f=fixture(),operation=crypto.randomUUID();f.map.set('sentinel','original')
+ f.send.mockResolvedValueOnce(envelope(null));expect(await f.client.rejectedCorrection(operation)).toBeNull()
+ f.send.mockRejectedValueOnce(new Error('offline'));await expect(f.client.rejectedCorrection(operation)).rejects.toThrow('offline')
+ expect([...f.map.entries()]).toEqual([['sentinel','original']]);expect(f.send).toHaveBeenCalledTimes(2)
+})
+it('consulta R inválida no envía y respuesta de otra venta no modifica almacenamiento',async()=>{
+ const f=fixture();await expect(f.client.rejectedCorrection('invalid')).rejects.toThrow();expect(f.send).not.toHaveBeenCalled()
+ f.send.mockResolvedValue(envelope({operacion_id:crypto.randomUUID(),venta_id:crypto.randomUUID()}))
+ await expect(f.client.rejectedCorrection(crypto.randomUUID())).rejects.toThrow();expect(f.map.size).toBe(0)
+})
