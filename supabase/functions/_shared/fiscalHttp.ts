@@ -1,3 +1,5 @@
+import { loadFiscalRepresentation } from './fiscalRepresentationService.ts'
+import { fiscalRepresentationWire } from './fiscalRepresentation.ts'
 import { loadFiscalPresentationContext } from './fiscalPresentationContextService.ts'
 import { loadFiscalPresentation,saveFiscalPresentation } from './fiscalPresentationService.ts'
 import { loadFiscalPresentationApproval,approveFiscalPresentation } from './fiscalPresentationReviewService.ts'
@@ -26,6 +28,7 @@ const origin='https://kiosco-app-staging.vercel.app'
 const invalid=():never=>{throw new Error('FISCAL_SOLICITUD_INVALIDA')}
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 type FiscalHttpCommand=
+  | {accion:'REPRESENTACION_COMPROBANTE';venta_id:string;operacion_id:string}
   | {accion:'CONTEXTO_REPRESENTACION';venta_id:string;operacion_id:string}
   | {accion:'DATOS_REPRESENTACION';venta_id:string;operacion_id:string}
   | {accion:'GUARDAR_REPRESENTACION';venta_id:string;operacion_id:string;solicitud_sha256:string;propuesta:unknown}
@@ -82,6 +85,7 @@ async function command(request:Request):Promise<FiscalHttpCommand> {
       return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_id:b.operacion_id.toLowerCase(),sucesora_id:b.sucesora_id.toLowerCase(),anterior_sha256:b.anterior_sha256,propuesta:b.propuesta}
     if(size>2048||length!==null&&Number(length)>2048||!uuid(b.operacion_id))return invalid()
     const op=b.operacion_id.toLowerCase()
+    if(b.accion==='REPRESENTACION_COMPROBANTE'&&keys.length===3&&uuid(b.venta_id))return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_id:op}
     if((b.accion==='CONTEXTO_REPRESENTACION'||b.accion==='DATOS_REPRESENTACION')&&keys.length===3&&uuid(b.venta_id))return {accion:b.accion,operacion_id:op,venta_id:b.venta_id.toLowerCase()}
     if((b.accion==='APROBAR_REPRESENTACION'||b.accion==='APROBACION_REPRESENTACION')&&keys.length===7&&keys.every(k=>['accion','venta_id','operacion_id','revision_id','solicitud_sha256','revision','presentacion_sha256'].includes(k))
       &&uuid(b.venta_id)&&uuid(b.revision_id)&&typeof b.solicitud_sha256==='string'&&/^[0-9a-f]{64}$/.test(b.solicitud_sha256)&&b.revision===1&&typeof b.presentacion_sha256==='string'&&/^[0-9a-f]{64}$/.test(b.presentacion_sha256))
@@ -142,7 +146,9 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
       try{cmd=await command(request)}catch{return json({codigo:'SOLICITUD_INVALIDA'},400)}
       const admin=deps.createAdmin(FISCAL_STAGING_URL),token=auth.slice(7)
       let result:unknown
-      if(cmd.accion==='CONTEXTO_REPRESENTACION'){
+      if(cmd.accion==='REPRESENTACION_COMPROBANTE'){
+        result=fiscalRepresentationWire(await loadFiscalRepresentation(admin,token,cmd.venta_id,cmd.operacion_id))
+      }else if(cmd.accion==='CONTEXTO_REPRESENTACION'){
         result=await loadFiscalPresentationContext(admin,token,cmd.venta_id,cmd.operacion_id)
       }else if(cmd.accion==='DATOS_REPRESENTACION'){
         const stored=await loadFiscalPresentation(admin,token,cmd.venta_id,cmd.operacion_id)

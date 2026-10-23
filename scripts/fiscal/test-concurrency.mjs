@@ -731,6 +731,8 @@ try {
   const historyBefore=(await observer.query('SELECT jsonb_agg(to_jsonb(r) ORDER BY operacion_id) value FROM fiscal_reservas_homologacion r')).rows[0].value
   await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/025_fiscal_required_presentation.sql'),'utf8'))
   await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/025_fiscal_required_presentation.sql'),'utf8'))
+  await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/026_fiscal_representation_source.sql'),'utf8'))
+  await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/026_fiscal_representation_source.sql'),'utf8'))
   assert.deepEqual((await observer.query('SELECT jsonb_agg(to_jsonb(r) ORDER BY operacion_id) value FROM fiscal_reservas_homologacion r')).rows[0].value,historyBefore)
   await start(a);const oldReplay=await markEmission(a,e,sendId);assert.equal(oldReplay.nuevo_intento,false);await a.query('COMMIT')
   assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_presentaciones_homologacion WHERE operacion_id=$1',[e.op])).rows[0].n,0)
@@ -793,6 +795,14 @@ try {
   while(Date.now()<strictLinkDeadline){strictLinkReviewExpired=(await observer.query('SELECT vence_en<=clock_timestamp() expired FROM fiscal_revisiones_homologacion WHERE id=$1',[strictLinkExpired.revision])).rows[0].expired;if(strictLinkReviewExpired)break;await delay(40)}
   assert(strictLinkReviewExpired);await a.query('COMMIT');assert.equal((await lateStrictLink).error?.code,'42501');await b.query('ROLLBACK')
   cases.push('025_revision_vence_esperando_ultimo_lock_del_vinculo_no_autoriza_TA')
+  const historicalRepresentation=await strictPresentationFixture(149),historicalAttempt=randomUUID()
+  const readHistorical=async(client,actor=historicalRepresentation.auth)=>(await client.query('SELECT cargar_representacion_fiscal_homologacion($1,$2,$3) value',[actor,historicalRepresentation.sale,historicalRepresentation.operation])).rows[0].value
+  await start(a);const representationBeforeAuthorization=await capture(readHistorical(a));assert.equal(representationBeforeAuthorization.error?.code,'22023');await a.query('ROLLBACK')
+  await observer.query('ALTER TABLE fiscal_revisiones_homologacion DISABLE TRIGGER fiscal_revision_inmutable')
+  await observer.query("UPDATE fiscal_revisiones_homologacion SET vence_en=clock_timestamp()+interval '3 seconds' WHERE id=$1",[historicalRepresentation.revision])
+  await observer.query('ALTER TABLE fiscal_revisiones_homologacion ENABLE TRIGGER fiscal_revision_inmutable')
+  await start(a);await historicalRepresentation.send(a,historicalAttempt);await a.query('COMMIT')
+  await start(a);await a.query('SELECT registrar_reconciliacion_fiscal_homologacion($1,$2,$3,$4,1,$5::jsonb)',[randomUUID(),historicalRepresentation.operation,historicalAttempt,historicalRepresentation.body,JSON.stringify({estado:'AUTORIZACION_COINCIDENTE',cae:'11111111111111',vencimiento:'20261031',procesadoEn:null,solicitudSha256:historicalRepresentation.body,puedeReenviar:false})]);await a.query('COMMIT')
   const strictCatalogExpired=await strictPresentationFixture(148)
   await observer.query('ALTER TABLE fiscal_parametros_homologacion DISABLE TRIGGER fiscal_parametros_inmutables')
   await observer.query("UPDATE fiscal_parametros_homologacion SET vence_en=clock_timestamp()+interval '2 seconds' WHERE revision=1")
@@ -803,6 +813,19 @@ try {
   while(Date.now()<strictCatalogDeadline){strictCatalogExpiredNow=(await observer.query('SELECT vence_en<=clock_timestamp() expired FROM fiscal_parametros_homologacion WHERE revision=1')).rows[0].expired;if(strictCatalogExpiredNow)break;await delay(40)}
   assert(strictCatalogExpiredNow);await a.query('COMMIT');assert.equal((await lateStrictCatalog).error?.code,'22023');await b.query('ROLLBACK')
   cases.push('025_parametros_vencen_esperando_ultimo_lock_no_autoriza_TA')
+  const historicalReviewDeadline=Date.now()+8000;let historicalReviewExpired=false
+  while(Date.now()<historicalReviewDeadline){historicalReviewExpired=(await observer.query('SELECT vence_en<=clock_timestamp() expired FROM fiscal_revisiones_homologacion WHERE id=$1',[historicalRepresentation.revision])).rows[0].expired;if(historicalReviewExpired)break;await delay(40)}
+  assert(historicalReviewExpired)
+  await observer.query('UPDATE fiscal_emisores_homologacion SET habilitado=false WHERE kiosco_id=$1',[historicalRepresentation.kid])
+  await observer.query('UPDATE fiscal_parametros_homologacion SET habilitado=false WHERE revision=1')
+  await observer.query("UPDATE productos SET descripcion='Posterior',precio_venta=999 WHERE id IN(SELECT producto_id FROM detalles_venta WHERE venta_id=$1)",[historicalRepresentation.sale])
+  await start(a);const historicalSource=await readHistorical(a);await a.query('COMMIT')
+  assert.equal(historicalSource.estado,'AUTORIZADA');assert.equal(historicalSource.contexto.lineas[0].precio_unitario,'123.45');assert.equal(historicalSource.condicion_receptor,'Ensayo')
+  assert.equal(historicalSource.hechos.presentacion_sha256,historicalRepresentation.sha)
+  cases.push('026_representacion_solo_autorizada_historica_tras_vencer_revision_parametros_y_revocar_emisor')
+  const historicalNewActor=randomUUID();await observer.query('INSERT INTO auth.users VALUES($1)',[historicalNewActor]);await observer.query('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[historicalNewActor,historicalRepresentation.owner])
+  for(const actor of [historicalRepresentation.auth,historicalNewActor]){await start(a);const forbiddenSource=await capture(readHistorical(a,actor));assert.equal(forbiddenSource.error?.code,'42501');await a.query('ROLLBACK')}
+  cases.push('026_representacion_Auth_reasignado_no_revela_datos_a_cuenta_original_ni_nueva')
   const expiredCatalog=await preparationFixture(93)
   await observer.query('UPDATE fiscal_parametros_homologacion SET habilitado=false')
   await observer.query(`INSERT INTO fiscal_parametros_homologacion SELECT 2,condiciones,alicuotas,fuente_sha256,clock_timestamp()-interval '1 hour',clock_timestamp()+interval '3 seconds',true FROM fiscal_parametros_homologacion WHERE revision=1`)

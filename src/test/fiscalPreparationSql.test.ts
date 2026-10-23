@@ -1,3 +1,4 @@
+import { validateFiscalRepresentation } from '../../supabase/functions/_shared/fiscalRepresentation'
 import { emitAuthorizedFiscalVoucher } from '../../supabase/functions/_shared/fiscalEmissionWorker'
 import { validateFiscalPresentationContext } from '../../supabase/functions/_shared/fiscalPresentationContext'
 import { prepareFiscalPresentationFacts } from '../../supabase/functions/_shared/fiscalPresentation'
@@ -82,6 +83,7 @@ function workerFixture(){
  mapping.cancelar_preparacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.consultar_cancelacion_preparacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
  mapping.cargar_contexto_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.cargar_presentacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.guardar_presentacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_solicitud_sha','p_canonico','p_sha'];mapping.cargar_revision_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_revision_id'];mapping.aprobar_revision_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_revision_id','p_solicitud_sha','p_revision','p_presentacion_sha']
  mapping.cargar_preparacion_envio_homologacion=['p_operacion_id'];mapping.autorizar_envio_presentado_homologacion=['p_actor_auth_id','p_operacion_id','p_sha','p_revision_id'];mapping.registrar_envio_revisado_homologacion=['p_actor_auth_id','p_operacion_id','p_intento_id','p_sha','p_autorizacion_id','p_ultimo_autorizado','p_consultado_en']
+ mapping.cargar_representacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
  const rpc=vi.fn<FiscalAuthClient['rpc']>(async(name,args)=>{
   const keys=mapping[name];if(!keys)throw new Error('UNEXPECTED_PRIVATE_RPC')
   await db.exec('SAVEPOINT worker_rpc')
@@ -1212,4 +1214,49 @@ it('un cuerpo persistido por entrada heredada no puede saltar los datos explíci
  await db.query('SELECT persistir_solicitud_fiscal_homologacion($1,$2,$3,0,clock_timestamp())',[op,canonical,changed.sha256])
  const review=await approvePreparedPresentation(op,changed.sha256)
  await denied(()=>db.query('SELECT autorizar_envio_presentado_homologacion($1,$2,$3,$4)',[actor,op,changed.sha256,review.id]))
+})
+
+async function representation(who=actor){return (await db.query<{data:unknown}>('SELECT cargar_representacion_fiscal_homologacion($1,$2,$3) data',[who,sale,op])).rows[0].data}
+it('representación autorizada une CAE, datos aprobados y detalle original sin catálogo o emisor vigente',async()=>{
+ await authorizeReceipt();const first=await validateFiscalRepresentation(await representation(),sale,op)
+ expect(first.condicion_emisor).toBe('MONOTRIBUTO');expect(first.condicion_receptor).toBe('Ensayo')
+ expect(first.contexto.lineas[0]).toMatchObject({cantidad:'1.000',precio_unitario:'123.45',subtotal:'123.45'})
+ await admin("UPDATE productos SET descripcion='Nombre posterior',precio_venta=999 WHERE id=$1",[product])
+ await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false,revision=2')
+ await admin('UPDATE fiscal_parametros_homologacion SET habilitado=false')
+ expect(await validateFiscalRepresentation(await representation(),sale,op)).toEqual(first)
+ await denied(()=>representation(crypto.randomUUID()))
+})
+it('revisión aprobada sin autorización no se convierte en representación fiscal',async()=>{
+ const f=await presentationReviewFixture();await f.approve();await denied(()=>representation())
+})
+it('representación rechaza vínculo consumido inconsistente sin perder la constancia original',async()=>{
+ await authorizeReceipt();const receipt=await storedReceipt()
+ await admin('ALTER TABLE fiscal_revisiones_presentacion_homologacion DISABLE TRIGGER fiscal_revision_presentacion_inmutable')
+ await admin("UPDATE fiscal_revisiones_presentacion_homologacion SET presentacion_sha256=repeat('b',64)")
+ await admin('ALTER TABLE fiscal_revisiones_presentacion_homologacion ENABLE TRIGGER fiscal_revision_presentacion_inmutable')
+ await denied(()=>representation());expect(await storedReceipt()).toEqual(receipt)
+})
+it('representación comprueba vigencia al consumo histórico, no al momento de imprimir',async()=>{
+ await authorizeReceipt();await representation()
+ await admin('ALTER TABLE fiscal_revisiones_homologacion DISABLE TRIGGER fiscal_revision_inmutable')
+ await admin("UPDATE fiscal_revisiones_homologacion SET creado_en=clock_timestamp()-interval '3 minutes',vence_en=clock_timestamp()-interval '2 minutes'")
+ await admin('ALTER TABLE fiscal_revisiones_homologacion ENABLE TRIGGER fiscal_revision_inmutable')
+ await denied(()=>representation())
+})
+it('representación HTTP usa un Auth verificado y no expone permiso, revisión privada o custodia',async()=>{
+ await authorizeReceipt();const f=workerFixture(),handler=createFiscalHttpHandler({readSecret:key=>f.flags[key],createAdmin:()=>f.admin,fetcher:f.fetcher})
+ const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify({accion:'REPRESENTACION_COMPROBANTE',venta_id:sale,operacion_id:op})}))
+ expect(response.status).toBe(200);const body=await response.json()
+ expect(Object.keys(body.resultado.hechos)).not.toContain('datos')
+ expect((await validateFiscalRepresentation(body.resultado,sale,op)).constancia.estado).toBe('AUTORIZADA')
+ expect(f.getUser).toHaveBeenCalledTimes(1);expect(f.rpc).toHaveBeenCalledTimes(1);expect(f.fetcher).not.toHaveBeenCalled();expect(f.load).not.toHaveBeenCalled()
+})
+it('historia comercial no conciliada no recibe un ajuste inventado para representar el CAE',async()=>{
+ await admin('UPDATE detalles_venta SET subtotal=120 WHERE venta_id=$1',[sale])
+ await authorizeReceipt();const receipt=await storedReceipt()
+ await denied(()=>representation());expect(await storedReceipt()).toEqual(receipt)
+})
+it.each(['anon','authenticated'])('representación autorizada no concede acceso directo al rol %s',async role=>{
+ await authorizeReceipt();await db.exec(`SET ROLE ${role}`);await denied(()=>representation())
 })

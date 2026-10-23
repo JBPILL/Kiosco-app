@@ -1,3 +1,4 @@
+import { validateFiscalRepresentation } from '../../supabase/functions/_shared/fiscalRepresentation'
 import { validateFiscalPresentationContext } from '../../supabase/functions/_shared/fiscalPresentationContext'
 import type { FiscalPresentationContext } from '../../supabase/functions/_shared/fiscalPresentationContext'
 import { prepareFiscalPresentationFacts,validateFiscalPresentationRecord } from '../../supabase/functions/_shared/fiscalPresentation'
@@ -331,6 +332,10 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
     async rejectedCorrection(operationId: string) {
       if (!uuid(operationId)) return fail()
       return rejectedCorrection(operationId)
+    },
+    async representation(operationId:string){
+      if(!uuid(operationId))return fail()
+      return validateFiscalRepresentation(await invoke({accion:'REPRESENTACION_COMPROBANTE',venta_id:sale,operacion_id:operationId}),sale,operationId)
     },
     async presentationContext(operationId:string){
       if(!uuid(operationId))return fail()
