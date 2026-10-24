@@ -22,6 +22,7 @@ let requiredPresentationInstalledAfterCase=null
 let creditDraftInstalledAfterCase=null
 let creditRecoveryInstalledAfterCase=null
 let creditCommercialInstalledAfterCase=null
+let checkoutUnitsInstalledAfterCase=null
 let evidence
 const evidenceIndex = process.argv.indexOf('--evidence')
 const evidencePath = evidenceIndex >= 0 ? resolve(process.argv[evidenceIndex+1] ?? '') : null
@@ -1003,11 +1004,58 @@ try {
     assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_borradores_homologacion WHERE operacion_origen_id=$1',[f.operation])).rows[0].n,0)
     assert.equal((await observer.query('SELECT count(*)::int n FROM devoluciones_venta WHERE venta_id=$1',[f.sale])).rows[0].n,0)
   }
+  checkoutUnitsInstalledAfterCase=cases.length
+  for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/031_checkout_unit_evidence.sql'),'utf8'))
+  async function unitsFixture(){
+    const f=await fixture(),product=randomUUID(),cash=randomUUID(),detail=randomUUID(),payment=randomUUID(),fecha=new Date().toISOString()
+    await observer.query('DELETE FROM ventas WHERE id=$1',[f.sale])
+    await observer.query("INSERT INTO productos(id,kiosco_id,descripcion,precio_venta,stock_actual) VALUES($1,$2,'Unidad local',124,10)",[product,f.kid])
+    await observer.query(`INSERT INTO sesiones_caja(id,kiosco_id,usuario_id,fecha_apertura) VALUES($1,$2,$3,clock_timestamp()-interval '1 minute')`,[cash,f.kid,f.owner])
+    await observer.query('INSERT INTO checkout_unidades_config_homologacion(kiosco_id,habilitado) VALUES($1,true)',[f.kid])
+    const snapshot={version:1,id:f.sale,kiosco_id:f.kid,usuario_id:f.owner,sesion_caja_id:cash,fecha_hora:fecha,total:124,notas:null,cliente_id:null,
+      detalles:[{id:detail,producto_id:product,cantidad:1,precio_unitario:124,subtotal:124,sin_envase:false,precio_envase_unitario:0,es_devolucion_envase:false,articulo_libre:null,componentes:[]}],pagos:[{id:payment,medio_pago:'EFECTIVO',monto:124,referencia:null}]}
+    const entry={version:1,checkoutId:f.sale,kioscoId:f.kid,usuarioId:f.owner,sesionCajaId:cash,fechaHora:fecha,clienteId:null,notas:null,tipoAjuste:'NINGUNO',valorAjuste:0,totalEsperado:124,subtotalesEsperados:[124],componentesEsperados:[],lineas:[{tipo:'PRODUCTO',id:product,productoId:product,cantidad:1,sinEnvase:false}],pagos:[{id:payment,medio:'EFECTIVO',montoCentavos:12400,referencia:null}]}
+    const prepare=async(client)=>(await client.query('SELECT preparar_checkout_manual($1,$2::jsonb,$3::jsonb,false,15,0::bigint) v',[f.auth,JSON.stringify(entry),JSON.stringify(snapshot)])).rows[0].v
+    const close=async(client)=>(await client.query('SELECT confirmar_venta_manual($1,$2::jsonb) v',[f.auth,JSON.stringify(snapshot)])).rows[0].v
+    const metadata=async()=>(await observer.query('SELECT datos FROM checkout_unidades_homologacion WHERE checkout_id=$1',[f.sale])).rows[0]?.datos??null
+    return {...f,product,prepare,close,metadata}
+  }
+  const duplicateUnits=await unitsFixture()
+  await start(a);const firstUnitAck=await duplicateUnits.prepare(a)
+  await start(b);const waitingUnitAck=capture(duplicateUnits.prepare(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.deepEqual((await waitingUnitAck).value,firstUnitAck);await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM checkout_unidades_homologacion WHERE checkout_id=$1',[duplicateUnits.sale])).rows[0].n,1)
+  cases.push('031_dos_preparadores_mismo_UUID_un_ACK_una_evidencia_unidades')
+  const changedUnits=await unitsFixture()
+  await start(a);await changedUnits.prepare(a);await a.query('COMMIT')
+  await a.query('BEGIN');await a.query("UPDATE productos SET unidad_medida='KG' WHERE id=$1",[changedUnits.product])
+  await start(b);const waitingUnitClose=capture(changedUnits.close(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await waitingUnitClose).error?.code,'55000');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT stock_actual::text v FROM productos WHERE id=$1',[changedUnits.product])).rows[0].v,'10.000')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM ventas WHERE id=$1',[changedUnits.sale])).rows[0].n,0)
+  assert.equal((await changedUnits.metadata()).lineas[0].unidad_medida,'UN')
+  cases.push('031_unidad_cambia_durante_espera_cierre_revierte_venta_stock_y_conserva_preparacion')
+  const rollbackUnits=await unitsFixture()
+  await start(a);await rollbackUnits.prepare(a)
+  await b.query('BEGIN');const waitingUnitEdit=capture(b.query("UPDATE productos SET unidad_medida='GR' WHERE id=$1",[rollbackUnits.product]));await waitForLock(observer,b);await a.query('ROLLBACK')
+  assert(!(await waitingUnitEdit).error);await b.query('COMMIT');assert.equal(await rollbackUnits.metadata(),null)
+  await start(a);await rollbackUnits.prepare(a);await a.query('COMMIT');assert.equal((await rollbackUnits.metadata()).lineas[0].unidad_medida,'GR')
+  cases.push('031_rollback_preparacion_no_deja_evidencia_y_libera_edicion_unidad')
+  const committedUnits=await unitsFixture()
+  await start(a);await committedUnits.prepare(a);await a.query('COMMIT')
+  await start(a);const firstUnitClose=await committedUnits.close(a)
+  await b.query('BEGIN');const postCloseEdit=capture(b.query("UPDATE productos SET unidad_medida='LT' WHERE id=$1",[committedUnits.product]));await waitForLock(observer,b);await a.query('COMMIT')
+  assert(!(await postCloseEdit).error);await b.query('COMMIT')
+  await start(a);assert.deepEqual(await committedUnits.close(a),firstUnitClose);await a.query('COMMIT')
+  assert.equal((await committedUnits.metadata()).lineas[0].unidad_medida,'UN')
+  assert.equal((await observer.query('SELECT stock_actual::text v FROM productos WHERE id=$1',[committedUnits.product])).rows[0].v,'9.000')
+  assert.equal((await observer.query("SELECT count(*)::int n FROM movimientos_stock WHERE kiosco_id=$1 AND notas=$2",[committedUnits.kid,'Checkout manual '+committedUnits.sale])).rows[0].n,1)
+  cases.push('031_cierre_gana_edicion_posterior_replay_sin_doble_stock_ni_recaptura_unidades')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
-    cases,caseCount:cases.length,requiredPresentationInstalledAfterCase,postRequiredPresentationCaseCount:requiredPresentationInstalledAfterCase===null?0:cases.length-requiredPresentationInstalledAfterCase,creditDraftInstalledAfterCase,postCreditDraftCaseCount:creditDraftInstalledAfterCase===null?0:cases.length-creditDraftInstalledAfterCase,creditRecoveryInstalledAfterCase,postCreditRecoveryCaseCount:creditRecoveryInstalledAfterCase===null?0:cases.length-creditRecoveryInstalledAfterCase,creditCommercialInstalledAfterCase,postCreditCommercialCaseCount:creditCommercialInstalledAfterCase===null?0:cases.length-creditCommercialInstalledAfterCase,externalRequests:0,invoicesIssued:0}
+    cases,caseCount:cases.length,requiredPresentationInstalledAfterCase,postRequiredPresentationCaseCount:requiredPresentationInstalledAfterCase===null?0:cases.length-requiredPresentationInstalledAfterCase,creditDraftInstalledAfterCase,postCreditDraftCaseCount:creditDraftInstalledAfterCase===null?0:cases.length-creditDraftInstalledAfterCase,creditRecoveryInstalledAfterCase,postCreditRecoveryCaseCount:creditRecoveryInstalledAfterCase===null?0:cases.length-creditRecoveryInstalledAfterCase,creditCommercialInstalledAfterCase,postCreditCommercialCaseCount:creditCommercialInstalledAfterCase===null?0:cases.length-creditCommercialInstalledAfterCase,checkoutUnitsInstalledAfterCase,postCheckoutUnitsCaseCount:checkoutUnitsInstalledAfterCase===null?0:cases.length-checkoutUnitsInstalledAfterCase,externalRequests:0,invoicesIssued:0}
 } catch(error) {
   console.error('FISCAL_CONCURRENCY=FAIL; CODE='+(error?.code??error?.name??'UNKNOWN')+'; STEP='+cases.length+'; DETAIL='+error.message)
   evidence={status:'FAIL',testedAt:new Date().toISOString(),containerId,containerName:name,port,cases,code:error?.code??error?.name??'UNKNOWN'}

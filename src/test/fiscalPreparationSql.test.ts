@@ -1573,3 +1573,97 @@ it('NC transporte comercial no infiere Auth nuevo tras reasignación entre sus R
  expect(response.status).not.toBe(200);expect(JSON.stringify(await response.json())).not.toContain('pagos');expect(api.getUser).toHaveBeenCalledTimes(1)
  expect(api.rpc.mock.calls.every(([,args])=>args.p_actor_auth_id===actor)).toBe(true)
 })
+
+async function checkoutUnitsFixture(enabled=true,weighted=false,free=false){
+ const cash=crypto.randomUUID(),detail=crypto.randomUUID(),virtual=crypto.randomUUID(),quantity=weighted?0.5:1
+ await admin('DELETE FROM detalles_venta WHERE venta_id=$1',[sale]);await admin('DELETE FROM ventas WHERE id=$1',[sale])
+ await admin('INSERT INTO sesiones_caja(id,kiosco_id,usuario_id) VALUES($1,$2,$3)',[cash,kid,owner])
+ await admin('UPDATE productos SET stock_actual=10,precio_venta=$1,es_pesable=$2,unidad_medida=$3 WHERE id=$4',[weighted?248:124,weighted,weighted?'KG':'UN',product])
+ if(enabled)await admin('INSERT INTO checkout_unidades_config_homologacion(kiosco_id,habilitado) VALUES($1,true)',[kid])
+ const fecha=new Date().toISOString(),prod=free?virtual:product
+ const components:{producto_id:string;cantidad:number}[]=[]
+ const row={id:detail,producto_id:prod,cantidad:quantity,precio_unitario:weighted?248:124,subtotal:124,sin_envase:false,precio_envase_unitario:0,es_devolucion_envase:false,articulo_libre:free?{descripcion:'Concepto de ensayo',precio_venta:124}:null,componentes:components}
+ const snapshot={version:1,id:sale,kiosco_id:kid,usuario_id:owner,sesion_caja_id:cash,fecha_hora:fecha,total:124,notas:null,cliente_id:null,detalles:[row],pagos:[{id:crypto.randomUUID(),medio_pago:'EFECTIVO',monto:124,referencia:null}]}
+ const entry={version:1,checkoutId:sale,kioscoId:kid,usuarioId:owner,sesionCajaId:cash,fechaHora:fecha,clienteId:null,notas:null,tipoAjuste:'NINGUNO',valorAjuste:0,totalEsperado:124,subtotalesEsperados:[124],componentesEsperados:[],lineas:[free?{tipo:'LIBRE',id:prod,descripcion:'Concepto de ensayo',cantidad:1,precio:124}:{tipo:'PRODUCTO',id:prod,productoId:prod,cantidad:quantity,sinEnvase:false}],pagos:[{id:snapshot.pagos[0].id,medio:'EFECTIVO',montoCentavos:12400,referencia:null}]}
+ const prepare=async()=>(await db.query<{data:unknown}>('SELECT preparar_checkout_manual($1,$2::jsonb,$3::jsonb,false,15,0::bigint) data',[actor,JSON.stringify(entry),JSON.stringify(snapshot)])).rows[0].data
+ const close=async()=>(await db.query<{data:unknown}>('SELECT confirmar_venta_manual($1,$2::jsonb) data',[actor,JSON.stringify(snapshot)])).rows[0].data
+ const evidence=async()=>{await db.exec('RESET ROLE');const rows=(await db.query<{data:{datos:{lineas:{detalle_id:string;es_pesable:boolean;unidad_medida:string;tipo:string;componentes:unknown[]}[]};unidades_sha256:string}}>('SELECT to_jsonb(u) data FROM checkout_unidades_homologacion u WHERE checkout_id=$1',[sale])).rows;await db.exec('SET ROLE service_role');return rows[0]?.data??null}
+ return {cash,detail,prod,row,snapshot,entry,prepare,close,evidence}
+}
+it('unidades checkout apagadas por defecto no agregan evidencia ni cambian ACK/cierre',async()=>{
+ const f=await checkoutUnitsFixture(false);await admin('INSERT INTO checkout_unidades_config_homologacion(kiosco_id) VALUES($1)',[kid]);expect(await f.prepare()).toEqual({entrada:f.entry,snapshot:f.snapshot,requiere_supervisor:false,politica_umbral:15,politica_revision:0});expect(await f.evidence()).toBeNull();await f.close();expect(await f.evidence()).toBeNull()
+})
+it.each([false,true])('unidades capturadas en preparación y cierre real; pesable=%s',async weighted=>{
+ const f=await checkoutUnitsFixture(true,weighted);await f.prepare();const evidence=await f.evidence()
+ expect(evidence?.datos.lineas).toMatchObject([{detalle_id:f.detail,tipo:'PRODUCTO',es_pesable:weighted,unidad_medida:weighted?'KG':'UN',componentes:[{producto_id:product,es_pesable:weighted,unidad_medida:weighted?'KG':'UN'}]}])
+ await f.close();expect(await f.evidence()).toEqual(evidence)
+ const proposal=input();await authorizeReceipt(true,{...proposal,datos:{...proposal.datos,importes:{...proposal.datos.importes,neto:'124.00'}}});const result=(await db.query<{v:Record<string,unknown>}>('SELECT cargar_unidades_nc_homologacion($1,$2,$3) v',[actor,sale,op])).rows[0].v
+ expect(result).toMatchObject({estado:'CAPTURADAS',emision_habilitada:false,reintegro_habilitado:false,reposicion_habilitada:false,unidades:{sha256:evidence?.unidades_sha256}})
+})
+it('unidad cambiada después de preparar revierte cierre/stock/pagos y conserva intento',async()=>{
+ const f=await checkoutUnitsFixture(true,true);await f.prepare();const original=await f.evidence();await admin("UPDATE productos SET unidad_medida='GR' WHERE id=$1",[product])
+ await denied(()=>f.close());expect(await f.evidence()).toEqual(original)
+ await db.exec('RESET ROLE');for(const table of ['ventas','pagos_venta','movimientos_stock'])expect((await db.query<{n:number}>(`SELECT count(*)::int n FROM ${table}`)).rows[0].n).toBe(0)
+ expect((await db.query<{v:string}>('SELECT stock_actual::text v FROM productos WHERE id=$1',[product])).rows[0].v).toBe('10.000')
+})
+it('desactivar captura tras preparar no evita guard; replay confirmado no usa catálogo posterior',async()=>{
+ const f=await checkoutUnitsFixture();await f.prepare();await admin('UPDATE checkout_unidades_config_homologacion SET habilitado=false WHERE kiosco_id=$1',[kid])
+ await admin('UPDATE productos SET es_pesable=true WHERE id=$1',[product]);await denied(()=>f.close())
+ await admin('UPDATE productos SET es_pesable=false WHERE id=$1',[product]);await f.close();const original=await f.evidence()
+ await admin("UPDATE productos SET unidad_medida='LT' WHERE id=$1",[product]);await f.close();expect(await f.evidence()).toEqual(original)
+})
+it('concepto libre captura UN sin inventar salida de stock; creación virtual y cierre reales',async()=>{
+ const f=await checkoutUnitsFixture(true,false,true);await f.prepare();expect((await f.evidence())?.datos.lineas).toMatchObject([{tipo:'LIBRE',es_pesable:false,unidad_medida:'UN',componentes:[]}]);await f.close()
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM movimientos_stock')).rows[0].n).toBe(0)
+})
+it('entrada antigua no se rellena al activar captura y conserva cierre recuperable',async()=>{
+ const f=await checkoutUnitsFixture(false);await f.prepare();await admin('INSERT INTO checkout_unidades_config_homologacion(kiosco_id,habilitado) VALUES($1,true)',[kid]);await f.close();expect(await f.evidence()).toBeNull()
+ const proposal=input();await authorizeReceipt(true,{...proposal,datos:{...proposal.datos,importes:{...proposal.datos.importes,neto:'124.00'}}});expect((await db.query<{v:Record<string,unknown>}>('SELECT cargar_unidades_nc_homologacion($1,$2,$3) v',[actor,sale,op])).rows[0].v).toMatchObject({estado:'NO_REGISTRADAS',unidades:null})
+})
+it.each(['anon','authenticated','service_role'] as const)('tablas de configuración/evidencia unidades privadas al rol %s',async role=>{
+ const f=await checkoutUnitsFixture();await f.prepare();await db.exec('RESET ROLE; SET ROLE '+role)
+ for(const table of ['checkout_unidades_config_homologacion','checkout_unidades_homologacion'])await denied(()=>db.exec('SELECT * FROM '+table))
+})
+it('snapshot/unidades son inmutables, política de supervisor sigue editable por wrapper',async()=>{
+ const f=await checkoutUnitsFixture();await f.prepare();await db.exec('RESET ROLE')
+ await denied(()=>db.query('UPDATE checkout_unidades_homologacion SET datos=datos WHERE checkout_id=$1',[sale]));await denied(()=>db.query('DELETE FROM checkout_unidades_homologacion WHERE checkout_id=$1',[sale]))
+ await denied(()=>db.query(`UPDATE checkout_manual_entradas SET snapshot=jsonb_set(snapshot,'{total}','1') WHERE id=$1`,[sale]))
+ await db.query('UPDATE checkout_manual_entradas SET requiere_supervisor=false WHERE id=$1',[sale]);await db.exec('SET ROLE service_role');await f.close()
+})
+it('no captura unidades retroactivas de una venta existente ni acepta fracciones de producto por unidad',async()=>{
+ const f=await checkoutUnitsFixture();f.snapshot.detalles[0].cantidad=0.5;await denied(()=>f.prepare())
+ f.snapshot.detalles[0].cantidad=1;await admin('INSERT INTO ventas(id,kiosco_id,usuario_id,sesion_caja_id,total) VALUES($1,$2,$3,$4,124)',[sale,kid,owner,f.cash]);await denied(()=>f.prepare());expect(await f.evidence()).toBeNull()
+})
+
+it.each([false,true])('combo congela unidad de componente y cierre real; cambio=%s',async change=>{
+ const f=await checkoutUnitsFixture(true,true),combo=crypto.randomUUID()
+ await admin("INSERT INTO productos(id,kiosco_id,descripcion,precio_venta,es_combo) VALUES($1,$2,'Combo de ensayo',124,true)",[combo,kid])
+ await admin('INSERT INTO combo_items(kiosco_id,combo_producto_id,componente_producto_id,cantidad) VALUES($1,$2,$3,0.5)',[kid,combo,product])
+ f.row.producto_id=combo;f.row.cantidad=1;f.row.precio_unitario=124;f.row.componentes.push({producto_id:product,cantidad:0.5});f.entry.lineas[0]={tipo:'PRODUCTO',id:combo,productoId:combo,cantidad:1,sinEnvase:false}
+ await f.prepare();const original=await f.evidence()
+ expect(original?.datos.lineas).toMatchObject([{tipo:'COMBO',es_pesable:false,unidad_medida:'UN',componentes:[{producto_id:product,es_pesable:true,unidad_medida:'KG'}]}])
+ if(change){await admin("UPDATE productos SET unidad_medida='GR' WHERE id=$1",[product]);await denied(()=>f.close());expect(await f.evidence()).toEqual(original);return}
+ await f.close();await admin("UPDATE productos SET unidad_medida='GR' WHERE id=$1",[product]);await admin('UPDATE combo_items SET cantidad=1 WHERE combo_producto_id=$1',[combo])
+ const proposal=input();await authorizeReceipt(true,{...proposal,datos:{...proposal.datos,importes:{...proposal.datos.importes,neto:'124.00'}}})
+ const result=(await db.query<{v:{estado:string;unidades:{canonico:string}}}>('SELECT cargar_unidades_nc_homologacion($1,$2,$3) v',[actor,sale,op])).rows[0].v
+ expect(result.estado).toBe('CAPTURADAS');expect(JSON.parse(result.unidades.canonico).lineas[0].componentes[0].unidad_medida).toBe('KG')
+})
+it('preparar de nuevo el mismo UUID recupera evidencia original y reinstalación la conserva',async()=>{
+ const f=await checkoutUnitsFixture();await f.prepare();const original=await f.evidence();await admin("UPDATE productos SET unidad_medida='LT' WHERE id=$1",[product]);await f.prepare();expect(await f.evidence()).toEqual(original)
+ await db.exec('RESET ROLE');await db.exec(readFileSync('supabase/pilot-fiscal/031_checkout_unit_evidence.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,''));await db.exec('SET ROLE service_role');expect(await f.evidence()).toEqual(original)
+})
+
+it('unidades de factura sólo se leen con Auth fiscal original, no con perfil reasignado',async()=>{
+ const f=await checkoutUnitsFixture();await f.prepare();await f.close();const proposal=input();await authorizeReceipt(true,{...proposal,datos:{...proposal.datos,importes:{...proposal.datos.importes,neto:'124.00'}}})
+ const other=crypto.randomUUID();await admin('INSERT INTO auth.users VALUES($1)',[other]);await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner])
+ for(const who of [actor,other])await denied(()=>db.query('SELECT cargar_unidades_nc_homologacion($1,$2,$3)',[who,sale,op]))
+})
+
+it('captura de unidades no prohíbe una venta de combo pesable admitida por checkout',async()=>{
+ const f=await checkoutUnitsFixture(),combo=crypto.randomUUID()
+ await admin("INSERT INTO productos(id,kiosco_id,descripcion,precio_venta,es_combo,es_pesable,unidad_medida) VALUES($1,$2,'Combo pesable',248,true,true,'KG')",[combo,kid])
+ await admin('INSERT INTO combo_items(kiosco_id,combo_producto_id,componente_producto_id,cantidad) VALUES($1,$2,$3,2)',[kid,combo,product])
+ f.row.producto_id=combo;f.row.cantidad=0.5;f.row.precio_unitario=248;f.row.componentes.push({producto_id:product,cantidad:2});f.entry.lineas[0]={tipo:'PRODUCTO',id:combo,productoId:combo,cantidad:0.5,sinEnvase:false}
+ await f.prepare();expect((await f.evidence())?.datos.lineas).toMatchObject([{tipo:'COMBO',es_pesable:true,unidad_medida:'KG'}]);await f.close()
+ await db.exec('RESET ROLE');expect((await db.query<{v:string}>('SELECT stock_actual::text v FROM productos WHERE id=$1',[product])).rows[0].v).toBe('9.000')
+})
