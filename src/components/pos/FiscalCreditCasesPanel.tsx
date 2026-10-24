@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Button } from '../ui/Button'
 import { FiscalCreditSourcePanel } from './FiscalCreditSourcePanel'
 import { FiscalCreditContextPanel } from './FiscalCreditContextPanel'
+import { FiscalCreditPreparationPanel } from './FiscalCreditPreparationPanel'
 import { prepareFiscalCreditDraft } from '../../../supabase/functions/_shared/fiscalCreditDraft'
 import type { FiscalCreditDraftInput } from '../../../supabase/functions/_shared/fiscalCreditDraft'
 import { validateFiscalCreditDraftAck } from '../../../supabase/functions/_shared/fiscalCreditDraftAck'
@@ -132,6 +133,10 @@ function CasesBody({ client, receipt }: Props) {
       <p>{row.acuse.estado === 'CANCELADA' ? 'Cancelado · historial conservado' : 'Guardado · sin emitir'}</p>
       <p>{row.propuesta.datos.motivo}</p>
       {row.acuse.estado === 'SALDO_RESERVADO_NO_EMITIR' && source && !busy && !pending && !target && <FiscalCreditContextPanel source={source} proposal={row.propuesta} client={client.credits} sequence={row.secuencia} />}
+      {row.acuse.estado === 'SALDO_RESERVADO_NO_EMITIR' && source && !busy && !pending && !target && <FiscalCreditPreparationPanel source={source} proposal={row.propuesta} client={client.credits} sequence={row.secuencia} onCancelled={() => {
+        setRows(previous => previous.map(item => item.acuse.solicitud_id === row.acuse.solicitud_id ? { ...item, acuse: { ...item.acuse, estado: 'CANCELADA' } } : item))
+        setMessage('Cancelación confirmada. Se conserva el historial del caso y de su preparación.')
+      }} />}
       <details><summary>Detalle del caso</summary><ul>{row.propuesta.datos.lineas.map(line => <li key={line.detalle_id}>{source?.hechos.datos.lineas.find(item => item.detalle_id === line.detalle_id)?.descripcion ?? 'Artículo histórico'} · {line.cantidad.replace('.', ',')} · {money(line.importe)} · {line.reingresa_stock ? 'Reposición solicitada, aún sin aplicar' : 'Sin reposición solicitada'}</li>)}</ul><p className="break-all">Referencia {row.acuse.solicitud_id}</p></details>
       {latestActive === row && !pending && <Button type="button" variant="secondary" disabled={busy} onClick={() => choose({ version: 1, operationId: row.acuse.operacion_origen_id, requestId: row.acuse.solicitud_id, sha256: row.acuse.propuesta_sha256, intention: 'CANCELAR' })}>Solicitar cancelación del caso {row.secuencia}</Button>}
     </article>)}
