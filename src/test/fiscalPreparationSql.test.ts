@@ -93,6 +93,7 @@ function workerFixture(){
  mapping.cargar_unidades_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id']
  mapping.cargar_fuente_contexto_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
  mapping.cargar_fuente_cuerpo_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
+ mapping.cargar_fuente_numeracion_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha','p_preparacion_sha']
  mapping.cargar_preparacion_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
  mapping.guardar_preparacion_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha','p_contexto_sha','p_entrada']
  mapping.cargar_fuente_comercial_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id'];mapping.cargar_historial_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_despues'];mapping.guardar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_canonico','p_sha'];mapping.cargar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id'];mapping.cancelar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
@@ -1754,6 +1755,41 @@ async function installCreditRequestSource(){
  await db.exec('RESET ROLE');const sql=readFileSync('supabase/pilot-fiscal/037_fiscal_credit_request_source.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
  await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
 }
+async function creditNumberSourceFixture(){
+ const f=await creditNumberedFixture()
+ await db.exec('RESET ROLE');const sql=readFileSync('supabase/pilot-fiscal/038_fiscal_credit_number_source.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
+ await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
+ const api=workerFixture(),{loadFiscalCreditNumberingSource}=await import('../../supabase/functions/_shared/fiscalCreditDraftService')
+ const scope={saleId:sale,operationId:op,requestId:f.proposal.datos.solicitud_id,sha256:f.proposal.sha256}
+ const load=()=>loadFiscalCreditNumberingSource(api.admin,'SYNTHETIC_JWT',scope,f.prepared.sha256)
+ return{...f,api,scope,load}
+}
+it('038 fuente específica liga Dueño/Auth/caso/preparación/emisor sin copiar permiso de factura',async()=>{
+ const f=await creditNumberSourceFixture(),before=await preparationEffects(),source=await f.load()
+ expect(source.binding).toMatchObject({finalidad:'NUMERACION_NC',actor_auth_id:actor,kiosco_id:kid,usuario_id:owner,solicitud_id:f.proposal.datos.solicitud_id,operacion_origen_id:op,preparacion_sha256:f.prepared.sha256,tipo_comprobante:13,emision_habilitada:false})
+ expect(source.binding).not.toHaveProperty('operacion_id');expect(source.binding).not.toHaveProperty('token');expect(source.binding).not.toHaveProperty('sign')
+ expect(f.api.getUser).toHaveBeenCalledTimes(1);expect(f.api.rpc.mock.calls.every(([,args])=>args.p_actor_auth_id===actor)).toBe(true)
+ expect(await preparationEffects()).toEqual(before);expect(f.api.fetcher).not.toHaveBeenCalled();expect(f.api.load).not.toHaveBeenCalled()
+})
+it.each(['reservada','cancelada','emisor','catalogo','pago','rol','superadmin'] as const)('038 fuente de consulta nueva rechaza %s sin custodia ni red',async(reason)=>{
+ const f=await creditNumberSourceFixture()
+ if(reason==='reservada')await f.reserve()
+ if(reason==='cancelada')await db.query('SELECT cancelar_borrador_nc_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256])
+ if(reason==='emisor')await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false')
+ if(reason==='catalogo')await admin('UPDATE fiscal_parametros_nc_homologacion SET habilitado=false')
+ if(reason==='pago')await admin('UPDATE pagos_venta SET monto=1 WHERE venta_id=$1',[sale])
+ if(reason==='rol')await admin("UPDATE usuarios SET rol='CAJERO' WHERE id=$1",[owner])
+ if(reason==='superadmin')await admin('UPDATE usuarios SET es_superadmin=true,kiosco_id=NULL WHERE id=$1',[owner])
+ await expect(f.load()).rejects.toThrow('FISCAL_NC_NO_CONFIRMADA')
+ expect(f.api.fetcher).not.toHaveBeenCalled();expect(f.api.load).not.toHaveBeenCalled()
+})
+it('038 no atribuye Auth nuevo entre lectura de factura y fuente de numeración',async()=>{
+ const f=await creditNumberSourceFixture(),base=f.api.rpc.getMockImplementation()!,other=crypto.randomUUID()
+ await admin('INSERT INTO auth.users VALUES($1)',[other])
+ f.api.rpc.mockImplementation(async(name,args)=>{const result=await base(name,args);if(name==='cargar_representacion_fiscal_homologacion')await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner]);return result})
+ await expect(f.load()).rejects.toThrow('FISCAL_NC_NO_CONFIRMADA');expect(f.api.getUser).toHaveBeenCalledTimes(1)
+ expect(f.api.rpc.mock.calls.every(([,args])=>args.p_actor_auth_id===actor)).toBe(true)
+})
 it.each([1,6,11] as const)('037 cuerpo NC factura%i se recupera por servicio privado y SQL real sin parámetros vigentes',async(invoice)=>{
  const f=await creditNumberedFixture(invoice);await installCreditRequestSource()
  const api=workerFixture(),{loadFiscalCreditRequest}=await import('../../supabase/functions/_shared/fiscalCreditDraftService')

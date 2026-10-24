@@ -17,8 +17,30 @@ import { prepareFiscalCreditPreparation, validateFiscalCreditPreparationRecord }
 import type { FiscalCreditPreparationRecord } from './fiscalCreditPreparation.ts'
 import { validateFiscalCreditRequestRecord } from './fiscalCreditRequest.ts'
 import type { FiscalCreditRequestRecord } from './fiscalCreditRequest.ts'
+import { validateFiscalCreditNumberSource } from './fiscalCreditNumberSource.ts'
+import type { FiscalCreditNumberSource } from './fiscalCreditNumberSource.ts'
 
 const fail = (): never => { throw new Error('FISCAL_NC_NO_CONFIRMADA') }
+/** Metadata actual específica NC; no invoca cache/TA ni concede permiso. */
+export async function loadFiscalCreditNumberingSource(admin: FiscalAuthClient, token: string, scope: FiscalCreditDraftScope, preparationSha: string): Promise<Readonly<FiscalCreditNumberSource>> {
+  try {
+    const captured = { ...scope }; validScope(captured)
+    if (!fiscalSha(preparationSha)) return fail()
+    const id = await actor(admin, token, captured.saleId, captured.operationId)
+    const response = await admin.rpc('cargar_representacion_fiscal_homologacion', { p_actor_auth_id: id, p_venta_id: captured.saleId, p_operacion_id: captured.operationId })
+    if (response.error) return fail()
+    const source = await validateFiscalRepresentation(response.data, captured.saleId, captured.operationId)
+    const result = await admin.rpc('cargar_fuente_numeracion_nc_homologacion', { p_actor_auth_id: id, p_venta_id: captured.saleId, p_operacion_origen_id: captured.operationId,
+      p_id: captured.requestId, p_sha: captured.sha256, p_preparacion_sha: preparationSha })
+    const data: unknown = structuredClone(result.data)
+    if (result.error || !data || typeof data !== 'object' || Array.isArray(data)) return fail()
+    const preparation = (data as Record<string, unknown>).preparacion
+    if (!preparation || typeof preparation !== 'object' || Array.isArray(preparation)) return fail()
+    const proposal = await validateFiscalCreditDraftProposal(source, (preparation as Record<string, unknown>).propuesta)
+    if (proposal.datos.solicitud_id !== captured.requestId || proposal.sha256 !== captured.sha256) return fail()
+    return await validateFiscalCreditNumberSource(data, source, proposal, id, preparationSha)
+  } catch { return fail() }
+}
 export async function loadFiscalCreditRequest(admin: FiscalAuthClient, token: string, scope: FiscalCreditDraftScope): Promise<Readonly<FiscalCreditRequestRecord> | null> {
   try {
     const captured = { ...scope }; validScope(captured)
