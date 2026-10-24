@@ -12,8 +12,28 @@ import { validateFiscalCreditCommercialSource } from './fiscalCreditCommercialSo
 import type { FiscalCreditCommercialSource } from './fiscalCreditCommercialSource.ts'
 import { validateFiscalCreditUnits } from './fiscalCreditUnits.ts'
 import type { FiscalCreditUnits } from './fiscalCreditUnits.ts'
+import { validateFiscalCreditPreparationRecord } from './fiscalCreditPreparation.ts'
+import type { FiscalCreditPreparationRecord } from './fiscalCreditPreparation.ts'
 
 const fail = (): never => { throw new Error('FISCAL_NC_NO_CONFIRMADA') }
+/** Recuperación histórica sin consultar catálogo actual, escribir o adquirir permiso. */
+export async function loadFiscalCreditPreparation(admin: FiscalAuthClient, token: string, scope: FiscalCreditDraftScope): Promise<Readonly<FiscalCreditPreparationRecord> | null> {
+  try {
+    const captured = { ...scope }; validScope(captured)
+    const id = await actor(admin, token, captured.saleId, captured.operationId)
+    const response = await admin.rpc('cargar_representacion_fiscal_homologacion', { p_actor_auth_id: id, p_venta_id: captured.saleId, p_operacion_id: captured.operationId })
+    if (response.error) return fail()
+    const source = await validateFiscalRepresentation(response.data, captured.saleId, captured.operationId)
+    const stored = await admin.rpc('cargar_preparacion_nc_homologacion', { p_actor_auth_id: id, p_venta_id: captured.saleId, p_operacion_origen_id: captured.operationId, p_id: captured.requestId, p_sha: captured.sha256 })
+    if (stored.error) return fail()
+    if (stored.data === null) return null
+    const data: unknown = structuredClone(stored.data)
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return fail()
+    const proposal = await validateFiscalCreditDraftProposal(source, (data as Record<string, unknown>).propuesta)
+    if (proposal.datos.solicitud_id !== captured.requestId || proposal.sha256 !== captured.sha256) return fail()
+    return await validateFiscalCreditPreparationRecord(data, source, proposal)
+  } catch { return fail() }
+}
 /** Consulta por identidad mínima; el canónico se obtiene del caso durable privado. */
 export async function loadFiscalCreditContext(admin: FiscalAuthClient, token: string, scope: FiscalCreditDraftScope): Promise<Readonly<FiscalCreditContext>> {
   try {
