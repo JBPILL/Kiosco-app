@@ -8,6 +8,8 @@ import { validateFiscalCreditHistory } from '../../supabase/functions/_shared/fi
 import type { FiscalCreditHistory } from '../../supabase/functions/_shared/fiscalCreditHistory'
 import { validateFiscalCreditCommercialSource } from '../../supabase/functions/_shared/fiscalCreditCommercialSource'
 import type { FiscalCreditCommercialSource } from '../../supabase/functions/_shared/fiscalCreditCommercialSource'
+import { validateFiscalCreditUnits } from '../../supabase/functions/_shared/fiscalCreditUnits'
+import type { FiscalCreditUnits } from '../../supabase/functions/_shared/fiscalCreditUnits'
 import { fiscalSha, fiscalUuid } from '../../supabase/functions/_shared/fiscalReplacement'
 
 export interface PendingFiscalCredit { version: 1; operationId: string; requestId: string; sha256: string; intention: 'GUARDAR' | 'CANCELAR' }
@@ -54,6 +56,13 @@ export function createFiscalCreditClient(scope: FiscalClientScope, deps: FiscalC
   }
   return {
     pending,
+    async units(source: Readonly<FiscalRepresentation>, commercial: Readonly<FiscalCreditCommercialSource>): Promise<Readonly<FiscalCreditUnits>> {
+      try {
+        const original = structuredClone(source), captured = structuredClone(commercial)
+        if (original.venta_id !== sale || !fiscalUuid(original.operacion_id)) return fail()
+        return await validateFiscalCreditUnits(await deps.invoke({ accion: 'UNIDADES_NC', venta_id: sale, operacion_origen_id: original.operacion_id }), original, captured)
+      } catch { return fail() }
+    },
     async commercialSource(source: Readonly<FiscalRepresentation>): Promise<Readonly<FiscalCreditCommercialSource>> {
       try {
         const original = structuredClone(source)

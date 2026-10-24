@@ -76,7 +76,8 @@ BEGIN
    IF cantidad<>trunc(cantidad) OR jsonb_array_length(detalle->'componentes')<>0 THEN RAISE EXCEPTION 'Concepto libre histórico inválido.' USING ERRCODE='22023'; END IF;
   ELSIF detalle->'articulo_libre'='null'::jsonb THEN
    tipo:=CASE WHEN jsonb_array_length(detalle->'componentes')>0 THEN 'COMBO' ELSE 'PRODUCTO' END;
-   IF tipo='COMBO' AND cantidad<>trunc(cantidad) THEN RAISE EXCEPTION 'Combo histórico fraccionado.' USING ERRCODE='22023'; END IF;
+   -- Una fuente de hechos conserva combos pesables admitidos por checkout.
+   -- No determina aquí qué cantidades podrá devolver el circuito NC.
    FOR componente IN SELECT value FROM jsonb_array_elements(CASE WHEN tipo='COMBO' THEN detalle->'componentes' ELSE jsonb_build_array(jsonb_build_object('producto_id',producto_uuid,'cantidad',1)) END) ORDER BY (value->>'producto_id')::uuid LOOP
     PERFORM public.checkout_objeto(componente,ARRAY['producto_id','cantidad']);
     pago_id:=public.checkout_uuid(componente->'producto_id');

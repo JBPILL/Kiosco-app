@@ -8,6 +8,8 @@ import { validateFiscalCreditHistory } from './fiscalCreditHistory.ts'
 import type { FiscalCreditHistory } from './fiscalCreditHistory.ts'
 import { validateFiscalCreditCommercialSource } from './fiscalCreditCommercialSource.ts'
 import type { FiscalCreditCommercialSource } from './fiscalCreditCommercialSource.ts'
+import { validateFiscalCreditUnits } from './fiscalCreditUnits.ts'
+import type { FiscalCreditUnits } from './fiscalCreditUnits.ts'
 
 const fail = (): never => { throw new Error('FISCAL_NC_NO_CONFIRMADA') }
 async function actor(admin: FiscalAuthClient, token: string, sale: string, operation: string): Promise<string> {
@@ -81,5 +83,19 @@ export async function loadFiscalCreditCommercialSource(admin: FiscalAuthClient, 
     const commercial = await admin.rpc('cargar_fuente_comercial_nc_homologacion', { p_actor_auth_id: id, p_venta_id: sale, p_operacion_origen_id: operation })
     if (commercial.error) return fail()
     return await validateFiscalCreditCommercialSource(commercial.data, original)
+  } catch { return fail() }
+}
+export async function loadFiscalCreditUnits(admin: FiscalAuthClient, token: string, sale: string, operation: string): Promise<Readonly<FiscalCreditUnits>> {
+  try {
+    const id = await actor(admin, token, sale, operation)
+    const source = await admin.rpc('cargar_representacion_fiscal_homologacion', { p_actor_auth_id: id, p_venta_id: sale, p_operacion_id: operation })
+    if (source.error) return fail()
+    const original = await validateFiscalRepresentation(source.data, sale, operation)
+    const commercial = await admin.rpc('cargar_fuente_comercial_nc_homologacion', { p_actor_auth_id: id, p_venta_id: sale, p_operacion_origen_id: operation })
+    if (commercial.error) return fail()
+    const verified = await validateFiscalCreditCommercialSource(commercial.data, original)
+    const units = await admin.rpc('cargar_unidades_nc_homologacion', { p_actor_auth_id: id, p_venta_id: sale, p_operacion_origen_id: operation })
+    if (units.error) return fail()
+    return await validateFiscalCreditUnits(units.data, original, verified)
   } catch { return fail() }
 }

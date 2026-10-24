@@ -76,6 +76,7 @@ async function denied(run:()=>Promise<unknown>){await db.exec('SAVEPOINT denied'
 async function admin(sql:string,args:unknown[]=[]){await db.exec('RESET ROLE');await db.query(sql,args);await db.exec('SET ROLE service_role')}
 const hash=(text:string)=>createHash('sha256').update(text).digest('hex')
 function workerFixture(){
+ // Las consultas de unidades pasan por SQL031 real; sólo Auth es sintético.
  const flags:Record<string,string>={SUPABASE_URL:'https://acoyfwwmhaeruciyedri.supabase.co',ARCA_HOMO_BACKEND_ENABLED:'true',ARCA_HOMO_PREPARATION_ENABLED:'true'}
  const mapping:Record<string,string[]>={autorizar_consulta_fiscal_homologacion:['p_actor_auth_id','p_operacion_id'],cargar_fuente_preparacion_homologacion:['p_actor_auth_id','p_operacion_id'],cargar_revision_fiscal_homologacion:['p_operacion_id','p_actor_auth_id'],persistir_preparacion_fiscal_homologacion:['p_actor_auth_id','p_operacion_id','p_canonico','p_sha','p_ultimo_autorizado','p_consultado_en']}
  mapping.cargar_fuente_correccion_rechazo_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.corregir_rechazo_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_sucesora_id','p_intento_id','p_anterior_sha','p_canonico','p_sha','p_verificacion'];mapping.consultar_correccion_rechazo_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
@@ -87,6 +88,7 @@ function workerFixture(){
  mapping.cargar_contexto_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.cargar_presentacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.guardar_presentacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_solicitud_sha','p_canonico','p_sha'];mapping.cargar_revision_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_revision_id'];mapping.aprobar_revision_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_revision_id','p_solicitud_sha','p_revision','p_presentacion_sha']
  mapping.cargar_preparacion_envio_homologacion=['p_operacion_id'];mapping.autorizar_envio_presentado_homologacion=['p_actor_auth_id','p_operacion_id','p_sha','p_revision_id'];mapping.registrar_envio_revisado_homologacion=['p_actor_auth_id','p_operacion_id','p_intento_id','p_sha','p_autorizacion_id','p_ultimo_autorizado','p_consultado_en']
  mapping.cargar_representacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
+ mapping.cargar_unidades_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id']
  mapping.cargar_fuente_comercial_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id'];mapping.cargar_historial_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_despues'];mapping.guardar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_canonico','p_sha'];mapping.cargar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id'];mapping.cancelar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
  const rpc=vi.fn<FiscalAuthClient['rpc']>(async(name,args)=>{
   const keys=mapping[name];if(!keys)throw new Error('UNEXPECTED_PRIVATE_RPC')
@@ -1665,5 +1667,38 @@ it('captura de unidades no prohíbe una venta de combo pesable admitida por chec
  await admin('INSERT INTO combo_items(kiosco_id,combo_producto_id,componente_producto_id,cantidad) VALUES($1,$2,$3,2)',[kid,combo,product])
  f.row.producto_id=combo;f.row.cantidad=0.5;f.row.precio_unitario=248;f.row.componentes.push({producto_id:product,cantidad:2});f.entry.lineas[0]={tipo:'PRODUCTO',id:combo,productoId:combo,cantidad:0.5,sinEnvase:false}
  await f.prepare();expect((await f.evidence())?.datos.lineas).toMatchObject([{tipo:'COMBO',es_pesable:true,unidad_medida:'KG'}]);await f.close()
- await db.exec('RESET ROLE');expect((await db.query<{v:string}>('SELECT stock_actual::text v FROM productos WHERE id=$1',[product])).rows[0].v).toBe('9.000')
+ await db.exec('RESET ROLE');expect((await db.query<{v:string}>('SELECT stock_actual::text v FROM productos WHERE id=$1',[product])).rows[0].v).toBe('9.000');await db.exec('SET ROLE service_role')
+ const proposal=input();await authorizeReceipt(true,{...proposal,datos:{...proposal.datos,importes:{...proposal.datos.importes,neto:'124.00'}}})
+ const result=await readUnitsHttp()
+ expect(result).toMatchObject({estado:'CAPTURADAS',emision_habilitada:false,reintegro_habilitado:false,reposicion_habilitada:false})
+ const verified=await import('../../supabase/functions/_shared/fiscalCreditUnits')
+ const commercial=(await db.query<{data:unknown}>('SELECT cargar_fuente_comercial_nc_homologacion($1,$2,$3) data',[actor,sale,op])).rows[0].data
+ const source=await (await import('../../supabase/functions/_shared/fiscalRepresentation')).validateFiscalRepresentation(await representation(),sale,op)
+ const validated=await verified.validateFiscalCreditUnits(result,source,await (await import('../../supabase/functions/_shared/fiscalCreditCommercialSource')).validateFiscalCreditCommercialSource(commercial,source))
+ expect(validated.estado).toBe('CAPTURADAS')
+})
+
+async function readUnitsHttp(){
+ const api=workerFixture(),handler=createFiscalHttpHandler({readSecret:api.deps.readSecret,createAdmin:()=>api.admin,fetcher:api.fetcher})
+ const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify({accion:'UNIDADES_NC',venta_id:sale,operacion_origen_id:op})}))
+ expect(response.status).toBe(200);expect(api.getUser).toHaveBeenCalledTimes(1);expect(api.fetcher).not.toHaveBeenCalled();expect(api.load).not.toHaveBeenCalled()
+ expect(api.rpc.mock.calls.map(([name])=>name)).toEqual(['cargar_representacion_fiscal_homologacion','cargar_fuente_comercial_nc_homologacion','cargar_unidades_nc_homologacion'])
+ return (await response.json()).resultado
+}
+it.each([true,false])('HTTP unidades contrasta cierre real y factura sintética, captura habilitada=%s',async(enabled)=>{
+ const f=await checkoutUnitsFixture(enabled);await f.prepare();await f.close();const proposal=input()
+ await authorizeReceipt(true,{...proposal,datos:{...proposal.datos,importes:{...proposal.datos.importes,neto:'124.00'}}})
+ const result=await readUnitsHttp()
+ expect(result).toMatchObject({estado:enabled?'CAPTURADAS':'NO_REGISTRADAS',venta_id:sale,operacion_origen_id:op,emision_habilitada:false,reintegro_habilitado:false,reposicion_habilitada:false})
+ if(!enabled)expect(result.unidades).toBeNull()
+})
+it('HTTP unidades niega reasignación de Auth entre fuente comercial y unidades sin exponer metadata',async()=>{
+ const f=await checkoutUnitsFixture();await f.prepare();await f.close();const proposal=input()
+ await authorizeReceipt(true,{...proposal,datos:{...proposal.datos,importes:{...proposal.datos.importes,neto:'124.00'}}})
+ const api=workerFixture(),base=api.rpc.getMockImplementation()!,other=crypto.randomUUID();await admin('INSERT INTO auth.users VALUES($1)',[other])
+ api.rpc.mockImplementation(async(name,args)=>{const result=await base(name,args);if(name==='cargar_fuente_comercial_nc_homologacion')await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner]);return result})
+ const handler=createFiscalHttpHandler({readSecret:api.deps.readSecret,createAdmin:()=>api.admin,fetcher:api.fetcher})
+ const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify({accion:'UNIDADES_NC',venta_id:sale,operacion_origen_id:op})}))
+ expect(response.status).not.toBe(200);expect(JSON.stringify(await response.json())).not.toContain('canonico');expect(api.getUser).toHaveBeenCalledTimes(1)
+ expect(api.rpc.mock.calls.every(([,args])=>args.p_actor_auth_id===actor)).toBe(true)
 })

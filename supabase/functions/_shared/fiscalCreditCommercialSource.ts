@@ -51,7 +51,7 @@ export async function validateFiscalCreditCommercialSource(input: unknown, origi
       const historical = source.contexto.lineas.find(item => item.detalle_id === line.detalle_id)
       const cantidad = decimal(line.cantidad, 3, true), subtotal = decimal(line.subtotal, 2), precio = decimal(line.precio_envase_unitario, 2)
       if (!historical || historical.cantidad !== cantidad || historical.subtotal !== subtotal
-        || line.tipo !== 'PRODUCTO' && BigInt(cantidad.replace('.', '')) % 1000n !== 0n) return fail()
+        || line.tipo === 'LIBRE' && BigInt(cantidad.replace('.', '')) % 1000n !== 0n) return fail()
       const componentes: Readonly<{ producto_id: string; cantidad: string }>[] = []
       let previous = ''
       for (const raw of line.componentes) {

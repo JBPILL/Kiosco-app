@@ -103,11 +103,12 @@ it('captura fuente y entrada antes de esperar; no valida datos mutados durante l
   finish({ version: 1, entorno: 'HOMOLOGACION', emision_habilitada: false, resultado: f.commercial })
   expect((await loading).lineas[0].cantidad).toBe('2.000'); expect(setItem).not.toHaveBeenCalled()
 })
-it('fracción histórica no acredita pesable; no permite convertirla en libre o combo entero', async () => {
+it('fracción histórica se conserva en producto/combo sin acreditar pesable ni permisos', async () => {
   const f = await fiscalCreditCommercialFixture()
   const source = await validateFiscalRepresentation({ ...f.wire, contexto: { ...f.wire.contexto, lineas: f.wire.contexto.lineas.map(line => ({ ...line, cantidad: '1.500' })) } }, f.sale, f.operation)
   const line = { ...f.commercial.lineas[0], cantidad: '1.500' }, value = { ...f.commercial, lineas: [line] }
   expect((await validateFiscalCreditCommercialSource(value, source)).lineas[0].cantidad).toBe('1.500')
   expect((await validateFiscalCreditCommercialSource(value, source)).unidades_historicas).toBe('NO_REGISTRADAS')
-  for (const tipo of ['COMBO', 'LIBRE']) await expect(validateFiscalCreditCommercialSource({ ...value, lineas: [{ ...line, tipo, componentes: tipo === 'LIBRE' ? [] : line.componentes }] }, source)).rejects.toThrow('FISCAL_FUENTE_COMERCIAL_NC_NO_CONFIRMADA')
+  expect((await validateFiscalCreditCommercialSource({ ...value, lineas: [{ ...line, tipo: 'COMBO' }] }, source)).unidades_historicas).toBe('NO_REGISTRADAS')
+  await expect(validateFiscalCreditCommercialSource({ ...value, lineas: [{ ...line, tipo: 'LIBRE', componentes: [] }] }, source)).rejects.toThrow('FISCAL_FUENTE_COMERCIAL_NC_NO_CONFIRMADA')
 })
