@@ -91,6 +91,7 @@ function workerFixture(){
  mapping.cargar_preparacion_envio_homologacion=['p_operacion_id'];mapping.autorizar_envio_presentado_homologacion=['p_actor_auth_id','p_operacion_id','p_sha','p_revision_id'];mapping.registrar_envio_revisado_homologacion=['p_actor_auth_id','p_operacion_id','p_intento_id','p_sha','p_autorizacion_id','p_ultimo_autorizado','p_consultado_en']
  mapping.cargar_representacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
  mapping.cargar_unidades_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id']
+ mapping.cargar_fuente_contexto_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
  mapping.cargar_fuente_comercial_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id'];mapping.cargar_historial_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_despues'];mapping.guardar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_canonico','p_sha'];mapping.cargar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id'];mapping.cancelar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
  const rpc=vi.fn<FiscalAuthClient['rpc']>(async(name,args)=>{
   const keys=mapping[name];if(!keys)throw new Error('UNEXPECTED_PRIVATE_RPC')
@@ -1697,6 +1698,14 @@ async function installCreditContext(){
  await db.exec('RESET ROLE');const sql=readFileSync('supabase/pilot-fiscal/033_fiscal_credit_context.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
  await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
 }
+async function installCreditContextSource(){
+ await db.exec('RESET ROLE');const sql=readFileSync('supabase/pilot-fiscal/034_fiscal_credit_context_source.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
+ await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
+}
+it.each(['anon','authenticated'])('034 puente privado no expone canónico a %s',async(role)=>{
+ await installCreditBinding();await installCreditContext();await installCreditContextSource();await db.exec('RESET ROLE; SET ROLE '+role)
+ await denied(()=>db.query('SELECT cargar_fuente_contexto_nc_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,crypto.randomUUID(),'a'.repeat(64)]))
+})
 async function seedCreditCatalog(){
  await admin(`INSERT INTO fiscal_parametros_nc_homologacion(revision,tipos,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en,habilitado)
  VALUES(1,'[{"id":13,"descripcion":"NC C sintética","desde":"20200101","hasta":null}]','[{"id":5,"descripcion":"Condición sintética NC","comprobantes":[13]}]','[]',repeat('c',64),clock_timestamp()-interval '1 hour',clock_timestamp()+interval '1 hour',true)`)
@@ -1715,6 +1724,22 @@ it('033 contexto liga caso/factura/fuente/unidades y catálogo NC explícito sin
  const context=await f.load(),{validateFiscalCreditContext}=await import('../../supabase/functions/_shared/fiscalCreditContext')
  expect(await validateFiscalCreditContext(context,f.source,f.proposal)).toMatchObject({solicitud_id:f.proposal.datos.solicitud_id,propuesta_sha256:f.proposal.sha256,punto_venta:7,tipo_nota_credito:13,revision_parametros:1,condiciones:[{id:5,comprobantes:[13]}],emision_habilitada:false})
  await installCreditContext();expect(await f.load()).toEqual(context)
+})
+it('contexto NC HTTP–servicio–SQL033 real local con Auth único y sin flag de guardar',async()=>{
+ const f=await contextCreditFixture();await seedCreditCatalog();await installCreditContextSource();const api=workerFixture();api.flags.ARCA_HOMO_CREDIT_DRAFTS_ENABLED='false'
+ const handler=createFiscalHttpHandler({readSecret:api.deps.readSecret,createAdmin:()=>api.admin,fetcher:api.fetcher})
+ const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify({accion:'CONTEXTO_NC',venta_id:sale,operacion_origen_id:op,solicitud_id:f.proposal.datos.solicitud_id,propuesta_sha256:f.proposal.sha256})}))
+ expect(response.status).toBe(200);expect((await response.json()).resultado).toEqual(await f.load())
+ expect(api.getUser).toHaveBeenCalledTimes(1);expect(api.fetcher).not.toHaveBeenCalled();expect(api.load).not.toHaveBeenCalled()
+ expect(api.rpc.mock.calls.map(([name])=>name)).toEqual(['cargar_representacion_fiscal_homologacion','cargar_fuente_contexto_nc_homologacion'])
+})
+it('contexto NC no atribuye Auth nuevo tras reasignación entre fuente y SQL033',async()=>{
+ const f=await contextCreditFixture();await seedCreditCatalog();await installCreditContextSource();const api=workerFixture(),base=api.rpc.getMockImplementation()!,other=crypto.randomUUID();await admin('INSERT INTO auth.users VALUES($1)',[other])
+ api.rpc.mockImplementation(async(name,args)=>{const result=await base(name,args);if(name==='cargar_representacion_fiscal_homologacion')await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner]);return result})
+ const handler=createFiscalHttpHandler({readSecret:api.deps.readSecret,createAdmin:()=>api.admin,fetcher:api.fetcher})
+ const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify({accion:'CONTEXTO_NC',venta_id:sale,operacion_origen_id:op,solicitud_id:f.proposal.datos.solicitud_id,propuesta_sha256:f.proposal.sha256})}))
+ expect(response.status).not.toBe(200);expect(JSON.stringify(await response.json())).not.toContain('condiciones');expect(api.getUser).toHaveBeenCalledTimes(1)
+ expect(api.rpc.mock.calls.every(([,args])=>args.p_actor_auth_id===actor)).toBe(true)
 })
 it.each(['cancelado','pago','emisor','hash','actor','vencido','noIniciado','tipoVencido','condicion'] as const)('033 rechaza contexto %s sin inferir parámetros o datos nuevos',async(reason)=>{
  const f=await contextCreditFixture();await seedCreditCatalog()

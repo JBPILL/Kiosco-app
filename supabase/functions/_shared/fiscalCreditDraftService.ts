@@ -1,7 +1,9 @@
 import type { FiscalAuthClient } from './fiscalWorkerAuthorization.ts'
 import { fiscalSha, fiscalUuid } from './fiscalReplacement.ts'
 import { validateFiscalRepresentation } from './fiscalRepresentation.ts'
-import { prepareFiscalCreditDraft } from './fiscalCreditDraft.ts'
+import { prepareFiscalCreditDraft, validateFiscalCreditDraftProposal } from './fiscalCreditDraft.ts'
+import { validateFiscalCreditContext } from './fiscalCreditContext.ts'
+import type { FiscalCreditContext } from './fiscalCreditContext.ts'
 import { validateFiscalCreditDraftAck } from './fiscalCreditDraftAck.ts'
 import type { FiscalCreditDraftAck, FiscalCreditDraftScope } from './fiscalCreditDraftAck.ts'
 import { validateFiscalCreditHistory } from './fiscalCreditHistory.ts'
@@ -12,6 +14,24 @@ import { validateFiscalCreditUnits } from './fiscalCreditUnits.ts'
 import type { FiscalCreditUnits } from './fiscalCreditUnits.ts'
 
 const fail = (): never => { throw new Error('FISCAL_NC_NO_CONFIRMADA') }
+/** Consulta por identidad mínima; el canónico se obtiene del caso durable privado. */
+export async function loadFiscalCreditContext(admin: FiscalAuthClient, token: string, scope: FiscalCreditDraftScope): Promise<Readonly<FiscalCreditContext>> {
+  try {
+    const captured = { ...scope }; validScope(captured)
+    const id = await actor(admin, token, captured.saleId, captured.operationId)
+    const response = await admin.rpc('cargar_representacion_fiscal_homologacion', { p_actor_auth_id: id, p_venta_id: captured.saleId, p_operacion_id: captured.operationId })
+    if (response.error) return fail()
+    const source = await validateFiscalRepresentation(response.data, captured.saleId, captured.operationId)
+    const context = await admin.rpc('cargar_fuente_contexto_nc_homologacion', { p_actor_auth_id: id, p_venta_id: captured.saleId, p_operacion_origen_id: captured.operationId, p_id: captured.requestId, p_sha: captured.sha256 })
+    const data: unknown = structuredClone(context.data)
+    if (context.error || !data || typeof data !== 'object' || Array.isArray(data)) return fail()
+    const value = data as Record<string, unknown>
+    if (Object.keys(value).length !== 2 || !Object.hasOwn(value, 'contexto') || !Object.hasOwn(value, 'propuesta')) return fail()
+    const proposal = await validateFiscalCreditDraftProposal(source, value.propuesta)
+    if (proposal.datos.solicitud_id !== captured.requestId || proposal.sha256 !== captured.sha256) return fail()
+    return await validateFiscalCreditContext(value.contexto, source, proposal)
+  } catch { return fail() }
+}
 async function actor(admin: FiscalAuthClient, token: string, sale: string, operation: string): Promise<string> {
   if (!fiscalUuid(sale) || !fiscalUuid(operation) || typeof token !== 'string' || token.length > 16384 || !/^\S+$/.test(token)) return fail()
   const auth = await admin.auth.getUser(token), id = auth.data.user?.id

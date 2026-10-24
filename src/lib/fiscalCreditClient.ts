@@ -1,6 +1,9 @@
 import type { FiscalClientScope } from './fiscalClient'
 import type { FiscalRepresentation } from '../../supabase/functions/_shared/fiscalRepresentation'
-import { prepareFiscalCreditDraft } from '../../supabase/functions/_shared/fiscalCreditDraft'
+import { prepareFiscalCreditDraft, validateFiscalCreditDraftProposal } from '../../supabase/functions/_shared/fiscalCreditDraft'
+import type { FiscalCreditDraft } from '../../supabase/functions/_shared/fiscalCreditDraft'
+import { validateFiscalCreditContext } from '../../supabase/functions/_shared/fiscalCreditContext'
+import type { FiscalCreditContext } from '../../supabase/functions/_shared/fiscalCreditContext'
 import type { FiscalCreditDraftInput } from '../../supabase/functions/_shared/fiscalCreditDraft'
 import { validateFiscalCreditDraftAck } from '../../supabase/functions/_shared/fiscalCreditDraftAck'
 import type { FiscalCreditDraftAck } from '../../supabase/functions/_shared/fiscalCreditDraftAck'
@@ -56,6 +59,15 @@ export function createFiscalCreditClient(scope: FiscalClientScope, deps: FiscalC
   }
   return {
     pending,
+    async context(source: Readonly<FiscalRepresentation>, proposal: Readonly<FiscalCreditDraft>): Promise<Readonly<FiscalCreditContext>> {
+      try {
+        const original = structuredClone(source), captured = { canonico: proposal.canonico, sha256: proposal.sha256 }
+        if (original.venta_id !== sale || !fiscalUuid(original.operacion_id)) return fail()
+        const checked = await validateFiscalCreditDraftProposal(original, captured)
+        const command = { accion: 'CONTEXTO_NC', venta_id: sale, operacion_origen_id: original.operacion_id, solicitud_id: checked.datos.solicitud_id, propuesta_sha256: checked.sha256 }
+        return await validateFiscalCreditContext(await deps.invoke(command), original, checked)
+      } catch { return fail() }
+    },
     async units(source: Readonly<FiscalRepresentation>, commercial: Readonly<FiscalCreditCommercialSource>): Promise<Readonly<FiscalCreditUnits>> {
       try {
         const original = structuredClone(source), captured = structuredClone(commercial)

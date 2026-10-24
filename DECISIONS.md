@@ -659,3 +659,6 @@ Se exige captura comercial/unidades al insertar todo borrador nuevo mediante tri
 
 ### 24/10/2026 — Catálogo específico NC y contexto sin permiso
 Se separa catálogo NC del de facturas012 para no heredar comprobantes/condiciones/IVA por defecto. Revisiones privadas sin filas habilitadas; vigencias/tipos y correspondencia NC explícitos. Contexto revalida caso/vínculo/hechos y emisor, pero no reserva serie ni concede permiso o CAE. Catálogo real exige consulta/provisión autorizada; DTO puro y pruebas sintéticas no acreditan esos datos ni PV/padrón/custodia. Factura v1 permanece limitada a su contrato y el cuerpo NC debe ser separado. Conservar catálogo en dump/restore integral privado.
+
+### 24/10/2026 — Consulta NC por identidad mínima y fuente durable privada
+El navegador envía sólo venta/operación/caso/hash, manteniendo límite de consulta2KiB. Backend obtiene canónico del caso mediante puente034 y revalida contra factura/contexto; no reenviar canónicos grandes/PII ni ampliar límites de otras acciones. Sólo contexto mínimo llega al panel, sin storage ni permiso implícito. Auth se verifica una vez y se captura por valor. Cambiar/cancelar selección retira resultados; contexto histórico consultado no reemplaza guard de preparación/envío ni CAE NC confirmado para dinero/stock.

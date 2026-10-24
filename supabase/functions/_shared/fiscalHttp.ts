@@ -1,5 +1,5 @@
 import { loadFiscalRepresentation } from './fiscalRepresentationService.ts'
-import { saveFiscalCreditDraft, loadFiscalCreditDraft, cancelFiscalCreditDraft, loadFiscalCreditHistory, loadFiscalCreditCommercialSource, loadFiscalCreditUnits } from './fiscalCreditDraftService.ts'
+import { saveFiscalCreditDraft, loadFiscalCreditDraft, cancelFiscalCreditDraft, loadFiscalCreditHistory, loadFiscalCreditCommercialSource, loadFiscalCreditUnits, loadFiscalCreditContext } from './fiscalCreditDraftService.ts'
 import { fiscalCreditUnitsWire } from './fiscalCreditUnits.ts'
 import { fiscalCreditHistoryWire } from './fiscalCreditHistory.ts'
 import { fiscalRepresentationWire } from './fiscalRepresentation.ts'
@@ -31,6 +31,7 @@ const origin='https://kiosco-app-staging.vercel.app'
 const invalid=():never=>{throw new Error('FISCAL_SOLICITUD_INVALIDA')}
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 type FiscalHttpCommand=
+  | {accion:'CONTEXTO_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string}
   | {accion:'UNIDADES_NC';venta_id:string;operacion_origen_id:string}
   | {accion:'FUENTE_COMERCIAL_NC';venta_id:string;operacion_origen_id:string}
   | {accion:'HISTORIAL_BORRADORES_NC';venta_id:string;operacion_origen_id:string;despues:number}
@@ -89,7 +90,7 @@ async function command(request:Request):Promise<FiscalHttpCommand> {
     if(b.accion==='GUARDAR_BORRADOR_NC'&&keys.length===4&&keys.every(k=>['accion','venta_id','operacion_origen_id','propuesta'].includes(k))
       &&uuid(b.venta_id)&&uuid(b.operacion_origen_id)&&b.propuesta&&typeof b.propuesta==='object'&&!Array.isArray(b.propuesta))
       return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_origen_id:b.operacion_origen_id.toLowerCase(),propuesta:b.propuesta}
-    if((b.accion==='BORRADOR_NC'||b.accion==='CANCELAR_BORRADOR_NC')&&size<=2048&&(length===null||Number(length)<=2048)&&keys.length===5
+    if((b.accion==='BORRADOR_NC'||b.accion==='CANCELAR_BORRADOR_NC'||b.accion==='CONTEXTO_NC')&&size<=2048&&(length===null||Number(length)<=2048)&&keys.length===5
       &&keys.every(k=>['accion','venta_id','operacion_origen_id','solicitud_id','propuesta_sha256'].includes(k))
       &&uuid(b.venta_id)&&uuid(b.operacion_origen_id)&&uuid(b.solicitud_id)&&typeof b.propuesta_sha256==='string'&&/^[0-9a-f]{64}$/.test(b.propuesta_sha256))
       return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_origen_id:b.operacion_origen_id.toLowerCase(),solicitud_id:b.solicitud_id.toLowerCase(),propuesta_sha256:b.propuesta_sha256}
@@ -169,7 +170,9 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
       if(cmd.accion==='GUARDAR_BORRADOR_NC'&&deps.readSecret('ARCA_HOMO_CREDIT_DRAFTS_ENABLED')!=='true')return json({codigo:'BORRADORES_NC_NO_HABILITADOS'},503)
       const admin=deps.createAdmin(FISCAL_STAGING_URL),token=auth.slice(7)
       let result:unknown
-      if(cmd.accion==='UNIDADES_NC'){
+      if(cmd.accion==='CONTEXTO_NC'){
+        result=await loadFiscalCreditContext(admin,token,{saleId:cmd.venta_id,operationId:cmd.operacion_origen_id,requestId:cmd.solicitud_id,sha256:cmd.propuesta_sha256})
+      }else if(cmd.accion==='UNIDADES_NC'){
         result=fiscalCreditUnitsWire(await loadFiscalCreditUnits(admin,token,cmd.venta_id,cmd.operacion_origen_id))
       }else if(cmd.accion==='FUENTE_COMERCIAL_NC'){
         result=await loadFiscalCreditCommercialSource(admin,token,cmd.venta_id,cmd.operacion_origen_id)

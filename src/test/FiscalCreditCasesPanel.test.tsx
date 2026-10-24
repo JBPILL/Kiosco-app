@@ -4,6 +4,8 @@ import { FiscalCreditCasesPanel } from '../components/pos/FiscalCreditCasesPanel
 import { fiscalCreditUnitsFixture } from './fixtures/fiscalCreditUnits'
 import { validateFiscalCreditCommercialSource } from '../../supabase/functions/_shared/fiscalCreditCommercialSource'
 import { validateFiscalCreditUnits } from '../../supabase/functions/_shared/fiscalCreditUnits'
+import { validateFiscalCreditContext } from '../../supabase/functions/_shared/fiscalCreditContext'
+import { fiscalCreditContextFixture } from './fixtures/fiscalCreditContext'
 import { validateFiscalCreditHistory } from '../../supabase/functions/_shared/fiscalCreditHistory'
 import { prepareFiscalCreditDraft } from '../../supabase/functions/_shared/fiscalCreditDraft'
 import type { FiscalCreditHistory } from '../../supabase/functions/_shared/fiscalCreditHistory'
@@ -12,7 +14,7 @@ import type { FiscalCreditClient, PendingFiscalCredit } from '../lib/fiscalCredi
 async function fixture() {
   const f = await fiscalCreditUnitsFixture(), page = await validateFiscalCreditHistory(f.page, f.source, 0)
   let pending: Readonly<PendingFiscalCredit> | null = null
-  const credits = { units: vi.fn<FiscalCreditClient['units']>(async () => validateFiscalCreditUnits(f.packet, f.source, f.commercial)), commercialSource: vi.fn<FiscalCreditClient['commercialSource']>(async () => validateFiscalCreditCommercialSource(f.commercial, f.source)),
+  const credits = { context: vi.fn<FiscalCreditClient['context']>(), units: vi.fn<FiscalCreditClient['units']>(async () => validateFiscalCreditUnits(f.packet, f.source, f.commercial)), commercialSource: vi.fn<FiscalCreditClient['commercialSource']>(async () => validateFiscalCreditCommercialSource(f.commercial, f.source)),
     pending: vi.fn(() => pending), save: vi.fn<FiscalCreditClient['save']>(),
     history: vi.fn<FiscalCreditClient['history']>(async () => page),
     recover: vi.fn<FiscalCreditClient['recover']>(async () => null),
@@ -33,6 +35,15 @@ it('consulta explícita muestra caso histórico sin presentar reserva como CAE n
   expect(screen.getByText('Devolución sintética')).toBeTruthy()
   expect(screen.getByText('Reposición solicitada, aún sin aplicar', { exact: false })).toBeTruthy()
   expect(f.credits.save).not.toHaveBeenCalled(); expect(f.credits.cancel).not.toHaveBeenCalled()
+})
+it('caso activo integra consulta de contexto y abrir cancelación retira el resultado',async()=>{
+  const f=await fixture(),base=await fiscalCreditContextFixture()
+  f.credits.context.mockResolvedValue(await validateFiscalCreditContext({...base.context,venta_id:f.sale,operacion_origen_id:f.operation,solicitud_id:f.input.solicitud_id,propuesta_sha256:f.proposal.sha256},f.source,f.proposal))
+  render(<FiscalCreditCasesPanel {...f.props} />);f.consult()
+  fireEvent.click(await screen.findByRole('button',{name:'Consultar contexto fiscal del caso 1'}))
+  await screen.findByText('Nota de crédito C');expect(f.credits.context).toHaveBeenCalledExactlyOnceWith(f.source,f.proposal)
+  fireEvent.click(screen.getByRole('button',{name:'Solicitar cancelación del caso 1'}))
+  expect(screen.queryByText('Nota de crédito C')).toBeNull();expect(f.credits.save).not.toHaveBeenCalled()
 })
 async function openDraft(f: Awaited<ReturnType<typeof fixture>>) {
   f.credits.history.mockResolvedValue({ ...f.page, casos: [] })

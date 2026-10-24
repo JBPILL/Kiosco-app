@@ -1,17 +1,9 @@
 import { expect, it } from 'vitest'
-import { fiscalCreditFixture } from './fixtures/fiscalCredit'
+import { fiscalCreditContextFixture as fixture } from './fixtures/fiscalCreditContext'
 import { validateFiscalCreditContext } from '../../supabase/functions/_shared/fiscalCreditContext'
 import { fiscalRepresentationFixture } from './fixtures/fiscalRepresentation'
 import { validateFiscalRepresentation } from '../../supabase/functions/_shared/fiscalRepresentation'
 import { prepareFiscalCreditDraft } from '../../supabase/functions/_shared/fiscalCreditDraft'
-async function fixture() {
-  const f = await fiscalCreditFixture()
-  const context = { version: 1, entorno: 'HOMOLOGACION', venta_id: f.sale, operacion_origen_id: f.operation, solicitud_id: f.proposal.datos.solicitud_id,
-    propuesta_sha256: f.proposal.sha256, checkout_sha256: 'c'.repeat(64), fuente_comercial_sha256: 'b'.repeat(64), unidades_sha256: 'd'.repeat(64),
-    cuit_emisor: f.proposal.datos.origen.cuit, punto_venta: 7, revision_emisor: 1, revision_parametros: 1, tipo_nota_credito: 13,
-    condiciones: [{ id: 5, descripcion: 'Condición sintética', comprobantes: [13] }], alicuotas: [], emision_habilitada: false }
-  return { ...f, context }
-}
 it('liga caso exacto y factura, congela catálogo NC sin aceptar defaults de facturas', async () => {
   const f = await fixture(), value = await validateFiscalCreditContext(f.context, f.source, f.proposal)
   expect(value).toEqual(f.context); expect(Object.isFrozen(value.condiciones[0].comprobantes)).toBe(true)
