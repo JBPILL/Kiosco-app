@@ -1265,8 +1265,8 @@ it.each(['anon','authenticated'])('representación autorizada no concede acceso 
  await authorizeReceipt();await db.exec(`SET ROLE ${role}`);await denied(()=>representation())
 })
 
-async function creditReservationFixture(taxed=false){
- await admin('UPDATE detalles_venta SET cantidad=2,precio_unitario=61.72 WHERE venta_id=$1',[sale])
+async function creditReservationFixture(taxed=false,quantity=2){
+ await admin('UPDATE detalles_venta SET cantidad=$2,precio_unitario=61.72 WHERE venta_id=$1',[sale,quantity])
  let proposal: FiscalPreparationInput|undefined
  if(taxed){
   await admin('UPDATE fiscal_parametros_homologacion SET habilitado=false')
@@ -1471,4 +1471,88 @@ it('NC historial HTTP recupera propuesta y cancelación desde SQL sin habilitar 
  expect(body.resultado).toMatchObject({version:1,venta_id:sale,operacion_origen_id:op,despues:0,continuar_desde:null,casos:[{secuencia:1,propuesta:{canonico:p.canonico,sha256:p.sha256},acuse:{estado:'CANCELADA',emision_habilitada:false,reintegro_habilitado:false,reposicion_habilitada:false}}]})
  expect(api.getUser).toHaveBeenCalledTimes(1);expect(api.fetcher).not.toHaveBeenCalled();expect(api.load).not.toHaveBeenCalled()
  expect(api.rpc.mock.calls.map(([name])=>name)).toEqual(['cargar_representacion_fiscal_homologacion','cargar_historial_nc_homologacion'])
+})
+
+async function creditCommercialFixture(kind:'PRODUCTO'|'COMBO'|'LIBRE'='PRODUCTO',quantity=2){
+ const cash=crypto.randomUUID()
+ await admin('INSERT INTO sesiones_caja(id,kiosco_id,usuario_id) VALUES($1,$2,$3)',[cash,kid,owner])
+ await admin('UPDATE ventas SET sesion_caja_id=$1 WHERE id=$2',[cash,sale])
+ const f=await creditReservationFixture(false,quantity),detail=f.source.contexto.lineas[0].detalle_id,payment=crypto.randomUUID()
+ await db.exec('RESET ROLE')
+ const row={id:detail,producto_id:product,cantidad:quantity,precio_unitario:61.72,subtotal:123.45,sin_envase:false,precio_envase_unitario:0,es_devolucion_envase:false,
+  articulo_libre:kind==='LIBRE'?{descripcion:'Concepto original',precio_venta:61.72}:null,componentes:kind==='COMBO'?[{producto_id:product,cantidad:3}]:[]}
+ const header=(await db.query<{data:{fecha:string}}>(`SELECT jsonb_build_object('fecha',fecha_hora) data FROM ventas WHERE id=$1`,[sale])).rows[0].data
+ const snapshot={version:1,id:sale,kiosco_id:kid,usuario_id:owner,sesion_caja_id:cash,fecha_hora:header.fecha,total:123.45,notas:null,cliente_id:null,detalles:[row],pagos:[{id:payment,medio_pago:'EFECTIVO',monto:123.45,referencia:null}]}
+ await admin('INSERT INTO checkout_manual_entradas(id,kiosco_id,usuario_id,entrada,snapshot,autorizado_por_auth_id) VALUES($1,$2,$3,$4::jsonb,$5::jsonb,$6)',[sale,kid,owner,JSON.stringify({version:1}),JSON.stringify(snapshot),actor])
+ await admin('INSERT INTO checkout_manuales(id,kiosco_id,venta_id,solicitud,resultado) VALUES($1,$2,$1,$3::jsonb,$4::jsonb)',[sale,kid,JSON.stringify(snapshot),JSON.stringify({venta_id:sale,kiosco_id:kid,total:123.45})])
+ await admin("INSERT INTO pagos_venta(id,venta_id,medio_pago,monto) VALUES($1,$2,'EFECTIVO',123.45)",[payment,sale])
+ if(kind!=='LIBRE')await admin("INSERT INTO movimientos_stock(kiosco_id,producto_id,tipo,cantidad,motivo,notas,usuario_id) VALUES($1,$2,'EGRESO',$3,'VENTA',$4,$5)",[kid,product,quantity*(kind==='COMBO'?3:1),'Checkout manual '+sale,owner])
+ const load=async(who=actor)=>(await db.query<{data:Record<string,unknown>}>('SELECT cargar_fuente_comercial_nc_homologacion($1,$2,$3) data',[who,sale,op])).rows[0].data
+ return {...f,row,snapshot,payment,detail,load}
+}
+it('NC fuente comercial coteja cierres, factura, pagos y salidas sin efectos ni PII',async()=>{
+ const f=await creditCommercialFixture(),source=await f.load()
+ expect(source).toMatchObject({version:1,venta_id:sale,operacion_origen_id:op,solicitud_sha256:f.source.constancia.solicitud.sha256,total:'123.45',pago_integro_efectivo:true,unidades_historicas:'NO_REGISTRADAS',emision_habilitada:false,reintegro_habilitado:false,reposicion_habilitada:false,pagos:[{medio:'EFECTIVO',importe:'123.45'}],lineas:[{detalle_id:f.detail,producto_id:product,cantidad:'2.000',subtotal:'123.45',tipo:'PRODUCTO',componentes:[{producto_id:product,cantidad:'1.000'}],sin_envase:false,precio_envase_unitario:'0.00'}]})
+ expect(source.checkout_sha256).toMatch(/^[a-f0-9]{64}$/);expect(JSON.stringify(source)).not.toContain('referencia');expect(JSON.stringify(source)).not.toContain('autorizado_por_auth_id')
+ await db.exec('RESET ROLE')
+ expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_nc_borradores_homologacion')).rows[0].n).toBe(0)
+})
+it.each(['COMBO','LIBRE'] as const)('NC fuente usa receta histórica %s sin reconstruir catálogo actual',async kind=>{
+ const f=await creditCommercialFixture(kind)
+ await admin('UPDATE productos SET es_combo=false,es_pesable=true,descripcion=$1 WHERE id=$2',['Nombre cambiado',product])
+ expect(await f.load()).toMatchObject({lineas:[{tipo:kind,componentes:kind==='LIBRE'?[]:[{producto_id:product,cantidad:'3.000'}]}]})
+})
+it('NC fuente ausente no presume pago o receta a partir del catálogo',async()=>{
+ const f=await creditReservationFixture()
+ await denied(()=>db.query('SELECT cargar_fuente_comercial_nc_homologacion($1,$2,$3)',[actor,sale,op]))
+ expect(f.source.estado).toBe('AUTORIZADA')
+})
+it.each(['snapshot','pago','stock','detalle','resultado'] as const)('NC fuente rechaza historia comercial modificada %s',async kind=>{
+ const f=await creditCommercialFixture()
+ if(kind==='snapshot')await admin(`UPDATE checkout_manual_entradas SET snapshot=jsonb_set(snapshot,'{total}','1') WHERE id=$1`,[sale])
+ if(kind==='pago')await admin('UPDATE pagos_venta SET monto=1 WHERE id=$1',[f.payment])
+ if(kind==='stock')await admin('UPDATE movimientos_stock SET cantidad=1,delta_stock=-1 WHERE kiosco_id=$1',[kid])
+ if(kind==='detalle')for(const [table,column] of [['checkout_manual_entradas','snapshot'],['checkout_manuales','solicitud']])await admin(`UPDATE ${table} SET ${column}=jsonb_set(${column},'{detalles,0,precio_unitario}','1') WHERE id=$1`,[sale])
+ if(kind==='resultado')await admin(`UPDATE checkout_manuales SET resultado=jsonb_set(resultado,'{total}','1') WHERE id=$1`,[sale])
+ await denied(()=>f.load())
+})
+it('NC fuente informa pago no efectivo sin habilitar reintegro ni ocultar el medio',async()=>{
+ const f=await creditCommercialFixture()
+ await admin(`UPDATE pagos_venta SET medio_pago='TARJETA' WHERE id=$1`,[f.payment])
+ for(const [table,column] of [['checkout_manual_entradas','snapshot'],['checkout_manuales','solicitud']])await admin(`UPDATE ${table} SET ${column}=jsonb_set(${column},'{pagos,0,medio_pago}','"TARJETA"') WHERE id=$1`,[sale])
+ expect(await f.load()).toMatchObject({pago_integro_efectivo:false,pagos:[{medio:'TARJETA',importe:'123.45'}],reintegro_habilitado:false})
+})
+it.each(['anon','authenticated'] as const)('NC fuente comercial privada no se concede al rol %s',async role=>{
+ await creditCommercialFixture();await db.exec('RESET ROLE; SET ROLE '+role)
+ await denied(()=>db.query('SELECT cargar_fuente_comercial_nc_homologacion($1,$2,$3)',[actor,sale,op]))
+})
+it('NC fuente exige Auth original incluso después de reasignar perfil',async()=>{
+ const f=await creditCommercialFixture(),other=crypto.randomUUID();await admin('INSERT INTO auth.users VALUES($1)',[other]);await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner])
+ for(const who of [actor,other])await denied(()=>f.load(who))
+})
+
+it('NC fuente conserva fracciones históricas sin atribuir unidad/peso desde catálogo actual',async()=>{
+ const f=await creditCommercialFixture('PRODUCTO',2.25)
+ await admin('UPDATE productos SET es_pesable=false,unidad_medida=$1 WHERE id=$2',['UN',product])
+ expect(await f.load()).toMatchObject({unidades_historicas:'NO_REGISTRADAS',lineas:[{cantidad:'2.250',subtotal:'123.45'}],reposicion_habilitada:false})
+})
+it('NC fuente caja histórica puede estar cerrada; no equivale a caja habilitada para reintegrar',async()=>{
+ const f=await creditCommercialFixture()
+ await admin("UPDATE sesiones_caja SET estado='CERRADA',fecha_cierre=now() WHERE id=$1",[f.snapshot.sesion_caja_id])
+ expect(await f.load()).toMatchObject({pago_integro_efectivo:true,reintegro_habilitado:false})
+})
+it('NC fuente rechaza pagos agregados aunque el pago original no cambie',async()=>{
+ const f=await creditCommercialFixture();await admin("INSERT INTO pagos_venta(venta_id,medio_pago,monto) VALUES($1,'EFECTIVO',1)",[sale])
+ await denied(()=>f.load())
+})
+it('NC fuente detecta componentes duplicados aunque ambas copias de snapshot coincidan',async()=>{
+ const f=await creditCommercialFixture('COMBO')
+ for(const [table,column] of [['checkout_manual_entradas','snapshot'],['checkout_manuales','solicitud']])await admin(`UPDATE ${table} SET ${column}=jsonb_set(${column},'{detalles,0,componentes}',$2::jsonb) WHERE id=$1`,[sale,JSON.stringify([{producto_id:product,cantidad:1},{producto_id:product,cantidad:2}])])
+ await denied(()=>f.load())
+})
+
+it('NC fuente normaliza UUID históricos válidos sin alterar el snapshot original',async()=>{
+ const f=await creditCommercialFixture('COMBO')
+ for(const [table,column] of [['checkout_manual_entradas','snapshot'],['checkout_manuales','solicitud']])await admin(`UPDATE ${table} SET ${column}=jsonb_set(jsonb_set(${column},'{detalles,0,producto_id}',to_jsonb($2::text)),'{detalles,0,componentes,0,producto_id}',to_jsonb($2::text)) WHERE id=$1`,[sale,product.toUpperCase()])
+ expect(await f.load()).toMatchObject({lineas:[{producto_id:product,componentes:[{producto_id:product,cantidad:'3.000'}]}]})
 })

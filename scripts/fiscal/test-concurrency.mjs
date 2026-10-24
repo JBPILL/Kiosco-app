@@ -21,6 +21,7 @@ let port
 let requiredPresentationInstalledAfterCase=null
 let creditDraftInstalledAfterCase=null
 let creditRecoveryInstalledAfterCase=null
+let creditCommercialInstalledAfterCase=null
 let evidence
 const evidenceIndex = process.argv.indexOf('--evidence')
 const evidencePath = evidenceIndex >= 0 ? resolve(process.argv[evidenceIndex+1] ?? '') : null
@@ -958,11 +959,55 @@ try {
   assert.equal(recoveredHistory.casos.length,1);assert.equal(recoveredHistory.casos[0].acuse.estado,'CANCELADA');assert.equal(recoveredHistory.casos[0].propuesta.sha256,rollbackAbandonProposal.sha)
   cases.push('029_historial_espera_y_recupera_cancelacion_confirmada')
   for(const f of [abandoned,savedFirst,duplicateAbandon,rollbackAbandon])for(const table of ['movimientos_stock','movimientos_caja','devoluciones_venta'])assert.equal((await observer.query(`SELECT count(*)::int n FROM ${table} WHERE kiosco_id=$1`,[f.kid])).rows[0].n,0)
+  creditCommercialInstalledAfterCase=cases.length
+  for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/030_fiscal_credit_commercial_source.sql'),'utf8'))
+  async function commercialFixture(point){
+    const f=await creditFixture(point,4),cash=randomUUID(),payment=randomUUID()
+    await observer.query('INSERT INTO sesiones_caja(id,kiosco_id,usuario_id) VALUES($1,$2,$3)',[cash,f.kid,f.owner])
+    await observer.query('UPDATE ventas SET sesion_caja_id=$1 WHERE id=$2',[cash,f.sale])
+    await observer.query("INSERT INTO pagos_venta(id,venta_id,medio_pago,monto) VALUES($1,$2,'EFECTIVO',123.45)",[payment,f.sale])
+    const snapshot=(await observer.query(`SELECT jsonb_build_object('version',1,'id',v.id,'kiosco_id',v.kiosco_id,'usuario_id',v.usuario_id,'sesion_caja_id',v.sesion_caja_id,'fecha_hora',v.fecha_hora,'total',v.total,'notas',null,'cliente_id',null,
+      'detalles',(SELECT jsonb_agg((to_jsonb(d)-'venta_id')||jsonb_build_object('articulo_libre',null,'componentes','[]'::jsonb) ORDER BY d.id) FROM detalles_venta d WHERE d.venta_id=v.id),
+      'pagos',(SELECT jsonb_agg(to_jsonb(p)-'venta_id' ORDER BY p.id) FROM pagos_venta p WHERE p.venta_id=v.id))::text v FROM ventas v WHERE v.id=$1`,[f.sale])).rows[0].v
+    await observer.query('INSERT INTO checkout_manual_entradas(id,kiosco_id,usuario_id,entrada,snapshot,autorizado_por_auth_id) VALUES($1,$2,$3,$4::jsonb,$5::jsonb,$6)',[f.sale,f.kid,f.owner,'{"version":1}',snapshot,f.auth])
+    await observer.query('INSERT INTO checkout_manuales(id,kiosco_id,venta_id,solicitud,resultado) VALUES($1,$2,$1,$3::jsonb,jsonb_build_object(\'venta_id\',$1::uuid,\'kiosco_id\',$2::uuid,\'total\',123.45))',[f.sale,f.kid,snapshot])
+    const product=(await observer.query('SELECT producto_id FROM detalles_venta WHERE venta_id=$1',[f.sale])).rows[0].producto_id
+    await observer.query("INSERT INTO movimientos_stock(kiosco_id,producto_id,tipo,cantidad,motivo,notas,usuario_id) VALUES($1,$2,'EGRESO',2,'VENTA',$3,$4)",[f.kid,product,'Checkout manual '+f.sale,f.owner])
+    const load=async(client,actor=f.auth)=>(await client.query('SELECT cargar_fuente_comercial_nc_homologacion($1,$2,$3) v',[actor,f.sale,f.operation])).rows[0].v
+    return {...f,cash,payment,load}
+  }
+  const lockedCommercial=await commercialFixture(180)
+  await a.query('BEGIN');await a.query('SELECT id FROM checkout_manuales WHERE id=$1 FOR UPDATE',[lockedCommercial.sale])
+  await start(b);assert.equal((await capture(lockedCommercial.load(b))).error?.code,'55P03');await b.query('ROLLBACK');await a.query('ROLLBACK')
+  await start(b);assert.equal((await lockedCommercial.load(b)).pago_integro_efectivo,true);await b.query('COMMIT')
+  cases.push('030_checkout_bloqueado_falla_NOWAIT_sin_invertir_espera_venta_checkout')
+  const changedCommercial=await commercialFixture(181)
+  await a.query('BEGIN');await a.query('UPDATE pagos_venta SET monto=1 WHERE id=$1',[changedCommercial.payment])
+  await start(b);const waitingCommercialPayment=capture(changedCommercial.load(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await waitingCommercialPayment).error?.code,'22023');await b.query('ROLLBACK')
+  cases.push('030_pago_cambiado_durante_espera_no_acredita_fuente_comercial')
+  const duplicateCommercial=await commercialFixture(182)
+  await start(a);const firstCommercialSource=await duplicateCommercial.load(a)
+  await start(b);const waitingCommercialSource=capture(duplicateCommercial.load(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.deepEqual((await waitingCommercialSource).value,firstCommercialSource);await b.query('COMMIT')
+  assert.equal(firstCommercialSource.unidades_historicas,'NO_REGISTRADAS');assert.equal(firstCommercialSource.reintegro_habilitado,false)
+  cases.push('030_dos_lectores_recuperan_misma_fuente_sin_efectos')
+  const authCommercial=await commercialFixture(183),nextCommercialAuth=randomUUID()
+  await observer.query('INSERT INTO auth.users VALUES($1)',[nextCommercialAuth])
+  await a.query('BEGIN');await a.query('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[nextCommercialAuth,authCommercial.owner])
+  await start(b);const waitingCommercialAuth=capture(authCommercial.load(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await waitingCommercialAuth).error?.code,'42501');await b.query('ROLLBACK')
+  await start(b);assert.equal((await capture(authCommercial.load(b,nextCommercialAuth))).error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('030_Auth_reasignado_esperando_no_revela_pagos_receta_a_ninguna_cuenta')
+  for(const f of [lockedCommercial,changedCommercial,duplicateCommercial,authCommercial]){
+    assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_borradores_homologacion WHERE operacion_origen_id=$1',[f.operation])).rows[0].n,0)
+    assert.equal((await observer.query('SELECT count(*)::int n FROM devoluciones_venta WHERE venta_id=$1',[f.sale])).rows[0].n,0)
+  }
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
-    cases,caseCount:cases.length,requiredPresentationInstalledAfterCase,postRequiredPresentationCaseCount:requiredPresentationInstalledAfterCase===null?0:cases.length-requiredPresentationInstalledAfterCase,creditDraftInstalledAfterCase,postCreditDraftCaseCount:creditDraftInstalledAfterCase===null?0:cases.length-creditDraftInstalledAfterCase,creditRecoveryInstalledAfterCase,postCreditRecoveryCaseCount:creditRecoveryInstalledAfterCase===null?0:cases.length-creditRecoveryInstalledAfterCase,externalRequests:0,invoicesIssued:0}
+    cases,caseCount:cases.length,requiredPresentationInstalledAfterCase,postRequiredPresentationCaseCount:requiredPresentationInstalledAfterCase===null?0:cases.length-requiredPresentationInstalledAfterCase,creditDraftInstalledAfterCase,postCreditDraftCaseCount:creditDraftInstalledAfterCase===null?0:cases.length-creditDraftInstalledAfterCase,creditRecoveryInstalledAfterCase,postCreditRecoveryCaseCount:creditRecoveryInstalledAfterCase===null?0:cases.length-creditRecoveryInstalledAfterCase,creditCommercialInstalledAfterCase,postCreditCommercialCaseCount:creditCommercialInstalledAfterCase===null?0:cases.length-creditCommercialInstalledAfterCase,externalRequests:0,invoicesIssued:0}
 } catch(error) {
   console.error('FISCAL_CONCURRENCY=FAIL; CODE='+(error?.code??error?.name??'UNKNOWN')+'; STEP='+cases.length+'; DETAIL='+error.message)
   evidence={status:'FAIL',testedAt:new Date().toISOString(),containerId,containerName:name,port,cases,code:error?.code??error?.name??'UNKNOWN'}
