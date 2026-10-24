@@ -44,6 +44,69 @@ async function reviewClientFixture() {
   const make = () => createFiscalCreditClient(f.scope, { storage, invoke, exclusive: async task => task() })
   return { ...f, review, wireReview: wire, local, state, storage, invoke, make, client: make() }
 }
+async function numberClientFixture() {
+  const f = await reviewClientFixture(), state = { stored: false, visible: true, gate: true }
+  const invoke = vi.fn<(command: Record<string, unknown>) => Promise<unknown>>(async command => {
+    if (command.accion === 'NUMERAR_NC') { if (!state.gate) throw new Error('GATE_CLOSED'); state.stored = true; throw new Error('LOST_ACK') }
+    if (command.accion !== 'CUERPO_NC') throw new Error('UNEXPECTED')
+    if (!state.visible) throw new Error('UNKNOWN_GET')
+    return state.stored ? f.wireReview : null
+  })
+  const make = () => createFiscalCreditClient(f.scope, { storage: f.storage, invoke, exclusive: async task => task() })
+  return { ...f, state, invoke, make, client: make() }
+}
+it('numeración persiste identidad antes de POST y confirma ACK perdido por cuerpo durable', async () => {
+  const f = await numberClientFixture(), base = f.invoke.getMockImplementation()!
+  f.invoke.mockImplementation(async cmd => {
+    if (cmd.accion === 'NUMERAR_NC') {
+      expect(f.client.pendingNumber()?.reservationId).toBe(cmd.reserva_id)
+      expect(Object.keys(f.client.pendingNumber()!).sort()).toEqual(['version', 'operationId', 'requestId', 'proposalSha', 'preparationSha', 'reservationId'].sort())
+      expect(JSON.stringify([...f.local.values()])).not.toContain('canonico')
+    }
+    return base(cmd)
+  })
+  const result = await f.client.number(f.source, f.proposal, f.wire)
+  expect(result.cuerpo.datos.reserva_id).toBe(f.reservation.reserva_id); expect(f.client.pendingNumber()).toBeNull()
+  // La respuesta durable del mismo caso/preparación puede pertenecer al trabajador que ganó la carrera.
+  expect(result.cuerpo.datos.reserva_id).not.toBe(f.invoke.mock.calls.find(([cmd]) => cmd.accion === 'NUMERAR_NC')?.[0].reserva_id)
+  expect(f.invoke.mock.calls.map(([cmd]) => cmd.accion)).toEqual(['CUERPO_NC', 'NUMERAR_NC', 'CUERPO_NC'])
+})
+it('numeración pendiente sobrevive recarga y bloquea cambios sin repetir POST', async () => {
+  const f = await numberClientFixture(); f.state.gate = false
+  await expect(f.client.number(f.source, f.proposal, f.wire)).rejects.toThrow()
+  const record = f.client.pendingNumber(); expect(record).not.toBeNull()
+  await expect(f.make().number(f.source, f.proposal, f.wire)).rejects.toThrow()
+  await expect(f.client.save(f.source, f.input)).rejects.toThrow()
+  await expect(f.client.cancel(f.operation, f.input.solicitud_id, f.proposal.sha256)).rejects.toThrow()
+  await expect(f.client.approveReview(f.source, f.proposal, f.wire, f.review)).rejects.toThrow()
+  expect(f.invoke.mock.calls.filter(([cmd]) => cmd.accion === 'NUMERAR_NC')).toHaveLength(1)
+  expect(f.client.pendingNumber()).toEqual(record)
+})
+it('reintento manual de numeración conserva UUID tras ausencia confirmada', async () => {
+  const f = await numberClientFixture(); f.state.gate = false
+  await expect(f.client.number(f.source, f.proposal, f.wire)).rejects.toThrow()
+  f.state.gate = true
+  expect((await f.make().retryNumber(f.source, f.proposal, f.wire)).cuerpo.sha256).toBe(f.request.sha256)
+  const posts = f.invoke.mock.calls.map(([cmd]) => cmd).filter(cmd => cmd.accion === 'NUMERAR_NC')
+  expect(posts).toHaveLength(2); expect(posts[0]).toEqual(posts[1]); expect(f.client.pendingNumber()).toBeNull()
+})
+it('error de lectura no habilita reintento de numeración ni elimina pendiente', async () => {
+  const f = await numberClientFixture(); f.state.gate = false
+  await expect(f.client.number(f.source, f.proposal, f.wire)).rejects.toThrow()
+  f.state.visible = false; f.state.gate = true
+  await expect(f.client.retryNumber(f.source, f.proposal, f.wire)).rejects.toThrow()
+  expect(f.invoke.mock.calls.filter(([cmd]) => cmd.accion === 'NUMERAR_NC')).toHaveLength(1); expect(f.client.pendingNumber()).not.toBeNull()
+})
+it('cuerpo existente se recupera sin POST ni identidad nueva', async () => {
+  const f = await numberClientFixture(); f.state.stored = true
+  expect((await f.client.number(f.source, f.proposal, f.wire)).cuerpo.sha256).toBe(f.request.sha256)
+  expect(f.invoke.mock.calls.map(([cmd]) => cmd.accion)).toEqual(['CUERPO_NC']); expect(f.local.size).toBe(0)
+})
+it('storage fallido impide solicitud de numeración', async () => {
+  const f = await numberClientFixture(), client = createFiscalCreditClient(f.scope, { storage: { ...f.storage, setItem: () => { throw new Error('UNAVAILABLE') } }, invoke: f.invoke, exclusive: async task => task() })
+  await expect(client.number(f.source, f.proposal, f.wire)).rejects.toThrow()
+  expect(f.invoke.mock.calls.some(([cmd]) => cmd.accion === 'NUMERAR_NC')).toBe(false)
+})
 it('cliente revisión persiste identidad sin PII antes de POST y recupera ACK perdido', async () => {
   const f = await reviewClientFixture(), base = f.invoke.getMockImplementation()!
   f.invoke.mockImplementation(async command => {

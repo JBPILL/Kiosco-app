@@ -1787,7 +1787,7 @@ async function creditOwnerReviewFixture(){
  const approve=async(id=reviewId,hash=body.sha256,prep=f.prepared.sha256)=>(await db.query<{data:Record<string,unknown>}>('SELECT aprobar_revision_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8) data',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,id,hash,prep])).rows[0].data
  return{...f,packet,body,reviewId,readReview:read,approve}
 }
-it('HTTP numeración NC firma CMS con custodia sintética, reserva y recupera sin otro WSAA/WSFE',async()=>{
+it('cliente HTTP numeración NC firma CMS con custodia sintética, reserva y recupera sin otro WSAA/WSFE',async()=>{
  const {syntheticEncryptedCustody}=await import('./fixtures/fiscalEncryptedCustody'),material=await syntheticEncryptedCustody()
  await admin('UPDATE fiscal_emisores_homologacion SET credencial_id=$1,certificado_sha256=$2',[material.binding.credencial_id,material.binding.certificado_sha256])
  const f=await creditTicketFixture();await installCreditRequestSource();const api=workerFixture(),keyId=crypto.randomUUID(),raw=crypto.getRandomValues(new Uint8Array(32)),reads:string[]=[]
@@ -1808,14 +1808,25 @@ it('HTTP numeración NC firma CMS con custodia sintética, reserva y recupera si
   return new Response('<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><FECompUltimoAutorizadoResponse xmlns="http://ar.gov.afip.dif.FEV1/"><FECompUltimoAutorizadoResult><PtoVta>7</PtoVta><CbteTipo>13</CbteTipo><CbteNro>22</CbteNro></FECompUltimoAutorizadoResult></FECompUltimoAutorizadoResponse></s:Body></s:Envelope>',{headers:{'Content-Type':'text/xml'}})
  })
  const handler=createFiscalHttpHandler({readSecret:name=>{reads.push(name);return Object.hasOwn(api.flags,name)?api.flags[name]:material.secrets[name]},createAdmin:()=>api.admin,fetcher})
- const send=()=>handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify({accion:'NUMERAR_NC',venta_id:sale,operacion_origen_id:op,solicitud_id:f.proposal.datos.solicitud_id,propuesta_sha256:f.proposal.sha256,preparacion_sha256:f.prepared.sha256,reserva_id:f.reservationId})}))
- const first=await send();expect(first.status).toBe(200);const dto=(await first.json()).resultado
- expect(JSON.parse(dto.cuerpo.canonico).solicitud.numero).toBe(23);expect(JSON.stringify(dto)).not.toContain('SYNTHETIC_INTEGRATED_NC_TA');expect(dto.emision_habilitada).toBe(false)
+ const {validateFiscalCreditPreparationRecord,fiscalCreditPreparationWire}=await import('../../supabase/functions/_shared/fiscalCreditPreparation')
+ const original=await validateFiscalRepresentation(await representation(),sale,op),prep=fiscalCreditPreparationWire(await validateFiscalCreditPreparationRecord(await f.readPreparation(),original,f.proposal))
+ const local=new Map<string,string>();let requested:string|undefined
+ const client=createFiscalClient({authId:actor,kioskId:kid,saleId:sale},{storage:{getItem:key=>local.get(key)??null,setItem:(key,value)=>{local.set(key,value)}},send:async command=>{
+  if(command.accion==='NUMERAR_NC'){requested=String(command.reserva_id);expect(client.credits.pendingNumber()?.reservationId).toBe(requested)}
+  const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify(command)}))
+  if(!response.ok)throw new Error('SYNTHETIC_HTTP_DENIED')
+  const data=await response.json()
+  if(command.accion==='NUMERAR_NC')throw new Error('SYNTHETIC_NUMBER_ACK_LOST')
+  return data
+ }})
+ const dto=await client.credits.number(original,f.proposal,prep)
+ expect(dto.cuerpo.datos.solicitud.numero).toBe(23);expect(dto.cuerpo.datos.reserva_id).toBe(requested);expect(client.credits.pendingNumber()).toBeNull()
+ expect(JSON.stringify(dto)).not.toContain('SYNTHETIC_INTEGRATED_NC_TA');expect(dto.emision_habilitada).toBe(false)
  expect(fetcher).toHaveBeenCalledTimes(2);const secretReads=reads.filter(name=>name.startsWith('ARCA_HOMO_TA_')||name.startsWith('ARCA_HOMO_CREDENTIAL_')).length
  api.flags.ARCA_HOMO_CREDIT_NUMBERING_ENABLED='false'
- const recovered=await send();expect(recovered.status).toBe(200);expect((await recovered.json()).resultado).toEqual(dto)
+ expect(await client.credits.number(original,f.proposal,prep)).toEqual(dto)
  expect(fetcher).toHaveBeenCalledTimes(2);expect(reads.filter(name=>name.startsWith('ARCA_HOMO_TA_')||name.startsWith('ARCA_HOMO_CREDENTIAL_'))).toHaveLength(secretReads)
- expect(api.getUser).toHaveBeenCalledTimes(2)
+ expect(api.getUser).toHaveBeenCalledTimes(4)
 })
 it.each(['ausente','lectura','recuperada','prep-distinta','gate-cerrado','custodia-ausente'] as const)('HTTP numeración NC %s recupera antes de claves y no emite',async(mode)=>{
  const f=await creditTicketFixture();await installCreditRequestSource();const api=workerFixture(),secrets:string[]=[]
