@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../ui/Button'
 import { FiscalCreditReviewPanel } from './FiscalCreditReviewPanel'
+import { FiscalCreditNumberPanel } from './FiscalCreditNumberPanel'
 import type { FiscalCreditClient } from '../../lib/fiscalCreditClient'
 import type { FiscalRepresentation } from '../../../supabase/functions/_shared/fiscalRepresentation'
 import type { FiscalCreditDraft } from '../../../supabase/functions/_shared/fiscalCreditDraft'
@@ -13,6 +14,7 @@ interface Props {
   source: Readonly<FiscalRepresentation>; proposal: Readonly<FiscalCreditDraft>; sequence: number
   onCancelled?: () => void
   reviewClient?: Pick<FiscalCreditClient, 'pendingReview' | 'review' | 'recoverReview' | 'approveReview' | 'retryReview'>
+  numberClient?: Pick<FiscalCreditClient, 'pendingNumber' | 'body' | 'recoverNumber' | 'number' | 'retryNumber'>
   client: Pick<FiscalCreditClient, 'context' | 'preparation' | 'pendingPreparation' | 'recoverPreparation' | 'savePreparation' | 'cancel'>
 }
 const style = 'mt-1 w-full rounded border bg-transparent p-2'
@@ -24,7 +26,7 @@ function date(value: string): string {
 export function FiscalCreditPreparationPanel(props: Props) {
   return <PreparationBody key={`${props.source.venta_id}:${props.source.operacion_id}:${props.proposal.sha256}`} {...props} />
 }
-function PreparationBody({ source, proposal, client, sequence, onCancelled, reviewClient }: Props) {
+function PreparationBody({ source, proposal, client, sequence, onCancelled, reviewClient, numberClient }: Props) {
   const [context, setContext] = useState<Readonly<FiscalCreditContext> | null>(null)
   const [stored, setStored] = useState<Readonly<FiscalCreditPreparationRecord> | null>(null)
   const [from, setFrom] = useState(''), [until, setUntil] = useState(''), [due, setDue] = useState('')
@@ -90,9 +92,10 @@ function PreparationBody({ source, proposal, client, sequence, onCancelled, revi
       {stored.preparacion.datos.datos.servicioDesde && stored.preparacion.datos.datos.servicioHasta && stored.preparacion.datos.datos.vencimientoPago && <p>
         Servicios: {displayDate(stored.preparacion.datos.datos.servicioDesde)} al {displayDate(stored.preparacion.datos.datos.servicioHasta)} · Vencimiento: {displayDate(stored.preparacion.datos.datos.vencimientoPago)}
       </p>}
-      <p>{reviewClient ? 'Consultá la revisión para conocer la numeración reservada. Esta preparación no acredita CAE.' : 'Sin número ni CAE.'} No entregues efectivo ni repongas stock.</p>
+      <p>{numberClient ? 'Consultá la numeración guardada antes de revisar o aprobar. Esta preparación no acredita CAE.' : reviewClient ? 'Consultá la revisión para conocer la numeración reservada. Esta preparación no acredita CAE.' : 'Sin número ni CAE.'} No entregues efectivo ni repongas stock.</p>
     </div>}
-    {stored?.estado === 'DATOS_NC_PREPARADOS' && reviewClient && <FiscalCreditReviewPanel source={source} proposal={proposal} preparation={stored} sequence={sequence} client={reviewClient} />}
+    {stored?.estado === 'DATOS_NC_PREPARADOS' && numberClient && <FiscalCreditNumberPanel source={source} proposal={proposal} preparation={stored} sequence={sequence} client={numberClient} reviewClient={reviewClient} />}
+    {stored?.estado === 'DATOS_NC_PREPARADOS' && !numberClient && reviewClient && <FiscalCreditReviewPanel source={source} proposal={proposal} preparation={stored} sequence={sequence} client={reviewClient} />}
     {context && !stored && !cancelled && <form onSubmit={event => { event.preventDefault(); void action('save') }} className="space-y-3">
       <p>Comprobante asociado: tipo {proposal.datos.origen.tipo}, punto de venta {proposal.datos.origen.punto_venta}, número {proposal.datos.origen.numero} · Fecha del caso: {displayDate(proposal.datos.fecha)} · Total $ {proposal.datos.importes.total}</p>
       <fieldset disabled={busy || locked} className="space-y-2">

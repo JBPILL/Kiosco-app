@@ -39,6 +39,17 @@ it('integra revisión numerada sólo después de verificar preparación guardada
   expect(reviewClient.review).not.toHaveBeenCalled(); expect(reviewClient.approveReview).not.toHaveBeenCalled()
   expect(screen.queryByText('Sin número ni CAE. No entregues efectivo ni repongas stock.')).toBeNull()
 })
+it('flujo completo muestra numeración antes de revisión y no consulta automáticamente', async () => {
+  const f = await fixture(); f.client.preparation.mockResolvedValueOnce(f.stored)
+  const reviewClient = { pendingReview: vi.fn(() => null), review: vi.fn(), recoverReview: vi.fn(), approveReview: vi.fn(), retryReview: vi.fn() }
+  const numberClient = { pendingNumber: vi.fn(() => null), body: vi.fn(async () => null), recoverNumber: vi.fn(), number: vi.fn(), retryNumber: vi.fn() }
+  render(<FiscalCreditPreparationPanel {...f.props} numberClient={numberClient} reviewClient={reviewClient} />)
+  f.consult(); await screen.findByRole('button', { name: 'Consultar o recuperar numeración' })
+  expect(numberClient.body).not.toHaveBeenCalled(); expect(screen.queryByRole('button', { name: 'Consultar o recuperar revisión' })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Consultar o recuperar numeración' }))
+  await screen.findByRole('button', { name: 'Reservar número para revisar' })
+  expect(numberClient.number).not.toHaveBeenCalled(); expect(reviewClient.review).not.toHaveBeenCalled()
+})
 it('servicios requieren fechas explícitas dd/mm/aaaa y confirmación; guarda sin emitir', async () => {
   const f = await fixture(2); render(<FiscalCreditPreparationPanel {...f.props} />); f.consult()
   const from = await screen.findByLabelText('Servicio desde')
