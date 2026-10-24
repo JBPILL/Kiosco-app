@@ -687,3 +687,6 @@ Para confirmar un TA ya recibido o cancelar una preparación que nunca inició e
 
 ### 24/10/2026 — recuperación cifrada de TA NC y pérdida de respuestas
 El cargador NC exige guard antes de claves y callback previo al transporte autorizado por039. Desde que se intenta INICIAR, una pérdida de respuesta conserva incertidumbre y prohíbe liberar/reintentar automáticamente. Un TA recibido incluso tras aborto del consumidor se cifra y confirma para recuperación posterior sin nueva autenticación. Fallos antes de intentar INICIAR sólo cancelan preparación propia. No se reutiliza binding de factura ni se publica Token/Sign en JSON/logs. La autoridad vigente y propiedad siguen verificándose en SQL, no por la validación de forma TypeScript. Custodia/CMS reales y worker NC siguen pendientes/gated.
+
+### 24/10/2026 — custodia NC explícita sin conversión de permiso de factura
+Custodia y fuente WSAA NC reciben FiscalCreditNumberBinding cerrado; usan credencial/huella/revision_emisor autorizadas por038/039. El descifrado PKCS8 privado común recibe parámetros explícitos, no un binding ficticio de factura. La firma se prepara antes del callback de permiso durable y el transporte sólo ocurre después de su ACK. Reutilizar primitivas de firma/transporte no concede autoridad ni habilita operación pública. Provisionamiento/uso real permanecen pendientes de autorización.

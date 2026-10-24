@@ -6,6 +6,8 @@ import { PKCS8ShroudedKeyBag, PBES2Params, PBKDF2Params, EncryptedContentInfo, C
 import type { PrivateFiscalCustody } from './fiscalWsaa.ts'
 import type { FiscalTicketKeys } from './fiscalSharedTickets.ts'
 import type { PrivateFiscalSigner } from './fiscalWsaaCms.ts'
+import type { PrivateCreditFiscalCustody } from './fiscalCreditWsaa.ts'
+import { validateFiscalCreditNumberBinding } from './fiscalCreditNumberSource.ts'
 
 export type FiscalSecretReader=(name:string)=>string|undefined
 const invalid=():never=>{throw new Error('FISCAL_CUSTODIA_NO_DISPONIBLE')}
@@ -55,17 +57,33 @@ function encryptedPkcs8(bytes:Uint8Array<ArrayBuffer>):PKCS8ShroudedKeyBag {
  * se realiza después en prepareWsaaRequest, antes de cualquier llamada WSAA. */
 export function createPrivateFiscalCustody(read:FiscalSecretReader):PrivateFiscalCustody {
   return async(binding,signal)=>{
+    try {
+      if(binding.entorno!=='HOMOLOGACION'||binding.servicio!=='wsfe')return invalid()
+      return await loadPrivateSigner(read,binding.credencial_id,binding.certificado_sha256,binding.revision,signal)
+    }catch{return invalid()}
+  }
+}
+/** NC usa revisión de emisor explícita; nunca inventa operación/revisión de factura. */
+export function createPrivateCreditFiscalCustody(read:FiscalSecretReader):PrivateCreditFiscalCustody {
+  return async(input,signal)=>{
+    try {
+      const binding=validateFiscalCreditNumberBinding(structuredClone(input))
+      return await loadPrivateSigner(read,binding.credencial_id,binding.certificado_sha256,binding.revision_emisor,signal)
+    }catch{return invalid()}
+  }
+}
+async function loadPrivateSigner(read:FiscalSecretReader,credentialId:string,certificateSha:string,expectedRevision:number,signal:AbortSignal):Promise<PrivateFiscalSigner> {
     let passwordBytes:Uint8Array<ArrayBuffer>|undefined,plain:Uint8Array<ArrayBuffer>|undefined
     try {
-      if(signal.aborted||binding.entorno!=='HOMOLOGACION'||binding.servicio!=='wsfe')return invalid()
+      if(signal.aborted)return invalid()
       staging(read)
-      const credential=id(binding.credencial_id),prefix='ARCA_HOMO_CREDENTIAL_'+credential.replace(/-/g,'').toUpperCase()
+      const credential=id(credentialId),prefix='ARCA_HOMO_CREDENTIAL_'+credential.replace(/-/g,'').toUpperCase()
       const revision=required(read,prefix+'_REVISION',10)
-      if(!/^[1-9]\d{0,9}$/.test(revision)||Number(revision)!==binding.revision)return invalid()
+      if(!/^[1-9]\d{0,9}$/.test(revision)||Number(revision)!==expectedRevision)return invalid()
       const certificate=pem(required(read,prefix+'_CERT_PEM',100000),'CERTIFICATE')
       if(certificate.length<16||certificate.length>65536)return invalid()
       const fingerprint=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',certificate)),b=>b.toString(16).padStart(2,'0')).join('')
-      if(fingerprint!==binding.certificado_sha256||signal.aborted)return invalid()
+      if(fingerprint!==certificateSha||signal.aborted)return invalid()
       const encrypted=pem(required(read,prefix+'_KEY_PEM',100000),'ENCRYPTED PRIVATE KEY'),bag=encryptedPkcs8(encrypted)
       const password=required(read,prefix+'_PASSWORD',1024)
       if(password.length<16||signal.aborted)return invalid()
@@ -81,7 +99,6 @@ export function createPrivateFiscalCustody(read:FiscalSecretReader):PrivateFisca
         certificateDer:{get:()=>certificate.slice(),enumerable:false},privateKey:{value:key,enumerable:false},
       })) as PrivateFiscalSigner
     }catch{return invalid()}finally{passwordBytes?.fill(0);plain?.fill(0)}
-  }
 }
 /** Keyring privado para sobres TA. Conserva IDs antiguos mientras sus sobres
  * sean vigentes; una clave ausente no se sustituye por la activa. */
