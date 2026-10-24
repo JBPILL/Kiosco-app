@@ -404,3 +404,14 @@ it('fallo al cargar hechos no muestra aprobación ni reemplaza datos por configu
  render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client}/>)
  const alert=await screen.findByRole('alert');expect(alert.textContent).not.toContain('PRIVATE_SECRET');expect(screen.queryByRole('button',{name:'Aprobar revisión'})).toBeNull();expect(screen.queryByRole('form')).toBeNull()
 })
+
+it.each([false,true])('panel de casos NC sólo se integra bajo su gate propio %s',async enabled=>{
+ vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE','true');vi.stubEnv('VITE_KIOSKO_ARCA_REVISION_HOMO','true');vi.stubEnv('VITE_KIOSKO_ARCA_CASOS_NC_HOMO',enabled?'true':'false')
+ try{
+  const f=fixture();f.resolve.mockResolvedValue({...saved,estado:'AUTORIZADA'})
+  vi.mocked(f.client.receipt).mockResolvedValue({version:1,entorno:'HOMOLOGACION',estado:'AUTORIZADA',operacion_id:operation,venta_id:scope.saleId,solicitud:{version:1,solicitud:wsfeSample,sha256:'a'.repeat(64)},autorizacion:{cae:'11111111111111',vencimiento:'20261031',procesado_en:null}})
+  render(<FiscalDocumentModal isOpen onClose={vi.fn()} scope={scope} client={f.client}/>);await screen.findByText('Autorización guardada en homologación. Comprobante de prueba sin validez fiscal.')
+  expect(!!screen.queryByRole('button',{name:'Consultar casos guardados'})).toBe(enabled)
+  expect(f.client.credits.history).not.toHaveBeenCalled();expect(f.client.credits.save).not.toHaveBeenCalled();expect(f.client.credits.cancel).not.toHaveBeenCalled()
+ }finally{vi.unstubAllEnvs()}
+})
