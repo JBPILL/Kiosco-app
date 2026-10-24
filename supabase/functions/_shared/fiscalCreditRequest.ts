@@ -1,6 +1,6 @@
 import type { FiscalRepresentation } from './fiscalRepresentation.ts'
 import type { FiscalCreditDraft } from './fiscalCreditDraft.ts'
-import { validateFiscalCreditPreparationWire } from './fiscalCreditPreparation.ts'
+import { fiscalCreditPreparationWire, validateFiscalCreditPreparationRecord, validateFiscalCreditPreparationWire } from './fiscalCreditPreparation.ts'
 import type { FiscalCreditPreparationData } from './fiscalCreditPreparation.ts'
 import { fiscalSha, fiscalUuid } from './fiscalReplacement.ts'
 
@@ -18,6 +18,24 @@ export interface FiscalCreditRequestData {
 export interface FiscalCreditRequest {
   version: 1; estado: 'CUERPO_NC_NO_PERSISTIDO'; emision_habilitada: false
   canonico: string; sha256: string; datos: Readonly<FiscalCreditRequestData>
+}
+export interface FiscalCreditRequestRecord extends Omit<FiscalCreditRequest, 'estado'> { estado: 'CUERPO_NC_RESERVADO' }
+/** Evidencia privada leída de037. No acredita revisión, vigencia actual o permiso. */
+export async function validateFiscalCreditRequestRecord(input: unknown, source: Readonly<FiscalRepresentation>, draft: Readonly<FiscalCreditDraft>): Promise<Readonly<FiscalCreditRequestRecord>> {
+  try {
+    const raw: unknown = structuredClone(input), original = structuredClone(source), proposal = structuredClone(draft)
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return fail()
+    const value = raw as Record<string, unknown>, keys = ['preparacion', 'reserva', 'cuerpo']
+    if (Object.keys(value).length !== keys.length || keys.some(key => !Object.hasOwn(value, key))
+      || !value.cuerpo || typeof value.cuerpo !== 'object' || Array.isArray(value.cuerpo)) return fail()
+    const body = value.cuerpo as Record<string, unknown>
+    if (Object.keys(body).length !== 2 || !Object.hasOwn(body, 'canonico') || !Object.hasOwn(body, 'sha256')
+      || typeof body.canonico !== 'string' || new TextEncoder().encode(body.canonico).length > 131072 || !fiscalSha(body.sha256)) return fail()
+    const preparation = await validateFiscalCreditPreparationRecord(value.preparacion, original, proposal)
+    const reconstructed = await prepareFiscalCreditRequest(original, proposal, fiscalCreditPreparationWire(preparation), value.reserva)
+    if (body.canonico !== reconstructed.canonico || body.sha256 !== reconstructed.sha256) return fail()
+    return freeze({ ...reconstructed, estado: 'CUERPO_NC_RESERVADO' })
+  } catch { return fail() }
 }
 const fail = (): never => { throw new Error('FISCAL_CUERPO_NC_INVALIDO') }
 function canonical(value: unknown): string {

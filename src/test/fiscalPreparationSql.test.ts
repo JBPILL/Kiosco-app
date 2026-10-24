@@ -92,6 +92,7 @@ function workerFixture(){
  mapping.cargar_representacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
  mapping.cargar_unidades_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id']
  mapping.cargar_fuente_contexto_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
+ mapping.cargar_fuente_cuerpo_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
  mapping.cargar_preparacion_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
  mapping.guardar_preparacion_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha','p_contexto_sha','p_entrada']
  mapping.cargar_fuente_comercial_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id'];mapping.cargar_historial_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_despues'];mapping.guardar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_canonico','p_sha'];mapping.cargar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id'];mapping.cancelar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
@@ -1749,6 +1750,35 @@ async function creditNumberedFixture(invoice:1|6|11=11,concept:1|2|3=1){
  const read=async()=>(await db.query<{data:Record<string,unknown>|null}>('SELECT cargar_reserva_nc_homologacion($1,$2,$3,$4,$5) data',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256])).rows[0].data
  return{...f,reservationId,reserve,read}
 }
+async function installCreditRequestSource(){
+ await db.exec('RESET ROLE');const sql=readFileSync('supabase/pilot-fiscal/037_fiscal_credit_request_source.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
+ await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
+}
+it.each([1,6,11] as const)('037 cuerpo NC factura%i se recupera por servicio privado y SQL real sin parámetros vigentes',async(invoice)=>{
+ const f=await creditNumberedFixture(invoice);await installCreditRequestSource()
+ const api=workerFixture(),{loadFiscalCreditRequest}=await import('../../supabase/functions/_shared/fiscalCreditDraftService')
+ const scope={saleId:sale,operationId:op,requestId:f.proposal.datos.solicitud_id,sha256:f.proposal.sha256}
+ expect(await loadFiscalCreditRequest(api.admin,'SYNTHETIC_JWT',scope)).toBeNull()
+ await f.reserve()
+ const stored=await loadFiscalCreditRequest(api.admin,'SYNTHETIC_JWT',scope)
+ expect(stored).toMatchObject({estado:'CUERPO_NC_RESERVADO',emision_habilitada:false,datos:{reserva_id:f.reservationId,solicitud:{numero:23,tipoComprobante:invoice===1?3:invoice===6?8:13}}})
+ await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false');await admin('UPDATE fiscal_parametros_nc_homologacion SET habilitado=false')
+ expect(await loadFiscalCreditRequest(api.admin,'SYNTHETIC_JWT',scope)).toEqual(stored)
+ expect(api.fetcher).not.toHaveBeenCalled();expect(api.load).not.toHaveBeenCalled()
+ expect(api.getUser).toHaveBeenCalledTimes(3)
+ expect(api.rpc.mock.calls.every(([,args])=>args.p_actor_auth_id===actor)).toBe(true)
+})
+it('037 Auth reasignado entre factura y fuente no expone cuerpo a ninguna cuenta',async()=>{
+ const f=await creditNumberedFixture();await installCreditRequestSource();await f.reserve()
+ const api=workerFixture(),base=api.rpc.getMockImplementation()!,other=crypto.randomUUID(),{loadFiscalCreditRequest}=await import('../../supabase/functions/_shared/fiscalCreditDraftService')
+ await admin('INSERT INTO auth.users VALUES($1)',[other])
+ api.rpc.mockImplementation(async(name,args)=>{const result=await base(name,args);if(name==='cargar_representacion_fiscal_homologacion')await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner]);return result})
+ const scope={saleId:sale,operationId:op,requestId:f.proposal.datos.solicitud_id,sha256:f.proposal.sha256}
+ await expect(loadFiscalCreditRequest(api.admin,'SYNTHETIC_JWT',scope)).rejects.toThrow('FISCAL_NC_NO_CONFIRMADA')
+ expect(api.getUser).toHaveBeenCalledTimes(1)
+ api.getUser.mockResolvedValue({data:{user:{id:other}},error:null})
+ await expect(loadFiscalCreditRequest(api.admin,'SYNTHETIC_JWT',scope)).rejects.toThrow('FISCAL_NC_NO_CONFIRMADA')
+})
 it('036 dos casos parciales distintos de la misma serie no avanzan sobre reserva pendiente',async()=>{
  const f=await boundCreditFixture(true,true);await installCreditBinding();await installCreditContext();await seedCreditCatalog();await installCreditContextSource();await installCreditPreparation();await installCreditNumbers()
  const {validateFiscalCreditContext}=await import('../../supabase/functions/_shared/fiscalCreditContext')

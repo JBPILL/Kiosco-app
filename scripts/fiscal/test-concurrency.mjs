@@ -28,6 +28,7 @@ let creditContextInstalledAfterCase=null
 let creditContextSourceInstalledAfterCase=null
 let creditDataInstalledAfterCase=null
 let creditNumberInstalledAfterCase=null
+let creditRequestSourceInstalledAfterCase=null
 let evidence
 const evidenceIndex = process.argv.indexOf('--evidence')
 const evidencePath = evidenceIndex >= 0 ? resolve(process.argv[evidenceIndex+1] ?? '') : null
@@ -1221,11 +1222,29 @@ try {
   while(Date.now()-nc036_consulted<=30100)await delay(40)
   await a.query('COMMIT');assert.equal((await nc036_expiredNumber).error?.code,'22023');await b.query('ROLLBACK')
   cases.push('036_consulta_numeracion_vence_esperando_serie_no_reserva')
+  creditRequestSourceInstalledAfterCase=cases.length
+  for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/037_fiscal_credit_request_source.sql'),'utf8'))
+  const nc037_fixture=await numberedCreditFixture(209)
+  const nc037_read=async(client,f)=>(await client.query('SELECT cargar_fuente_cuerpo_nc_homologacion($1,$2,$3,$4,$5) v',[f.auth,f.sale,f.operation,f.proposal.id,f.proposal.sha])).rows[0].v
+  await start(a);await nc037_fixture.reserve(a)
+  await start(b);const nc037_waiting=capture(nc037_read(b,nc037_fixture));await waitForLock(observer,b);await a.query('COMMIT')
+  const nc037_source=(await nc037_waiting).value;await b.query('COMMIT')
+  assert.equal(JSON.parse(nc037_source.cuerpo.canonico).solicitud.numero,23)
+  assert.equal(createHash('sha256').update(nc037_source.cuerpo.canonico).digest('hex'),nc037_source.cuerpo.sha256)
+  assert.equal(nc037_source.reserva.preparacion_sha256,nc037_source.preparacion.preparacion.sha256)
+  cases.push('037_lector_espera_reserva_confirmada_y_recupera_cuerpo_hash_identicos')
+  const nc037_changed=await numberedCreditFixture(210),nc037_nextAuth=randomUUID()
+  await start(a);await nc037_changed.reserve(a);await a.query('COMMIT')
+  await observer.query('INSERT INTO auth.users VALUES($1)',[nc037_nextAuth])
+  await a.query('BEGIN');await a.query('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[nc037_nextAuth,nc037_changed.owner])
+  await start(b);const nc037_denied=capture(nc037_read(b,nc037_changed));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc037_denied).error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('037_Auth_reasignado_esperando_no_revela_cuerpo_numerado')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
-    cases,caseCount:cases.length,requiredPresentationInstalledAfterCase,postRequiredPresentationCaseCount:requiredPresentationInstalledAfterCase===null?0:cases.length-requiredPresentationInstalledAfterCase,creditDraftInstalledAfterCase,postCreditDraftCaseCount:creditDraftInstalledAfterCase===null?0:cases.length-creditDraftInstalledAfterCase,creditRecoveryInstalledAfterCase,postCreditRecoveryCaseCount:creditRecoveryInstalledAfterCase===null?0:cases.length-creditRecoveryInstalledAfterCase,creditCommercialInstalledAfterCase,postCreditCommercialCaseCount:creditCommercialInstalledAfterCase===null?0:cases.length-creditCommercialInstalledAfterCase,checkoutUnitsInstalledAfterCase,postCheckoutUnitsCaseCount:checkoutUnitsInstalledAfterCase===null?0:cases.length-checkoutUnitsInstalledAfterCase,creditBindingInstalledAfterCase,postCreditBindingCaseCount:creditBindingInstalledAfterCase===null?0:cases.length-creditBindingInstalledAfterCase,creditContextInstalledAfterCase,postCreditContextCaseCount:creditContextInstalledAfterCase===null?0:cases.length-creditContextInstalledAfterCase,creditContextSourceInstalledAfterCase,postCreditContextSourceCaseCount:creditContextSourceInstalledAfterCase===null?0:cases.length-creditContextSourceInstalledAfterCase,creditDataInstalledAfterCase,postCreditDataCaseCount:creditDataInstalledAfterCase===null?0:cases.length-creditDataInstalledAfterCase,creditNumberInstalledAfterCase,postCreditNumberCaseCount:creditNumberInstalledAfterCase===null?0:cases.length-creditNumberInstalledAfterCase,externalRequests:0,invoicesIssued:0}
+    cases,caseCount:cases.length,requiredPresentationInstalledAfterCase,postRequiredPresentationCaseCount:requiredPresentationInstalledAfterCase===null?0:cases.length-requiredPresentationInstalledAfterCase,creditDraftInstalledAfterCase,postCreditDraftCaseCount:creditDraftInstalledAfterCase===null?0:cases.length-creditDraftInstalledAfterCase,creditRecoveryInstalledAfterCase,postCreditRecoveryCaseCount:creditRecoveryInstalledAfterCase===null?0:cases.length-creditRecoveryInstalledAfterCase,creditCommercialInstalledAfterCase,postCreditCommercialCaseCount:creditCommercialInstalledAfterCase===null?0:cases.length-creditCommercialInstalledAfterCase,checkoutUnitsInstalledAfterCase,postCheckoutUnitsCaseCount:checkoutUnitsInstalledAfterCase===null?0:cases.length-checkoutUnitsInstalledAfterCase,creditBindingInstalledAfterCase,postCreditBindingCaseCount:creditBindingInstalledAfterCase===null?0:cases.length-creditBindingInstalledAfterCase,creditContextInstalledAfterCase,postCreditContextCaseCount:creditContextInstalledAfterCase===null?0:cases.length-creditContextInstalledAfterCase,creditContextSourceInstalledAfterCase,postCreditContextSourceCaseCount:creditContextSourceInstalledAfterCase===null?0:cases.length-creditContextSourceInstalledAfterCase,creditDataInstalledAfterCase,postCreditDataCaseCount:creditDataInstalledAfterCase===null?0:cases.length-creditDataInstalledAfterCase,creditNumberInstalledAfterCase,postCreditNumberCaseCount:creditNumberInstalledAfterCase===null?0:cases.length-creditNumberInstalledAfterCase,creditRequestSourceInstalledAfterCase,postCreditRequestSourceCaseCount:creditRequestSourceInstalledAfterCase===null?0:cases.length-creditRequestSourceInstalledAfterCase,externalRequests:0,invoicesIssued:0}
 } catch(error) {
   console.error('FISCAL_CONCURRENCY=FAIL; CODE='+(error?.code??error?.name??'UNKNOWN')+'; STEP='+cases.length+'; DETAIL='+error.message)
   evidence={status:'FAIL',testedAt:new Date().toISOString(),containerId,containerName:name,port,cases,code:error?.code??error?.name??'UNKNOWN'}
