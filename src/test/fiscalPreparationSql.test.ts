@@ -1787,6 +1787,56 @@ async function creditOwnerReviewFixture(){
  const approve=async(id=reviewId,hash=body.sha256,prep=f.prepared.sha256)=>(await db.query<{data:Record<string,unknown>}>('SELECT aprobar_revision_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8) data',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,id,hash,prep])).rows[0].data
  return{...f,packet,body,reviewId,readReview:read,approve}
 }
+async function creditPermissionFixture(){
+ const f=await creditOwnerReviewFixture();await f.approve()
+ await db.exec('RESET ROLE');const sql=readFileSync('supabase/pilot-fiscal/041_fiscal_credit_emission_permission.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
+ await db.exec(sql);await db.exec(sql)
+ const emitter=(await db.query<{credencial_id:string;certificado_sha256:string;revision:number}>('SELECT credencial_id,certificado_sha256,revision FROM fiscal_emisores_homologacion WHERE kiosco_id=$1',[kid])).rows[0]
+ const deadline=(await db.query<{vence_en:string}>('SELECT vence_en::text FROM fiscal_nc_revisiones_homologacion WHERE id=$1',[f.reviewId])).rows[0].vence_en
+ await db.exec('SET ROLE service_role')
+ const permit=crypto.randomUUID()
+ const seed=async(patch:Record<string,unknown>={})=>{
+  const row={id:permit,solicitud_id:f.proposal.datos.solicitud_id,reserva_id:f.reservationId,revision_id:f.reviewId,actor_auth_id:actor,
+   solicitud_sha256:f.body.sha256,preparacion_sha256:f.prepared.sha256,credencial_id:emitter.credencial_id,certificado_sha256:emitter.certificado_sha256,
+   emisor_revision:emitter.revision,habilitado:true,creado_en:new Date().toISOString(),vence_en:deadline,...patch}
+  await admin('INSERT INTO fiscal_nc_permisos_homologacion(id,solicitud_id,reserva_id,revision_id,actor_auth_id,solicitud_sha256,preparacion_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,creado_en,vence_en) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',Object.values(row))
+ }
+ const verify=async(who=actor,revision=f.reviewId)=>(await db.query<{data:Record<string,unknown>}>('SELECT verificar_permiso_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,f.body.sha256,revision,permit])).rows[0].data
+ return{...f,permit,seed,verify}
+}
+it('041 instalación vacía no concede permiso; fila exacta sólo acredita verificación sin envío',async()=>{
+ const f=await creditPermissionFixture(),before=await preparationEffects()
+ await denied(()=>f.verify());await f.seed()
+ const result=await f.verify()
+ expect(result).toMatchObject({version:1,estado:'PERMISO_NC_VERIFICADO',solicitud_id:f.proposal.datos.solicitud_id,reserva_id:f.reservationId,
+  solicitud_sha256:f.body.sha256,preparacion_sha256:f.prepared.sha256,revision_id:f.reviewId,permiso_id:f.permit,actor_auth_id:actor,emision_habilitada:false})
+ expect(await f.verify()).toEqual(result);expect(await preparationEffects()).toEqual(before)
+})
+it.each(['habilitado','cuerpo','preparacion','credencial','certificado','revision','actor','futuro','vencido','revocado','emisor','catalogo'] as const)('041 permiso %s incompatible no se verifica',async(reason)=>{
+ const f=await creditPermissionFixture(),patch:Record<string,unknown>={}
+ if(reason==='habilitado')patch.habilitado=false
+ if(reason==='cuerpo')patch.solicitud_sha256='f'.repeat(64)
+ if(reason==='preparacion')patch.preparacion_sha256='f'.repeat(64)
+ if(reason==='credencial')patch.credencial_id=crypto.randomUUID()
+ if(reason==='certificado')patch.certificado_sha256='f'.repeat(64)
+ if(reason==='revision')patch.emisor_revision=2
+ if(reason==='actor')patch.actor_auth_id=crypto.randomUUID()
+ if(reason==='futuro'){patch.creado_en=new Date(Date.now()+60000).toISOString();patch.vence_en=new Date(Date.now()+120000).toISOString()}
+ if(reason==='vencido'){patch.creado_en=new Date(Date.now()-120000).toISOString();patch.vence_en=new Date(Date.now()-60000).toISOString()}
+ await f.seed(patch)
+ if(reason==='revocado')await admin("INSERT INTO fiscal_nc_permisos_revocados_homologacion(permiso_id,motivo) VALUES($1,'Ensayo')",[f.permit])
+ if(reason==='emisor')await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false')
+ if(reason==='catalogo')await admin('UPDATE fiscal_parametros_nc_homologacion SET habilitado=false')
+ await denied(()=>f.verify())
+})
+it('041 revisión ajena/Auth reasignado y permisos directos nunca acreditan envío',async()=>{
+ const f=await creditPermissionFixture();await f.seed();await denied(()=>f.verify(actor,crypto.randomUUID()))
+ const other=crypto.randomUUID();await admin('INSERT INTO auth.users VALUES($1)',[other]);await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner])
+ await denied(()=>f.verify());await denied(()=>f.verify(other))
+ for(const role of ['anon','authenticated','service_role']){await db.exec(`SET ROLE ${role}`);await denied(()=>db.exec('SELECT * FROM fiscal_nc_permisos_homologacion'));await denied(()=>db.exec('SELECT * FROM fiscal_nc_permisos_revocados_homologacion'))}
+ for(const role of ['anon','authenticated']){await db.exec(`SET ROLE ${role}`);await denied(()=>f.verify())}
+ await db.exec('RESET ROLE');await denied(()=>db.exec('DELETE FROM fiscal_nc_permisos_homologacion'));await denied(()=>db.exec('UPDATE fiscal_nc_permisos_homologacion SET habilitado=false'));await db.exec('SET ROLE service_role')
+})
 it('cliente HTTP numeración NC firma CMS con custodia sintética, reserva y recupera sin otro WSAA/WSFE',async()=>{
  const {syntheticEncryptedCustody}=await import('./fixtures/fiscalEncryptedCustody'),material=await syntheticEncryptedCustody()
  await admin('UPDATE fiscal_emisores_homologacion SET credencial_id=$1,certificado_sha256=$2',[material.binding.credencial_id,material.binding.certificado_sha256])

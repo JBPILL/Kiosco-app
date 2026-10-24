@@ -32,6 +32,7 @@ let creditRequestSourceInstalledAfterCase=null
 let creditNumberSourceInstalledAfterCase=null
 let creditTicketInstalledAfterCase=null
 let creditOwnerReviewInstalledAfterCase=null
+let creditPermissionInstalledAfterCase=null
 let evidence
 const evidenceIndex = process.argv.indexOf('--evidence')
 const evidencePath = evidenceIndex >= 0 ? resolve(process.argv[evidenceIndex+1] ?? '') : null
@@ -1327,11 +1328,39 @@ try {
   await start(b);const nc040_authWaiting=capture(nc040_auth.approve(b));await waitForLock(observer,b);await a.query('COMMIT')
   assert.equal((await nc040_authWaiting).error?.code,'42501');await b.query('ROLLBACK')
   cases.push('040_Auth_reasignado_esperando_no_atribuye_revision_al_actor_nuevo')
+  creditPermissionInstalledAfterCase=cases.length
+  for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/041_fiscal_credit_emission_permission.sql'),'utf8'))
+  async function nc041Fixture(point,ttl=300000){
+    const f=await nc040Fixture(point),permit=randomUUID()
+    await start(a);const ack=await f.approve(a);await a.query('COMMIT')
+    await observer.query(`INSERT INTO fiscal_nc_permisos_homologacion(id,solicitud_id,reserva_id,revision_id,actor_auth_id,solicitud_sha256,preparacion_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,vence_en)
+      SELECT $1,r.solicitud_id,r.reserva_id,r.id,r.actor_auth_id,r.solicitud_sha256,r.preparacion_sha256,e.credencial_id,e.certificado_sha256,e.revision,true,least(r.vence_en,clock_timestamp()+$3::integer*interval '1 millisecond')
+      FROM fiscal_nc_revisiones_homologacion r JOIN fiscal_emisores_homologacion e ON e.kiosco_id=$2 WHERE r.id=$4`,[permit,f.kid,ttl,f.review])
+    const verify=async(client)=>(await client.query('SELECT verificar_permiso_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8) v',[f.auth,f.sale,f.operation,f.proposal.id,f.proposal.sha,ack.aprobacion.solicitud_sha256,f.review,permit])).rows[0].v
+    return{...f,permit,verify}
+  }
+  const nc041_revoked=await nc041Fixture(221)
+  await a.query('BEGIN');await a.query("INSERT INTO fiscal_nc_permisos_revocados_homologacion(permiso_id,motivo) VALUES($1,'Ensayo privado')",[nc041_revoked.permit])
+  await start(b);const nc041_revocationWaiting=capture(nc041_revoked.verify(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc041_revocationWaiting).error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('041_revocacion_permiso_gana_espera_no_verifica_envio')
+  const nc041_expiring=await nc041Fixture(222,1000)
+  await a.query('BEGIN');await a.query('SELECT * FROM fiscal_nc_series_homologacion WHERE cuit_emisor=$1 AND punto_venta=222 FOR UPDATE',[issuer])
+  await start(b);const nc041_expiredWaiting=capture(nc041_expiring.verify(b));await waitForLock(observer,b);await observer.query('SELECT pg_sleep(1.2)');await a.query('COMMIT')
+  assert.equal((await nc041_expiredWaiting).error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('041_permiso_vence_esperando_serie_no_verifica_envio')
+  const nc041_auth=await nc041Fixture(223),nc041_other=randomUUID()
+  await observer.query('INSERT INTO auth.users VALUES($1)',[nc041_other])
+  await a.query('BEGIN');await a.query('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[nc041_other,nc041_auth.owner])
+  await start(b);const nc041_authWaiting=capture(nc041_auth.verify(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc041_authWaiting).error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('041_Auth_reasignado_esperando_no_transfiere_permiso_NC')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
     creditOwnerReviewInstalledAfterCase,postCreditOwnerReviewCaseCount:cases.length-creditOwnerReviewInstalledAfterCase,
+    creditPermissionInstalledAfterCase,postCreditPermissionCaseCount:cases.length-creditPermissionInstalledAfterCase,
     cases,caseCount:cases.length,requiredPresentationInstalledAfterCase,postRequiredPresentationCaseCount:requiredPresentationInstalledAfterCase===null?0:cases.length-requiredPresentationInstalledAfterCase,creditDraftInstalledAfterCase,postCreditDraftCaseCount:creditDraftInstalledAfterCase===null?0:cases.length-creditDraftInstalledAfterCase,creditRecoveryInstalledAfterCase,postCreditRecoveryCaseCount:creditRecoveryInstalledAfterCase===null?0:cases.length-creditRecoveryInstalledAfterCase,creditCommercialInstalledAfterCase,postCreditCommercialCaseCount:creditCommercialInstalledAfterCase===null?0:cases.length-creditCommercialInstalledAfterCase,checkoutUnitsInstalledAfterCase,postCheckoutUnitsCaseCount:checkoutUnitsInstalledAfterCase===null?0:cases.length-checkoutUnitsInstalledAfterCase,creditBindingInstalledAfterCase,postCreditBindingCaseCount:creditBindingInstalledAfterCase===null?0:cases.length-creditBindingInstalledAfterCase,creditContextInstalledAfterCase,postCreditContextCaseCount:creditContextInstalledAfterCase===null?0:cases.length-creditContextInstalledAfterCase,creditContextSourceInstalledAfterCase,postCreditContextSourceCaseCount:creditContextSourceInstalledAfterCase===null?0:cases.length-creditContextSourceInstalledAfterCase,creditDataInstalledAfterCase,postCreditDataCaseCount:creditDataInstalledAfterCase===null?0:cases.length-creditDataInstalledAfterCase,creditNumberInstalledAfterCase,postCreditNumberCaseCount:creditNumberInstalledAfterCase===null?0:cases.length-creditNumberInstalledAfterCase,creditRequestSourceInstalledAfterCase,postCreditRequestSourceCaseCount:creditRequestSourceInstalledAfterCase===null?0:cases.length-creditRequestSourceInstalledAfterCase,creditNumberSourceInstalledAfterCase,postCreditNumberSourceCaseCount:creditNumberSourceInstalledAfterCase===null?0:cases.length-creditNumberSourceInstalledAfterCase,creditTicketInstalledAfterCase,postCreditTicketCaseCount:creditTicketInstalledAfterCase===null?0:cases.length-creditTicketInstalledAfterCase,externalRequests:0,invoicesIssued:0}
 } catch(error) {
   console.error('FISCAL_CONCURRENCY=FAIL; CODE='+(error?.code??error?.name??'UNKNOWN')+'; STEP='+cases.length+'; DETAIL='+error.message)
