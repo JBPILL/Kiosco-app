@@ -41,7 +41,7 @@ beforeAll(async()=>{
  await db.exec('ALTER TABLE ventas ADD COLUMN afip_cae text')
  // Escenarios históricos001–031 conservan su fase; los de032 instalan el guard
  // dentro de su transacción para comprobar explícitamente la transición y replay.
- for(const file of readdirSync('supabase/pilot-fiscal').filter(n=>/^\d{3}_.*\.sql$/.test(n)&&!n.startsWith('032_')).sort()){
+ for(const file of readdirSync('supabase/pilot-fiscal').filter(n=>/^\d{3}_.*\.sql$/.test(n)&&Number(n.slice(0,3))<=31).sort()){
   const sql=readFileSync(join('supabase/pilot-fiscal',file),'utf8');await db.exec(sql);await db.exec(sql)
   if(file==='011_fiscal_owner_review.sql')await db.query('SELECT fiscal_exigir_actor_preparacion($1,$2)',[crypto.randomUUID(),crypto.randomUUID()])
  }
@@ -1693,6 +1693,66 @@ async function installCreditBinding(){
  const sql=readFileSync('supabase/pilot-fiscal/032_fiscal_credit_commercial_binding.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
  await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
 }
+async function installCreditContext(){
+ await db.exec('RESET ROLE');const sql=readFileSync('supabase/pilot-fiscal/033_fiscal_credit_context.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
+ await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
+}
+async function seedCreditCatalog(){
+ await admin(`INSERT INTO fiscal_parametros_nc_homologacion(revision,tipos,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en,habilitado)
+ VALUES(1,'[{"id":13,"descripcion":"NC C sintética","desde":"20200101","hasta":null}]','[{"id":5,"descripcion":"Condición sintética NC","comprobantes":[13]}]','[]',repeat('c',64),clock_timestamp()-interval '1 hour',clock_timestamp()+interval '1 hour',true)`)
+}
+async function contextCreditFixture(){
+ const f=await boundCreditFixture();await installCreditBinding();const proposal=await f.make();await f.write(proposal);await installCreditContext()
+ const load=async(id=proposal.datos.solicitud_id,sha=proposal.sha256,who=actor)=>(await db.query<{data:unknown}>('SELECT cargar_contexto_nc_homologacion($1,$2,$3,$4,$5) data',[who,sale,op,id,sha])).rows[0].data
+ return{...f,proposal,load}
+}
+it('033 no copia catálogo de facturas ni crea filas/activación por defecto',async()=>{
+ const f=await contextCreditFixture();await denied(()=>f.load())
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_parametros_nc_homologacion')).rows[0].n).toBe(0)
+})
+it('033 contexto liga caso/factura/fuente/unidades y catálogo NC explícito sin permiso',async()=>{
+ const f=await contextCreditFixture();await seedCreditCatalog()
+ const context=await f.load(),{validateFiscalCreditContext}=await import('../../supabase/functions/_shared/fiscalCreditContext')
+ expect(await validateFiscalCreditContext(context,f.source,f.proposal)).toMatchObject({solicitud_id:f.proposal.datos.solicitud_id,propuesta_sha256:f.proposal.sha256,punto_venta:7,tipo_nota_credito:13,revision_parametros:1,condiciones:[{id:5,comprobantes:[13]}],emision_habilitada:false})
+ await installCreditContext();expect(await f.load()).toEqual(context)
+})
+it.each(['cancelado','pago','emisor','hash','actor','vencido','noIniciado','tipoVencido','condicion'] as const)('033 rechaza contexto %s sin inferir parámetros o datos nuevos',async(reason)=>{
+ const f=await contextCreditFixture();await seedCreditCatalog()
+ if(reason==='cancelado')await db.query('SELECT cancelar_borrador_nc_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256])
+ if(reason==='pago')await admin('UPDATE pagos_venta SET monto=1 WHERE venta_id=$1',[sale])
+ if(reason==='emisor')await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false WHERE kiosco_id=$1',[kid])
+ if(['vencido','noIniciado','tipoVencido','condicion'].includes(reason)){
+  await admin('UPDATE fiscal_parametros_nc_homologacion SET habilitado=false')
+  await admin(`INSERT INTO fiscal_parametros_nc_homologacion(revision,tipos,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en,habilitado)
+   SELECT 2,CASE WHEN $1='tipoVencido' THEN jsonb_set(tipos,'{0,hasta}','"20200102"') ELSE tipos END,CASE WHEN $1='condicion' THEN '[{"id":6,"descripcion":"Otra condición","comprobantes":[13]}]'::jsonb ELSE condiciones END,alicuotas,fuente_sha256,
+   CASE WHEN $1='noIniciado' THEN clock_timestamp()+interval '1 hour' ELSE clock_timestamp()-interval '2 hours' END,
+   CASE WHEN $1='vencido' THEN clock_timestamp()-interval '1 hour' ELSE clock_timestamp()+interval '2 hours' END,true FROM fiscal_parametros_nc_homologacion WHERE revision=1`,[reason])
+ }
+ await denied(()=>f.load(undefined,reason==='hash'?'a'.repeat(64):undefined,reason==='actor'?crypto.randomUUID():undefined))
+})
+it('033 caso histórico sin vínculo no recibe contexto nuevo ni se recaptura',async()=>{
+ const f=await creditReservationFixture(),p=await f.make();await f.write(p);await installCreditBinding();await installCreditContext();await seedCreditCatalog()
+ await denied(()=>db.query('SELECT cargar_contexto_nc_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,p.datos.solicitud_id,p.sha256]))
+ expect(await f.read(p)).toMatchObject({estado:'SALDO_RESERVADO_NO_EMITIR'})
+})
+it.each(['tipoFactura','tipoDuplicado','fecha','claseFactura','condicionDuplicada','texto','codigoString'] as const)('033 catálogo privado valida forma/códigos/vigencia %s',async(reason)=>{
+ await installCreditBinding();await installCreditContext();await db.exec('RESET ROLE')
+ const tipos=[{id:13,descripcion:'NC sintética',desde:'20200101',hasta:null}],condiciones=[{id:5,descripcion:'Condición',comprobantes:[13]}]
+ let t:unknown=tipos,c:unknown=condiciones
+ if(reason==='tipoFactura')t=[{...tipos[0],id:11}]
+ if(reason==='tipoDuplicado')t=[...tipos,...tipos]
+ if(reason==='fecha')t=[{...tipos[0],desde:'20260231'}]
+ if(reason==='claseFactura')c=[{...condiciones[0],comprobantes:[11]}]
+ if(reason==='condicionDuplicada')c=[...condiciones,...condiciones]
+ if(reason==='texto')c=[{...condiciones[0],descripcion:'Bad\ntext'}]
+ if(reason==='codigoString')c=[{...condiciones[0],id:'5'}]
+ await denied(()=>db.query(`INSERT INTO fiscal_parametros_nc_homologacion(revision,tipos,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en) VALUES(1,$1::jsonb,$2::jsonb,'[]',repeat('c',64),clock_timestamp(),clock_timestamp()+interval '1 hour')`,[JSON.stringify(t),JSON.stringify(c)]))
+})
+it.each(['anon','authenticated','service_role'])('033 catálogo privado sin acceso directo para %s',async(role)=>{
+ await installCreditBinding();await installCreditContext();await db.exec('RESET ROLE; SET ROLE '+role)
+ await denied(()=>db.query('SELECT condiciones FROM fiscal_parametros_nc_homologacion'))
+ await denied(()=>db.query("SELECT fiscal_validar_catalogo_nc('[]','[]','[]')"))
+})
 async function boundCreditFixture(enabled=true,weighted=false,free=false){
  const f=await checkoutUnitsFixture(enabled,weighted,free);await f.prepare();await f.close()
  const proposal=input();await authorizeReceipt(true,{...proposal,datos:{...proposal.datos,importes:{...proposal.datos.importes,neto:'124.00'}}})
