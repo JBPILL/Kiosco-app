@@ -14,7 +14,7 @@ import type { FiscalCreditClient, PendingFiscalCredit } from '../lib/fiscalCredi
 async function fixture() {
   const f = await fiscalCreditUnitsFixture(), page = await validateFiscalCreditHistory(f.page, f.source, 0)
   let pending: Readonly<PendingFiscalCredit> | null = null
-  const credits = { pendingPreparation: vi.fn(() => null), recoverPreparation: vi.fn(), savePreparation: vi.fn(), preparation: vi.fn<FiscalCreditClient['preparation']>(async () => null), context: vi.fn<FiscalCreditClient['context']>(), units: vi.fn<FiscalCreditClient['units']>(async () => validateFiscalCreditUnits(f.packet, f.source, f.commercial)), commercialSource: vi.fn<FiscalCreditClient['commercialSource']>(async () => validateFiscalCreditCommercialSource(f.commercial, f.source)),
+  const credits = { pendingReview: vi.fn(() => null), review: vi.fn(), recoverReview: vi.fn(), approveReview: vi.fn(), pendingPreparation: vi.fn(() => null), recoverPreparation: vi.fn(), savePreparation: vi.fn(), preparation: vi.fn<FiscalCreditClient['preparation']>(async () => null), context: vi.fn<FiscalCreditClient['context']>(), units: vi.fn<FiscalCreditClient['units']>(async () => validateFiscalCreditUnits(f.packet, f.source, f.commercial)), commercialSource: vi.fn<FiscalCreditClient['commercialSource']>(async () => validateFiscalCreditCommercialSource(f.commercial, f.source)),
     pending: vi.fn(() => pending), save: vi.fn<FiscalCreditClient['save']>(),
     history: vi.fn<FiscalCreditClient['history']>(async () => page),
     recover: vi.fn<FiscalCreditClient['recover']>(async () => null),

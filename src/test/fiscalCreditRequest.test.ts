@@ -7,6 +7,8 @@ import type { FiscalCreditReservation } from '../../supabase/functions/_shared/f
 import { freezeFiscalRequest } from '../../supabase/functions/_shared/fiscalReconciliation'
 import { loadFiscalCreditRequest } from '../../supabase/functions/_shared/fiscalCreditDraftService'
 import type { FiscalAuthClient } from '../../supabase/functions/_shared/fiscalWorkerAuthorization'
+import { validateFiscalCreditOwnerReview, fiscalCreditOwnerReviewWire, validateFiscalCreditOwnerReviewWire } from '../../supabase/functions/_shared/fiscalCreditOwnerReview'
+import { createFiscalCreditClient } from '../lib/fiscalCreditClient'
 
 async function fixture(invoice: 1 | 6 | 11 = 11, concept: 1 | 2 | 3 = 1) {
   const f = await fiscalCreditContextFixture(invoice, concept), context = await validateFiscalCreditContext(f.context, f.source, f.proposal)
@@ -28,6 +30,69 @@ async function recordFixture() {
     reserva: f.reservation, cuerpo: { canonico: request.canonico, sha256: request.sha256 } }
   return { ...f, packet, request }
 }
+async function reviewClientFixture() {
+  const f = await recordFixture(), review = await validateFiscalCreditOwnerReview({ version: 1, cuerpo: f.packet, aprobacion: null, emision_habilitada: false }, f.source, f.proposal)
+  const wire = fiscalCreditOwnerReviewWire(review), local = new Map<string, string>(), state = { stored: false, visible: true, id: '' }
+  const storage = { getItem: (key: string) => local.get(key) ?? null, setItem: (key: string, value: string) => { local.set(key, value) } }
+  const invoke = vi.fn(async (command: Record<string, unknown>) => {
+    if (command.accion === 'APROBAR_REVISION_NC') { state.stored = true; state.id = String(command.revision_id); throw new Error('LOST_ACK') }
+    if (command.revision_id === null) return wire
+    if (!state.stored || !state.visible || command.revision_id !== state.id) throw new Error('NOT_CONFIRMED')
+    return { ...wire, aprobacion: { id: state.id, solicitud_id: f.input.solicitud_id, reserva_id: f.reservation.reserva_id,
+      solicitud_sha256: f.request.sha256, preparacion_sha256: f.prepared.sha256, aprobada: true, vence_en: '2026-10-24T23:00:00Z', emision_habilitada: false } }
+  })
+  const make = () => createFiscalCreditClient(f.scope, { storage, invoke, exclusive: async task => task() })
+  return { ...f, review, wireReview: wire, local, state, storage, invoke, make, client: make() }
+}
+it('cliente revisión persiste identidad sin PII antes de POST y recupera ACK perdido', async () => {
+  const f = await reviewClientFixture(), base = f.invoke.getMockImplementation()!
+  f.invoke.mockImplementation(async command => {
+    if (command.accion === 'APROBAR_REVISION_NC') {
+      expect(f.client.pendingReview()?.reviewId).toBe(command.revision_id)
+      expect(JSON.stringify([...f.local.values()])).not.toContain('canonico')
+      expect(Object.keys(f.client.pendingReview()!).sort()).toEqual(['version', 'operationId', 'requestId', 'proposalSha', 'preparationSha', 'bodySha', 'reviewId'].sort())
+    }
+    return base(command)
+  })
+  const result = await f.client.approveReview(f.source, f.proposal, f.wire, f.review)
+  expect(result.aprobacion?.id).toBe(f.state.id); expect(f.client.pendingReview()).toBeNull()
+  expect(f.invoke.mock.calls.map(([cmd]) => cmd.accion)).toEqual(['REVISION_NC', 'APROBAR_REVISION_NC', 'REVISION_NC'])
+})
+it('revisión incierta sobrevive recarga y sólo recupera por GET, bloqueando mutaciones', async () => {
+  const f = await reviewClientFixture(); f.state.visible = false
+  await expect(f.client.approveReview(f.source, f.proposal, f.wire, f.review)).rejects.toThrow()
+  const record = f.client.pendingReview(); expect(record?.reviewId).toBe(f.state.id)
+  await expect(f.make().approveReview(f.source, f.proposal, f.wire, f.review)).rejects.toThrow()
+  await expect(f.client.save(f.source, f.input)).rejects.toThrow()
+  expect(f.invoke.mock.calls.filter(([cmd]) => cmd.accion === 'APROBAR_REVISION_NC')).toHaveLength(1)
+  f.state.visible = true
+  expect((await f.make().recoverReview(f.source, f.proposal, f.wire))?.aprobacion?.id).toBe(record?.reviewId)
+  expect(f.client.pendingReview()).toBeNull()
+})
+it('fallo de persistencia local impide POST de aprobación', async () => {
+  const f = await reviewClientFixture(), client = createFiscalCreditClient(f.scope, { storage: { ...f.storage, setItem: () => { throw new Error('STORAGE_UNAVAILABLE') } }, invoke: f.invoke, exclusive: async task => task() })
+  await expect(client.approveReview(f.source, f.proposal, f.wire, f.review)).rejects.toThrow()
+  expect(f.invoke.mock.calls.some(([cmd]) => cmd.accion === 'APROBAR_REVISION_NC')).toBe(false)
+})
+it('ACK de otro UUID conserva pendiente hasta recuperar evidencia del UUID original', async () => {
+  const f = await reviewClientFixture(), base = f.invoke.getMockImplementation()!, other = crypto.randomUUID()
+  f.invoke.mockImplementation(async command => {
+    const result = await base(command)
+    if (command.accion === 'REVISION_NC' && command.revision_id !== null && result.aprobacion) return { ...result, aprobacion: { ...result.aprobacion, id: other } }
+    return result
+  })
+  await expect(f.client.approveReview(f.source, f.proposal, f.wire, f.review)).rejects.toThrow()
+  expect(f.client.pendingReview()?.reviewId).toBe(f.state.id)
+  f.invoke.mockImplementation(base)
+  expect((await f.client.recoverReview(f.source, f.proposal, f.wire))?.aprobacion?.id).toBe(f.state.id)
+})
+it.each(['canonico', 'hash', 'extra', 'approval', 'preparation'])('wire revisión NC %s alterado se rechaza por reconstrucción', async reason => {
+  const f = await reviewClientFixture(), wire = structuredClone(f.wireReview)
+  const input = reason === 'canonico' ? { ...wire, cuerpo: { ...wire.cuerpo, canonico: ` ${wire.cuerpo.canonico}` } }
+    : reason === 'hash' ? { ...wire, cuerpo: { ...wire.cuerpo, sha256: 'e'.repeat(64) } }
+    : reason === 'extra' ? { ...wire, extra: true } : reason === 'approval' ? { ...wire, aprobacion: { id: crypto.randomUUID() } } : wire
+  await expect(validateFiscalCreditOwnerReviewWire(input, f.source, f.proposal, reason === 'preparation' ? { ...f.wire, estado: 'CANCELADA' } : f.wire)).rejects.toThrow('FISCAL_REVISION_NC_NO_CONFIRMADA')
+})
 it('valida cuerpo durable reconstruido; no acredita permiso ni pierde inmutabilidad', async () => {
   const f = await recordFixture(), stored = await validateFiscalCreditRequestRecord(f.packet, f.source, f.proposal)
   expect(stored).toEqual({ ...f.request, estado: 'CUERPO_NC_RESERVADO' })

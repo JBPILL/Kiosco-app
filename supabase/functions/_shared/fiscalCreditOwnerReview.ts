@@ -3,6 +3,8 @@ import type { FiscalCreditDraft } from './fiscalCreditDraft.ts'
 import type { FiscalCreditRequestRecord } from './fiscalCreditRequest.ts'
 import { validateFiscalCreditRequestRecord } from './fiscalCreditRequest.ts'
 import { fiscalUuid } from './fiscalReplacement.ts'
+import { validateFiscalCreditPreparationWire } from './fiscalCreditPreparation.ts'
+import { parseFiscalJson } from './fiscalStrictJson.ts'
 
 export interface FiscalCreditOwnerApproval {
   id: string; solicitud_id: string; reserva_id: string; solicitud_sha256: string; preparacion_sha256: string
@@ -20,6 +22,29 @@ export function fiscalCreditOwnerReviewWire(review: Readonly<FiscalCreditOwnerRe
       vence_en: approval.vence_en, emision_habilitada: false }, emision_habilitada: false }
 }
 const fail = (): never => { throw new Error('FISCAL_REVISION_NC_NO_CONFIRMADA') }
+/** Reconstruye contra preparación explícita ya validada, no confía en el canónico recibido. */
+export async function validateFiscalCreditOwnerReviewWire(input: unknown, source: Readonly<FiscalRepresentation>, draft: Readonly<FiscalCreditDraft>, preparation: unknown): Promise<Readonly<FiscalCreditOwnerReview>> {
+  try {
+    const original = structuredClone(source), proposal = structuredClone(draft), prepared = structuredClone(preparation)
+    const value = object(structuredClone(input), ['version', 'cuerpo', 'aprobacion', 'emision_habilitada'])
+    const body = object(value.cuerpo, ['canonico', 'sha256'])
+    if (typeof body.canonico !== 'string' || new TextEncoder().encode(body.canonico).length > 131072) return fail()
+    const data = object(parseFiscalJson(body.canonico), ['version', 'clase', 'entorno', 'venta_id', 'operacion_origen_id', 'solicitud_id', 'propuesta_sha256', 'preparacion_sha256', 'reserva_id', 'solicitud'])
+    const request = data.solicitud
+    if (!request || typeof request !== 'object' || Array.isArray(request)) return fail()
+    const fields = request as Record<string, unknown>, stored = await validateFiscalCreditPreparationWire(prepared, original, proposal), prep = stored.preparacion.datos
+    return await validateFiscalCreditOwnerReview({ ...value, cuerpo: {
+      cuerpo: body,
+      preparacion: { version: 1, entorno: 'HOMOLOGACION', venta_id: prep.venta_id, operacion_origen_id: prep.operacion_origen_id,
+        solicitud_id: prep.solicitud_id, propuesta_sha256: prep.propuesta_sha256, estado: stored.estado, contexto: stored.contexto,
+        preparacion: { canonico: stored.preparacion.canonico, sha256: stored.preparacion.sha256 }, propuesta: { canonico: proposal.canonico, sha256: proposal.sha256 },
+        emision_habilitada: false, reintegro_habilitado: false, reposicion_habilitada: false },
+      reserva: { version: 1, entorno: 'HOMOLOGACION', venta_id: data.venta_id, operacion_origen_id: data.operacion_origen_id, solicitud_id: data.solicitud_id,
+        propuesta_sha256: data.propuesta_sha256, preparacion_sha256: data.preparacion_sha256, reserva_id: data.reserva_id,
+        cuit_emisor: fields.cuitEmisor, punto_venta: fields.puntoVenta, tipo_comprobante: fields.tipoComprobante, numero: fields.numero, estado: 'RESERVADA', emision_habilitada: false },
+    } }, original, proposal)
+  } catch { return fail() }
+}
 function object(value: unknown, keys: readonly string[]): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return fail()
   const row = value as Record<string, unknown>
