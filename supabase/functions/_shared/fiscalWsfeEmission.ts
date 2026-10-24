@@ -46,6 +46,8 @@ async function post(req:Request,fetcher:typeof fetch,timeoutMs:number,expiresAt:
   if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>40000)return fail()
   const timer=setTimeout(()=>controller.abort(),timeoutMs)
   try {
+    if(req.url!==URL||req.method!=='POST'||req.redirect!=='error'
+      ||![`"${WSFE}FECompUltimoAutorizado"`,`"${WSFE}FECAESolicitar"`].includes(req.headers.get('SOAPAction')??''))return fail()
     if(beforeSend)await deadline(beforeSend(),controller.signal)
     if(controller.signal.aborted||expiresAt<=Date.now()+15000)return fail()
     response=await deadline(fetcher(new Request(req,{signal:controller.signal})),controller.signal)
@@ -58,6 +60,8 @@ async function post(req:Request,fetcher:typeof fetch,timeoutMs:number,expiresAt:
     return new TextDecoder('utf-8',{fatal:true}).decode(bytes)
   }catch{return fail()}finally{clearTimeout(timer);controller.abort();if(response?.body&&!response.body.locked)void response.body.cancel().catch(()=>{})}
 }
+// Transporte privado compartido; no es una acción HTTP pública ni un permiso.
+export { post as postPrivateFiscalWsfe }
 export function decodeLastFiscalNumber(xml:string,expected:unknown):number {
   const s=series(expected),r=result(xml,'FECompUltimoAutorizado')
   schema(r,['PtoVta','CbteTipo','CbteNro','Errors','Events']);const errors=codes(r,'Errors','Err');codes(r,'Events','Evt')

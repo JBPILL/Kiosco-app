@@ -63,6 +63,7 @@ function cuit(value: unknown): string {
   if (Number(value[10]) !== (raw===11 ? 0 : raw===10 ? 9 : raw)) return invalid()
   return value
 }
+export { cuit as normalizeFiscalCuit }
 function identity(value: Obj | FiscalIdentity): FiscalIdentity {
   if (value.entorno !== 'HOMOLOGACION') return invalid()
   const tipo = integer(value.tipoComprobante,1,11)
@@ -201,10 +202,15 @@ export function escapeFiscalXml(value: string): string {
 }
 export function buildFiscalAuthXml(series:unknown,ticket:{token:string;sign:string;expiresAt:number},now=Date.now()):string {
   const s=normalizeFiscalSeries(series)
+  return buildFiscalAuthForCuit(s.cuitEmisor,ticket,now)
+}
+/** Bloque Auth común; el llamador debe validar su contrato/serie y binding privado. */
+export function buildFiscalAuthForCuit(issuer:unknown,ticket:{token:string;sign:string;expiresAt:number},now=Date.now()):string {
+  const normalized=cuit(issuer)
   if (!ticket || typeof ticket.token!=='string' || typeof ticket.sign!=='string'
     || !/^[\x09\x0A\x0D\x20-\x7E]+$/.test(ticket.token) || !/^[\x09\x0A\x0D\x20-\x7E]+$/.test(ticket.sign) || ticket.token.length>262144 || ticket.sign.length>262144
     || !Number.isSafeInteger(now) || !Number.isSafeInteger(ticket.expiresAt) || ticket.expiresAt<=now+60000) return invalid()
-  return `<Auth><Token>${escapeFiscalXml(ticket.token)}</Token><Sign>${escapeFiscalXml(ticket.sign)}</Sign><Cuit>${s.cuitEmisor}</Cuit></Auth>`
+  return `<Auth><Token>${escapeFiscalXml(ticket.token)}</Token><Sign>${escapeFiscalXml(ticket.sign)}</Sign><Cuit>${normalized}</Cuit></Auth>`
 }
 export async function buildFiscalVoucherQuery(expected: unknown, ticket: {token:string;sign:string;expiresAt:number}, now = Date.now()): Promise<Request> {
   const frozen=await verifyFiscalRequest(expected),{entorno,cuitEmisor,puntoVenta,tipoComprobante,numero}=frozen.solicitud
