@@ -1,7 +1,8 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { fiscalCreditContextFixture } from './fixtures/fiscalCreditContext'
 import { validateFiscalCreditContext } from '../../supabase/functions/_shared/fiscalCreditContext'
-import { prepareFiscalCreditPreparation, validateFiscalCreditPreparationRecord } from '../../supabase/functions/_shared/fiscalCreditPreparation'
+import { prepareFiscalCreditPreparation, validateFiscalCreditPreparationRecord, fiscalCreditPreparationWire, validateFiscalCreditPreparationWire } from '../../supabase/functions/_shared/fiscalCreditPreparation'
+import { createFiscalClient } from '../lib/fiscalClient'
 const empty = { servicioDesde: null, servicioHasta: null, vencimientoPago: null }
 const periods = { servicioDesde: '20261002', servicioHasta: '20261019', vencimientoPago: '20261027' }
 async function recordFixture() {
@@ -13,6 +14,27 @@ async function recordFixture() {
     propuesta: { canonico: f.proposal.canonico, sha256: f.proposal.sha256 }, emision_habilitada: false, reintegro_habilitado: false, reposicion_habilitada: false }
   return { ...f, preparation, packet }
 }
+it.each(['DATOS_NC_PREPARADOS', 'CANCELADA'])('wire cerrado conserva %s y permite lectura cliente sin storage', async estado => {
+  const f = await recordFixture(), record = await validateFiscalCreditPreparationRecord({ ...f.packet, estado }, f.source, f.proposal)
+  const wire = fiscalCreditPreparationWire(record)
+  expect(wire).not.toHaveProperty('propuesta'); expect(wire.preparacion).not.toHaveProperty('datos')
+  expect(await validateFiscalCreditPreparationWire(wire, f.source, f.proposal)).toEqual(record)
+  const getItem = vi.fn(() => null), setItem = vi.fn(), send = vi.fn(async () => ({ version: 1, entorno: 'HOMOLOGACION', emision_habilitada: false, resultado: wire }))
+  const client = createFiscalClient(f.scope, { storage: { getItem, setItem }, send })
+  expect(await client.credits.preparation(f.source, f.proposal)).toEqual(record)
+  expect(send.mock.calls).toHaveLength(1); expect(getItem).not.toHaveBeenCalled(); expect(setItem).not.toHaveBeenCalled()
+})
+it('cliente sólo acepta null confirmado; rechaza wire con permisos, datos extra o identidad distinta', async () => {
+  const f = await recordFixture(), record = await validateFiscalCreditPreparationRecord(f.packet, f.source, f.proposal), wire = fiscalCreditPreparationWire(record)
+  const send = vi.fn<(command: Record<string, unknown>) => Promise<unknown>>(async () => ({ version: 1, entorno: 'HOMOLOGACION', emision_habilitada: false, resultado: null }))
+  const client = createFiscalClient(f.scope, { storage: { getItem: () => null, setItem: () => undefined }, send })
+  expect(await client.credits.preparation(f.source, f.proposal)).toBeNull()
+  for (const value of [undefined, { ...wire, extra: true }, { ...wire, emision_habilitada: true }, { ...wire, contexto: { ...wire.contexto, solicitud_id: crypto.randomUUID() } },
+    { ...wire, preparacion: { ...wire.preparacion, datos: record.preparacion.datos } }]) {
+    send.mockResolvedValueOnce({ version: 1, entorno: 'HOMOLOGACION', emision_habilitada: false, resultado: value })
+    await expect(client.credits.preparation(f.source, f.proposal)).rejects.toThrow('FISCAL_NC_CLIENTE_NO_CONFIRMADO')
+  }
+})
 it.each(['DATOS_NC_PREPARADOS', 'CANCELADA'])('recupera evidencia histórica %s sin conceder efectos', async estado => {
   const f = await recordFixture(), result = await validateFiscalCreditPreparationRecord({ ...f.packet, estado }, f.source, f.proposal)
   expect(result.estado).toBe(estado); expect(result.preparacion.canonico).toBe(f.preparation.canonico)

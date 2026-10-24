@@ -1,4 +1,5 @@
 import { loadFiscalRepresentation } from './fiscalRepresentationService.ts'
+import { fiscalCreditPreparationWire } from './fiscalCreditPreparation.ts'
 import { saveFiscalCreditDraft, loadFiscalCreditDraft, cancelFiscalCreditDraft, loadFiscalCreditHistory, loadFiscalCreditCommercialSource, loadFiscalCreditUnits, loadFiscalCreditContext, loadFiscalCreditPreparation, saveFiscalCreditPreparation } from './fiscalCreditDraftService.ts'
 import { fiscalCreditUnitsWire } from './fiscalCreditUnits.ts'
 import { fiscalCreditHistoryWire } from './fiscalCreditHistory.ts'
@@ -186,7 +187,8 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
       let result:unknown
       if(cmd.accion==='PREPARACION_NC'||cmd.accion==='GUARDAR_PREPARACION_NC'){
         const scope={saleId:cmd.venta_id,operationId:cmd.operacion_origen_id,requestId:cmd.solicitud_id,sha256:cmd.propuesta_sha256}
-        result=cmd.accion==='PREPARACION_NC'?await loadFiscalCreditPreparation(admin,token,scope):await saveFiscalCreditPreparation(admin,token,scope,cmd.contexto_sha256,cmd.entrada)
+        const stored=cmd.accion==='PREPARACION_NC'?await loadFiscalCreditPreparation(admin,token,scope):await saveFiscalCreditPreparation(admin,token,scope,cmd.contexto_sha256,cmd.entrada)
+        result=stored?fiscalCreditPreparationWire(stored):null
       }else if(cmd.accion==='CONTEXTO_NC'){
         result=await loadFiscalCreditContext(admin,token,{saleId:cmd.venta_id,operationId:cmd.operacion_origen_id,requestId:cmd.solicitud_id,sha256:cmd.propuesta_sha256})
       }else if(cmd.accion==='UNIDADES_NC'){

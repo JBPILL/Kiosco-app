@@ -22,6 +22,7 @@ export interface FiscalCreditPreparation {
 }
 export interface FiscalCreditPreparationRecord {
   version: 1; estado: 'DATOS_NC_PREPARADOS' | 'CANCELADA'; preparacion: Readonly<FiscalCreditPreparation>
+  contexto: Readonly<FiscalCreditContext>
   emision_habilitada: false; reintegro_habilitado: false; reposicion_habilitada: false
 }
 const fail = (): never => { throw new Error('FISCAL_PREPARACION_NC_INVALIDA') }
@@ -61,7 +62,23 @@ export async function validateFiscalCreditPreparationRecord(input: unknown, sour
       servicioDesde: fields.servicioDesde, servicioHasta: fields.servicioHasta, vencimientoPago: fields.vencimientoPago,
     })
     if (prepared.canonico !== stored.canonico || prepared.sha256 !== stored.sha256) return fail()
-    return freeze({ version: 1, estado: value.estado, preparacion: prepared, emision_habilitada: false, reintegro_habilitado: false, reposicion_habilitada: false })
+    return freeze({ version: 1, estado: value.estado, contexto: context, preparacion: prepared, emision_habilitada: false, reintegro_habilitado: false, reposicion_habilitada: false })
+  } catch { return fail() }
+}
+/** Transporte sin duplicar datos derivados ni propuesta privada. */
+export function fiscalCreditPreparationWire(record: Readonly<FiscalCreditPreparationRecord>) {
+  return { version: record.version, estado: record.estado, contexto: record.contexto,
+    preparacion: { canonico: record.preparacion.canonico, sha256: record.preparacion.sha256 },
+    emision_habilitada: record.emision_habilitada, reintegro_habilitado: record.reintegro_habilitado, reposicion_habilitada: record.reposicion_habilitada }
+}
+export async function validateFiscalCreditPreparationWire(input: unknown, source: Readonly<FiscalRepresentation>, draft: Readonly<FiscalCreditDraft>): Promise<Readonly<FiscalCreditPreparationRecord>> {
+  try {
+    const raw: unknown = structuredClone(input), original = structuredClone(source), proposal = structuredClone(draft)
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return fail()
+    const value = raw as Record<string, unknown>, keys = ['version', 'estado', 'contexto', 'preparacion', 'emision_habilitada', 'reintegro_habilitado', 'reposicion_habilitada']
+    if (Object.keys(value).length !== keys.length || keys.some(key => !Object.hasOwn(value, key))) return fail()
+    return await validateFiscalCreditPreparationRecord({ ...value, entorno: 'HOMOLOGACION', venta_id: original.venta_id, operacion_origen_id: original.operacion_id,
+      solicitud_id: proposal.datos.solicitud_id, propuesta_sha256: proposal.sha256, propuesta: { canonico: proposal.canonico, sha256: proposal.sha256 } }, original, proposal)
   } catch { return fail() }
 }
 async function sha(value: string): Promise<string> {
