@@ -1355,11 +1355,46 @@ try {
   await start(b);const nc041_authWaiting=capture(nc041_auth.verify(b));await waitForLock(observer,b);await a.query('COMMIT')
   assert.equal((await nc041_authWaiting).error?.code,'42501');await b.query('ROLLBACK')
   cases.push('041_Auth_reasignado_esperando_no_transfiere_permiso_NC')
+  const creditIntentInstalledAfterCase=cases.length
+  for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/042_fiscal_credit_send_intent.sql'),'utf8'))
+  async function nc042Fixture(point,ttl=300000){
+    const f=await nc041Fixture(point,ttl),intent=randomUUID()
+    await start(a);const ack=await f.approve(a);await a.query('COMMIT')
+    const send=async(client,id=intent)=>(await client.query('SELECT registrar_intencion_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8,$9,22,clock_timestamp()) v',[f.auth,f.sale,f.operation,f.proposal.id,f.proposal.sha,ack.aprobacion.solicitud_sha256,f.review,f.permit,id])).rows[0].v
+    return{...f,intent,send}
+  }
+  const nc042_same=await nc042Fixture(224)
+  await start(a);assert.equal((await nc042_same.send(a)).nuevo_envio,true)
+  await start(b);const nc042_duplicate=capture(nc042_same.send(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc042_duplicate).value.nuevo_envio,false);await b.query('COMMIT')
+  cases.push('042_dos_workers_mismo_intento_un_solo_permiso_nuevo_envio')
+  const nc042_rollback=await nc042Fixture(225)
+  await start(a);await nc042_rollback.send(a)
+  await start(b);const nc042_afterRollback=capture(nc042_rollback.send(b));await waitForLock(observer,b);await a.query('ROLLBACK')
+  assert.equal((await nc042_afterRollback).value.nuevo_envio,true);await b.query('COMMIT')
+  cases.push('042_rollback_no_consume_permiso_ni_deja_intento_fantasma')
+  const nc042_revoked=await nc042Fixture(226)
+  await a.query('BEGIN');await a.query("INSERT INTO fiscal_nc_permisos_revocados_homologacion(permiso_id,motivo) VALUES($1,'Ensayo privado')",[nc042_revoked.permit])
+  await start(b);const nc042_revocation=capture(nc042_revoked.send(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc042_revocation).error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('042_revocacion_gana_no_consume_permiso_ni_crea_intento')
+  const nc042_expired=await nc042Fixture(227,1000)
+  await a.query('BEGIN');await a.query('SELECT * FROM fiscal_nc_series_homologacion WHERE cuit_emisor=$1 AND punto_venta=227 FOR UPDATE',[issuer])
+  await start(b);const nc042_expiry=capture(nc042_expired.send(b));await waitForLock(observer,b);await observer.query('SELECT pg_sleep(1.2)');await a.query('COMMIT')
+  assert.equal((await nc042_expiry).error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('042_permiso_vence_esperando_serie_no_crea_intento')
+  const nc042_collisionA=await nc042Fixture(228),nc042_collisionB=await nc042Fixture(229,1000)
+  await start(a);await nc042_collisionA.send(a)
+  await start(b);const nc042_collision=capture(nc042_collisionB.send(b,nc042_collisionA.intent));await waitForLock(observer,b);await observer.query('SELECT pg_sleep(1.2)');await a.query('ROLLBACK')
+  assert.equal((await nc042_collision).error?.code,'42501');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_intenciones_homologacion WHERE solicitud_id IN ($1,$2)',[nc042_collisionA.proposal.id,nc042_collisionB.proposal.id])).rows[0].n,0)
+  cases.push('042_UUID_global_rollback_revalida_permiso_despues_de_esperar_INSERT')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
     creditOwnerReviewInstalledAfterCase,postCreditOwnerReviewCaseCount:cases.length-creditOwnerReviewInstalledAfterCase,
+    creditIntentInstalledAfterCase,postCreditIntentCaseCount:cases.length-creditIntentInstalledAfterCase,
     creditPermissionInstalledAfterCase,postCreditPermissionCaseCount:cases.length-creditPermissionInstalledAfterCase,
     cases,caseCount:cases.length,requiredPresentationInstalledAfterCase,postRequiredPresentationCaseCount:requiredPresentationInstalledAfterCase===null?0:cases.length-requiredPresentationInstalledAfterCase,creditDraftInstalledAfterCase,postCreditDraftCaseCount:creditDraftInstalledAfterCase===null?0:cases.length-creditDraftInstalledAfterCase,creditRecoveryInstalledAfterCase,postCreditRecoveryCaseCount:creditRecoveryInstalledAfterCase===null?0:cases.length-creditRecoveryInstalledAfterCase,creditCommercialInstalledAfterCase,postCreditCommercialCaseCount:creditCommercialInstalledAfterCase===null?0:cases.length-creditCommercialInstalledAfterCase,checkoutUnitsInstalledAfterCase,postCheckoutUnitsCaseCount:checkoutUnitsInstalledAfterCase===null?0:cases.length-checkoutUnitsInstalledAfterCase,creditBindingInstalledAfterCase,postCreditBindingCaseCount:creditBindingInstalledAfterCase===null?0:cases.length-creditBindingInstalledAfterCase,creditContextInstalledAfterCase,postCreditContextCaseCount:creditContextInstalledAfterCase===null?0:cases.length-creditContextInstalledAfterCase,creditContextSourceInstalledAfterCase,postCreditContextSourceCaseCount:creditContextSourceInstalledAfterCase===null?0:cases.length-creditContextSourceInstalledAfterCase,creditDataInstalledAfterCase,postCreditDataCaseCount:creditDataInstalledAfterCase===null?0:cases.length-creditDataInstalledAfterCase,creditNumberInstalledAfterCase,postCreditNumberCaseCount:creditNumberInstalledAfterCase===null?0:cases.length-creditNumberInstalledAfterCase,creditRequestSourceInstalledAfterCase,postCreditRequestSourceCaseCount:creditRequestSourceInstalledAfterCase===null?0:cases.length-creditRequestSourceInstalledAfterCase,creditNumberSourceInstalledAfterCase,postCreditNumberSourceCaseCount:creditNumberSourceInstalledAfterCase===null?0:cases.length-creditNumberSourceInstalledAfterCase,creditTicketInstalledAfterCase,postCreditTicketCaseCount:creditTicketInstalledAfterCase===null?0:cases.length-creditTicketInstalledAfterCase,externalRequests:0,invoicesIssued:0}
 } catch(error) {

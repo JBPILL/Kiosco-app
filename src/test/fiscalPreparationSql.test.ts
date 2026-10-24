@@ -1804,6 +1804,49 @@ async function creditPermissionFixture(){
  const verify=async(who=actor,revision=f.reviewId)=>(await db.query<{data:Record<string,unknown>}>('SELECT verificar_permiso_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,f.body.sha256,revision,permit])).rows[0].data
  return{...f,permit,seed,verify}
 }
+async function creditIntentFixture(){
+ const f=await creditPermissionFixture()
+ await db.exec('RESET ROLE');const sql=readFileSync('supabase/pilot-fiscal/042_fiscal_credit_send_intent.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
+ await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
+ const attempt=crypto.randomUUID()
+ const read=async(who=actor)=>(await db.query<{data:Record<string,unknown>|null}>('SELECT cargar_intencion_nc_homologacion($1,$2,$3,$4,$5) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256])).rows[0].data
+ const start=async(id=attempt,last:number|null=22,when:string|null=new Date().toISOString(),permit=f.permit,revision=f.reviewId)=>(await db.query<{data:Record<string,unknown>}>('SELECT registrar_intencion_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) data',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,f.body.sha256,revision,permit,id,last,when])).rows[0].data
+ return{...f,attempt,readIntent:read,startIntent:start}
+}
+it('042 crea intención y consume permiso atómicamente; sólo ACK nuevo concede una vez',async()=>{
+ const f=await creditIntentFixture(),before=await preparationEffects();expect(await f.readIntent()).toBeNull()
+ await denied(()=>f.startIntent());await f.seed()
+ const ack=await f.startIntent();expect(ack).toMatchObject({version:1,estado:'ENVIO_INCIERTO',intento_id:f.attempt,permiso_id:f.permit,revision_id:f.reviewId,nuevo_envio:true,emision_habilitada:false})
+ const recovered=await f.readIntent();expect(recovered).toEqual({...ack,nuevo_envio:false})
+ expect(await f.startIntent(f.attempt,null,null)).toEqual(recovered)
+ await denied(()=>f.startIntent(crypto.randomUUID()));await denied(()=>f.startIntent(f.attempt,null,null,crypto.randomUUID()))
+ expect(await f.readIntent()).toEqual(recovered);expect(await preparationEffects()).toEqual(before)
+})
+it.each(['ultimo','fecha','futuro','infinito','deshabilitado','revocado'] as const)('042 rechazo %s no consume ni crea estado parcial',async(reason)=>{
+ const f=await creditIntentFixture();await f.seed(reason==='deshabilitado'?{habilitado:false}:{})
+ if(reason==='revocado')await admin("INSERT INTO fiscal_nc_permisos_revocados_homologacion(permiso_id,motivo) VALUES($1,'Ensayo')",[f.permit])
+ const when=reason==='fecha'?new Date(Date.now()-31000).toISOString():reason==='futuro'?new Date(Date.now()+60000).toISOString():reason==='infinito'?'infinity':new Date().toISOString()
+ await denied(()=>f.startIntent(f.attempt,reason==='ultimo'?23:22,when));expect(await f.readIntent()).toBeNull()
+})
+it('042 rollback restaura permiso disponible sin dejar intención fantasma',async()=>{
+ const f=await creditIntentFixture();await f.seed();await db.exec('SAVEPOINT lost_intent')
+ expect((await f.startIntent()).nuevo_envio).toBe(true);await db.exec('ROLLBACK TO SAVEPOINT lost_intent; RELEASE SAVEPOINT lost_intent')
+ expect(await f.readIntent()).toBeNull();expect((await f.startIntent()).nuevo_envio).toBe(true)
+})
+it('042 incertidumbre se recupera tras revocar permiso/emisor sin volver a conceder envío',async()=>{
+ const f=await creditIntentFixture();await f.seed();const ack=await f.startIntent()
+ await admin("INSERT INTO fiscal_nc_permisos_revocados_homologacion(permiso_id,motivo) VALUES($1,'Ensayo')",[f.permit]);await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false')
+ expect(await f.readIntent()).toEqual({...ack,nuevo_envio:false});expect(await f.startIntent(f.attempt,null,null)).toEqual({...ack,nuevo_envio:false})
+ await denied(()=>f.startIntent(crypto.randomUUID()))
+})
+it('042 identidad original e intención inmutable no se sustituyen desde navegador o perfil',async()=>{
+ const f=await creditIntentFixture();await f.seed();await f.startIntent()
+ const other=crypto.randomUUID();await admin('INSERT INTO auth.users VALUES($1)',[other]);await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner])
+ await denied(()=>f.readIntent());await denied(()=>f.readIntent(other))
+ for(const role of ['anon','authenticated','service_role']){await db.exec(`SET ROLE ${role}`);await denied(()=>db.exec('SELECT * FROM fiscal_nc_intenciones_homologacion'))}
+ for(const role of ['anon','authenticated']){await db.exec(`SET ROLE ${role}`);await denied(()=>f.readIntent());await denied(()=>f.startIntent())}
+ await db.exec('RESET ROLE');await denied(()=>db.exec('DELETE FROM fiscal_nc_intenciones_homologacion'));await denied(()=>db.exec('UPDATE fiscal_nc_intenciones_homologacion SET actor_auth_id=NULL'));await db.exec('SET ROLE service_role')
+})
 it('041 instalación vacía no concede permiso; fila exacta sólo acredita verificación sin envío',async()=>{
  const f=await creditPermissionFixture(),before=await preparationEffects()
  await denied(()=>f.verify());await f.seed()
