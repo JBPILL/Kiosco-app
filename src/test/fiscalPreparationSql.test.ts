@@ -1738,6 +1738,74 @@ async function creditPreparationTransport(invoice:1|6|11=11,concept:1|2|3=1){
  const make=()=>createFiscalClient({authId:actor,kioskId:kid,saleId:sale},{storage,send})
  return{...f,api,local,commands,send,make,client:make()}
 }
+async function installCreditNumbers(){
+ await db.exec('RESET ROLE');const sql=readFileSync('supabase/pilot-fiscal/036_fiscal_credit_reservation.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
+ await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
+}
+async function creditNumberedFixture(invoice:1|6|11=11,concept:1|2|3=1){
+ const f=await creditPreparationFixture(invoice,concept);await f.savePreparation();await installCreditNumbers()
+ const reservationId=crypto.randomUUID()
+ const reserve=async(id=reservationId,last=22,when=new Date().toISOString())=>(await db.query<{data:Record<string,unknown>}>(`SELECT reservar_cuerpo_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8,$9) data`,[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,f.prepared.sha256,id,last,when])).rows[0].data
+ const read=async()=>(await db.query<{data:Record<string,unknown>|null}>('SELECT cargar_reserva_nc_homologacion($1,$2,$3,$4,$5) data',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256])).rows[0].data
+ return{...f,reservationId,reserve,read}
+}
+it('036 dos casos parciales distintos de la misma serie no avanzan sobre reserva pendiente',async()=>{
+ const f=await boundCreditFixture(true,true);await installCreditBinding();await installCreditContext();await seedCreditCatalog();await installCreditContextSource();await installCreditPreparation();await installCreditNumbers()
+ const {validateFiscalCreditContext}=await import('../../supabase/functions/_shared/fiscalCreditContext')
+ const {prepareFiscalCreditPreparation}=await import('../../supabase/functions/_shared/fiscalCreditPreparation')
+ const entry={servicioDesde:null,servicioHasta:null,vencimientoPago:null},prepared: {id:string;sha:string;dataSha:string}[]=[]
+ for(let n=0;n<2;n++){
+  const proposal=await f.make({...f.draft,solicitud_id:crypto.randomUUID(),lineas:[{...f.draft.lineas[0],cantidad:'0.250',importe:'62.00'}],importes:{...f.draft.importes,total:'62.00',neto:'62.00'}})
+  await f.write(proposal)
+  const raw=(await db.query<{data:unknown}>('SELECT cargar_contexto_nc_homologacion($1,$2,$3,$4,$5) data',[actor,sale,op,proposal.datos.solicitud_id,proposal.sha256])).rows[0].data
+  const context=await validateFiscalCreditContext(raw,f.source,proposal),data=await prepareFiscalCreditPreparation(f.source,proposal,context,entry)
+  await db.query('SELECT guardar_preparacion_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb)',[actor,sale,op,proposal.datos.solicitud_id,proposal.sha256,data.datos.contexto_sha256,JSON.stringify(entry)])
+  prepared.push({id:proposal.datos.solicitud_id,sha:proposal.sha256,dataSha:data.sha256})
+ }
+ const reserve=(n:number,last:number)=>db.query('SELECT reservar_cuerpo_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8,clock_timestamp())',[actor,sale,op,prepared[n].id,prepared[n].sha,prepared[n].dataSha,crypto.randomUUID(),last])
+ await reserve(0,22);await denied(()=>reserve(1,23))
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_nc_reservas_homologacion')).rows[0].n).toBe(1);await db.exec('SET ROLE service_role')
+})
+it.each([[1,1],[6,1],[11,1],[11,2],[11,3]] as const)('036 reserva NC factura%i concepto%i genera cuerpo idéntico al contrato puro y recupera una identidad',async(invoice,concept)=>{
+ const f=await creditNumberedFixture(invoice,concept),before=await preparationEffects()
+ expect(await f.read()).toBeNull();const reservation=await f.reserve()
+ const {fiscalCreditPreparationWire,validateFiscalCreditPreparationRecord}=await import('../../supabase/functions/_shared/fiscalCreditPreparation')
+ const {prepareFiscalCreditRequest}=await import('../../supabase/functions/_shared/fiscalCreditRequest')
+ const stored=await validateFiscalCreditPreparationRecord(await f.readPreparation(),f.source,f.proposal)
+ const request=await prepareFiscalCreditRequest(f.source,f.proposal,fiscalCreditPreparationWire(stored),reservation)
+ await db.exec('RESET ROLE')
+ const persisted=(await db.query<{canonico:string;solicitud_sha256:string}>('SELECT canonico,solicitud_sha256 FROM fiscal_nc_reservas_homologacion WHERE solicitud_id=$1',[f.proposal.datos.solicitud_id])).rows[0]
+ await db.exec('SET ROLE service_role')
+ expect(persisted).toEqual({canonico:request.canonico,solicitud_sha256:request.sha256})
+ expect(await f.reserve()).toEqual(reservation);expect(await f.read()).toEqual(reservation)
+ expect(await preparationEffects()).toEqual(before)
+ await denied(()=>f.reserve(crypto.randomUUID()))
+ await denied(()=>db.query('SELECT cancelar_borrador_nc_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256]))
+})
+it.each(['antigua','futura','infinita','negativa','agotada'] as const)('036 rechaza consulta de numeración %s sin persistir reserva parcial',async(reason)=>{
+ const f=await creditNumberedFixture()
+ const when=reason==='antigua'?new Date(Date.now()-60000).toISOString():reason==='futura'?new Date(Date.now()+60000).toISOString():reason==='infinita'?'infinity':new Date().toISOString()
+ await denied(()=>f.reserve(undefined,reason==='negativa'?-1:reason==='agotada'?99999999:22,when))
+ expect(await f.read()).toBeNull()
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_nc_series_homologacion')).rows[0].n).toBe(0);await db.exec('SET ROLE service_role')
+})
+it('036 cancelación previa impide numeración; reserva histórica recupera con emisor/catálogo apagados',async()=>{
+ const f=await creditNumberedFixture();await db.exec('SAVEPOINT cancelled_case')
+ await db.query('SELECT cancelar_borrador_nc_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256])
+ await denied(()=>f.reserve());await db.exec('ROLLBACK TO SAVEPOINT cancelled_case; RELEASE SAVEPOINT cancelled_case')
+ const reservation=await f.reserve()
+ await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false');await admin('UPDATE fiscal_parametros_nc_homologacion SET habilitado=false')
+ expect(await f.reserve(undefined,-1,'infinity')).toEqual(reservation);expect(await f.read()).toEqual(reservation)
+})
+it('036 reserva privada inmutable, sin acceso de tablas/columnas ni helpers',async()=>{
+ const f=await creditNumberedFixture();await f.reserve()
+ for(const role of ['anon','authenticated','service_role']){
+  await db.exec(`SET ROLE ${role}`)
+  await denied(()=>db.query('SELECT numero FROM fiscal_nc_reservas_homologacion'))
+  await denied(()=>db.query('SELECT cuit_emisor FROM fiscal_nc_series_homologacion'))
+ }
+ await db.exec('RESET ROLE');await denied(()=>db.exec('UPDATE fiscal_nc_reservas_homologacion SET numero=24'));await denied(()=>db.exec('DELETE FROM fiscal_nc_reservas_homologacion'));await db.exec('SET ROLE service_role')
+})
 it.each([[1,1],[6,1],[11,1],[11,2],[11,3]] as const)('035 cliente–HTTP–servicio–SQL factura%i concepto%i guarda y recupera canónico exacto',async(invoice,concept)=>{
  const f=await creditPreparationTransport(invoice,concept),before=await preparationEffects()
  expect(await f.client.credits.preparation(f.source,f.proposal)).toBeNull()
