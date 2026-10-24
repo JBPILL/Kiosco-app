@@ -20,6 +20,10 @@ export interface FiscalCreditPreparationData {
 export interface FiscalCreditPreparation {
   version: 1; estado: 'PREPARACION_NC_NO_PERSISTIDA'; emision_habilitada: false; canonico: string; sha256: string; datos: Readonly<FiscalCreditPreparationData>
 }
+export interface FiscalCreditPreparationRecord {
+  version: 1; estado: 'DATOS_NC_PREPARADOS' | 'CANCELADA'; preparacion: Readonly<FiscalCreditPreparation>
+  emision_habilitada: false; reintegro_habilitado: false; reposicion_habilitada: false
+}
 const fail = (): never => { throw new Error('FISCAL_PREPARACION_NC_INVALIDA') }
 function canonical(value: unknown): string {
   return JSON.stringify(value, (_key, item: unknown) => {
@@ -27,6 +31,38 @@ function canonical(value: unknown): string {
     const record = item as Record<string, unknown>
     return Object.fromEntries(Object.keys(record).sort().map(key => [key, record[key]]))
   })
+}
+
+/** Verifica evidencia histórica de035; no acredita vigencia ni autoriza emitir. */
+export async function validateFiscalCreditPreparationRecord(input: unknown, source: Readonly<FiscalRepresentation>, draft: Readonly<FiscalCreditDraft>): Promise<Readonly<FiscalCreditPreparationRecord>> {
+  try {
+    const raw: unknown = structuredClone(input), original = structuredClone(source), proposal = structuredClone(draft)
+    const object = (entry: unknown, keys: readonly string[]): Record<string, unknown> => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return fail()
+      const value = entry as Record<string, unknown>
+      if (Object.keys(value).length !== keys.length || keys.some(key => !Object.hasOwn(value, key))) return fail()
+      return value
+    }
+    const value = object(raw, ['version', 'entorno', 'venta_id', 'operacion_origen_id', 'solicitud_id', 'propuesta_sha256', 'estado', 'preparacion', 'contexto', 'propuesta', 'emision_habilitada', 'reintegro_habilitado', 'reposicion_habilitada'])
+    if (value.version !== 1 || value.entorno !== 'HOMOLOGACION' || value.venta_id !== original.venta_id || value.operacion_origen_id !== original.operacion_id
+      || value.solicitud_id !== proposal.datos.solicitud_id || value.propuesta_sha256 !== proposal.sha256
+      || value.estado !== 'DATOS_NC_PREPARADOS' && value.estado !== 'CANCELADA'
+      || value.emision_habilitada !== false || value.reintegro_habilitado !== false || value.reposicion_habilitada !== false) return fail()
+    const storedProposal = object(value.propuesta, ['canonico', 'sha256']), stored = object(value.preparacion, ['canonico', 'sha256'])
+    if (storedProposal.canonico !== proposal.canonico || storedProposal.sha256 !== proposal.sha256 || typeof stored.canonico !== 'string'
+      || new TextEncoder().encode(stored.canonico).length > 131072 || typeof stored.sha256 !== 'string') return fail()
+    const parsed: unknown = JSON.parse(stored.canonico)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return fail()
+    const body: unknown = (parsed as Record<string, unknown>).datos
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return fail()
+    const fields = body as Record<string, unknown>
+    const context = await validateFiscalCreditContext(value.contexto, original, proposal)
+    const prepared = await prepareFiscalCreditPreparation(original, proposal, context, {
+      servicioDesde: fields.servicioDesde, servicioHasta: fields.servicioHasta, vencimientoPago: fields.vencimientoPago,
+    })
+    if (prepared.canonico !== stored.canonico || prepared.sha256 !== stored.sha256) return fail()
+    return freeze({ version: 1, estado: value.estado, preparacion: prepared, emision_habilitada: false, reintegro_habilitado: false, reposicion_habilitada: false })
+  } catch { return fail() }
 }
 async function sha(value: string): Promise<string> {
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)))
