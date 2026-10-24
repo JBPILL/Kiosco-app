@@ -690,3 +690,6 @@ El cargador NC exige guard antes de claves y callback previo al transporte autor
 
 ### 24/10/2026 — custodia NC explícita sin conversión de permiso de factura
 Custodia y fuente WSAA NC reciben FiscalCreditNumberBinding cerrado; usan credencial/huella/revision_emisor autorizadas por038/039. El descifrado PKCS8 privado común recibe parámetros explícitos, no un binding ficticio de factura. La firma se prepara antes del callback de permiso durable y el transporte sólo ocurre después de su ACK. Reutilizar primitivas de firma/transporte no concede autoridad ni habilita operación pública. Provisionamiento/uso real permanecen pendientes de autorización.
+
+### 24/10/2026 — recuperación NC antes de numerar y Auth único
+El proceso de numeración conserva Auth verificado originalmente y revalida autoridad por SQL038/039/036; no vuelve a inferir identidad desde perfil ni acepta binding del navegador. El cuerpo037 existente prevalece sobre gates de trabajo nuevo y sobre otro intento de reserva; gate backend/proyecto/actor permanecen obligatorios. Tras consulta/escritura incierta sólo se recupera por GET, sin repetir consulta/POST automáticamente. Otro trabajador puede ganar antes de fuente038: su cuerpo durable se recupera sin apropiación de reserva. Un cuerpo reservado es evidencia histórica y no factura/NC autorizada ni permiso de reintegro/reposición.

@@ -94,6 +94,8 @@ function workerFixture(){
  mapping.cargar_fuente_contexto_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
  mapping.cargar_fuente_cuerpo_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
  mapping.cargar_fuente_numeracion_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha','p_preparacion_sha']
+ mapping.reservar_cuerpo_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha','p_preparacion_sha','p_reserva_id','p_ultimo_autorizado','p_consultado_en']
+ mapping.coordinar_ta_nc_homologacion=['p_actor','p_venta','p_operacion','p_caso','p_sha','p_preparacion_sha','p_binding','p_accion','p_intento','p_generacion','p_cifrado']
  mapping.cargar_preparacion_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
  mapping.guardar_preparacion_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha','p_contexto_sha','p_entrada']
  mapping.cargar_fuente_comercial_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id'];mapping.cargar_historial_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_despues'];mapping.guardar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_canonico','p_sha'];mapping.cargar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id'];mapping.cancelar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
@@ -1772,6 +1774,47 @@ async function creditTicketFixture(){
  const call=async(action:string,id:string|null=null,generation:number|null=null,envelope:unknown=null,binding:unknown=source.binding)=>(await db.query<{data:Record<string,unknown>}>('SELECT coordinar_ta_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11::jsonb) data',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,f.prepared.sha256,JSON.stringify(binding),action,id,generation,envelope===null?null:JSON.stringify(envelope)])).rows[0].data
  return{...f,source,intent,cipher,call}
 }
+it.each(['normal','ack-reserva-perdido','recuperacion','gate-cerrado','gate-cambia','wsfe-falla','gate-tras-consulta','concurrente','carrera-fuente'] as const)('worker numeración NC %s usa Auth único, recuperación037 y reserva036',async(mode)=>{
+ const f=await creditTicketFixture();await installCreditRequestSource();f.api.getUser.mockClear()
+ const {prepareFiscalCreditNumber}=await import('../../supabase/functions/_shared/fiscalCreditNumberWorker')
+ const before=await preparationEffects(),flags:Record<string,string>={SUPABASE_URL:'https://acoyfwwmhaeruciyedri.supabase.co',ARCA_HOMO_BACKEND_ENABLED:'true',ARCA_HOMO_CREDIT_NUMBERING_ENABLED:'true'}
+ const key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']),keyId=crypto.randomUUID()
+ const keys={active:vi.fn(async()=>{if(mode==='gate-cambia')flags.ARCA_HOMO_CREDIT_NUMBERING_ENABLED='false';return{id:keyId,key}}),read:vi.fn(async()=>key)}
+ const wsaa=vi.fn(async(binding:typeof f.source.binding,_signal:AbortSignal,beforeSend:()=>Promise<void>)=>{
+  await beforeSend();return{entorno:'HOMOLOGACION' as const,servicio:'wsfe' as const,cuitEmisor:binding.cuit_emisor,credencialId:binding.credencial_id,certificadoSha256:binding.certificado_sha256,
+   expiresAt:Date.now()+3600000,token:'SYNTHETIC_NUMBER_TOKEN',sign:'SYNTHETIC_NUMBER_SIGN'}
+ })
+ const fetcher=vi.fn<typeof fetch>(async input=>{
+  const request=input as Request;expect(request.url).toBe('https://wswhomo.afip.gov.ar/wsfev1/service.asmx');expect(request.headers.get('SOAPAction')).toContain('FECompUltimoAutorizado')
+  if(mode==='wsfe-falla')throw new Error('SYNTHETIC_NETWORK_FAILURE')
+  if(mode==='gate-tras-consulta')flags.ARCA_HOMO_CREDIT_NUMBERING_ENABLED='false'
+  if(mode==='concurrente')await f.reserve(crypto.randomUUID())
+  return new Response(`<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><FECompUltimoAutorizadoResponse xmlns="http://ar.gov.afip.dif.FEV1/"><FECompUltimoAutorizadoResult><PtoVta>${f.source.binding.punto_venta}</PtoVta><CbteTipo>13</CbteTipo><CbteNro>22</CbteNro></FECompUltimoAutorizadoResult></FECompUltimoAutorizadoResponse></s:Body></s:Envelope>`,{headers:{'Content-Type':'text/xml'}})
+ })
+ if(mode==='recuperacion'){await f.reserve();flags.ARCA_HOMO_CREDIT_NUMBERING_ENABLED='false'}
+ if(mode==='gate-cerrado')flags.ARCA_HOMO_CREDIT_NUMBERING_ENABLED='false'
+ const base=f.api.rpc.getMockImplementation()!
+ if(mode==='ack-reserva-perdido'||mode==='carrera-fuente')f.api.rpc.mockImplementation(async(name,args)=>{
+  const result=await base(name,args)
+  if(mode==='carrera-fuente'&&name==='cargar_fuente_cuerpo_nc_homologacion'&&result.data===null&&!result.error)await f.reserve(crypto.randomUUID())
+  if(mode==='ack-reserva-perdido'&&name==='reservar_cuerpo_nc_homologacion'&&!result.error)throw new Error('SYNTHETIC_ACK_LOST')
+  return result
+ })
+ const run=()=>prepareFiscalCreditNumber({admin:f.api.admin,readSecret:name=>flags[name],keys,wsaa,fetcher},'SYNTHETIC_JWT',f.scope,f.prepared.sha256,f.reservationId)
+ if(mode==='gate-cerrado'||mode==='gate-cambia'||mode==='wsfe-falla'||mode==='gate-tras-consulta'){
+  await expect(run()).rejects.toThrow('FISCAL_NUMERACION_NC_NO_CONFIRMADA')
+  expect(fetcher).toHaveBeenCalledTimes(mode==='wsfe-falla'||mode==='gate-tras-consulta'?1:0)
+  expect(wsaa).toHaveBeenCalledTimes(mode==='wsfe-falla'||mode==='gate-tras-consulta'?1:0)
+  expect(await f.read()).toBeNull()
+ }else{
+  const result=await run();expect(result.estado).toBe('CUERPO_NC_RESERVADO');expect(result.datos.solicitud.numero).toBe(23);expect(result.emision_habilitada).toBe(false)
+  expect(fetcher).toHaveBeenCalledTimes(mode==='recuperacion'||mode==='carrera-fuente'?0:1);expect(wsaa).toHaveBeenCalledTimes(mode==='recuperacion'||mode==='carrera-fuente'?0:1)
+  if(mode!=='recuperacion'&&mode!=='concurrente'&&mode!=='carrera-fuente'){flags.ARCA_HOMO_CREDIT_NUMBERING_ENABLED='false';expect(await run()).toEqual(result)}
+ }
+ expect(f.api.getUser).toHaveBeenCalledTimes(mode==='normal'||mode==='ack-reserva-perdido'?2:1)
+ expect(f.api.rpc.mock.calls.filter(([name])=>name==='reservar_cuerpo_nc_homologacion')).toHaveLength(mode==='normal'||mode==='ack-reserva-perdido'||mode==='concurrente'?1:0)
+ expect(await preparationEffects()).toEqual(before)
+})
 it.each(['normal','confirmar-perdido','iniciar-perdido','clave-falla'] as const)('039 loader cifrado integrado %s conserva exclusión y recuperación durable',async(mode)=>{
  const f=await creditTicketFixture(),before=await preparationEffects()
  const {createSharedFiscalCreditTicketLoader}=await import('../../supabase/functions/_shared/fiscalCreditSharedTickets')

@@ -4,10 +4,10 @@ import { createFiscalSupabaseAdmin, FISCAL_STAGING_URL } from '../../supabase/fu
 
 const secret='SYNTHETIC_PRIVATE_SERVICE_SECRET',actor=crypto.randomUUID()
 afterEach(()=>vi.useRealTimers())
-it('SDK permite coordinación privada TA NC en el destino Staging fijo', async () => {
+it.each(['coordinar_ta_nc_homologacion','reservar_cuerpo_nc_homologacion'])('SDK permite RPC privada NC %s en el destino Staging fijo', async name => {
   const fetcher = vi.fn<typeof fetch>(async () => Response.json({ estado: 'VACIO' }))
   const admin = createFiscalSupabaseAdmin(FISCAL_STAGING_URL, secret, fetcher)
-  expect((await admin.rpc('coordinar_ta_nc_homologacion', {})).error).toBeNull()
+  expect((await admin.rpc(name, {})).error).toBeNull()
   expect(fetcher).toHaveBeenCalledTimes(1)
 })
 it.each(['cargar_fuente_numeracion_nc_homologacion','cargar_fuente_cuerpo_nc_homologacion','guardar_preparacion_nc_homologacion','cargar_preparacion_nc_homologacion','cargar_fuente_contexto_nc_homologacion','cargar_unidades_nc_homologacion','cargar_fuente_comercial_nc_homologacion','cargar_historial_nc_homologacion','guardar_borrador_nc_homologacion','cargar_borrador_nc_homologacion','cancelar_borrador_nc_homologacion','cargar_representacion_fiscal_homologacion','autorizar_envio_presentado_homologacion','cargar_contexto_presentacion_homologacion','cargar_revision_presentacion_homologacion','aprobar_revision_presentacion_homologacion','cargar_presentacion_fiscal_homologacion','guardar_presentacion_fiscal_homologacion','cargar_observacion_fiscal_homologacion','autorizar_conciliacion_revisada_homologacion','registrar_conciliacion_revisada_homologacion','cargar_fuente_correccion_rechazo_homologacion','corregir_rechazo_fiscal_homologacion','consultar_correccion_rechazo_homologacion','sustituir_reserva_fiscal_homologacion','consultar_sustitucion_fiscal_homologacion','cancelar_preparacion_fiscal_homologacion','consultar_cancelacion_preparacion_homologacion','cargar_diagnostico_fiscal_homologacion','registrar_respuesta_emision_homologacion','cargar_respuesta_emision_homologacion','cargar_constancia_fiscal_homologacion','cargar_revision_fiscal_homologacion','aprobar_revision_fiscal_homologacion','registrar_envio_revisado_homologacion'])('RPC de revisión %s usa sólo el host privado previsto',async name=>{

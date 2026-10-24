@@ -4,6 +4,7 @@ import { withFiscalDeadline } from './fiscalVoucherXml.ts'
 
 export const FISCAL_STAGING_URL='https://acoyfwwmhaeruciyedri.supabase.co'
 const rpcNames=new Set([
+  'reservar_cuerpo_nc_homologacion',
   'coordinar_ta_nc_homologacion',
   'cargar_fuente_numeracion_nc_homologacion',
   'cargar_fuente_cuerpo_nc_homologacion',
