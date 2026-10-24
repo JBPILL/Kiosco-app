@@ -1804,6 +1804,34 @@ async function creditPermissionFixture(){
  const verify=async(who=actor,revision=f.reviewId)=>(await db.query<{data:Record<string,unknown>}>('SELECT verificar_permiso_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,f.body.sha256,revision,permit])).rows[0].data
  return{...f,permit,seed,verify}
 }
+async function creditSendSourceFixture(){
+ const f=await creditIntentFixture()
+ await db.exec('RESET ROLE');const sql=readFileSync('supabase/pilot-fiscal/043_fiscal_credit_send_source.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
+ await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
+ const load=async(who=actor,hash=f.body.sha256,review=f.reviewId,permit=f.permit)=>(await db.query<{data:{binding:Record<string,unknown>;cuerpo:unknown;permiso:unknown}}>('SELECT cargar_fuente_envio_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,hash,review,permit])).rows[0].data
+ return{...f,load}
+}
+it('043 fuente de envío exige permiso exacto y entrega finalidad NC propia sin consumirlo',async()=>{
+ const f=await creditSendSourceFixture(),before=await preparationEffects();await denied(()=>f.load());await f.seed()
+ const result=await f.load();expect(result.binding).toMatchObject({version:1,entorno:'HOMOLOGACION',servicio:'wsfe',finalidad:'ENVIO_NC',actor_auth_id:actor,solicitud_id:f.proposal.datos.solicitud_id,solicitud_sha256:f.body.sha256,permiso_id:f.permit,revision_id:f.reviewId,numero:23,tipo_comprobante:13,emision_habilitada:false})
+ expect(result.binding).not.toHaveProperty('operacion_id');expect(result.binding.revision_parametros).toBeTypeOf('number')
+ expect(await f.readIntent()).toBeNull();expect(await f.load()).toEqual(result);expect(await preparationEffects()).toEqual(before)
+})
+it('043 intención existente impide obtener nueva fuente de envío; historia sigue recuperable',async()=>{
+ const f=await creditSendSourceFixture();await f.seed();await f.load();const ack=await f.startIntent()
+ await denied(()=>f.load());expect(await f.readIntent()).toEqual({...ack,nuevo_envio:false})
+})
+it.each(['actor','hash','revision','permiso','emisor','revocado','parametros'] as const)('043 fuente niega %s sin abrir envío ni alterar efectos',async(reason)=>{
+ const f=await creditSendSourceFixture();await f.seed();const before=await preparationEffects()
+ if(reason==='emisor')await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false')
+ if(reason==='revocado')await admin("INSERT INTO fiscal_nc_permisos_revocados_homologacion(permiso_id,motivo) VALUES($1,'Ensayo')",[f.permit])
+ if(reason==='parametros')await admin('UPDATE fiscal_parametros_nc_homologacion SET habilitado=false')
+ await denied(()=>f.load(reason==='actor'?crypto.randomUUID():actor,reason==='hash'?'a'.repeat(64):f.body.sha256,reason==='revision'?crypto.randomUUID():f.reviewId,reason==='permiso'?crypto.randomUUID():f.permit))
+ expect(await f.readIntent()).toBeNull();expect(await preparationEffects()).toEqual(before)
+})
+it.each(['anon','authenticated'])('043 fuente privada no expone custodia al rol %s',async(role)=>{
+ const f=await creditSendSourceFixture();await f.seed();await db.exec('SET ROLE '+role);await denied(()=>f.load())
+})
 async function creditIntentFixture(){
  const f=await creditPermissionFixture()
  await db.exec('RESET ROLE');const sql=readFileSync('supabase/pilot-fiscal/042_fiscal_credit_send_intent.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')

@@ -1389,11 +1389,36 @@ try {
   assert.equal((await nc042_collision).error?.code,'42501');await b.query('ROLLBACK')
   assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_intenciones_homologacion WHERE solicitud_id IN ($1,$2)',[nc042_collisionA.proposal.id,nc042_collisionB.proposal.id])).rows[0].n,0)
   cases.push('042_UUID_global_rollback_revalida_permiso_despues_de_esperar_INSERT')
+  const creditSendSourceInstalledAfterCase=cases.length
+  for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/043_fiscal_credit_send_source.sql'),'utf8'))
+  async function nc043Fixture(point){
+    const f=await nc042Fixture(point)
+    await start(a);const ack=await f.approve(a);await a.query('COMMIT')
+    const load=async(client)=>(await client.query('SELECT cargar_fuente_envio_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8) v',[f.auth,f.sale,f.operation,f.proposal.id,f.proposal.sha,ack.aprobacion.solicitud_sha256,f.review,f.permit])).rows[0].v
+    return{...f,load}
+  }
+  const nc043_sent=await nc043Fixture(230)
+  await start(a);assert.equal((await nc043_sent.load(a)).binding.finalidad,'ENVIO_NC');await nc043_sent.send(a)
+  await start(b);const nc043_lateSource=capture(nc043_sent.load(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc043_lateSource).error?.code,'55000');await b.query('ROLLBACK')
+  cases.push('043_intencion_gana_fuente_tardia_no_prepara_segundo_envio')
+  const nc043_revoked=await nc043Fixture(231)
+  await a.query('BEGIN');await a.query("INSERT INTO fiscal_nc_permisos_revocados_homologacion(permiso_id,motivo) VALUES($1,'Ensayo privado')",[nc043_revoked.permit])
+  await start(b);const nc043_latePermission=capture(nc043_revoked.load(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc043_latePermission).error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('043_revocacion_esperando_no_expone_fuente_de_credenciales')
+  const nc043_auth=await nc043Fixture(232),nc043_other=randomUUID()
+  await observer.query('INSERT INTO auth.users VALUES($1)',[nc043_other])
+  await a.query('BEGIN');await a.query('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[nc043_other,nc043_auth.owner])
+  await start(b);const nc043_lateActor=capture(nc043_auth.load(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc043_lateActor).error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('043_Auth_reasignado_no_transfiere_fuente_de_envio_NC')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
     creditOwnerReviewInstalledAfterCase,postCreditOwnerReviewCaseCount:cases.length-creditOwnerReviewInstalledAfterCase,
+    creditSendSourceInstalledAfterCase,postCreditSendSourceCaseCount:cases.length-creditSendSourceInstalledAfterCase,
     creditIntentInstalledAfterCase,postCreditIntentCaseCount:cases.length-creditIntentInstalledAfterCase,
     creditPermissionInstalledAfterCase,postCreditPermissionCaseCount:cases.length-creditPermissionInstalledAfterCase,
     cases,caseCount:cases.length,requiredPresentationInstalledAfterCase,postRequiredPresentationCaseCount:requiredPresentationInstalledAfterCase===null?0:cases.length-requiredPresentationInstalledAfterCase,creditDraftInstalledAfterCase,postCreditDraftCaseCount:creditDraftInstalledAfterCase===null?0:cases.length-creditDraftInstalledAfterCase,creditRecoveryInstalledAfterCase,postCreditRecoveryCaseCount:creditRecoveryInstalledAfterCase===null?0:cases.length-creditRecoveryInstalledAfterCase,creditCommercialInstalledAfterCase,postCreditCommercialCaseCount:creditCommercialInstalledAfterCase===null?0:cases.length-creditCommercialInstalledAfterCase,checkoutUnitsInstalledAfterCase,postCheckoutUnitsCaseCount:checkoutUnitsInstalledAfterCase===null?0:cases.length-checkoutUnitsInstalledAfterCase,creditBindingInstalledAfterCase,postCreditBindingCaseCount:creditBindingInstalledAfterCase===null?0:cases.length-creditBindingInstalledAfterCase,creditContextInstalledAfterCase,postCreditContextCaseCount:creditContextInstalledAfterCase===null?0:cases.length-creditContextInstalledAfterCase,creditContextSourceInstalledAfterCase,postCreditContextSourceCaseCount:creditContextSourceInstalledAfterCase===null?0:cases.length-creditContextSourceInstalledAfterCase,creditDataInstalledAfterCase,postCreditDataCaseCount:creditDataInstalledAfterCase===null?0:cases.length-creditDataInstalledAfterCase,creditNumberInstalledAfterCase,postCreditNumberCaseCount:creditNumberInstalledAfterCase===null?0:cases.length-creditNumberInstalledAfterCase,creditRequestSourceInstalledAfterCase,postCreditRequestSourceCaseCount:creditRequestSourceInstalledAfterCase===null?0:cases.length-creditRequestSourceInstalledAfterCase,creditNumberSourceInstalledAfterCase,postCreditNumberSourceCaseCount:creditNumberSourceInstalledAfterCase===null?0:cases.length-creditNumberSourceInstalledAfterCase,creditTicketInstalledAfterCase,postCreditTicketCaseCount:creditTicketInstalledAfterCase===null?0:cases.length-creditTicketInstalledAfterCase,externalRequests:0,invoicesIssued:0}
