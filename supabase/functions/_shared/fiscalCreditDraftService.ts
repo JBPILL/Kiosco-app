@@ -1,6 +1,7 @@
 import type { FiscalAuthClient } from './fiscalWorkerAuthorization.ts'
 import { fiscalSha, fiscalUuid } from './fiscalReplacement.ts'
 import { validateFiscalRepresentation } from './fiscalRepresentation.ts'
+import type { FiscalRepresentation } from './fiscalRepresentation.ts'
 import { prepareFiscalCreditDraft, validateFiscalCreditDraftProposal } from './fiscalCreditDraft.ts'
 import { validateFiscalCreditContext } from './fiscalCreditContext.ts'
 import type { FiscalCreditContext } from './fiscalCreditContext.ts'
@@ -12,7 +13,7 @@ import { validateFiscalCreditCommercialSource } from './fiscalCreditCommercialSo
 import type { FiscalCreditCommercialSource } from './fiscalCreditCommercialSource.ts'
 import { validateFiscalCreditUnits } from './fiscalCreditUnits.ts'
 import type { FiscalCreditUnits } from './fiscalCreditUnits.ts'
-import { validateFiscalCreditPreparationRecord } from './fiscalCreditPreparation.ts'
+import { prepareFiscalCreditPreparation, validateFiscalCreditPreparationRecord } from './fiscalCreditPreparation.ts'
 import type { FiscalCreditPreparationRecord } from './fiscalCreditPreparation.ts'
 
 const fail = (): never => { throw new Error('FISCAL_NC_NO_CONFIRMADA') }
@@ -24,6 +25,10 @@ export async function loadFiscalCreditPreparation(admin: FiscalAuthClient, token
     const response = await admin.rpc('cargar_representacion_fiscal_homologacion', { p_actor_auth_id: id, p_venta_id: captured.saleId, p_operacion_id: captured.operationId })
     if (response.error) return fail()
     const source = await validateFiscalRepresentation(response.data, captured.saleId, captured.operationId)
+    return await readPreparation(admin, id, captured, source)
+  } catch { return fail() }
+}
+async function readPreparation(admin: FiscalAuthClient, id: string, captured: FiscalCreditDraftScope, source: Readonly<FiscalRepresentation>): Promise<Readonly<FiscalCreditPreparationRecord> | null> {
     const stored = await admin.rpc('cargar_preparacion_nc_homologacion', { p_actor_auth_id: id, p_venta_id: captured.saleId, p_operacion_origen_id: captured.operationId, p_id: captured.requestId, p_sha: captured.sha256 })
     if (stored.error) return fail()
     if (stored.data === null) return null
@@ -32,6 +37,42 @@ export async function loadFiscalCreditPreparation(admin: FiscalAuthClient, token
     const proposal = await validateFiscalCreditDraftProposal(source, (data as Record<string, unknown>).propuesta)
     if (proposal.datos.solicitud_id !== captured.requestId || proposal.sha256 !== captured.sha256) return fail()
     return await validateFiscalCreditPreparationRecord(data, source, proposal)
+}
+/** Una escritura como máximo; sólo la lectura durable confirma el resultado. */
+export async function saveFiscalCreditPreparation(admin: FiscalAuthClient, token: string, scope: FiscalCreditDraftScope, contextSha: string, input: unknown): Promise<Readonly<FiscalCreditPreparationRecord>> {
+  try {
+    const captured = { ...scope }, entry: unknown = structuredClone(input); validScope(captured)
+    if (!fiscalSha(contextSha)) return fail()
+    const id = await actor(admin, token, captured.saleId, captured.operationId)
+    const response = await admin.rpc('cargar_representacion_fiscal_homologacion', { p_actor_auth_id: id, p_venta_id: captured.saleId, p_operacion_id: captured.operationId })
+    if (response.error) return fail()
+    const source = await validateFiscalRepresentation(response.data, captured.saleId, captured.operationId)
+    const matches = (record: Readonly<FiscalCreditPreparationRecord>): boolean => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false
+      const value = entry as Record<string, unknown>, data = record.preparacion.datos.datos
+      return Object.keys(value).length === 3 && ['servicioDesde', 'servicioHasta', 'vencimientoPago'].every(key => Object.hasOwn(value, key))
+        && value.servicioDesde === data.servicioDesde && value.servicioHasta === data.servicioHasta && value.vencimientoPago === data.vencimientoPago
+        && record.preparacion.datos.contexto_sha256 === contextSha
+    }
+    const previous = await readPreparation(admin, id, captured, source)
+    if (previous) { if (!matches(previous)) return fail(); return previous }
+    const result = await admin.rpc('cargar_fuente_contexto_nc_homologacion', { p_actor_auth_id: id, p_venta_id: captured.saleId, p_operacion_origen_id: captured.operationId, p_id: captured.requestId, p_sha: captured.sha256 })
+    const raw: unknown = structuredClone(result.data)
+    if (result.error || !raw || typeof raw !== 'object' || Array.isArray(raw)) return fail()
+    const value = raw as Record<string, unknown>
+    if (Object.keys(value).length !== 2 || !Object.hasOwn(value, 'contexto') || !Object.hasOwn(value, 'propuesta')) return fail()
+    const proposal = await validateFiscalCreditDraftProposal(source, value.propuesta)
+    if (proposal.datos.solicitud_id !== captured.requestId || proposal.sha256 !== captured.sha256) return fail()
+    const context = await validateFiscalCreditContext(value.contexto, source, proposal)
+    const prepared = await prepareFiscalCreditPreparation(source, proposal, context, entry)
+    if (prepared.datos.contexto_sha256 !== contextSha) return fail()
+    try {
+      await admin.rpc('guardar_preparacion_nc_homologacion', { p_actor_auth_id: id, p_venta_id: captured.saleId, p_operacion_origen_id: captured.operationId,
+        p_id: captured.requestId, p_sha: captured.sha256, p_contexto_sha: contextSha, p_entrada: entry })
+    } catch { /* ACK incierto: recuperar misma identidad, sin repetir la escritura. */ }
+    const stored = await readPreparation(admin, id, captured, source)
+    if (!stored || !matches(stored) || stored.preparacion.sha256 !== prepared.sha256) return fail()
+    return stored
   } catch { return fail() }
 }
 /** Consulta por identidad mínima; el canónico se obtiene del caso durable privado. */

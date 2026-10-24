@@ -2,7 +2,7 @@ import { expect, it, vi } from 'vitest'
 import { fiscalCreditContextFixture } from './fixtures/fiscalCreditContext'
 import { prepareFiscalCreditPreparation } from '../../supabase/functions/_shared/fiscalCreditPreparation'
 import { validateFiscalCreditContext } from '../../supabase/functions/_shared/fiscalCreditContext'
-import { loadFiscalCreditPreparation } from '../../supabase/functions/_shared/fiscalCreditDraftService'
+import { loadFiscalCreditPreparation, saveFiscalCreditPreparation } from '../../supabase/functions/_shared/fiscalCreditDraftService'
 import type { FiscalAuthClient } from '../../supabase/functions/_shared/fiscalWorkerAuthorization'
 
 async function fixture() {
@@ -14,8 +14,73 @@ async function fixture() {
     propuesta: { canonico: f.proposal.canonico, sha256: f.proposal.sha256 }, emision_habilitada: false, reintegro_habilitado: false, reposicion_habilitada: false }
   const getUser = vi.fn<FiscalAuthClient['auth']['getUser']>(async () => ({ data: { user: { id: f.actor } }, error: null }))
   const rpc = vi.fn<FiscalAuthClient['rpc']>(async name => ({ data: name === 'cargar_representacion_fiscal_homologacion' ? f.wire : packet, error: null }))
-  return { ...f, packet, getUser, rpc, admin: { auth: { getUser }, rpc }, scope: { saleId: f.sale, operationId: f.operation, requestId: f.input.solicitud_id, sha256: f.proposal.sha256 } }
+  return { ...f, preparation, packet, getUser, rpc, admin: { auth: { getUser }, rpc }, scope: { saleId: f.sale, operationId: f.operation, requestId: f.input.solicitud_id, sha256: f.proposal.sha256 } }
 }
+const periods = { servicioDesde: null, servicioHasta: null, vencimientoPago: null }
+it('contexto cambió o entrada inválida impiden escribir tras ausencia confirmada', async () => {
+  const f = await fixture(), base = f.rpc.getMockImplementation()!
+  f.rpc.mockImplementation(async (name, args) => {
+    if (name === 'cargar_preparacion_nc_homologacion') return { data: null, error: null }
+    if (name === 'cargar_fuente_contexto_nc_homologacion') return { data: { contexto: f.packet.contexto, propuesta: f.packet.propuesta }, error: null }
+    return base(name, args)
+  })
+  for (const [hash, input] of [['a'.repeat(64), periods], [f.preparation.datos.contexto_sha256, { ...periods, extra: true }]] as const) {
+    await expect(saveFiscalCreditPreparation(f.admin, 'SYNTHETIC_JWT', f.scope, hash, input)).rejects.toThrow('FISCAL_NC_NO_CONFIRMADA')
+  }
+  expect(f.rpc.mock.calls.some(([name]) => name.startsWith('guardar'))).toBe(false)
+})
+it('captura períodos y scope antes de esperar Auth para recuperar', async () => {
+  const f = await fixture(), entry = { ...periods }; let finish!: (value: Awaited<ReturnType<FiscalAuthClient['auth']['getUser']>>) => void
+  f.getUser.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+  const pending = saveFiscalCreditPreparation(f.admin, 'SYNTHETIC_JWT', f.scope, f.preparation.datos.contexto_sha256, entry)
+  f.scope.requestId = crypto.randomUUID(); Object.assign(entry, { servicioDesde: '20261001' })
+  finish({ data: { user: { id: f.actor } }, error: null })
+  expect((await pending).estado).toBe('DATOS_NC_PREPARADOS')
+})
+it.each(['DATOS_NC_PREPARADOS', 'CANCELADA'])('guardar recupera primero %s sin catálogo ni nueva escritura', async estado => {
+  const f = await fixture(); f.packet.estado = estado
+  expect((await saveFiscalCreditPreparation(f.admin, 'SYNTHETIC_JWT', f.scope, f.preparation.datos.contexto_sha256, periods)).estado).toBe(estado)
+  expect(f.getUser).toHaveBeenCalledTimes(1); expect(f.rpc).toHaveBeenCalledTimes(2)
+})
+it.each(['ok', 'ackPerdido', 'errorRPC'])('guardado %s consulta durable y no repite escritura', async mode => {
+  const f = await fixture(); let saved = false
+  f.rpc.mockImplementation(async name => {
+    if (name === 'cargar_representacion_fiscal_homologacion') return { data: f.wire, error: null }
+    if (name === 'cargar_preparacion_nc_homologacion') return { data: saved ? f.packet : null, error: null }
+    if (name === 'cargar_fuente_contexto_nc_homologacion') return { data: { contexto: f.packet.contexto, propuesta: f.packet.propuesta }, error: null }
+    if (name === 'guardar_preparacion_nc_homologacion') {
+      saved = true
+      if (mode === 'ackPerdido') throw new Error('PRIVATE_ACK')
+      return { data: { ignored: true }, error: mode === 'errorRPC' ? { message: 'PRIVATE_RPC' } : null }
+    }
+    throw new Error('UNEXPECTED_RPC')
+  })
+  expect((await saveFiscalCreditPreparation(f.admin, 'SYNTHETIC_JWT', f.scope, f.preparation.datos.contexto_sha256, periods)).preparacion.sha256).toBe(f.preparation.sha256)
+  expect(f.getUser).toHaveBeenCalledTimes(1)
+  expect(f.rpc.mock.calls.map(([name]) => name)).toEqual(['cargar_representacion_fiscal_homologacion', 'cargar_preparacion_nc_homologacion', 'cargar_fuente_contexto_nc_homologacion', 'guardar_preparacion_nc_homologacion', 'cargar_preparacion_nc_homologacion'])
+  for (const [, args] of f.rpc.mock.calls) expect(args.p_actor_auth_id).toBe(f.actor)
+})
+it('rechaza cambiar períodos/contexto de una preparación existente sin escribir', async () => {
+  const f = await fixture()
+  for (const [hash, input] of [[f.preparation.datos.contexto_sha256, { ...periods, servicioDesde: '20261001' }], ['a'.repeat(64), periods]] as const) {
+    await expect(saveFiscalCreditPreparation(f.admin, 'SYNTHETIC_JWT', f.scope, hash, input)).rejects.toThrow('FISCAL_NC_NO_CONFIRMADA')
+  }
+  expect(f.rpc.mock.calls.some(([name]) => name.startsWith('guardar'))).toBe(false)
+})
+it('no escribe si la recuperación previa falla; no confirma ausencia posterior a escribir', async () => {
+  const f = await fixture(), base = f.rpc.getMockImplementation()!
+  f.rpc.mockImplementation(async (name, args) => name === 'cargar_preparacion_nc_homologacion' ? { data: null, error: { message: 'PRIVATE_READ' } } : base(name, args))
+  await expect(saveFiscalCreditPreparation(f.admin, 'SYNTHETIC_JWT', f.scope, f.preparation.datos.contexto_sha256, periods)).rejects.toThrow('FISCAL_NC_NO_CONFIRMADA')
+  expect(f.rpc.mock.calls.some(([name]) => name.startsWith('guardar'))).toBe(false)
+  f.rpc.mockClear()
+  f.rpc.mockImplementation(async (name, args) => {
+    if (name === 'cargar_preparacion_nc_homologacion' || name === 'guardar_preparacion_nc_homologacion') return { data: null, error: null }
+    if (name === 'cargar_fuente_contexto_nc_homologacion') return { data: { contexto: f.packet.contexto, propuesta: f.packet.propuesta }, error: null }
+    return base(name, args)
+  })
+  await expect(saveFiscalCreditPreparation(f.admin, 'SYNTHETIC_JWT', f.scope, f.preparation.datos.contexto_sha256, periods)).rejects.toThrow('FISCAL_NC_NO_CONFIRMADA')
+  expect(f.rpc.mock.calls.filter(([name]) => name.startsWith('guardar'))).toHaveLength(1)
+})
 it.each(['DATOS_NC_PREPARADOS', 'CANCELADA'])('recupera %s con Auth única y sin catálogo actual ni escrituras', async estado => {
   const f = await fixture(); f.packet.estado = estado
   expect((await loadFiscalCreditPreparation(f.admin, 'SYNTHETIC_JWT', f.scope))?.estado).toBe(estado)
