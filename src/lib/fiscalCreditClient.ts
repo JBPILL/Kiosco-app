@@ -52,6 +52,12 @@ export function createFiscalCreditClient(scope: FiscalClientScope, deps: FiscalC
     if (JSON.stringify(pendingPreparation()) !== JSON.stringify(record)) return fail()
     writePreparation(null)
   }
+  const retireCancelledPreparation = (record: Readonly<PendingFiscalCredit>): void => {
+    const prepared = pendingPreparation()
+    if (!prepared) return
+    if (prepared.operationId !== record.operationId || prepared.requestId !== record.requestId || prepared.proposalSha !== record.sha256) return fail()
+    retirePreparation(prepared)
+  }
   const readPreparation = async (source: Readonly<FiscalRepresentation>, proposal: Readonly<FiscalCreditDraft>) => {
     const result = await deps.invoke({ accion: 'PREPARACION_NC', venta_id: sale, operacion_origen_id: source.operacion_id,
       solicitud_id: proposal.datos.solicitud_id, propuesta_sha256: proposal.sha256 })
@@ -168,6 +174,7 @@ export function createFiscalCreditClient(scope: FiscalClientScope, deps: FiscalC
       try { return await deps.exclusive(async () => {
         const record = pending(); if (!record) return null
         const result = await read(record)
+        if (result?.estado === 'CANCELADA') retireCancelledPreparation(record)
         if (result && (result.estado === 'CANCELADA' || record.intention === 'GUARDAR')) retire(record)
         return result
       }) } catch { return fail() }
@@ -202,16 +209,17 @@ export function createFiscalCreditClient(scope: FiscalClientScope, deps: FiscalC
         if (!fiscalUuid(operationId) || !fiscalUuid(requestId) || !fiscalSha(sha256)) return fail()
         const record: PendingFiscalCredit = { version: 1, operationId, requestId, sha256, intention: 'CANCELAR' }
         return await deps.exclusive(async () => {
-          if (pendingPreparation()) return fail()
+          const preparation = pendingPreparation()
+          if (preparation && (preparation.operationId !== operationId || preparation.requestId !== requestId || preparation.proposalSha !== sha256)) return fail()
           const prior = pending()
           if (prior && (prior.operationId !== operationId || prior.requestId !== requestId || prior.sha256 !== sha256)) return fail()
           write(record)
           const before = await read(record)
-          if (before?.estado === 'CANCELADA') { retire(record); return before }
+          if (before?.estado === 'CANCELADA') { retireCancelledPreparation(record); retire(record); return before }
           try { await deps.invoke(command('CANCELAR_BORRADOR_NC', record)) } catch { /* SQL028 cierra también intentos sin caso confirmado. */ }
           const result = await read(record)
           if (!result || result.estado !== 'CANCELADA') return fail()
-          retire(record); return result
+          retireCancelledPreparation(record); retire(record); return result
         })
       } catch { return fail() }
     },

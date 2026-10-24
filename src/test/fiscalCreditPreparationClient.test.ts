@@ -15,7 +15,7 @@ async function fixture() {
   const wire = fiscalCreditPreparationWire(record), local = new Map<string, string>()
   const storage = { getItem: (key: string) => local.get(key) ?? null, setItem: (key: string, value: string) => { local.set(key, value) } }
   const state = { stored: false, visible: true }
-  const send = vi.fn(async (command: Record<string, unknown>) => {
+  const send = vi.fn<(command: Record<string, unknown>) => Promise<unknown>>(async (command: Record<string, unknown>) => {
     if (command.accion === 'GUARDAR_PREPARACION_NC') { state.stored = true; throw new Error('LOST_ACK') }
     return { version: 1, entorno: 'HOMOLOGACION', emision_habilitada: false, resultado: state.stored && state.visible ? wire : null }
   })
@@ -41,7 +41,7 @@ it('conserva pendiente tras recarga, bloquea cancelación y recupera sin POST', 
   await expect(f.client.credits.savePreparation(f.source, f.proposal, f.context, periods)).rejects.toThrow('FISCAL_NC_CLIENTE_NO_CONFIRMADO')
   expect(f.client.credits.pendingPreparation()?.preparationSha).toBe(f.prepared.sha256)
   const next = f.make(); f.send.mockClear()
-  await expect(next.credits.cancel(f.operation, f.input.solicitud_id, f.proposal.sha256)).rejects.toThrow('FISCAL_NC_CLIENTE_NO_CONFIRMADO')
+  await expect(next.credits.cancel(f.operation, crypto.randomUUID(), f.proposal.sha256)).rejects.toThrow('FISCAL_NC_CLIENTE_NO_CONFIRMADO')
   expect(f.send).not.toHaveBeenCalled()
   expect(await next.credits.recoverPreparation(f.source, f.proposal)).toBeNull()
   expect(next.credits.pendingPreparation()).not.toBeNull()
@@ -49,6 +49,39 @@ it('conserva pendiente tras recarga, bloquea cancelación y recupera sin POST', 
   expect(await next.credits.recoverPreparation(f.source, f.proposal)).toEqual(f.record)
   expect(next.credits.pendingPreparation()).toBeNull()
   expect(f.send.mock.calls.every(([command]) => command.accion === 'PREPARACION_NC')).toBe(true)
+})
+it.each(['confirmada', 'ACK perdido'])('cancelación %s cierra mismo caso antes de retirar preparación incierta', async mode => {
+  const f = await fixture(); f.state.visible = false
+  await expect(f.client.credits.savePreparation(f.source, f.proposal, f.context, periods)).rejects.toThrow('FISCAL_NC_CLIENTE_NO_CONFIRMADO')
+  const envelope = (resultado: unknown) => ({ version: 1, entorno: 'HOMOLOGACION', emision_habilitada: false, resultado })
+  let cancelled = false
+  f.send.mockImplementation(async command => {
+    if (command.accion === 'CANCELAR_BORRADOR_NC') {
+      expect(f.client.credits.pendingPreparation()).not.toBeNull()
+      expect(f.client.credits.pending()?.intention).toBe('CANCELAR')
+      cancelled = true
+      if (mode === 'ACK perdido') throw new Error('LOST_CANCEL_ACK')
+    }
+    return envelope({ ...f.ack, estado: cancelled ? 'CANCELADA' : 'SALDO_RESERVADO_NO_EMITIR' })
+  })
+  expect((await f.client.credits.cancel(f.operation, f.input.solicitud_id, f.proposal.sha256)).estado).toBe('CANCELADA')
+  expect(f.client.credits.pendingPreparation()).toBeNull(); expect(f.client.credits.pending()).toBeNull()
+})
+it('fallo al confirmar cancelación conserva ambos pendientes y permite recuperar tras recarga', async () => {
+  const f = await fixture(); f.state.visible = false
+  await expect(f.client.credits.savePreparation(f.source, f.proposal, f.context, periods)).rejects.toThrow('FISCAL_NC_CLIENTE_NO_CONFIRMADO')
+  let reads = 0
+  const envelope = (resultado: unknown) => ({ version: 1, entorno: 'HOMOLOGACION', emision_habilitada: false, resultado })
+  f.send.mockImplementation(async command => {
+    if (command.accion === 'BORRADOR_NC' && ++reads === 1) return envelope(f.ack)
+    throw new Error('UNCERTAIN_CANCEL')
+  })
+  await expect(f.client.credits.cancel(f.operation, f.input.solicitud_id, f.proposal.sha256)).rejects.toThrow('FISCAL_NC_CLIENTE_NO_CONFIRMADO')
+  expect(f.client.credits.pendingPreparation()).not.toBeNull(); expect(f.client.credits.pending()?.intention).toBe('CANCELAR')
+  f.send.mockImplementation(async () => envelope({ ...f.ack, estado: 'CANCELADA' }))
+  const next = f.make()
+  expect((await next.credits.recover())?.estado).toBe('CANCELADA')
+  expect(next.credits.pendingPreparation()).toBeNull(); expect(next.credits.pending()).toBeNull()
 })
 it('fallo de persistencia impide POST', async () => {
   const f = await fixture(), client = createFiscalClient(f.scope, { storage: { getItem: () => null, setItem: () => { throw new Error('QUOTA') } }, send: f.send })
