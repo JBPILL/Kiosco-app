@@ -27,7 +27,7 @@ async function fixture(concept: 1 | 2 = 1) {
     solicitud_sha256: request.sha256, preparacion_sha256: prepared.sha256, aprobada: true, vence_en: '2026-10-24T12:00:00Z', emision_habilitada: false } }, f.source, f.proposal)
   const pending = { version: 1 as const, operationId: f.operation, requestId: f.input.solicitud_id, proposalSha: f.proposal.sha256, preparationSha: prepared.sha256, bodySha: request.sha256, reviewId }
   const client = { pendingReview: vi.fn<FiscalCreditClient['pendingReview']>(() => null), review: vi.fn<FiscalCreditClient['review']>(async () => review),
-    recoverReview: vi.fn<FiscalCreditClient['recoverReview']>(async () => approved), approveReview: vi.fn<FiscalCreditClient['approveReview']>(async () => approved) }
+    recoverReview: vi.fn<FiscalCreditClient['recoverReview']>(async () => approved), approveReview: vi.fn<FiscalCreditClient['approveReview']>(async () => approved), retryReview: vi.fn<FiscalCreditClient['retryReview']>(async () => approved) }
   return { ...f, review, approved, pending, client, props: { source: f.source, proposal: f.proposal, preparation, client, sequence: 1 } }
 }
 const consult = () => fireEvent.click(screen.getByRole('button', { name: 'Consultar o recuperar revisión' }))
@@ -73,4 +73,13 @@ it('muestra períodos de servicios explícitos en orden día mes año', async ()
   const f = await fixture(2); render(<FiscalCreditReviewPanel {...f.props} />); consult()
   await screen.findByText('Servicios: 02/10/2026 al 19/10/2026 · Pago: 27/10/2026')
   expect(f.client.approveReview).not.toHaveBeenCalled()
+})
+it('pendiente no recuperado permite reintentar sólo tras revisar el cuerpo y confirmar', async () => {
+  const f = await fixture(); f.client.pendingReview.mockReturnValue(f.pending); f.client.recoverReview.mockRejectedValue(new Error('UNKNOWN'))
+  render(<FiscalCreditReviewPanel {...f.props} />); consult()
+  const retry = await screen.findByRole('button', { name: 'Reintentar aprobación guardada, sin emitir' })
+  expect(retry.hasAttribute('disabled')).toBe(true); expect(f.client.retryReview).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('checkbox')); fireEvent.click(retry)
+  await screen.findByText('Aprobación guardada para este cuerpo. No es una nota de crédito emitida.')
+  expect(f.client.retryReview).toHaveBeenCalledTimes(1); expect(f.client.approveReview).not.toHaveBeenCalled()
 })

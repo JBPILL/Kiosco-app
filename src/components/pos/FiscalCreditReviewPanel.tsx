@@ -10,7 +10,7 @@ import { fiscalCreditOwnerReviewWire, validateFiscalCreditOwnerReviewWire } from
 
 interface Props {
   source: Readonly<FiscalRepresentation>; proposal: Readonly<FiscalCreditDraft>; preparation: Readonly<FiscalCreditPreparationRecord>; sequence: number
-  client: Pick<FiscalCreditClient, 'pendingReview' | 'review' | 'recoverReview' | 'approveReview'>
+  client: Pick<FiscalCreditClient, 'pendingReview' | 'review' | 'recoverReview' | 'approveReview' | 'retryReview'>
 }
 const date = (value: string): string => `${value.slice(6, 8)}/${value.slice(4, 6)}/${value.slice(0, 4)}`
 const amountLabels: Record<string, string> = { total: 'Total', neto: 'Neto gravado', iva: 'IVA', noGravado: 'No gravado', exento: 'Exento', tributos: 'Otros tributos' }
@@ -20,6 +20,7 @@ export function FiscalCreditReviewPanel(props: Props) {
 function ReviewBody({ source, proposal, preparation, sequence, client }: Props) {
   const [review, setReview] = useState<Readonly<FiscalCreditOwnerReview> | null>(null)
   const [confirmed, setConfirmed] = useState(false), [busy, setBusy] = useState(false), [locked, setLocked] = useState(false)
+  const [retry, setRetry] = useState(false)
   const [error, setError] = useState(''), alive = useRef(true), running = useRef(false)
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
   async function action(approve: boolean): Promise<void> {
@@ -31,12 +32,21 @@ function ReviewBody({ source, proposal, preparation, sequence, client }: Props) 
       if (approve) {
         if (!review || !confirmed || locked) throw new Error('CONFIRMACION_REQUERIDA')
         setLocked(true); setConfirmed(false)
-        result = await client.approveReview(original, draft, prep, review)
+        result = retry ? await client.retryReview(original, draft, prep, review) : await client.approveReview(original, draft, prep, review)
       } else {
-        setReview(null); setConfirmed(false)
+        setReview(null); setConfirmed(false); setRetry(false)
         const pending = client.pendingReview()
         setLocked(Boolean(pending))
-        result = pending ? await client.recoverReview(original, draft, prep) : await client.review(original, draft, prep)
+        if (pending) {
+          try { result = await client.recoverReview(original, draft, prep); if (!result) throw new Error('PENDIENTE_NO_CONFIRMADO') }
+          catch {
+            result = await client.review(original, draft, prep)
+            const checked = await validateFiscalCreditOwnerReviewWire(fiscalCreditOwnerReviewWire(result), original, draft, prep)
+            if (checked.cuerpo.sha256 !== pending.bodySha || checked.cuerpo.datos.preparacion_sha256 !== pending.preparationSha
+              || checked.cuerpo.datos.solicitud_id !== pending.requestId || checked.cuerpo.datos.operacion_origen_id !== pending.operationId || checked.cuerpo.datos.propuesta_sha256 !== pending.proposalSha) throw new Error('PENDIENTE_DISTINTO')
+            if (alive.current) setRetry(true)
+          }
+        } else result = await client.review(original, draft, prep)
       }
       if (!result) throw new Error('REVISION_NO_CONFIRMADA')
       const checked = await validateFiscalCreditOwnerReviewWire(fiscalCreditOwnerReviewWire(result), original, draft, prep)
@@ -52,6 +62,7 @@ function ReviewBody({ source, proposal, preparation, sequence, client }: Props) 
     <p>Consultá si ya hay un cuerpo numerado antes de aprobar. Si falta reservar numeración, este paso seguirá pendiente. Aprobar guarda tu revisión; no emite la nota de crédito ni obtiene CAE.</p>
     <Button type="button" variant="secondary" loading={busy} onClick={() => { void action(false) }}>Consultar o recuperar revisión</Button>
     {error && <p role="alert">{error}</p>}
+    {retry && !review?.aprobacion && <p role="status">La aprobación sigue sin confirmarse. Revisá el mismo cuerpo y confirmá el reintento: se conservará el identificador original. Esto no demuestra que la primera solicitud haya fallado.</p>}
     {body && review && <>
       <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div><dt>Numeración reservada, sin emitir</dt><dd className="font-bold">NC {({ 3: 'A', 8: 'B', 13: 'C' } as const)[body.tipoComprobante]} · {String(body.puntoVenta).padStart(5, '0')}-{String(body.numero).padStart(8, '0')}</dd></div>
@@ -74,7 +85,7 @@ function ReviewBody({ source, proposal, preparation, sequence, client }: Props) 
       {review.aprobacion ? <div role="status"><p>Aprobación guardada para este cuerpo. No es una nota de crédito emitida.</p>
         <p>Vencimiento registrado: {new Date(review.aprobacion.vence_en).toLocaleString('es-AR')}. El servidor debe comprobar su vigencia antes de cualquier envío.</p></div>
         : <label className="flex gap-2"><input type="checkbox" disabled={busy || locked} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />Revisé el emisor, receptor, comprobante asociado, importes e impuestos de esta NC.</label>}
-      {!review.aprobacion && <Button type="button" disabled={busy || locked || !confirmed} loading={busy} onClick={() => { void action(true) }}>Guardar aprobación del Dueño, sin emitir</Button>}
+      {!review.aprobacion && <Button type="button" disabled={busy || locked || !confirmed} loading={busy} onClick={() => { void action(true) }}>{retry ? 'Reintentar aprobación guardada, sin emitir' : 'Guardar aprobación del Dueño, sin emitir'}</Button>}
       <details><summary>Referencia del cuerpo revisado</summary><p className="break-all">{review.cuerpo.sha256}</p></details>
     </>}
     <p>No entregues efectivo ni repongas stock: falta la confirmación de ARCA de la nota de crédito.</p>

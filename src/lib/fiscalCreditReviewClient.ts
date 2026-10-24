@@ -54,6 +54,28 @@ export function createFiscalCreditReviewClient(scope: FiscalClientScope, deps: F
         return await deps.exclusive(async () => { const record = pendingReview(); return record ? recover(original, draft, prep, record) : null })
       } catch { return fail() }
     },
+    /** Sólo por decisión explícita del Dueño. No cambia UUID ni presume rollback por un GET fallido. */
+    async retryReview(source: Readonly<FiscalRepresentation>, proposal: Readonly<FiscalCreditDraft>, preparation: unknown, expected: Readonly<FiscalCreditOwnerReview>): Promise<Readonly<FiscalCreditOwnerReview>> {
+      try {
+        const original = structuredClone(source), draft = structuredClone(proposal), prep = structuredClone(preparation)
+        const checked = await validateFiscalCreditOwnerReviewWire(fiscalCreditOwnerReviewWire(expected), original, draft, prep)
+        return await deps.exclusive(async () => {
+          if (blocked()) return fail()
+          const record = pendingReview()
+          if (!record || record.operationId !== original.operacion_id || record.requestId !== draft.datos.solicitud_id || record.proposalSha !== draft.sha256
+            || record.bodySha !== checked.cuerpo.sha256 || record.preparationSha !== checked.cuerpo.datos.preparacion_sha256) return fail()
+          try { return await recover(original, draft, prep, record) }
+          catch { /* Falló la lectura, no prueba ausencia. POST sólo por esta decisión explícita/idempotente. */ }
+          const current = await read(original, draft, prep, null)
+          if (current.cuerpo.sha256 !== record.bodySha || current.cuerpo.canonico !== checked.cuerpo.canonico || current.cuerpo.datos.preparacion_sha256 !== record.preparationSha
+            || JSON.stringify(pendingReview()) !== JSON.stringify(record)) return fail()
+          try { await deps.invoke({ accion: 'APROBAR_REVISION_NC', venta_id: sale, operacion_origen_id: record.operationId, solicitud_id: record.requestId,
+            propuesta_sha256: record.proposalSha, revision_id: record.reviewId, cuerpo_sha256: record.bodySha, preparacion_sha256: record.preparationSha }) }
+          catch { /* Conservar pendiente hasta confirmar por GET con la misma identidad. */ }
+          return recover(original, draft, prep, record)
+        })
+      } catch { return fail() }
+    },
     async approveReview(source: Readonly<FiscalRepresentation>, proposal: Readonly<FiscalCreditDraft>, preparation: unknown, expected: Readonly<FiscalCreditOwnerReview>): Promise<Readonly<FiscalCreditOwnerReview>> {
       try {
         const original = structuredClone(source), draft = structuredClone(proposal), prep = structuredClone(preparation)

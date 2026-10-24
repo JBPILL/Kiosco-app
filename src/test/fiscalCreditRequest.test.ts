@@ -86,6 +86,29 @@ it('ACK de otro UUID conserva pendiente hasta recuperar evidencia del UUID origi
   f.invoke.mockImplementation(base)
   expect((await f.client.recoverReview(f.source, f.proposal, f.wire))?.aprobacion?.id).toBe(f.state.id)
 })
+it('reintento explícito tras POST no ejecutado conserva UUID y confirma sólo por GET', async () => {
+  const f = await reviewClientFixture(), base = f.invoke.getMockImplementation()!
+  f.invoke.mockImplementation(async cmd => { if (cmd.accion === 'APROBAR_REVISION_NC') throw new Error('GATE_CLOSED'); return base(cmd) })
+  await expect(f.client.approveReview(f.source, f.proposal, f.wire, f.review)).rejects.toThrow()
+  const pending = f.client.pendingReview(); expect(pending).not.toBeNull()
+  f.invoke.mockImplementation(base)
+  const result = await f.make().retryReview(f.source, f.proposal, f.wire, f.review)
+  expect(result.aprobacion?.id).toBe(pending?.reviewId); expect(f.client.pendingReview()).toBeNull()
+  const posts = f.invoke.mock.calls.map(([cmd]) => cmd).filter(cmd => cmd.accion === 'APROBAR_REVISION_NC')
+  expect(posts).toHaveLength(2); expect(posts[0]).toEqual(posts[1])
+})
+it('reintento recupera aprobación ya existente sin repetir POST', async () => {
+  const f = await reviewClientFixture(); f.state.visible = false
+  await expect(f.client.approveReview(f.source, f.proposal, f.wire, f.review)).rejects.toThrow()
+  f.state.visible = true
+  expect((await f.client.retryReview(f.source, f.proposal, f.wire, f.review)).aprobacion?.id).toBe(f.state.id)
+  expect(f.invoke.mock.calls.filter(([cmd]) => cmd.accion === 'APROBAR_REVISION_NC')).toHaveLength(1)
+})
+it('reintento sin pendiente no crea identidad ni envía solicitudes', async () => {
+  const f = await reviewClientFixture()
+  await expect(f.client.retryReview(f.source, f.proposal, f.wire, f.review)).rejects.toThrow()
+  expect(f.invoke).not.toHaveBeenCalled()
+})
 it.each(['canonico', 'hash', 'extra', 'approval', 'preparation'])('wire revisión NC %s alterado se rechaza por reconstrucción', async reason => {
   const f = await reviewClientFixture(), wire = structuredClone(f.wireReview)
   const input = reason === 'canonico' ? { ...wire, cuerpo: { ...wire.cuerpo, canonico: ` ${wire.cuerpo.canonico}` } }

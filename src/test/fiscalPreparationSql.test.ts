@@ -1786,6 +1786,35 @@ async function creditOwnerReviewFixture(){
  const approve=async(id=reviewId,hash=body.sha256,prep=f.prepared.sha256)=>(await db.query<{data:Record<string,unknown>}>('SELECT aprobar_revision_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8) data',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,id,hash,prep])).rows[0].data
  return{...f,packet,body,reviewId,readReview:read,approve}
 }
+it.each(['gate-cerrado','confirmada-lectura-perdida'] as const)('cliente HTTP SQL reintento NC %s conserva UUID y vencimiento durable',async(mode)=>{
+ const f=await creditOwnerReviewFixture(),api=workerFixture(),handler=createFiscalHttpHandler({readSecret:api.deps.readSecret,createAdmin:()=>api.admin,fetcher:api.fetcher})
+ const {validateFiscalCreditPreparationRecord,fiscalCreditPreparationWire}=await import('../../supabase/functions/_shared/fiscalCreditPreparation')
+ const prep=fiscalCreditPreparationWire(await validateFiscalCreditPreparationRecord(f.packet.preparacion,f.source,f.proposal))
+ const local=new Map<string,string>(),commands:Record<string,unknown>[]=[],expirations:string[]=[];let posts=0
+ api.flags.ARCA_HOMO_CREDIT_REVIEW_ENABLED=mode==='gate-cerrado'?'false':'true'
+ const client=createFiscalClient({authId:actor,kioskId:kid,saleId:sale},{storage:{getItem:key=>local.get(key)??null,setItem:(key,value)=>{local.set(key,value)}},send:async command=>{
+  commands.push(command)
+  if(mode==='confirmada-lectura-perdida'&&command.accion==='REVISION_NC'&&command.revision_id!==null&&posts===1)throw new Error('SYNTHETIC_GET_LOST')
+  const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify(command)}))
+  const data=await response.json()
+  if(command.accion==='APROBAR_REVISION_NC'){
+   posts++
+   if(response.ok)expirations.push(data.resultado.aprobacion.vence_en)
+   if(mode==='confirmada-lectura-perdida'&&posts===1)throw new Error('SYNTHETIC_ACK_LOST')
+  }
+  if(!response.ok)throw new Error('SYNTHETIC_HTTP_DENIED')
+  return data
+ }})
+ const review=await client.credits.review(f.source,f.proposal,prep)
+ await expect(client.credits.approveReview(f.source,f.proposal,prep,review)).rejects.toThrow()
+ const pending=client.credits.pendingReview();expect(pending).not.toBeNull()
+ api.flags.ARCA_HOMO_CREDIT_REVIEW_ENABLED='true'
+ const result=await client.credits.retryReview(f.source,f.proposal,prep,review)
+ expect(result.aprobacion?.id).toBe(pending?.reviewId);expect(client.credits.pendingReview()).toBeNull()
+ const writes=commands.filter(cmd=>cmd.accion==='APROBAR_REVISION_NC');expect(writes).toHaveLength(2);expect(writes[0]).toEqual(writes[1])
+ if(mode==='confirmada-lectura-perdida'){expect(expirations).toHaveLength(2);expect(expirations[0]).toBe(expirations[1])}
+ expect(api.fetcher).not.toHaveBeenCalled();expect(api.load).not.toHaveBeenCalled()
+})
 it('HTTP revisión NC devuelve DTO cerrado, gate de escritura y recuperación con gate cerrado',async()=>{
  const f=await creditOwnerReviewFixture(),api=workerFixture(),handler=createFiscalHttpHandler({readSecret:api.deps.readSecret,createAdmin:()=>api.admin,fetcher:api.fetcher})
  const identity={venta_id:sale,operacion_origen_id:op,solicitud_id:f.proposal.datos.solicitud_id,propuesta_sha256:f.proposal.sha256,revision_id:f.reviewId}

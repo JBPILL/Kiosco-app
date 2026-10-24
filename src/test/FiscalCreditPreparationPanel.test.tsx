@@ -32,7 +32,7 @@ it('recupera antes de catálogo y no ofrece emisión ni escritura automática', 
 })
 it('integra revisión numerada sólo después de verificar preparación guardada', async () => {
   const f = await fixture(); f.client.preparation.mockResolvedValueOnce(f.stored)
-  const reviewClient = { pendingReview: vi.fn(() => null), review: vi.fn(), recoverReview: vi.fn(), approveReview: vi.fn() }
+  const reviewClient = { pendingReview: vi.fn(() => null), review: vi.fn(), recoverReview: vi.fn(), approveReview: vi.fn(), retryReview: vi.fn() }
   render(<FiscalCreditPreparationPanel {...f.props} reviewClient={reviewClient} />)
   expect(screen.queryByRole('button', { name: 'Consultar o recuperar revisión' })).toBeNull()
   f.consult(); await screen.findByRole('button', { name: 'Consultar o recuperar revisión' })

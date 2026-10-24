@@ -12,7 +12,7 @@ import { validateFiscalCreditDraftAck } from '../../../supabase/functions/_share
 interface Props {
   source: Readonly<FiscalRepresentation>; proposal: Readonly<FiscalCreditDraft>; sequence: number
   onCancelled?: () => void
-  reviewClient?: Pick<FiscalCreditClient, 'pendingReview' | 'review' | 'recoverReview' | 'approveReview'>
+  reviewClient?: Pick<FiscalCreditClient, 'pendingReview' | 'review' | 'recoverReview' | 'approveReview' | 'retryReview'>
   client: Pick<FiscalCreditClient, 'context' | 'preparation' | 'pendingPreparation' | 'recoverPreparation' | 'savePreparation' | 'cancel'>
 }
 const style = 'mt-1 w-full rounded border bg-transparent p-2'

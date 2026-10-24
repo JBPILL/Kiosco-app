@@ -705,3 +705,6 @@ El cliente guarda únicamente identidad y hashes de la aprobación, bajo Auth/co
 
 ### 24/10/2026 — pantalla NC distingue aprobación de emisión
 Revisión visible sólo tras preparación verificada y consulta explícita del cuerpo reservado. Confirmar guarda aprobación, no emite ni entrega dinero/stock. El vencimiento se presenta como dato histórico que el servidor debe revalidar al conceder un futuro permiso; no se infiere vigencia/CAE por mostrar una constancia. Un error conserva bloqueo y recuperación por GET. Falta un reintento manual del mismo UUID cuando no hubo escritura: no crear otra identidad ni reintentar automáticamente por ausencia/error de lectura. Debe resolverse antes de aceptación/activación hospedada.
+
+### 24/10/2026 — reintento manual NC idempotente sin extender aprobación
+GET fallido nunca acredita rollback; se conserva pendiente. El Dueño puede revisar nuevamente el cuerpo y decidir un reintento explícito del mismo UUID/hash, después de intentar recuperar y validar fuente/preparación actuales. No se crea otra identidad ni hay retry automático al consultar. SQL040 devuelve la aprobación histórica original cuando existe: repetir no renueva sus diez minutos ni concede permiso actual. Ausencia/cambio de Auth/cuerpo no autoriza sustituir el pendiente. No hay envío ARCA ni efectos comerciales en esta acción.
