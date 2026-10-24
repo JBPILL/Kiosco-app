@@ -39,7 +39,9 @@ beforeAll(async()=>{
  const root='supabase/bootstrap'
  for(const file of [join(root,'001_domain.sql'),join(root,'002_identity_helpers.sql'),...readdirSync(join(root,'steps')).sort().map(n=>join(root,'steps',n)),join(root,'900_final_security.sql')])await db.exec(readFileSync(file,'utf8'))
  await db.exec('ALTER TABLE ventas ADD COLUMN afip_cae text')
- for(const file of readdirSync('supabase/pilot-fiscal').filter(n=>/^\d{3}_.*\.sql$/.test(n)).sort()){
+ // Escenarios históricos001–031 conservan su fase; los de032 instalan el guard
+ // dentro de su transacción para comprobar explícitamente la transición y replay.
+ for(const file of readdirSync('supabase/pilot-fiscal').filter(n=>/^\d{3}_.*\.sql$/.test(n)&&!n.startsWith('032_')).sort()){
   const sql=readFileSync(join('supabase/pilot-fiscal',file),'utf8');await db.exec(sql);await db.exec(sql)
   if(file==='011_fiscal_owner_review.sql')await db.query('SELECT fiscal_exigir_actor_preparacion($1,$2)',[crypto.randomUUID(),crypto.randomUUID()])
  }
@@ -1685,6 +1687,93 @@ async function readUnitsHttp(){
  expect(api.rpc.mock.calls.map(([name])=>name)).toEqual(['cargar_representacion_fiscal_homologacion','cargar_fuente_comercial_nc_homologacion','cargar_unidades_nc_homologacion'])
  return (await response.json()).resultado
 }
+
+async function installCreditBinding(){
+ await db.exec('RESET ROLE')
+ const sql=readFileSync('supabase/pilot-fiscal/032_fiscal_credit_commercial_binding.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
+ await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
+}
+async function boundCreditFixture(enabled=true,weighted=false,free=false){
+ const f=await checkoutUnitsFixture(enabled,weighted,free);await f.prepare();await f.close()
+ const proposal=input();await authorizeReceipt(true,{...proposal,datos:{...proposal.datos,importes:{...proposal.datos.importes,neto:'124.00'}}})
+ const source=await validateFiscalRepresentation(await representation(),sale,op),body=source.constancia.solicitud.solicitud
+ const today=(await db.query<{v:string}>("SELECT to_char(clock_timestamp() AT TIME ZONE 'America/Argentina/Buenos_Aires','YYYYMMDD') v")).rows[0].v
+ const draft:FiscalCreditDraftInput={version:1,solicitud_id:crypto.randomUUID(),fecha:today,motivo:'Caso ligado sintético',condicion_iva_receptor:5,
+  lineas:[{detalle_id:source.contexto.lineas[0].detalle_id,cantidad:source.contexto.lineas[0].cantidad,importe:'124.00',reingresa_stock:!free}],importes:structuredClone(body.importes),iva:[],tributos:[]}
+ const make=(value=draft)=>prepareFiscalCreditDraft(source,value,today)
+ const write=async(p:Readonly<FiscalCreditDraft>)=>(await db.query<{data:Record<string,unknown>}>('SELECT guardar_borrador_nc_homologacion($1,$2,$3,$4,$5) data',[actor,sale,op,p.canonico,p.sha256])).rows[0].data
+ const binding=async(id:string)=>{await db.exec('RESET ROLE');const value=(await db.query<{data:Record<string,unknown>}>('SELECT to_jsonb(b) data FROM fiscal_nc_comercial_homologacion b WHERE solicitud_id=$1',[id])).rows[0]?.data??null;await db.exec('SET ROLE service_role');return value}
+ return{...f,source,draft,make,write,binding}
+}
+it.each([false,true])('032 caso nuevo queda ligado atómicamente a fuente/unidades, pesable=%s',async(weighted)=>{
+ const f=await boundCreditFixture(true,weighted);await installCreditBinding();const p=await f.make(),ack=await f.write(p),binding=await f.binding(p.datos.solicitud_id)
+ expect(binding).toMatchObject({solicitud_id:p.datos.solicitud_id,operacion_origen_id:op,actor_auth_id:actor,propuesta_sha256:p.sha256,fuente:{pago_integro_efectivo:true,lineas:[{cantidad:weighted?'0.500':'1.000'}]}})
+ expect(await f.write(p)).toEqual(ack);expect(await f.binding(p.datos.solicitud_id)).toEqual(binding)
+ await installCreditBinding();expect(await f.binding(p.datos.solicitud_id)).toEqual(binding)
+})
+it('032 ausencia de unidades revierte caso y saldo sin crear un vínculo',async()=>{
+ const f=await boundCreditFixture(false);await installCreditBinding();const p=await f.make();await denied(()=>f.write(p))
+ expect(await f.binding(p.datos.solicitud_id)).toBeNull()
+ expect((await db.query<{data:unknown}>('SELECT cargar_borrador_nc_homologacion($1,$2,$3,$4) data',[actor,sale,op,p.datos.solicitud_id])).rows[0].data).toBeNull()
+})
+it('032 fracción no pesable falla en servidor aunque omita validación de navegador',async()=>{
+ const f=await boundCreditFixture();await installCreditBinding()
+ const p=await f.make({...f.draft,lineas:[{...f.draft.lineas[0],cantidad:'0.500',importe:'62.00'}],importes:{...f.draft.importes,total:'62.00',neto:'62.00'}})
+ await denied(()=>f.write(p));expect(await f.binding(p.datos.solicitud_id)).toBeNull()
+ expect(await f.write(await f.make())).toMatchObject({estado:'SALDO_RESERVADO_NO_EMITIR'})
+})
+it('032 concepto libre no permite reposición y rollback no deja reserva parcial',async()=>{
+ const f=await boundCreditFixture(true,false,true);await installCreditBinding()
+ const invalid=await f.make({...f.draft,lineas:[{...f.draft.lineas[0],reingresa_stock:true}]});await denied(()=>f.write(invalid))
+ const p=await f.make();await db.exec('SAVEPOINT binding_crash');await f.write(p);await db.exec('ROLLBACK TO SAVEPOINT binding_crash; RELEASE SAVEPOINT binding_crash')
+ expect(await f.binding(p.datos.solicitud_id)).toBeNull();await f.write(p);expect(await f.binding(p.datos.solicitud_id)).not.toBeNull()
+})
+it('032 borrador histórico se recupera/cancela sin backfill ni evidencia inventada',async()=>{
+ const f=await creditReservationFixture(),p=await f.make(),ack=await f.write(p);await installCreditBinding()
+ expect(await f.write(p)).toEqual(ack);expect(await f.read(p)).toEqual(ack);expect(await f.cancel(p)).toMatchObject({estado:'CANCELADA'})
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_nc_comercial_homologacion')).rows[0].n).toBe(0)
+})
+it.each(['anon','authenticated','service_role'])('032 vínculo privado deniega tabla y helper a %s',async(role)=>{
+ await installCreditBinding();await db.exec('RESET ROLE; SET ROLE '+role)
+ await denied(()=>db.query('SELECT fuente FROM fiscal_nc_comercial_homologacion'))
+ await denied(()=>db.query('SELECT fiscal_ligar_comercial_nc_homologacion()'))
+})
+it('032 vínculo no cambia con catálogo posterior, no se modifica ni se borra',async()=>{
+ const f=await boundCreditFixture();await installCreditBinding();const p=await f.make();await f.write(p);const before=await f.binding(p.datos.solicitud_id)
+ await admin("UPDATE productos SET unidad_medida='LT',es_pesable=true WHERE id=$1",[product]);expect(await f.binding(p.datos.solicitud_id)).toEqual(before)
+ await db.exec('RESET ROLE');await denied(()=>db.query('UPDATE fiscal_nc_comercial_homologacion SET propuesta_sha256=repeat(\'a\',64) WHERE solicitud_id=$1',[p.datos.solicitud_id]));await denied(()=>db.query('DELETE FROM fiscal_nc_comercial_homologacion WHERE solicitud_id=$1',[p.datos.solicitud_id]))
+})
+it('032 replay y cancelación preservan vínculo sin presentar hechos antiguos como permiso actual',async()=>{
+ const f=await boundCreditFixture();await installCreditBinding();const p=await f.make(),ack=await f.write(p),before=await f.binding(p.datos.solicitud_id)
+ await admin('UPDATE pagos_venta SET monto=1 WHERE venta_id=$1',[sale])
+ expect(await f.write(p)).toEqual(ack);expect(await f.binding(p.datos.solicitud_id)).toEqual(before)
+ expect((await db.query<{data:Record<string,unknown>}>('SELECT cancelar_borrador_nc_homologacion($1,$2,$3,$4,$5) data',[actor,sale,op,p.datos.solicitud_id,p.sha256])).rows[0].data).toMatchObject({estado:'CANCELADA',emision_habilitada:false})
+ expect(await f.binding(p.datos.solicitud_id)).toEqual(before)
+ expect(await f.write(p)).toMatchObject({estado:'CANCELADA'})
+})
+it.each([true,false])('032 HTTP guardado usa vínculo obligatorio en SQL, unidades=%s',async(enabled)=>{
+ const f=await boundCreditFixture(enabled);await installCreditBinding();const api=workerFixture();api.flags.ARCA_HOMO_CREDIT_DRAFTS_ENABLED='true'
+ const handler=createFiscalHttpHandler({readSecret:api.deps.readSecret,createAdmin:()=>api.admin,fetcher:api.fetcher})
+ const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify({accion:'GUARDAR_BORRADOR_NC',venta_id:sale,operacion_origen_id:op,propuesta:f.draft})}))
+ if(enabled){expect(response.status).toBe(200);expect((await response.json()).resultado).toMatchObject({estado:'SALDO_RESERVADO_NO_EMITIR',emision_habilitada:false});expect(await f.binding(f.draft.solicitud_id)).not.toBeNull()}
+ else{expect(response.status).not.toBe(200);expect(await f.binding(f.draft.solicitud_id)).toBeNull()}
+ expect(api.getUser).toHaveBeenCalledTimes(1);expect(api.fetcher).not.toHaveBeenCalled();expect(api.load).not.toHaveBeenCalled()
+})
+it('032 ACK perdido recupera el mismo caso y vínculo sin repetir escritura',async()=>{
+ const f=await boundCreditFixture();await installCreditBinding();const api=workerFixture(),base=api.rpc.getMockImplementation()!
+ api.rpc.mockImplementation(async(name,args)=>{const result=await base(name,args);if(name==='guardar_borrador_nc_homologacion')throw new Error('SYNTHETIC_ACK_LOST');return result})
+ expect(await saveFiscalCreditDraft(api.admin,'SYNTHETIC_JWT',sale,op,f.draft)).toMatchObject({solicitud_id:f.draft.solicitud_id,estado:'SALDO_RESERVADO_NO_EMITIR'})
+ expect(api.rpc.mock.calls.filter(([name])=>name==='guardar_borrador_nc_homologacion')).toHaveLength(1)
+ expect(await f.binding(f.draft.solicitud_id)).not.toBeNull()
+})
+it('032 pago mixto se conserva como hecho y no habilita efectivo',async()=>{
+ const f=await checkoutUnitsFixture();f.snapshot.pagos[0].medio_pago='TARJETA';f.entry.pagos[0].medio='TARJETA'
+ await f.prepare();await f.close();const proposal=input();await authorizeReceipt(true,{...proposal,datos:{...proposal.datos,importes:{...proposal.datos.importes,neto:'124.00'}}})
+ const source=await validateFiscalRepresentation(await representation(),sale,op),today=(await db.query<{v:string}>("SELECT to_char(clock_timestamp() AT TIME ZONE 'America/Argentina/Buenos_Aires','YYYYMMDD') v")).rows[0].v
+ const p=await prepareFiscalCreditDraft(source,{version:1,solicitud_id:crypto.randomUUID(),fecha:today,motivo:'Pago no efectivo',condicion_iva_receptor:5,lineas:[{detalle_id:source.contexto.lineas[0].detalle_id,cantidad:'1.000',importe:'124.00',reingresa_stock:false}],importes:source.constancia.solicitud.solicitud.importes,iva:[],tributos:[]},today)
+ await installCreditBinding();expect((await db.query<{data:Record<string,unknown>}>('SELECT guardar_borrador_nc_homologacion($1,$2,$3,$4,$5) data',[actor,sale,op,p.canonico,p.sha256])).rows[0].data).toMatchObject({reintegro_habilitado:false,emision_habilitada:false})
+ await db.exec('RESET ROLE');expect((await db.query<{f:unknown}>('SELECT fuente f FROM fiscal_nc_comercial_homologacion WHERE solicitud_id=$1',[p.datos.solicitud_id])).rows[0].f).toMatchObject({pago_integro_efectivo:false,pagos:[{medio:'TARJETA',importe:'124.00'}]})
+})
 it.each([true,false])('HTTP unidades contrasta cierre real y factura sintética, captura habilitada=%s',async(enabled)=>{
  const f=await checkoutUnitsFixture(enabled);await f.prepare();await f.close();const proposal=input()
  await authorizeReceipt(true,{...proposal,datos:{...proposal.datos,importes:{...proposal.datos.importes,neto:'124.00'}}})

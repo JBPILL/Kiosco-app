@@ -23,6 +23,7 @@ let creditDraftInstalledAfterCase=null
 let creditRecoveryInstalledAfterCase=null
 let creditCommercialInstalledAfterCase=null
 let checkoutUnitsInstalledAfterCase=null
+let creditBindingInstalledAfterCase=null
 let evidence
 const evidenceIndex = process.argv.indexOf('--evidence')
 const evidencePath = evidenceIndex >= 0 ? resolve(process.argv[evidenceIndex+1] ?? '') : null
@@ -1051,11 +1052,51 @@ try {
   assert.equal((await observer.query('SELECT stock_actual::text v FROM productos WHERE id=$1',[committedUnits.product])).rows[0].v,'9.000')
   assert.equal((await observer.query("SELECT count(*)::int n FROM movimientos_stock WHERE kiosco_id=$1 AND notas=$2",[committedUnits.kid,'Checkout manual '+committedUnits.sale])).rows[0].n,1)
   cases.push('031_cierre_gana_edicion_posterior_replay_sin_doble_stock_ni_recaptura_unidades')
+  creditBindingInstalledAfterCase=cases.length
+  for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/032_fiscal_credit_commercial_binding.sql'),'utf8'))
+  async function bindingFixture(point){
+    const f=await commercialFixture(point)
+    await start(a);const source=await f.load(a);await a.query('COMMIT')
+    // Metadata privada SINTÉTICA para aislar carreras032. Los escenarios031
+    // anteriores prueban captura real; no se ejecuta backfill de datos reales.
+    const data={version:1,venta_id:f.sale,checkout_sha256:source.checkout_sha256,lineas:source.lineas.map(line=>({detalle_id:line.detalle_id,producto_id:line.producto_id,tipo:line.tipo,es_pesable:false,unidad_medida:'UN',componentes:line.componentes.map(c=>({producto_id:c.producto_id,es_pesable:false,unidad_medida:'UN'}))}))}
+    const canonical=(await observer.query('SELECT fiscal_json_canonico_homologacion($1::jsonb) v',[JSON.stringify(data)])).rows[0].v
+    await observer.query('INSERT INTO checkout_unidades_homologacion(checkout_id,kiosco_id,actor_auth_id,snapshot_sha256,canonico,datos,unidades_sha256) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7)',[f.sale,f.kid,f.auth,source.checkout_sha256,canonical,JSON.stringify(data),createHash('sha256').update(canonical).digest('hex')])
+    return f
+  }
+  const duplicateBinding=await bindingFixture(190),sameBoundCase=await duplicateBinding.make()
+  await start(a);const boundAck=await duplicateBinding.write(a,sameBoundCase)
+  await start(b);const waitingBoundAck=capture(duplicateBinding.write(b,sameBoundCase));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.deepEqual((await waitingBoundAck).value,boundAck);await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_comercial_homologacion WHERE solicitud_id=$1',[sameBoundCase.id])).rows[0].n,1)
+  cases.push('032_dos_workers_mismo_UUID_un_caso_un_vinculo_inmutable')
+  const paymentBinding=await bindingFixture(191),badPaymentCase=await paymentBinding.make()
+  await a.query('BEGIN');await a.query('SELECT id FROM pagos_venta WHERE id=$1 FOR UPDATE',[paymentBinding.payment])
+  await start(b);assert.equal((await capture(paymentBinding.write(b,badPaymentCase))).error?.code,'55P03');await b.query('ROLLBACK');await a.query('ROLLBACK')
+  // UPDATE de pagos toma primero venta FOR UPDATE por el guard029 de anulación.
+  // Verificar esa espera previa y el rechazo tras COMMIT, además de NOWAIT032.
+  await a.query('BEGIN');assert.equal((await a.query('UPDATE pagos_venta SET monto=1 WHERE id=$1',[paymentBinding.payment])).rowCount,1)
+  await start(b);const waitingPaymentBinding=capture(paymentBinding.write(b,badPaymentCase));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await waitingPaymentBinding).error?.code,'22023');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_borradores_homologacion WHERE id=$1',[badPaymentCase.id])).rows[0].n,0)
+  cases.push('032_pago_bloqueado_NOWAIT_y_cambio_confirmado_no_dejan_caso_ni_vinculo')
+  const rollbackBinding=await bindingFixture(192),rolledBoundCase=await rollbackBinding.make()
+  await start(a);await rollbackBinding.write(a,rolledBoundCase)
+  await start(b);const waitingRollbackBinding=capture(rollbackBinding.write(b,rolledBoundCase));await waitForLock(observer,b);await a.query('ROLLBACK')
+  assert.equal((await waitingRollbackBinding).value.estado,'SALDO_RESERVADO_NO_EMITIR');await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_comercial_homologacion WHERE solicitud_id=$1',[rolledBoundCase.id])).rows[0].n,1)
+  cases.push('032_rollback_caso_y_vinculo_no_consume_saldo_para_worker_en_espera')
+  const authBinding=await bindingFixture(193),boundActorCase=await authBinding.make(),nextBoundAuth=randomUUID()
+  await observer.query('INSERT INTO auth.users VALUES($1)',[nextBoundAuth]);await a.query('BEGIN');await a.query('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[nextBoundAuth,authBinding.owner])
+  await start(b);const waitingBoundAuth=capture(authBinding.write(b,boundActorCase));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await waitingBoundAuth).error?.code,'42501');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_comercial_homologacion WHERE solicitud_id=$1',[boundActorCase.id])).rows[0].n,0)
+  cases.push('032_Auth_reasignado_esperando_no_crea_caso_ni_vinculo')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
-    cases,caseCount:cases.length,requiredPresentationInstalledAfterCase,postRequiredPresentationCaseCount:requiredPresentationInstalledAfterCase===null?0:cases.length-requiredPresentationInstalledAfterCase,creditDraftInstalledAfterCase,postCreditDraftCaseCount:creditDraftInstalledAfterCase===null?0:cases.length-creditDraftInstalledAfterCase,creditRecoveryInstalledAfterCase,postCreditRecoveryCaseCount:creditRecoveryInstalledAfterCase===null?0:cases.length-creditRecoveryInstalledAfterCase,creditCommercialInstalledAfterCase,postCreditCommercialCaseCount:creditCommercialInstalledAfterCase===null?0:cases.length-creditCommercialInstalledAfterCase,checkoutUnitsInstalledAfterCase,postCheckoutUnitsCaseCount:checkoutUnitsInstalledAfterCase===null?0:cases.length-checkoutUnitsInstalledAfterCase,externalRequests:0,invoicesIssued:0}
+    cases,caseCount:cases.length,requiredPresentationInstalledAfterCase,postRequiredPresentationCaseCount:requiredPresentationInstalledAfterCase===null?0:cases.length-requiredPresentationInstalledAfterCase,creditDraftInstalledAfterCase,postCreditDraftCaseCount:creditDraftInstalledAfterCase===null?0:cases.length-creditDraftInstalledAfterCase,creditRecoveryInstalledAfterCase,postCreditRecoveryCaseCount:creditRecoveryInstalledAfterCase===null?0:cases.length-creditRecoveryInstalledAfterCase,creditCommercialInstalledAfterCase,postCreditCommercialCaseCount:creditCommercialInstalledAfterCase===null?0:cases.length-creditCommercialInstalledAfterCase,checkoutUnitsInstalledAfterCase,postCheckoutUnitsCaseCount:checkoutUnitsInstalledAfterCase===null?0:cases.length-checkoutUnitsInstalledAfterCase,creditBindingInstalledAfterCase,postCreditBindingCaseCount:creditBindingInstalledAfterCase===null?0:cases.length-creditBindingInstalledAfterCase,externalRequests:0,invoicesIssued:0}
 } catch(error) {
   console.error('FISCAL_CONCURRENCY=FAIL; CODE='+(error?.code??error?.name??'UNKNOWN')+'; STEP='+cases.length+'; DETAIL='+error.message)
   evidence={status:'FAIL',testedAt:new Date().toISOString(),containerId,containerName:name,port,cases,code:error?.code??error?.name??'UNKNOWN'}
