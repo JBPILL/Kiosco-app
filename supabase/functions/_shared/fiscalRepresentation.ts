@@ -17,7 +17,7 @@ export async function validateFiscalRepresentation(input:unknown,sale:string,ope
  if(!input||typeof input!=='object'||Array.isArray(input))return fail()
  const v=structuredClone(input) as Record<string,unknown>,keys=['version','entorno','estado','venta_id','operacion_id','condicion_emisor','condicion_receptor','constancia','hechos','contexto']
  if(Object.keys(v).length!==keys.length||keys.some(k=>!Object.hasOwn(v,k))||v.version!==1||v.entorno!=='HOMOLOGACION'||v.estado!=='AUTORIZADA'||v.venta_id!==sale||v.operacion_id!==operation
-  ||!['MONOTRIBUTO','EXENTO','RESPONSABLE_INSCRIPTO'].includes(String(v.condicion_emisor))||typeof v.condicion_receptor!=='string'||!v.condicion_receptor.trim()||v.condicion_receptor.length>120
+  ||typeof v.condicion_emisor!=='string'||!['MONOTRIBUTO','EXENTO','RESPONSABLE_INSCRIPTO'].includes(v.condicion_emisor)||typeof v.condicion_receptor!=='string'||!v.condicion_receptor.trim()||v.condicion_receptor.length>120
   ||[...v.condicion_receptor].some(c=>{const n=c.codePointAt(0)!;return n<32||(n>=127&&n<=159)||(n>=0xd800&&n<=0xdfff)}))return fail()
  const constancia=await validateFiscalReceipt(v.constancia,{operationId:operation,saleId:sale}),hechos=await validateFiscalPresentationRecord(v.hechos,sale,operation),contexto=validateFiscalPresentationContext(v.contexto,sale,operation)
  const request=constancia.solicitud.solicitud

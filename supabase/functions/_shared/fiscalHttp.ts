@@ -1,4 +1,5 @@
 import { loadFiscalRepresentation } from './fiscalRepresentationService.ts'
+import { saveFiscalCreditDraft, loadFiscalCreditDraft, cancelFiscalCreditDraft } from './fiscalCreditDraftService.ts'
 import { fiscalRepresentationWire } from './fiscalRepresentation.ts'
 import { loadFiscalPresentationContext } from './fiscalPresentationContextService.ts'
 import { loadFiscalPresentation,saveFiscalPresentation } from './fiscalPresentationService.ts'
@@ -28,6 +29,9 @@ const origin='https://kiosco-app-staging.vercel.app'
 const invalid=():never=>{throw new Error('FISCAL_SOLICITUD_INVALIDA')}
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 type FiscalHttpCommand=
+  | {accion:'GUARDAR_BORRADOR_NC';venta_id:string;operacion_origen_id:string;propuesta:unknown}
+  | {accion:'BORRADOR_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string}
+  | {accion:'CANCELAR_BORRADOR_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string}
   | {accion:'REPRESENTACION_COMPROBANTE';venta_id:string;operacion_id:string}
   | {accion:'CONTEXTO_REPRESENTACION';venta_id:string;operacion_id:string}
   | {accion:'DATOS_REPRESENTACION';venta_id:string;operacion_id:string}
@@ -71,6 +75,13 @@ async function command(request:Request):Promise<FiscalHttpCommand> {
     const text=new TextDecoder('utf-8',{fatal:true}).decode(bytes),parsed:unknown=parseFiscalJson(text)
     if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))return invalid()
     const b=parsed as Record<string,unknown>,keys=Object.keys(b)
+    if(b.accion==='GUARDAR_BORRADOR_NC'&&keys.length===4&&keys.every(k=>['accion','venta_id','operacion_origen_id','propuesta'].includes(k))
+      &&uuid(b.venta_id)&&uuid(b.operacion_origen_id)&&b.propuesta&&typeof b.propuesta==='object'&&!Array.isArray(b.propuesta))
+      return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_origen_id:b.operacion_origen_id.toLowerCase(),propuesta:b.propuesta}
+    if((b.accion==='BORRADOR_NC'||b.accion==='CANCELAR_BORRADOR_NC')&&size<=2048&&(length===null||Number(length)<=2048)&&keys.length===5
+      &&keys.every(k=>['accion','venta_id','operacion_origen_id','solicitud_id','propuesta_sha256'].includes(k))
+      &&uuid(b.venta_id)&&uuid(b.operacion_origen_id)&&uuid(b.solicitud_id)&&typeof b.propuesta_sha256==='string'&&/^[0-9a-f]{64}$/.test(b.propuesta_sha256))
+      return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_origen_id:b.operacion_origen_id.toLowerCase(),solicitud_id:b.solicitud_id.toLowerCase(),propuesta_sha256:b.propuesta_sha256}
     if((b.accion==='RESOLVER_VENTA'||b.accion==='DATOS_FISCALES_VENTA')&&keys.length===2&&uuid(b.venta_id)&&size<=2048&&(length===null||Number(length)<=2048))
       return b.accion==='RESOLVER_VENTA'?{accion:'RESOLVER_VENTA',venta_id:b.venta_id.toLowerCase()}:{accion:'DATOS_FISCALES_VENTA',venta_id:b.venta_id.toLowerCase()}
     if(b.accion==='GUARDAR_DATOS_FISCALES'&&keys.length===4&&keys.every(k=>['accion','venta_id','operacion_id','entrada'].includes(k))
@@ -144,9 +155,15 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
       if(!auth||auth.length>16400||!/^Bearer \S+$/i.test(auth))return json({codigo:'SESION_REQUERIDA'},401)
       let cmd:FiscalHttpCommand
       try{cmd=await command(request)}catch{return json({codigo:'SOLICITUD_INVALIDA'},400)}
+      if(cmd.accion==='GUARDAR_BORRADOR_NC'&&deps.readSecret('ARCA_HOMO_CREDIT_DRAFTS_ENABLED')!=='true')return json({codigo:'BORRADORES_NC_NO_HABILITADOS'},503)
       const admin=deps.createAdmin(FISCAL_STAGING_URL),token=auth.slice(7)
       let result:unknown
-      if(cmd.accion==='REPRESENTACION_COMPROBANTE'){
+      if(cmd.accion==='GUARDAR_BORRADOR_NC'){
+        result=await saveFiscalCreditDraft(admin,token,cmd.venta_id,cmd.operacion_origen_id,cmd.propuesta)
+      }else if(cmd.accion==='BORRADOR_NC'||cmd.accion==='CANCELAR_BORRADOR_NC'){
+        const scope={saleId:cmd.venta_id,operationId:cmd.operacion_origen_id,requestId:cmd.solicitud_id,sha256:cmd.propuesta_sha256}
+        result=cmd.accion==='BORRADOR_NC'?await loadFiscalCreditDraft(admin,token,scope):await cancelFiscalCreditDraft(admin,token,scope)
+      }else if(cmd.accion==='REPRESENTACION_COMPROBANTE'){
         result=fiscalRepresentationWire(await loadFiscalRepresentation(admin,token,cmd.venta_id,cmd.operacion_id))
       }else if(cmd.accion==='CONTEXTO_REPRESENTACION'){
         result=await loadFiscalPresentationContext(admin,token,cmd.venta_id,cmd.operacion_id)

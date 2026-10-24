@@ -1,6 +1,7 @@
 import { validateFiscalRepresentation } from '../../supabase/functions/_shared/fiscalRepresentation'
 import { prepareFiscalCreditDraft } from '../../supabase/functions/_shared/fiscalCreditDraft'
 import type { FiscalCreditDraft, FiscalCreditDraftInput } from '../../supabase/functions/_shared/fiscalCreditDraft'
+import { saveFiscalCreditDraft, loadFiscalCreditDraft, cancelFiscalCreditDraft } from '../../supabase/functions/_shared/fiscalCreditDraftService'
 import { emitAuthorizedFiscalVoucher } from '../../supabase/functions/_shared/fiscalEmissionWorker'
 import { validateFiscalPresentationContext } from '../../supabase/functions/_shared/fiscalPresentationContext'
 import { prepareFiscalPresentationFacts } from '../../supabase/functions/_shared/fiscalPresentation'
@@ -86,6 +87,7 @@ function workerFixture(){
  mapping.cargar_contexto_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.cargar_presentacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.guardar_presentacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_solicitud_sha','p_canonico','p_sha'];mapping.cargar_revision_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_revision_id'];mapping.aprobar_revision_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_revision_id','p_solicitud_sha','p_revision','p_presentacion_sha']
  mapping.cargar_preparacion_envio_homologacion=['p_operacion_id'];mapping.autorizar_envio_presentado_homologacion=['p_actor_auth_id','p_operacion_id','p_sha','p_revision_id'];mapping.registrar_envio_revisado_homologacion=['p_actor_auth_id','p_operacion_id','p_intento_id','p_sha','p_autorizacion_id','p_ultimo_autorizado','p_consultado_en']
  mapping.cargar_representacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
+ mapping.guardar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_canonico','p_sha'];mapping.cargar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id'];mapping.cancelar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
  const rpc=vi.fn<FiscalAuthClient['rpc']>(async(name,args)=>{
   const keys=mapping[name];if(!keys)throw new Error('UNEXPECTED_PRIVATE_RPC')
   await db.exec('SAVEPOINT worker_rpc')
@@ -1375,4 +1377,44 @@ it('NC canónico con espacios o hash incorrecto no reserva; cancelación exige h
  await f.write(p)
  await denied(()=>db.query('SELECT cancelar_borrador_nc_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,p.datos.solicitud_id,'b'.repeat(64)]))
  expect(await f.read(p)).toMatchObject({estado:'SALDO_RESERVADO_NO_EMITIR'})
+})
+
+it('NC servicio usa Auth real una vez y confirma reserva desde getter SQL sin TA ni red fiscal',async()=>{
+ const f=await creditReservationFixture(),p=await f.make(),api=workerFixture()
+ const ack=await saveFiscalCreditDraft(api.admin,'SYNTHETIC_JWT',sale,op,f.input)
+ expect(ack).toMatchObject({solicitud_id:p.datos.solicitud_id,propuesta_sha256:p.sha256,estado:'SALDO_RESERVADO_NO_EMITIR'})
+ expect(await f.read(p)).toEqual(ack);expect(api.getUser).toHaveBeenCalledTimes(1)
+ expect(api.rpc.mock.calls.map(([name])=>name)).toEqual(['cargar_representacion_fiscal_homologacion','guardar_borrador_nc_homologacion','cargar_borrador_nc_homologacion'])
+ expect(api.fetcher).not.toHaveBeenCalled();expect(api.load).not.toHaveBeenCalled()
+})
+it('NC servicio recupera guardado y cancelación SQL confirmados cuyo ACK se pierde',async()=>{
+ const f=await creditReservationFixture(),p=await f.make(),api=workerFixture(),base=api.rpc.getMockImplementation()!
+ api.rpc.mockImplementation(async(name,args)=>{const result=await base(name,args);if(name==='guardar_borrador_nc_homologacion'||name==='cancelar_borrador_nc_homologacion')throw new Error('SYNTHETIC_ACK_LOST');return result})
+ const ack=await saveFiscalCreditDraft(api.admin,'SYNTHETIC_JWT',sale,op,f.input)
+ const scope={saleId:sale,operationId:op,requestId:p.datos.solicitud_id,sha256:p.sha256}
+ expect(ack.estado).toBe('SALDO_RESERVADO_NO_EMITIR');expect((await cancelFiscalCreditDraft(api.admin,'SYNTHETIC_JWT',scope)).estado).toBe('CANCELADA')
+ expect((await loadFiscalCreditDraft(api.admin,'SYNTHETIC_JWT',scope))?.estado).toBe('CANCELADA')
+ expect(api.rpc.mock.calls.filter(([name])=>name==='guardar_borrador_nc_homologacion')).toHaveLength(1)
+ expect(api.rpc.mock.calls.filter(([name])=>name==='cancelar_borrador_nc_homologacion')).toHaveLength(1)
+})
+it('NC HTTP exige gate de guardado y permite recuperar/cancelar con ese gate apagado',async()=>{
+ const f=await creditReservationFixture(),p=await f.make(),api=workerFixture(),handler=createFiscalHttpHandler({readSecret:api.deps.readSecret,createAdmin:()=>api.admin,fetcher:api.fetcher})
+ const request=(body:unknown)=>new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify(body)})
+ const write={accion:'GUARDAR_BORRADOR_NC',venta_id:sale,operacion_origen_id:op,propuesta:f.input}
+ expect((await handler(request(write))).status).toBe(503);expect(api.getUser).not.toHaveBeenCalled()
+ api.flags.ARCA_HOMO_CREDIT_DRAFTS_ENABLED='true'
+ expect((await handler(request(write))).status).toBe(200);delete api.flags.ARCA_HOMO_CREDIT_DRAFTS_ENABLED
+ for(const accion of ['BORRADOR_NC','CANCELAR_BORRADOR_NC']){
+  const response=await handler(request({accion,venta_id:sale,operacion_origen_id:op,solicitud_id:p.datos.solicitud_id,propuesta_sha256:p.sha256}))
+  expect(response.status).toBe(200);expect((await response.json()).resultado).toMatchObject({emision_habilitada:false,reintegro_habilitado:false,reposicion_habilitada:false})
+ }
+ expect(api.getUser).toHaveBeenCalledTimes(3);expect(api.fetcher).not.toHaveBeenCalled();expect(api.load).not.toHaveBeenCalled()
+})
+it('NC Auth reasignado después de leer fuente no se infiere de nuevo ni reserva saldo',async()=>{
+ const f=await creditReservationFixture(),api=workerFixture(),other=crypto.randomUUID(),base=api.rpc.getMockImplementation()!
+ await admin('INSERT INTO auth.users VALUES($1)',[other])
+ api.rpc.mockImplementation(async(name,args)=>{const result=await base(name,args);if(name==='cargar_representacion_fiscal_homologacion')await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner]);return result})
+ await expect(saveFiscalCreditDraft(api.admin,'SYNTHETIC_JWT',sale,op,f.input)).rejects.toThrow('FISCAL_NC_NO_CONFIRMADA')
+ expect(api.getUser).toHaveBeenCalledTimes(1)
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_nc_borradores_homologacion')).rows[0].n).toBe(0)
 })

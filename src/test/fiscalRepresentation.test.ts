@@ -35,3 +35,8 @@ it('representation service sanitizes failed private reads and rejects absent sou
  rpc.mockResolvedValue({data:null,error:null})
  await expect(loadFiscalRepresentation({auth:{getUser},rpc},'SYNTHETIC_JWT',f.sale,f.operation)).rejects.toThrow('FISCAL_REPRESENTACION_NO_CONFIRMADA')
 })
+
+it('condición emisor exige string literal y rechaza un array coercible',async()=>{
+ const f=await fixture()
+ await expect(validateFiscalRepresentation({...f.wire,condicion_emisor:['MONOTRIBUTO']},f.sale,f.operation)).rejects.toThrow('FISCAL_REPRESENTACION_NO_CONFIRMADA')
+})
