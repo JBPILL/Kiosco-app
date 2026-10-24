@@ -11,6 +11,14 @@ export interface FiscalCreditOwnerApproval {
 export interface FiscalCreditOwnerReview {
   version: 1; cuerpo: Readonly<FiscalCreditRequestRecord>; aprobacion: Readonly<FiscalCreditOwnerApproval> | null; emision_habilitada: false
 }
+/** DTO explícito sin contexto/custodia ni paquete SQL crudo. */
+export function fiscalCreditOwnerReviewWire(review: Readonly<FiscalCreditOwnerReview>): { version: 1; cuerpo: Pick<FiscalCreditRequestRecord, 'canonico' | 'sha256'>; aprobacion: Readonly<FiscalCreditOwnerApproval> | null; emision_habilitada: false } {
+  const approval = review.aprobacion
+  return { version: 1, cuerpo: { canonico: review.cuerpo.canonico, sha256: review.cuerpo.sha256 },
+    aprobacion: approval === null ? null : { id: approval.id, solicitud_id: approval.solicitud_id, reserva_id: approval.reserva_id,
+      solicitud_sha256: approval.solicitud_sha256, preparacion_sha256: approval.preparacion_sha256, aprobada: true,
+      vence_en: approval.vence_en, emision_habilitada: false }, emision_habilitada: false }
+}
 const fail = (): never => { throw new Error('FISCAL_REVISION_NC_NO_CONFIRMADA') }
 function object(value: unknown, keys: readonly string[]): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return fail()

@@ -1,4 +1,6 @@
 import { loadFiscalRepresentation } from './fiscalRepresentationService.ts'
+import { loadFiscalCreditOwnerReview, approveFiscalCreditOwnerReview } from './fiscalCreditOwnerReviewService.ts'
+import { fiscalCreditOwnerReviewWire } from './fiscalCreditOwnerReview.ts'
 import { fiscalCreditPreparationWire } from './fiscalCreditPreparation.ts'
 import { saveFiscalCreditDraft, loadFiscalCreditDraft, cancelFiscalCreditDraft, loadFiscalCreditHistory, loadFiscalCreditCommercialSource, loadFiscalCreditUnits, loadFiscalCreditContext, loadFiscalCreditPreparation, saveFiscalCreditPreparation } from './fiscalCreditDraftService.ts'
 import { fiscalCreditUnitsWire } from './fiscalCreditUnits.ts'
@@ -32,6 +34,8 @@ const origin='https://kiosco-app-staging.vercel.app'
 const invalid=():never=>{throw new Error('FISCAL_SOLICITUD_INVALIDA')}
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 type FiscalHttpCommand=
+  | {accion:'REVISION_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string;revision_id:string|null}
+  | {accion:'APROBAR_REVISION_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string;revision_id:string;cuerpo_sha256:string;preparacion_sha256:string}
   | {accion:'PREPARACION_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string}
   | {accion:'GUARDAR_PREPARACION_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string;contexto_sha256:string;entrada:unknown}
   | {accion:'CONTEXTO_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string}
@@ -84,6 +88,16 @@ async function command(request:Request):Promise<FiscalHttpCommand> {
     const text=new TextDecoder('utf-8',{fatal:true}).decode(bytes),parsed:unknown=parseFiscalJson(text)
     if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))return invalid()
     const b=parsed as Record<string,unknown>,keys=Object.keys(b)
+    if((b.accion==='REVISION_NC'||b.accion==='APROBAR_REVISION_NC')&&size<=2048&&(length===null||Number(length)<=2048)
+      &&uuid(b.venta_id)&&uuid(b.operacion_origen_id)&&uuid(b.solicitud_id)&&typeof b.propuesta_sha256==='string'&&/^[0-9a-f]{64}$/.test(b.propuesta_sha256)){
+      const scope={venta_id:b.venta_id.toLowerCase(),operacion_origen_id:b.operacion_origen_id.toLowerCase(),solicitud_id:b.solicitud_id.toLowerCase(),propuesta_sha256:b.propuesta_sha256}
+      if(b.accion==='REVISION_NC'&&keys.length===6&&keys.every(k=>['accion','venta_id','operacion_origen_id','solicitud_id','propuesta_sha256','revision_id'].includes(k))&&(b.revision_id===null||uuid(b.revision_id)))
+        return {accion:b.accion,...scope,revision_id:b.revision_id===null?null:b.revision_id.toLowerCase()}
+      if(b.accion==='APROBAR_REVISION_NC'&&keys.length===8&&keys.every(k=>['accion','venta_id','operacion_origen_id','solicitud_id','propuesta_sha256','revision_id','cuerpo_sha256','preparacion_sha256'].includes(k))
+        &&uuid(b.revision_id)&&typeof b.cuerpo_sha256==='string'&&/^[0-9a-f]{64}$/.test(b.cuerpo_sha256)&&typeof b.preparacion_sha256==='string'&&/^[0-9a-f]{64}$/.test(b.preparacion_sha256))
+        return {accion:b.accion,...scope,revision_id:b.revision_id.toLowerCase(),cuerpo_sha256:b.cuerpo_sha256,preparacion_sha256:b.preparacion_sha256}
+      return invalid()
+    }
     if(b.accion==='GUARDAR_PREPARACION_NC'&&size<=2048&&(length===null||Number(length)<=2048)&&keys.length===7
       &&keys.every(k=>['accion','venta_id','operacion_origen_id','solicitud_id','propuesta_sha256','contexto_sha256','entrada'].includes(k))
       &&uuid(b.venta_id)&&uuid(b.operacion_origen_id)&&uuid(b.solicitud_id)
@@ -182,10 +196,16 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
       let cmd:FiscalHttpCommand
       try{cmd=await command(request)}catch{return json({codigo:'SOLICITUD_INVALIDA'},400)}
       if(cmd.accion==='GUARDAR_BORRADOR_NC'&&deps.readSecret('ARCA_HOMO_CREDIT_DRAFTS_ENABLED')!=='true')return json({codigo:'BORRADORES_NC_NO_HABILITADOS'},503)
+      if(cmd.accion==='APROBAR_REVISION_NC'&&deps.readSecret('ARCA_HOMO_CREDIT_REVIEW_ENABLED')!=='true')return json({codigo:'REVISION_NC_NO_HABILITADA'},503)
       if(cmd.accion==='GUARDAR_PREPARACION_NC'&&deps.readSecret('ARCA_HOMO_CREDIT_PREPARATION_ENABLED')!=='true')return json({codigo:'PREPARACION_NC_NO_HABILITADA'},503)
       const admin=deps.createAdmin(FISCAL_STAGING_URL),token=auth.slice(7)
       let result:unknown
-      if(cmd.accion==='PREPARACION_NC'||cmd.accion==='GUARDAR_PREPARACION_NC'){
+      if(cmd.accion==='REVISION_NC'||cmd.accion==='APROBAR_REVISION_NC'){
+        const scope={saleId:cmd.venta_id,operationId:cmd.operacion_origen_id,requestId:cmd.solicitud_id,sha256:cmd.propuesta_sha256}
+        const review=cmd.accion==='REVISION_NC'?await loadFiscalCreditOwnerReview(admin,token,scope,cmd.revision_id)
+          :await approveFiscalCreditOwnerReview(admin,token,scope,cmd.revision_id,cmd.cuerpo_sha256,cmd.preparacion_sha256)
+        result=fiscalCreditOwnerReviewWire(review)
+      }else if(cmd.accion==='PREPARACION_NC'||cmd.accion==='GUARDAR_PREPARACION_NC'){
         const scope={saleId:cmd.venta_id,operationId:cmd.operacion_origen_id,requestId:cmd.solicitud_id,sha256:cmd.propuesta_sha256}
         const stored=cmd.accion==='PREPARACION_NC'?await loadFiscalCreditPreparation(admin,token,scope):await saveFiscalCreditPreparation(admin,token,scope,cmd.contexto_sha256,cmd.entrada)
         result=stored?fiscalCreditPreparationWire(stored):null

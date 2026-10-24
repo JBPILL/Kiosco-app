@@ -95,6 +95,8 @@ function workerFixture(){
  mapping.cargar_fuente_cuerpo_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
  mapping.cargar_fuente_numeracion_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha','p_preparacion_sha']
  mapping.reservar_cuerpo_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha','p_preparacion_sha','p_reserva_id','p_ultimo_autorizado','p_consultado_en']
+ mapping.cargar_revision_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha','p_revision_id']
+ mapping.aprobar_revision_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha','p_revision_id','p_cuerpo_sha','p_preparacion_sha']
  mapping.coordinar_ta_nc_homologacion=['p_actor','p_venta','p_operacion','p_caso','p_sha','p_preparacion_sha','p_binding','p_accion','p_intento','p_generacion','p_cifrado']
  mapping.cargar_preparacion_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
  mapping.guardar_preparacion_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha','p_contexto_sha','p_entrada']
@@ -1784,6 +1786,50 @@ async function creditOwnerReviewFixture(){
  const approve=async(id=reviewId,hash=body.sha256,prep=f.prepared.sha256)=>(await db.query<{data:Record<string,unknown>}>('SELECT aprobar_revision_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8) data',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,id,hash,prep])).rows[0].data
  return{...f,packet,body,reviewId,readReview:read,approve}
 }
+it('HTTP revisión NC devuelve DTO cerrado, gate de escritura y recuperación con gate cerrado',async()=>{
+ const f=await creditOwnerReviewFixture(),api=workerFixture(),handler=createFiscalHttpHandler({readSecret:api.deps.readSecret,createAdmin:()=>api.admin,fetcher:api.fetcher})
+ const identity={venta_id:sale,operacion_origen_id:op,solicitud_id:f.proposal.datos.solicitud_id,propuesta_sha256:f.proposal.sha256,revision_id:f.reviewId}
+ const send=(payload:unknown)=>handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify(payload)}))
+ const write={accion:'APROBAR_REVISION_NC',...identity,cuerpo_sha256:f.body.sha256,preparacion_sha256:f.prepared.sha256}
+ expect((await send(write)).status).toBe(503);expect(api.getUser).not.toHaveBeenCalled()
+ api.flags.ARCA_HOMO_CREDIT_REVIEW_ENABLED='true'
+ const saved=await send(write);expect(saved.status).toBe(200)
+ const dto=(await saved.json()).resultado
+ expect(Object.keys(dto).sort()).toEqual(['aprobacion','cuerpo','emision_habilitada','version'])
+ expect(Object.keys(dto.cuerpo).sort()).toEqual(['canonico','sha256']);expect(dto.aprobacion.id).toBe(f.reviewId);expect(dto.emision_habilitada).toBe(false)
+ expect(JSON.stringify(dto)).not.toContain('certificado_sha256');expect(JSON.stringify(dto)).not.toContain('credencial_id')
+ api.flags.ARCA_HOMO_CREDIT_REVIEW_ENABLED='false'
+ const recovered=await send({accion:'REVISION_NC',...identity});expect(recovered.status).toBe(200);expect((await recovered.json()).resultado).toEqual(dto)
+ for(const bad of [{...write,extra:true},{...write,revision_id:null},{...write,cuerpo_sha256:'bad'},{accion:'REVISION_NC',...identity,extra:true}])expect((await send(bad)).status).toBe(400)
+ expect(api.getUser).toHaveBeenCalledTimes(2);expect(api.fetcher).not.toHaveBeenCalled();expect(api.load).not.toHaveBeenCalled()
+})
+it.each(['normal','ack-perdido','hash-distinto','respuesta-ajena','sin-auth','auth-reasignado'] as const)('servicio revisión NC %s conserva Auth original y confirma sólo por GET',async(mode)=>{
+ const f=await creditOwnerReviewFixture(),api=workerFixture(),base=api.rpc.getMockImplementation()!,other=crypto.randomUUID()
+ const {approveFiscalCreditOwnerReview,loadFiscalCreditOwnerReview}=await import('../../supabase/functions/_shared/fiscalCreditOwnerReviewService')
+ const scope={saleId:sale,operationId:op,requestId:f.proposal.datos.solicitud_id,sha256:f.proposal.sha256},before=await preparationEffects()
+ if(mode==='sin-auth')api.getUser.mockResolvedValue({data:{user:null},error:new Error('SYNTHETIC_AUTH_DENIED')})
+ if(mode==='auth-reasignado')await admin('INSERT INTO auth.users VALUES($1)',[other])
+ api.rpc.mockImplementation(async(name,args)=>{
+  const result=await base(name,args)
+  if(mode==='ack-perdido'&&name==='aprobar_revision_nc_homologacion'&&!result.error)throw new Error('SYNTHETIC_LOST_ACK')
+  if(mode==='auth-reasignado'&&name==='cargar_representacion_fiscal_homologacion')await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner])
+  if(mode==='respuesta-ajena'&&name==='cargar_revision_nc_homologacion'&&args.p_revision_id!==null&&result.data){
+   const packet=result.data as Record<string,unknown>;return{data:{...packet,aprobacion:{...(packet.aprobacion as Record<string,unknown>),id:other}},error:null}
+  }
+  return result
+ })
+ const run=()=>approveFiscalCreditOwnerReview(api.admin,'SYNTHETIC_JWT',scope,f.reviewId,mode==='hash-distinto'?'f'.repeat(64):f.body.sha256,f.prepared.sha256)
+ if(mode==='normal'||mode==='ack-perdido'){
+  const result=await run();expect(result.aprobacion?.id).toBe(f.reviewId);expect(result.emision_habilitada).toBe(false)
+  expect(api.getUser).toHaveBeenCalledTimes(1)
+  expect(await loadFiscalCreditOwnerReview(api.admin,'SYNTHETIC_JWT',scope,f.reviewId)).toEqual(result)
+  expect(api.getUser).toHaveBeenCalledTimes(2)
+ }else{await expect(run()).rejects.toThrow('FISCAL_REVISION_NC_NO_CONFIRMADA');expect(api.getUser).toHaveBeenCalledTimes(1)}
+ expect(api.rpc.mock.calls.filter(([name])=>name==='aprobar_revision_nc_homologacion')).toHaveLength(mode==='normal'||mode==='ack-perdido'||mode==='respuesta-ajena'?1:0)
+ if(mode==='sin-auth')expect(api.rpc).not.toHaveBeenCalled()
+ else expect(api.rpc.mock.calls.every(([,args])=>args.p_actor_auth_id===actor)).toBe(true)
+ expect(await preparationEffects()).toEqual(before)
+})
 it('040 revisión NC liga cuerpo/preparación/reserva con ACK recuperable, sin efectos comerciales',async()=>{
  const f=await creditOwnerReviewFixture(),before=await preparationEffects()
  expect(await f.readReview()).toEqual({version:1,cuerpo:f.packet,aprobacion:null,emision_habilitada:false})
