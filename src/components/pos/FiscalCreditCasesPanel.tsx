@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../ui/Button'
+import { FiscalCreditSourcePanel } from './FiscalCreditSourcePanel'
 import type { FiscalClient } from '../../lib/fiscalClient'
 import type { PendingFiscalCredit } from '../../lib/fiscalCreditClient'
 import type { FiscalReceipt } from '../../../supabase/functions/_shared/fiscalReceipt'
@@ -96,6 +97,7 @@ function CasesBody({ client, receipt }: Props) {
     <Button type="button" variant="secondary" loading={busy} onClick={() => { void refresh() }}>Consultar casos guardados</Button>
     {error && <p role="alert">{error}</p>}
     {message && <p role="status">{message}</p>}
+    {source && <FiscalCreditSourcePanel source={source} client={client.credits} disabled={busy || !!pending || !!target} />}
     {pending && <div className="rounded-lg border p-3 space-y-2" aria-label="Intento NC pendiente">
       <p>Este equipo conserva {pending.intention === 'CANCELAR' ? 'una cancelación' : 'un guardado'} pendiente de confirmación.</p>
       <Button type="button" variant="secondary" disabled={busy} onClick={() => { void recover() }}>Recuperar intento pendiente</Button>
