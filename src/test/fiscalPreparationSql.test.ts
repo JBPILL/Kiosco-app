@@ -1774,6 +1774,53 @@ async function creditTicketFixture(){
  const call=async(action:string,id:string|null=null,generation:number|null=null,envelope:unknown=null,binding:unknown=source.binding)=>(await db.query<{data:Record<string,unknown>}>('SELECT coordinar_ta_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11::jsonb) data',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,f.prepared.sha256,JSON.stringify(binding),action,id,generation,envelope===null?null:JSON.stringify(envelope)])).rows[0].data
  return{...f,source,intent,cipher,call}
 }
+async function creditOwnerReviewFixture(){
+ const f=await creditNumberedFixture();await f.reserve();await installCreditRequestSource()
+ await db.exec('RESET ROLE');const sql=readFileSync('supabase/pilot-fiscal/040_fiscal_credit_owner_review.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
+ await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
+ const packet=(await db.query<{data:Record<string,unknown>}>('SELECT cargar_fuente_cuerpo_nc_homologacion($1,$2,$3,$4,$5) data',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256])).rows[0].data
+ const body=packet.cuerpo as {sha256:string},reviewId=crypto.randomUUID()
+ const read=async(id:string|null=null)=>(await db.query<{data:Record<string,unknown>}>('SELECT cargar_revision_nc_homologacion($1,$2,$3,$4,$5,$6) data',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,id])).rows[0].data
+ const approve=async(id=reviewId,hash=body.sha256,prep=f.prepared.sha256)=>(await db.query<{data:Record<string,unknown>}>('SELECT aprobar_revision_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8) data',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,id,hash,prep])).rows[0].data
+ return{...f,packet,body,reviewId,readReview:read,approve}
+}
+it('040 revisión NC liga cuerpo/preparación/reserva con ACK recuperable, sin efectos comerciales',async()=>{
+ const f=await creditOwnerReviewFixture(),before=await preparationEffects()
+ expect(await f.readReview()).toEqual({version:1,cuerpo:f.packet,aprobacion:null,emision_habilitada:false})
+ const approved=await f.approve()
+ expect(approved).toMatchObject({version:1,emision_habilitada:false,aprobacion:{id:f.reviewId,solicitud_id:f.proposal.datos.solicitud_id,reserva_id:f.reservationId,solicitud_sha256:f.body.sha256,preparacion_sha256:f.prepared.sha256,aprobada:true,emision_habilitada:false}})
+ expect(await f.approve()).toEqual(approved);expect(await f.readReview(f.reviewId)).toEqual(approved)
+ const {validateFiscalCreditOwnerReview}=await import('../../supabase/functions/_shared/fiscalCreditOwnerReview')
+ const review=await validateFiscalCreditOwnerReview(approved,f.source,f.proposal)
+ expect(review.cuerpo.sha256).toBe(f.body.sha256);expect(Object.isFrozen(review.aprobacion)).toBe(true)
+ const approval=approved.aprobacion as Record<string,unknown>
+ for(const patch of [{solicitud_id:crypto.randomUUID()},{reserva_id:crypto.randomUUID()},{solicitud_sha256:'a'.repeat(64)},{preparacion_sha256:'b'.repeat(64)},{aprobada:false},{emision_habilitada:true},{vence_en:'invalid'},{extra:true}]){
+  await expect(validateFiscalCreditOwnerReview({...approved,aprobacion:{...approval,...patch}},f.source,f.proposal)).rejects.toThrow('FISCAL_REVISION_NC_NO_CONFIRMADA')
+ }
+ await db.exec('RESET ROLE');const row=(await db.query<{duration:number}>('SELECT extract(epoch from vence_en-creada_en)::integer duration FROM fiscal_nc_revisiones_homologacion WHERE id=$1',[f.reviewId])).rows[0];await db.exec('SET ROLE service_role')
+ expect(row.duration).toBe(600);expect(await preparationEffects()).toEqual(before)
+})
+it.each(['cuerpo','preparacion','uuid-ajeno','emisor','parametros','auth'] as const)('040 rechazo %s no concede aprobación nueva ni modifica cuerpo',async(reason)=>{
+ const f=await creditOwnerReviewFixture(),before=await preparationEffects()
+ if(reason==='emisor')await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false')
+ if(reason==='parametros')await admin('UPDATE fiscal_parametros_nc_homologacion SET habilitado=false')
+ if(reason==='auth'){const other=crypto.randomUUID();await admin('INSERT INTO auth.users VALUES($1)',[other]);await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner])}
+ if(reason==='uuid-ajeno')await denied(()=>f.readReview(crypto.randomUUID()))
+ else await denied(()=>f.approve(f.reviewId,reason==='cuerpo'?'f'.repeat(64):f.body.sha256,reason==='preparacion'?'f'.repeat(64):f.prepared.sha256))
+ await db.exec('RESET ROLE');expect((await db.query<{count:number}>('SELECT count(*)::integer count FROM fiscal_nc_revisiones_homologacion')).rows[0].count).toBe(0);await db.exec('SET ROLE service_role')
+ expect(await preparationEffects()).toEqual(before)
+})
+it('040 replay histórico conserva vencimiento tras revocar emisor y no permite aprobación nueva',async()=>{
+ const f=await creditOwnerReviewFixture(),ack=await f.approve();await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false')
+ expect(await f.approve()).toEqual(ack);expect(await f.readReview(f.reviewId)).toEqual(ack)
+ await denied(()=>f.approve(crypto.randomUUID()))
+})
+it('040 revisión privada inmutable y funciones no accesibles por navegador',async()=>{
+ const f=await creditOwnerReviewFixture();await f.approve()
+ for(const role of ['anon','authenticated','service_role']){await db.exec(`SET ROLE ${role}`);await denied(()=>db.exec('SELECT * FROM fiscal_nc_revisiones_homologacion'))}
+ for(const role of ['anon','authenticated']){await db.exec(`SET ROLE ${role}`);await denied(()=>f.readReview(f.reviewId));await denied(()=>f.approve())}
+ await db.exec('RESET ROLE');await denied(()=>db.exec('DELETE FROM fiscal_nc_revisiones_homologacion'));await denied(()=>db.exec("UPDATE fiscal_nc_revisiones_homologacion SET solicitud_sha256=repeat('f',64)"));await db.exec('SET ROLE service_role')
+})
 it.each(['normal','ack-reserva-perdido','recuperacion','gate-cerrado','gate-cambia','wsfe-falla','gate-tras-consulta','concurrente','carrera-fuente'] as const)('worker numeración NC %s usa Auth único, recuperación037 y reserva036',async(mode)=>{
  const f=await creditTicketFixture();await installCreditRequestSource();f.api.getUser.mockClear()
  const {prepareFiscalCreditNumber}=await import('../../supabase/functions/_shared/fiscalCreditNumberWorker')
