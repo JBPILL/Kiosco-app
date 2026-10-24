@@ -19,6 +19,7 @@ let created = false
 let containerId
 let port
 let requiredPresentationInstalledAfterCase=null
+let creditDraftInstalledAfterCase=null
 let evidence
 const evidenceIndex = process.argv.indexOf('--evidence')
 const evidencePath = evidenceIndex >= 0 ? resolve(process.argv[evidenceIndex+1] ?? '') : null
@@ -363,14 +364,14 @@ try {
   }
   await observer.query(`INSERT INTO fiscal_parametros_homologacion(revision,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en,habilitado)
     VALUES(1,'[{"id":5,"descripcion":"Ensayo","comprobantes":[11]}]','[]',repeat('b',64),clock_timestamp()-interval '1 hour',clock_timestamp()+interval '1 hour',true)`)
-  async function preparationFixture(point) {
+  async function preparationFixture(point,revision=1,quantity=1) {
     const f=await fixture(),product=randomUUID(),operation=randomUUID()
     await observer.query("INSERT INTO productos(id,kiosco_id,descripcion,precio_venta) VALUES($1,$2,'Ensayo',123.45)",[product,f.kid])
-    await observer.query('INSERT INTO detalles_venta(venta_id,producto_id,cantidad,precio_unitario,subtotal) VALUES($1,$2,1,123.45,123.45)',[f.sale,product])
+    await observer.query('INSERT INTO detalles_venta(venta_id,producto_id,cantidad,precio_unitario,subtotal) VALUES($1,$2,$3,123.45/$3,123.45)',[f.sale,product,quantity])
     await observer.query('INSERT INTO fiscal_emisores_homologacion(kiosco_id,cuit_emisor,punto_venta,credencial_id,certificado_sha256,habilitado) VALUES($1,$2,$3,$4,$5,true)',[f.kid,issuer,point,randomUUID(),'c'.repeat(64)])
     const datos={version:1,entorno:'HOMOLOGACION',cuitEmisor:issuer,puntoVenta:point,tipoComprobante:11,concepto:1,tipoDocumento:99,numeroDocumento:'0',condicionIvaReceptor:5,
       fecha:'20261021',servicioDesde:null,servicioHasta:null,vencimientoPago:null,moneda:'PES',cotizacion:'1',importes:{total:'123.45',neto:'123.45',iva:'0.00',noGravado:'0.00',exento:'0.00',tributos:'0.00'},iva:[],tributos:[]}
-    const canonical=JSON.stringify({version:1,venta_id:f.sale,condicionEmisor:'MONOTRIBUTO',revision_parametros:1,datos})
+    const canonical=JSON.stringify({version:1,venta_id:f.sale,condicionEmisor:'MONOTRIBUTO',revision_parametros:revision,datos})
     return {...f,operation,canonical,hash:createHash('sha256').update(canonical).digest('hex')}
   }
   const savePreparation=async(client,f)=>(await client.query('SELECT guardar_datos_preparacion_homologacion($1,$2,$3,$4,$5) ack',[f.auth,f.sale,f.operation,f.canonical,f.hash])).rows[0].ack
@@ -666,8 +667,8 @@ try {
   await start(b);const blockedSale=capture(savePreparation(b,changedSale));await waitForLock(observer,b);await a.query('COMMIT')
   assert.equal((await blockedSale).error?.code,'22023');await b.query('ROLLBACK')
   cases.push('venta_cambia_durante_espera_no_guarda_importe_anterior')
-  async function presentationFixture(point){
-    const f=await preparationFixture(point)
+  async function presentationFixture(point,revision=1,quantity=1){
+    const f=await preparationFixture(point,revision,quantity)
     await start(a);await savePreparation(a,f);await persistPrepared(a,f);await a.query('COMMIT')
     const body=(await observer.query('SELECT solicitud_sha256 FROM fiscal_solicitudes_homologacion WHERE operacion_id=$1',[f.operation])).rows[0].solicitud_sha256
     const detail=(await observer.query('SELECT id FROM detalles_venta WHERE venta_id=$1',[f.sale])).rows[0].id
@@ -743,8 +744,8 @@ try {
   cases.push('025_operacion_heredada_nueva_sin_012_no_crea_intencion_aunque_tenga_permiso_revision')
   await start(a);const directIntent=await capture(a.query('SELECT registrar_intento_fiscal_homologacion($1,$2)',[boundReview.operation,randomUUID()]));assert.equal(directIntent.error?.code,'42501');await a.query('ROLLBACK')
   cases.push('025_helper_directo_cerrado_incluso_con_hechos_y_revision_validos')
-  async function strictPresentationFixture(point){
-    const f=await presentationFixture(point),revision=randomUUID(),grant=randomUUID()
+  async function strictPresentationFixture(point,parameterRevision=1,quantity=1){
+    const f=await presentationFixture(point,parameterRevision,quantity),revision=randomUUID(),grant=randomUUID()
     await start(a);await f.write(a)
     await a.query('SELECT aprobar_revision_presentacion_homologacion($1,$2,$3,$4,$5,1,$6)',[f.auth,f.sale,f.operation,revision,f.body,f.sha]);await a.query('COMMIT')
     await observer.query(`INSERT INTO fiscal_permisos_emision_homologacion(operacion_id,autorizacion_id,solicitud_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,vence_en)
@@ -845,11 +846,86 @@ try {
   await start(b);assert.equal((await b.query('SELECT resolver_preparacion_fiscal_homologacion($1,$2) ack',[legacyInvoice.auth,legacyInvoice.sale])).rows[0].ack.estado,'REGISTRO_FISCAL_HEREDADO');await b.query('COMMIT')
   cases.push('CAE_heredado_confirmado_durante_espera_impide_nueva_preparacion')
   for(const f of [replacedActor,changedSale,expiredCatalog])assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_operaciones_homologacion WHERE venta_id=$1',[f.sale])).rows[0].n,0)
+  creditDraftInstalledAfterCase=cases.length
+  await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/027_fiscal_credit_drafts.sql'),'utf8'))
+  await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/027_fiscal_credit_drafts.sql'),'utf8'))
+  async function creditFixture(point){
+    const f=await strictPresentationFixture(point,3,2),attempt=randomUUID()
+    await start(a);await f.send(a,attempt);await a.query('COMMIT')
+    await start(a);await a.query('SELECT registrar_reconciliacion_fiscal_homologacion($1,$2,$3,$4,1,$5::jsonb)',[randomUUID(),f.operation,attempt,f.body,JSON.stringify({estado:'AUTORIZACION_COINCIDENTE',cae:'11111111111111',vencimiento:'20261031',procesadoEn:null,solicitudSha256:f.body,puedeReenviar:false})]);await a.query('COMMIT')
+    await start(a);const source=(await a.query('SELECT cargar_representacion_fiscal_homologacion($1,$2,$3) v',[f.auth,f.sale,f.operation])).rows[0].v;await a.query('COMMIT')
+    const body=source.constancia.solicitud.solicitud,today=(await observer.query(`SELECT to_char(clock_timestamp() AT TIME ZONE 'America/Argentina/Buenos_Aires','YYYYMMDD') v`)).rows[0].v
+    const make=async(amount='123.45',quantity='2.000',id=randomUUID())=>{
+      const data={version:1,solicitud_id:id,fecha:today,motivo:'NC sintética',condicion_iva_receptor:5,lineas:[{detalle_id:source.contexto.lineas[0].detalle_id,cantidad:quantity,importe:amount,reingresa_stock:true}],
+        importes:{total:amount,neto:amount,iva:'0.00',noGravado:'0.00',exento:'0.00',tributos:'0.00'},iva:[],tributos:[],clase:'DEVOLUCION',entorno:'HOMOLOGACION',tipo_nota_credito:13,
+        origen:{venta_id:f.sale,operacion_id:f.operation,solicitud_sha256:f.body,presentacion_sha256:f.sha,cae:'11111111111111',cuit:body.cuitEmisor,tipo:11,punto_venta:point,numero:body.numero,fecha:body.fecha,tipo_documento_receptor:99,numero_documento_receptor:'0'}}
+      const canonical=(await observer.query('SELECT fiscal_json_canonico_homologacion($1::jsonb) v',[JSON.stringify(data)])).rows[0].v
+      return {id,canonical,sha:createHash('sha256').update(canonical).digest('hex')}
+    }
+    const write=async(client,p,actor=f.auth)=>(await client.query('SELECT guardar_borrador_nc_homologacion($1,$2,$3,$4,$5) v',[actor,f.sale,f.operation,p.canonical,p.sha])).rows[0].v
+    const read=async(client,p,actor=f.auth)=>(await client.query('SELECT cargar_borrador_nc_homologacion($1,$2,$3,$4) v',[actor,f.sale,f.operation,p.id])).rows[0].v
+    const cancel=async(client,p,actor=f.auth)=>(await client.query('SELECT cancelar_borrador_nc_homologacion($1,$2,$3,$4,$5) v',[actor,f.sale,f.operation,p.id,p.sha])).rows[0].v
+    return {...f,make,write,read,cancel}
+  }
+  const duplicateCredit=await creditFixture(160),sameCredit=await duplicateCredit.make()
+  await start(a);const firstCredit=await duplicateCredit.write(a,sameCredit)
+  await start(b);const waitingDuplicateCredit=capture(duplicateCredit.write(b,sameCredit));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.deepEqual((await waitingDuplicateCredit).value,firstCredit);await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_borradores_homologacion WHERE operacion_origen_id=$1',[duplicateCredit.operation])).rows[0].n,1)
+  cases.push('027_dos_workers_mismo_UUID_un_caso_ACK_recuperable_sin_efectos_comerciales')
+  const competingCredit=await creditFixture(161),creditA=await competingCredit.make(),creditB=await competingCredit.make()
+  await start(a);await competingCredit.write(a,creditA)
+  await start(b);const waitingCreditBalance=capture(competingCredit.write(b,creditB));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await waitingCreditBalance).error?.code,'22023');await b.query('ROLLBACK')
+  cases.push('027_UUID_distintos_no_reservan_dos_veces_cantidad_ni_importe')
+  await start(a);await competingCredit.cancel(a,creditA)
+  await start(b);const waitingReleasedBalance=capture(competingCredit.write(b,creditB));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await waitingReleasedBalance).value.estado,'SALDO_RESERVADO_NO_EMITIR');await b.query('COMMIT')
+  await start(a);assert.equal((await competingCredit.write(a,creditA)).estado,'CANCELADA');await a.query('COMMIT')
+  cases.push('027_cancelacion_libera_saldo_sin_borrar_historia_ni_reactivar_UUID')
+  const rollbackCredit=await creditFixture(162),rollingCredit=await rollbackCredit.make(),afterRollbackCredit=await rollbackCredit.make()
+  await start(a);await rollbackCredit.write(a,rollingCredit)
+  await start(b);const waitingRolledBalance=capture(rollbackCredit.write(b,afterRollbackCredit));await waitForLock(observer,b);await a.query('ROLLBACK')
+  assert.equal((await waitingRolledBalance).value.estado,'SALDO_RESERVADO_NO_EMITIR');await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_borradores_homologacion WHERE id=$1',[rollingCredit.id])).rows[0].n,0)
+  cases.push('027_rollback_no_consume_saldo_para_worker_que_espera')
+  const centsCredit=await creditFixture(163),centsFirst=await centsCredit.make('61.73','1.000'),centsLast=await centsCredit.make('61.72','1.000')
+  await start(a);await centsCredit.write(a,centsFirst)
+  await start(b);const waitingCents=capture(centsCredit.write(b,centsLast));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await waitingCents).value.estado,'SALDO_RESERVADO_NO_EMITIR');await b.query('COMMIT')
+  await start(a);assert.equal((await capture(centsCredit.cancel(a,centsFirst))).error?.code,'55000');await a.query('ROLLBACK')
+  assert.equal((await observer.query(`SELECT sum((l->>'importe')::numeric)::text v FROM fiscal_nc_borradores_homologacion x CROSS JOIN LATERAL jsonb_array_elements(x.datos->'lineas') l WHERE operacion_origen_id=$1`,[centsCredit.operation])).rows[0].v,'123.45')
+  cases.push('027_dos_parciales_conservan_centavo_y_cancelacion_exige_orden_inverso')
+  const changedCreditAuth=await creditFixture(164),authCredit=await changedCreditAuth.make(),newCreditAuth=randomUUID()
+  await observer.query('INSERT INTO auth.users VALUES($1)',[newCreditAuth])
+  await a.query('BEGIN');await a.query('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[newCreditAuth,changedCreditAuth.owner])
+  await start(b);const waitingCreditAuth=capture(changedCreditAuth.write(b,authCredit));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await waitingCreditAuth).error?.code,'42501');await b.query('ROLLBACK')
+  for(const actor of [changedCreditAuth.auth,newCreditAuth]){await start(a);assert.equal((await capture(changedCreditAuth.read(a,authCredit,actor))).error?.code,'42501');await a.query('ROLLBACK')}
+  cases.push('027_Auth_reasignado_esperando_no_reserva_ni_revela_caso')
+  const revokedCreditIssuer=await creditFixture(165),revokedCredit=await revokedCreditIssuer.make()
+  await a.query('BEGIN');await a.query('UPDATE fiscal_emisores_homologacion SET habilitado=false WHERE kiosco_id=$1',[revokedCreditIssuer.kid])
+  await start(b);const waitingCreditIssuer=capture(revokedCreditIssuer.write(b,revokedCredit));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await waitingCreditIssuer).error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('027_emisor_revocado_esperando_no_reserva_caso_nuevo')
+  const expiredCreditCatalog=await creditFixture(166),expiringCredit=await expiredCreditCatalog.make()
+  await observer.query('ALTER TABLE fiscal_parametros_homologacion DISABLE TRIGGER fiscal_parametros_inmutables')
+  await observer.query(`UPDATE fiscal_parametros_homologacion SET vence_en=clock_timestamp()+interval '2 seconds' WHERE revision=3`)
+  await observer.query('ALTER TABLE fiscal_parametros_homologacion ENABLE TRIGGER fiscal_parametros_inmutables')
+  await a.query('BEGIN');await a.query('SELECT revision FROM fiscal_parametros_homologacion WHERE revision=3 FOR UPDATE')
+  await start(b);const waitingCreditCatalog=capture(expiredCreditCatalog.write(b,expiringCredit));await waitForLock(observer,b)
+  const ncCatalogDeadline=Date.now()+7000;let ncCatalogExpired=false
+  while(Date.now()<ncCatalogDeadline){ncCatalogExpired=(await observer.query('SELECT vence_en<=clock_timestamp() expired FROM fiscal_parametros_homologacion WHERE revision=3')).rows[0].expired;if(ncCatalogExpired)break;await delay(40)}
+  assert(ncCatalogExpired);await a.query('COMMIT');assert.equal((await waitingCreditCatalog).error?.code,'22023');await b.query('ROLLBACK')
+  cases.push('027_catalogo_vence_durante_lock_no_reserva_caso')
+  for(const f of [duplicateCredit,competingCredit,rollbackCredit,centsCredit,changedCreditAuth,revokedCreditIssuer,expiredCreditCatalog]){
+    for(const table of ['movimientos_stock','movimientos_caja','devoluciones_venta'])assert.equal((await observer.query(`SELECT count(*)::int n FROM ${table} WHERE kiosco_id=$1`,[f.kid])).rows[0].n,0)
+  }
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
-    cases,caseCount:cases.length,requiredPresentationInstalledAfterCase,postRequiredPresentationCaseCount:requiredPresentationInstalledAfterCase===null?0:cases.length-requiredPresentationInstalledAfterCase,externalRequests:0,invoicesIssued:0}
+    cases,caseCount:cases.length,requiredPresentationInstalledAfterCase,postRequiredPresentationCaseCount:requiredPresentationInstalledAfterCase===null?0:cases.length-requiredPresentationInstalledAfterCase,creditDraftInstalledAfterCase,postCreditDraftCaseCount:creditDraftInstalledAfterCase===null?0:cases.length-creditDraftInstalledAfterCase,externalRequests:0,invoicesIssued:0}
 } catch(error) {
   console.error('FISCAL_CONCURRENCY=FAIL; CODE='+(error?.code??error?.name??'UNKNOWN')+'; STEP='+cases.length+'; DETAIL='+error.message)
   evidence={status:'FAIL',testedAt:new Date().toISOString(),containerId,containerName:name,port,cases,code:error?.code??error?.name??'UNKNOWN'}

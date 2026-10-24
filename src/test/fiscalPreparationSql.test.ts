@@ -1,4 +1,6 @@
 import { validateFiscalRepresentation } from '../../supabase/functions/_shared/fiscalRepresentation'
+import { prepareFiscalCreditDraft } from '../../supabase/functions/_shared/fiscalCreditDraft'
+import type { FiscalCreditDraft, FiscalCreditDraftInput } from '../../supabase/functions/_shared/fiscalCreditDraft'
 import { emitAuthorizedFiscalVoucher } from '../../supabase/functions/_shared/fiscalEmissionWorker'
 import { validateFiscalPresentationContext } from '../../supabase/functions/_shared/fiscalPresentationContext'
 import { prepareFiscalPresentationFacts } from '../../supabase/functions/_shared/fiscalPresentation'
@@ -318,8 +320,8 @@ async function approvePreparedPresentation(operation:string,sha:string,id=crypto
  await db.query('SELECT aprobar_revision_presentacion_homologacion($1,$2,$3,$4,$5,1,$6)',[actor,sale,operation,id,sha,facts.sha256])
  return {id,sha:facts.sha256}
 }
-async function authorizeReceipt(finalize=true) {
- const p=await prepared();await save(p.canonico,p.sha256)
+async function authorizeReceipt(finalize=true,proposal?:FiscalPreparationInput) {
+ const p=proposal?await prepareFiscalData(await context(),proposal):await prepared();await save(p.canonico,p.sha256)
  const frozen=await requestFromPreparedFiscalData(p,1),canonical=await serializeFiscalRequest(frozen)
  await db.query('SELECT persistir_preparacion_fiscal_homologacion($1,$2,$3,$4,0,clock_timestamp())',[actor,op,canonical,frozen.sha256])
  const permission=crypto.randomUUID(),attempt=crypto.randomUUID()
@@ -1259,4 +1261,118 @@ it('historia comercial no conciliada no recibe un ajuste inventado para represen
 })
 it.each(['anon','authenticated'])('representación autorizada no concede acceso directo al rol %s',async role=>{
  await authorizeReceipt();await db.exec(`SET ROLE ${role}`);await denied(()=>representation())
+})
+
+async function creditReservationFixture(taxed=false){
+ await admin('UPDATE detalles_venta SET cantidad=2,precio_unitario=61.72 WHERE venta_id=$1',[sale])
+ let proposal: FiscalPreparationInput|undefined
+ if(taxed){
+  await admin('UPDATE fiscal_parametros_homologacion SET habilitado=false')
+  await admin(`INSERT INTO fiscal_parametros_homologacion VALUES(2,'[{"id":5,"descripcion":"CF ensayo","comprobantes":[6]}]','[{"id":5,"descripcion":"21% ensayo"}]',$1,clock_timestamp()-interval '1 minute',clock_timestamp()+interval '1 hour',true)`,['b'.repeat(64)])
+  const old=input();proposal={condicionEmisor:'RESPONSABLE_INSCRIPTO',datos:{...old.datos,tipoComprobante:6,importes:{neto:'100',iva:'21',noGravado:'0',exento:'0',tributos:'2.45'},iva:[{id:5,base:'100',importe:'21'}],tributos:[{id:99,descripcion:'Tributo ensayo',base:'100',alicuota:'2.45',importe:'2.45'}]}}
+ }
+ await authorizeReceipt(true,proposal)
+ const source=await validateFiscalRepresentation(await representation(),sale,op),body=source.constancia.solicitud.solicitud
+ const today=(await db.query<{v:string}>(`SELECT to_char(clock_timestamp() AT TIME ZONE 'America/Argentina/Buenos_Aires','YYYYMMDD') v`)).rows[0].v
+ const draftInput: FiscalCreditDraftInput={version:1,solicitud_id:crypto.randomUUID(),fecha:today,motivo:'Devolución sintética',condicion_iva_receptor:5,
+  lineas:[{detalle_id:source.contexto.lineas[0].detalle_id,cantidad:'2.000',importe:body.importes.total,reingresa_stock:true}],importes:structuredClone(body.importes),iva:structuredClone(body.iva),tributos:structuredClone(body.tributos)}
+ const make=(value=draftInput)=>prepareFiscalCreditDraft(source,value,today)
+ const write=async(p:Readonly<FiscalCreditDraft>,who=actor)=>(await db.query<{data:Record<string,unknown>}>('SELECT guardar_borrador_nc_homologacion($1,$2,$3,$4,$5) data',[who,sale,op,p.canonico,p.sha256])).rows[0].data
+ const read=async(p:Readonly<FiscalCreditDraft>,who=actor)=>(await db.query<{data:Record<string,unknown>|null}>('SELECT cargar_borrador_nc_homologacion($1,$2,$3,$4) data',[who,sale,op,p.datos.solicitud_id])).rows[0].data
+ const cancel=async(p:Readonly<FiscalCreditDraft>,who=actor)=>(await db.query<{data:Record<string,unknown>}>('SELECT cancelar_borrador_nc_homologacion($1,$2,$3,$4,$5) data',[who,sale,op,p.datos.solicitud_id,p.sha256])).rows[0].data
+ const partial=(amount:string,qty='1.000',id=crypto.randomUUID()):FiscalCreditDraftInput=>({...draftInput,solicitud_id:id,lineas:[{...draftInput.lineas[0],cantidad:qty,importe:amount}],importes:{...draftInput.importes,total:amount,neto:amount}})
+ return {source,input:draftInput,today,make,write,read,cancel,partial}
+}
+it('NC guarda saldo una vez con ACK recuperable y sin habilitar emisión, efectivo o stock',async()=>{
+ const f=await creditReservationFixture(),p=await f.make(),ack=await f.write(p)
+ expect(ack).toEqual({version:1,entorno:'HOMOLOGACION',solicitud_id:p.datos.solicitud_id,venta_id:sale,operacion_origen_id:op,propuesta_sha256:p.sha256,estado:'SALDO_RESERVADO_NO_EMITIR',emision_habilitada:false,reintegro_habilitado:false,reposicion_habilitada:false})
+ expect(await f.write(p)).toEqual(ack);expect(await f.read(p)).toEqual(ack)
+ await db.exec('RESET ROLE')
+ expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_nc_borradores_homologacion')).rows[0].n).toBe(1)
+ for(const t of ['movimientos_stock','movimientos_caja','devoluciones_venta'])expect((await db.query<{n:number}>(`SELECT count(*)::int n FROM ${t}`)).rows[0].n).toBe(0)
+ expect((await db.query<{v:string}>('SELECT total::text v FROM ventas WHERE id=$1',[sale])).rows[0].v).toBe('123.45')
+})
+it('NC reserva centavos acumulativos y cancela en orden inverso sin reactivar identidad',async()=>{
+ const f=await creditReservationFixture(),a=await f.make(f.partial('61.73')),b=await f.make(f.partial('61.72'))
+ await f.write(a);await f.write(b)
+ const extra=await f.make(f.partial('61.73'));await denied(()=>f.write(extra))
+ await denied(()=>f.cancel(a));expect(await f.cancel(b)).toMatchObject({estado:'CANCELADA'});expect(await f.cancel(b)).toMatchObject({estado:'CANCELADA'})
+ expect(await f.cancel(a)).toMatchObject({estado:'CANCELADA'});expect(await f.write(a)).toMatchObject({estado:'CANCELADA'})
+ const full=await f.make({...f.input,solicitud_id:crypto.randomUUID()});expect(await f.write(full)).toMatchObject({estado:'SALDO_RESERVADO_NO_EMITIR'})
+})
+it('NC rechaza prorrateo comercial diferente aunque sume y sea inferior a factura',async()=>{
+ const f=await creditReservationFixture(),p=await f.make(f.partial('60.00'));await denied(()=>f.write(p))
+ expect(await f.read(p)).toBeNull()
+})
+it('NC rollback no consume saldo ni deja caso; ACK perdido recupera misma identidad',async()=>{
+ const f=await creditReservationFixture(),p=await f.make()
+ await db.exec('SAVEPOINT nc_crash');await f.write(p);await db.exec('ROLLBACK TO SAVEPOINT nc_crash; RELEASE SAVEPOINT nc_crash')
+ expect(await f.read(p)).toBeNull();const ack=await f.write(p);expect(await f.read(p)).toEqual(ack)
+})
+it('NC guarda IVA y tributos explícitos; saldo por tributo incluye base y centavos sin truncar',async()=>{
+ const f=await creditReservationFixture(true)
+ const partial=(amount:string,tax:string,base:string)=>({...f.input,solicitud_id:crypto.randomUUID(),lineas:[{...f.input.lineas[0],cantidad:'1.000',importe:amount}],importes:{...f.input.importes,total:amount,neto:'50.00',iva:'10.50',tributos:tax},iva:[{id:5,base:'50.00',importe:'10.50'}],tributos:[{...f.input.tributos[0],base,importe:tax}]})
+ await f.write(await f.make(partial('61.73','1.23','75.00')))
+ const over=await f.make(partial('61.72','1.22','75.00'));await denied(()=>f.write(over))
+ const remainder=await f.make(partial('61.72','1.22','25.00'));expect(await f.write(remainder)).toMatchObject({estado:'SALDO_RESERVADO_NO_EMITIR'})
+})
+it.each(['CAJERO','VISOR'])('NC rol %s no crea/lee/cancela casos',async role=>{
+ const f=await creditReservationFixture(),p=await f.make();await f.write(p);await admin('UPDATE usuarios SET rol=$1 WHERE id=$2',[role,owner])
+ await denied(()=>f.read(p));await denied(()=>f.write(p));await denied(()=>f.cancel(p))
+})
+it('NC Auth reasignado rechaza cuenta original y nueva, incluida recuperación histórica',async()=>{
+ const f=await creditReservationFixture(),p=await f.make();await f.write(p)
+ const other=crypto.randomUUID();await admin('INSERT INTO auth.users VALUES($1)',[other]);await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner])
+ for(const who of [actor,other]){await denied(()=>f.read(p,who));await denied(()=>f.write(p,who));await denied(()=>f.cancel(p,who))}
+})
+it('NC emisor/catálogo revocados no impiden leer/cancelar historial pero sí crear otra propuesta',async()=>{
+ const f=await creditReservationFixture(),p=await f.make(f.partial('61.73'));await f.write(p)
+ await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false');await admin('UPDATE fiscal_parametros_homologacion SET habilitado=false')
+ expect(await f.read(p)).toMatchObject({estado:'SALDO_RESERVADO_NO_EMITIR'});expect(await f.write(p)).toMatchObject({estado:'SALDO_RESERVADO_NO_EMITIR'})
+ const next=await f.make(f.partial('61.72'));await denied(()=>f.write(next));expect(await f.cancel(p)).toMatchObject({estado:'CANCELADA'})
+})
+it.each(['anon','authenticated','service_role'])('NC tablas y helpers privados denegados al rol %s',async role=>{
+ const f=await creditReservationFixture(),p=await f.make();await f.write(p);await db.exec(`SET ROLE ${role}`)
+ for(const table of ['fiscal_nc_borradores_homologacion','fiscal_nc_cancelaciones_homologacion']){
+  await denied(()=>db.query(`SELECT * FROM ${table}`));await denied(()=>db.query(`DELETE FROM ${table}`))
+ }
+ await denied(()=>db.query('SELECT fiscal_nc_ack($1)',[p.datos.solicitud_id]))
+ await denied(()=>db.query('SELECT fiscal_validar_borrador_nc($1::jsonb,$2::jsonb)',[JSON.stringify(p.datos),JSON.stringify(f.source)]))
+ if(role!=='service_role'){await denied(()=>f.write(p));await denied(()=>f.read(p));await denied(()=>f.cancel(p))}
+})
+it('NC UUID existente exige exactamente el mismo canónico y hash; no sustituye propuesta',async()=>{
+ const f=await creditReservationFixture(),p=await f.make();await f.write(p)
+ const changed=await f.make({...f.input,motivo:'Otro motivo'});await denied(()=>f.write(changed))
+ expect(await f.read(p)).toMatchObject({propuesta_sha256:p.sha256})
+})
+it('NC valida asociación, tipos y decimales también en SQL aunque se evada el contrato TS',async()=>{
+ const f=await creditReservationFixture(),p=await f.make()
+ for(const change of [
+  (v:Record<string,unknown>)=>({...v,origen:{...(v.origen as object),numero:999}}),
+  (v:Record<string,unknown>)=>({...v,tipo_nota_credito:3}),
+  (v:Record<string,unknown>)=>({...v,condicion_iva_receptor:999}),
+  (v:Record<string,unknown>)=>({...v,lineas:[{...p.datos.lineas[0],cantidad:2}]}),
+  (v:Record<string,unknown>)=>({...v,importes:{...p.datos.importes,total:'123,45'}}),
+  (v:Record<string,unknown>)=>({...v,motivo:'Control\nprohibido'}),
+  (v:Record<string,unknown>)=>({...v,fecha:'20990101'}),
+ ]){
+  const data=change({...p.datos,solicitud_id:crypto.randomUUID()})
+  await db.exec('RESET ROLE');const canonical=(await db.query<{v:string}>('SELECT fiscal_json_canonico_homologacion($1::jsonb) v',[JSON.stringify(data)])).rows[0].v;await db.exec('SET ROLE service_role')
+  await denied(()=>db.query('SELECT guardar_borrador_nc_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,canonical,hash(canonical)]))
+ }
+})
+it('NC conserva filas y cancelaciones incluso ante UPDATE/DELETE privilegiados accidentales',async()=>{
+ const f=await creditReservationFixture(),p=await f.make();await f.write(p);await f.cancel(p)
+ await db.exec('RESET ROLE')
+ for(const table of ['fiscal_nc_borradores_homologacion','fiscal_nc_cancelaciones_homologacion']){
+  await denied(()=>db.query(`DELETE FROM ${table}`));await denied(()=>db.query(`UPDATE ${table} SET propuesta_sha256=repeat('b',64)`))
+ }
+})
+it('NC canónico con espacios o hash incorrecto no reserva; cancelación exige hash original',async()=>{
+ const f=await creditReservationFixture(),p=await f.make(),spaced=JSON.stringify(p.datos,null,2)
+ await denied(()=>db.query('SELECT guardar_borrador_nc_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,spaced,hash(spaced)]))
+ await denied(()=>db.query('SELECT guardar_borrador_nc_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,p.canonico,'b'.repeat(64)]))
+ await f.write(p)
+ await denied(()=>db.query('SELECT cancelar_borrador_nc_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,p.datos.solicitud_id,'b'.repeat(64)]))
+ expect(await f.read(p)).toMatchObject({estado:'SALDO_RESERVADO_NO_EMITIR'})
 })
