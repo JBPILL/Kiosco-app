@@ -30,6 +30,15 @@ it('recupera antes de catálogo y no ofrece emisión ni escritura automática', 
   expect(f.client.context).not.toHaveBeenCalled(); expect(f.client.savePreparation).not.toHaveBeenCalled()
   expect(screen.queryByRole('button', { name: 'Guardar preparación NC' })).toBeNull()
 })
+it('integra revisión numerada sólo después de verificar preparación guardada', async () => {
+  const f = await fixture(); f.client.preparation.mockResolvedValueOnce(f.stored)
+  const reviewClient = { pendingReview: vi.fn(() => null), review: vi.fn(), recoverReview: vi.fn(), approveReview: vi.fn() }
+  render(<FiscalCreditPreparationPanel {...f.props} reviewClient={reviewClient} />)
+  expect(screen.queryByRole('button', { name: 'Consultar o recuperar revisión' })).toBeNull()
+  f.consult(); await screen.findByRole('button', { name: 'Consultar o recuperar revisión' })
+  expect(reviewClient.review).not.toHaveBeenCalled(); expect(reviewClient.approveReview).not.toHaveBeenCalled()
+  expect(screen.queryByText('Sin número ni CAE. No entregues efectivo ni repongas stock.')).toBeNull()
+})
 it('servicios requieren fechas explícitas dd/mm/aaaa y confirmación; guarda sin emitir', async () => {
   const f = await fixture(2); render(<FiscalCreditPreparationPanel {...f.props} />); f.consult()
   const from = await screen.findByLabelText('Servicio desde')

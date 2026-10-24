@@ -133,7 +133,7 @@ function CasesBody({ client, receipt }: Props) {
       <p>{row.acuse.estado === 'CANCELADA' ? 'Cancelado · historial conservado' : 'Guardado · sin emitir'}</p>
       <p>{row.propuesta.datos.motivo}</p>
       {row.acuse.estado === 'SALDO_RESERVADO_NO_EMITIR' && source && !busy && !pending && !target && <FiscalCreditContextPanel source={source} proposal={row.propuesta} client={client.credits} sequence={row.secuencia} />}
-      {row.acuse.estado === 'SALDO_RESERVADO_NO_EMITIR' && source && !busy && !pending && !target && <FiscalCreditPreparationPanel source={source} proposal={row.propuesta} client={client.credits} sequence={row.secuencia} onCancelled={() => {
+      {row.acuse.estado === 'SALDO_RESERVADO_NO_EMITIR' && source && !busy && !pending && !target && <FiscalCreditPreparationPanel source={source} proposal={row.propuesta} client={client.credits} reviewClient={client.credits} sequence={row.secuencia} onCancelled={() => {
         setRows(previous => previous.map(item => item.acuse.solicitud_id === row.acuse.solicitud_id ? { ...item, acuse: { ...item.acuse, estado: 'CANCELADA' } } : item))
         setMessage('Cancelación confirmada. Se conserva el historial del caso y de su preparación.')
       }} />}
