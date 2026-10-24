@@ -26,6 +26,7 @@ let checkoutUnitsInstalledAfterCase=null
 let creditBindingInstalledAfterCase=null
 let creditContextInstalledAfterCase=null
 let creditContextSourceInstalledAfterCase=null
+let creditDataInstalledAfterCase=null
 let evidence
 const evidenceIndex = process.argv.indexOf('--evidence')
 const evidencePath = evidenceIndex >= 0 ? resolve(process.argv[evidenceIndex+1] ?? '') : null
@@ -1141,11 +1142,52 @@ try {
   await start(b);const waitingCanceledSource=capture(readContextSource(b));await waitForLock(observer,b);await a.query('COMMIT')
   assert.equal((await waitingCanceledSource).error?.code,'42501');await b.query('ROLLBACK')
   cases.push('034_cancelacion_confirmada_esperando_no_expone_canonico_del_caso')
+  creditDataInstalledAfterCase=cases.length
+  for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/035_fiscal_credit_preparation.sql'),'utf8'))
+  async function creditDataFixture(point){
+    const f=await creditContextFixture(point)
+    await start(a);const ctx=await f.load(a);await a.query('COMMIT')
+    const contextCanonical=(await observer.query('SELECT fiscal_json_canonico_homologacion($1::jsonb) v',[JSON.stringify(ctx)])).rows[0].v
+    const expectedContextSha=createHash('sha256').update(contextCanonical).digest('hex'),entry={servicioDesde:null,servicioHasta:null,vencimientoPago:null}
+    const saveData=async(client)=>(await client.query('SELECT guardar_preparacion_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb) v',[f.auth,f.sale,f.operation,f.proposal.id,f.proposal.sha,expectedContextSha,JSON.stringify(entry)])).rows[0].v
+    const readData=async(client)=>(await client.query('SELECT cargar_preparacion_nc_homologacion($1,$2,$3,$4,$5) v',[f.auth,f.sale,f.operation,f.proposal.id,f.proposal.sha])).rows[0].v
+    return {...f,saveData,readData}
+  }
+  const duplicateCreditData=await creditDataFixture(199)
+  await start(a);const firstCreditData=await duplicateCreditData.saveData(a)
+  await start(b);const waitingCreditData=capture(duplicateCreditData.saveData(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.deepEqual((await waitingCreditData).value,firstCreditData);await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_preparaciones_nc_homologacion WHERE solicitud_id=$1',[duplicateCreditData.proposal.id])).rows[0].n,1)
+  assert(!Object.hasOwn(JSON.parse(firstCreditData.preparacion.canonico).datos,'numero'))
+  cases.push('035_dos_workers_mismo_caso_un_canónico_sin_numeración_NC')
+  const canceledCreditData=await creditDataFixture(200)
+  await start(a);await canceledCreditData.cancel(a,canceledCreditData.proposal)
+  await start(b);const waitingCanceledCreditData=capture(canceledCreditData.saveData(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await waitingCanceledCreditData).error?.code,'42501');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_preparaciones_nc_homologacion WHERE solicitud_id=$1',[canceledCreditData.proposal.id])).rows[0].n,0)
+  cases.push('035_cancelacion_gana_preparacion_tardia_no_crea_datos')
+  const preparedCreditData=await creditDataFixture(201)
+  await start(a);await preparedCreditData.saveData(a)
+  await start(b);const waitingCancelPrepared=capture(preparedCreditData.cancel(b,preparedCreditData.proposal));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await waitingCancelPrepared).value.estado,'CANCELADA');await b.query('COMMIT')
+  await start(a);assert.equal((await preparedCreditData.readData(a)).estado,'CANCELADA');await a.query('COMMIT')
+  cases.push('035_preparacion_antes_cancelacion_conserva_historia_sin_reactivar_caso')
+  const rolledCreditData=await creditDataFixture(202)
+  await start(a);await rolledCreditData.saveData(a)
+  await start(b);const waitingRolledCreditData=capture(rolledCreditData.saveData(b));await waitForLock(observer,b);await a.query('ROLLBACK')
+  assert.equal((await waitingRolledCreditData).value.estado,'DATOS_NC_PREPARADOS');await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_preparaciones_nc_homologacion WHERE solicitud_id=$1',[rolledCreditData.proposal.id])).rows[0].n,1)
+  cases.push('035_rollback_preparacion_permite_worker_en_espera_sin_historia_parcial')
+  const staleCreditData=await creditDataFixture(203)
+  await observer.query(`INSERT INTO fiscal_parametros_nc_homologacion SELECT 4,tipos,condiciones,alicuotas,fuente_sha256,clock_timestamp()-interval '1 hour',clock_timestamp()+interval '1 hour',true FROM fiscal_parametros_nc_homologacion WHERE revision=3`)
+  await start(a);assert.equal((await capture(staleCreditData.saveData(a))).error?.code,'22023');await a.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_preparaciones_nc_homologacion WHERE solicitud_id=$1',[staleCreditData.proposal.id])).rows[0].n,0)
+  cases.push('035_contexto_declaro_revision_anterior_no_prepara_silenciosamente_con_otra')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
-    cases,caseCount:cases.length,requiredPresentationInstalledAfterCase,postRequiredPresentationCaseCount:requiredPresentationInstalledAfterCase===null?0:cases.length-requiredPresentationInstalledAfterCase,creditDraftInstalledAfterCase,postCreditDraftCaseCount:creditDraftInstalledAfterCase===null?0:cases.length-creditDraftInstalledAfterCase,creditRecoveryInstalledAfterCase,postCreditRecoveryCaseCount:creditRecoveryInstalledAfterCase===null?0:cases.length-creditRecoveryInstalledAfterCase,creditCommercialInstalledAfterCase,postCreditCommercialCaseCount:creditCommercialInstalledAfterCase===null?0:cases.length-creditCommercialInstalledAfterCase,checkoutUnitsInstalledAfterCase,postCheckoutUnitsCaseCount:checkoutUnitsInstalledAfterCase===null?0:cases.length-checkoutUnitsInstalledAfterCase,creditBindingInstalledAfterCase,postCreditBindingCaseCount:creditBindingInstalledAfterCase===null?0:cases.length-creditBindingInstalledAfterCase,creditContextInstalledAfterCase,postCreditContextCaseCount:creditContextInstalledAfterCase===null?0:cases.length-creditContextInstalledAfterCase,creditContextSourceInstalledAfterCase,postCreditContextSourceCaseCount:creditContextSourceInstalledAfterCase===null?0:cases.length-creditContextSourceInstalledAfterCase,externalRequests:0,invoicesIssued:0}
+    cases,caseCount:cases.length,requiredPresentationInstalledAfterCase,postRequiredPresentationCaseCount:requiredPresentationInstalledAfterCase===null?0:cases.length-requiredPresentationInstalledAfterCase,creditDraftInstalledAfterCase,postCreditDraftCaseCount:creditDraftInstalledAfterCase===null?0:cases.length-creditDraftInstalledAfterCase,creditRecoveryInstalledAfterCase,postCreditRecoveryCaseCount:creditRecoveryInstalledAfterCase===null?0:cases.length-creditRecoveryInstalledAfterCase,creditCommercialInstalledAfterCase,postCreditCommercialCaseCount:creditCommercialInstalledAfterCase===null?0:cases.length-creditCommercialInstalledAfterCase,checkoutUnitsInstalledAfterCase,postCheckoutUnitsCaseCount:checkoutUnitsInstalledAfterCase===null?0:cases.length-checkoutUnitsInstalledAfterCase,creditBindingInstalledAfterCase,postCreditBindingCaseCount:creditBindingInstalledAfterCase===null?0:cases.length-creditBindingInstalledAfterCase,creditContextInstalledAfterCase,postCreditContextCaseCount:creditContextInstalledAfterCase===null?0:cases.length-creditContextInstalledAfterCase,creditContextSourceInstalledAfterCase,postCreditContextSourceCaseCount:creditContextSourceInstalledAfterCase===null?0:cases.length-creditContextSourceInstalledAfterCase,creditDataInstalledAfterCase,postCreditDataCaseCount:creditDataInstalledAfterCase===null?0:cases.length-creditDataInstalledAfterCase,externalRequests:0,invoicesIssued:0}
 } catch(error) {
   console.error('FISCAL_CONCURRENCY=FAIL; CODE='+(error?.code??error?.name??'UNKNOWN')+'; STEP='+cases.length+'; DETAIL='+error.message)
   evidence={status:'FAIL',testedAt:new Date().toISOString(),containerId,containerName:name,port,cases,code:error?.code??error?.name??'UNKNOWN'}

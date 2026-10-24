@@ -1702,6 +1702,89 @@ async function installCreditContextSource(){
  await db.exec('RESET ROLE');const sql=readFileSync('supabase/pilot-fiscal/034_fiscal_credit_context_source.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
  await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
 }
+async function installCreditPreparation(){
+ await db.exec('RESET ROLE');const sql=readFileSync('supabase/pilot-fiscal/035_fiscal_credit_preparation.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
+ await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
+}
+async function creditPreparationFixture(invoice:1|6|11=11,concept:1|2|3=1){
+ const f=await contextCreditFixture(concept,invoice)
+ if(invoice===11)await seedCreditCatalog()
+ else await admin(`INSERT INTO fiscal_parametros_nc_homologacion(revision,tipos,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en,habilitado)
+ VALUES(1,$1::jsonb,$2::jsonb,'[{"id":5,"descripcion":"IVA sintético"}]',repeat('c',64),clock_timestamp()-interval '1 hour',clock_timestamp()+interval '1 hour',true)`,[JSON.stringify([{id:invoice===1?3:8,descripcion:'NC A/B sintética',desde:'20200101',hasta:null}]),JSON.stringify([{id:5,descripcion:'Condición NC sintética',comprobantes:[invoice===1?3:8]}])])
+ await installCreditContextSource();await installCreditPreparation()
+ const context=await (await import('../../supabase/functions/_shared/fiscalCreditContext')).validateFiscalCreditContext(await f.load(),f.source,f.proposal)
+ const entry=concept===1?{servicioDesde:null,servicioHasta:null,vencimientoPago:null}:{servicioDesde:'20261002',servicioHasta:'20261019',vencimientoPago:'20261027'}
+ const prepared=await (await import('../../supabase/functions/_shared/fiscalCreditPreparation')).prepareFiscalCreditPreparation(f.source,f.proposal,context,entry)
+ const readPreparation=async(who=actor)=>(await db.query<{data:Record<string,unknown>|null}>('SELECT cargar_preparacion_nc_homologacion($1,$2,$3,$4,$5) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256])).rows[0].data
+ const savePreparation=async(value:unknown=entry,contextHash=prepared.datos.contexto_sha256)=>(await db.query<{data:Record<string,unknown>}>('SELECT guardar_preparacion_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb) data',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,contextHash,JSON.stringify(value)])).rows[0].data
+ return{...f,context,entry,prepared,readPreparation,savePreparation}
+}
+async function preparationEffects(){
+ await db.exec('RESET ROLE');const value=(await db.query<{v:unknown}>(`SELECT jsonb_build_object('series',(SELECT count(*) FROM fiscal_series_homologacion),'reservas',(SELECT count(*) FROM fiscal_reservas_homologacion),'stock',(SELECT count(*) FROM movimientos_stock),'caja',(SELECT count(*) FROM movimientos_caja),'devoluciones',(SELECT count(*) FROM devoluciones_venta)) v`)).rows[0].v;await db.exec('SET ROLE service_role');return value
+}
+it.each([[1,1],[6,1],[11,1],[11,2],[11,3]] as const)('035 preparación factura%i concepto%i coincide byte a byte con contrato puro y no numera',async(invoice,concept)=>{
+ const f=await creditPreparationFixture(invoice,concept),before=await preparationEffects()
+ expect(await f.readPreparation()).toBeNull();const stored=await f.savePreparation()
+ expect(stored).toMatchObject({estado:'DATOS_NC_PREPARADOS',preparacion:{canonico:f.prepared.canonico,sha256:f.prepared.sha256},contexto:f.context,emision_habilitada:false,reintegro_habilitado:false,reposicion_habilitada:false})
+ expect(await f.savePreparation()).toEqual(stored);expect(await f.readPreparation()).toEqual(stored);expect(await preparationEffects()).toEqual(before)
+ await installCreditPreparation();expect(await f.readPreparation()).toEqual(stored)
+})
+it('035 contexto cambió: no prepara silenciosamente con revisión nueva',async()=>{
+ const f=await creditPreparationFixture()
+ await admin('UPDATE fiscal_parametros_nc_homologacion SET habilitado=false')
+ await admin(`INSERT INTO fiscal_parametros_nc_homologacion SELECT 2,tipos,condiciones,alicuotas,fuente_sha256,clock_timestamp()-interval '1 hour',clock_timestamp()+interval '1 hour',true FROM fiscal_parametros_nc_homologacion WHERE revision=1`)
+ await denied(()=>f.savePreparation());expect(await f.readPreparation()).toBeNull()
+ const context=await (await import('../../supabase/functions/_shared/fiscalCreditContext')).validateFiscalCreditContext(await f.load(),f.source,f.proposal)
+ const fresh=await (await import('../../supabase/functions/_shared/fiscalCreditPreparation')).prepareFiscalCreditPreparation(f.source,f.proposal,context,f.entry)
+ expect(await f.savePreparation(f.entry,fresh.datos.contexto_sha256)).toMatchObject({preparacion:{sha256:fresh.sha256}})
+})
+it.each(['pago','cancelado','emisor','periodo'] as const)('035 guardado nuevo rechaza %s y no deja preparación parcial',async(reason)=>{
+ const f=await creditPreparationFixture()
+ if(reason==='pago')await admin('UPDATE pagos_venta SET monto=1 WHERE venta_id=$1',[sale])
+ if(reason==='emisor')await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false')
+ if(reason==='cancelado')await db.query('SELECT cancelar_borrador_nc_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256])
+ await denied(()=>f.savePreparation(reason==='periodo'?{...f.entry,servicioDesde:'20261001'}:f.entry))
+ expect(await f.readPreparation()).toBeNull()
+})
+it.each(['falta','fecha','invertido'] as const)('035 servicios rechaza período %s sin depender de controles del navegador',async(reason)=>{
+ const f=await creditPreparationFixture(11,2)
+ const entry=reason==='falta'?{servicioDesde:f.entry.servicioDesde,servicioHasta:f.entry.servicioHasta}:{...f.entry,servicioDesde:reason==='fecha'?'20260231':'20261020'}
+ await denied(()=>f.savePreparation(entry));expect(await f.readPreparation()).toBeNull()
+})
+it('035 borrador antiguo sin vínculo no obtiene preparación nueva ni backfill',async()=>{
+ const f=await creditReservationFixture(),p=await f.make();await f.write(p)
+ await installCreditBinding();await installCreditContext();await seedCreditCatalog();await installCreditContextSource();await installCreditPreparation()
+ expect((await db.query<{data:unknown}>('SELECT cargar_preparacion_nc_homologacion($1,$2,$3,$4,$5) data',[actor,sale,op,p.datos.solicitud_id,p.sha256])).rows[0].data).toBeNull()
+ await denied(()=>db.query('SELECT guardar_preparacion_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb)',[actor,sale,op,p.datos.solicitud_id,p.sha256,'a'.repeat(64),JSON.stringify({servicioDesde:null,servicioHasta:null,vencimientoPago:null})]))
+ expect(await f.read(p)).toMatchObject({estado:'SALDO_RESERVADO_NO_EMITIR'})
+})
+it('035 ACK perdido y rollback recuperan mismo canónico sin escritura adicional ni permiso',async()=>{
+ const f=await creditPreparationFixture()
+ await db.exec('SAVEPOINT prep_crash');await f.savePreparation();await db.exec('ROLLBACK TO SAVEPOINT prep_crash; RELEASE SAVEPOINT prep_crash')
+ expect(await f.readPreparation()).toBeNull();const stored=await f.savePreparation()
+ expect(await f.readPreparation()).toEqual(stored)
+ await admin('UPDATE fiscal_parametros_nc_homologacion SET habilitado=false');await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false')
+ expect(await f.savePreparation()).toEqual(stored);expect(await f.readPreparation()).toEqual(stored)
+ await denied(()=>f.savePreparation(f.entry,'a'.repeat(64)))
+})
+it('035 cancelación posterior conserva preparación sin reactivar caso o sus efectos',async()=>{
+ const f=await creditPreparationFixture();await f.savePreparation()
+ await db.query('SELECT cancelar_borrador_nc_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256])
+ expect(await f.savePreparation()).toMatchObject({estado:'CANCELADA',preparacion:{sha256:f.prepared.sha256},emision_habilitada:false})
+})
+it('035 Auth reasignado no revela preparación a identidad original ni nueva',async()=>{
+ const f=await creditPreparationFixture();await f.savePreparation();const other=crypto.randomUUID();await admin('INSERT INTO auth.users VALUES($1)',[other]);await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner])
+ for(const who of [actor,other])await denied(()=>f.readPreparation(who))
+})
+it.each(['anon','authenticated','service_role'])('035 tabla privada sin acceso directo para %s',async(role)=>{
+ await installCreditBinding();await installCreditContext();await installCreditContextSource();await installCreditPreparation();await db.exec('RESET ROLE; SET ROLE '+role)
+ await denied(()=>db.query('SELECT canonico FROM fiscal_preparaciones_nc_homologacion'))
+ if(role!=='service_role')await denied(()=>db.query('SELECT cargar_preparacion_nc_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,crypto.randomUUID(),'a'.repeat(64)]))
+})
+it('035 preparación inmutable no admite editar ni borrar historial',async()=>{
+ const f=await creditPreparationFixture();await f.savePreparation();await db.exec('RESET ROLE')
+ await denied(()=>db.query("UPDATE fiscal_preparaciones_nc_homologacion SET preparacion_sha256=repeat('a',64)"));await denied(()=>db.query('DELETE FROM fiscal_preparaciones_nc_homologacion'))
+})
 it.each(['anon','authenticated'])('034 puente privado no expone canónico a %s',async(role)=>{
  await installCreditBinding();await installCreditContext();await installCreditContextSource();await db.exec('RESET ROLE; SET ROLE '+role)
  await denied(()=>db.query('SELECT cargar_fuente_contexto_nc_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,crypto.randomUUID(),'a'.repeat(64)]))
@@ -1710,8 +1793,8 @@ async function seedCreditCatalog(){
  await admin(`INSERT INTO fiscal_parametros_nc_homologacion(revision,tipos,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en,habilitado)
  VALUES(1,'[{"id":13,"descripcion":"NC C sintética","desde":"20200101","hasta":null}]','[{"id":5,"descripcion":"Condición sintética NC","comprobantes":[13]}]','[]',repeat('c',64),clock_timestamp()-interval '1 hour',clock_timestamp()+interval '1 hour',true)`)
 }
-async function contextCreditFixture(){
- const f=await boundCreditFixture();await installCreditBinding();const proposal=await f.make();await f.write(proposal);await installCreditContext()
+async function contextCreditFixture(concept:1|2|3=1,invoice:1|6|11=11){
+ const f=await boundCreditFixture(true,false,false,concept,invoice);await installCreditBinding();const proposal=await f.make();await f.write(proposal);await installCreditContext()
  const load=async(id=proposal.datos.solicitud_id,sha=proposal.sha256,who=actor)=>(await db.query<{data:unknown}>('SELECT cargar_contexto_nc_homologacion($1,$2,$3,$4,$5) data',[who,sale,op,id,sha])).rows[0].data
  return{...f,proposal,load}
 }
@@ -1778,13 +1861,14 @@ it.each(['anon','authenticated','service_role'])('033 catálogo privado sin acce
  await denied(()=>db.query('SELECT condiciones FROM fiscal_parametros_nc_homologacion'))
  await denied(()=>db.query("SELECT fiscal_validar_catalogo_nc('[]','[]','[]')"))
 })
-async function boundCreditFixture(enabled=true,weighted=false,free=false){
+async function boundCreditFixture(enabled=true,weighted=false,free=false,concept:1|2|3=1,invoice:1|6|11=11){
  const f=await checkoutUnitsFixture(enabled,weighted,free);await f.prepare();await f.close()
- const proposal=input();await authorizeReceipt(true,{...proposal,datos:{...proposal.datos,importes:{...proposal.datos.importes,neto:'124.00'}}})
+ if(invoice!==11){await admin('UPDATE fiscal_parametros_homologacion SET habilitado=false');await admin(`INSERT INTO fiscal_parametros_homologacion VALUES(2,'[{"id":5,"descripcion":"Condición sintética A/B","comprobantes":[1,6]}]','[{"id":5,"descripcion":"IVA sintético"}]',repeat('b',64),clock_timestamp()-interval '1 minute',clock_timestamp()+interval '1 hour',true)`)}
+ const proposal=input();await authorizeReceipt(true,{condicionEmisor:invoice===11?'MONOTRIBUTO':'RESPONSABLE_INSCRIPTO',datos:{...proposal.datos,tipoComprobante:invoice,concepto:concept,servicioDesde:concept===1?null:'20261001',servicioHasta:concept===1?null:'20261020',vencimientoPago:concept===1?null:'20261025',importes:invoice===11?{...proposal.datos.importes,neto:'124.00'}:{neto:'100.00',iva:'21.00',noGravado:'0.00',exento:'0.00',tributos:'3.00'},iva:invoice===11?[]:[{id:5,base:'100.00',importe:'21.00'}],tributos:invoice===11?[]:[{id:99,descripcion:'Tributo sintético',base:'100.00',alicuota:'3.00',importe:'3.00'}]}})
  const source=await validateFiscalRepresentation(await representation(),sale,op),body=source.constancia.solicitud.solicitud
  const today=(await db.query<{v:string}>("SELECT to_char(clock_timestamp() AT TIME ZONE 'America/Argentina/Buenos_Aires','YYYYMMDD') v")).rows[0].v
  const draft:FiscalCreditDraftInput={version:1,solicitud_id:crypto.randomUUID(),fecha:today,motivo:'Caso ligado sintético',condicion_iva_receptor:5,
-  lineas:[{detalle_id:source.contexto.lineas[0].detalle_id,cantidad:source.contexto.lineas[0].cantidad,importe:'124.00',reingresa_stock:!free}],importes:structuredClone(body.importes),iva:[],tributos:[]}
+  lineas:[{detalle_id:source.contexto.lineas[0].detalle_id,cantidad:source.contexto.lineas[0].cantidad,importe:'124.00',reingresa_stock:!free}],importes:structuredClone(body.importes),iva:structuredClone(body.iva),tributos:structuredClone(body.tributos)}
  const make=(value=draft)=>prepareFiscalCreditDraft(source,value,today)
  const write=async(p:Readonly<FiscalCreditDraft>)=>(await db.query<{data:Record<string,unknown>}>('SELECT guardar_borrador_nc_homologacion($1,$2,$3,$4,$5) data',[actor,sale,op,p.canonico,p.sha256])).rows[0].data
  const binding=async(id:string)=>{await db.exec('RESET ROLE');const value=(await db.query<{data:Record<string,unknown>}>('SELECT to_jsonb(b) data FROM fiscal_nc_comercial_homologacion b WHERE solicitud_id=$1',[id])).rows[0]?.data??null;await db.exec('SET ROLE service_role');return value}
