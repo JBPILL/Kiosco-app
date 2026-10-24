@@ -30,6 +30,7 @@ let creditDataInstalledAfterCase=null
 let creditNumberInstalledAfterCase=null
 let creditRequestSourceInstalledAfterCase=null
 let creditNumberSourceInstalledAfterCase=null
+let creditTicketInstalledAfterCase=null
 let evidence
 const evidenceIndex = process.argv.indexOf('--evidence')
 const evidencePath = evidenceIndex >= 0 ? resolve(process.argv[evidenceIndex+1] ?? '') : null
@@ -1260,11 +1261,49 @@ try {
   await start(b);const nc038_authWaiting=capture(nc038_load(b,nc038_reassigned));await waitForLock(observer,b);await a.query('COMMIT')
   assert.equal((await nc038_authWaiting).error?.code,'42501');await b.query('ROLLBACK')
   cases.push('038_Auth_reasignado_esperando_no_autoriza_numeracion_del_actor_anterior')
+  creditTicketInstalledAfterCase=cases.length
+  for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/039_fiscal_credit_ticket_coordination.sql'),'utf8'))
+  async function nc039Fixture(point,certificate=createHash('sha256').update(randomUUID()).digest('hex')){
+    const f=await bindingFixture(point)
+    // Nueva identidad de ensayo ANTES del caso NC; sin claves/TA reales ni backfill.
+    await observer.query('UPDATE fiscal_emisores_homologacion SET certificado_sha256=$1,credencial_id=$2,revision=revision+1 WHERE kiosco_id=$3',[certificate,randomUUID(),f.kid])
+    const proposal=await f.make()
+    await start(a);await f.write(a,proposal)
+    const ctx=(await a.query('SELECT cargar_contexto_nc_homologacion($1,$2,$3,$4,$5) v',[f.auth,f.sale,f.operation,proposal.id,proposal.sha])).rows[0].v
+    const ctxCanonical=(await observer.query('SELECT fiscal_json_canonico_homologacion($1::jsonb) v',[JSON.stringify(ctx)])).rows[0].v
+    const prepared=(await a.query('SELECT guardar_preparacion_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb) v',[f.auth,f.sale,f.operation,proposal.id,proposal.sha,createHash('sha256').update(ctxCanonical).digest('hex'),JSON.stringify({servicioDesde:null,servicioHasta:null,vencimientoPago:null})])).rows[0].v
+    const source=(await a.query('SELECT cargar_fuente_numeracion_nc_homologacion($1,$2,$3,$4,$5,$6) v',[f.auth,f.sale,f.operation,proposal.id,proposal.sha,prepared.preparacion.sha256])).rows[0].v
+    await a.query('COMMIT')
+    const call=async(client,action,id=null,generation=null)=>(await client.query('SELECT coordinar_ta_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,NULL) v',[f.auth,f.sale,f.operation,proposal.id,proposal.sha,prepared.preparacion.sha256,JSON.stringify(source.binding),action,id,generation])).rows[0].v
+    return {...f,proposal,source,certificate,call}
+  }
+  const nc039_first=await nc039Fixture(214),nc039_second=await nc039Fixture(215,nc039_first.certificate),nc039_intent=randomUUID()
+  await start(a);assert.equal((await nc039_first.call(a,'SOLICITAR',nc039_intent)).nuevo_intento,true)
+  await start(b);const nc039_waiting=capture(nc039_second.call(b,'SOLICITAR',randomUUID()));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc039_waiting).value.estado,'RENOVACION_PENDIENTE');await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_ta_intentos_homologacion WHERE certificado_sha256=$1',[nc039_first.certificate])).rows[0].n,1)
+  cases.push('039_dos_comercios_NC_mismo_certificado_una_preparacion_TA_sin_renovacion_paralela')
+  await start(a);assert.equal((await nc039_first.call(a,'INICIAR',nc039_intent,1)).nuevo_envio,true)
+  await start(b);const nc039_duplicate=capture(nc039_first.call(b,'INICIAR',nc039_intent,1));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc039_duplicate).value.nuevo_envio,false);await b.query('COMMIT')
+  cases.push('039_dos_workers_NC_un_permiso_envio_TA_replay_no_envia')
+  const nc039_cancel=await nc039Fixture(216),nc039_cancelIntent=randomUUID()
+  await start(a);await nc039_cancel.call(a,'SOLICITAR',nc039_cancelIntent);await a.query('COMMIT')
+  await start(a);await nc039_cancel.call(a,'CANCELAR',nc039_cancelIntent,1)
+  await start(b);const nc039_lateSend=capture(nc039_cancel.call(b,'INICIAR',nc039_cancelIntent,1));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc039_lateSend).error?.code,'40001');await b.query('ROLLBACK')
+  cases.push('039_cancelacion_TA_gana_no_entrega_permiso_de_envio_tardio')
+  const nc039_sent=await nc039Fixture(217),nc039_sentIntent=randomUUID()
+  await start(a);await nc039_sent.call(a,'SOLICITAR',nc039_sentIntent);await a.query('COMMIT')
+  await start(a);await nc039_sent.call(a,'INICIAR',nc039_sentIntent,1)
+  await start(b);const nc039_lateCancel=capture(nc039_sent.call(b,'CANCELAR',nc039_sentIntent,1));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc039_lateCancel).error?.code,'40001');await b.query('ROLLBACK')
+  cases.push('039_envio_TA_gana_cancelacion_no_libera_incertidumbre')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
-    cases,caseCount:cases.length,requiredPresentationInstalledAfterCase,postRequiredPresentationCaseCount:requiredPresentationInstalledAfterCase===null?0:cases.length-requiredPresentationInstalledAfterCase,creditDraftInstalledAfterCase,postCreditDraftCaseCount:creditDraftInstalledAfterCase===null?0:cases.length-creditDraftInstalledAfterCase,creditRecoveryInstalledAfterCase,postCreditRecoveryCaseCount:creditRecoveryInstalledAfterCase===null?0:cases.length-creditRecoveryInstalledAfterCase,creditCommercialInstalledAfterCase,postCreditCommercialCaseCount:creditCommercialInstalledAfterCase===null?0:cases.length-creditCommercialInstalledAfterCase,checkoutUnitsInstalledAfterCase,postCheckoutUnitsCaseCount:checkoutUnitsInstalledAfterCase===null?0:cases.length-checkoutUnitsInstalledAfterCase,creditBindingInstalledAfterCase,postCreditBindingCaseCount:creditBindingInstalledAfterCase===null?0:cases.length-creditBindingInstalledAfterCase,creditContextInstalledAfterCase,postCreditContextCaseCount:creditContextInstalledAfterCase===null?0:cases.length-creditContextInstalledAfterCase,creditContextSourceInstalledAfterCase,postCreditContextSourceCaseCount:creditContextSourceInstalledAfterCase===null?0:cases.length-creditContextSourceInstalledAfterCase,creditDataInstalledAfterCase,postCreditDataCaseCount:creditDataInstalledAfterCase===null?0:cases.length-creditDataInstalledAfterCase,creditNumberInstalledAfterCase,postCreditNumberCaseCount:creditNumberInstalledAfterCase===null?0:cases.length-creditNumberInstalledAfterCase,creditRequestSourceInstalledAfterCase,postCreditRequestSourceCaseCount:creditRequestSourceInstalledAfterCase===null?0:cases.length-creditRequestSourceInstalledAfterCase,creditNumberSourceInstalledAfterCase,postCreditNumberSourceCaseCount:creditNumberSourceInstalledAfterCase===null?0:cases.length-creditNumberSourceInstalledAfterCase,externalRequests:0,invoicesIssued:0}
+    cases,caseCount:cases.length,requiredPresentationInstalledAfterCase,postRequiredPresentationCaseCount:requiredPresentationInstalledAfterCase===null?0:cases.length-requiredPresentationInstalledAfterCase,creditDraftInstalledAfterCase,postCreditDraftCaseCount:creditDraftInstalledAfterCase===null?0:cases.length-creditDraftInstalledAfterCase,creditRecoveryInstalledAfterCase,postCreditRecoveryCaseCount:creditRecoveryInstalledAfterCase===null?0:cases.length-creditRecoveryInstalledAfterCase,creditCommercialInstalledAfterCase,postCreditCommercialCaseCount:creditCommercialInstalledAfterCase===null?0:cases.length-creditCommercialInstalledAfterCase,checkoutUnitsInstalledAfterCase,postCheckoutUnitsCaseCount:checkoutUnitsInstalledAfterCase===null?0:cases.length-checkoutUnitsInstalledAfterCase,creditBindingInstalledAfterCase,postCreditBindingCaseCount:creditBindingInstalledAfterCase===null?0:cases.length-creditBindingInstalledAfterCase,creditContextInstalledAfterCase,postCreditContextCaseCount:creditContextInstalledAfterCase===null?0:cases.length-creditContextInstalledAfterCase,creditContextSourceInstalledAfterCase,postCreditContextSourceCaseCount:creditContextSourceInstalledAfterCase===null?0:cases.length-creditContextSourceInstalledAfterCase,creditDataInstalledAfterCase,postCreditDataCaseCount:creditDataInstalledAfterCase===null?0:cases.length-creditDataInstalledAfterCase,creditNumberInstalledAfterCase,postCreditNumberCaseCount:creditNumberInstalledAfterCase===null?0:cases.length-creditNumberInstalledAfterCase,creditRequestSourceInstalledAfterCase,postCreditRequestSourceCaseCount:creditRequestSourceInstalledAfterCase===null?0:cases.length-creditRequestSourceInstalledAfterCase,creditNumberSourceInstalledAfterCase,postCreditNumberSourceCaseCount:creditNumberSourceInstalledAfterCase===null?0:cases.length-creditNumberSourceInstalledAfterCase,creditTicketInstalledAfterCase,postCreditTicketCaseCount:creditTicketInstalledAfterCase===null?0:cases.length-creditTicketInstalledAfterCase,externalRequests:0,invoicesIssued:0}
 } catch(error) {
   console.error('FISCAL_CONCURRENCY=FAIL; CODE='+(error?.code??error?.name??'UNKNOWN')+'; STEP='+cases.length+'; DETAIL='+error.message)
   evidence={status:'FAIL',testedAt:new Date().toISOString(),containerId,containerName:name,port,cases,code:error?.code??error?.name??'UNKNOWN'}

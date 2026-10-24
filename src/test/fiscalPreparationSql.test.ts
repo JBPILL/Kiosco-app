@@ -1764,6 +1764,75 @@ async function creditNumberSourceFixture(){
  const load=()=>loadFiscalCreditNumberingSource(api.admin,'SYNTHETIC_JWT',scope,f.prepared.sha256)
  return{...f,api,scope,load}
 }
+async function creditTicketFixture(){
+ const f=await creditNumberSourceFixture(),source=await f.load()
+ await db.exec('RESET ROLE');const sql=readFileSync('supabase/pilot-fiscal/039_fiscal_credit_ticket_coordination.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
+ await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
+ const intent=crypto.randomUUID(),cipher={version:1,keyId:crypto.randomUUID(),nonce:'a'.repeat(24),ciphertext:'b'.repeat(32),expiresAt:Date.now()+3600000}
+ const call=async(action:string,id:string|null=null,generation:number|null=null,envelope:unknown=null,binding:unknown=source.binding)=>(await db.query<{data:Record<string,unknown>}>('SELECT coordinar_ta_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11::jsonb) data',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,f.prepared.sha256,JSON.stringify(binding),action,id,generation,envelope===null?null:JSON.stringify(envelope)])).rows[0].data
+ return{...f,source,intent,cipher,call}
+}
+it('039 ciclo TA NC conserva propiedad, permiso único y sobre cifrado recuperable sin renovar de nuevo',async()=>{
+ const f=await creditTicketFixture(),before=await preparationEffects()
+ expect(await f.call('ESTADO')).toMatchObject({estado:'VACIO',intento_id:null,revision:0})
+ expect(await f.call('SOLICITAR',f.intent)).toMatchObject({estado:'RENOVAR',nuevo_intento:true,revision:1})
+ expect(await f.call('SOLICITAR',crypto.randomUUID())).toMatchObject({estado:'RENOVACION_PENDIENTE',nuevo_intento:false})
+ expect(await f.call('ESTADO')).toMatchObject({estado:'PREPARADA',intento_id:f.intent,revision:1})
+ expect(await f.call('INICIAR',f.intent,1)).toMatchObject({estado:'ENVIO_INCIERTO',nuevo_envio:true})
+ expect(await f.call('INICIAR',f.intent,1)).toMatchObject({estado:'ENVIO_INCIERTO',nuevo_envio:false})
+ await denied(()=>f.call('CANCELAR',f.intent,1))
+ const ack=await f.call('CONFIRMAR',f.intent,1,f.cipher)
+ expect(ack).toMatchObject({estado:'DISPONIBLE',intento_id:f.intent,revision:1})
+ expect(await f.call('CONFIRMAR',f.intent,1,f.cipher)).toEqual(ack)
+ expect(await f.call('SOLICITAR',crypto.randomUUID())).toEqual({estado:'DISPONIBLE',nuevo_intento:false,cifrado:f.cipher})
+ await db.exec('RESET ROLE');const attempt=(await db.query<{operacion_origen_id:string|null}>('SELECT operacion_origen_id FROM fiscal_ta_intentos_homologacion WHERE id=$1',[f.intent])).rows[0];await db.exec('SET ROLE service_role')
+ expect(attempt.operacion_origen_id).toBeNull();expect(await preparationEffects()).toEqual(before)
+})
+it('039 cancelación previa a envío libera preparación y conserva historia tras cancelar caso',async()=>{
+ const f=await creditTicketFixture();await f.call('SOLICITAR',f.intent)
+ await db.query('SELECT cancelar_borrador_nc_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256])
+ await denied(()=>f.call('INICIAR',f.intent,1))
+ expect(await f.call('CANCELAR',f.intent,1)).toMatchObject({estado:'CANCELADA'})
+ expect(await f.call('CANCELAR',f.intent,1)).toMatchObject({estado:'CANCELADA'})
+ expect(await f.call('ESTADO')).toMatchObject({estado:'VACIO'})
+})
+it('039 respuesta ya recibida se conserva cifrada tras revocación/cancelación sin permitir nuevo envío',async()=>{
+ const f=await creditTicketFixture();await f.call('SOLICITAR',f.intent);await f.call('INICIAR',f.intent,1)
+ await db.query('SELECT cancelar_borrador_nc_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256])
+ await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false')
+ expect(await f.call('CONFIRMAR',f.intent,1,f.cipher)).toMatchObject({estado:'DISPONIBLE'})
+ await denied(()=>f.call('SOLICITAR',crypto.randomUUID()));await denied(()=>f.call('INICIAR',f.intent,1));await denied(()=>f.call('CANCELAR',f.intent,1))
+})
+it.each(['PREPARADA','ENVIO_INCIERTO','DISPONIBLE'] as const)('039 coordina con TA de factura %s sin apropiarse del intento',async(state)=>{
+ const f=await creditTicketFixture(),old=crypto.randomUUID(),huella=f.source.binding.certificado_sha256
+ await admin('INSERT INTO fiscal_ta_homologacion(certificado_sha256) VALUES($1)',[huella])
+ await admin('INSERT INTO fiscal_ta_intentos_homologacion(id,certificado_sha256,revision,operacion_origen_id,envio_iniciado_en) VALUES($1,$2,1,$3,CASE WHEN $4 THEN clock_timestamp() ELSE NULL END)',[old,huella,op,state!=='PREPARADA'])
+ await admin('UPDATE fiscal_ta_homologacion SET revision=1,estado=$1,intento_id=$2,cifrado=$3::jsonb,vence_en=$4 WHERE certificado_sha256=$5',[state,old,state==='DISPONIBLE'?JSON.stringify(f.cipher):null,state==='DISPONIBLE'?new Date(f.cipher.expiresAt).toISOString():null,huella])
+ expect(await f.call('ESTADO')).toMatchObject({estado:'COMPARTIDA',intento_id:null})
+ const result=await f.call('SOLICITAR',f.intent)
+ expect(result).toMatchObject({estado:state==='DISPONIBLE'?'DISPONIBLE':'RENOVACION_PENDIENTE',nuevo_intento:false})
+ await denied(()=>f.call('INICIAR',old,1));await denied(()=>f.call('CANCELAR',old,1));await denied(()=>f.call('CONFIRMAR',old,1,f.cipher))
+})
+it.each(['vencido','extra','plano','tamper'] as const)('039 sobre %s no borra incertidumbre ni reemplaza respuesta confirmada',async(reason)=>{
+ const f=await creditTicketFixture();await f.call('SOLICITAR',f.intent);await f.call('INICIAR',f.intent,1)
+ const cipher=reason==='vencido'?{...f.cipher,expiresAt:Date.now()-1000}:reason==='extra'?{...f.cipher,token:'SYNTHETIC_NOT_ALLOWED'}:reason==='plano'?{token:'SYNTHETIC',sign:'SYNTHETIC'}:{...f.cipher,ciphertext:'bad'}
+ await denied(()=>f.call('CONFIRMAR',f.intent,1,cipher))
+ expect(await f.call('ESTADO')).toMatchObject({estado:'ENVIO_INCIERTO'})
+})
+it('039 vínculo TA NC privado e inmutable; RPC de factura no cancela intento NC',async()=>{
+ const f=await creditTicketFixture();await f.call('SOLICITAR',f.intent)
+ await denied(()=>db.query('SELECT cancelar_preparacion_ta_homologacion($1,$2,$3,$4,$5,1)',[op,f.source.binding.credencial_id,f.source.binding.certificado_sha256,f.source.binding.revision_emisor,f.intent]))
+ for(const role of ['anon','authenticated','service_role']){await db.exec(`SET ROLE ${role}`);await denied(()=>db.query('SELECT binding FROM fiscal_nc_ta_vinculos_homologacion'))}
+ await db.exec('RESET ROLE');await denied(()=>db.exec('DELETE FROM fiscal_nc_ta_vinculos_homologacion'));await db.exec('SET ROLE service_role')
+})
+it('039 replay de cancelar una generación anterior no libera la preparación siguiente',async()=>{
+ const f=await creditTicketFixture(),next=crypto.randomUUID()
+ await f.call('SOLICITAR',f.intent);await f.call('CANCELAR',f.intent,1)
+ expect(await f.call('SOLICITAR',next)).toMatchObject({estado:'RENOVAR',revision:2})
+ expect(await f.call('CANCELAR',f.intent,1)).toMatchObject({estado:'CANCELADA',revision:1})
+ expect(await f.call('ESTADO')).toMatchObject({estado:'PREPARADA',intento_id:next,revision:2})
+ await denied(()=>f.call('INICIAR',f.intent,1))
+})
 it('038 fuente específica liga Dueño/Auth/caso/preparación/emisor sin copiar permiso de factura',async()=>{
  const f=await creditNumberSourceFixture(),before=await preparationEffects(),source=await f.load()
  expect(source.binding).toMatchObject({finalidad:'NUMERACION_NC',actor_auth_id:actor,kiosco_id:kid,usuario_id:owner,solicitud_id:f.proposal.datos.solicitud_id,operacion_origen_id:op,preparacion_sha256:f.prepared.sha256,tipo_comprobante:13,emision_habilitada:false})
