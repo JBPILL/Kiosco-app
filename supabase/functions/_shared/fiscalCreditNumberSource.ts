@@ -3,6 +3,7 @@ import type { FiscalRepresentation } from './fiscalRepresentation.ts'
 import type { FiscalCreditDraft } from './fiscalCreditDraft.ts'
 import { validateFiscalCreditPreparationRecord } from './fiscalCreditPreparation.ts'
 import type { FiscalCreditPreparationRecord } from './fiscalCreditPreparation.ts'
+import { normalizeFiscalCuit } from './fiscalReconciliation.ts'
 
 /** Deliberadamente distinto de FiscalWorkerBinding: no contiene operacion_id de factura. */
 export interface FiscalCreditNumberBinding {
@@ -13,6 +14,24 @@ export interface FiscalCreditNumberBinding {
 }
 export interface FiscalCreditNumberSource { preparacion: Readonly<FiscalCreditPreparationRecord>; binding: Readonly<FiscalCreditNumberBinding> }
 const fail = (): never => { throw new Error('FISCAL_FUENTE_NUMERACION_NC_INVALIDA') }
+/** Sólo forma de metadata privada; SQL039 verifica propiedad/autoridad actuales. */
+export function validateFiscalCreditNumberBinding(input: unknown): Readonly<FiscalCreditNumberBinding> {
+  try {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return fail()
+    const b = input as Record<string, unknown>, keys = ['version', 'entorno', 'servicio', 'finalidad', 'venta_id', 'operacion_origen_id', 'solicitud_id', 'propuesta_sha256', 'preparacion_sha256', 'kiosco_id', 'usuario_id', 'actor_auth_id', 'cuit_emisor', 'punto_venta', 'tipo_comprobante', 'credencial_id', 'certificado_sha256', 'revision_emisor', 'revision_parametros', 'emision_habilitada']
+    const positive = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+    if (Object.keys(b).length !== keys.length || keys.some(key => !Object.hasOwn(b, key)) || b.version !== 1 || b.entorno !== 'HOMOLOGACION' || b.servicio !== 'wsfe'
+      || b.finalidad !== 'NUMERACION_NC' || b.emision_habilitada !== false || !fiscalUuid(b.venta_id) || !fiscalUuid(b.operacion_origen_id) || !fiscalUuid(b.solicitud_id)
+      || !fiscalUuid(b.kiosco_id) || !fiscalUuid(b.usuario_id) || !fiscalUuid(b.actor_auth_id) || !fiscalUuid(b.credencial_id)
+      || !fiscalSha(b.propuesta_sha256) || !fiscalSha(b.preparacion_sha256) || !fiscalSha(b.certificado_sha256)
+      || !positive(b.punto_venta) || b.punto_venta > 99998 || !positive(b.revision_emisor) || !positive(b.revision_parametros)
+      || b.tipo_comprobante !== 3 && b.tipo_comprobante !== 8 && b.tipo_comprobante !== 13) return fail()
+    return Object.freeze({ version: 1, entorno: 'HOMOLOGACION', servicio: 'wsfe', finalidad: 'NUMERACION_NC', venta_id: b.venta_id, operacion_origen_id: b.operacion_origen_id,
+      solicitud_id: b.solicitud_id, propuesta_sha256: b.propuesta_sha256, preparacion_sha256: b.preparacion_sha256, kiosco_id: b.kiosco_id, usuario_id: b.usuario_id,
+      actor_auth_id: b.actor_auth_id, cuit_emisor: normalizeFiscalCuit(b.cuit_emisor), punto_venta: b.punto_venta, tipo_comprobante: b.tipo_comprobante,
+      credencial_id: b.credencial_id, certificado_sha256: b.certificado_sha256, revision_emisor: b.revision_emisor, revision_parametros: b.revision_parametros, emision_habilitada: false })
+  } catch { return fail() }
+}
 /** Forma/enlace de metadata privada038, no JWT, permiso de TA ni vigencia futura. */
 export async function validateFiscalCreditNumberSource(input: unknown, source: Readonly<FiscalRepresentation>, draft: Readonly<FiscalCreditDraft>, actorAuthId: string, preparationSha: string): Promise<Readonly<FiscalCreditNumberSource>> {
   try {

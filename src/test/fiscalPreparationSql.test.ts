@@ -1772,6 +1772,44 @@ async function creditTicketFixture(){
  const call=async(action:string,id:string|null=null,generation:number|null=null,envelope:unknown=null,binding:unknown=source.binding)=>(await db.query<{data:Record<string,unknown>}>('SELECT coordinar_ta_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11::jsonb) data',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,f.prepared.sha256,JSON.stringify(binding),action,id,generation,envelope===null?null:JSON.stringify(envelope)])).rows[0].data
  return{...f,source,intent,cipher,call}
 }
+it.each(['normal','confirmar-perdido','iniciar-perdido','clave-falla'] as const)('039 loader cifrado integrado %s conserva exclusión y recuperación durable',async(mode)=>{
+ const f=await creditTicketFixture(),before=await preparationEffects()
+ const {createSharedFiscalCreditTicketLoader}=await import('../../supabase/functions/_shared/fiscalCreditSharedTickets')
+ const key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']),keyId=crypto.randomUUID()
+ const keys={active:vi.fn(async()=>{if(mode==='clave-falla')throw new Error('synthetic custody failure');return{id:keyId,key}}),read:vi.fn(async()=>key)}
+ const actions:string[]=[]
+ const rpc={rpc:async(name:string,args:Record<string,unknown>)=>{
+  expect(name).toBe('coordinar_ta_nc_homologacion');actions.push(String(args.p_accion))
+  expect(args.p_actor).toBe(actor);expect(args.p_venta).toBe(sale);expect(args.p_operacion).toBe(op)
+  expect(args.p_caso).toBe(f.proposal.datos.solicitud_id);expect(args.p_preparacion_sha).toBe(f.prepared.sha256)
+  if(typeof args.p_intento!=='string'||typeof args.p_accion!=='string')throw new Error('invalid synthetic RPC')
+  const generation=typeof args.p_generacion==='number'?args.p_generacion:null
+  const data=await f.call(args.p_accion,args.p_intento,generation,args.p_cifrado,args.p_binding)
+  if(mode==='confirmar-perdido'&&args.p_accion==='CONFIRMAR'||mode==='iniciar-perdido'&&args.p_accion==='INICIAR')throw new Error('synthetic lost ACK after SQL')
+  return{data,error:null}
+ }}
+ const wsaa=vi.fn(async(binding:typeof f.source.binding,_signal:AbortSignal,beforeSend:()=>Promise<void>)=>{
+  await beforeSend()
+  return{entorno:'HOMOLOGACION' as const,servicio:'wsfe' as const,cuitEmisor:binding.cuit_emisor,credencialId:binding.credencial_id,
+   certificadoSha256:binding.certificado_sha256,expiresAt:Date.now()+3600000,token:'synthetic-integrated-token',sign:'synthetic-integrated-sign'}
+ })
+ const load=()=>createSharedFiscalCreditTicketLoader(rpc,keys,wsaa,async()=>undefined)(f.source.binding,new AbortController().signal)
+ if(mode==='normal')expect((await load()).token).toBe('synthetic-integrated-token')
+ else await expect(load()).rejects.toThrow('FISCAL_TICKET_NC_NO_CONFIRMADO')
+ const state=await f.call('ESTADO')
+ if(mode==='iniciar-perdido'){
+  expect(state.estado).toBe('ENVIO_INCIERTO');await expect(load()).rejects.toThrow();expect(wsaa).toHaveBeenCalledTimes(1)
+  expect(actions).not.toContain('CANCELAR');expect(actions).not.toContain('CONFIRMAR')
+ }else if(mode==='clave-falla'){
+  expect(state.estado).toBe('VACIO');expect(wsaa).not.toHaveBeenCalled();expect(actions).toEqual(['SOLICITAR','CANCELAR'])
+ }else{
+  expect(state.estado).toBe('DISPONIBLE');expect((await load()).sign).toBe('synthetic-integrated-sign')
+  expect(wsaa).toHaveBeenCalledTimes(1);expect(keys.active).toHaveBeenCalledTimes(1);expect(keys.read).toHaveBeenCalledTimes(1)
+  const available=await f.call('SOLICITAR',crypto.randomUUID())
+  expect(JSON.stringify(available)).not.toContain('synthetic-integrated-token');expect(JSON.stringify(available)).not.toContain('synthetic-integrated-sign')
+ }
+ expect(await preparationEffects()).toEqual(before)
+})
 it('039 ciclo TA NC conserva propiedad, permiso único y sobre cifrado recuperable sin renovar de nuevo',async()=>{
  const f=await creditTicketFixture(),before=await preparationEffects()
  expect(await f.call('ESTADO')).toMatchObject({estado:'VACIO',intento_id:null,revision:0})
