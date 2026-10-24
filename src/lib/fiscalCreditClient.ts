@@ -4,7 +4,7 @@ import { prepareFiscalCreditDraft, validateFiscalCreditDraftProposal } from '../
 import type { FiscalCreditDraft } from '../../supabase/functions/_shared/fiscalCreditDraft'
 import { validateFiscalCreditContext } from '../../supabase/functions/_shared/fiscalCreditContext'
 import type { FiscalCreditContext } from '../../supabase/functions/_shared/fiscalCreditContext'
-import { validateFiscalCreditPreparationWire } from '../../supabase/functions/_shared/fiscalCreditPreparation'
+import { prepareFiscalCreditPreparation, validateFiscalCreditPreparationWire } from '../../supabase/functions/_shared/fiscalCreditPreparation'
 import type { FiscalCreditPreparationRecord } from '../../supabase/functions/_shared/fiscalCreditPreparation'
 import type { FiscalCreditDraftInput } from '../../supabase/functions/_shared/fiscalCreditDraft'
 import { validateFiscalCreditDraftAck } from '../../supabase/functions/_shared/fiscalCreditDraftAck'
@@ -18,6 +18,7 @@ import type { FiscalCreditUnits } from '../../supabase/functions/_shared/fiscalC
 import { fiscalSha, fiscalUuid } from '../../supabase/functions/_shared/fiscalReplacement'
 
 export interface PendingFiscalCredit { version: 1; operationId: string; requestId: string; sha256: string; intention: 'GUARDAR' | 'CANCELAR' }
+export interface PendingFiscalCreditPreparation { version: 1; operationId: string; requestId: string; proposalSha: string; preparationSha: string; contextSha: string }
 export interface FiscalCreditClientDependencies {
   storage: Pick<Storage, 'getItem' | 'setItem'> & Partial<Pick<Storage, 'removeItem'>>
   invoke: (command: Record<string, unknown>) => Promise<unknown>
@@ -29,6 +30,35 @@ export function createFiscalCreditClient(scope: FiscalClientScope, deps: FiscalC
   if (![scope.authId, scope.kioskId, scope.saleId].every(fiscalUuid)) return fail()
   const sale = scope.saleId.toLowerCase()
   const key = `kioskopos:fiscal:v1:${scope.authId.toLowerCase()}:${scope.kioskId.toLowerCase()}:${sale}:credit`
+  const preparationKey = `${key}:preparation`
+  const pendingPreparation = (): Readonly<PendingFiscalCreditPreparation> | null => {
+    try {
+      const raw = deps.storage.getItem(preparationKey)
+      if (raw === null || raw === 'null') return null
+      if (raw.length > 2048) return fail()
+      const value: unknown = JSON.parse(raw)
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return fail()
+      const row = value as Record<string, unknown>, keys = ['version', 'operationId', 'requestId', 'proposalSha', 'preparationSha', 'contextSha']
+      if (Object.keys(row).length !== keys.length || keys.some(key => !Object.hasOwn(row, key)) || row.version !== 1
+        || !fiscalUuid(row.operationId) || !fiscalUuid(row.requestId) || !fiscalSha(row.proposalSha) || !fiscalSha(row.preparationSha) || !fiscalSha(row.contextSha)) return fail()
+      return Object.freeze({ version: 1, operationId: row.operationId, requestId: row.requestId, proposalSha: row.proposalSha, preparationSha: row.preparationSha, contextSha: row.contextSha })
+    } catch { return fail() }
+  }
+  const writePreparation = (record: Readonly<PendingFiscalCreditPreparation> | null): void => {
+    const raw = JSON.stringify(record); deps.storage.setItem(preparationKey, raw)
+    if (deps.storage.getItem(preparationKey) !== raw) return fail()
+  }
+  const retirePreparation = (record: Readonly<PendingFiscalCreditPreparation>): void => {
+    if (JSON.stringify(pendingPreparation()) !== JSON.stringify(record)) return fail()
+    writePreparation(null)
+  }
+  const readPreparation = async (source: Readonly<FiscalRepresentation>, proposal: Readonly<FiscalCreditDraft>) => {
+    const result = await deps.invoke({ accion: 'PREPARACION_NC', venta_id: sale, operacion_origen_id: source.operacion_id,
+      solicitud_id: proposal.datos.solicitud_id, propuesta_sha256: proposal.sha256 })
+    return result === null ? null : validateFiscalCreditPreparationWire(result, source, proposal)
+  }
+  const matchesPreparation = (record: Readonly<PendingFiscalCreditPreparation>, stored: Readonly<FiscalCreditPreparationRecord>): boolean =>
+    stored.preparacion.sha256 === record.preparationSha && stored.preparacion.datos.contexto_sha256 === record.contextSha
   const pending = (): Readonly<PendingFiscalCredit> | null => {
     try {
       const raw = deps.storage.getItem(key)
@@ -61,6 +91,46 @@ export function createFiscalCreditClient(scope: FiscalClientScope, deps: FiscalC
   }
   return {
     pending,
+    pendingPreparation,
+    async recoverPreparation(source: Readonly<FiscalRepresentation>, proposal: Readonly<FiscalCreditDraft>): Promise<Readonly<FiscalCreditPreparationRecord> | null> {
+      try {
+        const original = structuredClone(source), captured = { canonico: proposal.canonico, sha256: proposal.sha256 }
+        if (original.venta_id !== sale) return fail()
+        const checked = await validateFiscalCreditDraftProposal(original, captured)
+        return await deps.exclusive(async () => {
+          const record = pendingPreparation()
+          if (!record) return null
+          if (record.operationId !== original.operacion_id || record.requestId !== checked.datos.solicitud_id || record.proposalSha !== checked.sha256) return fail()
+          const stored = await readPreparation(original, checked)
+          if (stored) { if (!matchesPreparation(record, stored)) return fail(); retirePreparation(record) }
+          return stored
+        })
+      } catch { return fail() }
+    },
+    async savePreparation(source: Readonly<FiscalRepresentation>, proposal: Readonly<FiscalCreditDraft>, context: Readonly<FiscalCreditContext>, input: unknown): Promise<Readonly<FiscalCreditPreparationRecord>> {
+      try {
+        const original = structuredClone(source), captured = structuredClone(proposal), metadata = structuredClone(context), entry: unknown = structuredClone(input)
+        if (original.venta_id !== sale) return fail()
+        const checked = await validateFiscalCreditDraftProposal(original, { canonico: captured.canonico, sha256: captured.sha256 })
+        const prepared = await prepareFiscalCreditPreparation(original, checked, metadata, entry)
+        const record: PendingFiscalCreditPreparation = { version: 1, operationId: original.operacion_id, requestId: checked.datos.solicitud_id,
+          proposalSha: checked.sha256, preparationSha: prepared.sha256, contextSha: prepared.datos.contexto_sha256 }
+        return await deps.exclusive(async () => {
+          if (pending()) return fail()
+          const prior = pendingPreparation()
+          if (prior && JSON.stringify(prior) !== JSON.stringify(record)) return fail()
+          const before = await readPreparation(original, checked)
+          if (before) { if (!matchesPreparation(record, before)) return fail(); if (prior) retirePreparation(prior); return before }
+          writePreparation(record)
+          try { await deps.invoke({ accion: 'GUARDAR_PREPARACION_NC', venta_id: sale, operacion_origen_id: record.operationId,
+            solicitud_id: record.requestId, propuesta_sha256: record.proposalSha, contexto_sha256: record.contextSha, entrada: entry }) }
+          catch { /* Conservar identidad; sólo lectura durable confirma. */ }
+          const stored = await readPreparation(original, checked)
+          if (!stored || !matchesPreparation(record, stored)) return fail()
+          retirePreparation(record); return stored
+        })
+      } catch { return fail() }
+    },
     async preparation(source: Readonly<FiscalRepresentation>, proposal: Readonly<FiscalCreditDraft>): Promise<Readonly<FiscalCreditPreparationRecord> | null> {
       try {
         const original = structuredClone(source), captured = { canonico: proposal.canonico, sha256: proposal.sha256 }
@@ -107,6 +177,7 @@ export function createFiscalCreditClient(scope: FiscalClientScope, deps: FiscalC
         const original = structuredClone(source), captured = structuredClone(input)
         if (original.venta_id !== sale) return fail()
         return await deps.exclusive(async () => {
+          if (pendingPreparation()) return fail()
           const prior = pending()
           if (prior && (prior.intention !== 'GUARDAR' || prior.operationId !== original.operacion_id)) return fail()
           // Sólo validar forma/hash aquí. Fecha, saldo y elegibilidad finales pertenecen al servidor.
@@ -131,6 +202,7 @@ export function createFiscalCreditClient(scope: FiscalClientScope, deps: FiscalC
         if (!fiscalUuid(operationId) || !fiscalUuid(requestId) || !fiscalSha(sha256)) return fail()
         const record: PendingFiscalCredit = { version: 1, operationId, requestId, sha256, intention: 'CANCELAR' }
         return await deps.exclusive(async () => {
+          if (pendingPreparation()) return fail()
           const prior = pending()
           if (prior && (prior.operationId !== operationId || prior.requestId !== requestId || prior.sha256 !== sha256)) return fail()
           write(record)
