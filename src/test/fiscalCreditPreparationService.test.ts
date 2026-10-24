@@ -4,6 +4,7 @@ import { prepareFiscalCreditPreparation } from '../../supabase/functions/_shared
 import { validateFiscalCreditContext } from '../../supabase/functions/_shared/fiscalCreditContext'
 import { loadFiscalCreditPreparation, saveFiscalCreditPreparation } from '../../supabase/functions/_shared/fiscalCreditDraftService'
 import type { FiscalAuthClient } from '../../supabase/functions/_shared/fiscalWorkerAuthorization'
+import { createFiscalHttpHandler } from '../../supabase/functions/_shared/fiscalHttp'
 
 async function fixture() {
   const f = await fiscalCreditContextFixture(), context = await validateFiscalCreditContext(f.context, f.source, f.proposal)
@@ -17,6 +18,33 @@ async function fixture() {
   return { ...f, preparation, packet, getUser, rpc, admin: { auth: { getUser }, rpc }, scope: { saleId: f.sale, operationId: f.operation, requestId: f.input.solicitud_id, sha256: f.proposal.sha256 } }
 }
 const periods = { servicioDesde: null, servicioHasta: null, vencimientoPago: null }
+function request(body: unknown, authorization = 'Bearer SYNTHETIC_JWT') {
+  return new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion', { method: 'POST', headers: {
+    origin: 'https://kiosco-app-staging.vercel.app', authorization, 'content-type': 'application/json',
+  }, body: typeof body === 'string' ? body : JSON.stringify(body) })
+}
+it('HTTP permite recuperar con escritura apagada, bloquea guardar antes de crear admin', async () => {
+  const f = await fixture(), createAdmin = vi.fn(() => f.admin), fetcher = vi.fn<typeof fetch>()
+  const handler = createFiscalHttpHandler({ readSecret: key => key === 'SUPABASE_URL' ? 'https://acoyfwwmhaeruciyedri.supabase.co' : key === 'ARCA_HOMO_BACKEND_ENABLED' ? 'true' : undefined, createAdmin, fetcher })
+  const command = { accion: 'PREPARACION_NC', venta_id: f.sale, operacion_origen_id: f.operation, solicitud_id: f.scope.requestId, propuesta_sha256: f.scope.sha256 }
+  const response = await handler(request(command)); expect(response.status).toBe(200)
+  expect((await response.json()).resultado.estado).toBe('DATOS_NC_PREPARADOS')
+  createAdmin.mockClear(); f.getUser.mockClear()
+  expect((await handler(request({ ...command, accion: 'GUARDAR_PREPARACION_NC', contexto_sha256: f.preparation.datos.contexto_sha256, entrada: periods }))).status).toBe(503)
+  expect(createAdmin).not.toHaveBeenCalled(); expect(f.getUser).not.toHaveBeenCalled(); expect(fetcher).not.toHaveBeenCalled()
+})
+it('HTTP guardado habilitado conserva recuperación y rechaza entradas extra, coerción, duplicados y tamaño', async () => {
+  const f = await fixture(), fetcher = vi.fn<typeof fetch>()
+  const handler = createFiscalHttpHandler({ readSecret: key => key === 'SUPABASE_URL' ? 'https://acoyfwwmhaeruciyedri.supabase.co' : ['ARCA_HOMO_BACKEND_ENABLED', 'ARCA_HOMO_CREDIT_PREPARATION_ENABLED'].includes(key) ? 'true' : undefined, createAdmin: () => f.admin, fetcher })
+  const command = { accion: 'GUARDAR_PREPARACION_NC', venta_id: f.sale, operacion_origen_id: f.operation, solicitud_id: f.scope.requestId, propuesta_sha256: f.scope.sha256, contexto_sha256: f.preparation.datos.contexto_sha256, entrada: periods }
+  expect((await handler(request(command))).status).toBe(200)
+  f.getUser.mockClear(); f.rpc.mockClear()
+  for (const invalid of [{ ...command, actor_auth_id: f.actor }, { ...command, contexto_sha256: 1 }, { ...command, entrada: { ...periods, extra: true } },
+    { ...command, entrada: { ...periods, servicioDesde: 20261001 } }, { ...command, entrada: {} }, JSON.stringify(command) + ' '.repeat(2100),
+    '{"accion":"PREPARACION_NC","accion":"PREPARACION_NC"}']) expect((await handler(request(invalid))).status).toBe(400)
+  expect((await handler(request(command, ''))).status).toBe(401)
+  expect(f.getUser).not.toHaveBeenCalled(); expect(f.rpc).not.toHaveBeenCalled(); expect(fetcher).not.toHaveBeenCalled()
+})
 it('contexto cambió o entrada inválida impiden escribir tras ausencia confirmada', async () => {
   const f = await fixture(), base = f.rpc.getMockImplementation()!
   f.rpc.mockImplementation(async (name, args) => {

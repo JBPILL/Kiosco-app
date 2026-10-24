@@ -1,5 +1,5 @@
 import { loadFiscalRepresentation } from './fiscalRepresentationService.ts'
-import { saveFiscalCreditDraft, loadFiscalCreditDraft, cancelFiscalCreditDraft, loadFiscalCreditHistory, loadFiscalCreditCommercialSource, loadFiscalCreditUnits, loadFiscalCreditContext } from './fiscalCreditDraftService.ts'
+import { saveFiscalCreditDraft, loadFiscalCreditDraft, cancelFiscalCreditDraft, loadFiscalCreditHistory, loadFiscalCreditCommercialSource, loadFiscalCreditUnits, loadFiscalCreditContext, loadFiscalCreditPreparation, saveFiscalCreditPreparation } from './fiscalCreditDraftService.ts'
 import { fiscalCreditUnitsWire } from './fiscalCreditUnits.ts'
 import { fiscalCreditHistoryWire } from './fiscalCreditHistory.ts'
 import { fiscalRepresentationWire } from './fiscalRepresentation.ts'
@@ -31,6 +31,8 @@ const origin='https://kiosco-app-staging.vercel.app'
 const invalid=():never=>{throw new Error('FISCAL_SOLICITUD_INVALIDA')}
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 type FiscalHttpCommand=
+  | {accion:'PREPARACION_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string}
+  | {accion:'GUARDAR_PREPARACION_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string;contexto_sha256:string;entrada:unknown}
   | {accion:'CONTEXTO_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string}
   | {accion:'UNIDADES_NC';venta_id:string;operacion_origen_id:string}
   | {accion:'FUENTE_COMERCIAL_NC';venta_id:string;operacion_origen_id:string}
@@ -81,6 +83,17 @@ async function command(request:Request):Promise<FiscalHttpCommand> {
     const text=new TextDecoder('utf-8',{fatal:true}).decode(bytes),parsed:unknown=parseFiscalJson(text)
     if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))return invalid()
     const b=parsed as Record<string,unknown>,keys=Object.keys(b)
+    if(b.accion==='GUARDAR_PREPARACION_NC'&&size<=2048&&(length===null||Number(length)<=2048)&&keys.length===7
+      &&keys.every(k=>['accion','venta_id','operacion_origen_id','solicitud_id','propuesta_sha256','contexto_sha256','entrada'].includes(k))
+      &&uuid(b.venta_id)&&uuid(b.operacion_origen_id)&&uuid(b.solicitud_id)
+      &&typeof b.propuesta_sha256==='string'&&/^[0-9a-f]{64}$/.test(b.propuesta_sha256)
+      &&typeof b.contexto_sha256==='string'&&/^[0-9a-f]{64}$/.test(b.contexto_sha256)
+      &&b.entrada&&typeof b.entrada==='object'&&!Array.isArray(b.entrada)) {
+      const entry=b.entrada as Record<string,unknown>
+      if(Object.keys(entry).length!==3||!['servicioDesde','servicioHasta','vencimientoPago'].every(k=>Object.hasOwn(entry,k)
+        &&(entry[k]===null||typeof entry[k]==='string'&&/^\d{8}$/.test(entry[k]))))return invalid()
+      return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_origen_id:b.operacion_origen_id.toLowerCase(),solicitud_id:b.solicitud_id.toLowerCase(),propuesta_sha256:b.propuesta_sha256,contexto_sha256:b.contexto_sha256,entrada:entry}
+    }
     if((b.accion==='FUENTE_COMERCIAL_NC'||b.accion==='UNIDADES_NC')&&size<=2048&&(length===null||Number(length)<=2048)&&keys.length===3&&keys.every(k=>['accion','venta_id','operacion_origen_id'].includes(k))
       &&uuid(b.venta_id)&&uuid(b.operacion_origen_id))
       return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_origen_id:b.operacion_origen_id.toLowerCase()}
@@ -90,7 +103,7 @@ async function command(request:Request):Promise<FiscalHttpCommand> {
     if(b.accion==='GUARDAR_BORRADOR_NC'&&keys.length===4&&keys.every(k=>['accion','venta_id','operacion_origen_id','propuesta'].includes(k))
       &&uuid(b.venta_id)&&uuid(b.operacion_origen_id)&&b.propuesta&&typeof b.propuesta==='object'&&!Array.isArray(b.propuesta))
       return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_origen_id:b.operacion_origen_id.toLowerCase(),propuesta:b.propuesta}
-    if((b.accion==='BORRADOR_NC'||b.accion==='CANCELAR_BORRADOR_NC'||b.accion==='CONTEXTO_NC')&&size<=2048&&(length===null||Number(length)<=2048)&&keys.length===5
+    if((b.accion==='BORRADOR_NC'||b.accion==='CANCELAR_BORRADOR_NC'||b.accion==='CONTEXTO_NC'||b.accion==='PREPARACION_NC')&&size<=2048&&(length===null||Number(length)<=2048)&&keys.length===5
       &&keys.every(k=>['accion','venta_id','operacion_origen_id','solicitud_id','propuesta_sha256'].includes(k))
       &&uuid(b.venta_id)&&uuid(b.operacion_origen_id)&&uuid(b.solicitud_id)&&typeof b.propuesta_sha256==='string'&&/^[0-9a-f]{64}$/.test(b.propuesta_sha256))
       return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_origen_id:b.operacion_origen_id.toLowerCase(),solicitud_id:b.solicitud_id.toLowerCase(),propuesta_sha256:b.propuesta_sha256}
@@ -168,9 +181,13 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
       let cmd:FiscalHttpCommand
       try{cmd=await command(request)}catch{return json({codigo:'SOLICITUD_INVALIDA'},400)}
       if(cmd.accion==='GUARDAR_BORRADOR_NC'&&deps.readSecret('ARCA_HOMO_CREDIT_DRAFTS_ENABLED')!=='true')return json({codigo:'BORRADORES_NC_NO_HABILITADOS'},503)
+      if(cmd.accion==='GUARDAR_PREPARACION_NC'&&deps.readSecret('ARCA_HOMO_CREDIT_PREPARATION_ENABLED')!=='true')return json({codigo:'PREPARACION_NC_NO_HABILITADA'},503)
       const admin=deps.createAdmin(FISCAL_STAGING_URL),token=auth.slice(7)
       let result:unknown
-      if(cmd.accion==='CONTEXTO_NC'){
+      if(cmd.accion==='PREPARACION_NC'||cmd.accion==='GUARDAR_PREPARACION_NC'){
+        const scope={saleId:cmd.venta_id,operationId:cmd.operacion_origen_id,requestId:cmd.solicitud_id,sha256:cmd.propuesta_sha256}
+        result=cmd.accion==='PREPARACION_NC'?await loadFiscalCreditPreparation(admin,token,scope):await saveFiscalCreditPreparation(admin,token,scope,cmd.contexto_sha256,cmd.entrada)
+      }else if(cmd.accion==='CONTEXTO_NC'){
         result=await loadFiscalCreditContext(admin,token,{saleId:cmd.venta_id,operationId:cmd.operacion_origen_id,requestId:cmd.solicitud_id,sha256:cmd.propuesta_sha256})
       }else if(cmd.accion==='UNIDADES_NC'){
         result=fiscalCreditUnitsWire(await loadFiscalCreditUnits(admin,token,cmd.venta_id,cmd.operacion_origen_id))
