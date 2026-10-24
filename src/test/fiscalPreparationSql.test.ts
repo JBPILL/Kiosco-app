@@ -87,7 +87,7 @@ function workerFixture(){
  mapping.cargar_contexto_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.cargar_presentacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.guardar_presentacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_solicitud_sha','p_canonico','p_sha'];mapping.cargar_revision_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_revision_id'];mapping.aprobar_revision_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_revision_id','p_solicitud_sha','p_revision','p_presentacion_sha']
  mapping.cargar_preparacion_envio_homologacion=['p_operacion_id'];mapping.autorizar_envio_presentado_homologacion=['p_actor_auth_id','p_operacion_id','p_sha','p_revision_id'];mapping.registrar_envio_revisado_homologacion=['p_actor_auth_id','p_operacion_id','p_intento_id','p_sha','p_autorizacion_id','p_ultimo_autorizado','p_consultado_en']
  mapping.cargar_representacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
- mapping.cargar_historial_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_despues'];mapping.guardar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_canonico','p_sha'];mapping.cargar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id'];mapping.cancelar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
+ mapping.cargar_fuente_comercial_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id'];mapping.cargar_historial_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_despues'];mapping.guardar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_canonico','p_sha'];mapping.cargar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id'];mapping.cancelar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
  const rpc=vi.fn<FiscalAuthClient['rpc']>(async(name,args)=>{
   const keys=mapping[name];if(!keys)throw new Error('UNEXPECTED_PRIVATE_RPC')
   await db.exec('SAVEPOINT worker_rpc')
@@ -1555,4 +1555,21 @@ it('NC fuente normaliza UUID históricos válidos sin alterar el snapshot origin
  const f=await creditCommercialFixture('COMBO')
  for(const [table,column] of [['checkout_manual_entradas','snapshot'],['checkout_manuales','solicitud']])await admin(`UPDATE ${table} SET ${column}=jsonb_set(jsonb_set(${column},'{detalles,0,producto_id}',to_jsonb($2::text)),'{detalles,0,componentes,0,producto_id}',to_jsonb($2::text)) WHERE id=$1`,[sale,product.toUpperCase()])
  expect(await f.load()).toMatchObject({lineas:[{producto_id:product,componentes:[{producto_id:product,cantidad:'3.000'}]}]})
+})
+
+it('NC fuente comercial HTTP cruza SQL030 real local con Auth único y sin flags de escritura',async()=>{
+ const f=await creditCommercialFixture(),api=workerFixture(),handler=createFiscalHttpHandler({readSecret:api.deps.readSecret,createAdmin:()=>api.admin,fetcher:api.fetcher})
+ const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify({accion:'FUENTE_COMERCIAL_NC',venta_id:sale,operacion_origen_id:op})}))
+ expect(response.status).toBe(200);expect((await response.json()).resultado).toEqual(await f.load())
+ expect(api.getUser).toHaveBeenCalledTimes(1);expect(api.fetcher).not.toHaveBeenCalled();expect(api.load).not.toHaveBeenCalled()
+ expect(api.rpc.mock.calls.map(([name])=>name)).toEqual(['cargar_representacion_fiscal_homologacion','cargar_fuente_comercial_nc_homologacion'])
+})
+it('NC transporte comercial no infiere Auth nuevo tras reasignación entre sus RPC',async()=>{
+ await creditCommercialFixture();const api=workerFixture(),other=crypto.randomUUID(),base=api.rpc.getMockImplementation()!
+ await admin('INSERT INTO auth.users VALUES($1)',[other])
+ api.rpc.mockImplementation(async(name,args)=>{const result=await base(name,args);if(name==='cargar_representacion_fiscal_homologacion')await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner]);return result})
+ const handler=createFiscalHttpHandler({readSecret:api.deps.readSecret,createAdmin:()=>api.admin,fetcher:api.fetcher})
+ const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify({accion:'FUENTE_COMERCIAL_NC',venta_id:sale,operacion_origen_id:op})}))
+ expect(response.status).not.toBe(200);expect(JSON.stringify(await response.json())).not.toContain('pagos');expect(api.getUser).toHaveBeenCalledTimes(1)
+ expect(api.rpc.mock.calls.every(([,args])=>args.p_actor_auth_id===actor)).toBe(true)
 })

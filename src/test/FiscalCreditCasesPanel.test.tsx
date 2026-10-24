@@ -10,7 +10,7 @@ import type { FiscalCreditClient, PendingFiscalCredit } from '../lib/fiscalCredi
 async function fixture() {
   const f = await fiscalCreditFixture(), page = await validateFiscalCreditHistory(f.page, f.source, 0)
   let pending: Readonly<PendingFiscalCredit> | null = null
-  const credits = {
+  const credits = { commercialSource: vi.fn<FiscalCreditClient['commercialSource']>(),
     pending: vi.fn(() => pending), save: vi.fn<FiscalCreditClient['save']>(),
     history: vi.fn<FiscalCreditClient['history']>(async () => page),
     recover: vi.fn<FiscalCreditClient['recover']>(async () => null),

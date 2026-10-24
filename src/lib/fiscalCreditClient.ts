@@ -6,6 +6,8 @@ import { validateFiscalCreditDraftAck } from '../../supabase/functions/_shared/f
 import type { FiscalCreditDraftAck } from '../../supabase/functions/_shared/fiscalCreditDraftAck'
 import { validateFiscalCreditHistory } from '../../supabase/functions/_shared/fiscalCreditHistory'
 import type { FiscalCreditHistory } from '../../supabase/functions/_shared/fiscalCreditHistory'
+import { validateFiscalCreditCommercialSource } from '../../supabase/functions/_shared/fiscalCreditCommercialSource'
+import type { FiscalCreditCommercialSource } from '../../supabase/functions/_shared/fiscalCreditCommercialSource'
 import { fiscalSha, fiscalUuid } from '../../supabase/functions/_shared/fiscalReplacement'
 
 export interface PendingFiscalCredit { version: 1; operationId: string; requestId: string; sha256: string; intention: 'GUARDAR' | 'CANCELAR' }
@@ -52,6 +54,13 @@ export function createFiscalCreditClient(scope: FiscalClientScope, deps: FiscalC
   }
   return {
     pending,
+    async commercialSource(source: Readonly<FiscalRepresentation>): Promise<Readonly<FiscalCreditCommercialSource>> {
+      try {
+        const original = structuredClone(source)
+        if (original.venta_id !== sale || !fiscalUuid(original.operacion_id)) return fail()
+        return await validateFiscalCreditCommercialSource(await deps.invoke({ accion: 'FUENTE_COMERCIAL_NC', venta_id: sale, operacion_origen_id: original.operacion_id }), original)
+      } catch { return fail() }
+    },
     async recover(): Promise<Readonly<FiscalCreditDraftAck> | null> {
       try { return await deps.exclusive(async () => {
         const record = pending(); if (!record) return null
