@@ -3,6 +3,20 @@
   "strictBlockers": [],
   "policies": [
     {
+      "flow": "optional shared envases and cash returns",
+      "mode": "SAFE_RPC",
+      "browserDml": false,
+      "entrypoint": "operar_envases_atomico / confirmar_devolucion_efectivo_piloto / checkout-manual -> confirmar_checkout_envases",
+      "requiredFlags": [
+        "VITE_KIOSKO_PILOT_STRICT_SCOPE=true",
+        "VITE_CHECKOUT_MANUAL_TRANSACCIONAL=true",
+        "VITE_KIOSKO_ENVASES_TRANSACCIONAL=true or VITE_KIOSKO_DEVOLUCIONES_EFECTIVO=true",
+        "KIOSKO_ENVASES_TRANSACCIONAL=true for receipt-containing checkout"
+      ],
+      "installation": "optional modules and private per-commerce capability; disabled until hosted acceptance",
+      "limitations": "Cash-only original sale, no fiscal/Point/current-account refunds; returns/annulment of tickets with envase credits require reconciliation and are blocked"
+    },
+    {
       "flow": "manual checkout and sale ledger",
       "mode": "SAFE_RPC",
       "entrypoint": "checkout-manual -> confirmar_venta_manual",
@@ -237,16 +251,16 @@
       "strategy": "SuperAdmin JWT, durable reservation, transactional business finalization; no destructive compensation after uncertain response"
     },
     {
-      "flow": "fiscal, Point, shared packaging and partial returns",
+      "flow": "fiscal, Point and legacy packaging/return paths",
       "mode": "OUT_OF_SCOPE",
       "browserDml": false,
       "resources": [
         "ARCA/CAE",
         "Point",
-        "envases compartidos",
-        "devoluciones parciales"
+        "envases sin módulo opcional",
+        "devoluciones heredadas"
       ],
-      "strictGuard": "Existing strict pilot exclusions remain unchanged; commercial capability cannot enable these resources"
+      "strictGuard": "Fiscal and Point remain excluded; legacy return writes remain blocked. Optional envases/cash-return RPCs require their own installation, frontend/server flags and private per-commerce capability; commercial capability alone cannot enable them"
     },
     {
       "flow": "commercial subscriptions, plans, configuration and administration",
@@ -273,16 +287,16 @@
       "strategy": "SuperAdmin JWT, durable reservation, transactional business finalization; no destructive compensation after uncertain response"
     },
     {
-      "flow": "fiscal, Point, shared packaging and partial returns",
+      "flow": "fiscal, Point and legacy packaging/return paths",
       "mode": "OUT_OF_SCOPE",
       "browserDml": false,
       "resources": [
         "ARCA/CAE",
         "Point",
-        "envases compartidos",
-        "devoluciones parciales"
+        "envases sin módulo opcional",
+        "devoluciones heredadas"
       ],
-      "strictGuard": "Existing strict pilot exclusions remain unchanged; commercial capability cannot enable these resources"
+      "strictGuard": "Fiscal and Point remain excluded; legacy return writes remain blocked. Optional envases/cash-return RPCs require their own installation, frontend/server flags and private per-commerce capability; commercial capability alone cannot enable them"
     },
     {
       "flow": "commercial subscriptions, plans, configuration and administration",
@@ -309,16 +323,16 @@
       "strategy": "SuperAdmin JWT, durable reservation, transactional business finalization; no destructive compensation after uncertain response"
     },
     {
-      "flow": "fiscal, Point, shared packaging and partial returns",
+      "flow": "fiscal, Point and legacy packaging/return paths",
       "mode": "OUT_OF_SCOPE",
       "browserDml": false,
       "resources": [
         "ARCA/CAE",
         "Point",
-        "envases compartidos",
-        "devoluciones parciales"
+        "envases sin módulo opcional",
+        "devoluciones heredadas"
       ],
-      "strictGuard": "Existing strict pilot exclusions remain unchanged; commercial capability cannot enable these resources"
+      "strictGuard": "Fiscal and Point remain excluded; legacy return writes remain blocked. Optional envases/cash-return RPCs require their own installation, frontend/server flags and private per-commerce capability; commercial capability alone cannot enable them"
     },
     {
       "flow": "commercial subscriptions, plans, configuration and administration",
@@ -345,16 +359,16 @@
       "strategy": "SuperAdmin JWT, durable reservation, transactional business finalization; no destructive compensation after uncertain response"
     },
     {
-      "flow": "fiscal, Point, shared packaging and partial returns",
+      "flow": "fiscal, Point and legacy packaging/return paths",
       "mode": "OUT_OF_SCOPE",
       "browserDml": false,
       "resources": [
         "ARCA/CAE",
         "Point",
-        "envases compartidos",
-        "devoluciones parciales"
+        "envases sin módulo opcional",
+        "devoluciones heredadas"
       ],
-      "strictGuard": "Existing strict pilot exclusions remain unchanged; commercial capability cannot enable these resources"
+      "strictGuard": "Fiscal and Point remain excluded; legacy return writes remain blocked. Optional envases/cash-return RPCs require their own installation, frontend/server flags and private per-commerce capability; commercial capability alone cannot enable them"
     },
     {
       "flow": "commercial subscriptions, plans, configuration and administration",
@@ -381,16 +395,16 @@
       "strategy": "SuperAdmin JWT, durable reservation, transactional business finalization; no destructive compensation after uncertain response"
     },
     {
-      "flow": "fiscal, Point, shared packaging and partial returns",
+      "flow": "fiscal, Point and legacy packaging/return paths",
       "mode": "OUT_OF_SCOPE",
       "browserDml": false,
       "resources": [
         "ARCA/CAE",
         "Point",
-        "envases compartidos",
-        "devoluciones parciales"
+        "envases sin módulo opcional",
+        "devoluciones heredadas"
       ],
-      "strictGuard": "Existing strict pilot exclusions remain unchanged; commercial capability cannot enable these resources"
+      "strictGuard": "Fiscal and Point remain excluded; legacy return writes remain blocked. Optional envases/cash-return RPCs require their own installation, frontend/server flags and private per-commerce capability; commercial capability alone cannot enable them"
     },
     {
       "flow": "commercial subscriptions, plans, configuration and administration",
@@ -417,16 +431,16 @@
       "strategy": "SuperAdmin JWT, durable reservation, transactional business finalization; no destructive compensation after uncertain response"
     },
     {
-      "flow": "fiscal, Point, shared packaging and partial returns",
+      "flow": "fiscal, Point and legacy packaging/return paths",
       "mode": "OUT_OF_SCOPE",
       "browserDml": false,
       "resources": [
         "ARCA/CAE",
         "Point",
-        "envases compartidos",
-        "devoluciones parciales"
+        "envases sin módulo opcional",
+        "devoluciones heredadas"
       ],
-      "strictGuard": "Existing strict pilot exclusions remain unchanged; commercial capability cannot enable these resources"
+      "strictGuard": "Fiscal and Point remain excluded; legacy return writes remain blocked. Optional envases/cash-return RPCs require their own installation, frontend/server flags and private per-commerce capability; commercial capability alone cannot enable them"
     }
   ]
 }

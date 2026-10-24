@@ -33,3 +33,14 @@ dist-ssr
 !.env.example
 /supabase/.temp/
 /supabase/.branches/
+
+# Material criptográfico y tickets de autenticación: nunca versionar.
+*.key
+*.pem
+*.p12
+*.pfx
+*.dpapi
+*.cms
+*LoginTicketResponse*.xml
+*loginTicketResponse*.xml
+*TRA*.cms*

@@ -38,3 +38,12 @@ Completar la migración F5 en pasos locales y con gates: bloquear referencias co
 ## Resultado final
 
 F5.2B, F5.2C, F5.3 y F5.4 aprobaron sus gates. El smoke test consultó sólo recursos públicos del frontend staging; no se escribieron datos remotos ni se tocó el proyecto Supabase viejo. El checkout manual transaccional y los 325 elementos locales no F5 se preservaron.
+
+
+## Production Readiness — revisión permanente 20/10/2026
+
+Referencia canónica: [gates PR01–PR11](../../plan_operativo_y_comercial_kioskopos_revision.md#production-readiness--gates-permanentes-20102026). Gates aplicables a este ExecPlan: **PR05, PR06, PR07, PR08 y PR09**.
+
+Los PASS históricos F5 conservan su alcance. La ampliación posterior de ARCA y respaldo requiere sus propios contratos y gates; no retirar guards del piloto como atajo.
+
+Esta adenda complementa los estados y decisiones anteriores, sin borrarlos ni convertir un PASS local/histórico en aceptación global. Registrar entorno, versión, fecha, evidencia y límites antes de cerrar el gate aplicable. Continuar según el primer gate pendiente del registro maestro (PR01); las autorizaciones de la sesión conservan su alcance y no se amplían por este plan.
