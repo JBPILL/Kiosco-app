@@ -1,6 +1,7 @@
 import { fiscalRepresentationWire, validateFiscalRepresentation } from './fiscalRepresentation.ts'
 import type { FiscalRepresentation } from './fiscalRepresentation.ts'
 import { fiscalUuid } from './fiscalReplacement.ts'
+import { parseFiscalJson } from './fiscalStrictJson.ts'
 
 interface CreditLine { detalle_id: string; cantidad: string; importe: string; reingresa_stock: boolean }
 interface CreditVat { id: number; base: string; importe: string }
@@ -115,5 +116,20 @@ export async function prepareFiscalCreditDraft(original: Readonly<FiscalRepresen
     if (bytes.length > 60000) return fail()
     const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), sha256 = [...hash].map(n => n.toString(16).padStart(2, '0')).join('')
     return freeze({ version: 1, estado: 'PROPUESTA_NO_PERSISTIDA', emision_habilitada: false, canonico, sha256, datos })
+  } catch { return fail() }
+}
+
+/** Reconstruye un borrador histórico exacto; no valida fecha/saldo actual para emitirlo. */
+export async function validateFiscalCreditDraftProposal(original: Readonly<FiscalRepresentation>, input: unknown): Promise<Readonly<FiscalCreditDraft>> {
+  try {
+    const value = object(structuredClone(input), ['canonico', 'sha256'])
+    if (typeof value.canonico !== 'string' || new TextEncoder().encode(value.canonico).length > 60000
+      || typeof value.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(value.sha256)) return fail()
+    const data = object(parseFiscalJson(value.canonico), ['version', 'solicitud_id', 'fecha', 'motivo', 'condicion_iva_receptor', 'lineas', 'importes', 'iva', 'tributos', 'clase', 'entorno', 'tipo_nota_credito', 'origen'])
+    const { clase: _kind, entorno: _environment, tipo_nota_credito: _type, origen: _original, ...entrada } = data
+    if (typeof entrada.fecha !== 'string') return fail()
+    const proposal = await prepareFiscalCreditDraft(original, entrada, entrada.fecha)
+    if (proposal.canonico !== value.canonico || proposal.sha256 !== value.sha256) return fail()
+    return proposal
   } catch { return fail() }
 }

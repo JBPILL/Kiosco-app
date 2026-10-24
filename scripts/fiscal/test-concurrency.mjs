@@ -20,6 +20,7 @@ let containerId
 let port
 let requiredPresentationInstalledAfterCase=null
 let creditDraftInstalledAfterCase=null
+let creditRecoveryInstalledAfterCase=null
 let evidence
 const evidenceIndex = process.argv.indexOf('--evidence')
 const evidencePath = evidenceIndex >= 0 ? resolve(process.argv[evidenceIndex+1] ?? '') : null
@@ -849,8 +850,8 @@ try {
   creditDraftInstalledAfterCase=cases.length
   await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/027_fiscal_credit_drafts.sql'),'utf8'))
   await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/027_fiscal_credit_drafts.sql'),'utf8'))
-  async function creditFixture(point){
-    const f=await strictPresentationFixture(point,3,2),attempt=randomUUID()
+  async function creditFixture(point,parameterRevision=3){
+    const f=await strictPresentationFixture(point,parameterRevision,2),attempt=randomUUID()
     await start(a);await f.send(a,attempt);await a.query('COMMIT')
     await start(a);await a.query('SELECT registrar_reconciliacion_fiscal_homologacion($1,$2,$3,$4,1,$5::jsonb)',[randomUUID(),f.operation,attempt,f.body,JSON.stringify({estado:'AUTORIZACION_COINCIDENTE',cae:'11111111111111',vencimiento:'20261031',procesadoEn:null,solicitudSha256:f.body,puedeReenviar:false})]);await a.query('COMMIT')
     await start(a);const source=(await a.query('SELECT cargar_representacion_fiscal_homologacion($1,$2,$3) v',[f.auth,f.sale,f.operation])).rows[0].v;await a.query('COMMIT')
@@ -921,11 +922,47 @@ try {
   for(const f of [duplicateCredit,competingCredit,rollbackCredit,centsCredit,changedCreditAuth,revokedCreditIssuer,expiredCreditCatalog]){
     for(const table of ['movimientos_stock','movimientos_caja','devoluciones_venta'])assert.equal((await observer.query(`SELECT count(*)::int n FROM ${table} WHERE kiosco_id=$1`,[f.kid])).rows[0].n,0)
   }
+  creditRecoveryInstalledAfterCase=cases.length
+  for(const file of ['028_fiscal_credit_abandonment.sql','029_fiscal_credit_history.sql']){
+    await observer.query(readFileSync(join(root,'supabase/pilot-fiscal',file),'utf8'))
+    await observer.query(readFileSync(join(root,'supabase/pilot-fiscal',file),'utf8'))
+  }
+  await observer.query(`INSERT INTO fiscal_parametros_homologacion SELECT 4,condiciones,alicuotas,fuente_sha256,clock_timestamp()-interval '1 hour',clock_timestamp()+interval '1 hour',true FROM fiscal_parametros_homologacion WHERE revision=1`)
+  const abandoned=await creditFixture(170,4),abandonedProposal=await abandoned.make()
+  await start(a);const abandonment=await abandoned.cancel(a,abandonedProposal)
+  await start(b);const lateWrite=capture(abandoned.write(b,abandonedProposal));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await lateWrite).error?.code,'55000');await b.query('ROLLBACK')
+  await start(b);assert.deepEqual(await abandoned.read(b,abandonedProposal),abandonment);await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_borradores_homologacion WHERE id=$1',[abandonedProposal.id])).rows[0].n,0)
+  cases.push('028_desistimiento_confirmado_impide_guardado_tardio_esperando_lock')
+  const savedFirst=await creditFixture(171,4),savedProposal=await savedFirst.make()
+  await start(a);await savedFirst.write(a,savedProposal)
+  await start(b);const cancelWaiting=capture(savedFirst.cancel(b,savedProposal));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await cancelWaiting).value.estado,'CANCELADA');await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_desistimientos_homologacion WHERE solicitud_id=$1',[savedProposal.id])).rows[0].n,0)
+  cases.push('028_guardado_previo_se_cancela_sin_crear_desistimiento_contradictorio')
+  const duplicateAbandon=await creditFixture(172,4),duplicateAbandonProposal=await duplicateAbandon.make()
+  await start(a);const firstAbandon=await duplicateAbandon.cancel(a,duplicateAbandonProposal)
+  await start(b);const secondAbandon=capture(duplicateAbandon.cancel(b,duplicateAbandonProposal));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.deepEqual((await secondAbandon).value,firstAbandon);await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_desistimientos_homologacion WHERE solicitud_id=$1',[duplicateAbandonProposal.id])).rows[0].n,1)
+  cases.push('028_desistimiento_concurrente_mismo_UUID_un_registro_un_ACK')
+  const rollbackAbandon=await creditFixture(173,4),rollbackAbandonProposal=await rollbackAbandon.make()
+  await start(a);await rollbackAbandon.cancel(a,rollbackAbandonProposal)
+  await start(b);const afterAbandonRollback=capture(rollbackAbandon.write(b,rollbackAbandonProposal));await waitForLock(observer,b);await a.query('ROLLBACK')
+  assert.equal((await afterAbandonRollback).value.estado,'SALDO_RESERVADO_NO_EMITIR');await b.query('COMMIT')
+  cases.push('028_rollback_desistimiento_no_bloquea_guardado_que_espera')
+  await start(a);await rollbackAbandon.cancel(a,rollbackAbandonProposal)
+  await start(b);const historyWaiting=capture(b.query('SELECT cargar_historial_nc_homologacion($1,$2,$3,0) v',[rollbackAbandon.auth,rollbackAbandon.sale,rollbackAbandon.operation]));await waitForLock(observer,b);await a.query('COMMIT')
+  const recoveredHistory=(await historyWaiting).value.rows[0].v;await b.query('COMMIT')
+  assert.equal(recoveredHistory.casos.length,1);assert.equal(recoveredHistory.casos[0].acuse.estado,'CANCELADA');assert.equal(recoveredHistory.casos[0].propuesta.sha256,rollbackAbandonProposal.sha)
+  cases.push('029_historial_espera_y_recupera_cancelacion_confirmada')
+  for(const f of [abandoned,savedFirst,duplicateAbandon,rollbackAbandon])for(const table of ['movimientos_stock','movimientos_caja','devoluciones_venta'])assert.equal((await observer.query(`SELECT count(*)::int n FROM ${table} WHERE kiosco_id=$1`,[f.kid])).rows[0].n,0)
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
-    cases,caseCount:cases.length,requiredPresentationInstalledAfterCase,postRequiredPresentationCaseCount:requiredPresentationInstalledAfterCase===null?0:cases.length-requiredPresentationInstalledAfterCase,creditDraftInstalledAfterCase,postCreditDraftCaseCount:creditDraftInstalledAfterCase===null?0:cases.length-creditDraftInstalledAfterCase,externalRequests:0,invoicesIssued:0}
+    cases,caseCount:cases.length,requiredPresentationInstalledAfterCase,postRequiredPresentationCaseCount:requiredPresentationInstalledAfterCase===null?0:cases.length-requiredPresentationInstalledAfterCase,creditDraftInstalledAfterCase,postCreditDraftCaseCount:creditDraftInstalledAfterCase===null?0:cases.length-creditDraftInstalledAfterCase,creditRecoveryInstalledAfterCase,postCreditRecoveryCaseCount:creditRecoveryInstalledAfterCase===null?0:cases.length-creditRecoveryInstalledAfterCase,externalRequests:0,invoicesIssued:0}
 } catch(error) {
   console.error('FISCAL_CONCURRENCY=FAIL; CODE='+(error?.code??error?.name??'UNKNOWN')+'; STEP='+cases.length+'; DETAIL='+error.message)
   evidence={status:'FAIL',testedAt:new Date().toISOString(),containerId,containerName:name,port,cases,code:error?.code??error?.name??'UNKNOWN'}

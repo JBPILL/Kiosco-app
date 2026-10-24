@@ -87,7 +87,7 @@ function workerFixture(){
  mapping.cargar_contexto_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.cargar_presentacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id'];mapping.guardar_presentacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_solicitud_sha','p_canonico','p_sha'];mapping.cargar_revision_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_revision_id'];mapping.aprobar_revision_presentacion_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id','p_revision_id','p_solicitud_sha','p_revision','p_presentacion_sha']
  mapping.cargar_preparacion_envio_homologacion=['p_operacion_id'];mapping.autorizar_envio_presentado_homologacion=['p_actor_auth_id','p_operacion_id','p_sha','p_revision_id'];mapping.registrar_envio_revisado_homologacion=['p_actor_auth_id','p_operacion_id','p_intento_id','p_sha','p_autorizacion_id','p_ultimo_autorizado','p_consultado_en']
  mapping.cargar_representacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
- mapping.guardar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_canonico','p_sha'];mapping.cargar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id'];mapping.cancelar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
+ mapping.cargar_historial_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_despues'];mapping.guardar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_canonico','p_sha'];mapping.cargar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id'];mapping.cancelar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
  const rpc=vi.fn<FiscalAuthClient['rpc']>(async(name,args)=>{
   const keys=mapping[name];if(!keys)throw new Error('UNEXPECTED_PRIVATE_RPC')
   await db.exec('SAVEPOINT worker_rpc')
@@ -1417,4 +1417,58 @@ it('NC Auth reasignado después de leer fuente no se infiere de nuevo ni reserva
  await expect(saveFiscalCreditDraft(api.admin,'SYNTHETIC_JWT',sale,op,f.input)).rejects.toThrow('FISCAL_NC_NO_CONFIRMADA')
  expect(api.getUser).toHaveBeenCalledTimes(1)
  await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_nc_borradores_homologacion')).rows[0].n).toBe(0)
+})
+
+it('NC desistimiento antes del guardado crea cierre durable y bloquea escritura tardía',async()=>{
+ const f=await creditReservationFixture(),p=await f.make(),ack=await f.cancel(p)
+ expect(ack).toMatchObject({solicitud_id:p.datos.solicitud_id,propuesta_sha256:p.sha256,estado:'CANCELADA',emision_habilitada:false,reintegro_habilitado:false,reposicion_habilitada:false})
+ expect(await f.cancel(p)).toEqual(ack);expect(await f.read(p)).toEqual(ack);await denied(()=>f.write(p))
+ const api=workerFixture();expect(await saveFiscalCreditDraft(api.admin,'SYNTHETIC_JWT',sale,op,f.input)).toEqual(ack)
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_nc_borradores_homologacion')).rows[0].n).toBe(0)
+ expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_nc_desistimientos_homologacion')).rows[0].n).toBe(1)
+})
+it('NC desistimiento no consume saldo y no acepta sustituir hash o Auth',async()=>{
+ const f=await creditReservationFixture(),p=await f.make();await f.cancel(p)
+ await denied(()=>db.query('SELECT cancelar_borrador_nc_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,p.datos.solicitud_id,'b'.repeat(64)]))
+ await denied(()=>db.query('SELECT cargar_borrador_nc_homologacion($1,$2,$3,$4)',[crypto.randomUUID(),sale,op,p.datos.solicitud_id]))
+ const next=await f.make({...f.input,solicitud_id:crypto.randomUUID()});expect(await f.write(next)).toMatchObject({estado:'SALDO_RESERVADO_NO_EMITIR'})
+})
+it.each(['anon','authenticated','service_role'])('NC desistimientos e historial privados al rol %s',async role=>{
+ const f=await creditReservationFixture(),p=await f.make();await f.cancel(p);await db.exec(`SET ROLE ${role}`)
+ await denied(()=>db.query('SELECT * FROM fiscal_nc_desistimientos_homologacion'));await denied(()=>db.query('DELETE FROM fiscal_nc_desistimientos_homologacion'))
+ await denied(()=>db.query('SELECT fiscal_nc_desistimiento_ack($1)',[p.datos.solicitud_id]))
+ if(role!=='service_role')await denied(()=>db.query('SELECT cargar_historial_nc_homologacion($1,$2,$3,0)',[actor,sale,op]))
+})
+it('NC desistimientos inmutables no se convierten en otro caso mediante UPDATE/DELETE',async()=>{
+ const f=await creditReservationFixture(),p=await f.make();await f.cancel(p);await db.exec('RESET ROLE')
+ await denied(()=>db.query('DELETE FROM fiscal_nc_desistimientos_homologacion'))
+ await denied(()=>db.query(`UPDATE fiscal_nc_desistimientos_homologacion SET propuesta_sha256=repeat('b',64)`))
+})
+it('NC historial pagina casos por secuencia y recupera canónico original tras perder browser',async()=>{
+ const f=await creditReservationFixture(),ids:string[]=[]
+ for(let n=0;n<11;n++){const p=await f.make({...f.input,solicitud_id:crypto.randomUUID(),motivo:'Caso '+n});await f.write(p);ids.push(p.datos.solicitud_id);if(n<10)await f.cancel(p)}
+ const read=async(after=0)=>(await db.query<{v:{version:number;venta_id:string;operacion_origen_id:string;despues:number;casos:{secuencia:number;acuse:Record<string,unknown>;propuesta:{canonico:string;sha256:string}}[];continuar_desde:number|null}}>('SELECT cargar_historial_nc_homologacion($1,$2,$3,$4) v',[actor,sale,op,after])).rows[0].v
+ const first=await read();expect(first.casos).toHaveLength(10);expect(first.continuar_desde).toBe(10)
+ expect(first.casos.map(x=>x.acuse.solicitud_id)).toEqual(ids.slice(0,10));expect(first.casos.every(x=>x.acuse.estado==='CANCELADA')).toBe(true)
+ for(const entry of first.casos){expect(hash(entry.propuesta.canonico)).toBe(entry.propuesta.sha256);expect(entry.acuse.propuesta_sha256).toBe(entry.propuesta.sha256)}
+ await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false');await admin('UPDATE fiscal_parametros_homologacion SET habilitado=false')
+ const last=await read(10);expect(last.casos).toHaveLength(1);expect(last.casos[0].acuse.solicitud_id).toBe(ids[10]);expect(last.continuar_desde).toBeNull()
+ expect((await read(11)).casos).toEqual([])
+ await denied(()=>db.query('SELECT cargar_historial_nc_homologacion($1,$2,$3,-1)',[actor,sale,op]))
+})
+it('NC historial vacío no fabrica casos y no revela factura a Auth reasignado',async()=>{
+ const f=await creditReservationFixture(),p=await f.make();await f.cancel(p)
+ expect((await db.query<{v:{casos:unknown[];continuar_desde:null}}>('SELECT cargar_historial_nc_homologacion($1,$2,$3,0) v',[actor,sale,op])).rows[0].v).toMatchObject({casos:[],continuar_desde:null})
+ const other=crypto.randomUUID();await admin('INSERT INTO auth.users VALUES($1)',[other]);await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner])
+ for(const who of [actor,other]){await denied(()=>f.read(p,who));await denied(()=>db.query('SELECT cargar_historial_nc_homologacion($1,$2,$3,0)',[who,sale,op]))}
+})
+it('NC historial HTTP recupera propuesta y cancelación desde SQL sin habilitar guardados',async()=>{
+ const f=await creditReservationFixture(),p=await f.make();await f.write(p);await f.cancel(p)
+ const api=workerFixture(),handler=createFiscalHttpHandler({readSecret:api.deps.readSecret,createAdmin:()=>api.admin,fetcher:api.fetcher})
+ const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify({accion:'HISTORIAL_BORRADORES_NC',venta_id:sale,operacion_origen_id:op,despues:0})}))
+ expect(response.status).toBe(200)
+ const body=await response.json()
+ expect(body.resultado).toMatchObject({version:1,venta_id:sale,operacion_origen_id:op,despues:0,continuar_desde:null,casos:[{secuencia:1,propuesta:{canonico:p.canonico,sha256:p.sha256},acuse:{estado:'CANCELADA',emision_habilitada:false,reintegro_habilitado:false,reposicion_habilitada:false}}]})
+ expect(api.getUser).toHaveBeenCalledTimes(1);expect(api.fetcher).not.toHaveBeenCalled();expect(api.load).not.toHaveBeenCalled()
+ expect(api.rpc.mock.calls.map(([name])=>name)).toEqual(['cargar_representacion_fiscal_homologacion','cargar_historial_nc_homologacion'])
 })

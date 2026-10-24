@@ -1,4 +1,5 @@
 import { validateFiscalRepresentation } from '../../supabase/functions/_shared/fiscalRepresentation'
+import { createFiscalCreditClient } from './fiscalCreditClient'
 import { validateFiscalPresentationContext } from '../../supabase/functions/_shared/fiscalPresentationContext'
 import type { FiscalPresentationContext } from '../../supabase/functions/_shared/fiscalPresentationContext'
 import { prepareFiscalPresentationFacts,validateFiscalPresentationRecord } from '../../supabase/functions/_shared/fiscalPresentation'
@@ -163,6 +164,7 @@ export function createFiscalClient(scope: FiscalClientScope, deps: FiscalClientD
     return value === null ? null : validateFiscalPreparationCancellation(value, sale, operationId)
   }
   return {
+    credits: createFiscalCreditClient(scope, { storage: deps.storage, invoke, exclusive }),
     pending,
     pendingReplacement,
     pendingObservation,

@@ -4,6 +4,8 @@ import { validateFiscalRepresentation } from './fiscalRepresentation.ts'
 import { prepareFiscalCreditDraft } from './fiscalCreditDraft.ts'
 import { validateFiscalCreditDraftAck } from './fiscalCreditDraftAck.ts'
 import type { FiscalCreditDraftAck, FiscalCreditDraftScope } from './fiscalCreditDraftAck.ts'
+import { validateFiscalCreditHistory } from './fiscalCreditHistory.ts'
+import type { FiscalCreditHistory } from './fiscalCreditHistory.ts'
 
 const fail = (): never => { throw new Error('FISCAL_NC_NO_CONFIRMADA') }
 async function actor(admin: FiscalAuthClient, token: string, sale: string, operation: string): Promise<string> {
@@ -54,5 +56,17 @@ export async function cancelFiscalCreditDraft(admin: FiscalAuthClient, token: st
     const stored = await read(admin, id, captured)
     if (!stored || stored.estado !== 'CANCELADA') return fail()
     return stored
+  } catch { return fail() }
+}
+export async function loadFiscalCreditHistory(admin: FiscalAuthClient, token: string, sale: string, operation: string, after: number): Promise<Readonly<FiscalCreditHistory>> {
+  try {
+    if (!Number.isSafeInteger(after) || after < 0 || after > 2147483647) return fail()
+    const id = await actor(admin, token, sale, operation)
+    const source = await admin.rpc('cargar_representacion_fiscal_homologacion', { p_actor_auth_id: id, p_venta_id: sale, p_operacion_id: operation })
+    if (source.error) return fail()
+    const original = await validateFiscalRepresentation(source.data, sale, operation)
+    const page = await admin.rpc('cargar_historial_nc_homologacion', { p_actor_auth_id: id, p_venta_id: sale, p_operacion_origen_id: operation, p_despues: after })
+    if (page.error) return fail()
+    return await validateFiscalCreditHistory(page.data, original, after)
   } catch { return fail() }
 }
