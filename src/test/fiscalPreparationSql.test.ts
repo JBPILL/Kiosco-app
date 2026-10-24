@@ -92,6 +92,8 @@ function workerFixture(){
  mapping.cargar_representacion_fiscal_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_id']
  mapping.cargar_unidades_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id']
  mapping.cargar_fuente_contexto_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
+ mapping.cargar_preparacion_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
+ mapping.guardar_preparacion_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha','p_contexto_sha','p_entrada']
  mapping.cargar_fuente_comercial_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id'];mapping.cargar_historial_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_despues'];mapping.guardar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_canonico','p_sha'];mapping.cargar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id'];mapping.cancelar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
  const rpc=vi.fn<FiscalAuthClient['rpc']>(async(name,args)=>{
   const keys=mapping[name];if(!keys)throw new Error('UNEXPECTED_PRIVATE_RPC')
@@ -1722,6 +1724,72 @@ async function creditPreparationFixture(invoice:1|6|11=11,concept:1|2|3=1){
 async function preparationEffects(){
  await db.exec('RESET ROLE');const value=(await db.query<{v:unknown}>(`SELECT jsonb_build_object('series',(SELECT count(*) FROM fiscal_series_homologacion),'reservas',(SELECT count(*) FROM fiscal_reservas_homologacion),'stock',(SELECT count(*) FROM movimientos_stock),'caja',(SELECT count(*) FROM movimientos_caja),'devoluciones',(SELECT count(*) FROM devoluciones_venta)) v`)).rows[0].v;await db.exec('SET ROLE service_role');return value
 }
+async function creditPreparationTransport(invoice:1|6|11=11,concept:1|2|3=1){
+ const f=await creditPreparationFixture(invoice,concept),api=workerFixture(),local=new Map<string,string>(),commands:string[]=[]
+ api.flags.ARCA_HOMO_CREDIT_PREPARATION_ENABLED='true'
+ const handler=createFiscalHttpHandler({readSecret:api.deps.readSecret,createAdmin:()=>api.admin,fetcher:api.fetcher})
+ const send=vi.fn(async(command:Record<string,unknown>)=>{
+  commands.push(String(command.accion))
+  const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify(command)}))
+  if(response.status!==200)throw new Error('HTTP_NOT_CONFIRMED')
+  return response.json()
+ })
+ const storage={getItem:(key:string)=>local.get(key)??null,setItem:(key:string,value:string)=>{local.set(key,value)}}
+ const make=()=>createFiscalClient({authId:actor,kioskId:kid,saleId:sale},{storage,send})
+ return{...f,api,local,commands,send,make,client:make()}
+}
+it.each([[1,1],[6,1],[11,1],[11,2],[11,3]] as const)('035 cliente–HTTP–servicio–SQL factura%i concepto%i guarda y recupera canónico exacto',async(invoice,concept)=>{
+ const f=await creditPreparationTransport(invoice,concept),before=await preparationEffects()
+ expect(await f.client.credits.preparation(f.source,f.proposal)).toBeNull()
+ const stored=await f.client.credits.savePreparation(f.source,f.proposal,f.context,f.entry)
+ expect(stored.preparacion.sha256).toBe(f.prepared.sha256);expect(stored.preparacion.canonico).toBe(f.prepared.canonico)
+ expect(f.client.credits.pendingPreparation()).toBeNull()
+ expect(await f.make().credits.preparation(f.source,f.proposal)).toEqual(stored)
+ expect(await preparationEffects()).toEqual(before);expect(f.api.fetcher).not.toHaveBeenCalled();expect(f.api.load).not.toHaveBeenCalled()
+ expect(f.commands.filter(action=>action==='GUARDAR_PREPARACION_NC')).toHaveLength(1)
+})
+it('035 ACK HTTP perdido se recupera de SQL real sin reenviar y con catálogo/emisor revocados',async()=>{
+ const f=await creditPreparationTransport(),base=f.send.getMockImplementation()!,before=await preparationEffects()
+ f.send.mockImplementation(async command=>{
+  const result=await base(command)
+  if(command.accion==='GUARDAR_PREPARACION_NC'){
+   await admin('UPDATE fiscal_parametros_nc_homologacion SET habilitado=false');await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false')
+   throw new Error('SYNTHETIC_LOST_HTTP_ACK')
+  }
+  return result
+ })
+ const stored=await f.client.credits.savePreparation(f.source,f.proposal,f.context,f.entry)
+ expect(stored.preparacion.sha256).toBe(f.prepared.sha256);expect(f.client.credits.pendingPreparation()).toBeNull()
+ expect(await f.make().credits.preparation(f.source,f.proposal)).toEqual(stored)
+ expect(f.commands.filter(action=>action==='GUARDAR_PREPARACION_NC')).toHaveLength(1)
+ expect(await preparationEffects()).toEqual(before);expect(f.api.fetcher).not.toHaveBeenCalled();expect(f.api.load).not.toHaveBeenCalled()
+})
+it('035 cancelación HTTP real conserva preparación histórica y no reactiva al reintentar',async()=>{
+ const f=await creditPreparationTransport(),before=await preparationEffects()
+ await f.client.credits.savePreparation(f.source,f.proposal,f.context,f.entry)
+ expect((await f.client.credits.cancel(op,f.proposal.datos.solicitud_id,f.proposal.sha256)).estado).toBe('CANCELADA')
+ expect((await f.make().credits.preparation(f.source,f.proposal))?.estado).toBe('CANCELADA')
+ expect((await f.client.credits.savePreparation(f.source,f.proposal,f.context,f.entry)).estado).toBe('CANCELADA')
+ expect(f.commands.filter(action=>action==='GUARDAR_PREPARACION_NC')).toHaveLength(1)
+ expect(await preparationEffects()).toEqual(before);expect(f.api.fetcher).not.toHaveBeenCalled();expect(f.api.load).not.toHaveBeenCalled()
+})
+it('035 transporte no cambia Auth original si se reasigna perfil entre factura y lectura durable',async()=>{
+ const f=await creditPreparationTransport();await f.savePreparation()
+ const other=crypto.randomUUID();await admin('INSERT INTO auth.users VALUES($1)',[other])
+ const base=f.api.rpc.getMockImplementation()!
+ f.api.rpc.mockImplementation(async(name,args)=>{
+  const result=await base(name,args)
+  if(name==='cargar_representacion_fiscal_homologacion')await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner])
+  return result
+ })
+ await expect(f.client.credits.preparation(f.source,f.proposal)).rejects.toThrow('FISCAL_NC_CLIENTE_NO_CONFIRMADO')
+ expect(f.api.getUser).toHaveBeenCalledTimes(1)
+ expect(f.api.rpc.mock.calls.every(([,args])=>args.p_actor_auth_id===actor)).toBe(true)
+ f.api.getUser.mockResolvedValue({data:{user:{id:other}},error:null})
+ await expect(f.make().credits.preparation(f.source,f.proposal)).rejects.toThrow('FISCAL_NC_CLIENTE_NO_CONFIRMADO')
+ expect(f.commands.every(action=>action==='PREPARACION_NC')).toBe(true)
+ expect(f.api.fetcher).not.toHaveBeenCalled();expect(f.api.load).not.toHaveBeenCalled()
+})
 it.each([[1,1],[6,1],[11,1],[11,2],[11,3]] as const)('035 preparación factura%i concepto%i coincide byte a byte con contrato puro y no numera',async(invoice,concept)=>{
  const f=await creditPreparationFixture(invoice,concept),before=await preparationEffects()
  expect(await f.readPreparation()).toBeNull();const stored=await f.savePreparation()
