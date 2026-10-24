@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../ui/Button'
 import { FiscalCreditSourcePanel } from './FiscalCreditSourcePanel'
+import { prepareFiscalCreditDraft } from '../../../supabase/functions/_shared/fiscalCreditDraft'
+import type { FiscalCreditDraftInput } from '../../../supabase/functions/_shared/fiscalCreditDraft'
+import { validateFiscalCreditDraftAck } from '../../../supabase/functions/_shared/fiscalCreditDraftAck'
 import type { FiscalClient } from '../../lib/fiscalClient'
 import type { PendingFiscalCredit } from '../../lib/fiscalCreditClient'
 import type { FiscalReceipt } from '../../../supabase/functions/_shared/fiscalReceipt'
@@ -89,6 +92,24 @@ function CasesBody({ client, receipt }: Props) {
       } finally { if (alive.current) setPending(localPending()) }
     })
   }
+  async function saveCase(original: Readonly<FiscalRepresentation>, input: FiscalCreditDraftInput): Promise<void> {
+    if (running.current || localPending() || !loaded || next !== null || target) throw new Error('FISCAL_NC_NO_DISPONIBLE')
+    running.current = true; setBusy(true); setError(''); setMessage('')
+    try {
+      const captured = structuredClone(input), proposal = await prepareFiscalCreditDraft(original, captured, captured.fecha)
+      if (!alive.current) return
+      const response = await client.credits.save(original, captured)
+      const ack = validateFiscalCreditDraftAck(response, { saleId: original.venta_id, operationId: original.operacion_id, requestId: proposal.datos.solicitud_id, sha256: proposal.sha256 })
+      if (!alive.current) return
+      setMessage(ack.estado === 'CANCELADA' ? 'El intento está cancelado. No se creó un caso nuevo ni se emitió una nota de crédito.' : 'Caso guardado y confirmado. Todavía no es una nota de crédito autorizada; no entregues efectivo ni repongas stock.')
+      setRows([]); setLoaded(false); setNext(null)
+      try { await history(original, 0) }
+      catch { if (alive.current) setError('El resultado del intento se confirmó, pero no se pudo actualizar el historial. Volvé a consultar los casos guardados.') }
+    } finally {
+      running.current = false
+      if (alive.current) { setBusy(false); setPending(localPending()) }
+    }
+  }
   const latestActive = next === null && loaded ? [...rows].reverse().find(row => row.acuse.estado === 'SALDO_RESERVADO_NO_EMITIR') : undefined
   function choose(value: Readonly<PendingFiscalCredit>): void { setTarget(value); setConfirmed(false); setMessage('') }
   return <section aria-label="Casos de notas de crédito" className="rounded-lg border p-4 space-y-3">
@@ -97,7 +118,8 @@ function CasesBody({ client, receipt }: Props) {
     <Button type="button" variant="secondary" loading={busy} onClick={() => { void refresh() }}>Consultar casos guardados</Button>
     {error && <p role="alert">{error}</p>}
     {message && <p role="status">{message}</p>}
-    {source && <FiscalCreditSourcePanel source={source} client={client.credits} disabled={busy || !!pending || !!target} />}
+    {source && <FiscalCreditSourcePanel source={source} client={client.credits} disabled={busy || !!pending || !!target}
+      onSave={loaded && next === null ? input => saveCase(source, input) : undefined} />}
     {pending && <div className="rounded-lg border p-3 space-y-2" aria-label="Intento NC pendiente">
       <p>Este equipo conserva {pending.intention === 'CANCELAR' ? 'una cancelación' : 'un guardado'} pendiente de confirmación.</p>
       <Button type="button" variant="secondary" disabled={busy} onClick={() => { void recover() }}>Recuperar intento pendiente</Button>

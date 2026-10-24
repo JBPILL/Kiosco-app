@@ -1,16 +1,18 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
 import { FiscalCreditCasesPanel } from '../components/pos/FiscalCreditCasesPanel'
-import { fiscalCreditFixture } from './fixtures/fiscalCredit'
+import { fiscalCreditUnitsFixture } from './fixtures/fiscalCreditUnits'
+import { validateFiscalCreditCommercialSource } from '../../supabase/functions/_shared/fiscalCreditCommercialSource'
+import { validateFiscalCreditUnits } from '../../supabase/functions/_shared/fiscalCreditUnits'
 import { validateFiscalCreditHistory } from '../../supabase/functions/_shared/fiscalCreditHistory'
 import { prepareFiscalCreditDraft } from '../../supabase/functions/_shared/fiscalCreditDraft'
 import type { FiscalCreditHistory } from '../../supabase/functions/_shared/fiscalCreditHistory'
 import type { FiscalRepresentation } from '../../supabase/functions/_shared/fiscalRepresentation'
 import type { FiscalCreditClient, PendingFiscalCredit } from '../lib/fiscalCreditClient'
 async function fixture() {
-  const f = await fiscalCreditFixture(), page = await validateFiscalCreditHistory(f.page, f.source, 0)
+  const f = await fiscalCreditUnitsFixture(), page = await validateFiscalCreditHistory(f.page, f.source, 0)
   let pending: Readonly<PendingFiscalCredit> | null = null
-  const credits = { units: vi.fn<FiscalCreditClient['units']>(), commercialSource: vi.fn<FiscalCreditClient['commercialSource']>(),
+  const credits = { units: vi.fn<FiscalCreditClient['units']>(async () => validateFiscalCreditUnits(f.packet, f.source, f.commercial)), commercialSource: vi.fn<FiscalCreditClient['commercialSource']>(async () => validateFiscalCreditCommercialSource(f.commercial, f.source)),
     pending: vi.fn(() => pending), save: vi.fn<FiscalCreditClient['save']>(),
     history: vi.fn<FiscalCreditClient['history']>(async () => page),
     recover: vi.fn<FiscalCreditClient['recover']>(async () => null),
@@ -31,6 +33,66 @@ it('consulta explícita muestra caso histórico sin presentar reserva como CAE n
   expect(screen.getByText('Devolución sintética')).toBeTruthy()
   expect(screen.getByText('Reposición solicitada, aún sin aplicar', { exact: false })).toBeTruthy()
   expect(f.credits.save).not.toHaveBeenCalled(); expect(f.credits.cancel).not.toHaveBeenCalled()
+})
+async function openDraft(f: Awaited<ReturnType<typeof fixture>>) {
+  f.credits.history.mockResolvedValue({ ...f.page, casos: [] })
+  render(<FiscalCreditCasesPanel {...f.props} />); f.consult()
+  const consultOriginal = await screen.findByRole('button', { name: 'Consultar datos originales' })
+  await waitFor(() => expect(consultOriginal.hasAttribute('disabled')).toBe(false)); fireEvent.click(consultOriginal)
+  await screen.findByRole('form', { name: 'Preparar caso NC' })
+  const change = (label: string, value: string): void => { fireEvent.change(screen.getByLabelText(label), { target: { value } }) }
+  change('Fecha del caso', '23/10/2026'); change('Motivo del caso', 'Caso explícito'); change('Código de condición IVA del receptor', '5')
+  fireEvent.click(screen.getByLabelText('Incluir artículo 1')); change('Cantidad artículo 1', '2'); change('Importe artículo 1', '123,45')
+  for (const label of ['Total del caso', 'Neto']) change(label, '123,45')
+  for (const label of ['IVA total', 'No gravado', 'Exento', 'Otros tributos total']) change(label, '0')
+  fireEvent.click(screen.getByLabelText('Confirmo estos datos para guardar un caso sin emitir ni entregar efectivo o reponer stock.'))
+}
+it('captura integrada confirma ACK exacto y recarga historial sin anunciar CAE ni emitir', async () => {
+  const f = await fixture(); await openDraft(f)
+  f.credits.save.mockImplementation(async (source, input) => {
+    const proposal = await prepareFiscalCreditDraft(source, input, input.fecha)
+    const ack = { ...f.ack, solicitud_id: input.solicitud_id, propuesta_sha256: proposal.sha256 }
+    f.credits.history.mockResolvedValue(await validateFiscalCreditHistory({ ...f.page, casos: [{ secuencia: 1, acuse: ack, propuesta: { canonico: proposal.canonico, sha256: proposal.sha256 } }] }, source, 0))
+    return ack
+  })
+  fireEvent.submit(screen.getByRole('form', { name: 'Preparar caso NC' }))
+  await screen.findByText('Caso guardado y confirmado.', { exact: false })
+  await screen.findByText('Caso explícito'); expect(f.credits.save).toHaveBeenCalledTimes(1)
+  expect(screen.getByText('Guardado · sin emitir')).toBeTruthy()
+})
+it('guardado incierto muestra pendiente recuperable y excluye otro envío de formulario', async () => {
+  const f = await fixture(); await openDraft(f)
+  f.credits.save.mockImplementation(async (source, input) => {
+    const proposal = await prepareFiscalCreditDraft(source, input, input.fecha)
+    f.setPending({ version: 1, operationId: f.operation, requestId: input.solicitud_id, sha256: proposal.sha256, intention: 'GUARDAR' })
+    throw new Error('PRIVATE_NETWORK')
+  })
+  fireEvent.submit(screen.getByRole('form', { name: 'Preparar caso NC' }))
+  await screen.findByRole('button', { name: 'Recuperar intento pendiente' })
+  expect(screen.getByRole('alert').textContent).not.toContain('PRIVATE_NETWORK')
+  fireEvent.submit(screen.getByRole('form', { name: 'Preparar caso NC' }))
+  expect(f.credits.save).toHaveBeenCalledTimes(1); expect(screen.queryByText('Caso guardado y confirmado.', { exact: false })).toBeNull()
+})
+it('ACK de otro intento no confirma guardado ni actualiza historial', async () => {
+  const f = await fixture(); await openDraft(f); f.credits.save.mockResolvedValue(f.ack)
+  const reads = f.credits.history.mock.calls.length
+  fireEvent.submit(screen.getByRole('form', { name: 'Preparar caso NC' }))
+  await screen.findByRole('alert')
+  expect(screen.queryByText('Caso guardado y confirmado.', { exact: false })).toBeNull()
+  expect(f.credits.history).toHaveBeenCalledTimes(reads)
+})
+it('fallo de historial después de ACK exacto conserva confirmación y no ofrece otro envío', async () => {
+  const f = await fixture(); await openDraft(f)
+  f.credits.save.mockImplementation(async (source, input) => {
+    const proposal = await prepareFiscalCreditDraft(source, input, input.fecha)
+    f.credits.history.mockRejectedValue(new Error('PRIVATE_HISTORY'))
+    return { ...f.ack, solicitud_id: input.solicitud_id, propuesta_sha256: proposal.sha256 }
+  })
+  fireEvent.submit(screen.getByRole('form', { name: 'Preparar caso NC' }))
+  await screen.findByText('Caso guardado y confirmado.', { exact: false })
+  expect((await screen.findByRole('alert')).textContent).toContain('El resultado del intento se confirmó')
+  expect(screen.queryByRole('form', { name: 'Preparar caso NC' })).toBeNull()
+  expect(f.credits.save).toHaveBeenCalledTimes(1)
 })
 it('cancelar exige confirmación y relee historial; no guarda una propuesta ni mueve efectivo', async () => {
   const f = await fixture(); render(<FiscalCreditCasesPanel {...f.props} />); f.consult()

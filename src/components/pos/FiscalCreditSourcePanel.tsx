@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../ui/Button'
+import { FiscalCreditDraftForm } from './FiscalCreditDraftForm'
+import type { FiscalCreditDraftInput } from '../../../supabase/functions/_shared/fiscalCreditDraft'
 import type { FiscalCreditClient } from '../../lib/fiscalCreditClient'
 import type { FiscalRepresentation } from '../../../supabase/functions/_shared/fiscalRepresentation'
 import { validateFiscalCreditCommercialSource } from '../../../supabase/functions/_shared/fiscalCreditCommercialSource'
@@ -11,6 +13,7 @@ interface Props {
   source: Readonly<FiscalRepresentation>
   client: Pick<FiscalCreditClient, 'commercialSource' | 'units'>
   disabled?: boolean
+  onSave?: (input: FiscalCreditDraftInput) => Promise<void>
 }
 interface Facts { commercial: Readonly<FiscalCreditCommercialSource>; units: Readonly<FiscalCreditUnits> }
 const paymentNames = { EFECTIVO: 'Efectivo', MERCADOPAGO: 'Mercado Pago', TRANSFERENCIA: 'Transferencia', TARJETA: 'Tarjeta', CUENTA_CORRIENTE: 'Cuenta corriente' }
@@ -20,7 +23,7 @@ export function FiscalCreditSourcePanel(props: Props) {
   const s = props.source
   return <SourceBody key={`${s.venta_id}:${s.operacion_id}:${s.constancia.solicitud.sha256}:${s.hechos.presentacion_sha256}`} {...props} />
 }
-function SourceBody({ source, client, disabled }: Props) {
+function SourceBody({ source, client, disabled, onSave }: Props) {
   const [facts, setFacts] = useState<Facts | null>(null)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
   const alive = useRef(true), running = useRef(false)
@@ -69,6 +72,7 @@ function SourceBody({ source, client, disabled }: Props) {
         })}
       </ul>
       <p className="text-sm">Los descuentos por envases recibidos siguen pendientes de definición con el contador. Esta consulta no habilita esos casos. El efectivo y la reposición sólo se habilitarán después de un CAE de nota de crédito confirmado.</p>
+      {onSave && <FiscalCreditDraftForm source={source} commercial={facts.commercial} units={facts.units} disabled={disabled} onSave={onSave} />}
     </div>}
   </section>
 }
