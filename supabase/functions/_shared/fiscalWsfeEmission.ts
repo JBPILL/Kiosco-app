@@ -41,13 +41,16 @@ function request(action:'FECompUltimoAutorizado'|'FECAESolicitar',payload:string
   return new Request(URL,{method:'POST',redirect:'error',headers:{'Content-Type':'text/xml; charset=utf-8',SOAPAction:'"'+WSFE+action+'"'},
     body:`<s:Envelope xmlns:s="${SOAP}"><s:Body><${action} xmlns="${WSFE}">${payload}</${action}></s:Body></s:Envelope>`})
 }
-async function post(req:Request,fetcher:typeof fetch,timeoutMs:number,expiresAt:number,beforeSend?:()=>Promise<void>):Promise<string> {
+async function post(req:Request,fetcher:typeof fetch,timeoutMs:number,expiresAt:number,beforeSend?:()=>Promise<void>,purpose:'EMISION_NUMERACION'|'CONSULTA'='EMISION_NUMERACION',parentSignal?:AbortSignal):Promise<string> {
   const controller=new AbortController();let response:Response|undefined
   if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>40000)return fail()
+  const abortParent=()=>controller.abort()
+  if(parentSignal?.aborted)return fail()
+  parentSignal?.addEventListener('abort',abortParent,{once:true})
   const timer=setTimeout(()=>controller.abort(),timeoutMs)
   try {
     if(req.url!==URL||req.method!=='POST'||req.redirect!=='error'
-      ||![`"${WSFE}FECompUltimoAutorizado"`,`"${WSFE}FECAESolicitar"`].includes(req.headers.get('SOAPAction')??''))return fail()
+      ||!(purpose==='CONSULTA'?[`"${WSFE}FECompConsultar"`]:[`"${WSFE}FECompUltimoAutorizado"`,`"${WSFE}FECAESolicitar"`]).includes(req.headers.get('SOAPAction')??''))return fail()
     if(beforeSend)await deadline(beforeSend(),controller.signal)
     if(controller.signal.aborted||expiresAt<=Date.now()+15000)return fail()
     response=await deadline(fetcher(new Request(req,{signal:controller.signal})),controller.signal)
@@ -58,10 +61,18 @@ async function post(req:Request,fetcher:typeof fetch,timeoutMs:number,expiresAt:
     finally{void reader.cancel().catch(()=>{});reader.releaseLock()}
     const bytes=new Uint8Array(size);let offset=0;for(const part of parts){bytes.set(part,offset);offset+=part.length}
     return new TextDecoder('utf-8',{fatal:true}).decode(bytes)
-  }catch{return fail()}finally{clearTimeout(timer);controller.abort();if(response?.body&&!response.body.locked)void response.body.cancel().catch(()=>{})}
+  }catch{return fail()}finally{clearTimeout(timer);parentSignal?.removeEventListener('abort',abortParent);controller.abort();if(response?.body&&!response.body.locked)void response.body.cancel().catch(()=>{})}
 }
 // Transporte privado compartido; no es una acción HTTP pública ni un permiso.
-export { post as postPrivateFiscalWsfe }
+export async function postPrivateFiscalWsfe(req:Request,fetcher:typeof fetch,timeoutMs:number,expiresAt:number,beforeSend?:()=>Promise<void>):Promise<string> {
+ return post(req,fetcher,timeoutMs,expiresAt,beforeSend)
+}
+/** Transporte exclusivo de consulta; no amplía acciones del adaptador de envío. */
+export async function postPrivateFiscalCreditQuery(req:Request,fetcher:typeof fetch,timeoutMs:number,expiresAt:number,beforeSend:()=>Promise<void>,signal:AbortSignal):Promise<string> {
+ if(typeof beforeSend!=='function'||!signal||signal.aborted)return fail()
+ return post(req,fetcher,timeoutMs,expiresAt,beforeSend,'CONSULTA',signal)
+}
+
 export function decodeLastFiscalNumber(xml:string,expected:unknown):number {
   const s=series(expected),r=result(xml,'FECompUltimoAutorizado')
   schema(r,['PtoVta','CbteTipo','CbteNro','Errors','Events']);const errors=codes(r,'Errors','Err');codes(r,'Events','Evt')

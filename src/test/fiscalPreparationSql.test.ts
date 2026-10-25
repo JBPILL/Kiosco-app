@@ -1,3 +1,5 @@
+import { consultFiscalCreditVoucher } from '../../supabase/functions/_shared/fiscalCreditVoucherQuery'
+import { syntheticFiscalCreditVoucherXml } from './fixtures/fiscalCreditVoucherXml'
 import { createSharedFiscalCreditConsultTicketLoader } from '../../supabase/functions/_shared/fiscalCreditSharedTickets'
 import { validateFiscalCreditConsultBinding } from '../../supabase/functions/_shared/fiscalCreditConsultSource'
 import { validateFiscalCreditConsultSource } from '../../supabase/functions/_shared/fiscalCreditConsultSource'
@@ -1867,6 +1869,17 @@ async function creditConsultSourceFixture(){
  const consult=async(who=actor)=>(await db.query<{data:{binding:Record<string,unknown>;intencion:Record<string,unknown>;cuerpo:unknown}}>('SELECT cargar_fuente_consulta_nc_homologacion($1,$2,$3,$4,$5) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256])).rows[0].data
  return{...f,consult}
 }
+it.each([false,true])('045 transporte FECompConsultar con guard SQL actual, custodia revocada=%s',async(revoked)=>{
+ const f=await creditConsultSourceFixture();await f.startIntent();const packet=await f.consult(),validated=await validateFiscalCreditConsultSource(packet,f.source,f.proposal,actor),b=validated.binding,before=await preparationEffects(),original=await f.readIntent()
+ const ticket={entorno:'HOMOLOGACION' as const,servicio:'wsfe' as const,cuitEmisor:b.cuit_emisor,credencialId:b.credencial_id,certificadoSha256:b.certificado_sha256,token:'SYNTHETIC_QUERY_TOKEN',sign:'SYNTHETIC_QUERY_SIGN',expiresAt:Date.now()+120000}
+ const xml=syntheticFiscalCreditVoucherXml(validated.cuerpo.datos.solicitud).xml
+ const fetcher=vi.fn<typeof fetch>(async()=>new Response(xml,{headers:{'content-type':'text/xml'}})),guard=vi.fn(async(binding:Readonly<typeof b>)=>{await db.exec('SAVEPOINT query_guard');try{expect((await f.consult()).binding).toEqual(binding);await db.exec('RELEASE SAVEPOINT query_guard')}catch{await db.exec('ROLLBACK TO SAVEPOINT query_guard; RELEASE SAVEPOINT query_guard');throw new Error('SYNTHETIC_SQL_GUARD_REJECTED')}})
+ if(revoked)await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false')
+ const run=()=>consultFiscalCreditVoucher({packet,source:f.source,draft:f.proposal,actorAuthId:actor},ticket,{fetcher,beforeSend:guard,signal:new AbortController().signal})
+ if(revoked){await expect(run()).rejects.toThrow('FISCAL_CONSULTA_NC_NO_CONFIRMADA');expect(fetcher).not.toHaveBeenCalled()}
+ else{expect(await run()).toMatchObject({intento_id:f.attempt,solicitud_sha256:f.body.sha256,resultado:{estado:'AUTORIZACION_NC_COINCIDENTE',puedeReenviar:false},emision_habilitada:false});expect(fetcher).toHaveBeenCalledTimes(1);expect(guard).toHaveBeenCalledTimes(2)}
+ expect(await preparationEffects()).toEqual(before);expect(await f.readIntent()).toEqual(original)
+})
 it('045 consulta exige intención previa y no devuelve autoridad de envío',async()=>{
  const f=await creditConsultSourceFixture();await denied(()=>f.consult());await f.startIntent();const before=await preparationEffects(),result=await f.consult()
  expect(result.binding).toMatchObject({finalidad:'CONSULTA_NC',intento_id:f.attempt,solicitud_sha256:f.body.sha256,numero:23,actor_auth_id:actor,emision_habilitada:false})

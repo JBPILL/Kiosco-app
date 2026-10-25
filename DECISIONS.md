@@ -744,3 +744,6 @@ SQL046 sólo renueva/inicia desde045 actual, compartiendo exclusión global por 
 
 ### 25/10/2026 — consulta NC no inventa asociación ni origen
 Parser NC separado de tipos factura, compara asociación además de contrato fiscal completo. Campos de CbteAsoc ausentes se conservan desconocidos, no se copian del esperado para fabricar coincidencia. Una respuesta incompleta requiere evidencia adicional/aceptación antes de autorizar efectos;602 no habilita reenvío. FchProceso se conserva con precisión8/14 recibida y validada. El comparador puro no autentica ARCA ni acredita recepción: futuro worker/transporte/diario deben ligar guard045, TA y cuerpo original antes de persistir clasificación.
+
+### 25/10/2026 — transporte de consulta no amplía emisión
+Wrapper de consulta privado admite sólo FECompConsultar; export de envío conserva su allowlist anterior. Comparten stream/deadline/cancelación internos, no autoridad. Consulta NC exige fuente045 y TA exactos, guard privado antes/después de red y resultado ligado a intento/cuerpo; no se persistirá CAE desde XML sin pasar comparador/diario. Cancelación o timeout no se transforma en reenvío. El trabajador futuro debe ligar Auth/flags/TA046 y persistir resultados con exclusión antes de confirmar efectos.
