@@ -1,3 +1,6 @@
+import type { FiscalRpc } from '../../supabase/functions/_shared/fiscalPersistence'
+import { createSharedFiscalCreditSendTicketLoader } from '../../supabase/functions/_shared/fiscalCreditSharedTickets'
+import { validateFiscalCreditSendBinding } from '../../supabase/functions/_shared/fiscalCreditSendSource'
 import { validateFiscalCreditSendSource } from '../../supabase/functions/_shared/fiscalCreditSendSource'
 import { validateFiscalRepresentation } from '../../supabase/functions/_shared/fiscalRepresentation'
 import { prepareFiscalCreditDraft } from '../../supabase/functions/_shared/fiscalCreditDraft'
@@ -1815,6 +1818,27 @@ async function creditSendTicketFixture(){
  const call=async(action:string,id:string|null=null,generation:number|null=null,encrypted:unknown=null,binding:unknown=source.binding)=>(await db.query<{data:Record<string,unknown>}>('SELECT coordinar_ta_envio_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11::jsonb) data',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,f.prepared.sha256,JSON.stringify(binding),action,id,generation,encrypted===null?null:JSON.stringify(encrypted)])).rows[0].data
  return{...f,source,intent,cipher,call}
 }
+it.each(['normal','ack-iniciar','ack-confirmar','clave-falla'] as const)('044 loader ENVIO_NC integrado %s conserva incertidumbre y recuperación',async(mode)=>{
+ const f=await creditSendTicketFixture(),binding=validateFiscalCreditSendBinding(f.source.binding),actions:string[]=[],before=await preparationEffects()
+ const key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']),keyId=crypto.randomUUID()
+ const keys={active:vi.fn(async()=>{if(mode==='clave-falla')throw new Error('SYNTHETIC_KEY_FAILURE');return{id:keyId,key}}),read:vi.fn(async()=>key)}
+ const rpc:FiscalRpc={rpc:async(name,args)=>{
+  expect(name).toBe('coordinar_ta_envio_nc_homologacion');const action=String(args.p_accion);actions.push(action)
+  const result=await f.call(action,typeof args.p_intento==='string'?args.p_intento:null,typeof args.p_generacion==='number'?args.p_generacion:null,args.p_cifrado,args.p_binding)
+  if(mode==='ack-iniciar'&&action==='INICIAR'||mode==='ack-confirmar'&&action==='CONFIRMAR')throw new Error('SYNTHETIC_ACK_LOST')
+  return{data:result,error:null}
+ }}
+ const ticket={entorno:'HOMOLOGACION' as const,servicio:'wsfe' as const,cuitEmisor:binding.cuit_emisor,credencialId:binding.credencial_id,certificadoSha256:binding.certificado_sha256,expiresAt:Date.now()+3600000,token:'SYNTHETIC_SEND_TOKEN',sign:'SYNTHETIC_SEND_SIGN'}
+ const wsaa=vi.fn(async(_b:Readonly<typeof binding>,_s:AbortSignal,beforeSend:()=>Promise<void>)=>{await beforeSend();return ticket})
+ const load=()=>createSharedFiscalCreditSendTicketLoader(rpc,keys,wsaa,async()=>{expect((await f.load()).binding).toEqual(binding)})(binding,new AbortController().signal)
+ if(mode==='normal'){expect((await load()).token).toBe(ticket.token);expect((await load()).sign).toBe(ticket.sign);expect(wsaa).toHaveBeenCalledTimes(1)}
+ else{await expect(load()).rejects.toThrow('FISCAL_TICKET_NC_NO_CONFIRMADO')
+  if(mode==='ack-confirmar'){expect((await load()).token).toBe(ticket.token);expect(wsaa).toHaveBeenCalledTimes(1);expect(actions).not.toContain('CANCELAR')}
+  if(mode==='ack-iniciar'){expect(actions).toEqual(['SOLICITAR','INICIAR']);await expect(load()).rejects.toThrow();expect(actions).not.toContain('CANCELAR')}
+  if(mode==='clave-falla'){expect(actions).toEqual(['SOLICITAR','CANCELAR']);expect(wsaa).not.toHaveBeenCalled()}
+ }
+ expect(await preparationEffects()).toEqual(before);expect(await f.readIntent()).toBeNull()
+})
 it('044 ciclo TA ENVIO_NC un permiso de WSAA y confirmación cifrada recuperable',async()=>{
  const f=await creditSendTicketFixture(),before=await preparationEffects()
  expect(await f.call('SOLICITAR',f.intent)).toMatchObject({estado:'RENOVAR',nuevo_intento:true})

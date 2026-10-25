@@ -3,6 +3,8 @@ import type { FiscalTicketKeys } from './fiscalSharedTickets.ts'
 import type { WsaaTicketEnvelope, PrivateWsaaTicket } from './fiscalTicketCache.ts'
 import type { FiscalCreditNumberBinding } from './fiscalCreditNumberSource.ts'
 import { validateFiscalCreditNumberBinding } from './fiscalCreditNumberSource.ts'
+import type { FiscalCreditSendBinding } from './fiscalCreditSendSource.ts'
+import { validateFiscalCreditSendBinding } from './fiscalCreditSendSource.ts'
 import { encryptFiscalTicket, decryptFiscalTicket, validateFiscalTicketKey } from './fiscalTicketCipher.ts'
 import type { FiscalTicketCipherContext } from './fiscalTicketCipher.ts'
 import { fiscalUuid, fiscalSha } from './fiscalReplacement.ts'
@@ -16,7 +18,8 @@ function object(input: unknown, keys: readonly string[]): Record<string, unknown
   if (Object.keys(value).length !== keys.length || keys.some(key => !Object.hasOwn(value, key))) return fail()
   return value
 }
-function envelope(b: Readonly<FiscalCreditNumberBinding>, ticket: PrivateWsaaTicket): WsaaTicketEnvelope {
+type FiscalCreditTicketBinding = Pick<FiscalCreditNumberBinding, 'actor_auth_id'|'venta_id'|'operacion_origen_id'|'solicitud_id'|'propuesta_sha256'|'preparacion_sha256'|'certificado_sha256'|'credencial_id'|'cuit_emisor'|'entorno'|'servicio'>
+function envelope(b: Readonly<FiscalCreditTicketBinding>, ticket: PrivateWsaaTicket): WsaaTicketEnvelope {
   const value: WsaaTicketEnvelope = { entorno: 'HOMOLOGACION', servicio: 'wsfe', cuitEmisor: b.cuit_emisor, credencialId: b.credencial_id,
     certificadoSha256: b.certificado_sha256, expiresAt: ticket.expiresAt, token: ticket.token, sign: ticket.sign }
   Object.defineProperties(value, { token: { enumerable: false, writable: false }, sign: { enumerable: false, writable: false },
@@ -26,17 +29,29 @@ function envelope(b: Readonly<FiscalCreditNumberBinding>, ticket: PrivateWsaaTic
 /** Después de Auth/fuente038. Guard obligatorio antes de uso de claves/envío;
  * SQL039 conserva propiedad/exclusión. No hereda operación/permiso de factura. */
 export function createSharedFiscalCreditTicketLoader(db: FiscalRpc, keys: FiscalTicketKeys, wsaa: GuardedCreditWsaaTicketLoader, beforeUse: () => Promise<void>): CreditWsaaTicketLoader {
+  return createCreditPurposeTicketLoader(db,keys,wsaa,beforeUse,validateFiscalCreditNumberBinding,'coordinar_ta_nc_homologacion')
+}
+export type GuardedCreditSendWsaaTicketLoader = (binding: Readonly<FiscalCreditSendBinding>, signal: AbortSignal, beforeSend: () => Promise<void>) => Promise<WsaaTicketEnvelope>
+export type CreditSendWsaaTicketLoader = (binding: Readonly<FiscalCreditSendBinding>, signal: AbortSignal) => Promise<WsaaTicketEnvelope>
+/** Fuente043 actual obligatoria; SQL044 coordina ENVIO_NC. No acepta otra finalidad. */
+export function createSharedFiscalCreditSendTicketLoader(db: FiscalRpc, keys: FiscalTicketKeys, wsaa: GuardedCreditSendWsaaTicketLoader, beforeUse: () => Promise<void>): CreditSendWsaaTicketLoader {
+  return createCreditPurposeTicketLoader(db,keys,wsaa,beforeUse,validateFiscalCreditSendBinding,'coordinar_ta_envio_nc_homologacion')
+}
+/** Sólo mecánica de cifrado/ACK compartida; validadores/RPC y tipos de finalidad separados. */
+function createCreditPurposeTicketLoader<B extends FiscalCreditTicketBinding>(db: FiscalRpc, keys: FiscalTicketKeys,
+ wsaa:(binding:Readonly<B>,signal:AbortSignal,beforeSend:()=>Promise<void>)=>Promise<WsaaTicketEnvelope>, beforeUse:()=>Promise<void>,
+ validate:(input:unknown)=>Readonly<B>, rpcName:'coordinar_ta_nc_homologacion'|'coordinar_ta_envio_nc_homologacion'):(input:Readonly<B>,signal:AbortSignal)=>Promise<WsaaTicketEnvelope> {
   return async (input, signal) => {
     let cancelPrepared: (() => Promise<void>) | undefined, sendAttempted = false
     try {
-      const binding = validateFiscalCreditNumberBinding(structuredClone(input)), id = crypto.randomUUID()
+      const binding = validate(structuredClone(input)), id = crypto.randomUUID()
       if (typeof beforeUse !== 'function' || signal.aborted) return fail()
       const guard = async () => { if (signal.aborted) return fail(); await beforeUse(); if (signal.aborted) return fail() }
       const args = { p_actor: binding.actor_auth_id, p_venta: binding.venta_id, p_operacion: binding.operacion_origen_id, p_caso: binding.solicitud_id,
         p_sha: binding.propuesta_sha256, p_preparacion_sha: binding.preparacion_sha256, p_binding: binding }
       const context: FiscalTicketCipherContext = { projectRef: 'acoyfwwmhaeruciyedri', entorno: 'HOMOLOGACION', servicio: 'wsfe', certificadoSha256: binding.certificado_sha256 }
       const call = async (action: string, generation: unknown = null, cipher: unknown = null) => {
-        const result = await db.rpc('coordinar_ta_nc_homologacion', { ...args, p_accion: action, p_intento: action === 'ESTADO' ? null : id, p_generacion: generation, p_cifrado: cipher })
+        const result = await db.rpc(rpcName, { ...args, p_accion: action, p_intento: action === 'ESTADO' ? null : id, p_generacion: generation, p_cifrado: cipher })
         if (result.error) return fail()
         return result.data
       }
@@ -78,7 +93,7 @@ export function createSharedFiscalCreditTicketLoader(db: FiscalRpc, keys: Fiscal
       const cipher = await encryptFiscalTicket(ticket, context, key.key, key.id)
       const saved = object(await call('CONFIRMAR', grant.revision, cipher), ['estado', 'intento_id', 'revision', 'cifrado_sha256'])
       if (saved.estado !== 'DISPONIBLE' || saved.intento_id !== id || saved.revision !== grant.revision || !fiscalSha(saved.cifrado_sha256)) return fail()
-      if (signal.aborted) return fail()
+      await guard()
       return envelope(binding, ticket)
     } catch {
       if (cancelPrepared && !sendAttempted) await cancelPrepared().catch(() => undefined)
