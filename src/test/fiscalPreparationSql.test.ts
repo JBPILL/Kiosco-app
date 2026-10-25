@@ -1,3 +1,4 @@
+import { validateFiscalCreditConsultSource } from '../../supabase/functions/_shared/fiscalCreditConsultSource'
 import type { FiscalRpc } from '../../supabase/functions/_shared/fiscalPersistence'
 import { createSharedFiscalCreditSendTicketLoader } from '../../supabase/functions/_shared/fiscalCreditSharedTickets'
 import { validateFiscalCreditSendBinding } from '../../supabase/functions/_shared/fiscalCreditSendSource'
@@ -1817,7 +1818,7 @@ async function creditConsultSourceFixture(){
 it('045 consulta exige intención previa y no devuelve autoridad de envío',async()=>{
  const f=await creditConsultSourceFixture();await denied(()=>f.consult());await f.startIntent();const before=await preparationEffects(),result=await f.consult()
  expect(result.binding).toMatchObject({finalidad:'CONSULTA_NC',intento_id:f.attempt,solicitud_sha256:f.body.sha256,numero:23,actor_auth_id:actor,emision_habilitada:false})
- expect(result.intencion).toMatchObject({nuevo_envio:false,estado:'ENVIO_INCIERTO'});await denied(()=>f.load());expect(await f.consult()).toEqual(result);expect(await preparationEffects()).toEqual(before)
+ expect(result.intencion).toMatchObject({nuevo_envio:false,estado:'ENVIO_INCIERTO'});const validated=await validateFiscalCreditConsultSource(result,f.source,f.proposal,actor);expect(validated.binding).toEqual(result.binding);await denied(()=>f.load());expect(await f.consult()).toEqual(result);expect(await preparationEffects()).toEqual(before)
 })
 it('045 permiso de envío revocado y catálogo deshabilitado no borran consulta histórica',async()=>{
  const f=await creditConsultSourceFixture();await f.startIntent();const before=await f.consult()

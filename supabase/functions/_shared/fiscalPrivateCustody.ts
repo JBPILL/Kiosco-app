@@ -11,6 +11,8 @@ import { validateFiscalCreditNumberBinding } from './fiscalCreditNumberSource.ts
 import { validateFiscalCreditSendBinding } from './fiscalCreditSendSource.ts'
 import type { FiscalCreditSendBinding } from './fiscalCreditSendSource.ts'
 import { withFiscalDeadline } from './fiscalVoucherXml.ts'
+import { validateFiscalCreditConsultBinding } from './fiscalCreditConsultSource.ts'
+import type { FiscalCreditConsultBinding } from './fiscalCreditConsultSource.ts'
 
 export type FiscalSecretReader=(name:string)=>string|undefined
 const invalid=():never=>{throw new Error('FISCAL_CUSTODIA_NO_DISPONIBLE')}
@@ -80,10 +82,20 @@ export type PrivateCreditSendFiscalCustody = (binding: Readonly<FiscalCreditSend
 /** Sólo para ENVIO_NC. El trabajador debe aportar guard SQL043 actual; la forma
  * del binding no acredita permiso. Revalidar después del descifrado, sin enviar. */
 export function createPrivateCreditSendFiscalCustody(read:FiscalSecretReader,guard:FiscalCreditSendCustodyGuard):PrivateCreditSendFiscalCustody {
+  return createGuardedCreditCustody(read,guard,validateFiscalCreditSendBinding)
+}
+export type FiscalCreditConsultCustodyGuard=(binding:Readonly<FiscalCreditConsultBinding>,signal:AbortSignal)=>Promise<void>
+export type PrivateCreditConsultFiscalCustody=(binding:Readonly<FiscalCreditConsultBinding>,signal:AbortSignal)=>Promise<PrivateFiscalSigner>
+/** CONSULTA_NC requiere guard045 actual; permiso de envío histórico no habilita claves. */
+export function createPrivateCreditConsultFiscalCustody(read:FiscalSecretReader,guard:FiscalCreditConsultCustodyGuard):PrivateCreditConsultFiscalCustody {
+  return createGuardedCreditCustody(read,guard,validateFiscalCreditConsultBinding)
+}
+function createGuardedCreditCustody<B extends {credencial_id:string;certificado_sha256:string;revision_emisor:number}>(read:FiscalSecretReader,
+ guard:(binding:Readonly<B>,signal:AbortSignal)=>Promise<void>,validate:(input:unknown)=>Readonly<B>):(input:Readonly<B>,signal:AbortSignal)=>Promise<PrivateFiscalSigner> {
   return async(input,signal)=>{
     try {
       if(signal.aborted||typeof guard!=='function')return invalid()
-      const binding=validateFiscalCreditSendBinding(input)
+      const binding=validate(input)
       await withFiscalDeadline(guard(binding,signal),signal)
       if(signal.aborted)return invalid()
       const signer=await loadPrivateSigner(read,binding.credencial_id,binding.certificado_sha256,binding.revision_emisor,signal)

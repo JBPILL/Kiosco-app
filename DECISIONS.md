@@ -735,3 +735,6 @@ SQL044 conserva exclusión global del diario TA y vínculo inmutable existente, 
 
 ### 25/10/2026 — consulta NC independiente del permiso de envío
 SQL045 exige intención/cuerpo/Auth originales y finalidad CONSULTA_NC; no reutiliza autorización ENVIO_NC ni exige permiso de envío aún vigente para conciliar. Deshabilitar emisión por revocar su permiso no destruye incertidumbre. La custodia global habilitada/credencial/certificado/revisión deben seguir coincidiendo con la historia: una rotación/deshabilitación no adopta material privado nuevo ni borra intento. Recuperación administrativa autorizada tras cambio de custodia queda pendiente; se prefiere bloquear antes de acceder otra clave sin política explícita. Consulta no habilita reenvío ni efectos comerciales.
+
+### 25/10/2026 — custodia de consulta no acepta permiso de envío
+CONSULTA_NC tiene binding/validador propios y cruza intención durable con cuerpo reconstruido. Custodia requiere guard045 actual antes y después de descifrar; sólo mecánica criptográfica común mediante helper genérico interno, sin convertir bindings a ENVIO_NC o numeración. Fechas o permisos históricos de envío no habilitan acceso por sí solos. No se obtiene TA ni se consulta ARCA con este cambio; futura coordinación/worker deben revalidar y respetar incertidumbre.
