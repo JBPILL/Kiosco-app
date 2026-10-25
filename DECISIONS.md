@@ -747,3 +747,6 @@ Parser NC separado de tipos factura, compara asociación además de contrato fis
 
 ### 25/10/2026 — transporte de consulta no amplía emisión
 Wrapper de consulta privado admite sólo FECompConsultar; export de envío conserva su allowlist anterior. Comparten stream/deadline/cancelación internos, no autoridad. Consulta NC exige fuente045 y TA exactos, guard privado antes/después de red y resultado ligado a intento/cuerpo; no se persistirá CAE desde XML sin pasar comparador/diario. Cancelación o timeout no se transforma en reenvío. El trabajador futuro debe ligar Auth/flags/TA046 y persistir resultados con exclusión antes de confirmar efectos.
+
+### 25/10/2026 — observación NC durable separada de aplicación comercial
+SQL047 agrega consultas y un registro de CAE por caso bajo lock de serie, con identidad/cuerpo originales y tablas inmutables. Reintento exacto recupera ACK; otro CAE no reemplaza historia. Una consulta CONCILIAR posterior no degrada autorización previa y recuperación por caso evita depender de UUID local. Es evidencia privada aportada por worker, no autenticación ARCA desde SQL. No libera numeración ni aplica efectivo/stock: aplicación exactly-once y resolución de serie requieren módulos/guardas separados. Incluir nuevos diarios en restore privado autorizado; aplicación JSON no los cubre.

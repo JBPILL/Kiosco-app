@@ -1482,11 +1482,40 @@ try {
   await start(b);const nc046_revocation=capture(nc046_call(b,'INICIAR'));await waitForLock(observer,b);await a.query('COMMIT')
   assert.equal((await nc046_revocation).error?.code,'42501');await b.query('ROLLBACK')
   cases.push('046_custodia_deshabilitada_durante_espera_no_reautoriza_WSAA')
+  const creditConsultJournalInstalledAfterCase=cases.length
+  for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/047_fiscal_credit_consultation_journal.sql'),'utf8'))
+  async function nc047Fixture(point){
+    const f=await nc042Fixture(point)
+    await start(a);const body=await f.approve(a);await f.send(a);await a.query('COMMIT')
+    const today=(await observer.query("SELECT to_char(clock_timestamp() AT TIME ZONE 'America/Argentina/Buenos_Aires','YYYYMMDD') v")).rows[0].v
+    const data={intento_id:f.intent,solicitud_sha256:body.aprobacion.solicitud_sha256,consultado_en:new Date().toISOString(),resultado:{estado:'AUTORIZACION_NC_COINCIDENTE',cae:'11111111111111',vencimiento:today,procesadoEn:today,solicitudSha256:body.aprobacion.solicitud_sha256,puedeReenviar:false},emision_habilitada:false}
+    const write=async(client,id,cae='11111111111111')=>(await client.query('SELECT registrar_consulta_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb) v',[f.auth,f.sale,f.operation,f.proposal.id,f.proposal.sha,id,JSON.stringify({...data,resultado:{...data.resultado,cae}})])).rows[0].v
+    return{...f,write}
+  }
+  const nc047_same=await nc047Fixture(238),nc047_id=randomUUID()
+  await start(a);const nc047_first=await nc047_same.write(a,nc047_id)
+  await start(b);const nc047_replay=capture(nc047_same.write(b,nc047_id));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.deepEqual((await nc047_replay).value,nc047_first);await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_autorizaciones_homologacion WHERE solicitud_id=$1',[nc047_same.proposal.id])).rows[0].n,1)
+  cases.push('047_dos_workers_mismo_UUID_un_registro_y_un_CAE_sin_efectos_comerciales')
+  const nc047_conflict=await nc047Fixture(239)
+  await start(a);await nc047_conflict.write(a,randomUUID())
+  await start(b);const nc047_contradiction=capture(nc047_conflict.write(b,randomUUID(),'22222222222222'));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc047_contradiction).error?.code,'22023');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_consultas_homologacion WHERE solicitud_id=$1',[nc047_conflict.proposal.id])).rows[0].n,1)
+  cases.push('047_CAE_contradictorio_esperando_no_reemplaza_historia')
+  const nc047_rollback=await nc047Fixture(240),nc047_rolledId=randomUUID()
+  await start(a);await nc047_rollback.write(a,nc047_rolledId)
+  await start(b);const nc047_afterRollback=capture(nc047_rollback.write(b,nc047_rolledId));await waitForLock(observer,b);await a.query('ROLLBACK')
+  assert.equal((await nc047_afterRollback).value.estado,'CAE_NC_REGISTRADO_NO_APLICADO');await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_autorizaciones_homologacion WHERE solicitud_id=$1',[nc047_rollback.proposal.id])).rows[0].n,1)
+  cases.push('047_rollback_no_deja_autorizacion_fantasma_ni_pierde_ACK_recuperable')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
     creditOwnerReviewInstalledAfterCase,postCreditOwnerReviewCaseCount:cases.length-creditOwnerReviewInstalledAfterCase,
+    creditConsultJournalInstalledAfterCase,postCreditConsultJournalCaseCount:cases.length-creditConsultJournalInstalledAfterCase,
     creditConsultTicketInstalledAfterCase,postCreditConsultTicketCaseCount:cases.length-creditConsultTicketInstalledAfterCase,
     creditConsultSourceInstalledAfterCase,postCreditConsultSourceCaseCount:cases.length-creditConsultSourceInstalledAfterCase,
     creditSendTicketInstalledAfterCase,postCreditSendTicketCaseCount:cases.length-creditSendTicketInstalledAfterCase,

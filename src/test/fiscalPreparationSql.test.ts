@@ -1813,6 +1813,50 @@ async function creditPermissionFixture(){
  const verify=async(who=actor,revision=f.reviewId)=>(await db.query<{data:Record<string,unknown>}>('SELECT verificar_permiso_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,f.body.sha256,revision,permit])).rows[0].data
  return{...f,permit,seed,verify}
 }
+async function creditConsultJournalFixture(){
+ const f=await creditConsultSourceFixture();await f.startIntent();await db.exec('RESET ROLE')
+ const sql=readFileSync('supabase/pilot-fiscal/047_fiscal_credit_consultation_journal.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'');await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
+ const id=crypto.randomUUID(),today=(await db.query<{v:string}>("SELECT to_char(clock_timestamp() AT TIME ZONE 'America/Argentina/Buenos_Aires','YYYYMMDD') v")).rows[0].v
+ const received={intento_id:f.attempt,solicitud_sha256:f.body.sha256,consultado_en:new Date().toISOString(),resultado:{estado:'AUTORIZACION_NC_COINCIDENTE',cae:'11111111111111',vencimiento:today,procesadoEn:today,solicitudSha256:f.body.sha256,puedeReenviar:false},emision_habilitada:false}
+ const write=async(data:unknown=received,query=id)=>(await db.query<{data:Record<string,unknown>}>('SELECT registrar_consulta_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb) data',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,query,JSON.stringify(data)])).rows[0].data
+ const read=async(query=id,who=actor)=>(await db.query<{data:Record<string,unknown>|null}>('SELECT cargar_consulta_nc_homologacion($1,$2,$3,$4,$5,$6) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,query])).rows[0].data
+ const readAuthorization=async(who=actor)=>(await db.query<{data:Record<string,unknown>|null}>('SELECT cargar_autorizacion_nc_homologacion($1,$2,$3,$4,$5) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256])).rows[0].data
+ return{...f,id,received,write,read,readAuthorization}
+}
+it('047 CAE registrado durable no aplica negocio; ACK perdido/replay conserva consulta exacta',async()=>{
+ const f=await creditConsultJournalFixture(),before=await preparationEffects();expect(await f.read()).toBeNull();expect(await f.readAuthorization()).toBeNull()
+ const ack=await f.write();expect(ack).toMatchObject({consulta_id:f.id,estado:'CAE_NC_REGISTRADO_NO_APLICADO',reintegro_habilitado:false,reposicion_habilitada:false,emision_habilitada:false})
+ expect(await f.read()).toEqual(ack);expect(await f.readAuthorization()).toEqual(ack);expect(await f.write()).toEqual(ack);expect(await preparationEffects()).toEqual(before)
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_nc_autorizaciones_homologacion')).rows[0].n).toBe(1);await db.exec('SET ROLE service_role')
+})
+it('047 distintas consultas mismo CAE conservan una autorización y no se degradan con CONCILIAR',async()=>{
+ const f=await creditConsultJournalFixture();await f.write();const next=crypto.randomUUID();await f.write(f.received,next)
+ const review={...f.received,resultado:{estado:'CONCILIAR',codigo:'SIN_CONFIRMACION',puedeReenviar:false}};expect(await f.write(review,crypto.randomUUID())).toMatchObject({estado:'CONSULTA_NC_REGISTRADA'})
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_nc_autorizaciones_homologacion')).rows[0].n).toBe(1);expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_nc_consultas_homologacion')).rows[0].n).toBe(3);await db.exec('SET ROLE service_role')
+})
+it('047 CAE contradictorio o UUID con otros datos no reemplaza historia',async()=>{
+ const f=await creditConsultJournalFixture(),ack=await f.write(),altered={...f.received,resultado:{...f.received.resultado,cae:'22222222222222'}}
+ await denied(()=>f.write(altered));await denied(()=>f.write(altered,crypto.randomUUID()));expect(await f.read()).toEqual(ack)
+})
+it('047 rollback no deja consulta ni autorización fantasma',async()=>{
+ const f=await creditConsultJournalFixture();await db.exec('SAVEPOINT lost_query');await f.write();await db.exec('ROLLBACK TO SAVEPOINT lost_query; RELEASE SAVEPOINT lost_query');expect(await f.read()).toBeNull();expect(await f.write()).toMatchObject({estado:'CAE_NC_REGISTRADO_NO_APLICADO'})
+})
+it('047 respuesta recibida/replay se conserva tras deshabilitar custodia sin reautorizar envío',async()=>{
+ const f=await creditConsultJournalFixture();await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false');const ack=await f.write();expect(await f.read()).toEqual(ack);expect(await f.write()).toEqual(ack);await denied(()=>f.consult());expect(await f.readIntent()).toMatchObject({nuevo_envio:false})
+})
+it.each(['intento','hash','futuro','infinito','antes','extra','cae','vencimiento','proceso','reenvio','resultado'] as const)('047 rechaza %s sin escritura parcial',async(reason)=>{
+ const f=await creditConsultJournalFixture(),data:Record<string,unknown>=structuredClone(f.received)
+ if(reason==='intento')data.intento_id=crypto.randomUUID();if(reason==='hash')data.solicitud_sha256='f'.repeat(64)
+ if(reason==='futuro')data.consultado_en=new Date(Date.now()+60000).toISOString();if(reason==='infinito')data.consultado_en='infinity';if(reason==='antes')data.consultado_en='2000-01-01T00:00:00Z';if(reason==='extra')data.token='SYNTHETIC_FORBIDDEN'
+ if(['cae','vencimiento','proceso','reenvio','resultado'].includes(reason)){data.resultado={...f.received.resultado,...(reason==='cae'?{cae:'00000000000000'}:reason==='vencimiento'?{vencimiento:'20260230'}:reason==='proceso'?{procesadoEn:'20261025259999'}:reason==='reenvio'?{puedeReenviar:true}:{estado:'EMITIDA'})}}
+ await denied(()=>f.write(data));expect(await f.read()).toBeNull()
+})
+it('047 identidad y tablas privadas no se sustituyen desde perfil o navegador',async()=>{
+ const f=await creditConsultJournalFixture();await f.write();const other=crypto.randomUUID();await admin('INSERT INTO auth.users VALUES($1)',[other]);await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner]);await denied(()=>f.read());await denied(()=>f.read(f.id,other));await denied(()=>f.readAuthorization());await denied(()=>f.readAuthorization(other))
+ for(const role of ['anon','authenticated','service_role']){await db.exec('SET ROLE '+role);await denied(()=>db.exec('SELECT * FROM fiscal_nc_consultas_homologacion'));await denied(()=>db.exec('SELECT * FROM fiscal_nc_autorizaciones_homologacion'))}
+ for(const role of ['anon','authenticated']){await db.exec('SET ROLE '+role);await denied(()=>f.write());await denied(()=>f.read())}
+ await db.exec('RESET ROLE');await denied(()=>db.exec('DELETE FROM fiscal_nc_consultas_homologacion'));await denied(()=>db.exec('UPDATE fiscal_nc_autorizaciones_homologacion SET cae=cae'));await db.exec('SET ROLE service_role')
+})
 async function creditConsultTicketFixture(){
  const f=await creditConsultSourceFixture();await f.startIntent();const source=await f.consult()
  await db.exec('RESET ROLE');for(const name of ['039_fiscal_credit_ticket_coordination.sql','046_fiscal_credit_consult_ticket_coordination.sql']){const sql=readFileSync('supabase/pilot-fiscal/'+name,'utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'');await db.exec(sql);await db.exec(sql)}await db.exec('SET ROLE service_role')
