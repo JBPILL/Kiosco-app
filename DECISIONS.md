@@ -726,3 +726,6 @@ SQL042 liga intención inmutable/caso único/UUID global/permiso único al cuerp
 
 ### 24/10/2026 — envío NC tiene fuente propia previa a intención
 SQL043 entrega binding ENVIO_NC sólo con permiso041 exacto y sin intención042 bajo lock de serie. Numeración y emisión tienen distintas finalidades y contratos; no convertir binding de factura ni reutilizar038. Fuente no consume autoridad ni habilita transporte. Tras intención, recuperar/conciliar requiere fuente de consulta independiente, no volver a obtener autorización de envío. Futuro worker debe revalidar antes de custodia/red y consumir042 antes del transporte, sin inferir permiso de una aprobación histórica.
+
+### 25/10/2026 — custodia ENVIO_NC no hereda permisos de numeración
+Adaptador separado valida finalidad y requiere guard obligatorio antes de leer secretos y después del trabajo criptográfico. Sólo reutiliza helper de descifrado, no binding/autoridad de factura o NUMERACION_NC. Validar forma no concede custodia; futuro worker debe comprobar fuente043 exacta y041/042 con AbortSignal acotado. Cambio de autoridad durante descifrado impide entregar firmante. Este adaptador no obtiene TA ni transmite a ARCA.

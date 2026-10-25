@@ -8,6 +8,9 @@ import type { FiscalTicketKeys } from './fiscalSharedTickets.ts'
 import type { PrivateFiscalSigner } from './fiscalWsaaCms.ts'
 import type { PrivateCreditFiscalCustody } from './fiscalCreditWsaa.ts'
 import { validateFiscalCreditNumberBinding } from './fiscalCreditNumberSource.ts'
+import { validateFiscalCreditSendBinding } from './fiscalCreditSendSource.ts'
+import type { FiscalCreditSendBinding } from './fiscalCreditSendSource.ts'
+import { withFiscalDeadline } from './fiscalVoucherXml.ts'
 
 export type FiscalSecretReader=(name:string)=>string|undefined
 const invalid=():never=>{throw new Error('FISCAL_CUSTODIA_NO_DISPONIBLE')}
@@ -69,6 +72,24 @@ export function createPrivateCreditFiscalCustody(read:FiscalSecretReader):Privat
     try {
       const binding=validateFiscalCreditNumberBinding(structuredClone(input))
       return await loadPrivateSigner(read,binding.credencial_id,binding.certificado_sha256,binding.revision_emisor,signal)
+    }catch{return invalid()}
+  }
+}
+export type FiscalCreditSendCustodyGuard = (binding: Readonly<FiscalCreditSendBinding>, signal: AbortSignal) => Promise<void>
+export type PrivateCreditSendFiscalCustody = (binding: Readonly<FiscalCreditSendBinding>, signal: AbortSignal) => Promise<PrivateFiscalSigner>
+/** Sólo para ENVIO_NC. El trabajador debe aportar guard SQL043 actual; la forma
+ * del binding no acredita permiso. Revalidar después del descifrado, sin enviar. */
+export function createPrivateCreditSendFiscalCustody(read:FiscalSecretReader,guard:FiscalCreditSendCustodyGuard):PrivateCreditSendFiscalCustody {
+  return async(input,signal)=>{
+    try {
+      if(signal.aborted||typeof guard!=='function')return invalid()
+      const binding=validateFiscalCreditSendBinding(input)
+      await withFiscalDeadline(guard(binding,signal),signal)
+      if(signal.aborted)return invalid()
+      const signer=await loadPrivateSigner(read,binding.credencial_id,binding.certificado_sha256,binding.revision_emisor,signal)
+      await withFiscalDeadline(guard(binding,signal),signal)
+      if(signal.aborted)return invalid()
+      return signer
     }catch{return invalid()}
   }
 }
