@@ -729,3 +729,6 @@ SQL043 entrega binding ENVIO_NC sólo con permiso041 exacto y sin intención042 
 
 ### 25/10/2026 — custodia ENVIO_NC no hereda permisos de numeración
 Adaptador separado valida finalidad y requiere guard obligatorio antes de leer secretos y después del trabajo criptográfico. Sólo reutiliza helper de descifrado, no binding/autoridad de factura o NUMERACION_NC. Validar forma no concede custodia; futuro worker debe comprobar fuente043 exacta y041/042 con AbortSignal acotado. Cambio de autoridad durante descifrado impide entregar firmante. Este adaptador no obtiene TA ni transmite a ARCA.
+
+### 25/10/2026 — TA ENVIO_NC comparte certificado, no autoridad
+SQL044 conserva exclusión global del diario TA y vínculo inmutable existente, pero separa coordinador/finalidad de039. Renovar/iniciar requiere043 vigente y revalidación tras espera; confirmar respuesta recibida usa cuerpo/permiso/Auth históricos sin reautorizar WSAA. Separar historial de vigencia evita perder TA recibido tras revocación. Una intención042 exige conciliación y no obtiene autorización de nueva renovación por esta fuente. No ampliar039 a finalidades arbitrarias ni instalar extensiones HTTP PostgreSQL. Loader/custodia/envío/consulta y aceptación hospedada siguen pendientes.

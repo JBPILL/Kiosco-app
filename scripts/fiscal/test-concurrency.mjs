@@ -1413,11 +1413,36 @@ try {
   await start(b);const nc043_lateActor=capture(nc043_auth.load(b));await waitForLock(observer,b);await a.query('COMMIT')
   assert.equal((await nc043_lateActor).error?.code,'42501');await b.query('ROLLBACK')
   cases.push('043_Auth_reasignado_no_transfiere_fuente_de_envio_NC')
+  const creditSendTicketInstalledAfterCase=cases.length
+  for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/044_fiscal_credit_send_ticket_coordination.sql'),'utf8'))
+  const nc044=await nc039Fixture(233),nc044_review=randomUUID(),nc044_permit=randomUUID(),nc044_attempt=randomUUID(),nc044_prep=nc044.source.preparacion.preparacion.sha256
+  await start(a)
+  const nc044_reserved=(await a.query('SELECT reservar_cuerpo_nc_homologacion($1,$2,$3,$4,$5,$6,$7,22,clock_timestamp()) v',[nc044.auth,nc044.sale,nc044.operation,nc044.proposal.id,nc044.proposal.sha,nc044_prep,randomUUID()])).rows[0].v
+  const nc044_body=(await a.query('SELECT cargar_fuente_cuerpo_nc_homologacion($1,$2,$3,$4,$5) v',[nc044.auth,nc044.sale,nc044.operation,nc044.proposal.id,nc044.proposal.sha])).rows[0].v
+  await a.query('SELECT aprobar_revision_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8)',[nc044.auth,nc044.sale,nc044.operation,nc044.proposal.id,nc044.proposal.sha,nc044_review,nc044_body.cuerpo.sha256,nc044_prep]);await a.query('COMMIT')
+  assert.equal(nc044_reserved.numero,23)
+  await observer.query(`INSERT INTO fiscal_nc_permisos_homologacion(id,solicitud_id,reserva_id,revision_id,actor_auth_id,solicitud_sha256,preparacion_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,vence_en)
+    SELECT $1,r.solicitud_id,r.reserva_id,r.id,r.actor_auth_id,r.solicitud_sha256,r.preparacion_sha256,e.credencial_id,e.certificado_sha256,e.revision,true,r.vence_en FROM fiscal_nc_revisiones_homologacion r JOIN fiscal_emisores_homologacion e ON e.kiosco_id=$2 WHERE r.id=$3`,[nc044_permit,nc044.kid,nc044_review])
+  await start(a);const nc044_source=(await a.query('SELECT cargar_fuente_envio_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8) v',[nc044.auth,nc044.sale,nc044.operation,nc044.proposal.id,nc044.proposal.sha,nc044_body.cuerpo.sha256,nc044_review,nc044_permit])).rows[0].v;await a.query('COMMIT')
+  const nc044_call=async(client,action)=>(await client.query('SELECT coordinar_ta_envio_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,NULL) v',[nc044.auth,nc044.sale,nc044.operation,nc044.proposal.id,nc044.proposal.sha,nc044_prep,JSON.stringify(nc044_source.binding),action,nc044_attempt,action==='SOLICITAR'?null:1])).rows[0].v
+  await start(a);assert.equal((await nc044_call(a,'SOLICITAR')).nuevo_intento,true)
+  await start(b);const nc044_waiting=capture(nc044_call(b,'SOLICITAR'));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc044_waiting).value.estado,'RENOVACION_PENDIENTE');await b.query('COMMIT')
+  cases.push('044_dos_workers_ENVIO_NC_un_solo_lease_TA')
+  await start(a);assert.equal((await nc044_call(a,'INICIAR')).nuevo_envio,true)
+  await start(b);const nc044_sendWaiting=capture(nc044_call(b,'INICIAR'));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc044_sendWaiting).value.nuevo_envio,false);await b.query('COMMIT')
+  cases.push('044_dos_workers_ENVIO_NC_un_permiso_WSAA_sin_reenvio')
+  await a.query('BEGIN');await a.query("INSERT INTO fiscal_nc_permisos_revocados_homologacion(permiso_id,motivo) VALUES($1,'Ensayo privado')",[nc044_permit])
+  await start(b);const nc044_revocation=capture(nc044_call(b,'INICIAR'));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc044_revocation).error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('044_revocacion_durante_espera_no_reautoriza_WSAA')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
     creditOwnerReviewInstalledAfterCase,postCreditOwnerReviewCaseCount:cases.length-creditOwnerReviewInstalledAfterCase,
+    creditSendTicketInstalledAfterCase,postCreditSendTicketCaseCount:cases.length-creditSendTicketInstalledAfterCase,
     creditSendSourceInstalledAfterCase,postCreditSendSourceCaseCount:cases.length-creditSendSourceInstalledAfterCase,
     creditIntentInstalledAfterCase,postCreditIntentCaseCount:cases.length-creditIntentInstalledAfterCase,
     creditPermissionInstalledAfterCase,postCreditPermissionCaseCount:cases.length-creditPermissionInstalledAfterCase,
