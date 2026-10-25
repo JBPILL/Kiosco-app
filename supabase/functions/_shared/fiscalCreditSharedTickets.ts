@@ -5,6 +5,8 @@ import type { FiscalCreditNumberBinding } from './fiscalCreditNumberSource.ts'
 import { validateFiscalCreditNumberBinding } from './fiscalCreditNumberSource.ts'
 import type { FiscalCreditSendBinding } from './fiscalCreditSendSource.ts'
 import { validateFiscalCreditSendBinding } from './fiscalCreditSendSource.ts'
+import { validateFiscalCreditConsultBinding } from './fiscalCreditConsultSource.ts'
+import type { FiscalCreditConsultBinding } from './fiscalCreditConsultSource.ts'
 import { encryptFiscalTicket, decryptFiscalTicket, validateFiscalTicketKey } from './fiscalTicketCipher.ts'
 import type { FiscalTicketCipherContext } from './fiscalTicketCipher.ts'
 import { fiscalUuid, fiscalSha } from './fiscalReplacement.ts'
@@ -37,10 +39,16 @@ export type CreditSendWsaaTicketLoader = (binding: Readonly<FiscalCreditSendBind
 export function createSharedFiscalCreditSendTicketLoader(db: FiscalRpc, keys: FiscalTicketKeys, wsaa: GuardedCreditSendWsaaTicketLoader, beforeUse: () => Promise<void>): CreditSendWsaaTicketLoader {
   return createCreditPurposeTicketLoader(db,keys,wsaa,beforeUse,validateFiscalCreditSendBinding,'coordinar_ta_envio_nc_homologacion')
 }
+export type GuardedCreditConsultWsaaTicketLoader=(binding:Readonly<FiscalCreditConsultBinding>,signal:AbortSignal,beforeSend:()=>Promise<void>)=>Promise<WsaaTicketEnvelope>
+export type CreditConsultWsaaTicketLoader=(binding:Readonly<FiscalCreditConsultBinding>,signal:AbortSignal)=>Promise<WsaaTicketEnvelope>
+/** Sólo045/046 y guard de consulta actual; no autorización de emisión. */
+export function createSharedFiscalCreditConsultTicketLoader(db:FiscalRpc,keys:FiscalTicketKeys,wsaa:GuardedCreditConsultWsaaTicketLoader,beforeUse:()=>Promise<void>):CreditConsultWsaaTicketLoader {
+ return createCreditPurposeTicketLoader(db,keys,wsaa,beforeUse,validateFiscalCreditConsultBinding,'coordinar_ta_consulta_nc_homologacion')
+}
 /** Sólo mecánica de cifrado/ACK compartida; validadores/RPC y tipos de finalidad separados. */
 function createCreditPurposeTicketLoader<B extends FiscalCreditTicketBinding>(db: FiscalRpc, keys: FiscalTicketKeys,
  wsaa:(binding:Readonly<B>,signal:AbortSignal,beforeSend:()=>Promise<void>)=>Promise<WsaaTicketEnvelope>, beforeUse:()=>Promise<void>,
- validate:(input:unknown)=>Readonly<B>, rpcName:'coordinar_ta_nc_homologacion'|'coordinar_ta_envio_nc_homologacion'):(input:Readonly<B>,signal:AbortSignal)=>Promise<WsaaTicketEnvelope> {
+ validate:(input:unknown)=>Readonly<B>, rpcName:'coordinar_ta_nc_homologacion'|'coordinar_ta_envio_nc_homologacion'|'coordinar_ta_consulta_nc_homologacion'):(input:Readonly<B>,signal:AbortSignal)=>Promise<WsaaTicketEnvelope> {
   return async (input, signal) => {
     let cancelPrepared: (() => Promise<void>) | undefined, sendAttempted = false
     try {

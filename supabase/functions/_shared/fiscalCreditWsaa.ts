@@ -1,8 +1,10 @@
+import { validateFiscalCreditConsultBinding } from './fiscalCreditConsultSource.ts'
+import type { PrivateCreditConsultFiscalCustody } from './fiscalPrivateCustody.ts'
 import { validateFiscalCreditSendBinding } from './fiscalCreditSendSource.ts'
 import type { PrivateCreditSendFiscalCustody } from './fiscalPrivateCustody.ts'
 import type { FiscalCreditNumberBinding } from './fiscalCreditNumberSource.ts'
 import { validateFiscalCreditNumberBinding } from './fiscalCreditNumberSource.ts'
-import type { GuardedCreditWsaaTicketLoader, GuardedCreditSendWsaaTicketLoader } from './fiscalCreditSharedTickets.ts'
+import type { GuardedCreditWsaaTicketLoader, GuardedCreditSendWsaaTicketLoader, GuardedCreditConsultWsaaTicketLoader } from './fiscalCreditSharedTickets.ts'
 import type { PrivateFiscalSigner } from './fiscalWsaaCms.ts'
 import { prepareWsaaRequest } from './fiscalWsaaCms.ts'
 import { loginFiscalWsaa } from './fiscalWsaa.ts'
@@ -18,6 +20,10 @@ export function createCreditWsaaTicketSource(custody: PrivateCreditFiscalCustody
 /** ENVIO_NC sólo se autoriza desde044; no consume permiso fiscal042 ni emite. */
 export function createCreditSendWsaaTicketSource(custody:PrivateCreditSendFiscalCustody,fetcher:typeof fetch):GuardedCreditSendWsaaTicketLoader {
   return createPurposeWsaaSource(custody,fetcher,validateFiscalCreditSendBinding)
+}
+/** TA para reconciliar una intención NC; no emite ni concede otro envío. */
+export function createCreditConsultWsaaTicketSource(custody:PrivateCreditConsultFiscalCustody,fetcher:typeof fetch):GuardedCreditConsultWsaaTicketLoader {
+ return createPurposeWsaaSource(custody,fetcher,validateFiscalCreditConsultBinding)
 }
 function createPurposeWsaaSource<B extends {credencial_id:string;certificado_sha256:string;cuit_emisor:string}>(
  custody:(binding:Readonly<B>,signal:AbortSignal)=>Promise<PrivateFiscalSigner>,fetcher:typeof fetch,validate:(input:unknown)=>Readonly<B>

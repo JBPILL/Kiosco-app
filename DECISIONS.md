@@ -738,3 +738,6 @@ SQL045 exige intención/cuerpo/Auth originales y finalidad CONSULTA_NC; no reuti
 
 ### 25/10/2026 — custodia de consulta no acepta permiso de envío
 CONSULTA_NC tiene binding/validador propios y cruza intención durable con cuerpo reconstruido. Custodia requiere guard045 actual antes y después de descifrar; sólo mecánica criptográfica común mediante helper genérico interno, sin convertir bindings a ENVIO_NC o numeración. Fechas o permisos históricos de envío no habilitan acceso por sí solos. No se obtiene TA ni se consulta ARCA con este cambio; futura coordinación/worker deben revalidar y respetar incertidumbre.
+
+### 25/10/2026 — TA de consulta conserva intención, no permiso de envío
+SQL046 sólo renueva/inicia desde045 actual, compartiendo exclusión global por certificado y conservando finalidad/intención en vínculo privado. Confirmar respuesta recibida usa reconstrucción histórica explícita del cuerpo/permiso/intención/Auth, sin renovar autoridad. Loader/WSAA CONSULTA_NC tienen factories y tipos propios; sólo cifrado/CMS/ACK común. Una renovación WSAA no registra intento comercial nuevo ni concede FECAESolicitar. Activos inciertos no se liberan por timeout ni por cancelar un consumidor.

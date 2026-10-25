@@ -1457,11 +1457,37 @@ try {
   await start(b);const nc045_actor=capture(nc045_load(b,nc045_auth));await waitForLock(observer,b);await a.query('COMMIT')
   assert.equal((await nc045_actor).error?.code,'42501');await b.query('ROLLBACK')
   cases.push('045_Auth_reasignado_esperando_no_transfiere_consulta_NC')
+  const creditConsultTicketInstalledAfterCase=cases.length
+  for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/046_fiscal_credit_consult_ticket_coordination.sql'),'utf8'))
+  const nc046=await nc039Fixture(237),nc046_review=randomUUID(),nc046_permit=randomUUID(),nc046_attempt=randomUUID(),nc046_prep=nc046.source.preparacion.preparacion.sha256
+  await start(a)
+  const nc046_reserved=(await a.query('SELECT reservar_cuerpo_nc_homologacion($1,$2,$3,$4,$5,$6,$7,22,clock_timestamp()) v',[nc046.auth,nc046.sale,nc046.operation,nc046.proposal.id,nc046.proposal.sha,nc046_prep,randomUUID()])).rows[0].v
+  const nc046_body=(await a.query('SELECT cargar_fuente_cuerpo_nc_homologacion($1,$2,$3,$4,$5) v',[nc046.auth,nc046.sale,nc046.operation,nc046.proposal.id,nc046.proposal.sha])).rows[0].v
+  await a.query('SELECT aprobar_revision_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8)',[nc046.auth,nc046.sale,nc046.operation,nc046.proposal.id,nc046.proposal.sha,nc046_review,nc046_body.cuerpo.sha256,nc046_prep]);await a.query('COMMIT')
+  assert.equal(nc046_reserved.numero,23)
+  await observer.query(`INSERT INTO fiscal_nc_permisos_homologacion(id,solicitud_id,reserva_id,revision_id,actor_auth_id,solicitud_sha256,preparacion_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,vence_en)
+    SELECT $1,r.solicitud_id,r.reserva_id,r.id,r.actor_auth_id,r.solicitud_sha256,r.preparacion_sha256,e.credencial_id,e.certificado_sha256,e.revision,true,r.vence_en FROM fiscal_nc_revisiones_homologacion r JOIN fiscal_emisores_homologacion e ON e.kiosco_id=$2 WHERE r.id=$3`,[nc046_permit,nc046.kid,nc046_review])
+  await start(a);await a.query('SELECT registrar_intencion_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8,$9,22,clock_timestamp())',[nc046.auth,nc046.sale,nc046.operation,nc046.proposal.id,nc046.proposal.sha,nc046_body.cuerpo.sha256,nc046_review,nc046_permit,randomUUID()]);await a.query('COMMIT')
+  await start(a);const nc046_source=(await a.query('SELECT cargar_fuente_consulta_nc_homologacion($1,$2,$3,$4,$5) v',[nc046.auth,nc046.sale,nc046.operation,nc046.proposal.id,nc046.proposal.sha])).rows[0].v;await a.query('COMMIT')
+  const nc046_call=async(client,action)=>(await client.query('SELECT coordinar_ta_consulta_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,NULL) v',[nc046.auth,nc046.sale,nc046.operation,nc046.proposal.id,nc046.proposal.sha,nc046_prep,JSON.stringify(nc046_source.binding),action,nc046_attempt,action==='SOLICITAR'?null:1])).rows[0].v
+  await start(a);assert.equal((await nc046_call(a,'SOLICITAR')).nuevo_intento,true)
+  await start(b);const nc046_waiting=capture(nc046_call(b,'SOLICITAR'));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc046_waiting).value.estado,'RENOVACION_PENDIENTE');await b.query('COMMIT')
+  cases.push('046_dos_workers_CONSULTA_NC_un_solo_lease_TA')
+  await start(a);assert.equal((await nc046_call(a,'INICIAR')).nuevo_envio,true)
+  await start(b);const nc046_sendWaiting=capture(nc046_call(b,'INICIAR'));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc046_sendWaiting).value.nuevo_envio,false);await b.query('COMMIT')
+  cases.push('046_dos_workers_CONSULTA_NC_un_permiso_WSAA_sin_reenvio')
+  await a.query('BEGIN');await a.query('UPDATE fiscal_emisores_homologacion SET habilitado=false WHERE kiosco_id=$1',[nc046.kid])
+  await start(b);const nc046_revocation=capture(nc046_call(b,'INICIAR'));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc046_revocation).error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('046_custodia_deshabilitada_durante_espera_no_reautoriza_WSAA')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
     creditOwnerReviewInstalledAfterCase,postCreditOwnerReviewCaseCount:cases.length-creditOwnerReviewInstalledAfterCase,
+    creditConsultTicketInstalledAfterCase,postCreditConsultTicketCaseCount:cases.length-creditConsultTicketInstalledAfterCase,
     creditConsultSourceInstalledAfterCase,postCreditConsultSourceCaseCount:cases.length-creditConsultSourceInstalledAfterCase,
     creditSendTicketInstalledAfterCase,postCreditSendTicketCaseCount:cases.length-creditSendTicketInstalledAfterCase,
     creditSendSourceInstalledAfterCase,postCreditSendSourceCaseCount:cases.length-creditSendSourceInstalledAfterCase,
