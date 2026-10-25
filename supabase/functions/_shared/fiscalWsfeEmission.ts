@@ -1,3 +1,5 @@
+import type { FiscalCreditRequestRecord } from './fiscalCreditRequest.ts'
+import type { FiscalRequestData } from './fiscalReconciliation.ts'
 import type { Element as XmlElement } from '@xmldom/xmldom'
 import { normalizeFiscalSeries, verifyFiscalRequest, escapeFiscalXml, buildFiscalAuthXml } from './fiscalReconciliation.ts'
 import type { FiscalSeries, FrozenFiscalRequest } from './fiscalReconciliation.ts'
@@ -41,7 +43,7 @@ function request(action:'FECompUltimoAutorizado'|'FECAESolicitar',payload:string
   return new Request(URL,{method:'POST',redirect:'error',headers:{'Content-Type':'text/xml; charset=utf-8',SOAPAction:'"'+WSFE+action+'"'},
     body:`<s:Envelope xmlns:s="${SOAP}"><s:Body><${action} xmlns="${WSFE}">${payload}</${action}></s:Body></s:Envelope>`})
 }
-async function post(req:Request,fetcher:typeof fetch,timeoutMs:number,expiresAt:number,beforeSend?:()=>Promise<void>,purpose:'EMISION_NUMERACION'|'CONSULTA'='EMISION_NUMERACION',parentSignal?:AbortSignal):Promise<string> {
+async function post(req:Request,fetcher:typeof fetch,timeoutMs:number,expiresAt:number,beforeSend?:()=>Promise<void>,purpose:'EMISION_NUMERACION'|'CONSULTA'|'ENVIO_NC'='EMISION_NUMERACION',parentSignal?:AbortSignal):Promise<string> {
   const controller=new AbortController();let response:Response|undefined
   if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>40000)return fail()
   const abortParent=()=>controller.abort()
@@ -50,7 +52,7 @@ async function post(req:Request,fetcher:typeof fetch,timeoutMs:number,expiresAt:
   const timer=setTimeout(()=>controller.abort(),timeoutMs)
   try {
     if(req.url!==URL||req.method!=='POST'||req.redirect!=='error'
-      ||!(purpose==='CONSULTA'?[`"${WSFE}FECompConsultar"`]:[`"${WSFE}FECompUltimoAutorizado"`,`"${WSFE}FECAESolicitar"`]).includes(req.headers.get('SOAPAction')??''))return fail()
+      ||!(purpose==='CONSULTA'?[`"${WSFE}FECompConsultar"`]:purpose==='ENVIO_NC'?[`"${WSFE}FECAESolicitar"`]:[`"${WSFE}FECompUltimoAutorizado"`,`"${WSFE}FECAESolicitar"`]).includes(req.headers.get('SOAPAction')??''))return fail()
     if(beforeSend)await deadline(beforeSend(),controller.signal)
     if(controller.signal.aborted||expiresAt<=Date.now()+15000)return fail()
     response=await deadline(fetcher(new Request(req,{signal:controller.signal})),controller.signal)
@@ -73,6 +75,12 @@ export async function postPrivateFiscalCreditQuery(req:Request,fetcher:typeof fe
  return post(req,fetcher,timeoutMs,expiresAt,beforeSend,'CONSULTA',signal)
 }
 
+/** ENVIO_NC: sólo FECAESolicitar y consumo durable obligatorio antes de red. */
+export async function postPrivateFiscalCreditEmission(req:Request,fetcher:typeof fetch,timeoutMs:number,expiresAt:number,beforeSend:()=>Promise<void>,signal:AbortSignal):Promise<string> {
+ if(typeof beforeSend!=='function'||!signal||signal.aborted)return fail()
+ return post(req,fetcher,timeoutMs,expiresAt,beforeSend,'ENVIO_NC',signal)
+}
+
 export function decodeLastFiscalNumber(xml:string,expected:unknown):number {
   const s=series(expected),r=result(xml,'FECompUltimoAutorizado')
   schema(r,['PtoVta','CbteTipo','CbteNro','Errors','Events']);const errors=codes(r,'Errors','Err');codes(r,'Events','Evt')
@@ -84,32 +92,44 @@ export async function consultLastFiscalNumber(expected:unknown,ticket:PrivateWsa
   const xml=await post(req,fetcher,timeoutMs,ticket.expiresAt,beforeSend)
   return {ultimo:decodeLastFiscalNumber(xml,s),consultado_en:new Date().toISOString()}
 }
-export async function buildFiscalEmissionRequest(input:unknown,ticket:PrivateWsaaTicket):Promise<Request> {
-  const frozen=await verifyFiscalEmissionRequest(input),s=frozen.solicitud
-  const identity=series({entorno:s.entorno,cuitEmisor:s.cuitEmisor,puntoVenta:s.puntoVenta,tipoComprobante:s.tipoComprobante})
+/** Serialización pura; el llamador valida cuerpo/autoridad por separado. */
+export function buildPrivateFiscalDetailXml(s:Readonly<FiscalRequestData>|FiscalCreditRequestRecord['datos']['solicitud']):string {
   const scalar=(name:string,value:string|number)=>`<${name}>${escapeFiscalXml(String(value))}</${name}>`
   const details=scalar('Concepto',s.concepto)+scalar('DocTipo',s.tipoDocumento)+scalar('DocNro',s.numeroDocumento)
     +scalar('CbteDesde',s.numero)+scalar('CbteHasta',s.numero)+scalar('CbteFch',s.fecha)
     +scalar('ImpTotal',s.importes.total)+scalar('ImpTotConc',s.importes.noGravado)+scalar('ImpNeto',s.importes.neto)
     +scalar('ImpOpEx',s.importes.exento)+scalar('ImpTrib',s.importes.tributos)+scalar('ImpIVA',s.importes.iva)
     +(s.servicioDesde?scalar('FchServDesde',s.servicioDesde)+scalar('FchServHasta',s.servicioHasta!)+scalar('FchVtoPago',s.vencimientoPago!):'')
-    +scalar('MonId','PES')+scalar('MonCotiz','1')+scalar('CanMisMonExt','N')+scalar('CondicionIVAReceptorId',s.condicionIvaReceptor)
+    +scalar('MonId','PES')+scalar('MonCotiz','1')+scalar('CondicionIVAReceptorId',s.condicionIvaReceptor)
+    +('comprobantesAsociados' in s?'<CbtesAsoc>'+s.comprobantesAsociados.map(a=>'<CbteAsoc>'+scalar('Tipo',a.tipo)+scalar('PtoVta',a.puntoVenta)+scalar('Nro',a.numero)+scalar('Cuit',a.cuit)+scalar('CbteFch',a.fecha)+'</CbteAsoc>').join('')+'</CbtesAsoc>':'')
     +(s.tributos.length?'<Tributos>'+s.tributos.map(t=>'<Tributo>'+scalar('Id',t.id)+scalar('Desc',t.descripcion)+scalar('BaseImp',t.base)+scalar('Alic',t.alicuota)+scalar('Importe',t.importe)+'</Tributo>').join('')+'</Tributos>':'')
     +(s.iva.length?'<Iva>'+s.iva.map(t=>'<AlicIva>'+scalar('Id',t.id)+scalar('BaseImp',t.base)+scalar('Importe',t.importe)+'</AlicIva>').join('')+'</Iva>':'')
+  return details
+}
+export async function buildFiscalEmissionRequest(input:unknown,ticket:PrivateWsaaTicket):Promise<Request> {
+  const frozen=await verifyFiscalEmissionRequest(input),s=frozen.solicitud
+  const identity=series({entorno:s.entorno,cuitEmisor:s.cuitEmisor,puntoVenta:s.puntoVenta,tipoComprobante:s.tipoComprobante})
+  const details=buildPrivateFiscalDetailXml(s)
   const payload=buildFiscalAuthXml(identity,ticket)+`<FeCAEReq><FeCabReq><CantReg>1</CantReg><PtoVta>${s.puntoVenta}</PtoVta><CbteTipo>${s.tipoComprobante}</CbteTipo></FeCabReq><FeDetReq><FECAEDetRequest>${details}</FECAEDetRequest></FeDetReq></FeCAEReq>`
   return request('FECAESolicitar',payload)
 }
 /** El CAE de esta respuesta no basta para cerrar: conciliar el cuerpo completo
  * con FECompConsultar y guardar el resultado mediante CAS antes de confirmarlo. */
 export async function decodeFiscalEmissionReceipt(xml:string,input:unknown):Promise<FiscalEmissionReceipt> {
-  const {solicitud:s}=await verifyFiscalRequest(input),r=result(xml,'FECAESolicitar')
+  const {solicitud:s}=await verifyFiscalRequest(input)
+  return decodePrivateFiscalEmissionReceipt(xml,s)
+}
+/** Candidato de respuesta; no confirma cuerpo completo ni concede reenvío. */
+export function decodePrivateFiscalEmissionReceipt(xml:string,s:Readonly<FiscalRequestData>|FiscalCreditRequestRecord['datos']['solicitud']):FiscalEmissionReceipt {
+  const r=result(xml,'FECAESolicitar')
   schema(r,['FeCabResp','FeDetResp','Errors','Events']);const errors=codes(r,'Errors','Err');codes(r,'Events','Evt')
   const cab=one(r,'FeCabResp',false),det=one(r,'FeDetResp',false)
   if(!cab||!det)return {estado:'SIN_CONFIRMACION',codigos:errors,puedeReenviar:false}
   schema(cab,['Cuit','PtoVta','CbteTipo','FchProceso','CantReg','Resultado','Reproceso'])
-  if(field(cab,'Cuit')!==s.cuitEmisor||integer(cab,'PtoVta',99998)!==s.puntoVenta||integer(cab,'CbteTipo',11)!==s.tipoComprobante||integer(cab,'CantReg',1)!==1)return fail()
+  if(field(cab,'Cuit')!==s.cuitEmisor||integer(cab,'PtoVta',99998)!==s.puntoVenta||integer(cab,'CbteTipo',13)!==s.tipoComprobante||integer(cab,'CantReg',1)!==1)return fail()
   const processed=field(cab,'FchProceso');if(!/^\d{14}$/.test(processed))return fail()
   field(cab,'Reproceso',false)
+  if('comprobantesAsociados' in s&&processed.slice(0,8)<s.fecha)return fail()
   validDate(processed.slice(0,8));if(Number(processed.slice(8,10))>23||Number(processed.slice(10,12))>59||Number(processed.slice(12,14))>59)return fail()
   schema(det,['FECAEDetResponse']);const d=one(det,'FECAEDetResponse')!
   schema(d,['Concepto','DocTipo','DocNro','CbteDesde','CbteHasta','CbteFch','Resultado','Observaciones','CAE','CAEFchVto'])
@@ -118,7 +138,7 @@ export async function decodeFiscalEmissionReceipt(xml:string,input:unknown):Prom
   const all=[...errors,...codes(d,'Observaciones','Obs')],header=field(cab,'Resultado'),detail=field(d,'Resultado')
   if(header==='A'&&detail==='A'&&!errors.length){
     const cae=field(d,'CAE'),expires=field(d,'CAEFchVto');validDate(expires)
-    if(!/^[0-9]{14}$/.test(cae)||/^0+$/.test(cae)||expires<s.fecha)return fail()
+    if(!/^[0-9]{14}$/.test(cae)||/^0+$/.test(cae)||expires<s.fecha||'comprobantesAsociados' in s&&processed.slice(0,8)>expires)return fail()
     return {estado:'APROBACION_RECIBIDA',codigos:all,puedeReenviar:false}
   }
   if(header==='R'&&detail==='R'&&!field(d,'CAE',false)&&!field(d,'CAEFchVto',false))return {estado:'RECHAZO_RECIBIDO',codigos:all,puedeReenviar:false}

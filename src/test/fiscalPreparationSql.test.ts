@@ -1,3 +1,5 @@
+import { syntheticFiscalCreditEmissionReceipt } from './fixtures/fiscalCreditEmission'
+import { sendFiscalCreditEmission } from '../../supabase/functions/_shared/fiscalCreditEmission'
 import { reconcileFiscalCreditOperation } from '../../supabase/functions/_shared/fiscalCreditConsultWorker'
 import { consultFiscalCreditVoucher } from '../../supabase/functions/_shared/fiscalCreditVoucherQuery'
 import { syntheticFiscalCreditVoucherXml } from './fixtures/fiscalCreditVoucherXml'
@@ -2926,4 +2928,19 @@ it.each(['anon','authenticated','service_role'])('048 incidencia privada sin acc
 it('048 historia de conflicto inmutable y otro Auth no recupera ni abre gate',async()=>{
  const f=await creditConflictFixture();await f.write();await f.write(f.conflict,crypto.randomUUID());await denied(()=>f.readAuthorization(crypto.randomUUID()));await denied(()=>f.gate(crypto.randomUUID()))
  await db.exec('RESET ROLE');await denied(()=>db.query("UPDATE fiscal_nc_conflictos_homologacion SET codigo='DATOS_DISTINTOS'"));await denied(()=>db.query('DELETE FROM fiscal_nc_conflictos_homologacion'))
+})
+
+it.each(['normal','ack-perdido','replay','revocado'])('NC transporte042 %s consume antes de fetch y no toca negocio',async mode=>{
+ const f=await creditSendSourceFixture();await f.seed();const packet=await f.load(),valid=await validateFiscalCreditSendSource(packet,f.source,f.proposal,actor),b=valid.binding,before=await preparationEffects()
+ const ticket={entorno:'HOMOLOGACION' as const,servicio:'wsfe' as const,cuitEmisor:b.cuit_emisor,credencialId:b.credencial_id,certificadoSha256:b.certificado_sha256,token:'SYNTHETIC_SEND_TOKEN',sign:'SYNTHETIC_SEND_SIGN',expiresAt:Date.now()+120000}
+ if(mode==='replay')await f.startIntent()
+ if(mode==='revocado')await admin("INSERT INTO fiscal_nc_permisos_revocados_homologacion(permiso_id,motivo) VALUES($1,'Ensayo')",[f.permit])
+ const events:string[]=[],consumeIntent=vi.fn(async()=>{events.push('042');await db.exec('SAVEPOINT send_authority');let value:unknown
+ try{value=await f.startIntent();await db.exec('RELEASE SAVEPOINT send_authority')}catch(error){await db.exec('ROLLBACK TO SAVEPOINT send_authority; RELEASE SAVEPOINT send_authority');throw error}
+ if(mode==='ack-perdido')throw new Error('SYNTHETIC_ACK_LOST');return value}),fetcher=vi.fn<typeof fetch>(async()=>{events.push('fetch');expect(await f.readIntent()).toMatchObject({nuevo_envio:false,intento_id:f.attempt});return new Response(syntheticFiscalCreditEmissionReceipt(valid.cuerpo.datos.solicitud),{headers:{'content-type':'text/xml'}})})
+ const run=()=>sendFiscalCreditEmission({packet,source:f.source,draft:f.proposal,actorAuthId:actor},ticket,{signal:new AbortController().signal,consumeIntent,fetcher})
+ if(mode==='normal'){expect(await run()).toMatchObject({estado:'APROBACION_RECIBIDA',puedeReenviar:false});expect(events).toEqual(['042','fetch']);await expect(run()).rejects.toThrow();expect(fetcher).toHaveBeenCalledTimes(1)}
+ else{await expect(run()).rejects.toThrow('FISCAL_ENVIO_NC_NO_CONFIRMADO');expect(fetcher).not.toHaveBeenCalled()}
+ expect(await preparationEffects()).toEqual(before)
+ if(mode==='revocado')expect(await f.readIntent()).toBeNull();else expect(await f.readIntent()).toMatchObject({nuevo_envio:false,intento_id:f.attempt})
 })

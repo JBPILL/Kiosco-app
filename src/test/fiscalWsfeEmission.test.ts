@@ -39,7 +39,7 @@ it.each([11,1,6])('serializa tipo %s sin defaults monetarios ni redondeo',async 
   const frozen=await freezeFiscalRequest(sample),req=await buildFiscalEmissionRequest(frozen,ticket()),body=await req.text()
   expect(req.headers.get('SOAPAction')).toBe('"http://ar.gov.afip.dif.FEV1/FECAESolicitar"')
   expect(body).toContain('<CantReg>1</CantReg>');expect(body).toContain('<CbteDesde>1</CbteDesde><CbteHasta>1</CbteHasta>')
-  expect(body).toContain('<CanMisMonExt>N</CanMisMonExt>');expect(body).toContain(`<CondicionIVAReceptorId>${sample.condicionIvaReceptor}</CondicionIVAReceptorId>`)
+  expect(body).not.toContain('<CanMisMonExt>');expect(body).toContain(`<CondicionIVAReceptorId>${sample.condicionIvaReceptor}</CondicionIVAReceptorId>`)
   expect(body).toContain(type===11?'<ImpTotal>123.45</ImpTotal>':'<ImpTotal>121.00</ImpTotal>')
   expect(body.includes('<Iva>')).toBe(type!==11)
 })
