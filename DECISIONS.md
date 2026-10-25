@@ -741,3 +741,6 @@ CONSULTA_NC tiene binding/validador propios y cruza intención durable con cuerp
 
 ### 25/10/2026 — TA de consulta conserva intención, no permiso de envío
 SQL046 sólo renueva/inicia desde045 actual, compartiendo exclusión global por certificado y conservando finalidad/intención en vínculo privado. Confirmar respuesta recibida usa reconstrucción histórica explícita del cuerpo/permiso/intención/Auth, sin renovar autoridad. Loader/WSAA CONSULTA_NC tienen factories y tipos propios; sólo cifrado/CMS/ACK común. Una renovación WSAA no registra intento comercial nuevo ni concede FECAESolicitar. Activos inciertos no se liberan por timeout ni por cancelar un consumidor.
+
+### 25/10/2026 — consulta NC no inventa asociación ni origen
+Parser NC separado de tipos factura, compara asociación además de contrato fiscal completo. Campos de CbteAsoc ausentes se conservan desconocidos, no se copian del esperado para fabricar coincidencia. Una respuesta incompleta requiere evidencia adicional/aceptación antes de autorizar efectos;602 no habilita reenvío. FchProceso se conserva con precisión8/14 recibida y validada. El comparador puro no autentica ARCA ni acredita recepción: futuro worker/transporte/diario deben ligar guard045, TA y cuerpo original antes de persistir clasificación.

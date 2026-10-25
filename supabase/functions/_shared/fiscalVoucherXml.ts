@@ -139,7 +139,7 @@ function deadline<T>(promise: Promise<T>,signal: AbortSignal): Promise<T> {
       error=>{signal.removeEventListener('abort',abort);reject(error)})
   })
 }
-export { children as fiscalXmlChildren, schema as fiscalXmlSchema, one as fiscalXmlOne, deadline as withFiscalDeadline }
+export { children as fiscalXmlChildren, schema as fiscalXmlSchema, one as fiscalXmlOne, text as fiscalXmlText, number as fiscalXmlNumber, list as fiscalXmlList, deadline as withFiscalDeadline }
 class FiscalVoucherTransportUnconfirmed extends Error {}
 /** Transporte común acotado: destino/consulta se construyen desde el cuerpo
  * verificado; ninguna respuesta cruda ni credencial sale de este módulo. */
