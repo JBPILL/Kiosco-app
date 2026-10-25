@@ -1,10 +1,11 @@
+import { reconcileFiscalCreditOperation } from './fiscalCreditConsultWorker.ts'
 import { loadFiscalRepresentation } from './fiscalRepresentationService.ts'
 import { loadFiscalCreditOwnerReview, approveFiscalCreditOwnerReview } from './fiscalCreditOwnerReviewService.ts'
 import { fiscalCreditOwnerReviewWire } from './fiscalCreditOwnerReview.ts'
 import { loadFiscalCreditRequest } from './fiscalCreditDraftService.ts'
 import { prepareFiscalCreditNumber } from './fiscalCreditNumberWorker.ts'
-import { createCreditWsaaTicketSource } from './fiscalCreditWsaa.ts'
-import { createPrivateCreditFiscalCustody } from './fiscalPrivateCustody.ts'
+import { createCreditConsultWsaaTicketSource, createCreditWsaaTicketSource } from './fiscalCreditWsaa.ts'
+import { createPrivateCreditConsultFiscalCustody, createPrivateCreditFiscalCustody } from './fiscalPrivateCustody.ts'
 import { fiscalCreditPreparationWire } from './fiscalCreditPreparation.ts'
 import { saveFiscalCreditDraft, loadFiscalCreditDraft, cancelFiscalCreditDraft, loadFiscalCreditHistory, loadFiscalCreditCommercialSource, loadFiscalCreditUnits, loadFiscalCreditContext, loadFiscalCreditPreparation, saveFiscalCreditPreparation } from './fiscalCreditDraftService.ts'
 import { fiscalCreditUnitsWire } from './fiscalCreditUnits.ts'
@@ -38,6 +39,7 @@ const origin='https://kiosco-app-staging.vercel.app'
 const invalid=():never=>{throw new Error('FISCAL_SOLICITUD_INVALIDA')}
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 type FiscalHttpCommand=
+  | {accion:'CONCILIAR_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string;consulta_id:string}
   | {accion:'CUERPO_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string}
   | {accion:'NUMERAR_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string;preparacion_sha256:string;reserva_id:string}
   | {accion:'REVISION_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string;revision_id:string|null}
@@ -94,6 +96,10 @@ async function command(request:Request):Promise<FiscalHttpCommand> {
     const text=new TextDecoder('utf-8',{fatal:true}).decode(bytes),parsed:unknown=parseFiscalJson(text)
     if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))return invalid()
     const b=parsed as Record<string,unknown>,keys=Object.keys(b)
+    if(b.accion==='CONCILIAR_NC'&&size<=2048&&(length===null||Number(length)<=2048)&&keys.length===6
+      &&keys.every(k=>['accion','venta_id','operacion_origen_id','solicitud_id','propuesta_sha256','consulta_id'].includes(k))
+      &&uuid(b.venta_id)&&uuid(b.operacion_origen_id)&&uuid(b.solicitud_id)&&uuid(b.consulta_id)
+      &&typeof b.propuesta_sha256==='string'&&/^[0-9a-f]{64}$/.test(b.propuesta_sha256))return {accion:b.accion,venta_id:b.venta_id,operacion_origen_id:b.operacion_origen_id,solicitud_id:b.solicitud_id,propuesta_sha256:b.propuesta_sha256,consulta_id:b.consulta_id}
     if(b.accion==='NUMERAR_NC'&&size<=2048&&(length===null||Number(length)<=2048)&&keys.length===7
       &&keys.every(k=>['accion','venta_id','operacion_origen_id','solicitud_id','propuesta_sha256','preparacion_sha256','reserva_id'].includes(k))
       &&uuid(b.venta_id)&&uuid(b.operacion_origen_id)&&uuid(b.solicitud_id)&&uuid(b.reserva_id)
@@ -211,7 +217,12 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
       if(cmd.accion==='GUARDAR_PREPARACION_NC'&&deps.readSecret('ARCA_HOMO_CREDIT_PREPARATION_ENABLED')!=='true')return json({codigo:'PREPARACION_NC_NO_HABILITADA'},503)
       const admin=deps.createAdmin(FISCAL_STAGING_URL),token=auth.slice(7)
       let result:unknown
-      if(cmd.accion==='CUERPO_NC'||cmd.accion==='NUMERAR_NC'){
+      if(cmd.accion==='CONCILIAR_NC'){
+        result=await reconcileFiscalCreditOperation({admin,readSecret:deps.readSecret,fetcher:deps.fetcher,
+          keys:createPrivateFiscalTicketKeys(deps.readSecret),
+          createWsaa:guard=>createCreditConsultWsaaTicketSource(createPrivateCreditConsultFiscalCustody(deps.readSecret,guard),deps.fetcher),
+        },token,{saleId:cmd.venta_id,operationId:cmd.operacion_origen_id,requestId:cmd.solicitud_id,sha256:cmd.propuesta_sha256},cmd.consulta_id)
+      }else if(cmd.accion==='CUERPO_NC'||cmd.accion==='NUMERAR_NC'){
         const scope={saleId:cmd.venta_id,operationId:cmd.operacion_origen_id,requestId:cmd.solicitud_id,sha256:cmd.propuesta_sha256}
         const body=cmd.accion==='CUERPO_NC'?await loadFiscalCreditRequest(admin,token,scope)
           :await prepareFiscalCreditNumber({admin,readSecret:deps.readSecret,fetcher:deps.fetcher,keys:createPrivateFiscalTicketKeys(deps.readSecret),

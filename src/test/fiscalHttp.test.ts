@@ -442,3 +442,21 @@ it.each([
 ])('representación rechaza metadatos extra/revisión no admitida antes de Auth',async body=>{
  const f=fixture();expect((await f.handler(request(JSON.stringify(body)))).status).toBe(400);expect(f.getUser).not.toHaveBeenCalled();expect(f.factory).not.toHaveBeenCalled()
 })
+
+it.each(['extra','actor','url','hash','uuid','missing','oversize'])('HTTP CONCILIAR_NC rechaza %s antes de Auth/red',async(mode)=>{
+ const f=fixture(),body:Record<string,unknown>={accion:'CONCILIAR_NC',venta_id:crypto.randomUUID(),operacion_origen_id:op,solicitud_id:crypto.randomUUID(),propuesta_sha256:'a'.repeat(64),consulta_id:crypto.randomUUID()}
+ if(mode==='extra')body.resultado={cae:'11111111111111'}
+ if(mode==='actor')body.actor_auth_id=crypto.randomUUID()
+ if(mode==='url')body.url='https://example.invalid'
+ if(mode==='hash')body.propuesta_sha256='bad'
+ if(mode==='uuid')body.consulta_id='bad'
+ if(mode==='missing')delete body.consulta_id
+ const text=JSON.stringify(body)+(mode==='oversize'?' '.repeat(2048):'')
+ expect((await f.handler(request(text))).status).toBe(400)
+ expect(f.factory).not.toHaveBeenCalled();expect(f.getUser).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled()
+})
+it('HTTP CONCILIAR_NC verifica JWT y no expone errores privados',async()=>{
+ const f=fixture();f.getUser.mockResolvedValue({data:{user:null},error:new Error('PRIVATE_FAILURE')})
+ const r=await f.handler(request(JSON.stringify({accion:'CONCILIAR_NC',venta_id:crypto.randomUUID(),operacion_origen_id:op,solicitud_id:crypto.randomUUID(),propuesta_sha256:'a'.repeat(64),consulta_id:crypto.randomUUID()})))
+ expect(r.status).toBe(409);expect(JSON.stringify(await r.json())).not.toContain('PRIVATE_FAILURE');expect(f.getUser).toHaveBeenCalledExactlyOnceWith('SYNTHETIC_JWT');expect(f.rpc).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled()
+})

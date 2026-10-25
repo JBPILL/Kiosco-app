@@ -2871,3 +2871,16 @@ it('HTTP unidades niega reasignación de Auth entre fuente comercial y unidades 
  expect(response.status).not.toBe(200);expect(JSON.stringify(await response.json())).not.toContain('canonico');expect(api.getUser).toHaveBeenCalledTimes(1)
  expect(api.rpc.mock.calls.every(([,args])=>args.p_actor_auth_id===actor)).toBe(true)
 })
+
+it.each([true,false])('047 HTTP consulta recupera diario antes de custodia, guardado=%s',async(stored)=>{
+ const f=await creditConsultJournalFixture(),api=workerFixture(),before=await preparationEffects(),reads:string[]=[]
+ if(stored)await f.write()
+ api.flags.ARCA_HOMO_CREDIT_CONSULT_ENABLED='false'
+ await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false')
+ const handler=createFiscalHttpHandler({readSecret:name=>{reads.push(name);return api.flags[name]},createAdmin:()=>api.admin,fetcher:api.fetcher})
+ const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify({accion:'CONCILIAR_NC',venta_id:sale,operacion_origen_id:op,solicitud_id:f.proposal.datos.solicitud_id,propuesta_sha256:f.proposal.sha256,consulta_id:crypto.randomUUID()})}))
+ expect(response.status).toBe(stored?200:409)
+ if(stored)expect(await response.json()).toMatchObject({emision_habilitada:false,resultado:{consulta_id:f.id,estado:'CAE_NC_REGISTRADO_NO_APLICADO',reintegro_habilitado:false,reposicion_habilitada:false}})
+ expect(api.getUser).toHaveBeenCalledExactlyOnceWith('SYNTHETIC_JWT');expect(api.fetcher).not.toHaveBeenCalled();expect(reads.some(name=>/CUSTODY|CREDENTIAL|TA_KEY|KEYRING/.test(name))).toBe(false)
+ expect(await preparationEffects()).toEqual(before)
+})
