@@ -68,6 +68,11 @@ it.each(['cargar_intencion_nc_homologacion', 'cargar_fuente_consulta_nc_homologa
  const fetcher=vi.fn<typeof fetch>(async input=>{expect((input as Request).url).toBe(FISCAL_STAGING_URL+'/rest/v1/rpc/'+name);return Response.json(null)})
  expect((await createFiscalSupabaseAdmin(FISCAL_STAGING_URL,secret,fetcher).rpc(name,{})).error).toBeNull();expect(fetcher).toHaveBeenCalledTimes(1)
 })
-it.each(['registrar_intencion_nc_homologacion','verificar_permiso_nc_homologacion','cargar_fuente_envio_nc_homologacion'])('consulta no habilita RPC de emisión %s',async name=>{
+it.each(['verificar_permiso_nc_homologacion','emitir_nc_homologacion'])('SDK no habilita RPC de emisión no integrada %s',async name=>{
  const fetcher=vi.fn<typeof fetch>();await expect(createFiscalSupabaseAdmin(FISCAL_STAGING_URL,secret,fetcher).rpc(name,{})).rejects.toThrow();expect(fetcher).not.toHaveBeenCalled()
+})
+
+it.each(['cargar_fuente_envio_nc_homologacion','coordinar_ta_envio_nc_homologacion','registrar_intencion_nc_homologacion'])('SDK permite RPC de trabajador NC integrado%s sólo en Staging',async name=>{
+ const fetcher=vi.fn<typeof fetch>(async input=>{expect((input as Request).url).toBe(FISCAL_STAGING_URL+'/rest/v1/rpc/'+name);return Response.json(null)})
+ expect((await createFiscalSupabaseAdmin(FISCAL_STAGING_URL,secret,fetcher).rpc(name,{})).error).toBeNull();expect(fetcher).toHaveBeenCalledTimes(1)
 })

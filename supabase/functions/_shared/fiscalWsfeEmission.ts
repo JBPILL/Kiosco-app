@@ -66,8 +66,8 @@ async function post(req:Request,fetcher:typeof fetch,timeoutMs:number,expiresAt:
   }catch{return fail()}finally{clearTimeout(timer);parentSignal?.removeEventListener('abort',abortParent);controller.abort();if(response?.body&&!response.body.locked)void response.body.cancel().catch(()=>{})}
 }
 // Transporte privado compartido; no es una acción HTTP pública ni un permiso.
-export async function postPrivateFiscalWsfe(req:Request,fetcher:typeof fetch,timeoutMs:number,expiresAt:number,beforeSend?:()=>Promise<void>):Promise<string> {
- return post(req,fetcher,timeoutMs,expiresAt,beforeSend)
+export async function postPrivateFiscalWsfe(req:Request,fetcher:typeof fetch,timeoutMs:number,expiresAt:number,beforeSend?:()=>Promise<void>,signal?:AbortSignal):Promise<string> {
+ return post(req,fetcher,timeoutMs,expiresAt,beforeSend,'EMISION_NUMERACION',signal)
 }
 /** Transporte exclusivo de consulta; no amplía acciones del adaptador de envío. */
 export async function postPrivateFiscalCreditQuery(req:Request,fetcher:typeof fetch,timeoutMs:number,expiresAt:number,beforeSend:()=>Promise<void>,signal:AbortSignal):Promise<string> {

@@ -1,3 +1,4 @@
+import { emitFiscalCreditOperation } from '../../supabase/functions/_shared/fiscalCreditEmissionWorker'
 import { reconcileFiscalCreditOperation } from '../../supabase/functions/_shared/fiscalCreditConsultWorker'
 import type { FiscalAuthClient } from '../../supabase/functions/_shared/fiscalWorkerAuthorization'
 // @vitest-environment node
@@ -75,4 +76,30 @@ it('receipt de conflicto conserva evidencia pero nunca habilita aplicación',asy
   if(codigo==='DATOS_DISTINTOS')expect(validateFiscalCreditConsultation(value,f.body,f.intent).estado).toBe('CONFLICTO_NC_NO_APLICAR')
   else expect(()=>validateFiscalCreditConsultation(value,f.body,f.intent)).toThrow()
  }
+})
+
+it('worker NC acota Auth60s sin acceder RPC/claves/red',async()=>{
+ vi.useFakeTimers()
+ try{
+  const getUser=vi.fn<FiscalAuthClient['auth']['getUser']>(()=>new Promise(()=>{})),rpc=vi.fn<FiscalAuthClient['rpc']>(),fetcher=vi.fn<typeof fetch>(),keys={active:vi.fn(async()=>{throw new Error('UNEXPECTED_KEY')}),read:vi.fn(async()=>{throw new Error('UNEXPECTED_KEY')})},createSendWsaa=vi.fn(()=>{throw new Error('UNEXPECTED_WSAA')}),createConsultWsaa=vi.fn(()=>{throw new Error('UNEXPECTED_WSAA')})
+  const flags:Record<string,string>={SUPABASE_URL:'https://acoyfwwmhaeruciyedri.supabase.co',ARCA_HOMO_BACKEND_ENABLED:'true'}
+  const pending=emitFiscalCreditOperation({admin:{auth:{getUser},rpc},readSecret:name=>flags[name],keys,createSendWsaa,createConsultWsaa,fetcher},'SYNTHETIC_JWT',{saleId:crypto.randomUUID(),operationId:crypto.randomUUID(),requestId:crypto.randomUUID(),sha256:'a'.repeat(64)},crypto.randomUUID(),crypto.randomUUID(),crypto.randomUUID(),crypto.randomUUID()).catch((e:unknown)=>e instanceof Error?e.message:'UNKNOWN')
+  await vi.advanceTimersByTimeAsync(60000);expect(await pending).toBe('FISCAL_OPERACION_NC_NO_CONFIRMADA');expect(getUser).toHaveBeenCalledTimes(1);expect(rpc).not.toHaveBeenCalled();expect(keys.active).not.toHaveBeenCalled();expect(fetcher).not.toHaveBeenCalled()
+ }finally{vi.useRealTimers()}
+})
+it('consulta encadenada captura actor esperado antes de Auth y no admite cambiarlo durante espera',async()=>{
+ const actor=crypto.randomUUID(),expected=crypto.randomUUID(),rpc=vi.fn<FiscalAuthClient['rpc']>(),fetcher=vi.fn<typeof fetch>(),keys={active:vi.fn(async()=>{throw new Error('UNEXPECTED_KEY')}),read:vi.fn(async()=>{throw new Error('UNEXPECTED_KEY')})},createWsaa=vi.fn(()=>{throw new Error('UNEXPECTED_WSAA')})
+ let resolveAuth:((v:Awaited<ReturnType<FiscalAuthClient['auth']['getUser']>>)=>void)|undefined
+ const getUser=vi.fn<FiscalAuthClient['auth']['getUser']>(()=>new Promise(resolve=>{resolveAuth=resolve})),flags:Record<string,string>={SUPABASE_URL:'https://acoyfwwmhaeruciyedri.supabase.co',ARCA_HOMO_BACKEND_ENABLED:'true'}
+ const deps={expectedActorAuthId:expected,admin:{auth:{getUser},rpc},readSecret:(name:string)=>flags[name],keys,createWsaa,fetcher}
+ const pending=reconcileFiscalCreditOperation(deps,'SYNTHETIC_JWT',{saleId:crypto.randomUUID(),operationId:crypto.randomUUID(),requestId:crypto.randomUUID(),sha256:'a'.repeat(64)},crypto.randomUUID())
+ deps.expectedActorAuthId=actor;resolveAuth?.({data:{user:{id:actor}},error:null})
+ await expect(pending).rejects.toThrow('FISCAL_CONCILIACION_NC_NO_CONFIRMADA');expect(rpc).not.toHaveBeenCalled();expect(keys.active).not.toHaveBeenCalled();expect(fetcher).not.toHaveBeenCalled()
+})
+
+it('cancelación del padre aborta Auth de consulta encadenada sin RPC ni red',async()=>{
+ const controller=new AbortController(),getUser=vi.fn<FiscalAuthClient['auth']['getUser']>(()=>new Promise(()=>{})),rpc=vi.fn<FiscalAuthClient['rpc']>(),fetcher=vi.fn<typeof fetch>(),keys={active:vi.fn(async()=>{throw new Error('UNEXPECTED_KEY')}),read:vi.fn(async()=>{throw new Error('UNEXPECTED_KEY')})},createWsaa=vi.fn(()=>{throw new Error('UNEXPECTED_WSAA')})
+ const flags:Record<string,string>={SUPABASE_URL:'https://acoyfwwmhaeruciyedri.supabase.co',ARCA_HOMO_BACKEND_ENABLED:'true'}
+ const pending=reconcileFiscalCreditOperation({signal:controller.signal,admin:{auth:{getUser},rpc},readSecret:name=>flags[name],keys,createWsaa,fetcher},'SYNTHETIC_JWT',{saleId:crypto.randomUUID(),operationId:crypto.randomUUID(),requestId:crypto.randomUUID(),sha256:'a'.repeat(64)},crypto.randomUUID())
+ controller.abort();await expect(pending).rejects.toThrow('FISCAL_CONCILIACION_NC_NO_CONFIRMADA');expect(rpc).not.toHaveBeenCalled();expect(keys.active).not.toHaveBeenCalled();expect(fetcher).not.toHaveBeenCalled()
 })

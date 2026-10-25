@@ -61,7 +61,7 @@ export function decodeLastFiscalCreditNumber(xml: string, expected: unknown): nu
 }
 /** Consulta sólo lectura. El callback privado debe comprobar gates/binding
  * vigentes inmediatamente antes de enviar. No crea TA, reserva ni permiso. */
-export async function consultLastFiscalCreditNumber(expected: unknown, ticket: PrivateWsaaTicket, fetcher: typeof fetch, beforeSend: () => Promise<void>, timeoutMs = 15000): Promise<{ ultimo: number; consultado_en: string }> {
+export async function consultLastFiscalCreditNumber(expected: unknown, ticket: PrivateWsaaTicket, fetcher: typeof fetch, beforeSend: () => Promise<void>, timeoutMs = 15000, signal?:AbortSignal): Promise<{ ultimo: number; consultado_en: string }> {
   try {
     const series = normalizeFiscalCreditSeries(structuredClone(expected))
     if (typeof beforeSend !== 'function') return fail()
@@ -69,7 +69,7 @@ export async function consultLastFiscalCreditNumber(expected: unknown, ticket: P
     const request = new Request('https://wswhomo.afip.gov.ar/wsfev1/service.asmx', { method: 'POST', redirect: 'error', headers: {
       'Content-Type': 'text/xml; charset=utf-8', SOAPAction: `"${WSFE}FECompUltimoAutorizado"`,
     }, body: `<s:Envelope xmlns:s="${SOAP}"><s:Body><FECompUltimoAutorizado xmlns="${WSFE}">${auth}<PtoVta>${series.puntoVenta}</PtoVta><CbteTipo>${series.tipoComprobante}</CbteTipo></FECompUltimoAutorizado></s:Body></s:Envelope>` })
-    const xml = await postPrivateFiscalWsfe(request, fetcher, timeoutMs, expiresAt, beforeSend)
+    const xml = await postPrivateFiscalWsfe(request, fetcher, timeoutMs, expiresAt, beforeSend,signal)
     return { ultimo: decodeLastFiscalCreditNumber(xml, series), consultado_en: new Date().toISOString() }
   } catch { return fail() }
 }
