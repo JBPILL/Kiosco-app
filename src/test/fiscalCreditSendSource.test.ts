@@ -66,8 +66,9 @@ it('captura antes de await y no incorpora cambios tardíos en credencial/permiso
 })
 
 it.each(['numero','punto_venta','tipo_comprobante','revision_emisor','revision_parametros'] as const)('valores numéricos válidos pero distintos %s no sustituyen cuerpo',async key=>{
- const f=await sendFixture();f.packet.binding[key]=key==='tipo_comprobante'?8:f.packet.binding[key]+1
- await expect(validateFiscalCreditSendSource(f.packet,f.source,f.proposal,f.actor)).rejects.toThrow()
+ const f=await sendFixture(),binding:Record<string,unknown>={...f.packet.binding}
+ binding[key]=key==='tipo_comprobante'?8:f.packet.binding[key]+1
+ await expect(validateFiscalCreditSendSource({...f.packet,binding},f.source,f.proposal,f.actor)).rejects.toThrow()
 })
 it('no acepta finalidad de consulta o numeración como envío NC',async()=>{
  const f=await sendFixture()
