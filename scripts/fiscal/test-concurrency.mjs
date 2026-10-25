@@ -1437,11 +1437,32 @@ try {
   await start(b);const nc044_revocation=capture(nc044_call(b,'INICIAR'));await waitForLock(observer,b);await a.query('COMMIT')
   assert.equal((await nc044_revocation).error?.code,'42501');await b.query('ROLLBACK')
   cases.push('044_revocacion_durante_espera_no_reautoriza_WSAA')
+  const creditConsultSourceInstalledAfterCase=cases.length
+  for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/045_fiscal_credit_consult_source.sql'),'utf8'))
+  const nc045_load=async(client,f)=>(await client.query('SELECT cargar_fuente_consulta_nc_homologacion($1,$2,$3,$4,$5) v',[f.auth,f.sale,f.operation,f.proposal.id,f.proposal.sha])).rows[0].v
+  const nc045_expired=await nc042Fixture(234,1000)
+  await start(a);await nc045_expired.send(a);await a.query('COMMIT');await observer.query('SELECT pg_sleep(1.2)')
+  await start(a);assert.equal((await nc045_load(a,nc045_expired)).binding.finalidad,'CONSULTA_NC');await a.query('COMMIT')
+  cases.push('045_permiso_envio_vencido_no_borra_autoridad_de_consulta')
+  const nc045_revoked=await nc042Fixture(235)
+  await start(a);await nc045_revoked.send(a);await a.query('COMMIT')
+  await a.query('BEGIN');await a.query('UPDATE fiscal_emisores_homologacion SET habilitado=false WHERE kiosco_id=$1',[nc045_revoked.kid])
+  await start(b);const nc045_waiting=capture(nc045_load(b,nc045_revoked));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc045_waiting).error?.code,'42501');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_intenciones_homologacion WHERE solicitud_id=$1',[nc045_revoked.proposal.id])).rows[0].n,1)
+  cases.push('045_custodia_deshabilitada_esperando_no_expone_credencial_ni_borra_intento')
+  const nc045_auth=await nc042Fixture(236),nc045_other=randomUUID()
+  await start(a);await nc045_auth.send(a);await a.query('COMMIT');await observer.query('INSERT INTO auth.users VALUES($1)',[nc045_other])
+  await a.query('BEGIN');await a.query('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[nc045_other,nc045_auth.owner])
+  await start(b);const nc045_actor=capture(nc045_load(b,nc045_auth));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc045_actor).error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('045_Auth_reasignado_esperando_no_transfiere_consulta_NC')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
     creditOwnerReviewInstalledAfterCase,postCreditOwnerReviewCaseCount:cases.length-creditOwnerReviewInstalledAfterCase,
+    creditConsultSourceInstalledAfterCase,postCreditConsultSourceCaseCount:cases.length-creditConsultSourceInstalledAfterCase,
     creditSendTicketInstalledAfterCase,postCreditSendTicketCaseCount:cases.length-creditSendTicketInstalledAfterCase,
     creditSendSourceInstalledAfterCase,postCreditSendSourceCaseCount:cases.length-creditSendSourceInstalledAfterCase,
     creditIntentInstalledAfterCase,postCreditIntentCaseCount:cases.length-creditIntentInstalledAfterCase,

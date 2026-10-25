@@ -1808,6 +1808,34 @@ async function creditPermissionFixture(){
  const verify=async(who=actor,revision=f.reviewId)=>(await db.query<{data:Record<string,unknown>}>('SELECT verificar_permiso_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,f.body.sha256,revision,permit])).rows[0].data
  return{...f,permit,seed,verify}
 }
+async function creditConsultSourceFixture(){
+ const f=await creditSendSourceFixture();await f.seed()
+ await db.exec('RESET ROLE');const sql=readFileSync('supabase/pilot-fiscal/045_fiscal_credit_consult_source.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'');await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
+ const consult=async(who=actor)=>(await db.query<{data:{binding:Record<string,unknown>;intencion:Record<string,unknown>;cuerpo:unknown}}>('SELECT cargar_fuente_consulta_nc_homologacion($1,$2,$3,$4,$5) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256])).rows[0].data
+ return{...f,consult}
+}
+it('045 consulta exige intención previa y no devuelve autoridad de envío',async()=>{
+ const f=await creditConsultSourceFixture();await denied(()=>f.consult());await f.startIntent();const before=await preparationEffects(),result=await f.consult()
+ expect(result.binding).toMatchObject({finalidad:'CONSULTA_NC',intento_id:f.attempt,solicitud_sha256:f.body.sha256,numero:23,actor_auth_id:actor,emision_habilitada:false})
+ expect(result.intencion).toMatchObject({nuevo_envio:false,estado:'ENVIO_INCIERTO'});await denied(()=>f.load());expect(await f.consult()).toEqual(result);expect(await preparationEffects()).toEqual(before)
+})
+it('045 permiso de envío revocado y catálogo deshabilitado no borran consulta histórica',async()=>{
+ const f=await creditConsultSourceFixture();await f.startIntent();const before=await f.consult()
+ await admin("INSERT INTO fiscal_nc_permisos_revocados_homologacion(permiso_id,motivo) VALUES($1,'Ensayo')",[f.permit]);await admin('UPDATE fiscal_parametros_nc_homologacion SET habilitado=false')
+ expect(await f.consult()).toEqual(before);await denied(()=>f.load());expect(await f.readIntent()).toMatchObject({nuevo_envio:false})
+})
+it.each(['deshabilitado','credencial','certificado','revision','cuit','punto'] as const)('045 custodia %s bloquea consulta sin borrar intención',async(reason)=>{
+ const f=await creditConsultSourceFixture();await f.startIntent();const before=await f.readIntent()
+ const sql=reason==='deshabilitado'?'habilitado=false':reason==='credencial'?"credencial_id='11111111-1111-4111-8111-111111111111'":reason==='certificado'?"certificado_sha256=repeat('e',64)":reason==='revision'?'revision=revision+1':reason==='cuit'?"cuit_emisor=CASE WHEN cuit_emisor='20123456786' THEN '20415005963' ELSE '20123456786' END":'punto_venta=8'
+ await admin('UPDATE fiscal_emisores_homologacion SET '+sql);await denied(()=>f.consult());expect(await f.readIntent()).toEqual(before)
+})
+it('045 Auth reasignado no transfiere consulta ni custodia histórica',async()=>{
+ const f=await creditConsultSourceFixture();await f.startIntent();const other=crypto.randomUUID();await admin('INSERT INTO auth.users VALUES($1)',[other]);await admin('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2',[other,owner])
+ await denied(()=>f.consult());await denied(()=>f.consult(other))
+})
+it.each(['anon','authenticated'])('045 consulta no está expuesta al rol %s',async(role)=>{
+ const f=await creditConsultSourceFixture();await f.startIntent();await db.exec('SET ROLE '+role);await denied(()=>f.consult())
+})
 async function creditSendTicketFixture(){
  const f=await creditSendSourceFixture();await f.seed();const source=await f.load()
  await db.exec('RESET ROLE')
