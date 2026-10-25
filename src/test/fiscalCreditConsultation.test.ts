@@ -66,3 +66,13 @@ it('worker aborta Auth sin respuesta a los45s sin leer TA ni consultar ARCA',asy
   expect(getUser).toHaveBeenCalledTimes(1);expect(rpc).not.toHaveBeenCalled();expect(keys.active).not.toHaveBeenCalled();expect(createWsaa).not.toHaveBeenCalled();expect(fetcher).not.toHaveBeenCalled()
  }finally{vi.useRealTimers()}
 })
+
+it('receipt de conflicto conserva evidencia pero nunca habilita aplicación',async()=>{
+ const f=await journalFixture(),raw={...f.receipt,estado:'CONFLICTO_NC_NO_APLICAR'}
+ expect(validateFiscalCreditConsultation(raw,f.body,f.intent)).toMatchObject({estado:'CONFLICTO_NC_NO_APLICAR',reintegro_habilitado:false,reposicion_habilitada:false})
+ for(const codigo of ['SIN_CONFIRMACION','RESPUESTA_INVALIDA','ASOCIACION_INCOMPLETA','DATOS_DISTINTOS']){
+  const value={...raw,observacion:{...raw.observacion,resultado:{estado:'CONCILIAR',codigo,puedeReenviar:false}}}
+  if(codigo==='DATOS_DISTINTOS')expect(validateFiscalCreditConsultation(value,f.body,f.intent).estado).toBe('CONFLICTO_NC_NO_APLICAR')
+  else expect(()=>validateFiscalCreditConsultation(value,f.body,f.intent)).toThrow()
+ }
+})

@@ -55,7 +55,7 @@ export async function reconcileFiscalCreditOperation(deps:FiscalCreditConsultDep
   }catch{/* Otra ejecución pudo registrar resultado. Recuperar antes de concluir. */}
   const confirmed=await read();if(!confirmed)return fail()
   const actual=observation?.resultado,stored=confirmed.observacion.resultado
-  if(actual?.estado==='AUTORIZACION_NC_COINCIDENTE'&&(stored.estado!=='AUTORIZACION_NC_COINCIDENTE'||actual.cae!==stored.cae||actual.vencimiento!==stored.vencimiento||actual.solicitudSha256!==stored.solicitudSha256))return fail()
+  if(confirmed.estado!=='CONFLICTO_NC_NO_APLICAR'&&actual?.estado==='AUTORIZACION_NC_COINCIDENTE'&&(stored.estado!=='AUTORIZACION_NC_COINCIDENTE'||actual.cae!==stored.cae||actual.vencimiento!==stored.vencimiento||actual.solicitudSha256!==stored.solicitudSha256))return fail()
   return confirmed
  }catch{return fail()}finally{clearTimeout(timer);controller.abort()}
 }

@@ -1510,11 +1510,35 @@ try {
   assert.equal((await nc047_afterRollback).value.estado,'CAE_NC_REGISTRADO_NO_APLICADO');await b.query('COMMIT')
   assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_autorizaciones_homologacion WHERE solicitud_id=$1',[nc047_rollback.proposal.id])).rows[0].n,1)
   cases.push('047_rollback_no_deja_autorizacion_fantasma_ni_pierde_ACK_recuperable')
+  const creditConflictInstalledAfterCase=cases.length
+  for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/048_fiscal_credit_conflicts.sql'),'utf8'))
+  const nc048Gate=async(client,f)=>client.query('SELECT exigir_nc_sin_conflictos_homologacion($1,$2,$3,$4,$5)',[f.auth,f.sale,f.operation,f.proposal.id,f.proposal.sha])
+  const nc048_pair=await nc047Fixture(241),nc048_second=randomUUID()
+  await start(a);await nc048_pair.write(a,randomUUID())
+  await start(b);const nc048_waiter=capture(nc048_pair.write(b,nc048_second,'22222222222222'));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc048_waiter).value.estado,'CONFLICTO_NC_NO_APLICAR');await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_conflictos_homologacion WHERE solicitud_id=$1',[nc048_pair.proposal.id])).rows[0].n,1)
+  assert.equal((await observer.query('SELECT cae FROM fiscal_nc_autorizaciones_homologacion WHERE solicitud_id=$1',[nc048_pair.proposal.id])).rows[0].cae,'11111111111111')
+  cases.push('048_CAE_contradictorio_tras_espera_conserva_observacion_e_incidencia_sin_reemplazar_CAE')
+  const nc048_block=await nc047Fixture(242)
+  await start(a);await nc048_block.write(a,randomUUID());await a.query('COMMIT')
+  await start(a);await nc048_block.write(a,randomUUID(),'22222222222222')
+  await start(b);const nc048_gateWaiting=capture(nc048Gate(b,nc048_block));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc048_gateWaiting).error?.code,'55000');await b.query('ROLLBACK')
+  cases.push('048_gate_esperando_conflicto_confirmado_no_permite_aplicar')
+  const nc048_rollback=await nc047Fixture(243)
+  await start(a);await nc048_rollback.write(a,randomUUID());await a.query('COMMIT')
+  await start(a);await nc048_rollback.write(a,randomUUID(),'22222222222222')
+  await start(b);const nc048_gateRollback=capture(nc048Gate(b,nc048_rollback));await waitForLock(observer,b);await a.query('ROLLBACK')
+  assert.equal((await nc048_gateRollback).error,undefined);await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_conflictos_homologacion WHERE solicitud_id=$1',[nc048_rollback.proposal.id])).rows[0].n,0)
+  cases.push('048_rollback_de_conflicto_no_deja_bloqueo_fantasma')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
     creditOwnerReviewInstalledAfterCase,postCreditOwnerReviewCaseCount:cases.length-creditOwnerReviewInstalledAfterCase,
+    creditConflictInstalledAfterCase,postCreditConflictCaseCount:cases.length-creditConflictInstalledAfterCase,
     creditConsultJournalInstalledAfterCase,postCreditConsultJournalCaseCount:cases.length-creditConsultJournalInstalledAfterCase,
     creditConsultTicketInstalledAfterCase,postCreditConsultTicketCaseCount:cases.length-creditConsultTicketInstalledAfterCase,
     creditConsultSourceInstalledAfterCase,postCreditConsultSourceCaseCount:cases.length-creditConsultSourceInstalledAfterCase,
