@@ -1,3 +1,4 @@
+import { validateFiscalCreditSendSource } from '../../supabase/functions/_shared/fiscalCreditSendSource'
 import { validateFiscalRepresentation } from '../../supabase/functions/_shared/fiscalRepresentation'
 import { prepareFiscalCreditDraft } from '../../supabase/functions/_shared/fiscalCreditDraft'
 import type { FiscalCreditDraft, FiscalCreditDraftInput } from '../../supabase/functions/_shared/fiscalCreditDraft'
@@ -1815,6 +1816,7 @@ it('043 fuente de envío exige permiso exacto y entrega finalidad NC propia sin 
  const f=await creditSendSourceFixture(),before=await preparationEffects();await denied(()=>f.load());await f.seed()
  const result=await f.load();expect(result.binding).toMatchObject({version:1,entorno:'HOMOLOGACION',servicio:'wsfe',finalidad:'ENVIO_NC',actor_auth_id:actor,solicitud_id:f.proposal.datos.solicitud_id,solicitud_sha256:f.body.sha256,permiso_id:f.permit,revision_id:f.reviewId,numero:23,tipo_comprobante:13,emision_habilitada:false})
  expect(result.binding).not.toHaveProperty('operacion_id');expect(result.binding.revision_parametros).toBeTypeOf('number')
+ const validated=await validateFiscalCreditSendSource(result,f.source,f.proposal,actor);expect(validated.binding).toEqual(result.binding);expect(validated.cuerpo.sha256).toBe(f.body.sha256)
  expect(await f.readIntent()).toBeNull();expect(await f.load()).toEqual(result);expect(await preparationEffects()).toEqual(before)
 })
 it('043 intención existente impide obtener nueva fuente de envío; historia sigue recuperable',async()=>{
