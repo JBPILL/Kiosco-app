@@ -63,3 +63,11 @@ it('timeout cubre también un cuerpo detenido y aborta una única solicitud',asy
   expect((await promise).error).not.toBeNull();expect(fetcher).toHaveBeenCalledTimes(1)
   expect((fetcher.mock.calls[0][0] as Request).signal.aborted).toBe(true)
 })
+
+it.each(['cargar_intencion_nc_homologacion', 'cargar_fuente_consulta_nc_homologacion', 'coordinar_ta_consulta_nc_homologacion', 'cargar_consulta_nc_homologacion', 'cargar_autorizacion_nc_homologacion', 'registrar_consulta_nc_homologacion'])('SDK permite sólo RPC de consulta NC %s en Staging fijo',async name=>{
+ const fetcher=vi.fn<typeof fetch>(async input=>{expect((input as Request).url).toBe(FISCAL_STAGING_URL+'/rest/v1/rpc/'+name);return Response.json(null)})
+ expect((await createFiscalSupabaseAdmin(FISCAL_STAGING_URL,secret,fetcher).rpc(name,{})).error).toBeNull();expect(fetcher).toHaveBeenCalledTimes(1)
+})
+it.each(['registrar_intencion_nc_homologacion','verificar_permiso_nc_homologacion','cargar_fuente_envio_nc_homologacion'])('consulta no habilita RPC de emisión %s',async name=>{
+ const fetcher=vi.fn<typeof fetch>();await expect(createFiscalSupabaseAdmin(FISCAL_STAGING_URL,secret,fetcher).rpc(name,{})).rejects.toThrow();expect(fetcher).not.toHaveBeenCalled()
+})
