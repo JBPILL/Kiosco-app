@@ -7,6 +7,10 @@ export function casosNotasCreditoHomologacionActivos(): boolean {
   return revisionFiscalHomologacionActiva()
     && import.meta.env.VITE_KIOSKO_ARCA_CASOS_NC_HOMO === 'true'
 }
+export function aplicacionNotasCreditoHomologacionActiva(): boolean {
+  return casosNotasCreditoHomologacionActivos()
+    && import.meta.env.VITE_KIOSKO_ARCA_APLICACION_NC_HOMO === 'true'
+}
 export function envasesTransaccionalesActivos(): boolean {
   return import.meta.env.VITE_KIOSKO_PILOT_STRICT_SCOPE === 'true'
     && import.meta.env.VITE_CHECKOUT_MANUAL_TRANSACCIONAL === 'true'

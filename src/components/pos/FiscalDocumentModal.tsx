@@ -18,12 +18,12 @@ import type { FiscalClient, FiscalClientScope } from '../../lib/fiscalClient'
 import type { FiscalPreparationContext, FiscalPreparationInput, FiscalSaleResolution } from '../../../supabase/functions/_shared/fiscalPreparationContract'
 import type { FiscalOwnerReview } from '../../../supabase/functions/_shared/fiscalOwnerReview'
 
-interface Props { isOpen: boolean; onClose: () => void; scope: FiscalClientScope; client?: FiscalClient }
+interface Props { isOpen: boolean; onClose: () => void; scope: FiscalClientScope; client?: FiscalClient;onCommercialRecorded?:()=>void }
 export function FiscalDocumentModal(props: Props) {
   if (!props.isOpen) return null
   return <DocumentBody key={`${props.scope.authId}:${props.scope.kioskId}:${props.scope.saleId}`} {...props} />
 }
-function DocumentBody({ onClose, scope, client: provided }: Props) {
+function DocumentBody({ onClose, scope, client: provided,onCommercialRecorded }: Props) {
   const { authId, kioskId, saleId } = scope
   const [loadedClient, setClient] = useState<FiscalClient | null>(null)
   const client = provided ?? loadedClient
@@ -290,7 +290,7 @@ function DocumentBody({ onClose, scope, client: provided }: Props) {
       {!busy && resolution?.estado === 'AUTORIZADA' && !receipt && <p role="status">La operación figura autorizada en el servidor. Falta recuperar su constancia fiscal; no se iniciará otra preparación.</p>}
       {!busy && receipt && <FiscalReceiptPanel receipt={receipt} />}
       {!busy && receipt && client && <FiscalRepresentationExport client={client} receipt={receipt} />}
-      {!busy && receipt && client && casosNotasCreditoHomologacionActivos() && <FiscalCreditCasesPanel client={client} receipt={receipt} />}
+      {!busy && receipt && client && casosNotasCreditoHomologacionActivos() && <FiscalCreditCasesPanel client={client} receipt={receipt} kioskId={kioskId} onCommercialRecorded={onCommercialRecorded} />}
       {!busy&&review?.estado==='RESERVADA'&&presentationContext&&!presentation&&!review.aprobacion&&!correcting&&!hasPendingReplacement&&!hasPendingObservation&&!reconciling&&!replacing&&<FiscalPresentationForm key={`${review.operacion_id}:${review.solicitud.sha256}`} context={presentationContext} disabled={saving} onSave={savePresentation}/>}
       {!busy && review && client && (review.estado!=='RESERVADA'||presentation) && !correcting && !hasPendingReplacement && !hasPendingObservation && !reconciling && !replacing && <FiscalOwnerReviewPanel review={review} presentation={presentation??undefined} approvalId={approvalId} onApprove={command => {if(!presentation)throw new Error('FISCAL_REPRESENTACION_REQUERIDA');return client.approvePresentation(review,presentation,command.id)}} />}
       {!busy && client && canCorrectRejected && !correcting && !hasPendingReplacement && !hasPendingObservation && <Button variant="secondary" disabled={reconciling} loading={replacing} onClick={() => { void beginCorrection() }}>Corregir datos del comprobante rechazado</Button>}

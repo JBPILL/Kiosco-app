@@ -792,3 +792,7 @@ Separar aplicación SQL052 de emisión/consulta ARCA. Recuperar ACK durable ante
 
 ### 26/10/2026 — Lectura de aplicación NC independiente de caja actual
 APLICACION_NC identifica caso/hash y devuelve caja histórica del diario; no exige seleccionar caja ni activa mutación por ausencia. APLICAR_NC exige caja explícita e invariantes privados. Pendiente del cliente conserva caja/caso/hash, sólo GET confirma y retry requiere decisión explícita; otras mutaciones NC se bloquean hasta resolver pendiente. Sin autoridad remota nueva ni acción de envío fiscal.
+
+
+### 26/10/2026 — Estado NC visible y recuperación sin repetir efectos
+Un borrador histórico no acredita ausencia de emisión: la UI muestra estado sin consultar hasta evidencia durable de aplicación. Nueva solicitud requiere caja del comercio y confirmación explícita; recuperación conserva caja original y no requiere caja actual/historial cargado. Pendiente ilegible bloquea escrituras. Después de confirmar sólo refrescar lecturas de productos/caja/historial; fallo de refresco no revierte confirmación ni habilita reintegro nuevo. UI bajo VITE_KIOSKO_ARCA_APLICACION_NC_HOMO y gates subordinados, default cerrado; autoridad fiscal sigue en servicio/SQL.

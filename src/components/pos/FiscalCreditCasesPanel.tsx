@@ -3,6 +3,9 @@ import { Button } from '../ui/Button'
 import { FiscalCreditSourcePanel } from './FiscalCreditSourcePanel'
 import { FiscalCreditContextPanel } from './FiscalCreditContextPanel'
 import { FiscalCreditPreparationPanel } from './FiscalCreditPreparationPanel'
+import { FiscalCreditCommercialPanel } from './FiscalCreditCommercialPanel'
+import { aplicacionNotasCreditoHomologacionActiva } from '../../lib/pilotExpansion'
+import { useCajaStore } from '../../stores/cajaStore'
 import { prepareFiscalCreditDraft } from '../../../supabase/functions/_shared/fiscalCreditDraft'
 import type { FiscalCreditDraftInput } from '../../../supabase/functions/_shared/fiscalCreditDraft'
 import { validateFiscalCreditDraftAck } from '../../../supabase/functions/_shared/fiscalCreditDraftAck'
@@ -14,14 +17,16 @@ import { validateFiscalCreditHistory } from '../../../supabase/functions/_shared
 import { fiscalCreditHistoryWire } from '../../../supabase/functions/_shared/fiscalCreditHistory'
 import type { FiscalCreditHistoryCase } from '../../../supabase/functions/_shared/fiscalCreditHistory'
 
-interface Props { client: Pick<FiscalClient, 'credits' | 'representation'>; receipt: Readonly<FiscalReceipt> }
+interface Props { client: Pick<FiscalClient, 'credits' | 'representation'>; receipt: Readonly<FiscalReceipt>; kioskId?:string;onCommercialRecorded?:()=>void }
 const money = (value: string): string => `$ ${value.replace('.', ',')}`
 const date = (value: string): string => `${value.slice(6, 8)}/${value.slice(4, 6)}/${value.slice(0, 4)}`
 export function FiscalCreditCasesPanel(props: Props) {
   const r = props.receipt
   return <CasesBody key={`${r.venta_id}:${r.operacion_id}:${r.solicitud.sha256}:${r.autorizacion.cae}`} {...props} />
 }
-function CasesBody({ client, receipt }: Props) {
+function CasesBody({ client, receipt,kioskId,onCommercialRecorded }: Props) {
+  const cash=useCajaStore(state=>state.sesionActiva),commercialEnabled=aplicacionNotasCreditoHomologacionActiva()&&!!kioskId
+  const [applied,setApplied]=useState<ReadonlySet<string>>(new Set()),[commercialPending,setCommercialPending]=useState(()=>{if(!commercialEnabled)return false;try{return client.credits.commercial.pending()!==null}catch{return true}})
   const [source, setSource] = useState<Readonly<FiscalRepresentation> | null>(null)
   const [rows, setRows] = useState<readonly Readonly<FiscalCreditHistoryCase>[]>([])
   const [next, setNext] = useState<number | null>(null)
@@ -33,6 +38,7 @@ function CasesBody({ client, receipt }: Props) {
   const [target, setTarget] = useState<Readonly<PendingFiscalCredit> | null>(null)
   const [confirmed, setConfirmed] = useState(false)
   const alive = useRef(true), running = useRef(false)
+  function notifyRecorded(){try{onCommercialRecorded?.()}catch{setMessage(previous=>previous+' Actualizá la vista de stock y caja; la devolución sigue registrada.')}}
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
   function localPending(): Readonly<PendingFiscalCredit> | null {
     const value = client.credits.pending()
@@ -116,11 +122,12 @@ function CasesBody({ client, receipt }: Props) {
   function choose(value: Readonly<PendingFiscalCredit>): void { setTarget(value); setConfirmed(false); setMessage('') }
   return <section aria-label="Casos de notas de crédito" className="rounded-lg border p-4 space-y-3">
     <h3 className="font-bold">Notas de crédito de homologación</h3>
-    <p className="text-sm">Estos casos todavía no son notas de crédito autorizadas. El efectivo y la reposición sólo se habilitarán después de la confirmación de ARCA.</p>
+    <p className="text-sm">Guardar o revisar un caso no acredita una NC autorizada. La devolución requiere confirmación de ARCA y un registro comercial confirmado.</p>
     <Button type="button" variant="secondary" loading={busy} onClick={() => { void refresh() }}>Consultar casos guardados</Button>
     {error && <p role="alert">{error}</p>}
     {message && <p role="status">{message}</p>}
-    {source && <FiscalCreditSourcePanel source={source} client={client.credits} disabled={busy || !!pending || !!target}
+    {commercialEnabled&&commercialPending&&<div className="rounded-lg border p-3 space-y-2" aria-label="Aplicación NC pendiente en este equipo"><p>Este equipo conserva una aplicación pendiente. Consultar o recuperar no vuelve a registrar efectivo.</p><Button type="button" variant="secondary" disabled={busy} onClick={()=>{void execute(async()=>{const result=await client.credits.commercial.recover();if(!result||result.venta_id!==receipt.venta_id||result.operacion_origen_id!==receipt.operacion_id||result.kiosco_id!==kioskId)throw new Error('SCOPE');if(alive.current){setApplied(previous=>new Set([...previous,result.id]));setCommercialPending(false);setMessage(`Devolución registrada: ${money(result.importe)}. No repitas el reintegro.`);notifyRecorded()}})}}>Recuperar registro comercial pendiente</Button></div>}
+    {source && <FiscalCreditSourcePanel source={source} client={client.credits} disabled={busy || !!pending || !!target || commercialPending}
       onSave={loaded && next === null ? input => saveCase(source, input) : undefined} />}
     {pending && <div className="rounded-lg border p-3 space-y-2" aria-label="Intento NC pendiente">
       <p>Este equipo conserva {pending.intention === 'CANCELAR' ? 'una cancelación' : 'un guardado'} pendiente de confirmación.</p>
@@ -130,15 +137,16 @@ function CasesBody({ client, receipt }: Props) {
     {loaded && rows.length === 0 && <p role="status">No hay casos guardados en esta factura. Una consulta vacía no cancela un intento pendiente.</p>}
     {rows.map(row => <article key={row.acuse.solicitud_id} className="rounded-lg border p-3 space-y-2" aria-label={`Caso ${row.secuencia}`}>
       <div className="flex justify-between gap-3"><h4 className="font-bold">Caso {row.secuencia} · {date(row.propuesta.datos.fecha)}</h4><strong>{money(row.propuesta.datos.importes.total)}</strong></div>
-      <p>{row.acuse.estado === 'CANCELADA' ? 'Cancelado · historial conservado' : 'Guardado · sin emitir'}</p>
+      <p>{row.acuse.estado === 'CANCELADA' ? 'Cancelado · historial conservado' : applied.has(row.acuse.solicitud_id)?'NC confirmada · devolución registrada':'Caso guardado · estado fiscal sin consultar'}</p>
       <p>{row.propuesta.datos.motivo}</p>
-      {row.acuse.estado === 'SALDO_RESERVADO_NO_EMITIR' && source && !busy && !pending && !target && <FiscalCreditContextPanel source={source} proposal={row.propuesta} client={client.credits} sequence={row.secuencia} />}
-      {row.acuse.estado === 'SALDO_RESERVADO_NO_EMITIR' && source && !busy && !pending && !target && <FiscalCreditPreparationPanel source={source} proposal={row.propuesta} client={client.credits} reviewClient={client.credits} numberClient={client.credits} sequence={row.secuencia} onCancelled={() => {
+      {row.acuse.estado === 'SALDO_RESERVADO_NO_EMITIR' && source && !busy && !pending && !target && !commercialPending && !applied.has(row.acuse.solicitud_id) && <FiscalCreditContextPanel source={source} proposal={row.propuesta} client={client.credits} sequence={row.secuencia} />}
+      {row.acuse.estado === 'SALDO_RESERVADO_NO_EMITIR' && source && !busy && !pending && !target && !commercialPending && !applied.has(row.acuse.solicitud_id) && <FiscalCreditPreparationPanel source={source} proposal={row.propuesta} client={client.credits} reviewClient={client.credits} numberClient={client.credits} sequence={row.secuencia} onCancelled={() => {
         setRows(previous => previous.map(item => item.acuse.solicitud_id === row.acuse.solicitud_id ? { ...item, acuse: { ...item.acuse, estado: 'CANCELADA' } } : item))
         setMessage('Cancelación confirmada. Se conserva el historial del caso y de su preparación.')
       }} />}
-      <details><summary>Detalle del caso</summary><ul>{row.propuesta.datos.lineas.map(line => <li key={line.detalle_id}>{source?.hechos.datos.lineas.find(item => item.detalle_id === line.detalle_id)?.descripcion ?? 'Artículo histórico'} · {line.cantidad.replace('.', ',')} · {money(line.importe)} · {line.reingresa_stock ? 'Reposición solicitada, aún sin aplicar' : 'Sin reposición solicitada'}</li>)}</ul><p className="break-all">Referencia {row.acuse.solicitud_id}</p></details>
-      {latestActive === row && !pending && <Button type="button" variant="secondary" disabled={busy} onClick={() => choose({ version: 1, operationId: row.acuse.operacion_origen_id, requestId: row.acuse.solicitud_id, sha256: row.acuse.propuesta_sha256, intention: 'CANCELAR' })}>Solicitar cancelación del caso {row.secuencia}</Button>}
+      {commercialEnabled&&kioskId&&row.acuse.estado!=='CANCELADA'&&!applied.has(row.acuse.solicitud_id)&&<FiscalCreditCommercialPanel client={client.credits.commercial} target={{saleId:receipt.venta_id,operationId:row.acuse.operacion_origen_id,requestId:row.acuse.solicitud_id,sha256:row.acuse.propuesta_sha256}} kioskId={kioskId} amount={row.propuesta.datos.importes.total} restocks={row.propuesta.datos.lineas.some(line=>line.reingresa_stock)} cash={cash} disabled={busy||!!pending||!!target} onPendingChange={setCommercialPending} onRecorded={()=>{setApplied(previous=>new Set([...previous,row.acuse.solicitud_id]));setMessage(`Devolución registrada: ${money(row.propuesta.datos.importes.total)}. No repitas el reintegro.`);notifyRecorded()}}/>}
+      <details><summary>Detalle del caso</summary><ul>{row.propuesta.datos.lineas.map(line => <li key={line.detalle_id}>{source?.hechos.datos.lineas.find(item => item.detalle_id === line.detalle_id)?.descripcion ?? 'Artículo histórico'} · {line.cantidad.replace('.', ',')} · {money(line.importe)} · {line.reingresa_stock ? 'Reposición solicitada' : 'Sin reposición solicitada'}</li>)}</ul><p className="break-all">Referencia {row.acuse.solicitud_id}</p></details>
+      {latestActive === row && !pending && !commercialPending && !applied.has(row.acuse.solicitud_id) && <Button type="button" variant="secondary" disabled={busy} onClick={() => choose({ version: 1, operationId: row.acuse.operacion_origen_id, requestId: row.acuse.solicitud_id, sha256: row.acuse.propuesta_sha256, intention: 'CANCELAR' })}>Solicitar cancelación del caso {row.secuencia}</Button>}
     </article>)}
     {next !== null && source && <Button type="button" variant="secondary" disabled={busy} onClick={() => { void execute(() => history(source, next)) }}>Ver más casos</Button>}
     {target && <div className="rounded-lg border p-3 space-y-2" aria-label="Confirmar cancelación NC">

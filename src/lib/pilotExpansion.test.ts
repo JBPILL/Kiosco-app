@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { casosNotasCreditoHomologacionActivos, devolucionesEfectivoActivas, envasesTransaccionalesActivos } from './pilotExpansion'
+import { aplicacionNotasCreditoHomologacionActiva, casosNotasCreditoHomologacionActivos, devolucionesEfectivoActivas, envasesTransaccionalesActivos } from './pilotExpansion'
 
 afterEach(() => vi.unstubAllEnvs())
 it.each([
@@ -25,4 +25,8 @@ it('habilita capacidades por separado sin apagar strict', () => {
 it.each([['false','true','true',false],['true','false','true',false],['true','true','',false],['true','true','TRUE',false],['true','true','true',true]] as const)('casos NC requieren strict/revisión/flag propio %s/%s/%s', (strict,revision,credit,expected) => {
  vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE',strict);vi.stubEnv('VITE_KIOSKO_ARCA_REVISION_HOMO',revision);vi.stubEnv('VITE_KIOSKO_ARCA_CASOS_NC_HOMO',credit)
  expect(casosNotasCreditoHomologacionActivos()).toBe(expected)
+})
+
+it.each([['true','true','true','true',true],['false','true','true','true',false],['true','false','true','true',false],['true','true','false','true',false],['true','true','true','',false],['true','true','true','TRUE',false]] as const)('aplicación NC requiere todos sus gates %s/%s/%s/%s',(strict,review,cases,apply,expected)=>{
+ vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE',strict);vi.stubEnv('VITE_KIOSKO_ARCA_REVISION_HOMO',review);vi.stubEnv('VITE_KIOSKO_ARCA_CASOS_NC_HOMO',cases);vi.stubEnv('VITE_KIOSKO_ARCA_APLICACION_NC_HOMO',apply);expect(aplicacionNotasCreditoHomologacionActiva()).toBe(expected)
 })

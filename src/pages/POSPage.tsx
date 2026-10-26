@@ -991,6 +991,7 @@ export function POSPage() {
 
       {/* Modal de historial de comprobantes y reimpresión */}
       <HistorialTicketsModal
+        onOperacionRegistrada={() => { refrescarProductosVista(); void useCajaStore.getState().cargarResumenSesion() }}
         isOpen={modalTicketsOpen}
         onClose={() => setModalTicketsOpen(false)}
         onIniciarDevolucion={(v) => {

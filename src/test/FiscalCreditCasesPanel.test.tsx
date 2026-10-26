@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { FiscalCreditCasesPanel } from '../components/pos/FiscalCreditCasesPanel'
 import { fiscalCreditUnitsFixture } from './fixtures/fiscalCreditUnits'
 import { validateFiscalCreditCommercialSource } from '../../supabase/functions/_shared/fiscalCreditCommercialSource'
@@ -14,7 +14,7 @@ import type { FiscalCreditClient, PendingFiscalCredit } from '../lib/fiscalCredi
 async function fixture() {
   const f = await fiscalCreditUnitsFixture(), page = await validateFiscalCreditHistory(f.page, f.source, 0)
   let pending: Readonly<PendingFiscalCredit> | null = null
-  const credits = { commercial: {pending:vi.fn(()=>null),status:vi.fn<FiscalCreditClient['commercial']['status']>(async()=>null),recover:vi.fn<FiscalCreditClient['commercial']['recover']>(async()=>null),apply:vi.fn<FiscalCreditClient['commercial']['apply']>(),retry:vi.fn<FiscalCreditClient['commercial']['retry']>()}, pendingNumber: vi.fn(() => null), body: vi.fn(), number: vi.fn(), recoverNumber: vi.fn(), retryNumber: vi.fn(), pendingReview: vi.fn(() => null), review: vi.fn(), recoverReview: vi.fn(), approveReview: vi.fn(), retryReview: vi.fn(), pendingPreparation: vi.fn(() => null), recoverPreparation: vi.fn(), savePreparation: vi.fn(), preparation: vi.fn<FiscalCreditClient['preparation']>(async () => null), context: vi.fn<FiscalCreditClient['context']>(), units: vi.fn<FiscalCreditClient['units']>(async () => validateFiscalCreditUnits(f.packet, f.source, f.commercial)), commercialSource: vi.fn<FiscalCreditClient['commercialSource']>(async () => validateFiscalCreditCommercialSource(f.commercial, f.source)),
+  const credits = { commercial: {pending:vi.fn<FiscalCreditClient['commercial']['pending']>(()=>null),status:vi.fn<FiscalCreditClient['commercial']['status']>(async()=>null),recover:vi.fn<FiscalCreditClient['commercial']['recover']>(async()=>null),apply:vi.fn<FiscalCreditClient['commercial']['apply']>(),retry:vi.fn<FiscalCreditClient['commercial']['retry']>()}, pendingNumber: vi.fn(() => null), body: vi.fn(), number: vi.fn(), recoverNumber: vi.fn(), retryNumber: vi.fn(), pendingReview: vi.fn(() => null), review: vi.fn(), recoverReview: vi.fn(), approveReview: vi.fn(), retryReview: vi.fn(), pendingPreparation: vi.fn(() => null), recoverPreparation: vi.fn(), savePreparation: vi.fn(), preparation: vi.fn<FiscalCreditClient['preparation']>(async () => null), context: vi.fn<FiscalCreditClient['context']>(), units: vi.fn<FiscalCreditClient['units']>(async () => validateFiscalCreditUnits(f.packet, f.source, f.commercial)), commercialSource: vi.fn<FiscalCreditClient['commercialSource']>(async () => validateFiscalCreditCommercialSource(f.commercial, f.source)),
     pending: vi.fn(() => pending), save: vi.fn<FiscalCreditClient['save']>(),
     history: vi.fn<FiscalCreditClient['history']>(async () => page),
     recover: vi.fn<FiscalCreditClient['recover']>(async () => null),
@@ -31,9 +31,9 @@ it('consulta explícita muestra caso histórico sin presentar reserva como CAE n
   const f = await fixture(); render(<FiscalCreditCasesPanel {...f.props} />)
   expect(f.client.representation).not.toHaveBeenCalled(); expect(f.credits.history).not.toHaveBeenCalled()
   f.consult(); await screen.findByRole('article', { name: 'Caso 1' })
-  expect(screen.getByText('Guardado · sin emitir')).toBeTruthy()
+  expect(screen.getByText('Caso guardado · estado fiscal sin consultar')).toBeTruthy()
   expect(screen.getByText('Devolución sintética')).toBeTruthy()
-  expect(screen.getByText('Reposición solicitada, aún sin aplicar', { exact: false })).toBeTruthy()
+  expect(screen.getByText('Reposición solicitada', { exact: false })).toBeTruthy()
   expect(f.credits.save).not.toHaveBeenCalled(); expect(f.credits.cancel).not.toHaveBeenCalled()
 })
 it('caso activo integra consulta de contexto y abrir cancelación retira el resultado',async()=>{
@@ -69,7 +69,7 @@ it('captura integrada confirma ACK exacto y recarga historial sin anunciar CAE n
   fireEvent.submit(screen.getByRole('form', { name: 'Preparar caso NC' }))
   await screen.findByText('Caso guardado y confirmado.', { exact: false })
   await screen.findByText('Caso explícito'); expect(f.credits.save).toHaveBeenCalledTimes(1)
-  expect(screen.getByText('Guardado · sin emitir')).toBeTruthy()
+  expect(screen.getByText('Caso guardado · estado fiscal sin consultar')).toBeTruthy()
 })
 it('guardado incierto muestra pendiente recuperable y excluye otro envío de formulario', async () => {
   const f = await fixture(); await openDraft(f)
@@ -210,4 +210,23 @@ it('pendiente corrupto o de otra operación bloquea consulta y se conserva sin s
   f.credits.pending.mockImplementation(() => { throw new Error('SYNTHETIC_CORRUPT_STORAGE') }); f.consult()
   expect((await screen.findByRole('alert')).textContent).not.toContain('SYNTHETIC_CORRUPT_STORAGE')
   expect(f.client.representation).not.toHaveBeenCalled()
+})
+
+afterEach(()=>vi.unstubAllEnvs())
+it('aplicación comercial no aparece con flag propio cerrado',async()=>{
+ vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE','true');vi.stubEnv('VITE_KIOSKO_ARCA_REVISION_HOMO','true');vi.stubEnv('VITE_KIOSKO_ARCA_CASOS_NC_HOMO','true');vi.stubEnv('VITE_KIOSKO_ARCA_APLICACION_NC_HOMO','false')
+ const f=await fixture();render(<FiscalCreditCasesPanel {...f.props} kioskId={f.scope.kioskId}/>);f.consult();await screen.findByRole('article',{name:'Caso 1'});expect(screen.queryByRole('region',{name:'Aplicación comercial de la nota de crédito'})).toBeNull();expect(screen.queryByRole('button',{name:'Consultar devolución registrada'})).toBeNull();expect(f.credits.commercial.status).not.toHaveBeenCalled()
+})
+it('estado comercial confirmado oculta preparación y cancelación de ese caso',async()=>{
+ vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE','true');vi.stubEnv('VITE_KIOSKO_ARCA_REVISION_HOMO','true');vi.stubEnv('VITE_KIOSKO_ARCA_CASOS_NC_HOMO','true');vi.stubEnv('VITE_KIOSKO_ARCA_APLICACION_NC_HOMO','true')
+ const f=await fixture(),line=f.proposal.datos.lineas[0],onCommercialRecorded=vi.fn()
+ f.credits.commercial.status.mockResolvedValue({version:1,estado:'APLICACION_NC_REGISTRADA',id:f.input.solicitud_id,venta_id:f.sale,operacion_origen_id:f.operation,solicitud_sha256:'b'.repeat(64),kiosco_id:f.scope.kioskId,sesion_caja_id:crypto.randomUUID(),importe:f.proposal.datos.importes.total,detalles:[{detalle_id:line.detalle_id,producto_id:f.product,tipo:'PRODUCTO',cantidad:line.cantidad,importe:line.importe,reingresa_stock:line.reingresa_stock}],stock:[],emision_habilitada:false,nuevo_reintegro:false})
+ render(<FiscalCreditCasesPanel {...f.props} kioskId={f.scope.kioskId} onCommercialRecorded={onCommercialRecorded}/>);f.consult();await screen.findByRole('article',{name:'Caso 1'});expect(f.credits.commercial.status).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:'Consultar devolución registrada'}));await screen.findByText('NC confirmada · devolución registrada');expect(onCommercialRecorded).toHaveBeenCalledTimes(1);expect(screen.queryByRole('button',{name:'Solicitar cancelación del caso 1'})).toBeNull();expect(screen.queryByRole('button',{name:'Solicitar registro de devolución'})).toBeNull()
+})
+it('recuperación comercial pendiente no depende de cargar historial ni caja actual',async()=>{
+ vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE','true');vi.stubEnv('VITE_KIOSKO_ARCA_REVISION_HOMO','true');vi.stubEnv('VITE_KIOSKO_ARCA_CASOS_NC_HOMO','true');vi.stubEnv('VITE_KIOSKO_ARCA_APLICACION_NC_HOMO','true')
+ const f=await fixture(),line=f.proposal.datos.lineas[0],cashId=crypto.randomUUID(),onCommercialRecorded=vi.fn(()=>{throw new Error('REFRESH_FAILED')})
+ f.credits.commercial.pending.mockReturnValue({version:1,operationId:f.operation,requestId:f.input.solicitud_id,sha256:f.proposal.sha256,cashId})
+ f.credits.commercial.recover.mockImplementation(async()=>{f.credits.commercial.pending.mockReturnValue(null);return{version:1,estado:'APLICACION_NC_REGISTRADA',id:f.input.solicitud_id,venta_id:f.sale,operacion_origen_id:f.operation,solicitud_sha256:'b'.repeat(64),kiosco_id:f.scope.kioskId,sesion_caja_id:cashId,importe:f.proposal.datos.importes.total,detalles:[{detalle_id:line.detalle_id,producto_id:f.product,tipo:'PRODUCTO',cantidad:line.cantidad,importe:line.importe,reingresa_stock:line.reingresa_stock}],stock:[],emision_habilitada:false,nuevo_reintegro:false}})
+ render(<FiscalCreditCasesPanel {...f.props} kioskId={f.scope.kioskId} onCommercialRecorded={onCommercialRecorded}/>);fireEvent.click(await screen.findByRole('button',{name:'Recuperar registro comercial pendiente'}));await screen.findByText(/Devolución registrada:.*No repitas/);expect(onCommercialRecorded).toHaveBeenCalledTimes(1);expect(screen.queryByRole('alert')).toBeNull();expect(f.client.representation).not.toHaveBeenCalled();expect(f.credits.history).not.toHaveBeenCalled();expect(f.credits.commercial.apply).not.toHaveBeenCalled();expect(f.credits.commercial.retry).not.toHaveBeenCalled();expect(screen.queryByRole('button',{name:'Recuperar registro comercial pendiente'})).toBeNull()
 })

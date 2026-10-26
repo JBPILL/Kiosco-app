@@ -19,6 +19,7 @@ interface HistorialTicketsModalProps {
   isOpen: boolean
   onClose: () => void
   onIniciarDevolucion?: (venta: VentaConDetalles) => void
+  onOperacionRegistrada?: () => void
 }
 
 const MEDIOS_FILTRO = [
@@ -34,6 +35,7 @@ export function HistorialTicketsModal({
   isOpen,
   onClose: cerrarPadre,
   onIniciarDevolucion,
+  onOperacionRegistrada,
 }: HistorialTicketsModalProps) {
   const { usuario, kiosco } = useAuthStore()
   const { obtenerUltimasVentas } = useDevolucionStore()
@@ -577,7 +579,7 @@ export function HistorialTicketsModal({
       )}
 
       {/* Visor de comprobante para impresión térmica y WhatsApp */}
-      {isOpen && ventaFiscal && puedeRevisarFiscal && usuario?.auth_user_id && usuario.kiosco_id && <FiscalDocumentModal isOpen onClose={() => setVentaFiscal(null)} scope={{ authId: usuario.auth_user_id, kioskId: usuario.kiosco_id, saleId: ventaFiscal.id }} />}
+      {isOpen && ventaFiscal && puedeRevisarFiscal && usuario?.auth_user_id && usuario.kiosco_id && <FiscalDocumentModal isOpen onClose={() => setVentaFiscal(null)} scope={{ authId: usuario.auth_user_id, kioskId: usuario.kiosco_id, saleId: ventaFiscal.id }} onCommercialRecorded={() => { void cargarVentas().catch(() => toast.error('La devolución sigue registrada. Actualizá el historial para ver los datos recientes.')); onOperacionRegistrada?.() }} />}
       <TicketReceiptModal
         isOpen={Boolean(ticketSeleccionado)}
         onClose={() => setTicketSeleccionado(null)}
