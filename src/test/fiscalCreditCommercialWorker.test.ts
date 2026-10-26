@@ -22,3 +22,10 @@ it('servicio052 captura scope antes de Auth y conserva error sanitizado',async()
  f.rpc.mockImplementation(async(name,args)=>{expect(name).toBe('cargar_aplicacion_comercial_nc_homologacion');expect(args.p_caso).toBe(original);return{data:null,error:new Error('PRIVATE_DIAGNOSTIC')}})
  await expect(applyFiscalCreditCommercialOperation(f.deps,'SYNTHETIC_JWT',mutable,cash)).rejects.toThrow(/^FISCAL_APLICACION_NC_NO_CONFIRMADA$/)
 })
+
+it('servicio052 lectura ausente no consulta flag APPLY ni registra efectos',async()=>{
+ const f=fixture(),{loadFiscalCreditCommercialOperation}=await import('../../supabase/functions/_shared/fiscalCreditCommercialWorker')
+ const readSecret=vi.fn(f.deps.readSecret)
+ expect(await loadFiscalCreditCommercialOperation({...f.deps,readSecret},'SYNTHETIC_JWT',scope)).toBeNull()
+ expect(f.getUser).toHaveBeenCalledTimes(1);expect(f.rpc).toHaveBeenCalledExactlyOnceWith('cargar_aplicacion_comercial_nc_homologacion',{p_actor:actor,p_venta:scope.saleId,p_operacion:scope.operationId,p_caso:scope.requestId,p_sha:scope.sha256});expect(readSecret.mock.calls.some(([key])=>key==='ARCA_HOMO_CREDIT_APPLY_ENABLED')).toBe(false)
+})

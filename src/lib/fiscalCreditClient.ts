@@ -1,3 +1,4 @@
+import { createFiscalCreditCommercialClient } from './fiscalCreditCommercialClient'
 import type { FiscalClientScope } from './fiscalClient'
 import { createFiscalCreditReviewClient } from './fiscalCreditReviewClient'
 import { createFiscalCreditNumberClient } from './fiscalCreditNumberClient'
@@ -98,10 +99,14 @@ export function createFiscalCreditClient(scope: FiscalClientScope, deps: FiscalC
     return result === null ? null : validateFiscalCreditDraftAck(result, identity(record))
   }
   let numberPending: () => boolean = () => false
-  const reviews = createFiscalCreditReviewClient(scope, deps, () => pending() !== null || pendingPreparation() !== null || numberPending())
-  const numbers = createFiscalCreditNumberClient(scope, deps, () => pending() !== null || pendingPreparation() !== null || reviews.pendingReview() !== null)
+  let commercialPending: () => boolean = () => false
+  const reviews = createFiscalCreditReviewClient(scope, deps, () => pending() !== null || pendingPreparation() !== null || numberPending() || commercialPending())
+  const numbers = createFiscalCreditNumberClient(scope, deps, () => pending() !== null || pendingPreparation() !== null || reviews.pendingReview() !== null || commercialPending())
   numberPending = () => numbers.pendingNumber() !== null
+  const commercial = createFiscalCreditCommercialClient(scope, deps, () => pending() !== null || pendingPreparation() !== null || reviews.pendingReview() !== null || numberPending())
+  commercialPending = () => commercial.pending() !== null
   return {
+    commercial,
     ...reviews,
     ...numbers,
     pending,
@@ -130,7 +135,7 @@ export function createFiscalCreditClient(scope: FiscalClientScope, deps: FiscalC
         const record: PendingFiscalCreditPreparation = { version: 1, operationId: original.operacion_id, requestId: checked.datos.solicitud_id,
           proposalSha: checked.sha256, preparationSha: prepared.sha256, contextSha: prepared.datos.contexto_sha256 }
         return await deps.exclusive(async () => {
-          if (pending() || reviews.pendingReview() || numberPending()) return fail()
+          if (pending() || reviews.pendingReview() || numberPending() || commercialPending()) return fail()
           const prior = pendingPreparation()
           if (prior && JSON.stringify(prior) !== JSON.stringify(record)) return fail()
           const before = await readPreparation(original, checked)
@@ -192,7 +197,7 @@ export function createFiscalCreditClient(scope: FiscalClientScope, deps: FiscalC
         const original = structuredClone(source), captured = structuredClone(input)
         if (original.venta_id !== sale) return fail()
         return await deps.exclusive(async () => {
-          if (pendingPreparation() || reviews.pendingReview() || numberPending()) return fail()
+          if (pendingPreparation() || reviews.pendingReview() || numberPending() || commercialPending()) return fail()
           const prior = pending()
           if (prior && (prior.intention !== 'GUARDAR' || prior.operationId !== original.operacion_id)) return fail()
           // Sólo validar forma/hash aquí. Fecha, saldo y elegibilidad finales pertenecen al servidor.
@@ -218,7 +223,7 @@ export function createFiscalCreditClient(scope: FiscalClientScope, deps: FiscalC
         const record: PendingFiscalCredit = { version: 1, operationId, requestId, sha256, intention: 'CANCELAR' }
         return await deps.exclusive(async () => {
           const preparation = pendingPreparation()
-          if (reviews.pendingReview() || numberPending()) return fail()
+          if (reviews.pendingReview() || numberPending() || commercialPending()) return fail()
           if (preparation && (preparation.operationId !== operationId || preparation.requestId !== requestId || preparation.proposalSha !== sha256)) return fail()
           const prior = pending()
           if (prior && (prior.operationId !== operationId || prior.requestId !== requestId || prior.sha256 !== sha256)) return fail()

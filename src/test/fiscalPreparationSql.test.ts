@@ -3255,3 +3255,24 @@ it.each(['normal','ack-resolucion-perdido','ack-aplicacion-perdido','ack-aplicac
  }
  expect(w.load).not.toHaveBeenCalled();expect(w.fetcher).not.toHaveBeenCalled()
 })
+it.each(['normal','recuperacion-cerrada','solo-lectura','rol-cajero'] as const)('cliente→HTTP→SQL052 %s sin ARCA ni ACK como éxito',async mode=>{
+ const f=await creditCommercialApplicationFixture(false),w=workerFixture(),handler=createFiscalHttpHandler({readSecret:w.deps.readSecret,createAdmin:()=>w.admin,fetcher:w.fetcher})
+ const values=new Map<string,string>(),storage={getItem:(key:string)=>values.get(key)??null,setItem:(key:string,value:string)=>{values.set(key,value)}}
+ const send=vi.fn(async(command:Record<string,unknown>)=>{
+  const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify(command)}))
+  if(!response.ok)throw new Error('HTTP_'+response.status)
+  if(command.accion==='APLICAR_NC')throw new Error('LOST_HTTP_ACK')
+  return response.json()
+ })
+ const api=createFiscalClient({authId:actor,kioskId:kid,saleId:sale},{storage,send}).credits.commercial,target={saleId:sale,operationId:op,requestId:f.proposal.datos.solicitud_id,sha256:f.proposal.sha256}
+ if(mode==='solo-lectura'){expect(await api.status(target)).toBeNull();expect(send.mock.calls.map(([c])=>c.accion)).toEqual(['APLICACION_NC']);expect(await f.readApplication()).toBeNull()}
+ else if(mode==='rol-cajero'){await admin("UPDATE usuarios SET rol='CAJERO' WHERE id=$1",[owner]);await expect(api.status(target)).rejects.toThrow();expect(w.rpc.mock.calls.some(([name])=>name==='aplicar_comercial_nc_homologacion')).toBe(false)}
+ else{
+  w.flags.ARCA_HOMO_CREDIT_APPLY_ENABLED='true';const result=await api.apply(target,f.cash);expect(result).toMatchObject({estado:'APLICACION_NC_REGISTRADA',importe:'124.00',sesion_caja_id:f.cash,nuevo_reintegro:false});expect(api.pending()).toBeNull()
+  if(mode==='recuperacion-cerrada'){w.flags.ARCA_HOMO_CREDIT_APPLY_ENABLED='false';await admin("UPDATE sesiones_caja SET estado='CERRADA',fecha_cierre=clock_timestamp() WHERE id=$1",[f.cash]);await admin("UPDATE kioscos SET estado_suscripcion='SUSPENDIDO' WHERE id=$1",[kid])}
+  expect(await api.status(target)).toEqual(result);expect(await api.apply(target,f.cash)).toEqual(result)
+  expect(send.mock.calls.filter(([c])=>c.accion==='APLICAR_NC')).toHaveLength(1)
+  await db.exec('RESET ROLE');expect((await db.query('SELECT count(*)::int n FROM movimientos_caja WHERE id=$1',[target.requestId])).rows[0]).toEqual({n:1});await db.exec('SET ROLE service_role')
+ }
+ expect(w.fetcher).not.toHaveBeenCalled();expect(w.load).not.toHaveBeenCalled()
+})

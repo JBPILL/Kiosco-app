@@ -12,6 +12,23 @@ import { withFiscalDeadline } from './fiscalVoucherXml.ts'
 export interface FiscalCreditCommercialDependencies {admin:FiscalAuthClient;readSecret:(name:string)=>string|undefined;signal?:AbortSignal;expectedActorAuthId?:string}
 const fail=():never=>{throw new Error('FISCAL_APLICACION_NC_NO_CONFIRMADA')}
 function object(value:unknown):Record<string,unknown>{if(!value||typeof value!=='object'||Array.isArray(value))return fail();return value as Record<string,unknown>}
+/** Read-only recovery. A missing application never falls through into application. */
+export async function loadFiscalCreditCommercialOperation(deps:FiscalCreditCommercialDependencies,token:string,input:FiscalCreditDraftScope):Promise<Readonly<FiscalCreditCommercialApplication>|null>{
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),45000),parent=deps.signal,abort=()=>controller.abort(),expectedActor=deps.expectedActorAuthId
+ parent?.addEventListener('abort',abort,{once:true})
+ try{
+  const scope=Object.freeze({...input}),admin=deps.admin,readSecret=deps.readSecret
+  if(parent?.aborted||expectedActor!==undefined&&!fiscalUuid(expectedActor)||!fiscalUuid(scope.saleId)||!fiscalUuid(scope.operationId)||!fiscalUuid(scope.requestId)||!fiscalSha(scope.sha256)||typeof token!=='string'||token.length>16384||!/^\S+$/.test(token))return fail()
+  const backend=()=>{if(controller.signal.aborted||readSecret('SUPABASE_URL')!==FISCAL_STAGING_URL||readSecret('ARCA_HOMO_BACKEND_ENABLED')!=='true')return fail()}
+  backend();const auth=await withFiscalDeadline(admin.auth.getUser(token),controller.signal),actor=auth.data.user?.id
+  if(auth.error||!fiscalUuid(actor)||expectedActor!==undefined&&actor!==expectedActor)return fail()
+  backend();const r=await withFiscalDeadline(admin.rpc('cargar_aplicacion_comercial_nc_homologacion',{p_actor:actor,p_venta:scope.saleId,p_operacion:scope.operationId,p_caso:scope.requestId,p_sha:scope.sha256}),controller.signal)
+  backend();if(r.error)return fail()
+  if(r.data===null)return null
+  const cashId=object(r.data).sesion_caja_id;if(!fiscalUuid(cashId))return fail()
+  return validateFiscalCreditCommercialApplication(r.data,scope,cashId)
+ }catch{return fail()}finally{clearTimeout(timer);parent?.removeEventListener('abort',abort);controller.abort()}
+}
 /** No ARCA transport or credentials. Resolve confirmed local evidence, then apply SQL052 once. */
 export async function applyFiscalCreditCommercialOperation(deps:FiscalCreditCommercialDependencies,token:string,input:FiscalCreditDraftScope,cashId:string):Promise<Readonly<FiscalCreditCommercialApplication>>{
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),45000),parent=deps.signal,abort=()=>controller.abort(),expectedActor=deps.expectedActorAuthId

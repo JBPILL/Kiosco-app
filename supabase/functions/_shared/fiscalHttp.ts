@@ -1,4 +1,5 @@
 import { reconcileFiscalCreditOperation } from './fiscalCreditConsultWorker.ts'
+import { applyFiscalCreditCommercialOperation,loadFiscalCreditCommercialOperation } from './fiscalCreditCommercialWorker.ts'
 import { loadFiscalRepresentation } from './fiscalRepresentationService.ts'
 import { loadFiscalCreditOwnerReview, approveFiscalCreditOwnerReview } from './fiscalCreditOwnerReviewService.ts'
 import { fiscalCreditOwnerReviewWire } from './fiscalCreditOwnerReview.ts'
@@ -39,6 +40,8 @@ const origin='https://kiosco-app-staging.vercel.app'
 const invalid=():never=>{throw new Error('FISCAL_SOLICITUD_INVALIDA')}
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 type FiscalHttpCommand=
+  | {accion:'APLICAR_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string;sesion_caja_id:string}
+  | {accion:'APLICACION_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string}
   | {accion:'CONCILIAR_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string;consulta_id:string}
   | {accion:'CUERPO_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string}
   | {accion:'NUMERAR_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string;preparacion_sha256:string;reserva_id:string}
@@ -96,6 +99,10 @@ async function command(request:Request):Promise<FiscalHttpCommand> {
     const text=new TextDecoder('utf-8',{fatal:true}).decode(bytes),parsed:unknown=parseFiscalJson(text)
     if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))return invalid()
     const b=parsed as Record<string,unknown>,keys=Object.keys(b)
+    if(b.accion==='APLICAR_NC'&&size<=2048&&(length===null||Number(length)<=2048)&&keys.length===6
+      &&keys.every(k=>['accion','venta_id','operacion_origen_id','solicitud_id','propuesta_sha256','sesion_caja_id'].includes(k))
+      &&uuid(b.venta_id)&&uuid(b.operacion_origen_id)&&uuid(b.solicitud_id)&&uuid(b.sesion_caja_id)&&typeof b.propuesta_sha256==='string'&&/^[0-9a-f]{64}$/.test(b.propuesta_sha256))
+      return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_origen_id:b.operacion_origen_id.toLowerCase(),solicitud_id:b.solicitud_id.toLowerCase(),propuesta_sha256:b.propuesta_sha256,sesion_caja_id:b.sesion_caja_id.toLowerCase()}
     if(b.accion==='CONCILIAR_NC'&&size<=2048&&(length===null||Number(length)<=2048)&&keys.length===6
       &&keys.every(k=>['accion','venta_id','operacion_origen_id','solicitud_id','propuesta_sha256','consulta_id'].includes(k))
       &&uuid(b.venta_id)&&uuid(b.operacion_origen_id)&&uuid(b.solicitud_id)&&uuid(b.consulta_id)
@@ -135,7 +142,7 @@ async function command(request:Request):Promise<FiscalHttpCommand> {
     if(b.accion==='GUARDAR_BORRADOR_NC'&&keys.length===4&&keys.every(k=>['accion','venta_id','operacion_origen_id','propuesta'].includes(k))
       &&uuid(b.venta_id)&&uuid(b.operacion_origen_id)&&b.propuesta&&typeof b.propuesta==='object'&&!Array.isArray(b.propuesta))
       return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_origen_id:b.operacion_origen_id.toLowerCase(),propuesta:b.propuesta}
-    if((b.accion==='BORRADOR_NC'||b.accion==='CANCELAR_BORRADOR_NC'||b.accion==='CONTEXTO_NC'||b.accion==='PREPARACION_NC'||b.accion==='CUERPO_NC')&&size<=2048&&(length===null||Number(length)<=2048)&&keys.length===5
+    if((b.accion==='APLICACION_NC'||b.accion==='BORRADOR_NC'||b.accion==='CANCELAR_BORRADOR_NC'||b.accion==='CONTEXTO_NC'||b.accion==='PREPARACION_NC'||b.accion==='CUERPO_NC')&&size<=2048&&(length===null||Number(length)<=2048)&&keys.length===5
       &&keys.every(k=>['accion','venta_id','operacion_origen_id','solicitud_id','propuesta_sha256'].includes(k))
       &&uuid(b.venta_id)&&uuid(b.operacion_origen_id)&&uuid(b.solicitud_id)&&typeof b.propuesta_sha256==='string'&&/^[0-9a-f]{64}$/.test(b.propuesta_sha256))
       return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_origen_id:b.operacion_origen_id.toLowerCase(),solicitud_id:b.solicitud_id.toLowerCase(),propuesta_sha256:b.propuesta_sha256}
@@ -217,7 +224,11 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
       if(cmd.accion==='GUARDAR_PREPARACION_NC'&&deps.readSecret('ARCA_HOMO_CREDIT_PREPARATION_ENABLED')!=='true')return json({codigo:'PREPARACION_NC_NO_HABILITADA'},503)
       const admin=deps.createAdmin(FISCAL_STAGING_URL),token=auth.slice(7)
       let result:unknown
-      if(cmd.accion==='CONCILIAR_NC'){
+      if(cmd.accion==='APLICACION_NC'||cmd.accion==='APLICAR_NC'){
+        const scope={saleId:cmd.venta_id,operationId:cmd.operacion_origen_id,requestId:cmd.solicitud_id,sha256:cmd.propuesta_sha256},commercial={admin,readSecret:deps.readSecret,signal:request.signal}
+        result=cmd.accion==='APLICACION_NC'?await loadFiscalCreditCommercialOperation(commercial,token,scope)
+          :await applyFiscalCreditCommercialOperation(commercial,token,scope,cmd.sesion_caja_id)
+      }else if(cmd.accion==='CONCILIAR_NC'){
         result=await reconcileFiscalCreditOperation({admin,readSecret:deps.readSecret,fetcher:deps.fetcher,
           keys:createPrivateFiscalTicketKeys(deps.readSecret),
           createWsaa:guard=>createCreditConsultWsaaTicketSource(createPrivateCreditConsultFiscalCustody(deps.readSecret,guard),deps.fetcher),

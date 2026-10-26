@@ -788,3 +788,7 @@ SQL052 conserva un ACK inmutable por caso/cuerpo/Auth/caja; recuperación verifi
 
 ### 26/10/2026 — Servicio comercial NC sin transporte fiscal
 Separar aplicación SQL052 de emisión/consulta ARCA. Recuperar ACK durable antes de flag nuevo ARCA_HOMO_CREDIT_APPLY_ENABLED, manteniendo Auth original y backend/proyecto; trabajo nuevo debe verificar CAE/cuerpo/intención/resolución y confirmar efectos sólo mediante GET. ACK perdido no autoriza nuevo efectivo. SDK69 permite sólo4RPC050/052 adicionales; no exponer acción HTTP todavía. Evidencia en ExecPlan ARCA.
+
+
+### 26/10/2026 — Lectura de aplicación NC independiente de caja actual
+APLICACION_NC identifica caso/hash y devuelve caja histórica del diario; no exige seleccionar caja ni activa mutación por ausencia. APLICAR_NC exige caja explícita e invariantes privados. Pendiente del cliente conserva caja/caso/hash, sólo GET confirma y retry requiere decisión explícita; otras mutaciones NC se bloquean hasta resolver pendiente. Sin autoridad remota nueva ni acción de envío fiscal.

@@ -460,3 +460,22 @@ it('HTTP CONCILIAR_NC verifica JWT y no expone errores privados',async()=>{
  const r=await f.handler(request(JSON.stringify({accion:'CONCILIAR_NC',venta_id:crypto.randomUUID(),operacion_origen_id:op,solicitud_id:crypto.randomUUID(),propuesta_sha256:'a'.repeat(64),consulta_id:crypto.randomUUID()})))
  expect(r.status).toBe(409);expect(JSON.stringify(await r.json())).not.toContain('PRIVATE_FAILURE');expect(f.getUser).toHaveBeenCalledExactlyOnceWith('SYNTHETIC_JWT');expect(f.rpc).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled()
 })
+
+it.each(['APLICACION_NC','APLICAR_NC'])('HTTP052 %s sólo admite IDs/caja y conserva límites estrictos',async accion=>{
+ const f=fixture(),cmd={accion,venta_id:crypto.randomUUID(),operacion_origen_id:op,solicitud_id:crypto.randomUUID(),propuesta_sha256:'a'.repeat(64),sesion_caja_id:crypto.randomUUID()}
+ for(const patch of [{importe:'1.00'},{actor_auth_id:crypto.randomUUID()},{cae:'11111111111111'},{sesion_caja_id:'invalid'},{propuesta_sha256:'A'.repeat(64)},{extra:true}])expect((await f.handler(request(JSON.stringify({...cmd,...patch})))).status).toBe(400)
+ expect(f.factory).not.toHaveBeenCalled();expect(f.rpc).not.toHaveBeenCalled()
+})
+it('HTTP052 consulta ausente sólo lee diario, no exige flag de aplicación ni custodia',async()=>{
+ const f=fixture(),sale=crypto.randomUUID(),caseId=crypto.randomUUID(),actor=crypto.randomUUID()
+ f.getUser.mockResolvedValue({data:{user:{id:actor}},error:null});f.rpc.mockResolvedValue({data:null,error:null})
+ const response=await f.handler(request(JSON.stringify({accion:'APLICACION_NC',venta_id:sale,operacion_origen_id:op,solicitud_id:caseId,propuesta_sha256:'a'.repeat(64)})))
+ expect(response.status).toBe(200);expect((await response.json()).resultado).toBeNull();expect(f.getUser).toHaveBeenCalledTimes(1)
+ expect(f.rpc).toHaveBeenCalledExactlyOnceWith('cargar_aplicacion_comercial_nc_homologacion',{p_actor:actor,p_venta:sale,p_operacion:op,p_caso:caseId,p_sha:'a'.repeat(64)})
+ expect(f.read.mock.calls.some(([name])=>/APPLY|CUSTODY|KEYRING|TICKET/.test(name))).toBe(false);expect(f.fetcher).not.toHaveBeenCalled()
+})
+it('HTTP052 flag cerrado impide aplicación nueva después de consultar diario',async()=>{
+ const f=fixture();f.rpc.mockResolvedValue({data:null,error:null})
+ const response=await f.handler(request(JSON.stringify({accion:'APLICAR_NC',venta_id:crypto.randomUUID(),operacion_origen_id:op,solicitud_id:crypto.randomUUID(),propuesta_sha256:'a'.repeat(64),sesion_caja_id:crypto.randomUUID()})))
+ expect(response.status).toBe(409);expect(await response.json()).toMatchObject({codigo:'OPERACION_NO_CONFIRMADA'});expect(f.rpc.mock.calls.map(([name])=>name)).toEqual(['cargar_aplicacion_comercial_nc_homologacion']);expect(f.fetcher).not.toHaveBeenCalled()
+})

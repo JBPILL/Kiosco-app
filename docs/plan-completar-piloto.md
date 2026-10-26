@@ -771,3 +771,6 @@ Diario/efectos atómicos y replay sin duplicados después de CAE/resolución, co
 
 #### 26/10/2026 — Servicio privado de aplicación NC preparado localmente
 Auth original, recuperación del diario antes de flag de trabajo, validación de CAE/resolución/cuerpo y aplicación052 con confirmación GET. SDK69/HTTP aún sin acción pública nueva; sin transporte ARCA en este servicio. Flag privado ARCA_HOMO_CREDIT_APPLY_ENABLED debe permanecer ausente/false hasta su gate específico; no habilitado remotamente. Evidencia: ExecPlan ARCA,28 pruebas enfocadas SQL/servicio y95 contrato/SDK/cancelación. PR03/PR02 siguen abiertos; faltan integración controlada, revisión/inventarios y aceptación hospedada. Sin nueva instalación, emisión ni cambio Production.
+
+#### 26/10/2026 — Consulta/aplicación NC HTTP y cliente durable (local)
+APLICACION_NC sólo lee por caso sin caja actual; APLICAR_NC exige caja explícita y servicio privado con CAE/cuerpo/roles/gates. Cliente pendiente por identidad/hash/caja, GET como confirmación, reintento explícito y bloqueo de otras mutaciones NC hasta recuperar. Evidencia en ExecPlan ARCA:243 regresiones,17 enfocadas HTTP/cliente/SQL (solapadas),10 finales del cliente. UI de aplicación todavía pendiente; sin nuevo SQL/SDK/activación remota, emisión ni Production. Gate hospedado/GO-NO-GO permanece abierto.
