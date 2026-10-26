@@ -897,3 +897,14 @@ Integración controlada de envío/estado/conciliación NC, cliente durable e inc
 
 ### 26/10/2026 — Cierre local preparado para revisión única
 Integración NC/recuperación/incidencias y aplicación comercial preparadas y verificadas localmente. Suite completa segmentada4747PASS/1skip/306archivos; PostgreSQL180PASS; build689módulos/salida0; lint0errores/137avisos previos; manifiesto43/diff/bundle/inventario53SQL PASS. Evidencia, fallos previos conservados y límites en Resultado final de .agent/execplans/arca-homologation.md; inventario/orden en docs/arca-homologacion.md. No GO ni instalación remota, flags/secretos reales, ARCA/CAE, merge/master/Production. PR03/PR02 y Production Readiness continúan pendientes de sus gates hospedados/reales; no cerrar objetivo global. Siguiente: CODE REVIEW final y GO/NO-GO explícito; restauración integral bloqueada y físicos/Point diferidos.
+
+### Actualización de instalación fiscal — 26/10/2026
+
+SQL001–053 del candidato9054cce instalados únicamente en Staging con GO explícito
+y respaldo PostgreSQL privado verificado. Confirmación individual53/53; controles
+hospedados de126funciones,41tablas/41triggers y70RPC privadas: PASS,0diferencias;
+RLS activo, sin acceso directo y diarios fiscales vacíos. Evidencia y límites en
+`.agent/execplans/arca-homologation.md` y `docs/arca-homologacion.md`.
+PR03 sigue parcial: Edge/custodia/flags/JWT-RLS-E2E aún pendientes; PR02 sin CAE;
+PR07 sin restore completo. Siguiente gate: autorización separada de Edge cerrado.
+No cambios en Production/master; no merge ni comunicaciones ARCA.

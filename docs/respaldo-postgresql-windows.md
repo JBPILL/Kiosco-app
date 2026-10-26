@@ -75,3 +75,72 @@ Autoevaluación: exactitud 4/5 (script ejecutado con mocks; falta herramienta re
 completitud 3/5 (generación protegida contra falsos éxitos; cifrado/retención y
 restore pendientes), claridad 4/5 (alcance explícito), acción 4/5 (script y BAT),
 concisión 4/5 (un método de volcado con verificación y sin fallback ambiguo).
+
+## Respaldo privado previo al SQL fiscal — 26/10/2026
+
+El titular autorizó preparar la copia privada de Staging `acoyfwwmhaeruciyedri`.
+El proyecto Free informa que no incluye respaldos del proveedor. No hay aún
+una copia real confirmada: SQL001–053 conserva su GO, pero SQL001 espera este
+prerrequisito del gate aprobado.
+
+Desde una terminal local de Windows, ejecutar:
+
+```powershell
+powershell -NoProfile -File "C:\Users\jonat\Documents\Codex\2026-10-16\referenced-chatgpt-conversation-this-is-an\work\commercial-subscription-backend\scripts\respaldar-staging-privado.ps1"
+```
+
+Ingresar únicamente allí la contraseña PostgreSQL de Staging, distinta de la
+contraseña de la cuenta web de Supabase. No enviarla por chat, no guardarla en
+el repositorio y no restablecerla para este ensayo. Si se desconoce, detenerse.
+Docker debe estar abierto y `postgres:17-alpine` previamente disponible; el
+asistente no descarga imágenes. `-Preparar` sólo comprueba el cliente local.
+
+El destino está fijado al session pooler de Staging, puerto 5432, con TLS
+`verify-full`. La carpeta única queda en
+`%USERPROFILE%\KioskoPOS-Privado\Backups\Staging`, fuera del repositorio,
+con permisos comprobados para el usuario actual. La contraseña viaja al cliente
+por stdin y un pgpass efímero dentro del contenedor, nunca como argumento ni
+como variable de entorno de Docker. Se reutiliza el exportador existente para
+el archivo custom de esquema/datos y se exportan roles sin passwords por separado.
+Se comprueban el índice, siete tablas críticas, SHA256 y permisos de archivos.
+El contexto privado registra `BACKUP_ARCHIVE_VERIFIED_NOT_RESTORED` sólo al final.
+
+La copia contiene información sensible y no está cifrada. El índice y los hashes
+no prueban una restauración completa ni equivalen a aceptación de PR07. Storage
+físico, copia externa protegida, retención y restore aislado siguen pendientes.
+No ejecutar una restauración ni instalar SQL si el asistente no confirma éxito.
+Ante un fallo, conservar los archivos protegidos para diagnóstico sin compartir
+su contenido. Comunicar sólo el paso y tipo de error, sin credenciales.
+
+Validación local: 15 pruebas Windows PASS (6 del asistente y 9 del exportador),
+con Docker y credenciales ficticios. Cliente real PostgreSQL17 de Docker comprobado
+sin red mediante `-Preparar`; ninguna conexión ni copia real se realizó en esas pruebas.
+
+### Fallo del primer respaldo real — 26/10/2026
+
+El titular ejecutó el asistente e ingresó su contraseña sólo en terminal. Falló
+antes de confirmar el archivo, con RuntimeException en esquema/datos. No hay
+respaldo confirmado ni SQL instalado. La causa real todavía no está acreditada.
+Se añadió captura privada en memoria del error del cliente y clasificación
+cerrada (TLS, autenticación, DNS, conexión, versión o permisos); la respuesta
+externa completa nunca se imprime. Windows PowerShell no debe convertir stderr
+nativo en una excepción antes de clasificarlo. Mantener verify-full: no degradar
+TLS para sortear un fallo. El siguiente intento humano debe comunicar sólo la
+categoría segura. Este diagnóstico no equivale a una copia real exitosa.
+
+### Certificado raíz explícito — 26/10/2026
+
+El titular descargó `Downloads/prod-ca-2021.crt` desde Supabase. Se verificó como
+certificado público Supabase Root2021CA, sin clave privada, vigente hasta2031.
+El asistente exige esa raíz (huella SHA1 de identificación
+A4518A0933AF6949482CCA3014C007C369DF9F6F), PEM y vigencia antes del prompt.
+La monta como archivo de sólo lectura en `/supabase-root.crt` y configura
+PGSSLROOTCERT sin reducir `sslmode=verify-full`. No instala una CA en Windows
+ni cambia SSL del servidor. El comando humano permanece igual; opcionalmente
+`-CertificadoRaiz` permite indicar otra ubicación del mismo certificado público.
+
+19 pruebas Windows PASS: incluye raíz ausente/inválida y montaje readonly;
+lint PASS y `-Preparar` con certificado y Docker reales PASS sin conexión DB.
+La fixture de pruebas es únicamente el certificado CA público, no material ARCA.
+El respaldo real sigue pendiente: el fallo TLS anterior no queda cerrado sólo
+por estas pruebas. No se instaló SQL fiscal.

@@ -2158,3 +2158,77 @@ La evidencia de ejecuciones anteriores fallidas se conserva: v1no final por expe
 Siguiente gate: revisión final del PR y decisión explícita GO/NO-GO. Sólo con GO: prerrequisitos/SQL→verificaciónDB/RLS/RPC→Edge→provisión autorizada→flags por etapas→frontendStaging→aceptación hospedada sin ARCA real→autorización específica de homologación. Punto de venta acreditado, custodia real, JWT/RLS/terminales reales, primer CAE, backup/restore privado, transición/piloto comercial conservan sus gates. No llamar esos pendientes PASS por los ensayos locales. Restauración integral bloqueada, tratamiento fiscal de envases pendiente del contador, impresora/cajón/Point diferidos. PR02/PR03 y objetivo global siguen abiertos.
 
 Verificación del inventario antes de publicar:15SQL históricos tenían CRLF en el checkout y LF en Git. El inventario final usa SHA-256 del blob Git canónico LF (comprobado equivalente a normalizar sólo CRLF), sin modificar ninguno de esos SQL. Evita falsos desajustes por autocrlf y conserva detección de diferencias reales de contenido. La verificación final se realiza contra el índice/commit aprobado, no contra finales de línea dependientes de la máquina.
+
+## Preinstalación fiscal y respaldo privado — 26/10/2026
+
+- El titular dio GO únicamente a SQL001–053 y verificación DB/RLS/RPC de Staging
+  `acoyfwwmhaeruciyedri`, fijados al cierre `9054cce410ae26b123f151bee2f1ad56c10767bd`.
+  Edge, secretos, flags, Vercel, ARCA, master y Production quedan fuera.
+- Preflight hospedado de metadatos en transacción READ ONLY con ROLLBACK:
+  0 tablas fiscales, 0 funciones fiscales/homologación, 0 SECURITY DEFINER públicos
+  ejecutables por anon; 15 tablas requeridas presentes con RLS; 8 funciones
+  prerrequisito presentes con una sobrecarga; pgcrypto1.3 y uuid-ossp1.1 instalados.
+  No se instalaron http/pg_net/pgjwt. Esto no acredita aún firmas/definiciones
+  completas, JWT/RLS E2E ni instalación fiscal.
+- El proveedor Free no incluye backups. El titular confirmó que no existe una
+  copia reciente y autorizó preparar un respaldo privado. Se añadió el asistente
+  `scripts/respaldar-staging-privado.ps1`; procedimiento y límites en
+  `docs/respaldo-postgresql-windows.md`. Quince pruebas locales PASS y preflight
+  real del cliente Docker PASS; sin conexión a la DB durante estas pruebas.
+- PENDIENTE: ejecución humana con contraseña PostgreSQL ingresada sólo en terminal,
+  verificación posterior del archivo/manifiesto/contexto privado y compatibilidad
+  del esquema antes de SQL001. No se ejecutó ningún SQL fiscal. El GO ya otorgado
+  permanece vigente; no se amplía por preparar el respaldo.
+- PR07 continúa parcial: archivo listado/hash no demuestra restauración integral;
+  Storage, copia externa y restore aislado permanecen pendientes. Conservar las
+  decisiones históricas y el bloqueo de restauración integral de la UI.
+
+## Respaldo pre-fiscal real verificado — 26/10/2026
+
+El titular ejecutó el asistente con la contraseña sólo en su terminal. Carpeta
+privada `pre-fiscal-9054cce-20261026-115042-f88d9a2aa958480e9e9193955d2ac116`.
+Verificación independiente: contexto Staging/commit9054cce correcto, SHA256 de
+dump y roles coincide con ambos manifiestos, archivos con ACL sólo del usuario;
+índice pg_restore real sin red contiene las siete tablas críticas. Dump1118614
+bytes y roles6173bytes. BACKUP_ARCHIVE_VERIFIED_NOT_RESTORED. No se leyeron datos
+comerciales ni contraseña. PR07 no cerrado: restore, Storage y copia externa pendientes.
+Preflight hospedado repetido antes de instalación: mismo baseline cero fiscal,
+RLS de quince tablas, ocho funciones y extensiones mínimas. Source53SQL idéntico
+al commit aprobado; GO SQL001–053 vigente. Edge/secrets/flags/ARCA quedan fuera.
+
+## SQL fiscal instalado y verificado en Staging — 26/10/2026
+
+Con el GO específico del titular y respaldo privado verificado, se instalaron
+SQL001–053 de `9054cce410ae26b123f151bee2f1ad56c10767bd` únicamente en
+Staging `acoyfwwmhaeruciyedri`. Cada archivo se pegó completo, se comparó con el
+source normalizando sólo CRLF/LF y devolvió su marcador posterior al COMMIT.
+El diario local `../staging-fiscal-install-9054cce.json` conserva 53 confirmaciones.
+No se modificó el source fiscal durante la instalación.
+
+Verificación hospedada READ ONLY/ROLLBACK contra inventario derivado del source:
+126 funciones, hash SHA256 de cada cuerpo, SECURITY DEFINER y permisos efectivos
+anon/authenticated/service_role; una sobrecarga por nombre; 41 tablas con RLS y
+sin permisos directos de tabla/columna para esos tres roles; 41 triggers habilitados.
+Resultado: **0 diferencias**. Las70RPC del adaptador privado existen, ejecutables
+por service_role y no por anon/authenticated. Cero SECURITY DEFINER públicos
+accesibles a anon; cero filas en las41tablas fiscales. No se creó emisor, custodia,
+solicitud, revisión, permiso, intención, CAE ni aplicación comercial.
+
+La primera versión del verificador reportó seis diferencias de permisos esperados:
+no modelaba que CREATE OR REPLACE conserva ACL. La consulta detallada confirmó
+cuerpos idénticos y grants previamente declarados (cinco privados de service_role
+y confirmar_devolucion_efectivo_piloto de authenticated según returns003).
+Se corrigió sólo el verificador y se repitió: 0 diferencias. No se ajustaron grants
+remotos para hacer pasar el control. El aviso RLS de SQL027 era del análisis estático
+del editor: el SQL original habilita RLS mediante EXECUTE y se comprobó instalado.
+
+Evidencia local: `../staging-fiscal-verification-final-9054cce-ax.txt`,
+`../staging-fiscal-readiness-9054cce-ax.txt`, sus PNG y consultas de verificación.
+Esta prueba de esquema/permisos no sustituye JWT/RLS/E2E con actores reales,
+aceptación de Edge, restore aislado ni primer CAE. PR02/PR03 y PR07 siguen abiertos.
+
+**Siguiente gate:** autorización independiente para desplegar únicamente
+`arca-homologacion` con verify_jwt=true y gates privados cerrados, sin provisionar
+credenciales ARCA ni activar flags ni Vercel. Preparar aceptación negativa de
+Auth/CORS/gates antes de cualquier provisioning o envío. No desplegado aún.
+Production/master/merge/ARCA real/CAE: sin acciones en este bloque.

@@ -901,3 +901,40 @@ Prerrequisitos concretos del candidato053 (verificar instalados y compatibles, n
 
 Detalle de baseline Edge según configuración versionada (no acredita instalación remota): `checkout-manual`, `supervisor-pin`, `provision-user` y `provision-commerce`; todas con `verify_jwt=true`. `arca-homologacion` también conserva `verify_jwt=true`; no desactivar gateway para resolver una prueba. Único despliegue fiscal nuevo previsto por este bloque: `arca-homologacion`. Adaptador backend:70RPC explícitas; ninguna llamada RPC arbitraria desde navegador.
 Configuración pública de conexión que debe verificarse en el baseline, sin provisionar valores en este bloque: `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` (`VITE_SUPABASE_ANON_KEY` sólo como compatibilidad heredada). Flags POS existentes que deben conservar su propio gate: `VITE_CHECKOUT_MANUAL_TRANSACCIONAL`, `VITE_KIOSKO_ENVASES_TRANSACCIONAL`, `VITE_KIOSKO_DEVOLUCIONES_EFECTIVO`; no se activan por habilitar la revisión fiscal ni habilitan por sí mismos aplicación NC. Configuración pública nunca contiene `SUPABASE_SECRET_KEYS` ni material ARCA.
+
+## SQL fiscal instalado y verificado en Staging — 26/10/2026
+
+Con el GO específico del titular y respaldo privado verificado, se instalaron
+SQL001–053 de `9054cce410ae26b123f151bee2f1ad56c10767bd` únicamente en
+Staging `acoyfwwmhaeruciyedri`. Cada archivo se pegó completo, se comparó con el
+source normalizando sólo CRLF/LF y devolvió su marcador posterior al COMMIT.
+El diario local `../staging-fiscal-install-9054cce.json` conserva 53 confirmaciones.
+No se modificó el source fiscal durante la instalación.
+
+Verificación hospedada READ ONLY/ROLLBACK contra inventario derivado del source:
+126 funciones, hash SHA256 de cada cuerpo, SECURITY DEFINER y permisos efectivos
+anon/authenticated/service_role; una sobrecarga por nombre; 41 tablas con RLS y
+sin permisos directos de tabla/columna para esos tres roles; 41 triggers habilitados.
+Resultado: **0 diferencias**. Las70RPC del adaptador privado existen, ejecutables
+por service_role y no por anon/authenticated. Cero SECURITY DEFINER públicos
+accesibles a anon; cero filas en las41tablas fiscales. No se creó emisor, custodia,
+solicitud, revisión, permiso, intención, CAE ni aplicación comercial.
+
+La primera versión del verificador reportó seis diferencias de permisos esperados:
+no modelaba que CREATE OR REPLACE conserva ACL. La consulta detallada confirmó
+cuerpos idénticos y grants previamente declarados (cinco privados de service_role
+y confirmar_devolucion_efectivo_piloto de authenticated según returns003).
+Se corrigió sólo el verificador y se repitió: 0 diferencias. No se ajustaron grants
+remotos para hacer pasar el control. El aviso RLS de SQL027 era del análisis estático
+del editor: el SQL original habilita RLS mediante EXECUTE y se comprobó instalado.
+
+Evidencia local: `../staging-fiscal-verification-final-9054cce-ax.txt`,
+`../staging-fiscal-readiness-9054cce-ax.txt`, sus PNG y consultas de verificación.
+Esta prueba de esquema/permisos no sustituye JWT/RLS/E2E con actores reales,
+aceptación de Edge, restore aislado ni primer CAE. PR02/PR03 y PR07 siguen abiertos.
+
+**Siguiente gate:** autorización independiente para desplegar únicamente
+`arca-homologacion` con verify_jwt=true y gates privados cerrados, sin provisionar
+credenciales ARCA ni activar flags ni Vercel. Preparar aceptación negativa de
+Auth/CORS/gates antes de cualquier provisioning o envío. No desplegado aún.
+Production/master/merge/ARCA real/CAE: sin acciones en este bloque.
