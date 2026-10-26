@@ -2313,3 +2313,28 @@ lint enfocado PASS y -Preparar PASS sin red. Evidencia
 ../fiscal-staging-jwt-script-final.log. La prueba con credenciales reales sigue
 sin ejecutar; no se atribuye PASS hospedado ni a roles ni a RLS.
 Build final del asistente: rtk npm run build PASS, salida0; aviso previo de chunks grandes. Sin cambios de runtime fiscal ni despliegue adicional.
+
+## Fallo Auth del primer JWT real y diagnóstico seguro — 26/10/2026
+
+El titular ejecutó el asistente con prueba1@gmail.com y entradas privadas en
+terminal. Falló en login Auth antes de probar gateway; el mensaje original no
+incluía status/causa. No hay JWT real aceptado/rechazado por Edge acreditado.
+No se cambia la contraseña, clave pública, signing key ni flags por inferencia.
+
+El asistente ahora clasifica únicamente códigos Auth conocidos (error_code/code),
+clave pública rechazada,429/5xx y errores de conexión/TLS/DNS/timeout. Publica
+sólo categoría de lista cerrada y HTTPstatus; mensajes desconocidos/credenciales
+no se imprimen. Lee como máximo4097caracteres del stream de error. Se fijaron
+Content-Type charset=utf-8 y bytes UTF8 del JSON para preservar contraseñas con
+caracteres especiales en WindowsPowerShell. No atribuir el fallo real a encoding
+sin el nuevo resultado del titular.
+
+18pruebas Windows PASS, incluida contraseña sintética Unicode, errores Auth400,
+401,429,503,timeout y cuerpo desconocido sensible;10escenarios previos conservados.
+Lint enfocado y -Preparar PASS sin conexión. Evidencia
+../fiscal-staging-jwt-diagnostic-v1.log. Códigos oficiales de referencia:
+https://supabase.com/docs/guides/auth/debugging/error-codes.
+Siguiente paso: un intento humano con el asistente actualizado y comunicar sólo
+JWT_CHECK_NOT_CONFIRMED/JWT_GATEWAY_*/TEST_SESSION_*; sin credenciales ni respuesta
+externa completa. Aceptación JWT/RLS hospedada y gates fiscales siguen pendientes.
+Build final de esta corrección: rtk npm run build PASS, salida0; aviso previo de chunks grandes. Sin cambios SQL/Edge ni despliegue remoto.

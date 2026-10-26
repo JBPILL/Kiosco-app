@@ -9,7 +9,7 @@ const script = resolve('scripts/comprobar-jwt-fiscal-staging.ps1')
 const quote = (s: string) => "'" + s.replaceAll("'", "''") + "'"
 const jwt = (data: object) => Buffer.from(JSON.stringify(data)).toString('base64url')
 const token = jwt({ alg: 'ES256' }) + '.' + jwt({ sub: 'synthetic-user' }) + '.SYNTHETIC'
-const password = 'SYNTHETIC_ACCOUNT_PASSWORD'
+const password = 'SYNTHETIC_ACCOUNT_PASSWORD_ñ_✓'
 function clean(root: string) {
   const target = resolve(root)
   if (dirname(target) !== resolve(tmpdir()) || !basename(target).startsWith('kiosko-jwt-test-')) throw Error('Unsafe cleanup')
@@ -27,11 +27,13 @@ function run(mode: string) {
 using System; using System.Net; using System.IO; using System.Text;
 public class MockResponse : WebResponse {
  public HttpStatusCode StatusCode {get;set;}
- public override Stream GetResponseStream(){return new MemoryStream(Encoding.UTF8.GetBytes("{\\"codigo\\":\\"HOMOLOGACION_NO_HABILITADA\\"}"));}
+ public string Body = "{\\"codigo\\":\\"HOMOLOGACION_NO_HABILITADA\\"}";
+ public override Stream GetResponseStream(){return new MemoryStream(Encoding.UTF8.GetBytes(Body));}
 }
 public class MockHttpException : Exception {
  public MockResponse Response {get;set;}
  public MockHttpException(int status){Response=new MockResponse{StatusCode=(HttpStatusCode)status};}
+ public MockHttpException(int status,string body){Response=new MockResponse{StatusCode=(HttpStatusCode)status,Body=body};}
 }
 '@
       function global:Read-Host {
@@ -48,7 +50,18 @@ public class MockHttpException : Exception {
         $global:events.Add(@{kind=$(if($logout){'logout'}else{'login'});redirects=$MaximumRedirection;local_scope=$logout;bearer_ok=($Headers.Authorization -ceq ('Bearer '+${quote(token)}))})
         if($logout){if(${quote(mode)} -eq 'logout-fail'){throw ${quote(password)}};return}
         if(${quote(mode)} -eq 'auth-fail'){throw ${quote(password)}}
-        if($Uri -notlike '*/token?grant_type=password' -or ($Body|ConvertFrom-Json).password -cne ${quote(password)}){throw 'Invalid login'}
+        $authCases=@{
+          'auth-invalid'=@(400,'{"error_code":"invalid_credentials"}');
+          'auth-v2'=@(400,'{"code":"invalid_credentials"}');
+          'auth-key'=@(401,'{"message":"Invalid API key"}');
+          'auth-unconfirmed'=@(400,'{"error_code":"email_not_confirmed"}');
+          'auth-rate'=@(429,'{}');
+          'auth-unavailable'=@(503,${quote(password)});
+          'auth-unknown'=@(400,'{"error_code":"SYNTHETIC_ACCOUNT_PASSWORD","message":"SYNTHETIC_ACCOUNT_PASSWORD"}')
+        }
+        if($authCases.ContainsKey(${quote(mode)})){$failure=$authCases[${quote(mode)}];throw (New-Object MockHttpException($failure[0],$failure[1]))}
+        if(${quote(mode)} -eq 'auth-timeout'){throw (New-Object Net.WebException(${quote(password)},[Net.WebExceptionStatus]::Timeout))}
+        if($Uri -notlike '*/token?grant_type=password' -or $ContentType -cne 'application/json; charset=utf-8' -or ([Text.Encoding]::UTF8.GetString($Body)|ConvertFrom-Json).password -cne ${quote(password)}){throw 'Invalid login'}
         return @{access_token=${quote(token)};refresh_token='SYNTHETIC_REFRESH'}
       }
       function global:Invoke-WebRequest {
@@ -69,6 +82,18 @@ public class MockHttpException : Exception {
 }
 it.skipIf(process.platform !== 'win32')('preparación no pide secretos ni conecta', () => {
   const r = run('prepare'); expect(r.status, r.output).toBe(0); expect(r.report).toEqual({ events: [], prompts: 0 })
+}, 60000)
+it.skipIf(process.platform !== 'win32').each([
+  ['auth-invalid', 'CREDENCIALES_RECHAZADAS', 400], ['auth-v2', 'CREDENCIALES_RECHAZADAS', 400],
+  ['auth-key', 'CLAVE_PUBLICA_RECHAZADA', 401], ['auth-unconfirmed', 'CORREO_NO_CONFIRMADO', 400],
+  ['auth-rate', 'LIMITE_DE_INTENTOS', 429], ['auth-unavailable', 'SERVICIO_AUTH_NO_DISPONIBLE', 503],
+  ['auth-unknown', 'AUTH_NO_CLASIFICADO', 400], ['auth-timeout', 'TIEMPO_AGOTADO', 0],
+] as const)('Auth %s sólo publica categoría cerrada y status', (mode, category, status) => {
+  const r = run(mode)
+  expect(r.status, r.output).toBe(1)
+  expect(r.output).toContain('[' + category + '] status=' + status)
+  for (const secret of [password, 'SYNTHETIC_ACCOUNT_PASSWORD', token, r.key]) expect(r.output).not.toContain(secret)
+  expect(r.report.events.map((e: { kind: string }) => e.kind)).toEqual(['login'])
 }, 60000)
 it.skipIf(process.platform !== 'win32').each(['ok', 'publishable', 'jwt401', 'unclosed', 'auth-fail', 'logout-fail', 'network-fail', 'service-key', 'wrong-ref'])('JWT helper %s no expone credenciales ni cierra otras sesiones', mode => {
   const r = run(mode)

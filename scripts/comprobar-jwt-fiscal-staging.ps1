@@ -4,6 +4,51 @@ $target = 'https://acoyfwwmhaeruciyedri.supabase.co'
 $origin = 'https://kiosco-app-staging.vercel.app'
 $publicKey = $null; $password = $null; $token = $null; $session = $null; $body = $null
 $result = 1; $step = 'preparacion'
+$authDiagnostic = 'SIN_DETALLE'; $authStatus = 0
+
+function Get-AuthFailureCategory {
+    param($Failure)
+    $status = 0; $content = $null; $category = 'AUTH_NO_CLASIFICADO'
+    try {
+        if ($Failure.Exception.Response) { $status = [int]$Failure.Exception.Response.StatusCode }
+        if ($Failure.ErrorDetails -and $Failure.ErrorDetails.Message) {
+            $content = [string]$Failure.ErrorDetails.Message
+        } elseif ($Failure.Exception.Response) {
+            $reader = New-Object IO.StreamReader($Failure.Exception.Response.GetResponseStream())
+            try { $buffer = New-Object char[] 4097; $length = $reader.ReadBlock($buffer,0,4097); if ($length -gt 0) { $content = -join $buffer[0..($length-1)] } }
+            finally { $reader.Dispose() }
+        }
+        if ($content -and $content.Length -le 4096) {
+            try {
+                $problem = $content | ConvertFrom-Json
+                $remoteCode = if ($problem.error_code) { [string]$problem.error_code } elseif ($problem.code -is [string]) { $problem.code } else { '' }
+                $category = switch ($remoteCode) {
+                    'invalid_credentials' { 'CREDENCIALES_RECHAZADAS'; break }
+                    'email_not_confirmed' { 'CORREO_NO_CONFIRMADO'; break }
+                    'user_banned' { 'USUARIO_BLOQUEADO'; break }
+                    'over_request_rate_limit' { 'LIMITE_DE_INTENTOS'; break }
+                    'captcha_failed' { 'CAPTCHA_REQUERIDO'; break }
+                    default { 'AUTH_NO_CLASIFICADO' }
+                }
+                if ($category -eq 'AUTH_NO_CLASIFICADO' -and $problem.message -ceq 'Invalid API key') { $category = 'CLAVE_PUBLICA_RECHAZADA' }
+            } catch { }
+        }
+        if ($status -eq 429) { $category = 'LIMITE_DE_INTENTOS' }
+        elseif ($status -ge 500) { $category = 'SERVICIO_AUTH_NO_DISPONIBLE' }
+        elseif ($status -eq 0) {
+            $category = switch ([string]$Failure.Exception.Status) {
+                'TrustFailure' { 'TLS_CERTIFICADO'; break }
+                'SecureChannelFailure' { 'TLS_CONEXION'; break }
+                'NameResolutionFailure' { 'DNS'; break }
+                'Timeout' { 'TIEMPO_AGOTADO'; break }
+                'ConnectFailure' { 'CONEXION'; break }
+                default { 'CONEXION_O_CLIENTE' }
+            }
+        }
+    } catch { }
+    finally { $content = $null; $problem = $null }
+    return @{ Category = $category; Status = $status }
+}
 
 function Read-LocalSecret {
     param([string]$Prompt)
@@ -57,7 +102,13 @@ try {
         if ([string]::IsNullOrEmpty($password)) { throw 'PASSWORD_REQUIRED' }
         $step = 'login Auth de ensayo'
         $body = @{ email = $email; password = $password } | ConvertTo-Json -Compress
-        $session = Invoke-RestMethod -Method POST -Uri ($target + '/auth/v1/token?grant_type=password') -Headers @{ apikey = $publicKey } -ContentType 'application/json' -Body $body -MaximumRedirection 0 -TimeoutSec 30
+        try {
+            $session = Invoke-RestMethod -Method POST -Uri ($target + '/auth/v1/token?grant_type=password') -Headers @{ apikey = $publicKey } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -MaximumRedirection 0 -TimeoutSec 30
+        } catch {
+            $diagnosis = Get-AuthFailureCategory $_
+            $authDiagnostic = $diagnosis.Category; $authStatus = $diagnosis.Status
+            throw 'AUTH_LOGIN_FAILED'
+        }
         $password = $null; $body = $null; $email = $null
         $token = [string]$session.access_token
         $session = $null
@@ -79,7 +130,7 @@ try {
         $response = $null; $payload = $null
     }
 } catch {
-    Write-Host ('JWT_CHECK_NOT_CONFIRMED paso=' + $step + '. No compartir respuestas externas, claves ni contrasenas.')
+    Write-Host ('JWT_CHECK_NOT_CONFIRMED paso=' + $step + ' [' + $authDiagnostic + '] status=' + $authStatus + '. No compartir respuestas externas, claves ni contrasenas.')
     $result = 1
 } finally {
     if ($token) {

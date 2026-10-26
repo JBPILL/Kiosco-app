@@ -974,3 +974,10 @@ sesión falla. Nunca desactivar JWT ni rotar claves para sortear un rechazo.
 La prueba cierra sólo su sesión Auth de ensayo (scope=local); no guarda tokens.
 Aun con PASS, Dueño/Cajero/otro comercio, RLS y E2E siguen pendientes de aceptación
 propia; no activar flags ni aprovisionar credenciales ARCA por este resultado.
+
+El diagnóstico de login ahora añade una categoría segura y statusHTTP, por
+ ejemplo `[CREDENCIALES_RECHAZADAS] status=400`, `[CLAVE_PUBLICA_RECHAZADA] status=401`,
+`[CORREO_NO_CONFIRMADO]`, `[LIMITE_DE_INTENTOS]` o `[TIEMPO_AGOTADO]`.
+Comunicar sólo esa línea, nunca el cuerpo externo. Una categoría desconocida no
+prueba contraseña incorrecta. No repetir automáticamente ni restablecer claves
+por un fallo genérico. El cuerpo Auth usa bytesUTF8 explícitos (probado con Unicode).
