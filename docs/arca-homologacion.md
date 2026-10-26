@@ -1060,3 +1060,16 @@ la consola abierta. Codex aplicará la ventana base temporal ya autorizada y
 volverá a false antes de terminar; no otros flags, provisión ARCA ni mutaciones
 fiscales/comerciales. Correlacionar el409 con registros privados, igual que para
 Dueño, sin convertir un rechazo en aceptación positiva/E2E completa.
+
+### Cajero real comprobado — 26/10/2026
+
+Ensayo PowerShell role=CASHIER confirmado: tabla privada limit0 rechaza403;
+ventana base21s; backend verifica Auth200 y RPC privada rechaza403/42501;
+consola409 y logout local204 corroborados. Gate nuevamente false, JWT ON,
+probador oficial503HOMOLOGACION_NO_HABILITADA. Otros controles cerrados, sin
+provisión ni llamadas ARCA. No confundir con la ventana anterior sin asistente.
+
+Dueño y Cajero tienen evidencia real de sus casos negativos. Sigue pendiente
+aislamiento entre comercios con controles positivos y, después, aceptación
+fiscal positiva/E2E con fixtures/provisión autorizados. No repetir consultas
+centinela para sustituir esos criterios. Historial completo en el ExecPlan fiscal.

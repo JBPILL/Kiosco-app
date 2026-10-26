@@ -2477,3 +2477,35 @@ Próximo intento: pedir la línea literal AUTH_PROFILE_CONFIRMED role=CASHIER y
 ACCESS_PROBE_READY de PowerShell antes de abrir otra ventana. No basta «listo»
 o sesión web. El GO de acceso temporal conserva su alcance; no solicitar otra
 autorización equivalente ni reusar/extractar tokens de la sesión web.
+
+## Cajero real: rechazo privado y cleanup confirmados — 26/10/2026
+
+Titular aportó las líneas literales AUTH_PROFILE_CONFIRMED role=CASHIER,
+PRIVATE_TABLE_DIRECT_DENIED403 y ACCESS_PROBE_READY de PowerShell. Bajo el GO
+base temporal vigente se abrió sólo ARCA_HOMO_BACKEND_ENABLED21:31:56UTC y se
+retornó a false21:32:17UTC (18:31:56–18:32:17Argentina,21s). Los demás flags ARCA
+siguen ausentes; no se leyó ni provisionó ninguna credencial ARCA.
+
+Consola final aportada: BASE_READ_NEGATIVE_OBSERVED409 y
+TEST_SESSION_LOGOUT_LOCAL_CONFIRMED. Correlación de registros hospedados:
+18:31:23 login200;18:31:24 Auth/user200 y perfil propio200;18:31:25 tabla
+fiscal_operaciones_homologacion limit0 rechaza403/42501;18:32:01 Auth/user200
+desde Deno, RPC cargar_datos_preparacion_homologacion403 desde Deno y PostgreSQL
+42501 «Preparación fiscal no autorizada.»; logout scope=local204 también18:32:01.
+Esto acredita identidad real y ejecución privada del rechazo del caso centinela;
+sin depender sólo del409 público. No prueba todas las acciones del Cajero ni
+separación entre comercios: todavía se consulta un UUID sin venta.
+
+Cierre verificado: digest SHA256(false) en panel, verifyJWT ON y probador oficial
+503HOMOLOGACION_NO_HABILITADA. Evidencia local fuera de Git:
+../cajero-real-closed-503-20261026.png. No mutaciones fiscales/comerciales
+solicitadas, instalaciones, Vercel, ARCA, CAE, master/Production ni merge.
+No se cerró globalmente la sesión web del Cajero.
+
+La dependencia de login/ensayo negativo Cajero queda superada. PR03 sigue parcial.
+Primer pendiente: aislamiento hospedado entre comercios con casos reales de
+ensayo. Preparar consultas de venta propia/ajena y controles positivos de la
+misma sesión; un resultado vacío sin control positivo no acredita RLS. Antes
+de crear fixtures remotos, revisar disponibilidad de fixtures aislados existentes
+y su alcance. Sin emisor/catálogo/custodia no declarar aceptación positiva fiscal
+ni cerrar PR02 (primer CAE). No repetir Dueño/Cajero centinela como nuevo progreso.
