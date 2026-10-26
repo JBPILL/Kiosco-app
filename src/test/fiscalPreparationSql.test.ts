@@ -114,6 +114,8 @@ function workerFixture(){
  mapping.registrar_consulta_nc_homologacion=['p_actor','p_venta','p_operacion','p_caso','p_sha','p_consulta','p_datos']
  mapping.coordinar_ta_consulta_nc_homologacion=['p_actor','p_venta','p_operacion','p_caso','p_sha','p_preparacion_sha','p_binding','p_accion','p_intento','p_generacion','p_cifrado']
 
+ mapping.cargar_respuesta_envio_nc_homologacion=['p_actor','p_venta','p_operacion','p_caso','p_sha']
+ mapping.registrar_respuesta_envio_nc_homologacion=['p_actor','p_venta','p_operacion','p_caso','p_sha','p_datos']
  mapping.cargar_fuente_envio_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha','p_cuerpo_sha','p_revision_id','p_permiso_id']
  mapping.registrar_intencion_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha','p_cuerpo_sha','p_revision_id','p_permiso_id','p_intento_id','p_ultimo_autorizado','p_consultado_en']
  mapping.coordinar_ta_envio_nc_homologacion=['p_actor','p_venta','p_operacion','p_caso','p_sha','p_preparacion_sha','p_binding','p_accion','p_intento','p_generacion','p_cifrado']
@@ -2950,9 +2952,9 @@ it.each(['normal','ack-perdido','replay','revocado'])('NC transporte042 %s consu
  if(mode==='revocado')expect(await f.readIntent()).toBeNull();else expect(await f.readIntent()).toMatchObject({nuevo_envio:false,intento_id:f.attempt})
 })
 
-it.each(['normal','send-response-lost','intent-ack-lost','existing-uncertain','history','gateclosed','guard-revoked','second-auth','query-lost','journal-ack-lost','body-changed','sendflag-closes','durable-get-lost'] as const)('NC worker integrado %s nunca reenvía intención previa',async mode=>{
+it.each(['normal','send-response-lost','intent-ack-lost','existing-uncertain','history','gateclosed','guard-revoked','second-auth','query-lost','journal-ack-lost','body-changed','sendflag-closes','durable-get-lost','candidate-ack-lost','candidate-get-lost','candidate-corrupt'] as const)('NC worker integrado %s nunca reenvía intención previa',async mode=>{
  const f=await creditSendSourceFixture();await f.seed();await db.exec('RESET ROLE')
- for(const file of ['039_fiscal_credit_ticket_coordination.sql','044_fiscal_credit_send_ticket_coordination.sql','045_fiscal_credit_consult_source.sql','046_fiscal_credit_consult_ticket_coordination.sql','047_fiscal_credit_consultation_journal.sql','048_fiscal_credit_conflicts.sql']){const sql=readFileSync('supabase/pilot-fiscal/'+file,'utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'');await db.exec(sql);await db.exec(sql)}await db.exec('SET ROLE service_role')
+ for(const file of ['039_fiscal_credit_ticket_coordination.sql','044_fiscal_credit_send_ticket_coordination.sql','045_fiscal_credit_consult_source.sql','046_fiscal_credit_consult_ticket_coordination.sql','047_fiscal_credit_consultation_journal.sql','048_fiscal_credit_conflicts.sql','049_fiscal_credit_send_responses.sql']){const sql=readFileSync('supabase/pilot-fiscal/'+file,'utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'');await db.exec(sql);await db.exec(sql)}await db.exec('SET ROLE service_role')
  const packet=await f.load(),valid=await validateFiscalCreditSendSource(packet,f.source,f.proposal,actor),b=valid.binding,api=workerFixture(),before=await preparationEffects(),query=crypto.randomUUID()
  api.flags.ARCA_HOMO_CREDIT_SEND_ENABLED=mode==='gateclosed'||mode==='history'||mode==='existing-uncertain'?'false':'true';api.flags.ARCA_HOMO_CREDIT_CONSULT_ENABLED=mode==='history'?'false':'true'
  if(mode==='existing-uncertain'||mode==='history')await f.startIntent()
@@ -2972,10 +2974,13 @@ it.each(['normal','send-response-lost','intent-ack-lost','existing-uncertain','h
   const xml=sent||mode==='existing-uncertain'?syntheticFiscalCreditVoucherXml(valid.cuerpo.datos.solicitud).xml:wsfeSoap('FECompConsultar','<Errors><Err><Code>602</Code><Msg>Synthetic no encontrado</Msg></Err></Errors>')
   return new Response(xml,{headers:{'content-type':'text/xml'}})
  })
- let loseDurableRead=mode==='durable-get-lost',storedObservation=false
+ let loseCandidateRead=mode==='candidate-get-lost',loseDurableRead=mode==='durable-get-lost',storedObservation=false
  const base=api.rpc.getMockImplementation()!
  api.rpc.mockImplementation(async(name,args)=>{if(storedObservation&&loseDurableRead&&['cargar_autorizacion_nc_homologacion','cargar_consulta_nc_homologacion'].includes(name))return{data:null,error:new Error('SYNTHETIC_DURABLE_GET_LOST')}
  const response=await base(name,args)
+  if(name==='registrar_respuesta_envio_nc_homologacion'&&!response.error&&mode==='candidate-ack-lost')throw new Error('SYNTHETIC_CANDIDATE_ACK_LOST')
+  if(name==='cargar_respuesta_envio_nc_homologacion'&&loseCandidateRead)return{data:null,error:new Error('SYNTHETIC_CANDIDATE_GET_LOST')}
+  if(name==='cargar_respuesta_envio_nc_homologacion'&&mode==='candidate-corrupt'&&response.data&&typeof response.data==='object'&&!Array.isArray(response.data))return{data:{...response.data,solicitud_sha256:'f'.repeat(64)},error:null}
   if(name==='registrar_intencion_nc_homologacion'&&!response.error){if(mode==='intent-ack-lost')throw new Error('SYNTHETIC_ACK_LOST');if(mode==='sendflag-closes')api.flags.ARCA_HOMO_CREDIT_SEND_ENABLED='false'}
   if(name==='registrar_consulta_nc_homologacion'&&!response.error)storedObservation=true
   if(name==='registrar_consulta_nc_homologacion'&&!response.error&&mode==='journal-ack-lost')throw new Error('SYNTHETIC_JOURNAL_ACK_LOST')
@@ -2984,6 +2989,7 @@ it.each(['normal','send-response-lost','intent-ack-lost','existing-uncertain','h
  })
  const run=()=>emitFiscalCreditOperation({admin:api.admin,readSecret:name=>api.flags[name],keys,fetcher,createSendWsaa:()=>sendWsaa,createConsultWsaa:()=>consultWsaa},'SYNTHETIC_JWT',{saleId:sale,operationId:op,requestId:f.proposal.datos.solicitud_id,sha256:f.proposal.sha256},f.reviewId,f.permit,mode==='existing-uncertain'?crypto.randomUUID():f.attempt,query)
  if(['gateclosed','guard-revoked','body-changed'].includes(mode)){await expect(run()).rejects.toThrow('FISCAL_OPERACION_NC_NO_CONFIRMADA');expect(await f.readIntent()).toBeNull()}
+ else if(mode==='candidate-get-lost'||mode==='candidate-corrupt'){await expect(run()).rejects.toThrow('FISCAL_OPERACION_NC_NO_CONFIRMADA');expect(await f.readIntent()).not.toBeNull();expect(actions.filter(a=>a.includes('FECAESolicitar'))).toHaveLength(1);expect(actions.filter(a=>a.includes('FECompConsultar'))).toHaveLength(0);if(mode==='candidate-get-lost'){loseCandidateRead=false;api.flags.ARCA_HOMO_CREDIT_SEND_ENABLED='false';expect((await run()).estado).toBe('CAE_NC_REGISTRADO_NO_APLICADO');expect(actions.filter(a=>a.includes('FECAESolicitar'))).toHaveLength(1)}}
  else{const result=await run();expect(result.estado).toBe(['query-lost','second-auth','durable-get-lost'].includes(mode)?'ENVIO_INCIERTO':['intent-ack-lost','sendflag-closes'].includes(mode)?'CONSULTA_NC_REGISTRADA':'CAE_NC_REGISTRADO_NO_APLICADO');expect(result).toMatchObject({emision_habilitada:false,reintegro_habilitado:false,reposicion_habilitada:false})
   if(mode==='normal'){expect((await run()).estado).toBe('CAE_NC_REGISTRADO_NO_APLICADO');expect(actions.filter(a=>a.includes('FECAESolicitar'))).toHaveLength(1)}
   if(mode==='durable-get-lost'){loseDurableRead=false;api.flags.ARCA_HOMO_CREDIT_SEND_ENABLED='false';api.flags.ARCA_HOMO_CREDIT_CONSULT_ENABLED='false';await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false');const count=fetcher.mock.calls.length;expect((await run()).estado).toBe('CAE_NC_REGISTRADO_NO_APLICADO');expect(fetcher).toHaveBeenCalledTimes(count);expect(actions.filter(a=>a.includes('FECAESolicitar'))).toHaveLength(1)}
@@ -2992,4 +2998,38 @@ it.each(['normal','send-response-lost','intent-ack-lost','existing-uncertain','h
  if(mode==='history'){expect(keys.active).not.toHaveBeenCalled();expect(fetcher).not.toHaveBeenCalled()}
  if(['intent-ack-lost','sendflag-closes','guard-revoked','gateclosed','body-changed','history','existing-uncertain'].includes(mode))expect(actions.filter(a=>a.includes('FECAESolicitar'))).toHaveLength(0)
  expect(api.rpc.mock.calls.every(([,args])=>args.p_actor_auth_id===actor||args.p_actor===actor)).toBe(true);expect(await preparationEffects()).toEqual(before)
+})
+
+async function creditSendResponseFixture(){
+ const f=await creditConflictFixture();await db.exec('RESET ROLE');const sql=readFileSync('supabase/pilot-fiscal/049_fiscal_credit_send_responses.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'');await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
+ const response={intento_id:f.attempt,solicitud_sha256:f.body.sha256,recibido_en:new Date().toISOString(),resultado:{estado:'APROBACION_RECIBIDA',codigos:[100,101],puedeReenviar:false},emision_habilitada:false}
+ const recordResponse=async(data:unknown=response)=>(await db.query<{data:Record<string,unknown>}>('SELECT registrar_respuesta_envio_nc_homologacion($1,$2,$3,$4,$5,$6::jsonb) data',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,JSON.stringify(data)])).rows[0].data
+ const loadResponse=async(who=actor)=>(await db.query<{data:Record<string,unknown>|null}>('SELECT cargar_respuesta_envio_nc_homologacion($1,$2,$3,$4,$5) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256])).rows[0].data
+ return{...f,response,recordResponse,loadResponse}
+}
+it.each(['APROBACION_RECIBIDA','RECHAZO_RECIBIDO','SIN_CONFIRMACION'])('049 candidato%s no acredita CAE ni efectos y replay conserva respuesta',async estado=>{
+ const f=await creditSendResponseFixture(),before=await preparationEffects();expect(await f.loadResponse()).toBeNull();const data={...f.response,resultado:{...f.response.resultado,estado}},receipt=await f.recordResponse(data)
+ expect(receipt).toMatchObject({estado:'RESPUESTA_NC_REGISTRADA_NO_CONFIRMADA',observacion:data,emision_habilitada:false,reintegro_habilitado:false,reposicion_habilitada:false});expect(await f.loadResponse()).toEqual(receipt);expect(await f.recordResponse(data)).toEqual(receipt)
+ await denied(()=>f.recordResponse({...data,resultado:{...data.resultado,codigos:[999]}}));expect(await f.loadResponse()).toEqual(receipt);expect(await f.readAuthorization()).toBeNull();expect(await preparationEffects()).toEqual(before)
+})
+it('049 recuperación/replay independiente de custodia/permiso y rollback sin respuesta fantasma',async()=>{
+ const f=await creditSendResponseFixture();await db.exec('SAVEPOINT send_response_rollback');await f.recordResponse();await db.exec('ROLLBACK TO SAVEPOINT send_response_rollback; RELEASE SAVEPOINT send_response_rollback');expect(await f.loadResponse()).toBeNull()
+ const receipt=await f.recordResponse();await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false');await admin("INSERT INTO fiscal_nc_permisos_revocados_homologacion(permiso_id,motivo) VALUES($1,'Ensayo')",[f.permit]);expect(await f.loadResponse()).toEqual(receipt);expect(await f.recordResponse()).toEqual(receipt)
+})
+it.each(['intento','hash','infinito','old','futuro','extra','codes-string','codes-zero','codes-fraction','codes-many','cae','reenviar','flags'])('049 rechaza dato%s sin insertar evidencia falsa',async reason=>{
+ const f=await creditSendResponseFixture(),data:Record<string,unknown>=structuredClone(f.response),result:Record<string,unknown>={...f.response.resultado};data.resultado=result
+ if(reason==='intento')data.intento_id=crypto.randomUUID();if(reason==='hash')data.solicitud_sha256='f'.repeat(64);if(reason==='infinito')data.recibido_en='infinity';if(reason==='old')data.recibido_en='2000-01-01T00:00:00Z';if(reason==='futuro')data.recibido_en='2999-01-01T00:00:00Z';if(reason==='extra')data.xml='SYNTHETIC_PRIVATE';if(reason==='codes-string')result.codigos=['100'];if(reason==='codes-zero')result.codigos=[0];if(reason==='codes-fraction')result.codigos=[1.1];if(reason==='codes-many')result.codigos=Array.from({length:201},()=>1);if(reason==='cae')result.cae='11111111111111';if(reason==='reenviar')result.puedeReenviar=true;if(reason==='flags')data.emision_habilitada=true
+ await denied(()=>f.recordResponse(data));expect(await f.loadResponse()).toBeNull();expect(await f.readAuthorization()).toBeNull()
+})
+it.each(['anon','authenticated','service_role'])('049 tabla/columnas privadas para%s',async role=>{
+ const f=await creditSendResponseFixture();await f.recordResponse();await db.exec('RESET ROLE; SET ROLE '+role);await denied(()=>db.query('SELECT datos FROM fiscal_nc_respuestas_envio_homologacion'));await denied(()=>db.query('DELETE FROM fiscal_nc_respuestas_envio_homologacion'))
+ if(role!=='service_role'){await denied(()=>f.loadResponse());await denied(()=>f.recordResponse())}
+})
+it('049 respuesta inmutable y otro actor no accede',async()=>{
+ const f=await creditSendResponseFixture();await f.recordResponse();await denied(()=>f.loadResponse(crypto.randomUUID()));await db.exec('RESET ROLE');await denied(()=>db.query("UPDATE fiscal_nc_respuestas_envio_homologacion SET datos='{}'"));await denied(()=>db.query('DELETE FROM fiscal_nc_respuestas_envio_homologacion'))
+})
+
+it('049 ausencia de intención no permite registrar ni confunde null con envío ausente',async()=>{
+ const f=await creditSendSourceFixture();await f.seed();await db.exec('RESET ROLE');await db.exec(readFileSync('supabase/pilot-fiscal/049_fiscal_credit_send_responses.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,''));await db.exec('SET ROLE service_role');const before=await preparationEffects(),args=[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256]
+ await denied(()=>db.query('SELECT cargar_respuesta_envio_nc_homologacion($1,$2,$3,$4,$5)',args));await denied(()=>db.query("SELECT registrar_respuesta_envio_nc_homologacion($1,$2,$3,$4,$5,'{}'::jsonb)",args));expect(await f.readIntent()).toBeNull();expect(await preparationEffects()).toEqual(before)
 })

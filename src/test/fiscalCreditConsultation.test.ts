@@ -1,3 +1,4 @@
+import { validateFiscalCreditSendResponse } from '../../supabase/functions/_shared/fiscalCreditSendResponse'
 import { emitFiscalCreditOperation } from '../../supabase/functions/_shared/fiscalCreditEmissionWorker'
 import { reconcileFiscalCreditOperation } from '../../supabase/functions/_shared/fiscalCreditConsultWorker'
 import type { FiscalAuthClient } from '../../supabase/functions/_shared/fiscalWorkerAuthorization'
@@ -102,4 +103,12 @@ it('cancelación del padre aborta Auth de consulta encadenada sin RPC ni red',as
  const flags:Record<string,string>={SUPABASE_URL:'https://acoyfwwmhaeruciyedri.supabase.co',ARCA_HOMO_BACKEND_ENABLED:'true'}
  const pending=reconcileFiscalCreditOperation({signal:controller.signal,admin:{auth:{getUser},rpc},readSecret:name=>flags[name],keys,createWsaa,fetcher},'SYNTHETIC_JWT',{saleId:crypto.randomUUID(),operationId:crypto.randomUUID(),requestId:crypto.randomUUID(),sha256:'a'.repeat(64)},crypto.randomUUID())
  controller.abort();await expect(pending).rejects.toThrow('FISCAL_CONCILIACION_NC_NO_CONFIRMADA');expect(rpc).not.toHaveBeenCalled();expect(keys.active).not.toHaveBeenCalled();expect(fetcher).not.toHaveBeenCalled()
+})
+
+it.each(['APROBACION_RECIBIDA','RECHAZO_RECIBIDO','SIN_CONFIRMACION'])('respuesta NC%s cerrada/congelada no concede CAE ni reenvío',async estado=>{
+ const f=await journalFixture(),raw={version:1,solicitud_id:f.body.datos.solicitud_id,intento_id:f.intent.intento_id,solicitud_sha256:f.body.sha256,estado:'RESPUESTA_NC_REGISTRADA_NO_CONFIRMADA',observacion:{intento_id:f.intent.intento_id,solicitud_sha256:f.body.sha256,recibido_en:'2026-10-25T12:00:00Z',resultado:{estado,codigos:[100,101,100],puedeReenviar:false},emision_habilitada:false},emision_habilitada:false,reintegro_habilitado:false,reposicion_habilitada:false}
+ const result=validateFiscalCreditSendResponse(raw,f.body,f.intent);expect(result).toEqual(raw);expect(Object.isFrozen(result)).toBe(true);expect(Object.isFrozen(result.observacion.resultado.codigos)).toBe(true)
+ for(const key of ['solicitud_id','intento_id','solicitud_sha256','estado','reintegro_habilitado','extra'])expect(()=>validateFiscalCreditSendResponse({...raw,[key]:'INVALIDO'},f.body,f.intent)).toThrow()
+ expect(()=>validateFiscalCreditSendResponse({...raw,observacion:{...raw.observacion,recibido_en:'infinity'}},f.body,f.intent)).toThrow()
+ expect(()=>validateFiscalCreditSendResponse({...raw,observacion:{...raw.observacion,resultado:{...raw.observacion.resultado,cae:'11111111111111'}}},f.body,f.intent)).toThrow()
 })

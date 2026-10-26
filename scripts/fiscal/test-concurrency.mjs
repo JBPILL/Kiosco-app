@@ -1533,11 +1533,39 @@ try {
   assert.equal((await nc048_gateRollback).error,undefined);await b.query('COMMIT')
   assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_conflictos_homologacion WHERE solicitud_id=$1',[nc048_rollback.proposal.id])).rows[0].n,0)
   cases.push('048_rollback_de_conflicto_no_deja_bloqueo_fantasma')
+  const creditSendResponseInstalledAfterCase=cases.length
+  for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/049_fiscal_credit_send_responses.sql'),'utf8'))
+  async function nc049Fixture(point){
+    const f=await nc047Fixture(point),sha=(await observer.query('SELECT solicitud_sha256 v FROM fiscal_nc_intenciones_homologacion WHERE solicitud_id=$1',[f.proposal.id])).rows[0].v
+    const data={intento_id:f.intent,solicitud_sha256:sha,recibido_en:new Date().toISOString(),resultado:{estado:'RECHAZO_RECIBIDO',codigos:[100],puedeReenviar:false},emision_habilitada:false}
+    const write=async(client,codes=[100])=>(await client.query('SELECT registrar_respuesta_envio_nc_homologacion($1,$2,$3,$4,$5,$6::jsonb) v',[f.auth,f.sale,f.operation,f.proposal.id,f.proposal.sha,JSON.stringify({...data,resultado:{...data.resultado,codigos:codes}})])).rows[0].v
+    return{...f,write}
+  }
+  const nc049_same=await nc049Fixture(244)
+  await start(a);const nc049_first=await nc049_same.write(a)
+  await start(b);const nc049_replay=capture(nc049_same.write(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.deepEqual((await nc049_replay).value,nc049_first);await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_respuestas_envio_homologacion WHERE solicitud_id=$1',[nc049_same.proposal.id])).rows[0].n,1)
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_autorizaciones_homologacion WHERE solicitud_id=$1',[nc049_same.proposal.id])).rows[0].n,0)
+  cases.push('049_dos_workers_misma_respuesta_un_registro_sin_CAE')
+  const nc049_conflict=await nc049Fixture(245)
+  await start(a);await nc049_conflict.write(a)
+  await start(b);const nc049_other=capture(nc049_conflict.write(b,[101]));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc049_other).error?.code,'22023');await b.query('ROLLBACK')
+  assert.deepEqual((await observer.query('SELECT datos FROM fiscal_nc_respuestas_envio_homologacion WHERE solicitud_id=$1',[nc049_conflict.proposal.id])).rows[0].datos.resultado.codigos,[100])
+  cases.push('049_respuesta_distinta_esperando_no_reemplaza_candidato_original')
+  const nc049_rollback=await nc049Fixture(246)
+  await start(a);await nc049_rollback.write(a)
+  await start(b);const nc049_waiter=capture(nc049_rollback.write(b));await waitForLock(observer,b);await a.query('ROLLBACK')
+  assert.equal((await nc049_waiter).value.estado,'RESPUESTA_NC_REGISTRADA_NO_CONFIRMADA');await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_respuestas_envio_homologacion WHERE solicitud_id=$1',[nc049_rollback.proposal.id])).rows[0].n,1)
+  cases.push('049_rollback_no_deja_respuesta_fantasma_ni_omite_confirmacion_durable')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
     creditOwnerReviewInstalledAfterCase,postCreditOwnerReviewCaseCount:cases.length-creditOwnerReviewInstalledAfterCase,
+    creditSendResponseInstalledAfterCase,postCreditSendResponseCaseCount:cases.length-creditSendResponseInstalledAfterCase,
     creditConflictInstalledAfterCase,postCreditConflictCaseCount:cases.length-creditConflictInstalledAfterCase,
     creditConsultJournalInstalledAfterCase,postCreditConsultJournalCaseCount:cases.length-creditConsultJournalInstalledAfterCase,
     creditConsultTicketInstalledAfterCase,postCreditConsultTicketCaseCount:cases.length-creditConsultTicketInstalledAfterCase,

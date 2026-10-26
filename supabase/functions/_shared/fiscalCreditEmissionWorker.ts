@@ -1,3 +1,4 @@
+import { validateFiscalCreditSendResponse } from './fiscalCreditSendResponse.ts'
 import type { FiscalAuthClient } from './fiscalWorkerAuthorization.ts'
 import type { FiscalCreditDraftScope } from './fiscalCreditDraftAck.ts'
 import type { FiscalTicketKeys } from './fiscalSharedTickets.ts'
@@ -42,7 +43,10 @@ export async function emitFiscalCreditOperation(deps:FiscalCreditEmissionWorkerD
   if(proposal.sha256!==scope.sha256||proposal.datos.solicitud_id!==scope.requestId)return fail()
   const body=await withFiscalDeadline(validateFiscalCreditRequestRecord(packet,original,proposal),controller.signal)
   const read=async()=>{const raw=await rpc('cargar_intencion_nc_homologacion',args);return raw===null?null:validateFiscalCreditIntentRecord(raw,body,actor)}
+  const historic={p_actor:actor,p_venta:scope.saleId,p_operacion:scope.operationId,p_caso:scope.requestId,p_sha:scope.sha256}
+  const readResponse=async(intent:Readonly<FiscalCreditConsultIntent>)=>{const raw=await rpc('cargar_respuesta_envio_nc_homologacion',historic);return raw===null?null:validateFiscalCreditSendResponse(raw,body,intent)}
   const recover=async(intent:Readonly<FiscalCreditConsultIntent>):Promise<FiscalCreditEmissionWorkerResult>=>{
+   await readResponse(intent)
    try{return await withFiscalDeadline(reconcileFiscalCreditOperation({admin,readSecret,keys,fetcher,createWsaa:createConsultWsaa,expectedActorAuthId:actor,signal:controller.signal},token,scope,queryId),controller.signal)}
    catch{backend();const confirmed=await read();if(!confirmed||confirmed.intento_id!==intent.intento_id)return fail();return Object.freeze({...confirmed,reintegro_habilitado:false,reposicion_habilitada:false})}
   }
@@ -59,12 +63,17 @@ export async function emitFiscalCreditOperation(deps:FiscalCreditEmissionWorkerD
    await guard()
    // Snapshot de numeración autenticada sólo por transporte/TA;042 revalida bajo lock.
    if(last.ultimo+1!==binding.numero)return fail()
-   await sendFiscalCreditEmission({packet:initial.raw,source:original,draft:proposal,actorAuthId:actor},ticket,{fetcher,signal:controller.signal,consumeIntent:async(b,signal)=>{
+   const candidate=await sendFiscalCreditEmission({packet:initial.raw,source:original,draft:proposal,actorAuthId:actor},ticket,{fetcher,signal:controller.signal,consumeIntent:async(b,signal)=>{
     if(signal.aborted||JSON.stringify(b)!==JSON.stringify(binding))return fail()
     await guard()
     const ack=await rpc('registrar_intencion_nc_homologacion',{...args,p_cuerpo_sha:body.sha256,p_revision_id:revisionId,p_permiso_id:permissionId,p_intento_id:attemptId,p_ultimo_autorizado:last.ultimo,p_consultado_en:last.consultado_en})
     enabled();return ack
    }})
+   const intent=await read();if(!intent||intent.intento_id!==attemptId)return fail()
+   const observed={intento_id:intent.intento_id,solicitud_sha256:body.sha256,recibido_en:new Date().toISOString(),resultado:candidate,emision_habilitada:false}
+   try{await rpc('registrar_respuesta_envio_nc_homologacion',{...historic,p_datos:observed})}catch{/* ACK incierto: GET, nunca otro registro/envío. */}
+   const stored=await readResponse(intent)
+   if(stored&&JSON.stringify(stored.observacion)!==JSON.stringify(observed))return fail()
   }catch{/* ACK/red/SOAP inciertos: sólo recuperar intención, nunca repetir envío. */}
   const confirmed=await read();if(!confirmed)return fail()
   return await recover(confirmed)
