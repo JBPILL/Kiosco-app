@@ -2458,3 +2458,22 @@ Cuenta disponible no equivale a login probado. Pendiente: ejecutar8595c44 con
 rechazo fiscal del Cajero bajo ventana base temporal ya autorizada, cierre false
 y correlación de Auth/RPC/PostgreSQL. Luego otro comercio y aceptación positiva.
 No repetir el ensayo Dueño ni declarar PR03/E2E completados.
+
+### Ventana Cajero sin asistente listo — 26/10/2026
+
+El titular respondió «Cajero listo». Se interpretó como ACCESS_PROBE_READY del
+asistente y se abrió sólo el gate base21:28:58UTC; volvió a false21:29:18UTC
+(18:28:58–18:29:18Argentina,20s). Luego el titular aclaró que sólo había iniciado
+sesión en la aplicación web. Por tanto, NO hubo ensayo fiscal Cajero acreditado.
+El ingreso web real no sustituye el asistente ni los rechazos de su ruta privada.
+
+Digest remoto coincide con SHA256(false); probador oficial posterior devuelve
+503HOMOLOGACION_NO_HABILITADA y verifyJWT continúa ON. Otros flags ARCA ausentes,
+sin credenciales, llamadas ARCA, mutaciones fiscales/comerciales solicitadas,
+despliegues, master/Production ni merge. Evidencia fuera de Git:
+../cajero-window-closed-503-20261026.png. No sumar este caso a PASS de roles/RLS.
+
+Próximo intento: pedir la línea literal AUTH_PROFILE_CONFIRMED role=CASHIER y
+ACCESS_PROBE_READY de PowerShell antes de abrir otra ventana. No basta «listo»
+o sesión web. El GO de acceso temporal conserva su alcance; no solicitar otra
+autorización equivalente ni reusar/extractar tokens de la sesión web.
