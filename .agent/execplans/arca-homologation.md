@@ -2281,3 +2281,35 @@ la etiqueta/JWKS. No se desactiva gateway ni cambia signing key para sortearlo.
 El siguiente gate de flags/provisión conserva autorización propia; envío,
 consulta ARCA, preparación, revisión y aplicación siguen cerrados. PR03 parcial,
 PR02 sin primer CAE y objetivo global abierto.
+
+## Preparación de aceptación JWT real sin flags — 26/10/2026
+
+Se añadió scripts/comprobar-jwt-fiscal-staging.ps1 para resolver el primer
+pendiente de compatibilidad con un inicio Auth real, sin activar backend ni
+usar service_role/custodia/ARCA. El titular introduce localmente clave pública,
+correo y contraseña de la cuenta de ensayo; ningún valor va a argv, archivos,
+variables de entorno o salida. Host fijo acoyfwwmhaeruciyedri, HTTPS y cero
+redirecciones. Rechaza JWT API de servicio y anon de otro proyecto antes del login.
+
+El asistente crea sólo una sesión Auth de prueba y POSTea '{}' a la Edge cerrada:
+503HOMOLOGACION_NO_HABILITADA confirma paso del gateway (salida0);401 indica
+rechazo del JWT real (salida2). Cualquier otro resultado no confirma el gate.
+Sólo se imprime algoritmo/status; nunca JWT, respuestas externas ni credenciales.
+Finalmente solicita logout?scope=local únicamente para la sesión nueva, incluso
+si el gateway falla; no hay cierre global ni reintentos automáticos. Un fallo de
+logout devuelve1 y requiere diagnóstico antes de repetir. El access token no
+se persiste; la prueba no acredita revocación instantánea de ese token ni roles/RLS.
+Documentación de scopes: https://supabase.com/docs/guides/auth/signout.
+
+Pruebas Windows con Auth y gateway simulados cubren éxito503 con excepción HTTP,
+rechazo401, backend no cerrado, fallos Auth/red/logout, key de servicio y proyecto
+ajeno; no ejecutan Auth real. Primera ejecución local del test falló por un mock
+UseBasicParsing sin tipo switch; se corrigió el mock, sin relajar assertions.
+La ejecución humana con cuenta real permanece PENDIENTE. No se modifica Edge,
+SQL, flags, signing keys, Vercel ni Production con este asistente.
+
+Validación final del asistente JWT:10pruebas Windows PASS (incluida clave publishable),
+lint enfocado PASS y -Preparar PASS sin red. Evidencia
+../fiscal-staging-jwt-script-final.log. La prueba con credenciales reales sigue
+sin ejecutar; no se atribuye PASS hospedado ni a roles ni a RLS.
+Build final del asistente: rtk npm run build PASS, salida0; aviso previo de chunks grandes. Sin cambios de runtime fiscal ni despliegue adicional.

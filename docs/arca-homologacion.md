@@ -951,3 +951,26 @@ emisiones. Fuentes/evidencia/límites en el ExecPlan fiscal. Siguiente pendiente
 JWT Auth reales (incluida compatibilidad ES256 con gateway), roles/comercios y
 RLS/E2E; el probador oficial no sustituye esa aceptación. No cambiar gateway,
 claves, flags ni provisión privada sin su gate. PR02/PR03 siguen abiertos.
+
+### Comprobar JWT Auth real con la función todavía cerrada
+
+Ejecutar en Windows:
+
+```powershell
+powershell -NoProfile -File "C:\Users\jonat\Documents\Codex\2026-10-16\referenced-chatgpt-conversation-this-is-an\work\commercial-subscription-backend\scripts\comprobar-jwt-fiscal-staging.ps1"
+```
+
+El titular copia la clave **Publishable** de Project Settings → API Keys del
+proyecto kioskopos-staging (también se admite anon legacy del mismo proyecto).
+No usar una clave secret/service_role. Introducirla sólo en el prompt local;
+después introducir correo y contraseña de una cuenta KioskoPOS de ensayo, por
+ejemplo prueba1@gmail.com. No es la contraseña PostgreSQL ni la de la cuenta web
+Supabase. No enviar claves o contraseñas al chat. -Preparar no conecta ni pide datos.
+
+Comunicar sólo las líneas JWT_GATEWAY_* y TEST_SESSION_*: salida0 significa
+JWT aceptado por gateway y backend cerrado, salida2 significa rechazo401, salida1
+no confirma el ensayo o su cleanup. No repetir automáticamente si el cierre de
+sesión falla. Nunca desactivar JWT ni rotar claves para sortear un rechazo.
+La prueba cierra sólo su sesión Auth de ensayo (scope=local); no guarda tokens.
+Aun con PASS, Dueño/Cajero/otro comercio, RLS y E2E siguen pendientes de aceptación
+propia; no activar flags ni aprovisionar credenciales ARCA por este resultado.
