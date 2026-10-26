@@ -1161,3 +1161,23 @@ Siguiente GO propuesto: una autenticación WSAA y exactamente dos consultas WSFE
 en homologación con certificado original/CUIT representado ya autorizado,
 guardando sólo la evidencia pública local. No cargar nada en Supabase/Vercel,
 no abrir flags ni provisionar custodia/emisor/catálogo, sin emisiones o Production.
+
+### Consulta real de ambos catálogos completada — 26/10/2026
+
+Con GO específico,174441c obtuvo un único TA WSAA y consultó los dos métodos:
+FEParamGetTiposIva6registros y FEParamGetCondicionIvaReceptor11registros, PASS.
+Exportación conjunta/salida0 confirmadas,0comprobantes emitidos. Par original
+certificado/clave verificado; sin rotación ni credenciales impresas/persistidas.
+
+Evidencia pública local fuera de Git:
+../arca-parametros-homologacion-20261026-edce7a368bf6424e8cd161300f9327d8/,
+dos JSON y manifest-publico.json con SHA256 verificados. Clases originales
+A/ALEY/C, B/C y C/49 conservadas para revisión; no normalizadas automáticamente.
+Los datos permanecen importado_en_staging=false/emision_habilitada=false.
+
+No Supabase/flags/Vercel, consultas de puntos/numeración, CAE ni Production.
+Token/Sign sólo en memoria del proceso ya terminado. El GO de estas consultas
+está consumido; no repetirlo ni reutilizar un TA inexistente en memoria local.
+Falta preparar importación revisable, acreditar el punto y autorizar provisión/
+aceptación positiva. No convertir obtención de parámetros en preparación o
+emisión completadas. Evidencia y límites en ExecPlan fiscal.

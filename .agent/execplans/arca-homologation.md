@@ -2609,3 +2609,35 @@ No cubre instalación/provisión, flags, Vercel, ARCA Producción o CAE. La
 provisión y aceptación positiva hospedada siguen gates posteriores distintos.
 Build final PASS689módulos, aviso previo de chunks grandes; diff PASS. El cambio
 es local/scripts/tests/documentación, sin SQL, runtime Edge o frontend remoto.
+
+## Catálogos WSFE reales obtenidos bajo GO — 26/10/2026
+
+GO humano: «Sí, consultar ambos catálogos en homologación». Se ejecutó174441c con
+el certificado público original fuera del checkout y clave cifrada/DPAPI locales
+existentes, sin rotación ni lectura de valores al chat. Par/TRA/CMS PASS y una
+autenticación WSAA real PASS, seguida exactamente por FEParamGetTiposIva y
+FEParamGetCondicionIvaReceptor: ambos PASS,6tipos IVA y11condiciones receptor.
+CATALOGOS_PREPARACION_EXPORTADOS=true/salida0,0comprobantes emitidos. Sin retries.
+
+Dos evidencias públicas y manifiesto de hashes verificados fuera de Git:
+../arca-parametros-homologacion-20261026-edce7a368bf6424e8cd161300f9327d8/.
+FuenteTiposIva SHA256a2dfdfcf253c484c70d2585f09d9496b6a0762d8e17160a4e4521075afdf50c1;
+archivo90e6a06b8a761c3687a2d285a19f8a2d872e35b50b9f106ebe43e2babf8be5c5.
+FuenteCondicionIva SHA2569a678f82589f1e291070e59b19be5c4a7deb83b4891f48d5ccba0c56ebb9ea84;
+archivo66f806b0ed472876e6a5c4a3ba3fb17834233b698f73fc0eba04eb06f50e7b85.
+Clases recibidas: A/ALEY/C, B/C, C/49. Se conservaron originales; no equiparar
+ALEY/49 con los tipos1/6/11 ni aplicar un IVA por defecto.
+
+Se verificó esquema/entorno/flags false y ausencia de campos Token/Sign/PEM en
+los JSON; sin XML crudo ni CUIT emisor exportados. El manifiesto contiene sólo
+nombres, métodos, conteos, clases, fechas y SHA256 de archivos/respuestas públicas.
+Token/Sign permanecieron en memoria del proceso, que terminó; no se guardó TA.
+Expiración informada por WSAA:2026-10-27T10:03:32.688Z. No asumir disponibilidad
+local del TA ni repetir autenticación/consultas fuera del GO consumido.
+
+El GO se consumió sin tocar Supabase, flags, Vercel, emisores/custodia/catálogos
+remotos, ARCA Producción o CAE. No se consultaron puntos ni numeración. PR02
+permanece pendiente: PV2 sigue sin acreditación en WSFE (historia602 conservada).
+Siguiente trabajo local autorizado: normalizar/revisar estos campos públicos y
+preparar el alcance concreto de provisión, sin instalarlo. La aceptación positiva
+necesita emisor/punto acreditados y su GO; estos catálogos no los sustituyen.
