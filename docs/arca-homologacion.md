@@ -981,3 +981,14 @@ El diagnóstico de login ahora añade una categoría segura y statusHTTP, por
 Comunicar sólo esa línea, nunca el cuerpo externo. Una categoría desconocida no
 prueba contraseña incorrecta. No repetir automáticamente ni restablecer claves
 por un fallo genérico. El cuerpo Auth usa bytesUTF8 explícitos (probado con Unicode).
+
+### JWT real de Staging confirmado — 26/10/2026
+
+El titular acreditó con prueba1@gmail.com:JWT_GATEWAY_PASS_BACKEND_CLOSED,
+algES256/status503, y logout local de la sesión de prueba confirmado. Gateway y
+compatibilidad real de ese JWT:PASS; sin cambiar claves/verify_jwt/flags.
+Actor/roles/SQL-RLS/E2E siguen pendientes: el gate cerrado se ejecuta antes de
+esas comprobaciones. Próximo gate: autorización independiente para habilitar
+sólo el backend base temporalmente y ejecutar aceptación de cuentas de ensayo,
+con resto de flags cerrados y sin emisores/custodia/ARCA/Vercel/Production.
+Detalles y límites en el ExecPlan fiscal. No inferir primer CAE ni readiness total.

@@ -2338,3 +2338,33 @@ Siguiente paso: un intento humano con el asistente actualizado y comunicar sólo
 JWT_CHECK_NOT_CONFIRMED/JWT_GATEWAY_*/TEST_SESSION_*; sin credenciales ni respuesta
 externa completa. Aceptación JWT/RLS hospedada y gates fiscales siguen pendientes.
 Build final de esta corrección: rtk npm run build PASS, salida0; aviso previo de chunks grandes. Sin cambios SQL/Edge ni despliegue remoto.
+
+## JWT Auth real ES256 atraviesa el gateway — 26/10/2026
+
+Evidencia aportada por el titular al ejecutar el asistente95e240e con la cuenta
+prueba1@gmail.com y entradas sólo locales:
+
+- JWT_GATEWAY_PASS_BACKEND_CLOSED alg=ES256 status=503.
+- TEST_SESSION_LOGOUT_LOCAL_CONFIRMED; sin solicitud de cierre global.
+
+Se acredita compatibilidad real del JWT ES256 de esa cuenta con el gateway y
+respuesta del backend cerrado. No fue necesario desactivar verify_jwt, cambiar
+signing keys ni activar flags. No atribuir el fallo anterior de Auth a una causa
+concreta: el nuevo intento pasó, pero no hay diagnóstico del rechazo original.
+El cierre local acredita la petición scope=local de la sesión de ensayo; no
+implica revocación instantánea de access tokens existentes.
+
+Esto NO cierra actor/rol activo/aislamiento SQL/RLS ni aceptación E2E. El handler
+retorna503 antes de crear el cliente privado y verificar actor; esas capas aún
+no se ejercitaron con el JWT real. PR03 permanece parcial y PR02 sin primer CAE.
+
+Siguiente paso concreto preparado: solicitar autorización para activar de forma
+temporal sólo ARCA_HOMO_BACKEND_ENABLED=true en Staging, realizar comprobaciones
+de Auth/roles/rechazos y lecturas con cuentas de ensayo, y volver a false al
+terminar. Mantener todos los demás flags cerrados. No provisionar emisores,
+catálogo/custodia/keys ARCA, no invocar mutaciones fiscales/comerciales, no llamar
+ARCA ni cambiar Vercel/Production. La activación del gate base habilita el
+handler base; no debe describirse como un modo de sólo lectura global. Las
+pruebas se limitarán explícitamente a lecturas y rechazos; aceptación positiva
+completa con fixtures requiere su propio alcance. El GO anterior de Edge excluyó
+flags: no cambiar esta configuración hasta recibir la autorización nueva.
