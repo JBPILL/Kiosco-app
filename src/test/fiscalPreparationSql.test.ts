@@ -3033,3 +3033,58 @@ it('049 ausencia de intención no permite registrar ni confunde null con envío 
  const f=await creditSendSourceFixture();await f.seed();await db.exec('RESET ROLE');await db.exec(readFileSync('supabase/pilot-fiscal/049_fiscal_credit_send_responses.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,''));await db.exec('SET ROLE service_role');const before=await preparationEffects(),args=[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256]
  await denied(()=>db.query('SELECT cargar_respuesta_envio_nc_homologacion($1,$2,$3,$4,$5)',args));await denied(()=>db.query("SELECT registrar_respuesta_envio_nc_homologacion($1,$2,$3,$4,$5,'{}'::jsonb)",args));expect(await f.readIntent()).toBeNull();expect(await preparationEffects()).toEqual(before)
 })
+
+async function creditAuthorizedResolutionFixture(){
+ const f=await creditSendResponseFixture();await db.exec('RESET ROLE');const sql=readFileSync('supabase/pilot-fiscal/050_fiscal_credit_authorized_resolution.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'');await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
+ const loadResolution=async(who=actor)=>(await db.query<{data:Record<string,unknown>|null}>('SELECT cargar_resolucion_nc_homologacion($1,$2,$3,$4,$5) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256])).rows[0].data
+ const resolve=async(who=actor)=>(await db.query<{data:Record<string,unknown>}>('SELECT registrar_resolucion_nc_autorizada_homologacion($1,$2,$3,$4,$5) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256])).rows[0].data
+ return{...f,loadResolution,resolve}
+}
+it('050 resolución exige CAE047, no candidato049, y no aplica negocio',async()=>{
+ const f=await creditAuthorizedResolutionFixture(),before=await preparationEffects();expect(await f.loadResolution()).toBeNull();await denied(()=>f.resolve());await f.recordResponse();await denied(()=>f.resolve())
+ await f.write();const result=await f.resolve();expect(result).toMatchObject({estado:'RESOLUCION_NC_REGISTRADA_NO_APLICADA',solicitud_id:f.proposal.datos.solicitud_id,cae:'11111111111111',numero:23,emision_habilitada:false,reintegro_habilitado:false,reposicion_habilitada:false});expect(await f.loadResolution()).toEqual(result);expect(await f.resolve()).toEqual(result);expect(await preparationEffects()).toEqual(before)
+})
+it.each(['RECHAZO_RECIBIDO','SIN_CONFIRMACION'])('050 respuesta%s y consulta602 no resuelven numeración',async estado=>{
+ const f=await creditAuthorizedResolutionFixture();await f.recordResponse({...f.response,resultado:{...f.response.resultado,estado}});await f.write({...f.received,resultado:{estado:'CONCILIAR',codigo:'SIN_CONFIRMACION',puedeReenviar:false}});await denied(()=>f.resolve());expect(await f.loadResolution()).toBeNull()
+})
+it('050 conflicto bloquea resolución; conflicto posterior conserva marcador pero bloquea permiso/gate',async()=>{
+ const f=await creditAuthorizedResolutionFixture();await f.write();await db.exec('SAVEPOINT resolution_conflict');await f.write(f.conflict,crypto.randomUUID());await denied(()=>f.resolve());expect(await f.loadResolution()).toBeNull();await db.exec('ROLLBACK TO SAVEPOINT resolution_conflict; RELEASE SAVEPOINT resolution_conflict')
+ const marker=await f.resolve();await f.write(f.conflict,crypto.randomUUID());expect(await f.loadResolution()).toEqual(marker);expect(await f.resolve()).toEqual(marker);await denied(()=>f.gate());await denied(()=>db.query('SELECT verificar_permiso_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8)',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,f.body.sha256,f.reviewId,f.permit]))
+})
+it('050 rollback no deja resolución fantasma; recuperación admite custodia/permiso cerrados',async()=>{
+ const f=await creditAuthorizedResolutionFixture();await f.write();await db.exec('SAVEPOINT resolution_rollback');await f.resolve();await db.exec('ROLLBACK TO SAVEPOINT resolution_rollback; RELEASE SAVEPOINT resolution_rollback');expect(await f.loadResolution()).toBeNull()
+ const result=await f.resolve();await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false');await admin("INSERT INTO fiscal_nc_permisos_revocados_homologacion(permiso_id,motivo) VALUES($1,'Ensayo')",[f.permit]);expect(await f.loadResolution()).toEqual(result);expect(await f.resolve()).toEqual(result)
+})
+it.each(['anon','authenticated','service_role'])('050 ACL de resolución/helper para%s',async role=>{
+ const f=await creditAuthorizedResolutionFixture();await f.write();await f.resolve();await db.exec('RESET ROLE; SET ROLE '+role);await denied(()=>db.query('SELECT cae FROM fiscal_nc_resoluciones_homologacion'));await denied(()=>db.query("SELECT fiscal_nc_exigir_serie_sin_conflictos('20123456786',7,13)"));if(role!=='service_role'){await denied(()=>f.resolve());await denied(()=>f.loadResolution())}
+})
+it('050 otro Auth e inmutabilidad de marcador',async()=>{
+ const f=await creditAuthorizedResolutionFixture();await f.write();await f.resolve();await denied(()=>f.loadResolution(crypto.randomUUID()));await denied(()=>f.resolve(crypto.randomUUID()));await db.exec('RESET ROLE');await denied(()=>db.query('DELETE FROM fiscal_nc_resoluciones_homologacion'));await denied(()=>db.query('UPDATE fiscal_nc_resoluciones_homologacion SET numero=24'))
+})
+
+it('050 dos casos parciales avanzan sólo tras CAE resuelto y numeración vigente; conflicto histórico bloquea siguiente permiso',async()=>{
+ const f=await boundCreditFixture(true,true);await installCreditBinding();await installCreditContext();await seedCreditCatalog();await installCreditContextSource();await installCreditPreparation();await installCreditNumbers()
+ const {validateFiscalCreditContext}=await import('../../supabase/functions/_shared/fiscalCreditContext'),{prepareFiscalCreditPreparation}=await import('../../supabase/functions/_shared/fiscalCreditPreparation'),entry={servicioDesde:null,servicioHasta:null,vencimientoPago:null},prepared:{id:string;sha:string;dataSha:string;reservation:string}[]=[]
+ for(let n=0;n<2;n++){
+  const proposal=await f.make({...f.draft,solicitud_id:crypto.randomUUID(),lineas:[{...f.draft.lineas[0],cantidad:'0.250',importe:'62.00'}],importes:{...f.draft.importes,total:'62.00',neto:'62.00'}});await f.write(proposal)
+  const raw=(await db.query<{data:unknown}>('SELECT cargar_contexto_nc_homologacion($1,$2,$3,$4,$5) data',[actor,sale,op,proposal.datos.solicitud_id,proposal.sha256])).rows[0].data,context=await validateFiscalCreditContext(raw,f.source,proposal),data=await prepareFiscalCreditPreparation(f.source,proposal,context,entry)
+  await db.query('SELECT guardar_preparacion_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb)',[actor,sale,op,proposal.datos.solicitud_id,proposal.sha256,data.datos.contexto_sha256,JSON.stringify(entry)])
+  prepared.push({id:proposal.datos.solicitud_id,sha:proposal.sha256,dataSha:data.sha256,reservation:crypto.randomUUID()})
+ }
+ const reserve=async(n:number,last:number)=>(await db.query<{data:Record<string,unknown>}>('SELECT reservar_cuerpo_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8,clock_timestamp()) data',[actor,sale,op,prepared[n].id,prepared[n].sha,prepared[n].dataSha,prepared[n].reservation,last])).rows[0].data
+ await reserve(0,22)
+ await db.exec('RESET ROLE');for(const name of readdirSync('supabase/pilot-fiscal').filter(name=>/^0(3[7-9]|4[0-9]|50)_/.test(name)).sort()){const sql=readFileSync('supabase/pilot-fiscal/'+name,'utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'');await db.exec(sql);await db.exec(sql)}await db.exec('SET ROLE service_role')
+ const approve=async(n:number)=>{
+  const p=prepared[n],review=crypto.randomUUID(),permit=crypto.randomUUID(),attempt=crypto.randomUUID(),packet=(await db.query<{data:{cuerpo:{sha256:string}}}>('SELECT cargar_fuente_cuerpo_nc_homologacion($1,$2,$3,$4,$5) data',[actor,sale,op,p.id,p.sha])).rows[0].data
+  await db.query('SELECT aprobar_revision_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8)',[actor,sale,op,p.id,p.sha,review,packet.cuerpo.sha256,p.dataSha])
+  await admin('INSERT INTO fiscal_nc_permisos_homologacion(id,solicitud_id,reserva_id,revision_id,actor_auth_id,solicitud_sha256,preparacion_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,creado_en,vence_en) SELECT $1,$2,$3,$4,$5,$6,$7,e.credencial_id,e.certificado_sha256,e.revision,true,clock_timestamp(),r.vence_en FROM fiscal_emisores_homologacion e,fiscal_nc_revisiones_homologacion r WHERE e.kiosco_id=$8 AND r.id=$4',[permit,p.id,p.reservation,review,actor,packet.cuerpo.sha256,p.dataSha,kid])
+  return{review,permit,attempt,bodySha:packet.cuerpo.sha256}
+ }
+ const a=await approve(0),p=prepared[0],before=await preparationEffects();await db.query('SELECT registrar_intencion_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8,$9,22,clock_timestamp())',[actor,sale,op,p.id,p.sha,a.bodySha,a.review,a.permit,a.attempt])
+ const response={intento_id:a.attempt,solicitud_sha256:a.bodySha,consultado_en:new Date().toISOString(),resultado:{estado:'AUTORIZACION_NC_COINCIDENTE',cae:'11111111111111',vencimiento:f.draft.fecha,procesadoEn:f.draft.fecha,solicitudSha256:a.bodySha,puedeReenviar:false},emision_habilitada:false}
+ await db.query('SELECT registrar_consulta_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb)',[actor,sale,op,p.id,p.sha,crypto.randomUUID(),JSON.stringify(response)])
+ await denied(()=>reserve(1,23));await db.query('SELECT registrar_resolucion_nc_autorizada_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,p.id,p.sha]);await denied(()=>reserve(1,22));expect(await reserve(1,23)).toMatchObject({numero:24});expect(await reserve(1,22)).toMatchObject({numero:24})
+ const b=await approve(1),other=prepared[1];await db.query('SELECT verificar_permiso_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8)',[actor,sale,op,other.id,other.sha,b.bodySha,b.review,b.permit])
+ await db.query('SELECT registrar_consulta_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb)',[actor,sale,op,p.id,p.sha,crypto.randomUUID(),JSON.stringify({...response,resultado:{...response.resultado,cae:'22222222222222'}})])
+ await denied(()=>db.query('SELECT verificar_permiso_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8)',[actor,sale,op,other.id,other.sha,b.bodySha,b.review,b.permit]));expect(await preparationEffects()).toEqual(before)
+})
