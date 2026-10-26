@@ -2232,3 +2232,52 @@ aceptación de Edge, restore aislado ni primer CAE. PR02/PR03 y PR07 siguen abie
 credenciales ARCA ni activar flags ni Vercel. Preparar aceptación negativa de
 Auth/CORS/gates antes de cualquier provisioning o envío. No desplegado aún.
 Production/master/merge/ARCA real/CAE: sin acciones en este bloque.
+
+## Edge fiscal cerrada autorizada — 26/10/2026 (en verificación)
+
+El titular autorizó exclusivamente desplegar arca-homologacion en Staging y
+comprobar gateway/CORS/gates cerrados. Sin provisión ARCA, flags, Vercel ni emisiones.
+Se preparó bundle privado de74módulos desde bac8ac1, sin minificar/tree-shaking,
+con imports npm exactamente fijados por deno.json;341976bytes, SHA256
+10dc48715527c3e1a1daa230e1945d862814aa8726e83b85928839348f1c40c2.
+Cuatro casos sobre ese bundle en Node (no Deno) PASS,0red/0lecturas de credenciales.
+Desplegado mediante editor oficial; Verify JWT activado confirmado en Settings.
+Pruebas hospedadas: POSTsinJWT401; POSTJWTficticio401; OPTIONSorigenStaging204
+con CORS limitado; OPTIONSorigenajeno403 sin allow-origin. Probador oficial:
+POSTde prueba ENVIAR_NC sin datos comerciales devuelve503HOMOLOGACION_NO_HABILITADA.
+No se enviaron comprobantes ni se habilitó preparación/revisión/envío/aplicación.
+Pendiente cerrar comprobación del código remoto y diarios vacíos tras estas pruebas.
+
+### Cierre del despliegue Edge cerrado — 26/10/2026
+
+- Código remoto de index.ts copiado desde el editor y comparado completo con el
+  bundle local, normalizando sólo CRLF/LF: MATCH. SHA256 canónico
+  10dc48715527c3e1a1daa230e1945d862814aa8726e83b85928839348f1c40c2.
+- Inventario remoto: cuatro funciones. Se agregó sólo arca-homologacion; los tres
+  endpoints previos conservan sus fechas de actualización. Verify JWT sigue ON.
+- Gateway/CORS: cuatro comprobaciones HTTP hospedadas PASS. El probador oficial
+  confirma503HOMOLOGACION_NO_HABILITADA. No interpretar ese probador como un JWT
+  de Dueño/Cajero ni como aceptación de identidad/RLS con usuarios reales.
+- Verificación DB posterior READ ONLY/ROLLBACK:41tablas fiscales,0filas,
+  70/70RPC privadas restringidas y0SECURITY DEFINER públicos accesibles a anon.
+- Ninguna provisión de credenciales ARCA, flag activado, cambio Vercel, llamada
+  ARCA, emisión, cambio Production/master ni merge en este bloque.
+- Reproducción local con scripts/preparar-edge-fiscal-staging.mjs (exige sources
+  de funciones sin diferencias contra bac8ac1) y scripts/verificar-paquete-fiscal-cerrado.mjs:
+  mismo hash,74módulos/cuatro imports fijados y4casos PASS sin red ni credenciales.
+  Node es una comprobación del paquete; el arranque Deno real se acredita por la
+  respuesta503 hospedada. Lint de ambos scripts PASS. El frontend no cambió.
+
+Evidencia local en ../edge-staging-bac8ac1/:manifest.json,remote-code-match.json,
+hosted-negative-checks.json,settings-jwt-on.png,closed-gate-503-ax.txt/PNG,
+post-deploy-db-ax.txt y functions-inventory-ax.txt. No incluye credenciales.
+
+**Primer pendiente:** aceptación con JWT Auth reales de Dueño/Cajero/otro comercio.
+La configuración hospedada etiqueta el control como «Verify JWT with legacy
+secret»; el JWKS público de Staging publica una clave ES256 (consulta200, sin
+registrar su material). Esto obliga a comprobar compatibilidad con un JWT Auth
+real antes de cerrar el gate: no asumir incompatibilidad o aceptación sólo por
+la etiqueta/JWKS. No se desactiva gateway ni cambia signing key para sortearlo.
+El siguiente gate de flags/provisión conserva autorización propia; envío,
+consulta ARCA, preparación, revisión y aplicación siguen cerrados. PR03 parcial,
+PR02 sin primer CAE y objetivo global abierto.

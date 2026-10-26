@@ -938,3 +938,16 @@ aceptación de Edge, restore aislado ni primer CAE. PR02/PR03 y PR07 siguen abie
 credenciales ARCA ni activar flags ni Vercel. Preparar aceptación negativa de
 Auth/CORS/gates antes de cualquier provisioning o envío. No desplegado aún.
 Production/master/merge/ARCA real/CAE: sin acciones en este bloque.
+
+### Edge de Staging desplegada con gates cerrados — 26/10/2026
+
+Con autorización específica se desplegó únicamente arca-homologacion desde el
+código fiscal de bac8ac1. Paquete privado reproducible:74módulos,341976bytes,
+imports npm fijados y coincidencia completa del código remoto. Verify JWT ON.
+Pruebas hospedadas:401sinJWT/401JWTinválido,204preflightStaging,403origenajeno y
+503HOMOLOGACION_NO_HABILITADA mediante probador oficial. DB posterior:41tablas
+fiscales vacías y70RPC privadas restringidas. No flags, secretos ARCA, Vercel ni
+emisiones. Fuentes/evidencia/límites en el ExecPlan fiscal. Siguiente pendiente:
+JWT Auth reales (incluida compatibilidad ES256 con gateway), roles/comercios y
+RLS/E2E; el probador oficial no sustituye esa aceptación. No cambiar gateway,
+claves, flags ni provisión privada sin su gate. PR02/PR03 siguen abiertos.

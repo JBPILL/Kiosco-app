@@ -908,3 +908,16 @@ RLS activo, sin acceso directo y diarios fiscales vacíos. Evidencia y límites 
 PR03 sigue parcial: Edge/custodia/flags/JWT-RLS-E2E aún pendientes; PR02 sin CAE;
 PR07 sin restore completo. Siguiente gate: autorización separada de Edge cerrado.
 No cambios en Production/master; no merge ni comunicaciones ARCA.
+
+### Edge de Staging desplegada con gates cerrados — 26/10/2026
+
+Con autorización específica se desplegó únicamente arca-homologacion desde el
+código fiscal de bac8ac1. Paquete privado reproducible:74módulos,341976bytes,
+imports npm fijados y coincidencia completa del código remoto. Verify JWT ON.
+Pruebas hospedadas:401sinJWT/401JWTinválido,204preflightStaging,403origenajeno y
+503HOMOLOGACION_NO_HABILITADA mediante probador oficial. DB posterior:41tablas
+fiscales vacías y70RPC privadas restringidas. No flags, secretos ARCA, Vercel ni
+emisiones. Fuentes/evidencia/límites en el ExecPlan fiscal. Siguiente pendiente:
+JWT Auth reales (incluida compatibilidad ES256 con gateway), roles/comercios y
+RLS/E2E; el probador oficial no sustituye esa aceptación. No cambiar gateway,
+claves, flags ni provisión privada sin su gate. PR02/PR03 siguen abiertos.

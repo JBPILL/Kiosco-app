@@ -1,0 +1,16 @@
+import fs from 'node:fs';import path from 'node:path';import crypto from 'node:crypto';
+import { pathToFileURL,fileURLToPath } from 'node:url';
+import {execFileSync} from 'node:child_process';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');process.chdir(root);
+execFileSync('git',['diff','--exit-code','bac8ac13cf07f8f38a8748e2e5f77d1c7a2b6e34','--','supabase/functions'],{cwd:root,stdio:'pipe'});
+const out=path.resolve(root,'../edge-staging-bac8ac1');fs.mkdirSync(out,{recursive:true});
+const {rolldown}=await import(pathToFileURL(path.join(root,'node_modules/rolldown/dist/index.mjs')).href);
+const imports=JSON.parse(fs.readFileSync(root+'/supabase/functions/arca-homologacion/deno.json','utf8')).imports;
+const build=await rolldown({input:root+'/supabase/functions/arca-homologacion/index.ts',external:Object.keys(imports),treeshake:false});
+const generated=await build.generate({format:'esm',paths:imports,sourcemap:false,minify:false});await build.close();
+const chunks=generated.output.filter(x=>x.type==='chunk');if(chunks.length!==1)throw Error('Expected single chunk');
+const code=chunks[0].code;if(/-----BEGIN (?:RSA |EC |ENCRYPTED )?PRIVATE KEY-----|sb_secret_[A-Za-z0-9]{12,}/.test(code))throw Error('Sensitive pattern');
+fs.writeFileSync(out+'/index.ts',code);
+const manifest={sourceCommit:'bac8ac13cf07f8f38a8748e2e5f77d1c7a2b6e34',projectRef:'acoyfwwmhaeruciyedri',function:'arca-homologacion',verify_jwt:true,sha256:crypto.createHash('sha256').update(code).digest('hex'),bytes:Buffer.byteLength(code),imports,modules:Object.keys(chunks[0].modules).sort()};
+fs.writeFileSync(out+'/manifest.json',JSON.stringify(manifest,null,2));
+console.log(JSON.stringify({bytes:manifest.bytes,sha256:manifest.sha256,modules:manifest.modules.length,external:chunks[0].imports}));
