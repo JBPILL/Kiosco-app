@@ -127,6 +127,8 @@ function workerFixture(){
  mapping.cargar_preparacion_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
  mapping.guardar_preparacion_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha','p_contexto_sha','p_entrada']
  mapping.cargar_fuente_comercial_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id'];mapping.cargar_historial_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_despues'];mapping.guardar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_canonico','p_sha'];mapping.cargar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id'];mapping.cancelar_borrador_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha']
+ for(const name of ['cargar_aplicacion_comercial_nc_homologacion','cargar_resolucion_nc_homologacion','registrar_resolucion_nc_autorizada_homologacion'])mapping[name]=['p_actor','p_venta','p_operacion','p_caso','p_sha']
+ mapping.aplicar_comercial_nc_homologacion=['p_actor','p_venta','p_operacion','p_caso','p_sha','p_caja']
  const rpc=vi.fn<FiscalAuthClient['rpc']>(async(name,args)=>{
   const keys=mapping[name];if(!keys)throw new Error('UNEXPECTED_PRIVATE_RPC')
   await db.exec('SAVEPOINT worker_rpc')
@@ -3091,8 +3093,8 @@ it('050 dos casos parciales avanzan sólo tras CAE resuelto y numeración vigent
  await denied(()=>db.query('SELECT verificar_permiso_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8)',[actor,sale,op,other.id,other.sha,b.bodySha,b.review,b.permit]));expect(await preparationEffects()).toEqual(before)
 })
 
-async function creditCommercialPlanFixture(){
- const f=await creditAuthorizedResolutionFixture();await f.write();await f.resolve();await db.exec('RESET ROLE')
+async function creditCommercialPlanFixture(resolved=true){
+ const f=await creditAuthorizedResolutionFixture();await f.write();if(resolved)await f.resolve();await db.exec('RESET ROLE')
  for(const file of ['supabase/bootstrap/commercial/001_commercial_subscription.sql','supabase/bootstrap/commercial/002_commercial_write_gate.sql','supabase/bootstrap/pilot-operations/001_capabilities.sql','supabase/pilot-fiscal/051_fiscal_credit_commercial_plan.sql']){const sql=readFileSync(file,'utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'');await db.exec(sql);await db.exec(sql)}
  const planId=crypto.randomUUID();await db.query("INSERT INTO planes(id,nombre,precio_mensual,max_usuarios) VALUES($1,'Ensayo NC',0,3)",[planId]);await db.query("INSERT INTO suscripciones(kiosco_id,plan_id,fecha_inicio,fecha_vencimiento,estado) VALUES($1,$2,comercial_hoy(),comercial_hoy()+30,'ACTIVA')",[kid,planId]);await db.query('INSERT INTO piloto_operaciones_capacidades(kiosco_id,devoluciones_efectivo) VALUES($1,true)',[kid]);await db.exec('SET ROLE service_role')
  const plan=async(caja=f.cash,who=actor)=>(await db.query<{data:Record<string,unknown>}>('SELECT preparar_aplicacion_comercial_nc_homologacion($1,$2,$3,$4,$5,$6) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,caja])).rows[0].data
@@ -3116,8 +3118,8 @@ it('051 caja original cerrada admite otra caja de reintegro y conserva precio hi
  expect(await f.plan(refund)).toMatchObject({estado:'PLAN_NC_SIN_APLICAR',sesion_caja_id:refund,importe:'124.00',fisicos:[{producto_id:product,cantidad:'1.000'}]});expect(await preparationEffects()).toEqual(before)
 })
 
-async function creditCommercialApplicationFixture(){
- const f=await creditCommercialPlanFixture();await db.exec('RESET ROLE')
+async function creditCommercialApplicationFixture(resolved=true){
+ const f=await creditCommercialPlanFixture(resolved);await db.exec('RESET ROLE')
  for(const file of ['supabase_fase_devolucion_registro_privado.sql','supabase_fase_devolucion_calculo_historico.sql','supabase_fase_devolucion_preparacion_privada.sql','supabase/bootstrap/returns/001_atomic_cash_return.sql','supabase/bootstrap/returns/003_whole_unit_quantities.sql','supabase/pilot-fiscal/052_fiscal_credit_commercial_application.sql']){const sql=readFileSync(file,'utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'');await db.exec(sql);await db.exec(sql)}await db.exec('SET ROLE service_role')
  const apply=async(caja=f.cash,who=actor)=>(await db.query<{data:Record<string,unknown>}>('SELECT aplicar_comercial_nc_homologacion($1,$2,$3,$4,$5,$6) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,caja])).rows[0].data
  const readApplication=async(who=actor)=>(await db.query<{data:Record<string,unknown>|null}>('SELECT cargar_aplicacion_comercial_nc_homologacion($1,$2,$3,$4,$5) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256])).rows[0].data
@@ -3223,4 +3225,33 @@ it('052 dos NC parciales aplicadas conservan saldo/historia y reponen exactament
  expect((await db.query('SELECT sum(importe)::text total,count(*)::int n FROM fiscal_nc_aplicaciones_homologacion')).rows[0]).toEqual({total:'124.00',n:2})
  expect((await db.query('SELECT sum(cantidad)::text cantidad FROM fiscal_nc_reposiciones_homologacion')).rows[0]).toEqual({cantidad:'0.500'})
  await db.exec('SET CONSTRAINTS ALL IMMEDIATE; SET CONSTRAINTS ALL DEFERRED')
+})
+it.each(['normal','ack-resolucion-perdido','ack-aplicacion-perdido','ack-aplicacion-error','get-final-perdido','flag-cerrado','flag-tras-resolucion','conflicto','auth-ajeno','recuperacion-suspendida','resolucion-alterada','aplicacion-alterada'] as const)('servicio052 integrado %s recupera verdad durable sin red ARCA',async mode=>{
+ const f=await creditCommercialApplicationFixture(false),w=workerFixture(),{applyFiscalCreditCommercialOperation}=await import('../../supabase/functions/_shared/fiscalCreditCommercialWorker')
+ w.flags.ARCA_HOMO_CREDIT_APPLY_ENABLED='true'
+ const scope={saleId:sale,operationId:op,requestId:f.proposal.datos.solicitud_id,sha256:f.proposal.sha256},before=await preparationEffects();let applied=false,loseGet=true
+ const client:FiscalAuthClient={auth:w.admin.auth,rpc:async(name,args)=>{
+  if(name==='cargar_aplicacion_comercial_nc_homologacion'&&applied&&mode==='get-final-perdido'&&loseGet){loseGet=false;return{data:null,error:new Error('LOST_GET')}}
+  const result=await w.rpc(name,args)
+  if(name==='cargar_resolucion_nc_homologacion'&&mode==='resolucion-alterada'&&result.data&&typeof result.data==='object')return{data:{...result.data,numero:999},error:null}
+  if(name==='cargar_aplicacion_comercial_nc_homologacion'&&applied&&mode==='aplicacion-alterada'&&loseGet&&result.data&&typeof result.data==='object'){loseGet=false;return{data:{...result.data,importe:'999.00'},error:null}}
+  if(name==='registrar_resolucion_nc_autorizada_homologacion'&&!result.error){if(mode==='ack-resolucion-perdido')throw new Error('LOST_ACK');if(mode==='flag-tras-resolucion')w.flags.ARCA_HOMO_CREDIT_APPLY_ENABLED='false'}
+  if(name==='aplicar_comercial_nc_homologacion'&&!result.error){applied=true;if(mode==='ack-aplicacion-perdido')throw new Error('LOST_ACK');if(mode==='ack-aplicacion-error')return{data:null,error:new Error('LOST_ACK')}}
+  return result
+ }}
+ if(mode==='flag-cerrado')w.flags.ARCA_HOMO_CREDIT_APPLY_ENABLED='false'
+ if(mode==='conflicto')await f.write(f.conflict,crypto.randomUUID())
+ if(mode==='auth-ajeno')w.getUser.mockResolvedValue({data:{user:{id:crypto.randomUUID()}},error:null})
+ const deps={admin:client,readSecret:w.deps.readSecret},run=()=>applyFiscalCreditCommercialOperation(deps,'SYNTHETIC_JWT',scope,f.cash)
+ if(['flag-cerrado','flag-tras-resolucion','conflicto','auth-ajeno','resolucion-alterada'].includes(mode)){
+  await expect(run()).rejects.toThrow('FISCAL_APLICACION_NC_NO_CONFIRMADA');expect(await f.readApplication()).toBeNull();expect(await preparationEffects()).toEqual(before)
+ }else{
+  if(mode==='get-final-perdido'||mode==='aplicacion-alterada')await expect(run()).rejects.toThrow('FISCAL_APLICACION_NC_NO_CONFIRMADA')
+  const result=await run();expect(result).toMatchObject({estado:'APLICACION_NC_REGISTRADA',importe:'124.00',nuevo_reintegro:false});expect(await run()).toEqual(result)
+  if(mode==='recuperacion-suspendida'){
+   w.flags.ARCA_HOMO_CREDIT_APPLY_ENABLED='false';await admin("UPDATE sesiones_caja SET estado='CERRADA',fecha_cierre=clock_timestamp() WHERE id=$1",[f.cash]);await admin("UPDATE kioscos SET estado_suscripcion='SUSPENDIDO' WHERE id=$1",[kid]);w.rpc.mockClear();expect(await run()).toEqual(result);expect(w.rpc.mock.calls.map(([name])=>name)).toEqual(['cargar_aplicacion_comercial_nc_homologacion'])
+  }
+  await db.exec('RESET ROLE');expect((await db.query('SELECT count(*)::int n FROM movimientos_caja WHERE id=$1',[scope.requestId])).rows[0]).toEqual({n:1});await db.exec('SET ROLE service_role')
+ }
+ expect(w.load).not.toHaveBeenCalled();expect(w.fetcher).not.toHaveBeenCalled()
 })

@@ -784,3 +784,7 @@ Se reemplaza el cierre permanente de serie de036 por resolución privada050 de c
 
 ### 26/10/2026 — Aplicación NC durable separada de elegibilidad nueva
 SQL052 conserva un ACK inmutable por caso/cuerpo/Auth/caja; recuperación verifica el Dueño original activo sin exigir comercio/capacidad/caja abiertos. Una aplicación nueva siempre recalcula051 y registra caja/stock/costos/lotes/cabecera/journal en una transacción. Sólo el diario privado enlazado permite la cabecera fiscal; no flags/GUC/Auth suplantado ni bypass genérico de service_role. Costo histórico ausente bloquea. Evidencia y pendientes en ExecPlan ARCA; sin autoridad remota nueva.
+
+
+### 26/10/2026 — Servicio comercial NC sin transporte fiscal
+Separar aplicación SQL052 de emisión/consulta ARCA. Recuperar ACK durable antes de flag nuevo ARCA_HOMO_CREDIT_APPLY_ENABLED, manteniendo Auth original y backend/proyecto; trabajo nuevo debe verificar CAE/cuerpo/intención/resolución y confirmar efectos sólo mediante GET. ACK perdido no autoriza nuevo efectivo. SDK69 permite sólo4RPC050/052 adicionales; no exponer acción HTTP todavía. Evidencia en ExecPlan ARCA.

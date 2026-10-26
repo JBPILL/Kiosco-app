@@ -882,3 +882,6 @@ Siguiente necesario: mutación comercial exactamente una vez en la misma transac
 
 #### 26/10/2026 — PR03: aplicación comercial NC SQL052 (local)
 Diario/efectos atómicos y replay sin duplicados después de CAE/resolución, con costos/lotes originales, Auth original y exclusión fiscal preservada. Evidencia canónica en .agent/execplans/arca-homologation.md:16 pruebas enfocadas,92 regresiones y178 escenarios PostgreSQL locales (3 nuevos052), sin solicitudes ARCA ni instalación remota. Pendiente servicio/contrato de respuesta, aceptación hospedada, inventario/revisión GO-NO-GO y primer CAE autorizado; no declarar PR03/PR02 completos. Restore integral y físicos/Point conservan sus gates/diferidos.
+
+#### 26/10/2026 — Servicio privado de aplicación NC preparado localmente
+Auth original, recuperación del diario antes de flag de trabajo, validación de CAE/resolución/cuerpo y aplicación052 con confirmación GET. SDK69/HTTP aún sin acción pública nueva; sin transporte ARCA en este servicio. Flag privado ARCA_HOMO_CREDIT_APPLY_ENABLED debe permanecer ausente/false hasta su gate específico; no habilitado remotamente. Evidencia: ExecPlan ARCA,28 pruebas enfocadas SQL/servicio y95 contrato/SDK/cancelación. PR03/PR02 siguen abiertos; faltan integración controlada, revisión/inventarios y aceptación hospedada. Sin nueva instalación, emisión ni cambio Production.

@@ -81,3 +81,8 @@ it.each(['cargar_respuesta_envio_nc_homologacion','registrar_respuesta_envio_nc_
  const fetcher=vi.fn<typeof fetch>(async input=>{expect((input as Request).url).toBe(FISCAL_STAGING_URL+'/rest/v1/rpc/'+name);return Response.json(null)})
  expect((await createFiscalSupabaseAdmin(FISCAL_STAGING_URL,secret,fetcher).rpc(name,{})).error).toBeNull();expect(fetcher).toHaveBeenCalledTimes(1)
 })
+
+it.each(['cargar_aplicacion_comercial_nc_homologacion','aplicar_comercial_nc_homologacion','cargar_resolucion_nc_homologacion','registrar_resolucion_nc_autorizada_homologacion'])('SDK aplicación NC %s usa sólo Staging fijo',async name=>{
+ const fetcher=vi.fn<typeof fetch>(async input=>{expect((input as Request).url).toBe(FISCAL_STAGING_URL+'/rest/v1/rpc/'+name);return Response.json(null)})
+ expect((await createFiscalSupabaseAdmin(FISCAL_STAGING_URL,secret,fetcher).rpc(name,{})).error).toBeNull();expect(fetcher).toHaveBeenCalledTimes(1)
+})
