@@ -2432,3 +2432,29 @@ ensayo. El baseline anterior de Owner/Cashier fue aportado por el titular, no
 prueba disponibilidad actual ni autoriza crear/reasignar usuarios ahora.
 Siguiente paso: preparar cuenta aislada Cajero bajo autorización específica;
 mantener backend false hasta que su asistente autenticado esté listo.
+
+## Cuenta Cajero de ensayo disponible — 26/10/2026
+
+El titular eligió prueba2@gmail.com para Cajero. Se dejó el alta Auth en manos
+del titular para introducir su contraseña localmente; ninguna contraseña se
+copió a código, argumentos, documentos ni artefactos. Posterior búsqueda Auth
+confirmó una identidad nueva; preflight READ ONLY verificó email confirmado,
+sin bloqueo/borrado,0perfiles asociados y1Dueño activo/noSuperAdmin en el comercio
+exacto «Ensayo envases devoluciones 7faa9ea4».
+
+Se vinculó únicamente esta identidad nueva mediante INSERT en public.usuarios:
+nombre «Cajero prueba interactiva», rolCAJERO, activo=true, es_superadmin=false,
+mismo comercio del Dueño. Transacción con lock/statement timeout, locks de
+identidad/Dueño/comercio, guard de nombre/estado activo del comercio, identidad
+Auth/correo exactos y aborto si existe perfil por Auth o correo; sin UPDATE,
+reasignación, Auth metadata, credenciales ni cambios de permisos SQL.
+Verificación independiente posterior REPEATABLE READ READ ONLY/ROLLBACK:
+profile_count1/cashier_scope_confirmedtrue. Evidencia local fuera de Git:
+../cajero-profile-verified-20261026.png. No tablas fiscales, ventas, stock, caja,
+Edge, flags, Vercel ni Production modificados en este paso.
+
+Cuenta disponible no equivale a login probado. Pendiente: ejecutar8595c44 con
+-ComprobarAccesos y esta cuenta, comunicar ACCESS_PROBE_READY y ejercitar el
+rechazo fiscal del Cajero bajo ventana base temporal ya autorizada, cierre false
+y correlación de Auth/RPC/PostgreSQL. Luego otro comercio y aceptación positiva.
+No repetir el ensayo Dueño ni declarar PR03/E2E completados.

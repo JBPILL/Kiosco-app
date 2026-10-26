@@ -1044,3 +1044,19 @@ emisor/catálogo. No volver a ejecutar login Dueño para repetir la misma eviden
 Titular no dispone de cuenta Cajero para el siguiente caso; preparar su alcance
 y solicitar autorización específica antes de crear o reasignar una identidad.
 Detalles, horarios y artefactos en el ExecPlan fiscal.
+
+### Cuenta Cajero preparada — 26/10/2026
+
+prueba2@gmail.com ya existe en Auth y tiene un único perfil CAJERO activo,
+noSuperAdmin, vinculado al mismo comercio aislado del Dueño. Alta de contraseña
+realizada por el titular; perfil nuevo insertado con guards y verificado después
+en transacción independiente READ ONLY. No se reasignó una cuenta existente.
+La falta de cuenta Cajero documentada antes queda superada; no acredita login.
+
+Ejecutar el mismo asistente `-ComprobarAccesos` con prueba2@gmail.com y su
+contraseña ingresada sólo localmente. Debe informar role=CASHIER y rechazo403
+de tabla privada, luego ACCESS_PROBE_READY. Avisar inmediatamente y mantener
+la consola abierta. Codex aplicará la ventana base temporal ya autorizada y
+volverá a false antes de terminar; no otros flags, provisión ARCA ni mutaciones
+fiscales/comerciales. Correlacionar el409 con registros privados, igual que para
+Dueño, sin convertir un rechazo en aceptación positiva/E2E completa.
