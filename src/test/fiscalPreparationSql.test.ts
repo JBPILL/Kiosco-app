@@ -3088,3 +3088,28 @@ it('050 dos casos parciales avanzan sólo tras CAE resuelto y numeración vigent
  await db.query('SELECT registrar_consulta_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb)',[actor,sale,op,p.id,p.sha,crypto.randomUUID(),JSON.stringify({...response,resultado:{...response.resultado,cae:'22222222222222'}})])
  await denied(()=>db.query('SELECT verificar_permiso_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8)',[actor,sale,op,other.id,other.sha,b.bodySha,b.review,b.permit]));expect(await preparationEffects()).toEqual(before)
 })
+
+async function creditCommercialPlanFixture(){
+ const f=await creditAuthorizedResolutionFixture();await f.write();await f.resolve();await db.exec('RESET ROLE')
+ for(const file of ['supabase/bootstrap/commercial/001_commercial_subscription.sql','supabase/bootstrap/commercial/002_commercial_write_gate.sql','supabase/bootstrap/pilot-operations/001_capabilities.sql','supabase/pilot-fiscal/051_fiscal_credit_commercial_plan.sql']){const sql=readFileSync(file,'utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'');await db.exec(sql);await db.exec(sql)}
+ const planId=crypto.randomUUID();await db.query("INSERT INTO planes(id,nombre,precio_mensual,max_usuarios) VALUES($1,'Ensayo NC',0,3)",[planId]);await db.query("INSERT INTO suscripciones(kiosco_id,plan_id,fecha_inicio,fecha_vencimiento,estado) VALUES($1,$2,comercial_hoy(),comercial_hoy()+30,'ACTIVA')",[kid,planId]);await db.query('INSERT INTO piloto_operaciones_capacidades(kiosco_id,devoluciones_efectivo) VALUES($1,true)',[kid]);await db.exec('SET ROLE service_role')
+ const plan=async(caja=f.cash,who=actor)=>(await db.query<{data:Record<string,unknown>}>('SELECT preparar_aplicacion_comercial_nc_homologacion($1,$2,$3,$4,$5,$6) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,caja])).rows[0].data
+ return{...f,plan}
+}
+it('051 plan comercial deriva importe/receta originales bajo gates sin mutaciones',async()=>{
+ const f=await creditCommercialPlanFixture(),before=await preparationEffects();const plan=await f.plan()
+ expect(plan).toMatchObject({estado:'PLAN_NC_SIN_APLICAR',importe:'124.00',sesion_caja_id:f.cash,actor_auth_id:actor,usuario_id:owner,emision_habilitada:false,reintegro_habilitado:false,reposicion_habilitada:false,detalles:[{cantidad:'1.000',importe:'124.00',reingresa_stock:true}],fisicos:[{producto_id:product,cantidad:'1.000',stock_antes:'9.000'}]});expect(await f.plan()).toEqual(plan);expect(await preparationEffects()).toEqual(before)
+})
+it.each(['suspendido','capacidad','caja-cerrada','caja-ajena','auth','conflicto','unidad','virtual','stock-invalido'])('051 plan niega%s sin tocar negocio',async reason=>{
+ const f=await creditCommercialPlanFixture(),before=await preparationEffects()
+ if(reason==='suspendido')await admin("UPDATE kioscos SET estado_suscripcion='SUSPENDIDO' WHERE id=$1",[kid]);if(reason==='capacidad')await admin('UPDATE piloto_operaciones_capacidades SET devoluciones_efectivo=false WHERE kiosco_id=$1',[kid]);if(reason==='caja-cerrada')await admin("UPDATE sesiones_caja SET estado='CERRADA',fecha_cierre=now() WHERE id=$1",[f.cash]);if(reason==='conflicto')await f.write(f.conflict,crypto.randomUUID());if(reason==='unidad')await admin("UPDATE productos SET es_pesable=true,unidad_medida='KG' WHERE id=$1",[product]);if(reason==='virtual')await admin('UPDATE productos SET es_combo=true WHERE id=$1',[product]);if(reason==='stock-invalido')await admin('UPDATE productos SET stock_actual=9.013 WHERE id=$1',[product])
+ await denied(()=>f.plan(reason==='caja-ajena'?crypto.randomUUID():f.cash,reason==='auth'?crypto.randomUUID():actor));expect(await preparationEffects()).toEqual(before)
+})
+it.each(['anon','authenticated'])('051 plan privado deniega%s',async role=>{
+ const f=await creditCommercialPlanFixture();await db.exec('RESET ROLE; SET ROLE '+role);await denied(()=>f.plan())
+})
+
+it('051 caja original cerrada admite otra caja de reintegro y conserva precio histórico',async()=>{
+ const f=await creditCommercialPlanFixture(),refund=crypto.randomUUID();await admin("UPDATE sesiones_caja SET estado='CERRADA',fecha_cierre=clock_timestamp() WHERE id=$1",[f.cash]);await admin('INSERT INTO sesiones_caja(id,kiosco_id,usuario_id) VALUES($1,$2,$3)',[refund,kid,owner]);await admin('UPDATE productos SET precio_venta=999 WHERE id=$1',[product]);await denied(()=>f.plan());const before=await preparationEffects()
+ expect(await f.plan(refund)).toMatchObject({estado:'PLAN_NC_SIN_APLICAR',sesion_caja_id:refund,importe:'124.00',fisicos:[{producto_id:product,cantidad:'1.000'}]});expect(await preparationEffects()).toEqual(before)
+})

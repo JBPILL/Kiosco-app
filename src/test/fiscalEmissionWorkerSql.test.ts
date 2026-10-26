@@ -23,10 +23,12 @@ beforeAll(async()=>{
     CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.role',true),'') $$;`)
   const root='supabase/bootstrap'
   for(const file of [join(root,'001_domain.sql'),join(root,'002_identity_helpers.sql'),...readdirSync(join(root,'steps')).sort().map(n=>join(root,'steps',n)),join(root,'900_final_security.sql')])await db.exec(readFileSync(file,'utf8'))
+  for(const file of ['commercial/001_commercial_subscription.sql','commercial/002_commercial_write_gate.sql','pilot-operations/001_capabilities.sql'])await db.exec(readFileSync(join(root,file),'utf8'))
   for(const file of readdirSync('supabase/pilot-fiscal').filter(n=>/^\d{3}_.*\.sql$/.test(n)).sort()){
     const sql=readFileSync(join('supabase/pilot-fiscal',file),'utf8');await db.exec(sql);await db.exec(sql)
   }
   await db.query('INSERT INTO auth.users VALUES($1)',[actor]);await db.query("INSERT INTO kioscos(id,nombre) VALUES($1,'Emisión sintética')",[kid])
+  const plan=crypto.randomUUID();await db.query("INSERT INTO planes(id,nombre,precio_mensual,max_usuarios) VALUES($1,'Ensayo fiscal',0,3)",[plan]);await db.query("INSERT INTO suscripciones(kiosco_id,plan_id,fecha_inicio,fecha_vencimiento,estado) VALUES($1,$2,comercial_hoy(),comercial_hoy()+30,'ACTIVA')",[kid,plan])
   await db.query("INSERT INTO usuarios(id,auth_user_id,kiosco_id,nombre,rol) VALUES($1,$2,$3,'Dueño sintético','DUEÑO')",[owner,actor,kid])
   await db.query('INSERT INTO ventas(id,kiosco_id,usuario_id,total) VALUES($1,$2,$3,123.45)',[sale,kid,owner]);await db.query("SELECT set_config('request.jwt.claim.sub',$1,false)",[actor])
   const product=crypto.randomUUID();await db.query('INSERT INTO productos(id,kiosco_id,descripcion,precio_venta) VALUES($1,$2,$3,123.45)',[product,kid,'Ensayo']);await db.query('INSERT INTO detalles_venta(venta_id,producto_id,cantidad,precio_unitario,subtotal) VALUES($1,$2,1,123.45,123.45)',[sale,product])

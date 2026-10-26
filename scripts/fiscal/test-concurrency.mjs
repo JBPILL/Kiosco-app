@@ -1586,11 +1586,45 @@ try {
   assert.equal((await nc050_waiter).value.estado,'RESOLUCION_NC_REGISTRADA_NO_APLICADA');await b.query('COMMIT')
   assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_resoluciones_homologacion WHERE solicitud_id=$1',[nc050_rollback.proposal.id])).rows[0].n,1)
   cases.push('050_rollback_no_deja_marcador_fantasma_y_waiter_resuelve_una_vez')
+  const nc051_box=await nc050Fixture(250),nc051_product=await nc050Fixture(251)
+  const creditCommercialPlanInstalledAfterCase=cases.length
+  for(const file of ['supabase/bootstrap/commercial/001_commercial_subscription.sql','supabase/bootstrap/commercial/002_commercial_write_gate.sql','supabase/bootstrap/pilot-operations/001_capabilities.sql','supabase/pilot-fiscal/051_fiscal_credit_commercial_plan.sql'])for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,file),'utf8'))
+  const nc051_plan=randomUUID()
+  await observer.query("INSERT INTO planes(id,nombre,precio_mensual,max_usuarios) VALUES($1,'Ensayo NC',0,3)",[nc051_plan])
+  for(const f of [nc051_box,nc051_product]){
+    await observer.query("UPDATE kioscos SET estado_suscripcion='ACTIVO' WHERE id=$1",[f.kid])
+    await observer.query("INSERT INTO suscripciones(kiosco_id,plan_id,fecha_inicio,fecha_vencimiento,estado) VALUES($1,$2,comercial_hoy(),comercial_hoy()+30,'ACTIVA')",[f.kid,nc051_plan])
+    await observer.query('INSERT INTO piloto_operaciones_capacidades(kiosco_id,devoluciones_efectivo) VALUES($1,true)',[f.kid])
+    await start(a);await f.resolve(a);await a.query('COMMIT')
+  }
+  // La caja original se lee NOWAIT por030; usar una caja de reintegro distinta.
+  const nc051_cash=randomUUID()
+  await observer.query("UPDATE sesiones_caja SET estado='CERRADA',fecha_cierre=clock_timestamp() WHERE id=(SELECT sesion_caja_id FROM ventas WHERE id=$1)",[nc051_box.sale])
+  await observer.query('INSERT INTO sesiones_caja(id,kiosco_id,usuario_id) VALUES($1,$2,$3)',[nc051_cash,nc051_box.kid,nc051_box.owner])
+  const nc051_call=async(client,f,cash)=>(await client.query('SELECT preparar_aplicacion_comercial_nc_homologacion($1,$2,$3,$4,$5,$6) v',[f.auth,f.sale,f.operation,f.proposal.id,f.proposal.sha,cash])).rows[0].v
+  await start(a);assert.equal((await nc051_call(a,nc051_box,nc051_cash)).estado,'PLAN_NC_SIN_APLICAR');await a.query('COMMIT')
+  await a.query('BEGIN');await a.query("UPDATE sesiones_caja SET estado='CERRADA',fecha_cierre=clock_timestamp() WHERE id=$1",[nc051_cash])
+  await start(b);const nc051_closed=capture(nc051_call(b,nc051_box,nc051_cash));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc051_closed).error?.code,'55000');await b.query('ROLLBACK')
+  cases.push('051_caja_cerrada_durante_espera_impide_plan_sin_efectos')
+  await observer.query("UPDATE sesiones_caja SET estado='ABIERTA',fecha_cierre=null WHERE id=$1",[nc051_cash])
+  await a.query('BEGIN');await a.query("UPDATE kioscos SET estado_suscripcion='SUSPENDIDO' WHERE id=$1",[nc051_box.kid])
+  await start(b);const nc051_suspended=capture(nc051_call(b,nc051_box,nc051_cash));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc051_suspended).error?.code,'42501');await b.query('ROLLBACK')
+  cases.push('051_suspension_comercial_durante_espera_no_congela_elegibilidad')
+  const nc051_productCash=(await observer.query('SELECT sesion_caja_id id FROM ventas WHERE id=$1',[nc051_product.sale])).rows[0].id
+  const nc051_productId=(await observer.query('SELECT producto_id id FROM detalles_venta WHERE venta_id=$1',[nc051_product.sale])).rows[0].id
+  await a.query('BEGIN');await a.query('UPDATE productos SET es_combo=true WHERE id=$1',[nc051_productId])
+  await start(b);const nc051_virtual=capture(nc051_call(b,nc051_product,nc051_productCash));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await nc051_virtual).error?.code,'22023');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM devoluciones_venta WHERE venta_id=ANY($1)',[[nc051_box.sale,nc051_product.sale]])).rows[0].n,0)
+  cases.push('051_producto_convertido_en_combo_durante_espera_no_se_repone_como_fisico')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
     creditOwnerReviewInstalledAfterCase,postCreditOwnerReviewCaseCount:cases.length-creditOwnerReviewInstalledAfterCase,
+    creditCommercialPlanInstalledAfterCase,postCreditCommercialPlanCaseCount:cases.length-creditCommercialPlanInstalledAfterCase,
     creditResolutionInstalledAfterCase,postCreditResolutionCaseCount:cases.length-creditResolutionInstalledAfterCase,
     creditSendResponseInstalledAfterCase,postCreditSendResponseCaseCount:cases.length-creditSendResponseInstalledAfterCase,
     creditConflictInstalledAfterCase,postCreditConflictCaseCount:cases.length-creditConflictInstalledAfterCase,
