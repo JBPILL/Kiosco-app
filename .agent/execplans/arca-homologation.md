@@ -2546,3 +2546,31 @@ red y pérdida del positivo final. No hubo tráfico remoto desde esos tests.
 Lint enfocado/diff PASS; -Preparar -ComprobarAislamiento PASS sin login/red.
 Build final PASS689módulos, aviso conocido de chunks grandes. Evidencia de
 selección hospedada fuera de Git: ../isolation-fixtures-20261026.txt.
+
+## Aislamiento real de lectura de ventas confirmado — 26/10/2026
+
+Titular ejecutó108e797 por separado con prueba1@gmail.com y prueba2@gmail.com.
+Ambas sesiones informaron RLS_SALES_READ_ISOLATION_OBSERVED: roleOWNER/CASHIER,
+own1/foreign0/positive_recheck1, y TEST_SESSION_LOGOUT_LOCAL_CONFIRMED.
+No se abrió el backend base para estas consultas directas con JWT real.
+
+Verificación remota posterior independiente REPEATABLE READ READ ONLY/ROLLBACK:
+foreign_sale_exists=true para la venta exacta00418e7b-eca6-487c-bffe-b85b405cd9cb,
+vinculada al comercio activo F4A_TEST_20261011_R1; own_completed_count10;
+owner_scope_valid=true/cashier_scope_valid=true/ventas_rls_enabled=true.
+Se conserva ../isolation-postcheck-20261026.txt fuera de Git. La ausencia de
+fila ajena en las dos sesiones no se explica por eliminación del fixture.
+
+PASS hospedado limitado: lectura SELECT de ventas propias y ocultamiento de
+esa venta ajena para esos dos actores, con positivos antes/después y existencia
+ajena acreditada antes/después. No acredita todas las tablas/policies, escrituras,
+aislamiento fiscal completo, bidireccionalidad con actor de F4A ni E2E positivo.
+No se modificaron fixtures, roles, flags, SQL/Edge, Vercel o Production.
+
+Siguiente dependencia: aceptación positiva de preparación fiscal. SQL012 requiere
+venta propia elegible, emisor habilitado del comercio y catálogo vigente. No
+puede sustituirse con un409 genérico ni con parámetros/IVA/PV heredados. Preparar
+alcance y fixture revisables antes de solicitar el nuevo GO de provisión/API
+con mutaciones; el GO actual sólo cubre lecturas/rechazos/base temporal. No
+provisionar custodia/secretos ni llamar ARCA para resolverlo sin autorización.
+PR03 sigue parcial; PR02 sin primer CAE y resto del objetivo común conservado.

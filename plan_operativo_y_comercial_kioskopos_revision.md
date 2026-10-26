@@ -936,3 +936,15 @@ E2E completo. No ARCA, CAE, provisión, otros flags, SQL/Edge nuevos, Vercel,
 master/Production ni merge. El titular informa que no dispone de cuenta Cajero;
 su preparación requiere alcance y autorización propios, no reasignar el Dueño.
 Historial y evidencia detallados en el ExecPlan fiscal y guía ARCA existentes.
+
+### Identidades reales y aislamiento SELECT de ventas — 26/10/2026
+
+Dueño y Cajero reales acreditaron sus rechazos privados bajo backend base temporal,
+con Auth200/RPC403/PostgreSQL42501, logout local y retorno del gate a false.
+Posteriormente ambos observaron venta propia visible, venta ajena oculta y
+relectura propia positiva con el mismo JWT, sin abrir backend. Verificación
+independiente posterior confirmó existencia ajena en F4A activo, roles/scope y
+RLS de ventas. PASS limitado a ese SELECT de ventas/actores/fixtures; no cubre
+todas las tablas, escrituras, preparación fiscal positiva ni E2E completo.
+PR03 parcial y PR02 sin CAE. Siguiente dependencia: alcance revisable de emisor/
+catálogo y preparación positiva bajo nuevo GO, sin defaults fiscales antiguos.

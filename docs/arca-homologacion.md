@@ -1102,3 +1102,18 @@ existiendo en el comercio esperado: una fila borrada no demostraría aislamiento
 El marcador OBSERVED no es por sí solo PASS hospedado. Alcance final, si pasa:
 lectura de ventas de estos actores/fixtures; no todas las policies/tablas ni E2E
 fiscal positivo. Mantener backend base false y demás gates cerrados.
+
+### Aislamiento SELECT de ventas acreditado — 26/10/2026
+
+Dueño y Cajero ejecutaron108e797 y observaron own1/foreign0/positive_recheck1,
+con logout local confirmado. Revalidación independiente posterior confirmó la
+existencia de la venta ajena exacta en F4A activo,10ventas propias completadas,
+roles/scope correctos y RLS de ventas habilitado. Este caso de lectura entre
+comercios queda PASS real con el alcance definido; no todas las policies ni E2E
+fiscal. Backend base y demás gates siguieron cerrados. No hay que repetirlo como
+requisito pendiente salvo cambios de código/datos/policies que lo invaliden.
+
+Siguiente gate: contexto/preparación fiscal positiva y revisión, con emisor y
+catálogo explícitos autorizados. La autorización de lecturas/rechazos no permite
+aprovisionar esas filas o secretos ni habilitar mutaciones. Preparar el alcance
+concreto antes de pedir ese GO; no adoptar el PV2 ni IVA antiguos por defecto.
