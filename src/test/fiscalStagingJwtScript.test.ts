@@ -23,6 +23,8 @@ function run(mode: string) {
     writeFileSync(runner, '\uFEFF' + `
       $global:events=New-Object Collections.Generic.List[object]
       $global:prompts=0
+      $global:polls=0
+      function global:Start-Sleep { param($Seconds) $global:events.Add(@{kind='wait';seconds=$Seconds}) }
       Add-Type @'
 using System; using System.Net; using System.IO; using System.Text;
 public class MockResponse : WebResponse {
@@ -66,12 +68,35 @@ public class MockHttpException : Exception {
       }
       function global:Invoke-WebRequest {
         param([switch]$UseBasicParsing,$Method,$Uri,$Headers,$ContentType,$Body,$MaximumRedirection,$TimeoutSec)
+        if(${quote(mode)} -like 'access-*'){
+          if($Uri -notlike 'https://acoyfwwmhaeruciyedri.supabase.co/*' -or $MaximumRedirection -ne 0 -or $Headers.Authorization -cne ('Bearer '+${quote(token)})){throw 'Unsafe access probe'}
+          $global:events.Add(@{kind='access';method=$Method;uri=$Uri;body=$Body;redirects=$MaximumRedirection})
+          if($Uri -like '*/auth/v1/user'){
+            return @{StatusCode=200;Content=$(if(${quote(mode)} -eq 'access-identity'){'{"id":"bad"}'}else{'{"id":"11111111-1111-1111-1111-111111111111"}'})}
+          }
+          if($Uri -like '*/rest/v1/usuarios?*'){
+            $role=if(${quote(mode)} -eq 'access-cashier'){'CAJERO'}else{'DUE'+[char]0xD1+'O'}
+            $active=${quote(mode)} -ne 'access-inactive'
+            $super=${quote(mode)} -eq 'access-superadmin'
+            return @{StatusCode=200;Content=(@(@{rol=$role;activo=$active;es_superadmin=$super;kiosco_id='22222222-2222-2222-2222-222222222222'})|ConvertTo-Json -Compress)}
+          }
+          if($Uri -like '*/rest/v1/fiscal_operaciones_homologacion?select=*&limit=0'){
+            if(${quote(mode)} -eq 'access-exposed'){return @{StatusCode=200;Content='[]'}}
+            throw (New-Object MockHttpException(403,'{}'))
+          }
+          if($Method -ne 'POST' -or $Uri -notlike '*/functions/v1/arca-homologacion' -or $Body -cne '{"accion":"DATOS_FISCALES_VENTA","venta_id":"00000000-0000-0000-0000-000000000000"}'){throw 'Unexpected access request'}
+          $global:polls++
+          if(${quote(mode)} -eq 'access-timeout' -or $global:polls -eq 1){throw (New-Object MockHttpException(503))}
+          if(${quote(mode)} -eq 'access-network'){throw ${quote(password)}}
+          if(${quote(mode)} -eq 'access-unexpected'){return @{StatusCode=200;Content='{}'}}
+          throw (New-Object MockHttpException(409,'{"codigo":"OPERACION_NO_CONFIRMADA"}'))
+        }
         $global:events.Add(@{kind='gateway';correct_url=($Uri -ceq 'https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion');body_empty=($Body -ceq '{}');bearer_ok=($Headers.Authorization -ceq ('Bearer '+${quote(token)}));redirects=$MaximumRedirection})
         if(${quote(mode)} -eq 'network-fail'){throw ${quote(password)}}
         if(${quote(mode)} -eq 'unclosed'){return @{StatusCode=400;Content='{"codigo":"SOLICITUD_INVALIDA"}'}}
         throw (New-Object MockHttpException($(if(${quote(mode)} -eq 'jwt401'){401}else{503})))
       }
-      & ${quote(script)} ${mode === 'prepare' ? '-Preparar' : ''}
+      & ${quote(script)} ${mode === 'prepare' ? '-Preparar' : mode.startsWith('access-') ? '-ComprobarAccesos' : ''}
       $code=$LASTEXITCODE
       [IO.File]::WriteAllText(${quote(record)},(@{prompts=$global:prompts;events=@($global:events.ToArray())}|ConvertTo-Json -Depth 5))
       exit $code
@@ -82,6 +107,26 @@ public class MockHttpException : Exception {
 }
 it.skipIf(process.platform !== 'win32')('preparación no pide secretos ni conecta', () => {
   const r = run('prepare'); expect(r.status, r.output).toBe(0); expect(r.report).toEqual({ events: [], prompts: 0 })
+}, 60000)
+it.skipIf(process.platform !== 'win32').each(['ok', 'cashier', 'identity', 'inactive', 'superadmin', 'exposed', 'timeout', 'network', 'unexpected'])('read-only access helper %s is bounded and never mutates fiscal data', suffix => {
+  const r = run('access-' + suffix)
+  expect(r.status, r.output).toBe(['ok', 'cashier'].includes(suffix) ? 0 : 1)
+  for (const secret of [password, token, r.key, 'SYNTHETIC_REFRESH', '11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222']) expect(r.output).not.toContain(secret)
+  const events = r.report.events as {kind: string; method?: string; uri?: string; body?: string}[]
+  expect(events[0].kind).toBe('login'); expect(events.at(-1)?.kind).toBe('logout')
+  const posts = events.filter(e => e.kind === 'access' && e.method === 'POST')
+  expect(posts.length).toBeLessThanOrEqual(120)
+  for (const post of posts) {
+    expect(post.uri).toBe('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion')
+    expect(JSON.parse(post.body!)).toEqual({accion:'DATOS_FISCALES_VENTA',venta_id:'00000000-0000-0000-0000-000000000000'})
+  }
+  if (['identity', 'inactive', 'superadmin', 'exposed'].includes(suffix)) expect(posts).toHaveLength(0)
+  if (['ok', 'cashier'].includes(suffix)) {
+    expect(r.output).toContain('ACCESS_PROBE_READY')
+    expect(r.output).toContain('BASE_READ_NEGATIVE_OBSERVED')
+    expect(r.output).toContain('role=' + (suffix === 'cashier' ? 'CASHIER' : 'OWNER'))
+  }
+  if (suffix === 'timeout') expect(posts).toHaveLength(120)
 }, 60000)
 it.skipIf(process.platform !== 'win32').each([
   ['auth-invalid', 'CREDENCIALES_RECHAZADAS', 400], ['auth-v2', 'CREDENCIALES_RECHAZADAS', 400],

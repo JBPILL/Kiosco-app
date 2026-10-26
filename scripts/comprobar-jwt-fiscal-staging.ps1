@@ -1,4 +1,4 @@
-param([switch]$Preparar)
+param([switch]$Preparar, [switch]$ComprobarAccesos)
 $ErrorActionPreference = 'Stop'
 $target = 'https://acoyfwwmhaeruciyedri.supabase.co'
 $origin = 'https://kiosco-app-staging.vercel.app'
@@ -81,6 +81,60 @@ function Invoke-ClosedGateway {
         return @{ Status = [int]$response.StatusCode; Content = $content }
     }
 }
+function Invoke-AccessProbe {
+    param([string]$Path, [string]$Method = 'GET', [string]$Json)
+    # Only callers below choose fixed read-only routes; no arbitrary RPC input.
+    $request = @{ UseBasicParsing = $true; Method = $Method; Uri = ($target + $Path);
+        Headers = @{ apikey = $publicKey; Authorization = ('Bearer ' + $token); Origin = $origin };
+        MaximumRedirection = 0; TimeoutSec = 15 }
+    if ($Method -eq 'POST') { $request.ContentType = 'application/json'; $request.Body = $Json }
+    try {
+        $reply = Invoke-WebRequest @request
+        if ([string]$reply.Content -and $reply.Content.Length -gt 4096) { throw 'ACCESS_RESPONSE_TOO_LARGE' }
+        return @{ Status = [int]$reply.StatusCode; Content = [string]$reply.Content }
+    } catch {
+        if (-not $_.Exception.Response) { throw 'ACCESS_CONNECTION_FAILED' }
+        $reader = New-Object IO.StreamReader($_.Exception.Response.GetResponseStream())
+        try {
+            $buffer = New-Object char[] 4097; $length = $reader.ReadBlock($buffer,0,4097)
+            if ($length -gt 4096) { throw 'ACCESS_RESPONSE_TOO_LARGE' }
+            $content = if ($length -gt 0) { -join $buffer[0..($length-1)] } else { '' }
+        } finally { $reader.Dispose() }
+        return @{ Status = [int]$_.Exception.Response.StatusCode; Content = $content }
+    }
+}
+function Test-ReadAccess {
+    $identity = Invoke-AccessProbe '/auth/v1/user'
+    if ($identity.Status -ne 200) { throw 'IDENTITY_NOT_CONFIRMED' }
+    $user = $identity.Content | ConvertFrom-Json
+    $id = [string]$user.id
+    if ($id -notmatch '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') { throw 'IDENTITY_NOT_CONFIRMED' }
+    $profile = Invoke-AccessProbe ('/rest/v1/usuarios?select=rol,kiosco_id,activo,es_superadmin&auth_user_id=eq.' + $id + '&limit=2')
+    if ($profile.Status -ne 200) { throw 'PROFILE_NOT_CONFIRMED' }
+    $rows = @($profile.Content | ConvertFrom-Json)
+    $owner = 'DUE' + [char]0xD1 + 'O'
+    if ($rows.Count -ne 1 -or $rows[0].activo -cne $true -or $rows[0].es_superadmin -cne $false -or
+        $rows[0].rol -cnotin @($owner,'CAJERO') -or [string]$rows[0].kiosco_id -notmatch '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') { throw 'TEST_ACTOR_NOT_CONFIRMED' }
+    $role = if ($rows[0].rol -ceq $owner) { 'OWNER' } else { 'CASHIER' }
+    # limit=0 prevents reading any private row even if a grant regresses.
+    $private = Invoke-AccessProbe '/rest/v1/fiscal_operaciones_homologacion?select=*&limit=0'
+    if ($private.Status -ne 403) { throw 'PRIVATE_TABLE_DENIAL_NOT_CONFIRMED' }
+    Write-Host ('AUTH_PROFILE_CONFIRMED role=' + $role + '. PRIVATE_TABLE_DIRECT_DENIED status=403. No acredita aislamiento RLS completo.')
+    Write-Host 'ACCESS_PROBE_READY. Avisale a Codex ahora: listo para acceso temporal. Espera maxima: 10 minutos; no ingreses credenciales en el chat.'
+    $deadline = [DateTime]::UtcNow.AddMinutes(10)
+    for ($attempt = 0; $attempt -lt 120 -and [DateTime]::UtcNow -lt $deadline; $attempt++) {
+        # Fixed read-only action and sentinel UUID: no save, reservation, WSAA or WSFE.
+        $probe = Invoke-AccessProbe '/functions/v1/arca-homologacion' 'POST' '{"accion":"DATOS_FISCALES_VENTA","venta_id":"00000000-0000-0000-0000-000000000000"}'
+        $data = $probe.Content | ConvertFrom-Json
+        if ($probe.Status -eq 503 -and $data.codigo -ceq 'HOMOLOGACION_NO_HABILITADA') { Start-Sleep -Seconds 5; continue }
+        if ($probe.Status -eq 409 -and $data.codigo -ceq 'OPERACION_NO_CONFIRMADA') {
+            Write-Host 'BASE_READ_NEGATIVE_OBSERVED status=409. No prueba por si solo Auth/RPC privados ni acceso positivo; requiere evidencia adicional.'
+            return
+        }
+        throw 'BASE_READ_UNEXPECTED'
+    }
+    throw 'BASE_WINDOW_NOT_OBSERVED'
+}
 try {
     if ($Preparar) {
         Write-Host 'STAGING_JWT_HELPER_READY. Sin conexion, login, flags ni archivos.'
@@ -116,6 +170,11 @@ try {
         $header = Read-JwtPart ($token.Split('.')[0])
         $algorithm = [string]$header.alg; $header = $null
         if ($algorithm -notin @('ES256','RS256','HS256')) { throw 'JWT_ALGORITHM_UNEXPECTED' }
+        if ($ComprobarAccesos) {
+            $step = 'acceso de ensayo solo lectura'
+            Test-ReadAccess
+            $result = 0
+        } else {
         $step = 'gateway fiscal cerrado'
         $response = Invoke-ClosedGateway @{ apikey = $publicKey; Authorization = ('Bearer ' + $token); Origin = $origin }
         if ($response.Content.Length -gt 2048) { throw 'RESPONSE_UNEXPECTED' }
@@ -128,6 +187,7 @@ try {
             $result = 2
         } else { throw 'BACKEND_CLOSED_NOT_CONFIRMED' }
         $response = $null; $payload = $null
+        }
     }
 } catch {
     Write-Host ('JWT_CHECK_NOT_CONFIRMED paso=' + $step + ' [' + $authDiagnostic + '] status=' + $authStatus + '. No compartir respuestas externas, claves ni contrasenas.')

@@ -2368,3 +2368,30 @@ handler base; no debe describirse como un modo de sólo lectura global. Las
 pruebas se limitarán explícitamente a lecturas y rechazos; aceptación positiva
 completa con fixtures requiere su propio alcance. El GO anterior de Edge excluyó
 flags: no cambiar esta configuración hasta recibir la autorización nueva.
+
+## GO base temporal y preparación coordinada — 26/10/2026
+
+Autorización nueva recibida: «Sí, sólo backend base temporal y pruebas de acceso».
+Cubre únicamente Staging acoyfwwmhaeruciyedri, backend base durante el ensayo y
+retorno a false. Resto de exclusiones anterior conservado. No activar antes de
+tener el asistente autenticado listo; no terminar un turno con el gate abierto.
+
+Panel de Secrets inspeccionado: cinco custom secrets preexistentes operativos,
+ningún ARCA_*; no se revelaron valores ni se cambió configuración remota.
+Preparado `-ComprobarAccesos` en el asistente existente: identidad Auth original,
+perfil propio activo Dueño/Cajero/noSuperAdmin, tabla privada con limit0/rechazo403,
+espera acotada10min/120lecturas de acción fija DATOS_FISCALES_VENTA con UUID nulo,
+logout local incluso ante fallo. Sin RPC arbitrario, filas fiscales, mutaciones,
+credenciales ARCA ni persistencia de tokens. Ver docs/arca-homologacion.md.
+
+Validación local:27pruebas nativas Windows PASS (18previas+9acceso), con rechazo
+de identidad inválida, perfil inactivo, SuperAdmin, grant expuesto, timeout,
+fallo de red y respuesta inesperada; Dueño/Cajero sintéticos pasan. Lint enfocado
+PASS y build PASS689módulos, aviso conocido de chunks grandes. Esto prueba el
+asistente, no la aceptación real. JWT real previo conserva su alcance gateway.
+
+Pendiente inmediato: titular ejecuta asistente y comunica ACCESS_PROBE_READY;
+aplicar el GO ya concedido, lecturas/rechazos, cierre false y verificación final.
+No pedir otra autorización equivalente. Un409 genérico no prueba por sí solo
+Auth privado/RPC correcto: investigar evidencia adicional antes de declararlo PASS.
+PR03 parcial/PR02 sin CAE; sin merge, master ni Production.

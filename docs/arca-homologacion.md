@@ -992,3 +992,36 @@ esas comprobaciones. Próximo gate: autorización independiente para habilitar
 sólo el backend base temporalmente y ejecutar aceptación de cuentas de ensayo,
 con resto de flags cerrados y sin emisores/custodia/ARCA/Vercel/Production.
 Detalles y límites en el ExecPlan fiscal. No inferir primer CAE ni readiness total.
+
+### Acceso temporal preparado — 26/10/2026
+
+El titular autorizó únicamente el backend base temporal y pruebas de acceso,
+volviendo `ARCA_HOMO_BACKEND_ENABLED` a `false` al terminar. No autoriza otros
+flags, mutaciones fiscales/comerciales, credenciales ARCA, emisiones ni Vercel.
+La inspección del panel de Staging confirmó que no hay custom secrets `ARCA_*`;
+el gate base sigue ausente/cerrado. No se habilitó durante la preparación.
+
+Para coordinar el ensayo sin dejar el backend abierto esperando un login:
+
+```powershell
+powershell -NoProfile -File .\scripts\comprobar-jwt-fiscal-staging.ps1 -ComprobarAccesos
+```
+
+Ingresar clave pública, correo y contraseña sólo en las solicitudes locales.
+Usar la cuenta de ensayo Dueño/Cajero activa, no SuperAdmin. El asistente verifica
+la identidad mediante Auth `/user`, consulta sólo su perfil y comprueba rechazo403
+al acceso directo a `fiscal_operaciones_homologacion` con `limit=0` (sin filas).
+Al ver `ACCESS_PROBE_READY`, avisar a Codex inmediatamente, conservando la consola
+abierta. Durante un máximo de10min/120lecturas espera la activación previamente
+autorizada. No cambia ningún flag por sí mismo. Sólo envía la consulta fija
+`DATOS_FISCALES_VENTA` con UUID centinela nulo; no invoca guardados, permisos,
+reservas, WSAA ni WSFE. Un fallo de red termina el ensayo, sin reintento de login.
+Finalmente solicita logout scope=local de su sesión en todos los casos.
+
+`AUTH_PROFILE_CONFIRMED` acredita identidad/perfil observados;403 acredita el
+rechazo directo de esa tabla, no todas las policies RLS. Un409 genérico
+`BASE_READ_NEGATIVE_OBSERVED` sólo acredita la respuesta negativa con gate abierto:
+no distingue fallo de actor/RPC/servicio privado, por lo que requiere evidencia
+adicional antes de cerrar aceptación hospedada. No es acceso positivo ni E2E.
+Codex debe cerrar el gate en el mismo turno de activación y verificarlo, aunque
+el asistente falle o el usuario todavía no haya comunicado el resultado.
