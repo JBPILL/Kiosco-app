@@ -117,6 +117,11 @@ try {
       cases.push('SQL011_antes_SQL012_sin_dependencia_de_tabla_opcional')
     }
   }
+  // Install the real return prerequisites before any legacy synthetic return rows.
+  await observer.query(readFileSync(join(root,'supabase/bootstrap/commercial/001_commercial_subscription.sql'),'utf8'))
+  const commercialGate=readFileSync(join(root,'supabase/bootstrap/commercial/002_commercial_write_gate.sql'),'utf8')
+  await observer.query(commercialGate.slice(commercialGate.indexOf('CREATE OR REPLACE FUNCTION public.exigir_comercio_operativo'),commercialGate.indexOf('CREATE OR REPLACE FUNCTION public.validar_escritura_comercial_operativa')))
+  for(const file of ['supabase/bootstrap/pilot-operations/001_capabilities.sql','supabase_fase_devolucion_registro_privado.sql','supabase_fase_devolucion_calculo_historico.sql','supabase_fase_devolucion_preparacion_privada.sql','supabase/bootstrap/returns/001_atomic_cash_return.sql','supabase/bootstrap/returns/003_whole_unit_quantities.sql'])await observer.query(readFileSync(join(root,file),'utf8'))
   async function fixture() {
     const f={kid:randomUUID(),auth:randomUUID(),owner:randomUUID(),sale:randomUUID()}
     await observer.query('INSERT INTO auth.users VALUES($1)',[f.auth])
@@ -983,6 +988,7 @@ try {
     await observer.query('INSERT INTO checkout_manual_entradas(id,kiosco_id,usuario_id,entrada,snapshot,autorizado_por_auth_id) VALUES($1,$2,$3,$4::jsonb,$5::jsonb,$6)',[f.sale,f.kid,f.owner,'{"version":1}',snapshot,f.auth])
     await observer.query('INSERT INTO checkout_manuales(id,kiosco_id,venta_id,solicitud,resultado) VALUES($1,$2,$1,$3::jsonb,jsonb_build_object(\'venta_id\',$1::uuid,\'kiosco_id\',$2::uuid,\'total\',123.45))',[f.sale,f.kid,snapshot])
     const product=(await observer.query('SELECT producto_id FROM detalles_venta WHERE venta_id=$1',[f.sale])).rows[0].producto_id
+    await observer.query('INSERT INTO producto_costos(producto_id,kiosco_id,precio_costo) VALUES($1,$2,40) ON CONFLICT(producto_id) DO UPDATE SET precio_costo=40',[product,f.kid])
     await observer.query("INSERT INTO movimientos_stock(kiosco_id,producto_id,tipo,cantidad,motivo,notas,usuario_id) VALUES($1,$2,'EGRESO',2,'VENTA',$3,$4)",[f.kid,product,'Checkout manual '+f.sale,f.owner])
     const load=async(client,actor=f.auth)=>(await client.query('SELECT cargar_fuente_comercial_nc_homologacion($1,$2,$3) v',[actor,f.sale,f.operation])).rows[0].v
     return {...f,cash,payment,load}
@@ -1020,6 +1026,7 @@ try {
     const f=await fixture(),product=randomUUID(),cash=randomUUID(),detail=randomUUID(),payment=randomUUID(),fecha=new Date().toISOString()
     await observer.query('DELETE FROM ventas WHERE id=$1',[f.sale])
     await observer.query("INSERT INTO productos(id,kiosco_id,descripcion,precio_venta,stock_actual) VALUES($1,$2,'Unidad local',124,10)",[product,f.kid])
+    await observer.query('INSERT INTO producto_costos(producto_id,kiosco_id,precio_costo) VALUES($1,$2,40) ON CONFLICT(producto_id) DO UPDATE SET precio_costo=40',[product,f.kid])
     await observer.query(`INSERT INTO sesiones_caja(id,kiosco_id,usuario_id,fecha_apertura) VALUES($1,$2,$3,clock_timestamp()-interval '1 minute')`,[cash,f.kid,f.owner])
     await observer.query('INSERT INTO checkout_unidades_config_homologacion(kiosco_id,habilitado) VALUES($1,true)',[f.kid])
     const snapshot={version:1,id:f.sale,kiosco_id:f.kid,usuario_id:f.owner,sesion_caja_id:cash,fecha_hora:fecha,total:124,notas:null,cliente_id:null,
@@ -1587,11 +1594,12 @@ try {
   assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_resoluciones_homologacion WHERE solicitud_id=$1',[nc050_rollback.proposal.id])).rows[0].n,1)
   cases.push('050_rollback_no_deja_marcador_fantasma_y_waiter_resuelve_una_vez')
   const nc051_box=await nc050Fixture(250),nc051_product=await nc050Fixture(251)
+  const nc052_same=await nc050Fixture(252),nc052_rollback=await nc050Fixture(253),nc052_late=await nc050Fixture(254)
   const creditCommercialPlanInstalledAfterCase=cases.length
   for(const file of ['supabase/bootstrap/commercial/001_commercial_subscription.sql','supabase/bootstrap/commercial/002_commercial_write_gate.sql','supabase/bootstrap/pilot-operations/001_capabilities.sql','supabase/pilot-fiscal/051_fiscal_credit_commercial_plan.sql'])for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,file),'utf8'))
   const nc051_plan=randomUUID()
   await observer.query("INSERT INTO planes(id,nombre,precio_mensual,max_usuarios) VALUES($1,'Ensayo NC',0,3)",[nc051_plan])
-  for(const f of [nc051_box,nc051_product]){
+  for(const f of [nc051_box,nc051_product,nc052_same,nc052_rollback,nc052_late]){
     await observer.query("UPDATE kioscos SET estado_suscripcion='ACTIVO' WHERE id=$1",[f.kid])
     await observer.query("INSERT INTO suscripciones(kiosco_id,plan_id,fecha_inicio,fecha_vencimiento,estado) VALUES($1,$2,comercial_hoy(),comercial_hoy()+30,'ACTIVA')",[f.kid,nc051_plan])
     await observer.query('INSERT INTO piloto_operaciones_capacidades(kiosco_id,devoluciones_efectivo) VALUES($1,true)',[f.kid])
@@ -1619,11 +1627,36 @@ try {
   assert.equal((await nc051_virtual).error?.code,'22023');await b.query('ROLLBACK')
   assert.equal((await observer.query('SELECT count(*)::int n FROM devoluciones_venta WHERE venta_id=ANY($1)',[[nc051_box.sale,nc051_product.sale]])).rows[0].n,0)
   cases.push('051_producto_convertido_en_combo_durante_espera_no_se_repone_como_fisico')
+  const creditCommercialApplicationInstalledAfterCase=cases.length
+  for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/052_fiscal_credit_commercial_application.sql'),'utf8'))
+  for(const f of [nc052_same,nc052_rollback,nc052_late])f.refundCash=(await observer.query('SELECT sesion_caja_id id FROM ventas WHERE id=$1',[f.sale])).rows[0].id
+  const apply052=async(client,f)=>(await client.query('SELECT aplicar_comercial_nc_homologacion($1,$2,$3,$4,$5,$6) v',[f.auth,f.sale,f.operation,f.proposal.id,f.proposal.sha,f.refundCash])).rows[0].v
+  const check052=async(f)=>{
+    assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_aplicaciones_homologacion WHERE solicitud_id=$1',[f.proposal.id])).rows[0].n,1)
+    assert.equal((await observer.query("SELECT count(*)::int n FROM movimientos_caja WHERE id=$1 AND monto=123.45 AND tipo='EGRESO'",[f.proposal.id])).rows[0].n,1)
+    assert.equal((await observer.query('SELECT p.stock_actual::text v FROM productos p JOIN detalles_venta d ON d.producto_id=p.id WHERE d.venta_id=$1',[f.sale])).rows[0].v,'2.000')
+  }
+  await start(a);const first052=await apply052(a,nc052_same)
+  await start(b);const wait052=capture(apply052(b,nc052_same));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.deepEqual((await wait052).value,first052);await b.query('COMMIT');await check052(nc052_same)
+  cases.push('052_dos_trabajadores_mismo_caso_un_reintegro_y_una_reposicion')
+  await start(a);await apply052(a,nc052_rollback)
+  await start(b);const rollback052=capture(apply052(b,nc052_rollback));await waitForLock(observer,b);await a.query('ROLLBACK')
+  assert.equal((await rollback052).value.estado,'APLICACION_NC_REGISTRADA');await b.query('COMMIT');await check052(nc052_rollback)
+  cases.push('052_waiter_tras_rollback_aplica_una_vez_sin_journal_fantasma')
+  await observer.query(`CREATE FUNCTION fallo_nc052() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id='${nc052_late.proposal.id}'::uuid THEN RETURN NULL; END IF; RETURN NEW; END $$; CREATE TRIGGER fallo_nc052 BEFORE INSERT ON movimientos_caja FOR EACH ROW EXECUTE FUNCTION fallo_nc052()`)
+  await start(a);const late052=await capture(apply052(a,nc052_late));assert(late052.error);await a.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_aplicaciones_homologacion WHERE solicitud_id=$1',[nc052_late.proposal.id])).rows[0].n,0)
+  assert.equal((await observer.query('SELECT p.stock_actual::text v FROM productos p JOIN detalles_venta d ON d.producto_id=p.id WHERE d.venta_id=$1',[nc052_late.sale])).rows[0].v,'0.000')
+  await observer.query('DROP TRIGGER fallo_nc052 ON movimientos_caja; DROP FUNCTION fallo_nc052()')
+  await start(a);await apply052(a,nc052_late);await a.query('COMMIT');await check052(nc052_late)
+  cases.push('052_error_tardio_revierte_efectos_y_reintento_aplica_una_vez')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
     creditOwnerReviewInstalledAfterCase,postCreditOwnerReviewCaseCount:cases.length-creditOwnerReviewInstalledAfterCase,
+    creditCommercialApplicationInstalledAfterCase,postCreditCommercialApplicationCaseCount:cases.length-creditCommercialApplicationInstalledAfterCase,
     creditCommercialPlanInstalledAfterCase,postCreditCommercialPlanCaseCount:cases.length-creditCommercialPlanInstalledAfterCase,
     creditResolutionInstalledAfterCase,postCreditResolutionCaseCount:cases.length-creditResolutionInstalledAfterCase,
     creditSendResponseInstalledAfterCase,postCreditSendResponseCaseCount:cases.length-creditSendResponseInstalledAfterCase,

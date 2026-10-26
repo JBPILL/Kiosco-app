@@ -1620,6 +1620,8 @@ async function checkoutUnitsFixture(enabled=true,weighted=false,free=false){
  await admin('INSERT INTO sesiones_caja(id,kiosco_id,usuario_id) VALUES($1,$2,$3)',[cash,kid,owner])
  await admin('UPDATE productos SET stock_actual=10,precio_venta=$1,es_pesable=$2,unidad_medida=$3 WHERE id=$4',[weighted?248:124,weighted,weighted?'KG':'UN',product])
  if(enabled)await admin('INSERT INTO checkout_unidades_config_homologacion(kiosco_id,habilitado) VALUES($1,true)',[kid])
+ // Seed the acquisition cost before checkout so the movement captures real historical evidence.
+ await admin('INSERT INTO producto_costos(producto_id,kiosco_id,precio_costo) VALUES($1,$2,40) ON CONFLICT(producto_id) DO UPDATE SET precio_costo=EXCLUDED.precio_costo',[product,kid])
  const fecha=new Date().toISOString(),prod=free?virtual:product
  const components:{producto_id:string;cantidad:number}[]=[]
  const row={id:detail,producto_id:prod,cantidad:quantity,precio_unitario:weighted?248:124,subtotal:124,sin_envase:false,precio_envase_unitario:0,es_devolucion_envase:false,articulo_libre:free?{descripcion:'Concepto de ensayo',precio_venta:124}:null,componentes:components}
@@ -3112,4 +3114,113 @@ it.each(['anon','authenticated'])('051 plan privado deniega%s',async role=>{
 it('051 caja original cerrada admite otra caja de reintegro y conserva precio histórico',async()=>{
  const f=await creditCommercialPlanFixture(),refund=crypto.randomUUID();await admin("UPDATE sesiones_caja SET estado='CERRADA',fecha_cierre=clock_timestamp() WHERE id=$1",[f.cash]);await admin('INSERT INTO sesiones_caja(id,kiosco_id,usuario_id) VALUES($1,$2,$3)',[refund,kid,owner]);await admin('UPDATE productos SET precio_venta=999 WHERE id=$1',[product]);await denied(()=>f.plan());const before=await preparationEffects()
  expect(await f.plan(refund)).toMatchObject({estado:'PLAN_NC_SIN_APLICAR',sesion_caja_id:refund,importe:'124.00',fisicos:[{producto_id:product,cantidad:'1.000'}]});expect(await preparationEffects()).toEqual(before)
+})
+
+async function creditCommercialApplicationFixture(){
+ const f=await creditCommercialPlanFixture();await db.exec('RESET ROLE')
+ for(const file of ['supabase_fase_devolucion_registro_privado.sql','supabase_fase_devolucion_calculo_historico.sql','supabase_fase_devolucion_preparacion_privada.sql','supabase/bootstrap/returns/001_atomic_cash_return.sql','supabase/bootstrap/returns/003_whole_unit_quantities.sql','supabase/pilot-fiscal/052_fiscal_credit_commercial_application.sql']){const sql=readFileSync(file,'utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'');await db.exec(sql);await db.exec(sql)}await db.exec('SET ROLE service_role')
+ const apply=async(caja=f.cash,who=actor)=>(await db.query<{data:Record<string,unknown>}>('SELECT aplicar_comercial_nc_homologacion($1,$2,$3,$4,$5,$6) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,caja])).rows[0].data
+ const readApplication=async(who=actor)=>(await db.query<{data:Record<string,unknown>|null}>('SELECT cargar_aplicacion_comercial_nc_homologacion($1,$2,$3,$4,$5) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256])).rows[0].data
+ return{...f,apply,readApplication}
+}
+it('052 aplica una salida de caja/stock/historia, ACK perdido recupera sin duplicar',async()=>{
+ const f=await creditCommercialApplicationFixture();expect(await f.readApplication()).toBeNull();const result=await f.apply();expect(result).toMatchObject({estado:'APLICACION_NC_REGISTRADA',id:f.proposal.datos.solicitud_id,importe:'124.00',stock:[{producto_id:product,stock_actual:10}],nuevo_reintegro:false})
+ expect(await f.readApplication()).toEqual(result);expect(await f.apply()).toEqual(result);await db.exec('SET CONSTRAINTS ALL IMMEDIATE; SET CONSTRAINTS ALL DEFERRED')
+ await db.exec('RESET ROLE');expect((await db.query<{n:number}>("SELECT count(*)::int n FROM movimientos_caja WHERE id=$1 AND tipo='EGRESO' AND monto=124",[f.proposal.datos.solicitud_id])).rows[0].n).toBe(1);expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_nc_reposiciones_homologacion')).rows[0].n).toBe(1);expect((await db.query<{n:number}>('SELECT count(*)::int n FROM detalles_devolucion')).rows[0].n).toBe(1);await db.exec('SET ROLE service_role')
+ expect(await f.readIntent()).not.toBeNull();expect(await f.readAuthorization()).not.toBeNull();expect(await f.loadResolution()).not.toBeNull()
+})
+it('052 recuperación no exige caja abierta/capacidad/comercio vigentes ni admite cambiar caja',async()=>{
+ const f=await creditCommercialApplicationFixture(),result=await f.apply();await admin("UPDATE sesiones_caja SET estado='CERRADA',fecha_cierre=clock_timestamp() WHERE id=$1",[f.cash]);await admin('UPDATE piloto_operaciones_capacidades SET devoluciones_efectivo=false WHERE kiosco_id=$1',[kid]);await admin("UPDATE kioscos SET estado_suscripcion='SUSPENDIDO' WHERE id=$1",[kid])
+ expect(await f.readApplication()).toEqual(result);expect(await f.apply()).toEqual(result);await denied(()=>f.apply(crypto.randomUUID()))
+})
+it('052 rollback revierte stock/caja/journal/cabecera y permite una aplicación posterior',async()=>{
+ const f=await creditCommercialApplicationFixture(),before=await preparationEffects();await db.exec('SAVEPOINT apply_rollback');await f.apply();await db.exec('ROLLBACK TO SAVEPOINT apply_rollback; RELEASE SAVEPOINT apply_rollback');expect(await f.readApplication()).toBeNull();expect(await preparationEffects()).toEqual(before);expect(await f.apply()).toMatchObject({estado:'APLICACION_NC_REGISTRADA'})
+})
+it.each(['capacidad','conflicto','caja','costo-ausente'])('052 error%s no deja cambios parciales',async reason=>{
+ const f=await creditCommercialApplicationFixture();if(reason==='capacidad')await admin('UPDATE piloto_operaciones_capacidades SET devoluciones_efectivo=false WHERE kiosco_id=$1',[kid]);if(reason==='conflicto')await f.write(f.conflict,crypto.randomUUID());if(reason==='caja')await admin("UPDATE sesiones_caja SET estado='CERRADA',fecha_cierre=clock_timestamp() WHERE id=$1",[f.cash]);if(reason==='costo-ausente')await admin("DELETE FROM movimiento_stock_costos WHERE movimiento_id IN(SELECT id FROM movimientos_stock WHERE motivo='VENTA')")
+ const before=await preparationEffects();await denied(()=>f.apply());expect(await f.readApplication()).toBeNull();expect(await preparationEffects()).toEqual(before);await db.exec('RESET ROLE');expect((await db.query<{stock:string}>('SELECT stock_actual::text stock FROM productos WHERE id=$1',[product])).rows[0].stock).toBe('9.000')
+})
+it.each(['anon','authenticated','service_role'])('052 diarios/helper sin acceso directo para%s',async role=>{
+ const f=await creditCommercialApplicationFixture();await f.apply();await db.exec('RESET ROLE; SET ROLE '+role);await denied(()=>db.query('SELECT resultado FROM fiscal_nc_aplicaciones_homologacion'));await denied(()=>db.query('SELECT cantidad FROM fiscal_nc_reposiciones_homologacion'));await denied(()=>db.query("SELECT aplicar_reposicion_historica_piloto($1,$2,$3,$4,'[]'::jsonb)",[crypto.randomUUID(),sale,kid,owner]));if(role!=='service_role'){await denied(()=>f.apply());await denied(()=>f.readApplication())}
+})
+
+it('052 falla tardía de caja revierte también reposición y permite recuperar una sola aplicación',async()=>{
+ const f=await creditCommercialApplicationFixture(),before=await preparationEffects()
+ await admin("CREATE FUNCTION fallo_caja_nc_052() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.motivo='DEVOLUCION_VENTA' THEN RETURN NULL; END IF; RETURN NEW; END $$");await admin("CREATE TRIGGER fallo_caja_nc_052 BEFORE INSERT ON movimientos_caja FOR EACH ROW EXECUTE FUNCTION fallo_caja_nc_052()")
+ await denied(()=>f.apply());expect(await f.readApplication()).toBeNull();expect(await preparationEffects()).toEqual(before)
+ await db.exec('RESET ROLE');expect((await db.query<{stock:string}>('SELECT stock_actual::text stock FROM productos WHERE id=$1',[product])).rows[0]).toEqual({stock:'9.000'});await db.exec('SET ROLE service_role')
+ await admin('DROP TRIGGER fallo_caja_nc_052 ON movimientos_caja');await admin('DROP FUNCTION fallo_caja_nc_052()')
+ const result=await f.apply();expect(await f.apply()).toEqual(result)
+})
+it('052 recuperación exige el Dueño Auth original activo, aun con ACK durable',async()=>{
+ const f=await creditCommercialApplicationFixture(),result=await f.apply()
+ await denied(()=>f.readApplication(crypto.randomUUID()))
+ await admin('UPDATE usuarios SET activo=false WHERE id=$1',[owner]);await denied(()=>f.readApplication());await denied(()=>f.apply())
+ await admin('UPDATE usuarios SET activo=true WHERE id=$1',[owner]);expect(await f.readApplication()).toEqual(result)
+})
+it('052 repone con el costo histórico aunque el costo actual haya cambiado',async()=>{
+ const f=await creditCommercialApplicationFixture()
+ await admin('UPDATE producto_costos SET precio_costo=999 WHERE producto_id=$1',[product])
+ await f.apply();await db.exec('RESET ROLE')
+ expect((await db.query<{costo:string}>("SELECT c.precio_costo::text costo FROM movimiento_stock_costos c JOIN movimientos_stock m ON m.id=c.movimiento_id WHERE m.tipo='INGRESO' AND m.notas=$1",['Devolución atómica '+f.proposal.datos.solicitud_id])).rows).toEqual([{costo:'40.00'}])
+ expect((await db.query<{costo:string}>('SELECT costo_unitario::text costo FROM fiscal_nc_reposiciones_homologacion WHERE solicitud_id=$1',[f.proposal.datos.solicitud_id])).rows).toEqual([{costo:'40.00'}])
+})
+it('052 diario y cabecera aplicados no se pueden modificar ni eliminar',async()=>{
+ const f=await creditCommercialApplicationFixture();await f.apply();await db.exec('RESET ROLE')
+ await denied(()=>db.query('DELETE FROM fiscal_nc_aplicaciones_homologacion'))
+ await denied(()=>db.query('UPDATE fiscal_nc_aplicaciones_homologacion SET importe=1'))
+ await denied(()=>db.query('DELETE FROM fiscal_nc_reposiciones_homologacion'))
+ await denied(()=>db.query('DELETE FROM devoluciones_venta WHERE id=$1',[f.proposal.datos.solicitud_id]))
+ await denied(()=>db.query('UPDATE devoluciones_venta SET monto_total=1 WHERE id=$1',[f.proposal.datos.solicitud_id]))
+})
+it('052 helper repone fracción en lote histórico agotado y conserva costo original',async()=>{
+ const f=await creditCommercialApplicationFixture(),physical=crypto.randomUUID(),lot=crypto.randomUUID(),movement=crypto.randomUUID(),application=crypto.randomUUID()
+ await admin("INSERT INTO productos(id,kiosco_id,descripcion,precio_venta,stock_actual,es_pesable,unidad_medida) VALUES($1,$2,'Fracción lote sintético',100,0,true,'KG')",[physical,kid])
+ await admin('INSERT INTO producto_costos(producto_id,kiosco_id,precio_costo) VALUES($1,$2,40) ON CONFLICT(producto_id) DO UPDATE SET precio_costo=40',[physical,kid])
+ await admin("INSERT INTO lotes_producto(id,kiosco_id,producto_id,fecha_vencimiento,cantidad_inicial,cantidad_actual,activo) VALUES($1,$2,$3,current_date+30,0.5,0,false)",[lot,kid,physical])
+ await admin("INSERT INTO movimientos_stock(id,kiosco_id,producto_id,tipo,cantidad,motivo,notas,usuario_id,lote_producto_id) VALUES($1,$2,$3,'EGRESO',0.5,'VENTA',$4,$5,$6)",[movement,kid,physical,'Checkout manual '+sale,owner,lot])
+ await admin('UPDATE producto_costos SET precio_costo=999 WHERE producto_id=$1',[physical])
+ await db.exec('RESET ROLE')
+ const result=(await db.query<{data:{stock:unknown;reposiciones:unknown}}>("SELECT aplicar_reposicion_historica_piloto($1,$2,$3,$4,$5::jsonb) data",[application,sale,kid,owner,JSON.stringify([{producto_id:physical,cantidad:0.125}])])).rows[0].data
+ expect(result.stock).toEqual([{producto_id:physical,stock_actual:0.125}])
+ expect(result.reposiciones).toMatchObject([{movimiento_id:movement,cantidad:0.125,costo_unitario:40}])
+ expect((await db.query('SELECT cantidad_actual::text cantidad,activo FROM lotes_producto WHERE id=$1',[lot])).rows[0]).toEqual({cantidad:'0.125',activo:true})
+ expect((await db.query("SELECT c.precio_costo::text costo,m.lote_producto_id FROM movimientos_stock m JOIN movimiento_stock_costos c ON c.movimiento_id=m.id WHERE m.notas=$1",['Devolución atómica '+application])).rows[0]).toEqual({costo:'40.00',lote_producto_id:lot})
+ expect(await f.readApplication()).toBeNull()
+})
+it('052 dos NC parciales aplicadas conservan saldo/historia y reponen exactamente la venta ponderada',async()=>{
+ const f=await boundCreditFixture(true,true);await installCreditBinding();await installCreditContext();await seedCreditCatalog();await installCreditContextSource();await installCreditPreparation();await installCreditNumbers()
+ const {validateFiscalCreditContext}=await import('../../supabase/functions/_shared/fiscalCreditContext'),{prepareFiscalCreditPreparation}=await import('../../supabase/functions/_shared/fiscalCreditPreparation'),entry={servicioDesde:null,servicioHasta:null,vencimientoPago:null},prepared:{id:string;sha:string;dataSha:string;reservation:string}[]=[]
+ for(let n=0;n<2;n++){
+  const proposal=await f.make({...f.draft,solicitud_id:crypto.randomUUID(),lineas:[{...f.draft.lineas[0],cantidad:'0.250',importe:'62.00'}],importes:{...f.draft.importes,total:'62.00',neto:'62.00'}});await f.write(proposal)
+  const raw=(await db.query<{data:unknown}>('SELECT cargar_contexto_nc_homologacion($1,$2,$3,$4,$5) data',[actor,sale,op,proposal.datos.solicitud_id,proposal.sha256])).rows[0].data,context=await validateFiscalCreditContext(raw,f.source,proposal),data=await prepareFiscalCreditPreparation(f.source,proposal,context,entry)
+  await db.query('SELECT guardar_preparacion_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb)',[actor,sale,op,proposal.datos.solicitud_id,proposal.sha256,data.datos.contexto_sha256,JSON.stringify(entry)])
+  prepared.push({id:proposal.datos.solicitud_id,sha:proposal.sha256,dataSha:data.sha256,reservation:crypto.randomUUID()})
+ }
+ const reserve=async(n:number,last:number)=>(await db.query<{data:Record<string,unknown>}>('SELECT reservar_cuerpo_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8,clock_timestamp()) data',[actor,sale,op,prepared[n].id,prepared[n].sha,prepared[n].dataSha,prepared[n].reservation,last])).rows[0].data
+ await reserve(0,22)
+ await db.exec('RESET ROLE');for(const name of readdirSync('supabase/pilot-fiscal').filter(name=>/^0(3[7-9]|4[0-9]|50)_/.test(name)).sort()){const sql=readFileSync('supabase/pilot-fiscal/'+name,'utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'');await db.exec(sql);await db.exec(sql)}await db.exec('SET ROLE service_role')
+ const approve=async(n:number)=>{
+  const p=prepared[n],review=crypto.randomUUID(),permit=crypto.randomUUID(),attempt=crypto.randomUUID(),packet=(await db.query<{data:{cuerpo:{sha256:string}}}>('SELECT cargar_fuente_cuerpo_nc_homologacion($1,$2,$3,$4,$5) data',[actor,sale,op,p.id,p.sha])).rows[0].data
+  await db.query('SELECT aprobar_revision_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8)',[actor,sale,op,p.id,p.sha,review,packet.cuerpo.sha256,p.dataSha])
+  await admin('INSERT INTO fiscal_nc_permisos_homologacion(id,solicitud_id,reserva_id,revision_id,actor_auth_id,solicitud_sha256,preparacion_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,creado_en,vence_en) SELECT $1,$2,$3,$4,$5,$6,$7,e.credencial_id,e.certificado_sha256,e.revision,true,clock_timestamp(),r.vence_en FROM fiscal_emisores_homologacion e,fiscal_nc_revisiones_homologacion r WHERE e.kiosco_id=$8 AND r.id=$4',[permit,p.id,p.reservation,review,actor,packet.cuerpo.sha256,p.dataSha,kid])
+  return{review,permit,attempt,bodySha:packet.cuerpo.sha256}
+ }
+ await db.exec('RESET ROLE')
+ for(const file of ['supabase/bootstrap/commercial/001_commercial_subscription.sql','supabase/bootstrap/commercial/002_commercial_write_gate.sql','supabase/bootstrap/pilot-operations/001_capabilities.sql','supabase_fase_devolucion_registro_privado.sql','supabase_fase_devolucion_calculo_historico.sql','supabase_fase_devolucion_preparacion_privada.sql','supabase/bootstrap/returns/001_atomic_cash_return.sql','supabase/bootstrap/returns/003_whole_unit_quantities.sql','supabase/pilot-fiscal/051_fiscal_credit_commercial_plan.sql','supabase/pilot-fiscal/052_fiscal_credit_commercial_application.sql'])await db.exec(readFileSync(file,'utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,''))
+ const commercialPlan=crypto.randomUUID();await db.query("INSERT INTO planes(id,nombre,precio_mensual,max_usuarios) VALUES($1,'Parciales NC',0,3)",[commercialPlan]);await db.query("INSERT INTO suscripciones(kiosco_id,plan_id,fecha_inicio,fecha_vencimiento,estado) VALUES($1,$2,comercial_hoy(),comercial_hoy()+30,'ACTIVA')",[kid,commercialPlan]);await db.query('INSERT INTO piloto_operaciones_capacidades(kiosco_id,devoluciones_efectivo) VALUES($1,true)',[kid]);await db.exec('SET ROLE service_role')
+ for(let n=0;n<2;n++){
+  if(n===1)expect(await reserve(n,23)).toMatchObject({numero:24})
+  const p=prepared[n],approved=await approve(n)
+  await db.query('SELECT registrar_intencion_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,clock_timestamp())',[actor,sale,op,p.id,p.sha,approved.bodySha,approved.review,approved.permit,approved.attempt,22+n])
+  const response={intento_id:approved.attempt,solicitud_sha256:approved.bodySha,consultado_en:new Date().toISOString(),resultado:{estado:'AUTORIZACION_NC_COINCIDENTE',cae:n===0?'11111111111111':'22222222222222',vencimiento:f.draft.fecha,procesadoEn:f.draft.fecha,solicitudSha256:approved.bodySha,puedeReenviar:false},emision_habilitada:false}
+  await db.query('SELECT registrar_consulta_nc_homologacion($1,$2,$3,$4,$5,$6,$7::jsonb)',[actor,sale,op,p.id,p.sha,crypto.randomUUID(),JSON.stringify(response)])
+  await db.query('SELECT registrar_resolucion_nc_autorizada_homologacion($1,$2,$3,$4,$5)',[actor,sale,op,p.id,p.sha])
+  const apply=async()=>(await db.query<{data:unknown}>('SELECT aplicar_comercial_nc_homologacion($1,$2,$3,$4,$5,$6) data',[actor,sale,op,p.id,p.sha,f.cash])).rows[0].data
+  const result=await apply();expect(result).toMatchObject({importe:'62.00',stock:[{producto_id:product,stock_actual:n===0?9.75:10}]});expect(await apply()).toEqual(result)
+ }
+ await db.exec('RESET ROLE')
+ expect((await db.query('SELECT sum(importe)::text total,count(*)::int n FROM fiscal_nc_aplicaciones_homologacion')).rows[0]).toEqual({total:'124.00',n:2})
+ expect((await db.query('SELECT sum(cantidad)::text cantidad FROM fiscal_nc_reposiciones_homologacion')).rows[0]).toEqual({cantidad:'0.500'})
+ await db.exec('SET CONSTRAINTS ALL IMMEDIATE; SET CONSTRAINTS ALL DEFERRED')
 })

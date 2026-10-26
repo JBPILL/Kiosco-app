@@ -24,6 +24,7 @@ beforeAll(async()=>{
   const root='supabase/bootstrap'
   for(const file of [join(root,'001_domain.sql'),join(root,'002_identity_helpers.sql'),...readdirSync(join(root,'steps')).sort().map(n=>join(root,'steps',n)),join(root,'900_final_security.sql')])await db.exec(readFileSync(file,'utf8'))
   for(const file of ['commercial/001_commercial_subscription.sql','commercial/002_commercial_write_gate.sql','pilot-operations/001_capabilities.sql'])await db.exec(readFileSync(join(root,file),'utf8'))
+  for(const file of ['supabase_fase_devolucion_registro_privado.sql','supabase_fase_devolucion_calculo_historico.sql','supabase_fase_devolucion_preparacion_privada.sql','supabase/bootstrap/returns/001_atomic_cash_return.sql','supabase/bootstrap/returns/003_whole_unit_quantities.sql'])await db.exec(readFileSync(file,'utf8'))
   for(const file of readdirSync('supabase/pilot-fiscal').filter(n=>/^\d{3}_.*\.sql$/.test(n)).sort()){
     const sql=readFileSync(join('supabase/pilot-fiscal',file),'utf8');await db.exec(sql);await db.exec(sql)
   }

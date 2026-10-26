@@ -780,3 +780,7 @@ Se reemplaza el cierre permanente de serie de036 por resolución privada050 de c
 
 ### 25/10/2026 — Preparación comercial NC sin permiso fuera de transacción
 051 valida autoridad actual y deriva importe/receta/unidades desde hechos030/031/032 ligados al cuerpo aprobado; sólo usa catálogo actual para comprobar compatibilidad física, no para revalorizar devolución ni reconstruir receta. Conserva gates de comercio/capacidad/caja y Auth original explícito, sin fabricar una sesión de usuario. PLAN_NC_SIN_APLICAR no es permiso durable: futura mutación debe ejecutar de nuevo051 dentro de su misma transacción. Mantener exclusión de devoluciones comunes de ventas fiscalizadas; futura excepción debe depender de diario fiscal privado/verificable en la misma transacción, con relectura histórica de casos parciales y reposición de costos/lotes originales. No se considera completado el efecto exactamente una vez con esta preparación.
+
+
+### 26/10/2026 — Aplicación NC durable separada de elegibilidad nueva
+SQL052 conserva un ACK inmutable por caso/cuerpo/Auth/caja; recuperación verifica el Dueño original activo sin exigir comercio/capacidad/caja abiertos. Una aplicación nueva siempre recalcula051 y registra caja/stock/costos/lotes/cabecera/journal en una transacción. Sólo el diario privado enlazado permite la cabecera fiscal; no flags/GUC/Auth suplantado ni bypass genérico de service_role. Costo histórico ausente bloquea. Evidencia y pendientes en ExecPlan ARCA; sin autoridad remota nueva.
