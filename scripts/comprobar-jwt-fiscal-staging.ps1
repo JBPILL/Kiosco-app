@@ -1,4 +1,4 @@
-param([switch]$Preparar, [switch]$ComprobarAccesos)
+param([switch]$Preparar, [switch]$ComprobarAccesos, [switch]$ComprobarAislamiento)
 $ErrorActionPreference = 'Stop'
 $target = 'https://acoyfwwmhaeruciyedri.supabase.co'
 $origin = 'https://kiosco-app-staging.vercel.app'
@@ -103,7 +103,7 @@ function Invoke-AccessProbe {
         return @{ Status = [int]$_.Exception.Response.StatusCode; Content = $content }
     }
 }
-function Test-ReadAccess {
+function Get-TestActor {
     $identity = Invoke-AccessProbe '/auth/v1/user'
     if ($identity.Status -ne 200) { throw 'IDENTITY_NOT_CONFIRMED' }
     $user = $identity.Content | ConvertFrom-Json
@@ -111,11 +111,43 @@ function Test-ReadAccess {
     if ($id -notmatch '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') { throw 'IDENTITY_NOT_CONFIRMED' }
     $profile = Invoke-AccessProbe ('/rest/v1/usuarios?select=rol,kiosco_id,activo,es_superadmin&auth_user_id=eq.' + $id + '&limit=2')
     if ($profile.Status -ne 200) { throw 'PROFILE_NOT_CONFIRMED' }
-    $rows = @($profile.Content | ConvertFrom-Json)
+    $decoded = ConvertFrom-Json -InputObject $profile.Content
+    $rows = @($decoded)
     $owner = 'DUE' + [char]0xD1 + 'O'
     if ($rows.Count -ne 1 -or $rows[0].activo -cne $true -or $rows[0].es_superadmin -cne $false -or
         $rows[0].rol -cnotin @($owner,'CAJERO') -or [string]$rows[0].kiosco_id -notmatch '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') { throw 'TEST_ACTOR_NOT_CONFIRMED' }
     $role = if ($rows[0].rol -ceq $owner) { 'OWNER' } else { 'CASHIER' }
+    return @{ Role = $role; Kiosk = [string]$rows[0].kiosco_id }
+}
+function Test-SalesIsolation {
+    $actor = Get-TestActor
+    # Existing isolated fixtures independently verified in Staging on 2026-10-26.
+    # Never select amounts, customers, payments or rows from arbitrary tenants.
+    $ownKiosk = 'b7254826-c767-4098-94b8-71013c12021d'
+    $foreignSale = '00418e7b-eca6-487c-bffe-b85b405cd9cb'
+    if ($actor.Kiosk -cne $ownKiosk) { throw 'RLS_TEST_SCOPE_REQUIRED' }
+    $own = Invoke-AccessProbe ('/rest/v1/ventas?select=id,kiosco_id&kiosco_id=eq.' + $ownKiosk + '&estado=eq.COMPLETADA&order=fecha_hora.desc&limit=1')
+    if ($own.Status -ne 200 -or -not $own.Content.TrimStart().StartsWith('[')) { throw 'RLS_POSITIVE_CONTROL_FAILED' }
+    $decoded = ConvertFrom-Json -InputObject $own.Content
+    $rows = @($decoded)
+    if ($rows.Count -ne 1 -or $rows[0].kiosco_id -cne $ownKiosk -or
+        [string]$rows[0].id -notmatch '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$' -or $rows[0].id -ceq $foreignSale) { throw 'RLS_POSITIVE_CONTROL_FAILED' }
+    $ownId = [string]$rows[0].id
+    # Deliberately no kiosk filter: an existing foreign row must be hidden by RLS.
+    $foreign = Invoke-AccessProbe ('/rest/v1/ventas?select=id,kiosco_id&id=eq.' + $foreignSale + '&limit=1')
+    if ($foreign.Status -ne 200 -or -not $foreign.Content.TrimStart().StartsWith('[')) { throw 'RLS_FOREIGN_ROW_NOT_HIDDEN' }
+    $decoded = ConvertFrom-Json -InputObject $foreign.Content
+    if (@($decoded).Count -ne 0) { throw 'RLS_FOREIGN_ROW_NOT_HIDDEN' }
+    $recheck = Invoke-AccessProbe ('/rest/v1/ventas?select=id,kiosco_id&id=eq.' + $ownId + '&limit=1')
+    if ($recheck.Status -ne 200 -or -not $recheck.Content.TrimStart().StartsWith('[')) { throw 'RLS_POSITIVE_RECHECK_FAILED' }
+    $decoded = ConvertFrom-Json -InputObject $recheck.Content
+    $again = @($decoded)
+    if ($again.Count -ne 1 -or $again[0].id -cne $ownId -or $again[0].kiosco_id -cne $ownKiosk) { throw 'RLS_POSITIVE_RECHECK_FAILED' }
+    Write-Host ('RLS_SALES_READ_ISOLATION_OBSERVED role=' + $actor.Role + ' own=1 foreign=0 positive_recheck=1. Requiere revalidar existencia ajena independientemente; no acredita RLS completo ni E2E fiscal.')
+}
+function Test-ReadAccess {
+    $actor = Get-TestActor
+    $role = $actor.Role
     # limit=0 prevents reading any private row even if a grant regresses.
     $private = Invoke-AccessProbe '/rest/v1/fiscal_operaciones_homologacion?select=*&limit=0'
     if ($private.Status -ne 403) { throw 'PRIVATE_TABLE_DENIAL_NOT_CONFIRMED' }
@@ -136,6 +168,7 @@ function Test-ReadAccess {
     throw 'BASE_WINDOW_NOT_OBSERVED'
 }
 try {
+    if ($ComprobarAccesos -and $ComprobarAislamiento) { throw 'EXCLUSIVE_TEST_MODE_REQUIRED' }
     if ($Preparar) {
         Write-Host 'STAGING_JWT_HELPER_READY. Sin conexion, login, flags ni archivos.'
         $result = 0
@@ -170,7 +203,11 @@ try {
         $header = Read-JwtPart ($token.Split('.')[0])
         $algorithm = [string]$header.alg; $header = $null
         if ($algorithm -notin @('ES256','RS256','HS256')) { throw 'JWT_ALGORITHM_UNEXPECTED' }
-        if ($ComprobarAccesos) {
+        if ($ComprobarAislamiento) {
+            $step = 'aislamiento lectura ventas'
+            Test-SalesIsolation
+            $result = 0
+        } elseif ($ComprobarAccesos) {
             $step = 'acceso de ensayo solo lectura'
             Test-ReadAccess
             $result = 0
@@ -190,6 +227,7 @@ try {
         }
     }
 } catch {
+    if ($_.Exception.Message -cin @('RLS_TEST_SCOPE_REQUIRED','RLS_POSITIVE_CONTROL_FAILED','RLS_FOREIGN_ROW_NOT_HIDDEN','RLS_POSITIVE_RECHECK_FAILED')) { $authDiagnostic = $_.Exception.Message }
     Write-Host ('JWT_CHECK_NOT_CONFIRMED paso=' + $step + ' [' + $authDiagnostic + '] status=' + $authStatus + '. No compartir respuestas externas, claves ni contrasenas.')
     $result = 1
 } finally {

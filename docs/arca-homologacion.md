@@ -1073,3 +1073,32 @@ Dueño y Cajero tienen evidencia real de sus casos negativos. Sigue pendiente
 aislamiento entre comercios con controles positivos y, después, aceptación
 fiscal positiva/E2E con fixtures/provisión autorizados. No repetir consultas
 centinela para sustituir esos criterios. Historial completo en el ExecPlan fiscal.
+
+### Lectura de ventas entre comercios: asistente preparado — 26/10/2026
+
+Modo `-ComprobarAislamiento` del asistente existente, independiente del modo
+`-ComprobarAccesos` (no combinarlos). No abre una ventana ni llama Edge/ARCA:
+únicamente login/logout de su sesión, Auth/user, perfil propio y tres GET de
+ventas con columnas id/kiosco_id. No solicita ni muestra importes o clientes.
+
+El inventario READ ONLY confirmó dos fixtures activos existentes: «Ensayo envases
+devoluciones 7faa9ea4» con10ventas completadas y «F4A_TEST_20261011_R1» con7ventas.
+La venta ajena00418e7b-eca6-487c-bffe-b85b405cd9cb existe en el segundo. No se
+crearon datos ni se reactivaron comercios suspendidos. El asistente exige que el
+perfil sea Dueño/Cajero activo/noSuperAdmin del primer comercio; rechaza otro
+comercio incluso si tiene acceso legítimo a sus propios datos.
+
+Control positivo: una venta COMPLETADA propia visible. Control negativo: GET de
+la venta ajena por id, deliberadamente SIN filtro de comercio, debe devolver200
+y lista vacía. Segundo positivo: la venta propia sigue visible con la misma
+sesión. Un403, lista propia vacía, fila ajena visible, JSON inválido, fallo de red
+o pérdida del segundo positivo hace fallar el ensayo y solicita logout local.
+No imprime ids, tokens, clave pública, contraseña ni cuerpos externos.
+
+Ejecutar una vez como Cajero y otra como Dueño, ingresando credenciales sólo
+localmente. Comunicar RLS_SALES_READ_ISOLATION_OBSERVED y TEST_SESSION_LOGOUT_*.
+Luego Codex debe revalidar en lectura independiente que la venta ajena sigue
+existiendo en el comercio esperado: una fila borrada no demostraría aislamiento.
+El marcador OBSERVED no es por sí solo PASS hospedado. Alcance final, si pasa:
+lectura de ventas de estos actores/fixtures; no todas las policies/tablas ni E2E
+fiscal positivo. Mantener backend base false y demás gates cerrados.

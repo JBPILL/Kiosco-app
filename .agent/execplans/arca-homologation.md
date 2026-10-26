@@ -2509,3 +2509,40 @@ misma sesión; un resultado vacío sin control positivo no acredita RLS. Antes
 de crear fixtures remotos, revisar disponibilidad de fixtures aislados existentes
 y su alcance. Sin emisor/catálogo/custodia no declarar aceptación positiva fiscal
 ni cerrar PR02 (primer CAE). No repetir Dueño/Cajero centinela como nuevo progreso.
+
+## Preparación de aislamiento entre comercios sin nuevos fixtures — 26/10/2026
+
+Inventario remoto REPEATABLE READ READ ONLY/ROLLBACK: comercio «Ensayo envases
+devoluciones 7faa9ea4» activo con10ventas,2Dueños; F4A_TEST_20261011_R1 activo con
+7ventas/1Dueño; tres comercios Ensayo comercial/restauración suspendidos sin
+ventas. No se reactivaron ni mutaron. Selección READ ONLY confirmó10ventas
+COMPLETADA propias y venta00418e7b-eca6-487c-bffe-b85b405cd9cb del fixture F4A.
+Estos datos permiten un control real sin crear cuentas o ventas adicionales.
+
+Preparado modo -ComprobarAislamiento en el asistente Windows existente. Reutiliza
+login seguro UTF8, Auth/user y perfil propio (no confía en claims decodificados),
+scope exacto del comercio de ensayo y logout scope=local en finally. Tres GET:
+venta propia positiva, id ajeno sin filtro de kiosco→200[], relectura propia
+positiva. Sólo id/kiosco_id; no importes, detalles, clientes ni pagos. No flags,
+esperas, RPC/Edge, ARCA o mutaciones comerciales/fiscales. Modos excluyentes.
+
+Primera suite37casos:35PASS/2FAIL en positivos de aislamiento; reproducción nativa
+confirmó que @('[]'|ConvertFrom-Json) cuenta1 en WindowsPowerShell5.1, mientras
+PowerShell7 cuenta0. Se separó decodificación de enumeración, sin relajar200[]
+ni controles positivos. Subensayo de diagnóstico confirmó el rechazo en la
+comprobación de lista ajena. Se conserva la falla histórica; validación final
+se registra después de la corrección, no convertir esas ejecuciones en PASS.
+
+Marcador RLS_SALES_READ_ISOLATION_OBSERVED exige revalidar existencia ajena por
+lectura independiente después del ensayo, evitando declarar aislamiento si el
+fixture fue eliminado. Falta ejecución humana con Cajero/Dueño y comprobación
+posterior; NO hay RLS hospedado nuevo acreditado por preparar/simular el asistente.
+PR03 parcial y fiscal positivo/CAE pendientes. Detalles en guía ARCA existente.
+
+Validación posterior a la corrección:37pruebas nativas Windows PASS (27previas y
+10aislamiento), incluyendo Dueño/Cajero positivos sintéticos, scope incorrecto,
+control propio ausente/ajeno, exposición de fila ajena,403ajeno, JSON incorrecto,
+red y pérdida del positivo final. No hubo tráfico remoto desde esos tests.
+Lint enfocado/diff PASS; -Preparar -ComprobarAislamiento PASS sin login/red.
+Build final PASS689módulos, aviso conocido de chunks grandes. Evidencia de
+selección hospedada fuera de Git: ../isolation-fixtures-20261026.txt.

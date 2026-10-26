@@ -68,17 +68,37 @@ public class MockHttpException : Exception {
       }
       function global:Invoke-WebRequest {
         param([switch]$UseBasicParsing,$Method,$Uri,$Headers,$ContentType,$Body,$MaximumRedirection,$TimeoutSec)
-        if(${quote(mode)} -like 'access-*'){
+        if(${quote(mode)} -like 'access-*' -or ${quote(mode)} -like 'isolation-*'){
           if($Uri -notlike 'https://acoyfwwmhaeruciyedri.supabase.co/*' -or $MaximumRedirection -ne 0 -or $Headers.Authorization -cne ('Bearer '+${quote(token)})){throw 'Unsafe access probe'}
           $global:events.Add(@{kind='access';method=$Method;uri=$Uri;body=$Body;redirects=$MaximumRedirection})
           if($Uri -like '*/auth/v1/user'){
             return @{StatusCode=200;Content=$(if(${quote(mode)} -eq 'access-identity'){'{"id":"bad"}'}else{'{"id":"11111111-1111-1111-1111-111111111111"}'})}
           }
           if($Uri -like '*/rest/v1/usuarios?*'){
-            $role=if(${quote(mode)} -eq 'access-cashier'){'CAJERO'}else{'DUE'+[char]0xD1+'O'}
+            $role=if(${quote(mode)} -in @('access-cashier','isolation-cashier')){'CAJERO'}else{'DUE'+[char]0xD1+'O'}
             $active=${quote(mode)} -ne 'access-inactive'
             $super=${quote(mode)} -eq 'access-superadmin'
-            return @{StatusCode=200;Content=(@(@{rol=$role;activo=$active;es_superadmin=$super;kiosco_id='22222222-2222-2222-2222-222222222222'})|ConvertTo-Json -Compress)}
+            $kiosk=if(${quote(mode)} -like 'isolation-*' -and ${quote(mode)} -ne 'isolation-wrong-scope'){'b7254826-c767-4098-94b8-71013c12021d'}else{'22222222-2222-2222-2222-222222222222'}
+            return @{StatusCode=200;Content=(@(@{rol=$role;activo=$active;es_superadmin=$super;kiosco_id=$kiosk})|ConvertTo-Json -Compress)}
+          }
+          if(${quote(mode)} -like 'isolation-*'){
+            if($Method -ne 'GET'){throw 'Isolation cannot POST'}
+            $own='[{"id":"33333333-3333-3333-3333-333333333333","kiosco_id":"b7254826-c767-4098-94b8-71013c12021d"}]'
+            if($Uri -ceq 'https://acoyfwwmhaeruciyedri.supabase.co/rest/v1/ventas?select=id,kiosco_id&kiosco_id=eq.b7254826-c767-4098-94b8-71013c12021d&estado=eq.COMPLETADA&order=fecha_hora.desc&limit=1'){
+              if(${quote(mode)} -eq 'isolation-own-empty'){$own='[]'}
+              if(${quote(mode)} -eq 'isolation-own-wrong'){$own=$own.Replace('b7254826-c767-4098-94b8-71013c12021d','22222222-2222-2222-2222-222222222222')}
+              return @{StatusCode=200;Content=$own}
+            }
+            if($Uri -ceq 'https://acoyfwwmhaeruciyedri.supabase.co/rest/v1/ventas?select=id,kiosco_id&id=eq.00418e7b-eca6-487c-bffe-b85b405cd9cb&limit=1'){
+              if(${quote(mode)} -eq 'isolation-network'){throw ${quote(password)}}
+              if(${quote(mode)} -eq 'isolation-foreign-denied'){throw (New-Object MockHttpException(403,'{}'))}
+              $foreign=if(${quote(mode)} -eq 'isolation-foreign-visible'){$own}elseif(${quote(mode)} -eq 'isolation-malformed'){'{}'}else{'[]'}
+              return @{StatusCode=200;Content=$foreign}
+            }
+            if($Uri -ceq 'https://acoyfwwmhaeruciyedri.supabase.co/rest/v1/ventas?select=id,kiosco_id&id=eq.33333333-3333-3333-3333-333333333333&limit=1'){
+              return @{StatusCode=200;Content=$(if(${quote(mode)} -eq 'isolation-recheck-empty'){'[]'}else{$own})}
+            }
+            throw 'Unexpected isolation route'
           }
           if($Uri -like '*/rest/v1/fiscal_operaciones_homologacion?select=*&limit=0'){
             if(${quote(mode)} -eq 'access-exposed'){return @{StatusCode=200;Content='[]'}}
@@ -96,7 +116,7 @@ public class MockHttpException : Exception {
         if(${quote(mode)} -eq 'unclosed'){return @{StatusCode=400;Content='{"codigo":"SOLICITUD_INVALIDA"}'}}
         throw (New-Object MockHttpException($(if(${quote(mode)} -eq 'jwt401'){401}else{503})))
       }
-      & ${quote(script)} ${mode === 'prepare' ? '-Preparar' : mode.startsWith('access-') ? '-ComprobarAccesos' : ''}
+      & ${quote(script)} ${mode === 'prepare' ? '-Preparar' : mode.startsWith('access-') ? '-ComprobarAccesos' : mode.startsWith('isolation-') ? '-ComprobarAislamiento' : ''}
       $code=$LASTEXITCODE
       [IO.File]::WriteAllText(${quote(record)},(@{prompts=$global:prompts;events=@($global:events.ToArray())}|ConvertTo-Json -Depth 5))
       exit $code
@@ -107,6 +127,23 @@ public class MockHttpException : Exception {
 }
 it.skipIf(process.platform !== 'win32')('preparación no pide secretos ni conecta', () => {
   const r = run('prepare'); expect(r.status, r.output).toBe(0); expect(r.report).toEqual({ events: [], prompts: 0 })
+}, 60000)
+it.skipIf(process.platform !== 'win32').each(['ok', 'cashier', 'wrong-scope', 'own-empty', 'own-wrong', 'foreign-visible', 'foreign-denied', 'recheck-empty', 'network', 'malformed'])('sales isolation helper %s requires positive controls and makes no fiscal calls', suffix => {
+  const r = run('isolation-' + suffix)
+  expect(r.status, r.output).toBe(['ok', 'cashier'].includes(suffix) ? 0 : 1)
+  for (const secret of [password, token, r.key, 'SYNTHETIC_REFRESH', '33333333-3333-3333-3333-333333333333']) expect(r.output).not.toContain(secret)
+  const events = r.report.events as {kind: string; method?: string; uri?: string}[]
+  expect(events[0].kind).toBe('login'); expect(events.at(-1)?.kind).toBe('logout')
+  const reads = events.filter(e => e.kind === 'access')
+  expect(reads.every(e => e.method === 'GET')).toBe(true)
+  expect(reads.some(e => e.uri?.includes('/functions/'))).toBe(false)
+  expect(reads.some(e => e.uri?.includes('/rpc/'))).toBe(false)
+  expect(events.some(e => ['wait','gateway'].includes(e.kind))).toBe(false)
+  if (['ok', 'cashier'].includes(suffix)) {
+    expect(reads).toHaveLength(5)
+    expect(r.output).toContain('RLS_SALES_READ_ISOLATION_OBSERVED role=' + (suffix === 'cashier' ? 'CASHIER' : 'OWNER'))
+    expect(reads[3].uri).not.toContain('kiosco_id=eq.')
+  } else expect(r.output).not.toContain('RLS_SALES_READ_ISOLATION_OBSERVED')
 }, 60000)
 it.skipIf(process.platform !== 'win32').each(['ok', 'cashier', 'identity', 'inactive', 'superadmin', 'exposed', 'timeout', 'network', 'unexpected'])('read-only access helper %s is bounded and never mutates fiscal data', suffix => {
   const r = run('access-' + suffix)
