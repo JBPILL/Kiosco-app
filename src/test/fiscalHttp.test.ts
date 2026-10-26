@@ -27,6 +27,17 @@ function request(body:BodyInit=JSON.stringify({accion:'ESTADO_TA',operacion_id:o
   return new Request(url,init)
 }
 afterEach(()=>vi.useRealTimers())
+it.each(['ENVIAR_NC','ESTADO_ENVIO_NC'])('HTTP %s rechaza autoridad arbitraria antes de Auth',async accion=>{
+ const base={accion,venta_id:crypto.randomUUID(),operacion_origen_id:op,solicitud_id:crypto.randomUUID(),propuesta_sha256:'a'.repeat(64),...(accion==='ENVIAR_NC'?{revision_id:crypto.randomUUID(),intento_id:crypto.randomUUID(),consulta_id:crypto.randomUUID()}:{})}
+ for(const patch of [{permiso_id:crypto.randomUUID()},{rpc:'aplicar_comercial_nc_homologacion'},{actor_auth_id:crypto.randomUUID()},{cae:'12345678901234'},{importe:'124.00'},{cuerpo:{solicitud:'arbitraria'}}]){
+  const f=fixture(),response=await f.handler(request(JSON.stringify({...base,...patch})))
+  expect(response.status).toBe(400);expect(f.factory).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled()
+ }
+})
+it('HTTP estado NC valida el identificador de consulta antes de Auth',async()=>{
+ const f=fixture(),body={accion:'ESTADO_ENVIO_NC',venta_id:crypto.randomUUID(),operacion_origen_id:op,solicitud_id:crypto.randomUUID(),propuesta_sha256:'a'.repeat(64),consulta_id:'arbitrary'}
+ expect((await f.handler(request(JSON.stringify(body)))).status).toBe(400);expect(f.factory).not.toHaveBeenCalled()
+})
 function preparationFixture(){
  const f=fixture(),sale=crypto.randomUUID(),actor=crypto.randomUUID()
  const context={version:1,venta_id:sale,total:'123.45',cuit_emisor:wsfeSample.cuitEmisor,punto_venta:7,incluye_recepcion_envases:false,revision_parametros:1,condiciones:[{id:5,descripcion:'Ensayo',comprobantes:[11]}],alicuotas:[]}

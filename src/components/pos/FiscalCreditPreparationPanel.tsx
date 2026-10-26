@@ -11,9 +11,10 @@ import type { FiscalCreditPreparationRecord } from '../../../supabase/functions/
 import { validateFiscalCreditDraftAck } from '../../../supabase/functions/_shared/fiscalCreditDraftAck'
 
 interface Props {
+  onConflict?: () => void
   source: Readonly<FiscalRepresentation>; proposal: Readonly<FiscalCreditDraft>; sequence: number
   onCancelled?: () => void
-  reviewClient?: Pick<FiscalCreditClient, 'pendingReview' | 'review' | 'recoverReview' | 'approveReview' | 'retryReview'>
+  reviewClient?: Pick<FiscalCreditClient, 'pendingReview' | 'review' | 'recoverReview' | 'approveReview' | 'retryReview'> & Partial<Pick<FiscalCreditClient, 'transport'>>
   numberClient?: Pick<FiscalCreditClient, 'pendingNumber' | 'body' | 'recoverNumber' | 'number' | 'retryNumber'>
   client: Pick<FiscalCreditClient, 'context' | 'preparation' | 'pendingPreparation' | 'recoverPreparation' | 'savePreparation' | 'cancel'>
 }
@@ -26,7 +27,7 @@ function date(value: string): string {
 export function FiscalCreditPreparationPanel(props: Props) {
   return <PreparationBody key={`${props.source.venta_id}:${props.source.operacion_id}:${props.proposal.sha256}`} {...props} />
 }
-function PreparationBody({ source, proposal, client, sequence, onCancelled, reviewClient, numberClient }: Props) {
+function PreparationBody({ source, proposal, client, sequence, onCancelled, reviewClient, numberClient, onConflict }: Props) {
   const [context, setContext] = useState<Readonly<FiscalCreditContext> | null>(null)
   const [stored, setStored] = useState<Readonly<FiscalCreditPreparationRecord> | null>(null)
   const [from, setFrom] = useState(''), [until, setUntil] = useState(''), [due, setDue] = useState('')
@@ -94,8 +95,8 @@ function PreparationBody({ source, proposal, client, sequence, onCancelled, revi
       </p>}
       <p>{numberClient ? 'Consultá la numeración guardada antes de revisar o aprobar. Esta preparación no acredita CAE.' : reviewClient ? 'Consultá la revisión para conocer la numeración reservada. Esta preparación no acredita CAE.' : 'Sin número ni CAE.'} No entregues efectivo ni repongas stock.</p>
     </div>}
-    {stored?.estado === 'DATOS_NC_PREPARADOS' && numberClient && <FiscalCreditNumberPanel source={source} proposal={proposal} preparation={stored} sequence={sequence} client={numberClient} reviewClient={reviewClient} />}
-    {stored?.estado === 'DATOS_NC_PREPARADOS' && !numberClient && reviewClient && <FiscalCreditReviewPanel source={source} proposal={proposal} preparation={stored} sequence={sequence} client={reviewClient} />}
+    {stored?.estado === 'DATOS_NC_PREPARADOS' && numberClient && <FiscalCreditNumberPanel source={source} proposal={proposal} preparation={stored} sequence={sequence} client={numberClient} reviewClient={reviewClient} onConflict={onConflict} />}
+    {stored?.estado === 'DATOS_NC_PREPARADOS' && !numberClient && reviewClient && <FiscalCreditReviewPanel source={source} proposal={proposal} preparation={stored} sequence={sequence} client={reviewClient} onConflict={onConflict} />}
     {context && !stored && !cancelled && <form onSubmit={event => { event.preventDefault(); void action('save') }} className="space-y-3">
       <p>Comprobante asociado: tipo {proposal.datos.origen.tipo}, punto de venta {proposal.datos.origen.punto_venta}, número {proposal.datos.origen.numero} · Fecha del caso: {displayDate(proposal.datos.fecha)} · Total $ {proposal.datos.importes.total}</p>
       <fieldset disabled={busy || locked} className="space-y-2">

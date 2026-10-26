@@ -4,7 +4,7 @@ import { createFiscalSupabaseAdmin, FISCAL_STAGING_URL } from '../../supabase/fu
 
 const secret='SYNTHETIC_PRIVATE_SERVICE_SECRET',actor=crypto.randomUUID()
 afterEach(()=>vi.useRealTimers())
-it.each(['coordinar_ta_nc_homologacion','reservar_cuerpo_nc_homologacion','cargar_revision_nc_homologacion','aprobar_revision_nc_homologacion'])('SDK permite RPC privada NC %s en el destino Staging fijo', async name => {
+it.each(['cargar_permiso_envio_nc_homologacion','coordinar_ta_nc_homologacion','reservar_cuerpo_nc_homologacion','cargar_revision_nc_homologacion','aprobar_revision_nc_homologacion'])('SDK permite RPC privada NC %s en el destino Staging fijo', async name => {
   const fetcher = vi.fn<typeof fetch>(async () => Response.json({ estado: 'VACIO' }))
   const admin = createFiscalSupabaseAdmin(FISCAL_STAGING_URL, secret, fetcher)
   expect((await admin.rpc(name, {})).error).toBeNull()

@@ -1,3 +1,4 @@
+import { FiscalCreditTransportPanel } from './FiscalCreditTransportPanel'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../ui/Button'
 import type { FiscalCreditClient } from '../../lib/fiscalCreditClient'
@@ -9,15 +10,16 @@ import type { FiscalCreditOwnerReview } from '../../../supabase/functions/_share
 import { fiscalCreditOwnerReviewWire, validateFiscalCreditOwnerReviewWire } from '../../../supabase/functions/_shared/fiscalCreditOwnerReview'
 
 interface Props {
+  onConflict?: () => void
   source: Readonly<FiscalRepresentation>; proposal: Readonly<FiscalCreditDraft>; preparation: Readonly<FiscalCreditPreparationRecord>; sequence: number
-  client: Pick<FiscalCreditClient, 'pendingReview' | 'review' | 'recoverReview' | 'approveReview' | 'retryReview'>
+  client: Pick<FiscalCreditClient, 'pendingReview' | 'review' | 'recoverReview' | 'approveReview' | 'retryReview'> & Partial<Pick<FiscalCreditClient, 'transport'>>
 }
 const date = (value: string): string => `${value.slice(6, 8)}/${value.slice(4, 6)}/${value.slice(0, 4)}`
 const amountLabels: Record<string, string> = { total: 'Total', neto: 'Neto gravado', iva: 'IVA', noGravado: 'No gravado', exento: 'Exento', tributos: 'Otros tributos' }
 export function FiscalCreditReviewPanel(props: Props) {
   return <ReviewBody key={`${props.source.venta_id}:${props.proposal.sha256}:${props.preparation.preparacion.sha256}`} {...props} />
 }
-function ReviewBody({ source, proposal, preparation, sequence, client }: Props) {
+function ReviewBody({ source, proposal, preparation, sequence, client, onConflict }: Props) {
   const [review, setReview] = useState<Readonly<FiscalCreditOwnerReview> | null>(null)
   const [confirmed, setConfirmed] = useState(false), [busy, setBusy] = useState(false), [locked, setLocked] = useState(false)
   const [retry, setRetry] = useState(false)
@@ -65,7 +67,7 @@ function ReviewBody({ source, proposal, preparation, sequence, client }: Props) 
     {retry && !review?.aprobacion && <p role="status">La aprobación sigue sin confirmarse. Revisá el mismo cuerpo y confirmá el reintento: se conservará el identificador original. Esto no demuestra que la primera solicitud haya fallado.</p>}
     {body && review && <>
       <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <div><dt>Numeración reservada, sin emitir</dt><dd className="font-bold">NC {({ 3: 'A', 8: 'B', 13: 'C' } as const)[body.tipoComprobante]} · {String(body.puntoVenta).padStart(5, '0')}-{String(body.numero).padStart(8, '0')}</dd></div>
+        <div><dt>Numeración del cuerpo revisado</dt><dd className="font-bold">NC {({ 3: 'A', 8: 'B', 13: 'C' } as const)[body.tipoComprobante]} · {String(body.puntoVenta).padStart(5, '0')}-{String(body.numero).padStart(8, '0')}</dd></div>
         <div><dt>Fecha</dt><dd>{date(body.fecha)}</dd></div>
         <div><dt>CUIT emisor</dt><dd>{body.cuitEmisor}</dd></div>
         <div><dt>Documento del receptor</dt><dd>Tipo {body.tipoDocumento} · {body.numeroDocumento} · Condición IVA {body.condicionIvaReceptor}</dd></div>
@@ -82,12 +84,13 @@ function ReviewBody({ source, proposal, preparation, sequence, client }: Props) 
         <ul>{body.tributos.map(item => <li key={item.id}>{item.descripcion} · Base $ {item.base} · Alícuota {item.alicuota}% · Importe $ {item.importe}</li>)}</ul>
       </details>
       <p className="font-bold">Total de la NC: $ {body.importes.total}</p>
-      {review.aprobacion ? <div role="status"><p>Aprobación guardada para este cuerpo. No es una nota de crédito emitida.</p>
+      {review.aprobacion ? <div role="status"><p>Aprobación guardada para este cuerpo. La aprobación no acredita una nota de crédito emitida.</p>
         <p>Vencimiento registrado: {new Date(review.aprobacion.vence_en).toLocaleString('es-AR')}. El servidor debe comprobar su vigencia antes de cualquier envío.</p></div>
         : <label className="flex gap-2"><input type="checkbox" disabled={busy || locked} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />Revisé el emisor, receptor, comprobante asociado, importes e impuestos de esta NC.</label>}
       {!review.aprobacion && <Button type="button" disabled={busy || locked || !confirmed} loading={busy} onClick={() => { void action(true) }}>{retry ? 'Reintentar aprobación guardada, sin emitir' : 'Guardar aprobación del Dueño, sin emitir'}</Button>}
       <details><summary>Referencia del cuerpo revisado</summary><p className="break-all">{review.cuerpo.sha256}</p></details>
     </>}
+    {client.transport && <FiscalCreditTransportPanel scope={{saleId:source.venta_id,operationId:source.operacion_id,requestId:proposal.datos.solicitud_id,sha256:proposal.sha256}} client={client.transport} review={review} onConflict={onConflict} />}
     <p>No entregues efectivo ni repongas stock: falta la confirmación de ARCA de la nota de crédito.</p>
   </section>
 }

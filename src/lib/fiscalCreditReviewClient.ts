@@ -10,7 +10,7 @@ export interface PendingFiscalCreditReview {
   version: 1; operationId: string; requestId: string; proposalSha: string; preparationSha: string; bodySha: string; reviewId: string
 }
 const fail = (): never => { throw new Error('FISCAL_REVISION_NC_CLIENTE_NO_CONFIRMADA') }
-export function createFiscalCreditReviewClient(scope: FiscalClientScope, deps: FiscalCreditClientDependencies, blocked: () => boolean) {
+export function createFiscalCreditReviewClient(scope: FiscalClientScope, deps: FiscalCreditClientDependencies, blocked: (caseId?: string, bodySha?: string) => boolean) {
   if (![scope.authId, scope.kioskId, scope.saleId].every(fiscalUuid)) return fail()
   const sale = scope.saleId.toLowerCase(), key = `kioskopos:fiscal:v1:${scope.authId.toLowerCase()}:${scope.kioskId.toLowerCase()}:${sale}:credit:review`
   const pendingReview = (): Readonly<PendingFiscalCreditReview> | null => {
@@ -60,7 +60,7 @@ export function createFiscalCreditReviewClient(scope: FiscalClientScope, deps: F
         const original = structuredClone(source), draft = structuredClone(proposal), prep = structuredClone(preparation)
         const checked = await validateFiscalCreditOwnerReviewWire(fiscalCreditOwnerReviewWire(expected), original, draft, prep)
         return await deps.exclusive(async () => {
-          if (blocked()) return fail()
+          if (blocked(draft.datos.solicitud_id, checked.cuerpo.sha256)) return fail()
           const record = pendingReview()
           if (!record || record.operationId !== original.operacion_id || record.requestId !== draft.datos.solicitud_id || record.proposalSha !== draft.sha256
             || record.bodySha !== checked.cuerpo.sha256 || record.preparationSha !== checked.cuerpo.datos.preparacion_sha256) return fail()
@@ -81,7 +81,7 @@ export function createFiscalCreditReviewClient(scope: FiscalClientScope, deps: F
         const original = structuredClone(source), draft = structuredClone(proposal), prep = structuredClone(preparation)
         const checked = await validateFiscalCreditOwnerReviewWire(fiscalCreditOwnerReviewWire(expected), original, draft, prep)
         return await deps.exclusive(async () => {
-          if (blocked()) return fail()
+          if (blocked(draft.datos.solicitud_id, checked.cuerpo.sha256)) return fail()
           const previous = pendingReview()
           if (previous) return recover(original, draft, prep, previous)
           const current = await read(original, draft, prep, null)

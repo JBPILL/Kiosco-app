@@ -10,14 +10,15 @@ import type { FiscalCreditOwnerReview } from '../../../supabase/functions/_share
 import { fiscalCreditOwnerReviewWire, validateFiscalCreditOwnerReviewWire } from '../../../supabase/functions/_shared/fiscalCreditOwnerReview'
 
 interface Props {
+  onConflict?: () => void
   source: Readonly<FiscalRepresentation>; proposal: Readonly<FiscalCreditDraft>; preparation: Readonly<FiscalCreditPreparationRecord>; sequence: number
   client: Pick<FiscalCreditClient, 'pendingNumber' | 'body' | 'recoverNumber' | 'number' | 'retryNumber'>
-  reviewClient?: Pick<FiscalCreditClient, 'pendingReview' | 'review' | 'recoverReview' | 'approveReview' | 'retryReview'>
+  reviewClient?: Pick<FiscalCreditClient, 'pendingReview' | 'review' | 'recoverReview' | 'approveReview' | 'retryReview'> & Partial<Pick<FiscalCreditClient, 'transport'>>
 }
 export function FiscalCreditNumberPanel(props: Props) {
   return <NumberBody key={`${props.source.venta_id}:${props.proposal.sha256}:${props.preparation.preparacion.sha256}`} {...props} />
 }
-function NumberBody({ source, proposal, preparation, sequence, client, reviewClient }: Props) {
+function NumberBody({ source, proposal, preparation, sequence, client, reviewClient, onConflict }: Props) {
   const [body, setBody] = useState<Readonly<FiscalCreditOwnerReview> | null>(null)
   const [display, setDisplay] = useState<Readonly<FiscalCreditPreparationRecord> | null>(null)
   const [absent, setAbsent] = useState(false), [pending, setPending] = useState(false), [confirmed, setConfirmed] = useState(false)
@@ -69,8 +70,8 @@ function NumberBody({ source, proposal, preparation, sequence, client, reviewCli
       <Button type="button" disabled={busy || locked || !confirmed} loading={busy} onClick={() => { void action(true) }}>{pending ? 'Reintentar reserva original, sin emitir' : 'Reservar número para revisar'}</Button>
     </div>}
     {body && <>
-      <p role="status" className="font-bold">Cuerpo numerado confirmado, aún sin emitir: {String(body.cuerpo.datos.solicitud.puntoVenta).padStart(5, '0')}-{String(body.cuerpo.datos.solicitud.numero).padStart(8, '0')}.</p>
-      {reviewClient && <FiscalCreditReviewPanel source={source} proposal={proposal} preparation={preparation} sequence={sequence} client={reviewClient} />}
+      <p role="status" className="font-bold">Cuerpo numerado guardado; estado de emisión sin consultar: {String(body.cuerpo.datos.solicitud.puntoVenta).padStart(5, '0')}-{String(body.cuerpo.datos.solicitud.numero).padStart(8, '0')}.</p>
+      {reviewClient && <FiscalCreditReviewPanel source={source} proposal={proposal} preparation={preparation} sequence={sequence} client={reviewClient} onConflict={onConflict} />}
     </>}
     <p>No entregues efectivo ni repongas stock antes de confirmar el CAE de la nota de crédito.</p>
   </section>

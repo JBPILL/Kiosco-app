@@ -18,6 +18,7 @@ import { withFiscalDeadline } from './fiscalVoucherXml.ts'
 import { fiscalUuid,fiscalSha } from './fiscalReplacement.ts'
 import { FISCAL_STAGING_URL } from './fiscalSupabaseAdmin.ts'
 export interface FiscalCreditEmissionWorkerDependencies {
+ signal?:AbortSignal
  admin:FiscalAuthClient;readSecret:(name:string)=>string|undefined;keys:FiscalTicketKeys;fetcher:typeof fetch
  createSendWsaa:(guard:()=>Promise<void>)=>GuardedCreditSendWsaaTicketLoader
  createConsultWsaa:(guard:()=>Promise<void>)=>GuardedCreditConsultWsaaTicketLoader
@@ -26,12 +27,13 @@ export type FiscalCreditEmissionWorkerResult=Readonly<FiscalCreditConsultationRe
 const fail=():never=>{throw new Error('FISCAL_OPERACION_NC_NO_CONFIRMADA')}
 function object(v:unknown):Record<string,unknown>{if(!v||typeof v!=='object'||Array.isArray(v))return fail();return v as Record<string,unknown>}
 /** Privado, default cerrado. Recuperación nunca requiere permiso de envío vigente.
- * No expuesto por HTTP. Respuesta candidata de envío no es autorización CAE. */
-export async function emitFiscalCreditOperation(deps:FiscalCreditEmissionWorkerDependencies,token:string,input:FiscalCreditDraftScope,revisionId:string,permissionId:string,attemptId:string,queryId:string):Promise<FiscalCreditEmissionWorkerResult>{
- const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),60000)
+ * Respuesta candidata de envío no es autorización CAE. */
+export async function emitFiscalCreditOperation(deps:FiscalCreditEmissionWorkerDependencies,token:string,input:FiscalCreditDraftScope,revisionId:string,permissionId:string|null,attemptId:string,queryId:string):Promise<FiscalCreditEmissionWorkerResult>{
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),60000),parent=deps.signal,abort=()=>controller.abort()
+ parent?.addEventListener('abort',abort,{once:true})
  try{
   const scope=Object.freeze({...input}),{admin,readSecret,keys,fetcher,createSendWsaa,createConsultWsaa}=deps
-  if(!fiscalUuid(scope.saleId)||!fiscalUuid(scope.operationId)||!fiscalUuid(scope.requestId)||!fiscalSha(scope.sha256)||![revisionId,permissionId,attemptId,queryId].every(fiscalUuid)||typeof token!=='string'||token.length>16384||!/^\S+$/.test(token))return fail()
+  if(parent?.aborted||!fiscalUuid(scope.saleId)||!fiscalUuid(scope.operationId)||!fiscalUuid(scope.requestId)||!fiscalSha(scope.sha256)||![revisionId,attemptId,queryId].every(fiscalUuid)||permissionId!==null&&!fiscalUuid(permissionId)||typeof token!=='string'||token.length>16384||!/^\S+$/.test(token))return fail()
   const backend=()=>{if(controller.signal.aborted||readSecret('SUPABASE_URL')!==FISCAL_STAGING_URL||readSecret('ARCA_HOMO_BACKEND_ENABLED')!=='true')return fail()}
   const enabled=()=>{backend();if(readSecret('ARCA_HOMO_CREDIT_SEND_ENABLED')!=='true')return fail()}
   const rpc=async(name:string,args:Record<string,unknown>)=>{backend();const r=await withFiscalDeadline(admin.rpc(name,args),controller.signal);if(r.error)return fail();return r.data}
@@ -52,7 +54,9 @@ export async function emitFiscalCreditOperation(deps:FiscalCreditEmissionWorkerD
   }
   const existing=await read();if(existing)return await recover(existing)
   enabled()
-  const source=async()=>{enabled();const raw=await rpc('cargar_fuente_envio_nc_homologacion',{...args,p_cuerpo_sha:body.sha256,p_revision_id:revisionId,p_permiso_id:permissionId});return{raw,valid:await withFiscalDeadline(validateFiscalCreditSendSource(raw,original,proposal,actor),controller.signal)}}
+  let selectedPermission=permissionId
+  if(selectedPermission===null){const available=object(await rpc('cargar_permiso_envio_nc_homologacion',{...args,p_cuerpo_sha:body.sha256,p_revision_id:revisionId}));if(available.estado!=='PERMISO_NC_VERIFICADO'||available.actor_auth_id!==actor||available.solicitud_id!==scope.requestId||available.solicitud_sha256!==body.sha256||available.revision_id!==revisionId||available.emision_habilitada!==false||!fiscalUuid(available.permiso_id))return fail();selectedPermission=available.permiso_id}
+  const source=async()=>{enabled();const raw=await rpc('cargar_fuente_envio_nc_homologacion',{...args,p_cuerpo_sha:body.sha256,p_revision_id:revisionId,p_permiso_id:selectedPermission});return{raw,valid:await withFiscalDeadline(validateFiscalCreditSendSource(raw,original,proposal,actor),controller.signal)}}
   try{
    const initial=await source(),binding=initial.valid.binding
    if(initial.valid.cuerpo.canonico!==body.canonico)return fail()
@@ -66,7 +70,7 @@ export async function emitFiscalCreditOperation(deps:FiscalCreditEmissionWorkerD
    const candidate=await sendFiscalCreditEmission({packet:initial.raw,source:original,draft:proposal,actorAuthId:actor},ticket,{fetcher,signal:controller.signal,consumeIntent:async(b,signal)=>{
     if(signal.aborted||JSON.stringify(b)!==JSON.stringify(binding))return fail()
     await guard()
-    const ack=await rpc('registrar_intencion_nc_homologacion',{...args,p_cuerpo_sha:body.sha256,p_revision_id:revisionId,p_permiso_id:permissionId,p_intento_id:attemptId,p_ultimo_autorizado:last.ultimo,p_consultado_en:last.consultado_en})
+    const ack=await rpc('registrar_intencion_nc_homologacion',{...args,p_cuerpo_sha:body.sha256,p_revision_id:revisionId,p_permiso_id:selectedPermission,p_intento_id:attemptId,p_ultimo_autorizado:last.ultimo,p_consultado_en:last.consultado_en})
     enabled();return ack
    }})
    const intent=await read();if(!intent||intent.intento_id!==attemptId)return fail()
@@ -77,5 +81,5 @@ export async function emitFiscalCreditOperation(deps:FiscalCreditEmissionWorkerD
   }catch{/* ACK/red/SOAP inciertos: sólo recuperar intención, nunca repetir envío. */}
   const confirmed=await read();if(!confirmed)return fail()
   return await recover(confirmed)
- }catch{return fail()}finally{clearTimeout(timer);controller.abort()}
+ }catch{return fail()}finally{clearTimeout(timer);parent?.removeEventListener('abort',abort);controller.abort()}
 }

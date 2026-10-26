@@ -1,3 +1,4 @@
+import { validateFiscalCreditTransportStatus } from '../../../supabase/functions/_shared/fiscalCreditTransportStatus'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../ui/Button'
 import { FiscalCreditSourcePanel } from './FiscalCreditSourcePanel'
@@ -27,6 +28,8 @@ export function FiscalCreditCasesPanel(props: Props) {
 function CasesBody({ client, receipt,kioskId,onCommercialRecorded }: Props) {
   const cash=useCajaStore(state=>state.sesionActiva),commercialEnabled=aplicacionNotasCreditoHomologacionActiva()&&!!kioskId
   const [applied,setApplied]=useState<ReadonlySet<string>>(new Set()),[commercialPending,setCommercialPending]=useState(()=>{if(!commercialEnabled)return false;try{return client.credits.commercial.pending()!==null}catch{return true}})
+  const [transportPending,setTransportPending]=useState(()=>{try{return client.credits.transport.pending()}catch{return undefined}})
+  const [conflicted,setConflicted]=useState<ReadonlySet<string>>(new Set())
   const [source, setSource] = useState<Readonly<FiscalRepresentation> | null>(null)
   const [rows, setRows] = useState<readonly Readonly<FiscalCreditHistoryCase>[]>([])
   const [next, setNext] = useState<number | null>(null)
@@ -127,7 +130,22 @@ function CasesBody({ client, receipt,kioskId,onCommercialRecorded }: Props) {
     {error && <p role="alert">{error}</p>}
     {message && <p role="status">{message}</p>}
     {commercialEnabled&&commercialPending&&<div className="rounded-lg border p-3 space-y-2" aria-label="Aplicación NC pendiente en este equipo"><p>Este equipo conserva una aplicación pendiente. Consultar o recuperar no vuelve a registrar efectivo.</p><Button type="button" variant="secondary" disabled={busy} onClick={()=>{void execute(async()=>{const result=await client.credits.commercial.recover();if(!result||result.venta_id!==receipt.venta_id||result.operacion_origen_id!==receipt.operacion_id||result.kiosco_id!==kioskId)throw new Error('SCOPE');if(alive.current){setApplied(previous=>new Set([...previous,result.id]));setCommercialPending(false);setMessage(`Devolución registrada: ${money(result.importe)}. No repitas el reintegro.`);notifyRecorded()}})}}>Recuperar registro comercial pendiente</Button></div>}
-    {source && <FiscalCreditSourcePanel source={source} client={client.credits} disabled={busy || !!pending || !!target || commercialPending}
+    {transportPending===undefined&&<p role="alert">No se pudo leer el intento fiscal guardado en este equipo. Conservá sus datos; nuevas operaciones bloqueadas.</p>}
+    {transportPending&&<div className="rounded-lg border p-3 space-y-2" aria-label="Transporte NC pendiente en este equipo">
+      <p>Hay un envío o consulta fiscal pendiente. Recuperar sólo lee su estado; no emite otra NC ni aplica una devolución.</p>
+      <Button type="button" variant="secondary" disabled={busy} onClick={()=>{void execute(async()=>{
+        const original=transportPending
+        if(original.operationId!==receipt.operacion_id)throw new Error('SCOPE')
+        const scope={saleId:receipt.venta_id,operationId:original.operationId,requestId:original.requestId,sha256:original.proposalSha}
+        const checked=validateFiscalCreditTransportStatus(await client.credits.transport.recover(),scope,original.bodySha)
+        if(alive.current){
+          setTransportPending(client.credits.transport.pending())
+          if(checked.estado==='CONFLICTO_NC')setConflicted(previous=>new Set([...previous,checked.solicitud_id]))
+          setMessage(checked.estado==='CAE_CONFIRMADO'?'CAE de la NC confirmado por consulta. La devolución comercial debe consultarse por separado.':checked.estado==='CONFLICTO_NC'?'Conflicto fiscal confirmado: aplicación bloqueada.':checked.estado==='RECHAZO_RECIBIDO'?'Rechazo fiscal registrado: requiere revisión; no reenviar.':'Intento recuperado sin confirmación de CAE. Conservá el caso para conciliación.')
+        }
+      })}}>Recuperar estado del intento fiscal original</Button>
+    </div>}
+    {source && <FiscalCreditSourcePanel source={source} client={client.credits} disabled={busy || !!pending || !!target || commercialPending || transportPending!==null}
       onSave={loaded && next === null ? input => saveCase(source, input) : undefined} />}
     {pending && <div className="rounded-lg border p-3 space-y-2" aria-label="Intento NC pendiente">
       <p>Este equipo conserva {pending.intention === 'CANCELAR' ? 'una cancelación' : 'un guardado'} pendiente de confirmación.</p>
@@ -139,12 +157,12 @@ function CasesBody({ client, receipt,kioskId,onCommercialRecorded }: Props) {
       <div className="flex justify-between gap-3"><h4 className="font-bold">Caso {row.secuencia} · {date(row.propuesta.datos.fecha)}</h4><strong>{money(row.propuesta.datos.importes.total)}</strong></div>
       <p>{row.acuse.estado === 'CANCELADA' ? 'Cancelado · historial conservado' : applied.has(row.acuse.solicitud_id)?'NC confirmada · devolución registrada':'Caso guardado · estado fiscal sin consultar'}</p>
       <p>{row.propuesta.datos.motivo}</p>
-      {row.acuse.estado === 'SALDO_RESERVADO_NO_EMITIR' && source && !busy && !pending && !target && !commercialPending && !applied.has(row.acuse.solicitud_id) && <FiscalCreditContextPanel source={source} proposal={row.propuesta} client={client.credits} sequence={row.secuencia} />}
-      {row.acuse.estado === 'SALDO_RESERVADO_NO_EMITIR' && source && !busy && !pending && !target && !commercialPending && !applied.has(row.acuse.solicitud_id) && <FiscalCreditPreparationPanel source={source} proposal={row.propuesta} client={client.credits} reviewClient={client.credits} numberClient={client.credits} sequence={row.secuencia} onCancelled={() => {
+      {row.acuse.estado === 'SALDO_RESERVADO_NO_EMITIR' && source && !busy && !pending && !target && !commercialPending && transportPending===null && !applied.has(row.acuse.solicitud_id) && <FiscalCreditContextPanel source={source} proposal={row.propuesta} client={client.credits} sequence={row.secuencia} />}
+      {row.acuse.estado === 'SALDO_RESERVADO_NO_EMITIR' && source && !busy && !pending && !target && !commercialPending && !applied.has(row.acuse.solicitud_id) && <FiscalCreditPreparationPanel source={source} proposal={row.propuesta} client={client.credits} reviewClient={client.credits} numberClient={client.credits} sequence={row.secuencia} onConflict={()=>setConflicted(previous=>new Set([...previous,row.acuse.solicitud_id]))} onCancelled={() => {
         setRows(previous => previous.map(item => item.acuse.solicitud_id === row.acuse.solicitud_id ? { ...item, acuse: { ...item.acuse, estado: 'CANCELADA' } } : item))
         setMessage('Cancelación confirmada. Se conserva el historial del caso y de su preparación.')
       }} />}
-      {commercialEnabled&&kioskId&&row.acuse.estado!=='CANCELADA'&&!applied.has(row.acuse.solicitud_id)&&<FiscalCreditCommercialPanel client={client.credits.commercial} target={{saleId:receipt.venta_id,operationId:row.acuse.operacion_origen_id,requestId:row.acuse.solicitud_id,sha256:row.acuse.propuesta_sha256}} kioskId={kioskId} amount={row.propuesta.datos.importes.total} restocks={row.propuesta.datos.lineas.some(line=>line.reingresa_stock)} cash={cash} disabled={busy||!!pending||!!target} onPendingChange={setCommercialPending} onRecorded={()=>{setApplied(previous=>new Set([...previous,row.acuse.solicitud_id]));setMessage(`Devolución registrada: ${money(row.propuesta.datos.importes.total)}. No repitas el reintegro.`);notifyRecorded()}}/>}
+      {commercialEnabled&&kioskId&&row.acuse.estado!=='CANCELADA'&&!applied.has(row.acuse.solicitud_id)&&<FiscalCreditCommercialPanel client={client.credits.commercial} target={{saleId:receipt.venta_id,operationId:row.acuse.operacion_origen_id,requestId:row.acuse.solicitud_id,sha256:row.acuse.propuesta_sha256}} kioskId={kioskId} amount={row.propuesta.datos.importes.total} restocks={row.propuesta.datos.lineas.some(line=>line.reingresa_stock)} cash={cash} mutationsBlocked={conflicted.has(row.acuse.solicitud_id)} disabled={busy||!!pending||!!target||transportPending!==null} onPendingChange={setCommercialPending} onRecorded={()=>{setApplied(previous=>new Set([...previous,row.acuse.solicitud_id]));setMessage(`Devolución registrada: ${money(row.propuesta.datos.importes.total)}. No repitas el reintegro.`);notifyRecorded()}}/>}
       <details><summary>Detalle del caso</summary><ul>{row.propuesta.datos.lineas.map(line => <li key={line.detalle_id}>{source?.hechos.datos.lineas.find(item => item.detalle_id === line.detalle_id)?.descripcion ?? 'Artículo histórico'} · {line.cantidad.replace('.', ',')} · {money(line.importe)} · {line.reingresa_stock ? 'Reposición solicitada' : 'Sin reposición solicitada'}</li>)}</ul><p className="break-all">Referencia {row.acuse.solicitud_id}</p></details>
       {latestActive === row && !pending && !commercialPending && !applied.has(row.acuse.solicitud_id) && <Button type="button" variant="secondary" disabled={busy} onClick={() => choose({ version: 1, operationId: row.acuse.operacion_origen_id, requestId: row.acuse.solicitud_id, sha256: row.acuse.propuesta_sha256, intention: 'CANCELAR' })}>Solicitar cancelación del caso {row.secuencia}</Button>}
     </article>)}

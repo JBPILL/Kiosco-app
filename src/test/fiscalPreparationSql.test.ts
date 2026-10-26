@@ -44,8 +44,12 @@ import { validateFiscalReceipt } from '../../supabase/functions/_shared/fiscalRe
 import { validateFiscalDiagnosis } from '../../supabase/functions/_shared/fiscalDiagnosis'
 import { cancelFiscalPreparation } from '../../supabase/functions/_shared/fiscalCancellationService'
 
-const db=new PGlite(),kid=crypto.randomUUID(),actor=crypto.randomUUID(),owner=crypto.randomUUID(),sale=crypto.randomUUID(),product=crypto.randomUUID(),op=crypto.randomUUID(),credential=crypto.randomUUID()
-beforeAll(async()=>{
+// Infrastructure budget for real embedded SQL/DDL and synthetic cryptography.
+// Production transport/worker deadlines are asserted separately and unchanged.
+vi.setConfig({testTimeout:30000})
+let db=new PGlite()
+const kid=crypto.randomUUID(),actor=crypto.randomUUID(),owner=crypto.randomUUID(),sale=crypto.randomUUID(),product=crypto.randomUUID(),op=crypto.randomUUID(),credential=crypto.randomUUID()
+async function initializeFiscalTestDatabase(){
  await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
  CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid PRIMARY KEY);
  CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
@@ -65,7 +69,8 @@ beforeAll(async()=>{
  await db.query("INSERT INTO productos(id,kiosco_id,descripcion,precio_venta) VALUES($1,$2,'Ensayo',123.45)",[product,kid])
  await db.query('INSERT INTO ventas(id,kiosco_id,usuario_id,total) VALUES($1,$2,$3,123.45)',[sale,kid,owner])
  await db.query('INSERT INTO detalles_venta(venta_id,producto_id,cantidad,precio_unitario,subtotal) VALUES($1,$2,1,123.45,123.45)',[sale,product])
-},120000)
+}
+beforeAll(initializeFiscalTestDatabase,120000)
 beforeEach(async()=>{
  await db.exec('BEGIN')
  await db.query('INSERT INTO fiscal_emisores_homologacion(kiosco_id,cuit_emisor,punto_venta,credencial_id,certificado_sha256,habilitado) VALUES($1,$2,7,$3,$4,true)',[kid,wsfeSample.cuitEmisor,credential,'a'.repeat(64)])
@@ -73,7 +78,14 @@ beforeEach(async()=>{
  VALUES(1,'[{"id":5,"descripcion":"Ensayo","comprobantes":[11]}]','[]',repeat('b',64),clock_timestamp()-interval '1 hour',clock_timestamp()+interval '1 hour',true);
  SET ROLE service_role; SELECT set_config('request.jwt.claim.role','service_role',true);`)
 })
-afterEach(async()=>{await db.exec('ROLLBACK; RESET ROLE')})
+let completedFiscalTests=0
+// Each case already rolls back to the identical baseline. Periodically replacing
+// the WASM instance also releases compiled DDL retained after those rollbacks.
+// No domain assertion or worker deadline changes; SQL fixtures remain isolated.
+afterEach(async()=>{
+ await db.exec('ROLLBACK; RESET ROLE')
+ if(++completedFiscalTests%32===0){await db.close();db=new PGlite();await initializeFiscalTestDatabase()}
+},120000)
 afterAll(async()=>{await db.close()})
 async function context(who=actor,which=sale) {
  return (await db.query<{data:FiscalPreparationContext}>('SELECT cargar_datos_preparacion_homologacion($1,$2) data',[who,which])).rows[0].data
@@ -116,6 +128,7 @@ function workerFixture(){
 
  mapping.cargar_respuesta_envio_nc_homologacion=['p_actor','p_venta','p_operacion','p_caso','p_sha']
  mapping.registrar_respuesta_envio_nc_homologacion=['p_actor','p_venta','p_operacion','p_caso','p_sha','p_datos']
+ mapping.cargar_permiso_envio_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha','p_cuerpo_sha','p_revision_id']
  mapping.cargar_fuente_envio_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha','p_cuerpo_sha','p_revision_id','p_permiso_id']
  mapping.registrar_intencion_nc_homologacion=['p_actor_auth_id','p_venta_id','p_operacion_origen_id','p_id','p_sha','p_cuerpo_sha','p_revision_id','p_permiso_id','p_intento_id','p_ultimo_autorizado','p_consultado_en']
  mapping.coordinar_ta_envio_nc_homologacion=['p_actor','p_venta','p_operacion','p_caso','p_sha','p_preparacion_sha','p_binding','p_accion','p_intento','p_generacion','p_cifrado']
@@ -1817,6 +1830,29 @@ async function creditOwnerReviewFixture(){
  const approve=async(id=reviewId,hash=body.sha256,prep=f.prepared.sha256)=>(await db.query<{data:Record<string,unknown>}>('SELECT aprobar_revision_nc_homologacion($1,$2,$3,$4,$5,$6,$7,$8) data',[actor,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,id,hash,prep])).rows[0].data
  return{...f,packet,body,reviewId,readReview:read,approve}
 }
+async function creditPermissionLookupFixture(){
+ const f=await creditPermissionFixture()
+ await db.exec('RESET ROLE')
+ const sql=readFileSync('supabase/pilot-fiscal/053_fiscal_credit_permission_lookup.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
+ await db.exec(sql);await db.exec(sql);await db.exec('SET ROLE service_role')
+ const lookup=async(who=actor,body=f.body.sha256,review=f.reviewId)=>(await db.query<{data:Record<string,unknown>|null}>('SELECT cargar_permiso_envio_nc_homologacion($1,$2,$3,$4,$5,$6,$7) data',[who,sale,op,f.proposal.datos.solicitud_id,f.proposal.sha256,body,review])).rows[0].data
+ return {...f,lookup}
+}
+it('053 lookup vacío no crea permiso y devuelve sólo el exacto vigente',async()=>{
+ const f=await creditPermissionLookupFixture(),before=await preparationEffects()
+ expect(await f.lookup()).toBeNull();expect(await preparationEffects()).toEqual(before)
+ await f.seed();expect(await f.lookup()).toEqual(await f.verify())
+})
+it.each(['actor','body','revoked','ambiguous','disabled'])('053 lookup no concede permiso %s',async mode=>{
+ const f=await creditPermissionLookupFixture();await f.seed(mode==='disabled'?{habilitado:false}:{})
+ if(mode==='revoked')await admin('INSERT INTO fiscal_nc_permisos_revocados_homologacion(permiso_id,motivo) VALUES($1,$2)',[f.permit,'Ensayo'])
+ if(mode==='ambiguous')await f.seed({id:crypto.randomUUID()})
+ if(mode==='revoked'||mode==='disabled')expect(await f.lookup()).toBeNull()
+ else await denied(()=>f.lookup(mode==='actor'?crypto.randomUUID():actor,mode==='body'?'f'.repeat(64):f.body.sha256))
+})
+it.each(['anon','authenticated'])('053 rol %s no descubre permisos',async role=>{
+ const f=await creditPermissionLookupFixture();await f.seed();await db.exec('SET ROLE '+role);await denied(()=>f.lookup())
+})
 async function creditPermissionFixture(){
  const f=await creditOwnerReviewFixture();await f.approve()
  await db.exec('RESET ROLE');const sql=readFileSync('supabase/pilot-fiscal/041_fiscal_credit_emission_permission.sql','utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'')
@@ -2956,9 +2992,9 @@ it.each(['normal','ack-perdido','replay','revocado'])('NC transporte042 %s consu
  if(mode==='revocado')expect(await f.readIntent()).toBeNull();else expect(await f.readIntent()).toMatchObject({nuevo_envio:false,intento_id:f.attempt})
 })
 
-it.each(['normal','send-response-lost','intent-ack-lost','existing-uncertain','history','gateclosed','guard-revoked','second-auth','query-lost','journal-ack-lost','body-changed','sendflag-closes','durable-get-lost','candidate-ack-lost','candidate-get-lost','candidate-corrupt'] as const)('NC worker integrado %s nunca reenvía intención previa',async mode=>{
+it.each(['normal','send-response-lost','intent-ack-lost','existing-uncertain','history','gateclosed','guard-revoked','second-auth','query-lost','journal-ack-lost','body-changed','sendflag-closes','durable-get-lost','candidate-ack-lost','candidate-get-lost','candidate-corrupt','lookup','lookup-missing','parent-abort'] as const)('NC worker integrado %s nunca reenvía intención previa',async mode=>{
  const f=await creditSendSourceFixture();await f.seed();await db.exec('RESET ROLE')
- for(const file of ['039_fiscal_credit_ticket_coordination.sql','044_fiscal_credit_send_ticket_coordination.sql','045_fiscal_credit_consult_source.sql','046_fiscal_credit_consult_ticket_coordination.sql','047_fiscal_credit_consultation_journal.sql','048_fiscal_credit_conflicts.sql','049_fiscal_credit_send_responses.sql']){const sql=readFileSync('supabase/pilot-fiscal/'+file,'utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'');await db.exec(sql);await db.exec(sql)}await db.exec('SET ROLE service_role')
+ for(const file of ['039_fiscal_credit_ticket_coordination.sql','044_fiscal_credit_send_ticket_coordination.sql','045_fiscal_credit_consult_source.sql','046_fiscal_credit_consult_ticket_coordination.sql','047_fiscal_credit_consultation_journal.sql','048_fiscal_credit_conflicts.sql','049_fiscal_credit_send_responses.sql','053_fiscal_credit_permission_lookup.sql']){const sql=readFileSync('supabase/pilot-fiscal/'+file,'utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'');await db.exec(sql);await db.exec(sql)}await db.exec('SET ROLE service_role')
  const packet=await f.load(),valid=await validateFiscalCreditSendSource(packet,f.source,f.proposal,actor),b=valid.binding,api=workerFixture(),before=await preparationEffects(),query=crypto.randomUUID()
  api.flags.ARCA_HOMO_CREDIT_SEND_ENABLED=mode==='gateclosed'||mode==='history'||mode==='existing-uncertain'?'false':'true';api.flags.ARCA_HOMO_CREDIT_CONSULT_ENABLED=mode==='history'?'false':'true'
  if(mode==='existing-uncertain'||mode==='history')await f.startIntent()
@@ -2991,11 +3027,12 @@ it.each(['normal','send-response-lost','intent-ack-lost','existing-uncertain','h
   if(name==='cargar_fuente_envio_nc_homologacion'&&mode==='body-changed'&&response.data&&typeof response.data==='object'&&!Array.isArray(response.data))return{data:{...response.data,cuerpo:{}},error:null}
   return response
  })
- const run=()=>emitFiscalCreditOperation({admin:api.admin,readSecret:name=>api.flags[name],keys,fetcher,createSendWsaa:()=>sendWsaa,createConsultWsaa:()=>consultWsaa},'SYNTHETIC_JWT',{saleId:sale,operationId:op,requestId:f.proposal.datos.solicitud_id,sha256:f.proposal.sha256},f.reviewId,f.permit,mode==='existing-uncertain'?crypto.randomUUID():f.attempt,query)
- if(['gateclosed','guard-revoked','body-changed'].includes(mode)){await expect(run()).rejects.toThrow('FISCAL_OPERACION_NC_NO_CONFIRMADA');expect(await f.readIntent()).toBeNull()}
+ const parent=new AbortController();if(mode==='parent-abort')parent.abort();if(mode==='lookup-missing')await admin("INSERT INTO fiscal_nc_permisos_revocados_homologacion(permiso_id,motivo) VALUES($1,'Ensayo')",[f.permit])
+ const run=()=>emitFiscalCreditOperation({admin:api.admin,readSecret:name=>api.flags[name],signal:parent.signal,keys,fetcher,createSendWsaa:()=>sendWsaa,createConsultWsaa:()=>consultWsaa},'SYNTHETIC_JWT',{saleId:sale,operationId:op,requestId:f.proposal.datos.solicitud_id,sha256:f.proposal.sha256},f.reviewId,mode.startsWith('lookup')?null:f.permit,mode==='existing-uncertain'?crypto.randomUUID():f.attempt,query)
+ if(['gateclosed','guard-revoked','body-changed','lookup-missing','parent-abort'].includes(mode)){await expect(run()).rejects.toThrow('FISCAL_OPERACION_NC_NO_CONFIRMADA');expect(await f.readIntent()).toBeNull()}
  else if(mode==='candidate-get-lost'||mode==='candidate-corrupt'){await expect(run()).rejects.toThrow('FISCAL_OPERACION_NC_NO_CONFIRMADA');expect(await f.readIntent()).not.toBeNull();expect(actions.filter(a=>a.includes('FECAESolicitar'))).toHaveLength(1);expect(actions.filter(a=>a.includes('FECompConsultar'))).toHaveLength(0);if(mode==='candidate-get-lost'){loseCandidateRead=false;api.flags.ARCA_HOMO_CREDIT_SEND_ENABLED='false';expect((await run()).estado).toBe('CAE_NC_REGISTRADO_NO_APLICADO');expect(actions.filter(a=>a.includes('FECAESolicitar'))).toHaveLength(1)}}
  else{const result=await run();expect(result.estado).toBe(['query-lost','second-auth','durable-get-lost'].includes(mode)?'ENVIO_INCIERTO':['intent-ack-lost','sendflag-closes'].includes(mode)?'CONSULTA_NC_REGISTRADA':'CAE_NC_REGISTRADO_NO_APLICADO');expect(result).toMatchObject({emision_habilitada:false,reintegro_habilitado:false,reposicion_habilitada:false})
-  if(mode==='normal'){expect((await run()).estado).toBe('CAE_NC_REGISTRADO_NO_APLICADO');expect(actions.filter(a=>a.includes('FECAESolicitar'))).toHaveLength(1)}
+  if(mode==='normal'||mode==='lookup'){expect((await run()).estado).toBe('CAE_NC_REGISTRADO_NO_APLICADO');expect(actions.filter(a=>a.includes('FECAESolicitar'))).toHaveLength(1)}
   if(mode==='durable-get-lost'){loseDurableRead=false;api.flags.ARCA_HOMO_CREDIT_SEND_ENABLED='false';api.flags.ARCA_HOMO_CREDIT_CONSULT_ENABLED='false';await admin('UPDATE fiscal_emisores_homologacion SET habilitado=false');const count=fetcher.mock.calls.length;expect((await run()).estado).toBe('CAE_NC_REGISTRADO_NO_APLICADO');expect(fetcher).toHaveBeenCalledTimes(count);expect(actions.filter(a=>a.includes('FECAESolicitar'))).toHaveLength(1)}
  }
  if(['history','existing-uncertain','gateclosed','body-changed'].includes(mode))expect(sendWsaa).not.toHaveBeenCalled()
@@ -3254,6 +3291,53 @@ it.each(['normal','ack-resolucion-perdido','ack-aplicacion-perdido','ack-aplicac
   await db.exec('RESET ROLE');expect((await db.query('SELECT count(*)::int n FROM movimientos_caja WHERE id=$1',[scope.requestId])).rows[0]).toEqual({n:1});await db.exec('SET ROLE service_role')
  }
  expect(w.load).not.toHaveBeenCalled();expect(w.fetcher).not.toHaveBeenCalled()
+})
+it('cliente→HTTP→custodia sintética→SQL053/042/047 confirma NC una vez tras ACK perdido',async()=>{
+ const {syntheticEncryptedCustody}=await import('./fixtures/fiscalEncryptedCustody'),material=await syntheticEncryptedCustody()
+ await admin('UPDATE fiscal_emisores_homologacion SET credencial_id=$1,certificado_sha256=$2',[material.binding.credencial_id,material.binding.certificado_sha256])
+ const f=await creditSendSourceFixture();await f.seed();await db.exec('RESET ROLE')
+ for(const file of ['039_fiscal_credit_ticket_coordination.sql','044_fiscal_credit_send_ticket_coordination.sql','045_fiscal_credit_consult_source.sql','046_fiscal_credit_consult_ticket_coordination.sql','047_fiscal_credit_consultation_journal.sql','048_fiscal_credit_conflicts.sql','049_fiscal_credit_send_responses.sql','050_fiscal_credit_authorized_resolution.sql','053_fiscal_credit_permission_lookup.sql'])await db.exec(readFileSync('supabase/pilot-fiscal/'+file,'utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,''))
+ await db.exec('SET ROLE service_role')
+ const valid=await validateFiscalCreditSendSource(await f.load(),f.source,f.proposal,actor),b=valid.binding,w=workerFixture(),keyId=crypto.randomUUID(),raw=crypto.getRandomValues(new Uint8Array(32))
+ material.secrets.ARCA_HOMO_TA_ACTIVE_KEY_ID=keyId;material.secrets['ARCA_HOMO_TA_KEY_'+keyId.replace(/-/g,'').toUpperCase()]=btoa(String.fromCharCode(...raw));raw.fill(0)
+ w.flags.ARCA_HOMO_CREDIT_SEND_ENABLED='true';w.flags.ARCA_HOMO_CREDIT_CONSULT_ENABLED='true'
+ const actions:string[]=[],fetcher=vi.fn<typeof fetch>(async input=>{
+  const request=new Request(input),action=request.headers.get('SOAPAction')??'';actions.push(action)
+  if(request.url==='https://wsaahomo.afip.gov.ar/ws/services/LoginCms'){
+   const {ContentInfo,SignedData}=await import('pkijs'),cms=(await request.text()).match(/<in0>([^<]+)<\/in0>/)![1],content=ContentInfo.fromBER(Uint8Array.from(atob(cms),c=>c.charCodeAt(0))),signed=new SignedData({schema:content.content})
+   const id=new TextDecoder().decode(signed.encapContentInfo.eContent!.getValue()).match(/<uniqueId>(\d+)<\/uniqueId>/)![1],now=Date.now()
+   const ticket=`<loginTicketResponse version="1.0"><header><source>CN=wsaa,O=AFIP,C=AR,SERIALNUMBER=CUIT 33693450239</source><destination>SERIALNUMBER=CUIT 20123456786,CN=Kiosko Synthetic</destination><uniqueId>${id}</uniqueId><generationTime>${new Date(now-30000).toISOString()}</generationTime><expirationTime>${new Date(now+3600000).toISOString()}</expirationTime></header><credentials><token>SYNTHETIC_HTTP_NC_TOKEN</token><sign>SYNTHETIC_HTTP_NC_SIGN</sign></credentials></loginTicketResponse>`
+   return new Response(`<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><w:loginCmsResponse xmlns:w="http://wsaa.view.sua.dvadac.desein.afip.gov"><loginCmsReturn>${ticket.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</loginCmsReturn></w:loginCmsResponse></s:Body></s:Envelope>`,{headers:{'content-type':'text/xml'}})
+  }
+  expect(request.url).toBe('https://wswhomo.afip.gov.ar/wsfev1/service.asmx')
+  if(action.includes('FECompUltimoAutorizado'))return new Response(wsfeSoap('FECompUltimoAutorizado',`<PtoVta>${b.punto_venta}</PtoVta><CbteTipo>${b.tipo_comprobante}</CbteTipo><CbteNro>22</CbteNro>`),{headers:{'content-type':'text/xml'}})
+  if(action.includes('FECAESolicitar')){expect(await f.readIntent()).not.toBeNull();return new Response(syntheticFiscalCreditEmissionReceipt(valid.cuerpo.datos.solicitud),{headers:{'content-type':'text/xml'}})}
+  expect(action).toContain('FECompConsultar');return new Response(syntheticFiscalCreditVoucherXml(valid.cuerpo.datos.solicitud).xml,{headers:{'content-type':'text/xml'}})
+ })
+ const handler=createFiscalHttpHandler({readSecret:name=>Object.hasOwn(w.flags,name)?w.flags[name]:material.secrets[name],createAdmin:()=>w.admin,fetcher}),local=new Map<string,string>()
+ const client=createFiscalClient({authId:actor,kioskId:kid,saleId:sale},{storage:{getItem:k=>local.get(k)??null,setItem:(k,v)=>{local.set(k,v)}},send:async command=>{
+  const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify(command)}))
+  if(!response.ok)throw new Error('SYNTHETIC_HTTP_'+response.status)
+  if(command.accion==='ENVIAR_NC')throw new Error('SYNTHETIC_HTTP_ACK_LOST')
+  return response.json()
+ }}).credits.transport,target={saleId:sale,operationId:op,requestId:f.proposal.datos.solicitud_id,sha256:f.proposal.sha256}
+ expect(await client.send(target,f.body.sha256,f.reviewId)).toMatchObject({estado:'CAE_CONFIRMADO',reintegro_habilitado:false,reposicion_habilitada:false})
+ expect(client.pending()).toBeNull();expect(actions.filter(action=>action.includes('FECAESolicitar'))).toHaveLength(1)
+ w.flags.ARCA_HOMO_CREDIT_SEND_ENABLED='false';w.flags.ARCA_HOMO_CREDIT_CONSULT_ENABLED='false';const count=fetcher.mock.calls.length
+ await client.send(target,f.body.sha256,f.reviewId);expect(fetcher).toHaveBeenCalledTimes(count)
+ expect(JSON.stringify([...local.values()])).not.toContain('SYNTHETIC_HTTP_NC_TOKEN')
+})
+it.each(['estado','envio-historico','consulta-historica','cajero'] as const)('HTTP transporte NC %s recupera SQL047–050 sin emisión',async mode=>{
+ const f=await creditCommercialApplicationFixture(false),w=workerFixture(),reads:string[]=[]
+ const handler=createFiscalHttpHandler({readSecret:name=>{reads.push(name);return w.flags[name]},createAdmin:()=>w.admin,fetcher:w.fetcher})
+ if(mode==='cajero')await admin("UPDATE usuarios SET rol='CAJERO' WHERE id=$1",[owner])
+ const base={venta_id:sale,operacion_origen_id:op,solicitud_id:f.proposal.datos.solicitud_id,propuesta_sha256:f.proposal.sha256}
+ const command=mode==='envio-historico'?{...base,accion:'ENVIAR_NC',revision_id:crypto.randomUUID(),intento_id:crypto.randomUUID(),consulta_id:crypto.randomUUID()}:mode==='consulta-historica'?{...base,accion:'CONCILIAR_NC',consulta_id:crypto.randomUUID()}:{...base,accion:'ESTADO_ENVIO_NC'}
+ const response=await handler(new Request('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion',{method:'POST',headers:{origin:'https://kiosco-app-staging.vercel.app',authorization:'Bearer SYNTHETIC_JWT','content-type':'application/json'},body:JSON.stringify(command)}))
+ if(mode==='cajero')expect(response.ok).toBe(false)
+ else {expect(response.status).toBe(200);expect((await response.json()).resultado).toMatchObject({estado:mode==='estado'?'CAE_CONFIRMADO':mode==='envio-historico'?'CONSULTAR_ESTADO_NC':'CAE_NC_REGISTRADO_NO_APLICADO',emision_habilitada:false,reintegro_habilitado:false,reposicion_habilitada:false})}
+ expect(w.fetcher).not.toHaveBeenCalled();expect(reads.some(name=>/CREDENTIAL|TA_KEY|ACTIVE_KEY/.test(name))).toBe(false)
+ expect(w.rpc.mock.calls.some(([name])=>name==='registrar_intencion_nc_homologacion'||name==='aplicar_comercial_nc_homologacion')).toBe(false)
 })
 it.each(['normal','recuperacion-cerrada','solo-lectura','rol-cajero'] as const)('cliente→HTTP→SQL052 %s sin ARCA ni ACK como éxito',async mode=>{
  const f=await creditCommercialApplicationFixture(false),w=workerFixture(),handler=createFiscalHttpHandler({readSecret:w.deps.readSecret,createAdmin:()=>w.admin,fetcher:w.fetcher})

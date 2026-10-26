@@ -1,12 +1,14 @@
 import { reconcileFiscalCreditOperation } from './fiscalCreditConsultWorker.ts'
+import { emitFiscalCreditOperation } from './fiscalCreditEmissionWorker.ts'
+import { loadFiscalCreditTransportStatus } from './fiscalCreditTransportService.ts'
 import { applyFiscalCreditCommercialOperation,loadFiscalCreditCommercialOperation } from './fiscalCreditCommercialWorker.ts'
 import { loadFiscalRepresentation } from './fiscalRepresentationService.ts'
 import { loadFiscalCreditOwnerReview, approveFiscalCreditOwnerReview } from './fiscalCreditOwnerReviewService.ts'
 import { fiscalCreditOwnerReviewWire } from './fiscalCreditOwnerReview.ts'
 import { loadFiscalCreditRequest } from './fiscalCreditDraftService.ts'
 import { prepareFiscalCreditNumber } from './fiscalCreditNumberWorker.ts'
-import { createCreditConsultWsaaTicketSource, createCreditWsaaTicketSource } from './fiscalCreditWsaa.ts'
-import { createPrivateCreditConsultFiscalCustody, createPrivateCreditFiscalCustody } from './fiscalPrivateCustody.ts'
+import { createCreditSendWsaaTicketSource, createCreditConsultWsaaTicketSource, createCreditWsaaTicketSource } from './fiscalCreditWsaa.ts'
+import { createPrivateCreditSendFiscalCustody, createPrivateCreditConsultFiscalCustody, createPrivateCreditFiscalCustody } from './fiscalPrivateCustody.ts'
 import { fiscalCreditPreparationWire } from './fiscalCreditPreparation.ts'
 import { saveFiscalCreditDraft, loadFiscalCreditDraft, cancelFiscalCreditDraft, loadFiscalCreditHistory, loadFiscalCreditCommercialSource, loadFiscalCreditUnits, loadFiscalCreditContext, loadFiscalCreditPreparation, saveFiscalCreditPreparation } from './fiscalCreditDraftService.ts'
 import { fiscalCreditUnitsWire } from './fiscalCreditUnits.ts'
@@ -40,6 +42,8 @@ const origin='https://kiosco-app-staging.vercel.app'
 const invalid=():never=>{throw new Error('FISCAL_SOLICITUD_INVALIDA')}
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 type FiscalHttpCommand=
+  | {accion:'ENVIAR_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string;revision_id:string;intento_id:string;consulta_id:string}
+  | {accion:'ESTADO_ENVIO_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string;consulta_id?:string}
   | {accion:'APLICAR_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string;sesion_caja_id:string}
   | {accion:'APLICACION_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string}
   | {accion:'CONCILIAR_NC';venta_id:string;operacion_origen_id:string;solicitud_id:string;propuesta_sha256:string;consulta_id:string}
@@ -99,6 +103,14 @@ async function command(request:Request):Promise<FiscalHttpCommand> {
     const text=new TextDecoder('utf-8',{fatal:true}).decode(bytes),parsed:unknown=parseFiscalJson(text)
     if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))return invalid()
     const b=parsed as Record<string,unknown>,keys=Object.keys(b)
+    if(b.accion==='ENVIAR_NC'&&size<=2048&&(length===null||Number(length)<=2048)&&keys.length===8
+      &&keys.every(k=>['accion','venta_id','operacion_origen_id','solicitud_id','propuesta_sha256','revision_id','intento_id','consulta_id'].includes(k))
+      &&uuid(b.venta_id)&&uuid(b.operacion_origen_id)&&uuid(b.solicitud_id)&&uuid(b.revision_id)&&uuid(b.intento_id)&&uuid(b.consulta_id)&&typeof b.propuesta_sha256==='string'&&/^[0-9a-f]{64}$/.test(b.propuesta_sha256))
+      return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_origen_id:b.operacion_origen_id.toLowerCase(),solicitud_id:b.solicitud_id.toLowerCase(),propuesta_sha256:b.propuesta_sha256,revision_id:b.revision_id.toLowerCase(),intento_id:b.intento_id.toLowerCase(),consulta_id:b.consulta_id.toLowerCase()}
+    if(b.accion==='ESTADO_ENVIO_NC'&&size<=2048&&(length===null||Number(length)<=2048)&&keys.length===6
+      &&keys.every(k=>['accion','venta_id','operacion_origen_id','solicitud_id','propuesta_sha256','consulta_id'].includes(k))
+      &&uuid(b.venta_id)&&uuid(b.operacion_origen_id)&&uuid(b.solicitud_id)&&uuid(b.consulta_id)&&typeof b.propuesta_sha256==='string'&&/^[0-9a-f]{64}$/.test(b.propuesta_sha256))
+      return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_origen_id:b.operacion_origen_id.toLowerCase(),solicitud_id:b.solicitud_id.toLowerCase(),propuesta_sha256:b.propuesta_sha256,consulta_id:b.consulta_id.toLowerCase()}
     if(b.accion==='APLICAR_NC'&&size<=2048&&(length===null||Number(length)<=2048)&&keys.length===6
       &&keys.every(k=>['accion','venta_id','operacion_origen_id','solicitud_id','propuesta_sha256','sesion_caja_id'].includes(k))
       &&uuid(b.venta_id)&&uuid(b.operacion_origen_id)&&uuid(b.solicitud_id)&&uuid(b.sesion_caja_id)&&typeof b.propuesta_sha256==='string'&&/^[0-9a-f]{64}$/.test(b.propuesta_sha256))
@@ -142,7 +154,7 @@ async function command(request:Request):Promise<FiscalHttpCommand> {
     if(b.accion==='GUARDAR_BORRADOR_NC'&&keys.length===4&&keys.every(k=>['accion','venta_id','operacion_origen_id','propuesta'].includes(k))
       &&uuid(b.venta_id)&&uuid(b.operacion_origen_id)&&b.propuesta&&typeof b.propuesta==='object'&&!Array.isArray(b.propuesta))
       return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_origen_id:b.operacion_origen_id.toLowerCase(),propuesta:b.propuesta}
-    if((b.accion==='APLICACION_NC'||b.accion==='BORRADOR_NC'||b.accion==='CANCELAR_BORRADOR_NC'||b.accion==='CONTEXTO_NC'||b.accion==='PREPARACION_NC'||b.accion==='CUERPO_NC')&&size<=2048&&(length===null||Number(length)<=2048)&&keys.length===5
+    if((b.accion==='ESTADO_ENVIO_NC'||b.accion==='APLICACION_NC'||b.accion==='BORRADOR_NC'||b.accion==='CANCELAR_BORRADOR_NC'||b.accion==='CONTEXTO_NC'||b.accion==='PREPARACION_NC'||b.accion==='CUERPO_NC')&&size<=2048&&(length===null||Number(length)<=2048)&&keys.length===5
       &&keys.every(k=>['accion','venta_id','operacion_origen_id','solicitud_id','propuesta_sha256'].includes(k))
       &&uuid(b.venta_id)&&uuid(b.operacion_origen_id)&&uuid(b.solicitud_id)&&typeof b.propuesta_sha256==='string'&&/^[0-9a-f]{64}$/.test(b.propuesta_sha256))
       return {accion:b.accion,venta_id:b.venta_id.toLowerCase(),operacion_origen_id:b.operacion_origen_id.toLowerCase(),solicitud_id:b.solicitud_id.toLowerCase(),propuesta_sha256:b.propuesta_sha256}
@@ -224,12 +236,21 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
       if(cmd.accion==='GUARDAR_PREPARACION_NC'&&deps.readSecret('ARCA_HOMO_CREDIT_PREPARATION_ENABLED')!=='true')return json({codigo:'PREPARACION_NC_NO_HABILITADA'},503)
       const admin=deps.createAdmin(FISCAL_STAGING_URL),token=auth.slice(7)
       let result:unknown
-      if(cmd.accion==='APLICACION_NC'||cmd.accion==='APLICAR_NC'){
+      if(cmd.accion==='ENVIAR_NC'){
+        await emitFiscalCreditOperation({admin,readSecret:deps.readSecret,signal:request.signal,fetcher:deps.fetcher,
+          keys:createPrivateFiscalTicketKeys(deps.readSecret),
+          createSendWsaa:guard=>createCreditSendWsaaTicketSource(createPrivateCreditSendFiscalCustody(deps.readSecret,guard),deps.fetcher),
+          createConsultWsaa:guard=>createCreditConsultWsaaTicketSource(createPrivateCreditConsultFiscalCustody(deps.readSecret,guard),deps.fetcher),
+        },token,{saleId:cmd.venta_id,operationId:cmd.operacion_origen_id,requestId:cmd.solicitud_id,sha256:cmd.propuesta_sha256},cmd.revision_id,null,cmd.intento_id,cmd.consulta_id)
+        result={version:1,solicitud_id:cmd.solicitud_id,estado:'CONSULTAR_ESTADO_NC',emision_habilitada:false,reintegro_habilitado:false,reposicion_habilitada:false}
+      }else if(cmd.accion==='ESTADO_ENVIO_NC'){
+        result=await loadFiscalCreditTransportStatus({admin,readSecret:deps.readSecret,signal:request.signal},token,{saleId:cmd.venta_id,operationId:cmd.operacion_origen_id,requestId:cmd.solicitud_id,sha256:cmd.propuesta_sha256},cmd.consulta_id)
+      }else if(cmd.accion==='APLICACION_NC'||cmd.accion==='APLICAR_NC'){
         const scope={saleId:cmd.venta_id,operationId:cmd.operacion_origen_id,requestId:cmd.solicitud_id,sha256:cmd.propuesta_sha256},commercial={admin,readSecret:deps.readSecret,signal:request.signal}
         result=cmd.accion==='APLICACION_NC'?await loadFiscalCreditCommercialOperation(commercial,token,scope)
           :await applyFiscalCreditCommercialOperation(commercial,token,scope,cmd.sesion_caja_id)
       }else if(cmd.accion==='CONCILIAR_NC'){
-        result=await reconcileFiscalCreditOperation({admin,readSecret:deps.readSecret,fetcher:deps.fetcher,
+        result=await reconcileFiscalCreditOperation({admin,readSecret:deps.readSecret,signal:request.signal,fetcher:deps.fetcher,
           keys:createPrivateFiscalTicketKeys(deps.readSecret),
           createWsaa:guard=>createCreditConsultWsaaTicketSource(createPrivateCreditConsultFiscalCustody(deps.readSecret,guard),deps.fetcher),
         },token,{saleId:cmd.venta_id,operationId:cmd.operacion_origen_id,requestId:cmd.solicitud_id,sha256:cmd.propuesta_sha256},cmd.consulta_id)

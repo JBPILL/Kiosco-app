@@ -1,7 +1,15 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { aplicacionNotasCreditoHomologacionActiva, casosNotasCreditoHomologacionActivos, devolucionesEfectivoActivas, envasesTransaccionalesActivos } from './pilotExpansion'
+import { envioNotasCreditoHomologacionActivo, conciliacionNotasCreditoHomologacionActiva, aplicacionNotasCreditoHomologacionActiva, casosNotasCreditoHomologacionActivos, devolucionesEfectivoActivas, envasesTransaccionalesActivos } from './pilotExpansion'
 
 afterEach(() => vi.unstubAllEnvs())
+it.each(['','false','TRUE','true'])('envío/consulta NC conservan flags independientes con valor %s',value=>{
+ vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE','true');vi.stubEnv('VITE_KIOSKO_ARCA_REVISION_HOMO','true');vi.stubEnv('VITE_KIOSKO_ARCA_CASOS_NC_HOMO','true')
+ vi.stubEnv('VITE_KIOSKO_ARCA_ENVIO_NC_HOMO',value);vi.stubEnv('VITE_KIOSKO_ARCA_CONCILIACION_NC_HOMO','false');vi.stubEnv('VITE_KIOSKO_ARCA_APLICACION_NC_HOMO','false')
+ expect(envioNotasCreditoHomologacionActivo()).toBe(value==='true');expect(conciliacionNotasCreditoHomologacionActiva()).toBe(false);expect(aplicacionNotasCreditoHomologacionActiva()).toBe(false)
+ vi.stubEnv('VITE_KIOSKO_ARCA_ENVIO_NC_HOMO','false');vi.stubEnv('VITE_KIOSKO_ARCA_CONCILIACION_NC_HOMO',value)
+ expect(envioNotasCreditoHomologacionActivo()).toBe(false);expect(conciliacionNotasCreditoHomologacionActiva()).toBe(value==='true')
+ vi.stubEnv('VITE_KIOSKO_ARCA_CASOS_NC_HOMO','false');expect(envioNotasCreditoHomologacionActivo()).toBe(false);expect(conciliacionNotasCreditoHomologacionActiva()).toBe(false)
+})
 it.each([
   ['false', 'true', 'true'], ['true', 'false', 'true'], ['true', 'true', 'false'],
   ['true', 'true', ''], ['true', 'true', 'TRUE'],

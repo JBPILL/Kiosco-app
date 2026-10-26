@@ -1595,6 +1595,7 @@ try {
   cases.push('050_rollback_no_deja_marcador_fantasma_y_waiter_resuelve_una_vez')
   const nc051_box=await nc050Fixture(250),nc051_product=await nc050Fixture(251)
   const nc052_same=await nc050Fixture(252),nc052_rollback=await nc050Fixture(253),nc052_late=await nc050Fixture(254)
+  const nc053=await nc040Fixture(255)
   const creditCommercialPlanInstalledAfterCase=cases.length
   for(const file of ['supabase/bootstrap/commercial/001_commercial_subscription.sql','supabase/bootstrap/commercial/002_commercial_write_gate.sql','supabase/bootstrap/pilot-operations/001_capabilities.sql','supabase/pilot-fiscal/051_fiscal_credit_commercial_plan.sql'])for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,file),'utf8'))
   const nc051_plan=randomUUID()
@@ -1605,6 +1606,9 @@ try {
     await observer.query('INSERT INTO piloto_operaciones_capacidades(kiosco_id,devoluciones_efectivo) VALUES($1,true)',[f.kid])
     await start(a);await f.resolve(a);await a.query('COMMIT')
   }
+  await observer.query("UPDATE kioscos SET estado_suscripcion='ACTIVO' WHERE id=$1",[nc053.kid])
+  await observer.query("INSERT INTO suscripciones(kiosco_id,plan_id,fecha_inicio,fecha_vencimiento,estado) VALUES($1,$2,comercial_hoy(),comercial_hoy()+30,'ACTIVA')",[nc053.kid,nc051_plan])
+  await observer.query('INSERT INTO piloto_operaciones_capacidades(kiosco_id,devoluciones_efectivo) VALUES($1,true)',[nc053.kid])
   // La caja original se lee NOWAIT por030; usar una caja de reintegro distinta.
   const nc051_cash=randomUUID()
   await observer.query("UPDATE sesiones_caja SET estado='CERRADA',fecha_cierre=clock_timestamp() WHERE id=(SELECT sesion_caja_id FROM ventas WHERE id=$1)",[nc051_box.sale])
@@ -1651,6 +1655,23 @@ try {
   await observer.query('DROP TRIGGER fallo_nc052 ON movimientos_caja; DROP FUNCTION fallo_nc052()')
   await start(a);await apply052(a,nc052_late);await a.query('COMMIT');await check052(nc052_late)
   cases.push('052_error_tardio_revierte_efectos_y_reintento_aplica_una_vez')
+  for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/053_fiscal_credit_permission_lookup.sql'),'utf8'))
+  await start(a);const nc053_approved=await nc053.approve(a);await a.query('COMMIT')
+  const nc053_body=nc053_approved.cuerpo.cuerpo.sha256,nc053_permit=randomUUID()
+  await observer.query(`INSERT INTO fiscal_nc_permisos_homologacion(id,solicitud_id,reserva_id,revision_id,actor_auth_id,solicitud_sha256,preparacion_sha256,credencial_id,certificado_sha256,emisor_revision,habilitado,vence_en)
+    SELECT $1,r.solicitud_id,r.reserva_id,r.id,r.actor_auth_id,r.solicitud_sha256,r.preparacion_sha256,e.credencial_id,e.certificado_sha256,e.revision,true,r.vence_en FROM fiscal_nc_revisiones_homologacion r JOIN fiscal_emisores_homologacion e ON e.kiosco_id=$2 WHERE r.id=$3`,[nc053_permit,nc053.kid,nc053.review])
+  const lookup053=async(client)=>(await client.query('SELECT cargar_permiso_envio_nc_homologacion($1,$2,$3,$4,$5,$6,$7) v',[nc053.auth,nc053.sale,nc053.operation,nc053.proposal.id,nc053.proposal.sha,nc053_body,nc053.review])).rows[0].v
+  await start(a);assert.equal((await lookup053(a)).permiso_id,nc053_permit)
+  await start(b);const wait053=capture(lookup053(b));await waitForLock(observer,b);await a.query('COMMIT')
+  assert.equal((await wait053).value.permiso_id,nc053_permit);await b.query('COMMIT')
+  cases.push('053_dos_lookups_mismo_permiso_no_crean_intencion_ni_envio')
+  await a.query('BEGIN');await a.query('SELECT 1 FROM fiscal_nc_series_homologacion WHERE punto_venta=255 FOR UPDATE')
+  await start(b);const revoked053=capture(lookup053(b));await waitForLock(observer,b)
+  await a.query("INSERT INTO fiscal_nc_permisos_revocados_homologacion(permiso_id,motivo) VALUES($1,'Ensayo de concurrencia')",[nc053_permit]);await a.query('COMMIT')
+  assert.equal((await revoked053).error?.code,'42501');await b.query('ROLLBACK')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_intenciones_homologacion WHERE solicitud_id=$1',[nc053.proposal.id])).rows[0].n,0)
+  cases.push('053_revocacion_esperando_serie_impide_descubrimiento_sin_intencion')
+
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',

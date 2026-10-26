@@ -13,6 +13,13 @@ function fixture(){
  const consult=async()=>{fireEvent.click(screen.getByRole('button',{name:'Consultar devolución registrada'}));await screen.findByText(/No hay una devolución registrada/)}
  return{client,target,cash,value,props,setPending,onRecorded,consult}
 }
+it('conflicto bloquea nuevas aplicaciones y retry, pero conserva recuperación histórica',async()=>{
+ const f=fixture();f.setPending();render(<FiscalCreditCommercialPanel {...f.props} mutationsBlocked/>);
+ await f.consult();expect(screen.getByRole('button',{name:'Reintentar aplicación original'}).hasAttribute('disabled')).toBe(true)
+ expect(screen.getByRole('checkbox').hasAttribute('disabled')).toBe(true)
+ fireEvent.click(screen.getByRole('button',{name:'Recuperar aplicación pendiente'}));await screen.findByText(/Devolución registrada:.*100,00/)
+ expect(f.client.recover).toHaveBeenCalledTimes(1);expect(f.client.retry).not.toHaveBeenCalled();expect(f.client.apply).not.toHaveBeenCalled()
+})
 it('panel052 no consulta ni aplica al montar; lectura vacía no acredita CAE y exige confirmación',async()=>{
  const f=fixture();render(<FiscalCreditCommercialPanel {...f.props}/>);expect(f.client.status).not.toHaveBeenCalled();expect(f.client.apply).not.toHaveBeenCalled();expect(screen.queryByRole('checkbox')).toBeNull()
  await f.consult();expect(screen.getByText(/no acredita por sí solo una NC autorizada/)).toBeTruthy();const button=screen.getByRole('button',{name:'Solicitar registro de devolución'});expect(button.hasAttribute('disabled')).toBe(true)

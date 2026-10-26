@@ -782,3 +782,122 @@ APLICACION_NC sólo lee por caso sin caja actual; APLICAR_NC exige caja explíci
 
 #### 26/10/2026 — Interfaz aplicación NC local, deshabilitada por defecto
 Panel con consulta explícita, caja/confirmación para nueva aplicación y recuperación de pendiente original sin caja actual. Borrador histórico ya no afirma sin emisión; sólo receipt durable muestra devolución registrada y oculta mutaciones del caso. POS refresca productos/caja/historial por lectura después de confirmar, sin incrementos optimistas ni repetición por error de refresco. Flag VITE_KIOSKO_ARCA_APLICACION_NC_HOMO subordinado a strict/revisión/casos, default cerrado/no activado remotamente.135 pruebas UI/cliente/gates PASS; build/lint sin errores (avisos previos). Evidencia detallada en ExecPlan ARCA. Validación visual/hospedada y circuito controlado de envío/conciliación NC siguen pendientes; sin instalación, emisión ni Production.
+
+### 26/10/2026 — Inventario final del cierre local (pendiente de CODE REVIEW / GO)
+Esta adenda conserva los estados y la evidencia históricos. No constituye GO de instalación ni acredita aceptación hospedada. El inventario se deriva de los archivos locales; antes de instalar debe corresponder al commit final revisado. Se incorpora053 porque el ensamblaje HTTP necesita descubrir un permiso privado existente por cuerpo/revisión; no lo crea ni activa.
+
+#### SQL fiscal candidato001–053
+Aplicar secuencialmente, una migración por transacción, sobre los prerrequisitos verificados. Detener ante el primer error; no saltar números ni continuar con esquema parcial. Los hashes permiten detectar mezcla de versiones; no reemplazan revisión de permisos, RLS y contratos. SHA-256 calculado sobre el contenido Git canónico (LF), sin alterar otros bytes. Para verificar en Windows, usar el blob del commit aprobado o normalizar únicamente CRLF a LF antes del hash; no comparar contra el hash bruto de un checkout con autocrlf. No se cambiaron los SQL históricos para ajustar sus finales de línea.
+
+| Orden | SQL | SHA-256 |
+| --- | --- | --- |
+| 001 | `001_fiscal_journal.sql` | `18ebe5f6108d87cb06bf767e943c16375124f420bf7b0785a26f6d9ee35a8269` |
+| 002 | `002_fiscal_reservations.sql` | `f0d72fd59e37cd06ac287143aa0b12de07c1a1f1aca2df6a8b0c93ff3c3bb6f8` |
+| 003 | `003_fiscal_requests.sql` | `f4cadb58f71af6cfc3b18387a31e3a4a1f461955b22a528930f13d235ab4c7d4` |
+| 004 | `004_fiscal_reconciliation.sql` | `634b1cac09b29a7ec407aab141a7ea026118a9a670288e37dce852c69a574539` |
+| 005 | `005_fiscal_worker_authorization.sql` | `f4013d6c3c3644a0ace6283413ce08df9d2a8d65c9fcd80868971bb51f96aaad` |
+| 006 | `006_fiscal_shared_tickets.sql` | `de141fb5c052a58c074d6a6c8f8beb8cb2483d7ccbf1928a42de56c9d47a288c` |
+| 007 | `007_fiscal_ticket_recovery.sql` | `0542a554b97fc73689b7cbe5b15b4a05cf4081548910b2c1a0e704a08e8dd049` |
+| 008 | `008_fiscal_ticket_ownership.sql` | `48ffdff74b4dab45bf2a55bbc8eb75af779b777a74b421d9d05ac0090ed8c86e` |
+| 009 | `009_fiscal_emission_permission.sql` | `c8850691bfc16846620c8fae3f4af839fd2197290e1866a5195c0999a3b9fd37` |
+| 010 | `010_fiscal_return_exclusion.sql` | `29eefe18d181170be54f2c01c9d52d3043d7046a93850d09eb8ceaff10cda1be` |
+| 011 | `011_fiscal_owner_review.sql` | `78bb79cc5d7af51f5df5c1d2beb2ab15dd6cf503ff4ce9730da1c44883d6c4bf` |
+| 012 | `012_fiscal_preparation.sql` | `c7bc167f40baea80735935e4e39e4228ae48a30a5bd8bd0537787ba2b4643e07` |
+| 013 | `013_fiscal_preparation_source.sql` | `67d6bd91f43fdbf60a0f200312c1182b1475150586a8e3018aa6acc1beb25d43` |
+| 014 | `014_fiscal_receipt.sql` | `32acc5a1a028153718e95557607db30dfc845104dd78fdd9c05bf2903a7cad86` |
+| 015 | `015_fiscal_emission_receipts.sql` | `47655feeee347b617f90d46801002dcffa13cc31a6e9b05eb3bd97f1b73d0774` |
+| 016 | `016_fiscal_diagnosis.sql` | `0b0d8141b9cb2c7f4e53ab966e0f6a3b8f11b5234e63acee843c5e33c5ec6fa2` |
+| 017 | `017_fiscal_preparation_cancellation.sql` | `58df539e1b0c0ebc89f3f1dbdc772a6935365009176573108a937bece819f4d2` |
+| 018 | `018_fiscal_reserved_replacement.sql` | `3d3c3999068e3dff09881b1712696e626c91b20bbba1ee8acfe1a3fb780e7221` |
+| 019 | `019_fiscal_rejected_correction.sql` | `c883d990d7ec3ff8a26292755243b831caba42c2a032db7b8cffd566b40e0e74` |
+| 020 | `020_fiscal_reconciliation_actor.sql` | `6a5dc6d79d70ac4b13c41a295b186a7208d378ed9c365a473c93d569bd6843ee` |
+| 021 | `021_fiscal_observation_receipt.sql` | `7c100aef25a359d06c6631b3c836cd310bd509a9f7c8a448458cb23d91b2ee8a` |
+| 022 | `022_fiscal_presentation_facts.sql` | `7d9767116ec7cfbb62155b937bb026b048e99d1dca91d23be54ee8770a4fb8a2` |
+| 023 | `023_fiscal_presentation_review.sql` | `314e2015d91d288932392af9c186f2647c14fefe9ede77d0a1d589f86b83f134` |
+| 024 | `024_fiscal_presentation_source.sql` | `6d1827fa94d0b8e959ef184cffb393748f5fda427d36b7def0d4406f0990cfad` |
+| 025 | `025_fiscal_required_presentation.sql` | `f4659791887716045654f6817208bb054d8ea084096f222d37048286d5b6dd89` |
+| 026 | `026_fiscal_representation_source.sql` | `a826015cbbebcc3bb9444084e3810c04608745be3a880a8d658a173c2161e40d` |
+| 027 | `027_fiscal_credit_drafts.sql` | `fdf0c3fcedea926f3a0a300916104f356dc764aa7a722598a8ad82c3c04347ab` |
+| 028 | `028_fiscal_credit_abandonment.sql` | `726ee1db89c49d8a4f2b70dbd1102317f70d48c82fc2e7c9cb020fa58a396f89` |
+| 029 | `029_fiscal_credit_history.sql` | `d1a95eb4da912a8040a35a16b721cf6b04aa0581a14070dd473870aa2c68ccd0` |
+| 030 | `030_fiscal_credit_commercial_source.sql` | `fa8250552308d7bf2e4e726c1f17b4efb0e2aedb4c24ac6032337cfddf652c09` |
+| 031 | `031_checkout_unit_evidence.sql` | `5c8ab2d0862c79b23e18980e247caa1f157eec8e8edfd79376c3c93cae3ddf31` |
+| 032 | `032_fiscal_credit_commercial_binding.sql` | `8d398b0b614a4ec279b2870cf4046f0d565afc4a1736594e981947724a63339e` |
+| 033 | `033_fiscal_credit_context.sql` | `6c5a0ca9097f1b2cfdfc0159b0a7550fd94aaa3cf2f1427ace697986b059ba9b` |
+| 034 | `034_fiscal_credit_context_source.sql` | `525ca856f4d0510b84e7160fb81c81c4c8eaedef9f4db69c1c19def8971b91fd` |
+| 035 | `035_fiscal_credit_preparation.sql` | `5613144ee8776724529a8368ce23635b648dd7fa8f7a3345a37a31b1279b8af3` |
+| 036 | `036_fiscal_credit_reservation.sql` | `349da7c2210960609de3304c97dfa1b1235ce1a917481395b7b9b19057c74dd1` |
+| 037 | `037_fiscal_credit_request_source.sql` | `4aa8f16f5cf91a13d4fba82412aeaf7b0b566ac86ba98e668634901772a2f665` |
+| 038 | `038_fiscal_credit_number_source.sql` | `e116a7a608b8d1f6880e02f91ebeaf38a1fe8d47e852e03d741dc0d9e20f804f` |
+| 039 | `039_fiscal_credit_ticket_coordination.sql` | `661cb1899e2d8b9d756bdcbfc8894aa0c365bf48d3958caad320784173716d51` |
+| 040 | `040_fiscal_credit_owner_review.sql` | `7d04e3e761a801f25b40ea37f91cb0725d2bca7b8fee46a980cdcacbe625f88e` |
+| 041 | `041_fiscal_credit_emission_permission.sql` | `7115e97c5e575eea3acb1e4b0ff51604dde6bd5050389c47575e3417ef2685ee` |
+| 042 | `042_fiscal_credit_send_intent.sql` | `fa181c2a6d7edf0877b30c8590e40895e2135912d4e3fd04d6bf29860809958a` |
+| 043 | `043_fiscal_credit_send_source.sql` | `1f4f4ac7b13a6c9a83997e56b60eed09add14c1fcc1a12bc37d6ae5608f52bf7` |
+| 044 | `044_fiscal_credit_send_ticket_coordination.sql` | `dc53f61799d4de43b41b89ef7bb7dc982c5cb80cd762294ddefd78950aa9e452` |
+| 045 | `045_fiscal_credit_consult_source.sql` | `17e62646022c26f63159f84579e6a73867ce30eda978aceea47b5a85f1788ac9` |
+| 046 | `046_fiscal_credit_consult_ticket_coordination.sql` | `027d7961108dd0526176277a722f8ee41eccecd8349d32c653088dd931f1f21f` |
+| 047 | `047_fiscal_credit_consultation_journal.sql` | `e81b7bdec7680479f2fdfafe10a0b09f1350d981bef0249897710ed037396b25` |
+| 048 | `048_fiscal_credit_conflicts.sql` | `5caeaaf0e8e59438c863d8da52fe5b7d059b6bf5b4e109f919b0cb737d30f2c1` |
+| 049 | `049_fiscal_credit_send_responses.sql` | `f20bef56ae83fe6f5532dd486d97b0dcf18c37f7574ab863396b3f6fd05b6528` |
+| 050 | `050_fiscal_credit_authorized_resolution.sql` | `7ba2a71462206171cc66e9d2636433a08c268432fc338d6bce7ecdc5c3c72873` |
+| 051 | `051_fiscal_credit_commercial_plan.sql` | `62e5f3931b901c8b67f9453336f6854ec4f27d039e17ff988a37e574c544f37a` |
+| 052 | `052_fiscal_credit_commercial_application.sql` | `19a17229d2debfb2f7d61b355819ea31fa48bf982dbb8c9457feb0703080c066` |
+| 053 | `053_fiscal_credit_permission_lookup.sql` | `f2e1d7f678b32936a60f104e1aad1ff167d832721114884966dd1aa6551adccd` |
+
+#### Edge del bloque fiscal
+Única función fiscal nueva: `arca-homologacion` (`supabase/functions/arca-homologacion/index.ts`), con sus módulos privados `_shared`. No desplegar la implementación heredada `afip-wsfe`. Las funciones comerciales/POS ya instaladas forman parte del baseline y no se redepliegan automáticamente por este bloque. Se debe verificar ese baseline antes del GO.
+
+#### Secrets requeridos (nombres, nunca valores)
+- `SUPABASE_URL` (entorno gestionado, debe identificar exclusivamente Staging).
+- `SUPABASE_SECRET_KEYS` (mapa gestionado con entrada `default`; sólo backend, no key pública ni service key en Vite).
+- `ARCA_HOMO_TA_ACTIVE_KEY_ID`.
+- `ARCA_HOMO_TA_KEY_<UUID_SIN_GUIONES_MAYUSCULAS>` para la clave activa y las claves históricas necesarias para sobres aún vigentes.
+- `ARCA_HOMO_CREDENTIAL_<UUID_SIN_GUIONES_MAYUSCULAS>_REVISION`.
+- `ARCA_HOMO_CREDENTIAL_<UUID_SIN_GUIONES_MAYUSCULAS>_CERT_PEM`.
+- `ARCA_HOMO_CREDENTIAL_<UUID_SIN_GUIONES_MAYUSCULAS>_KEY_PEM`.
+- `ARCA_HOMO_CREDENTIAL_<UUID_SIN_GUIONES_MAYUSCULAS>_PASSWORD`.
+Los UUID concretos se asignan y vinculan mediante provisionamiento privado autorizado; no deben adivinarse ni generarse desde el navegador. No se leyeron ni provisionaron valores reales para este inventario.
+
+#### Flags privados independientes
+Todos ausentes/false por defecto; requieren valor literal `true`, además de sus restantes guards. Ningún flag público sustituye estas autoridades.
+
+- `ARCA_HOMO_BACKEND_ENABLED`.
+- `ARCA_HOMO_CREDIT_APPLY_ENABLED`.
+- `ARCA_HOMO_CREDIT_CONSULT_ENABLED`.
+- `ARCA_HOMO_CREDIT_DRAFTS_ENABLED`.
+- `ARCA_HOMO_CREDIT_NUMBERING_ENABLED`.
+- `ARCA_HOMO_CREDIT_PREPARATION_ENABLED`.
+- `ARCA_HOMO_CREDIT_REVIEW_ENABLED`.
+- `ARCA_HOMO_CREDIT_SEND_ENABLED`.
+- `ARCA_HOMO_EMISSION_ENABLED`.
+- `ARCA_HOMO_PREPARATION_ENABLED`.
+- `ARCA_HOMO_RECONCILIATION_ENABLED`.
+- `ARCA_HOMO_REJECTION_RECOVERY_ENABLED`.
+
+#### Flags públicos del circuito
+- `VITE_KIOSKO_PILOT_STRICT_SCOPE` (debe mantenerse true en el piloto).
+- `VITE_KIOSKO_ARCA_REVISION_HOMO`.
+- `VITE_KIOSKO_ARCA_CASOS_NC_HOMO` (requiere strict/revisión).
+- `VITE_KIOSKO_ARCA_ENVIO_NC_HOMO` (requiere los anteriores; no concede permiso041).
+- `VITE_KIOSKO_ARCA_CONCILIACION_NC_HOMO` (requiere casos, independiente del envío).
+- `VITE_KIOSKO_ARCA_APLICACION_NC_HOMO` (requiere casos, independiente de envío/consulta).
+Flags fiscales opcionales ausentes/false por defecto; no activados en remoto por este bloque.
+
+#### Orden de instalación, sujeto a GO explícito
+1. CODE REVIEW final sobre un único commit/inventario; respaldo privado verificable y plan de vuelta atrás. Confirmar Staging, baseline y prerrequisitos reales bootstrap/comercial/capacidades/devoluciones.
+2. Instalar SQL001–053 en orden, después de los módulos base que referencian; verificar definición/ACL/RLS/SECURITY DEFINER/search_path, roles gestionados, restricciones y contratos. No inferir aceptación hospedada de PGlite/PostgreSQL local.
+3. Desplegar sólo `arca-homologacion` del bloque fiscal, con flags de trabajo cerrados. Verificar gateway, CORS, JWT real, actor original, rol activo y aislamiento por comercio, incluidos rechazos.
+4. Provisionar por canal privado los registros de emisor, catálogo fiscal y custodia/keyring estrictamente aprobados. No habilitar permisos de envío ni usar secretos reales sin autorización específica.
+5. Activar por etapas y con autorización: backend base/lecturas; preparación/revisión/casos; numeración; consulta; envío de una operación exacta; aplicación comercial tras prueba de CAE. Envío, consulta y aplicación no se habilitan por arrastre.
+6. Publicar frontend sólo en Staging con sus flags subordinados; aceptación E2E hospedada sin ARCA real primero. Comprobar reload, ACK perdido, doble clic y operaciones incompatibles con JWT/RLS reales.
+7. Sólo después: autorización específica para comunicaciones ARCA y primera emisión homologada. Un candidato FECAESolicitar no acredita CAE: confirmar mediante FECompConsultar y luego resolver/aplicar exactamente una vez.
+8. Production, credenciales productivas, merge y piloto comercial conservan sus gates independientes.
+
+#### Vuelta atrás y recuperación
+Cerrar flags de envío y aplicación y detener nuevas mutaciones; mantener recuperación histórica controlada cuando esté autorizada. Preservar diarios/cuerpos/reservas/consultas/candidatos/conflictos/resoluciones/aplicaciones y claves necesarias para su recuperación. No borrar intenciones ni liberar numeración por timeout/rechazo. No hacer DROP, reset ni restauración destructiva como rollback. JSON público de respaldo no sustituye el dump/restore privado fiscal; restauración integral continúa bloqueada hasta su aceptación autorizada.
+
+Prerrequisitos concretos del candidato053 (verificar instalados y compatibles, no reinstalar a ciegas): manifiesto bootstrap43 (`001_domain.sql`, `002_identity_helpers.sql`, `steps/*` y `900_final_security.sql`); `supabase/bootstrap/commercial/001_commercial_subscription.sql` y `002_commercial_write_gate.sql`; `supabase/bootstrap/pilot-operations/001_capabilities.sql`; `supabase_fase_devolucion_registro_privado.sql`, `supabase_fase_devolucion_calculo_historico.sql`, `supabase_fase_devolucion_preparacion_privada.sql`; `supabase/bootstrap/returns/001_atomic_cash_return.sql` y `003_whole_unit_quantities.sql`. El baseline POS/checkout/stock/caja debe verificarse por su instalación real y no sólo por estos prerrequisitos mínimos del ensayo fiscal. El runner local intercala fases históricas para probar transiciones; su orden de fixtures no es un instalador remoto.
+
+Detalle de baseline Edge según configuración versionada (no acredita instalación remota): `checkout-manual`, `supervisor-pin`, `provision-user` y `provision-commerce`; todas con `verify_jwt=true`. `arca-homologacion` también conserva `verify_jwt=true`; no desactivar gateway para resolver una prueba. Único despliegue fiscal nuevo previsto por este bloque: `arca-homologacion`. Adaptador backend:70RPC explícitas; ninguna llamada RPC arbitraria desde navegador.
+Configuración pública de conexión que debe verificarse en el baseline, sin provisionar valores en este bloque: `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` (`VITE_SUPABASE_ANON_KEY` sólo como compatibilidad heredada). Flags POS existentes que deben conservar su propio gate: `VITE_CHECKOUT_MANUAL_TRANSACCIONAL`, `VITE_KIOSKO_ENVASES_TRANSACCIONAL`, `VITE_KIOSKO_DEVOLUCIONES_EFECTIVO`; no se activan por habilitar la revisión fiscal ni habilitan por sí mismos aplicación NC. Configuración pública nunca contiene `SUPABASE_SECRET_KEYS` ni material ARCA.

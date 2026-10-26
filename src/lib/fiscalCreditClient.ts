@@ -1,3 +1,4 @@
+import { createFiscalCreditTransportClient } from './fiscalCreditTransportClient'
 import { createFiscalCreditCommercialClient } from './fiscalCreditCommercialClient'
 import type { FiscalClientScope } from './fiscalClient'
 import { createFiscalCreditReviewClient } from './fiscalCreditReviewClient'
@@ -100,12 +101,18 @@ export function createFiscalCreditClient(scope: FiscalClientScope, deps: FiscalC
   }
   let numberPending: () => boolean = () => false
   let commercialPending: () => boolean = () => false
-  const reviews = createFiscalCreditReviewClient(scope, deps, () => pending() !== null || pendingPreparation() !== null || numberPending() || commercialPending())
-  const numbers = createFiscalCreditNumberClient(scope, deps, () => pending() !== null || pendingPreparation() !== null || reviews.pendingReview() !== null || commercialPending())
+  let transportPending: () => boolean = () => false
+  let transportBlocksReview: (caseId?: string, bodySha?: string) => boolean = () => false
+  const reviews = createFiscalCreditReviewClient(scope, deps, (caseId, bodySha) => pending() !== null || pendingPreparation() !== null || numberPending() || commercialPending() || transportBlocksReview(caseId, bodySha))
+  const numbers = createFiscalCreditNumberClient(scope, deps, () => pending() !== null || pendingPreparation() !== null || reviews.pendingReview() !== null || commercialPending() || transportPending())
   numberPending = () => numbers.pendingNumber() !== null
-  const commercial = createFiscalCreditCommercialClient(scope, deps, () => pending() !== null || pendingPreparation() !== null || reviews.pendingReview() !== null || numberPending())
+  const commercial = createFiscalCreditCommercialClient(scope, deps, () => pending() !== null || pendingPreparation() !== null || reviews.pendingReview() !== null || numberPending() || transportPending())
   commercialPending = () => commercial.pending() !== null
+  const transport = createFiscalCreditTransportClient(scope, deps, () => pending() !== null || pendingPreparation() !== null || reviews.pendingReview() !== null || numberPending() || commercialPending())
+  transportPending = () => transport.pending() !== null
+  transportBlocksReview = (caseId, bodySha) => { const p = transport.pending(); return p !== null && (p.kind !== 'ENVIAR' || p.requestId !== caseId || p.bodySha !== bodySha) }
   return {
+    transport,
     commercial,
     ...reviews,
     ...numbers,
@@ -135,7 +142,7 @@ export function createFiscalCreditClient(scope: FiscalClientScope, deps: FiscalC
         const record: PendingFiscalCreditPreparation = { version: 1, operationId: original.operacion_id, requestId: checked.datos.solicitud_id,
           proposalSha: checked.sha256, preparationSha: prepared.sha256, contextSha: prepared.datos.contexto_sha256 }
         return await deps.exclusive(async () => {
-          if (pending() || reviews.pendingReview() || numberPending() || commercialPending()) return fail()
+          if (pending() || reviews.pendingReview() || numberPending() || commercialPending() || transportPending()) return fail()
           const prior = pendingPreparation()
           if (prior && JSON.stringify(prior) !== JSON.stringify(record)) return fail()
           const before = await readPreparation(original, checked)
@@ -197,7 +204,7 @@ export function createFiscalCreditClient(scope: FiscalClientScope, deps: FiscalC
         const original = structuredClone(source), captured = structuredClone(input)
         if (original.venta_id !== sale) return fail()
         return await deps.exclusive(async () => {
-          if (pendingPreparation() || reviews.pendingReview() || numberPending() || commercialPending()) return fail()
+          if (pendingPreparation() || reviews.pendingReview() || numberPending() || commercialPending() || transportPending()) return fail()
           const prior = pending()
           if (prior && (prior.intention !== 'GUARDAR' || prior.operationId !== original.operacion_id)) return fail()
           // Sólo validar forma/hash aquí. Fecha, saldo y elegibilidad finales pertenecen al servidor.
@@ -223,7 +230,7 @@ export function createFiscalCreditClient(scope: FiscalClientScope, deps: FiscalC
         const record: PendingFiscalCredit = { version: 1, operationId, requestId, sha256, intention: 'CANCELAR' }
         return await deps.exclusive(async () => {
           const preparation = pendingPreparation()
-          if (reviews.pendingReview() || numberPending() || commercialPending()) return fail()
+          if (reviews.pendingReview() || numberPending() || commercialPending() || transportPending()) return fail()
           if (preparation && (preparation.operationId !== operationId || preparation.requestId !== requestId || preparation.proposalSha !== sha256)) return fail()
           const prior = pending()
           if (prior && (prior.operationId !== operationId || prior.requestId !== requestId || prior.sha256 !== sha256)) return fail()

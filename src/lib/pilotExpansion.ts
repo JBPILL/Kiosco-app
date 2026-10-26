@@ -21,3 +21,11 @@ export function devolucionesEfectivoActivas(): boolean {
     && import.meta.env.VITE_CHECKOUT_MANUAL_TRANSACCIONAL === 'true'
     && import.meta.env.VITE_KIOSKO_DEVOLUCIONES_EFECTIVO === 'true'
 }
+
+/** Independent front-end gates; neither grants private emission/query authority. */
+export function envioNotasCreditoHomologacionActivo(): boolean {
+  return casosNotasCreditoHomologacionActivos() && import.meta.env.VITE_KIOSKO_ARCA_ENVIO_NC_HOMO === 'true'
+}
+export function conciliacionNotasCreditoHomologacionActiva(): boolean {
+  return casosNotasCreditoHomologacionActivos() && import.meta.env.VITE_KIOSKO_ARCA_CONCILIACION_NC_HOMO === 'true'
+}
