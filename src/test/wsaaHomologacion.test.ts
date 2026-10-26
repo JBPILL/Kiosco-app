@@ -1,11 +1,16 @@
 // @vitest-environment node
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { expect, it } from 'vitest'
 
 const quote = (value: string) => `'${value.replace(/'/g, "''")}'`
+function cleanCatalogTest(root: string) {
+  const target = resolve(root)
+  if (dirname(target) !== resolve(tmpdir()) || !basename(target).startsWith('kiosko-wsaa-test-')) throw new Error('Destino temporal inesperado')
+  rmSync(target,{recursive:true,force:true})
+}
 
 it.skipIf(process.platform !== 'win32')('valida TRA, CMS y parsing sin red ni credenciales reales', () => {
   const root = mkdtempSync(join(tmpdir(), 'kiosko-wsaa-test-'))
@@ -85,6 +90,52 @@ it.skipIf(process.platform !== 'win32')('valida TRA, CMS y parsing sin red ni cr
       try { [WsaaHomologacion]::ParseWsfeDiagnostic($typesPrefix+'<Errors><Err><Code>601</Code><Msg>SYNTHETIC_SECRET</Msg></Err></Errors>'+$typesSuffix,$typesOperation) | Out-Null } catch { $checks.typesBusiness=$_.Exception.InnerException.Message -eq 'WSFE_BUSINESS:601' }
       $checks.operationDenied = $false
       try { [WsaaHomologacion]::PrepareWsfeDiagnostic($ticket,'20123456786',$now,'UNSUPPORTED') | Out-Null } catch { $checks.operationDenied=$_.Exception.InnerException.Message -eq 'WSFE_OPERATION' }
+      $checks.parametersRequest=$true
+      foreach($op in @('FEParamGetTiposIva','FEParamGetCondicionIvaReceptor')){
+        $req=[WsaaHomologacion]::PrepareWsfeDiagnostic($ticket,'20123456786',$now,$op)
+        [xml]$payload=$req.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        $checks.parametersRequest=$checks.parametersRequest -and $req.RequestUri.AbsoluteUri -eq 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx' -and $payload.SelectSingleNode('//*[local-name()="'+$op+'"]') -ne $null -and $req.Headers.GetValues('SOAPAction').Contains('"http://ar.gov.afip.dif.FEV1/'+$op+'"') -and $payload.SelectNodes('//*[local-name()="ClaseCmp"]').Count -eq 0
+        $req.Dispose()
+      }
+      $ivaOperation='FEParamGetTiposIva';$conditionOperation='FEParamGetCondicionIvaReceptor'
+      $ivaRow='<IvaTipo><Id>5</Id><Desc>21%</Desc><FchDesde>20100917</FchDesde><FchHasta>NULL</FchHasta></IvaTipo>'
+      $ivaPrefix=$typesPrefix.Replace($typesOperation,$ivaOperation);$ivaSuffix=$typesSuffix.Replace($typesOperation,$ivaOperation)
+      $ivaXml=$ivaPrefix+'<ResultGet>'+$ivaRow+'</ResultGet>'+$ivaSuffix
+      $iva=[WsaaHomologacion]::ParseWsfeDiagnostic($ivaXml,$ivaOperation)
+      $checks.ivaParameters=$iva.Parameters.Length -eq 1 -and $iva.Parameters[0].Id -eq 5 -and $iva.Parameters[0].ValidFrom -eq '20100917' -and $iva.SourceSha256 -match '^[0-9a-f]{64}$'
+      $conditionRow='<CondicionIvaReceptor><Id>5</Id><Desc>Consumidor Final</Desc><Cmp_Clase>B/C</Cmp_Clase></CondicionIvaReceptor>'
+      $conditionXml=$typesPrefix.Replace($typesOperation,$conditionOperation)+'<ResultGet>'+$conditionRow+'</ResultGet>'+$typesSuffix.Replace($typesOperation,$conditionOperation)
+      $condition=[WsaaHomologacion]::ParseWsfeDiagnostic($conditionXml,$conditionOperation)
+      $checks.conditionsParameters=$condition.Parameters.Length -eq 1 -and $condition.Parameters[0].VoucherClasses -ceq 'B/C'
+      $checks.parametersDuplicate=$false
+      try{[WsaaHomologacion]::ParseWsfeDiagnostic($ivaXml.Replace($ivaRow,$ivaRow+$ivaRow),$ivaOperation)|Out-Null}catch{$checks.parametersDuplicate=$_.Exception.InnerException.Message -eq 'WSFE_PARAMETERS'}
+      $checks.parametersDate=$false
+      try{[WsaaHomologacion]::ParseWsfeDiagnostic($ivaXml.Replace('20100917','20260230'),$ivaOperation)|Out-Null}catch{$checks.parametersDate=$_.Exception.InnerException.Message -eq 'WSFE_PARAMETERS'}
+      $checks.parametersNested=$false
+      try{[WsaaHomologacion]::ParseWsfeDiagnostic($ivaXml.Replace('21%','<Injected>21</Injected>'),$ivaOperation)|Out-Null}catch{$checks.parametersNested=$_.Exception.InnerException.Message -eq 'WSFE_PARAMETERS'}
+      $checks.parametersExtra=$false
+      try{[WsaaHomologacion]::ParseWsfeDiagnostic($ivaXml.Replace('</IvaTipo>','<Unexpected>1</Unexpected></IvaTipo>'),$ivaOperation)|Out-Null}catch{$checks.parametersExtra=$_.Exception.InnerException.Message -eq 'WSFE_PARAMETERS'}
+      $checks.parametersEmpty=$false
+      try{[WsaaHomologacion]::ParseWsfeDiagnostic($ivaXml.Replace($ivaRow,''),$ivaOperation)|Out-Null}catch{$checks.parametersEmpty=$_.Exception.InnerException.Message -eq 'WSFE_PARAMETERS'}
+      $checks.parametersWrongMethod=$false
+      try{[WsaaHomologacion]::ParseWsfeDiagnostic($ivaXml,$conditionOperation)|Out-Null}catch{$checks.parametersWrongMethod=$_.Exception.InnerException.Message -eq 'WSFE_RESULT'}
+      $checks.parametersBusiness=$false
+      try{[WsaaHomologacion]::ParseWsfeDiagnostic($ivaPrefix+'<Errors><Err><Code>601</Code><Msg>SYNTHETIC_SECRET</Msg></Err></Errors>'+$ivaSuffix,$ivaOperation)|Out-Null}catch{$checks.parametersBusiness=$_.Exception.InnerException.Message -eq 'WSFE_BUSINESS:601'}
+      $outFile=${quote(join(root, 'parameters.json'))}
+      [WsaaHomologacion]::WriteParameterEvidence($iva,$ticket,$ivaOperation,$now,$outFile)
+      $export=[IO.File]::ReadAllText($outFile);$evidence=$export|ConvertFrom-Json
+      $checks.parametersExport=$evidence.entorno -ceq 'HOMOLOGACION' -and $evidence.parametros[0].Id -eq 5 -and $evidence.respuesta_sha256 -eq $iva.SourceSha256 -and $evidence.emision_habilitada -ceq $false -and $export -notmatch 'SYNTHETIC_|Token|Sign|Auth|<Envelope'
+      $checks.parametersNoOverwrite=$false
+      try{[WsaaHomologacion]::WriteParameterEvidence($iva,$ticket,$ivaOperation,$now,$outFile)}catch{$checks.parametersNoOverwrite=[IO.File]::ReadAllText($outFile) -ceq $export}
+      $checks.parametersNoSecrets=$false
+      $poison=[WsaaHomologacion]::ParseWsfeDiagnostic($ivaXml.Replace('21%','SYNTHETIC_TOKEN'),$ivaOperation)
+      try{[WsaaHomologacion]::WriteParameterEvidence($poison,$ticket,$ivaOperation,$now,${quote(join(root, 'poison.json'))})}catch{$checks.parametersNoSecrets=$_.Exception.InnerException.Message -eq 'WSFE_PARAMETERS' -and -not (Test-Path ${quote(join(root, 'poison.json'))})}
+      $checks.parametersNoWrongOperation=$false
+      try{[WsaaHomologacion]::WriteParameterEvidence($iva,$ticket,$typesOperation,$now,${quote(join(root, 'wrong.json'))})}catch{$checks.parametersNoWrongOperation=$_.Exception.InnerException.Message -eq 'WSFE_PARAMETERS'}
+      $checks.parametersNoWrongExtension=$false
+      try{[WsaaHomologacion]::WriteParameterEvidence($iva,$ticket,$ivaOperation,$now,${quote(join(root, 'wrong.txt'))})}catch{$checks.parametersNoWrongExtension=$_.Exception.InnerException.Message -eq 'WSFE_PARAMETER_DESTINATION'}
+      $checks.parametersSafeClass=$false
+      try{[WsaaHomologacion]::ParseWsfeDiagnostic($conditionXml.Replace('B/C','&lt;unsafe&gt;'),$conditionOperation)|Out-Null}catch{$checks.parametersSafeClass=$_.Exception.InnerException.Message -eq 'WSFE_PARAMETERS'}
       $key = [Security.Cryptography.RSA]::Create(2048)
       $request = [Security.Cryptography.X509Certificates.CertificateRequest]::new('CN=Computadores Test',$key,[Security.Cryptography.HashAlgorithmName]::SHA256,[Security.Cryptography.RSASignaturePadding]::Pkcs1)
       $cert = $request.CreateSelfSigned([DateTimeOffset]::UtcNow.AddMinutes(-5),[DateTimeOffset]::UtcNow.AddHours(1))
@@ -111,7 +162,7 @@ it.skipIf(process.platform !== 'win32')('valida TRA, CMS y parsing sin red ni cr
     const result = spawnSync('pwsh', ['-NoProfile', '-NonInteractive', '-File', runner], { encoding: 'utf8', timeout: 30_000 })
     expect(result.status, result.stdout + result.stderr).toBe(0)
     const checks: Record<string, boolean> = JSON.parse(result.stdout.trim())
-    expect(Object.keys(checks)).toHaveLength(32)
+    expect(Object.keys(checks)).toHaveLength(48)
     expect(Object.entries(checks).filter(([, passed]) => !passed)).toEqual([])
     expect(result.stdout + result.stderr).not.toMatch(/SYNTHETIC_|PRIVATE KEY|BEGIN CERTIFICATE/)
   } finally {
@@ -128,3 +179,51 @@ it('limita el diagnóstico a homologación sin emisión, secretos ni redireccion
   expect(source).not.toMatch(/https:\/\/wsaa\.afip|FECAESolicitar|Console\.(Write|Error)/)
   expect(script).not.toMatch(/Write-(?:Output|Host|Error).*\$(?:ticket|cms|password|tra)\b(?!\.Expiration)/)
 })
+
+it.skipIf(process.platform !== 'win32').each(['ok','second-fail','export-fail','missing-directory','mixed-mode'])('catálogos %s reutiliza un TA y nunca reintenta ni instala datos', mode => {
+  const root = mkdtempSync(join(tmpdir(), 'kiosko-wsaa-test-'))
+  try {
+    const runner = join(root, 'catalog.ps1'), report = join(root, 'report.json')
+    writeFileSync(runner, `
+      $ErrorActionPreference='Stop'
+      Add-Type @'
+using System; using System.IO; using System.Security; using System.Collections.Generic;
+public static class WsaaHomologacion {
+ public static string Mode="${mode}";
+ public static List<string> Calls=new List<string>(); public static byte[] Cms;
+ public sealed class Ticket { public string Token="SYNTHETIC_TOKEN"; public string Sign="SYNTHETIC_SIGN"; public DateTimeOffset Expiration=DateTimeOffset.UtcNow.AddHours(1); }
+ public sealed class Diagnostic { public object[] Parameters=new object[]{new object()}; }
+ public static void ValidateRepresentedCuit(string c){Calls.Add("validate");}
+ public static string BuildTra(DateTimeOffset t,string s,uint id){Calls.Add("tra");return "SYNTHETIC_TRA";}
+ public static byte[] SignTra(string c,string k,SecureString p,string tra){Calls.Add("sign");Cms=new byte[]{1,2};return Cms;}
+ public static Ticket Login(byte[] c){Calls.Add("login");return new Ticket();}
+ public static Diagnostic ConsultWsfe(Ticket t,string c,string op){Calls.Add(op);if(Mode=="second-fail"&&op=="FEParamGetCondicionIvaReceptor")throw new InvalidDataException("SYNTHETIC_PRIVATE_UNEXPECTED");return new Diagnostic();}
+ public static void WriteParameterEvidence(Diagnostic d,Ticket t,string op,DateTimeOffset now,string path){Calls.Add("export:"+op);if(Mode=="export-fail")throw new IOException("SYNTHETIC_PRIVATE_UNEXPECTED");File.WriteAllText(path,"PUBLIC_PARAMETERS_ONLY");}
+}
+'@
+      function global:Add-Type {param($Path,$ReferencedAssemblies)}
+      function global:Get-Content {param($LiteralPath,[switch]$Raw);[WsaaHomologacion]::Calls.Add('dpapi');return 'SYNTHETIC_DPAPI'}
+      function global:ConvertTo-SecureString {param([Parameter(ValueFromPipeline)]$Value);return [Security.SecureString]::new()}
+      & ${quote(resolve('scripts/probar-wsaa-homologacion.ps1'))} -Certificado SYNTHETIC_CERT -ClaveCifrada SYNTHETIC_KEY -ProteccionDpapi SYNTHETIC_PATH -Conectar -CatalogosPreparacion -CuitRepresentado 20123456786 -DirectorioCatalogos ${quote(mode === 'missing-directory' ? join(root, 'absent') : root)} ${mode === 'mixed-mode' ? '-ConsultaWsfe FEParamGetPtosVenta' : ''}
+      $code=if($LASTEXITCODE){$LASTEXITCODE}else{0}
+      [IO.File]::WriteAllText(${quote(report)},(@{calls=@([WsaaHomologacion]::Calls.ToArray());cms_cleared=([WsaaHomologacion]::Cms -eq $null -or [WsaaHomologacion]::Cms[0] -eq 0);exports=@(Get-ChildItem -LiteralPath ${quote(root)} -Filter '*FEParam*.json').Count}|ConvertTo-Json -Compress))
+      exit $code
+    `)
+    const result = spawnSync('pwsh', ['-NoProfile','-NonInteractive','-File',runner], {encoding:'utf8',timeout:30000})
+    expect(result.status, result.stdout + result.stderr).toBe(mode === 'ok' ? 0 : 1)
+    expect(existsSync(report), result.stdout + result.stderr).toBe(true)
+    const evidence = JSON.parse(readFileSync(report,'utf8')) as {calls:string[];cms_cleared:boolean;exports:number}
+    expect(evidence.cms_cleared).toBe(true)
+    expect(result.stdout + result.stderr).not.toMatch(/SYNTHETIC_|PUBLIC_PARAMETERS_ONLY/)
+    if (['missing-directory','mixed-mode'].includes(mode)) expect(evidence.calls).toEqual([])
+    else {
+      expect(evidence.calls.filter(c=>c==='login')).toHaveLength(1)
+      expect(evidence.calls.filter(c=>c==='FEParamGetTiposIva')).toHaveLength(1)
+      expect(evidence.calls.filter(c=>c==='FEParamGetCondicionIvaReceptor')).toHaveLength(mode==='export-fail'?0:1)
+    }
+    expect(evidence.exports).toBe(mode==='ok'?2:mode==='second-fail'?1:0)
+    expect(result.stdout.includes('CATALOGOS_PREPARACION_EXPORTADOS=true')).toBe(mode==='ok')
+  } finally {
+    cleanCatalogTest(root)
+  }
+},40000)

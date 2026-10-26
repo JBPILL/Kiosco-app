@@ -1117,3 +1117,47 @@ Siguiente gate: contexto/preparación fiscal positiva y revisión, con emisor y
 catálogo explícitos autorizados. La autorización de lecturas/rechazos no permite
 aprovisionar esas filas o secretos ni habilitar mutaciones. Preparar el alcance
 concreto antes de pedir ese GO; no adoptar el PV2 ni IVA antiguos por defecto.
+
+### Fuentes reales del catálogo fiscal: consulta local preparada — 26/10/2026
+
+La preparación positiva exige emisor habilitado y fiscal_parametros_homologacion
+vigente (SQL012); ninguna aceptación negativa/RLS crea esas dependencias.
+Se amplió únicamente el diagnóstico local existente, sin cambiar SQL/Edge:
+
+- `FEParamGetTiposIva`: ids/descripciones y fechas originales.
+- `FEParamGetCondicionIvaReceptor`: ids/descripciones y Cmp_Clase original,
+  sin filtrar ClaseCmp para obtener las combinaciones informadas por ARCA.
+
+Contrato consultado en páginas oficiales de homologación:
+https://wswhomo.afip.gov.ar/wsfev1/service.asmx?op=FEParamGetTiposIva y
+https://wswhomo.afip.gov.ar/wsfev1/service.asmx?op=FEParamGetCondicionIvaReceptor.
+Se usa el nombre publicado del método, no la variante errónea FrenteIva del
+ejemplo de algunos manuales. No transformar automáticamente clases a tipos1/6/11
+ni elegir condición/IVA/PV para una venta: primero revisar evidencia real.
+
+`scripts/probar-wsaa-homologacion.ps1 -CatalogosPreparacion -Conectar` requiere
+certificado/clave cifrada/protección DPAPI originales, CUIT representado y
+`-DirectorioCatalogos` existente. Obtiene un único TA de wsfe en memoria y realiza
+una lectura de cada método, sin reintentos. No ejecutarlo sin el GO específico
+de uso de claves y consultas externas. No llama FECAESolicitar/FECompConsultar,
+no emite comprobantes ni usa claves productivas. Backend Staging sigue cerrado.
+
+Exportación de dos JSON nuevos con nombre único: sólo campos públicos parseados,
+entorno/origen/método/fecha UTC/hash SHA256 de respuesta. Sin XML crudo, CUIT,
+Token/Sign, PEM o contraseñas. Fuente con filas acotadas, forma/campos estrictos,
+ids válidos, descripción acotada, fechas válidas y duplicados rechazados.
+Exportador rechaza campos que contengan el Token/Sign en memoria y nunca
+sobrescribe archivos. Cmp_Clase se conserva como dato, no como permiso fiscal.
+Los JSON incluyen importado_en_staging=false/emision_habilitada=false.
+
+Si falla la segunda consulta/exportación puede quedar el primer JSON público:
+es evidencia parcial, no un catálogo completo. Sólo
+CATALOGOS_PREPARACION_EXPORTADOS=true y salida0 confirman ambas exportaciones.
+No importar ni activar emisores/flags por ese marcador. El modo individual
+admite `-SalidaParametros` para estos dos métodos; los modos previos de puntos
+y tipos de comprobante conservan su comportamiento. Requiere PowerShell7.4+.
+
+Siguiente GO propuesto: una autenticación WSAA y exactamente dos consultas WSFE
+en homologación con certificado original/CUIT representado ya autorizado,
+guardando sólo la evidencia pública local. No cargar nada en Supabase/Vercel,
+no abrir flags ni provisionar custodia/emisor/catálogo, sin emisiones o Production.

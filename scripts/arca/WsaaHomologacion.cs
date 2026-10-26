@@ -19,6 +19,15 @@ public static class WsaaHomologacion {
         public int Points { get; internal set; }
         public int BlockedPoints { get; internal set; }
         public int VoucherTypes { get; internal set; }
+        public WsfeParameter[] Parameters { get; internal set; } = Array.Empty<WsfeParameter>();
+        public string SourceSha256 { get; internal set; } = "";
+    }
+    public sealed class WsfeParameter {
+        public int Id { get; internal set; }
+        public string Description { get; internal set; } = "";
+        public string VoucherClasses { get; internal set; } = "";
+        public string ValidFrom { get; internal set; } = "";
+        public string ValidUntil { get; internal set; } = "";
     }
     public sealed class Ticket {
         public string Token { get; internal set; }
@@ -156,7 +165,8 @@ public static class WsaaHomologacion {
     }
 
     public static void ValidateWsfeOperation(string operation) {
-        if (operation != "FEParamGetPtosVenta" && operation != "FEParamGetTiposCbte")
+        if (operation != "FEParamGetPtosVenta" && operation != "FEParamGetTiposCbte"
+            && operation != "FEParamGetTiposIva" && operation != "FEParamGetCondicionIvaReceptor")
             throw new ArgumentException("WSFE_OPERATION");
     }
 
@@ -193,6 +203,39 @@ public static class WsaaHomologacion {
         }
         var collections = result.Elements(wsfe + "ResultGet").ToArray();
         if (collections.Length != 1) throw new InvalidDataException("WSFE_RESULT");
+        if (operation == "FEParamGetTiposIva" || operation == "FEParamGetCondicionIvaReceptor") {
+            bool conditions = operation == "FEParamGetCondicionIvaReceptor";
+            string[] fields = conditions ? new[] {"Id", "Desc", "Cmp_Clase"} : new[] {"Id", "Desc", "FchDesde", "FchHasta"};
+            var rows = collections[0].Elements(wsfe + (conditions ? "CondicionIvaReceptor" : "IvaTipo")).ToArray();
+            if (rows.Length < 1 || rows.Length > 100 || collections[0].Elements().Count() != rows.Length)
+                throw new InvalidDataException("WSFE_PARAMETERS");
+            var parameters = new System.Collections.Generic.List<WsfeParameter>();
+            var seen = new System.Collections.Generic.HashSet<string>();
+            foreach (var row in rows) {
+                if (row.Elements().Count() != fields.Length || fields.Any(f => row.Elements(wsfe + f).Count() != 1)
+                    || row.Elements().Any(f => f.HasElements || f.Attributes().Any())) throw new InvalidDataException("WSFE_PARAMETERS");
+                string description = row.Element(wsfe + "Desc").Value;
+                if (!Int32.TryParse(row.Element(wsfe + "Id").Value, out var id) || id < 1 || id > 99
+                    || String.IsNullOrWhiteSpace(description) || description.Length > 120 || description.Any(Char.IsControl))
+                    throw new InvalidDataException("WSFE_PARAMETERS");
+                var parameter = new WsfeParameter { Id = id, Description = description };
+                if (conditions) {
+                    parameter.VoucherClasses = row.Element(wsfe + "Cmp_Clase").Value;
+                    if (!Regex.IsMatch(parameter.VoucherClasses, "^[A-Z0-9 ,/]{1,32}$")) throw new InvalidDataException("WSFE_PARAMETERS");
+                } else {
+                    parameter.ValidFrom = row.Element(wsfe + "FchDesde").Value;
+                    parameter.ValidUntil = row.Element(wsfe + "FchHasta").Value;
+                    foreach (var date in new[] { parameter.ValidFrom, parameter.ValidUntil }) {
+                        if (date != "NULL" && !DateTime.TryParseExact(date, "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture,
+                            System.Globalization.DateTimeStyles.None, out _)) throw new InvalidDataException("WSFE_PARAMETERS");
+                    }
+                }
+                if (!seen.Add(id + ":" + parameter.VoucherClasses)) throw new InvalidDataException("WSFE_PARAMETERS");
+                parameters.Add(parameter);
+            }
+            return new WsfeDiagnostic { Parameters = parameters.ToArray(),
+                SourceSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(xml))).ToLowerInvariant() };
+        }
         if (operation == "FEParamGetTiposCbte") {
             var types = collections[0].Elements(wsfe + "CbteTipo").ToArray();
             var ids = new System.Collections.Generic.HashSet<int>();
@@ -223,5 +266,33 @@ public static class WsaaHomologacion {
         var result = ParseWsfeDiagnostic(response.Xml, operation);
         if (response.Status < 200 || response.Status >= 300) throw new InvalidDataException("WSFE_HTTP_" + response.Status);
         return result;
+    }
+
+    // Exports only parsed public parameter fields, never SOAP or Auth credentials.
+    // This is source evidence; it does not map classes, set IVA or enable an issuer.
+    public static void WriteParameterEvidence(WsfeDiagnostic diagnostic, Ticket ticket, string operation, DateTimeOffset consultedAt, string path) {
+        if ((operation != "FEParamGetTiposIva" && operation != "FEParamGetCondicionIvaReceptor")
+            || diagnostic == null || diagnostic.Parameters.Length < 1 || ticket == null
+            || String.IsNullOrEmpty(ticket.Token) || String.IsNullOrEmpty(ticket.Sign)
+            || !Regex.IsMatch(diagnostic.SourceSha256, "^[0-9a-f]{64}$")) throw new InvalidDataException("WSFE_PARAMETERS");
+        foreach (var row in diagnostic.Parameters) {
+            foreach (var value in new[] { row.Description, row.VoucherClasses, row.ValidFrom, row.ValidUntil }) {
+                if (value.Contains(ticket.Token) || value.Contains(ticket.Sign)) throw new InvalidDataException("WSFE_PARAMETERS");
+            }
+        }
+        var destination = Path.GetFullPath(path);
+        if (!destination.EndsWith(".json", StringComparison.OrdinalIgnoreCase) || !Directory.Exists(Path.GetDirectoryName(destination)))
+            throw new InvalidDataException("WSFE_PARAMETER_DESTINATION");
+        string json = System.Text.Json.JsonSerializer.Serialize(new {
+            version = 1, entorno = "HOMOLOGACION", operacion = operation,
+            origen = "https://wswhomo.afip.gov.ar/wsfev1/service.asmx",
+            consultado_en = consultedAt.ToUniversalTime().ToString("o"),
+            respuesta_sha256 = diagnostic.SourceSha256, parametros = diagnostic.Parameters,
+            importado_en_staging = false, emision_habilitada = false
+        });
+        using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        var bytes = Encoding.UTF8.GetBytes(json);
+        output.Write(bytes, 0, bytes.Length);
+        output.Flush(true);
     }
 }

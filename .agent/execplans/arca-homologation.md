@@ -2574,3 +2574,38 @@ alcance y fixture revisables antes de solicitar el nuevo GO de provisión/API
 con mutaciones; el GO actual sólo cubre lecturas/rechazos/base temporal. No
 provisionar custodia/secretos ni llamar ARCA para resolverlo sin autorización.
 PR03 sigue parcial; PR02 sin primer CAE y resto del objetivo común conservado.
+
+## Preparación de consultas de parámetros reales — 26/10/2026
+
+Lectura del contrato SQL012 confirmó dependencias del contexto positivo:
+venta propia COMPLETADA/importe positivo/detalles/sin devolución/CAE previo,
+emisor habilitado y parámetros vigentes. Se pospone provisión hasta disponer de
+datos fuente revisables; no tomar IVA ni PV2 de configuración heredada.
+
+Ampliado sólo diagnóstico local C#/PowerShell existente: allowlist suma
+FEParamGetTiposIva y FEParamGetCondicionIvaReceptor según contrato oficial de
+homologación, documentado con enlaces en guía ARCA. Parser estricto y exportador
+de campos públicos/hash/fecha/origen, sin XML/Auth/Token/Sign ni sobrescritura.
+Mantiene clases originales sin inventar correspondencias ni condiciones fiscales.
+Modo CatalogosPreparacion comparte una autenticación/TA en memoria para dos
+consultas exactas, sin retries. Fallo en segundo paso conserva evidencia parcial
+sin marcador global de éxito; nunca instala ni activa nada en Staging.
+
+Validación local:7tests PASS; el primero compila C# real y acredita48checks
+(32previos+16parser/exportación), incluidos fechas/duplicados/forma, métodoajeno,
+negocio, nooverwrite y rechazo de credenciales reflejadas.5tests del wrapper con
+SDK sintético comprueban una autenticación/dos consultas, fallo segunda llamada,
+fallo de exportación y preflight de directorio/modos antes de credenciales.
+No hubo consultas firmadas ni uso de credenciales originales en los tests.
+
+Primer wrapper:6PASS/1FAIL por CS0162 del mock C# con constante export-fail
+(no ejecutó el asistente); reproducido y corregido a campo de modo runtime.
+Se corrigió diagnóstico del stage exportación como WSFE y cleanup del nuevo
+test sin añadir unsafe-finally. Lint:0errores y1warning unsafe-finally previo.
+
+GO pendiente, no consumido: uso de certificado original/clave local para una
+autenticación WSAA y dos lecturas de catálogo WSFE, exportación pública local.
+No cubre instalación/provisión, flags, Vercel, ARCA Producción o CAE. La
+provisión y aceptación positiva hospedada siguen gates posteriores distintos.
+Build final PASS689módulos, aviso previo de chunks grandes; diff PASS. El cambio
+es local/scripts/tests/documentación, sin SQL, runtime Edge o frontend remoto.
