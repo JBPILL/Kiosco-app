@@ -2395,3 +2395,40 @@ aplicar el GO ya concedido, lecturas/rechazos, cierre false y verificación fina
 No pedir otra autorización equivalente. Un409 genérico no prueba por sí solo
 Auth privado/RPC correcto: investigar evidencia adicional antes de declararlo PASS.
 PR03 parcial/PR02 sin CAE; sin merge, master ni Production.
+
+## Ensayo real Dueño y retorno del gate base a false — 26/10/2026
+
+Titular ejecutó8595c44: AUTH_PROFILE_CONFIRMED role=OWNER,
+PRIVATE_TABLE_DIRECT_DENIED403, ACCESS_PROBE_READY. Se aplicó el GO existente
+únicamente a ARCA_HOMO_BACKEND_ENABLED en acoyfwwmhaeruciyedri: true a las
+18:14:59 y false a las18:15:31 (Argentina;21:14:59/21:15:31UTC). Ventana32s,
+sin cambios en otros flags, SQL, Edge, Vercel, credenciales ARCA ni Production.
+Panel muestra el digest SHA256 de false
+fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa;
+probador oficial posterior:503HOMOLOGACION_NO_HABILITADA. VerifyJWT sigue ON.
+
+Titular confirmó BASE_READ_NEGATIVE_OBSERVED409 y
+TEST_SESSION_LOGOUT_LOCAL_CONFIRMED. Invocations corrobora503 antes de abrir,
+409 a las18:15:03 y503 final a las18:15:52. Evidencia adicional en Unified Logs:
+GET /auth/v1/user del runtime Deno200 a las18:15:02; POST privado
+/rest/v1/rpc/cargar_datos_preparacion_homologacion del mismo runtime403 a las
+18:15:03; PostgreSQL42501 «Preparación fiscal no autorizada.»; logout humano204
+scope=local a las18:15:03. No se leyeron headers, tokens ni secretos. Esto acredita
+ejecución del cliente privado y rechazo de negocio, superando la ambigüedad del
+409 aislado. No prueba preparación positiva, toda policy RLS ni motivo interno
+exacto de rechazo (UUID centinela sin venta, con controles previos de actor/comercio).
+
+Resultados: identidad/perfil Dueño real PASS; acceso directo a una tabla privada
+rechazado PASS; Auth del backend real y ruta RPC privada ejecutados PASS;
+rechazo negativo observado PASS; cleanup local y gate cerrado PASS. PR03 sigue
+parcial: faltan Cajero/otro comercio y aceptación positiva/E2E con fixtures
+expresamente autorizados. No se crearon fixtures ni se aprovisionó emisor/custodia.
+No convertir este rechazo en autorización de emisión ni primer CAE.
+
+Evidencia local fuera de Git: ../backend-base-invocations-20261026.txt,
+../backend-base-closed-20261026.png y ../backend-base-closed-503-20261026.png.
+El titular informó que no tiene cuenta Cajero disponible para el siguiente
+ensayo. El baseline anterior de Owner/Cashier fue aportado por el titular, no
+prueba disponibilidad actual ni autoriza crear/reasignar usuarios ahora.
+Siguiente paso: preparar cuenta aislada Cajero bajo autorización específica;
+mantener backend false hasta que su asistente autenticado esté listo.

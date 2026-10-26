@@ -921,3 +921,18 @@ emisiones. Fuentes/evidencia/límites en el ExecPlan fiscal. Siguiente pendiente
 JWT Auth reales (incluida compatibilidad ES256 con gateway), roles/comercios y
 RLS/E2E; el probador oficial no sustituye esa aceptación. No cambiar gateway,
 claves, flags ni provisión privada sin su gate. PR02/PR03 siguen abiertos.
+
+### Aceptación parcial Dueño real y backend nuevamente cerrado — 26/10/2026
+
+JWT ES256 real previamente aceptado. Ensayo8595c44: identidad/perfil OWNER
+activo confirmado, tabla fiscal privada rechaza403 sin leer filas. Bajo GO
+específico se abrió únicamente backend base durante32segundos y se retornó a
+false; demás flags ausentes/cerrados. Registros hospedados corroboran Auth200
+desde Edge, RPC de preparación403/PostgreSQL42501, devolución negativa409 y
+logout local204. Verificación final503HOMOLOGACION_NO_HABILITADA/JWT ON.
+
+PR03 sigue parcial: no acredita aceptación positiva, Cajero/otro comercio ni
+E2E completo. No ARCA, CAE, provisión, otros flags, SQL/Edge nuevos, Vercel,
+master/Production ni merge. El titular informa que no dispone de cuenta Cajero;
+su preparación requiere alcance y autorización propios, no reasignar el Dueño.
+Historial y evidencia detallados en el ExecPlan fiscal y guía ARCA existentes.

@@ -1025,3 +1025,22 @@ no distingue fallo de actor/RPC/servicio privado, por lo que requiere evidencia
 adicional antes de cerrar aceptación hospedada. No es acceso positivo ni E2E.
 Codex debe cerrar el gate en el mismo turno de activación y verificarlo, aunque
 el asistente falle o el usuario todavía no haya comunicado el resultado.
+
+### Dueño real: acceso negativo y cierre confirmados — 26/10/2026
+
+Ensayo realizado con8595c44: Auth/perfil OWNER y rechazo directo403 de la tabla
+privada confirmados. Gate base true18:14:59→false18:15:31 (hora Argentina), resto
+de controles cerrados. Consola: BASE_READ_NEGATIVE_OBSERVED409 y logout local
+confirmado. Registros del servidor corroboran Auth200 desde runtime Deno, RPC
+privada cargar_datos_preparacion_homologacion403 y PostgreSQL42501. Por tanto,
+la ruta privada se ejecutó y rechazó el caso; no fue sólo un409 sin contexto.
+Después del cierre, probador oficial503HOMOLOGACION_NO_HABILITADA, JWT ON y digest
+del flag coincide con SHA256(false). Sin modificaciones de datos fiscales o
+comerciales solicitadas, ARCA, provisión, otros flags, Vercel ni Production.
+
+Aceptación parcial: falta Cajero, otro comercio y flujo positivo/E2E. El caso con
+UUID nulo no acredita separación entre dos ventas reales ni disponibilidad de
+emisor/catálogo. No volver a ejecutar login Dueño para repetir la misma evidencia.
+Titular no dispone de cuenta Cajero para el siguiente caso; preparar su alcance
+y solicitar autorización específica antes de crear o reasignar una identidad.
+Detalles, horarios y artefactos en el ExecPlan fiscal.
