@@ -888,3 +888,13 @@ acción exclusivamente GET de metadata, DTO sin paths/copia y categorías cerrad
 sin respuesta/mensaje externo. Mantener esquema/flags estrictos; detectar campo
 digest distinto no autoriza aceptarlo automáticamente. Usar PAT existente sólo
 en consola local y no repetir provisión ni solicitar nuevos permisos por tanteo.
+
+
+### 27/10/2026 — Distinguir capacidades PAT Edge Functions y Secrets
+La UI acredita que Edge Functions autoriza /functions, no /secrets; el token
+visible27/10 tiene sólo la primera. No interpretar HTTP403 como fallo de clave
+ARCA ni corregir lector/custodia. Preparar revisión sóloStaging/24h/Edge Function
+Secrets Read-write y dejar Create token/valor al titular. Sin editar/revocar
+tokens existentes ni ampliar Legacy/Production. La capacidad proveedor incluye
+DELETE, pero código conserva GET/POST y seis nombres exactos. Primero diagnóstico
+readonly; no inferir éxito de provisión de la configuración de acceso preparada.

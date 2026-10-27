@@ -1057,3 +1057,11 @@ red/metadatos/política; mismo PAT local, no nuevo acceso ni respuesta API en ch
 143tests/9archivos/0skip, build689 y lint enfocado PASS. Esperar CUSTODY_BASELINE_*
 antes de otra provisión. Custodia hospedada no instalada/acreditada por ese
 resultado; PR03 parcial, sin ARCA/CAE/Production nuevos. Detalle en ExecPlan.
+
+
+27/10/2026: diagnóstico real GET devuelve HTTP403, sin lectura original/escritura.
+Inspección UI del token27/10 muestra Edge Functions/8endpoints, sin Secrets.
+Preparada revisión (sin crear) de token sóloStaging/24h/Edge Function Secrets
+Read-write. Valor y creación final a cargo titular; luego diagnóstico GET antes
+de otra provisión. No se modificaron tokens existentes ni secretos/flags/ARCA.
+PR03 sigue parcial. Evidencia/limitación de identidad PAT en ExecPlan.

@@ -3503,3 +3503,33 @@ Build689/lint enfocado/node/PS AST/diff PASS. Preparar local real tras cambio RE
 sin red/privados. Sin nuevas peticiones API reales, originales o cambios remotos
 por este desarrollo. Primer resultado requerido: CUSTODY_BASELINE_* del titular,
 sólo lectura; no repetir -Provisionar hasta resolver el motivo observado.
+
+
+#### HTTP403 real y alcance PAT inspeccionado — 27/10/2026
+Titular confirmó CUSTODY_BASELINE_NOT_CONFIRMED reason=HTTP_403
+private_read=false/write_attempted=false. Diagnóstico GETúnico funcionó; API
+rechazó acceso sin llegar a originales/POST. Inspección sólo UI account/tokens:
+token reciente llamado27/10, proyecto kioskopos-staging, única capacidad Edge
+Functions READ-WRITE/8endpoints de /functions; no Secrets. No se leyó su valor.
+No vincular criptográficamente este token al ingresado en consola: identidad de
+ese ingreso no fue compartida. Si corresponde al27/10, su alcance explica403.
+
+La UI distingue Application services → Edge Function Secrets permissions, que
+habilita GET/POST/DELETE /secrets. Formulario nuevo PREPARADO para revisión:
+KioskoPOS custodia Staging,24hours, sólo kioskopos-staging y esa capacidad Read-write;
+ninguna otra. Se llegó a Review access, NO Create token. UI informa acceso
+inmutable después de creación: no se editó/revocó token anterior. Creación final/
+valor quedan a cargo humano; no abrir captura/AX de un token recién creado.
+Permiso proveedor incluyeDELETE y no restringe seis nombres; nuestro runner
+sigue limitado a GET/POST y seis nombres exactos. No ampliar a Legacy/Production.
+
+Evidencias JSON/capturas fuera de Git:
+../fiscal-custody-pat-scope-20261027.json SHA256
+42ff35b57df3e759ed99632bf11f5b925bec6cb4e18af8d72f9df70d777eb333.
+../fiscal-custody-pat-correct-scope-review-20261027.json SHA256
+78312efdedf8474ea5e949a403c0807759034637acb05874da45d4a477d010b7.
+Tab4 marcado para traspaso. Siguiente: titular Create token y usa valor sólo
+en prompt del diagnóstico; enviar únicamente CUSTODY_BASELINE_*. No repetir
+Provisionar antes de PASS/revisión. Sin token creado, permisos persistidos,
+secretos/flags/SQL/Edge/Vercel/ARCA/CAE/Production nuevos por este bloque.
+Cambio sólo documental/inspección UI:143tests/build previos no repetidos.

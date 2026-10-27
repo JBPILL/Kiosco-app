@@ -1553,3 +1553,20 @@ El diagnóstico no flexibiliza ni corrige automáticamente esquema, flags o
 colisiones y no habilita provisión si pasa: revisar causa antes de reintentar.
 Vigencia/hash de propuesta sin cambios.143tests sintéticos/build/lint PASS;
 causa/aceptación real del inventario todavía pendientes de ese resultado.
+
+
+### Permiso PAT correcto en la UI — 27/10/2026
+Diagnóstico real devolvió HTTP403 antes de originales/POST. Token visible27/10
+tiene sólo Edge Functions Read-write (/functions), que NO incluye inventario de
+secretos. La identidad del PAT ingresado en consola no fue revelada/comparada;
+si usó27/10, corregir mediante token scoped de capacidad adecuada.
+
+Etiqueta exacta: Application services → Edge Function Secrets permissions →
+Read-write. Recurso sólo kioskopos-staging, expiración24hours. No elegir Edge
+Functions, API Key Secrets, Legacy ni todos los proyectos. UI dice que acceso
+no se cambia tras creación; token anterior no modificado/revocado. Se preparó
+formulario hasta Review access, sin Create token. Titular realiza ese último
+paso y conserva valor sólo en consola privada. Permiso proveedor agrupa
+GET/POST/DELETE de secretos; asistente no usa DELETE ni otros nombres.
+Primero repetir sólo -DiagnosticarInventario con token correcto y compartir
+CUSTODY_BASELINE_*; no ejecutar provisión aún. Custodia hospedada sigue pendiente.
