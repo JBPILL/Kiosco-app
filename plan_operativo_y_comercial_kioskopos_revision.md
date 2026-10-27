@@ -1017,3 +1017,15 @@ provisiónfalse). Sin rotación/exportación ni cambios Supabase/flags/ARCA.22te
 sintéticos de ajuste posterior de salida PASS; no repetición original. Evidencia
 conservada en ExecPlan. PR03 parcial: provisión/keyring/cache/catálogo y aceptación
 hospedada positivos aún pendientes de alcances revisables y sus autorizaciones.
+
+27/10/2026: titular cierra compatibilidad original b11e660 PASS, sin repetir CMS/
+rotar/reproteger. Preparado mecanismo local para provisión inicial cerrada:
+plan público exacto6nombres/IDs/revisión/hash/vigencia24h, baseline ausente y
+13flagsfalse/ausentes; pipe privado en memoria sin nuevas pruebas originales.
+95tests sintéticos/7archivos/0skip PASS, build689 y lint enfocado PASS. Controlador
+UI importable sin lecturas privadas. Propuesta y límites en documentación fiscal/
+ExecPlan; todavía NO autorizado cargar los6secretos ni leer originales para ello.
+Provisión cerrada/metadatos tampoco acreditará keyring/TA funcional desde Edge.
+PR03 parcial; catálogo vigente/emisor/aceptación positiva y primer CAE pendientes.
+Sin SQL/Edge/Vercel/flags/Supabase/ARCA/Production nuevos ni merge.
+

@@ -1423,3 +1423,45 @@ salida exacta;22casos sintéticos PASS sin volver a usar el original. Log origin
 hash, límites y evidencia de tests en ExecPlan fiscal. Siguiente: preparar alcance
 privado de provisión/keyring con controles cerrados antes de solicitar su GO;
 catálogo y cache real se coordinan después, sin renovar WSAA por inferencia.
+
+### Provisión cerrada preparada, todavía no autorizada — 27/10/2026
+
+Compatibilidad original cerrada por revisión del titular sobre b11e660: no
+repetir CMS/RSA, reproteger ni rotar. El nuevo transporte local sólo copia el
+material bajo GO futuro; no ejecutarlo sobre originales durante desarrollo.
+
+scripts/fiscal-custody-plan.mjs fija destino acoyfwwmhaeruciyedri, revisión1,
+dos UUIDv4 distintos y seis nombres exactos; vigencia24h/hash de propuesta
+pública no equivalen a autorización. Exige ausencia inicial de los seis y
+13flags fiscales false/ausentes; rechazo de flags desconocidos, colisión o drift.
+
+scripts/arca/private-custody-delivery.mjs captura un pipe privado Windows:
+metadatos/ACL primero, lectura única necesaria para copia, pin público y DTO
+cerrados. Sin nueva importación RSA/CMS ni red; clave sigue cifrada, frase DPAPI
+se copia sólo en memoria y clave TA aleatoria32bytes se genera durante la carga.
+Nunca ejecutar ese lector con originales por consola/exec_command. El controlador
+no serializa valores; no clipboard, archivo privado, argv/env con secretos ni
+salida de errores externos. dispose obligatorio; strings JS no prometen borrado
+físico de memoria. Controlador importado en entorno UI sin leer originales.
+
+Orden bajo futuro GO: confirmar destino/plan vigente/inventario completo, cargar
+sólo los6valores en campos enmascarados (selector último), guardar una sola vez,
+comparar presencia/digests en memoria y preservar todos los secretos previos,
+confirmar13flags cerrados y Edge503, descartar entrega privada. No revelar valores
+ni capturar AX/pantallas con valores durante entrada. Ante parcial/drift detener;
+no overwrite, borrado ni retry automático. No SQL/emisor/flags/Vercel/ARCA/CAE.
+
+La verificación acredita PROVISION_CLOSED_METADATA, no custodia funcional en Edge,
+keyring operativo ni TA/cache compartidos. Esos gates y aceptación positiva
+siguen pendientes. Propuesta pública local fuera de Git:
+../fiscal-custody-public-proposal-20261027.json; hash canónico
+9c59757ef3592ced0e198ac6b9fc91f12a30dfa905d14059aa88897bc9f99344,
+vence28/10/2026 17:46:25 Argentina. Nombres/IDs íntegros en esa propuesta.
+Antes de ejecutar revalidar autorización específica, vigencia y baseline; si
+vence preparar otra propuesta pública y revisión, sin leer originales.
+
+95tests sintéticos PASS/0skip en7archivos, build689/lint enfocado/PS parse/node
+check/diff y ausencia de símbolos privados nuevos en bundle PASS. No suite global
+ni SQL nativo nuevos por tooling local. PR03 parcial; ningún secreto real leído,
+generado o transmitido por este bloque.
+

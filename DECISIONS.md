@@ -844,3 +844,16 @@ tras GO local, stdin privado/memoria y resultado acotado; sin red ni persistenci
 sin provisionar Supabase ni corregir frase/rotar archivos. READY de metadatos y
 PASS sintético no habilitan claves reales. Mínimo16 se conserva. Una eventual
 provisión hospedada y uso de WSAA/TA exigen gates propios coordinados con catálogo.
+
+### 27/10/2026 — Provisión inicial cerrada separada de compatibilidad original
+El titular cerró el gate original b11e660; no repetir prueba criptográfica ni
+rotar/reproteger para probar transporte. La provisión requiere GO propio sobre
+plan público limitado a seis nombres, destino Staging fijo, revisión/IDs/hash y
+vigencia24h. Baseline ausente y13flags cerrados antes de leer originales.
+Transporte local en memoria mediante pipe capturado, nunca salida de consola o
+clipboard; lector sólo -Preparar y copia, sin CMS/RSA/ARCA. TA key nueva32bytes
+sólo durante provisión autorizada. Comparar digests en memoria/preservar previos;
+parcial o drift detienen sin overwrite/retry/borrado. Metadatos de provisión no
+cierran funcionalidad hospedada, cache compartido ni aceptación fiscal positiva.
+95pruebas sintéticas y build PASS; no carga remota ni lectura original nueva.
+

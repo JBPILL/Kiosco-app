@@ -3316,3 +3316,59 @@ exportarlos o leer originales otra vez. Siguiente trabajo local: alcance y
 transporte privado revisables para esa provisión cerrada, seguido de catálogo/TA
 coordinados y aceptación positiva con GO propios. Staging/SQL/Edge/flags y Vercel/
 Production sin cambios por este bloque; PR03 parcial, sin nuevo CAE/merge.
+
+### Plan local de provisión cerrada, gate original sin repetir — 27/10/2026
+
+El titular revisó b11e660 y cerró explícitamente compatibilidad original PASS:
+no nuevas pruebas CMS ni rotación/reprotección. Sólo preparar mecanismo; aún
+NO autorizado copiar seis valores a Supabase. Diseñar plan público con destino
+Staging exacto,6nombres y huella/IDs/revisión, hash/vigencia y precondición de
+nombres ausentes/13flags privados false o ausentes. Sin emisor/SQL/activación.
+
+Transporte previsto sólo en memoria bajo GO futuro: módulo Node controlador
+captura pipe privado de PowerShell, verifica DTO cerrado y no serializa valores.
+Lector reutiliza únicamente -Preparar (metadatos) y lee original una vez para
+copiarlo, sin importar RSA, probar CMS, llamar WSAA/WSFE o crear archivo privado.
+La frase DPAPI se obtiene sólo para la copia autorizada; keyring aleatorio32bytes
+se genera sólo en esa carga. Ningún valor en argv/env/log ni errores externos.
+No ejecutar lector original/desencriptar DPAPI durante desarrollo. Tests con
+material sintético; después preparar propuesta pública revisable y pedir GO.
+
+Luego sólo presencia/digests comparados en memoria, nombres previos sin cambios,
+flags cerrados y Edge503. Eso acredita provisión cerrada/metadatos; no función
+criptográfica desde Edge ni TA/cache compartidos. Ante colisión/drift/resultado
+parcial detener sin sobrescribir/borrar/reintentar. No LoginCms/WSFE/CAE por este
+bloque. Catálogo vigente, emisor/representación y aceptación positiva posteriores.
+
+#### Cierre de preparación local del transporte — 27/10/2026
+
+Implementados plan público JS-only, lector PS interno y entrega privada con tipos
+.d.mts. 95PASS/0FAIL/0skip,7archivos en
+../fiscal-custody-provision-final-20261027.json/.log; SHA256 JSON
+3fbe707a6d59410e1ab701f92a3bb2d8809eb663d36d27b3eea5acf0c37a2199.
+46casos del primer cierre también PASS. Sintéticos Unicode/DPAPI/ACL/pin y
+archivos intactos; equivalencia de checksum CUIT con servidor en2000candidatos.
+Entrega oculta a JSON, TA32bytes con loader real no exportable, rechazo de
+colisión/hash/flags/parciales/digests/dispose. Sin contenidos originales.
+
+Fallos preservados: primer test pipe rechazó sintaxis PS por operadores booleanos
+al principio de línea; corregidos sin relajar validación. Primer import UI rechazó
+dependencia TS: plan público pasó a JS-only con equivalencia probada. Primer build
+rechazó falta de declaraciones .mjs: añadidos tipos .d.mts, sin any/supresión.
+Build final PASS689; lint enfocado sin diagnósticos, PS AST/node check/diff y
+ausencia de símbolos nuevos privados en dist PASS. No nueva suite global/SQL
+por estas herramientas locales; evidencias previas conservan alcance.
+
+Import real del controlador en CUA PASS (typeof function), sin invocarlo con
+originales. Lectura UI Staging muestra6customsecrets anteriores, único flag fiscal
+presente BACKEND=false por digest; otros12ausentes, sin custodia/keyring.
+No valores revelados ni form cambiado. Revalidar inventario fresco antes del GO.
+
+Propuesta pública fuera de Git ../fiscal-custody-public-proposal-20261027.json,
+hash canónico9c59757ef3592ced0e198ac6b9fc91f12a30dfa905d14059aa88897bc9f99344,
+vigencia hasta28/10/2026 20:46:25.601Z (17:46Argentina).
+Credencial9a4916d1-b6b5-499f-98ef-9f6cf79510be; TAkeyb14101fb-ba80-4d3f-a102-d2f8c96f3072.
+Seis nombres públicos derivados en propuesta; aún no valores privados preparados.
+Próximo: revisión/GO de provisión cerrada únicamente. No confundir copia/metadata
+con custodia funcional hospedada; no LoginCms/WSFE ni emisor/activación por este GO.
+
