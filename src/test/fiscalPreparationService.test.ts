@@ -13,7 +13,7 @@ function input(){
  return {condicionEmisor:'MONOTRIBUTO',datos:{...data,importes}}
 }
 function fixture(){
- const flags:Record<string,string>={SUPABASE_URL:'https://acoyfwwmhaeruciyedri.supabase.co',ARCA_HOMO_BACKEND_ENABLED:'true'}
+ const flags:Record<string,string>={SUPABASE_URL:'https://acoyfwwmhaeruciyedri.supabase.co',ARCA_HOMO_BACKEND_ENABLED:'true',ARCA_HOMO_DATA_PREPARATION_ENABLED:'true'}
  const getUser=vi.fn<FiscalAuthClient['auth']['getUser']>().mockResolvedValue({data:{user:{id:actor}},error:null})
  const rpc=vi.fn<FiscalAuthClient['rpc']>(async(name,args)=>({data:name==='cargar_datos_preparacion_homologacion'?context:{operacion_id:args.p_operacion_id,venta_id:args.p_venta_id,preparacion_sha256:args.p_sha,estado:'DATOS_PREPARADOS',emision_habilitada:false},error:null}))
  const deps={admin:{auth:{getUser},rpc},readSecret:(name:string)=>flags[name]}
@@ -59,6 +59,27 @@ it.each(['operacion_id','preparacion_sha256','emision_habilitada'])('ACK con %s 
 })
 it('carga contexto público sin preparación, TA ni emisión',async()=>{
  const f=fixture();expect(await loadFiscalPreparation(f.deps,'SYNTHETIC_JWT',sale)).toEqual(context);expect(f.rpc).toHaveBeenCalledTimes(1)
+})
+it.each([undefined,'false','TRUE','1',' true '])('escritura requiere gate literal true: %s',async value=>{
+ const f=fixture()
+ if(value===undefined)delete f.flags.ARCA_HOMO_DATA_PREPARATION_ENABLED
+ else f.flags.ARCA_HOMO_DATA_PREPARATION_ENABLED=value
+ await expect(f.save()).rejects.toThrow('FISCAL_PREPARACION_NO_CONFIRMADA')
+ expect(f.getUser).not.toHaveBeenCalled();expect(f.rpc).not.toHaveBeenCalled()
+})
+it.each(['ARCA_HOMO_DATA_PREPARATION_ENABLED','ARCA_HOMO_BACKEND_ENABLED','SUPABASE_URL'])('revocación de %s durante la lectura de contexto bloquea RPC de escritura',async flag=>{
+ const f=fixture(),implementation=f.rpc.getMockImplementation()!
+ f.rpc.mockImplementation(async(name,args)=>{const result=await implementation(name,args);f.flags[flag]='false';return result})
+ await expect(f.save()).rejects.toThrow('FISCAL_PREPARACION_NO_CONFIRMADA')
+ expect(f.getUser).toHaveBeenCalledTimes(1)
+ expect(f.rpc.mock.calls.map(([name])=>name)).toEqual(['cargar_datos_preparacion_homologacion'])
+})
+it('contexto y recuperación histórica siguen legibles con el gate de escritura ausente',async()=>{
+ const f=fixture();delete f.flags.ARCA_HOMO_DATA_PREPARATION_ENABLED
+ expect(await loadFiscalPreparation(f.deps,'SYNTHETIC_JWT',sale)).toEqual(context)
+ f.rpc.mockResolvedValueOnce({data:{venta_id:sale,estado:'DATOS_PREPARADOS',operacion_id:operation,preparacion_sha256:'a'.repeat(64),emision_habilitada:false},error:null})
+ expect((await resolveFiscalSale(f.deps,'SYNTHETIC_JWT',sale)).operacion_id).toBe(operation)
+ expect(f.rpc.mock.calls.map(([name])=>name)).toEqual(['cargar_datos_preparacion_homologacion','resolver_preparacion_fiscal_homologacion'])
 })
 it('compone SDK real con Auth/contexto/guardado mock, sólo destinos permitidos y sin red fiscal',async()=>{
  const paths:string[]=[]

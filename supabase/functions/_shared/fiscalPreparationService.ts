@@ -43,9 +43,11 @@ export async function resolveFiscalSale(deps:FiscalPreparationDependencies,token
  * UUID original antes del POST; errores y ACK perdido nunca crean otro UUID. */
 export async function saveFiscalPreparation(deps:FiscalPreparationDependencies,token:string,sale:string,operationId:string,input:unknown):Promise<Readonly<FiscalPreparationAck>> {
  try{
-  if(!uuid(operationId))return fail()
+  if(!uuid(operationId)||deps.readSecret('ARCA_HOMO_DATA_PREPARATION_ENABLED')!=='true')return fail()
   const actorAuthId=await actor(deps,token,sale),current=await context(deps,actorAuthId,sale)
   const prepared=await prepareFiscalData(current,input)
+  if(deps.readSecret('SUPABASE_URL')!=='https://acoyfwwmhaeruciyedri.supabase.co'
+   ||deps.readSecret('ARCA_HOMO_BACKEND_ENABLED')!=='true'||deps.readSecret('ARCA_HOMO_DATA_PREPARATION_ENABLED')!=='true')return fail()
   const result=await deps.admin.rpc('guardar_datos_preparacion_homologacion',{
    p_actor_auth_id:actorAuthId,p_venta_id:sale,p_operacion_id:operationId,p_canonico:prepared.canonico,p_sha:prepared.sha256,
   })

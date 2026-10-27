@@ -864,6 +864,7 @@ Los UUID concretos se asignan y vinculan mediante provisionamiento privado autor
 Todos ausentes/false por defecto; requieren valor literal `true`, además de sus restantes guards. Ningún flag público sustituye estas autoridades.
 
 - `ARCA_HOMO_BACKEND_ENABLED`.
+- `ARCA_HOMO_DATA_PREPARATION_ENABLED` (nuevo control local desde 27/10: sólo guardado de datos, no reserva/consulta ARCA; requiere actualizar Edge bajo GO antes de atribuírselo al runtime hospedado anterior).
 - `ARCA_HOMO_CREDIT_APPLY_ENABLED`.
 - `ARCA_HOMO_CREDIT_CONSULT_ENABLED`.
 - `ARCA_HOMO_CREDIT_DRAFTS_ENABLED`.
@@ -1259,3 +1260,41 @@ Verificar antes el proyecto autorizado; conservar el valor JSON sin alterar
 campos/fechas y calcular SHA256 de los bytes del archivo. No usar un manifiesto
 viejo como sustituto de esta lectura independiente. En SQL se comparan los
 valores tipados, conservando precisión de fecha; no sólo sus conteos.
+
+### Lectura real de serie en homologación — 27/10/2026
+
+Con GO específico, una autenticación WSAA y FECompUltimoAutorizado para PV2/
+tipo11 terminaron PASS; último observado0, sin reserva ni emisiones. Proceso
+terminó y descartó TA de memoria. Expiración informada28/10 02:49:53.999Z;
+no repetir LoginCms durante esa vigencia por falta de caché local. GO consumido.
+Detalle, huellas y límites en ExecPlan. La lectura no prueba habilitación de
+FECAESolicitar ni reemplaza la aceptación hospedada/custodia/autorización CAE.
+
+### Gate separado de guardado y nuevo candidato cerrado — 27/10/2026
+
+ARCA_HOMO_DATA_PREPARATION_ENABLED debe ser literaltrue para guardar datos de
+preparación. HTTP lo comprueba antes de construir admin y el servicio vuelve a
+comprobar destino/backend/gate inmediatamente antes de RPC, conservando Auth
+original. Sin él permanecen legibles contexto y resolución histórica; no se
+reserva ni consulta ARCA. El flag público de revisión no sustituye este permiso.
+No implica que todas las acciones de la API base sean sólo lectura.
+
+Este control todavía es LOCAL: el runtime remoto bac8ac1 anterior no lo conoce.
+No habilitar emisor/catálogo para ensayo positivo antes de instalar/verificar
+el nuevo candidato bajo GO específico y revisar los demás caminos de escritura.
+No activar ningún flag nuevo por agregarlo al inventario.
+
+Para empaquetar otro candidato ya commiteado, usar:
+```text
+node scripts/preparar-edge-fiscal-staging.mjs --source-commit COMMIT_COMPLETO --output DIRECTORIO_NUEVO
+node scripts/verificar-paquete-fiscal-cerrado.mjs DIRECTORIO_NUEVO
+```
+Requiere commithex40, fuentes de funciones idénticas, sin fuentes fiscales no
+versionadas y salida inexistente. No sobrescribe paquetes anteriores. Manifiesto
+registra sourceCommit/hash/bytes/imports/módulos y JWT=true. Verificador coteja
+hash/imports/destino antes de cargar un paquete sólo en simulación local con
+fetch bloqueado y Deno.env sintético; no escribe dentro del paquete. Modo con
+candidato agrega5casos de escritura cerrada con backend base habilitado y flag
+de datos ausente/false/malformado; no debe leer claves privadas ni hacer red.
+El modo histórico sin argumento del verificador conserva sus4casos anteriores.
+Empaquetar/verificar no despliega y no autoriza provisión/flags/emisiones.

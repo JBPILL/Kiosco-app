@@ -38,8 +38,8 @@ it('HTTP estado NC valida el identificador de consulta antes de Auth',async()=>{
  const f=fixture(),body={accion:'ESTADO_ENVIO_NC',venta_id:crypto.randomUUID(),operacion_origen_id:op,solicitud_id:crypto.randomUUID(),propuesta_sha256:'a'.repeat(64),consulta_id:'arbitrary'}
  expect((await f.handler(request(JSON.stringify(body)))).status).toBe(400);expect(f.factory).not.toHaveBeenCalled()
 })
-function preparationFixture(){
- const f=fixture(),sale=crypto.randomUUID(),actor=crypto.randomUUID()
+function preparationFixture(flags:Record<string,string|undefined>={ARCA_HOMO_DATA_PREPARATION_ENABLED:'true'}){
+ const f=fixture(flags),sale=crypto.randomUUID(),actor=crypto.randomUUID()
  const context={version:1,venta_id:sale,total:'123.45',cuit_emisor:wsfeSample.cuitEmisor,punto_venta:7,incluye_recepcion_envases:false,revision_parametros:1,condiciones:[{id:5,descripcion:'Ensayo',comprobantes:[11]}],alicuotas:[]}
  const {version:_v,entorno:_e,cuitEmisor:_c,puntoVenta:_p,numero:_n,...data}=wsfeSample
  const {total:_t,...importes}=data.importes
@@ -62,6 +62,18 @@ it('HTTP guarda datos anidados y devuelve sólo ACK, sin reservar ni emitir',asy
  expect(response.status).toBe(200);expect((await response.json()).resultado).toMatchObject({estado:'DATOS_PREPARADOS',operacion_id:op,emision_habilitada:false})
  expect(f.getUser).toHaveBeenCalledTimes(1);expect(f.rpc.mock.calls.map(([name])=>name)).toEqual(['cargar_datos_preparacion_homologacion','guardar_datos_preparacion_homologacion'])
  expect(f.fetcher).not.toHaveBeenCalled()
+})
+it.each([undefined,'false','TRUE','1',' true '])('HTTP cierra escritura de datos con gate %s antes de crear admin',async value=>{
+ const f=preparationFixture({ARCA_HOMO_DATA_PREPARATION_ENABLED:value})
+ const response=await f.handler(request(JSON.stringify({accion:'GUARDAR_DATOS_FISCALES',venta_id:f.sale,operacion_id:op,entrada:f.entrada})))
+ expect(response.status).toBe(503);expect((await response.json()).codigo).toBe('DATOS_FISCALES_NO_HABILITADOS')
+ expect(f.factory).not.toHaveBeenCalled();expect(f.getUser).not.toHaveBeenCalled();expect(f.rpc).not.toHaveBeenCalled();expect(f.fetcher).not.toHaveBeenCalled()
+ expect(f.read.mock.calls.map(([key])=>key)).toEqual(['SUPABASE_URL','ARCA_HOMO_BACKEND_ENABLED','ARCA_HOMO_DATA_PREPARATION_ENABLED'])
+})
+it.each(['RESOLVER_VENTA','DATOS_FISCALES_VENTA'])('HTTP conserva lectura %s con escritura apagada',async accion=>{
+ const f=preparationFixture({}),response=await f.handler(request(JSON.stringify({accion,venta_id:f.sale})))
+ expect(response.status).toBe(200);expect(f.rpc).toHaveBeenCalledTimes(1);expect(f.fetcher).not.toHaveBeenCalled()
+ expect(f.read.mock.calls.map(([key])=>key)).toEqual(['SUPABASE_URL','ARCA_HOMO_BACKEND_ENABLED','SUPABASE_URL','ARCA_HOMO_BACKEND_ENABLED'])
 })
 it('HTTP admite detalle válido de preparación mayor a 2KiB con límite propio de 64KiB',async()=>{
  const f=preparationFixture(),entrada={...f.entrada,datos:{...f.entrada.datos,tributos:Array.from({length:25},(_,i)=>({id:1,descripcion:'Tributo sintético '+i,base:'0.00',alicuota:'0.0000',importe:'0.00'}))}}

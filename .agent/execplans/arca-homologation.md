@@ -2857,3 +2857,44 @@ provisión de emisor/custodia y flags pendiente. GO WSAA+último PV2/tipo11 desp
 de07:04Argentina aún no ejecutado; a esta hora sigue antes del límite humano.
 Sin CAE, merge, cambios master/Production o tareas programadas. Objetivo global
 PR02–PR11 continúa pendiente; no declarar cierre de PR03 por evidencia local.
+
+## Consulta real de último autorizado — 27/10/2026 11:49 Argentina
+
+GO humano de WSAA+una lectura PV2/tipo11 después de07:04 ejecutado una vez,
+con fuentes del diagnóstico idénticas a a13f8bb (HEAD936260e), árbol limpio y
+presencia de certificado/clave cifrada/DPAPI originales confirmada sin valores.
+Par/TRA/CMS PASS, WSAA PASS y FECompUltimoAutorizado PASS: punto2/tipo11,
+último observado0. Respuesta SHA256
+978afca494593ee80af25f5ece93b51dbf39d062bc2056315f0f6801738ecf4c.
+Sin retries, número reservado=false y comprobantes emitidos0, proceso salida0.
+PUNTO_HABILITADO=NOT_PROVEN conservado; no convertir lectura en acreditación
+completa de emisión o alta productiva necesaria. El602 histórico del listado
+permanece como hecho distinto, no se repitió ese método.
+
+Log de metadatos fuera de Git:../arca-ultimo-homologacion-20261027-pv2-t11.log,
+SHA256 a77052f26acbe20c751eef3fe3dcc9402f7544a483b29d15b87643587983ec60.
+TA sólo en memoria del proceso terminado, no guardado ni provisionado.
+Expiración informada:28/10/2026 02:49:53.999Z (27/10 23:49:53.999 Argentina).
+No realizar otro LoginCms durante esa vigencia como supuesto refresco ni
+extraer TA del proceso ya terminado. El GO específico está consumido; nuevas
+consultas/autenticaciones requieren autoridad independiente y coordinación.
+Sin Supabase/flags/Vercel, emisor/custodia/secretos provisionados ni CAE.
+
+## Separar escritura de datos del gate base — plan 27/10/2026
+
+Revisión previa a aceptación positiva encontró GUARDAR_DATOS_FISCALES disponible
+con backend base, mientras emisor/catálogo habilitados harían viable su escritura.
+Antes de autorizar ese contexto positivo, agregar gate privado independiente
+ARCA_HOMO_DATA_PREPARATION_ENABLED, literaltrue y defaultcerrado, en HTTP y servicio.
+Revalidar después de await/contexto/canónico antes de RPC; no repetir Auth ni
+inferir otro actor. GET contexto/resolución histórica no dependen del gate nuevo.
+No implica que toda la API base sea sólo lectura ni reemplaza permisos SQL.
+Pruebas de ausente/false/case incorrecto/revocación/lectura y sin red/credenciales.
+Actualizar inventario y preparar candidato Edge cerrado contra commit explícito,
+sin sobrescribir el paquete instalado bac8ac1. Staging permanece con runtime
+anterior; no habilitar emisor/catálogo allí antes de desplegar este control con
+nuevo GO específico y completar la revisión de los demás caminos de escritura.
+
+Implementación local del gate completada:175pruebas de HTTP/servicio PASS, incluyendo5valores no true en cada frontera, revocación de datos/base/destino tras contexto, recuperación histórica legible y sin Auth/RPC/red al bloquear HTTP. Empaquetador admite commithex40/salida nueva, verifica diff de fuentes/no versionadas y nooverwrite;4casos CLI adicionales PASS (179dirigidas/3archivos). Verificador ahora valida hash/destino/imports y no altera paquete; candidato agregará5casos con base true y datos apagados. Oxlint/sintaxis/diff PASS, build689PASS previo al último test CLI; compilación final y regresión global actual en curso. Runtime remoto sigue anterior sin gate nuevo: no provisionar ni habilitar por este incremento.
+
+Compilación final689PASS y fronteras de bundle privado PASS;179dirigidas/3archivos y oxlint/sintaxis/diff sin hallazgos nuevos. Se fija commit local de fuentes para crear el candidato reproducible antes de publicar; suite integrada continúa en su mismo proceso, sin reinicios. El paquete bac8ac1 instalado no se sobrescribe ni despliega por preparar este candidato.

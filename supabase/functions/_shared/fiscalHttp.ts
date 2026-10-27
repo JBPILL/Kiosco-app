@@ -231,6 +231,7 @@ export function createFiscalHttpHandler(deps:FiscalHttpDependencies):(request:Re
       if(!auth||auth.length>16400||!/^Bearer \S+$/i.test(auth))return json({codigo:'SESION_REQUERIDA'},401)
       let cmd:FiscalHttpCommand
       try{cmd=await command(request)}catch{return json({codigo:'SOLICITUD_INVALIDA'},400)}
+      if(cmd.accion==='GUARDAR_DATOS_FISCALES'&&deps.readSecret('ARCA_HOMO_DATA_PREPARATION_ENABLED')!=='true')return json({codigo:'DATOS_FISCALES_NO_HABILITADOS'},503)
       if(cmd.accion==='GUARDAR_BORRADOR_NC'&&deps.readSecret('ARCA_HOMO_CREDIT_DRAFTS_ENABLED')!=='true')return json({codigo:'BORRADORES_NC_NO_HABILITADOS'},503)
       if(cmd.accion==='APROBAR_REVISION_NC'&&deps.readSecret('ARCA_HOMO_CREDIT_REVIEW_ENABLED')!=='true')return json({codigo:'REVISION_NC_NO_HABILITADA'},503)
       if(cmd.accion==='GUARDAR_PREPARACION_NC'&&deps.readSecret('ARCA_HOMO_CREDIT_PREPARATION_ENABLED')!=='true')return json({codigo:'PREPARACION_NC_NO_HABILITADA'},503)
