@@ -8,10 +8,10 @@ function pem(label:string,bytes:Uint8Array):string {
   let binary='';for(const byte of bytes)binary+=String.fromCharCode(byte)
   return `-----BEGIN ${label}-----\n${btoa(binary).match(/.{1,64}/g)!.join('\n')}\n-----END ${label}-----`
 }
-export async function syntheticEncryptedCustody(iterations=200000):Promise<{secrets:Record<string,string>;binding:FiscalWorkerBinding;prefix:string}> {
+export async function syntheticEncryptedCustody(iterations=200000,passwordInput?:string):Promise<{secrets:Record<string,string>;binding:FiscalWorkerBinding;prefix:string}> {
   const signer=await syntheticFiscalSigner(Date.now(),'Computadores Test',true)
   const plain=new Uint8Array(await crypto.subtle.exportKey('pkcs8',signer.material.privateKey))
-  const password='SYNTHETIC_ONLY_'+crypto.randomUUID(),passwordBytes=new TextEncoder().encode(password)
+  const password=passwordInput??'SYNTHETIC_ONLY_'+crypto.randomUUID(),passwordBytes=new TextEncoder().encode(password)
   try {
     const engine=new CryptoEngine({name:'synthetic-encrypted-custody',crypto})
     const encrypted=await engine.encryptEncryptedContentInfo({password:passwordBytes.buffer,contentToEncrypt:plain.buffer,

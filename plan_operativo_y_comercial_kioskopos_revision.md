@@ -1002,3 +1002,11 @@ JWT ON y gateway/CORS/cierre503 PASS. No flags/secretos/Vercel/ARCA/CAE ni Produ
 PR03 parcial: instalación cerrada no acredita provisión, preparación positiva,
 roles/E2E completo o primer CAE. Siguiente alcance coordinado requiere sus GO;
 no repetir WSAA ni prolongar catálogo como atajo. Evidencia en ExecPlan fiscal.
+
+27/10/2026: preparado asistente local de custodia que reutiliza lector PKCS8 y
+CMS desplegados; no red/exportación ni provisión.71pruebas sintéticas PASS,
+build689/lint enfocado PASS y -Preparar real sólo metadatos READY. Uso de clave/
+DPAPI originales aún requiere GO local específico; no autorizado por SQL054/Edge.
+No se cargaron secretos ni abrieron flags. Compatibilidad original, custodia/
+keyring hospedados y catálogo/TA coordinados siguen pendientes. ExecPlan fiscal
+conserva fallos de fixtures/lanzador y su corrección; PR03 parcial, sin CAE.

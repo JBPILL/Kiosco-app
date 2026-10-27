@@ -835,3 +835,12 @@ Mantener fixtures anteriores en su fase histórica y probar el cierre después
 de054. Un rollback posterior no debe reabrir automáticamente la vulnerabilidad.
 Requiere GO propio antes de instalación y verificación hospedada; el candidato
 Edge y este cierre SQL deben estar aceptados antes del ensayo fiscal positivo.
+
+### 27/10/2026 — Preflight privado con el lector real, separado de provisión
+La firma .NET de diagnóstico no prueba por sí sola compatibilidad con custodia
+del backend. Se añade asistente local que usa el lector/firmador desplegados,
+con pin/CUIT de certificado explícitos y clave no exportable. Originales sólo
+tras GO local, stdin privado/memoria y resultado acotado; sin red ni persistencia,
+sin provisionar Supabase ni corregir frase/rotar archivos. READY de metadatos y
+PASS sintético no habilitan claves reales. Mínimo16 se conserva. Una eventual
+provisión hospedada y uso de WSAA/TA exigen gates propios coordinados con catálogo.

@@ -1381,3 +1381,30 @@ No se cargaron secretos ni cambiaron flags/Vercel; no ARCA/CAE/master/Production
 PR03 sigue parcial hasta provisión y aceptación positiva autorizadas. Respaldo,
 hashes/consultas/capturas y límites en ExecPlan fiscal; no repetir instalación
 ni reabrir permisos por inferencia. El GO cubrió sólo este incremento cerrado.
+
+### Preflight local de custodia con lector desplegado — 27/10/2026
+
+Antes de provisionar secretos reales, `scripts/comprobar-custodia-arca-local.ps1`
+permite comprobar compatibilidad con el mismo lector PKCS8 y firmador CMS del
+backend, sin conexión. Requiere Windows/PowerShell7.4+/Node24. Argumentos:
+`-Certificado`, `-ClaveCifrada`, `-ProteccionDpapi`, `-CertificadoSha256` (DER,
+hex minúscula64) y `-CuitCertificado` (sujeto del certificado, no CUIT representado).
+
+Por defecto o con `-Preparar`, sólo revisa metadatos/rutas/ACL/Node; READY no prueba
+compatibilidad. Con `-Comprobar` lee DPAPI/clave y firma/verifica CMS localmente:
+**requiere GO específico para el material original**. No usarlo con originales
+como parte del desarrollo o de tests. El GO previo SQL054/Edge no autoriza esta
+lectura ni provisión de secretos. `-Preparar -Comprobar` juntos se rechazan.
+
+El proceso propio recibe contenido por stdin UTF8 acotado, sin credenciales en
+argumentos/variables de entorno o archivos nuevos. Salida cerrada de PASS/etapa,
+sin PEM/frase/CMS/DN/CUIT; no pegar respuestas internas en el chat. Las entradas
+se conservan. Rechaza input privado en repo, ACL ajenas, reparse, pin/identidad/
+frase incorrectos o mínimo no cumplido. El mínimo16 se mantiene: un material
+histórico incompatible no se reprotege ni rota sin autorización independiente.
+
+Pruebas sintéticas71PASS en5archivos, build689 y lint enfocado PASS; metadatos
+reales -Preparar READY, sin lectura de contenidos privados. Un PASS local futuro
+no acredita secretos Supabase, cadena ARCA, representación/PV, TA compartido ni
+aceptación hospedada. Coordinar esos gates y vigencia del catálogo después, sin
+LoginCms aislados que descarten TA ni prolongación manual de la fila1.

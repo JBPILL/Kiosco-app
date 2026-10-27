@@ -3206,3 +3206,77 @@ alcance coordinado de emisor/catálogo vigente/custodia/keyring/TA para aceptaci
 positiva bajo autorizaciones propias. No reautenticar WSAA durante vigencia
 conocida del TA descartado ni prolongar catálogo como atajo. No merge/master/
 Production, Vercel, impresora/cajón o Point. GO SQL054/Edge consumido.
+
+### Próximo bloque local: preflight de custodia antes de provisión — 27/10/2026
+
+Dependencia de aceptación positiva: compatibilidad del material original con el
+lector privado desplegado, no sólo con C# diagnóstico. Preparar asistente local
+sin red/persistencia que invoque createPrivateFiscalCustody y prepareWsaaRequest
+reales, compare pin y CUIT del sujeto y mantenga clave no exportable. Wrapper
+Windows con modo -Preparar sin leer secretos; -Comprobar requiere GO específico
+para lectura DPAPI/clave original. Datos privados sólo por stdin de proceso propio,
+no argv/env/log/archivos nuevos. Sin uploads/secretos Supabase/flags/WSAA/WSFE.
+Contraseña histórica que no cumpla mínimo16 debe fallar, nunca reproteger/rotar
+por inferencia. Probar con material sintético y negativos antes de pedir GO.
+Este bloque no resuelve refresco de parámetros ni cache real: preparar después
+alcance coordinado sin LoginCms aislados que descarten TA. Conservar catálogo1
+inactivo y su vencimiento; no prolongarlo como atajo. No usar material original
+para desarrollar/testear este asistente. No nuevos workers/SQL/Edge remotos.
+
+### Asistente de custodia local preparado, sin uso original — 27/10/2026
+
+Se implementaron scripts/comprobar-custodia-arca-local.ps1 y
+scripts/arca/check-private-custody-local.mjs. -Preparar (también modo predeterminado)
+sólo revisa existencia/tamaño/rutas/ACL y Node24; no lee contenidos privados.
+-Comprobar requiere autorización específica para DPAPI/clave originales. Reutiliza
+createPrivateFiscalCustody y prepareWsaaRequest, no una implementación paralela:
+PBES2/KDF mínimos vigentes, huella pinneada, issuer Test/fechas, correspondencia
+clave-certificado por firma CMS verificada y CUIT del sujeto. No acredita cadena
+ARCA, representación de otro CUIT, PV, WSAA/WSFE ni permiso fiscal SQL. IDs internos
+son efímeros para el adaptador, no identidades provisionadas ni datos de venta.
+
+Datos privados sólo stdin UTF8 de proceso Node propio con límite220KB; no argv,
+env, stdout, archivo nuevo, upload o .env. Se rechazan NODE_OPTIONS/NODE_PATH,
+se limita tiempo, se controla proceso hijo y salida cerrada. Fetch bloqueado en
+el comprobador; no llamadas de red en el flujo. Clave importada no exportable;
+password/buffers se liberan al cerrar proceso (strings JS no tienen borrado
+verificable y no se promete). Archivos de entrada no se escriben. No reproteger,
+rotar, corregir material ni relajar mínimo16 por un fallo. Diagnóstico de etapa
+sin excepción externa/PEM/frase/DN/CUIT. -Preparar y -Comprobar juntos fallan.
+
+Historia de verificación:13casos core PASS. Primera extensión Windows21casos
+13PASS/8FAIL: fixture no propagaba exit y selección Node devolvía dos rutas.
+Tras corregir fixture:18PASS/3FAIL, NODE_VERSION; observado Get-Command con dos
+aplicaciones y node24.19.0. Se selecciona explícitamente primera aplicación,
+sin asumir array escalar. Siguiente17PASS/4FAIL en DPAPI: serialización sintética
+con newline; se recorta espacio exterior del blob cifrado antes de ConvertTo-
+SecureString. No cambio de cifrado ni de contraseña. Después21/21PASS. Negativas
+Windows ahora exigen etapa exacta; no aprobar un rechazo por la razón equivocada.
+
+Final:71PASS/0FAIL/0skip en5archivos, incluidos22casos nuevos y contratos de
+custodia factura/NC/.NET. VarianteUnicode real DPAPI→stdin→Node, key/cert
+incompatibles, pin/frase/CUIT, política mínima, tipos/extra/JSON/tamaño y ACL/ruta/
+Node-config rechazados; archivos sintéticos permanecen iguales. Fixture compartida
+sólo agrega frase optativa conservando orden y generación aleatoria anteriores.
+Reporte ../fiscal-local-custody-preflight-final-20261027.json/.log, SHA256
+96a58dbc79e162250ba59538d72a3647731255dd6cac040a1ff543513d54481d.
+Build689 PASS; oxlint enfocado/node check/diff sin diagnósticos; asistente ausente
+del bundle público. No nueva suite global ni concurrencia nativa por este bloque
+de tooling local; resultados anteriores conservan su alcance.
+
+Consulta pública de uso confirmó servicio restablecido tras el fallo del control
+de aprobación por límite; no se eludió esa revisión. La acción antes denegada no
+había aplicado el último patch ni corrido tests; se inspeccionó el árbol antes de
+retomar y se corrigió sin usar material original. Estado privado real: sólo
+-Preparar ejecutado, READY por rutas/ACL/Node24, sin leer clave/DPAPI. Certificado
+PÚBLICO revisado con X509: Test, huella DER
+bbcaffebce0f62e1d626e9f6f425dfa70a2de22031df12536a3876d2193af9d0,
+vigente hasta19/10/2028. No se infiere compatibilidad de la clave original.
+
+Siguiente autorización concreta: una comprobación LOCAL de original con este
+asistente, lectura DPAPI/frase sólo en memoria, pin público anterior y CUIT del
+certificado ya autorizado. Sin red/WSAA/WSFE, exportación/persistencia de material,
+Supabase/flags/SQL/Vercel/Production ni emisiones. Si política histórica falla,
+registrar y detener; no rotación/reprotección implícita. Ese GO aún no recibido.
+Custodia/keyring hospedados y catálogo/TA coordinados siguen posteriores; no
+cargar secretos por aprobar el diagnóstico local. Staging permanece51ad94d/cerrado.
