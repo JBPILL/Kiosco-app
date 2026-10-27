@@ -856,4 +856,3 @@ sólo durante provisión autorizada. Comparar digests en memoria/preservar previ
 parcial o drift detienen sin overwrite/retry/borrado. Metadatos de provisión no
 cierran funcionalidad hospedada, cache compartido ni aceptación fiscal positiva.
 95pruebas sintéticas y build PASS; no carga remota ni lectura original nueva.
-

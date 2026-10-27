@@ -1464,4 +1464,3 @@ vence preparar otra propuesta pública y revisión, sin leer originales.
 check/diff y ausencia de símbolos privados nuevos en bundle PASS. No suite global
 ni SQL nativo nuevos por tooling local. PR03 parcial; ningún secreto real leído,
 generado o transmitido por este bloque.
-

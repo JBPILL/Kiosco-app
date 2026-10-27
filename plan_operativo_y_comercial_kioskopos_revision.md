@@ -1028,4 +1028,3 @@ ExecPlan; todavía NO autorizado cargar los6secretos ni leer originales para ell
 Provisión cerrada/metadatos tampoco acreditará keyring/TA funcional desde Edge.
 PR03 parcial; catálogo vigente/emisor/aceptación positiva y primer CAE pendientes.
 Sin SQL/Edge/Vercel/flags/Supabase/ARCA/Production nuevos ni merge.
-
