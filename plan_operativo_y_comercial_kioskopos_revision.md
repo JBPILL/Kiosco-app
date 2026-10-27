@@ -984,3 +984,12 @@ preparado con verificación TOC explícita de41tablas fiscales+función/ACL here
 secretos tras iniciar Docker Desktop. Copia actualizada real aún pendiente del
 prompt privado local del titular; no acredita restore. GO054/Edge aún pendiente.
 Detalle y límites de la suite anterior4885 en ExecPlan fiscal.
+
+27/10/2026: respaldo actual previo054 confirmado por titular y verificado
+independientemente (hashes, roles sin passwords, ACL privada y TOC48tablas +
+función/ACL heredadas). No restore/Storage/copia externa/cifrado. Runner nativo
+ampliado hasta054:183escenarios PostgreSQL17.11 PASS,0ARCA/0emisiones, contenedor
+propio detenido. Reaplicación conserva datos/cuerpos/otros grants y preparación
+privada concurrente sigue única. PR03 continúa parcial: próximo gate es GO nuevo
+para SQL054 y Edge cerrado, después aceptación fiscal positiva autorizada.
+Detalle, hashes y fallo previo de fixture comercial en ExecPlan fiscal.

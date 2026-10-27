@@ -3075,3 +3075,40 @@ confirmado: roles/manifiesto requieren completar un respaldo nuevo con contrase�
 local del titular. No reutilizarla como PASS ni instalar054/Edge. Se conserva.
 La comprobación nativa adicional054 sobre baseline completo sigue pendiente;
 sólo se inspeccionó el runner, sin modificarlo ni declarar resultados nuevos.
+
+### Baseline completo SQL054 y respaldo actual verificados — 27/10/2026
+
+El titular confirmó copia pre-sql054-20261027-130712-d9e56bc166c34b96b8f2e2fba92af64f
+bajo %USERPROFILE%\KioskoPOS-Privado\Backups\Staging. Verificación local
+independiente: contexto BEFORE_SQL054/ref Staging exactos; SHA del dump coincide
+con contexto/manifiesto y SHA de roles con su manifiesto; roles sin cláusula
+PASSWORD; ACL owner-only/raíz protegida sin reparse; sin parciales. Lista fiscal
+coincide exactamente con41tablas del source. pg_restore --list con --network none
+y montaje readonly confirmó48/48TABLE DATA (7comerciales+41fiscales), función y ACL
+exactas. No se leyó/imprimió contenido de filas ni credenciales. Backup PASS como
+archivo verificado, no restauración, Storage, cifrado ni copia externa.
+
+Se amplió el runner local después de sus180casos históricos, instalando054 dos
+veces sobre baseline001–053 real. Snapshot de todas las tablas públicas conserva
+hashes de filas; funciones conservan cuerpo/owner/search_path/seguridad y ACL
+ajenas. Tres roles fallan con42501/permission denied antes de negocio. Preparación
+privada concurrente produce una operación, ACK idéntico y ninguna reserva.
+
+Primer pase:182casos completados yFAIL42501 al crear comercio sintético positivo
+SOLO_LECTURA. Fixture nueva no había contratado suscripción tras instalar el gate
+comercial; corregida sólo con plan/suscripción sintéticos explícitos, sin debilitar
+SQL ni omitir aserciones. Conservar ../fiscal-concurrency-054-20261027.json/.log.
+Segundo pase PASS183escenarios, PostgreSQL17.11,0peticiones externas/0emisiones:
+../fiscal-concurrency-054-v2-20261027.json/.log, SHA256
+98ffea8f745d5c2431fd6d713e7bbe75d414496b752a489a092a79d966d0567b.
+Contenedor propio detenido, datos sintéticos conservados; los demás intactos.
+node --check/diff PASS; oxlint0errores y una advertencia no-unsafe-finally previa.
+No nuevo build/suite global por este cambio exclusivo del harness PostgreSQL;
+4885/313 y build689 anteriores conservan su alcance/commit documentados.
+
+Paquete Edge cerrado aafb32c revalidado:9casos PASS,0red/0lecturas privadas,
+backend flag absent/default closed. SQL054/hash y paquete sin cambios.
+Pendiente siguiente: revisión y GO específico para sólo SQL054→DB/ACL→Edge cerrado
+→JWT/CORS/gates. Respaldo actual ya disponible. No instalar, activar flags,
+provisionar claves/emisor, redeploy Vercel, llamar ARCA o emitir sin autorización.
+No merge/master/Production. PR03 y objetivo global siguen parciales.

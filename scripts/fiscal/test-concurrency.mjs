@@ -122,10 +122,14 @@ try {
   const commercialGate=readFileSync(join(root,'supabase/bootstrap/commercial/002_commercial_write_gate.sql'),'utf8')
   await observer.query(commercialGate.slice(commercialGate.indexOf('CREATE OR REPLACE FUNCTION public.exigir_comercio_operativo'),commercialGate.indexOf('CREATE OR REPLACE FUNCTION public.validar_escritura_comercial_operativa')))
   for(const file of ['supabase/bootstrap/pilot-operations/001_capabilities.sql','supabase_fase_devolucion_registro_privado.sql','supabase_fase_devolucion_calculo_historico.sql','supabase_fase_devolucion_preparacion_privada.sql','supabase/bootstrap/returns/001_atomic_cash_return.sql','supabase/bootstrap/returns/003_whole_unit_quantities.sql'])await observer.query(readFileSync(join(root,file),'utf8'))
-  async function fixture() {
+  async function fixture({commercialPlan}={}) {
     const f={kid:randomUUID(),auth:randomUUID(),owner:randomUUID(),sale:randomUUID()}
     await observer.query('INSERT INTO auth.users VALUES($1)',[f.auth])
     await observer.query("INSERT INTO kioscos(id,nombre) VALUES($1,'Fiscal sintético local')",[f.kid])
+    if(commercialPlan){
+      await observer.query("UPDATE kioscos SET estado_suscripcion='ACTIVO' WHERE id=$1",[f.kid])
+      await observer.query("INSERT INTO suscripciones(kiosco_id,plan_id,fecha_inicio,fecha_vencimiento,estado) VALUES($1,$2,comercial_hoy(),comercial_hoy()+30,'ACTIVA')",[f.kid,commercialPlan])
+    }
     await observer.query("INSERT INTO usuarios(id,auth_user_id,kiosco_id,nombre,rol) VALUES($1,$2,$3,'Dueño sintético','DUEÑO')",[f.owner,f.auth,f.kid])
     await observer.query('INSERT INTO ventas(id,kiosco_id,usuario_id,total) VALUES($1,$2,$3,123.45)',[f.sale,f.kid,f.owner])
     return f
@@ -382,8 +386,8 @@ try {
   }
   await observer.query(`INSERT INTO fiscal_parametros_homologacion(revision,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en,habilitado)
     VALUES(1,'[{"id":5,"descripcion":"Ensayo","comprobantes":[11]}]','[]',repeat('b',64),clock_timestamp()-interval '1 hour',clock_timestamp()+interval '1 hour',true)`)
-  async function preparationFixture(point,revision=1,quantity=1) {
-    const f=await fixture(),product=randomUUID(),operation=randomUUID()
+  async function preparationFixture(point,revision=1,quantity=1,commercialPlan) {
+    const f=await fixture({commercialPlan}),product=randomUUID(),operation=randomUUID()
     await observer.query("INSERT INTO productos(id,kiosco_id,descripcion,precio_venta) VALUES($1,$2,'Ensayo',123.45)",[product,f.kid])
     await observer.query('INSERT INTO detalles_venta(venta_id,producto_id,cantidad,precio_unitario,subtotal) VALUES($1,$2,$3,123.45/$3,123.45)',[f.sale,product,quantity])
     await observer.query('INSERT INTO fiscal_emisores_homologacion(kiosco_id,cuit_emisor,punto_venta,credencial_id,certificado_sha256,habilitado) VALUES($1,$2,$3,$4,$5,true)',[f.kid,issuer,point,randomUUID(),'c'.repeat(64)])
@@ -1671,6 +1675,46 @@ try {
   assert.equal((await revoked053).error?.code,'42501');await b.query('ROLLBACK')
   assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_nc_intenciones_homologacion WHERE solicitud_id=$1',[nc053.proposal.id])).rows[0].n,0)
   cases.push('053_revocacion_esperando_serie_impide_descubrimiento_sin_intencion')
+
+  // Install054 only after historical001–053 cases; do not reinterpret earlier grants.
+  const legacy054='public.preparar_operacion_fiscal_homologacion(uuid,uuid,uuid,jsonb)'
+  const functions054=async()=>(await observer.query(`SELECT oid::text,proname,prosrc,proconfig,prosecdef,proowner::text,
+    CASE WHEN oid=$1::regprocedure THEN NULL ELSE proacl::text END AS other_acl
+    FROM pg_proc WHERE pronamespace='public'::regnamespace ORDER BY oid`,[legacy054])).rows
+  const data054=async()=>{
+    const result=[]
+    const tables=(await observer.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows
+    for(const {tablename} of tables){
+      const digest=(await observer.query(`SELECT md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text) AS digest FROM public.${pg.escapeIdentifier(tablename)} t`)).rows[0].digest
+      result.push({table:tablename,digest})
+    }
+    return result
+  }
+  const before054Functions=await functions054(),before054Data=await data054()
+  assert.equal((await observer.query("SELECT has_function_privilege('authenticated',$1,'EXECUTE') AS allowed",[legacy054])).rows[0].allowed,true)
+  for(let repeat=0;repeat<2;repeat++)await observer.query(readFileSync(join(root,'supabase/pilot-fiscal/054_close_legacy_preparation_entry.sql'),'utf8'))
+  assert.deepEqual(await functions054(),before054Functions)
+  assert.deepEqual(await data054(),before054Data)
+  for(const role of ['anon','authenticated','service_role'])assert.equal((await observer.query("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed",[role,legacy054])).rows[0].allowed,false)
+  cases.push('054_baseline_completo_reaplicacion_sin_DML_cuerpos_u_otros_grants')
+  for(const role of ['anon','authenticated','service_role']){
+    await a.query('BEGIN');await a.query('SET LOCAL ROLE '+role)
+    const denied=await capture(a.query('SELECT preparar_operacion_fiscal_homologacion($1,$2,$3,$4::jsonb)',[randomUUID(),f.kid,f.sale,'{}']))
+    assert.equal(denied.error?.code,'42501');assert.match(denied.error.message,/permission denied for function preparar_operacion_fiscal_homologacion/)
+    await a.query('ROLLBACK')
+  }
+  assert.deepEqual(await data054(),before054Data)
+  cases.push('054_tres_roles_rechazan_entrada_heredada_antes_de_negocio')
+  const revision054=(await observer.query(`INSERT INTO fiscal_parametros_homologacion(revision,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en,habilitado)
+    SELECT revision+1,condiciones,alicuotas,repeat('e',64),clock_timestamp()-interval '1 minute',clock_timestamp()+interval '1 hour',true
+    FROM fiscal_parametros_homologacion ORDER BY revision DESC LIMIT 1 RETURNING revision`)).rows[0].revision
+  const prep054=await preparationFixture(65000,revision054,1,nc051_plan)
+  await start(a);const first054=await savePreparation(a,prep054)
+  await start(b);const repeat054=capture(savePreparation(b,prep054));await waitForLock(observer,b);await a.query('COMMIT')
+  const repeated054=await repeat054;assert(!repeated054.error);assert.deepEqual(repeated054.value,first054);await b.query('COMMIT')
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_operaciones_homologacion WHERE venta_id=$1',[prep054.sale])).rows[0].n,1)
+  assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[prep054.operation])).rows[0].n,0)
+  cases.push('054_preparacion_privada_concurrente_una_operacion_sin_reserva')
 
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')

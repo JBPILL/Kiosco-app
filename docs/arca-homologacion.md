@@ -1353,3 +1353,12 @@ inesperados, idempotencia y preparación privada real. No se presentan como
 instalación hospedada ni como nueva corrida de concurrencia de SQL001–054.
 SQL054 permanece sin instalar; Edge nuevo permanece sin desplegar. Ningún nuevo
 flag, secreto, emisor, Vercel, emisión o cambio de Production autorizado.
+
+Actualización27/10: SQL054 probado también sobre baseline001–053 completo en
+PostgreSQL17.11.183escenarios PASS (180históricos+3nuevos), incluyendo reaplicación
+sin DML/cambios de cuerpo/otros grants, negativas de tres roles y preparación
+privada concurrente única sin reserva. Fallo de fixture comercial inicial y
+corrección conservados en ExecPlan; no aceptación hospedada. Respaldo actualizado
+previo054 verificado localmente: hashes/roles sin passwords/ACL privadas y
+48tablas+función/ACL en TOC. No restaurado. Candidatos SQL054/Edge todavía requieren
+GO nuevo para instalación/verificación cerrada; sin flags, secretos o emisiones.
