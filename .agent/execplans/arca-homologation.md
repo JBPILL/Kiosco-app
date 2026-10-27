@@ -3280,3 +3280,39 @@ Supabase/flags/SQL/Vercel/Production ni emisiones. Si política histórica falla
 registrar y detener; no rotación/reprotección implícita. Ese GO aún no recibido.
 Custodia/keyring hospedados y catálogo/TA coordinados siguen posteriores; no
 cargar secretos por aprobar el diagnóstico local. Staging permanece51ad94d/cerrado.
+
+### GO local original consumido: compatibilidad de custodia PASS — 27/10/2026
+
+El titular autorizó una única comprobación exclusivamente local del certificado,
+clave cifrada y protección DPAPI originales con lector backend; frase sólo en
+memoria, sin red/WSAA/WSFE/exportación/rotación/provisión/flags/Vercel/emisiones.
+Se verificó HEADccddbfa limpio y ausencia de drift de asistente/lector/firmador
+antes de ejecutar. Una invocación -Comprobar, sin retries: salida0,
+CUSTODY_LOCAL_PASS nonexportable=true cms_verified=true cuit_matches=true
+network=0 provisioned=false. Se importó y usó en memoria el original sólo dentro
+de este GO. Frase y clave no impresas ni persistidas, archivos originales no
+escritos por el asistente. No nueva autenticación WSAA, Token/Sign ni operación
+fiscal. Pin DER público bbcaffebce0f62e1d626e9f6f425dfa70a2de22031df12536a3876d2193af9d0.
+
+Evidencia segura ../fiscal-local-custody-original-20261027.log, SHA256
+13b03c5ec21d4afe163da3974766644ee195fe23bc105cd490589208f65d1d75.
+Incluye una línea técnica no sensible System.Threading.Tasks.VoidTaskResult
+antes del PASS: PowerShell imprimía retorno de WriteAsync.GetResult. Se conserva
+el log original; no limpiarlo ni simular una ejecución nueva. Corrección limitada
+posterior suprime ese retorno con $null y exige salida exacta en tests Windows.
+22/22casos sintéticos PASS/0skip, ../fiscal-local-custody-output-20261027.json/.log;
+lint enfocado/diff PASS. No repetición del material original para probar formato.
+No nueva suite/build por ese ajuste exclusivo de salida PowerShell;71relacionados
+y build689 previos conservan su alcance/fecha. La validación original corresponde
+al asistente ccddbfa, previo a esa corrección inocua de formato.
+
+LOCAL_ORIGINAL_CUSTODY_COMPATIBILITY=PASS: clave importable no exportable, CMS
+verificado con certificado/identidad pinneados y política vigente satisfecha.
+No acredita cadena ARCA, representación/PV, credenciales instaladas en Supabase,
+keyring/cache TA compartidos o aceptación hospedada positiva. No hace falta
+reproteger/rotar como consecuencia de este resultado. Los6valores ARCA de custodia/
+keyring aún no provisionados; este GO no se puede reutilizar para copiarlos,
+exportarlos o leer originales otra vez. Siguiente trabajo local: alcance y
+transporte privado revisables para esa provisión cerrada, seguido de catálogo/TA
+coordinados y aceptación positiva con GO propios. Staging/SQL/Edge/flags y Vercel/
+Production sin cambios por este bloque; PR03 parcial, sin nuevo CAE/merge.

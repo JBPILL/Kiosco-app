@@ -1408,3 +1408,18 @@ reales -Preparar READY, sin lectura de contenidos privados. Un PASS local futuro
 no acredita secretos Supabase, cadena ARCA, representación/PV, TA compartido ni
 aceptación hospedada. Coordinar esos gates y vigencia del catálogo después, sin
 LoginCms aislados que descarten TA ni prolongación manual de la fila1.
+
+### Compatibilidad local del original acreditada — 27/10/2026
+
+Bajo GO propio se ejecutó una sola comprobación del material original con el
+lector/firmador backend: CUSTODY_LOCAL_PASS, clave no exportable, CMS/identidad
+verificados, network0/provisioned=false. No reintentos ni escritura/exportación de
+originales, WSAA/WSFE o secretos Supabase. El GO está consumido: no autoriza otra
+lectura ni provisión remota. Tampoco acredita cadena ARCA, representación/PV o TA
+compartido. La política vigente fue satisfecha sin reprotección/rotación.
+
+Se suprimió después una línea técnica de PowerShell y se endurecieron tests de
+salida exacta;22casos sintéticos PASS sin volver a usar el original. Log original,
+hash, límites y evidencia de tests en ExecPlan fiscal. Siguiente: preparar alcance
+privado de provisión/keyring con controles cerrados antes de solicitar su GO;
+catálogo y cache real se coordinan después, sin renovar WSAA por inferencia.

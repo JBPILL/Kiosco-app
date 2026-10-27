@@ -65,7 +65,7 @@ try {
     $stdout=$child.StandardOutput.ReadToEndAsync(); $stderr=$child.StandardError.ReadToEndAsync()
     $write=$child.StandardInput.WriteAsync($payload)
     if (-not $write.Wait(10000)) { $child.Kill($true); throw 'Local input timeout' }
-    $write.GetAwaiter().GetResult(); $child.StandardInput.Close()
+    $null=$write.GetAwaiter().GetResult(); $child.StandardInput.Close()
     if (-not $child.WaitForExit(30000)) { $child.Kill($true); throw 'Local timeout' }
     $raw=$stdout.GetAwaiter().GetResult(); $null=$stderr.GetAwaiter().GetResult()
     $result=$raw | ConvertFrom-Json

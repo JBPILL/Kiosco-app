@@ -92,17 +92,17 @@ exit $resultCode
  }finally{cleanupRoot(root)}
 }
 it.skipIf(process.platform!=='win32')('Windows preflight does not decrypt invalid DPAPI',()=>{
- const result=runWindows('prepare');expect(result.status,result.output).toBe(0);expect(result.output).toContain('CUSTODY_LOCAL_READY')
+ const result=runWindows('prepare');expect(result.status,result.output).toBe(0);expect(result.output.trim()).toBe('CUSTODY_LOCAL_READY. No se leyeron contenidos privados ni se conecto a servicios. -Comprobar requiere GO especifico.')
 },40000)
 it.skipIf(process.platform!=='win32')('Windows DPAPI feeds Unicode custody only through stdin and leaves files unchanged',()=>{
- const result=runWindows('ok');expect(result.status,result.output).toBe(0);expect(result.output).toContain('CUSTODY_LOCAL_PASS nonexportable=true')
+ const result=runWindows('ok');expect(result.status,result.output).toBe(0);expect(result.output.trim()).toBe('CUSTODY_LOCAL_PASS nonexportable=true cms_verified=true cuit_matches=true network=0 provisioned=false')
 },40000)
 it.skipIf(process.platform!=='win32').each([
  ['wrong-pin','CUSTODY'],['wrong-password','CUSTODY'],['short-password','PASSWORD_POLICY_NOT_MET'],
  ['bad-acl','PRIVATE_ACL'],['repo-key','INPUT_PATH'],['node-options','NODE_CONFIG'],
 ] as const)('Windows rejects %s without private output',(mode,stage)=>{
  const result=runWindows(mode);expect(result.status,result.output).toBe(1);expect(result.output).toContain('CUSTODY_LOCAL_NOT_CONFIRMED')
- expect(result.output).toContain('stage='+stage+'.')
+ expect(result.output.trim()).toBe('CUSTODY_LOCAL_NOT_CONFIRMED stage='+stage+'. No compartir errores externos, PEM ni contrasenas.')
 },40000)
 it.each(['null','[]','"SYNTHETIC_PRIVATE_SENTINEL"','{bad-json','x'.repeat(220001)])('rejects malformed bounded input without echo (%#)',raw=>{
  const result=run(raw)

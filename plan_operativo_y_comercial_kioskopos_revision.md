@@ -1010,3 +1010,10 @@ DPAPI originales aún requiere GO local específico; no autorizado por SQL054/Ed
 No se cargaron secretos ni abrieron flags. Compatibilidad original, custodia/
 keyring hospedados y catálogo/TA coordinados siguen pendientes. ExecPlan fiscal
 conserva fallos de fixtures/lanzador y su corrección; PR03 parcial, sin CAE.
+
+27/10/2026: GO local original de custodia ejecutado una vez, PASS con lector y
+firmador backend (clave no exportable, CMS/identidad verificados, red0,
+provisiónfalse). Sin rotación/exportación ni cambios Supabase/flags/ARCA.22tests
+sintéticos de ajuste posterior de salida PASS; no repetición original. Evidencia
+conservada en ExecPlan. PR03 parcial: provisión/keyring/cache/catálogo y aceptación
+hospedada positivos aún pendientes de alcances revisables y sus autorizaciones.
