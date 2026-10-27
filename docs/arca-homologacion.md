@@ -1227,3 +1227,35 @@ nueva autenticación disponible. Ninguna consulta real ejecutada por este cambio
 
 ### Compatibilidad Windows/custodia — 27/10/2026
 El preparador exige ahora mínimo16 caracteres, igual que el lector privado. Prueba cruzada con salida real del preparador .NET y certificado sintético verificó importación de RSA3072 no exportable y CMS válido en el backend; no usó material original ni red. Una clave histórica con contraseña de12–15 caracteres permanece bloqueada hasta revisión/reprotección privada expresamente autorizada. No pedir contraseña por chat ni rotar por inferencia. La preparación local no provisiona valores en Supabase; aceptación hospedada real sigue pendiente.
+
+### Renovación del catálogo sin borrar historia — 27/10/2026
+
+Para la primera carga, el modo inicial exige tabla vacía y revisión1. Para una
+renovación, agregar a CONFIG_JSON baselinePath y baselineSha256 (ambos): archivo
+público con snapshot completo revisado del catálogo y hash de sus bytes. Cada
+fila contiene exactamente revision, condiciones, alicuotas, fuente_sha256,
+consultado_en, vence_en, habilitado. Conservar fechas UTC exactas. No incluir
+emisor ni secretos. Obtenerlo por lectura independiente del Staging correcto;
+la herramienta no conecta ni lo descarga. No reutilizar un snapshot obsoleto.
+
+La revisión nueva debe seguir al máximo del snapshot; fuentes más recientes y
+no registradas. La propuesta queda vinculada también al hash del baseline.
+Bajo lock, el SQL contrasta conteo y todas las filas/campos tipados antes de un
+INSERT inactivo. Cualquier alta, activación u otro cambio desde la revisión
+requiere un plan/GO nuevo; no corregir el guard manualmente ni borrar historia.
+Fuentes vencidas no se renuevan editando fechas: requieren evidencia actual y
+su consulta autorizada. Generar una renovación no autoriza importarla/activarla.
+La fila1 de Staging no fue renovada ni modificada por este incremento local.
+
+Lectura de snapshot propuesta (no ejecutada por el generador):
+```sql
+BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+SET LOCAL TIME ZONE 'UTC';
+SELECT coalesce(jsonb_agg(to_jsonb(c) ORDER BY revision),'[]'::jsonb) AS baseline
+FROM public.fiscal_parametros_homologacion c;
+ROLLBACK;
+```
+Verificar antes el proyecto autorizado; conservar el valor JSON sin alterar
+campos/fechas y calcular SHA256 de los bytes del archivo. No usar un manifiesto
+viejo como sustituto de esta lectura independiente. En SQL se comparan los
+valores tipados, conservando precisión de fecha; no sólo sus conteos.

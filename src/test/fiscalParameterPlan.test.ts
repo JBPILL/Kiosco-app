@@ -1,14 +1,16 @@
 // @vitest-environment node
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { basename, dirname, join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
+import { spawnSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { expect, it } from 'vitest'
 
 interface Parameter { Id: number; Description: string; VoucherClasses: string; ValidFrom: string; ValidUntil: string }
 interface Evidence {version:number;entorno:string;operacion:string;origen:string;consultado_en:string;respuesta_sha256:string;parametros:Parameter[];importado_en_staging:boolean;emision_habilitada:boolean}
-interface Plan {sql:string;manifest:{plan_sha256:string;fuente_sha256:string;habilitado:boolean;condiciones:{id:number;descripcion:string;comprobantes:number[]}[];alicuotas:{id:number;descripcion:string}[];excluded_classes:string[];excluded_rate_ids:number[]}}
+interface Plan {sql:string;manifest:{revision:number;consultado_en:string;vence_en:string;plan_sha256:string;fuente_sha256:string;habilitado:boolean;condiciones:{id:number;descripcion:string;comprobantes:number[]}[];alicuotas:{id:number;descripcion:string}[];excluded_classes:string[];excluded_rate_ids:number[];baseline_sha256?:string}}
 const { planFiscalParameters } = await import(pathToFileURL(resolve('scripts/plan-fiscal-parameters.mjs')).href) as {
   planFiscalParameters:(input:Record<string,unknown>)=>Plan
 }
@@ -125,4 +127,103 @@ it('SQL vuelve a comprobar vigencia en servidor aunque la propuesta local fuera 
     await db.exec('ROLLBACK')
     expect((await db.query('SELECT * FROM public.fiscal_parametros_homologacion')).rows).toHaveLength(0)
   } finally {await db.close()}
+})
+
+function baselineOf(plan:Plan) {
+  const {revision,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en,habilitado}=plan.manifest
+  return {revision,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en,habilitado}
+}
+function renewedInput(first:Plan) {
+  const original=liveInput(),rates=JSON.parse(original.ivaText) as Evidence,receiver=JSON.parse(original.conditionText) as Evidence
+  const next=new Date(Date.parse(first.manifest.consultado_en)+1000).toISOString()
+  const ivaText=JSON.stringify({...rates,consultado_en:next}),conditionText=JSON.stringify({...receiver,consultado_en:next})
+  const baselineText=JSON.stringify([baselineOf(first)])
+  return {...original,ivaText,conditionText,ivaSha256:hash(ivaText),conditionSha256:hash(conditionText),
+    revision:first.manifest.revision+1,baselineText,baselineSha256:hash(baselineText)}
+}
+it('renueva con INSERT inactivo y conserva exactamente la revisión anterior; rechaza replay',async()=>{
+  const db=new PGlite()
+  try {
+    await db.exec(ddl)
+    const first=planFiscalParameters(liveInput())
+    await approve(db,first);await db.exec(first.sql)
+    const before=(await db.query('SELECT to_jsonb(t) AS snapshot FROM public.fiscal_parametros_homologacion t WHERE revision=1')).rows
+    const renewal=renewedInput(first),second=planFiscalParameters(renewal)
+    expect(second.manifest.baseline_sha256).toBe(renewal.baselineSha256)
+    expect(second.sql).not.toMatch(/UPDATE|DELETE|ON CONFLICT/i)
+    await approve(db,second);await db.exec(second.sql)
+    expect((await db.query('SELECT revision,habilitado FROM public.fiscal_parametros_homologacion ORDER BY revision')).rows)
+      .toEqual([{revision:1,habilitado:false},{revision:2,habilitado:false}])
+    expect((await db.query('SELECT to_jsonb(t) AS snapshot FROM public.fiscal_parametros_homologacion t WHERE revision=1')).rows).toEqual(before)
+    await expect(db.exec(second.sql)).rejects.toThrow('CATALOG_BASELINE_CHANGED')
+    await db.exec('ROLLBACK')
+    expect((await db.query('SELECT * FROM public.fiscal_parametros_homologacion')).rows).toHaveLength(2)
+  } finally {await db.close()}
+})
+it.each(['enabled','payload','extra-revision'])('bloquea renovación si cambia baseline %s tras preparar la propuesta',async mode=>{
+  const db=new PGlite()
+  try {
+    await db.exec(ddl)
+    const first=planFiscalParameters(liveInput())
+    await approve(db,first);await db.exec(first.sql)
+    const second=planFiscalParameters(renewedInput(first))
+    // Simulate drift after review; no hosted writes and no change to the canonical schema.
+    if(mode==='enabled')await db.exec('UPDATE public.fiscal_parametros_homologacion SET habilitado=true WHERE revision=1')
+    if(mode==='payload')await db.exec("UPDATE public.fiscal_parametros_homologacion SET alicuotas='[]'::jsonb WHERE revision=1")
+    if(mode==='extra-revision')await db.exec('INSERT INTO public.fiscal_parametros_homologacion SELECT 3,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en,false FROM public.fiscal_parametros_homologacion WHERE revision=1')
+    const before=(await db.query('SELECT to_jsonb(t) AS snapshot FROM public.fiscal_parametros_homologacion t ORDER BY revision')).rows
+    await approve(db,second)
+    await expect(db.exec(second.sql)).rejects.toThrow('CATALOG_BASELINE_CHANGED')
+    await db.exec('ROLLBACK')
+    expect((await db.query('SELECT to_jsonb(t) AS snapshot FROM public.fiscal_parametros_homologacion t ORDER BY revision')).rows).toEqual(before)
+  } finally {await db.close()}
+})
+it.each(['checksum','missing-hash','duplicate','extra-field','wrong-revision','older-source','same-provenance'])('rechaza renovación %s antes de producir SQL',mode=>{
+  const first=planFiscalParameters(liveInput()),renewal=renewedInput(first)
+  const baseline=[baselineOf(first)]
+  let candidate:Record<string,unknown>=renewal
+  if(mode==='checksum')candidate={...renewal,baselineSha256:'b'.repeat(64)}
+  if(mode==='missing-hash'){const {baselineSha256:_omitted,...rest}=renewal;candidate=rest}
+  if(mode==='duplicate')baseline.push(baselineOf(first))
+  if(mode==='extra-field')Object.assign(baseline[0],{Token:'SYNTHETIC'})
+  if(mode==='wrong-revision')candidate={...renewal,revision:3}
+  if(mode==='older-source')baseline[0]={...baseline[0],consultado_en:new Date(Date.parse(renewal.now)-1).toISOString()}
+  if(mode==='same-provenance')baseline[0]={...baseline[0],fuente_sha256:planFiscalParameters({...renewal,baselineText:'[]',baselineSha256:hash('[]'),revision:1}).manifest.fuente_sha256}
+  if(['duplicate','extra-field','older-source','same-provenance'].includes(mode)){
+    const baselineText=JSON.stringify(baseline);candidate={...renewal,baselineText,baselineSha256:hash(baselineText)}
+  }
+  expect(()=>planFiscalParameters(candidate)).toThrow(/CATALOG_/)
+})
+
+function cleanupPlanRoot(root:string):void {
+  const target=resolve(root)
+  if(dirname(target)!==resolve(tmpdir())||!basename(target).startsWith('kiosko-catalog-plan-test-'))throw Error('Unexpected temporary catalog target')
+  rmSync(target,{recursive:true,force:true})
+}
+it('CLI lee snapshot/hash, genera revisión siguiente sin conectar, rechaza overwrite y hash incorrecto',()=>{
+  const root=mkdtempSync(join(tmpdir(),'kiosko-catalog-plan-test-'))
+  try {
+    const first=planFiscalParameters(liveInput()),renewal=renewedInput(first)
+    const ivaPath=join(root,'iva.json'),conditionPath=join(root,'conditions.json'),baselinePath=join(root,'baseline.json')
+    writeFileSync(ivaPath,renewal.ivaText);writeFileSync(conditionPath,renewal.conditionText);writeFileSync(baselinePath,renewal.baselineText)
+    const config={projectRef:renewal.projectRef,ivaPath,conditionPath,baselinePath,ivaSha256:renewal.ivaSha256,
+      conditionSha256:renewal.conditionSha256,baselineSha256:renewal.baselineSha256,expiresAt:renewal.expiresAt,revision:2}
+    const configPath=join(root,'config.json'),destination=join(root,'proposal')
+    writeFileSync(configPath,JSON.stringify(config))
+    const run=(directory:string)=>spawnSync(process.execPath,[resolve('scripts/plan-fiscal-parameters.mjs'),configPath,directory],{encoding:'utf8',timeout:10000})
+    const generated=run(destination)
+    expect(generated.status,generated.stderr).toBe(0)
+    expect(generated.stdout).toContain('SQL_EXECUTED=false')
+    const sql=readFileSync(join(destination,'catalogo-inactivo.sql'),'utf8')
+    const manifest=JSON.parse(readFileSync(join(destination,'revision-publica.json'),'utf8')) as Plan['manifest']
+    expect(manifest.revision).toBe(2);expect(manifest.habilitado).toBe(false)
+    expect(manifest.baseline_sha256).toBe(renewal.baselineSha256)
+    expect(run(destination).status).toBe(1)
+    expect(readFileSync(join(destination,'catalogo-inactivo.sql'),'utf8')).toBe(sql)
+    writeFileSync(configPath,JSON.stringify({...config,baselineSha256:'0'.repeat(64)}))
+    const rejected=run(join(root,'invalid'))
+    expect(rejected.status).toBe(1)
+    expect(rejected.stderr).toContain('No connection or SQL execution performed')
+    expect(existsSync(join(root,'invalid'))).toBe(false)
+  } finally {cleanupPlanRoot(root)}
 })

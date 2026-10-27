@@ -2791,3 +2791,69 @@ No se comprobó longitud de la contraseña real ni se infirió que deba cambiars
 No secretos/flags/SQL/Edge/Vercel remotos, usos de claves originales, ARCA o CAE.
 
 Cierre final del incremento:23/23PASS en3archivos y build689PASS después del último cambio. Oxlint:0errores,0advertencias nuevas; permanece no-unsafe-finally previo de arcaHomologationPreparation.test.ts, nuevo interop sin advertencias. Diff PASS. No suite global ni aceptación hospedada de custodia acreditadas por este incremento.
+
+## Renovación de catálogo conservando historial — plan 27/10/2026
+La primera carga autorizada dejó revisión1 inactiva. El generador inicial sólo acepta baseline vacío; no servirá para una renovación después de caducar la evidencia. Ampliarlo localmente con snapshot público revisado (bytes/SHA256) opcional y completo de revisiones existentes. Exigir revisión siguiente, consulta posterior y evidencia no registrada; ligar snapshot al hash aprobado. Bajo el mismo lock SQL comparar todas las filas/campos tipados y conteo antes de INSERT inactivo; cualquier cambio/activación concurrente bloquea. Nunca UPDATE/DELETE ni autoactivar/renovar vigencia, conservar modo inicial con guard vacío. Probar renovación, replay, baseline ajeno/cambiado y preservación exacta con PGlite. Sin ejecutar SQL, consultar ARCA, importar ni activar nada remotamente.
+
+### Renovación local preparada — 27/10/2026
+
+Generador amplía el modo inicial, que conserva baseline vacío, con baselinePath/
+baselineSha256 opcionales en pareja; en API pura baselineText/baselineSha256.
+Snapshot JSON es array completo de filas: revision, condiciones, alicuotas,
+fuente_sha256, consultado_en, vence_en, habilitado. SHA256 de bytes revisados,
+forma/campos/rangos y unicidad obligatorios, máximo1MB/100revisiones. No valores
+privados ni emisor/PV/credenciales en este snapshot. Fecha UTC puede mantener
+precisión original; comparación DB usa jsonb_populate_recordset sobre tipo
+canónico y to_jsonb de ambas filas, no formateo aproximado de timestamps.
+
+Nueva revisión debe ser max(snapshot)+1; consulta más reciente que todo el
+historial y fuente no registrada. El hash aprobado incluye hash del baseline.
+El guard bajo SHARE ROW EXCLUSIVE exige conteo y todas las filas/campos tipados
+idénticos al snapshot; cambio de habilitado, payload o revisión concurrente
+bloquea. INSERT nuevo siemprefalse, sin UPDATE/DELETE/upsert. No desplaza ni
+reactiva revisiones. Vigencia de fuente/propuesta y GO/destino siguen exigidos.
+Los ajustes de sesión no reemplazan verificar proyecto real; snapshot exige
+lectura independiente fresca y revisión antes de un GO de renovación específico.
+
+38 pruebas PASS en fiscalParameterPlan:26 previas y12 nuevas, incluyendo SQL
+PGlite preservación exacta/replay/cambios de baseline y CLI snapshot/hash,
+nooverwrite y checksum inválido sin directorio generado. El caso payload
+simula drift local con sólo DDL canónico, no pretende acreditar un UPDATE
+permitido por el trigger de inmutabilidad ni concurrencia PostgreSQL nativa.
+Oxlint enfocado PASS sin advertencias. No nueva propuesta real/revisión2
+materializada/importada, ni renovación de la fila1 ya instalada. No ARCA,
+uso de certificados originales, SQL/Edge/flags/Vercel remotos ni emisión.
+Suite integrada final iniciada en proceso local aparte, aún sin resultado.
+
+Compatibilidad del modo inicial comprobada con evidencias públicas existentes: hash y SQL íntegro reproducen exactamente la propuesta c753a5bd... ya aprobada, sin escribir archivos ni reejecutar SQL. No se alteraron sus artefactos originales. Guía incorpora lectura de snapshot READ ONLY/UTC/ROLLBACK como preparación futura, no ejecutada en este incremento.
+
+Relectura offline de evidencia pública original: condición5 Consumidor Final trae literalmente C/49 y se conserva como comprobantes[11] tras excluir49. No agregar6/FacturaB por conocimiento previo ni modificar JSON/fechas para hacerlo compatible. Es observación de ese snapshot, no conclusión normativa sobre todas las FacturasB. La primera consulta autorizada PV2/tipo11 no se amplía a otros tipos o catálogos por esta observación. Cualquier aclaración/actualización externa conserva su GO.
+
+### Cierre integrado local sobre el árbol final — 27/10/2026
+
+Suite completa vitest run --maxWorkers=2, salida0:4853PASS/1skipped,
+4854totales,311archivos,0fallos. Informe:
+../pilot-local-closure-20261027-catalog-renewal.json y .log.
+SHA256 JSON dd13e61e8c2ec72dfddfaf8ef0f7471f140943a8f51e809fdfc0090b9acdb150.
+Omitida histórica: F6.2D-C3C-2 local enrichment SQL generator / preserves the
+reviewed942-position candidate set and cutover blockers, por fixture externo
+de revisión no configurado. No omisiones fiscales nuevas. Este pase incluye
+WSAA/catálogos/último, aislamiento/helper Windows y compatibilidad de custodia
+sintética, además de los módulos previos; no convierte fixtures en aceptación
+hospedada de Auth/RLS/ARCA ni prueba el punto o el CAE.
+
+Renovación dirigida38/38PASS; oxlint enfocado sin errores/advertencias,
+node --check/diff PASS. Build final689módulos PASS, advertencia de chunks previa.
+Símbolos del generador/normalizador/custodia privados ausentes de dist/assets.
+SQL de herramientas sólo probado en PGlite en este incremento: no se repitió
+concurrencia PostgreSQL nativa, cuyos180casos previos quedan históricos. No
+modificó SQL001–053, runtime Edge ni frontend; no instalar/activar por esta suite.
+El proceso completo se observó vivo por su handle y terminó0; no se reinició
+por falta de salida del reporter JSON mientras trabajaba.
+
+Estado remoto no alterado por este bloque: revisión1 previamente instalada
+permanece fuera del alcance de cambios (sin renovación/activación solicitada),
+provisión de emisor/custodia y flags pendiente. GO WSAA+último PV2/tipo11 después
+de07:04Argentina aún no ejecutado; a esta hora sigue antes del límite humano.
+Sin CAE, merge, cambios master/Production o tareas programadas. Objetivo global
+PR02–PR11 continúa pendiente; no declarar cierre de PR03 por evidencia local.
