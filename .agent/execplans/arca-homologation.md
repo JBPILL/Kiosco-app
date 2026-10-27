@@ -3112,3 +3112,36 @@ Pendiente siguiente: revisión y GO específico para sólo SQL054→DB/ACL→Edg
 →JWT/CORS/gates. Respaldo actual ya disponible. No instalar, activar flags,
 provisionar claves/emisor, redeploy Vercel, llamar ARCA o emitir sin autorización.
 No merge/master/Production. PR03 y objetivo global siguen parciales.
+
+### Verificadores previos/post054 preparados sin ejecución remota — 27/10/2026
+
+El GO nuevo sigue pendiente. Se inspeccionó el generador local histórico de
+verificación: reconoce REVOKE054, pero escribe rutas9054cce fijas. No ejecutarlo
+sin adaptar destino/alcance, para no sobrescribir evidencia anterior ni etiquetar
+un contrato054 como053. Se generaron artefactos nuevos fuera de Git en
+../sql054-verification-20261027, con manifiesto SHA256 y escrituras exclusivas.
+Los archivos antiguos quedaron intactos. Dos modelos hasta053/hasta054 difieren
+únicamente en auth EXECUTE de preparar_operacion_fiscal_homologacion true→false;
+126funciones/41tablas/41triggers iguales. Checks incorporan owner postgres y
+search_path exacto, además de hash/carácter definer/grants/RLS/triggers existentes.
+SQL de verificación y conteos BEGIN REPEATABLE READ READ ONLY/ROLLBACK; sólo
+metadatos/conteos, no contenido de filas ni mutaciones.
+
+Prueba real de los verificadores contra el contenedor sintético retenido del
+ensayo183: label/estado/puerto localhost verificados, inicio local y posterior
+stop propio, datos conservados. Post054=0problemas/read_only on, pre053 detecta
+exactamente function_contract:preparar_operacion_fiscal_homologacion y ningún
+otro cambio; conteos iguales antes/después. No JWT hospedado ni Supabase/ARCA.
+Primer arranque del comprobador falló antes de Docker por ruta local incorrecta;
+se copió al directorio correcto sin borrar el borrador y luego pasó. No reintento
+remoto ni cambio de SQL por ese fallo de lanzamiento.
+
+Hashes:53-verify.sql 67d1af4601cdc9e78cfd622b7b18c05471cce2a871af1bc763d78485b9cc1cea;
+54-verify.sql 48e91ad090e1a462fd572f624b336093d20428c6c26e9ff6a62a6e680e341b4f;
+local-verifier-proof.json e12efcfd452224bbeaf714c08fa04206e768c68041400f16f1ce27092c4438dd.
+No fuentes de aplicación/SQL054/paquete Edge modificadas en esta preparación.
+Después del GO, verificar destino real por UI/host antes de ejecutar cualquier
+artefacto: los comentarios/ref del archivo no prueban por sí solos ese destino.
+No convertir esta prueba local en verificación hospedada. Master/Production
+intactos en este bloque. Se conserva pendiente la autorización ya solicitada,
+sin duplicarla ni inferirla de una continuación automática del objetivo.
