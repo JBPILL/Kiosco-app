@@ -1200,3 +1200,6 @@ GO/hash/destino explícitos y baseline vacío, además de revisar vigencia en DB
 los ajustes de sesión no reemplazan comprobar el proyecto real. La autorización
 de consulta consumida no habilita ejecutar este SQL, importar o activar filas.
 Propuesta real local, hashes, vencimiento y pruebas en ExecPlan fiscal.
+
+### Carga inactiva verificada — 27/10/2026
+Con GO separado, la propuesta e98225f se cargó una vez en Staging: revisión1, 6 alícuotas/11 condiciones, habilitado=false. Relectura independiente: exact_match=true, RLS=true, acceso directo cerrado, emisores=0. Vence 27/10 18:59 Argentina. No editar ni activar por inferencia; el historial de propuesta conserva sql_executed=false y la ejecución real consta en ExecPlan. No se usaron claves/ARCA ni se cambiaron flags o Vercel. Punto de venta, emisor/custodia y aceptación positiva siguen pendientes.

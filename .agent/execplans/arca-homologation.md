@@ -2690,3 +2690,35 @@ flags, secretos, WSAA/WSFE nuevos ni CAE. Aceptación positiva sigue pendiente d
 punto acreditado, provisión autorizada y actores reales; esto no cierra PR03.
 
 Cierre de validación del bloque: 33/33 pruebas en fiscalParameterPlan y wsaaHomologacion; oxlint de los dos archivos nuevos PASS sin advertencias después de sustituir el regex de controles por validación de caracteres. Build PASS. No se ejecutaron consultas ARCA ni SQL remoto en estas verificaciones.
+
+## Catálogo público inactivo instalado bajo GO — 27/10/2026
+
+GO específico recibido: «Sí, sólo catálogo inactivo y verificación». Se revalidó
+propuesta e98225f/hash c753a5bdeb4a3f262a6a63b3cd26badaa453d34fe4f58ac40b4c7968593e0473
+y vencimiento antes de ejecutar. Panel identifica kioskopos-staging/ref exacto
+acoyfwwmhaeruciyedri; la etiqueta main PRODUCTION del branch de este proyecto
+no es el proyecto productivo lllkjnqpltnwvxzphncr. Baseline REPEATABLE READ READ
+ONLY/ROLLBACK: read_only=on, catálogos=0, emisores=0, propuesta vigente=true.
+
+Se pegó SQL de la propuesta, agregando sólo los SET LOCAL de destino/hash
+expresamente aprobados dentro del BEGIN; comparación íntegra del editor con
+fuente PASS antes de Run. Una ejecución Success; sin retry. La verificación
+posterior independiente READ ONLY/ROLLBACK comparó todos los campos JSONB,
+revisión, fuente_sha256, consulta, vencimiento y habilitado contra manifiesto:
+read_only=on, revisions=1, enabled=0, exact_match=true, iva_rows=6,
+receiver_rows=11, issuers=0, rls=true, direct_access_closed=true.
+Direct access comprobó privilegios de tabla y columna para anon/authenticated/
+service_role. No acredita por sí solo todas las policies ni E2E fiscal positivo.
+
+Evidencias locales fuera de Git: ../catalogo-inactivo-staging-verificado-20261027.png
+y ../catalogo-inactivo-verificacion-20261027.sql. Los artefactos originales se
+conservan como propuesta, con sql_executed=false histórico: no reescribirlos como
+si fueran un diario de ejecución. Esta entrada documenta la instalación real.
+Sólo una fila inactiva nueva; no activar catálogo, emisor, permisos, custodia,
+flags o Vercel. Sin nuevos usos de certificados/WSAA/WSFE, CAE, merge o Production.
+Vencimiento conservado:27/10/2026 18:59 Argentina; no autoriza prolongación.
+
+Primer pendiente: acreditar punto de venta de homologación y preparar provisión
+revisable del emisor/custodia antes de aceptación positiva. PV2 sigue sólo
+configurado en KioskoPOS según evidencia humana previa; el catálogo instalado
+no lo acredita. Nuevas consultas ARCA/provisión/activación conservan GO separado.
