@@ -1479,3 +1479,59 @@ vigencia/baseline. Si requiere mecanismo distinto, prepararlo y revisarlo antes.
 Diagnóstico ahora distingue permisos/proceso ausente sin errores externos;
 32tests sintéticos/build689/lint enfocado PASS. Evidencia e historia en ExecPlan.
 Custodia instalada, keyring hospedado y TA/cache siguen NO CONFIRMADOS.
+
+
+### Alternativa del operador local, sin secretos en CUA — 27/10/2026
+
+El GO para seis secretos ya existe. Ante EPERM se prepara
+scripts/provisionar-custodia-staging-privado.ps1 para que lo ejecute el titular
+en su PowerShell7.4. No se ejecutó provisión real ni se solicitó PAT durante
+desarrollo. No genera un servidor, no debilita permisos del controlador UI y no
+lee cookies/credenciales de otros procesos. Reutiliza el plan/lector privado
+existentes sin repetir CMS ni rotar originales.
+
+Modo -Preparar/default: valida plan vigente y prueba spawn pwsh con un literal
+público; no red ni lectura original. Ejecución real local del modo Preparar PASS:
+CUSTODY_OPERATOR_READY staging=true runtime=true private_read=false network=0.
+Esto supera la comprobación insuficiente de importabilidad del módulo en CUA.
+
+Modo -Provisionar requiere -VentanaExclusiva, hash revisado y consola interactiva.
+El titular ingresa un PAT scoped de Supabase sólo en prompt enmascarado; limitar
+manualmente a kioskopos-staging y Secrets Read/Write, con vencimiento corto.
+No usar service_role, contraseña PostgreSQL ni claves del proyecto. No enviar
+PAT al chat. El prefijo scoped no acredita por sí solo sus permisos reales;
+la limitación la configura el titular. No crear/extraer token automáticamente.
+
+Referencia oficial verificada27/10:
+https://supabase.com/docs/guides/platform/personal-access-tokens
+https://supabase.com/docs/reference/api/v1-list-all-secrets
+https://supabase.com/docs/reference/api/v1-bulk-create-secrets
+Sólo GET/POST https://api.supabase.com/v1/projects/acoyfwwmhaeruciyedri/secrets.
+GET se interpreta únicamente como nombres/digests64hex; plaintext/forma inesperada
+rechazados antes de originales. Forma documentada incluye name/value/updated_at;
+aceptación real del contrato API todavía pendiente. No inferirla de mocks.
+
+Orden: GETbaseline/13flags cerrados/nombres ausentes → entrega privada única →
+GETrecheckidéntico → validar vigencia → POSTúnico6nombres/valores → GETfinal/
+digests → dispose. Sin redirecciones/retries, errores/cuerpos externos impresos,
+valores en argv/env/archivos/clipboard o logs. PAT sólo stdin/memoria; TLS no
+debilitado. Fuentes privadas y símbolos no entran en bundle. Strings en memoria
+administrada no ofrecen garantía de borrado físico. No WSAA/WSFE/CAE por este flujo.
+
+No hay CAS documentado del endpoint: los dos GET detectan drift observado, pero
+no garantizan ausencia de escritor concurrente entre último GET y POST. Por eso
+VentanaExclusiva es precondición del operador: no editar secretos/otros despliegues
+durante la operación. No prometer transacción/CAS remoto. Ante timeout/errorPOST/
+verificación fallida, salida write_attempted=true/reconcile_before_retry=true:
+NO repetir, reparar, sobrescribir ni borrar. Coordinar verificación independiente
+de metadatos y siguiente decisión. Después del PASS el Edge503 se verifica aparte
+desde el probador oficial; el asistente no acredita keyring/TA funcional hospedados.
+
+Ejecución del titular, sólo mientras propuesta/hash sigan vigentes:
+```powershell
+pwsh -NoProfile -File .\scripts\provisionar-custodia-staging-privado.ps1 -Provisionar -VentanaExclusiva -Propuesta '..\fiscal-custody-public-proposal-20261027.json' -HashRevisado '9c59757ef3592ced0e198ac6b9fc91f12a30dfa905d14059aa88897bc9f99344'
+```
+Ejecutar desde commercial-subscription-backend. Propuesta vence28/10 17:46Argentina.
+Copiar sólo CUSTODY_PROVISION_METADATA_PASS o CUSTODY_PROVISION_NOT_CONFIRMED.
+Éxito dice functional=false/edge_check=REQUIRED; nunca cerrar PR03 por ese marcador.
+120tests sintéticos/9archivos/0skip y build689 PASS; sin llamadas API reales.

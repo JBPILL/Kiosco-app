@@ -866,3 +866,16 @@ provisión no confirmada y no improvisar transportes con clipboard/argv/archivo/
 endpoint. Categorías cerradas de spawn y pruebas de rechazo síncrono/asíncrono
 permiten diagnosticar sin exponer errores externos; no habilitan evasión del
 entorno. Resolver un canal privado permitido antes de otro intento.
+
+
+### 27/10/2026 — Provisión por operador local y Management API oficial
+No eludir EPERM del controlador ni transportar privados por consola/clipboard/
+archivos/endpoints locales. Preparar asistente que el titular ejecuta en consola
+propia con PAT scoped ingresado mediante Read-Host -AsSecureString. GO de6valores
+ya recibido; token adicional nunca se obtiene ni crea automáticamente. Sólo API
+oficial Staging fija y GET/POST secretos, sin redirects/retries. GETbaseline antes
+de originales y recheck antes de POST,6valores exactos, verificación/dispose.
+No CAS remoto documentado: exigir ventana exclusiva y reconocer riesgo concurrente
+residual. ACK perdido/partial obliga conciliación antes de cualquier repetición.
+Preparar real sin red/secretos PASS;120tests/build PASS no sustituyen provisión ni
+custodia funcional hospedada. No se usó PAT/original real en este desarrollo.

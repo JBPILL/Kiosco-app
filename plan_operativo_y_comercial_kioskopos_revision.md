@@ -1037,3 +1037,14 @@ EPERM en entorno CUA. No valores introducidos/Save,6nombres nuevos ausentes y
 repite ni rota. Resolver canal privado permitido; no falta el GO ya otorgado.
 Diagnóstico de runtime seguro32tests/build689/lint PASS, sin reintento original.
 PR03 parcial y provisión/custodia hospedada aún pendientes. Evidencia en ExecPlan.
+
+
+27/10/2026: alternativa al EPERM preparada para ejecución local del titular:
+asistente PowerShell7.4 con PAT scoped ingresado privadamente, Management API
+oficial Staging fija, GETbaseline/recheck, POSTúnico6valores y metadatos/dispose.
+Modo Preparar nativo PASS sin red/originales;120tests/9archivos/0skip, build689,
+lint enfocado/node/PS parse/bundle PASS. No POST real ni token solicitado.
+GO6valores ya existe; falta ejecución local y aceptación de metadatos/Edge,
+sin confundirlas con custodia/keyring/TA funcional hospedados. API sin CAS
+documentado exige ventana exclusiva, sin retry ante ACK incierto. Detalle en
+guía/ExecPlan fiscal; no cambios remotos/ARCA/CAE/Production/merge.

@@ -3423,3 +3423,52 @@ archivos privados. Build689/lint enfocado/diff PASS. Informe
 ../fiscal-custody-runtime-denied-20261027.json SHA256
 652ff9d64cfb3aab66e3e966c54c7e26aab0977f67165399dae47b67ed4e7690.
 No se reejecutó entrega original para probar el nuevo diagnóstico.
+
+#### Alternativa local interactiva al proceso CUA impedido — plan 27/10/2026
+Preparar asistente que el titular ejecutará en PowerShell7.4, usando Management
+API oficial Supabase (GET/POST /v1/projects/{ref}/secrets), sólo destino Staging.
+PAT scoped se ingresa en prompt privado local: nunca pedirlo por chat, leerlo
+desde navegador/CLI ni generarlo automáticamente. Sólo permisos Secrets Read/
+Write del proyecto, no service_role/contraseñaDB. Sin uso real durante desarrollo.
+Reutilizar entrega privada/plan, GET baseline antes de originales, segunda lectura
+para detectar drift antes de POST único6valores, GET final/digests/dispose.
+Sin redirect/retry/archivo secreto/clipboard/servidor local. Tras POST incierto,
+reconciliar metadata antes de otra ejecución. API no acredita CAS remoto: exigir
+ventana exclusiva sin editores concurrentes y declarar esa limitación, no prometer
+atomicidad. Modo Preparar sin red/secretos prueba realmente spawn en contexto local.
+Tests sintéticos y revisión antes de entregar instrucciones; GO de6valores ya
+recibido, no confundir mecanismo alternativo preparado con provisión realizada.
+
+
+#### Alternativa del operador preparada y probada — 27/10/2026
+
+Implementados provisionar-custodia-staging-privado.ps1 y núcleo/CLI MJS privados.
+Sólo proceso del titular, PAT scoped en Read-Host seguro/stdin, endpoint Management
+API oficial fijo de Staging. Sin crear token, sesiones navegador/CLI ni ejecutar
+provisión real. GET antes de originales, recheck, único POST6 y GET/digests/dispose.
+Sin redirects/retries; write_attempted/reconcile_before_retry explícitos ante
+incertidumbrePOST. Funcionalidad Edge/keyring/TA no acreditada por metadataPASS.
+No CAS documentado: ventana exclusiva explícita, no prometer garantía concurrente
+entre últimoGET y POST. Contrato real API todavía pendiente; sólo64hex en value.
+
+Public wrapper -Preparar ejecutado realmente con propuesta vigente: READY/runtime
+true/private_readfalse/network0. El proceso local sí inicia donde CUA daba EPERM;
+no se cambió ni evadió su entorno restringido. No original ni PAT real para esta
+prueba. -Provisionar interactivo queda a cargo del titular y requiere hash y
+VentanaExclusiva. Mismo GO de6valores, no nueva autorización de flags/ARCA/emisor.
+
+120PASS/0FAIL/0skip en9archivos, incluyendo17nuevos de API simulada/operador:
+autenticación/metadatos rechazados antes de originales, drift/rechazo/ACK perdido/
+partial sin retries y dispose; nativo Preparar con propuesta sintética. Informe
+../fiscal-custody-operator-final-20261027.json/.log SHA256
+d220d066e6b1f2a665b58b2bd2fce59f3da2de1a24270ec552bad2a7a44f8783.
+Build689 PASS; lint enfocado sin diagnósticos tras mover guardia de cleanup a
+helper (warning inicial conservado en salida), node/PS AST/diff/bundle PASS.
+Sin nueva suite global/SQL nativo por herramienta del operador. Guía existente
+incluye comando/alcance, fuentes oficiales y límites de autenticación/metadatos.
+
+Siguiente: titular obtiene manualmente PAT scoped sólo Staging/SecretsReadWrite,
+ejecuta asistente en consola propia y comparte únicamente marcador seguro;
+verificar independientemente inventario/Edge después. No pedir contraseñaDB,
+service_role ni PAT en chat. Si propuesta vence, preparar revisión pública nueva
+antes de originales; no prolongar in situ. Staging/flags/ARCA/Production intactos.
