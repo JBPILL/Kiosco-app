@@ -1028,3 +1028,12 @@ ExecPlan; todavía NO autorizado cargar los6secretos ni leer originales para ell
 Provisión cerrada/metadatos tampoco acreditará keyring/TA funcional desde Edge.
 PR03 parcial; catálogo vigente/emisor/aceptación positiva y primer CAE pendientes.
 Sin SQL/Edge/Vercel/flags/Supabase/ARCA/Production nuevos ni merge.
+
+
+27/10/2026: GO específico de6secretos Staging recibido. Provisión NO realizada:
+entrega privada falló READ_PIPE y sonda pública sin originales acreditó pwsh
+EPERM en entorno CUA. No valores introducidos/Save,6nombres nuevos ausentes y
+6previos intactos; Edge503HOMOLOGACION_NO_HABILITADA. Clave original PASS no se
+repite ni rota. Resolver canal privado permitido; no falta el GO ya otorgado.
+Diagnóstico de runtime seguro32tests/build689/lint PASS, sin reintento original.
+PR03 parcial y provisión/custodia hospedada aún pendientes. Evidencia en ExecPlan.

@@ -3385,3 +3385,41 @@ flag alterados), build689 y lint enfocado/diff PASS. Informe fuera de Git
 95tests anteriores mantienen su alcance; no suite global nueva. Ningún original,
 Supabase/flag/ARCA/CAE utilizado. GO de seis secretos sigue pendiente, propuesta
 pública sin cambios: este endurecimiento no amplía la autorización solicitada.
+
+
+#### GO de provisión recibido; ejecución privada impedida — 27/10/2026
+
+El titular autorizó exclusivamente los6secretos de propuesta9c59757e, copia
+mínima sin repetir CMS, verificación de metadatos/Edge cerrado. No falta ese GO.
+A17:53Argentina, plan/hash/vigencia y destino UI exacto revalidados; baseline
+6customsecrets,6nombres nuevos ausentes,13flags false/ausentes.
+
+Un único intento de crear entrega en el controlador CUA falló READ_PIPE, sin
+retornar valores ni tocar el formulario/Save. No repetir. Sonda posterior
+EXCLUSIVAMENTE pública (pwsh imprime literal RUNTIME_READY, sin archivos privados)
+retornó errorEPERM, exitnull/readyfalse: ese entorno impide lanzar el proceso
+Windows. Importar módulo no acreditaba capacidad de spawn; los PASS sintéticos
+en shell local tampoco prueban ese permiso del entorno UI. No es fallo de
+compatibilidad criptográfica: b11e660 permanece PASS y no se repitió CMS.
+No usar consola, argv, clipboard, archivo privado o servidor improvisado como
+atajo de transporte. Resolver canal privado permitido antes de otro intento.
+
+Inventario UI posterior idéntico por comparación en memoria:6previos intactos,
+6nuevos ausentes;0Save. Una petición del probador oficial POST{} con OriginStaging
+respondió503HOMOLOGACION_NO_HABILITADA. Sin cambios SQL/Edge/flags/Vercel/emisor,
+WSAA/WSFE/CAE/Production o merge. Provisión/custodia hospedada NO CONFIRMADAS.
+
+Evidencia fuera de Git:
+- ../fiscal-custody-provision-blocked-20261027.json SHA256
+77a7d7cf9c8299e3529e9825a4eae83a8781ed62e8a2614528bd0c9c8b881dfd.
+- ../fiscal-custody-edge-still-closed-20261027.json SHA256
+c847837cd95336f40f2f104e436c078b7e56063191519fc9f69d47817670a3f0.
+- captura fiscal-custody-edge-still-closed-20261027.png muestra503sin valores.
+
+Diagnóstico endurecido: spawn síncrono/asíncrono ahora sólo expone categorías
+PROCESS_DENIED/PROCESS_MISSING/PROCESS_UNAVAILABLE, sin mensaje/path externo ni
+retry.32tests PASS/0skip en3archivos,5nuevos cubren rechazo de proceso sin usar
+archivos privados. Build689/lint enfocado/diff PASS. Informe
+../fiscal-custody-runtime-denied-20261027.json SHA256
+652ff9d64cfb3aab66e3e966c54c7e26aab0977f67165399dae47b67ed4e7690.
+No se reejecutó entrega original para probar el nuevo diagnóstico.

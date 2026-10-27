@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { CUSTODY_PROJECT, validateCustodyProvisionPlan, requireAbsentCustodyBaseline, custodyInventory } from '../fiscal-custody-plan.mjs'
 
 const fail = () => { throw Error('FISCAL_PRIVATE_DELIVERY_NOT_CONFIRMED') }
+const processStage = error => error?.code === 'EPERM' || error?.code === 'EACCES' ? 'PROCESS_DENIED' : error?.code === 'ENOENT' ? 'PROCESS_MISSING' : 'PROCESS_UNAVAILABLE'
 /** @returns {Promise<Buffer>} Private memory only; raw stdout/stderr never become diagnostics. */
 async function readPipe(plan, paths) {
   const args = ['-NoProfile', '-NonInteractive', '-File', fileURLToPath(new URL('./read-custody-provision-pipe.ps1', import.meta.url)),
@@ -12,15 +13,21 @@ async function readPipe(plan, paths) {
     '-CertificadoSha256', plan.certificateSha256, '-CuitCertificado', plan.certificateCuit,
     '-IdCredencial', plan.credentialId, '-IdClaveTa', plan.taKeyId]
   return new Promise((resolve, reject) => {
-    const child = spawn('pwsh', args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, NODE_OPTIONS: '', NODE_PATH: '', KIOSKOPOS_PRIVATE_CHANNEL_V1: '1' } })
+    let child
+    try {
+      child = spawn('pwsh', args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, NODE_OPTIONS: '', NODE_PATH: '', KIOSKOPOS_PRIVATE_CHANNEL_V1: '1' } })
+    } catch (error) {
+      reject(Error('FISCAL_PRIVATE_DELIVERY_NOT_CONFIRMED:' + processStage(error)))
+      return
+    }
     const chunks = [], errors = []
-    let length = 0, errorLength = 0, failed = false
+    let length = 0, errorLength = 0, failed = false, spawnFailure
     const stop = () => { failed = true; child.kill() }
     const timer = setTimeout(stop, 30000)
     child.stdout.on('data', chunk => { length += chunk.length; if (length > 220000) { chunk.fill(0); stop() } else chunks.push(chunk) })
     child.stderr.on('data', chunk => { errorLength += chunk.length; if (errorLength > 1024) { chunk.fill(0); stop() } else errors.push(chunk) })
-    child.on('error', () => { failed = true })
+    child.on('error', error => { failed = true; spawnFailure = processStage(error) })
     child.on('close', code => {
       clearTimeout(timer)
       const bytes = Buffer.concat(chunks)
@@ -29,7 +36,7 @@ async function readPipe(plan, paths) {
       errorBytes.fill(0)
       for (const chunk of chunks) chunk.fill(0)
       for (const chunk of errors) chunk.fill(0)
-      if (failed || code !== 0) { bytes.fill(0); reject(Error('FISCAL_PRIVATE_DELIVERY_NOT_CONFIRMED' + (safeStage ? ':' + safeStage : ''))) } else resolve(bytes)
+      if (failed || code !== 0) { bytes.fill(0); reject(Error('FISCAL_PRIVATE_DELIVERY_NOT_CONFIRMED' + (spawnFailure || safeStage ? ':' + (spawnFailure || safeStage) : ''))) } else resolve(bytes)
     })
   })
 }
@@ -79,7 +86,7 @@ export async function preparePrivateCustodyDelivery({ plan: input, approvedHash,
     }))
   } catch (error) {
     records?.clear()
-    if (error instanceof Error && /^FISCAL_PRIVATE_DELIVERY_NOT_CONFIRMED:(CHANNEL|METADATA|PUBLIC_PIN|ORIGINAL_COPY|PACKET)$/.test(error.message)) throw Error(error.message)
+    if (error instanceof Error && /^FISCAL_PRIVATE_DELIVERY_NOT_CONFIRMED:(CHANNEL|METADATA|PUBLIC_PIN|ORIGINAL_COPY|PACKET|PROCESS_DENIED|PROCESS_MISSING|PROCESS_UNAVAILABLE)$/.test(error.message)) throw Error(error.message)
     throw Error('FISCAL_PRIVATE_DELIVERY_NOT_CONFIRMED:' + stage)
   } finally {
     bytes?.fill(0)

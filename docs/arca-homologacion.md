@@ -1464,3 +1464,18 @@ vence preparar otra propuesta pública y revisión, sin leer originales.
 check/diff y ausencia de símbolos privados nuevos en bundle PASS. No suite global
 ni SQL nativo nuevos por tooling local. PR03 parcial; ningún secreto real leído,
 generado o transmitido por este bloque.
+
+
+### GO recibido; bloqueo del proceso de transporte — 27/10/2026
+El GO de seis secretos ya fue otorgado; no volver a pedir el mismo permiso como
+si faltara. El intento único en CUA no produjo entrega: READ_PIPE. Sonda pública
+sin originales confirmó spawn pwsh EPERM/exitnull. No hubo entrada de valores ni
+Save; inventario previo intacto, seis nombres ausentes y Edge503confirmado.
+Compatibilidad original b11e660 sigue PASS. No repetir CMS ni usar consola,
+clipboard, archivos privados o un endpoint nuevo para eludir el impedimento.
+Import de módulo y tests en shell no acreditan permiso de proceso del controlador
+UI. Resolver ese canal permitido antes de repetir copia, revalidando propuesta/
+vigencia/baseline. Si requiere mecanismo distinto, prepararlo y revisarlo antes.
+Diagnóstico ahora distingue permisos/proceso ausente sin errores externos;
+32tests sintéticos/build689/lint enfocado PASS. Evidencia e historia en ExecPlan.
+Custodia instalada, keyring hospedado y TA/cache siguen NO CONFIRMADOS.

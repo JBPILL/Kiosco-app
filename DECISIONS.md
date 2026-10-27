@@ -856,3 +856,13 @@ sólo durante provisión autorizada. Comparar digests en memoria/preservar previ
 parcial o drift detienen sin overwrite/retry/borrado. Metadatos de provisión no
 cierran funcionalidad hospedada, cache compartido ni aceptación fiscal positiva.
 95pruebas sintéticas y build PASS; no carga remota ni lectura original nueva.
+
+
+### 27/10/2026 — Import del controlador no acredita ejecución privada disponible
+Tras GO de seis secretos, la entrega CUA falló READ_PIPE y una sonda pública
+sin archivos privados confirmó pwsh EPERM. No atribuirlo a la clave ni repetir
+compatibilidad original, tampoco solicitar de nuevo el mismo GO. Mantener
+provisión no confirmada y no improvisar transportes con clipboard/argv/archivo/
+endpoint. Categorías cerradas de spawn y pruebas de rechazo síncrono/asíncrono
+permiten diagnosticar sin exponer errores externos; no habilitan evasión del
+entorno. Resolver un canal privado permitido antes de otro intento.
