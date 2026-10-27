@@ -35,7 +35,9 @@ function run(mode:string){
      if(${quote(mode)} -like 'fiscal-*'){
       foreach($t in @(${fiscalTables.map(quote).join(',')})){if(${quote(mode)} -ne 'fiscal-missing-table' -or $t -ne 'fiscal_ta_homologacion'){'1; 0 1 TABLE DATA public '+$t+' postgres'}}
       if(${quote(mode)} -ne 'fiscal-missing-function'){'2; 0 1 FUNCTION public preparar_operacion_fiscal_homologacion(uuid, uuid, uuid, jsonb) postgres'}
-      if(${quote(mode)} -ne 'fiscal-missing-acl'){'3; 0 1 ACL public FUNCTION preparar_operacion_fiscal_homologacion(uuid, uuid, uuid, jsonb) postgres'}
+      if(${quote(mode)} -eq 'fiscal-bare-acl'){'3; 0 1 ACL public FUNCTION preparar_operacion_fiscal_homologacion(uuid, uuid, uuid, jsonb) postgres'}
+      elseif(${quote(mode)} -eq 'fiscal-wrong-signature'){'3; 0 1 ACL public FUNCTION preparar_operacion_fiscal_homologacion(p_operacion_id uuid, p_kiosco_id uuid, p_venta_id text, p_contexto jsonb) postgres'}
+      elseif(${quote(mode)} -ne 'fiscal-missing-acl'){'3; 0 1 ACL public FUNCTION preparar_operacion_fiscal_homologacion(p_operacion_id uuid, p_kiosco_id uuid, p_venta_id uuid, p_contexto jsonb) postgres'}
      };return
     }
     $tool=if($a -contains 'pg_dumpall'){'pg_dumpall'}else{'pg_dump'}
@@ -86,6 +88,12 @@ it.skipIf(process.platform!=='win32')('modo previo054 comprueba tablas fiscales 
 it.skipIf(process.platform!=='win32')('preflight fiscal no solicita secreto ni exporta',()=>{
  const r=run('fiscal-prepare');expect(r.status,r.output).toBe(0)
  expect(r.files).toEqual([]);expect(r.report.events).toEqual([]);expect(r.output).toContain('41 tablas fiscales')
+},60000)
+it.skipIf(process.platform!=='win32')('acepta también ACL de identidad sin nombres de argumentos',()=>{
+ const r=run('fiscal-bare-acl');expect(r.status,r.output).toBe(0);expect(r.context.legacy_function_and_acl_toc_verified).toBe(true)
+},60000)
+it.skipIf(process.platform!=='win32')('no confunde otra sobrecarga con la ACL requerida',()=>{
+ const r=run('fiscal-wrong-signature');expect(r.status,r.output).toBe(1);expect(r.context).toBeNull();expect(r.output).toContain('[INDICE_FISCAL_ACL]')
 },60000)
 it.skipIf(process.platform!=='win32').each(['fiscal-missing-table','fiscal-missing-function','fiscal-missing-acl'])('modo054 falla cerrado ante %s',mode=>{
  const r=run(mode);expect(r.status,r.output).toBe(1);expect(r.context).toBeNull()

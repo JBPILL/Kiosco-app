@@ -209,11 +209,15 @@ try {
         if ($FiscalInstalado053) {
             $stagingStep = 'indice fiscal previo a SQL054'
             foreach ($table in $stagingFiscalTables) {
-                if (-not ($index | Where-Object { $_ -match ('\bTABLE DATA public ' + [regex]::Escape($table) + '\s') })) { throw 'Tabla fiscal ausente del indice.' }
+                if (-not ($index | Where-Object { $_ -match ('\bTABLE DATA public ' + [regex]::Escape($table) + '\s') })) { $stagingDiagnostic.Code='INDICE_FISCAL_TABLA'; throw 'Tabla fiscal ausente del indice.' }
             }
-            $legacySignature = 'preparar_operacion_fiscal_homologacion\(uuid,\s*uuid,\s*uuid,\s*jsonb\)\s'
+            # pg_restore lists FUNCTION identity types, but ACL may include argument names.
+            $legacySignature = 'preparar_operacion_fiscal_homologacion\((?:p_operacion_id\s+)?uuid,\s*(?:p_kiosco_id\s+)?uuid,\s*(?:p_venta_id\s+)?uuid,\s*(?:p_contexto\s+)?jsonb\)\s'
             foreach ($entry in @('FUNCTION public ','ACL public FUNCTION ')) {
-                if (-not ($index | Where-Object { $_ -match ('\b' + $entry + $legacySignature) })) { throw 'Entrada heredada o ACL ausente del indice.' }
+                if (-not ($index | Where-Object { $_ -match ('\b' + $entry + $legacySignature) })) {
+                    $stagingDiagnostic.Code=if ($entry -eq 'FUNCTION public ') { 'INDICE_FISCAL_FUNCION' } else { 'INDICE_FISCAL_ACL' }
+                    throw 'Entrada heredada o ACL ausente del indice.'
+                }
             }
         }
         $rolesPartial = Join-Path $destination 'roles-sin-passwords.sql.partial'

@@ -3042,7 +3042,7 @@ en TOC, función heredada y ACL exactas requeridas. Manifiesto indica etapa y
 alcance TOC, equivalencia de esquema/restauración false. Sin nuevas lecturas de
 contraseñas, fuentes privadas ni conexión DB por el agente.
 
-15/15 pruebas Windows del asistente PASS con Docker/Auth sintéticos (incluye
+15/15 pruebas Windows del asistente PASS con Docker/entrada secreta simulados (incluye
 cinco casos nuevos); oxlint enfocado/diff PASS. Build posterior689 PASS. No se
 repitió la suite global4885 tras este incremento exclusivo de respaldo: ese
 resultado corresponde a e21866d, no al nuevo árbol. El nuevo contrato quedó
@@ -3055,3 +3055,23 @@ CA/TLS verify-full disponibles, sin descarga/exportación/DB. Docker queda abier
 para el siguiente paso humano. Respaldo nuevo sigue PENDIENTE de ingreso privado
 local por el titular; no instalar054 ni actualizar Edge antes de verificar copia
 y recibir GO nuevo. No repetir autenticación ARCA ni modificar flags/Production.
+
+### Corrección de TOC real del respaldo — 27/10/2026
+
+El titular ejecutó el asistente y recibió fallo en índice fiscal previo054.
+Lectura local pg_restore --list con red deshabilitada/montaje readonly confirmó
+41/41tablas, función exacta y ACL presente. Causa: ACL imprime nombres de
+argumentos mientras FUNCTION imprime sólo tipos. Fixture inicial omitía esa
+variante real y dio un falso rechazo. Se corrige el patrón para firma exacta
+con/sin nombres conocidos, manteniendo tipos y rechazo de sobrecargas.
+
+17/17 pruebas Windows PASS (incluyen ACL real con nombres, identidad sin nombres,
+sobrecarga distinta y ausencias); lint enfocado/diff PASS. Patrón real de la
+fuente corregida aplicado al mismo TOC local: functionMatches=1/aclMatches=1,
+sin modificar archivo ni conexión DB. Categorías seguras específicas añadidas.
+No nueva suite global/build por esta corrección exclusiva de PowerShell y sus
+pruebas; build689 anterior sigue histórico. Copia parcial no contiene contexto
+confirmado: roles/manifiesto requieren completar un respaldo nuevo con contraseña
+local del titular. No reutilizarla como PASS ni instalar054/Edge. Se conserva.
+La comprobación nativa adicional054 sobre baseline completo sigue pendiente;
+sólo se inspeccionó el runner, sin modificarlo ni declarar resultados nuevos.

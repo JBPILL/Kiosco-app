@@ -169,3 +169,12 @@ copiar respuestas externas; compartir únicamente la línea de confirmación/rut
 o la categoría segura del fallo. TLS verify-full, CA pública fija, cliente
 existente sin descargas, roles sin passwords y ACL privadas se mantienen.
 Preparar esta herramienta no crea un respaldo real ni autoriza SQL054/Edge.
+
+Corrección del índice real (27/10): pg_restore imprime la firma FUNCTION con
+tipos, pero su entrada ACL puede incluir nombres de argumentos. El patrón acepta
+ambas formas de la firma exacta uuid/uuid/uuid/jsonb; otra sobrecarga continúa
+rechazada. Las categorías INDICE_FISCAL_TABLA/FUNCION/ACL identifican el control
+fallido sin publicar respuestas externas. El primer archivo parcial conserva
+las41tablas y función/ACL verificadas por lectura local, pero no completó roles
+ni manifiesto final. No promoverlo manualmente a confirmado. Ejecutar el mismo
+comando corregido crea otra carpeta y conserva los archivos anteriores.
