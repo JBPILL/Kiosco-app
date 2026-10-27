@@ -948,3 +948,5 @@ RLS de ventas. PASS limitado a ese SELECT de ventas/actores/fixtures; no cubre
 todas las tablas, escrituras, preparación fiscal positiva ni E2E completo.
 PR03 parcial y PR02 sin CAE. Siguiente dependencia: alcance revisable de emisor/
 catálogo y preparación positiva bajo nuevo GO, sin defaults fiscales antiguos.
+
+27/10/2026: PR03 avanza con propuesta local de catálogo inactivo (6 alícuotas/11 condiciones) y validación PGlite; no importada ni activada. ALEY/49 excluidas del alcance 1/6/11. Punto WSFE aún sin acreditar; provisión/aceptación positiva/primer CAE requieren gates independientes. Evidencia, hash y vencimiento en ExecPlan ARCA. Production sin cambios en este bloque.

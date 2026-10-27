@@ -1181,3 +1181,22 @@ está consumido; no repetirlo ni reutilizar un TA inexistente en memoria local.
 Falta preparar importación revisable, acreditar el punto y autorizar provisión/
 aceptación positiva. No convertir obtención de parámetros en preparación o
 emisión completadas. Evidencia y límites en ExecPlan fiscal.
+
+### Propuesta inactiva de parámetros — 27/10/2026
+
+`scripts/plan-fiscal-parameters.mjs CONFIG_JSON NUEVO_DIRECTORIO` transforma sólo
+las dos evidencias públicas revisadas. CONFIG_JSON exige projectRef, ivaPath,
+conditionPath, ivaSha256, conditionSha256, expiresAt UTC y revision explícitos.
+No contiene credenciales. Es offline; nunca conecta ni instala. Rechaza destino
+ajeno, hashes/forma inválidos, clases desconocidas, fuentes de 24h o más y
+vencimientos que crucen el día argentino de evaluación. Produce SQL inactivo y
+manifiesto con procedencia/exclusiones; no sobrescribe un directorio existente.
+Si falla la escritura puede quedar un borrador parcial: no constituye carga
+confirmada y no debe ejecutarse. Revisar ambos archivos antes de cualquier GO.
+
+Sólo A/B/C se convierten a tipos 1/6/11; ALEY/49 se conservan como exclusiones.
+No selecciona el IVA de productos ni acredita el punto de venta. El SQL exige
+GO/hash/destino explícitos y baseline vacío, además de revisar vigencia en DB;
+los ajustes de sesión no reemplazan comprobar el proyecto real. La autorización
+de consulta consumida no habilita ejecutar este SQL, importar o activar filas.
+Propuesta real local, hashes, vencimiento y pruebas en ExecPlan fiscal.

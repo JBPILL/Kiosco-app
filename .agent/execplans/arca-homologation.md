@@ -2641,3 +2641,52 @@ permanece pendiente: PV2 sigue sin acreditación en WSFE (historia602 conservada
 Siguiente trabajo local autorizado: normalizar/revisar estos campos públicos y
 preparar el alcance concreto de provisión, sin instalarlo. La aceptación positiva
 necesita emisor/punto acreditados y su GO; estos catálogos no los sustituyen.
+
+## Siguiente bloque local: propuesta de catálogo inactivo — 26/10/2026
+
+Plan: validar bytes/hashes y forma de ambas evidencias públicas; convertir sólo
+A/B/C a1/6/11, conservando exclusiones ALEY/49 explícitas y rechazando clases
+desconocidas; validar fechas de alícuotas sin inventar IVA ni condición de una
+venta; generar SQL/manifest local con habilitado=false y guards de autorización,
+destino, vigencia y baseline vacío. No generar emisor/PV/custodia ni conectar.
+Vigencia de propuesta de ensayo: máximo24h desde la consulta más antigua y sin
+cruzar el día de evaluación de tasas; vence_en/revisión se indican explícitos.
+Probar integridad/entrada, SQL como datos, no activación, baseline/replay y clocks
+en PostgreSQL local antes de publicar. No aplicar sin otro GO de provisión.
+
+## Propuesta local de catálogo inactivo validada — 27/10/2026
+
+Implementado scripts/plan-fiscal-parameters.mjs, sin cliente HTTP/DB ni lectura
+ de credenciales. Valida los bytes SHA256 revisados, esquema/origen/operación,
+fechas, duplicados y clases. Normaliza exclusivamente A/B/C a tipos 1/6/11;
+ALEY y 49 quedan excluidos explícitamente, nunca equiparados. No elige IVA de
+una venta ni condición del emisor/receptor. No genera emisor, PV o custodia.
+
+El SQL resultante sólo inserta una revisión habilitado=false y exige destino
+Staging y hash de propuesta aprobados explícitamente en la sesión, vigencia
+recomprobada en servidor y tabla de parámetros completamente vacía bajo lock.
+No UPDATE/DELETE/upsert: un baseline distinto o replay bloquea. El ajuste de
+sesión es un seguro operativo, no autentica por sí mismo el proyecto: antes de
+cualquier instalación se debe verificar independientemente el destino real y
+obtener un GO humano específico. El generador no ejecuta SQL ni fija esos ajustes.
+
+Política local de revisión del ensayo: consulta de menos de 24h y vencimiento
+sin cruzar el día argentino usado para evaluar vigencia de alícuotas. No es una
+regla atribuida a ARCA ni amplía la vigencia del catálogo en producción.
+
+Con los JSON públicos ya obtenidos se produjo fuera de Git:
+../catalogo-inactivo-propuesta-20261027/catalogo-inactivo.sql y revision-publica.json.
+6 alícuotas y 11 condiciones; exclusiones ALEY/49; revisión propuesta 1.
+Hash de propuesta c753a5bdeb4a3f262a6a63b3cd26badaa453d34fe4f58ac40b4c7968593e0473.
+Vence 27/10/2026 18:59 Argentina (21:59Z). Si vence, no editar manualmente el
+SQL ni prolongarlo: revisar evidencia y generar una propuesta nueva válida.
+SQL_EXECUTED=false, habilitado=false, issuer_provisioned=false, emission_enabled=false.
+
+Validación: 26 pruebas del plan, incluidas inserción/descripciones como datos,
+destino/GO, replay y vencimiento en PGlite con DDL canónico SQL012. Build PASS
+(689 módulos; advertencia de chunks existente). ESLint no aplica al repositorio
+sin su configuración; se usa el verificador canónico oxlint. Sin cambios remotos,
+flags, secretos, WSAA/WSFE nuevos ni CAE. Aceptación positiva sigue pendiente del
+punto acreditado, provisión autorizada y actores reales; esto no cierra PR03.
+
+Cierre de validación del bloque: 33/33 pruebas en fiscalParameterPlan y wsaaHomologacion; oxlint de los dos archivos nuevos PASS sin advertencias después de sustituir el regex de controles por validación de caracteres. Build PASS. No se ejecutaron consultas ARCA ni SQL remoto en estas verificaciones.
