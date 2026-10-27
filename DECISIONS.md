@@ -814,3 +814,6 @@ Consecuencias: generar no provisiona ni activa emisor, punto, credenciales o cat
 
 ### 27/10/2026 — Diagnóstico de serie no acredita habilitación fiscal
 Separar FECompUltimoAutorizado del modo genérico de parámetros: alcance PV/tipo explícito, identidad de respuesta exacta, sin defaults/redondeo, sin retries y sin exportar credenciales. Reutilizar parser/transporte privado acotado. Un último observado válido, incluido0, no habilita emisor, reserva, permiso o CAE;602 tampoco equivale a número0 ni demuestra por sí solo un trámite productivo faltante. Mantener la acreditación de homologación pendiente de evidencia específica de WSFE, sin extrapolar WSCT. Nuevas consultas/custodia necesitan sus autorizaciones propias.
+
+### 27/10/2026 — Contraseña mínima consistente entre generación y custodia
+El generador Windows aceptaba12 caracteres y el lector privado exigía16; se alinea la generación futura a16 sin relajar custodia ni alterar claves existentes. Se prueba el formato cifrado real .NET contra PKIJS/WebCrypto con certificado/frase sintéticos, incluyendo Unicode, huella/revisión, RSA3072 no exportable y CMS. Material histórico potencialmente incompatible exige revisión privada y autorización de reprotección, no una rotación automática ni exposición de la contraseña. No confundir interoperabilidad local con aceptación real de secretos hospedados.

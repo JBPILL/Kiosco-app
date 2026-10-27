@@ -75,18 +75,26 @@ it.skipIf(process.platform !== 'win32')('rechaza CUIT, contraseña o destino inv
   const result = ejecutar(`
     $corta = ConvertTo-SecureString 'corta' -AsPlainText -Force
     $otra = ConvertTo-SecureString 'otra-frase-de-ensayo' -AsPlainText -Force
+    $doce = ConvertTo-SecureString '123456789012' -AsPlainText -Force
+    $quince = ConvertTo-SecureString '123456789012345' -AsPlainText -Force
     $casos = @(
       @{ Cuit='20123456789'; Organizacion='Ensayo'; Alias='Sistema'; Clave=$clave; Confirmacion=$clave },
       @{ Cuit='00000000000'; Organizacion='Ensayo'; Alias='Sistema'; Clave=$clave; Confirmacion=$clave },
       @{ Cuit='20123456786'; Organizacion='Ensayo'; Alias='Sistema-con-guiones'; Clave=$clave; Confirmacion=$clave },
       @{ Cuit='20123456786'; Organizacion='Ensayo'; Alias='Sistema'; Clave=$corta; Confirmacion=$corta },
+      @{ Cuit='20123456786'; Organizacion='Ensayo'; Alias='Sistema'; Clave=$doce; Confirmacion=$doce },
+      @{ Cuit='20123456786'; Organizacion='Ensayo'; Alias='Sistema'; Clave=$quince; Confirmacion=$quince },
       @{ Cuit='20123456786'; Organizacion='Ensayo'; Alias='Sistema'; Clave=$clave; Confirmacion=$otra }
     )
     $rechazados=0
     foreach ($caso in $casos) { try { New-ArcaHomologationRequest @caso -Directorio $destino | Out-Null } catch { $rechazados++ } }
     try { New-ArcaHomologationRequest -Cuit '20123456786' -Organizacion 'Ensayo' -Alias 'Sistema' -Clave $clave -Confirmacion $clave -Directorio ${quote(resolve('arca-private-test-forbidden'))} | Out-Null } catch { $rechazados++ }
-    [pscustomobject]@{ Rejected=$rechazados; NoFiles= -not (Test-Path -LiteralPath $destino) } | ConvertTo-Json -Compress
+    $dieciseis=ConvertTo-SecureString '1234567890123456' -AsPlainText -Force
+    $limite=[ArcaHomologationLocal]::Generate('20123456786','Ensayo','Sistema',$dieciseis,$dieciseis)
+    $aceptado=$limite.Length -eq 2 -and $limite[1].Contains('ENCRYPTED PRIVATE KEY')
+    $dieciseis.Dispose();$limite=$null
+    [pscustomobject]@{ Rejected=$rechazados; NoFiles= -not (Test-Path -LiteralPath $destino); Boundary16Accepted=$aceptado } | ConvertTo-Json -Compress
   `)
   expect(result.status, result.stdout + result.stderr).toBe(0)
-  expect(JSON.parse(result.stdout.trim())).toEqual({ Rejected: 6, NoFiles: true })
+  expect(JSON.parse(result.stdout.trim())).toEqual({ Rejected: 8, NoFiles: true, Boundary16Accepted: true })
 }, 30_000)

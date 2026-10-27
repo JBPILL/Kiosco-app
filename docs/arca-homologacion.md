@@ -26,7 +26,8 @@ Si `pwsh` no está en PATH, en esta instalación de Codex está disponible aquí
 
 Ingresar los datos sólo en esa terminal: CUIT del titular que entrará a WSASS,
 nombre de organización, alias del sistema y contraseña de cifrado de al menos
-12 caracteres, repetida. No se necesitan contraseña fiscal ni acceso a internet
+16 caracteres, repetida (alineado con la custodia privada desde el 27/10/2026;
+el preparador histórico aceptaba 12). No se necesitan contraseña fiscal ni acceso a internet
 para este paso. La contraseña se ingresa oculta; el programa no la guarda.
 El alias de WSASS sólo admite letras y números, por ejemplo
 `KioskoPOSHomologacion20261018`; no usar guiones ni espacios.
@@ -1223,3 +1224,6 @@ funcional de homologación: wsfev1@arca.gov.ar (manual p19); no enviada por agen
 Consultar o usar las claves originales exige un GO nuevo. No persistir ni
 recuperar el TA previo; su expiración documentada no garantiza por sí sola
 nueva autenticación disponible. Ninguna consulta real ejecutada por este cambio.
+
+### Compatibilidad Windows/custodia — 27/10/2026
+El preparador exige ahora mínimo16 caracteres, igual que el lector privado. Prueba cruzada con salida real del preparador .NET y certificado sintético verificó importación de RSA3072 no exportable y CMS válido en el backend; no usó material original ni red. Una clave histórica con contraseña de12–15 caracteres permanece bloqueada hasta revisión/reprotección privada expresamente autorizada. No pedir contraseña por chat ni rotar por inferencia. La preparación local no provisiona valores en Supabase; aceptación hospedada real sigue pendiente.

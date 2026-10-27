@@ -2764,3 +2764,30 @@ con CUIT ya autorizado y FEParamGetPtosVenta602, sin modificar altas productivas
 No se envió mensaje a terceros ni se compartieron XML/credenciales.
 
 Cierre local final:48/48PASS en3archivos (15 tests de último,7 previos WSAA y26 propuesta de parámetros); componente C# real29checks nuevos y48anteriores, sin red. Oxlint del archivo nuevo sin errores/advertencias; build PASS689módulos con advertencia de chunks previa; diff PASS. Sin nuevas consultas ARCA o cambios remotos.
+
+## Compatibilidad del preparador Windows y custodia — plan 27/10/2026
+GO humano recibido para una autenticación WSAA y FECompUltimoAutorizado PV2/tipo11 al retomar después de27/10 07:04 Argentina, sin retries ni tarea programada. A00:28 todavía no corresponde; no ejecutado, sin handle de espera ni TA disponible. Mientras tanto se revisó provisión: preparador exige mínimo12 caracteres pero fiscalPrivateCustody mínimo16; compatibilidad declarada PBES2 .NET todavía sólo cubierta por fixtures PKIJS. Preparar prueba cruzada con salida real del preparador y certificado sintético Test, descifrado/clave no exportable/CMS usando lector de producción. Alinear mínimo futuro a16 sin debilitar custodia ni usar/rotar claves originales. Si material histórico no cumple, tratarlo como gate privado de reprotección con GO independiente, nunca pedir contraseña por chat. No modificar Edge/SQL remoto ni secretos por esta revisión.
+
+### Compatibilidad cruzada comprobada — 27/10/2026
+
+El preparador ahora exige16 caracteres en función/prompt, coincidiendo con el
+mínimo de custodia. No se debilita el lector ni cambia formato/algoritmos.
+Prueba Windows nueva ejecuta el preparador real (RSA3072, PBES2/PBKDF2-SHA256,
+200000 iteraciones/AES256-CBC) en directorio temporal exclusivo de ensayo con
+ACL privada y frase Unicode sintética. Certificado de laboratorio firmado por
+CA sintética CN=Computadores Test para la clave del CSR. No es certificado ARCA.
+El lector real de custodia importa la clave NO exportable, verifica huella y
+revisión; prepareWsaaRequest firma/verifica CMS. Contraseña incorrecta falla
+con mensaje cerrado; no salida PEM/CMS en diagnósticos. Limpieza sólo del root
+sintético previamente validado; material original/DPAPI nunca leído o rotado.
+
+Pruebas de frontera: rechaza12/15 y acepta16, además de CUIT/alias/destino y
+sobrescritura/ACL previos. Primer pase23/23PASS en3archivos. Esto acredita
+interoperabilidad criptográfica .NET→PKIJS/WebCrypto con material sintético,
+no custodia real instalada ni WSAA hospedado. Si una contraseña histórica tiene
+12–15 caracteres, no funcionará con el gate actual: requiere revisión privada
+y, si se autoriza, reprotección, sin exponerla ni regenerar certificado por defecto.
+No se comprobó longitud de la contraseña real ni se infirió que deba cambiarse.
+No secretos/flags/SQL/Edge/Vercel remotos, usos de claves originales, ARCA o CAE.
+
+Cierre final del incremento:23/23PASS en3archivos y build689PASS después del último cambio. Oxlint:0errores,0advertencias nuevas; permanece no-unsafe-finally previo de arcaHomologationPreparation.test.ts, nuevo interop sin advertencias. Diff PASS. No suite global ni aceptación hospedada de custodia acreditadas por este incremento.
