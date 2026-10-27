@@ -2722,3 +2722,45 @@ Primer pendiente: acreditar punto de venta de homologación y preparar provisió
 revisable del emisor/custodia antes de aceptación positiva. PV2 sigue sólo
 configurado en KioskoPOS según evidencia humana previa; el catálogo instalado
 no lo acredita. Nuevas consultas ARCA/provisión/activación conservan GO separado.
+
+## Diagnóstico explícito de serie, sin emisión — plan 27/10/2026
+El titular confirmó que no dio de alta otro PV. El 602 previo sólo acredita ausencia de datos de FEParamGetPtosVenta; no demuestra que un trámite productivo sea necesario o suficiente para homologación. No extrapolar particularidades de WSCT a WSFE. Manual oficial WSFE v4.0 p18 define602 y p19 publica wsfev1@arca.gov.ar como canal funcional de homologación. Antes de pedir alta productiva, preparar una única lectura FECompUltimoAutorizado con PV/tipo expresamente indicados, parser estricto de identidad y límites; nunca convertir éxito/número0 en acreditación de habilitación o permiso de emitir. Backend ya tiene esa operación para preparación, pero el diagnóstico local aún no. Añadir modo mutuamente excluyente con preflight antes de DPAPI, sin exportar Auth/SOAP y tests nativos/mock sin red. Mantener consultas reales/custodia/provisión/CAE pendientes de su nuevo GO. Fuente: https://wswhomo.afip.gov.ar/wsfev1/service.asmx?op=FECompUltimoAutorizado y https://arca.gob.ar/ws/documentacion/manuales/manual-desarrollador-ARCA-COMPG-v4-0.pdf .
+
+### Resultado local del diagnóstico de serie — 27/10/2026
+
+Implementado modo separado -ConsultarUltimo -PuntoVenta N -TipoComprobante T,
+sin defaults, limitado a puntos1..99998 y tipos1/6/11. Parámetros de texto ASCII
+validados antes de DPAPI: no permitir el redondeo implícito de PowerShell de
+1.5 a2. Rechaza combinación con catálogos/exports/consulta genérica y alcance
+huérfano; requiere Conectar y wsfe. La operación genérica no admite invocar
+FECompUltimoAutorizado sin su contrato específico.
+
+C# reutiliza transporte fijo HTTPS sin redirects/40s/1MB y parser SOAP común;
+el nuevo parser exige único resultado, PtoVta/CbteTipo iguales a solicitud y
+CbteNro entero0..99999999; rechaza duplicados, anidamiento/atributos, campos
+ajenos, Errors malformado, negocio602 y faults. Sin reintentos ni persistencia.
+Salida sólo metadatos numéricos/hash y PUNTO_HABILITADO=NOT_PROVEN,
+NUMERACION_RESERVADA=false, COMPROBANTES_EMITIDOS=0. TA en memoria solamente.
+Un resultado0 o positivo no es acreditación de alta/habilitación, reserva ni
+permiso de emitir. No cambiar los gates para acomodar un resultado favorable.
+
+Historia: primera ejecución14PASS/1FAIL por reporte ausente del mock business;
+se sustituyó su condición C# constante por campo y se verificó existencia de
+reporte para mejorar diagnóstico. Después41/41PASS; revisión añadió rechazo
+explícito de fracciones y combinaciones incompatibles antes de leer claves.
+No ejecutar con certificado real sin GO nuevo. El TA obtenido26/10 expiraba
+27/10/2026 10:03:32.688Z; ya no existe en memoria, no intentar recuperar ni guardar
+credenciales, ni repetir LoginCms durante su vigencia como supuesto refresco.
+Una futura ejecución exige nueva autorización específica de autenticación y
+consulta y comprobar la ventana/estado; no hay proceso de espera ni tarea
+programada. No asumir que la disponibilidad de WSAA está acreditada por reloj.
+
+La revisión oficial no encontró un procedimiento específico WSFE homologación
+que permita afirmar que se debe crear un punto productivo para resolver602.
+La particularidad de puntos libres documentada para WSCT no acredita WSFE.
+Si persiste la incertidumbre, el titular puede consultar al canal funcional
+oficial wsfev1@arca.gov.ar: cómo configurar/validar PtoVta para WSFE homologación
+con CUIT ya autorizado y FEParamGetPtosVenta602, sin modificar altas productivas.
+No se envió mensaje a terceros ni se compartieron XML/credenciales.
+
+Cierre local final:48/48PASS en3archivos (15 tests de último,7 previos WSAA y26 propuesta de parámetros); componente C# real29checks nuevos y48anteriores, sin red. Oxlint del archivo nuevo sin errores/advertencias; build PASS689módulos con advertencia de chunks previa; diff PASS. Sin nuevas consultas ARCA o cambios remotos.

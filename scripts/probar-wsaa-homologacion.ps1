@@ -12,13 +12,22 @@ param(
     [string]$ConsultaWsfe = "FEParamGetPtosVenta",
     [string]$SalidaParametros,
     [switch]$CatalogosPreparacion,
-    [string]$DirectorioCatalogos
+    [string]$DirectorioCatalogos,
+    [switch]$ConsultarUltimo,
+    [string]$PuntoVenta,
+    [string]$TipoComprobante
 )
 
 $ErrorActionPreference = 'Stop'
 $etapa = 'CARGA'
 $password = $null
 try {
+    if ($ConsultarUltimo) {
+        if (-not $Conectar -or $Servicio -ne 'wsfe' -or $ConsultarWsfe -or $CatalogosPreparacion -or $SalidaParametros -or $DirectorioCatalogos -or
+            $PSBoundParameters.ContainsKey('ConsultaWsfe') -or -not $PSBoundParameters.ContainsKey('PuntoVenta') -or -not $PSBoundParameters.ContainsKey('TipoComprobante') -or
+            $PuntoVenta -cnotmatch '^[0-9]{1,5}$' -or [int]$PuntoVenta -lt 1 -or [int]$PuntoVenta -gt 99998 -or
+            $TipoComprobante -cnotmatch '^(1|6|11)$') { throw 'LAST_VOUCHER_MODE' }
+    } elseif ($PSBoundParameters.ContainsKey('PuntoVenta') -or $PSBoundParameters.ContainsKey('TipoComprobante')) { throw 'LAST_VOUCHER_MODE' }
     if ($CatalogosPreparacion) {
         if (-not $Conectar -or $Servicio -ne 'wsfe' -or $SalidaParametros -or $PSBoundParameters.ContainsKey('ConsultaWsfe') -or -not $DirectorioCatalogos) { throw 'PARAMETER_EXPORT_MODE' }
         $DirectorioCatalogos = [IO.Path]::GetFullPath($DirectorioCatalogos)
@@ -35,7 +44,7 @@ try {
     $referencias = @((Get-ChildItem -LiteralPath (Join-Path $PSHOME 'ref') -Filter '*.dll').FullName)
     $referencias += Join-Path $PSHOME 'System.Security.Cryptography.Pkcs.dll'
     Add-Type -Path (Join-Path $PSScriptRoot 'arca/WsaaHomologacion.cs') -ReferencedAssemblies $referencias
-    if ($ConsultarWsfe) {
+    if ($ConsultarWsfe -or $ConsultarUltimo) {
         if (-not $Conectar -or $Servicio -ne 'wsfe') { throw 'La consulta WSFE requiere conexión de homologación y servicio wsfe.' }
         [WsaaHomologacion]::ValidateRepresentedCuit($CuitRepresentado)
     }
@@ -56,6 +65,18 @@ try {
         Write-Output 'TOKEN_RECEIVED=true'
         Write-Output 'SIGN_RECEIVED=true'
         Write-Output ('EXPIRATION_TIME=' + $ticket.Expiration.ToUniversalTime().ToString('o'))
+        if ($ConsultarUltimo) {
+            $etapa = 'WSFE_CONSULTA'
+            $ultimo = [WsaaHomologacion]::ConsultLastVoucher($ticket, $CuitRepresentado, [int]$PuntoVenta, [int]$TipoComprobante)
+            Write-Output 'WSFE_LAST_READ=PASS'
+            Write-Output ('PUNTO_CONSULTADO=' + $ultimo.Point)
+            Write-Output ('TIPO_CONSULTADO=' + $ultimo.VoucherType)
+            Write-Output ('ULTIMO_OBSERVADO=' + $ultimo.LastNumber)
+            Write-Output ('RESPUESTA_SHA256=' + $ultimo.SourceSha256)
+            Write-Output 'PUNTO_HABILITADO=NOT_PROVEN'
+            Write-Output 'NUMERACION_RESERVADA=false'
+            Write-Output 'COMPROBANTES_EMITIDOS=0'
+        }
         if ($ConsultarWsfe) {
             $operacionesWsfe = if ($CatalogosPreparacion) { @('FEParamGetTiposIva','FEParamGetCondicionIvaReceptor') } else { @($ConsultaWsfe) }
             foreach ($operacionWsfe in $operacionesWsfe) {
@@ -87,7 +108,7 @@ try {
     $codigo = 'LOCAL_OR_TRANSPORT_ERROR'
     $errorInterno = $_.Exception
     while ($errorInterno.InnerException) { $errorInterno = $errorInterno.InnerException }
-    if ($errorInterno.Message -match '^((WSAA|WSFE)_FAULT:[a-zA-Z0-9_.:-]{1,100}|WSFE_BUSINESS:([0-9,]{1,90}|UNKNOWN)|WSFE_(RESULT|POINTS|TYPES|OPERATION|PARAMETERS|PARAMETER_DESTINATION)|CERT_KEY_MISMATCH|CERT_NOT_CURRENT|CERT_NOT_TESTING|TICKET_[A-Z_]+|XML_[A-Z_]+|(WSAA|WSFE)_HTTP_[0-9]{3})$') {
+    if ($errorInterno.Message -match '^((WSAA|WSFE)_FAULT:[a-zA-Z0-9_.:-]{1,100}|WSFE_BUSINESS:([0-9,]{1,90}|UNKNOWN)|WSFE_(RESULT|POINTS|TYPES|OPERATION|PARAMETERS|PARAMETER_DESTINATION|LAST_SCOPE|LAST_RESULT)|CERT_KEY_MISMATCH|CERT_NOT_CURRENT|CERT_NOT_TESTING|TICKET_[A-Z_]+|XML_[A-Z_]+|(WSAA|WSFE)_HTTP_[0-9]{3})$') {
         $codigo = $errorInterno.Message
     }
     $gate = if ($etapa -in @('WSFE_CONSULTA','EXPORTACION_PARAMETROS')) { 'WSFE_HOMOLOGACION' } else { 'WSAA_HOMOLOGACION' }

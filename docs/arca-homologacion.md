@@ -1203,3 +1203,23 @@ Propuesta real local, hashes, vencimiento y pruebas en ExecPlan fiscal.
 
 ### Carga inactiva verificada — 27/10/2026
 Con GO separado, la propuesta e98225f se cargó una vez en Staging: revisión1, 6 alícuotas/11 condiciones, habilitado=false. Relectura independiente: exact_match=true, RLS=true, acceso directo cerrado, emisores=0. Vence 27/10 18:59 Argentina. No editar ni activar por inferencia; el historial de propuesta conserva sql_executed=false y la ejecución real consta en ExecPlan. No se usaron claves/ARCA ni se cambiaron flags o Vercel. Punto de venta, emisor/custodia y aceptación positiva siguen pendientes.
+
+### Consulta de numeración explícita, sin emisión — 27/10/2026
+
+Modo local `-ConsultarUltimo -PuntoVenta N -TipoComprobante T` del asistente
+WSAA. Requiere `-Conectar`, servicio wsfe y CUIT representado explícito; no se
+combina con consultas de parámetros ni exportaciones. Puntos1..99998, tipos
+1/6/11, sin valores por defecto ni redondeo de fracciones. Antes de DPAPI valida
+la forma/modo. Después de un único WSAA ejecuta una sola FECompUltimoAutorizado,
+sin retries. Respuestas fuera de alcance, inciertas,602 o SOAP inválidas fallan;
+no interpretar ausencia/error como número0. No reserva número ni carga emisor.
+
+Fuente del contrato: [operación oficial de homologación](https://wswhomo.afip.gov.ar/wsfev1/service.asmx?op=FECompUltimoAutorizado).
+Incluso con número válido, informa PUNTO_HABILITADO=NOT_PROVEN: una lectura no
+prueba que FECAESolicitar aceptará la emisión. El602 de listado sólo significa
+sin datos, según [manual WSFE v4.0](https://arca.gob.ar/ws/documentacion/manuales/manual-desarrollador-ARCA-COMPG-v4-0.pdf).
+No extrapolar instrucciones de WSCT o alta productiva a este ensayo. Consulta
+funcional de homologación: wsfev1@arca.gov.ar (manual p19); no enviada por agente.
+Consultar o usar las claves originales exige un GO nuevo. No persistir ni
+recuperar el TA previo; su expiración documentada no garantiza por sí sola
+nueva autenticación disponible. Ninguna consulta real ejecutada por este cambio.

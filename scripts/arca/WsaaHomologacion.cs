@@ -29,6 +29,12 @@ public static class WsaaHomologacion {
         public string ValidFrom { get; internal set; } = "";
         public string ValidUntil { get; internal set; } = "";
     }
+    public sealed class LastVoucherDiagnostic {
+        public int Point { get; internal set; }
+        public int VoucherType { get; internal set; }
+        public int LastNumber { get; internal set; }
+        public string SourceSha256 { get; internal set; } = "";
+    }
     public sealed class Ticket {
         public string Token { get; internal set; }
         public string Sign { get; internal set; }
@@ -149,6 +155,10 @@ public static class WsaaHomologacion {
     // El llamador debe usar el TA obtenido para wsfe, en el mismo proceso privado.
     public static HttpRequestMessage PrepareWsfeDiagnostic(Ticket ticket, string representedCuit, DateTimeOffset now, string operation = "FEParamGetPtosVenta") {
         ValidateWsfeOperation(operation);
+        return PrepareReadRequest(ticket, representedCuit, now, operation);
+    }
+
+    private static HttpRequestMessage PrepareReadRequest(Ticket ticket, string representedCuit, DateTimeOffset now, string operation, params XElement[] fields) {
         if (ticket == null || ticket.Expiration <= now.AddMinutes(1))
             throw new InvalidDataException("TICKET_EXPIRATION");
         ValidateRepresentedCuit(representedCuit);
@@ -157,7 +167,7 @@ public static class WsaaHomologacion {
         var envelope = new XElement(soap + "Envelope", new XElement(soap + "Body",
             new XElement(wsfe + operation, new XElement(wsfe + "Auth",
                 new XElement(wsfe + "Token", ticket.Token), new XElement(wsfe + "Sign", ticket.Sign),
-                new XElement(wsfe + "Cuit", representedCuit)))));
+                new XElement(wsfe + "Cuit", representedCuit)), fields)));
         var request = new HttpRequestMessage(HttpMethod.Post, "https://wswhomo.afip.gov.ar/wsfev1/service.asmx");
         request.Headers.Add("SOAPAction", "\"http://ar.gov.afip.dif.FEV1/" + operation + "\"");
         request.Content = new StringContent(envelope.ToString(SaveOptions.DisableFormatting), Encoding.UTF8, "text/xml");
@@ -181,19 +191,18 @@ public static class WsaaHomologacion {
         if (digit != representedCuit[10] - '0') throw new ArgumentException("CUIT representado inválido.");
     }
 
-    public static WsfeDiagnostic ParseWsfeDiagnostic(string xml, string operation = "FEParamGetPtosVenta") {
-        ValidateWsfeOperation(operation);
+    private static XElement ReadWsfeResult(string xml, string operation) {
         var envelope = ReadXml(xml);
         CheckFault(envelope, "WSFE");
         XNamespace wsfe = "http://ar.gov.afip.dif.FEV1/";
         XNamespace soap = "http://schemas.xmlsoap.org/soap/envelope/";
         if (envelope.Root?.Name != soap + "Envelope") throw new InvalidDataException("WSFE_RESULT");
         var bodies = envelope.Root.Elements(soap + "Body").ToArray();
-        if (bodies.Length != 1) throw new InvalidDataException("WSFE_RESULT");
+        if (bodies.Length != 1 || bodies[0].Elements().Count() != 1) throw new InvalidDataException("WSFE_RESULT");
         var responses = bodies[0].Elements(wsfe + operation + "Response").ToArray();
         if (responses.Length != 1) throw new InvalidDataException("WSFE_RESULT");
         var results = responses[0].Elements(wsfe + operation + "Result").ToArray();
-        if (results.Length != 1) throw new InvalidDataException("WSFE_RESULT");
+        if (results.Length != 1 || responses[0].Elements().Count() != 1) throw new InvalidDataException("WSFE_RESULT");
         var result = results[0];
         var errors = result.Descendants(wsfe + "Err").ToArray();
         if (errors.Length > 0) {
@@ -201,6 +210,13 @@ public static class WsaaHomologacion {
             var safeCodes = codes.All(c => Regex.IsMatch(c, "^[0-9]{1,8}$")) ? String.Join(",", codes) : "UNKNOWN";
             throw new InvalidDataException("WSFE_BUSINESS:" + safeCodes);
         }
+        return result;
+    }
+
+    public static WsfeDiagnostic ParseWsfeDiagnostic(string xml, string operation = "FEParamGetPtosVenta") {
+        ValidateWsfeOperation(operation);
+        var result = ReadWsfeResult(xml, operation);
+        XNamespace wsfe = "http://ar.gov.afip.dif.FEV1/";
         var collections = result.Elements(wsfe + "ResultGet").ToArray();
         if (collections.Length != 1) throw new InvalidDataException("WSFE_RESULT");
         if (operation == "FEParamGetTiposIva" || operation == "FEParamGetCondicionIvaReceptor") {
@@ -264,6 +280,54 @@ public static class WsaaHomologacion {
         using var request = PrepareWsfeDiagnostic(ticket, representedCuit, DateTimeOffset.UtcNow, operation);
         var response = SendDiagnostic(request);
         var result = ParseWsfeDiagnostic(response.Xml, operation);
+        if (response.Status < 200 || response.Status >= 300) throw new InvalidDataException("WSFE_HTTP_" + response.Status);
+        return result;
+    }
+
+    public static void ValidateLastVoucherScope(int point, int voucherType) {
+        if (point < 1 || point > 99998 || (voucherType != 1 && voucherType != 6 && voucherType != 11))
+            throw new ArgumentException("WSFE_LAST_SCOPE");
+    }
+
+    public static HttpRequestMessage PrepareLastVoucherDiagnostic(Ticket ticket, string representedCuit, DateTimeOffset now, int point, int voucherType) {
+        ValidateLastVoucherScope(point, voucherType);
+        XNamespace wsfe = "http://ar.gov.afip.dif.FEV1/";
+        return PrepareReadRequest(ticket, representedCuit, now, "FECompUltimoAutorizado",
+            new XElement(wsfe + "PtoVta", point), new XElement(wsfe + "CbteTipo", voucherType));
+    }
+
+    public static LastVoucherDiagnostic ParseLastVoucherDiagnostic(string xml, int point, int voucherType) {
+        ValidateLastVoucherScope(point, voucherType);
+        var result = ReadWsfeResult(xml, "FECompUltimoAutorizado");
+        XNamespace wsfe = "http://ar.gov.afip.dif.FEV1/";
+        string[] fields = { "PtoVta", "CbteTipo", "CbteNro" };
+        if (result.Attributes().Any() || result.Elements().Any(e => e.Name.Namespace != wsfe
+            || (!fields.Contains(e.Name.LocalName) && e.Name.LocalName != "Errors" && e.Name.LocalName != "Events")))
+            throw new InvalidDataException("WSFE_LAST_RESULT");
+        foreach (var optional in new[] { "Errors", "Events" }) {
+            if (result.Elements(wsfe + optional).Count() > 1) throw new InvalidDataException("WSFE_LAST_RESULT");
+        }
+        var emptyErrors = result.Element(wsfe + "Errors");
+        if (emptyErrors != null && (emptyErrors.HasElements || !String.IsNullOrWhiteSpace(emptyErrors.Value) || emptyErrors.Attributes().Any()))
+            throw new InvalidDataException("WSFE_LAST_RESULT");
+        int[] values = new int[3];
+        for (int i = 0; i < fields.Length; i++) {
+            var nodes = result.Elements(wsfe + fields[i]).ToArray();
+            if (nodes.Length != 1 || nodes[0].HasElements || nodes[0].Attributes().Any()
+                || !Regex.IsMatch(nodes[0].Value, "^[0-9]{1,8}$") || !Int32.TryParse(nodes[0].Value, out values[i]))
+                throw new InvalidDataException("WSFE_LAST_RESULT");
+        }
+        if (values[0] != point || values[1] != voucherType || values[2] > 99999999)
+            throw new InvalidDataException("WSFE_LAST_RESULT");
+        return new LastVoucherDiagnostic { Point = point, VoucherType = voucherType, LastNumber = values[2],
+            SourceSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(xml))).ToLowerInvariant() };
+    }
+
+    // A successful read is not proof of habilitation, reserved numbering or permission to issue.
+    public static LastVoucherDiagnostic ConsultLastVoucher(Ticket ticket, string representedCuit, int point, int voucherType) {
+        using var request = PrepareLastVoucherDiagnostic(ticket, representedCuit, DateTimeOffset.UtcNow, point, voucherType);
+        var response = SendDiagnostic(request);
+        var result = ParseLastVoucherDiagnostic(response.Xml, point, voucherType);
         if (response.Status < 200 || response.Status >= 300) throw new InvalidDataException("WSFE_HTTP_" + response.Status);
         return result;
     }
