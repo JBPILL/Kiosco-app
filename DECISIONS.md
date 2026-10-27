@@ -823,3 +823,15 @@ La carga inicial inactiva ya existe y no puede repetirse sobre tabla vacía. La 
 
 ### 27/10/2026 — Guardado fiscal separado del gate base
 Con emisor/catálogo disponibles, backend base también permitía GUARDAR_DATOS_FISCALES. Se agrega ARCA_HOMO_DATA_PREPARATION_ENABLED apagado por defecto, en HTTP y servicio, con revalidación de proyecto/base/datos antes de RPC tras awaits. Contexto y resolución histórica no requieren escritura; no se vuelve a autenticar ni inferir otro actor. Así se puede preparar aceptación de lectura sin otorgar implícitamente creación de preparaciones. No convertir la API base entera en autoridad de sólo lectura por esta medida: las demás mutaciones conservan sus gates/guards. El runtime remoto anterior no incorpora el cambio hasta nuevo despliegue autorizado. Paquetes nuevos deben ligar fuentes a commit explícito y usar directorio nuevo; preservar el artefacto ya instalado y sus verificaciones históricas.
+
+### 27/10/2026 — Retirar ejecución externa de preparación fiscal heredada
+SQL001 conserva una entrada autenticada que crea contexto sin pasar por la API
+privada. Ocultarla en UI o añadir sólo un flag HTTP deja ese camino disponible.
+Se elige una migración incremental054 de permisos, sin reemplazar el cuerpo ni
+alterar001 ya instalado: identidad/hash revisados, ruta012 privada requerida,
+revocación de ejecutores externos y postcondición completa en una transacción.
+No se elimina historial ni se bloquea la autoridad administrativa de PostgreSQL.
+Mantener fixtures anteriores en su fase histórica y probar el cierre después
+de054. Un rollback posterior no debe reabrir automáticamente la vulnerabilidad.
+Requiere GO propio antes de instalación y verificación hospedada; el candidato
+Edge y este cierre SQL deben estar aceptados antes del ensayo fiscal positivo.

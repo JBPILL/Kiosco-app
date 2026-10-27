@@ -960,3 +960,20 @@ catálogo y preparación positiva bajo nuevo GO, sin defaults fiscales antiguos.
 27/10/2026: cierre local de renovación histórica de catálogos preparado (INSERT inactivo, baseline completo/hash, revisión siguiente y evidencia nueva; no sobrescribe ni activa). Suite integrada4853PASS/1skip históricoF6,311archivos/salida0; build689/oxlint enfocado/diff/bundle privado PASS. No nueva aceptación hospedada, renovación remota ni ARCA/CAE. GO de consulta PV2/tipo11 después de07:04 aún pendiente de ejecutar; PR03 y objetivo general siguen abiertos. Informe y SHA en ExecPlan fiscal.
 
 27/10/2026 11:49Argentina: WSAA y lectura FECompUltimoAutorizado PV2/tipo11 PASS, último0, sin reserva/emisiones, GO consumido. Habilitación completa de emisión sigue no acreditada. Antes de contexto positivo se agrega localmente ARCA_HOMO_DATA_PREPARATION_ENABLED independiente de backend base, con revalidación antes de escritura;179pruebas dirigidas y build PASS, regresión integrada en curso. Runtime remoto anterior aún no tiene el control: nuevo despliegue cerrado necesita GO, sin provisión/activación por inferencia. Evidencia en ExecPlan fiscal.
+
+27/10/2026: revisión de PR03 detectó EXECUTE autenticado sobre la preparación
+heredada001, fuera de gates HTTP. SQL054 incremental preparado localmente para
+retirar ejecutores externos, con guard de cuerpo/owner/seguridad y reemplazo
+privado012 requerido;12 casos SQL y208 enfocados PASS. No instalado ni cubierto
+por el GO001–053. Build689 PASS, lint0errores/137advertencias previas; regresión
+integrada final pendiente de salida0. El siguiente ensayo positivo requiere
+cerrar y verificar tanto SQL054 como el candidato Edge bajo GO nuevo. Conservar
+los dos reportes globales FAIL por limpieza temporal F6 y su corrección acotada;
+no convertir evidencia histórica o local en aceptación hospedada. PR03 parcial.
+
+27/10/2026: cierre integrado local del incremento SQL054/gate independiente:
+4885PASS/0FAIL/1skip históricoF6,313archivos,salida0; build689 PASS,
+lint0errores/137advertencias previas y símbolos privados ausentes del bundle.
+Evidencia/hash y fallos anteriores conservados en ExecPlan. SQL054 y nuevo
+Edge cerrado sólo candidatos: revisión, respaldo actualizado y GO remoto
+pendientes. Sin nuevas emisiones, provisión, flags, Vercel o Production.

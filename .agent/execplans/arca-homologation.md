@@ -2898,3 +2898,134 @@ nuevo GO específico y completar la revisión de los demás caminos de escritura
 Implementación local del gate completada:175pruebas de HTTP/servicio PASS, incluyendo5valores no true en cada frontera, revocación de datos/base/destino tras contexto, recuperación histórica legible y sin Auth/RPC/red al bloquear HTTP. Empaquetador admite commithex40/salida nueva, verifica diff de fuentes/no versionadas y nooverwrite;4casos CLI adicionales PASS (179dirigidas/3archivos). Verificador ahora valida hash/destino/imports y no altera paquete; candidato agregará5casos con base true y datos apagados. Oxlint/sintaxis/diff PASS, build689PASS previo al último test CLI; compilación final y regresión global actual en curso. Runtime remoto sigue anterior sin gate nuevo: no provisionar ni habilitar por este incremento.
 
 Compilación final689PASS y fronteras de bundle privado PASS;179dirigidas/3archivos y oxlint/sintaxis/diff sin hallazgos nuevos. Se fija commit local de fuentes para crear el candidato reproducible antes de publicar; suite integrada continúa en su mismo proceso, sin reinicios. El paquete bac8ac1 instalado no se sobrescribe ni despliega por preparar este candidato.
+
+### Candidato reproducible de gate de datos — aafb32c
+
+Fuentes fijadas en commit aafb32c. Paquete nuevo fuera de Git:
+../edge-staging-data-gate-20261027-aafb32c/.
+74módulos,342453bytes; SHA256
+37db174616cde300cb04aed47e5609c39841c569d99f4d26576171730ebf6c9b.
+Manifiesto fija Staging acoyfwwmhaeruciyedri, arca-homologacion y JWT=true;
+externalsnpm4 conservan versiones pinneadas. No se tocó el paquete bac8ac1.
+Verificador del paquete completo:9casos PASS, network0/privateCredentialReads0,
+base ausente cerrada y, con base true sintética, guardado cerrado ante5valores
+no true del nuevoflag. Verificador comprueba bytes/hash/imports antes de
+cargar código, env/fetch sintéticos; no escribe dentro del candidato.
+Log ../edge-data-gate-verification-20261027.log, sin credenciales reales.
+
+Build final689PASS, frontera del bundle público sin flag/custodia privados,
+oxlint global0errores/137advertencias previas (informe local
+../fiscal-data-gate-lint-20261027.json). No nueva aceptación remota ni SQL nuevo.
+Regresión integrada sigue en mismo handle; no publicar un PASS global hasta
+su terminación. Instalar este candidato requiere nuevo GO, verificando JWT ON,
+código remoto exacto y backend cerrado; no activar flags ni provisionar por ello.
+
+### Regresión global inicial y corrección de limpieza local — 27/10/2026
+
+Primer pase posterior al gate:4872PASS/1FAIL/1skip,312archivos, salida1.
+Informe ../pilot-local-data-gate-20261027.json y .log se conservan como FAIL.
+Único fallo: ensayo sintético f6-3b-initial-platform-admin-production,
+compensates a profile transaction failure..., ENOTEMPTY al rm de su carpeta
+f6-initial-admin temporal. No fallo del gate nuevo ni ejecución en Production.
+Código confirma persistencia/evidencia/close aguardados; no se acreditó el origen
+exacto del error de filesystem. No dar el pase global como aprobado.
+
+La limpieza ahora verifica ruta absoluta bajo tmp y prefijo propio antes de
+rm recursivo, con3reintentos acotados/100ms ante errores transitorios manejados
+por Node. Un fallo persistente sigue fallando; no se quitan aserciones de
+compensación/Auth/caja ni se omite la prueba. No borra carpetas de ensayos
+anteriores ni cambia scripts/runtime productivos. Revalidar ese contrato y
+repetir el pase integrado final por el fallo, sin reinstalar nada remoto.
+
+### Alcance de punto y coordinación de próximos ensayos — 27/10/2026
+
+Se contrastó manual oficial WSFE v4.7 (01/09/2026), sección
+FECompUltimoAutorizado, p127: documenta11000 para rango1..99998,11001 para tipo
+habilitado y11002 para punto habilitado en el WS. La respuesta real del ensayo
+fue válida para PV2/tipo11 y no devolvió esos errores. Esto permite registrar
+PV_SERIES_READ=PASS para esa consulta/CUIT/entorno, no afirmar un alta en
+Producción ni que toda FECAESolicitar futura será aceptada. Se conserva el
+marcador conservador PUNTO_HABILITADO=NOT_PROVEN del diagnóstico y el602 previo
+como hechos distintos. No pedir un alta productiva por inferencia. Fuente:
+https://www.afip.gob.ar/ws/documentacion/manuales/manual-desarrollador-ARCA-COMPG.pdf .
+El0 observado no se importa como número reservado ni se reutiliza como consulta
+fresca del worker: cualquier numeración futura debe revalidarse con su GO.
+
+Pendiente de orquestación real antes de nuevas autenticaciones: provisionar y
+aceptar custodia/keyring/caché privados mediante su GO, y coordinar vigencia del
+catálogo con las consultas en ese mismo circuito. SQL013 exige catálogo vigente
+y revisión igual antes de preparar cuerpo; no borrar/prolongar manualmente la
+fila1 para sortear expiración. Un diagnóstico aislado que descarta TA no lo
+hace disponible al servidor y no autoriza extraerlo/almacenarlo después.
+Preparar el alcance coordinado antes de solicitar la próxima auth; no repetir
+LoginCms ni consultas de catálogos sólo para desbloquear otro paso. No se
+implementó ni habilitó una vía nueva de refresco remoto en este incremento.
+
+### Segundo pase y entrada heredada detectada — 27/10/2026
+
+Segundo pase global4871PASS/2FAIL/1skip,312archivos/salida1 conservado en
+../pilot-local-data-gate-final-20261027.json/.log. Los2fallos son ENOTEMPTY
+al limpiar temporales del otro archivo f6-3b-initial-platform-admin.test.ts;
+la variante production antes corregida pasó. Se unifica limpieza en helper
+específico de pruebas: ruta resuelta/tmp/prefijo propios y5reintentos acotados,
+fallo persistente propagado. Los17casos de ambos contratos F6 pasan enfocados;
+no se omiten aserciones ni modifican scripts de administración o datos reales.
+
+Se confirmó en fuentes001–053 que preparar_operacion_fiscal_homologacion
+(uuid,uuid,uuid,jsonb) aún concede EXECUTE a authenticated. Requiere Dueño activo
+propio y no reserva/emite ni toca caja/stock, pero puede insertar contexto y
+snapshot desde RPC público sin gate HTTP. Ningún módulo posterior la revoca;
+SQL012 ya crea operaciones por su ruta privada sin llamarla. El nuevo gate de
+GUARDAR_DATOS no cierra por sí solo esa entrada. Estado remoto actual debe
+revalidarse por lectura antes de aplicar; no afirmar que ya está revocado.
+
+Plan SQL054: revocar ejecución externa de esa entrada sin borrar historia ni
+cambiar su cuerpo. Guard de identidad/owner/SECURITY DEFINER/search_path y SHA256
+normalizado del cuerpo001 ce6da3e9c57e5bd82e594497220be1669f6abeb431dc154df3d1df99bb367141;
+exigir ruta012 privada disponible; comprobar que queda sólo autoridad del owner
+DB. Idempotente, transaccional, no DML ni activaciones. Guardar fixtures
+históricos anteriores en su fase y probar explícitamente después de054 las
+negativas de roles y que la preparación privada sigue funcionando. No instalar
+sin nuevo GO; no atribuir cierre de creación fiscal sólo al nuevo flag Edge.
+
+### Validación enfocada de SQL054 — 27/10/2026
+
+12/12 casos SQL054 PASS en PostgreSQL embebido, con bootstrap canónico y
+SQL001–012 reales. Ruta012 sigue preparando datos con service_role después de
+la revocación; las tres identidades externas fallan antes de insertar contexto.
+Se prueban idempotencia, conservación de cuerpo/historia, cuatro clases de
+drift y rollback frente a un ejecutor inesperado. No acredita todavía baseline
+completo001–054, JWT hospedado ni nueva concurrencia nativa.
+
+208/208 pruebas enfocadas PASS en6archivos (SQL054, servicio, HTTP, empaquetado y
+ambos contratos F6). Oxlint de los archivos modificados sin diagnósticos; diff
+sin errores. Limpieza temporal compartida: sólo hijos resueltos de tmpdir con
+prefijo propio, reintentos acotados y propagación de fallos persistentes.
+
+Inventario incremental054 SHA256
+96a12b2f4738993af429c11deb539ff144b6dc04c2f381fee5fae3966e35b066.
+Candidate Edge aafb32c mantiene manifest/hash anteriormente documentados porque
+este incremento no cambia fuentes de funciones. Ambos quedan sólo locales.
+Siguiente cierre: regresión completa en reporte nuevo
+../pilot-local-data-gate-v3-20261027.json/.log, build y lint finales. No sustituir
+los dos reportes FAIL anteriores ni declarar su deuda resuelta hasta salida0.
+
+### Cierre integrado final del incremento — 27/10/2026
+
+Suite completa v3:4885PASS/0FAIL/1skip históricoF6,313archivos,salida0.
+Reporte ../pilot-local-data-gate-v3-20261027.json; SHA256
+fa8d34c0a121a3983c81344bf66c706ec2f67907c116fe29864fff2b227464b7.
+El único skip sigue siendo F6.2D-C3C-2 sin F6_C3A_CANDIDATES_PATH; ninguna
+prueba fiscal nueva omitida. Los17contratos F6 pasan ahora también integrados.
+Los dos reportes FAIL previos quedan preservados como historia, no sobreescritos.
+Build final689módulos/salida0; lint global0errores/137advertencias previas,
+../fiscal-data-gate-lint-v3-20261027.json; diff PASS. Símbolos
+ARCA_HOMO_DATA_PREPARATION_ENABLED/emitFiscalCreditOperation/
+FISCAL_CREDENTIAL_KEYRING ausentes del bundle público generado.
+
+SQL054 y Edge candidato cerrado aafb32c siguen sin instalar. Antes de solicitar
+su ejecución remota: revisión del bloque, respaldo actualizado verificable y
+GO específico; no reutilizar el GO001–053 ni el del runtime anterior. El respaldo
+pre-fiscal anterior no acredita por sí solo el estado fiscal actual. Mantener
+cerrados emisor/custodia/permisos/flags y frontend remoto. PR03 parcial, PR02 sin
+CAE; no cambios en master/Production ni merge.

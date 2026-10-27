@@ -1298,3 +1298,58 @@ candidato agrega5casos de escritura cerrada con backend base habilitado y flag
 de datos ausente/false/malformado; no debe leer claves privadas ni hacer red.
 El modo histórico sin argumento del verificador conserva sus4casos anteriores.
 Empaquetar/verificar no despliega y no autoriza provisión/flags/emisiones.
+
+Adenda documental de la lectura de serie: el manual oficial WSFEv4.7
+(01/09/2026), sección FECompUltimoAutorizado p127, documenta la validación11002
+para el punto de venta habilitado en ese método. El ensayo real PV2/tipo11
+respondió0 sin error y se registra como PV_SERIES_READ=PASS. No implica alta
+productiva ni garantiza aceptación futura de FECAESolicitar. El diagnóstico
+conserva NOT_PROVEN para esa garantía amplia. No reutilizar el0 como una
+observación fresca para reservar numeración: el worker debe reconsultar bajo
+su autorización. Fuente: https://www.afip.gob.ar/ws/documentacion/manuales/manual-desarrollador-ARCA-COMPG.pdf .
+
+### Incremento local SQL054 — cierre de preparación heredada (27/10/2026)
+
+El inventario instalado sigue siendo SQL001–053. El candidato agrega únicamente
+`054_close_legacy_preparation_entry.sql`; no reinstalar ni editar las migraciones
+anteriores. SHA256 del archivo:
+`96a12b2f4738993af429c11deb539ff144b6dc04c2f381fee5fae3966e35b066`.
+
+La función heredada de001 conservaba EXECUTE para authenticated. Aunque exige
+Dueño propio y no emite, permite crear contexto fuera de los gates HTTP. SQL054
+revoca ejecución de PUBLIC/anon/authenticated/service_role, verifica identidad y
+hash del cuerpo original, exige la preparación privada012 y falla si quedan
+otros ejecutores. No modifica cuerpo, datos, caja, stock ni flags. El propietario
+PostgreSQL conserva su autoridad administrativa; no se pretende bloquearlo.
+
+Orden candidato, sujeto a nuevo GO: respaldo verificable y revisión → comprobar
+destino/baseline/ACL por lectura → aplicar sólo054 → verificar ACL, cuerpo e
+historia → desplegar candidato Edge cerrado → verificar JWT/CORS/gates cerrados.
+La autorización previa001–053 no incluye054. Si cambia el cuerpo o los permisos
+privados esperados, detenerse; no adaptar el hash ni forzar instalación. Ante un
+fallo dentro de la transacción se revierte la revocación. Después de COMMIT no
+restaurar automáticamente el permiso vulnerable: cualquier rollback requiere
+revisión y autorización específicas.
+
+Verificación de permisos por lectura (transacción READ ONLY y ROLLBACK):
+```sql
+SELECT rolname,
+ has_function_privilege(rolname,
+ 'public.preparar_operacion_fiscal_homologacion(uuid,uuid,uuid,jsonb)',
+ 'EXECUTE') AS legacy_execute,
+ has_function_privilege(rolname,
+ 'public.guardar_datos_preparacion_homologacion(uuid,uuid,uuid,text,text)',
+ 'EXECUTE') AS private_prepare_execute
+FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role');
+```
+Después de054: legacy_execute=false para los tres; private_prepare_execute sólo
+true para service_role. Cotejar además owner, SECURITY DEFINER, search_path,
+hash del cuerpo, ACL completa y ausencia de cambios de datos. Esto no sustituye
+las negativas con JWT real bajo su GO ni acredita RLS/E2E fiscal completo.
+
+Los12 casos locales pasan con bootstrap canónico y SQL001–012: negativas de los
+tres roles, drift de cuerpo/owner/seguridad/search_path, rollback ante permisos
+inesperados, idempotencia y preparación privada real. No se presentan como
+instalación hospedada ni como nueva corrida de concurrencia de SQL001–054.
+SQL054 permanece sin instalar; Edge nuevo permanece sin desplegar. Ningún nuevo
+flag, secreto, emisor, Vercel, emisión o cambio de Production autorizado.

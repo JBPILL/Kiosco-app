@@ -1,9 +1,10 @@
 // @vitest-environment node
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PGlite } from '@electric-sql/pglite'
 import { afterEach, describe, expect, it } from 'vitest'
+import { cleanupInitialAdminEvidence } from './helpers/initialAdminEvidenceCleanup'
 import {
   createInitialAdminEvidence,
   executeInitialPlatformAdminBootstrap,
@@ -118,7 +119,7 @@ function syntheticAdminClient() {
 
 afterEach(async () => {
   delete (globalThis as unknown as { authDb?: PGlite }).authDb
-  await Promise.all(tempDirectories.splice(0).map(folder => rm(folder, { recursive: true, force: true })))
+  await Promise.all(tempDirectories.splice(0).map(cleanupInitialAdminEvidence))
 })
 
 describe('F6.3B Production initial platform-admin contract', () => {
