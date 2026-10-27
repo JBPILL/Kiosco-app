@@ -879,3 +879,12 @@ No CAS remoto documentado: exigir ventana exclusiva y reconocer riesgo concurren
 residual. ACK perdido/partial obliga conciliación antes de cualquier repetición.
 Preparar real sin red/secretos PASS;120tests/build PASS no sustituyen provisión ni
 custodia funcional hospedada. No se usó PAT/original real en este desarrollo.
+
+
+### 27/10/2026 — Diagnosticar inventario sin repetir copia
+El operador falló BASELINE con write_attempted=false; no inferir Auth válido,
+token incorrecto o formato real de API a partir de esa salida genérica. Agregar
+acción exclusivamente GET de metadata, DTO sin paths/copia y categorías cerradas
+sin respuesta/mensaje externo. Mantener esquema/flags estrictos; detectar campo
+digest distinto no autoriza aceptarlo automáticamente. Usar PAT existente sólo
+en consola local y no repetir provisión ni solicitar nuevos permisos por tanteo.

@@ -1535,3 +1535,21 @@ Ejecutar desde commercial-subscription-backend. Propuesta vence28/10 17:46Argent
 Copiar sólo CUSTODY_PROVISION_METADATA_PASS o CUSTODY_PROVISION_NOT_CONFIRMED.
 Éxito dice functional=false/edge_check=REQUIRED; nunca cerrar PR03 por ese marcador.
 120tests sintéticos/9archivos/0skip y build689 PASS; sin llamadas API reales.
+
+
+### Baseline rechazado: usar diagnóstico, no repetir provisión — 27/10/2026
+Titular confirmó stage=BASELINE/write_attempted=false: no se llegó a copiar
+originales ni POST. No implica contraseña incorrecta ni confirma permisos API;
+causa todavía desconocida. Nuevo modo un solo GET, cero originales/POST:
+```powershell
+pwsh -NoProfile -File .\scripts\provisionar-custodia-staging-privado.ps1 -DiagnosticarInventario -Propuesta '..\fiscal-custody-public-proposal-20261027.json' -HashRevisado '9c59757ef3592ced0e198ac6b9fc91f12a30dfa905d14059aa88897bc9f99344'
+```
+Usar el mismo PAT en prompt privado local. No enviarlo al chat ni crear otro/
+ampliar acceso como diagnóstico. Compartir sólo CUSTODY_BASELINE_PASS o
+CUSTODY_BASELINE_NOT_CONFIRMED con reason de lista cerrada. HTTP403 distingue
+rechazo de permisos de METADATA_FIELDS/DIGEST_FIELD/FORMAT; NETWORK_OR_TLS no
+expone mensajes de red. No se imprime respuesta API ni metadatos privados.
+El diagnóstico no flexibiliza ni corrige automáticamente esquema, flags o
+colisiones y no habilita provisión si pasa: revisar causa antes de reintentar.
+Vigencia/hash de propuesta sin cambios.143tests sintéticos/build/lint PASS;
+causa/aceptación real del inventario todavía pendientes de ese resultado.

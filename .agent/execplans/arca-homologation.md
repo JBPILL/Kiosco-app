@@ -3472,3 +3472,34 @@ ejecuta asistente en consola propia y comparte únicamente marcador seguro;
 verificar independientemente inventario/Edge después. No pedir contraseñaDB,
 service_role ni PAT en chat. Si propuesta vence, preparar revisión pública nueva
 antes de originales; no prolongar in situ. Staging/flags/ARCA/Production intactos.
+
+
+#### Operador real: baseline rechazado, diagnóstico sólo lectura — 27/10/2026
+El titular ejecutó el asistente: READY/runtime true y luego
+CUSTODY_PROVISION_NOT_CONFIRMED stage=BASELINE write_attempted=false
+reconcile_before_retry=false. Por orden del código no alcanzó PRIVATE_COPY ni
+POST. No acredita Auth remoto200: puede ser permisos, transporte o forma del
+inventario. Causa real aún desconocida; no atribuirla a clave/PAT sin evidencia.
+No repetir provisión ni CMS original. GO6valores recibido permanece documentado.
+
+Se añade -DiagnosticarInventario/CLI --inventory: un solo GET de metadata, sin
+referencias de paths/fábrica privada en su DTO y sin POST, incluso en PASS.
+Mismo PAT existente ingresado sólo en consola local; no crear otro ni ampliar
+permisos para diagnosticar. Categorías cerradas HTTP401/403/404/429/5xx/OTHER,
+NETWORK_OR_TLS, METADATA_SHAPE/FIELDS/DIGEST_FIELD/DIGEST_FORMAT/JSON_OR_SIZE,
+INVENTORY_POLICY/INITIAL_STATE_REJECTED. No valores/hash/token/mensaje externo.
+DIGEST_FIELD reconoce únicamente presencia de ese nombre de campo: no acepta
+ni transforma automáticamente el contrato nuevo. Validación de provisión no
+relajada. Wrapper/CLI aceptan sólo marcadores cerrados; hash/vigencia siguen
+exigidos. Modos Preparar/Provisionar/Diagnosticar mutuamente excluyentes.
+
+143PASS/0FAIL/0skip,9archivos;23nuevos incluyendo cuatro CLI nativos con HTTP
+simulado antes de importación y diagnóstico GETúnico. Informe
+../fiscal-custody-inventory-final-v2-20261027.json/.log SHA256
+caa6e2563b373ae26d600b0c2da07c6f01d641d280e554b4896cb2f0aaa41b58.
+Primer pase139PASS/4FAIL: --import Windows recibía path C: en fixture, corregido
+a fileURL; no cambio de producción para ocultar fallo. Reporte previo preservado.
+Build689/lint enfocado/node/PS AST/diff PASS. Preparar local real tras cambio READY
+sin red/privados. Sin nuevas peticiones API reales, originales o cambios remotos
+por este desarrollo. Primer resultado requerido: CUSTODY_BASELINE_* del titular,
+sólo lectura; no repetir -Provisionar hasta resolver el motivo observado.

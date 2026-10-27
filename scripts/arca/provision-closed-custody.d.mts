@@ -1,4 +1,5 @@
 import type { PrivateCustodyDelivery } from './private-custody-delivery.mjs'
+export function diagnoseClosedCustodyInventory(input: unknown, dependencies?: {request?: typeof fetch}): Promise<{count: number; flagsClosed: true; privateRead: false; writeAttempted: false}>
 export function provisionClosedCustody(input: unknown, dependencies?: {
   request?: typeof fetch
   prepare?: (input: unknown) => Promise<PrivateCustodyDelivery>

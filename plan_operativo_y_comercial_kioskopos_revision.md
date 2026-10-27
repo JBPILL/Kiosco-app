@@ -1048,3 +1048,12 @@ GO6valores ya existe; falta ejecución local y aceptación de metadatos/Edge,
 sin confundirlas con custodia/keyring/TA funcional hospedados. API sin CAS
 documentado exige ventana exclusiva, sin retry ante ACK incierto. Detalle en
 guía/ExecPlan fiscal; no cambios remotos/ARCA/CAE/Production/merge.
+
+
+27/10/2026: ejecución real del operador READY pero provisión se detuvo en BASELINE,
+write_attempted=false; no PRIVATE_COPY/POST. Causa remota aún desconocida.
+Preparado modo diagnóstico GETúnico sin originales/carga, motivos seguros HTTP/
+red/metadatos/política; mismo PAT local, no nuevo acceso ni respuesta API en chat.
+143tests/9archivos/0skip, build689 y lint enfocado PASS. Esperar CUSTODY_BASELINE_*
+antes de otra provisión. Custodia hospedada no instalada/acreditada por ese
+resultado; PR03 parcial, sin ARCA/CAE/Production nuevos. Detalle en ExecPlan.
