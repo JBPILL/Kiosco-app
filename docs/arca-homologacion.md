@@ -1362,3 +1362,22 @@ corrección conservados en ExecPlan; no aceptación hospedada. Respaldo actualiz
 previo054 verificado localmente: hashes/roles sin passwords/ACL privadas y
 48tablas+función/ACL en TOC. No restaurado. Candidatos SQL054/Edge todavía requieren
 GO nuevo para instalación/verificación cerrada; sin flags, secretos o emisiones.
+
+### SQL054 y paquete Edge cerrado instalados — 27/10/2026
+
+Bajo GO nuevo, se instaló únicamente054 sobre001–053 en Staging
+acoyfwwmhaeruciyedri y se actualizó sólo arca-homologacion con el candidato aafb32c.
+Verificaciones independientes antes053/después054:126funciones/41tablas/41triggers,
+0problemas. Legacy sin EXECUTE externo; preparación privada sólo service_role.
+Conteos fiscales iguales antes/después, incluso tras HTTP: catálogo1inactivo,
+otras40tablas vacías. No equivaler conteos con contenido completo de datos.
+
+Paquete remoto recargado y comparado íntegro (LF):342453bytes/SHA256
+37db174616cde300cb04aed47e5609c39841c569d99f4d26576171730ebf6c9b.
+JWT ON antes/después. POSTsinJWT/ficticio401, preflightStaging204/ajeno403;
+probador oficial con origen permitido503HOMOLOGACION_NO_HABILITADA. Nuevo gate de
+guardado está instalado, pero no se acredita ensayo aislado con backend abierto.
+No se cargaron secretos ni cambiaron flags/Vercel; no ARCA/CAE/master/Production.
+PR03 sigue parcial hasta provisión y aceptación positiva autorizadas. Respaldo,
+hashes/consultas/capturas y límites en ExecPlan fiscal; no repetir instalación
+ni reabrir permisos por inferencia. El GO cubrió sólo este incremento cerrado.

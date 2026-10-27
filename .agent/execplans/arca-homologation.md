@@ -3145,3 +3145,64 @@ artefacto: los comentarios/ref del archivo no prueban por sí solos ese destino.
 No convertir esta prueba local en verificación hospedada. Master/Production
 intactos en este bloque. Se conserva pendiente la autorización ya solicitada,
 sin duplicarla ni inferirla de una continuación automática del objetivo.
+
+### GO ejecutado: SQL054 y Edge cerrado en Staging — 27/10/2026
+
+El titular aprobó revisión y autorizó únicamente SQL054, verificación DB/permisos,
+actualización arca-homologacion cerrada/JWT ON y gateway/CORS/bloqueos en
+acoyfwwmhaeruciyedri. No incluye cargar secretos, activar flags, Vercel,
+Production, consultas ARCA o emisiones. Se ejecuta ese alcance, sin ampliarlo.
+HEAD local847a4cc limpio; SQL054 SHA96a12b2f4738993af429c11deb539ff144b6dc04c2f381fee5fae3966e35b066
+revalidado y hash del dump previo054 coincide con contexto. Destino real verificado
+por URL y título kioskopos-staging (etiqueta main PRODUCTION es rama del proyecto,
+no el proyecto productivo). No se leyó ninguna contraseña/token del navegador.
+
+Antes: verificador053 READ ONLY/ROLLBACK=0problemas,126funciones/41tablas/41triggers,
+owner/search_path/hash/SECURITY DEFINER/grants/RLS coincidentes.41conteos fiscales:
+una fila de parámetros, las otras40tablas vacías. SQL054 pegado/copiado íntegro y
+cotejado con fuente/hash antes de Run. Una sola ejecución; Success sin filas.
+Después: verificador054 independiente READ ONLY/ROLLBACK=0problemas, mismos126/41/41.
+Detalle: legacy EXECUTE false en anon/authenticated/service_role; ruta privada012
+EXECUTE sólo service_role; ACL legacy sin ejecutores distintos de owner DB.
+Conteos41 iguales, catálogo habilitado0 y emisores0. No afirmar comparación de
+contenido completo de filas a partir de conteos; la migración no contiene DML.
+
+Edge previo leído desde editor: hash LF10dc48715527c3e1a1daa230e1945d862814aa8726e83b85928839348f1c40c2,
+341976bytes, coincide con paquete instalado histórico. Clipboard Windows añade
+CRLF; se normaliza para comparar, sin cambiar fuente. Settings JWT ON antes.
+Candidato aafb32ce71093ed14e1b547fd36f7dcf9487c3ab revalidado9casos cerrados PASS,
+0red/0lecturas privadas; source completo pegado/copiado y cotejado. Deploy updates
+confirmado una vez para arca-homologacion existente; sin otros endpoints.
+Tras reload desde servidor:342453bytes y SHA
+37db174616cde300cb04aed47e5609c39841c569d99f4d26576171730ebf6c9b,
+coincidencia íntegra con paquete74módulos/4imports fijados. JWT sigue ON.
+No se abrieron valores de claves, cargaron credenciales ARCA ni cambiaron flags.
+
+HTTP hospedado posterior: POSTsinJWT401; POSTJWTficticio401; OPTIONS origen
+Staging204/allow-origin exacto; OPTIONSajeno403/sin allow-origin. Gateway401
+agrega CORS* propio, no se confunde con política del handler. Probador oficial
+POST{} sin header permitido403 ORIGEN_NO_PERMITIDO; con Origin exactoStaging
+503 HOMOLOGACION_NO_HABILITADA. No se relajó CORS para el probador ni introdujeron
+claves en sus campos. Prueba base cerrado, no aceptación positiva Auth/Owner ni
+prueba independiente del nuevo gate de datos con base abierto. No activar flags
+para ampliar este GO. Comprobación SQL final después de HTTP repite detalle y
+coincide exactamente; catálogo0habilitados, emisor/TA/operaciones/NC/CAE0.
+
+Artefactos fuera de Git, SHA256:
+- sql054-staging-verification-20261027.json:1805fa27bd46af59f7990041ab00eb413b42b713d35114a0cbd22a7b191dfa72
+- sql054-staging-final-after-http-20261027.json:80e4508da5655c81aaecc0a09b2b8504256545f47646e1ae2365b0b59f34b724
+- edge054-staging-deployed-20261027.json:f5ce1a353fac95f753ef7e5726fa9103f1f63ef918a5d316587b667104366afd
+- edge054-staging-gateway-20261027.json:20d9d8d3ff76e57a2cd508f9f85bc092c5f7d4702ff335d82d1c116ec8dbab8b
+Capturas sql054-staging-installed-20261027.png, edge054-staging-jwt-on-20261027.png,
+edge054-staging-closed-20261027.png; consultas SQL read-only y pruebas HTTP locales
+conservadas. Paneles SQL/Edge marcados handoff. Fallos de extracción DOM previos a
+aplicar sólo fueron lectura de gridcell vs cell; no provocaron SQL repetido.
+
+Este incremento no modifica código de aplicación: no nueva suite/build local;
+4885/313,183PostgreSQL y build689 conservan alcance/fechas anteriores. Evidencia
+nueva es hospedada de instalación/cierre, no aceptación fiscal E2E. PR03 parcial,
+PR02 sin CAE; PR10/11 y demás gates no cerrados. Siguiente dependencia: preparar
+alcance coordinado de emisor/catálogo vigente/custodia/keyring/TA para aceptación
+positiva bajo autorizaciones propias. No reautenticar WSAA durante vigencia
+conocida del TA descartado ni prolongar catálogo como atajo. No merge/master/
+Production, Vercel, impresora/cajón o Point. GO SQL054/Edge consumido.

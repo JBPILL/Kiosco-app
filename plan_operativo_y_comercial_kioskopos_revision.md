@@ -993,3 +993,12 @@ propio detenido. Reaplicación conserva datos/cuerpos/otros grants y preparació
 privada concurrente sigue única. PR03 continúa parcial: próximo gate es GO nuevo
 para SQL054 y Edge cerrado, después aceptación fiscal positiva autorizada.
 Detalle, hashes y fallo previo de fixture comercial en ExecPlan fiscal.
+
+27/10/2026: GO específico ejecutado para SQL054 y nuevo Edge cerrado en Staging.
+Verificación hospedada126funciones/41tablas/41triggers sin diferencias; legacy
+sin ejecución externa, preparación privada sólo service_role, conteos fiscales
+sin cambios y catálogo inactivo. Paquete Edge íntegro comparado tras reload,
+JWT ON y gateway/CORS/cierre503 PASS. No flags/secretos/Vercel/ARCA/CAE ni Production.
+PR03 parcial: instalación cerrada no acredita provisión, preparación positiva,
+roles/E2E completo o primer CAE. Siguiente alcance coordinado requiere sus GO;
+no repetir WSAA ni prolongar catálogo como atajo. Evidencia en ExecPlan fiscal.
