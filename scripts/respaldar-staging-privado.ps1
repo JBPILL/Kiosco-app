@@ -1,5 +1,5 @@
 ﻿# Staging only. Uses an already-cached PostgreSQL client; never downloads an image.
-param([switch]$Preparar, [string]$CertificadoRaiz = (Join-Path $env:USERPROFILE 'Downloads\prod-ca-2021.crt'))
+param([switch]$Preparar, [switch]$FiscalInstalado053, [string]$CertificadoRaiz = (Join-Path $env:USERPROFILE 'Downloads\prod-ca-2021.crt'))
 $ErrorActionPreference = 'Stop'
 $stagingImage = 'postgres:17-alpine'
 $stagingRef = 'acoyfwwmhaeruciyedri'
@@ -14,6 +14,49 @@ $stagingPasswordPointer = [IntPtr]::Zero
 $stagingResult = 1
 $stagingStep = 'cliente local'
 $stagingDiagnostic = [pscustomobject]@{ Code = 'SIN_DETALLE' }
+$stagingFiscalTables = @'
+checkout_unidades_config_homologacion
+checkout_unidades_homologacion
+fiscal_autorizaciones_homologacion
+fiscal_cancelaciones_preparacion_homologacion
+fiscal_emisores_homologacion
+fiscal_nc_aplicaciones_homologacion
+fiscal_nc_autorizaciones_homologacion
+fiscal_nc_borradores_homologacion
+fiscal_nc_cancelaciones_homologacion
+fiscal_nc_comercial_homologacion
+fiscal_nc_conflictos_homologacion
+fiscal_nc_consultas_homologacion
+fiscal_nc_desistimientos_homologacion
+fiscal_nc_intenciones_homologacion
+fiscal_nc_permisos_homologacion
+fiscal_nc_permisos_revocados_homologacion
+fiscal_nc_reposiciones_homologacion
+fiscal_nc_reservas_homologacion
+fiscal_nc_resoluciones_homologacion
+fiscal_nc_respuestas_envio_homologacion
+fiscal_nc_revisiones_homologacion
+fiscal_nc_series_homologacion
+fiscal_nc_ta_vinculos_homologacion
+fiscal_operaciones_homologacion
+fiscal_parametros_homologacion
+fiscal_parametros_nc_homologacion
+fiscal_permisos_emision_homologacion
+fiscal_preparaciones_homologacion
+fiscal_preparaciones_nc_homologacion
+fiscal_presentaciones_homologacion
+fiscal_rechazos_corregidos_homologacion
+fiscal_reconciliaciones_homologacion
+fiscal_reservas_homologacion
+fiscal_respuestas_emision_homologacion
+fiscal_revisiones_homologacion
+fiscal_revisiones_presentacion_homologacion
+fiscal_series_homologacion
+fiscal_solicitudes_homologacion
+fiscal_sustituciones_homologacion
+fiscal_ta_homologacion
+fiscal_ta_intentos_homologacion
+'@ -split '\r?\n'
 
 function Get-StagingBackupHash {
     param([string]$File)
@@ -112,6 +155,7 @@ try {
     Write-Host ('Destino verificado del asistente: Staging ' + $stagingRef)
     Write-Host 'Cliente local disponible. TLS verify-full. Sin descargas ni restauración.'
     Write-Host ('Carpeta prevista: ' + $stagingRoot)
+    if ($FiscalInstalado053) { Write-Host 'Modo previo a SQL054: exige 41 tablas fiscales y entrada heredada/ACL en el indice. No restaura ni instala.' }
     if ($Preparar) { $stagingResult = 0; return }
 
     $stagingStep = 'permisos privados'
@@ -121,7 +165,8 @@ try {
         if ((Test-Path -LiteralPath $ancestor) -and ((Get-Item -LiteralPath $ancestor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'No usar enlaces o junctions para el respaldo privado.' }
         $ancestor = [IO.Path]::GetDirectoryName($ancestor)
     }
-    $destination = Join-Path $stagingRoot ('pre-fiscal-9054cce-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N'))
+    $prefix = if ($FiscalInstalado053) { 'pre-sql054-' } else { 'pre-fiscal-9054cce-' }
+    $destination = Join-Path $stagingRoot ($prefix + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $destination -Force | Out-Null
     $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User
     $acl = New-Object Security.AccessControl.DirectorySecurity
@@ -161,6 +206,16 @@ try {
         foreach ($table in @('kioscos','usuarios','productos','ventas','detalles_venta','devoluciones_parciales_atomicas','piloto_operaciones_capacidades')) {
             if (-not ($index | Where-Object { $_ -match ('\bTABLE DATA public ' + [regex]::Escape($table) + '\s') })) { throw 'El archivo no cubre las tablas críticas.' }
         }
+        if ($FiscalInstalado053) {
+            $stagingStep = 'indice fiscal previo a SQL054'
+            foreach ($table in $stagingFiscalTables) {
+                if (-not ($index | Where-Object { $_ -match ('\bTABLE DATA public ' + [regex]::Escape($table) + '\s') })) { throw 'Tabla fiscal ausente del indice.' }
+            }
+            $legacySignature = 'preparar_operacion_fiscal_homologacion\(uuid,\s*uuid,\s*uuid,\s*jsonb\)\s'
+            foreach ($entry in @('FUNCTION public ','ACL public FUNCTION ')) {
+                if (-not ($index | Where-Object { $_ -match ('\b' + $entry + $legacySignature) })) { throw 'Entrada heredada o ACL ausente del indice.' }
+            }
+        }
         $rolesPartial = Join-Path $destination 'roles-sin-passwords.sql.partial'
         Invoke-StagingBackupTool -Tool pg_dumpall -ToolArguments @('--no-password','--roles-only','--no-role-passwords',('--file=' + $rolesPartial)) | Out-Null
         if (-not (Test-Path -LiteralPath $rolesPartial) -or (Get-Item -LiteralPath $rolesPartial).Length -eq 0) { throw 'Roles no confirmados.' }
@@ -176,6 +231,12 @@ try {
         if ($fileRules.Count -eq 0 -or @($fileRules | Where-Object { $_.IdentityReference -ne $sid -or $_.AccessControlType -ne 'Allow' }).Count -ne 0) { throw 'Archivo con permisos privados no confirmados.' }
     }
     $context = [ordered]@{status='BACKUP_ARCHIVE_VERIFIED_NOT_RESTORED';project_ref=$stagingRef;approved_sql_commit='9054cce410ae26b123f151bee2f1ad56c10767bd';created_at_utc=[DateTime]::UtcNow.ToString('o');archive=$dump[0].Name;sha256=(Get-StagingBackupHash -File $dump[0].FullName);roles='roles-sin-passwords.sql';roles_passwords_included=$false;storage_objects_included=$false;restore_executed=$false;owner_only_acl=$true;client_image_id=($imageId -join '')}
+    if ($FiscalInstalado053) {
+        $context['requested_stage']='BEFORE_SQL054'
+        $context['fiscal_toc_tables_verified']=$stagingFiscalTables
+        $context['legacy_function_and_acl_toc_verified']=$true
+        $context['fiscal_schema_equivalence_proven']=$false
+    }
     [IO.File]::WriteAllText((Join-Path $destination 'staging-backup-context.json'),($context | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
     Write-Host ('Respaldo Staging confirmado en: ' + $destination)
     Write-Host 'Esquema/datos y roles sin passwords verificados. No se restauró ni se instaló SQL fiscal.'

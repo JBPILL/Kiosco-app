@@ -144,3 +144,28 @@ lint PASS y `-Preparar` con certificado y Docker reales PASS sin conexión DB.
 La fixture de pruebas es únicamente el certificado CA público, no material ARCA.
 El respaldo real sigue pendiente: el fallo TLS anterior no queda cerrado sólo
 por estas pruebas. No se instaló SQL fiscal.
+
+### Respaldo con SQL001–053 instalado, antes de SQL054 — 27/10/2026
+
+Para una copia nueva del estado fiscal actual, reutilizar el asistente con
+`-FiscalInstalado053`. El modo anterior se conserva para su fase histórica.
+```powershell
+powershell -NoProfile -File ".\scripts\respaldar-staging-privado.ps1" -FiscalInstalado053
+```
+Ejecutar desde el repositorio. Para comprobar sólo cliente/CA sin contraseña,
+exportación ni conexión DB, agregar `-Preparar`.
+
+El nuevo modo crea una carpeta privada única `pre-sql054-*`; no sobrescribe el
+respaldo previo. Además de las siete tablas comerciales, exige en el índice
+TABLE DATA de las41tablas fiscales de001–053, la función heredada exacta y su
+entrada ACL. El manifiesto registra etapa BEFORE_SQL054, lista de tablas y
+comprobación de esas entradas. Su existencia en TOC no prueba equivalencia de
+todo el esquema, integridad referencial ni restauración: el manifiesto conserva
+fiscal_schema_equivalence_proven=false y restore_executed=false. No exporta
+objetos físicos de Storage ni acredita una copia externa/cifrada.
+
+La contraseña PostgreSQL se ingresa sólo en el prompt local. No enviarla ni
+copiar respuestas externas; compartir únicamente la línea de confirmación/ruta
+o la categoría segura del fallo. TLS verify-full, CA pública fija, cliente
+existente sin descargas, roles sin passwords y ACL privadas se mantienen.
+Preparar esta herramienta no crea un respaldo real ni autoriza SQL054/Edge.

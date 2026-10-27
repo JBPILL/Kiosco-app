@@ -3029,3 +3029,29 @@ GO específico; no reutilizar el GO001–053 ni el del runtime anterior. El resp
 pre-fiscal anterior no acredita por sí solo el estado fiscal actual. Mantener
 cerrados emisor/custodia/permisos/flags y frontend remoto. PR03 parcial, PR02 sin
 CAE; no cambios en master/Production ni merge.
+
+### Respaldo previo054 preparado — 27/10/2026
+
+Tras autenticación humana de Git, e21866d ya está publicado en PR3 Draft;
+HEAD/base verificados por API, sin merge. Descripción actualizada conserva
+historia y diferencia consulta real/validación local/candidatos remotos.
+
+El asistente de respaldo agrega -FiscalInstalado053 sin cambiar modo histórico:
+carpeta pre-sql054 única, siete tablas comerciales y41tablas fiscales exigidas
+en TOC, función heredada y ACL exactas requeridas. Manifiesto indica etapa y
+alcance TOC, equivalencia de esquema/restauración false. Sin nuevas lecturas de
+contraseñas, fuentes privadas ni conexión DB por el agente.
+
+15/15 pruebas Windows del asistente PASS con Docker/Auth sintéticos (incluye
+cinco casos nuevos); oxlint enfocado/diff PASS. Build posterior689 PASS. No se
+repitió la suite global4885 tras este incremento exclusivo de respaldo: ese
+resultado corresponde a e21866d, no al nuevo árbol. El nuevo contrato quedó
+cubierto por las15pruebas dirigidas, sin cambios de aplicación/backend fiscal.
+
+Primer preflight real falló en cliente local, sin crear copia ni pedir secreto;
+Docker Desktop no ejecutándose confirmado. Se inició el ejecutable local
+existente y el mismo preflight -Preparar -FiscalInstalado053 pasó: cliente17,
+CA/TLS verify-full disponibles, sin descarga/exportación/DB. Docker queda abierto
+para el siguiente paso humano. Respaldo nuevo sigue PENDIENTE de ingreso privado
+local por el titular; no instalar054 ni actualizar Edge antes de verificar copia
+y recibir GO nuevo. No repetir autenticación ARCA ni modificar flags/Production.

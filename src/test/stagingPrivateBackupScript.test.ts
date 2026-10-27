@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 const script=resolve('scripts/respaldar-staging-privado.ps1'),quote=(s:string)=>"'"+s.replaceAll("'","''")+"'"
 const synthetic='Synthetic:Password\\123'
+const fiscalTables=[...new Set(readdirSync('supabase/pilot-fiscal').filter(name=>/^\d{3}_/.test(name)&&Number(name.slice(0,3))<=53).flatMap(name=>[...readFileSync(join('supabase/pilot-fiscal',name),'utf8').matchAll(/CREATE TABLE IF NOT EXISTS public\.(\w+)/g)].map(match=>match[1])))].sort()
 function cleanup(root:string){
  const target=resolve(root)
  if(dirname(target)!==resolve(tmpdir())||!basename(target).startsWith('kiosko-staging-backup-test-'))throw Error('Unsafe cleanup')
@@ -30,7 +31,12 @@ function run(mode:string){
     if($a -contains '--network'){'pg_dump (PostgreSQL) 17.11';'pg_restore (PostgreSQL) 17.11';'pg_dumpall (PostgreSQL) 17.11';return}
     $mount=$a[([array]::IndexOf($a,'--mount')+1)];if($mount -notmatch '^type=bind,source=(.+),target=/backup$'){throw 'Mount'};$folder=$Matches[1]
     if($a -contains '--list'){
-     foreach($t in @('kioscos','usuarios','productos','ventas','detalles_venta','devoluciones_parciales_atomicas','piloto_operaciones_capacidades')){if(${quote(mode)} -ne 'missing-table' -or $t -ne 'ventas'){'1; 0 1 TABLE DATA public '+$t+' postgres'}};return
+     foreach($t in @('kioscos','usuarios','productos','ventas','detalles_venta','devoluciones_parciales_atomicas','piloto_operaciones_capacidades')){if(${quote(mode)} -ne 'missing-table' -or $t -ne 'ventas'){'1; 0 1 TABLE DATA public '+$t+' postgres'}}
+     if(${quote(mode)} -like 'fiscal-*'){
+      foreach($t in @(${fiscalTables.map(quote).join(',')})){if(${quote(mode)} -ne 'fiscal-missing-table' -or $t -ne 'fiscal_ta_homologacion'){'1; 0 1 TABLE DATA public '+$t+' postgres'}}
+      if(${quote(mode)} -ne 'fiscal-missing-function'){'2; 0 1 FUNCTION public preparar_operacion_fiscal_homologacion(uuid, uuid, uuid, jsonb) postgres'}
+      if(${quote(mode)} -ne 'fiscal-missing-acl'){'3; 0 1 ACL public FUNCTION preparar_operacion_fiscal_homologacion(uuid, uuid, uuid, jsonb) postgres'}
+     };return
     }
     $tool=if($a -contains 'pg_dumpall'){'pg_dumpall'}else{'pg_dump'}
     $expected='aws-1-sa-east-1.pooler.supabase.com:5432:postgres:postgres.acoyfwwmhaeruciyedri:'+${quote(synthetic.replaceAll('\\','\\\\').replaceAll(':','\\:'))}
@@ -42,7 +48,7 @@ function run(mode:string){
     $file=($a | Where-Object{ $_ -like '--file=*' }).Substring(7).Substring('/backup/'.Length)
     [IO.File]::WriteAllText((Join-Path $folder $file),$(if($tool -eq 'pg_dump'){'archive-fixture'}else{'CREATE ROLE synthetic NOLOGIN;'}))
    }
-   & ${quote(script)} ${mode==='prepare'?'-Preparar':''}
+   & ${quote(script)} ${mode==='prepare'||mode==='fiscal-prepare'?'-Preparar':''} ${mode.startsWith('fiscal-')?'-FiscalInstalado053':''}
    $code=$LASTEXITCODE
    $envOk=$env:PGHOST -ceq 'before-host' -and $env:PGPASSWORD -ceq 'before-password' -and $env:PGSERVICE -ceq 'before-service'
    [IO.File]::WriteAllText(${quote(record)},(@{events=@($global:events.ToArray());env_ok=$envOk;error_command=$error[0].Exception.CommandName}|ConvertTo-Json -Depth 5))
@@ -69,4 +75,19 @@ it.skipIf(process.platform!=='win32').each(['image-missing','dump-fail','roles-f
 
 it.skipIf(process.platform!=='win32').each([['tls-fail','TLS_CERTIFICADO'],['auth-fail','AUTENTICACION']])('diagnóstico %s clasifica stderr sin publicar secretos', (mode,code)=>{
  const r=run(mode);expect(r.status).toBe(1);expect(r.context).toBeNull();expect(r.output).toContain('['+code+']');expect(r.output).not.toContain(synthetic)
+},60000)
+
+it.skipIf(process.platform!=='win32')('modo previo054 comprueba tablas fiscales y ACL sin afirmar restauración ni equivalencia',()=>{
+ expect(fiscalTables).toHaveLength(41)
+ const r=run('fiscal-ok');expect(r.status,r.output).toBe(0)
+ expect(r.context).toMatchObject({requested_stage:'BEFORE_SQL054',fiscal_toc_tables_verified:fiscalTables,legacy_function_and_acl_toc_verified:true,fiscal_schema_equivalence_proven:false,restore_executed:false})
+ expect(r.report.env_ok).toBe(true);expect(r.output).not.toContain(synthetic)
+},60000)
+it.skipIf(process.platform!=='win32')('preflight fiscal no solicita secreto ni exporta',()=>{
+ const r=run('fiscal-prepare');expect(r.status,r.output).toBe(0)
+ expect(r.files).toEqual([]);expect(r.report.events).toEqual([]);expect(r.output).toContain('41 tablas fiscales')
+},60000)
+it.skipIf(process.platform!=='win32').each(['fiscal-missing-table','fiscal-missing-function','fiscal-missing-acl'])('modo054 falla cerrado ante %s',mode=>{
+ const r=run(mode);expect(r.status,r.output).toBe(1);expect(r.context).toBeNull()
+ expect(r.output).not.toContain(synthetic);expect(r.report.env_ok).toBe(true)
 },60000)
