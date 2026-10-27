@@ -61,12 +61,26 @@ it.skipIf(process.platform!=='win32')('private Windows pipe copies only six revi
    const active=await privateKeys.active();expect(active.id).toBe(proposal.taKeyId);expect(active.key.extractable).toBe(false)
    const inventory=[...baseline,...delivery.names.map((name:string)=>({name,digest:createHash('sha256').update(delivery.value(name)).digest('hex')}))]
    expect(delivery.verifyInventory(inventory)).toEqual({presence:'6/6',newDigestsMatch:true,existingUnchanged:true,fiscalFlagsClosed:true,functionalCustodyProven:false})
-   expect(()=>delivery.verifyInventory(inventory.slice(0,-1))).toThrow()
-   expect(()=>delivery.verifyInventory(inventory.map(row=>row.name===proposal.secretNames[3]?{...row,digest:'0'.repeat(64)}:row))).toThrow()
-   expect(()=>delivery.verifyInventory(inventory.map(row=>row.name==='ARCA_HOMO_BACKEND_ENABLED'?{...row,digest:createHash('sha256').update('true').digest('hex')}:row))).toThrow()
    expect(()=>delivery.value('SUPABASE_SECRET_KEYS')).toThrow()
+   expect(()=>delivery.verifyInventory(inventory.slice(0,-1))).toThrow()
+   expect(()=>delivery.value(proposal.secretNames[0])).toThrow()
+   expect(()=>delivery.verifyInventory(inventory)).toThrow()
   }finally{delivery.dispose()}
   expect(()=>delivery.value(proposal.secretNames[0])).toThrow()
+ })
+},40000)
+it.skipIf(process.platform!=='win32').each(['changed-private','changed-existing','open-flag'])('metadata failure %s permanently disposes the delivery',async mode=>{
+ await setup('ok',async paths=>{
+  const proposal=plan(),baseline=[{name:'ARCA_HOMO_BACKEND_ENABLED',digest:createHash('sha256').update('false').digest('hex')},{name:'EXISTING_SETTING',digest:'a'.repeat(64)}]
+  const delivery=await preparePrivateCustodyDelivery({plan:proposal,approvedHash:custodyPlanHash(proposal),baseline,paths})
+  try{
+   const good=[...baseline,...delivery.names.map(name=>({name,digest:createHash('sha256').update(delivery.value(name)).digest('hex')}))]
+   const name=mode==='changed-private'?proposal.secretNames[3]:mode==='changed-existing'?'EXISTING_SETTING':'ARCA_HOMO_BACKEND_ENABLED'
+   const bad=good.map(row=>row.name===name?{...row,digest:'0'.repeat(64)}:row)
+   expect(()=>delivery.verifyInventory(bad)).toThrow()
+   expect(()=>delivery.value(proposal.secretNames[3])).toThrow()
+   expect(()=>delivery.verifyInventory(good)).toThrow()
+  }finally{delivery.dispose()}
  })
 },40000)
 it.skipIf(process.platform!=='win32').each([['bad-acl','METADATA'],['wrong-pin','PUBLIC_PIN'],['invalid-dpapi','ORIGINAL_COPY']] as const)('rejects %s without private exception content',async (mode,stage)=>{

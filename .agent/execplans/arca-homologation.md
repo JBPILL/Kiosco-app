@@ -3371,3 +3371,17 @@ Credencial9a4916d1-b6b5-499f-98ef-9f6cf79510be; TAkeyb14101fb-ba80-4d3f-a102-d2f
 Seis nombres públicos derivados en propuesta; aún no valores privados preparados.
 Próximo: revisión/GO de provisión cerrada únicamente. No confundir copia/metadata
 con custodia funcional hospedada; no LoginCms/WSFE ni emisor/activación por este GO.
+
+
+#### Entrega terminal ante drift — 27/10/2026
+Revisión local posterior al cierre a210b42 detectó que verifyInventory rechazaba
+parciales/drift pero conservaba entrega reutilizable hasta dispose del controlador.
+Ahora cualquier rechazo de metadata elimina el mapa y deshabilita definitivamente
+value/verifyInventory: no puede corregirse el inventario y reutilizar esa entrega.
+49tests enfocados PASS/0skip (3nuevos para valor privado, configuración previa y
+flag alterados), build689 y lint enfocado/diff PASS. Informe fuera de Git
+../fiscal-custody-terminal-drift-20261027.json, SHA256
+6f4fb0f6cbe13963cded64fd69286d4acab269a8e72406f7f6851672eaa92811.
+95tests anteriores mantienen su alcance; no suite global nueva. Ningún original,
+Supabase/flag/ARCA/CAE utilizado. GO de seis secretos sigue pendiente, propuesta
+pública sin cambios: este endurecimiento no amplía la autorización solicitada.

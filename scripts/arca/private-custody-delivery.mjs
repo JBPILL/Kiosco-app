@@ -63,10 +63,17 @@ export async function preparePrivateCustodyDelivery({ plan: input, approvedHash,
       value: { value(name) { alive(); if (!records.has(name)) return fail(); return records.get(name) } },
       verifyInventory: { value(inventory) {
         alive()
-        const after = custodyInventory(inventory)
-        if (after.size !== before.size + 6 || [...before].some(([name, digest]) => after.get(name) !== digest)
-          || [...records].some(([name, value]) => after.get(name) !== createHash('sha256').update(value).digest('hex'))) return fail()
-        return { presence: '6/6', newDigestsMatch: true, existingUnchanged: true, fiscalFlagsClosed: true, functionalCustodyProven: false }
+        try {
+          const after = custodyInventory(inventory)
+          if (after.size !== before.size + 6 || [...before].some(([name, digest]) => after.get(name) !== digest)
+            || [...records].some(([name, value]) => after.get(name) !== createHash('sha256').update(value).digest('hex'))) return fail()
+          return { presence: '6/6', newDigestsMatch: true, existingUnchanged: true, fiscalFlagsClosed: true, functionalCustodyProven: false }
+        } catch {
+          // A partial write or drift is terminal: do not retain a reusable delivery.
+          disposed = true
+          records.clear()
+          return fail()
+        }
       } },
       dispose: { value() { disposed = true; records.clear() } },
     }))
