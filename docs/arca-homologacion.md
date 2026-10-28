@@ -1931,3 +1931,43 @@ TA28/10 15:06:15.411Z, catálogo29/10 02:59Z y ventana propuesta15:10–15:25Z h
 Si vencerel material público, revisar conservaUUID antes de continuar, no retry
 LoginCms ni extenderfechas. No SQL/flags/ARCA/secretos/Edge/Vercel/master/Production/
 merge en este bloque. ObjetivoPR01–PR11 activo y no completado.
+
+### 28/10/2026 — Corrección de replay tras cierre (supera candidato cf36b4b)
+Revisión posterior detectó que habilitado=false restauraba exactamente baseline y
+permitía reabrir el MISMO plan después de cerrar si no existía operación. Candidato
+anterior nunca se instaló. Se conserva como histórico/supersedido, NO usar.
+Apertura ahora captura opened_at=clock_timestamp UNA sola vez tras todos los locks,
+valida ventana y avance estricto sobre actualizado_en previo y guarda ese valor
+en actualizado_en del emisor junto con habilitado=true. No tabla/columna nueva.
+Cierre exige kioskopos.window_opened_at igual al timestamp de apertura observado
+independientemente y dentro de la ventana aprobada; revalida resto del binding
+completo. Conserva la marca al poner habilitado=false: baseline del plan viejo ya
+no coincide, ni tras reload ni con otra sesión/sin operación. Cierre sigue siendo
+repetible con el mismo recibo y no requiere reloj actual dentro de ventana.
+No es lease automático ni TTL de backend: ventana exclusiva/supervisión/flags
+cerrados primero siguen obligatorios. No prometer que una flagtrue vence sola.
+
+Recibo debe obtenerse con verify.sql READ ONLY DESPUÉS de confirmar/conciliar la
+apertura, persistir sólo metadata pública y conservar precisión microsegundos del
+texto timestamp PostgreSQL (no convertir a DateISO que trunque el recibo). Si se
+pierde ACK no repetir apertura: recuperar estado/recibo con lectura y comparar
+binding/hash antes del cierre. Recibo ausente/distinto => no UPDATE; drift =>STOP.
+No resetear marca para facilitar retry. Un plan nuevo requiere baseline/hash/revisión
+GO nuevos, conservando UUID si sigue la misma operación, no reprovisión/WSAA extra.
+
+Propuesta v2 ../positive-window-sql-proposal-v2-20261028/ (v1 supersedida):
+activateSHA25648ec3a63e34aaba5cbf568b5b0dfb5924a2dd7b20e01fe7cb7827312886cea0a
+closeSHA256781341e6596fa6799ecf3317e8c0bcab5c3a7449aa3b9f4cdcb4a8e2456bbfbc
+verifySHA25602b5640d1019ea123b2c9322b96d61154c322d2e565ba705792fb2275ac7f1f9.
+Mismo dataPlanSHA cbe964ee139eb1d943e6a3d70b9ae1cd7921da8268e484eee6f213392db11349.
+readyForGo=false/assistantReady=false/SQL_EXECUTED=false; no autorización solicitada.
+52pruebas enfocadas PASS (17SQL/35datos),0omitidos; incluye fallo tardío del segundo
+UPDATE que revierte primero, recibo ausente/incorrecto y replay SIN operación.
+Build finalPASS, lint0errores (warningfinally histórico harness), diffPASS.
+Un build intermedio falló por tipo unknown de resultado PGlite en test nuevo;
+corregido con tipo explícito, sin cambiar aserción, build finalPASS. Artefactos
+fallidos conservados. Ensayo nativo con reloj real de cierre expirado y otra sesión
+está en curso; no usar pase anterior como prueba final del nuevo código.
+
+Cierre de evidencia nativa FINAL: PostgreSQL17.11,196PASS (4ventana), cero solicitudes fiscales externas/emisiones. Reloj real confirma cierre tras expiry, recibo conserva precisión, replay de otra sesión SIN operación rechazado. Contenedor propio detenido/datos conservados. ../positive-window-toggle-native-openstamp-final-20261028.json SHA256 9e74d7ab48ed3ad4f9373c72da868a57d7bf5a32d3f84bbfff88a56b0366179a. Este pase corresponde al código final de marca única y supera los pases previos. Asistente privado/paqueteGO completo pendientes; ninguna operación remota en este bloque.
+

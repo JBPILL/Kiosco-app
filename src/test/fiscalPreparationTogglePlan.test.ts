@@ -39,7 +39,10 @@ it('requires GO, activates metadata once, rejects replay and closes after expiry
     expect((await db.query('SELECT habilitado FROM fiscal_parametros_homologacion')).rows).toEqual([{habilitado:true}])
     await expect(db.exec(currentClock(plan.activationSql))).rejects.toThrow('WINDOW_BINDING_CHANGED');await db.exec('ROLLBACK')
     await db.query('INSERT INTO fiscal_operaciones_homologacion VALUES($1,$2)',[config.operationId,plan.data.manifest.saleId])
+    const receipt=(await db.query<{opened_at:string}>('SELECT actualizado_en::text AS opened_at FROM fiscal_emisores_homologacion')).rows[0].opened_at
+    await db.query("SELECT set_config('kioskopos.window_opened_at',$1,false)",[receipt])
     await db.exec(plan.closureSql);await db.exec(plan.closureSql)
+    await expect(db.exec(currentClock(plan.activationSql))).rejects.toThrow(/WINDOW_(BINDING|SALE)_CHANGED/);await db.exec('ROLLBACK')
     expect((await db.query('SELECT habilitado FROM fiscal_emisores_homologacion')).rows).toEqual([{habilitado:false}])
     expect((await db.query('SELECT habilitado FROM fiscal_parametros_homologacion')).rows).toEqual([{habilitado:false}])
     expect((await db.query('SELECT id FROM fiscal_operaciones_homologacion')).rows).toEqual([{id:config.operationId}])
@@ -74,5 +77,28 @@ it('closure stops on changed binding rather than overwriting another metadata re
     await db.exec('UPDATE fiscal_emisores_homologacion SET revision=2')
     await expect(db.exec(plan.closureSql)).rejects.toThrow('WINDOW_CLOSE_DRIFT_REVIEW_REQUIRED');await db.exec('ROLLBACK')
     expect((await db.query('SELECT revision,habilitado FROM fiscal_emisores_homologacion')).rows).toEqual([{revision:2,habilitado:true}])
+  }finally{await db.close()}
+},30000)
+it('rolls back issuer activation if the later catalog update fails',async()=>{
+  const {db,plan}=await setup()
+  try{
+    await approve(db,plan.data.manifest.planSha256)
+    await db.exec("CREATE FUNCTION public.fail_catalog_window() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN RAISE EXCEPTION 'SYNTHETIC_LATE_FAILURE'; END$$; CREATE TRIGGER fail_catalog_window BEFORE UPDATE ON fiscal_parametros_homologacion FOR EACH ROW EXECUTE FUNCTION public.fail_catalog_window();")
+    await expect(db.exec(currentClock(plan.activationSql))).rejects.toThrow('SYNTHETIC_LATE_FAILURE');await db.exec('ROLLBACK')
+    expect((await db.query('SELECT habilitado FROM fiscal_emisores_homologacion')).rows).toEqual([{habilitado:false}])
+    expect((await db.query('SELECT habilitado FROM fiscal_parametros_homologacion')).rows).toEqual([{habilitado:false}])
+  }finally{await db.close()}
+},30000)
+it('requires the opening receipt and prevents reopening after closure even without an operation',async()=>{
+  const {db,plan}=await setup()
+  try{
+    await approve(db,plan.data.manifest.planSha256);await db.exec(currentClock(plan.activationSql))
+    await expect(db.exec(plan.closureSql)).rejects.toThrow('WINDOW_OPEN_RECEIPT_REQUIRED');await db.exec('ROLLBACK')
+    await db.exec("SELECT set_config('kioskopos.window_opened_at','2026-10-28T15:10:02Z',false)")
+    await expect(db.exec(plan.closureSql)).rejects.toThrow('WINDOW_OPEN_RECEIPT_REQUIRED');await db.exec('ROLLBACK')
+    const receipt=(await db.query<{opened_at:string}>('SELECT actualizado_en::text AS opened_at FROM fiscal_emisores_homologacion')).rows[0].opened_at
+    await db.query("SELECT set_config('kioskopos.window_opened_at',$1,false)",[receipt]);await db.exec(plan.closureSql)
+    expect((await db.query<{n:number}>('SELECT count(*)::int n FROM fiscal_operaciones_homologacion')).rows[0].n).toBe(0)
+    await expect(db.exec(currentClock(plan.activationSql))).rejects.toThrow('WINDOW_BINDING_CHANGED');await db.exec('ROLLBACK')
   }finally{await db.close()}
 },30000)

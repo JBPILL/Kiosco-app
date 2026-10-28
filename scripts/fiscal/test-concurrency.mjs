@@ -1856,15 +1856,20 @@ try {
     return {first,second,watch,config,plan}
   }
   {
-    const w=await windowFixture('kiosko_window_once')
+    const w=await windowFixture('kiosko_window_once',10000)
     await w.first.query(holdIssuer(w.plan.activationSql));const loser=capture(w.second.query(w.plan.activationSql));await waitForLock(w.watch,w.second);await w.first.query('COMMIT')
     assert.match((await loser).error?.message??'',/WINDOW_BINDING_CHANGED/);await w.second.query('ROLLBACK')
     await w.watch.query('INSERT INTO fiscal_operaciones_homologacion VALUES($1,$2)',[w.config.operationId,w.plan.data.manifest.saleId])
+    await w.watch.query('SELECT pg_sleep(GREATEST(0,EXTRACT(EPOCH FROM ($1::timestamptz-clock_timestamp())))+0.1)',[w.config.endsAt])
+    assert.equal((await w.watch.query('SELECT clock_timestamp()>$1::timestamptz AS expired',[w.config.endsAt])).rows[0].expired,true)
+    const openedAt=(await w.watch.query('SELECT actualizado_en::text AS opened_at FROM fiscal_emisores_homologacion')).rows[0].opened_at
+    for(const client of [w.first,w.second])await client.query("SELECT set_config('kioskopos.window_opened_at',$1,false)",[openedAt])
     await w.first.query(w.plan.closureSql);await w.second.query(w.plan.closureSql)
+    const replayAfterClose=await capture(w.second.query(w.plan.activationSql));assert.match(replayAfterClose.error?.message??'',/WINDOW_(SALE|BINDING)_CHANGED/);await w.second.query('ROLLBACK')
     assert.equal((await w.watch.query('SELECT count(*)::int n FROM fiscal_operaciones_homologacion')).rows[0].n,1)
     assert.equal((await w.watch.query('SELECT habilitado FROM fiscal_emisores_homologacion')).rows[0].habilitado,false)
     assert.equal((await w.watch.query('SELECT habilitado FROM fiscal_parametros_homologacion')).rows[0].habilitado,false)
-    cases.push('ventana_dos_activadores_una_apertura_cierre_repetible_conserva_operacion')
+    cases.push('ventana_dos_activadores_cierre_tras_expiry_repetible_conserva_operacion')
   }
   {
     const w=await windowFixture('kiosko_window_expiry',4000)
@@ -1882,6 +1887,14 @@ try {
     assert.match((await blocked).error?.message??'',/WINDOW_CLOSE_DRIFT_REVIEW_REQUIRED/);await w.second.query('ROLLBACK')
     assert.deepEqual((await w.watch.query('SELECT revision,habilitado FROM fiscal_emisores_homologacion')).rows,[{revision:2,habilitado:true}])
     cases.push('ventana_cierre_tras_drift_concurrente_no_sobrescribe_binding')
+  }
+  {
+    const w=await windowFixture('kiosko_window_replay');await w.first.query(w.plan.activationSql)
+    const openedAt=(await w.watch.query('SELECT actualizado_en::text AS opened_at FROM fiscal_emisores_homologacion')).rows[0].opened_at
+    await w.first.query("SELECT set_config('kioskopos.window_opened_at',$1,false)",[openedAt]);await w.first.query(w.plan.closureSql)
+    assert.equal((await w.watch.query('SELECT count(*)::int n FROM fiscal_operaciones_homologacion')).rows[0].n,0)
+    const replay=await capture(w.second.query(w.plan.activationSql));assert.match(replay.error?.message??'',/WINDOW_BINDING_CHANGED/);await w.second.query('ROLLBACK')
+    cases.push('ventana_cerrada_otra_sesion_sin_operacion_no_reabre_plan')
   }
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')

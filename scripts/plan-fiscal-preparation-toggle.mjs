@@ -15,7 +15,7 @@ DO $window$ DECLARE expected_issuer public.fiscal_emisores_homologacion%ROWTYPE;
  expected_catalog public.fiscal_parametros_homologacion%ROWTYPE;
  actual_issuer public.fiscal_emisores_homologacion%ROWTYPE;
  actual_catalog public.fiscal_parametros_homologacion%ROWTYPE;
- actor public.usuarios%ROWTYPE; sale public.ventas%ROWTYPE; tabla text; rol text;
+ actor public.usuarios%ROWTYPE; sale public.ventas%ROWTYPE; tabla text; rol text; opened_at timestamptz;
 BEGIN
  IF current_user IS DISTINCT FROM 'postgres'
  OR current_setting('kioskopos.window_target',true) IS DISTINCT FROM 'acoyfwwmhaeruciyedri'
@@ -71,9 +71,12 @@ ${common}
  OR EXISTS(SELECT 1 FROM public.fiscal_parametros_homologacion WHERE habilitado) THEN
  RAISE EXCEPTION 'WINDOW_BINDING_CHANGED'; END IF;
  -- Time is checked AFTER every blocking lock, immediately before updates.
- IF clock_timestamp()<${quote(p.startsAt)}::timestamptz OR clock_timestamp()>=${quote(p.endsAt)}::timestamptz
- OR actual_catalog.vence_en<${quote(p.endsAt)}::timestamptz THEN RAISE EXCEPTION 'WINDOW_NOT_CURRENT'; END IF;
- UPDATE public.fiscal_emisores_homologacion SET habilitado=true WHERE kiosco_id=actor.kiosco_id;
+ opened_at:=clock_timestamp();
+ IF opened_at<${quote(p.startsAt)}::timestamptz OR opened_at>=${quote(p.endsAt)}::timestamptz
+ OR actual_catalog.vence_en<${quote(p.endsAt)}::timestamptz
+ OR opened_at<=actual_issuer.actualizado_en THEN RAISE EXCEPTION 'WINDOW_NOT_CURRENT'; END IF;
+ -- Retain this monotone receipt marker on closure; the old plan cannot reopen.
+ UPDATE public.fiscal_emisores_homologacion SET habilitado=true,actualizado_en=opened_at WHERE kiosco_id=actor.kiosco_id;
  UPDATE public.fiscal_parametros_homologacion SET habilitado=true WHERE revision=2;
 ${finish}`
   const closureSql=`-- Close private PREPARATION/DATA/BACKEND flags FIRST, under the same reviewed GO.
@@ -83,9 +86,14 @@ ${finish}`
 BEGIN;
 ${common}
  ${locks}
- IF (to_jsonb(actual_issuer)-'habilitado') IS DISTINCT FROM (to_jsonb(expected_issuer)-'habilitado')
+ IF (to_jsonb(actual_issuer)-'habilitado'-'actualizado_en') IS DISTINCT FROM (to_jsonb(expected_issuer)-'habilitado'-'actualizado_en')
  OR (to_jsonb(actual_catalog)-'habilitado') IS DISTINCT FROM (to_jsonb(expected_catalog)-'habilitado') THEN
  RAISE EXCEPTION 'WINDOW_CLOSE_DRIFT_REVIEW_REQUIRED'; END IF;
+ opened_at:=nullif(current_setting('kioskopos.window_opened_at',true),'')::timestamptz;
+ IF opened_at IS NULL OR opened_at IS DISTINCT FROM actual_issuer.actualizado_en
+ OR opened_at<=expected_issuer.actualizado_en OR opened_at<${quote(p.startsAt)}::timestamptz
+ OR opened_at>=${quote(p.endsAt)}::timestamptz THEN RAISE EXCEPTION 'WINDOW_OPEN_RECEIPT_REQUIRED'; END IF;
+ -- Do not reset actualizado_en: replay prevention survives closure/reload.
  UPDATE public.fiscal_emisores_homologacion SET habilitado=false WHERE kiosco_id='${p.kioskId}'::uuid AND habilitado;
  UPDATE public.fiscal_parametros_homologacion SET habilitado=false WHERE revision=2 AND habilitado;
 ${finish}`
@@ -95,12 +103,13 @@ SELECT jsonb_build_object('read_only',current_setting('transaction_read_only'),
  'catalog_enabled',(SELECT habilitado FROM public.fiscal_parametros_homologacion WHERE revision=2),
  'enabled_issuers',(SELECT count(*) FROM public.fiscal_emisores_homologacion WHERE habilitado),
  'enabled_catalogs',(SELECT count(*) FROM public.fiscal_parametros_homologacion WHERE habilitado),
- 'operation_id','${p.operationId}',
+ 'operation_id','${p.operationId}','plan_sha256','${p.planSha256}',
+ 'opened_at',(SELECT actualizado_en FROM public.fiscal_emisores_homologacion WHERE kiosco_id='${p.kioskId}'::uuid),
  'operations_for_sale',(SELECT count(*) FROM public.fiscal_operaciones_homologacion WHERE venta_id='${p.saleId}'::uuid)) AS verification;
 ROLLBACK;
 `
   return {data,activationSql,closureSql,verificationSql,manifest:{version:1,dataPlanSha256:p.planSha256,
     activationSha256:sha(activationSql),closureSha256:sha(closureSql),verificationSha256:sha(verificationSql),
-    requiresExclusiveOperator:true,persistentWindowLease:false,sqlExecuted:false,flagsChanged:false,
+    requiresExclusiveOperator:true,requiresOpenedAtReceipt:true,persistentWindowLease:false,sqlExecuted:false,flagsChanged:false,
     operatorAssistantReady:false,readyForGo:false}}
 }
