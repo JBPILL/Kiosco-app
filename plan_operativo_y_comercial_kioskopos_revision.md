@@ -1129,3 +1129,23 @@ SQL SHA256 2cd371db17034db2c271f052f3741e54797183001808e43baa763076bea00a9e
 Misma expiración 29/10 01:33:55.603Z. SQL_EXECUTED=false; respaldo actualizado,
 preflight remoto y revisión/GO propios siguen pendientes. No instalación/flags,
 ARCA, secretos originales, master, Production o merge.
+
+### 27/10/2026 — Respaldo previo y preflight hospedado del emisor
+Titular completó pre-emisor-inactivo-20261027-225250-be795028397e4da68441c4b914a0e240.
+Verificación independiente SHA256 de dump y roles PASS, sin exponer contenidos.
+Dump SHA256 2226e7c699df412a2ac59ff1df5c089ed7e06c1a897b53ed21d0d73a1ec9d7c3.
+Contexto BEFORE_INITIAL_INACTIVE_ISSUER, Staging acoyfwwmhaeruciyedri,
+expected_revision054, roles sin passwords, 41 tablas/ACL TOC. No restauración,
+Storage físico ni secretos Management: PR07 integral sigue pendiente.
+Verificador054 existente ejecutado READ ONLY/ROLLBACK en Dashboard Staging:
+126 funciones/41 tablas/41 triggers, problem_count=0, read_only=on.
+Preflight separado READ ONLY/ROLLBACK: OwnerAuth único/elegible, comercio aislado
+ACTIVO, emisores0, operaciones0, TA0, catálogo habilitado0. Ningún estado reparado.
+Evidencia pública ../inactive-issuer-sql054-preflight-20261027.json y
+../inactive-issuer-identity-preflight-20261027.json; capturas homónimas PNG.
+Demora al teclear consulta dejó texto parcial NO ejecutado; sustituido por paste
+y contenido exacto verificado antes de Run. No SQL DML/DDL/flags/ARCA/secretos.
+Propuesta v3/fe1ddc2 sigue candidata sin instalar; requiere GO propio para insertar
+una sola fila revision1/habilitado=false, con validación nuevamente bajo locks.
+Este preflight no acredita emisor habilitado, representación, custodia funcional,
+catálogo vigente, aceptación positiva ni CAE. master/Production/merge intactos.
