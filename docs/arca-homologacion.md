@@ -1836,3 +1836,53 @@ no ejecutada; EMISSION/RECONCILIATION/CREDIT_SEND/CONSULT/APPLY cerrados.
 SinFECAESolicitar/stock/caja/refund/reposición/SQLnuevo/Edge/Vercel/master/
 Production/merge. FechaTAycatálogo nuevas reemplazan sólo pendientes de ventana,
 no borran decisiones ni evidencia histórica.
+
+### 28/10/2026 — Venta/UUID/DTO propuestos, no activación
+SELECT READ ONLY/ROLLBACK en comercio aislado encontró4ventas elegibles. Candidata
+más reciente08a0c5c1-974a-4219-98fe-c66b9f3cfe4d, total200.00,1línea/1unidad entera,
+sin envase reconocido/devoluciones/CAE/op fiscal. Contexto mínimo público capturado
+../positive-window-context-20261028.json, SHA256
+34376ae48301e21e693f5a136955c2a51c12a3055a4b89c65de09e67616f2ef2.
+Dueño activo noSuperAdmin/mismo comercioACTIVO; emisor1/catálogo2 inactivos. Es una
+lectura administrativa de elegibilidad, no aceptación JWT positiva ni autorización
+para reutilizar cobro. No venta nueva ni efectos caja/stock.
+
+scripts/plan-fiscal-positive-acceptance.mjs prepara sólo artefactos públicos offline,
+reutiliza prepareFiscalData del backend. Inputs exactos/hash, actor/kiosco/venta,
+unidades enteras/no envase/no retornos/operaciones, importes conciliados, IVA/fecha/
+receptor explícitos, ventana<=15min posterior alTA y anterior al vencimiento de2.
+No defaults legacy; no SQL/RPC/HTTP, ninguna aprobación automática ni número fiscal.
+UUID durable propuesto c7416ffb-65aa-47df-94a5-de8d9592989f generado una sola vez en
+configfueraGit. CLI crea directorio nuevo y archivoswx; reload no sobrescribe ni
+crea otroUUID. Error sanitario genérico, sin contenido de snapshots/token.
+Una primera generación rechazó detalleUUIDv8: fixturesv4 no detectaban contratoDB.
+Corregido formatoUUID existente conforme backend/PostgreSQL, prueba específica;
+config original preservada con MISMO UUID, ningún intento remoto. No aflojar
+validación de forma/inputs/alcance para pasar pruebas.
+
+Propuesta ../positive-window-data-proposal-20261028/:
+planSHA256 cbe964ee139eb1d943e6a3d70b9ae1cd7921da8268e484eee6f213392db11349
+preparaciónSHA256 2b12d151d086dd0d35bff61dcf8b2a61df958747fb099dddca7af10c7a0b0eae
+requestsSHA256 a092df7b6cbd8fd30f525cae72c15a75397d322e83f1b4a9d619791fcf26d817.
+MONOTRIBUTO/C11/CF5 confirmados por titular. DTO adicional propuesto, aún sujeto a
+revisiónGO: productos1, Doc99/0, fecha20261028, PES/cotización1, neto200.00, IVA/
+noGravado/exento/tributos0.00, sin desgloseIVA ni servicios. No denominarlo factura.
+Ventana propuesta28/10 15:10–15:25Z (12:10–12:25 Argentina), NO agenda/automatización
+ni GO. TA descartado vence15:06:15.411Z; catálogo2 vence29/10 02:59Z. Si ventana
+vence, revisar propuesta pública conservando UUID si sigue misma operación; no
+nuevo LoginCms, prórroga de catálogo o reset de identidad por conveniencia.
+
+Validación62PASS/2archivos,0omitidos; después de mover guardcleanup fuera de finally,
+prueba enfocada finalPASS y lint0errores/0warnings nuevos. BuildPASS, node/diffPASS,
+símbolos del planificador ausentes en dist. Informes ../positive-window-data-closure-tests-20261028.json,
+../positive-window-data-final-cleanup-tests-20261028.json y buildclosure.log.
+CLI real produjo candidato válido y sintético comprueba nooverwrite/UUID estable;
+no prueba autoridad de un snapshot ni aceptación fiscal hospedada.
+
+GO_READY=false/rollbackPackageReady=false explícitos. Próximo pendiente real:
+SQL habilitación/CAS+cierre con recibo de activación, verificadorespre/post y
+asistente privado con JWT Owner y acciones cerradas, luego ensayo PostgreSQL/
+concurrencia. No pedir GO de un paquete que aún no tiene cierre probado. Nunca
+incluir ENVIAR/FECAESolicitar/CONCILIAR/APLICAR ni autoaprobar body en este paquete.
+Custodia funcional/TAcompartido/aceptación positiva siguen pendientes. No cambio
+SQL/flags/secretos/ARCA/Edge/Vercel/master/Production/merge en este bloque.

@@ -221,9 +221,9 @@ condición5. No inferir de esto autorización de activación, consulta o emisió
 
 - [x] Registrar selección fiscal explícita del titular.
 - [x] Catálogo2 inactivo instalado, revisión1 intacta, emisor1 inactivo.
-- [ ] Identificar venta exacta de ensayo completada/elegible, sin envase reconocido,
+- [x] Identificar venta exacta de ensayo completada/elegible, sin envase reconocido,
   sin CAE/devoluciones; fijar UUID durable antes de cualquier solicitud.
-- [ ] Completar DTO: concepto, documento, importes, fecha, moneda/cotización y
+- [x] Completar DTO propuesto para revisión: concepto, documento, importes, fecha, moneda/cotización y
   ausencia explícita de desglose IVA/tributos para C; validar con contrato vigente.
   Cada valor propuesto debe quedar visible para revisión, no como default legacy.
 - [ ] Paquete exacto: hashes/baselines, SQL habilitación y cierre CAS, verificadores,
