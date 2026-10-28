@@ -13,6 +13,7 @@ export interface CustodyProvisionPlan {
   readonly policy: 'INITIAL_ABSENT_ONLY_ALL_FISCAL_FLAGS_CLOSED'
 }
 export const CUSTODY_PROJECT: 'acoyfwwmhaeruciyedri'
+export function validatePublicFiscalCuit(value: unknown): string
 export const CLOSED_FISCAL_FLAGS: readonly string[]
 export function custodySecretNames(credentialId: string, taKeyId: string): string[]
 export function createCustodyProvisionPlan(input: unknown, now?: number, ids?: {credentialId: string; taKeyId: string}): CustodyProvisionPlan

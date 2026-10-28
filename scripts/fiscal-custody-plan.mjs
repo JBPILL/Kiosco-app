@@ -19,6 +19,7 @@ function reviewedCuit(value) {
   if (Number(value[10]) !== (raw === 11 ? 0 : raw === 10 ? 9 : raw)) return fail()
   return value
 }
+export { reviewedCuit as validatePublicFiscalCuit }
 /** @returns {string[]} Six exact names; selector is written last. */
 export function custodySecretNames(credentialId, taKeyId) {
   if (!uuid(credentialId) || !uuid(taKeyId) || credentialId === taKeyId) return fail()

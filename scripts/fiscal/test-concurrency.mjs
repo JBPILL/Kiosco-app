@@ -6,6 +6,8 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import assert from 'node:assert/strict'
 import pg from 'pg'
+import { createCustodyProvisionPlan, custodyPlanHash } from '../fiscal-custody-plan.mjs'
+import { planInactiveFiscalIssuer } from '../plan-fiscal-issuer.mjs'
 
 if (!process.argv.includes('--run-local')) throw new Error('Usar --run-local para crear un contenedor de ensayo aislado.')
 const root = resolve(import.meta.dirname, '../..')
@@ -1716,9 +1718,58 @@ try {
   assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_reservas_homologacion WHERE operacion_id=$1',[prep054.operation])).rows[0].n,0)
   cases.push('054_preparacion_privada_concurrente_una_operacion_sin_reserva')
 
+  // The administrative candidate is tested with the same generated SQL, real
+  // PostgreSQL locks and synthetic custody evidence. No keys are generated/read.
+  function inactiveIssuerInput(fixture) {
+    const now=Date.now(),custody=createCustodyProvisionPlan({certificateSha256:createHash('sha256').update(randomUUID()).digest('hex'),certificateCuit:issuer},now-7200000)
+    const planSha256=custodyPlanHash(custody)
+    const proof={version:1,projectRef:'acoyfwwmhaeruciyedri',proposalSha256:planSha256,
+      operatorMarker:'CUSTODY_PROVISION_METADATA_PASS count=6 flags_closed=true functional=false edge_check=REQUIRED',
+      closedProvisionMetadataPass:true,hostedFunctionalCustodyProven:false,hostedTaCacheProven:false,arcaRequests:0,newOriginalCompatibilityCheck:false,
+      metadataObservation:{observedAt:new Date(now-3600000).toISOString(),reviewedNamesPresent:6,priorCustomSecretsUnchanged:true,
+        revisionDigestMatches:true,activeKeySelectorDigestMatches:true,fiscalFlagsClosed:true,secretValuesRevealed:false},
+      jwt:{checked:true},edgeObservation:{status:503,code:'HOMOLOGACION_NO_HABILITADA'}}
+    const text=JSON.stringify(proof)
+    return {projectRef:'acoyfwwmhaeruciyedri',custodyPlanText:JSON.stringify({plan:custody,planSha256}),custodyPlanSha256:planSha256,
+      custodyEvidenceText:text,custodyEvidenceSha256:createHash('sha256').update(text).digest('hex'),
+      kioskId:fixture.kid,ownerAuthId:fixture.auth,cuitEmisor:issuer,puntoVenta:2,now:new Date(now).toISOString(),expiresAt:new Date(now+3600000).toISOString()}
+  }
+  async function approveInactiveIssuer(client,candidate) {
+    assert.equal((await client.query('SELECT current_user AS u')).rows[0].u,'postgres')
+    await client.query("SELECT set_config('kioskopos.emitter_target_ref','acoyfwwmhaeruciyedri',false),set_config('kioskopos.approved_emitter_plan_sha256',$1,false)",[candidate.manifest.planSha256])
+  }
+  const holdIssuer = sql => {
+    assert(/\nCOMMIT;\s*$/.test(sql));return sql.replace(/COMMIT;\s*$/,'')
+  }
+  const issuerCasesStart=cases.length
+  for(const collision of ['same-kiosk','shared-credential']){
+    const one=await fixture({commercialPlan:nc051_plan}),two=collision==='same-kiosk'?one:await fixture({commercialPlan:nc051_plan})
+    const source=inactiveIssuerInput(one),firstCandidate=planInactiveFiscalIssuer(source)
+    const secondCandidate=planInactiveFiscalIssuer({...source,kioskId:two.kid,ownerAuthId:two.auth})
+    await approveInactiveIssuer(a,firstCandidate);await approveInactiveIssuer(b,secondCandidate)
+    await a.query(holdIssuer(firstCandidate.sql))
+    const blocked=capture(b.query(secondCandidate.sql));await waitForLock(observer,b);await a.query('COMMIT')
+    const loser=await blocked;assert.match(loser.error?.message??'',/ISSUER_BINDING_ALREADY_EXISTS/);await b.query('ROLLBACK')
+    const rows=(await observer.query('SELECT kiosco_id,habilitado,revision FROM fiscal_emisores_homologacion WHERE credencial_id=$1',[firstCandidate.manifest.credentialId])).rows
+    assert.deepEqual(rows,[{kiosco_id:one.kid,habilitado:false,revision:1}])
+    cases.push('emisor_inactivo_'+collision+'_un_INSERT_sin_sobrescribir')
+  }
+  for(const revocation of ['owner','kiosk']){
+    const f=await fixture({commercialPlan:nc051_plan}),candidate=planInactiveFiscalIssuer(inactiveIssuerInput(f))
+    await approveInactiveIssuer(b,candidate);await a.query('BEGIN')
+    if(revocation==='owner')await a.query('UPDATE usuarios SET activo=false WHERE auth_user_id=$1',[f.auth])
+    else await a.query("UPDATE kioscos SET estado_suscripcion='SOLO_LECTURA' WHERE id=$1",[f.kid])
+    const blocked=capture(b.query(candidate.sql));await waitForLock(observer,b);await a.query('COMMIT')
+    const denied=await blocked;assert.match(denied.error?.message??'',revocation==='owner'?/ISSUER_OWNER_NOT_CONFIRMED/:/ISSUER_KIOSK_NOT_ACTIVE/)
+    await b.query('ROLLBACK')
+    assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_emisores_homologacion WHERE kiosco_id=$1',[f.kid])).rows[0].n,0)
+    cases.push('emisor_inactivo_revocacion_concurrente_'+revocation+'_sin_INSERT')
+  }
+
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
+    inactiveIssuerProposalCases:cases.length-issuerCasesStart,
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
     creditOwnerReviewInstalledAfterCase,postCreditOwnerReviewCaseCount:cases.length-creditOwnerReviewInstalledAfterCase,
     creditCommercialApplicationInstalledAfterCase,postCreditCommercialApplicationCaseCount:cases.length-creditCommercialApplicationInstalledAfterCase,

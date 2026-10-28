@@ -37,7 +37,7 @@ function run(mode:string){
       if(${quote(mode)} -ne 'fiscal-missing-function'){'2; 0 1 FUNCTION public preparar_operacion_fiscal_homologacion(uuid, uuid, uuid, jsonb) postgres'}
       if(${quote(mode)} -eq 'fiscal-bare-acl'){'3; 0 1 ACL public FUNCTION preparar_operacion_fiscal_homologacion(uuid, uuid, uuid, jsonb) postgres'}
       elseif(${quote(mode)} -eq 'fiscal-wrong-signature'){'3; 0 1 ACL public FUNCTION preparar_operacion_fiscal_homologacion(p_operacion_id uuid, p_kiosco_id uuid, p_venta_id text, p_contexto jsonb) postgres'}
-      elseif(${quote(mode)} -ne 'fiscal-missing-acl'){'3; 0 1 ACL public FUNCTION preparar_operacion_fiscal_homologacion(p_operacion_id uuid, p_kiosco_id uuid, p_venta_id uuid, p_contexto jsonb) postgres'}
+      elseif(${quote(mode)} -notin @('fiscal-missing-acl','fiscal-issuer-missing-acl')){'3; 0 1 ACL public FUNCTION preparar_operacion_fiscal_homologacion(p_operacion_id uuid, p_kiosco_id uuid, p_venta_id uuid, p_contexto jsonb) postgres'}
      };return
     }
     $tool=if($a -contains 'pg_dumpall'){'pg_dumpall'}else{'pg_dump'}
@@ -50,7 +50,7 @@ function run(mode:string){
     $file=($a | Where-Object{ $_ -like '--file=*' }).Substring(7).Substring('/backup/'.Length)
     [IO.File]::WriteAllText((Join-Path $folder $file),$(if($tool -eq 'pg_dump'){'archive-fixture'}else{'CREATE ROLE synthetic NOLOGIN;'}))
    }
-   & ${quote(script)} ${mode==='prepare'||mode==='fiscal-prepare'?'-Preparar':''} ${mode.startsWith('fiscal-')?'-FiscalInstalado053':''}
+   & ${quote(script)} ${mode==='prepare'||mode.endsWith('-prepare')?'-Preparar':''} ${mode==='fiscal-both'?'-FiscalInstalado053 -AntesEmisorInactivo':mode.startsWith('fiscal-issuer-')?'-AntesEmisorInactivo':mode.startsWith('fiscal-')?'-FiscalInstalado053':''}
    $code=$LASTEXITCODE
    $envOk=$env:PGHOST -ceq 'before-host' -and $env:PGPASSWORD -ceq 'before-password' -and $env:PGSERVICE -ceq 'before-service'
    [IO.File]::WriteAllText(${quote(record)},(@{events=@($global:events.ToArray());env_ok=$envOk;error_command=$error[0].Exception.CommandName}|ConvertTo-Json -Depth 5))
@@ -98,4 +98,20 @@ it.skipIf(process.platform!=='win32')('no confunde otra sobrecarga con la ACL re
 it.skipIf(process.platform!=='win32').each(['fiscal-missing-table','fiscal-missing-function','fiscal-missing-acl'])('modo054 falla cerrado ante %s',mode=>{
  const r=run(mode);expect(r.status,r.output).toBe(1);expect(r.context).toBeNull()
  expect(r.output).not.toContain(synthetic);expect(r.report.env_ok).toBe(true)
+},60000)
+it.skipIf(process.platform!=='win32')('respaldo antes de emisor distingue etapa y no afirma incluir secretos ni equivalencia SQL054',()=>{
+ const r=run('fiscal-issuer-ok');expect(r.status,r.output).toBe(0)
+ expect(r.context).toMatchObject({requested_stage:'BEFORE_INITIAL_INACTIVE_ISSUER',expected_fiscal_revision:'054',fiscal_toc_tables_verified:fiscalTables,
+  fiscal_schema_equivalence_proven:false,management_secrets_included:false,issuer_provisioned_by_backup:false,restore_executed:false})
+ expect(r.output).not.toContain(synthetic);expect(r.report.env_ok).toBe(true)
+},60000)
+it.skipIf(process.platform!=='win32')('preparar respaldo para emisor no exporta ni pide contraseña',()=>{
+ const r=run('fiscal-issuer-prepare');expect(r.status,r.output).toBe(0);expect(r.files).toEqual([]);expect(r.report.events).toEqual([])
+ expect(r.output).toContain('Modo previo a emisor inactivo')
+},60000)
+it.skipIf(process.platform!=='win32')('modo de emisor conserva rechazo de ACL ausente',()=>{
+ const r=run('fiscal-issuer-missing-acl');expect(r.status).toBe(1);expect(r.context).toBeNull();expect(r.output).toContain('[INDICE_FISCAL_ACL]')
+},60000)
+it.skipIf(process.platform!=='win32')('no mezcla estados pre054 y preemisor en una copia',()=>{
+ const r=run('fiscal-both');expect(r.status).toBe(1);expect(r.context).toBeNull();expect(r.output).not.toContain(synthetic)
 },60000)

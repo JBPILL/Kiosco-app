@@ -3577,3 +3577,54 @@ catálogo vigente y TA (vigencia conocida previa hasta28/10 02:49:53.999Z, TA
 descartado; no LoginCms nuevo por inferencia). Catálogo1 inactivo vence27/10
 21:59Z; no prolongarlo ni activarlo como atajo. Datos IVA fiscales explícitos y
 casos envase descontado siguen con gates propios; PR03 parcial y PR02 sin CAE.
+
+#### Plan: propuesta local de emisor inactivo — 27/10/2026
+Preparar generador offline contra contrato005, sin conexión/ejecución SQL.
+Vincular propuesta pública de custodia y evidencia de provisión cerrada por hash,
+comercio/OwnerAuth/CUIT/PV explícitos; sin defaults IVA ni habilitación implícita.
+SQL candidato sólo INSERT habilitado=false/revision1, con GO/hash/destino/vigencia
+revalidados, perfil activo Dueño noSuperAdmin mismo comercio y comercio ACTIVO
+bajo locks. Serializar altas y rechazar kiosco/credencial/huella ya vinculados;
+no overwrite/upsert/replay. RLS/grants cerrados como precondición, sin cambiar
+DDL/flags/catálogos/ventas. Probar con DDL005 real y fixtures locales/PGlite,
+incluyendo cambio de identidad/rol/estado, duplicación, expiry y rollback.
+Hashes/setting de target no prueban host ni autorización humana: lectura real,
+respaldo apropiado/revisión y GO independiente siguen antes de cualquier INSERT.
+Catálogo vencido y TA anterior no autorizan consultas; no WSAA/WSFE real en este
+bloque. Mantener credenciales sólo en Supabase, sin nueva lectura de originales.
+
+### 27/10/2026 — Propuesta local de emisor INACTIVO, sin instalación
+Generador offline plan-fiscal-issuer vincula custodia pública y evidencia cerrada
+por SHA256; exige comercio/OwnerAuth/CUIT/PV explícitos. Sólo INSERT revision1,
+habilitado=false; locks de identidad/comercio/tabla, RLS y privilegios cerrados,
+rechazo de duplicación y replay. search_path pg_catalog,public evita sombreado
+accidental del reloj. No selecciona IVA ni acredita representación o emisión.
+La evidencia histórica de custodia no exige releer originales al vencer su
+propuesta de copia: el preflight remoto actual es un gate separado obligatorio.
+
+Validación final: 173 PASS, 0 failed/skipped en 7 archivos; PostgreSQL17.11 local
+187 PASS, incluidos 4 casos de alta concurrente/revocación. Sin red externa ni
+comprobantes. Un intento anterior tuvo timeout PGlite durante carga simultánea;
+se conserva evidencia y la repetición limitada a 2 workers pasó sin debilitar
+aserciones. Informes públicos fuera de Git:
+../fiscal-inactive-issuer-final-v3-20261027.json
+../fiscal-inactive-issuer-native-v2-20261027.json
+
+Candidato vigente local ../fiscal-inactive-issuer-proposal-v2-20261027/:
+plan SHA256 e7ee5798ca35784bbfbd236979e7dcd0022761183eb364fab102fbfcf7132501
+SQL SHA256 f2e7c944eea081e688c139f7b88bb6fc0621f381a6932b1c1dd4d5628e8c2809
+Vence 29/10/2026 01:33:55.603Z (28/10 22:33:55 Argentina). Primer candidato
+conservado como supersedido, no ejecutado. SQL_EXECUTED=false.
+
+Respaldo privado agrega -AntesEmisorInactivo (excluyente con -FiscalInstalado053),
+con expectativa SQL054 explícita y manifiesto que no acredita equivalencia de
+esquema por TOC ni incluye secretos Management. Preparación local PASS, respaldo
+real nuevo PENDIENTE. Snapshot pre-SQL054 no se presenta como snapshot actual.
+Siguiente gate: respaldo nuevo, preflight real de DB/SQL054/roles/destino y
+revisión/GO independiente antes de insertar emisor. Catálogo1 vencido/inactivo;
+renovación y TA requieren coordinación/autorización propia. Custodia funcional,
+aceptación hospedada y primer CAE pendientes. Sin SQL/Edge/flags/Vercel/ARCA,
+secretos originales, master, Production o merge en este bloque.
+
+Build final PASS; lint enfocado sin errores (advertencia preexistente no-unsafe-finally en cleanup del harness). AST PowerShell, node --check, diff --check, SHA SQL y ausencia de símbolos del generador privado en dist PASS.
+
