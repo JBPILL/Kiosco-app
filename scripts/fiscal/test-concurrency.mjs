@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import pg from 'pg'
 import { createCustodyProvisionPlan, custodyPlanHash } from '../fiscal-custody-plan.mjs'
 import { planInactiveFiscalIssuer } from '../plan-fiscal-issuer.mjs'
+import { planFiscalParameters } from '../plan-fiscal-parameters.mjs'
 
 if (!process.argv.includes('--run-local')) throw new Error('Usar --run-local para crear un contenedor de ensayo aislado.')
 const root = resolve(import.meta.dirname, '../..')
@@ -42,8 +43,8 @@ if (evidencePath && !evidencePath.endsWith('.json')) throw new Error('La evidenc
 if (evidencePath && existsSync(evidencePath)) throw new Error('No sobrescribir evidencia anterior; elegir otro archivo JSON.')
 const docker = args => execFileSync('docker', args, { encoding:'utf8',timeout:60000,stdio:['ignore','pipe','pipe'] }).trim()
 const delay = ms => new Promise(resolveDelay => setTimeout(resolveDelay,ms))
-async function connect() {
-  const client = new pg.Client({host:'127.0.0.1',port,user:'postgres',database:'kiosko_fiscal_ensayo',
+async function connect(database='kiosko_fiscal_ensayo') {
+  const client = new pg.Client({host:'127.0.0.1',port,user:'postgres',database,
     connectionTimeoutMillis:3000,query_timeout:15000,application_name:'kiosko-pr03-local'})
   client.on('error',error=>transportErrors.push(error.code??'CONNECTION_ERROR'))
   try { await client.connect() } catch(error) { await client.end().catch(()=>{}); throw error }
@@ -1779,10 +1780,55 @@ try {
     assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_emisores_homologacion WHERE kiosco_id=$1',[f.kid])).rows[0].n,0)
     cases.push('emisor_inactivo_vence_esperando_lock_sin_INSERT')
   }
+  const issuerCasesEnd=cases.length
+  // Separate local database, canonical catalog DDL and immutable-history trigger.
+  await observer.query('CREATE DATABASE kiosko_catalog_ensayo')
+  const ca=await connect('kiosko_catalog_ensayo'),cb=await connect('kiosko_catalog_ensayo'),co=await connect('kiosko_catalog_ensayo')
+  const catalogSource=readFileSync(join(root,'supabase/pilot-fiscal/012_fiscal_preparation.sql'),'utf8')
+  await ca.query(catalogSource.match(/CREATE TABLE IF NOT EXISTS public\.fiscal_parametros_homologacion \([\s\S]*?\n\);/)[0])
+  await ca.query(catalogSource.match(/CREATE OR REPLACE FUNCTION public\.fiscal_parametros_inmutables\(\)[\s\S]*?END \$\$;/)[0])
+  await ca.query(catalogSource.match(/CREATE TRIGGER fiscal_parametros_inmutables[\s\S]*?;/)[0])
+  const oldTime=new Date(Date.now()-86400000).toISOString(),oldExpiry=new Date(Date.now()-3600000).toISOString()
+  await ca.query("INSERT INTO fiscal_parametros_homologacion VALUES(1,'[{\"id\":5,\"descripcion\":\"Synthetic\",\"comprobantes\":[11]}]','[]',$1,$2,$3,false)",['a'.repeat(64),oldTime,oldExpiry])
+  const historical=(await ca.query('SELECT to_jsonb(t) AS row FROM fiscal_parametros_homologacion t')).rows[0].row
+  const baseText=JSON.stringify([historical]),sha=v=>createHash('sha256').update(v).digest('hex')
+  function catalogCandidate(expiryMs=600000){
+    const now=Date.now(),consulted=new Date(now-1000).toISOString()
+    const evidence=(operation,parameters)=>JSON.stringify({version:1,entorno:'HOMOLOGACION',operacion:operation,origen:'https://wswhomo.afip.gov.ar/wsfev1/service.asmx',consultado_en:consulted,respuesta_sha256:'b'.repeat(64),parametros:parameters,importado_en_staging:false,emision_habilitada:false})
+    const ivaText=evidence('FEParamGetTiposIva',[{Id:5,Description:'Synthetic rate',VoucherClasses:'',ValidFrom:'20000101',ValidUntil:'NULL'}])
+    const conditionText=evidence('FEParamGetCondicionIvaReceptor',[{Id:5,Description:'Synthetic receiver',VoucherClasses:'A/ALEY/B/C/49',ValidFrom:'',ValidUntil:''}])
+    return planFiscalParameters({projectRef:'acoyfwwmhaeruciyedri',ivaText,conditionText,ivaSha256:sha(ivaText),conditionSha256:sha(conditionText),now:new Date(now).toISOString(),expiresAt:new Date(Math.min(now+expiryMs,Date.parse(new Date(now).toISOString().slice(0,10)+'T03:00:00Z')+(new Date(now).getUTCHours()>=3?86400000:0)-1)).toISOString(),revision:2,baselineText:baseText,baselineSha256:sha(baseText)})
+  }
+  async function approveCatalog(client,candidate){await client.query("SELECT set_config('kioskopos.catalog_target_ref','acoyfwwmhaeruciyedri',false),set_config('kioskopos.approved_catalog_plan_sha256',$1,false)",[candidate.manifest.plan_sha256])}
+  const renewal=catalogCandidate();await approveCatalog(ca,renewal);await approveCatalog(cb,renewal)
+  await ca.query(holdIssuer(renewal.sql));const catalogWaiter=capture(cb.query(renewal.sql));await waitForLock(co,cb);await ca.query('COMMIT')
+  assert.match((await catalogWaiter).error?.message??'',/CATALOG_BASELINE_CHANGED/);await cb.query('ROLLBACK')
+  assert.deepEqual((await co.query('SELECT to_jsonb(t) AS row FROM fiscal_parametros_homologacion t WHERE revision=1')).rows[0].row,historical)
+  assert.deepEqual((await co.query('SELECT revision,habilitado FROM fiscal_parametros_homologacion ORDER BY revision')).rows,[{revision:1,habilitado:false},{revision:2,habilitado:false}])
+  cases.push('catalogo_dos_instaladores_una_revision2_historial1_intacto')
+  const replay=await capture(cb.query(renewal.sql));assert.match(replay.error?.message??'',/CATALOG_BASELINE_CHANGED/);await cb.query('ROLLBACK')
+  cases.push('catalogo_replay_sin_modificar_historial')
+  // Reset only this disposable synthetic database, never a hosted history.
+  await ca.query('BEGIN; DROP TRIGGER fiscal_parametros_inmutables ON fiscal_parametros_homologacion; DELETE FROM fiscal_parametros_homologacion WHERE revision=2; COMMIT')
+  await ca.query(catalogSource.match(/CREATE TRIGGER fiscal_parametros_inmutables[\s\S]*?;/)[0])
+  const driftCandidate=catalogCandidate();await approveCatalog(cb,driftCandidate)
+  await ca.query('BEGIN; UPDATE fiscal_parametros_homologacion SET habilitado=true WHERE revision=1')
+  const driftWaiter=capture(cb.query(driftCandidate.sql));await waitForLock(co,cb);await ca.query('COMMIT')
+  assert.match((await driftWaiter).error?.message??'',/CATALOG_BASELINE_CHANGED/);await cb.query('ROLLBACK')
+  assert.equal((await co.query('SELECT count(*)::int n FROM fiscal_parametros_homologacion WHERE revision=2')).rows[0].n,0)
+  await ca.query('UPDATE fiscal_parametros_homologacion SET habilitado=false WHERE revision=1')
+  cases.push('catalogo_drift_durante_espera_bloquea_alta_sin_corregir_baseline')
+  const expiring=catalogCandidate(4000);await approveCatalog(cb,expiring)
+  await ca.query('BEGIN; LOCK TABLE fiscal_parametros_homologacion IN SHARE ROW EXCLUSIVE MODE')
+  const expiryWaiter=capture(cb.query(expiring.sql));await waitForLock(co,cb)
+  await co.query('SELECT pg_sleep(GREATEST(0,EXTRACT(EPOCH FROM ($1::timestamptz-clock_timestamp())))+0.1)',[expiring.manifest.vence_en]);await ca.query('COMMIT')
+  assert.match((await expiryWaiter).error?.message??'',/CATALOG_PROPOSAL_EXPIRED/);await cb.query('ROLLBACK')
+  assert.deepEqual((await co.query('SELECT to_jsonb(t) AS row FROM fiscal_parametros_homologacion t')).rows,[{row:historical}])
+  cases.push('catalogo_vence_esperando_lock_sin_revision2')
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
-    inactiveIssuerProposalCases:cases.length-issuerCasesStart,
+    inactiveIssuerProposalCases:issuerCasesEnd-issuerCasesStart,catalogRenewalCases:cases.length-issuerCasesEnd,
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
     creditOwnerReviewInstalledAfterCase,postCreditOwnerReviewCaseCount:cases.length-creditOwnerReviewInstalledAfterCase,
     creditCommercialApplicationInstalledAfterCase,postCreditCommercialApplicationCaseCount:cases.length-creditCommercialApplicationInstalledAfterCase,

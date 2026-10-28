@@ -42,6 +42,8 @@ it('normaliza clases explícitas sin convertir ALEY/49, habilitar o elegir un IV
   expect(result.manifest.habilitado).toBe(false)
   expect(result.sql).not.toMatch(/UPDATE|DELETE|ON CONFLICT|fiscal_emisores|INSERT.*operaciones|habilitado.*true/i)
   expect(planFiscalParameters(original)).toEqual(result)
+  expect(result.manifest).toHaveProperty('sql_sha256',hash(result.sql))
+  expect(result.sql).toContain('SET LOCAL search_path=pg_catalog,public;')
 })
 it.each([
   ['Production',{projectRef:'lllkjnqpltnwvxzphncr'}],['missing revision',{revision:undefined}],['fractional revision',{revision:1.1}],
@@ -178,19 +180,24 @@ it.each(['enabled','payload','extra-revision'])('bloquea renovación si cambia b
     expect((await db.query('SELECT to_jsonb(t) AS snapshot FROM public.fiscal_parametros_homologacion t ORDER BY revision')).rows).toEqual(before)
   } finally {await db.close()}
 })
-it.each(['checksum','missing-hash','duplicate','extra-field','wrong-revision','older-source','same-provenance'])('rechaza renovación %s antes de producir SQL',mode=>{
+it.each(['checksum','missing-hash','duplicate','extra-field','wrong-revision','older-source','same-provenance','two-enabled'])('rechaza renovación %s antes de producir SQL',mode=>{
   const first=planFiscalParameters(liveInput()),renewal=renewedInput(first)
   const baseline=[baselineOf(first)]
   let candidate:Record<string,unknown>=renewal
   if(mode==='checksum')candidate={...renewal,baselineSha256:'b'.repeat(64)}
   if(mode==='missing-hash'){const {baselineSha256:_omitted,...rest}=renewal;candidate=rest}
   if(mode==='duplicate')baseline.push(baselineOf(first))
+  if(mode==='two-enabled'){
+    baseline[0]={...baseline[0],habilitado:true}
+    baseline.push({...baseline[0],revision:2})
+    candidate={...renewal,revision:3}
+  }
   if(mode==='extra-field')Object.assign(baseline[0],{Token:'SYNTHETIC'})
   if(mode==='wrong-revision')candidate={...renewal,revision:3}
   if(mode==='older-source')baseline[0]={...baseline[0],consultado_en:new Date(Date.parse(renewal.now)-1).toISOString()}
   if(mode==='same-provenance')baseline[0]={...baseline[0],fuente_sha256:planFiscalParameters({...renewal,baselineText:'[]',baselineSha256:hash('[]'),revision:1}).manifest.fuente_sha256}
-  if(['duplicate','extra-field','older-source','same-provenance'].includes(mode)){
-    const baselineText=JSON.stringify(baseline);candidate={...renewal,baselineText,baselineSha256:hash(baselineText)}
+  if(['duplicate','extra-field','older-source','same-provenance','two-enabled'].includes(mode)){
+    const baselineText=JSON.stringify(baseline);candidate={...candidate,baselineText,baselineSha256:hash(baselineText)}
   }
   expect(()=>planFiscalParameters(candidate)).toThrow(/CATALOG_/)
 })

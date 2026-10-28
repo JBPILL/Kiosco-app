@@ -87,6 +87,7 @@ export function planFiscalParameters(input) {
   if (input.projectRef !== target) fail('CATALOG_STAGING_ONLY')
   if (!Number.isSafeInteger(input.revision) || input.revision < 1 || input.revision > 2147483647) fail('CATALOG_REVISION')
   const baseline = renewal ? reviewedBaseline(input.baselineText, input.baselineSha256) : []
+  if (baseline.filter(row => row.habilitado).length > 1) fail('CATALOG_MULTIPLE_ENABLED')
   if (input.revision !== Math.max(0, ...baseline.map(row => row.revision)) + 1) fail('CATALOG_NEXT_REVISION')
   const now = instant(input.now), expires = instant(input.expiresAt)
   const iva = evidence(input.ivaText, input.ivaSha256, 'FEParamGetTiposIva', now)
@@ -139,6 +140,7 @@ export function planFiscalParameters(input) {
 BEGIN;
 SET LOCAL lock_timeout='5s';
 SET LOCAL standard_conforming_strings=on;
+SET LOCAL search_path=pg_catalog,public;
 LOCK TABLE public.fiscal_parametros_homologacion IN SHARE ROW EXCLUSIVE MODE;
 DO $catalog_guard$
 BEGIN
@@ -153,7 +155,7 @@ INSERT INTO public.fiscal_parametros_homologacion(revision,condiciones,alicuotas
 VALUES(${proposal.revision},${literal(JSON.stringify(condiciones))}::jsonb,${literal(JSON.stringify(alicuotas))}::jsonb,'${sourceHash}',${literal(proposal.consultado_en)}::timestamptz,${literal(proposal.vence_en)}::timestamptz,false);
 COMMIT;
 `
-  return { manifest, sql }
+  return { manifest: { ...manifest, sql_sha256: hash(sql) }, sql }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

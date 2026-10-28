@@ -1006,3 +1006,37 @@ Siguiente gate pendiente: renovar catálogo público vencido mediante propuesta 
 consultas autorizadas, coordinar TA y activación controlada; no autenticar local
 ni descartar TA sin plan de ventana para aceptación hospedada. PR03 parcial,
 primer CAE PR02 pendiente. El permiso de alta inactiva no autoriza esos pasos.
+
+### 27/10/2026 — Preparación renovación catálogo2; límite temporal explícito
+Adjunto posterior a861f2fd autoriza consultas frescas y catálogo2 INACTIVO, no
+activaciones. Se resolvió contradicción del apartadoA con evidencia más reciente:
+CUSTODY_PROVISION_METADATA_PASS ya verificado; no repetir secretos/originalCMS.
+API oficial GET name/value/updated_at (200) y POST201/permisos secrets_read/write
+revisados; HTTP403 anterior fue permiso PAT. Tests existentes cubren updated_at,
+201,403 y rechazo de plaintext/campo digest alternativo; no debilitar parser por
+suposición. No nuevo acceso real Management ni originales en este bloque.
+Planificador agrega sql_sha256, search_path explícito pg_catalog,public y rechazo
+de baseline con >1 habilitado. Mantiene INSERT inactivo/locks/vigencia postlock/
+revisión siguiente/historial exacto/noUPSERT; sin nuevos defaults.
+PostgreSQL17.11:192 PASS,4casos nuevos catálogo canónico: dos instaladores una
+rev2, replay, drift habilitado durante espera y vencimiento esperando lock;
+historial1 equivalente. Fixture en DB local nueva; reset de datos sólo allí,
+no alterar esquema real. Cero peticiones externas/emisiones, contenedor propio
+detenido/datos conservados. ../catalog-renewal-block-native-final-20261027.json.
+96tests/3archivos PASS,0omitidos: ../catalog-renewal-block-final-tests-20261027.json.
+Build final PASS; lint sin errores (warning histórico unsafe-finally del harness),
+node/diff y símbolos privados ausentes de dist PASS. No suite global nueva.
+Plan de aceptación detallado en docs/arca-homologacion.md y ExecPlan: flags reales,
+orden,15min,rollback conservando historia, fronteras preparación/envío/consulta/
+aplicación. No afirmar GO-ready: venta/operación/IVA/receptor deben identificarse
+explícitamente y catálogo2 todavía no existe. SQL052 sólo trasCAE confirmado.
+
+CATALOGO_REVISION_2_INSTALADO=PENDIENTE, no falsePASS. V1 vencida intacta.
+Ventana actual WSAA anterior hasta28/10 02:49:53.999Z (27/10 23:49:53 Argentina).
+No LoginCms anticipado ni retry. Código actual exige operación para cacheTA y
+catálogo vigente para crear preparación: excepción local prevista en adjunto
+requiere documentar TA descartado y esperar NUEVO vencimiento antes de Edge.
+No inventar reutilización hospedada ni ampliar SQL/Edge para bootstrap por atajo.
+Consultas autorizadas aún NO ejecutadas; GO renovación sigue disponible, no pedirlo
+otra vez. Emisor inactivo/flags/Edge cerrados conservan último estado verificado;
+no se reabren gates cerrados. Master/Production/merge intactos.

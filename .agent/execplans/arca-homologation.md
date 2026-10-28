@@ -3707,3 +3707,168 @@ Siguiente gate pendiente: renovar catálogo público vencido mediante propuesta 
 consultas autorizadas, coordinar TA y activación controlada; no autenticar local
 ni descartar TA sin plan de ventana para aceptación hospedada. PR03 parcial,
 primer CAE PR02 pendiente. El permiso de alta inactiva no autoriza esos pasos.
+
+## Bloque autorizado 27/10: catálogo revisión2 y preparación de aceptación (en curso)
+Fuente: instrucción adjunta posterior a861f2fd. GO existente para consultas públicas
+frescas dentro de ventana coordinada e instalación revision2 INACTIVA; no activar
+emisor/catálogos/flags ni emitir. El apartado A del adjunto conserva un fallo
+BASELINE antiguo: evidencia real posterior ya cerró provisión6secretos. No repetir
+POST, claves ni CMS de compatibilidad ni pedir nuevamente ese GO. Metadata PASS
+no prueba custodia funcional. HTTP403 fue PAT con permiso Edge Functions, no
+Edge Function Secrets; posterior PAT scoped correcto dio BASELINE_PASS y POST PASS.
+Revisión oficial API: GET /v1/projects/{ref}/secrets permisos
+edge_functions_secrets_read,200/401/403/429/500; schema name/value/updated_at.
+POST mismoendpoint edge_functions_secrets_write,201{}; sin corregir parser por
+una hipótesis contradicha por operación real/digests verificados. Referencias:
+https://supabase.com/docs/reference/api/v1-list-all-secrets
+https://supabase.com/docs/reference/api/v1-bulk-create-secrets
+El schema genérico string no demuestra por sí solo semántica digest: no convertir
+un response arbitrario en prueba de plaintext/hash; contrato cerrado actual rechaza
+value no64hex. No cambio al provisionador sin drift demostrado.
+
+Dependencia técnica verificada: SQL012 exige catálogo vigente+emisor habilitado
+antes de preparación; loader006 necesita operacion_id para TA. Edge desplegado
+no expone consulta pública de parámetros ni bootstrap TA sin operación. No crear
+operación artificial, activar flags, instalar endpoint nuevo ni exportar TA para
+sortearlo. La excepción local permitida en el adjunto es técnicamente necesaria
+para renovar con la interfaz actual: una autenticación después del TA previo
+(vence28/10 02:49:53.999Z), exactamente2consultas, evidencia pública; TA descartado
+por diagnóstico existente, nunca transferido al browser/archivos. Consecuencia:
+aceptación Edge deberá esperar también expiración NUEVA documentada; no afirmar
+que esta autenticación sirve al cache hospedado. Alternativa compartida requiere
+otro diseño/SQL/Edge y GO propio, no incluido en alcance remoto actual. No hubo
+LoginCms/consultas nuevas durante esta preparación local. Ventana aún no abierta.
+
+## Ventana de catálogo2 y borrador de activación positiva — 27/10/2026
+Estado: PREPARACIÓN LOCAL; NO ACTIVADO. Esta sección amplía el plan existente,
+no sustituye decisiones/historia. GO del adjunto cubre renovación e INSERT2
+INACTIVO con evidencia fresca, no activar tablas ni flags. Custodia metadata ya
+PASS; no repetir provisión/original CMS. Presencia no prueba uso funcional Edge.
+
+### Renovación autorizada: ventana todavía pendiente de apertura
+No ejecutar antes de28/10 02:49:53.999Z (27/10 23:49:53 Argentina), vencimiento
+conocido del TA anterior descartado. Una única invocación de
+scripts/probar-wsaa-homologacion.ps1 -Conectar -CatalogosPreparacion
+-Servicio wsfe -CuitRepresentado20415005963, con los tres paths originales ya
+revisados y un directorio público NUEVO. Internamente firma TRA para autenticación,
+no repite el ensayo de compatibilidad CMS cerrado. Exactamente LoginCms1,
+FEParamGetTiposIva1, FEParamGetCondicionIvaReceptor1; sin ConsultarUltimo/PtosVenta/
+TiposCbte, sin retries. Si falla LoginCms incierto: STOP, no nueva invocación.
+Si sólo una consulta terminó: conservar evidencia parcial, no repetir ventana
+por inferencia. Registrar vencimiento nuevo seguro, jamás Token/Sign/XML crudo.
+
+Excepción técnica inevitable del diagnóstico local: TA se descarta al finalizar.
+No existe bootstrap público de catálogo en Edge sin operación, y operación exige
+catálogo vigente. No exportar/trasladar TA ni inventar operación. El siguiente
+login Edge deberá esperar vencimiento del TA NUEVO, no el anterior. Si se necesita
+reutilización de TA hospedado en esta misma ventana, este paquete NO la acredita:
+requiere diseño/instalación/autorización distintos. No ampliar alcance remoto.
+
+Antes de INSERT2: leer fila1 pública en READ ONLY/ROLLBACK; guardar baseline
+exacto y SHA256. Invocar plan-fiscal-parameters con revision2 explícita,
+baselinePath/baselineSha256, evidencepaths y ambos SHA256, expiresAt explícita
+que no cruce día comercial y sea <=24h de consulta más antigua. Revisar clases
+A1/B6/C11 y exclusión ALEY/49, sin defaults. Manifest incluye sql_sha256.
+Comprobar bytes y propuesta. Si cambió baseline, reloj o vigencia: STOP, no UPDATE
+histórico. Bajo GO vigente ejecutar SQL exacto una vez con setting destino/hash;
+tras resultado incierto SELECT antes de cualquier retry. Verificar row-equivalence
+fila1, fila2 exacta/única/inactiva, enabled_catalogs0, issuer1inactivo,
+operaciones/CAE0. TA DB debe seguir0 (el diagnóstico no lo persiste), SQL054 sin
+drift por cambio nuevo. Esto NO es aceptación positiva.
+
+### Próximo GO positivo: diseño condicionado, aún NO listo para ejecutar
+Destino único acoyfwwmhaeruciyedri; OwnerAuth
+0e90b9a7-36d2-4762-ab1a-4982996cf9aa; comercio
+b7254826-c767-4098-94b8-71013c12021d; emisor revision1, CUIT20415005963/PV2,
+credencial9a4916d1-b6b5-499f-98ef-9f6cf79510be, huella ya pinneada; catálogo2
+vigente. Confirmar nuevamente actor activo/pertenencia durante ventana.
+Venta exacta/UUID operación/IVA/condición receptor: PENDIENTES de elegir y revisar
+explícitamente con Owner; no tomar defaults de configuración legacy. Venta
+COMPLETADA positiva, sin CAE/devoluciones/envase reconocido, sin dinero real y sin
+recrear cobro por conveniencia. No afirmar que este borrador es un paquete GO
+completo hasta incluir esos IDs, datos fiscales y hashes, vigencia nueva y reloj.
+
+Orden propuesto para aprobación futura, ventana máxima15min controlada por operador:
+1. Preflight privado metadata/keyring presentes, Edge cerrado y JWT; catálogo2
+vigente con margen>15min, nuevo TA local expirado. Confirmar snapshot baseline
+para poder cerrar exclusivamente cambios de esta ventana sin borrar historia.
+2. GO independiente habilita sólo filaemisor1/fila catálogo2 seleccionadas; no
+alterar contenido/revisión. Flags de emisión/consulta/aplicación siguen cerrados.
+3. Habilitar ARCA_HOMO_BACKEND_ENABLED y ARCA_HOMO_DATA_PREPARATION_ENABLED sólo
+con GO. OwnerJWT real por terminal privada; RESOLVER_VENTA/DATOS_FISCALES_VENTA/
+GUARDAR_DATOS_FISCALES con IDs/IVA/receptor revisados. Verificar recuperación
+reload/ACK, no navegador→RPC privadas, no browser Token/Sign/service_role.
+4. ARCA_HOMO_PREPARATION_ENABLED exige GO propio con WSAA/FECompUltimoAutorizado:
+PREPARAR_COMPROBANTE usa TA durable cifrado, consulta último y reserva/cuerpo.
+Sólo entonces custodia/keyring/TA funcionales pueden obtener PASS real. Guardar
+sólo body público/hash/revisión y estados, nunca TA. REVISAR_COMPROBANTE y revisión
+Owner exacta; no confundir borrador/cuerpo/reserva con factura autorizada.
+5. FRONTERA antes de emisión: NO llamar ENVIAR/ENVIAR_NC ni habilitar
+ARCA_HOMO_EMISSION_ENABLED / ARCA_HOMO_CREDIT_SEND_ENABLED. PREPARAR_COMPROBANTE
+no llama FECAESolicitar. No crear intención042 sólo para probar: esa RPC pertenece
+al envío NC y conserva incertidumbre; no hay NC elegible antes de facturaCAE.
+Creación de intención y permiso privados se prueban sintéticamente en este bloque,
+no remotamente sin GO posterior de emisión. La revisión Owner vence10min; no
+reutilizarla para autorizar cuerpo distinto ni prolongarla automáticamente.
+6. Cerrar ARCA_HOMO_PREPARATION_ENABLED y DATA_PREPARATION, después BACKEND;
+restaurar habilitado de emisor/catálogo al baseline sólo con plan CAS/revisión
+requeridos. No borrar operación/cuerpo/número/TA, no liberar reservas por timeout,
+no modificar SQL/credenciales. Verificar503/gates y conservar historial. Si hubo
+respuesta incierta, desactivar mutaciones y consultar estado durable; no reenviar.
+Si hubiera intención remota inesperada: STOP y reconciliación, no limpieza.
+
+Controles a mantener false/ausentes: ARCA_HOMO_EMISSION_ENABLED,
+ARCA_HOMO_RECONCILIATION_ENABLED, ARCA_HOMO_REJECTION_RECOVERY_ENABLED,
+ARCA_HOMO_CREDIT_DRAFTS_ENABLED, CREDIT_PREPARATION_ENABLED,
+CREDIT_NUMBERING_ENABLED, CREDIT_REVIEW_ENABLED, CREDIT_SEND_ENABLED,
+CREDIT_CONSULT_ENABLED, CREDIT_APPLY_ENABLED (todos con prefijo ARCA_HOMO_).
+Nombres SEND_ENABLED/QUERY_ENABLED/APPLY_ENABLED genéricos no gobiernan el worker:
+no usarlos como evidencia de cierre. Ningún flag frontend es autoridad.
+
+### Emisión/recuperación/aplicación: sólo diseño para GO posterior
+Una intención042 existente nunca permite segundo FECAESolicitar. Receipt049 es
+candidato, no CAE. Después de autorización específica de consulta privada
+(ARCA_HOMO_RECONCILIATION_ENABLED o CREDIT_CONSULT según flujo), FECompConsultar,
+journal durable y resolución concordante de emisor/serie/número/body prueban CAE;
+conflicto/rechazo/incertidumbre mantienen número y bloquean aplicación. Timeout
+HTTP/ACK perdido: mismoUUID, recuperarestado antes deactuar; jamás nuevoticket,
+UUID sustituto, resend automático o aplicación por respuesta candidata.
+NC con CAE confirmado/resuelto, sin conflicto y plan051 elegible puede aplicar052
+una sola vez, sólo con GO CREDIT_APPLY y caja/productos válidos revalidados bajo
+locks. Efectivo/stock/reposición después de CAE, nunca antes. MismoUUID devuelve
+resultado durable sin segundo efecto. No emision/NC/caja/stock/refund en ventana
+positiva de preparación. Cierre PR03/PR02 sigue pendiente de aceptación real.
+
+### 27/10/2026 — Preparación renovación catálogo2; límite temporal explícito
+Adjunto posterior a861f2fd autoriza consultas frescas y catálogo2 INACTIVO, no
+activaciones. Se resolvió contradicción del apartadoA con evidencia más reciente:
+CUSTODY_PROVISION_METADATA_PASS ya verificado; no repetir secretos/originalCMS.
+API oficial GET name/value/updated_at (200) y POST201/permisos secrets_read/write
+revisados; HTTP403 anterior fue permiso PAT. Tests existentes cubren updated_at,
+201,403 y rechazo de plaintext/campo digest alternativo; no debilitar parser por
+suposición. No nuevo acceso real Management ni originales en este bloque.
+Planificador agrega sql_sha256, search_path explícito pg_catalog,public y rechazo
+de baseline con >1 habilitado. Mantiene INSERT inactivo/locks/vigencia postlock/
+revisión siguiente/historial exacto/noUPSERT; sin nuevos defaults.
+PostgreSQL17.11:192 PASS,4casos nuevos catálogo canónico: dos instaladores una
+rev2, replay, drift habilitado durante espera y vencimiento esperando lock;
+historial1 equivalente. Fixture en DB local nueva; reset de datos sólo allí,
+no alterar esquema real. Cero peticiones externas/emisiones, contenedor propio
+detenido/datos conservados. ../catalog-renewal-block-native-final-20261027.json.
+96tests/3archivos PASS,0omitidos: ../catalog-renewal-block-final-tests-20261027.json.
+Build final PASS; lint sin errores (warning histórico unsafe-finally del harness),
+node/diff y símbolos privados ausentes de dist PASS. No suite global nueva.
+Plan de aceptación detallado en docs/arca-homologacion.md y ExecPlan: flags reales,
+orden,15min,rollback conservando historia, fronteras preparación/envío/consulta/
+aplicación. No afirmar GO-ready: venta/operación/IVA/receptor deben identificarse
+explícitamente y catálogo2 todavía no existe. SQL052 sólo trasCAE confirmado.
+
+CATALOGO_REVISION_2_INSTALADO=PENDIENTE, no falsePASS. V1 vencida intacta.
+Ventana actual WSAA anterior hasta28/10 02:49:53.999Z (27/10 23:49:53 Argentina).
+No LoginCms anticipado ni retry. Código actual exige operación para cacheTA y
+catálogo vigente para crear preparación: excepción local prevista en adjunto
+requiere documentar TA descartado y esperar NUEVO vencimiento antes de Edge.
+No inventar reutilización hospedada ni ampliar SQL/Edge para bootstrap por atajo.
+Consultas autorizadas aún NO ejecutadas; GO renovación sigue disponible, no pedirlo
+otra vez. Emisor inactivo/flags/Edge cerrados conservan último estado verificado;
+no se reabren gates cerrados. Master/Production/merge intactos.
