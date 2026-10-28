@@ -92,6 +92,9 @@ BEGIN
  IF EXISTS(SELECT 1 FROM public.fiscal_emisores_homologacion WHERE kiosco_id='${proposal.kioskId}'::uuid
  OR credencial_id='${proposal.credentialId}'::uuid OR certificado_sha256='${proposal.certificateSha256}') THEN
  RAISE EXCEPTION 'ISSUER_BINDING_ALREADY_EXISTS'; END IF;
+ -- Revalidate after every potentially blocking lock, immediately before DML.
+ IF clock_timestamp()<'${proposal.createdAt}'::timestamptz OR clock_timestamp()>='${proposal.expiresAt}'::timestamptz THEN
+ RAISE EXCEPTION 'ISSUER_PROPOSAL_EXPIRED'; END IF;
  INSERT INTO public.fiscal_emisores_homologacion(kiosco_id,cuit_emisor,punto_venta,credencial_id,certificado_sha256,revision,habilitado)
  VALUES('${proposal.kioskId}'::uuid,'${proposal.cuitEmisor}',${proposal.puntoVenta},'${proposal.credentialId}'::uuid,'${proposal.certificateSha256}',1,false);
  GET DIAGNOSTICS inserted=ROW_COUNT;

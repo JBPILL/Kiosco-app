@@ -1624,3 +1624,20 @@ secretos originales, master, Production o merge en este bloque.
 
 Build final PASS; lint enfocado sin errores (advertencia preexistente no-unsafe-finally en cleanup del harness). AST PowerShell, node --check, diff --check, SHA SQL y ausencia de símbolos del generador privado en dist PASS.
 
+
+### 27/10/2026 — Vigencia revalidada después de locks del emisor
+Revisión local posterior detectó que SQL candidato comprobaba expiry antes de
+esperar locks, permitiendo alta tras vencimiento. Corregido: segunda comprobación
+de reloj inmediatamente antes de INSERT, después de todos los locks. Caso real
+PostgreSQL retiene tabla, observa waiter, cruza deadline y libera: rechazo
+ISSUER_PROPOSAL_EXPIRED y cero filas. Suite nativa 188 PASS (5 del emisor), cero
+ARCA/emisiones; 63 tests relacionados PASS; build PASS, lint sin errores con
+advertencia histórica de cleanup. Informes ../fiscal-inactive-issuer-expiry-20261027.json
+ y ../fiscal-inactive-issuer-expiry-tests-20261027.json. No credenciales ni red externa.
+Candidato v3 reemplaza v1/v2, conservados y nunca ejecutados:
+../fiscal-inactive-issuer-proposal-v3-20261027/
+plan SHA256 f1f8ef656ba5f2ced2cc52a8e2b99d83c2cf624d0dbaaa39c98c95c72a7912b7
+SQL SHA256 2cd371db17034db2c271f052f3741e54797183001808e43baa763076bea00a9e
+Misma expiración 29/10 01:33:55.603Z. SQL_EXECUTED=false; respaldo actualizado,
+preflight remoto y revisión/GO propios siguen pendientes. No instalación/flags,
+ARCA, secretos originales, master, Production o merge.

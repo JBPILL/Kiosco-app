@@ -1766,6 +1766,19 @@ try {
     cases.push('emisor_inactivo_revocacion_concurrente_'+revocation+'_sin_INSERT')
   }
 
+  {
+    const f=await fixture({commercialPlan:nc051_plan}),source=inactiveIssuerInput(f)
+    source.expiresAt=new Date(Date.now()+4000).toISOString()
+    const candidate=planInactiveFiscalIssuer(source)
+    await approveInactiveIssuer(b,candidate);await a.query('BEGIN; LOCK TABLE public.fiscal_emisores_homologacion IN SHARE ROW EXCLUSIVE MODE')
+    const blocked=capture(b.query(candidate.sql));await waitForLock(observer,b)
+    // Local server clock crosses the real deadline while the candidate waits.
+    await observer.query('SELECT pg_sleep(GREATEST(0,EXTRACT(EPOCH FROM ($1::timestamptz-clock_timestamp())))+0.1)',[source.expiresAt])
+    await a.query('COMMIT')
+    const denied=await blocked;assert.match(denied.error?.message??'',/ISSUER_PROPOSAL_EXPIRED/);await b.query('ROLLBACK')
+    assert.equal((await observer.query('SELECT count(*)::int n FROM fiscal_emisores_homologacion WHERE kiosco_id=$1',[f.kid])).rows[0].n,0)
+    cases.push('emisor_inactivo_vence_esperando_lock_sin_INSERT')
+  }
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
