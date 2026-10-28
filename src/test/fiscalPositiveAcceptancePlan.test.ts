@@ -1,3 +1,4 @@
+import { positivePlanFixture } from './fixtures/fiscalPositivePlan'
 // @vitest-environment node
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
@@ -8,22 +9,8 @@ import { expect, it } from 'vitest'
 import { planFiscalPositiveAcceptance } from '../../scripts/plan-fiscal-positive-acceptance.mjs'
 
 const hash=(v:string)=>createHash('sha256').update(v).digest('hex')
-function fixture(){
-  const ownerAuthId=randomUUID(),kioskId=randomUUID(),saleId=randomUUID()
-  const snapshot={read_only:'on',observed_at:'2026-10-28T07:20:00Z',
-    owner:{auth_user_id:ownerAuthId,kiosco_id:kioskId,rol:'DUEÑO',activo:true,es_superadmin:false},kiosk_active:true,
-    sale:{id:saleId,kiosco_id:kioskId,estado:'COMPLETADA',fecha_hora:'2026-10-26T15:34:50Z',total:'200.00',has_legacy_cae:false},
-    details:[{id:randomUUID(),producto_id:randomUUID(),cantidad:1,precio_unitario:200,subtotal:200,es_devolucion_envase:false}],returns:0,operations:0,
-    issuer:{kiosco_id:kioskId,cuit_emisor:'20123456786',punto_venta:2,credencial_id:randomUUID(),certificado_sha256:'a'.repeat(64),revision:1,habilitado:false,actualizado_en:'2026-10-28T01:00:00Z'},
-    catalog:{revision:2,condiciones:[{id:5,descripcion:'Synthetic final',comprobantes:[11]}],alicuotas:[],fuente_sha256:'b'.repeat(64),consultado_en:'2026-10-28T03:06:15Z',vence_en:'2026-10-29T02:59:00Z',habilitado:false}}
-  const snapshotText=JSON.stringify(snapshot)
-  const config={projectRef:'acoyfwwmhaeruciyedri',snapshotText,snapshotSha256:hash(snapshotText),ownerAuthId,kioskId,operationId:randomUUID(),
-    invoice:{condicionEmisor:'MONOTRIBUTO',datos:{tipoComprobante:11,concepto:1,tipoDocumento:99,numeroDocumento:'0',condicionIvaReceptor:5,fecha:'20261028',servicioDesde:null,servicioHasta:null,vencimientoPago:null,moneda:'PES',cotizacion:'1',importes:{neto:'200.00',iva:'0.00',noGravado:'0.00',exento:'0.00',tributos:'0.00'},iva:[],tributos:[]}},
-    now:'2026-10-28T07:30:00.000Z',startsAt:'2026-10-28T15:10:00.000Z',endsAt:'2026-10-28T15:25:00.000Z',taNotBefore:'2026-10-28T15:06:15.411Z'}
-  return {config,snapshot}
-}
 it('creates deterministic explicit data with stable operation identity and no authority to activate or emit',async()=>{
-  const {config}=fixture(),before=JSON.stringify(config),plan=await planFiscalPositiveAcceptance(config)
+  const {config}=positivePlanFixture(),before=JSON.stringify(config),plan=await planFiscalPositiveAcceptance(config)
   expect(JSON.stringify(config)).toBe(before)
   expect(plan).toEqual(await planFiscalPositiveAcceptance(config))
   expect(plan.prepared.datos.importes.total).toBe('200.00')
@@ -37,13 +24,13 @@ it('creates deterministic explicit data with stable operation identity and no au
   expect(plan.manifest.alwaysClosedFlags).toContain('ARCA_HOMO_CREDIT_APPLY_ENABLED')
 })
 it('accepts existing UUID versions supported by the database instead of assuming every detail is v4',async()=>{
-  const {config,snapshot}=fixture()
+  const {config,snapshot}=positivePlanFixture()
   snapshot.details[0].id='11111111-1111-8111-a111-111111111111'
   const snapshotText=JSON.stringify(snapshot)
   expect((await planFiscalPositiveAcceptance({...config,snapshotText,snapshotSha256:hash(snapshotText)})).prepared.datos.importes.total).toBe('200.00')
 })
 it.each(['production','ta-live','expired','long-window','day-change','catalog-expired','checksum','private-field','bad-json','local-time'])('rejects %s without networking or leaking input',async mode=>{
-  const {config,snapshot}=fixture();let candidate:Record<string,unknown>={...config}
+  const {config,snapshot}=positivePlanFixture();let candidate:Record<string,unknown>={...config}
   if(mode==='production')candidate.projectRef='lllkjnqpltnwvxzphncr'
   if(mode==='ta-live')candidate.startsAt=config.taNotBefore
   if(mode==='local-time')candidate.startsAt='2026-10-28T15:10:00'
@@ -58,7 +45,7 @@ it.each(['production','ta-live','expired','long-window','day-change','catalog-ex
   await expect(planFiscalPositiveAcceptance(candidate)).rejects.toThrow(/^POSITIVE_ACCEPTANCE_PROPOSAL_REJECTED$/)
 })
 it.each(['cashier','inactive-owner','foreign-owner','superadmin','kiosk-suspended','sale-annulled','cae','return','operation','fractional','envase','total','enabled-issuer','enabled-catalog','revision'])('rejects snapshot drift %s',async mode=>{
-  const {config,snapshot}=fixture()
+  const {config,snapshot}=positivePlanFixture()
   if(mode==='cashier')snapshot.owner.rol='CAJERO'
   if(mode==='inactive-owner')snapshot.owner.activo=false
   if(mode==='foreign-owner')snapshot.owner.kiosco_id=randomUUID()
@@ -78,7 +65,7 @@ it.each(['cashier','inactive-owner','foreign-owner','superadmin','kiosk-suspende
   await expect(planFiscalPositiveAcceptance({...config,snapshotText,snapshotSha256:hash(snapshotText)})).rejects.toThrow('POSITIVE_ACCEPTANCE_PROPOSAL_REJECTED')
 })
 it.each(['emitter','type','receiver','date','amount','document','missing-iva'])('does not infer explicit fiscal input %s',async mode=>{
-  const {config}=fixture()
+  const {config}=positivePlanFixture()
   if(mode==='emitter')config.invoice.condicionEmisor='RESPONSABLE_INSCRIPTO'
   if(mode==='type')config.invoice.datos.tipoComprobante=6
   if(mode==='receiver')config.invoice.datos.condicionIvaReceptor=1
@@ -96,7 +83,7 @@ function cleanupProposal(root:string){
 it('CLI writes a public draft once, preserves its UUID and refuses to overwrite after reload',()=>{
   const root=mkdtempSync(join(tmpdir(),'kiosko-positive-plan-'))
   try{
-    const {config,snapshot}=fixture(),{snapshotText:_fixedSnapshot,now,...settings}=config
+    const {config,snapshot}=positivePlanFixture(),{snapshotText:_fixedSnapshot,now,...settings}=config
     // The child process uses the real clock; keep this test valid after today.
     expect(now).toBeTruthy()
     const runtimeNow=Date.now(),start=new Date(runtimeNow+8*3600000);start.setUTCMinutes(0,0,0)

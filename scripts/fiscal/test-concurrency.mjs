@@ -9,6 +9,8 @@ import pg from 'pg'
 import { createCustodyProvisionPlan, custodyPlanHash } from '../fiscal-custody-plan.mjs'
 import { planInactiveFiscalIssuer } from '../plan-fiscal-issuer.mjs'
 import { planFiscalParameters } from '../plan-fiscal-parameters.mjs'
+import { planFiscalPreparationToggle } from '../plan-fiscal-preparation-toggle.mjs'
+import { positivePlanFixture } from '../../src/test/fixtures/fiscalPositivePlan.ts'
 
 if (!process.argv.includes('--run-local')) throw new Error('Usar --run-local para crear un contenedor de ensayo aislado.')
 const root = resolve(import.meta.dirname, '../..')
@@ -1825,10 +1827,66 @@ try {
   assert.match((await expiryWaiter).error?.message??'',/CATALOG_PROPOSAL_EXPIRED/);await cb.query('ROLLBACK')
   assert.deepEqual((await co.query('SELECT to_jsonb(t) AS row FROM fiscal_parametros_homologacion t')).rows,[{row:historical}])
   cases.push('catalogo_vence_esperando_lock_sin_revision2')
+  const catalogCasesEnd=cases.length
+  async function windowFixture(database,expiryMs=600000){
+    await observer.query('CREATE DATABASE '+database)
+    const first=await connect(database),second=await connect(database),watch=await connect(database)
+    const {config,snapshot}=positivePlanFixture(),now=Date.now()
+    config.now=new Date(now-1000).toISOString();config.startsAt=new Date(now-500).toISOString()
+    config.endsAt=new Date(now+expiryMs).toISOString();config.taNotBefore=new Date(now-2000).toISOString()
+    snapshot.observed_at=new Date(now-2000).toISOString();snapshot.catalog.consultado_en=snapshot.observed_at
+    snapshot.catalog.vence_en=new Date(now+3600000).toISOString()
+    const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Buenos_Aires',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now)
+    config.invoice.datos.fecha=['year','month','day'].map(k=>parts.find(p=>p.type===k).value).join('')
+    config.snapshotText=JSON.stringify(snapshot);config.snapshotSha256=sha(config.snapshotText)
+    const plan=await planFiscalPreparationToggle(config)
+    await first.query('CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid PRIMARY KEY); CREATE TABLE public.sesiones_caja(id uuid PRIMARY KEY); CREATE TABLE public.productos(id uuid PRIMARY KEY)')
+    const domain=readFileSync(join(root,'supabase/bootstrap/001_domain.sql'),'utf8')
+    for(const name of ['kioscos','usuarios','ventas','detalles_venta'])await first.query(domain.match(new RegExp('CREATE TABLE public\\.'+name+' \\([\\s\\S]*?\\n\\);'))[0])
+    await first.query(readFileSync(join(root,'supabase/pilot-fiscal/005_fiscal_worker_authorization.sql'),'utf8').match(/CREATE TABLE IF NOT EXISTS public\.fiscal_emisores_homologacion \([\s\S]*?\n\);/)[0])
+    await first.query(catalogSource.match(/CREATE TABLE IF NOT EXISTS public\.fiscal_parametros_homologacion \([\s\S]*?\n\);/)[0])
+    await first.query('ALTER TABLE fiscal_emisores_homologacion ENABLE ROW LEVEL SECURITY; ALTER TABLE fiscal_parametros_homologacion ENABLE ROW LEVEL SECURITY; CREATE TABLE devoluciones_venta(venta_id uuid); CREATE TABLE fiscal_operaciones_homologacion(id uuid,venta_id uuid)')
+    await first.query('INSERT INTO auth.users VALUES($1)',[config.ownerAuthId]);await first.query("INSERT INTO kioscos(id,nombre) VALUES($1,'Synthetic')",[config.kioskId])
+    await first.query("INSERT INTO usuarios(auth_user_id,kiosco_id,nombre,rol) VALUES($1,$2,'Synthetic owner','DUEÑO')",[config.ownerAuthId,config.kioskId])
+    await first.query('INSERT INTO ventas(id,kiosco_id,fecha_hora,total) VALUES($1,$2,$3,$4)',[snapshot.sale.id,config.kioskId,snapshot.sale.fecha_hora,snapshot.sale.total])
+    const d=snapshot.details[0];await first.query('INSERT INTO productos VALUES($1)',[d.producto_id]);await first.query('INSERT INTO detalles_venta(id,venta_id,producto_id,cantidad,precio_unitario,subtotal) VALUES($1,$2,$3,$4,$5,$6)',[d.id,snapshot.sale.id,d.producto_id,d.cantidad,d.precio_unitario,d.subtotal])
+    await first.query('INSERT INTO fiscal_emisores_homologacion SELECT * FROM jsonb_populate_record(NULL::fiscal_emisores_homologacion,$1::jsonb)',[JSON.stringify(snapshot.issuer)])
+    await first.query('INSERT INTO fiscal_parametros_homologacion SELECT * FROM jsonb_populate_record(NULL::fiscal_parametros_homologacion,$1::jsonb)',[JSON.stringify(snapshot.catalog)])
+    for(const client of [first,second])await client.query("SELECT set_config('kioskopos.window_target','acoyfwwmhaeruciyedri',false),set_config('kioskopos.window_plan',$1,false)",[plan.data.manifest.planSha256])
+    return {first,second,watch,config,plan}
+  }
+  {
+    const w=await windowFixture('kiosko_window_once')
+    await w.first.query(holdIssuer(w.plan.activationSql));const loser=capture(w.second.query(w.plan.activationSql));await waitForLock(w.watch,w.second);await w.first.query('COMMIT')
+    assert.match((await loser).error?.message??'',/WINDOW_BINDING_CHANGED/);await w.second.query('ROLLBACK')
+    await w.watch.query('INSERT INTO fiscal_operaciones_homologacion VALUES($1,$2)',[w.config.operationId,w.plan.data.manifest.saleId])
+    await w.first.query(w.plan.closureSql);await w.second.query(w.plan.closureSql)
+    assert.equal((await w.watch.query('SELECT count(*)::int n FROM fiscal_operaciones_homologacion')).rows[0].n,1)
+    assert.equal((await w.watch.query('SELECT habilitado FROM fiscal_emisores_homologacion')).rows[0].habilitado,false)
+    assert.equal((await w.watch.query('SELECT habilitado FROM fiscal_parametros_homologacion')).rows[0].habilitado,false)
+    cases.push('ventana_dos_activadores_una_apertura_cierre_repetible_conserva_operacion')
+  }
+  {
+    const w=await windowFixture('kiosko_window_expiry',4000)
+    await w.first.query('BEGIN; LOCK TABLE fiscal_parametros_homologacion IN SHARE ROW EXCLUSIVE MODE')
+    const blocked=capture(w.second.query(w.plan.activationSql));await waitForLock(w.watch,w.second)
+    await w.watch.query('SELECT pg_sleep(GREATEST(0,EXTRACT(EPOCH FROM ($1::timestamptz-clock_timestamp())))+0.1)',[w.config.endsAt]);await w.first.query('COMMIT')
+    assert.match((await blocked).error?.message??'',/WINDOW_NOT_CURRENT/);await w.second.query('ROLLBACK')
+    assert.equal((await w.watch.query('SELECT habilitado FROM fiscal_emisores_homologacion')).rows[0].habilitado,false)
+    cases.push('ventana_vence_esperando_lock_sin_activacion_parcial')
+  }
+  {
+    const w=await windowFixture('kiosko_window_drift');await w.first.query(w.plan.activationSql)
+    await w.first.query('BEGIN; UPDATE fiscal_emisores_homologacion SET revision=2')
+    const blocked=capture(w.second.query(w.plan.closureSql));await waitForLock(w.watch,w.second);await w.first.query('COMMIT')
+    assert.match((await blocked).error?.message??'',/WINDOW_CLOSE_DRIFT_REVIEW_REQUIRED/);await w.second.query('ROLLBACK')
+    assert.deepEqual((await w.watch.query('SELECT revision,habilitado FROM fiscal_emisores_homologacion')).rows,[{revision:2,habilitado:true}])
+    cases.push('ventana_cierre_tras_drift_concurrente_no_sobrescribe_binding')
+  }
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
   evidence={status:'PASS',environment:'PostgreSQL local sintético; no JWT hospedado ni ARCA',
-    inactiveIssuerProposalCases:issuerCasesEnd-issuerCasesStart,catalogRenewalCases:cases.length-issuerCasesEnd,
+    inactiveIssuerProposalCases:issuerCasesEnd-issuerCasesStart,catalogRenewalCases:catalogCasesEnd-issuerCasesEnd,preparationWindowCases:cases.length-catalogCasesEnd,
     testedAt:new Date().toISOString(),postgresVersion:version,image,containerId,containerName:name,port,
     creditOwnerReviewInstalledAfterCase,postCreditOwnerReviewCaseCount:cases.length-creditOwnerReviewInstalledAfterCase,
     creditCommercialApplicationInstalledAfterCase,postCreditCommercialApplicationCaseCount:cases.length-creditCommercialApplicationInstalledAfterCase,

@@ -1152,3 +1152,48 @@ concurrencia. No pedir GO de un paquete que aún no tiene cierre probado. Nunca
 incluir ENVIAR/FECAESolicitar/CONCILIAR/APLICAR ni autoaprobar body en este paquete.
 Custodia funcional/TAcompartido/aceptación positiva siguen pendientes. No cambio
 SQL/flags/secretos/ARCA/Edge/Vercel/master/Production/merge en este bloque.
+
+### 28/10/2026 — SQL candidato de apertura/cierre validado localmente
+plan-fiscal-preparation-toggle.mjs deriva el mismo snapshot/plan de datos validado,
+sin nueva identidad, conexión ni ejecución. Apertura exigepostgres, GO/hash/destino,
+Owner/kiosco/venta/detalles vigentes bajo locks, sin devoluciones/preparación previa,
+emisor/catálogo exactos e inactivos, RLS/owner/grants privados cerrados y ningún
+habilitado ajeno. Tiempo se revalida después de TODOS los locks. Sólo actualiza
+habilitado de las2filas. No crea permisos, TA, número, operación o flags privados.
+Cierre exige mismoGO/binding completo; revocación delOwner o vencimiento NO impiden
+cerrar. Repetible, no elimina operaciones/cuerpos/TA/reservas ni actualiza revisión.
+Drift de metadatos => STOP/revisión, no sobreescritura. FlagsPREPARATION/DATA/BACKEND
+se deben cerrar PRIMERO por asistente aún pendiente. No afirmar cierre funcional
+si el operador no ejecutó esa secuencia. No existe leasepersistente: requiere
+ventana exclusiva de administración (invariante operativo explícito), no suplantar
+una protección inexistente con settings o hash. GO settings no pruebanhost/humano.
+
+Propuesta ../positive-window-sql-proposal-20261028/ conserva plan de datos
+cbe964ee139eb1d943e6a3d70b9ae1cd7921da8268e484eee6f213392db11349.
+activate.sql SHA256d3d962324270e3e48e6b1ed45850dc163ec7633f89c6c3e6885662c96ac30955
+close.sql SHA2569a15bd9ae4339264fcc8706d176cc1763e57653ae9ff5e0221524b257e609471
+verify.sql SHA256bef8f72343dabe981209ab68844965d71902d3bb7252d278819fd7580a8b70fa.
+Bytes comparados con generador final PASS. SQL_EXECUTED=false/readyForGo=false/
+operatorAssistantReady=false. No pedir GO de paquete incompleto.
+
+50tests PGlite/contrato PASS (15SQL+35datos),0omitidos: permisos/RLS,Actor/kiosco/
+venta/detalles,GO,replay,vigencia,cierre despuésexpiry,operación conservada y drift.
+DDL canónico para tablas principales; stubs de devoluciones/operaciones sólo para
+checks de existencia: no afirmar aceptación del esquema fiscal completo allí.
+PostgreSQL17.11 nativo195PASS (192previos+3ventana),0redexterna/0comprobantes,
+contenedor propio detenido/datos conservados; pruebas nuevas DB locales aisladas.
+Primer intento fallóSTEP0 Docker cerrado: informe preservado, ningún test nuevo
+acreditado allí. Se inició instalación existente y segundo pase PASS.
+../positive-window-toggle-native-v2-20261028.json; ../positive-window-toggle-final-tests-20261028.json.
+Build finalPASS, lint0errores con warningfinally histórico del harness, diff/node
+PASS, símbolos privados ausentesbundle. Sin suiteglobal nueva. Fixture de datos
+sintética extraída para reutilizar contrato en PGlite/nativo, no datos realesGit.
+
+Pendiente inmediato: asistente privado con Auth/JWTdelOwner, acciones allowlist,
+paquete/hash/ventana fijados, no redirects/retries ni credenciales argv/env/archivos;
+probar ACK/errores y cierre con flagsverificadosantesSQL. Después integraciónlocal
+completa y revisión específicaGO; nada positivo remoto por este trabajo. Mantener
+TA28/10 15:06:15.411Z, catálogo29/10 02:59Z y ventana propuesta15:10–15:25Z honestos.
+Si vencerel material público, revisar conservaUUID antes de continuar, no retry
+LoginCms ni extenderfechas. No SQL/flags/ARCA/secretos/Edge/Vercel/master/Production/
+merge en este bloque. ObjetivoPR01–PR11 activo y no completado.
