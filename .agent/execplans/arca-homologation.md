@@ -3628,3 +3628,21 @@ secretos originales, master, Production o merge en este bloque.
 
 Build final PASS; lint enfocado sin errores (advertencia preexistente no-unsafe-finally en cleanup del harness). AST PowerShell, node --check, diff --check, SHA SQL y ausencia de símbolos del generador privado en dist PASS.
 
+
+#### Auditoría de dependencias de aceptación — 27/10/2026, posterior 256a377
+Lectura de SQL012 fiscal_contexto_preparacion_homologacion: requiere venta
+COMPLETADA elegible, emisor habilitado y catálogo habilitado/no vencido antes de
+preparación. fiscalSharedTickets.ts solicita TA con operacion_id mediante RPC006;
+fiscalHttp.ts compone ese loader para flujos de comprobantes, sin acción pública
+FEParamGet. No confundir provisión cerrada de secretos con bootstrap de TA.
+La ruta existente de catálogo público es el diagnóstico local autorizado y el
+planificador offline scripts/plan-fiscal-parameters.mjs, no el worker de emisión.
+Por tanto, antes de aceptación positiva se debe revisar un cronograma conjunto:
+consulta pública autorizada y propuesta/importación inactiva de revisión nueva;
+GO separado para emisor/catálogo y gates de datos; preparación elegible; luego
+TA compartido/consulta hospedada autorizada. Una consulta local descarta TA y
+puede impedir LoginCms inmediato desde Edge: coordinar vencimiento observado,
+no forzar login/reintento ni exportar Token/Sign como atajo. Esto identifica una
+dependencia operativa, no acredita bootstrap hospedado ni autoriza implementarlo
+o ejecutarlo. Sin cambios remotos ni nuevas consultas ARCA durante auditoría.
+Respaldo actual antes de emisor sigue pendiente de ejecución privada del titular.
