@@ -3630,7 +3630,7 @@ Build final PASS; lint enfocado sin errores (advertencia preexistente no-unsafe-
 
 
 #### Auditoría de dependencias de aceptación — 27/10/2026, posterior 256a377
-Lectura de SQL012 fiscal_contexto_preparacion_homologacion: requiere venta
+Lectura de SQL012 cargar_datos_preparacion_homologacion: requiere venta
 COMPLETADA elegible, emisor habilitado y catálogo habilitado/no vencido antes de
 preparación. fiscalSharedTickets.ts solicita TA con operacion_id mediante RPC006;
 fiscalHttp.ts compone ese loader para flujos de comprobantes, sin acción pública
