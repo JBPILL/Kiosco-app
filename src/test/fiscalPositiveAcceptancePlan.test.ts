@@ -97,12 +97,17 @@ it('CLI writes a public draft once, preserves its UUID and refuses to overwrite 
     const snapshotPath=join(root,'snapshot.json'),configPath=join(root,'config.json'),output=join(root,'proposal')
     writeFileSync(snapshotPath,snapshotText);writeFileSync(configPath,JSON.stringify({...settings,snapshotPath}))
     const command=[resolve('scripts/plan-fiscal-positive-acceptance.mjs'),configPath,output]
-    const first=spawnSync(process.execPath,command,{encoding:'utf8',timeout:10000})
+    // Child Node/TypeScript cold startup on Windows can exceed ten seconds
+    // during the complete local validation. This is not a latency acceptance
+    // test; retain bounded execution and all no-overwrite/UUID assertions.
+    const first=spawnSync(process.execPath,command,{encoding:'utf8',timeout:30000})
+    expect(first.error).toBeUndefined()
     expect(first.status).toBe(0);expect(first.stdout).toContain('REMOTE_EXECUTED=false GO_READY=false')
     const before=readFileSync(join(output,'manifest.json'),'utf8')
     expect(JSON.parse(before).operationId).toBe(config.operationId)
-    const second=spawnSync(process.execPath,command,{encoding:'utf8',timeout:10000})
+    const second=spawnSync(process.execPath,command,{encoding:'utf8',timeout:30000})
+    expect(second.error).toBeUndefined()
     expect(second.status).toBe(1);expect(second.stderr).toBe('POSITIVE_ACCEPTANCE_PROPOSAL_NOT_CONFIRMED. No network or activation.\n')
     expect(readFileSync(join(output,'manifest.json'),'utf8')).toBe(before)
   }finally{cleanupProposal(root)}
-})
+},70000)

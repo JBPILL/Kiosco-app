@@ -1,5 +1,56 @@
 Este documento registra decisiones arquitectónicas o de dominio que sean no triviales, junto con su contexto y justificación.
 
+## Exclusión del asistente de ventana y propiedad tras ACK perdido (28/10/2026)
+
+Contexto: el SQL v2 impide reabrir después del cierre, pero un binding activo
+coincidente no identifica qué asistente ganó una apertura si se perdió la
+respuesta. Un mutex de archivo local tampoco excluye operadores de otra máquina.
+
+Decisión local, todavía sin ejecutar en Staging: el futuro asistente privado
+mantendrá una conexión PostgreSQL dedicada, sin reconexión ni pool transaccional,
+con advisory lock de sesión común a todos los planes del proyecto. Verifica PID,
+inicio de backend y posesión del lock antes/después de reconciliar una apertura.
+SQL v2 no cambia. La reconciliación sólo admite lectura independiente bajo la
+misma sesión todavía propietaria. Si ésta termina/cambia/pierde el lock, queda
+invalidada permanentemente: no se adquiere otra sesión para apropiarse de una
+ventana coincidente ni cerrarla. Se requiere conciliación operativa explícita.
+El lock no reemplaza el GO, binding completo, supervisión exclusiva ni cierre
+de flags; tampoco es un TTL ni garantiza cierre automático tras un crash.
+
+La prueba nativa incorpora dos asistentes de planes distintos, respuesta perdida
+con sesión conservada, precisión del recibo y corte de sesión sin cierre ajeno.
+Una comprobación de cleanup fallida mantiene la exclusión mientras viva la
+sesión; no se declara PASS ni se libera como si el entorno estuviera cerrado.
+
+Autenticación privada: JWT en memoria, rechazo de claims incompatibles seguido
+siempre de Auth `/user` y perfil Dueño exacto/activo del comercio. Decodificar
+claims no acredita su firma; `/user` sí debe confirmar la identidad. Sólo claves
+API públicas publishable o anon del Staging exacto, logout `scope=local` y sin
+refresh automático. Los tres flags permitidos se verifican con sus digests;
+cualquier cambio ajeno de metadata o flag fiscal no permitido bloquea avance.
+La fase de cierre no depende de que el Owner revocado recupere privilegios,
+pero sí de conservar la exclusión del operador. Nada de esto acredita aún el
+asistente integrado, JWT hospedado positivo, custodia funcional ni ventana real.
+
+El flujo privado registra durablemente el intento ANTES del POST, con operación
+y hash aprobados. Si el guardado o la preparación pierde ACK, sólo lee resolución
+y revisión; un nuevo proceso no repite PREPARAR porque no aparezca todavía un
+cuerpo. El journal append-only usa esquemas cerrados y fsync; conserva texto de
+recibo/identidad de cuerpo y rechaza corrupción sin borrar nada. Su hash chain
+detecta corrupción, no autentica frente a un editor con acceso al filesystem ni
+demuestra propiedad de una ventana previa. Se descartaron un journal sólo en
+memoria (pierde intentos tras restart) y reintentos automáticos (podrían repetir
+WSAA). La pertenencia y quiescencia deben verificarse por el operador completo.
+
+El orquestador privado consume sólo el SQL y los comandos exactos del paquete.
+Usa dos conexiones dedicadas: writer propietario del advisory lock y observador
+RRO independiente. Los hashes de historial/comercio se fijan con timezone UTC.
+Una lectura no acredita estado si su ROLLBACK no fue confirmado; el observador
+queda inutilizable para evitar reutilizar una transacción/snapshot incierta.
+Management queda limitado a metadata y tres flags booleanos, nunca secretos
+nuevos ni credenciales. La entrada pública/terminal y la aceptación nativa de
+estas piezas siguen pendientes, por lo que todavía no forman un paquete GO-ready.
+
 ## Límite de administración comercial (16/10/2026)
 
 Se agrega una capacidad VITE_ADMIN_COMERCIAL_HABILITADO independiente del strict
@@ -1236,4 +1287,22 @@ fallidos conservados. Ensayo nativo con reloj real de cierre expirado y otra ses
 está en curso; no usar pase anterior como prueba final del nuevo código.
 
 Cierre de evidencia nativa FINAL: PostgreSQL17.11,196PASS (4ventana), cero solicitudes fiscales externas/emisiones. Reloj real confirma cierre tras expiry, recibo conserva precisión, replay de otra sesión SIN operación rechazado. Contenedor propio detenido/datos conservados. ../positive-window-toggle-native-openstamp-final-20261028.json SHA256 9e74d7ab48ed3ad4f9373c72da868a57d7bf5a32d3f84bbfff88a56b0366179a. Este pase corresponde al código final de marca única y supera los pases previos. Asistente privado/paqueteGO completo pendientes; ninguna operación remota en este bloque.
+
+## Baseline cerrado y cleanup tras revocación (28/10/2026)
+
+El paquete privado admite dos políticas explícitas: hashes de historial/comercio
+revisados, o captura única READ ONLY en el primer baseline cerrado que cumple
+el binding revisado completo. En ambos casos se pinnean antes de abrir y se
+comparan durante el cierre; no se recalculan ante drift. Se descarta asumir un
+snapshot comercial antiguo como verdad o adaptar datos a mitad de la ventana.
+El journal registra únicamente hashes y fecha segura, nunca filas comerciales.
+
+Una prueba demostró que revocar al Owner inmediatamente después del COMMIT de
+apertura impedía recuperar el recibo y cerrar emisor/catálogo. La lectura del
+recibo para cleanup mantiene exclusión original, binding/contadores/estado y
+timestamp exactos, pero no exige que la autorización comercial siga activa.
+Las acciones positivas sí revalidan Owner/comercio/ventana. Así la revocación
+detiene trabajo nuevo sin impedir cerrar cambios propios. La sesión perdida
+no habilita esta excepción: no hay reacquisición, autoridad por journal ni
+retry automático. SQL aprobado y permisos remotos no fueron modificados.
 

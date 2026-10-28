@@ -94,6 +94,8 @@ async function approve(db:PGlite, result:Plan, target='acoyfwwmhaeruciyedri') {
   await db.query("SELECT set_config('kioskopos.catalog_target_ref',$1,false),set_config('kioskopos.approved_catalog_plan_sha256',$2,false)",[target,result.manifest.plan_sha256])
 }
 it('SQL exige GO y destino explícitos, inserta una sola revisión inactiva, trata descripciones como datos y rechaza replay',async()=>{
+  // PGlite cold initialization under the complete Windows suite can exceed
+  // Vitest's five-second default. This validates SQL invariants, not latency.
   const db=new PGlite()
   try {
     await db.exec(ddl)
@@ -116,7 +118,7 @@ it('SQL exige GO y destino explícitos, inserta una sola revisión inactiva, tra
     await db.exec('ROLLBACK')
     expect((await db.query('SELECT * FROM public.fiscal_parametros_homologacion')).rows).toHaveLength(1)
   } finally {await db.close()}
-})
+},30000)
 it('SQL vuelve a comprobar vigencia en servidor aunque la propuesta local fuera válida',async()=>{
   const db=new PGlite()
   try {

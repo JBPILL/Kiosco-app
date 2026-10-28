@@ -6,6 +6,14 @@ An ExecPlan is a living document: create it before implementation, update **Prog
 
 ## Objetivo común vigente — cierre del desarrollo y Production Readiness
 
+Actualización de secuencia, 28/10/2026: completar y publicar primero el bloque
+LOCAL único del operador privado de preparación; después revisar el paquete
+y hacer preflight hospedado READ ONLY. La primera ventana positiva de Staging
+SIN emisión requiere GO explícito separado; los permisos anteriores no sirven.
+El ExecPlan fiscal y `docs/arca-homologacion.md` contienen el protocolo y sus
+límites. Los pases locales no cierran aceptación hospedada ni PR02–PR11; el
+objetivo común permanece activo. No crear planes paralelos para este cierre.
+
 **Estado de referencia: 24/10/2026.** Este objetivo común gobierna el trabajo de Codex mientras el proyecto siga en la rama/PR activo del piloto y hasta completar la salida productiva. No reemplaza el registro canónico de gates; ordena prioridades para evitar abrir trabajo paralelo que no reduzca riesgo ni cierre aceptación.
 
 Fuentes de verdad:

@@ -1971,3 +1971,124 @@ está en curso; no usar pase anterior como prueba final del nuevo código.
 
 Cierre de evidencia nativa FINAL: PostgreSQL17.11,196PASS (4ventana), cero solicitudes fiscales externas/emisiones. Reloj real confirma cierre tras expiry, recibo conserva precisión, replay de otra sesión SIN operación rechazado. Contenedor propio detenido/datos conservados. ../positive-window-toggle-native-openstamp-final-20261028.json SHA256 9e74d7ab48ed3ad4f9373c72da868a57d7bf5a32d3f84bbfff88a56b0366179a. Este pase corresponde al código final de marca única y supera los pases previos. Asistente privado/paqueteGO completo pendientes; ninguna operación remota en este bloque.
 
+## Operador privado integrado — preparación sin emisión (28/10/2026)
+
+Esta actualización complementa el historial inferior. La aceptación hospedada
+positiva sigue PENDIENTE y exige el GO humano de la primera ventana positiva
+de preparación en Staging SIN emisión. No consumir permisos anteriores.
+
+El punto de entrada es `scripts/ejecutar-ventana-fiscal-privada.ps1` (PowerShell
+7.4 y Node 24). `-Preparar` es la opción por defecto: sólo verifica archivos
+públicos, sus hashes y la vigencia del paquete; no pide claves ni hace red.
+`-Ejecutar` exige además `-GoConfirmado -VentanaExclusiva -HashRevisado <SHA256>`
+y una terminal interactiva. Estos switches son atestaciones operativas, no
+sustituyen la autorización humana. No ejecutar fuera de la ventana revisada.
+
+El CLI público `fiscal-positive-window-cli.mjs --draft <config.json>
+<references.json> <directorio-nuevo>` genera un paquete sin sobrescribir.
+Su hash incluye configuración explícita, snapshot, SQL de apertura/cierre/
+verificación, consulta READ ONLY y archivos del runtime privado/Edge. Cambiar
+código invalida el paquete. Una ventana vencida necesita propuesta y revisión
+nuevas; nunca prolongar la vigencia del catálogo ni cambiar venta o UUID.
+
+El operador autentica al Dueño mediante Auth y `/user`, valida perfil activo y
+pertenencia exacta, y conserva JWT sólo en memoria. Las únicas acciones Edge
+admitidas son `RESOLVER_VENTA`, `DATOS_FISCALES_VENTA`,
+`GUARDAR_DATOS_FISCALES`, `PREPARAR_COMPROBANTE`, `REVISAR_COMPROBANTE`, con
+los cuerpos exactos revisados. REVISAR recupera el cuerpo para revisión; no
+equivale a APROBAR ni crea permiso de envío. Estado RESERVADA no es factura
+autorizada. No se llaman APROBAR, ENVIAR, CONCILIAR, NC, SQL052 ni FECAESolicitar.
+
+### Credenciales y controles operativos
+
+La persona introduce clave pública, correo/contraseña del Dueño, contraseña DB
+de Staging y PAT Management limitado al proyecto únicamente en terminal
+privada. El proceso hijo recibe estos datos por stdin acotado, nunca argv,
+variables persistentes, archivos, clipboard ni chat. Los errores externos no
+se imprimen. No se leen originales ARCA locales, ni se repite CMS/provisión.
+El certificado CA PostgreSQL público se utiliza con TLS/hostname verificados.
+
+Se crean dos conexiones PostgreSQL dedicadas al destino exacto
+`acoyfwwmhaeruciyedri`: propietario del advisory lock de sesión y observador
+independiente READ ONLY, UTC, rollback confirmado. Una pérdida de sesión o
+rollback incierto inutiliza la capacidad: no se adquiere otra sesión para
+atribuirse una apertura anterior. El baseline exige identidad/venta/emisor1/
+catálogo2 exactos, catálogo1 histórico intacto, flags cerrados y ausencia de
+estado fiscal incompatible. Los hashes de historial/comercio pueden venir
+revisados o capturarse UNA vez en el primer preflight cerrado válido; quedan
+pinneados y registrados antes de abrir, nunca se actualizan ante drift.
+
+El journal privado append-only con fsync conserva únicamente metadata mínima,
+hashes, intentos y recibo PostgreSQL textual con microsegundos. La ACL sólo
+admite titular, SYSTEM y Administradores; se rechazan enlaces/reparse points.
+La cadena de hashes detecta corrupción, no autentica contra un editor local
+privilegiado. No borrar/reparar/truncar un journal para repetir el ensayo.
+
+### Secuencia y fallos
+
+1. Validar paquete/GO/exclusividad, conexiones, baseline, metadata de seis
+   secretos, Owner y respuesta inicial 503; revalidar antes de abrir.
+2. Registrar intento y ejecutar apertura SQL exacta UNA vez. ACK perdido:
+   reconciliar READ ONLY bajo la sesión original; conservar recibo exacto.
+3. Habilitar exclusivamente `ARCA_HOMO_BACKEND_ENABLED`,
+   `ARCA_HOMO_DATA_PREPARATION_ENABLED`, `ARCA_HOMO_PREPARATION_ENABLED`, en
+   ese orden. Cada cambio se confirma por metadata; los otros secretos y
+   flags deben permanecer intactos. Sin reintentos de escritura automáticos.
+    Si uno de esos tres flags estaba ausente, puede quedar creado en `false`
+    al cerrar; esto debe constar en la revisión del GO. No se borran secretos
+    ni se crean credenciales/custodia nuevas para restaurar una ausencia.
+4. Guardar datos explícitos, preparar una vez con UUID estable, recuperar
+   body/hash/revisión/número por lecturas y repetir recuperación con instancia
+   nueva. Una respuesta perdida no permite otro PREPARAR/LoginCms.
+5. Incluso ante fallo, cerrar PREPARATION, DATA_PREPARATION y BACKEND antes
+   del cierre SQL con recibo; verificar emisor/catálogo inactivos, historia y
+   comercio intactos, logout local y `503 HOMOLOGACION_NO_HABILITADA` final.
+
+Revocación del Owner, suspensión o vencimiento bloquean nuevas acciones, pero
+no impiden recuperar el recibo y cerrar los cambios propios mientras exista
+la exclusión original. Un timeout/ACK perdido de cierre exige lectura, nunca
+otro UPDATE ciego. Una limpieza no confirmada devuelve NOT_CONFIRMED y exige
+conciliación; jamás PASS. La pérdida del proceso/sesión no garantiza cierre
+automático ni TTL remoto: no reiniciar, reabrir o borrar historial. El timeout
+del wrapper no mata un hijo que podría seguir cerrando; informa su PID.
+
+### Inventario de este bloque
+
+SQL fiscal: **001–054**, sin migraciones nuevas. Edge: **arca-homologacion**,
+sin cambios/despliegue en este bloque. Vercel/frontend: sin flags ni deploy.
+Secretos de custodia: los **seis ya provisionados**, nombres exactos calculados
+por `custodySecretNames(credentialId, taKeyId)` e incluidos en el paquete
+público revisado; no provisión nueva. Para esta propuesta los nombres son:
+
+- `ARCA_HOMO_CREDENTIAL_9A4916D1B6B5499F98EF9F6CF79510BE_REVISION`
+- `ARCA_HOMO_CREDENTIAL_9A4916D1B6B5499F98EF9F6CF79510BE_CERT_PEM`
+- `ARCA_HOMO_CREDENTIAL_9A4916D1B6B5499F98EF9F6CF79510BE_KEY_PEM`
+- `ARCA_HOMO_CREDENTIAL_9A4916D1B6B5499F98EF9F6CF79510BE_PASSWORD`
+- `ARCA_HOMO_TA_KEY_B14101FBBA804D3FA102D2F8C96F3072`
+- `ARCA_HOMO_TA_ACTIVE_KEY_ID`
+
+Management sólo admite metadata y los
+tres flags booleanos anteriores. SEND/CONSULT/APPLY y todos los gates NC
+permanecen false/ausentes. Nombres cerrados exactos:
+`ARCA_HOMO_EMISSION_ENABLED`, `ARCA_HOMO_RECONCILIATION_ENABLED`,
+`ARCA_HOMO_REJECTION_RECOVERY_ENABLED`, `ARCA_HOMO_CREDIT_DRAFTS_ENABLED`,
+`ARCA_HOMO_CREDIT_NUMBERING_ENABLED`, `ARCA_HOMO_CREDIT_PREPARATION_ENABLED`,
+`ARCA_HOMO_CREDIT_REVIEW_ENABLED`, `ARCA_HOMO_CREDIT_SEND_ENABLED`,
+`ARCA_HOMO_CREDIT_CONSULT_ENABLED`, `ARCA_HOMO_CREDIT_APPLY_ENABLED`.
+Producción/master/merge quedan fuera. No instalación ni activación en este
+bloque local; el orden de una futura ventana es apertura SQL→tres flags→
+preparación/lecturas→flags inversos→cierre SQL→logout/probe503, sin redeploy.
+
+Pruebas locales integradas: PostgreSQL17 real, SQL001–054 y handler fiscal
+reales, CMS/custodia/TA cifrados sintéticos, Auth y ARCA simulados. Los casos
+de respuestas tardías mantienen vivo el backend de prueba tras cerrar el
+operador, para acreditar el bloqueo SQL real y no un corte de conexión.
+Esto NO acredita custodia funcional hospedada, JWT real de esta ventana,
+WSAA desde Edge, primer CAE ni aceptación comercial.
+
+Habilitar temporalmente el emisor de KioskoPOS tampoco acredita el alta del
+punto de venta en ARCA. FECompUltimoAutorizado y un cuerpo RESERVADA no prueban
+esa habilitación. El gate del primer CAE conserva esta comprobación pendiente
+y requiere revisión y GO fiscal separados, además de la aprobación exacta del
+Dueño; nunca se infiere del cierre local ni de la preparación sin emisión.
+

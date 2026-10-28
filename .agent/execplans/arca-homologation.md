@@ -1,5 +1,347 @@
 # ARCA — preparación de homologación autorizada
 
+## Secuencia vigente — instrucción del titular del 28/10/2026
+
+Esta sección ordena el trabajo pendiente; no sustituye ni borra la evidencia
+histórica inferior. Referencia local verificada: HEAD `0a5da48`, árbol limpio
+antes de esta actualización. El bloque local integrado quedó PASS según el
+cierre vigente inferior: `readyForGo=true`, `assistantReady=true` para revisión
+del paquete público v2. No hay GO de ventana ni aceptación positiva hospedada.
+
+1. **Terminar primero el bloque local completo**, sin commits intermedios:
+   operador privado, JWT sólo en memoria validado mediante `/user`, binding
+   exacto de actor/comercio/venta/emisor/catálogo, apertura única, recibo textual
+   PostgreSQL sin perder microsegundos, flags mínimos, preparación sin envío,
+   recovery/reload y cierre. Validar el ciclo integrado y fallos de identidad,
+   drift, expiración, ACK perdido, recibo incorrecto, concurrencia entre
+   asistentes/sesiones, cleanup y replay. No inferir propiedad de una apertura
+   por encontrar simplemente un binding activo coincidente tras perder el ACK:
+   la integración debe acreditar exclusión/propiedad antes de actuar o cerrar.
+   Conservar SQL v2 salvo defecto concreto demostrado por pruebas.
+2. **Cierre local único:** PostgreSQL, tests enfocados e integración, build,
+   lint, diff, límites privado/público, secret scan y archivos sensibles pasan
+   sobre el estado final. Sólo entonces un único commit final publicado puede
+   acreditar `PRIVATE_WINDOW_ASSISTANT`, `JWT_PRIVATE_FLOW`,
+   `FULL_WINDOW_INTEGRATION`, `OPEN_RECEIPT_RECOVERY`, `FAILURE_CLEANUP` PASS y
+   `POST_CLOSE_REPLAY=REJECTED`, junto con `readyForGo=true`,
+   `assistantReady=true`. Durante ese bloque `REMOTE_EXECUTED=false`,
+   `FECAESolicitar=false`, `CAE=0`; sin SQL remoto, flags, claves ni ARCA.
+3. **Bloque hospedado posterior, todavía no iniciado:** revisar el commit y
+   paquete anterior antes incluso de su preflight remoto. Comprobar READ ONLY
+   destino exacto `acoyfwwmhaeruciyedri`, emisor1/catálogo2 inactivos y vigentes,
+   catálogo1 intacto, metadata de custodia, flags reales cerrados y ausencia de
+   operación/reserva/review/intent/TA incompatibles. Preparar hashes, comandos y
+   checklist. No prolongar catálogo ni sustituir venta o UUID silenciosamente.
+4. **GO humano independiente requerido:** literalmente para la primera ventana
+   positiva de preparación en Staging SIN emisión. La nueva instrucción no es
+   ese GO. Sin él detenerse antes de habilitar emisor/catálogo/flags, preparar o
+   autenticar WSAA. No reutilizar permisos consumidos de SQL, custodia o emisor.
+5. Bajo ese GO, usar exclusivamente el paquete aprobado: Owner real, apertura
+   exacta y recibo, flags BACKEND/DATA_PREPARATION/PREPARATION únicamente,
+   datos fiscales explícitos, custodia funcional hospedada, WSAA desde Edge,
+   TA cifrado durable, FECompUltimoAutorizado, reserva/body/hash durables,
+   revisión Owner exacta y reload sin duplicar. Revisar el alcance aprobado de
+   revisión frente a aprobación: no añadir automáticamente APROBAR al paquete
+   que sólo permite REVISAR. Nunca ENVIAR, FECAESolicitar, NC ni SQL052.
+6. Cerrar PREPARATION, DATA_PREPARATION y BACKEND y confirmar flags antes del
+   SQL de cierre con el recibo exacto; conservar marca e historia. Logout local
+   y comprobación autorizada de `503 HOMOLOGACION_NO_HABILITADA`, sin debilitar
+   JWT/CORS. ACK incierto exige conciliación READ ONLY, nunca retry ciego;
+   limpieza no confirmada no es PASS. Bug remoto: cerrar primero, corregir y
+   probar localmente; no reabrir sin revisar vigencia del GO.
+7. Evidencia posterior independiente de emisor/catálogos cerrados, operación y
+   TA previstos, cero envíos/CAE/intents/candidatos/efectos caja-stock-refund y
+   secretos intactos. Sólo después, un único commit documental de cierre
+   hospedado. `READY_FOR_FIRST_EMISSION_GO=true` requiere todos sus criterios
+   reales PASS; no hereda los pases locales. Detenerse antes de la emisión,
+   que requiere otro GO fiscal específico.
+
+No se repiten provisión, CMS original ni gates cerrados sin drift. No nuevas
+migraciones/endpoints por conveniencia; sin master, merge, Production ni Vercel
+manual. La ejecución hospedada sigue pendiente y no se acredita por este plan.
+
+### Cierre integrado — evidencia vigente del 28/10/2026
+
+El asistente de terminal, paquete público, adapters privados y journal están
+integrados. Se conserva abajo el progreso previo como historial, no como lista
+actual de piezas faltantes. No hay commits intermedios. La suite global final
+v4 pasó: `assistantReady=true`, `readyForGo=true` para revisión local, sin GO
+remoto. El paquete v2 sustituye la franja vencida del primer borrador.
+
+- PostgreSQL17.11 completo: **198 PASS**, SQL001–054 y concurrencia,
+  `../positive-window-concurrency-closure-20261028.json`, SHA256
+  `d89bb665f4d3b95d63403eec5000c4a700a4e85c2a66e37706f1d5b97fb8a3d3`.
+- Ciclo real local packet→operador→HTTP→SQL→custodia sintética: **13 PASS**,
+  `../positive-window-native-current-20261028.json`, SHA256
+  `620eb7ed8a3bb1b61dfb07da8f7c8af355cdc7012586c6b7efc873e879a14797`.
+  Incluye cierre/replay, captura de baseline, ACK apertura/body/cierre,
+  concurrencia, WSAA incierto, respuestas tardías WSAA/numeración, JWT
+  vencido, revocación inmediata del Owner, suspensión y vencimiento temporal.
+  Auth/ARCA simulados; cero solicitudes externas, emisiones o CAE. Ambos
+  contenedores propios detenidos con datos sintéticos/evidencia conservados.
+- Enfocados finales: **171 PASS / 0 FAIL**, diez archivos,
+  `../positive-window-focused-closure-20261028.json`, SHA256
+  `2f1dbdbc59bb3a2035b86586ab53ed7cacdc9f22814d12312c5cfad689c3b5b0`.
+- Windows ACL real: privado aceptado, Everyone rechazado; directorios vacíos
+  propios eliminados, sin originales/credenciales/red,
+  `../positive-window-windows-acl-v2-20261028.json`, SHA256
+  `509ad5247aae60846f6ce05412876eb91378087c452ab1a3439980a59e587073`.
+- Build final v2 PASS, lint salida0 con advertencias existentes. Primer build
+  de cierre falló por mock sin `baselineMetadata`; se completó el contrato del
+  doble de prueba, sin cambiar código runtime. Bundle final:36 JS/8 símbolos
+  privados, cero coincidencias, `../positive-window-final-built-bundle-20261028.json`.
+- Escaneo de42 archivos cambiados/nuevos sin patrones de material privado ni
+  archivos sensibles nuevos; `.env.local` sin cambios Git. Repetir sobre el
+  índice definitivo tras actualizar esta documentación.
+
+Fallos conservados: la prueba de revocación posterior al COMMIT falló antes
+de separar lectura de recibo para cleanup de autorización positiva; después
+pasó en PGlite y PostgreSQL nativo. Un intento ACL de fixture mutó el mismo
+objeto SecurityDescriptor y falló por SeSecurityPrivilege; no se acreditó
+rechazo en ese intento. Se repitió con dos directorios/descriptores nuevos y
+se confirmó aceptación/rechazo, sin cambiar el helper. La primera suite
+global terminó5219 PASS/1 FAIL/1skip: paquete inválido al cambiar runtime
+durante su ejecución. Repetición enfocada estable29 PASS, sin alterar las
+aserciones; la suite global estable sigue en curso.
+
+Propuesta pública de preparación (NO ejecutada):
+`../positive-window-final-package-20261028/package.json`, SHA de paquete
+`a221df89860c777ffdb6494d459498cd96b69bdfcd82284a7b0ff93fd491c5ed`.
+Franja propuesta **28/10/2026 17:00–17:15 Argentina (20:00–20:15Z)**,
+sin programación ni autorización inferida. El paquete exige baseline cerrado
+fresco capturado antes de abrir y no reemplazable ante drift. Mantiene venta
+`08a0c5c1-974a-4219-98fe-c66b9f3cfe4d`, UUID
+`c7416ffb-65aa-47df-94a5-de8d9592989f`, Factura C11/Monotributo/CF5,
+$200/una unidad/sin envases. Si vence la franja, nueva propuesta/revisión;
+nunca prolongar catálogo2 (vence29/10 02:59Z) ni repetir LoginCms local.
+`-Preparar` validó paquete sin credenciales ni red. No ejecutar sin GO exacto.
+
+Artefactos públicos exactos en la misma carpeta: `open.sql`, `close.sql`,
+`verify.sql` y `preflight-read-only.sql` (éste sólo BEGIN RRO/SELECT/ROLLBACK,
+UTC y timeout15s; NO ejecutado remotamente). Hashes SQL revisables:
+apertura `47c36084080509972e8160632483feb13bbf5d3c954e3df859db3019459f029f`,
+cierre `da9f5e9f966e5a30b4673de82ee4a043a608580fb3567296aee8f77371388015`,
+verificador `81264720c703b7a6391750aaa29ed408fce0ce6cd1b8be7d29ff87a9fc8a8d66`.
+La aprobación debe revisar paquete/SQL, no copiar un SQL anterior vencido.
+
+Actualización posterior: la franja20:00–20:15Z venció SIN ejecución. Se
+conserva como historial y queda supersedida para revisión por
+`../positive-window-final-package-v2-20261028/package.json`, hash
+`ab5de74a21014dea3b783787ac44b2bf15b02d0dbe032f551098ea3b1fc4cc27`,
+franja propuesta28/10 **20:30–20:45 Argentina (23:30–23:45Z)**. No es GO ni
+programación. Mismos venta/UUID/datos/CUIT/PV/catálogo y frontera TA; no se
+prolongó catálogo ni se hizo autenticación ARCA. SQL exactos v2 materializados
+en esa carpeta, sin ejecutarlos: apertura
+`ccf92acca29543afe170a10662738e205d44b468677a3bb3c84be6ca3dbdd659`,
+cierre `e1272fa068f441355b67abf3276bd04ddb4ca9b2c24ffb90dcb7fced15881622`,
+verificador `f9bfd0f0b4aae622c800cda48949c984537efc9ff92642468426ec63406893fb`.
+`-Preparar` v2 PASS sin red/credenciales. El catálogo todavía debe comprobarse
+vigente y cerrado en preflight, con margen para toda la ventana.
+
+La suite global estable siguiente terminó5220 PASS/1 FAIL/1skip: timeout
+de5s durante inicialización de PGlite en el test existente de inserción de
+catálogo. Se ajustó sólo su presupuesto a30s, conservando todos los asserts.
+Se movió a un helper la limpieza con validación de ruta en los nuevos tests,
+sin quitar guardas; lint final138 advertencias/0errores, sin las dos nuevas
+advertencias de finally. Build RTK final v3 PASS. La repetición global v3
+quedó INTERRUMPIDA, sin proceso ni informe, durante el bloqueo de revisión
+automática por cuota; nunca se cuenta como PASS. Verificados handle ausente
+y ausencia de procesos Vitest antes de iniciar v4. V4 usa presupuesto general
+30s para fixtures locales, conservando límites explícitos de cada prueba;
+ninguna aserción ni control fiscal fue relajado. Resultado final pendiente.
+
+**Cierre local final:** suite v4 **5221 PASS / 0 FAIL / 1 skipped /330 archivos**,
+salida0, `../positive-window-global-closure-v4-20261028.json`, SHA256
+`9484b3fb4f98a97a9ca0f1bedb480584e7a338983d7b9801cac66dee41a86b5f`.
+La omisión se conserva como tal, no como PASS. Correcciones de tests finales:
+56 PASS/0 FAIL en dos archivos,
+`../positive-window-last-test-corrections-20261028.json`. Build/lint finales
+salida0 en `../positive-window-final-build-lint-v3-20261028.json`; lint mantiene
+138 advertencias, sin errores. No se modificó runtime tras los13 escenarios
+nativos; cambios posteriores sólo documentales y de helpers/presupuestos de
+tests. Boundary final:124 funciones fiscales privadas y13 flags ausentes de38
+assets, con RPC comercial authenticated preexistente clasificado aparte
+(`confirmar_devolucion_efectivo_piloto`, grant canónico returns003:156).
+El barrido inicial que incluyó erróneamente ese RPC público se conserva como
+hallazgo de clasificación, no como fuga fiscal ni PASS del barrido inicial.
+
+Marcadores del bloque LOCAL (no hospedado):
+
+```text
+PRIVATE_WINDOW_ASSISTANT=PASS
+JWT_PRIVATE_FLOW=PASS
+FULL_WINDOW_INTEGRATION=PASS
+OPEN_RECEIPT_RECOVERY=PASS
+POST_CLOSE_REPLAY=REJECTED
+FAILURE_CLEANUP=PASS
+POSTGRESQL=PASS
+TESTS_FOCUSED=PASS
+TESTS_GLOBAL=PASS_WITH_1_SKIPPED
+BUILD=PASS
+LINT=PASS_WITH_138_WARNINGS
+BUNDLE_PRIVATE_BOUNDARY=PASS
+SECRET_SCAN=PASS
+assistantReady=true
+readyForGo=true
+REMOTE_EXECUTED=false
+FECAESolicitar=false
+CAE=0
+```
+
+FAILURE_CLEANUP incluye el reporte explícito NOT_CONFIRMED cuando se pierde
+exclusión/conectividad y no se puede probar cierre; no promete cierre automático
+tras un crash. JWT_PRIVATE_FLOW acredita el operador local con Auth simulada;
+no sustituye Owner real/custodia/TA/WSAA/Edge positivos hospedados pendientes.
+Escaneo final de los43 archivos exactos del índice: evidencia externa
+`../positive-window-final-staged-scan-v2-20261028.json`; sin credenciales,
+archivos sensibles ni exports privados nuevos. Diff check PASS. No originales,
+credenciales reales, SQL/flags/secretos remotos, Vercel, Production ni merge.
+
+Siguiente gate, sólo después de publicar el único commit: preflight remoto
+READ ONLY del paquete v2, evidencia de metadata/estado y revisión/GO humano
+exacto de ventana. No abrir automáticamente. Si vence23:45Z, conservar este
+paquete como historial y preparar otra propuesta revisada, sin extender
+catálogo2. PR02–PR11/P01–P24 y objetivo común continúan pendientes/activos;
+impresora/Point diferidos y restauración integral sin habilitar. El pase local
+no habilita `READY_FOR_FIRST_EMISSION_GO` ni autorización de envío.
+
+La rama master local preexistente es `41bebe9` (inventario F6); origin/master
+y base del PR son `03a798f`. Ninguna se modificó. PR #3 comprobado abierto,
+Draft, mergeable, sin merge y HEAD remoto `0a5da48` antes de la publicación
+única pendiente. No confundir base remota con el checkout master local.
+
+`REMOTE_EXECUTED=false`, `FECAESolicitar=false`, `CAE=0`, sin cambios remotos,
+flags, secretos, originales ARCA, Vercel, Production ni merge. La custodia
+funcional hospedada y preparación positiva real siguen PENDIENTES. Consulta
+el protocolo/inventario actualizado en `docs/arca-homologacion.md`.
+
+### Historial del bloque local — componentes inicialmente sin commit
+
+Implementados `scripts/fiscal-preparation-session.mjs`,
+`scripts/fiscal-private-owner-session.mjs` y `scripts/fiscal-preparation-flags.mjs`,
+sus declaraciones y pruebas sintéticas. Todavía no son un asistente ejecutable:
+falta integrar los adapters privados reales, captura de credenciales en terminal,
+preflight exacto bajo exclusión, journal/recibo durable, llamadas limitadas a las
+acciones del paquete, recovery de datos/body y protocolo de cierre/final503.
+No usar estos módulos sueltos como autorización o como operador remoto.
+
+PostgreSQL17.11: 198 escenarios PASS, incluidos los dos nuevos de sesión; cero
+solicitudes fiscales externas/emisiones, contenedor propio detenido/datos
+conservados. Evidencia `../positive-window-session-native-final-20261028.json`,
+SHA256 `c3c87a159a5d9d1fb8ab49ac7af263b25cf335c09b66ac31ead3be876d961044`.
+El intento anterior quedó FAIL con cleanup confirmado: el escenario de replay
+nuevo omitía los GUC de aprobación en su segunda conexión. Se corrigió el
+fixture, sin alterar SQL aprobado, y se repitió el ensayo completo ya terminado.
+
+Fallos locales conservados: primer build rechazó el tipo inferido del mock,
+corregido con retorno explícito. Dos ejecuciones del CLI de propuesta agotaron
+el límite de arranque de diez segundos bajo carga; se conserva ejecución
+acotada de treinta segundos, se comprueba el error del proceso hijo y no cambia
+ninguna aserción de UUID/no-sobrescritura. No es un gate de latencia comercial.
+El cierre final del paquete aún requiere suite/integración completas sobre su
+estado definitivo; los pases de componentes no sustituyen ese gate.
+
+Validación actual de componentes: 105 PASS / 0 FAIL en cinco archivos,
+`../positive-window-operator-components-final-tests-20261028.json`; build PASS
+`../positive-window-operator-components-final-build-20261028.log`; lint sin
+errores y con warnings existentes, `../positive-window-operator-components-lint-final-20261028.log`.
+Diff check PASS. Escaneo acotado de patrones sensibles sobre los nueve archivos
+nuevos PASS; no equivale al escaneo final completo del paquete/commit. Los tres
+componentes son privados y no están integrados ni exportados al frontend.
+No se ejecutaron credenciales/JWT reales, Management, SQL remoto ni ARCA.
+
+Integración local posterior, todavía sin commit: `fiscal-positive-preparation-flow.mjs`
+regenera el paquete contra su hash aprobado, compara el contexto completo,
+conserva UUID, exige journal previo a cada intento y recupera por resolución/
+revisión, sin repetir POST ni PREPARAR/WSAA después de incertidumbre. Verifica
+body/hash/número y journal en reload. `fiscal-positive-window-journal.mjs`
+implementa creación exclusiva, append+fsync, cadena de hashes, esquemas mínimos,
+recibo textual y secuencia flags-cierre SQL-logout-probe. No guarda respuestas
+Auth/HTTP ni secretos. Rechaza truncado/corrupción sin reparar o sobrescribir;
+STOP impide nuevos intentos y permite cleanup. El padre privado/ACL y propiedad
+remota todavía deben acreditarse en el operador: un journal no es autoridad.
+
+El puerto privado Owner ahora admite sólo los cinco comandos exactos revisados.
+Los copia ANTES de revalidar Auth para evitar mutación durante el await. Nunca
+APROBAR/ENVIAR/CONCILIAR/APLICAR. Incluye probe cerrado con `{}` y logout seguido
+de probe con JWT retenido sólo dentro de la función y descartado al terminar:
+si gateway responde401 en vez de503, se declara fallo, sin refresh/fallback ni
+debilitar JWT. El 503 posterior a logout sigue por acreditar hospedado. Tiempo
+acotado PREPARAR60s frente a Auth15s para permitir WSAA+WSFE+escrituras; no es
+garantía de quiescencia de una solicitud remota incierta. El ciclo integral debe
+demostrar también la seguridad ante actividad Edge en vuelo durante el cierre.
+
+131 PASS / 0 FAIL en siete archivos: `../positive-flow-journal-final-v2-tests-20261028.json`.
+Build PASS `../positive-flow-journal-final-v2-build-20261028.log`.
+Se conserva un fallo previo de fixture integrado: el servidor sintético miraba
+su journal viejo en memoria después de sustituir el puerto por el journal real.
+Ahora sus aserciones leen el puerto durable, sin relajar ninguna comprobación.
+Estos pases cubren componentes y flujo+journal, NO el ciclo total de ventana:
+faltan adapters DB/Management/terminal, preflight fresco exacto, orquestador de
+apertura/flags/preparación/cierre, pruebas integrales de todos los fallos y
+validación final completa. No publicar commit parcial ni declarar GO-ready.
+
+Avance posterior del mismo bloque SIN COMMIT: el núcleo
+`fiscal-positive-window-operator.mjs` integra sesión exclusiva, journal, Owner,
+baseline fresco antes del SQL, recibo, flags mínimos, preparación, nueva instancia
+de recovery, cierre flags antes de SQL, logout y probe503. Devuelve fallo y
+necesidad de conciliación si algo queda incierto; no reabre ni repite escrituras.
+14 escenarios de ciclo local con DB/HTTP sintéticos PASS, incluidos ACK perdido
+en apertura/datos/body/cierre/flags y cleanup fallido, corte de sesión y cierre
+tras expiry o revocación del Owner. Esto NO acredita todavía el ciclo nativo.
+
+Adapters implementados: Management fijo a Staging admite GET metadata y POST de
+sólo tres booleanos; verifica seis nombres originales/revisión1/selector TA por
+digests, sin valores ni reprovisión. Conector PostgreSQL fijo al session pooler
+5432 del Staging, dos conexiones dedicadas, TLS/CA/hostname obligatorios, sin
+URL/argv/env para credenciales ni retry. Sus pruebas usan transportes falsos,
+no conexiones hospedadas ni credenciales reales.
+
+`fiscal-positive-window-database.mjs` implementa las lecturas independientes RRO
+con ROLLBACK confirmado, snapshot máximo30s, binding completo y sello dentro de
+la ventana aprobada. Un ROLLBACK no confirmado invalida permanentemente ese
+observador: nunca reutilizar su posible snapshot viejo. Cuenta todos los estados
+fiscales relevantes y rechaza envíos/CAE/NC/reviews inesperados. Comprueba TA sólo
+por estado/huella/vencimiento/cipher-presente, sin seleccionar el cipher. Hashes
+de historial y datos comerciales deben prepararse/pinnearse en UTC, igual que
+el lector; no mezclar hashes calculados con timezone local. SQL de escritura
+debe ser idéntico al generado, sin comandos arbitrarios. Cierre conserva marca
+y prueba que el baseline anterior ya no sirve para reabrir.
+
+Pruebas DB: definiciones de tablas y CHECKs canónicos ejecutados en PGlite,
+sin funciones fiscales completas ni afirmar instalación SQL001–054 por este
+ensayo. Se corrigió el extractor de tablas del fixture para no absorber funciones
+posteriores cuando `);` queda en la última línea. Se cargaron validadores CHECK
+reales y se calculó la evidencia de referencia con timezone UTC; no se quitaron
+restricciones. Nueve pruebas SQL PASS antes del último caso añadido para fallo
+de ROLLBACK; la repetición enfocada final y build/lint están en ejecución.
+Se conservan los fallos anteriores de fixture y los errores TS de tipos de mock/
+resultado corregidos, sin presentar esos intentos como PASS.
+
+Repetición final de esta etapa: 169 PASS / 0 FAIL en diez archivos (incluye el
+observador invalidado tras ROLLBACK incierto),
+`../positive-window-integrated-adapters-v3-final-tests-20261028.json`.
+Build PASS `../positive-window-integrated-adapters-v3-final-build-20261028.log`;
+lint sin errores/con warnings existentes,
+`../positive-window-integrated-adapters-v3-final-lint-20261028.log`.
+Estos resultados sustituyen el estado "en ejecución" anterior para los
+componentes actuales, no el gate de cierre integral todavía pendiente.
+
+Pendiente para cerrar el bloque: paquete/entrada de terminal privada y su
+captura STDIN, integración del núcleo con los adapters reales, ensayo nativo
+completo y de fallos/concurrencia/in-flight, suite final, inventarios/hashes y
+revisión del diff/secretos/bundle. `assistantReady=false`, `readyForGo=false`.
+No se ejecutó ninguna ventana remota, cambio de flags real, credencial, ARCA,
+CAE, merge ni cambio Production. Mantener todos los cambios sin commit hasta
+cerrar el bloque completo y producir su único commit final.
+
+La franja propuesta anteriormente (28/10 15:10–15:25Z) ya no debe ejecutarse si
+venció. Una nueva propuesta revisada debe conservar UUID/identidad y revalidar
+baseline, vigencia de catálogo y todos los hashes antes de solicitar GO. No se
+extiende una fecha ni se hace LoginCms para facilitar la planificación.
+`assistantReady=false`, `readyForGo=false`, `REMOTE_EXECUTED=false`,
+`FECAESolicitar=false`, `CAE=0`; sin commits intermedios ni cambios remotos.
+
 ## Objetivo y autorización
 El usuario amplió expresamente el alcance a AFIP/ARCA y eligió primero
 homologación. Informó que necesita preparar certificado y autorización WSASS.

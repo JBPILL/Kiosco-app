@@ -7,6 +7,15 @@ pendiente describen aquella ejecución, no el estado actual.
 
 ## Production Readiness — gates permanentes (20/10/2026)
 
+Actualización de orden del 28/10/2026: el operador de preparación fiscal se
+cierra primero como bloque local único; después preflight hospedado y GO
+independiente para ventana positiva SIN emisión. Consultar el ExecPlan fiscal
+y el protocolo existente en `docs/arca-homologacion.md`. PR03 sigue parcial
+hasta aceptación real; PR02 requiere primer CAE y otro GO. Los controles
+locales/sintéticos no acreditan esos gates. No nuevas migraciones por
+conveniencia, provisión repetida, emisión, Production ni merge. El objetivo
+PR01–PR11/P01–P24 y los diferimientos de impresora/Point siguen vigentes.
+
 Este registro es la fuente canónica de las puertas de aceptación del piloto y de
 su futura salida productiva. Se incorpora por instrucción expresa del titular.
 Complementa P01–P24 y los ExecPlans existentes; no elimina decisiones, resultados

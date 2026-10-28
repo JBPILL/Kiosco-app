@@ -10,6 +10,7 @@ import { createCustodyProvisionPlan, custodyPlanHash } from '../fiscal-custody-p
 import { planInactiveFiscalIssuer } from '../plan-fiscal-issuer.mjs'
 import { planFiscalParameters } from '../plan-fiscal-parameters.mjs'
 import { planFiscalPreparationToggle } from '../plan-fiscal-preparation-toggle.mjs'
+import { acquirePreparationSession } from '../fiscal-preparation-session.mjs'
 import { positivePlanFixture } from '../../src/test/fixtures/fiscalPositivePlan.ts'
 
 if (!process.argv.includes('--run-local')) throw new Error('Usar --run-local para crear un contenedor de ensayo aislado.')
@@ -1895,6 +1896,59 @@ try {
     assert.equal((await w.watch.query('SELECT count(*)::int n FROM fiscal_operaciones_homologacion')).rows[0].n,0)
     const replay=await capture(w.second.query(w.plan.activationSql));assert.match(replay.error?.message??'',/WINDOW_BINDING_CHANGED/);await w.second.query('ROLLBACK')
     cases.push('ventana_cerrada_otra_sesion_sin_operacion_no_reabre_plan')
+  }
+  {
+    const w=await windowFixture('kiosko_window_session_ack')
+    const binding={projectRef:w.config.projectRef,planSha256:w.plan.data.manifest.planSha256,operationId:w.config.operationId}
+    const session=await acquirePreparationSession(w.first,binding)
+    // Different plan/UUID still contends on the SAME project-wide session lock.
+    await assert.rejects(acquirePreparationSession(w.second,{...binding,planSha256:'f'.repeat(64),operationId:randomUUID()}),/WINDOW_SESSION_BUSY/)
+    let calls=0
+    const result=await session.openOnce(async()=>{
+      calls++;await w.first.query(w.plan.activationSql)
+      throw Error('Synthetic ACK loss AFTER committed opening, original session retained')
+    },async()=>{
+      const results=await w.watch.query(w.plan.verificationSql)
+      const verified=results.flatMap(result=>result.rows).find(row=>row.verification)?.verification
+      assert.equal(verified.read_only,'on');assert.equal(verified.issuer_enabled,true);assert.equal(verified.catalog_enabled,true)
+      assert.equal(verified.enabled_issuers,1);assert.equal(verified.enabled_catalogs,1);assert.equal(verified.operations_for_sale,0)
+      return {planSha256:verified.plan_sha256,operationId:verified.operation_id,openedAt:verified.opened_at}
+    })
+    assert.equal(calls,1);assert.equal(result.reconciled,true)
+    const openedAt=(await w.watch.query('SELECT actualizado_en::text AS value FROM fiscal_emisores_homologacion')).rows[0].value
+    // Compare in PostgreSQL without converting the receipt to JS Date.
+    assert.equal((await w.watch.query('SELECT $1::timestamptz=$2::timestamptz AS exact',[result.receipt.openedAt,openedAt])).rows[0].exact,true)
+    await assert.rejects(session.releaseAfterClosed(async()=>false),/WINDOW_SESSION_CLEANUP_NOT_CONFIRMED/)
+    await session.assertHeld()
+    await w.first.query("SELECT set_config('kioskopos.window_opened_at',$1,false)",[result.receipt.openedAt]);await w.first.query(w.plan.closureSql)
+    await session.releaseAfterClosed(async()=>{
+      const row=(await w.watch.query('SELECT (SELECT count(*) FROM fiscal_emisores_homologacion WHERE habilitado)+(SELECT count(*) FROM fiscal_parametros_homologacion WHERE habilitado) AS enabled')).rows[0]
+      return row.enabled==='0' // No remote flags in this synthetic fixture.
+    })
+    await assert.rejects(session.openOnce(async()=>{calls++},async()=>result.receipt),/WINDOW_OPEN_REPLAY_REJECTED/)
+    assert.equal(calls,1)
+    const next=await acquirePreparationSession(w.watch,binding)
+    await w.watch.query("SELECT set_config('kioskopos.window_target','acoyfwwmhaeruciyedri',false),set_config('kioskopos.window_plan',$1,false)",[binding.planSha256])
+    const replay=await capture(w.watch.query(w.plan.activationSql));assert.match(replay.error?.message??'',/WINDOW_BINDING_CHANGED/);await w.watch.query('ROLLBACK')
+    await next.releaseAfterClosed(async()=>true)
+    cases.push('asistente_sesion_excluye_otro_plan_ACK_abierto_recuperado_cierre_y_replay_rechazado')
+  }
+  {
+    const w=await windowFixture('kiosko_window_session_lost')
+    const binding={projectRef:w.config.projectRef,planSha256:w.plan.data.manifest.planSha256,operationId:w.config.operationId}
+    const session=await acquirePreparationSession(w.first,binding)
+    let reads=0
+    await assert.rejects(session.openOnce(async()=>{
+      await w.first.query(w.plan.activationSql);await w.first.end()
+      throw Error('Synthetic ACK loss including original session loss')
+    },async()=>{reads++;throw Error('Must not claim ownership from matching active state')}),/WINDOW_SESSION_OWNERSHIP_LOST/)
+    assert.equal(reads,0)
+    assert.equal((await w.watch.query('SELECT habilitado FROM fiscal_emisores_homologacion')).rows[0].habilitado,true)
+    // The guard deliberately does not close metadata without ownership. Only
+    // this isolated test fixture cleans its own synthetic rows after assertion.
+    const receipt=(await w.watch.query('SELECT actualizado_en::text AS value FROM fiscal_emisores_homologacion')).rows[0].value
+    await w.second.query("SELECT set_config('kioskopos.window_opened_at',$1,false)",[receipt]);await w.second.query(w.plan.closureSql)
+    cases.push('asistente_ACK_sin_sesion_no_se_apropia_ni_cierra_ventana_coincidente')
   }
   const version=(await observer.query('SHOW server_version')).rows[0].server_version
   assert.equal(transportErrors.length,0,'No aceptar un ensayo con conexiones perdidas.')
