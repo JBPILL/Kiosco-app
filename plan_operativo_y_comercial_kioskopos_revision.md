@@ -1065,3 +1065,14 @@ Preparada revisión (sin crear) de token sóloStaging/24h/Edge Function Secrets
 Read-write. Valor y creación final a cargo titular; luego diagnóstico GET antes
 de otra provisión. No se modificaron tokens existentes ni secretos/flags/ARCA.
 PR03 sigue parcial. Evidencia/limitación de identidad PAT en ExecPlan.
+
+
+27/10/2026: CLOSED_CUSTODY_PROVISION_METADATA PASS real. Operador confirmó6nuevos
+digests contra valores en memoria, previos intactos/flags cerrados; UI independiente
+confirma6nombres,12customsecrets/6previos iguales, revision/selector TA públicos
+coincidentes. JWT ON y Edge503HOMOLOGACION_NO_HABILITADA posteriores. No valores
+revelados ni CMS original repetido. GO6valores consumido; no repetir carga.
+Custodia funcional Edge/cacheTA/emisor/catálogo/aceptación positiva/primer CAE
+siguen pendientes. Próximo local: emisor inactivo revisable, luego catálogo/TA
+coordinados y sus GO. No flags/ARCA/SQL/Edge/Vercel/Production/merge por este cierre.
+Evidencia y límites en ExecPlan; PR03 parcial, sin nueva suite/build documental.

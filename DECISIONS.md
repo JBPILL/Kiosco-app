@@ -898,3 +898,14 @@ Secrets Read-write y dejar Create token/valor al titular. Sin editar/revocar
 tokens existentes ni ampliar Legacy/Production. La capacidad proveedor incluye
 DELETE, pero código conserva GET/POST y seis nombres exactos. Primero diagnóstico
 readonly; no inferir éxito de provisión de la configuración de acceso preparada.
+
+
+### 27/10/2026 — Cerrar sólo provisión por metadatos, no custodia funcional
+Operador real y UI independiente acreditan6secretos, previos intactos, revision/
+selector públicos y flags cerrados; JWT ON/Edge503 posteriores. Consumir el GO
+de6valores, no repetir carga/prueba original o rotar. Denominar el resultado
+CLOSED_CUSTODY_PROVISION_METADATA PASS: el backend cerrado no importó/probó la
+clave ni acreditó TA/cache. Emisor/catálogo/activación/ARCA conservan sus gates.
+Guardar sólo resultados públicos y fuente/hora exactas; no hashes de contraseña
+ni reconstruir mediciones tras reinicio de herramientas. Siguiente propuesta
+de emisor inactivo no instala datos sin revisión/GO propios.

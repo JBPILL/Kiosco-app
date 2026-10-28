@@ -3533,3 +3533,47 @@ en prompt del diagnóstico; enviar únicamente CUSTODY_BASELINE_*. No repetir
 Provisionar antes de PASS/revisión. Sin token creado, permisos persistidos,
 secretos/flags/SQL/Edge/Vercel/ARCA/CAE/Production nuevos por este bloque.
 Cambio sólo documental/inspección UI:143tests/build previos no repetidos.
+
+
+#### Provisión cerrada real acreditada por metadatos — 27/10/2026
+Titular creó el token correcto y confirmó:
+CUSTODY_BASELINE_PASS count=13 flags_closed=true private_read=false
+write_attempted=false. Después, bajo GO6valores ya otorgado, ejecutó el operador:
+CUSTODY_PROVISION_METADATA_PASS count=6 flags_closed=true functional=false
+edge_check=REQUIRED. El código publicado verifica todos los nuevos digests en
+memoria contra su entrega privada y conserva el inventario previo antes de emitir
+ese marcador. No conservar ni solicitar esos digests/valores en el chat.
+
+Verificación UI independiente21:38:13.427Z: customsecrets12, seis nombres de la
+propuesta presentes; seis previos coinciden con baseline anterior en memoria.
+Digest público de revision1 y selector UUID TA coinciden;13flags cerrados por
+validador estricto, sin valores revelados. No nueva lectura de originales ni CMS.
+JWT del Edge ON (también reobservado tras reinicio del runtime navegador).
+Probador oficial posterior a provisión: POST{} con OriginStaging devuelve
+503HOMOLOGACION_NO_HABILITADA. No se activó backend/datos/send/consult/apply.
+
+Un cambio de herramientas reinició el runtime y descartó bindings/tab5 antes de
+persistir el informe. No se repitió provisión ni se reconstruyeron digests
+privados. JSON conserva explícitamente la hora/fuente de las observaciones
+anteriores reales; no presenta una medición recreada como nueva. JWT fue observado
+nuevamente en sesión vigente; captura muestra el switch ON, no secretos.
+../fiscal-custody-provision-closed-pass-20261027.json SHA256
+358059c8ef75d8bf19787a4b8d5ea169e568483c0acaade2a2f7e8b01a279f56.
+Captura ../fiscal-custody-provision-jwt-20261027.png, sin claves/digests privados.
+
+CLOSED_CUSTODY_PROVISION_METADATA=PASS; GO6valores consumido. No volver a cargar,
+leer/probar originales, sobrescribir ni generar otro keyring. Esto NO cierra
+custodia funcional Edge, cache/TA compartido, emisor/representación, catálogo
+activo/vigente, aceptación positiva hospedada o primer CAE. No WSAA/WSFE,
+Token/Sign/CAE nuevos por este bloque, ni SQL/Edge/Vercel/Production/merge.
+No pruebas/build nuevos: cambio documental con evidencia hospedada;143tests/
+build del código73b8574 mantienen su alcance, no se simula suite nueva.
+
+Primer trabajo local siguiente: propuesta de metadatos de emisor INACTIVO ligada
+al comercio aislado/credencial/huella/revisión de esta provisión y PV explícito,
+con precondiciones de identidad/estado/baseline y revisión humana antes de su GO.
+Tabla005 existe; no inferir permiso INSERT/activación del GOsecretos. Coordinar
+catálogo vigente y TA (vigencia conocida previa hasta28/10 02:49:53.999Z, TA
+descartado; no LoginCms nuevo por inferencia). Catálogo1 inactivo vence27/10
+21:59Z; no prolongarlo ni activarlo como atajo. Datos IVA fiscales explícitos y
+casos envase descontado siguen con gates propios; PR03 parcial y PR02 sin CAE.

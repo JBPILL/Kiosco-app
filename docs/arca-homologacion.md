@@ -1570,3 +1570,21 @@ paso y conserva valor sólo en consola privada. Permiso proveedor agrupa
 GET/POST/DELETE de secretos; asistente no usa DELETE ni otros nombres.
 Primero repetir sólo -DiagnosticarInventario con token correcto y compartir
 CUSTODY_BASELINE_*; no ejecutar provisión aún. Custodia hospedada sigue pendiente.
+
+
+### Seis secretos instalados; cierre por metadatos PASS — 27/10/2026
+Tras corregir capacidad del PAT, el operador confirmó baselinePASS y
+CUSTODY_PROVISION_METADATA_PASS count=6 flags_closed=true functional=false.
+Verificación independiente:6nombres esperados presentes (12customsecrets totales),
+6previos intactos en comparación de memoria, revision1/selector TA coincidentes
+por digests de datos públicos,13flags cerrados. Sin revelar valores ni nueva
+lectura/prueba del original. JWT ON y probador Edge POST{}OriginStaging503
+HOMOLOGACION_NO_HABILITADA. Evidencia/hashes y fuentes exactas en ExecPlan.
+
+Provisión cerrada/metadatos PASS; no repetir asistente -Provisionar ni usar su
+GO para otra carga, rotación o lectura original. Los fallos READ_PIPE/HTTP403
+anteriores conservan historia y no invalidan este cierre posterior.
+Custodia FUNCIONAL desde Edge, keyring/TA compartidos y emisor no acreditados
+por presencia de secretos. Preparar propuesta de emisor inactivo y catálogo/TA
+coordinados, sin activar flags ni LoginCms/WSFE/CAE por este GO ya consumido.
+No SQL/Edge/Vercel/Production/merge nuevos. PR03 sigue parcial.
