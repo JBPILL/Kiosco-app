@@ -204,3 +204,56 @@ PR03 (backend seguro e idempotencia fiscal) debe prepararse antes de emitir.
 - Keep the scope and validation proportional to the change, and follow project instructions such as `AGENTS.md` and `RTK.md`.
 - Update the plan when scope, decisions, risks, or implementation progress materially changes.
 - Record non-trivial architectural or domain decisions in `DECISIONS.md` when applicable; the plan is not a substitute for that record.
+
+## Seguimiento operativo del objetivo común — 28/10/2026
+
+El titular pidió un objetivo persistente para seguir el plan sin cabos sueltos.
+Se creó objetivo activo de hilo que conserva TODO PR01–PR11/P01–P24; no sustituye
+ni reduce el objetivo común anterior a la próxima prueba fiscal. Este archivo
+conserva prioridad/criterios; matriz canónica y ExecPlans conservan sus evidencias.
+
+### Primer resultado requerido: candidato de aceptación positiva hospedada
+
+Partir de4629a60. Custodia metadata, SQL001–054, emisor1 inactivo y catálogo2
+inactivo son gates históricos acreditados: no repetirlos sin evidencia de drift.
+El titular confirmó explícitamente MONOTRIBUTO, FacturaC tipo11 y ConsumidorFinal
+condición5. No inferir de esto autorización de activación, consulta o emisión.
+
+- [x] Registrar selección fiscal explícita del titular.
+- [x] Catálogo2 inactivo instalado, revisión1 intacta, emisor1 inactivo.
+- [ ] Identificar venta exacta de ensayo completada/elegible, sin envase reconocido,
+  sin CAE/devoluciones; fijar UUID durable antes de cualquier solicitud.
+- [ ] Completar DTO: concepto, documento, importes, fecha, moneda/cotización y
+  ausencia explícita de desglose IVA/tributos para C; validar con contrato vigente.
+  Cada valor propuesto debe quedar visible para revisión, no como default legacy.
+- [ ] Paquete exacto: hashes/baselines, SQL habilitación y cierre CAS, verificadores,
+  comandos privados, flags reales y orden, ventana máxima15min, responsables.
+- [ ] Probar expiración postlocks, drift, duplicación, cierre/recuperación y
+  preservación de historial con PostgreSQL canónico; tests/lint/build/bundle/diff
+  pertinentes. No convertir un test local en aceptación hospedada.
+- [ ] Revisión/GO específico del titular para ejecutar la ventana; mantener envío,
+  conciliación/aplicación y operaciones comerciales fuera si no están autorizadas.
+- [ ] Ejecución positiva hospedada con JWT Owner real, custodia/keyring/TA y
+  preparación/revisión exacta; evidencia de reload/ACK perdido y cierre posterior.
+
+Temporalidad verificada: TA del diagnóstico descartado vence28/10 15:06:15.411Z
+(12:06:15 Argentina); catálogo2 vence29/10 02:59Z (28/10 23:59 Argentina).
+No LoginCms Edge antes del vencimiento conocido, no extender catálogo manualmente.
+Si una ventana/propuesta vence, revisar el material público y evidencia fresca
+necesarios; no repetir secretos, compatibilidad CMS ni gates cerrados por rutina.
+
+### Regla de cierre de cada bloque y del objetivo
+
+Cada pendiente debe tener estado, evidencia/commit, límite de la prueba, siguiente
+acción y dependencia (código, entorno, GO o dato del titular). Una casilla sólo se
+cierra con evidencia del MISMO alcance. WRITE incierto => STOP/reconciliar, no retry.
+No abandonar una prueba viva por timeout de observación; continuar su mismo handle.
+No abrir trabajo cosmético/independiente para evitar un blocker de la ruta crítica.
+
+Después de aceptación positiva: PR03 => PR02 primerCAE autorizado y recuperado;
+luego PR04–PR09 con fallos/contingencias/integridad/seguridad/backup-restore/DR/
+concurrencia/E2E reales. PR10 y PR11 requieren sus gates propios. Auditoría final
+requisito por requisito sobre la matriz original, sin redefinir éxito por lo ya
+implementado. Impresora/cajón/Point siguen diferidos hasta cliente/hardware; no
+ocultar esos diferidos al evaluar preparación comercial. Objetivo permanece activo,
+no completado por este registro. Master/Production/merge fuera del alcance actual.

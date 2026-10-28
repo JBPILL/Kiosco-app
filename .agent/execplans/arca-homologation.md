@@ -3923,3 +3923,14 @@ no ejecutada; EMISSION/RECONCILIATION/CREDIT_SEND/CONSULT/APPLY cerrados.
 SinFECAESolicitar/stock/caja/refund/reposición/SQLnuevo/Edge/Vercel/master/
 Production/merge. FechaTAycatálogo nuevas reemplazan sólo pendientes de ventana,
 no borran decisiones ni evidencia histórica.
+
+### 28/10/2026 — Objetivo persistente y selección fiscal confirmada
+Titular confirmó emisor MONOTRIBUTO, Factura C11 y receptor Consumidor Final5.
+Registrar como decisión explícita, no como GO para activar/emitir. Se creó objetivo
+activo de hilo manteniendo alcance completoPR01–PR11/P01–P24. Seguimiento detallado
+con criterios de cierre en .agent/PLANS.md, sección28/10; no nuevo plan paralelo.
+Próximo pendiente: identificar venta elegible/UUID y DTO fiscal completo; preparar
+paquete exacto de habilitación/cierre verificable y pedir GO sólo al estar listo.
+No ejecución de flags/SQL/ARCA/operaciones comerciales por esta confirmación.
+TA descartado vence28/10 15:06:15.411Z; catálogo2 vence29/10 02:59Z. Custodia
+funcional/aceptación positiva/primerCAE siguen pendientes, no marcar como PASS.
