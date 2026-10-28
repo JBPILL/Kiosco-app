@@ -1149,3 +1149,27 @@ Propuesta v3/fe1ddc2 sigue candidata sin instalar; requiere GO propio para inser
 una sola fila revision1/habilitado=false, con validación nuevamente bajo locks.
 Este preflight no acredita emisor habilitado, representación, custodia funcional,
 catálogo vigente, aceptación positiva ni CAE. master/Production/merge intactos.
+
+### 27/10/2026 — GO emisor INACTIVO ejecutado y verificado
+GO específico del titular: sólo emisor inactivo y verificación. Propuesta v3
+f1f8ef656ba5f2ced2cc52a8e2b99d83c2cf624d0dbaaa39c98c95c72a7912b7,
+SQL SHA256 2cd371db17034db2c271f052f3741e54797183001808e43baa763076bea00a9e.
+Destino Dashboard verificado acoyfwwmhaeruciyedri; respaldo actualizado validado.
+Un solo intento de escritura: SQL revisado byte-equivalente, precedido únicamente
+por set_config destino/hash aprobados. Guards revalidan identidad/estado/locks/
+vigencia/RLS/grants. Sin reintento del INSERT ni upsert/activación.
+SELECT independiente READ ONLY/ROLLBACK posterior: issuer_rows=1,
+exact_inactive_rows=1 (comercio aislado, CUIT20415005963, PV2, credencial/huella
+revisados, revision1, habilitado=false); enabled_issuers=0, enabled_catalogs=0,
+operations=0, ta_rows=0. SQL054 posterior READ ONLY/ROLLBACK:126/41/41,
+problem_count=0. GO consumido: no volver a insertar ni habilitar por inferencia.
+Evidencia ../inactive-issuer-installed-20261027.json y PNG; cierre completo en
+../inactive-issuer-installed-postcheck-20261027.json. Sin acceso a originales o
+secretos, flags, WSAA/WSFE/CAE, SQL nuevo/Edge/Vercel, master/Production/merge.
+No suite/build nuevos por cambio exclusivamente documental y ejecución ya
+ensayada: 188 PostgreSQL/63 relacionados/build previos mantienen su alcance local.
+INACTIVE_ISSUER_INSTALLED=PASS, no emisor funcional/representación/aceptación.
+Siguiente gate pendiente: renovar catálogo público vencido mediante propuesta y
+consultas autorizadas, coordinar TA y activación controlada; no autenticar local
+ni descartar TA sin plan de ventana para aceptación hospedada. PR03 parcial,
+primer CAE PR02 pendiente. El permiso de alta inactiva no autoriza esos pasos.
