@@ -3872,3 +3872,54 @@ No inventar reutilización hospedada ni ampliar SQL/Edge para bootstrap por ataj
 Consultas autorizadas aún NO ejecutadas; GO renovación sigue disponible, no pedirlo
 otra vez. Emisor inactivo/flags/Edge cerrados conservan último estado verificado;
 no se reabren gates cerrados. Master/Production/merge intactos.
+
+### 28/10/2026 — Renovación real autorizada y catálogo revisión2 instalado INACTIVO
+Retomado después de vencimiento TA anterior. Una sola invocación real del diagnóstico
+aprobado: LoginCms1 PASS, FEParamGetTiposIva1 PASS (6),
+FEParamGetCondicionIvaReceptor1 PASS (11), sin retries/otros métodos ni emisiones.
+FirmaTRA necesaria para LoginCms; no repetir ensayo criptográfico de compatibilidad.
+TA sólo memoria/descartado; vencimiento nuevo28/10 15:06:15.411Z =12:06:15 Argentina.
+No LoginCms Edge antes de esa hora por inferencia ni afirmar cache hospedado probado.
+Originales sólo lectura mínima para autenticación autorizada, sin rotación/provisión.
+Evidencia pública ../arca-catalogo2-20261028-eaf29218286f4e089f23639fb3a3f29a/.
+IVA archivo SHA2563914b70e4ae5e539c5cb814af8a0cc05827a1d34ebc11c33a6886945050a5a7c;
+condiciones449476904996e192a5e6d02c4038e7a66c7f9f9efe365b12a50b0539f9f675f3.
+Sin Token/Sign/XML crudo almacenados. ClasesA1/B6/C11, ALEY/49 excluidas.
+
+Baseline real catálogo1 leído READ ONLY/ROLLBACK y capturado como JSON público,
+SHA25698eb938b15ecd6ff97fd15ecbbdea759275ca5be5c7f0bbbf2e6a63455cde896.
+Propuesta ../catalogo2-propuesta-20261028/, revision2/habilitado=false,
+planSHA2569dc10970bf2436aba7e354c6591864996125e5982a8c9919d12def81cc3685e3,
+SQLSHA25686f2c75f4c198aa854727fa38ff03a28d0073909bc38cd8335766a6e72192095.
+Vence29/10 02:59Z =28/10 23:59 Argentina; no vigencia prolongada de1.
+Propuesta con evidencia real ejecutada primero en PGlite/DDL canónico/trigger:
+historia equivalente,2inactivo y replay rechazado PASS; informe
+../catalogo2-propuesta-validada-local-20261028.json. Suite192PostgreSQL/96tests/build
+cerrada en58d5b11 conserva alcance; no suite global nueva por operación remota.
+
+GO del adjunto consumido: SQL exacto un solo intento de instalación en Staging,
+con settingdestino/hash verificados, sin UPSERT/UPDATE1 ni nuevas activaciones.
+Verificación independiente READ ONLY/ROLLBACK: revision1_unchanged=true,
+revision2_exact=1, catalog_rows2, enabled_catalogs0, issuer_inactive1,
+enabled_issuers0, operations0, CAE0, NC_CAE0, TA_DB0. No confundir TA local conDB.
+SQL054 posterior126/41/41,problem_count0. Evidencias
+../catalogo2-staging-installed-20261028.json/.png y
+../catalogo2-staging-postchecks-20261028.json. V1 intacta,2no volver a insertar.
+
+Metadatos Dashboard posteriores:13flags cerrados (BACKENDfalse,12ausentes),
+JWT ON. Test oficial POST{}+Origin sinAuth devolvió401UNAUTHORIZED_NO_AUTH_HEADER,
+NO503: no afirmar nuevo cierre funcional observado. Showanon entrega publishable,
+noJWTanon legacy; no usar Addsecretkey ni service_role enbrowser. Se conserva503
+histórico previo, no se reabre gate sólo por acumulación. Flags metadata verifica
+cierre actual, no reemplaza prueba funcional503 conJWTválido si siguienteGO la exige.
+Error transitorio Dashboard failedfetch resolvió al cargar metadata; no cambiarJWT
+por switchvacío duranteloading. No secretos/PAT/claveprivada vistos ni agregados.
+
+CATALOGO_REVISION_2_INSTALADO=PASS; habilitado=false, emisorfalse,
+FLAGS_POSITIVOS cerrados; aceptación positiva/CUSTODIA_FUNCIONAL/CAE pendientes.
+Paquete positivo existente aún requiere fijar venta/operación eIVA/receptor por
+Owner y GO separado para habilitación/consultas específicas. Propuesta de ventana
+no ejecutada; EMISSION/RECONCILIATION/CREDIT_SEND/CONSULT/APPLY cerrados.
+SinFECAESolicitar/stock/caja/refund/reposición/SQLnuevo/Edge/Vercel/master/
+Production/merge. FechaTAycatálogo nuevas reemplazan sólo pendientes de ventana,
+no borran decisiones ni evidencia histórica.
