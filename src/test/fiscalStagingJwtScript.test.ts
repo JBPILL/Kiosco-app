@@ -68,18 +68,34 @@ public class MockHttpException : Exception {
       }
       function global:Invoke-WebRequest {
         param([switch]$UseBasicParsing,$Method,$Uri,$Headers,$ContentType,$Body,$MaximumRedirection,$TimeoutSec)
-        if(${quote(mode)} -like 'access-*' -or ${quote(mode)} -like 'isolation-*'){
+        if(${quote(mode)} -like 'access-*' -or ${quote(mode)} -like 'isolation-*' -or ${quote(mode)} -like 'restore-*'){
           if($Uri -notlike 'https://acoyfwwmhaeruciyedri.supabase.co/*' -or $MaximumRedirection -ne 0 -or $Headers.Authorization -cne ('Bearer '+${quote(token)})){throw 'Unsafe access probe'}
           $global:events.Add(@{kind='access';method=$Method;uri=$Uri;body=$Body;redirects=$MaximumRedirection})
           if($Uri -like '*/auth/v1/user'){
             return @{StatusCode=200;Content=$(if(${quote(mode)} -in @('access-identity','isolation-viewer-identity')){'{"id":"bad"}'}else{'{"id":"11111111-1111-1111-1111-111111111111"}'})}
           }
           if($Uri -like '*/rest/v1/usuarios?*'){
-            $role=if(${quote(mode)} -in @('access-cashier','isolation-cashier','isolation-viewer-cashier')){'CAJERO'}elseif(${quote(mode)} -eq 'access-viewer' -or (${quote(mode)} -like 'isolation-viewer-*' -and ${quote(mode)} -ne 'isolation-viewer-owner')){'VISOR'}else{'DUE'+[char]0xD1+'O'}
-            $active=${quote(mode)} -notin @('access-inactive','isolation-viewer-inactive')
-            $super=${quote(mode)} -in @('access-superadmin','isolation-viewer-superadmin')
-            $kiosk=if(${quote(mode)} -like 'isolation-*' -and ${quote(mode)} -notlike '*wrong-scope'){'b7254826-c767-4098-94b8-71013c12021d'}else{'22222222-2222-2222-2222-222222222222'}
+            $role=if(${quote(mode)} -in @('restore-cashier','access-cashier','isolation-cashier','isolation-viewer-cashier')){'CAJERO'}elseif(${quote(mode)} -eq 'access-viewer' -or (${quote(mode)} -like 'isolation-viewer-*' -and ${quote(mode)} -ne 'isolation-viewer-owner')){'VISOR'}else{'DUE'+[char]0xD1+'O'}
+            $active=${quote(mode)} -notin @('restore-inactive','access-inactive','isolation-viewer-inactive')
+            $super=${quote(mode)} -in @('restore-superadmin','access-superadmin','isolation-viewer-superadmin')
+            $kiosk=if(${quote(mode)} -match '^(isolation|restore)-' -and ${quote(mode)} -notlike '*wrong-scope'){'b7254826-c767-4098-94b8-71013c12021d'}else{'22222222-2222-2222-2222-222222222222'}
             return @{StatusCode=200;Content=(@(@{rol=$role;activo=$active;es_superadmin=$super;kiosco_id=$kiosk})|ConvertTo-Json -Compress)}
+          }
+          if(${quote(mode)} -like 'restore-*'){
+            if($Method -ne 'POST' -or $Uri -cne 'https://acoyfwwmhaeruciyedri.supabase.co/rest/v1/rpc/capacidades_restauracion_backup'){throw 'Unexpected restore route'}
+            if(${quote(mode)} -eq 'restore-network'){throw ${quote(password)}}
+            $k=($Body|ConvertFrom-Json).p_kiosco_id
+            if($k -ceq '00000000-0000-0000-0000-000000000000'){
+              if(${quote(mode)} -eq 'restore-foreign-open'){return @{StatusCode=200;Content='{}'}}
+              throw (New-Object MockHttpException(403,'{"code":"42501"}'))
+            }
+            if($k -cne 'b7254826-c767-4098-94b8-71013c12021d'){throw 'Unexpected restore scope'}
+            if(${quote(mode)} -eq 'restore-cashier'){throw (New-Object MockHttpException(403,'{"code":"42501"}'))}
+            if(${quote(mode)} -eq 'restore-owner-denied'){throw (New-Object MockHttpException(403,'{"code":"42501"}'))}
+            if(${quote(mode)} -eq 'restore-malformed'){return @{StatusCode=200;Content='{}'}}
+            $v=@{version=1;kiosco_id=$k;modulos=@('contactos','producto_proveedor','lotes')}
+            if(${quote(mode)} -eq 'restore-wrong-modules'){$v.modulos=@('contactos')}
+            return @{StatusCode=200;Content=($v|ConvertTo-Json -Compress)}
           }
           if(${quote(mode)} -like 'isolation-*'){
             if($Method -ne 'GET'){throw 'Isolation cannot POST'}
@@ -116,7 +132,7 @@ public class MockHttpException : Exception {
         if(${quote(mode)} -eq 'unclosed'){return @{StatusCode=400;Content='{"codigo":"SOLICITUD_INVALIDA"}'}}
         throw (New-Object MockHttpException($(if(${quote(mode)} -eq 'jwt401'){401}else{503})))
       }
-      & ${quote(script)} ${mode === 'prepare' ? '-Preparar' : mode === 'isolation-viewer-conflict' ? '-ComprobarAislamientoVisor -ComprobarAccesos' : mode.startsWith('access-') ? '-ComprobarAccesos' : mode.startsWith('isolation-viewer-') ? '-ComprobarAislamientoVisor' : mode.startsWith('isolation-') ? '-ComprobarAislamiento' : ''}
+      & ${quote(script)} ${mode === 'restore-conflict' ? '-ComprobarCapacidadRestauracion -ComprobarAccesos' : mode.startsWith('restore-') ? '-ComprobarCapacidadRestauracion' : mode === 'prepare' ? '-Preparar' : mode === 'isolation-viewer-conflict' ? '-ComprobarAislamientoVisor -ComprobarAccesos' : mode.startsWith('access-') ? '-ComprobarAccesos' : mode.startsWith('isolation-viewer-') ? '-ComprobarAislamientoVisor' : mode.startsWith('isolation-') ? '-ComprobarAislamiento' : ''}
       $code=$LASTEXITCODE
       [IO.File]::WriteAllText(${quote(record)},(@{prompts=$global:prompts;events=@($global:events.ToArray())}|ConvertTo-Json -Depth 5))
       exit $code
@@ -215,3 +231,23 @@ it.skipIf(process.platform !== 'win32').each(['ok', 'publishable', 'jwt401', 'un
   if (mode === 'ok') expect(r.output).toContain('JWT_GATEWAY_PASS_BACKEND_CLOSED alg=ES256')
   if (mode === 'jwt401') expect(r.output).toContain('JWT_GATEWAY_REJECTED alg=ES256')
 }, 60000)
+
+it.skipIf(process.platform !== 'win32').each(['owner','cashier','inactive','superadmin','wrong-scope','owner-denied','foreign-open','malformed','wrong-modules','network','conflict'])('restore capability %s only calls STABLE read RPC and logs out', suffix => {
+  const r = run('restore-' + suffix)
+  expect(r.status, r.output).toBe(['owner','cashier'].includes(suffix) ? 0 : 1)
+  for (const secret of [password,token,r.key,'SYNTHETIC_REFRESH']) expect(r.output).not.toContain(secret)
+  const events = r.report.events as {kind:string;method?:string;uri?:string;body?:string}[]
+  if (suffix === 'conflict') { expect(events).toEqual([]); expect(r.report.prompts).toBe(0); return }
+  expect(events.at(-1)?.kind).toBe('logout')
+  const posts = events.filter(e => e.kind === 'access' && e.method === 'POST')
+  expect(posts.length).toBeLessThanOrEqual(2)
+  for (const post of posts) {
+    expect(post.uri).toBe('https://acoyfwwmhaeruciyedri.supabase.co/rest/v1/rpc/capacidades_restauracion_backup')
+    expect(Object.keys(JSON.parse(post.body!))).toEqual(['p_kiosco_id'])
+  }
+  expect(events.some(e => ['wait','gateway'].includes(e.kind))).toBe(false)
+  if (['owner','cashier'].includes(suffix)) {
+    expect(posts).toHaveLength(2)
+    expect(r.output).toContain('RESTORE_CAPABILITY_READ_OBSERVED')
+  } else expect(r.output).not.toContain('RESTORE_CAPABILITY_READ_OBSERVED')
+},60000)

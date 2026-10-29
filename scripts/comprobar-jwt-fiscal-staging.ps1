@@ -1,4 +1,4 @@
-param([switch]$Preparar, [switch]$ComprobarAccesos, [switch]$ComprobarAislamiento, [switch]$ComprobarAislamientoVisor)
+param([switch]$Preparar, [switch]$ComprobarAccesos, [switch]$ComprobarAislamiento, [switch]$ComprobarAislamientoVisor, [switch]$ComprobarCapacidadRestauracion)
 $ErrorActionPreference = 'Stop'
 $target = 'https://acoyfwwmhaeruciyedri.supabase.co'
 $origin = 'https://kiosco-app-staging.vercel.app'
@@ -148,6 +148,29 @@ function Test-SalesIsolation {
     if ($again.Count -ne 1 -or $again[0].id -cne $ownId -or $again[0].kiosco_id -cne $ownKiosk) { throw 'RLS_POSITIVE_RECHECK_FAILED' }
     Write-Host ('RLS_SALES_READ_ISOLATION_OBSERVED role=' + $actor.Role + ' own=1 foreign=0 positive_recheck=1. Requiere revalidar existencia ajena independientemente; no acredita RLS completo ni E2E fiscal.')
 }
+function Test-RestoreReadCapability {
+    $actor = Get-TestActor
+    $ownKiosk = 'b7254826-c767-4098-94b8-71013c12021d'
+    if ($actor.Kiosk -cne $ownKiosk) { throw 'RESTORE_TEST_SCOPE_REQUIRED' }
+    # STABLE read-only RPC only. Never call any restaurar_* mutation.
+    $path = '/rest/v1/rpc/capacidades_restauracion_backup'
+    $own = Invoke-AccessProbe $path 'POST' ('{"p_kiosco_id":"' + $ownKiosk + '"}')
+    if ($actor.Role -ceq 'OWNER') {
+        if ($own.Status -ne 200) { throw 'RESTORE_OWNER_READ_NOT_CONFIRMED' }
+        $data = $own.Content | ConvertFrom-Json
+        $modules = @($data.modulos)
+        if ($data.version -cne 1 -or $data.kiosco_id -cne $ownKiosk -or
+            $modules.Count -ne 3 -or ($modules -join ',') -cne 'contactos,producto_proveedor,lotes') { throw 'RESTORE_CAPABILITY_UNEXPECTED' }
+    } else {
+        $data = $own.Content | ConvertFrom-Json
+        if ($own.Status -ne 403 -or $data.code -cne '42501') { throw 'RESTORE_CASHIER_DENIAL_NOT_CONFIRMED' }
+    }
+    # Sentinel is deliberately nonexistent: proves scope rejection, not foreign-row RLS.
+    $other = Invoke-AccessProbe $path 'POST' '{"p_kiosco_id":"00000000-0000-0000-0000-000000000000"}'
+    $data = $other.Content | ConvertFrom-Json
+    if ($other.Status -ne 403 -or $data.code -cne '42501') { throw 'RESTORE_SCOPE_DENIAL_NOT_CONFIRMED' }
+    Write-Host ('RESTORE_CAPABILITY_READ_OBSERVED role=' + $actor.Role + ' own=' + $(if ($actor.Role -ceq 'OWNER') {'200'} else {'403'}) + ' other=403 mutation=false. No acredita restore ni RLS integral.')
+}
 function Test-ReadAccess {
     $actor = Get-TestActor
     $role = $actor.Role
@@ -171,6 +194,7 @@ function Test-ReadAccess {
     throw 'BASE_WINDOW_NOT_OBSERVED'
 }
 try {
+    if ($ComprobarCapacidadRestauracion -and ($Preparar -or $ComprobarAccesos -or $ComprobarAislamiento -or $ComprobarAislamientoVisor)) { throw 'EXCLUSIVE_TEST_MODE_REQUIRED' }
     if ($ComprobarAccesos -and $ComprobarAislamiento) { throw 'EXCLUSIVE_TEST_MODE_REQUIRED' }
     if ($ComprobarAislamientoVisor -and ($Preparar -or $ComprobarAccesos -or $ComprobarAislamiento)) { throw 'EXCLUSIVE_TEST_MODE_REQUIRED' }
     if ($Preparar) {
@@ -207,7 +231,11 @@ try {
         $header = Read-JwtPart ($token.Split('.')[0])
         $algorithm = [string]$header.alg; $header = $null
         if ($algorithm -notin @('ES256','RS256','HS256')) { throw 'JWT_ALGORITHM_UNEXPECTED' }
-        if ($ComprobarAislamientoVisor) {
+        if ($ComprobarCapacidadRestauracion) {
+            $step = 'capacidad restauracion solo lectura'
+            Test-RestoreReadCapability
+            $result = 0
+        } elseif ($ComprobarAislamientoVisor) {
             $step = 'aislamiento lectura ventas Visor'
             Test-SalesIsolation -OnlyViewer
             $result = 0

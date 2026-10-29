@@ -339,3 +339,21 @@ no autoriza restaurar datos ni ampliar funciones. PR07 sigue PARCIAL: falta
 aceptacion con JWT/RLS reales de estos contratos y restore aislado autorizado,
 Storage/copia externa/DR. Preparar primero el ensayo exacto y reversible;
 no inferir autorizacion de mutaciones comerciales a partir de este GO.
+
+
+### Asistente de aceptacion READ ONLY de contratos — 29/10
+
+Modo -ComprobarCapacidadRestauracion preparado en el asistente JWT existente:
+identidad Auth/perfil activo ordinario y comercio aislado, consulta STABLE
+capacidades_restauracion_backup, Dueno exige200/version1/modulos exactos,
+Cajero exige403/42501, sentinel ajeno exige403/42501. Maximo dos consultas
+fijas, sin restaurar_* ni Edge/flags/ARCA. El sentinel no acredita existencia
+ajena ni aislamiento RLS de filas. Logout de esta sesion scope=local.
+64 pruebas sinteticas PASS/0FAIL/0skip (11 nuevas), errores de red, rol/scope,
+metadata y modos incompatibles incluidos; ../backup-capability-helper-tests-20261029.json.
+Build final PASS689, lint enfocado y diff PASS. La suite global5310 corresponde
+al bloque c0c0fef anterior, no a este incremento del asistente. No se ejecuto
+login real ni se uso password/clave de chat. Proximo paso: operador local del
+Dueno y Cajero con credenciales ingresadas por titular, solo esta consulta;
+no activa interfaz ni acredita restauracion/comercial/DR. GO de instalacion
+consumido, no autoriza ninguna restauracion.
