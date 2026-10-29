@@ -314,3 +314,28 @@ Próximo gate: revisión y GO específico para instalar este paquete exclusivame
 en Staging acoyfwwmhaeruciyedri. UI integral bloqueada, sin flags/Edge/Vercel,
 ARCA/CAE, master, merge o Production. Restore real, Storage y copia externa
 siguen pendientes; PR07 no cerrado.
+
+
+### GO e instalacion de contratos PR07 — 29/10/2026 23:01Z
+
+Titular: GO solo contratos y verificacion en Staging. Aplicado UNA vez el
+paquete v2 aprobado f3d91990 / SQL25919dda, commit fuente c0c0fef.
+Preflight inmediato23:00:31Z READ ONLY: identidad correcta, cuatro funciones
+ausentes, cero sobrecargas. Una transaccion con pre/postchecks y COMMIT.
+Verificacion independiente23:01:21Z READ ONLY/ROLLBACK: identity_fuse=true,
+public_overloads=4, cuatro funciones presentes y metadata_matches=true.
+Esto comprueba cuerpo SHA256, firma/argumentos, owner postgres, SECURITY DEFINER,
+search_path, retorno, volatilidad y ACL: authenticated puede ejecutar, anon y
+service_role no. Los RPC mantienen la autorizacion de Dueno en servidor.
+Evidencias: ../backup-contracts-install-authorized-attempt-20261029.json,
+../backup-contracts-install-go-preflight-20261029.json y
+../backup-contracts-installed-verified-20261029.json; captura
+../backup-contracts-installed-20261029.png. Sin reintentos ni restore ejecutado.
+
+Estado: pilot-backup001-003 INSTALADOS/METADATA PASS solo en Staging
+acoyfwwmhaeruciyedri. No se modificaron datos comerciales, flags, Edge, Vercel,
+ARCA, master o Production. UI integral sigue bloqueada. Este GO queda consumido;
+no autoriza restaurar datos ni ampliar funciones. PR07 sigue PARCIAL: falta
+aceptacion con JWT/RLS reales de estos contratos y restore aislado autorizado,
+Storage/copia externa/DR. Preparar primero el ensayo exacto y reversible;
+no inferir autorizacion de mutaciones comerciales a partir de este GO.
