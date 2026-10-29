@@ -6,6 +6,16 @@ An ExecPlan is a living document: create it before implementation, update **Prog
 
 ## Objetivo común vigente — cierre del desarrollo y Production Readiness
 
+Preparación independiente PR07 del29/10: preflight hospedado READ ONLY confirma
+ausentes las4RPC de supabase/pilot-backup/001–003 (no son SQL fiscal001–054).
+Etapa de respaldo AntesContratosRestauracion preparada con controles actuales,
+sin reutilizar rótulos pre054/pre-emisor ni heredar su GO. Sólo código/pruebas
+locales; no backup real, instalación, restore ni habilitación integral autorizados
+por este avance. Matriz corrige P15 (archivos reales verificados, DR pendiente)
+y distingue anulación histórica Quilmes614a2e8c del artículo de ensayo b7254826.
+43 pruebas enfocadas y preparación local sin conexión PASS; global5294 de f9fa861
+conserva su alcance anterior, no se presenta como nueva suite de este incremento.
+
 Cierre local PR06/dependencias29/10: dompurify3.4.17 y undici8.12.3, sólo lock,
 sin cambios de rangos directos/scripts. Auditoría actual0; global final5294 PASS/
 0 FAIL/1 omisión histórica/332 archivos y cobertura completa de testfiles.

@@ -1,6 +1,6 @@
 # KioskoPOS — revisión del plan operativo y comercial
 
-**Estado actualizado: 21/10/2026.** Implementación en curso. El registro siguiente
+**Última revisión: 29/10/2026 (seguimiento inicial actualizado el 21/10).** Implementación en curso. El registro siguiente
 es el resumen vigente; la evaluación original del 05/10 y las notas de avance
 del final se conservan como historial. Sus conteos y menciones de publicación
 pendiente describen aquella ejecución, no el estado actual.
@@ -107,6 +107,16 @@ por el titular hasta contar con cliente; no se consideran probados ni aprobados.
 
 ### Siguiente acción autorizada
 
+Estado vigente29/10: SQL **supabase/pilot-fiscal/001–054**, Edge cerrada, custodia
+por metadatos y emisor inactivo ya acreditados; no repetir instalación/provisión.
+El titular difiere la renovación ARCA a otra mañana sin fecha. No hay GO para la
+propuesta30/10 ni consulta programada. Preparar PR07 de forma independiente:
+preflight READ ONLY29/10 confirma ausentes las4RPC de **supabase/pilot-backup/001–003**;
+esa familia no está incluida en el GO SQL fiscal. Hace falta respaldo actual,
+revisión y GO propios antes de instalar; UI integral/restore siguen bloqueados.
+
+Secuencia original de diseño conservada, no orden de repetir gates cerrados:
+
 PR01 completado mediante WSAA y FEParamGetTiposCbte reales. Continuar PR02
 preparando primero PR03: custodia privada y permisos por comercio, operación
 fiscal durable con cuerpo inmutable, reserva de numeración y reconciliación
@@ -119,7 +129,7 @@ sin acreditarse; no crear puntos en Producción como atajo para homologación.
 
 ## Registro de tareas pendientes
 
-**Seguimiento del registro: 20/10/2026.** Envases/Devoluciones se implementaron
+**Seguimiento inicial: 20/10/2026; revisión del registro: 29/10/2026.** Envases/Devoluciones se implementaron
 con módulos transaccionales y aceptación backend en Staging; el usuario da por
 aceptados los ajustes visuales. Se continúa P22/P23 con preparación de puesto
 persistente. El operador confirma sesión conservada tras cerrar y reabrir Staging.
@@ -146,7 +156,7 @@ efectos. Alcance y límites: `.agent/execplans/pilot-checkout-recovery-acceptanc
 | P02 | 1 · Seguridad | Comprobar permisos con sesiones reales | Probar API/PostgREST con JWT de cajero, dueño y otro comercio: costos privados, cambios/anulación de ventas y escritura directa. No ampliar permisos para obtener un resultado verde. |
 | P03 | 1 · Seguridad | Aceptar operativamente el paso 52 | Catálogo remoto confirmado; falta demostrar INSERT directo rechazado para cajero y checkout por backend funcionando después de instalarlo. |
 | P04 | 1 · Seguridad | Completar pruebas de supervisor | Rechazo de PIN incorrecto y venta con PIN correcto ya informados; faltan concurrencia, espera/límites de intentos, permiso ligado a solicitud original y usos restantes en el piloto. |
-| P05 | 1 · Seguridad | Cerrar aceptación de anulación atómica | Diagnóstico remoto confirma trigger antiguo que duplicó reposición: aplicar fase actualizada y conciliar la unidad extra antes de aceptar el caso efectivo. También faltan pago mixto, fiado, caja original cerrada, lotes y reintento concurrente en Supabase real. |
+| P05 | 1 · Seguridad | Cerrar aceptación de anulación atómica | Incidente histórico ef754442/Quilmes del comercio 614a2e8c: retirada del trigger y compensación aún sin aceptación remota documentada; exige revalidar origen/estado antes de otra propuesta. No es el artículo del ensayo b7254826 ya ajustado a1 unidad. También faltan pago mixto, fiado, caja original cerrada, lotes y reintento concurrente. No ejecutar la reparación histórica en Staging por inferencia. |
 | P06 | 1 · Seguridad | Aceptar devoluciones transaccionales y conciliar historia | Backend/formulario atómicos e idempotentes implementados y ensayados en Staging. Interfaz aceptada por el usuario. Quedan conciliación de tickets/saldos antiguos y aceptación operativa; integración/Production mantienen gate separado. Cuenta corriente y pagos mixtos diferidos; tickets con envases sólo completos y Dueño. |
 | P07 | 1 · Auditoría | Definir retención y operación de auditorías | Establecer responsables, acceso, conservación y comprobación remota de precio, descuento, anulación y apertura manual del cajón. |
 | P08 | Checkout | Validar pérdida de conexión y dos equipos | Staging/JWT real: corte controlado de socket tras primer commit, recuperación y reintentos simultáneos con una venta/pago/detalle; stock físico conservado. Faltan cancelación concurrente y dos terminales físicas; peticiones HTTP no sustituyen esa prueba. Evidencia en pilot-checkout-recovery-acceptance.md. |
@@ -156,7 +166,7 @@ efectos. Alcance y límites: `.agent/execplans/pilot-checkout-recovery-acceptanc
 | P12 | 2 · Periféricos | Probar lector, balanza y cámara móvil | Ensayar dispositivos reales, Safari/iOS, cancelar/reabrir, permisos y entrada manual de peso. |
 | P13 | 3 · Respaldo | Confirmar migraciones de respaldo vigentes | Snapshot 4.0 disponible y conteos coherentes con JWT Dueño real en Staging; 113 pruebas locales de respaldo PASS. Falta verificar configuración/relaciones/recetas con datos representativos y equivalencia SQL de pasos 49–50; colecciones vacías no acreditan esos casos. Git push no aplica SQL. |
 | P14 | 3 · Respaldo | Restaurar una copia real en entorno aislado | Catálogo y promociones strict ensayados con JWT Dueño en Staging: exportar/cifrar/descifrar y restaurar 10 productos, 1 categoría, 4 tipos de promoción y 1 receta con pesable; repetición sin duplicar. Origen interactivo intacto y fixtures suspendidos. UI integral sigue bloqueada; faltan clientes/saldos/proveedores/lotes/asociaciones y configuración representativa. Ver pilot-backup-promotions-relations.md. |
-| P15 | 3 · Respaldo | Completar respaldo de base y recuperación | Probar pg_dump/pg_restore real y Storage; cubrir historial de ventas/caja y módulos excluidos del JSON operativo. |
+| P15 | 3 · Respaldo | Completar respaldo de base y recuperación | Archivos PostgreSQL reales de Staging y roles sin passwords verificados por SHA/TOC el27/10; incluye copia previa al emisor con SQL054 esperado. Falta restauración medida/conciliada, Storage físico, cifrado y destino externo; archivo verificado no equivale a DR probado. Conservar historia de ventas/caja y módulos excluidos del JSON operativo. |
 | P16 | 3 · Respaldo | Automatizar copias externas y retención | Definir destino, cifrado, programación, rotación y alertas; copia IndexedDB y recordatorio no sustituyen esta estrategia. |
 | P17 | 3 · Respaldo | Comprobar fallos de almacenamiento y cierre | Piloto con cuota agotada, perfil borrado, descarga fallida y cierre pendiente; el respaldo no debe alterar la caja. |
 | P18 | 4 · Mermas | Validar operaciones remotas concurrentes | Comprobar FEFO, lote específico, costos históricos, idempotencia, cancelación y conciliación de stock contra kardex. |

@@ -1,6 +1,16 @@
 # Restauración de contactos, saldos y lotes del piloto
 
 ## Estado
+
+Preflight hospedado29/10/2026,21:52:46Z: las cuatro firmas y cualquier sobrecarga
+pública de estos contratos están ausentes. Consulta REPEATABLE READ READ ONLY,
+ROLLBACK; no llamadas de restauración ni modificaciones. Evidencia
+../backup-contracts-readonly-preflight-20261029.json SHA256
+8680c4e4b5bf16766931c7b613694d676da8eba6df25e65cc330c85a282a324f.
+SQL001–054 acreditado pertenece a pilot-fiscal, no a estos tres archivos.
+Antes de una instalación nueva se necesita backup privado actual/revisión/GO;
+el modo -AntesContratosRestauracion prepara esa etapa sin conceder autorización.
+
 Preparado localmente. No instalado en Staging ni Production. La interfaz integral
 permanece bloqueada; REEMPLAZO tampoco se habilita. El ensayo anterior de catálogo
 y promociones no prueba estos nuevos contratos.

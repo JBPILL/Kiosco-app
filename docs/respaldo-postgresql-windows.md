@@ -1,5 +1,34 @@
 # Respaldo PostgreSQL desde Windows
 
+## Etapa vigente de preparación — contratos de restauración, 29/10/2026
+
+Staging ya dispone del bloque fiscal001–054 y un emisor inactivo. Los nombres
+pre-fiscal/pre054/pre-emisor conservan sus usos históricos; para preparar una
+copia nueva previa a los contratos de restauración usar el modo específico:
+
+```powershell
+powershell -NoProfile -File ".\scripts\respaldar-staging-privado.ps1" -AntesContratosRestauracion -Preparar
+```
+
+Desde el repositorio, esta preparación sólo comprueba cliente/CA y devuelve la
+etapa; no solicita contraseña, no exporta y no conecta a PostgreSQL. Crear la
+copia real retirando -Preparar requiere el alcance/autorización correspondiente
+y contraseña sólo en la consola privada. No compartirla en el chat.
+
+El archivo nuevo usa carpeta única pre-contratos-restauracion-*, con dump/roles
+sin passwords y manifiestos SHA256, ACL privadas y TLS verify-full. Exige las41
+tablas fiscales y la función/ACL existentes en el TOC. El contexto identifica
+BEFORE_BACKUP_RESTORE_CONTRACTS y el módulo propuesto, sin heredar el antiguo
+approved_sql_commit9054cce. Esperar SQL054 no prueba equivalencia del esquema;
+fiscal_schema_equivalence_proven=false y restore_executed=false se conservan.
+Tampoco acredita presencia/ausencia de los4RPC: requiere preflight independiente.
+No instala contratos, habilita UI, restaura ni incluye secretos Management o
+archivos físicos de Storage. Ningún GO fiscal previo autoriza esos pasos.
+
+Copias reales anteriores verificadas27/10 (según ExecPlan fiscal): archivo y
+roles/checksums/TOC PASS. No repetir esas copias ni declarar restore/DR probado
+por sus manifiestos. La historia de fallos y etapas anteriores se conserva abajo.
+
 El script anterior prefería `supabase db dump` sin solicitar datos y podía
 anunciar una copia completa con sólo estructura. La documentación de Supabase
 distingue esquema y `--data-only`:

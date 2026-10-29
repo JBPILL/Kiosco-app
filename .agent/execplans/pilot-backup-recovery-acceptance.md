@@ -1,5 +1,45 @@
 # Respaldo y recuperación del piloto (20/10/2026)
 
+## Revisión vigente PR07/P13–P15 — 29/10/2026
+
+Cierre local del incremento:43 PASS/0 FAIL/0 omitidas en tres archivos de pruebas
+Windows (asistente privado, exportador y verificación de integridad), Docker y
+contraseña simulados. Evidencia ../backup-contracts-preparation-tests-20261029.json
+SHA2567fa7172962c84e4e69ea4373e3cf530e1c2e361e17ef661afc22c1a00cd893da.
+Modo -AntesContratosRestauracion implementado: contexto de etapa correcto, sin
+approved_sql_commit antiguo; etapas combinadas rechazadas antes del prompt,
+TOC incompleto/ACL ausente no producen contexto confirmado. TLS/CA readonly,
+stdin secreto, roles sin passwords y entorno restaurado conservados.
+Preparación real LOCAL con -Preparar exit0: cliente/CA disponibles, sin prompt,
+dump ni conexión PostgreSQL. Log ../backup-contracts-local-preflight-20261029.log
+SHA256e14731551944d12db4a10317fe9195cdf5af0162c4fd746c94f3dd56cadbad89.
+Build689 exit0 (../backup-contracts-preparation-build-20261029.log), lint enfocado
+y diff PASS. La global5294PASS/1skip de f9fa861 es evidencia anterior,
+no una suite global nueva de este cambio; los SQL de restauración no cambiaron.
+Respaldo REAL actual, revisión/GO de instalación y aceptación siguen pendientes.
+
+Lectura hospedada REPEATABLE READ READ ONLY/ROLLBACK,21:52:46Z: no existen las
+cuatro firmas ni otras sobrecargas públicas de restaurar_contacto_backup,
+restaurar_producto_backup, restaurar_lote_backup y capacidades_restauracion_backup.
+Evidencia ../backup-contracts-readonly-preflight-20261029.json. No se ejecutaron
+RPC, restauración, SQL DML/DDL ni cambios de flags. SQL fiscal001–054 instalado
+no incluye supabase/pilot-backup/001–003: son módulos y autorizaciones distintos.
+
+Antes de proponer instalación falta una copia privada actual identificada para
+este gate. Los modos del asistente sólo describen pre-fiscal, pre054 y pre-emisor;
+no reutilizar una etiqueta histórica que no representa la nueva operación.
+Preparar -AntesContratosRestauracion: archivo/roles/checksums/ACL/TLS y TOC fiscal
+existentes, etapa nueva, sin afirmar equivalencia de esquema, presencia/ausencia
+de RPC, instalación o restore. Rechazar combinaciones de etapas antes del prompt.
+Pruebas Windows con Docker/contraseña sintéticos; no solicitar ni leer secretos
+reales. Preparación local sólo cliente/CA, sin exportar ni conectar a PostgreSQL.
+Después revisar paquete, backup real y GO antes de instalar contratos; aceptación
+integral/UI sigue bloqueada. No reutilizar un GO fiscal ni activar nada en remoto.
+
+P15 ya tiene archivos PostgreSQL reales verificados27/10 (TOC/dump/roles/SHA),
+según ExecPlan fiscal; faltan restore medido, Storage físico, cifrado y externo.
+No presentar toda la fase como PASS ni volver a crear copias cerradas sin drift.
+
 ## Objetivo
 Avanzar P13/P14 tras los ensayos de recuperación de cobros, sin confundir el
 snapshot operativo con un respaldo PostgreSQL completo. Impresora y Point
