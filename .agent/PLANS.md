@@ -6,6 +6,15 @@ An ExecPlan is a living document: create it before implementation, update **Prog
 
 ## Objetivo común vigente — cierre del desarrollo y Production Readiness
 
+Cierre local PR06/dependencias29/10: dompurify3.4.17 y undici8.12.3, sólo lock,
+sin cambios de rangos directos/scripts. Auditoría actual0; global final5294 PASS/
+0 FAIL/1 omisión histórica/332 archivos y cobertura completa de testfiles.
+Build689 y lint exit0 (138 advertencias en archivos no modificados). Se conserva
+una caída CLR del primer intento y recheck22PASS; ver ExecPlan fiscal/hashes.
+Parche local no despliega ni acredita RLS/custodia funcional o cierre PR06.
+Titular difiere consultas ARCA a otra mañana sin fecha; propuesta30/10 sin GO,
+sin ejecución ni programación. Replanificar sólo cuando indique disponibilidad.
+
 29/10 PR06/P02: corregida omisión de es_superadmin en el diagnóstico de costos
 Cajero (71 pruebas enfocadas/build PASS). Existencia de filas privadas confirmada
 por lectura independiente; no aceptación JWT nueva. Visor inactivo por cierre

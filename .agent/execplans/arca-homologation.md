@@ -2,6 +2,79 @@
 
 ## Secuencia vigente — instrucción del titular del 28/10/2026
 
+### 29/10/2026 — PR06: cierre local de dependencias
+
+Cierre global final69628 exit0:5294 PASS/0 FAIL/1 skipped/332 archivos.
+Se contrastaron todos los332 testfiles registrados: missing=[]. Informe
+../pr06-dependency-closure-global-v2-20261029.json SHA256
+6b6d82cd2209d127695e823333e18067f097f951d24bfd21c43cf2441236170b.
+Supera los estados EN CURSO inferiores sin borrar la primera caída CLR ni el
+recheck aislado. Misma fuente y maxWorkers2, sin supresiones ni cambio de timeout.
+Auditoría0, build689, lint exit0/138 advertencias y bundle36/0 hits examinados.
+Única omisión histórica F6 reviewed942 sigue omitida, no PASS. Parche listo para
+publicación en Draft; no acredita aceptación hospedada ni cierra PR06/PR03.
+
+Auditoría npm actual:2 paquetes con avisos, dompurify crítico y undici alto.
+Árbol instalado: jspdf4.2.1→dompurify3.4.16 y jsdom30.1.2→undici8.11.2.
+La auditoría histórica sin avisos se conserva, pero no acredita el estado actual.
+Advisories de los mantenedores GHSA-cg2g-xh64-v4q7 y GHSA-2m5v-pch6-74hx
+identifican versiones corregidas3.4.17 y8.12.2; npm marca fixAvailable=true.
+Actualizar únicamente esos transitivos dentro de sus rangos existentes, sin
+force, scripts de instalación ni nuevos paquetes directos. Revisar diff del lock,
+auditoría posterior, PDF/sanitización, pruebas jsdom y build; ampliar la suite por
+impacto transversal del entorno DOM. No afirmar explotación en KioskoPOS por
+la sola presencia del paquete. No deploy remoto implícito ni cambios TLS/ARCA.
+Informe previo ../pr06-dependency-audit-20261029.json; cierre aún pendiente.
+
+Actualización instalada LOCAL: dompurify3.4.17 y undici8.12.3; sólo12 líneas del
+lock cambiaron (versión/URL/integridad de2 transitivos), package.json intacto.
+npm update con --ignore-scripts, sin force ni nuevas dependencias. Auditoría
+posterior exit0:0 vulnerabilidades (antes2, una crítica/una alta), informe
+../pr06-dependency-audit-after-20261029.json SHA256
+375e585123bbc370a06ce116fb942291fca53939191d02e0193ed79ecae84d43.
+Build689 PASS. Lint global exit0 con138 advertencias en archivos no modificados;
+no se ocultan ni se presentan como ausencia de deuda. Bundle36JS sin los5 símbolos
+privados examinados, ../pr06-dependency-bundle-check-20261029.json; no certifica
+ausencia absoluta de secretos. Estado inicial de suite97671 EN CURSO conservado
+como histórico; no se reinició por silencio.
+
+Primer cierre global97671 exit1:5293 PASS/1 FAIL/1 skipped/332 archivos, todos
+los332 testfiles registrados presentes, missing=[]. Falló únicamente Windows
+preflight does not decrypt invalid DPAPI: proceso PowerShell termina3221225477
+con «Fatal error. Internal CLR error. (0x80131506)». No hubo fallo de aserción
+funcional posterior ni lectura del original; inputs DPAPI/certificados sintéticos.
+Informe ../pr06-dependency-closure-global-20261029.json SHA256
+bb77e950e5a50c4aaeebe065e74ab2da585a82dd9359ae8e6c4435304308f31a.
+Se preserva, no contar como global PASS ni afirmar causa de infraestructura exacta.
+Recheck aislado sin cambios:22 PASS/0 FAIL/0 omitidas, exit0;
+../pr06-custody-crash-recheck-20261029.json SHA256
+500b89784a9492747a3c9d924325883b66c140df77a59a5b2d3a1c508891aa88.
+Nueva ejecución global69628 EN CURSO, mismo código/maxWorkers2, sin build paralelo;
+repetición justificada por fallo terminal observado, sin relajar tests ni retries
+internos ni repetir material real. Única omitida histórica F6 reviewed942 conserva
+su estado, no PASS. Publicación del parche de dependencias espera este cierre.
+Referencias primarias revisadas:
+https://github.com/cure53/DOMPurify/security/advisories/GHSA-cg2g-xh64-v4q7
+https://github.com/nodejs/undici/security/advisories/GHSA-2m5v-pch6-74hx
+
+Propuesta histórica de consulta, descartada por disponibilidad (NO autorizada/NO ejecutada/NO programada):
+../catalogo3-query-proposal-20261030.json SHA256
+edfd0ce29710231da441115ee9b64323b9b0241267c5ede6c5445a31c8994f7a.
+Al retomar30/10 entre08:00 y09:00 Argentina, una WSAA y una consulta de cada
+FEParamGetTiposIva/FEParamGetCondicionIvaReceptor, sin retry, con originales sólo
+para autenticar y Token/Sign sólo en memoria. Pin actual de fuentes, revisión3
+propuesta y TA previo29/10 22:00:42.630Z; preflight READ ONLY fresco obligatorio.
+El GO anterior consumido no autoriza esto. Fuera de esa hora requiere revisar
+propuesta; no despertar ni ejecutar automáticamente. Guardar sólo parámetros
+públicos, sin importar/activar catálogo, emisor, flags, emisión ni Production.
+Decidir la siguiente ventana con expiraciones reales, nunca con duración fija.
+
+Respuesta del titular29/10: no estará en la hora propuesta y prefiere «Otro día
+por la mañana», sin fecha concreta. edfd0ce2 NO recibió GO y no se ejecutará;
+conservarlo como propuesta histórica, no trasladar su autoridad a otra fecha.
+No hay consulta/ventana/tarea programada. Al definir el día, generar propuesta
+revisada y pedir sólo el GO específico aplicable. No insistir con horarios del30/10.
+
 ### 29/10/2026 — PR06: diagnóstico de costos sin privilegio global
 
 Revisión de P02: verificar-costos-cajero comprobaba CAJERO pero omitía
@@ -26,6 +99,9 @@ pilot-envases-returns: conservar tres perfiles activos dentro del límite del
 plan. No es un defecto ni justifica reactivarlo automáticamente. Conservar las
 aceptaciones históricas Visor de envases/comercial; no extrapolarlas al circuito
 fiscal actual. Una nueva prueba requiere fixture/operador/cupo aprobados.
+Se contrastó también el UUID exacto del perfil actual con
+../pilot-staging-interactive-activation.json: mismo identificador presente;
+no se publicaron correos ni credenciales del registro privado.
 
 ### 29/10/2026 — Preparación independiente de lectura Visor (PR06/PR09)
 

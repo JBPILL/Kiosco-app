@@ -7,6 +7,17 @@ pendiente describen aquella ejecución, no el estado actual.
 
 ## Production Readiness — gates permanentes (20/10/2026)
 
+Revisión posterior de dependencias29/10: auditoría fresca detectó dompurify
+crítico y undici alto. Parche local acotado del lock:3.4.16→3.4.17 y8.11.2→8.12.3,
+sin nuevas dependencias directas ni scripts de instalación. Auditoría posterior
+exit0/0 vulnerabilidades; build689 PASS, lint exit0 con138 advertencias existentes.
+Primera suite completa:5293 PASS/1 fallo de proceso PowerShell CLR/1 omisión
+histórica/332 archivos, sin archivos ausentes.22 pruebas de custodia aisladas PASS
+sin cambios; repetición global final:5294 PASS/0 FAIL/1 skipped/332 archivos,
+exit0, todos los testfiles registrados presentes. Fallo inicial conservado.
+No se acredita despliegue, RLS ni cierre PR06 por este resultado.
+Informes/hashes y fuentes primarias en ExecPlan fiscal; historia21/10 conservada.
+
 Actualización PR06/P02 del29/10: diagnóstico de costos exige Cajero activo sin
 privilegio global explícitamente (es_superadmin=false). 71 pruebas enfocadas y
 build PASS, sin nueva aceptación JWT. Lectura independiente confirma7 filas
