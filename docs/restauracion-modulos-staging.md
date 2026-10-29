@@ -11,6 +11,28 @@ SQL001–054 acreditado pertenece a pilot-fiscal, no a estos tres archivos.
 Antes de una instalación nueva se necesita backup privado actual/revisión/GO;
 el modo -AntesContratosRestauracion prepara esa etapa sin conceder autorización.
 
+Respaldo real29/10 confirmado y verificado independientemente (archivo, roles sin
+passwords, hashes, ACL privada y TOC), sin restore. Evidencia y límites en el
+ExecPlan pilot-backup-recovery-acceptance. El GO de respaldo está consumido;
+no equivale a GO de instalación ni acepta Storage/DR/cifrado.
+
+Corrección local de identidad antes de instalar: solicitud de cada operación
+BACKUP_CONTACTO/PRODUCTO/LOTE incorpora actor_auth_id capturado desde auth.uid()
+al entrar al RPC. Reintentar exige ese mismo Auth además del perfil/comercio/cuerpo;
+reasignar el perfil no transfiere la confirmación anterior. Las operaciones sin
+identidad histórica acreditada fallan cerradas, sin backfill ni UUID alternativo.
+No cambian firmas/grants; se revisarán hashes nuevos de001/002 antes del GO.
+
+Prueba PostgreSQL local, con datos/identidades sintéticos y red deshabilitada:
+
+```powershell
+node .\scripts\backup\test-auth-native.mjs --run-local --evidence ..\backup-auth-native-NUEVO.json
+```
+
+Exige archivo de evidencia nuevo e imagen postgres17 previamente disponible,
+no descarga ni monta respaldos reales.12 escenarios de locks/replay/identidad
+desconocida no sustituyen JWT/RLS de Staging ni autorización de restauración.
+
 Preparado localmente. No instalado en Staging ni Production. La interfaz integral
 permanece bloqueada; REEMPLAZO tampoco se habilita. El ensayo anterior de catálogo
 y promociones no prueba estos nuevos contratos.
@@ -103,3 +125,38 @@ Resultado final local: 2177 PASS / 1 skipped / 224 archivos (246,83 s), build PA
 14 binarios omitidos, 46 candidatos conocidos; sin candidatos nuevos.
 La suite anterior tuvo un fallo de clasificación de cuatro RPC opcionales; la
 clasificación fue documentada y esta suite final pasó con el contrato actualizado.
+
+
+### Cierre local y preflight de instalación — 29/10/2026 22:57Z
+
+Validación final del incremento: 5310 PASS / 0 FAIL / 1 skip histórico,
+332 archivos; sin archivos de pruebas omitidos del inventario. Evidencia
+../backup-auth-closure-global-20261029.json, SHA256
+3f94aaf4fc73f8944b60aef83f5765b3e7ba544af5d14a41b20f16f766bfbebe.
+58 pruebas enfocadas y 12 escenarios PostgreSQL17.11 PASS. Build final689
+exit0; lint y manifiesto bootstrap43 PASS. El primer build detectó un tipo
+UUID demasiado amplio en el helper de prueba; corregido sin casts ni supresiones.
+No se interpreta el skip histórico como PASS.
+
+Propuesta de instalación v2 PREPARED_NOT_AUTHORIZED_NOT_EXECUTED:
+../backup-contracts-install-proposal-v2-20261029.json SHA256
+f3d91990358df5e516435fd601cdfad190007488bc3336b3bbd7cf6d6df40cfc.
+Paquete atómico ../backup-contracts-install-candidate-v2-20261029.sql SHA256
+25919ddaab7257ed25b4f24f1c43b18063e5e6d67f06786590ebc124093eaf82.
+Incluye únicamente pilot-backup001–003, guard inicial de identidad/ausencia,
+verificación de cuerpos/firmas/ACL antes de COMMIT y recuperación sólo lectura.
+V1 se rechazó antes de ejecutar SQL por conversión LF/CRLF del generador;
+se conservó y v2 usa bytes UTF8/LF verificados. No afectó el respaldo privado.
+Seis comprobaciones del paquete v2 PASS en PostgreSQL aislado: identidad errónea
+rechazada, creación/metadata, rollback a ausencia, cuerpos y filas originales
+sin cambios, recovery READ ONLY; contenedor propio detenido. Evidencia
+../backup-contracts-install-packet-local-v2-20261029.json.
+
+Preflight hospedado22:57:17Z REPEATABLE READ READ ONLY/ROLLBACK:
+identity_fuse=true, read_only=on, public_overloads=0, cuatro funciones ausentes.
+Evidencia ../backup-contracts-install-preflight-v2-20261029.json.
+No se ejecutó DDL, restore ni RPC comercial. El GO anterior cubrió sólo respaldo.
+Próximo gate: revisión y GO específico para instalar este paquete exclusivamente
+en Staging acoyfwwmhaeruciyedri. UI integral bloqueada, sin flags/Edge/Vercel,
+ARCA/CAE, master, merge o Production. Restore real, Storage y copia externa
+siguen pendientes; PR07 no cerrado.

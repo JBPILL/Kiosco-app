@@ -1331,3 +1331,31 @@ sin asumir que una nueva autenticación dura exactamente12h ni prorrogar datos.
 No programar ni ejecutar automáticamente. Cambios locales no habilitan SQL,
 flags, LoginCms, emisión ni nuevo acceso remoto; permanecen sus GO separados.
 
+## Auth original en operaciones de restauración — 29/10/2026
+
+Contexto: la UI exige el mismo Auth para recuperar una restauración, pero los
+contratos SQL preparados sólo comparaban el perfil en operaciones_escritura.
+Una reasignación administrativa de ese perfil permitía a otro Auth recuperar
+el ACK anterior con el mismo UUID/cuerpo. Cuatro regresiones locales reprodujeron
+el defecto en clientes, proveedores, producto y lote antes de corregirlo. Los
+cuatro RPC todavía no están instalados en Staging; no se reasignó ningún perfil real.
+
+Se conserva el registro idempotente existente, añadiendo actor_auth_id derivado
+del servidor a solicitud para BACKUP_CONTACTO/PRODUCTO/LOTE. Cada RPC captura
+auth.uid() al entrar, selecciona/bloquea el perfil por ese sujeto y compara el
+cuerpo completo antes de devolver un resultado previo. No se recibe esa identidad
+del navegador ni se vuelve a inferir desde el perfil después. El mismo Auth puede
+reintentar; otro Auth o una solicitud histórica sin identidad acreditada se rechaza.
+
+Alternativas descartadas: confiar sólo en el guard de la UI/perfil reasignable,
+inferir el Auth de una operación antigua desde el vínculo actual, o introducir
+una tabla/grants adicionales para un dato que cabe en el cuerpo durable existente.
+No hay backfill, borrado de pendientes ni nuevo UUID automático para eludir el
+rechazo. No se modifican saldos al reintentar ni el contrato de parámetros/ACK.
+Campos/firmas/ACL de las tablas y el manifiesto bootstrap permanecen intactos.
+
+Consecuencia: cambian los hashes de pilot-backup001/002 y cualquier propuesta
+de instalación debe revisar estas fuentes nuevas. El backup privado verificado
+del estado previo se conserva. El GO sólo de respaldo no autoriza instalar SQL,
+restaurar datos o activar la UI integral; hacen falta los gates propios.
+

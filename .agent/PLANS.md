@@ -6,6 +6,15 @@ An ExecPlan is a living document: create it before implementation, update **Prog
 
 ## Objetivo común vigente — cierre del desarrollo y Production Readiness
 
+29/10 PR07: GO sólo de respaldo ejecutado una vez y copia privada verificada
+independientemente (hashes/roles/ACL/TOC), sin restore ni instalación. En revisión
+local previa a SQL se reprodujo replay bajo otro Auth del mismo perfil: corregido
+en pilot-backup001/002 con Auth original capturado/guardado en solicitud; legados
+sin identidad no se reinterpretan.58 pruebas enfocadas y12 escenarios PostgreSQL17
+locales PASS, sin originales/red/backup real montado. Cierre global/build pendiente
+de este incremento antes de publicar. GO de instalación/aceptación separado;
+UI integral bloqueada y ARCA diferida. Detalle/decisión en ExecPlan backup y DECISIONS.
+
 Preparación independiente PR07 del29/10: preflight hospedado READ ONLY confirma
 ausentes las4RPC de supabase/pilot-backup/001–003 (no son SQL fiscal001–054).
 Etapa de respaldo AntesContratosRestauracion preparada con controles actuales,
@@ -322,3 +331,38 @@ requisito por requisito sobre la matriz original, sin redefinir éxito por lo ya
 implementado. Impresora/cajón/Point siguen diferidos hasta cliente/hardware; no
 ocultar esos diferidos al evaluar preparación comercial. Objetivo permanece activo,
 no completado por este registro. Master/Production/merge fuera del alcance actual.
+
+
+### Cierre local y preflight de instalación — 29/10/2026 22:57Z
+
+Validación final del incremento: 5310 PASS / 0 FAIL / 1 skip histórico,
+332 archivos; sin archivos de pruebas omitidos del inventario. Evidencia
+../backup-auth-closure-global-20261029.json, SHA256
+3f94aaf4fc73f8944b60aef83f5765b3e7ba544af5d14a41b20f16f766bfbebe.
+58 pruebas enfocadas y 12 escenarios PostgreSQL17.11 PASS. Build final689
+exit0; lint y manifiesto bootstrap43 PASS. El primer build detectó un tipo
+UUID demasiado amplio en el helper de prueba; corregido sin casts ni supresiones.
+No se interpreta el skip histórico como PASS.
+
+Propuesta de instalación v2 PREPARED_NOT_AUTHORIZED_NOT_EXECUTED:
+../backup-contracts-install-proposal-v2-20261029.json SHA256
+f3d91990358df5e516435fd601cdfad190007488bc3336b3bbd7cf6d6df40cfc.
+Paquete atómico ../backup-contracts-install-candidate-v2-20261029.sql SHA256
+25919ddaab7257ed25b4f24f1c43b18063e5e6d67f06786590ebc124093eaf82.
+Incluye únicamente pilot-backup001–003, guard inicial de identidad/ausencia,
+verificación de cuerpos/firmas/ACL antes de COMMIT y recuperación sólo lectura.
+V1 se rechazó antes de ejecutar SQL por conversión LF/CRLF del generador;
+se conservó y v2 usa bytes UTF8/LF verificados. No afectó el respaldo privado.
+Seis comprobaciones del paquete v2 PASS en PostgreSQL aislado: identidad errónea
+rechazada, creación/metadata, rollback a ausencia, cuerpos y filas originales
+sin cambios, recovery READ ONLY; contenedor propio detenido. Evidencia
+../backup-contracts-install-packet-local-v2-20261029.json.
+
+Preflight hospedado22:57:17Z REPEATABLE READ READ ONLY/ROLLBACK:
+identity_fuse=true, read_only=on, public_overloads=0, cuatro funciones ausentes.
+Evidencia ../backup-contracts-install-preflight-v2-20261029.json.
+No se ejecutó DDL, restore ni RPC comercial. El GO anterior cubrió sólo respaldo.
+Próximo gate: revisión y GO específico para instalar este paquete exclusivamente
+en Staging acoyfwwmhaeruciyedri. UI integral bloqueada, sin flags/Edge/Vercel,
+ARCA/CAE, master, merge o Production. Restore real, Storage y copia externa
+siguen pendientes; PR07 no cerrado.

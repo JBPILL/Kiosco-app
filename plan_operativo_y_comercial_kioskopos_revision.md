@@ -7,6 +7,15 @@ pendiente describen aquella ejecución, no el estado actual.
 
 ## Production Readiness — gates permanentes (20/10/2026)
 
+Actualización PR07/PR06 del29/10: copia privada previa a contratos de restauración
+confirmada por el titular y verificada por hashes/ACL/TOC, sin restore. Revisión
+local detectó replay por otro Auth del mismo perfil; corregido en los SQL aún no
+instalados con identidad Auth original ligada a solicitud.58 pruebas enfocadas y
+12 escenarios PostgreSQL17.11 locales PASS; global/build del incremento pendientes.
+Identidades/datos sintéticos, sin perfil real reasignado ni nuevas llamadas ARCA.
+El GO cubrió sólo respaldo; instalación y aceptación de restauración requieren
+los propios. UI integral/Storage/DR/cifrado/externo siguen pendientes o bloqueados.
+
 Revisión posterior de dependencias29/10: auditoría fresca detectó dompurify
 crítico y undici alto. Parche local acotado del lock:3.4.16→3.4.17 y8.11.2→8.12.3,
 sin nuevas dependencias directas ni scripts de instalación. Auditoría posterior
@@ -166,7 +175,7 @@ efectos. Alcance y límites: `.agent/execplans/pilot-checkout-recovery-acceptanc
 | P12 | 2 · Periféricos | Probar lector, balanza y cámara móvil | Ensayar dispositivos reales, Safari/iOS, cancelar/reabrir, permisos y entrada manual de peso. |
 | P13 | 3 · Respaldo | Confirmar migraciones de respaldo vigentes | Snapshot 4.0 disponible y conteos coherentes con JWT Dueño real en Staging; 113 pruebas locales de respaldo PASS. Falta verificar configuración/relaciones/recetas con datos representativos y equivalencia SQL de pasos 49–50; colecciones vacías no acreditan esos casos. Git push no aplica SQL. |
 | P14 | 3 · Respaldo | Restaurar una copia real en entorno aislado | Catálogo y promociones strict ensayados con JWT Dueño en Staging: exportar/cifrar/descifrar y restaurar 10 productos, 1 categoría, 4 tipos de promoción y 1 receta con pesable; repetición sin duplicar. Origen interactivo intacto y fixtures suspendidos. UI integral sigue bloqueada; faltan clientes/saldos/proveedores/lotes/asociaciones y configuración representativa. Ver pilot-backup-promotions-relations.md. |
-| P15 | 3 · Respaldo | Completar respaldo de base y recuperación | Archivos PostgreSQL reales de Staging y roles sin passwords verificados por SHA/TOC el27/10; incluye copia previa al emisor con SQL054 esperado. Falta restauración medida/conciliada, Storage físico, cifrado y destino externo; archivo verificado no equivale a DR probado. Conservar historia de ventas/caja y módulos excluidos del JSON operativo. |
+| P15 | 3 · Respaldo | Completar respaldo de base y recuperación | Archivos PostgreSQL reales de Staging y roles sin passwords verificados por SHA/TOC el27/10 y nueva copia pre-contratos del29/10; contexto SQL054 esperado y permisos privados comprobados. Falta restauración medida/conciliada, Storage físico, cifrado y destino externo; archivo verificado no equivale a DR probado. Conservar historia de ventas/caja y módulos excluidos del JSON operativo. |
 | P16 | 3 · Respaldo | Automatizar copias externas y retención | Definir destino, cifrado, programación, rotación y alertas; copia IndexedDB y recordatorio no sustituyen esta estrategia. |
 | P17 | 3 · Respaldo | Comprobar fallos de almacenamiento y cierre | Piloto con cuota agotada, perfil borrado, descarga fallida y cierre pendiente; el respaldo no debe alterar la caja. |
 | P18 | 4 · Mermas | Validar operaciones remotas concurrentes | Comprobar FEFO, lote específico, costos históricos, idempotencia, cancelación y conciliación de stock contra kardex. |
@@ -1319,3 +1328,38 @@ no ejecutada; EMISSION/RECONCILIATION/CREDIT_SEND/CONSULT/APPLY cerrados.
 SinFECAESolicitar/stock/caja/refund/reposición/SQLnuevo/Edge/Vercel/master/
 Production/merge. FechaTAycatálogo nuevas reemplazan sólo pendientes de ventana,
 no borran decisiones ni evidencia histórica.
+
+
+### Cierre local y preflight de instalación — 29/10/2026 22:57Z
+
+Validación final del incremento: 5310 PASS / 0 FAIL / 1 skip histórico,
+332 archivos; sin archivos de pruebas omitidos del inventario. Evidencia
+../backup-auth-closure-global-20261029.json, SHA256
+3f94aaf4fc73f8944b60aef83f5765b3e7ba544af5d14a41b20f16f766bfbebe.
+58 pruebas enfocadas y 12 escenarios PostgreSQL17.11 PASS. Build final689
+exit0; lint y manifiesto bootstrap43 PASS. El primer build detectó un tipo
+UUID demasiado amplio en el helper de prueba; corregido sin casts ni supresiones.
+No se interpreta el skip histórico como PASS.
+
+Propuesta de instalación v2 PREPARED_NOT_AUTHORIZED_NOT_EXECUTED:
+../backup-contracts-install-proposal-v2-20261029.json SHA256
+f3d91990358df5e516435fd601cdfad190007488bc3336b3bbd7cf6d6df40cfc.
+Paquete atómico ../backup-contracts-install-candidate-v2-20261029.sql SHA256
+25919ddaab7257ed25b4f24f1c43b18063e5e6d67f06786590ebc124093eaf82.
+Incluye únicamente pilot-backup001–003, guard inicial de identidad/ausencia,
+verificación de cuerpos/firmas/ACL antes de COMMIT y recuperación sólo lectura.
+V1 se rechazó antes de ejecutar SQL por conversión LF/CRLF del generador;
+se conservó y v2 usa bytes UTF8/LF verificados. No afectó el respaldo privado.
+Seis comprobaciones del paquete v2 PASS en PostgreSQL aislado: identidad errónea
+rechazada, creación/metadata, rollback a ausencia, cuerpos y filas originales
+sin cambios, recovery READ ONLY; contenedor propio detenido. Evidencia
+../backup-contracts-install-packet-local-v2-20261029.json.
+
+Preflight hospedado22:57:17Z REPEATABLE READ READ ONLY/ROLLBACK:
+identity_fuse=true, read_only=on, public_overloads=0, cuatro funciones ausentes.
+Evidencia ../backup-contracts-install-preflight-v2-20261029.json.
+No se ejecutó DDL, restore ni RPC comercial. El GO anterior cubrió sólo respaldo.
+Próximo gate: revisión y GO específico para instalar este paquete exclusivamente
+en Staging acoyfwwmhaeruciyedri. UI integral bloqueada, sin flags/Edge/Vercel,
+ARCA/CAE, master, merge o Production. Restore real, Storage y copia externa
+siguen pendientes; PR07 no cerrado.

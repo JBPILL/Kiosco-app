@@ -83,6 +83,17 @@ describe.each([
     await restore(table, data)
     await rejects(() => restore(table, { ...data, nombre: 'Otra solicitud' }), 'otra solicitud')
   })
+  it('no entrega el ACK de otro Auth después de reasignar el mismo perfil', async () => {
+    await restore(table, data)
+    await reassignOwnerAuth()
+    await rejects(() => restore(table, data), 'otra solicitud')
+  })
+  it('no infiere la identidad de una operación histórica sin Auth guardado', async () => {
+    await restore(table, data)
+    const legacy = await seedOperationWithoutAuth(operation)
+    await rejects(() => restore(table, data, legacy), 'otra solicitud')
+    await expectOperationStillUnbound(legacy)
+  })
   it('rechaza registros ajenos y destino distinto del dueño sin dejar operaciones', async () => {
     await db.exec('RESET ROLE')
     await db.query<Record<string, unknown>>(`INSERT INTO ${table}(id,kiosco_id,nombre) VALUES($1,$2,'Ajeno')`, [recordId, foreignKid])
@@ -138,6 +149,28 @@ it('no permite ejecutar anónimo/service_role ni ampliar permisos de tablas', as
 })
 
 const productId = randomUUID(), providerId = randomUUID(), batchId = randomUUID()
+async function reassignOwnerAuth(): Promise<void> {
+  const replacement = randomUUID()
+  await db.exec('RESET ROLE')
+  await db.query('INSERT INTO auth.users VALUES($1)', [replacement])
+  await db.query('UPDATE usuarios SET auth_user_id=$1 WHERE id=$2', [replacement, owner])
+  await db.query("SELECT set_config('request.jwt.claim.sub',$1,true)", [replacement])
+  await db.exec('SET ROLE authenticated')
+}
+async function seedOperationWithoutAuth(source: string): Promise<ReturnType<typeof randomUUID>> {
+  const legacy = randomUUID()
+  await db.exec('RESET ROLE')
+  await db.query(`INSERT INTO operaciones_escritura(id,kiosco_id,usuario_id,tipo,solicitud,resultado)
+    SELECT $1,kiosco_id,usuario_id,tipo,solicitud-'actor_auth_id',resultado FROM operaciones_escritura WHERE id=$2`, [legacy, source])
+  await db.exec('SET ROLE authenticated')
+  return legacy
+}
+async function expectOperationStillUnbound(id: string): Promise<void> {
+  await db.exec('RESET ROLE')
+  const saved = await db.query<{ bound: boolean; completed: boolean }>(
+    "SELECT solicitud ? 'actor_auth_id' bound,resultado IS NOT NULL completed FROM operaciones_escritura WHERE id=$1", [id])
+  expect(saved.rows).toEqual([{ bound: false, completed: true }])
+}
 const productData = { descripcion: 'Artículo de prueba', precio_venta: 200, precio_costo: 50,
   stock_actual: 5, es_pesable: false, proveedor_id: null }
 async function restoreProduct(data: Record<string, unknown> = productData, op = randomUUID()) {
@@ -150,6 +183,31 @@ async function restoreBatch(data: Record<string, unknown> = batchData, op = oper
   return (await db.query<{ ack: Ack }>('SELECT restaurar_lote_backup($1,$2,$3,$4::jsonb) ack',
     [op, kid, id, JSON.stringify(data)])).rows[0].ack
 }
+
+it('no recupera el producto preparado por otro Auth del mismo perfil', async () => {
+  await restoreProduct(productData, operation)
+  await reassignOwnerAuth()
+  await rejects(() => restoreProduct(productData, operation), 'otra solicitud')
+})
+it('no recupera el lote preparado por otro Auth del mismo perfil', async () => {
+  await restoreProduct()
+  await restoreBatch()
+  await reassignOwnerAuth()
+  await rejects(() => restoreBatch(), 'otra solicitud')
+})
+it('no infiere Auth histórico al recuperar un producto', async () => {
+  await restoreProduct(productData, operation)
+  const legacy = await seedOperationWithoutAuth(operation)
+  await rejects(() => restoreProduct(productData, legacy), 'otra solicitud')
+  await expectOperationStillUnbound(legacy)
+})
+it('no infiere Auth histórico al recuperar un lote', async () => {
+  await restoreProduct()
+  await restoreBatch()
+  const legacy = await seedOperationWithoutAuth(operation)
+  await rejects(() => restoreBatch(batchData, legacy), 'otra solicitud')
+  await expectOperationStillUnbound(legacy)
+})
 
 it('restaura proveedor y producto/costo/stock atómicos sin duplicar al reintentar', async () => {
   await restore('proveedores', { nombre: 'Distribuidor de ensayo', saldo_pendiente: 200 }, randomUUID(), providerId)

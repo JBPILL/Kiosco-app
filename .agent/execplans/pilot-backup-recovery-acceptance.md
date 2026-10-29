@@ -2,7 +2,51 @@
 
 ## Revisión vigente PR07/P13–P15 — 29/10/2026
 
-Cierre local del incremento:43 PASS/0 FAIL/0 omitidas en tres archivos de pruebas
+Corrección local posterior al respaldo:4 regresiones reprodujeron replay con
+otro Auth del mismo perfil (29PASS/4FAIL), informe
+../backup-auth-replay-regression-before-20261029.json SHA256
+ddf9e99f0d609c2f475d2c43deeca33122c1086ab3313ee72ffc10452f1f1e0f.
+SQL001/002 ahora capturan auth.uid() al entrar y guardan actor_auth_id derivado
+del servidor en solicitud, comparado antes de devolver ACK. Identidad histórica
+ausente no se rellena ni reinterpreta. No cambian firmas/tablas/ACL ni stock/saldos.
+58 pruebas enfocadas finales PASS/0FAIL, incluidos4 casos de identidad histórica
+sin Auth y conservación de su registro, UI y motor strict. Informe
+../backup-auth-replay-targeted-final-20261029.json SHA256
+0598ec12c1afbda830709895f84fb54f508d3ec8fadbcdae3cd1d92b15ec3581.
+
+PostgreSQL17.11 LOCAL:12 escenarios PASS, bootstrap43 + pilot-backup001–003,
+sin montar el backup real y con Auth sintético, no JWT hospedado. Cuatro carreras
+demuestran que reasignación espera el lock del perfil, solicitud conserva Auth
+original y nuevo Auth no obtiene el ACK; cuatro rechazos de Auth movido antes de
+la primera llamada, cuatro legados sin identidad rechazados sin backfill.
+../backup-auth-native-20261029.json SHA256
+d143688f15bc96df534ba34da9c50ad5825e998e669135ab28980da5707b036f.
+Contenedor propio detenido, datos sintéticos conservados; network none, sin
+puertos/publicación, originales, secretos, ARCA, emisiones o SQL remoto.
+Guard de UI integral strict revisado (RestaurarBackupModal): sigue bloqueado,
+incluso cuando los contratos lleguen a instalarse. No se habilitó capacidad remota.
+Suite global/build de este incremento aún pendientes antes de publicar/revisar GO.
+
+GO posterior del titular: «Sí, sólo respaldo privado». Una consola operativa,
+sin credenciales en chat/argv; copia confirmada en
+%USERPROFILE%\KioskoPOS-Privado\Backups\Staging\pre-contratos-restauracion-20261029-190647-434b564ec34a41d2b7e6c631dd218bd9.
+Verificación independiente22:10:51Z: hash dump4039313523d60fe76c163cbe9b9bb88950aa97a4b48187b6a64b3761d9ffdec0,
+roles b32402ee1fa50664c086497b0eb779bba4bea088df17afc92ebffe9c839452d1,
+manifiestos/contexto coincidentes, ACL owner-only sin reparse/partials y sin
+cláusulas PASSWORD de roles. pg_restore --list con montaje readonly/network none
+confirma41 tablas fiscales y7 comerciales críticas;0 funciones de restauración.
+Evidencia ../backup-contracts-archive-verified-20261029.json. Sólo archivo
+verificado: no restore/Storage/cifrado/copia externa/equivalencia total de esquema.
+GO consumido, no repetir respaldo ni instalar contratos por inferencia.
+
+Revisión local previa a proponer SQL: comprobar que el replay conserve el Auth
+original, además del perfil/kiosco/cuerpo. La UI exige la misma identidad Auth,
+pero los RPC usan operaciones_escritura.usuario_id (perfil reasignable). Preparar
+regresión sintética de reasignación del mismo perfil antes del replay, sin cambiar
+ninguna identidad real. Si se reproduce, cerrar el guard servidor antes del GO
+de instalación; conservar fuente/versiones y no inferir Auth histórico desconocido.
+
+Cierre local anterior0d2c930:43 PASS/0 FAIL/0 omitidas en tres archivos de pruebas
 Windows (asistente privado, exportador y verificación de integridad), Docker y
 contraseña simulados. Evidencia ../backup-contracts-preparation-tests-20261029.json
 SHA2567fa7172962c84e4e69ea4373e3cf530e1c2e361e17ef661afc22c1a00cd893da.
@@ -15,8 +59,9 @@ dump ni conexión PostgreSQL. Log ../backup-contracts-local-preflight-20261029.l
 SHA256e14731551944d12db4a10317fe9195cdf5af0162c4fd746c94f3dd56cadbad89.
 Build689 exit0 (../backup-contracts-preparation-build-20261029.log), lint enfocado
 y diff PASS. La global5294PASS/1skip de f9fa861 es evidencia anterior,
-no una suite global nueva de este cambio; los SQL de restauración no cambiaron.
-Respaldo REAL actual, revisión/GO de instalación y aceptación siguen pendientes.
+no una suite global nueva de aquel cambio; los SQL no cambiaron en0d2c930.
+Al cerrar0d2c930 faltaban respaldo actual y GO; el respaldo se acreditó después,
+como consta arriba. Revisión/GO de instalación y aceptación permanecen pendientes.
 
 Lectura hospedada REPEATABLE READ READ ONLY/ROLLBACK,21:52:46Z: no existen las
 cuatro firmas ni otras sobrecargas públicas de restaurar_contacto_backup,
@@ -234,3 +279,38 @@ repetir despliegue. SQL054, Edge cerrada, custodia por metadatos y emisor inacti
 ya se acreditaron bajo GOs separados, según ExecPlan arca-homologation.md.
 La aceptación positiva hospedada y restauración integral siguen pendientes;
 ningún respaldo equivale a restore probado. Conservar historial y no reinstalar.
+
+
+### Cierre local y preflight de instalación — 29/10/2026 22:57Z
+
+Validación final del incremento: 5310 PASS / 0 FAIL / 1 skip histórico,
+332 archivos; sin archivos de pruebas omitidos del inventario. Evidencia
+../backup-auth-closure-global-20261029.json, SHA256
+3f94aaf4fc73f8944b60aef83f5765b3e7ba544af5d14a41b20f16f766bfbebe.
+58 pruebas enfocadas y 12 escenarios PostgreSQL17.11 PASS. Build final689
+exit0; lint y manifiesto bootstrap43 PASS. El primer build detectó un tipo
+UUID demasiado amplio en el helper de prueba; corregido sin casts ni supresiones.
+No se interpreta el skip histórico como PASS.
+
+Propuesta de instalación v2 PREPARED_NOT_AUTHORIZED_NOT_EXECUTED:
+../backup-contracts-install-proposal-v2-20261029.json SHA256
+f3d91990358df5e516435fd601cdfad190007488bc3336b3bbd7cf6d6df40cfc.
+Paquete atómico ../backup-contracts-install-candidate-v2-20261029.sql SHA256
+25919ddaab7257ed25b4f24f1c43b18063e5e6d67f06786590ebc124093eaf82.
+Incluye únicamente pilot-backup001–003, guard inicial de identidad/ausencia,
+verificación de cuerpos/firmas/ACL antes de COMMIT y recuperación sólo lectura.
+V1 se rechazó antes de ejecutar SQL por conversión LF/CRLF del generador;
+se conservó y v2 usa bytes UTF8/LF verificados. No afectó el respaldo privado.
+Seis comprobaciones del paquete v2 PASS en PostgreSQL aislado: identidad errónea
+rechazada, creación/metadata, rollback a ausencia, cuerpos y filas originales
+sin cambios, recovery READ ONLY; contenedor propio detenido. Evidencia
+../backup-contracts-install-packet-local-v2-20261029.json.
+
+Preflight hospedado22:57:17Z REPEATABLE READ READ ONLY/ROLLBACK:
+identity_fuse=true, read_only=on, public_overloads=0, cuatro funciones ausentes.
+Evidencia ../backup-contracts-install-preflight-v2-20261029.json.
+No se ejecutó DDL, restore ni RPC comercial. El GO anterior cubrió sólo respaldo.
+Próximo gate: revisión y GO específico para instalar este paquete exclusivamente
+en Staging acoyfwwmhaeruciyedri. UI integral bloqueada, sin flags/Edge/Vercel,
+ARCA/CAE, master, merge o Production. Restore real, Storage y copia externa
+siguen pendientes; PR07 no cerrado.

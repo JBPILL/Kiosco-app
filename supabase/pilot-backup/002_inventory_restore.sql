@@ -4,11 +4,12 @@ CREATE OR REPLACE FUNCTION public.restaurar_producto_backup(
   p_operacion_id uuid,p_kiosco_id uuid,p_producto_id uuid,p_datos jsonb
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 DECLARE perfil public.usuarios%ROWTYPE; operacion public.operaciones_escritura%ROWTYPE;
+  actor_auth uuid:=auth.uid();
   req jsonb; v_resultado jsonb; producto public.productos%ROWTYPE; proveedor uuid;
   lotes jsonb; item jsonb; lotes_restaurados jsonb:='[]'::jsonb; respuesta_lote jsonb;
 BEGIN
   BEGIN
-    SELECT * INTO STRICT perfil FROM public.usuarios WHERE auth_user_id=auth.uid() AND activo FOR UPDATE;
+    SELECT * INTO STRICT perfil FROM public.usuarios WHERE auth_user_id=actor_auth AND activo FOR UPDATE;
   EXCEPTION WHEN no_data_found OR too_many_rows THEN
     RAISE EXCEPTION 'Se requiere un único dueño activo.' USING ERRCODE='42501';
   END;
@@ -42,7 +43,7 @@ BEGIN
     PERFORM 1 FROM public.proveedores WHERE id=proveedor AND kiosco_id=p_kiosco_id FOR KEY SHARE;
     IF NOT FOUND THEN RAISE EXCEPTION 'Proveedor ausente o ajeno al comercio.' USING ERRCODE='42501'; END IF;
   END IF;
-  req:=jsonb_build_object('producto_id',p_producto_id,'datos',p_datos);
+  req:=jsonb_build_object('producto_id',p_producto_id,'datos',p_datos,'actor_auth_id',actor_auth);
   INSERT INTO public.operaciones_escritura(id,kiosco_id,usuario_id,tipo,solicitud)
     VALUES(p_operacion_id,p_kiosco_id,perfil.id,'BACKUP_PRODUCTO',req) ON CONFLICT(id) DO NOTHING;
   SELECT * INTO operacion FROM public.operaciones_escritura WHERE id=p_operacion_id FOR UPDATE;
@@ -91,12 +92,13 @@ CREATE OR REPLACE FUNCTION public.restaurar_lote_backup(
   p_operacion_id uuid,p_kiosco_id uuid,p_lote_id uuid,p_datos jsonb
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 DECLARE perfil public.usuarios%ROWTYPE; operacion public.operaciones_escritura%ROWTYPE;
+  actor_auth uuid:=auth.uid();
   producto public.productos%ROWTYPE; lote public.lotes_producto%ROWTYPE;
   req jsonb; esperado jsonb; persistido jsonb; salida jsonb;
   v_producto_id uuid; inicial numeric; actual numeric; ingreso timestamptz; vencimiento date; v_activo boolean;
 BEGIN
   BEGIN
-    SELECT * INTO STRICT perfil FROM public.usuarios WHERE auth_user_id=auth.uid() AND activo FOR UPDATE;
+    SELECT * INTO STRICT perfil FROM public.usuarios WHERE auth_user_id=actor_auth AND activo FOR UPDATE;
   EXCEPTION WHEN no_data_found OR too_many_rows THEN
     RAISE EXCEPTION 'Se requiere un único dueño activo.' USING ERRCODE='42501';
   END;
@@ -128,7 +130,7 @@ BEGIN
   IF NOT producto.es_pesable AND (inicial<>trunc(inicial) OR actual<>trunc(actual)) THEN
     RAISE EXCEPTION 'El lote por unidad no permite fracciones.' USING ERRCODE='22023';
   END IF;
-  req:=jsonb_build_object('lote_id',p_lote_id,'datos',p_datos);
+  req:=jsonb_build_object('lote_id',p_lote_id,'datos',p_datos,'actor_auth_id',actor_auth);
   INSERT INTO public.operaciones_escritura(id,kiosco_id,usuario_id,tipo,solicitud)
     VALUES(p_operacion_id,p_kiosco_id,perfil.id,'BACKUP_LOTE',req) ON CONFLICT(id) DO NOTHING;
   SELECT * INTO operacion FROM public.operaciones_escritura WHERE id=p_operacion_id FOR UPDATE;

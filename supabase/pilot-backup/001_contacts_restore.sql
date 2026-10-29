@@ -6,6 +6,7 @@ CREATE OR REPLACE FUNCTION public.restaurar_contacto_backup(
   p_operacion_id uuid, p_kiosco_id uuid, p_tabla text, p_registro_id uuid, p_datos jsonb
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 DECLARE
+  actor_auth uuid:=auth.uid();
   perfil public.usuarios%ROWTYPE;
   operacion public.operaciones_escritura%ROWTYPE;
   cliente public.clientes%ROWTYPE;
@@ -14,7 +15,7 @@ DECLARE
   entrada record; permitidos text[]; creado boolean; saldo numeric;
 BEGIN
   BEGIN
-    SELECT * INTO STRICT perfil FROM public.usuarios WHERE auth_user_id=auth.uid() AND activo FOR UPDATE;
+    SELECT * INTO STRICT perfil FROM public.usuarios WHERE auth_user_id=actor_auth AND activo FOR UPDATE;
   EXCEPTION WHEN no_data_found OR too_many_rows THEN
     RAISE EXCEPTION 'Se requiere un único dueño activo.' USING ERRCODE='42501';
   END;
@@ -59,7 +60,7 @@ BEGIN
     RAISE EXCEPTION 'Nombre de contacto inválido.' USING ERRCODE='22023';
   END IF;
 
-  req:=jsonb_build_object('tabla',p_tabla,'registro_id',p_registro_id,'datos',p_datos);
+  req:=jsonb_build_object('tabla',p_tabla,'registro_id',p_registro_id,'datos',p_datos,'actor_auth_id',actor_auth);
   INSERT INTO public.operaciones_escritura(id,kiosco_id,usuario_id,tipo,solicitud)
     VALUES(p_operacion_id,p_kiosco_id,perfil.id,'BACKUP_CONTACTO',req) ON CONFLICT(id) DO NOTHING;
   SELECT * INTO operacion FROM public.operaciones_escritura WHERE id=p_operacion_id FOR UPDATE;
