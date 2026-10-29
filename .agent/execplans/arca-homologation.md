@@ -2,6 +2,31 @@
 
 ## Secuencia vigente — instrucción del titular del 28/10/2026
 
+### 29/10/2026 — PR06: diagnóstico de costos sin privilegio global
+
+Revisión de P02: verificar-costos-cajero comprobaba CAJERO pero omitía
+es_superadmin, un privilegio independiente del rol. Ahora exige el booleano
+false explícito; rechaza true, ausente, null y coerciones antes de consultar
+costos/productos. No se modifican perfiles, grants, RLS ni aplicación comercial.
+71 pruebas PASS/0 FAIL/0 omitidas en costPermissionProbe y fiscalStagingJwtScript,
+incluidos los53 casos del asistente; build689, lint enfocado y node --check PASS.
+Informe ../pr06-profile-privilege-tests-20261029.json SHA256
+a510dbe97e4fc1ab3312b3f288a46b530a864797bf855353141af4919c04f2d4.
+
+Consulta independiente REPEATABLE READ READ ONLY, con ROLLBACK, 11:11:55Z:
+7 productos,7 filas privadas producto_costos y17 movimiento_stock_costos en el
+comercio aislado; no se consultaron precios ni identificadores de clientes.
+../pr06-cost-existence-readonly-20261029.json SHA256
+f1540f3a5f9ae0257cdaf75aa3e36aa11ef31f10694c84f4e110fdf526cab4c3.
+Esto acredita existencia de fixtures, no denegación con JWT Cajero ni RLS completa.
+No login nuevo, DML, flags, ARCA, secretos, deploy o Production en este bloque.
+
+La desactivación del Visor coincide con la decisión documentada del18/10 en
+pilot-envases-returns: conservar tres perfiles activos dentro del límite del
+plan. No es un defecto ni justifica reactivarlo automáticamente. Conservar las
+aceptaciones históricas Visor de envases/comercial; no extrapolarlas al circuito
+fiscal actual. Una nueva prueba requiere fixture/operador/cupo aprobados.
+
 ### 29/10/2026 — Preparación independiente de lectura Visor (PR06/PR09)
 
 Resultado local: 53 pruebas PASS/0 FAIL del asistente, incluyendo Visor válido,

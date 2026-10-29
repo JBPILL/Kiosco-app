@@ -7,6 +7,15 @@ pendiente describen aquella ejecución, no el estado actual.
 
 ## Production Readiness — gates permanentes (20/10/2026)
 
+Actualización PR06/P02 del29/10: diagnóstico de costos exige Cajero activo sin
+privilegio global explícitamente (es_superadmin=false). 71 pruebas enfocadas y
+build PASS, sin nueva aceptación JWT. Lectura independiente confirma7 filas
+privadas de productos y17 de movimientos en el comercio de ensayo; no son tablas
+vacías. Asistente Visor preparado en ad86d59; perfil existente inactivo por cierre
+del ensayo18/10 y límite del plan, no reactivar por conveniencia. Aceptaciones
+históricas de módulos comerciales conservadas; faltan matriz fiscal y DML reales.
+Evidencias/hashes en ExecPlan fiscal, sin cerrar PR06 ni repetir gates sin drift.
+
 Actualización PR03 del 29/10/2026: conciliación READ ONLY de Staging confirmó
 emisor/catálogo inactivos, 37 contadores fiscales en cero, sin operación ni TA y
 hashes de historia/comercio conservados. Auth/perfil exactos y gateway cerrado

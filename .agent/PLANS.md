@@ -6,6 +6,12 @@ An ExecPlan is a living document: create it before implementation, update **Prog
 
 ## Objetivo común vigente — cierre del desarrollo y Production Readiness
 
+29/10 PR06/P02: corregida omisión de es_superadmin en el diagnóstico de costos
+Cajero (71 pruebas enfocadas/build PASS). Existencia de filas privadas confirmada
+por lectura independiente; no aceptación JWT nueva. Visor inactivo por cierre
+de ensayo/cupo documentado, sin reactivar. Conservar evidencia histórica y gates
+pendientes; seguir dependencias fiscales sin reautenticar ni ampliar permisos.
+
 Corrección de lectura29/10: las adendas históricas de ExecPlans que dicen
 «primer gate pendiente (PR01)» no ordenan reabrir PR01, ya cerrado. Prevalece el
 registro maestro vigente: PR03 aceptación positiva y PR02 primer CAE siguen
