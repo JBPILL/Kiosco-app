@@ -159,3 +159,17 @@ it('does not infer remote authorization from a package hash alone', async () => 
     expect(f.ports.client.query).not.toHaveBeenCalled()
   } finally { f.cleanup() }
 })
+it.each(['MANAGEMENT','AUTH'])('preserves the %s failure without opening or emitting', async stage => {
+  const f = await fixture()
+  try {
+    if (stage === 'MANAGEMENT') f.ports.management.readInventory = async () => { throw Error('PRIVATE_DO_NOT_ECHO') }
+    else f.ports.authenticateOwner = async () => { throw Error('PRIVATE_DO_NOT_ECHO') }
+    const result = await executePositiveWindow(f.input, f.ports)
+    expect(result.failures[0]).toBe(stage)
+    expect(result.passed).toBe(false)
+    expect(result.requiresReconciliation).toBe(true)
+    expect(f.state.openCalls).toBe(0)
+    expect(f.state.bodyCalls).toBe(0)
+    expect(JSON.stringify(result)).not.toContain('PRIVATE_DO_NOT_ECHO')
+  } finally { f.cleanup() }
+})

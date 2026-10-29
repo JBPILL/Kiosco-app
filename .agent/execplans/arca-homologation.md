@@ -2,6 +2,178 @@
 
 ## Secuencia vigente — instrucción del titular del 28/10/2026
 
+### 29/10/2026 — Identidad exacta confirmada; cierre de diagnóstico local
+
+**Cierre local final:** ejecución global maxWorkers=2 terminó exit0,5251 PASS,
+0 FAIL,1 skipped,332 archivos; incluye58 casos FiscalDocumentModal antes omitidos.
+../fiscal-diagnostic-global-final-20261029.json SHA256
+2f242bc306550ba74a8569871d1cb826f8371942950943db51808a950155f110.
+Supera el intento global incompleto sin borrarlo. El skip histórico F6 permanece
+explícito, no contado como PASS. 91 enfocados y104 recheck con solapamiento,
+build689 PASS, lint enfocado/node/parser/diff PASS,36assets JS sin los símbolos
+privados examinados;16archivos cambiados sin patrones de material privado en scan.
+Sin cambios SQL/Edge/flags/provisión/Vercel/master/Production por este bloque;
+no nuevo ensayo nativo SQL porque no se modificaron SQL ni transacciones. No usar
+los198 escenarios históricos como reejecución de estos cambios de diagnóstico.
+Preparado para un único commit del cierre; aceptación hospedada sigue pendiente,
+con WSFE fallido y TA descartado documentados abajo. Ningún CAE ni aplicación.
+
+**Resultado posterior del GO de consulta e1e802f2:** titular respondió Autorizo.
+Una sola invocación real del asistente original: WSAA PASS, TA vence
+2026-10-29T22:00:42.6300000Z (29/10 a19:00:42.630 Argentina), descartado al cerrar.
+Primera consulta FEParamGetTiposIva falló con LOCAL_OR_TRANSPORT_ERROR; script
+terminó antes de la segunda. No JSON de parámetros exportado, no importar3,
+no nueva autenticación ni retry. ../wsfe-catalogo3-20261029/attempt.json y
+result.json sólo contienen metadatos/markers saneados; no Token/Sign/XML.
+GO consumido por ese intento, no se reutiliza. Próximo LoginCms sólo después de
+la expiración nueva y autorización específica si vuelve a requerirse.
+
+Dos errores del comando de preflight anteriores quedaron antes del asistente:
+CreateFromPemFile intentaba buscar clave dentro del certificado público y luego
+un literal false de PowerShell falló al formar el marcador. No lecturas de clave/
+DPAPI ni red en esos dos preflights. Se verificó carpeta vacía antes de escribir
+el marcador durable y ejecutar una vez; no se eliminó ni sobreescribió evidencia.
+
+Un GET anónimo independiente al WSDL de homologación (sin credenciales/negocio,
+timeout12s) también falló: categoría SOCKET, status null, observado10:03:13Z.
+../wsfe-anonymous-transport-20261029.json. No prueba causa histórica exacta, ni
+disponibilidad futura. No debilitar TLS, cambiar endpoint o aumentar retries.
+Catálogo2 sigue inactivo/vencido; aceptación positiva y CAE continúan pendientes.
+
+Siguiente propuesta preparada, NO autorizada/ejecutada:
+../catalogo3-query-proposal-20261029.json SHA256
+e1e802f2b875f6d5f5b452ce69ae6fd2a90a92064a002c2839065805b68967d9.
+Baseline público revisiones1+2: ../catalogo3-baseline-20261029.json SHA256
+ab823a41c84734847c5a9787d55fb79cdd7354ccd76a3a79f3944a786bbb7596,
+derivado de revisión1 previamente contrastada e inspección hospedada actual de2.
+No es una importación ni permite extender2. Alcance propuesto: usar certificado/
+clave/DPAPI originales sólo para una autenticación WSAA de homologación, seguida
+de FEParamGetTiposIva y FEParamGetCondicionIvaReceptor una vez cada una; dos JSON
+públicos nuevos, sin retries ni persistir Token/Sign, sin SQL/flags/Edge/Vercel/
+CAE. No repetir el ensayo CMS cerrado; la firma para LoginCms es necesaria bajo
+ese GO nuevo. Respetar expiración del TA resultante antes de otro login Edge.
+Sólo después preparar revisión3 INACTIVA/hash/SQL para su propia revisión y GO.
+Si la lectura/historial cambia, repetir preflight por drift, no sobrescribir.
+
+Conciliación hospedada finalmente obtenida a09:44:26.914595Z (06:44 Argentina):
+../positive-window-reconciled-20261029.json, read_only=on, emisor1 inactivo con
+marca01:58:55.408682Z intacta, catálogo2 inactivo, ningún emisor/catálogo habilitado,
+37 contadores cero, operación/TA null, private_acl=true. history_sha256
+1a41b59b6892a59127638d0db995cc7aa31f487688ef860fd7da9d673202e5ee y
+commercial_sha256 f85b52227fa1ad82f3b61c9b01cffe30571d609dbfce5af975c241a27712f583
+coinciden con baseline. Resuelve el pendiente de lectura de los párrafos siguientes
+y del registro anterior; no hubo UPDATE, apertura, LoginCms ni ARCA por esta consulta.
+No atribuir causa histórica exacta. No restaurar baseline ni eliminar journals.
+
+El titular aportó OWNER_CLOSED_PASS identity=true profile=true backend503=true
+logout_local=CONFIRMED window=false arca=false del adaptador privado original.
+Management y Auth/perfil actuales pasan de forma independiente; no acreditan la
+causa histórica del fallo v5 ni reemplazan conciliación SQL hospedada. No repetir
+los diagnósticos ya aprobados sin drift. El navegador de esta sesión no permite
+acceder a la consulta existente (browser.user unavailable); se solicitó abrir SQL
+Editor de kioskopos-staging para recuperar la lectura independiente.
+
+Defecto de observabilidad confirmado localmente: el packet descartaba failures y
+siempre publicaba stage=WINDOW. Ahora conserva sólo una etapa de una allowlist
+cerrada y separa MANAGEMENT de PREFLIGHT; nunca imprime mensajes de excepción o
+respuestas externas. Sin cambios en apertura/cierre, permisos o acciones fiscales.
+91 pruebas enfocadas PASS/0 FAIL (5 archivos), lint enfocado PASS. Build inicial
+detectó un tipo de mock del test nuevo; se corrigió sin cambiar comportamiento
+ni aserciones. Build y suite global final en curso, no acreditados todavía.
+
+Catálogo2 venció el 29/10 a02:59Z (28/10 a23:59 Argentina), al igual que todas las
+ventanas autorizadas del 28/10. Los paquetes v3/v4/v5 quedan históricos y no se
+pueden ejecutar con el código modificado. No prorrogar fechas ni reemplazar UUID.
+Luego de conciliar: preparar renovación del catálogo/propuesta según su gate,
+revisar datos/fecha fiscal y nuevo paquete exacto con GO específico. No nueva
+WSAA/WSFE, instalación remota, flags, CAE, cambios comerciales, master o Production
+por este cierre. PR01–PR11 sigue activo e incompleto; aceptación positiva pendiente.
+
+### Incidente hospedado posterior a 1db02ad — 28/10, sin reapertura
+
+El titular ejecutó el paquete v3 aprobado durante23:30–23:45Z y comunicó
+`WINDOW_OPERATOR_NOT_CONFIRMED stage=WINDOW cleanup_confirmed=false reconcile=true`.
+El journal privado conserva únicamente HEADER y BASELINE (23:36:13.319734Z),
+sin OPEN_ATTEMPT ni recibo; hashes de historial/comercio coinciden con v3.
+No hay proceso del operador vivo. Conciliación independiente READ ONLY en
+Staging a23:37:15Z: emisor1/catálogo2 inactivos, sello anterior intacto,
+37 contadores fiscales en cero. Metadata Custom secrets:12 entradas, backend
+false; DATA_PREPARATION/PREPARATION ausentes y ninguna edición observada.
+Consulta acotada de auth.users a23:44:34Z: último login exitoso del Dueño
+26/10 21:44:55Z, sin nuevo login acreditado para este intento. No se seleccionó
+password, JWT, Token/Sign ni material de custodia. No afirmar el motivo exacto:
+el error externo WINDOW es demasiado genérico para distinguir Management de
+autenticación fallida. No atribuirlo al PAT sin evidencia.
+
+STOP de la ventana: no repetir apertura, no nuevo LoginCms, no consumir otro
+UUID, no limpieza destructiva ni restauración de baseline. La aprobación
+fallida no habilita un segundo intento ni un hotfix remoto. Los marcadores
+PASS locales de1db02ad se conservan; aceptación positiva hospedada sigue FAIL/
+PENDIENTE y ready para primer CAE continúa sin acreditar.
+
+Diagnóstico nuevo local, separado del runtime aprobado:
+`scripts/diagnosticar-acceso-fiscal-staging.ps1` y
+`scripts/diagnose-fiscal-management-readonly.mjs`. Sólo un GET al endpoint de
+metadata del Staging fijo, PAT por stdin privado, sin Owner login/SQL/flags/
+originales/ARCA. Distingue TOKEN_FORMAT, NETWORK_OR_TLS, HTTP401/403/etc,
+METADATA_REJECTED y CUSTODY_REJECTED sin imprimir respuestas ni valores.
+23 pruebas PASS/0 FAIL (incluidos14 adapters existentes), build/lint salida0,
+`../positive-window-diagnostic-tests-20261028.json` y
+`../positive-window-diagnostic-build-lint-20261028.json`. No modifica paquetes
+aprobados ni permite reabrir la ventana. Cambios aún sin commit: agrupar con
+el cierre del diagnóstico/corrección del blocker, sin commits por cada paso.
+
+Resultado aportado por el titular del GET-only:
+`MGMT_READONLY_NOT_CONFIRMED reason=HTTP_401 original_read=false write_attempted=false`.
+El API Management rechazó la autenticación del PAT usado en ese diagnóstico;
+no inferir expiración frente a revocación/copia incorrecta, ni culpar al Owner,
+PostgreSQL o custodia. El intento original no conservó su código HTTP interno,
+por lo que este resultado localiza el bloqueo actual sin inventar aquel log.
+No hubo POST en el diagnóstico. La ventana autorizada23:30–23:45Z no se reabre
+ni se prolonga. Pendiente: titular verifica/reemplaza en privado el PAT con
+alcance sólo Staging y Secrets Read/Write, repite sólo el diagnóstico GET y
+aporta su marcador seguro. Después, preflight fresco y nueva propuesta/GO de
+ventana. No reprovisionar los seis secretos ni releer originales. Para un
+segundo intento hospedado `readyForGo=false` hasta resolver esta dependencia;
+los pases locales históricos conservan su alcance.
+
+Confirmación adicional READ ONLY en la cuenta Supabase: el PAT llamado
+`KioskoPOS custodia Staging` figura **Expired** (también el otro PAT scoped
+visible). Se conserva sólo nombre/estado/fecha de observación, sin valor,
+en `../positive-window-expired-pat-observation-20261028.json` y captura segura.
+No se generaron/revocaron tokens ni se usó un token LEGACY como alternativa.
+El titular debe generar/copiar un PAT scoped vigente y probar sólo el GET.
+La revisión automática rechazó commit+push del diagnóstico por considerarlo
+prematuro respecto al único cierre final exigido; el comando no se ejecutó.
+Se difiere publicación y se preservan los cambios locales y la evidencia.
+
+### PAT vigente y nueva propuesta v4 — todavía sin GO
+
+El titular aportó `MGMT_READONLY_PASS status=200 names=6 flags_closed=true
+original_read=false write_attempted=false`. Se preserva en evidencia externa,
+sin token. La UI de la cuenta confirma el PAT `pat 28/10`: vence04/11/2026,
+una capacidad Edge Function Secrets READ-WRITE, un proyecto kioskopos-staging;
+sin editar permisos ni leer valor. No se usó un token LEGACY.
+
+Preflight RRO independiente a28/10 23:58:00.158634Z, terminado con ROLLBACK:
+emisor/catálogo deshabilitados,37 contadores cero, private_acl=true, historial
+y comercio iguales a los hashes originales de v3. Payload contrastado con el
+verificador local; esa observación no reemplaza el preflight fresco del operador.
+Runtime139 archivos idéntico al paquete de1db02ad: el diagnóstico añadido y
+estas notas no modifican el operador aprobado. No se repiten gates locales
+cerrados ni se cambia SQL instalado/Edge/custodia.
+
+Propuesta v4: `../positive-window-reviewed-package-v4-20261028/package.json`,
+hash `499c461e1697060650b5543f91e618be35a3b7d25c3d135ab352390cb7f37660`.
+Franja propuesta28/10 **21:15–21:30 Argentina**, equivalente29/10
+**00:15–00:30Z**; fecha fiscal explícita20261028 intacta. Mismo UUID/venta,
+catálogo2 sin prórroga (vence02:59Z), referencias exactas de historial/comercio.
+SQL apertura/cierre/verificador materializados con hashes y `-Preparar` PASS,
+sin red/credenciales. Para esta propuesta `assistantReady=true`,
+`readyForGo=true` significan lista para revisión, NO autorizada ni ejecutada.
+Se exige GO humano nuevo: el anterior falló y venció. Conservar su journal;
+ningún segundo intento automático, APROBAR, FECAESolicitar, NC ni aplicación.
+
 Esta sección ordena el trabajo pendiente; no sustituye ni borra la evidencia
 histórica inferior. Referencia local verificada: HEAD `0a5da48`, árbol limpio
 antes de esta actualización. El bloque local integrado quedó PASS según el
@@ -4411,3 +4583,68 @@ está en curso; no usar pase anterior como prueba final del nuevo código.
 
 Cierre de evidencia nativa FINAL: PostgreSQL17.11,196PASS (4ventana), cero solicitudes fiscales externas/emisiones. Reloj real confirma cierre tras expiry, recibo conserva precisión, replay de otra sesión SIN operación rechazado. Contenedor propio detenido/datos conservados. ../positive-window-toggle-native-openstamp-final-20261028.json SHA256 9e74d7ab48ed3ad4f9373c72da868a57d7bf5a32d3f84bbfff88a56b0366179a. Este pase corresponde al código final de marca única y supera los pases previos. Asistente privado/paqueteGO completo pendientes; ninguna operación remota en este bloque.
 
+
+### 28/10/2026 — Segundo intento incierto: diagnóstico Management posterior
+El operador informó WINDOW_OPERATOR_NOT_CONFIRMED stage=WINDOW
+cleanup_confirmed=false reconcile=true para el paquete inmediato v5. No repetir
+apertura. El journal privado inspeccionado contiene sólo HEADER y BASELINE;
+no contiene OPEN_ATTEMPT. Esto no sustituye conciliación independiente hospedada.
+Los cinco comandos públicos derivados del paquete tienen 77/83/527/87/86
+caracteres: no exceden el límite 4096 de autenticación; esa hipótesis se descarta.
+Tras reemplazar su PAT perdido, el usuario ejecutó únicamente el diagnóstico GET:
+MGMT_READONLY_PASS status=200 names=6 flags_closed=true original_read=false
+write_attempted=false. Acredita acceso Management actual, seis metadatos de
+custodia y flags cerrados; no acredita autenticación Owner, cierre SQL ni causa
+histórica del fallo. No se leyó el token en el chat ni material original.
+Consulta SQL independiente bloqueada en esta sesión por indisponibilidad del
+control del navegador; no afirmar cierre SQL nuevo. Próximo diagnóstico: asistente
+JWT existente en modo predeterminado (sin switches), sólo login de ensayo,
+probe fiscal cerrado y logout local. Sin apertura, flags, SQL ni ARCA. No emitir,
+reintentar ventana ni declarar aceptación positiva hasta conciliar y diagnosticar.
+
+### 28/10/2026 — Auth/gateway cerrado confirmado, diagnóstico exacto separado
+El titular aportó JWT_GATEWAY_PASS_BACKEND_CLOSED alg=ES256 status=503 y
+TEST_SESSION_LOGOUT_LOCAL_CONFIRMED. Acredita login y backend cerrado actuales,
+no perfil exacto del operador, causa histórica, cierre SQL ni aceptación positiva.
+Se preparó diagnosticar-dueno-fiscal-cerrado.ps1 / diagnose-fiscal-owner-closed.mjs:
+usa authenticatePrivateOwner original con Auth/kiosco pinneados, sin comandos de
+preparación, SQL, Management, flags ni ARCA. Entrada privada stdin, salida de
+categorías allowlist y logout local. No modifica runtime/paquetes aprobados ni
+reabre ventana. 45 pruebas enfocadas PASS (3 archivos; 6 nuevas), sin red real.
+Primer intento de tests bloqueado por spawn EPERM antes de ejecutar; reejecución
+local autorizada PASS. Parser PowerShell y node --check PASS. Build en curso.
+No commit/push intermedio ni nuevo GO solicitado; conciliación SQL independiente
+sigue pendiente por control de navegador no disponible.
+Cierre local del diagnóstico: build PASS (689 módulos), lint del proyecto
+oxlint enfocado PASS, parser PowerShell/node --check/diff PASS. Intento previo
+npx eslint no ejecutó lint (ENOTCACHED; herramienta ajena al script del proyecto);
+no se instaló dependencia, corregido usando npm run lint/oxlint existente.
+La suite global histórica no se presenta como ejecutada sobre estos cambios.
+
+Evidencia hospedada 29/10 SHA256:
+positive-window-reconciled-20261029.json =
+12238fd88ddc1ab9bab9e49fc54cb31f02e28215b2a174265af50d81728072fc.
+Build final PASS 689 módulos (tras corrección de tipo del test); lint enfocado
+PASS, PowerShell parser/node --check/diff PASS. Bundle final: 36 assets JS,
+cero coincidencias de símbolos privados examinados; no equivale a escaneo total
+arbitrario de secretos. Suite global viva: proceso nativo confirmado, no reiniciar
+por silencio. El pase previo de 5221 no se atribuye a estos cambios.
+
+Validación global 29/10: informe fiscal-diagnostic-closure-global-20261029.json
+SHA256956ad94bfd23e966c33f8d74d3e2ba84e9c470ea8e6202c2c6fa88ef1fb17ace:
+5193 PASS,0 aserciones FAIL,1 skipped,331 archivos, pero proceso exit1. Comparación
+con pase anterior detecta FiscalDocumentModal.test.tsx ausente (58 casos). El JSON
+success=true no basta para aceptar el gate. Causa de omisión no confirmada; no
+atribuirla a memoria sin evidencia. Reejecución de ese archivo y los dos del
+operador con maxWorkers=1 en curso. Sin commit ni publicación del bloque aún.
+
+Recheck aislado posterior: fiscal-diagnostic-missing-and-final-20261029.json,
+104 PASS/0 FAIL/3 archivos (58 pantalla fiscal,16 operador,30 paquete), exit0.
+Esto resuelve cobertura específica omitida; NO convierte el exit1 global en PASS.
+Suite global final iniciada con maxWorkers=2 y log preservado en
+../fiscal-diagnostic-global-final-20261029.log; informe JSON previsto homónimo.
+Sesión de ejecución 28389 confirmada viva en esta ejecución; no reiniciar por
+silencio, comprobar el mismo handle. No commit/push mientras ese gate siga abierto.
+Renovación del catálogo requiere consultas públicas nuevas con GO propio; coordinar
+el TA resultante y su vencimiento antes del posterior LoginCms desde Edge. No
+hacer autenticación local y hospedada consecutivas ni conservar TA en texto claro.

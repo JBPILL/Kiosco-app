@@ -7,6 +7,20 @@ pendiente describen aquella ejecución, no el estado actual.
 
 ## Production Readiness — gates permanentes (20/10/2026)
 
+Actualización PR03 del 29/10/2026: conciliación READ ONLY de Staging confirmó
+emisor/catálogo inactivos, 37 contadores fiscales en cero, sin operación ni TA y
+hashes de historia/comercio conservados. Auth/perfil exactos y gateway cerrado
+confirmados separadamente. Esto cierra incertidumbre de cambios del intento,
+no aceptación positiva ni primer CAE. Catálogo2 y ventanas del 28/10 vencidos;
+renovar evidencia/propuesta con sus GO y coordinar TA antes de otra ventana.
+Ver `.agent/execplans/arca-homologation.md`; PR02 pendiente y PR03 parcial.
+
+Consulta de renovación autorizada posteriormente: WSAA PASS, primera consulta
+WSFE falla con error local/transporte; sin parámetros nuevos ni importación.
+TA descartado vence29/10 22:00:42.630Z. GO consumido, no retry ni LoginCms antes
+de su expiración. Evidencia anónima adicional de fallo de conexión al WSDL; no
+atribuye una causa definitiva. Catálogo2 inactivo/vencido y gate positivo pendiente.
+
 Actualización de orden del 28/10/2026: el operador de preparación fiscal se
 cierra primero como bloque local único; después preflight hospedado y GO
 independiente para ventana positiva SIN emisión. Consultar el ExecPlan fiscal

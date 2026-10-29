@@ -77,7 +77,7 @@ try{
   exit 1
  }
  $safe=$output.GetAwaiter().GetResult().Trim();$null=$diagnostics.GetAwaiter().GetResult()
- if($safe -cnotmatch '^WINDOW_OPERATOR_(PASS flags_closed=true sql_closed=true logout_local=true backend503=true emission=false cae=0|NOT_CONFIRMED stage=(PACKET|DIRECTORY|CONNECT|WINDOW|DISPOSE|ENTRY) cleanup_confirmed=(true|false) reconcile=true)$'){throw 'Sanitized output required'}
+ if($safe -cnotmatch '^WINDOW_OPERATOR_(PASS flags_closed=true sql_closed=true logout_local=true backend503=true emission=false cae=0|NOT_CONFIRMED stage=(PACKET|DIRECTORY|CONNECT|WINDOW|DISPOSE|ENTRY|PREFLIGHT|MANAGEMENT|AUTH|OPEN|FLAGS|DATA|BODY|RELOAD|CLOSE|LOGOUT|FINAL_PROBE|SESSION) cleanup_confirmed=(true|false) reconcile=true)$'){throw 'Sanitized output required'}
  Write-Output $safe
  exit $process.ExitCode
 }catch{Write-Output 'WINDOW_OPERATOR_NOT_CONFIRMED stage=ENTRY cleanup_confirmed=false reconcile=true';exit 1}

@@ -84,6 +84,15 @@ it('does not report PASS if final private-client disposal fails', async () => {
   const f = await fixture(); f.dispose.mockRejectedValue(Error('private connection diagnostics'))
   expect(await executePrivateWindowPacket(f.packet, f.dependencies)).toBe('WINDOW_OPERATOR_NOT_CONFIRMED stage=DISPOSE cleanup_confirmed=false reconcile=true')
 })
+it.each(['PREFLIGHT','MANAGEMENT','AUTH','OPEN','FLAGS','DATA','BODY','RELOAD','CLOSE','LOGOUT','FINAL_PROBE','SESSION','PRIVATE_DO_NOT_ECHO'])('reports only the allowlisted failure stage %s', async stage => {
+  const f = await fixture()
+  const result = { passed: false, cleanupConfirmed: false, failures: [stage] }
+  f.dependencies.execute.mockResolvedValue(result)
+  const output = await executePrivateWindowPacket(f.packet, f.dependencies)
+  expect(output).toBe(`WINDOW_OPERATOR_NOT_CONFIRMED stage=${stage === 'PRIVATE_DO_NOT_ECHO' ? 'WINDOW' : stage} cleanup_confirmed=false reconcile=true`)
+  expect(output).not.toContain('PRIVATE_DO_NOT_ECHO')
+  expect(f.dispose).toHaveBeenCalledTimes(1)
+})
 it('the CLI rejects credential argv/input misuse without executing an operator or echoing supplied text', () => {
   const result = spawnSync(process.execPath, [resolve('scripts/fiscal-positive-window-cli.mjs'), '--unexpected', 'SYNTHETIC_DO_NOT_ECHO'], { encoding: 'utf8', timeout: 30000 })
   expect(result.status).toBe(1)

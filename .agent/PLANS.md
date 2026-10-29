@@ -6,6 +6,20 @@ An ExecPlan is a living document: create it before implementation, update **Prog
 
 ## Objetivo común vigente — cierre del desarrollo y Production Readiness
 
+29/10/2026: el fallo de la ventana anterior quedó conciliado por lectura hospedada
+(emisor/catálogo inactivos, 37 contadores cero, hashes de historial/comercio intactos).
+Auth/perfil exactos y gateway cerrado acreditados por el operador privado. Sigue
+pendiente aceptación positiva PR03; catálogo2 y ventanas del 28/10 vencidos, sin
+prórroga manual. Cerrar diagnóstico local de etapas, luego renovar evidencia de
+parámetros bajo GO y coordinar TA/paquete nuevo, sin LoginCms redundante. Detalle
+y evidencia en el ExecPlan fiscal; no reutilizar paquetes anteriores ni repetir
+gates sin drift. Meta PR01–PR11/P01–P24 sin cambios.
+
+Resultado posterior del GO de parámetros: WSAA PASS; primera consulta WSFE falló
+por error local/transporte, sin catálogo nuevo. GO consumido; TA descartado vence
+29/10 22:00:42.630Z (19:00:42 Argentina). No LoginCms redundante ni reintentos.
+Conservar catálogo2 inactivo/vencido y evidencia del ExecPlan; no abrir ventana.
+
 Actualización de secuencia, 28/10/2026: completar y publicar primero el bloque
 LOCAL único del operador privado de preparación; después revisar el paquete
 y hacer preflight hospedado READ ONLY. La primera ventana positiva de Staging

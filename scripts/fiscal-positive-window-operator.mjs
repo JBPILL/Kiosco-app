@@ -50,6 +50,7 @@ export async function executePositiveWindow(input, ports) {
     journal = openPositiveWindowJournal(input.journalPath, binding, { create: true, assertExclusive: lease.assertHeld })
     await ports.db.assertClosedBaseline()
     if(ports.db.baselineMetadata)await journal.record('BASELINE',ports.db.baselineMetadata())
+    stage = 'MANAGEMENT'
     const inventory = await ports.management.readInventory()
     await ports.management.assertCustodyMetadata(inventory)
     flags = createPreparationFlags({ baselineInventory: inventory,

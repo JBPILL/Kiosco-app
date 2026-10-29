@@ -41,8 +41,11 @@ export async function executePrivateWindowPacket(packet,dependencies={}){
       authenticateOwner:requests=>(dependencies.authenticate??authenticatePrivateOwner)({publicKey:packet.credentials.publicKey,email:packet.credentials.email,
         password:packet.credentials.password,expectedOwnerAuthId:reviewed.config.ownerAuthId,expectedKioskId:reviewed.config.kioskId},{approvedRequests:requests}),
       dispose:connections.dispose})
+    // Publish only a fixed stage enum, never exception messages or remote data.
+    const failureStage=['PREFLIGHT','MANAGEMENT','AUTH','OPEN','FLAGS','DATA','BODY','RELOAD','CLOSE','LOGOUT','FINAL_PROBE','SESSION'].includes(result.failures?.[0])
+      ?result.failures[0]:'WINDOW'
     output=result.passed?'WINDOW_OPERATOR_PASS flags_closed=true sql_closed=true logout_local=true backend503=true emission=false cae=0'
-      :'WINDOW_OPERATOR_NOT_CONFIRMED stage=WINDOW cleanup_confirmed='+result.cleanupConfirmed+' reconcile=true'
+      :'WINDOW_OPERATOR_NOT_CONFIRMED stage='+failureStage+' cleanup_confirmed='+result.cleanupConfirmed+' reconcile=true'
   }catch{output='WINDOW_OPERATOR_NOT_CONFIRMED stage='+stage+' cleanup_confirmed=false reconcile=true'}
   finally{
     if(connections)await connections.dispose().catch(()=>{output='WINDOW_OPERATOR_NOT_CONFIRMED stage=DISPOSE cleanup_confirmed=false reconcile=true'})
