@@ -6,6 +6,14 @@ An ExecPlan is a living document: create it before implementation, update **Prog
 
 ## Objetivo común vigente — cierre del desarrollo y Production Readiness
 
+Corrección de lectura29/10: las adendas históricas de ExecPlans que dicen
+«primer gate pendiente (PR01)» no ordenan reabrir PR01, ya cerrado. Prevalece el
+registro maestro vigente: PR03 aceptación positiva y PR02 primer CAE siguen
+pendientes. Mientras el TA descartado no venza, avanzar sólo bloqueadores locales
+independientes, sin repetir autenticación. Preparado asistente de lectura Visor
+(53 pruebas/build PASS); perfil hospedado existente inactivo, sin reactivar.
+Detalle y evidencia en ExecPlan fiscal; PR06 no queda cerrado por preparación local.
+
 29/10/2026: el fallo de la ventana anterior quedó conciliado por lectura hospedada
 (emisor/catálogo inactivos, 37 contadores cero, hashes de historial/comercio intactos).
 Auth/perfil exactos y gateway cerrado acreditados por el operador privado. Sigue

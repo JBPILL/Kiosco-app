@@ -1,4 +1,4 @@
-param([switch]$Preparar, [switch]$ComprobarAccesos, [switch]$ComprobarAislamiento)
+param([switch]$Preparar, [switch]$ComprobarAccesos, [switch]$ComprobarAislamiento, [switch]$ComprobarAislamientoVisor)
 $ErrorActionPreference = 'Stop'
 $target = 'https://acoyfwwmhaeruciyedri.supabase.co'
 $origin = 'https://kiosco-app-staging.vercel.app'
@@ -104,6 +104,7 @@ function Invoke-AccessProbe {
     }
 }
 function Get-TestActor {
+    param([switch]$OnlyViewer)
     $identity = Invoke-AccessProbe '/auth/v1/user'
     if ($identity.Status -ne 200) { throw 'IDENTITY_NOT_CONFIRMED' }
     $user = $identity.Content | ConvertFrom-Json
@@ -114,13 +115,15 @@ function Get-TestActor {
     $decoded = ConvertFrom-Json -InputObject $profile.Content
     $rows = @($decoded)
     $owner = 'DUE' + [char]0xD1 + 'O'
+    $allowedRoles = if ($OnlyViewer) { @('VISOR') } else { @($owner,'CAJERO') }
     if ($rows.Count -ne 1 -or $rows[0].activo -cne $true -or $rows[0].es_superadmin -cne $false -or
-        $rows[0].rol -cnotin @($owner,'CAJERO') -or [string]$rows[0].kiosco_id -notmatch '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') { throw 'TEST_ACTOR_NOT_CONFIRMED' }
-    $role = if ($rows[0].rol -ceq $owner) { 'OWNER' } else { 'CASHIER' }
+        $rows[0].rol -cnotin $allowedRoles -or [string]$rows[0].kiosco_id -notmatch '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') { throw 'TEST_ACTOR_NOT_CONFIRMED' }
+    $role = if ($OnlyViewer) { 'VIEWER' } elseif ($rows[0].rol -ceq $owner) { 'OWNER' } else { 'CASHIER' }
     return @{ Role = $role; Kiosk = [string]$rows[0].kiosco_id }
 }
 function Test-SalesIsolation {
-    $actor = Get-TestActor
+    param([switch]$OnlyViewer)
+    $actor = Get-TestActor -OnlyViewer:$OnlyViewer
     # Existing isolated fixtures independently verified in Staging on 2026-10-26.
     # Never select amounts, customers, payments or rows from arbitrary tenants.
     $ownKiosk = 'b7254826-c767-4098-94b8-71013c12021d'
@@ -169,6 +172,7 @@ function Test-ReadAccess {
 }
 try {
     if ($ComprobarAccesos -and $ComprobarAislamiento) { throw 'EXCLUSIVE_TEST_MODE_REQUIRED' }
+    if ($ComprobarAislamientoVisor -and ($Preparar -or $ComprobarAccesos -or $ComprobarAislamiento)) { throw 'EXCLUSIVE_TEST_MODE_REQUIRED' }
     if ($Preparar) {
         Write-Host 'STAGING_JWT_HELPER_READY. Sin conexion, login, flags ni archivos.'
         $result = 0
@@ -203,7 +207,11 @@ try {
         $header = Read-JwtPart ($token.Split('.')[0])
         $algorithm = [string]$header.alg; $header = $null
         if ($algorithm -notin @('ES256','RS256','HS256')) { throw 'JWT_ALGORITHM_UNEXPECTED' }
-        if ($ComprobarAislamiento) {
+        if ($ComprobarAislamientoVisor) {
+            $step = 'aislamiento lectura ventas Visor'
+            Test-SalesIsolation -OnlyViewer
+            $result = 0
+        } elseif ($ComprobarAislamiento) {
             $step = 'aislamiento lectura ventas'
             Test-SalesIsolation
             $result = 0

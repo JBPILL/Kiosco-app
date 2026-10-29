@@ -2,6 +2,36 @@
 
 ## Secuencia vigente — instrucción del titular del 28/10/2026
 
+### 29/10/2026 — Preparación independiente de lectura Visor (PR06/PR09)
+
+Resultado local: 53 pruebas PASS/0 FAIL del asistente, incluyendo Visor válido,
+rol incorrecto, inactivo, SuperAdmin, identidad/scope incorrectos, fila ajena
+visible, fallo de red y relectura vacía. Build689 y lint enfocado PASS. Evidencia
+../viewer-readonly-helper-tests-20261029.json SHA256
+77f254a390197bcf3add4f84d3eff83f3f80b0825911102e166f3fbfc8dce429.
+La suite global5273 del bloque42559cb es anterior a este cambio; no se presenta
+como nueva ejecución global. El modo -ComprobarAislamientoVisor es exclusivo y
+no amplía el acceso del asistente fiscal de Dueño/Cajero.
+
+Inventario hospedado READ ONLY29/10: un perfil VISOR del comercio aislado,
+inactivo, no SuperAdmin, vinculado a Auth existente. No se modificó ni reactivó.
+Evidencia ../viewer-profile-binding-preflight-20261029.json, observado11:05:22Z;
+../viewer-readonly-inventory-20261029.json confirma fixtures propio/ajeno existentes.
+No se realizó login Visor ni aceptación RLS real. No crear cuenta duplicada.
+Reactivación requiere GO específico y confirmar acceso del operador a esa cuenta;
+no solicitar contraseña en el chat. PR06 permanece parcial.
+
+Revisión tras publicar42559cb: schema/types admiten VISOR pero el asistente de
+aislamiento existente sólo acepta Dueño/Cajero. Preparar un modo EXCLUSIVO Visor
+para Auth/perfil activo, lectura propia, rechazo de fila ajena y relectura propia
+con los fixtures ya revisados. No cambiar RLS, roles, datos ni el modo fiscal de
+Dueño/Cajero; no crear cuenta ni ejecutar login real en este bloque. Todas las
+peticiones de datos deben ser GET, sin funciones/RPC/flags/ARCA. Mantener salida
+OBSERVED y necesidad de corroborar la existencia ajena de forma independiente.
+Probar con servidor simulado y fallos de rol/actividad/scope/relectura; build/lint
+y documentación antes de pedir acceso de un Visor real. No cerrar PR06 por este
+ensayo de SELECT ni confundirlo con autorización DML o fiscal completa.
+
 ### 29/10/2026 — Renovación del catálogo requiere pin de revisión, no otro literal
 
 **Cierre global final del bloque ampliado:** sesión50231 terminó exit0:

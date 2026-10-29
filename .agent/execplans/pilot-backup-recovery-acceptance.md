@@ -185,3 +185,12 @@ aceptación de Edge, restore aislado ni primer CAE. PR02/PR03 y PR07 siguen abie
 credenciales ARCA ni activar flags ni Vercel. Preparar aceptación negativa de
 Auth/CORS/gates antes de cualquier provisioning o envío. No desplegado aún.
 Production/master/merge/ARCA real/CAE: sin acciones en este bloque.
+
+
+### Corrección de secuencia vigente — 29/10/2026
+
+El «Siguiente gate» anterior describe el cierre histórico SQL001–053; no ordena
+repetir despliegue. SQL054, Edge cerrada, custodia por metadatos y emisor inactivo
+ya se acreditaron bajo GOs separados, según ExecPlan arca-homologation.md.
+La aceptación positiva hospedada y restauración integral siguen pendientes;
+ningún respaldo equivale a restore probado. Conservar historial y no reinstalar.

@@ -72,31 +72,31 @@ public class MockHttpException : Exception {
           if($Uri -notlike 'https://acoyfwwmhaeruciyedri.supabase.co/*' -or $MaximumRedirection -ne 0 -or $Headers.Authorization -cne ('Bearer '+${quote(token)})){throw 'Unsafe access probe'}
           $global:events.Add(@{kind='access';method=$Method;uri=$Uri;body=$Body;redirects=$MaximumRedirection})
           if($Uri -like '*/auth/v1/user'){
-            return @{StatusCode=200;Content=$(if(${quote(mode)} -eq 'access-identity'){'{"id":"bad"}'}else{'{"id":"11111111-1111-1111-1111-111111111111"}'})}
+            return @{StatusCode=200;Content=$(if(${quote(mode)} -in @('access-identity','isolation-viewer-identity')){'{"id":"bad"}'}else{'{"id":"11111111-1111-1111-1111-111111111111"}'})}
           }
           if($Uri -like '*/rest/v1/usuarios?*'){
-            $role=if(${quote(mode)} -in @('access-cashier','isolation-cashier')){'CAJERO'}else{'DUE'+[char]0xD1+'O'}
-            $active=${quote(mode)} -ne 'access-inactive'
-            $super=${quote(mode)} -eq 'access-superadmin'
-            $kiosk=if(${quote(mode)} -like 'isolation-*' -and ${quote(mode)} -ne 'isolation-wrong-scope'){'b7254826-c767-4098-94b8-71013c12021d'}else{'22222222-2222-2222-2222-222222222222'}
+            $role=if(${quote(mode)} -in @('access-cashier','isolation-cashier','isolation-viewer-cashier')){'CAJERO'}elseif(${quote(mode)} -eq 'access-viewer' -or (${quote(mode)} -like 'isolation-viewer-*' -and ${quote(mode)} -ne 'isolation-viewer-owner')){'VISOR'}else{'DUE'+[char]0xD1+'O'}
+            $active=${quote(mode)} -notin @('access-inactive','isolation-viewer-inactive')
+            $super=${quote(mode)} -in @('access-superadmin','isolation-viewer-superadmin')
+            $kiosk=if(${quote(mode)} -like 'isolation-*' -and ${quote(mode)} -notlike '*wrong-scope'){'b7254826-c767-4098-94b8-71013c12021d'}else{'22222222-2222-2222-2222-222222222222'}
             return @{StatusCode=200;Content=(@(@{rol=$role;activo=$active;es_superadmin=$super;kiosco_id=$kiosk})|ConvertTo-Json -Compress)}
           }
           if(${quote(mode)} -like 'isolation-*'){
             if($Method -ne 'GET'){throw 'Isolation cannot POST'}
             $own='[{"id":"33333333-3333-3333-3333-333333333333","kiosco_id":"b7254826-c767-4098-94b8-71013c12021d"}]'
             if($Uri -ceq 'https://acoyfwwmhaeruciyedri.supabase.co/rest/v1/ventas?select=id,kiosco_id&kiosco_id=eq.b7254826-c767-4098-94b8-71013c12021d&estado=eq.COMPLETADA&order=fecha_hora.desc&limit=1'){
-              if(${quote(mode)} -eq 'isolation-own-empty'){$own='[]'}
-              if(${quote(mode)} -eq 'isolation-own-wrong'){$own=$own.Replace('b7254826-c767-4098-94b8-71013c12021d','22222222-2222-2222-2222-222222222222')}
+              if(${quote(mode)} -like '*-own-empty'){$own='[]'}
+              if(${quote(mode)} -like '*-own-wrong'){$own=$own.Replace('b7254826-c767-4098-94b8-71013c12021d','22222222-2222-2222-2222-222222222222')}
               return @{StatusCode=200;Content=$own}
             }
             if($Uri -ceq 'https://acoyfwwmhaeruciyedri.supabase.co/rest/v1/ventas?select=id,kiosco_id&id=eq.00418e7b-eca6-487c-bffe-b85b405cd9cb&limit=1'){
-              if(${quote(mode)} -eq 'isolation-network'){throw ${quote(password)}}
-              if(${quote(mode)} -eq 'isolation-foreign-denied'){throw (New-Object MockHttpException(403,'{}'))}
-              $foreign=if(${quote(mode)} -eq 'isolation-foreign-visible'){$own}elseif(${quote(mode)} -eq 'isolation-malformed'){'{}'}else{'[]'}
+              if(${quote(mode)} -like '*-network'){throw ${quote(password)}}
+              if(${quote(mode)} -like '*-foreign-denied'){throw (New-Object MockHttpException(403,'{}'))}
+              $foreign=if(${quote(mode)} -like '*-foreign-visible'){$own}elseif(${quote(mode)} -like '*-malformed'){'{}'}else{'[]'}
               return @{StatusCode=200;Content=$foreign}
             }
             if($Uri -ceq 'https://acoyfwwmhaeruciyedri.supabase.co/rest/v1/ventas?select=id,kiosco_id&id=eq.33333333-3333-3333-3333-333333333333&limit=1'){
-              return @{StatusCode=200;Content=$(if(${quote(mode)} -eq 'isolation-recheck-empty'){'[]'}else{$own})}
+              return @{StatusCode=200;Content=$(if(${quote(mode)} -like '*-recheck-empty'){'[]'}else{$own})}
             }
             throw 'Unexpected isolation route'
           }
@@ -116,7 +116,7 @@ public class MockHttpException : Exception {
         if(${quote(mode)} -eq 'unclosed'){return @{StatusCode=400;Content='{"codigo":"SOLICITUD_INVALIDA"}'}}
         throw (New-Object MockHttpException($(if(${quote(mode)} -eq 'jwt401'){401}else{503})))
       }
-      & ${quote(script)} ${mode === 'prepare' ? '-Preparar' : mode.startsWith('access-') ? '-ComprobarAccesos' : mode.startsWith('isolation-') ? '-ComprobarAislamiento' : ''}
+      & ${quote(script)} ${mode === 'prepare' ? '-Preparar' : mode === 'isolation-viewer-conflict' ? '-ComprobarAislamientoVisor -ComprobarAccesos' : mode.startsWith('access-') ? '-ComprobarAccesos' : mode.startsWith('isolation-viewer-') ? '-ComprobarAislamientoVisor' : mode.startsWith('isolation-') ? '-ComprobarAislamiento' : ''}
       $code=$LASTEXITCODE
       [IO.File]::WriteAllText(${quote(record)},(@{prompts=$global:prompts;events=@($global:events.ToArray())}|ConvertTo-Json -Depth 5))
       exit $code
@@ -145,7 +145,29 @@ it.skipIf(process.platform !== 'win32').each(['ok', 'cashier', 'wrong-scope', 'o
     expect(reads[3].uri).not.toContain('kiosco_id=eq.')
   } else expect(r.output).not.toContain('RLS_SALES_READ_ISOLATION_OBSERVED')
 }, 60000)
-it.skipIf(process.platform !== 'win32').each(['ok', 'cashier', 'identity', 'inactive', 'superadmin', 'exposed', 'timeout', 'network', 'unexpected'])('read-only access helper %s is bounded and never mutates fiscal data', suffix => {
+it.skipIf(process.platform !== 'win32').each(['ok','owner','cashier','inactive','superadmin','wrong-scope','identity','own-empty','own-wrong','foreign-visible','foreign-denied','malformed','network','recheck-empty'])('viewer isolation %s is read-only and never accepts a different actor role', suffix=>{
+  const r=run('isolation-viewer-'+suffix)
+  expect(r.status,r.output).toBe(suffix==='ok'?0:1)
+  expect(r.output).toContain('TEST_SESSION_LOGOUT_LOCAL_CONFIRMED')
+  for(const secret of [password,token,r.key,'SYNTHETIC_REFRESH'])expect(r.output).not.toContain(secret)
+  const events=r.report.events as {kind:string;method?:string;uri?:string}[]
+  expect(events[0].kind).toBe('login');expect(events.at(-1)?.kind).toBe('logout')
+  const reads=events.filter(e=>e.kind==='access')
+  expect(reads.every(e=>e.method==='GET'&&!e.uri?.includes('/functions/')&&!e.uri?.includes('/rpc/'))).toBe(true)
+  expect(events.some(e=>['wait','gateway'].includes(e.kind))).toBe(false)
+  if(suffix==='ok'){
+    expect(reads).toHaveLength(5)
+    expect(r.output).toContain('RLS_SALES_READ_ISOLATION_OBSERVED role=VIEWER')
+    expect(reads[3].uri).not.toContain('kiosco_id=eq.')
+  }else expect(r.output).not.toContain('RLS_SALES_READ_ISOLATION_OBSERVED')
+},60000)
+it.skipIf(process.platform !== 'win32')('viewer mode cannot be combined with fiscal access before any credentials are requested',()=>{
+  const r=run('isolation-viewer-conflict')
+  expect(r.status,r.output).toBe(1)
+  expect(r.report.prompts).toBe(0)
+  expect(r.report.events).toEqual([])
+})
+it.skipIf(process.platform !== 'win32').each(['ok', 'cashier', 'viewer', 'identity', 'inactive', 'superadmin', 'exposed', 'timeout', 'network', 'unexpected'])('read-only access helper %s is bounded and never mutates fiscal data', suffix => {
   const r = run('access-' + suffix)
   expect(r.status, r.output).toBe(['ok', 'cashier'].includes(suffix) ? 0 : 1)
   for (const secret of [password, token, r.key, 'SYNTHETIC_REFRESH', '11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222']) expect(r.output).not.toContain(secret)
@@ -157,7 +179,7 @@ it.skipIf(process.platform !== 'win32').each(['ok', 'cashier', 'identity', 'inac
     expect(post.uri).toBe('https://acoyfwwmhaeruciyedri.supabase.co/functions/v1/arca-homologacion')
     expect(JSON.parse(post.body!)).toEqual({accion:'DATOS_FISCALES_VENTA',venta_id:'00000000-0000-0000-0000-000000000000'})
   }
-  if (['identity', 'inactive', 'superadmin', 'exposed'].includes(suffix)) expect(posts).toHaveLength(0)
+  if (['identity', 'inactive', 'superadmin', 'exposed', 'viewer'].includes(suffix)) expect(posts).toHaveLength(0)
   if (['ok', 'cashier'].includes(suffix)) {
     expect(r.output).toContain('ACCESS_PROBE_READY')
     expect(r.output).toContain('BASE_READ_NEGATIVE_OBSERVED')
