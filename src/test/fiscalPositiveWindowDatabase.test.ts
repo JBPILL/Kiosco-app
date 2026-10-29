@@ -26,8 +26,8 @@ function canonicalTables(sql: string): string[] {
   }
   return statements
 }
-async function fixture() {
-  const db = new PGlite(), { config, snapshot } = positivePlanFixture()
+async function fixture(catalogRevision=2) {
+  const db = new PGlite(), { config, snapshot } = positivePlanFixture(catalogRevision)
   const runtimeNow = Date.now()
   config.now = new Date(runtimeNow - 10000).toISOString(); config.startsAt = new Date(runtimeNow - 5000).toISOString()
   config.endsAt = new Date(runtimeNow + 600000).toISOString(); config.taNotBefore = new Date(runtimeNow - 6000).toISOString()
@@ -60,9 +60,9 @@ async function fixture() {
     await db.query('INSERT INTO detalles_venta(id,venta_id,producto_id,cantidad,precio_unitario,subtotal) VALUES($1,$2,$3,$4,$5,$6)', [d.id, snapshot.sale.id, d.producto_id, d.cantidad, d.precio_unitario, d.subtotal])
     await db.query('INSERT INTO fiscal_emisores_homologacion SELECT * FROM jsonb_populate_record(NULL::fiscal_emisores_homologacion,$1::jsonb)', [JSON.stringify(snapshot.issuer)])
     await db.query('INSERT INTO fiscal_parametros_homologacion SELECT * FROM jsonb_populate_record(NULL::fiscal_parametros_homologacion,$1::jsonb)', [JSON.stringify(snapshot.catalog)])
-    await db.query('INSERT INTO fiscal_parametros_homologacion SELECT 1,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en,false FROM fiscal_parametros_homologacion')
+    for(let revision=1;revision<catalogRevision;revision++)await db.query('INSERT INTO fiscal_parametros_homologacion SELECT $1::integer,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en,false FROM fiscal_parametros_homologacion WHERE revision=$2',[revision,catalogRevision])
     await db.exec("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SET LOCAL TIME ZONE 'UTC'")
-    const read = await db.query<{ history_sha256: string; commercial_sha256: string }>(positiveWindowReadOnlySql, [config.ownerAuthId, config.kioskId, snapshot.sale.id, config.operationId, snapshot.issuer.certificado_sha256])
+    const read = await db.query<{ history_sha256: string; commercial_sha256: string }>(positiveWindowReadOnlySql, [config.ownerAuthId, config.kioskId, snapshot.sale.id, config.operationId, snapshot.issuer.certificado_sha256,config.catalogRevision])
     await db.exec('ROLLBACK')
     const observer = { query: async (sql: string, params?: unknown[]) => {
       if (sql.startsWith('SET LOCAL TIME')) { await db.exec(sql); return { rows: [] } }
@@ -84,6 +84,25 @@ it('executes the real read-only SQL and accepts only the exact inactive baseline
     expect((await f.db.query("SELECT current_setting('transaction_read_only') AS value")).rows).toEqual([{ value: 'off' }])
   } finally { await f.db.close() }
 }, 60000)
+it('reads explicitly pinned revision3 and anchors both older revisions',async()=>{
+  const f=await fixture(3)
+  try{
+    await f.adapter.assertClosedBaseline()
+    expect(f.adapter.baselineMetadata().historySha256).toBe(f.historySha256)
+    const rows=await f.db.query(positiveWindowReadOnlySql,[f.config.ownerAuthId,f.config.kioskId,f.snapshot.sale.id,f.config.operationId,f.snapshot.issuer.certificado_sha256,3])
+    expect(rows.rows[0]).toMatchObject({catalog_count:3,history_revisions:[1,2],snapshot:{catalog:{revision:3,habilitado:false}}})
+  }finally{await f.db.close()}
+},60000)
+it.each(['older-drift','history-gap','unexpected-revision'])('rejects renewed-catalog %s without silently repinning',async mode=>{
+  const f=await fixture(3)
+  try{
+    await f.adapter.assertClosedBaseline()
+    if(mode==='older-drift')await f.db.exec("UPDATE fiscal_parametros_homologacion SET fuente_sha256=repeat('d',64) WHERE revision=2")
+    if(mode==='history-gap')await f.db.exec('DELETE FROM fiscal_parametros_homologacion WHERE revision=1')
+    if(mode==='unexpected-revision')await f.db.exec('INSERT INTO fiscal_parametros_homologacion SELECT 4,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en,false FROM fiscal_parametros_homologacion WHERE revision=3')
+    await expect(f.adapter.assertClosedBaseline()).rejects.toThrow('WINDOW_DATABASE_NOT_CONFIRMED')
+  }finally{await f.db.close()}
+},60000)
 it('permanently rejects an observer with unconfirmed ROLLBACK instead of reusing a potentially stale snapshot', async () => {
   const f = await fixture()
   try {

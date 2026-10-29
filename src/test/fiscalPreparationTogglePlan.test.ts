@@ -8,8 +8,8 @@ const domain=readFileSync('supabase/bootstrap/001_domain.sql','utf8')
 const issuerDdl=readFileSync('supabase/pilot-fiscal/005_fiscal_worker_authorization.sql','utf8')
 const catalogDdl=readFileSync('supabase/pilot-fiscal/012_fiscal_preparation.sql','utf8')
 function table(name:string,source:string){const value=source.match(new RegExp('CREATE TABLE (?:IF NOT EXISTS )?public\\.'+name+' \\([\\s\\S]*?\\n\\);'))?.[0];if(!value)throw Error('Canonical table absent');return value}
-async function setup(){
-  const {config,snapshot}=positivePlanFixture(),plan=await planFiscalPreparationToggle(config),db=new PGlite()
+async function setup(catalogRevision=2){
+  const {config,snapshot}=positivePlanFixture(catalogRevision),plan=await planFiscalPreparationToggle(config),db=new PGlite()
   try{
     await db.exec('CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role; CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid PRIMARY KEY); CREATE TABLE public.sesiones_caja(id uuid PRIMARY KEY); CREATE TABLE public.productos(id uuid PRIMARY KEY);')
     for(const name of ['kioscos','usuarios','ventas','detalles_venta'])await db.exec(table(name,domain))
@@ -29,6 +29,23 @@ async function setup(){
   }catch(e){await db.close();throw e}
 }
 const currentClock=(sql:string)=>sql.replaceAll('clock_timestamp()',"('2026-10-28T15:10:01Z'::timestamptz)")
+it('toggles only explicitly reviewed revision3 and preserves both historical rows byte-for-byte',async()=>{
+  const {db,config,snapshot,plan}=await setup(3)
+  try{
+    for(const revision of [1,2])await db.query('INSERT INTO fiscal_parametros_homologacion SELECT $1::integer,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en,false FROM fiscal_parametros_homologacion WHERE revision=3',[revision])
+    const history=await db.query('SELECT to_jsonb(p) AS value FROM fiscal_parametros_homologacion p WHERE revision<3 ORDER BY revision')
+    await approve(db,plan.data.manifest.planSha256)
+    await db.exec(currentClock(plan.activationSql))
+    expect((await db.query('SELECT revision FROM fiscal_parametros_homologacion WHERE habilitado')).rows).toEqual([{revision:3}])
+    await db.query("SELECT set_config('kioskopos.window_opened_at','2026-10-28 15:10:01+00',false)")
+    await db.exec(plan.closureSql)
+    expect((await db.query('SELECT to_jsonb(p) AS value FROM fiscal_parametros_homologacion p WHERE revision<3 ORDER BY revision')).rows).toEqual(history.rows)
+    expect((await db.query('SELECT revision FROM fiscal_parametros_homologacion WHERE habilitado')).rows).toEqual([])
+    expect(config.catalogRevision).toBe(snapshot.catalog.revision)
+    await expect(db.exec(currentClock(plan.activationSql))).rejects.toThrow()
+    await db.exec('ROLLBACK')
+  }finally{await db.close()}
+},60000)
 async function approve(db:PGlite,hash:unknown){await db.query("SELECT set_config('kioskopos.window_target','acoyfwwmhaeruciyedri',false),set_config('kioskopos.window_plan',$1,false)",[hash])}
 it('requires GO, activates metadata once, rejects replay and closes after expiry without touching operations',async()=>{
   const {db,config,plan}=await setup()

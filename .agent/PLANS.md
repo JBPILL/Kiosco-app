@@ -20,6 +20,16 @@ por error local/transporte, sin catálogo nuevo. GO consumido; TA descartado ven
 29/10 22:00:42.630Z (19:00:42 Argentina). No LoginCms redundante ni reintentos.
 Conservar catálogo2 inactivo/vencido y evidencia del ExecPlan; no abrir ventana.
 
+Preparación local siguiente29/10: eliminar el pin literal2 exige catalogRevision
+explícito revisado, con historia/hash completos; SQL local y observador ya
+probados para3 sin instalarla. Transporte del asistente clasificado por tipos
+sin revelar mensajes. 170 pruebas enfocadas y14 escenarios PostgreSQL17 locales
+PASS; global ampliada final5273 PASS/0 FAIL/1skip/332archivos, exit0 y cobertura
+de archivos completa. Se conserva el estado en curso como histórico del ExecPlan.
+Ninguna nueva autoridad remota. Renovación y
+ventana deben caber entre expiración REAL del TA descartado y vigencia del
+catálogo, no simplemente consultar otra vez al llegar19:00.
+
 Actualización de secuencia, 28/10/2026: completar y publicar primero el bloque
 LOCAL único del operador privado de preparación; después revisar el paquete
 y hacer preflight hospedado READ ONLY. La primera ventana positiva de Staging

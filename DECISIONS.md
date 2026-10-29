@@ -1306,3 +1306,28 @@ detiene trabajo nuevo sin impedir cerrar cambios propios. La sesión perdida
 no habilita esta excepción: no hay reacquisición, autoridad por journal ni
 retry automático. SQL aprobado y permisos remotos no fueron modificados.
 
+## Revisión de catálogo explícita en el operador de aceptación (29/10/2026)
+
+La revisión2 vencida era un pin literal del planificador, SQL administrativo y
+observador. Renovar a3 requiere sustituir ese literal por un dato revisado, sin
+introducir selección de la última fila ni default heredado. Se exige
+catalogRevision entero explícito en la configuración, igual al snapshot revisado,
+y queda incorporado al manifiesto/hash, cuerpo preparado, SELECT/UPDATE y
+validación posterior de la operación. Configuraciones anteriores sin ese campo
+se rechazan; los paquetes ya consumidos/vencidos no se migran ni reinterpretan.
+
+El observador usa un sexto parámetro SQL tipado para la revisión pinneada. Exige
+la secuencia histórica completa1..revision-1, cantidad exacta de filas y hash
+estable de TODAS las revisiones distintas de la elegida. No admite huecos,
+revisiones futuras inesperadas ni recalcula baseline por drift. El cierre sólo
+deshabilita la fila aprobada y conserva el recibo; no reescribe historia.
+El emisor continúa explícitamente en revisión1, sin ampliar esa autoridad.
+
+La vigencia del catálogo y el TA descartado son restricciones independientes:
+no basta esperar un TA y consultar de noche si el siguiente TA vence después
+del catálogo del día. Preparar la renovación en un horario con margen y decidir
+con las expiraciones REALES (inicio posterior al TA y fin anterior al catálogo),
+sin asumir que una nueva autenticación dura exactamente12h ni prorrogar datos.
+No programar ni ejecutar automáticamente. Cambios locales no habilitan SQL,
+flags, LoginCms, emisión ni nuevo acceso remoto; permanecen sus GO separados.
+

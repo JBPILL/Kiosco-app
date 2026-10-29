@@ -28,7 +28,7 @@ BEGIN
  LOCK TABLE public.fiscal_parametros_homologacion IN SHARE ROW EXCLUSIVE MODE;
  SELECT * INTO actual_issuer FROM public.fiscal_emisores_homologacion WHERE kiosco_id='${p.kioskId}'::uuid FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'WINDOW_BINDING_CHANGED'; END IF;
- SELECT * INTO actual_catalog FROM public.fiscal_parametros_homologacion WHERE revision=2 FOR UPDATE;
+ SELECT * INTO actual_catalog FROM public.fiscal_parametros_homologacion WHERE revision=${p.catalogRevision} FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'WINDOW_BINDING_CHANGED'; END IF;
 `
   const finish=`END $window$;
@@ -77,7 +77,7 @@ ${common}
  OR opened_at<=actual_issuer.actualizado_en THEN RAISE EXCEPTION 'WINDOW_NOT_CURRENT'; END IF;
  -- Retain this monotone receipt marker on closure; the old plan cannot reopen.
  UPDATE public.fiscal_emisores_homologacion SET habilitado=true,actualizado_en=opened_at WHERE kiosco_id=actor.kiosco_id;
- UPDATE public.fiscal_parametros_homologacion SET habilitado=true WHERE revision=2;
+ UPDATE public.fiscal_parametros_homologacion SET habilitado=true WHERE revision=${p.catalogRevision};
 ${finish}`
   const closureSql=`-- Close private PREPARATION/DATA/BACKEND flags FIRST, under the same reviewed GO.
 -- No expiry restriction: closure must remain possible after the window ends.
@@ -95,12 +95,12 @@ ${common}
  OR opened_at>=${quote(p.endsAt)}::timestamptz THEN RAISE EXCEPTION 'WINDOW_OPEN_RECEIPT_REQUIRED'; END IF;
  -- Do not reset actualizado_en: replay prevention survives closure/reload.
  UPDATE public.fiscal_emisores_homologacion SET habilitado=false WHERE kiosco_id='${p.kioskId}'::uuid AND habilitado;
- UPDATE public.fiscal_parametros_homologacion SET habilitado=false WHERE revision=2 AND habilitado;
+ UPDATE public.fiscal_parametros_homologacion SET habilitado=false WHERE revision=${p.catalogRevision} AND habilitado;
 ${finish}`
   const verificationSql=`BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SELECT jsonb_build_object('read_only',current_setting('transaction_read_only'),
  'issuer_enabled',(SELECT habilitado FROM public.fiscal_emisores_homologacion WHERE kiosco_id='${p.kioskId}'::uuid),
- 'catalog_enabled',(SELECT habilitado FROM public.fiscal_parametros_homologacion WHERE revision=2),
+ 'catalog_enabled',(SELECT habilitado FROM public.fiscal_parametros_homologacion WHERE revision=${p.catalogRevision}),
  'enabled_issuers',(SELECT count(*) FROM public.fiscal_emisores_homologacion WHERE habilitado),
  'enabled_catalogs',(SELECT count(*) FROM public.fiscal_parametros_homologacion WHERE habilitado),
  'operation_id','${p.operationId}','plan_sha256','${p.planSha256}',

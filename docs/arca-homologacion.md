@@ -1,5 +1,28 @@
 # Preparar ARCA en homologación
 
+## Contrato vigente del operador local (29/10/2026)
+
+La configuración de cada paquete nuevo exige `catalogRevision` entero explícito,
+igual a la revisión del snapshot revisado. El manifiesto/hash y cuerpo preparado
+conservan ese pin. El SQL sólo abre/cierra esa fila; el observador READ ONLY usa
+seis parámetros, siendo el sexto la revisión aprobada. No seleccionar "latest",
+inferir revisión, adaptar un paquete antiguo ni actualizar historia para hacerlo
+pasar. Se exige historial completo anterior y hash estable de todas sus filas.
+
+El catálogo2 está vencido e inactivo. Una revisión3 sólo podrá importarse con
+evidencia WSFE nueva y GO propio. La autorización del 29/10 ya se consumió:
+WSAA pasó pero la primera consulta WSFE falló; TA descartado vence a22:00:42.630Z
+(19:00:42 Argentina). No autenticar de nuevo antes ni reintentar por inferencia.
+Coordinar la próxima consulta y ventana con AMBAS expiraciones reales; consultar
+de noche puede dejar el siguiente TA vigente después de que venza el catálogo.
+Ninguna hora futura queda programada ni autorizada por esta explicación.
+
+El diagnóstico local clasifica transporte por tipos/enums de .NET y mantiene la
+lista cerrada de errores de negocio. Esto no prueba la causa del fallo anterior
+ni modifica TLS, endpoint, timeout40s o política sin reintentos. Preparación,
+importación, activación y emisión conservan sus gates distintos. El ExecPlan
+fiscal contiene evidencia local y estado hospedado; PR03 sigue parcial.
+
 Estado: preparación local disponible; **no hay emisión fiscal activada**.
 Actualización 20/10/2026: certificado recibido, par criptográfico comprobado y
 WSAA homologación PASS tras la autorización WSASS de `wsfe` por el titular.

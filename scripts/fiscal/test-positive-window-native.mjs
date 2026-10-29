@@ -75,7 +75,7 @@ try{
     const database='kiosko_window_'+(++fixtureIndex)
     await admin.query('CREATE DATABASE '+database+' TEMPLATE kiosko_window_template')
     const writer=await connect(database),observer=await connect(database),rpc=await connect(database),profile=await connect(database)
-    const {config,snapshot}=positivePlanFixture(),now=Date.now()
+    const {config,snapshot}=positivePlanFixture(mode==='renewed-catalog'?3:2),now=Date.now()
     config.now=new Date(now-5000).toISOString();config.startsAt=new Date(now-1000).toISOString();config.endsAt=new Date(now+600000).toISOString();config.taNotBefore=new Date(now-2000).toISOString()
     if(mode==='expire-after-open')config.endsAt=new Date(now+15000).toISOString()
     snapshot.observed_at=config.now;snapshot.catalog.consultado_en=new Date(now-10000).toISOString();snapshot.catalog.vence_en=new Date(now+7200000).toISOString()
@@ -92,11 +92,11 @@ try{
     await observer.query('INSERT INTO detalles_venta(id,venta_id,producto_id,cantidad,precio_unitario,subtotal) VALUES($1,$2,$3,$4,$5,$6)',[line.id,snapshot.sale.id,line.producto_id,line.cantidad,line.precio_unitario,line.subtotal])
     await observer.query('INSERT INTO fiscal_emisores_homologacion SELECT * FROM jsonb_populate_record(NULL::fiscal_emisores_homologacion,$1::jsonb)',[JSON.stringify(snapshot.issuer)])
     await observer.query('INSERT INTO fiscal_parametros_homologacion SELECT * FROM jsonb_populate_record(NULL::fiscal_parametros_homologacion,$1::jsonb)',[JSON.stringify(snapshot.catalog)])
-    await observer.query('INSERT INTO fiscal_parametros_homologacion SELECT 1,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en,false FROM fiscal_parametros_homologacion')
+    for(let revision=1;revision<config.catalogRevision;revision++)await observer.query('INSERT INTO fiscal_parametros_homologacion SELECT $1::integer,condiciones,alicuotas,fuente_sha256,consultado_en,vence_en,false FROM fiscal_parametros_homologacion WHERE revision=$2',[revision,config.catalogRevision])
     config.snapshotText=JSON.stringify(snapshot);config.snapshotSha256=sha(config.snapshotText)
     const plan=await planFiscalPreparationToggle(config),hash=plan.data.manifest.planSha256
     await observer.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;SET LOCAL TIME ZONE 'UTC'")
-    const baseline=(await observer.query(positiveWindowReadOnlySql,[config.ownerAuthId,config.kioskId,snapshot.sale.id,config.operationId,snapshot.issuer.certificado_sha256])).rows[0]
+    const baseline=(await observer.query(positiveWindowReadOnlySql,[config.ownerAuthId,config.kioskId,snapshot.sale.id,config.operationId,snapshot.issuer.certificado_sha256,config.catalogRevision])).rows[0]
     await observer.query('ROLLBACK')
     const db=await createPositiveWindowDatabase({client:writer,observer,config,historySha256:mode==='capture-baseline'?null:baseline.history_sha256,commercialSha256:mode==='capture-baseline'?null:baseline.commercial_sha256})
     await rpc.query("SET ROLE service_role;SELECT set_config('request.jwt.claim.role','service_role',false)")
@@ -201,7 +201,7 @@ try{
     }
     return{ports,input,calls,database,db,openStarted,openPause,numberPause,wsaaPause,workers,observer,baseline,runPrivatePacket}
   }
-  for(const mode of ['normal','capture-baseline','open-ack','body-ack','close-ack','late-numbering','late-wsaa','wsaa-uncertain','expired-jwt','revoke-after-open','suspend-after-open','expire-after-open']){
+  for(const mode of ['normal','renewed-catalog','capture-baseline','open-ack','body-ack','close-ack','late-numbering','late-wsaa','wsaa-uncertain','expired-jwt','revoke-after-open','suspend-after-open','expire-after-open']){
     const f=await fixture(mode);stage='CYCLE_'+mode
     const result=await f.runPrivatePacket()
     evidence={safeLastResult:result}

@@ -9,6 +9,27 @@ import { expect, it } from 'vitest'
 import { planFiscalPositiveAcceptance } from '../../scripts/plan-fiscal-positive-acceptance.mjs'
 
 const hash=(v:string)=>createHash('sha256').update(v).digest('hex')
+it('pins a renewed catalog explicitly in the prepared body and reviewed manifest',async()=>{
+  const {config,snapshot}=positivePlanFixture(),old=await planFiscalPositiveAcceptance(config)
+  snapshot.catalog.revision=3
+  const snapshotText=JSON.stringify(snapshot)
+  const renewed=await planFiscalPositiveAcceptance({...config,catalogRevision:3,snapshotText,snapshotSha256:hash(snapshotText)})
+  expect(renewed.manifest.catalogRevision).toBe(3)
+  expect(renewed.manifest.planSha256).not.toBe(old.manifest.planSha256)
+  expect(renewed.prepared.sha256).not.toBe(old.prepared.sha256)
+  expect(renewed.manifest.emissionEnabled).toBe(false)
+})
+it.each([undefined,null,'3',0,1,-1,2.5,2147483648,Infinity])('rejects an absent/invalid explicit catalog revision %s',async revision=>{
+  const {config}=positivePlanFixture()
+  await expect(planFiscalPositiveAcceptance({...config,catalogRevision:revision})).rejects.toThrow('POSITIVE_ACCEPTANCE_PROPOSAL_REJECTED')
+})
+it('never infers the reviewed revision from an otherwise valid snapshot',async()=>{
+  const {config}=positivePlanFixture()
+  const {catalogRevision,...legacy}=config
+  expect(catalogRevision).toBe(2)
+  await expect(planFiscalPositiveAcceptance(legacy)).rejects.toThrow('POSITIVE_ACCEPTANCE_PROPOSAL_REJECTED')
+  await expect(planFiscalPositiveAcceptance({...config,catalogRevision:3})).rejects.toThrow('POSITIVE_ACCEPTANCE_PROPOSAL_REJECTED')
+})
 it('creates deterministic explicit data with stable operation identity and no authority to activate or emit',async()=>{
   const {config}=positivePlanFixture(),before=JSON.stringify(config),plan=await planFiscalPositiveAcceptance(config)
   expect(JSON.stringify(config)).toBe(before)

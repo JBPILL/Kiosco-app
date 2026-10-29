@@ -21,6 +21,14 @@ TA descartado vence29/10 22:00:42.630Z. GO consumido, no retry ni LoginCms antes
 de su expiración. Evidencia anónima adicional de fallo de conexión al WSDL; no
 atribuye una causa definitiva. Catálogo2 inactivo/vencido y gate positivo pendiente.
 
+Preparación LOCAL de revisión3: configuración/manifiesto/SQL/observador requieren
+pin explícito y verifican todas las revisiones históricas. 170 pruebas enfocadas
+y14 escenarios PostgreSQL/HTTP con Auth/ARCA sintéticos PASS; no catálogo3 real,
+no importación ni aceptación positiva. Coordinar consulta/TA/ventana dentro de
+la vigencia del catálogo, sin asumir duración fija o ampliar fechas. Evidencia
+detallada en ExecPlan fiscal: global final5273 PASS/0 FAIL/1skip/332archivos,
+exit0 y sin archivos ausentes. PR03 no cambia a PASS por aceptación sólo local.
+
 Actualización de orden del 28/10/2026: el operador de preparación fiscal se
 cierra primero como bloque local único; después preflight hospedado y GO
 independiente para ventana positiva SIN emisión. Consultar el ExecPlan fiscal

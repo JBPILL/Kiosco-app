@@ -18,6 +18,48 @@ param(
     [string]$TipoComprobante
 )
 
+function Get-ArcaDiagnosticFailureCode {
+    param([Exception]$Failure, [string]$Stage)
+    # Inspect types and fixed enums only. Never publish an arbitrary message,
+    # response, URL, socket detail, certificate or exception stack.
+    $chain = [Collections.Generic.List[Exception]]::new()
+    $current = $Failure
+    while ($current -and $chain.Count -lt 16) { $chain.Add($current); $current = $current.InnerException }
+    $known = $null
+    foreach ($item in $chain) {
+        if ($item.Message -cmatch '^((WSAA|WSFE)_FAULT:[a-zA-Z0-9_.:-]{1,100}|WSFE_BUSINESS:([0-9,]{1,90}|UNKNOWN)|WSFE_(RESULT|POINTS|TYPES|OPERATION|PARAMETERS|PARAMETER_DESTINATION|LAST_SCOPE|LAST_RESULT)|CERT_KEY_MISMATCH|CERT_NOT_CURRENT|CERT_NOT_TESTING|TICKET_[A-Z_]+|XML_[A-Z_]+|(WSAA|WSFE)_HTTP_[0-9]{3})$') { $known = $item.Message }
+    }
+    if ($known) { return $known }
+    if ($Stage -cnotin @('LOGIN_CMS','WSFE_CONSULTA')) { return 'LOCAL_OR_TRANSPORT_ERROR' }
+    foreach ($item in $chain) {
+        if ($item -is [OperationCanceledException] -or $item -is [TimeoutException]) { return 'TRANSPORT_TIMEOUT' }
+        if ($item -is [Security.Authentication.AuthenticationException]) { return 'TRANSPORT_TLS' }
+        if ($item -is [Net.Sockets.SocketException]) {
+            if ($item.SocketErrorCode -in @([Net.Sockets.SocketError]::HostNotFound,[Net.Sockets.SocketError]::TryAgain,[Net.Sockets.SocketError]::NoData)) { return 'TRANSPORT_DNS' }
+            if ($item.SocketErrorCode -eq [Net.Sockets.SocketError]::TimedOut) { return 'TRANSPORT_TIMEOUT' }
+        }
+    }
+    foreach ($item in $chain) {
+        if ($item -is [Net.Http.HttpRequestException]) {
+            switch ($item.HttpRequestError.ToString()) {
+                'NameResolutionError' { return 'TRANSPORT_DNS' }
+                'SecureConnectionError' { return 'TRANSPORT_TLS' }
+                'ConnectionError' { return 'TRANSPORT_CONNECT' }
+                'HttpProtocolError' { return 'TRANSPORT_PROTOCOL' }
+                'InvalidResponse' { return 'TRANSPORT_PROTOCOL' }
+                'ResponseEnded' { return 'TRANSPORT_RESPONSE_ENDED' }
+                'ProxyTunnelError' { return 'TRANSPORT_PROXY' }
+            }
+        }
+    }
+    foreach ($item in $chain) {
+        if ($item -is [Net.Sockets.SocketException]) { return 'TRANSPORT_SOCKET' }
+        if ($item -is [Net.Http.HttpRequestException]) { return 'TRANSPORT_HTTP' }
+        if ($item -is [IO.IOException]) { return 'TRANSPORT_IO' }
+    }
+    return 'LOCAL_OR_TRANSPORT_ERROR'
+}
+
 $ErrorActionPreference = 'Stop'
 $etapa = 'CARGA'
 $password = $null
@@ -105,12 +147,7 @@ try {
     } else { Write-Output 'WSAA_HOMOLOGACION=NOT_RUN' }
 } catch {
     # No imprimir ErrorRecord, pila, XML, rutas privadas, Token, Sign ni excepciones completas.
-    $codigo = 'LOCAL_OR_TRANSPORT_ERROR'
-    $errorInterno = $_.Exception
-    while ($errorInterno.InnerException) { $errorInterno = $errorInterno.InnerException }
-    if ($errorInterno.Message -match '^((WSAA|WSFE)_FAULT:[a-zA-Z0-9_.:-]{1,100}|WSFE_BUSINESS:([0-9,]{1,90}|UNKNOWN)|WSFE_(RESULT|POINTS|TYPES|OPERATION|PARAMETERS|PARAMETER_DESTINATION|LAST_SCOPE|LAST_RESULT)|CERT_KEY_MISMATCH|CERT_NOT_CURRENT|CERT_NOT_TESTING|TICKET_[A-Z_]+|XML_[A-Z_]+|(WSAA|WSFE)_HTTP_[0-9]{3})$') {
-        $codigo = $errorInterno.Message
-    }
+    $codigo = Get-ArcaDiagnosticFailureCode -Failure $_.Exception -Stage $etapa
     $gate = if ($etapa -in @('WSFE_CONSULTA','EXPORTACION_PARAMETROS')) { 'WSFE_HOMOLOGACION' } else { 'WSAA_HOMOLOGACION' }
     Write-Output ($gate + '=FAIL; STAGE=' + $etapa + '; CODE=' + $codigo)
     exit 1

@@ -26,8 +26,9 @@ function businessDay(value) {
 /** The snapshot is review material, never authority to activate or bypass live checks. */
 export async function planFiscalPositiveAcceptance(input) {
   try {
-    exact(input, ['projectRef','snapshotText','snapshotSha256','ownerAuthId','kioskId','operationId','invoice','now','startsAt','endsAt','taNotBefore'])
+    exact(input, ['projectRef','snapshotText','snapshotSha256','ownerAuthId','kioskId','operationId','invoice','now','startsAt','endsAt','taNotBefore','catalogRevision'])
     if (input.projectRef !== CUSTODY_PROJECT || ![input.ownerAuthId,input.kioskId,input.operationId].every(uuid)
+      || !Number.isSafeInteger(input.catalogRevision) || input.catalogRevision < 2 || input.catalogRevision > 2147483647
       || typeof input.snapshotText !== 'string' || Buffer.byteLength(input.snapshotText) > 65536
       || hash(input.snapshotText) !== input.snapshotSha256) return fail()
     const snapshot = JSON.parse(input.snapshotText)
@@ -47,7 +48,7 @@ export async function planFiscalPositiveAcceptance(input) {
       || snapshot.returns !== 0 || snapshot.operations !== 0
       || issuer.kiosco_id !== input.kioskId || issuer.revision !== 1 || issuer.habilitado !== false
       || !uuid(issuer.credencial_id) || !/^[0-9a-f]{64}$/.test(issuer.certificado_sha256)
-      || catalog.revision !== 2 || catalog.habilitado !== false || time(catalog.consultado_en)>now || end>time(catalog.vence_en)
+      || catalog.revision !== input.catalogRevision || catalog.habilitado !== false || time(catalog.consultado_en)>now || end>time(catalog.vence_en)
       || !Array.isArray(details) || details.length < 1 || details.length > 100) return fail()
     for (const line of details) {
       exact(line,['id','producto_id','cantidad','precio_unitario','subtotal','es_devolucion_envase'])
@@ -76,7 +77,7 @@ export async function planFiscalPositiveAcceptance(input) {
     const manifest={version:1,projectRef:CUSTODY_PROJECT,ownerAuthId:input.ownerAuthId,kioskId:input.kioskId,saleId:sale.id,
       operationId:input.operationId,createdAt:new Date(now).toISOString(),startsAt:input.startsAt,endsAt:input.endsAt,
       taNotBefore:input.taNotBefore,snapshotSha256:input.snapshotSha256,invoiceSha256:hash(JSON.stringify(invoice)),
-      preparedSha256:prepared.sha256,requestsSha256:hash(JSON.stringify(requests)),issuerRevision:1,catalogRevision:2,
+      preparedSha256:prepared.sha256,requestsSha256:hash(JSON.stringify(requests)),issuerRevision:1,catalogRevision:input.catalogRevision,
       flagsForData:['ARCA_HOMO_BACKEND_ENABLED','ARCA_HOMO_DATA_PREPARATION_ENABLED'],
       additionalFlagForBody:'ARCA_HOMO_PREPARATION_ENABLED',
       alwaysClosedFlags:CLOSED_FISCAL_FLAGS.filter(n=>!['ARCA_HOMO_BACKEND_ENABLED','ARCA_HOMO_DATA_PREPARATION_ENABLED','ARCA_HOMO_PREPARATION_ENABLED'].includes(n)),

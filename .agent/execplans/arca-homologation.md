@@ -2,6 +2,93 @@
 
 ## Secuencia vigente — instrucción del titular del 28/10/2026
 
+### 29/10/2026 — Renovación del catálogo requiere pin de revisión, no otro literal
+
+**Cierre global final del bloque ampliado:** sesión50231 terminó exit0:
+5273 PASS,0 FAIL,1 skipped,332 archivos. Se contrastaron TODOS los332 archivos
+de prueba registrados con el informe: missing=[]; única omisión histórica
+f6-2d-c3c2-enrichment.test.ts (reviewed candidate set/cutover blockers), no PASS.
+../fiscal-renewal-closure-global-20261029.json SHA256
+0a05e7211dd6d9e2dccff3d555ab783a733fb0534a92343e8ea3383543e88686.
+Supera el estado EN CURSO inferior; no reutiliza el pase anterior de8a480fc.
+170 pruebas de revisión/operador y30 diagnóstico,14 escenarios PostgreSQL17.11,
+build689, lint enfocado, node --check, parser/diff y bundle36assets PASS.
+Warning no-unsafe-finally previo del harness permanece. Scan15archivos cambiados
+sin patrones privados examinados; no certifica ausencia absoluta de secretos.
+Un solo bloque listo para commit/publicación del PR, sin GO remoto nuevo.
+PR03 no cambia a PASS: catálogo3 real, importación y ventana positiva pendientes.
+
+Resultado nativo final (supera EN CURSO inferior): PostgreSQL17.11,14 escenarios
+PASS, incluidos ciclo privado/HTTP/SQL de revisión3 y exclusión concurrente.
+externalRequests=0/realArcaCalls=0/emissions=0/cae=0. Contenedor propio detenido,
+DB/journals sintéticos conservados. ../catalog-revision3-native-20261029.json
+SHA256 e8d570162da923684b721333b875221a117123a3e2e23f02a6041ad78566290f.
+Suite170 enfocada SHA25655e06470f15a98fb47a9e3ac50cb2cd7f432d41a5abfbc7a1d281e08a470c25b.
+Validación global del bloque ampliado en curso, sesión50231; no publicar antes
+de su resultado terminal ni atribuirle el pase global anterior de8a480fc.
+
+Consulta de documentación pública oficial (sin credenciales) confirmó que el
+endpoint gov.ar del código figura en el manual enlazado de homologación:
+https://www.afip.gob.ar/ws/documentacion/homologacion-externa.asp y
+https://www.afip.gob.ar/fe/ayuda/documentos/wsfev1-RG-4291.pdf (sección URL,p21).
+El PDF se identifica v4.8 y fecha1/12/2026, posterior al día actual: no asumir
+vigencia de sus cambios fiscales por este lookup. La URL coincide también con
+manuales anteriores. El acceso web anónimo a una página del servicio gob.ar y
+al manual general4.7 tuvo timeout; no acredita causa ni autoriza cambiar el pin
+gov.ar por alias. No nuevas consultas autenticadas ni lectura de material original.
+
+Auditoría del siguiente gate detectó hardcodes2 en plan, SQL/observador y prueba
+de operación. Bloque local actual exige catalogRevision explícito y validado en
+configuración/snapshot/manifiesto/hash; SQL generado usa sólo esa revisión, y la
+consulta independiente fija un sexto parámetro entero. No consulta latest ni
+adapta el pin a la base. Historial completo1..revision-1 y cantidad exacta siguen
+obligatorios; su hash cubre todas las filas ajenas al catálogo elegido. Cambios,+huecos o revisiones inesperadas => STOP, no recaptura de baseline. Los paquetes
+anteriores carecen de la nueva entrada y de los hashes actuales: no reutilizar.
+
+170 pruebas enfocadas PASS/0 FAIL/7 archivos, incluyendo SQL PGlite real que abre/
+cierra3 preservando1+2 y rechaza replay, y observador que detecta drift de2,
+huecos y una4 inesperada. PGlite no acredita el esquema fiscal completo. Build689
+PASS; lint/diff PASS. ../catalog-revision3-local-integration-20261029.json.
+Ensayo PostgreSQL17 aislado con esquema001–054/HTTP real/Auth y ARCA sintéticos,
+incluyendo revisión3 y concurrencia, EN CURSO; no acreditarlo todavía.
+
+Este bloque incorpora la clasificación segura de transporte descrita debajo;
+no cambió endpoints, TLS, timeout40s ni retries. No nuevas lecturas de originales,
+consultas reales, importación3 ni cambios remotos. La excepción del TA descartado
+obliga a coordinar nuevo catálogo y próxima ventana: no repetir autenticación al
+vencer19:00 sin comprobar que el siguiente TA permita una ventana ANTES de que
+venza el catálogo del día. Ver decisión29/10; no asumir duración exacta de12h.
+
+### 29/10/2026 — Clasificación local de transporte, posterior a8a480fc
+
+El diagnóstico WSAA/WSFE conserva ahora categorías de lista cerrada obtenidas de
+tipos .NET/HttpRequestError/SocketError, incluyendo excepciones anidadas. Distingue
+timeout, DNS, conexión, TLS, protocolo, proxy, respuesta cortada e IO de transporte.
+Sólo aplica categorías de transporte en LOGIN_CMS/WSFE_CONSULTA: IO en DPAPI o
+exportación local no se presenta como fallo de red. Los códigos de negocio/SOAP/
+HTTP previamente saneados se conservan. No imprime mensajes externos, XML, rutas,
+JWT, Token/Sign ni claves. Límite de inspección de cadena16, fallback cerrado.
+
+No cambió C# del transporte, timeout40s, TLS, endpoint fijo, redirecciones, retries,
+custodia o permisos. No se leyó material original ni se hicieron llamadas reales
+en este bloque. No reclasificar retroactivamente el error del intento consumido:
+la categoría histórica sigue LOCAL_OR_TRANSPORT_ERROR; GET anónimo SOCKET es una
+observación independiente. No autoriza reintentar antes de22:00:42.630Z.
+
+30 pruebas enfocadas PASS/0 FAIL/3 archivos, con wrappers PowerShell reales y
+excepciones sintéticas; incluyen15 comprobaciones nativas de categorías/anidación,
+rechazo de mensajes privados, fallo en primer catálogo y LoginCms incierto sin
+reintentos ni segunda consulta/exportación. Build689 PASS; lint enfocado exit0
+con warning no-unsafe-finally histórico de limpieza del harness, sin suprimirlo.
+../wsfe-transport-categories-final-20261029.json. La suite global5251/1skip de
+8a480fc precede esta corrección privada: no presentarla como global nueva.
+
+El hash del asistente cambia: la propuesta e1e802f2 ya consumida permanece como
+historia y no es ejecutable con este source. Un nuevo intento requiere propuesta/
+hash revisados y GO propio, además de esperar vencimiento del TA descartado.
+PR03 continúa parcial, catálogo2 vencido/inactivo, primer CAE pendiente. Mantener
+el objetivo común completo y los gates remotos cerrados.
+
 ### 29/10/2026 — Identidad exacta confirmada; cierre de diagnóstico local
 
 **Cierre local final:** ejecución global maxWorkers=2 terminó exit0,5251 PASS,

@@ -31,14 +31,14 @@ export const positiveWindowReadOnlySql = `SELECT jsonb_build_object(
  'returns',(SELECT count(*)::int FROM public.devoluciones_venta WHERE venta_id=$3),
  'operations',(SELECT count(*)::int FROM public.fiscal_operaciones_homologacion WHERE venta_id=$3),
  'issuer',(SELECT to_jsonb(e) FROM public.fiscal_emisores_homologacion e WHERE e.kiosco_id=$2),
- 'catalog',(SELECT to_jsonb(p) FROM public.fiscal_parametros_homologacion p WHERE revision=2)) AS snapshot,
+ 'catalog',(SELECT to_jsonb(p) FROM public.fiscal_parametros_homologacion p WHERE revision=$6::integer)) AS snapshot,
  jsonb_build_object(${countsSql}) AS counters,
- ${digestSql("SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY revision),'[]'::jsonb) FROM public.fiscal_parametros_homologacion p WHERE revision<>2")} AS history_sha256,
+ ${digestSql("SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY revision),'[]'::jsonb) FROM public.fiscal_parametros_homologacion p WHERE revision<>$6::integer")} AS history_sha256,
  ${digestSql(`SELECT jsonb_build_array(${commercialSql})`)} AS commercial_sha256,
  (SELECT actualizado_en::text FROM public.fiscal_emisores_homologacion WHERE kiosco_id=$2) AS opened_at,
  (SELECT count(*)::int FROM public.fiscal_emisores_homologacion) AS issuer_count,
  (SELECT count(*)::int FROM public.fiscal_parametros_homologacion) AS catalog_count,
- (SELECT jsonb_agg(revision ORDER BY revision) FROM public.fiscal_parametros_homologacion WHERE revision<>2) AS history_revisions,
+ (SELECT jsonb_agg(revision ORDER BY revision) FROM public.fiscal_parametros_homologacion WHERE revision<>$6::integer) AS history_revisions,
  (SELECT count(*)::int FROM public.fiscal_emisores_homologacion WHERE habilitado) AS enabled_issuers,
  (SELECT count(*)::int FROM public.fiscal_parametros_homologacion WHERE habilitado) AS enabled_catalogs,
  NOT EXISTS(SELECT 1 FROM pg_class c CROSS JOIN unnest(ARRAY['anon','authenticated','service_role']) r
@@ -80,12 +80,13 @@ export async function createPositiveWindowDatabase({ client, observer, config, h
     try {
       await observer.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
       await observer.query("SET LOCAL TIME ZONE 'UTC'; SET LOCAL statement_timeout='15s'")
-      const response = await observer.query(positiveWindowReadOnlySql,[m.ownerAuthId,m.kioskId,m.saleId,m.operationId,source.issuer.certificado_sha256])
+      const response = await observer.query(positiveWindowReadOnlySql,[m.ownerAuthId,m.kioskId,m.saleId,m.operationId,source.issuer.certificado_sha256,m.catalogRevision])
       if (response.rows.length!==1) return fail()
       const value=response.rows[0], timestamp=Date.parse(value.snapshot?.observed_at), current=now()
       if (value.snapshot?.read_only!=='on'||!Number.isFinite(timestamp)||!Number.isSafeInteger(current)||Math.abs(current-timestamp)>30000
         ||historySha256!==null&&value.history_sha256!==historySha256||commercialSha256!==null&&value.commercial_sha256!==commercialSha256
-        ||value.issuer_count!==1||value.catalog_count!==2||JSON.stringify(value.history_revisions)!=='[1]'||value.private_acl!==true
+        ||value.issuer_count!==1||value.catalog_count!==m.catalogRevision||!Array.isArray(value.history_revisions)
+        ||value.history_revisions.length!==m.catalogRevision-1||value.history_revisions.some((revision,index)=>revision!==index+1)||value.private_acl!==true
         ||![value.history_sha256,value.commercial_sha256].every(item=>typeof item==='string'&&/^[a-f0-9]{64}$/.test(item))) return fail()
       for(const table of zeroTables)if(value.counters[table]!==0)return fail()
       for(const table of variableTables)if(!Number.isSafeInteger(value.counters[table])||value.counters[table]<0||value.counters[table]>1)return fail()
@@ -119,7 +120,7 @@ export async function createPositiveWindowDatabase({ client, observer, config, h
     if(snapshot.operations!==n||n!==value.counters.fiscal_preparaciones_homologacion||(!op)!==(n===0))return fail()
     if(op&&(op.id!==m.operationId||op.kioskId!==m.kioskId||op.saleId!==m.saleId||op.entorno!=='HOMOLOGACION'||op.actorAuthId!==m.ownerAuthId
       ||op.preparedHash!==m.preparedSha256||op.preparedValid!==true||op.credentialId!==source.issuer.credencial_id||op.fingerprint!==source.issuer.certificado_sha256
-      ||op.issuerRevision!==1||op.catalogRevision!==2||op.intentId!==null))return fail()
+      ||op.issuerRevision!==1||op.catalogRevision!==m.catalogRevision||op.intentId!==null))return fail()
     if(value.ta&&(n!==1||value.ta.fingerprint!==source.issuer.certificado_sha256||value.ta.origin!==m.operationId
       ||value.counters.fiscal_ta_intentos_homologacion!==1))return fail()
   }

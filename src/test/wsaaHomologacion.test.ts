@@ -180,7 +180,46 @@ it('limita el diagnóstico a homologación sin emisión, secretos ni redireccion
   expect(script).not.toMatch(/Write-(?:Output|Host|Error).*\$(?:ticket|cms|password|tra)\b(?!\.Expiration)/)
 })
 
-it.skipIf(process.platform !== 'win32').each(['ok','second-fail','export-fail','missing-directory','mixed-mode'])('catálogos %s reutiliza un TA y nunca reintenta ni instala datos', mode => {
+it.skipIf(process.platform !== 'win32')('clasifica excepciones tipadas anidadas sin mensajes privados y distingue IO local', () => {
+  const root = mkdtempSync(join(tmpdir(), 'kiosko-wsaa-test-'))
+  try {
+    const runner = join(root,'failure-codes.ps1')
+    writeFileSync(runner, `
+$ErrorActionPreference='Stop'
+$tokens=$null;$errors=$null
+$ast=[Management.Automation.Language.Parser]::ParseFile(${quote(resolve('scripts/probar-wsaa-homologacion.ps1'))},[ref]$tokens,[ref]$errors)
+if($errors.Count){throw 'PARSE'}
+$function=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Get-ArcaDiagnosticFailureCode'},$true)
+. ([ScriptBlock]::Create($function.Extent.Text))
+$secret='SYNTHETIC_PRIVATE_TOKEN <Envelope> C:/private/key.pem'
+$cases=@(
+ @{failure=[Exception]::new($secret,[Net.Http.HttpRequestException]::new([Net.Http.HttpRequestError]::NameResolutionError,$secret));stage='WSFE_CONSULTA';expected='TRANSPORT_DNS'},
+ @{failure=[Net.Http.HttpRequestException]::new($secret,[OperationCanceledException]::new($secret));stage='LOGIN_CMS';expected='TRANSPORT_TIMEOUT'},
+ @{failure=[Net.Http.HttpRequestException]::new([Net.Http.HttpRequestError]::SecureConnectionError,$secret);stage='WSFE_CONSULTA';expected='TRANSPORT_TLS'},
+ @{failure=[Net.Sockets.SocketException]::new([int][Net.Sockets.SocketError]::HostNotFound);stage='WSFE_CONSULTA';expected='TRANSPORT_DNS'},
+ @{failure=[Net.Sockets.SocketException]::new([int][Net.Sockets.SocketError]::TimedOut);stage='WSFE_CONSULTA';expected='TRANSPORT_TIMEOUT'},
+ @{failure=[Net.Sockets.SocketException]::new([int][Net.Sockets.SocketError]::ConnectionRefused);stage='WSFE_CONSULTA';expected='TRANSPORT_SOCKET'},
+ @{failure=[Net.Http.HttpRequestException]::new([Net.Http.HttpRequestError]::HttpProtocolError,$secret);stage='WSFE_CONSULTA';expected='TRANSPORT_PROTOCOL'},
+ @{failure=[Net.Http.HttpRequestException]::new([Net.Http.HttpRequestError]::ResponseEnded,$secret);stage='WSFE_CONSULTA';expected='TRANSPORT_RESPONSE_ENDED'},
+ @{failure=[Net.Http.HttpRequestException]::new([Net.Http.HttpRequestError]::ProxyTunnelError,$secret);stage='WSFE_CONSULTA';expected='TRANSPORT_PROXY'},
+ @{failure=[Net.Http.HttpRequestException]::new($secret);stage='WSFE_CONSULTA';expected='TRANSPORT_HTTP'},
+ @{failure=[IO.IOException]::new($secret);stage='WSFE_CONSULTA';expected='TRANSPORT_IO'},
+ @{failure=[IO.IOException]::new($secret);stage='EXPORTACION_PARAMETROS';expected='LOCAL_OR_TRANSPORT_ERROR'},
+ @{failure=[TimeoutException]::new($secret);stage='DPAPI';expected='LOCAL_OR_TRANSPORT_ERROR'},
+ @{failure=[Exception]::new($secret,[IO.InvalidDataException]::new('WSFE_BUSINESS:601'));stage='WSFE_CONSULTA';expected='WSFE_BUSINESS:601'},
+ @{failure=[Exception]::new($secret);stage='WSFE_CONSULTA';expected='LOCAL_OR_TRANSPORT_ERROR'}
+)
+$codes=@(foreach($case in $cases){$value=Get-ArcaDiagnosticFailureCode -Failure $case.failure -Stage $case.stage;if($value -cne $case.expected){throw 'CLASSIFICATION'};$value})
+@{checks=$cases.Count;codes=$codes}|ConvertTo-Json -Compress
+`)
+    const result=spawnSync('pwsh',['-NoProfile','-NonInteractive','-File',runner],{encoding:'utf8',timeout:30000})
+    expect(result.status,result.stdout+result.stderr).toBe(0)
+    expect(result.stdout+result.stderr).not.toMatch(/SYNTHETIC_PRIVATE|Envelope|private\/key/)
+    expect(JSON.parse(result.stdout).checks).toBe(15)
+  } finally { cleanCatalogTest(root) }
+},40000)
+
+it.skipIf(process.platform !== 'win32').each(['ok','second-fail','export-fail','missing-directory','mixed-mode','login-timeout','first-timeout','first-dns','first-tls','first-connect'])('catálogos %s reutiliza un TA y nunca reintenta ni instala datos', mode => {
   const root = mkdtempSync(join(tmpdir(), 'kiosko-wsaa-test-'))
   try {
     const runner = join(root, 'catalog.ps1'), report = join(root, 'report.json')
@@ -196,8 +235,13 @@ public static class WsaaHomologacion {
  public static void ValidateRepresentedCuit(string c){Calls.Add("validate");}
  public static string BuildTra(DateTimeOffset t,string s,uint id){Calls.Add("tra");return "SYNTHETIC_TRA";}
  public static byte[] SignTra(string c,string k,SecureString p,string tra){Calls.Add("sign");Cms=new byte[]{1,2};return Cms;}
- public static Ticket Login(byte[] c){Calls.Add("login");return new Ticket();}
- public static Diagnostic ConsultWsfe(Ticket t,string c,string op){Calls.Add(op);if(Mode=="second-fail"&&op=="FEParamGetCondicionIvaReceptor")throw new InvalidDataException("SYNTHETIC_PRIVATE_UNEXPECTED");return new Diagnostic();}
+ public static Ticket Login(byte[] c){Calls.Add("login");if(Mode=="login-timeout")throw new TimeoutException("SYNTHETIC_PRIVATE_UNEXPECTED");return new Ticket();}
+ public static Diagnostic ConsultWsfe(Ticket t,string c,string op){Calls.Add(op);
+ if(Mode=="first-timeout")throw new OperationCanceledException("SYNTHETIC_PRIVATE_UNEXPECTED");
+ if(Mode=="first-dns")throw new System.Net.Http.HttpRequestException(System.Net.Http.HttpRequestError.NameResolutionError,"SYNTHETIC_PRIVATE_UNEXPECTED");
+ if(Mode=="first-tls")throw new System.Security.Authentication.AuthenticationException("SYNTHETIC_PRIVATE_UNEXPECTED");
+ if(Mode=="first-connect")throw new System.Net.Http.HttpRequestException(System.Net.Http.HttpRequestError.ConnectionError,"SYNTHETIC_PRIVATE_UNEXPECTED");
+ if(Mode=="second-fail"&&op=="FEParamGetCondicionIvaReceptor")throw new InvalidDataException("SYNTHETIC_PRIVATE_UNEXPECTED");return new Diagnostic();}
  public static void WriteParameterEvidence(Diagnostic d,Ticket t,string op,DateTimeOffset now,string path){Calls.Add("export:"+op);if(Mode=="export-fail")throw new IOException("SYNTHETIC_PRIVATE_UNEXPECTED");File.WriteAllText(path,"PUBLIC_PARAMETERS_ONLY");}
 }
 '@
@@ -218,11 +262,15 @@ public static class WsaaHomologacion {
     if (['missing-directory','mixed-mode'].includes(mode)) expect(evidence.calls).toEqual([])
     else {
       expect(evidence.calls.filter(c=>c==='login')).toHaveLength(1)
-      expect(evidence.calls.filter(c=>c==='FEParamGetTiposIva')).toHaveLength(1)
-      expect(evidence.calls.filter(c=>c==='FEParamGetCondicionIvaReceptor')).toHaveLength(mode==='export-fail'?0:1)
+      expect(evidence.calls.filter(c=>c==='FEParamGetTiposIva')).toHaveLength(mode==='login-timeout'?0:1)
+      expect(evidence.calls.filter(c=>c==='FEParamGetCondicionIvaReceptor')).toHaveLength(mode==='export-fail'||mode.startsWith('first-')||mode==='login-timeout'?0:1)
     }
     expect(evidence.exports).toBe(mode==='ok'?2:mode==='second-fail'?1:0)
     expect(result.stdout.includes('CATALOGOS_PREPARACION_EXPORTADOS=true')).toBe(mode==='ok')
+    if (mode.endsWith('timeout')) expect(result.stdout).toContain('CODE=TRANSPORT_TIMEOUT')
+    if (mode==='first-dns') expect(result.stdout).toContain('CODE=TRANSPORT_DNS')
+    if (mode==='first-tls') expect(result.stdout).toContain('CODE=TRANSPORT_TLS')
+    if (mode==='first-connect') expect(result.stdout).toContain('CODE=TRANSPORT_CONNECT')
   } finally {
     cleanCatalogTest(root)
   }
