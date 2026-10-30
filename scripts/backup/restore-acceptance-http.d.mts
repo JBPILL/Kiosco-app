@@ -14,3 +14,8 @@ export interface RestoreHttpClient {
   logoutLocal(): Promise<{ logoutLocalConfirmed: true }>
 }
 export function createRestoreHttpClient(config: RestoreHttpConfig, request: typeof fetch): RestoreHttpClient
+export interface RestoreLoginConfig extends Omit<RestoreHttpConfig, 'jwt'> {
+  email: string
+  password: string
+}
+export function loginRestoreHttpClient(config: RestoreLoginConfig, request: typeof fetch): Promise<RestoreHttpClient>

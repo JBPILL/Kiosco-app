@@ -1731,3 +1731,16 @@ preparacion NO es ejecutor de restore ni GO; faltan login/preflight privados,
 respaldo fresco, pins de actores revisados y paquete exacto autorizado.
 PR07 PARCIAL, objetivo PR01-PR11 activo, UI integral bloqueada. Sin cambios a
 master/Production/flags/Edge/Vercel/ARCA ni lectura de claves originales.
+
+
+### Login privado y comparador de dependencias PR07 — 30/10/2026
+
+2e569da publicado. Preparado login Auth privado de rutas fijas y comparacion de
+metadata contra baseline revisada, solo pruebas sinteticas/locales.188 pruebas
+focalizadas PASS, sin nuevas sesiones Staging ni mutaciones. Detalle y alcance en
+ExecPlan backup. Faltan conexion PG/TLS readonly, preflight de datos por paso,
+backup fresco, paquete/pins/ventana y GO antes de cualquier ensayo real.
+PR07 PARCIAL; no se habilita UI integral, flags, Edge, Vercel, ARCA o Production.
+
+Build final exit0 (aviso chunks >500kB),36JS publicos sin cuatro simbolos/hash
+privados seleccionados. Revision acotada, no certificacion absoluta de secretos.

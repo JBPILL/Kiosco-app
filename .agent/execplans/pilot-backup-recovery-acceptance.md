@@ -739,3 +739,48 @@ Reporte ../restore-private-wrapper-final-tests-20261030.json SHA256
 Build final exit0 (aviso chunks >500kB), lint, sintaxis Node y diff PASS.
 El wrapper preparador no se ejecuto sobre KioskoPOS-Privado real ni recibio
 credenciales; no inferir capacidad hospedada o respaldo/DR por estas pruebas.
+
+
+### Login privado y comparador de dependencias PR07 — 30/10/2026
+
+2e569da publicado. Preparado login Auth privado de rutas fijas y comparacion de
+metadata contra baseline revisada, solo pruebas sinteticas/locales.188 pruebas
+focalizadas PASS, sin nuevas sesiones Staging ni mutaciones. Detalle y alcance en
+ExecPlan backup. Faltan conexion PG/TLS readonly, preflight de datos por paso,
+backup fresco, paquete/pins/ventana y GO antes de cualquier ensayo real.
+PR07 PARCIAL; no se habilita UI integral, flags, Edge, Vercel, ARCA o Production.
+
+loginRestoreHttpClient requiere fetch inyectado y credenciales en memoria;
+valida tipo/limites/email/pins/clave publica (no service_role) antes de POST fijo
+Auth token?grant_type=password de Staging. No redirige ni usa cookies, timeout15s,
+respuesta maxima4096 bytes UTF8. Obtiene sesion solo para verificar Auth API y
+perfil ordinario activo/rol/kiosco exacto; claims solo filtran contexto.
+No expone refresh token ni JWT en la interfaz. Si recibe sesion acotada pero
+actor/tipo/perfil no coincide, intenta logout local UNA vez y da categoria segura;
+logout fallido se distingue. Login/respuesta inciertos sin sesion utilizable no
+se reintentan: el operador conserva .phase.lock para investigacion.
+No asegura borrado criptografico de strings JS: el wrapper debe minimizar vida
+de referencias y nunca imprimir/persistir credenciales. Aun no hay entrada real
+de password/PG conectada ni ejecucion autorizada de este login.
+
+restore-dependency-reviewed.json contiene SOLO metadata publica y hashes de la
+lectura historica17.11 del30/10 08:57Z:16 tablas/21 funciones/16 triggers/
+145 columnas/78 constraints. Hash estructural pinneado
+9e33b734e18fa89ffa670e8f1a16d729088de5e1449e3b232238efe0a6f1c3c5.
+Comparador ordena claves semanticas, rechaza duplicados y cualquier cambio de
+campos/filas; exige read_only=on, rol postgres, identity_fuse, version17.11 y
+observacion <=5min/no mas30s futura. La captura antigua NO es evidencia fresca;
+pruebas renuevan hora solo en fixtures sinteticos, no alteran su procedencia.
+Resultado METADATA_MATCH_ONLY: no demuestra RLS completo, datos/colisiones,
+server/host autenticados, suscripcion vigente ni restore. El adaptador PG fijo
+con TLS y la comprobacion de estado por cursor siguen pendientes.
+
+188 pruebas enfocadas finales PASS/0FAIL/0skip; login incorrecto/401/red/JSON/
+limite/subject/perfil/logout, drift y vigencia metadata. Caso integrado conecta
+login+Auth/perfil+RPC fijos+fase Owner18+logout con fetch inyectado, sin red real.
+Reporte ../restore-login-dependency-integrated-final-20261030.json SHA256
+4b232913f17413a451e77a73501ad8d966414e93cc67a3d98974ca29951551cb.
+Lint/node --check/diff PASS. Sin nuevas claves, llamadas ARCA ni SQL/flags remotos.
+
+Build final exit0 (aviso chunks >500kB),36JS publicos sin cuatro simbolos/hash
+privados seleccionados. Revision acotada, no certificacion absoluta de secretos.

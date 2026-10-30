@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, basename, resolve } from 'node:path'
+import { loginRestoreHttpClient } from '../../scripts/backup/restore-acceptance-http.mjs'
 import { runRestoreRolePhase } from '../../scripts/backup/restore-acceptance-operator.mjs'
 import { createRestoreJournal, inspectRestoreJournal, PLAN_HASH, loadRestorePlan, valueHash } from '../../scripts/backup/restore-acceptance-engine.mjs'
 import type { RestoreJournal, RestoreRole } from '../../scripts/backup/restore-acceptance-engine.mjs'
@@ -91,4 +92,28 @@ it('a second operator cannot open a session while the first phase is live',async
   enter!(false)
   expect(await first).toMatchObject({status:'ROLE_PHASE_NOT_CONFIRMED',stage:'PREFLIGHT'})
   expect(opens).toBe(0)
+})
+
+it('integrates login, verified HTTP identity, fixed RPC transport and the complete OWNER phase without real network',async()=>{
+  const input=options(),makeSession=input.openSession,target='https://acoyfwwmhaeruciyedri.supabase.co'
+  const encode=(value:object)=>Buffer.from(JSON.stringify(value)).toString('base64url')
+  const token=encode({alg:'ES256'})+'.'+encode({role:'authenticated',sub:actors.OWNER,iss:target+'/auth/v1'})+'.SYNTHETIC'
+  const fakeClient=await makeSession('OWNER')
+  const request=vi.fn<typeof fetch>(async(url,init)=>{
+    const route=String(url)
+    if(route===target+'/auth/v1/token?grant_type=password')return Response.json({access_token:token,token_type:'bearer',user:{id:actors.OWNER},refresh_token:secret})
+    if(route===target+'/auth/v1/user')return Response.json({id:actors.OWNER,role:'authenticated'})
+    if(route.startsWith(target+'/rest/v1/usuarios?'))return Response.json([{id:actors.OWNER,auth_user_id:actors.OWNER,kiosco_id:plan.kioskId,rol:'DUEÑO',activo:true,es_superadmin:false}])
+    if(route===target+'/auth/v1/logout?scope=local'){await fakeClient.logoutLocal();return new Response(null,{status:204})}
+    if(route.startsWith(target+'/rest/v1/rpc/')){
+      const reply=await fakeClient.requestPlannedRpc(route.split('/').at(-1)!,JSON.parse(String(init?.body)))
+      return Response.json(reply.data,{status:reply.status})
+    }
+    throw Error(secret)
+  })
+  input.openSession=async()=>loginRestoreHttpClient({publicKey:'sb_publishable_SYNTHETIC_PUBLIC_KEY',authId:actors.OWNER,role:'OWNER',email:'owner@example.invalid',password:secret,allowMutations:true,reviewedPlanHash:PLAN_HASH},request)
+  expect(await runRestoreRolePhase(input)).toMatchObject({status:'ROLE_PHASE_PASS',confirmed:18,logout:'CONFIRMED'})
+  expect(calls).toBe(18);expect(logouts).toBe(1)
+  expect(request.mock.calls.filter(([url])=>String(url).includes('/token?'))).toHaveLength(1)
+  expect(readFileSync(journal.file,'utf8')).not.toContain(secret)
 })

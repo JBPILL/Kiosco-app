@@ -1,4 +1,4 @@
-// Private fixed-route transport; no CLI, login/password reader, ambient fetch or env access.
+// Private fixed-route login/transport; no CLI, password reader, ambient fetch or env access.
 import { loadRestorePlan, PLAN_HASH, valueHash } from './restore-acceptance-engine.mjs'
 const target = 'https://acoyfwwmhaeruciyedri.supabase.co'
 const origin = 'https://kiosco-app-staging.vercel.app'
@@ -6,6 +6,10 @@ const plan = loadRestorePlan(), uuid = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{1
 const error = code => { throw Error(code) }
 function claims(token) {
   try { return JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')) } catch { return null }
+}
+function validPublicKey(key) {
+  const data = typeof key === 'string' && key.length <= 4096 ? claims(key) : null
+  return typeof key === 'string' && key.length <= 4096 && (/^sb_publishable_[A-Za-z0-9_-]{10,200}$/.test(key) || data?.role === 'anon' && data.ref === 'acoyfwwmhaeruciyedri')
 }
 async function boundedBody(response) {
   if (!response.body?.getReader) error('RESTORE_HTTP_BODY_UNAVAILABLE')
@@ -31,12 +35,10 @@ async function boundedBody(response) {
 export function createRestoreHttpClient(config, request) {
   const { publicKey, jwt, authId, role, allowMutations = false, reviewedPlanHash } = config ?? {}
   const session = typeof jwt === 'string' && jwt.length <= 16400 ? claims(jwt) : null
-  const publicClaims = typeof publicKey === 'string' && publicKey.length <= 4096 ? claims(publicKey) : null
   if (typeof request !== 'function' || !uuid.test(authId) || !['OWNER', 'CASHIER'].includes(role)
     || typeof jwt !== 'string' || jwt.length > 16400 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(jwt)
     || session?.role !== 'authenticated' || session.sub !== authId || session.iss !== target + '/auth/v1'
-    || !(typeof publicKey === 'string' && publicKey.length <= 4096 && ( /^sb_publishable_[A-Za-z0-9_-]{10,200}$/.test(publicKey)
-      || publicClaims?.role === 'anon' && publicClaims.ref === 'acoyfwwmhaeruciyedri' ))
+    || !validPublicKey(publicKey)
     || ![true, false].includes(allowMutations) || allowMutations && reviewedPlanHash !== PLAN_HASH) error('RESTORE_HTTP_CONFIG_INVALID')
   // Claims only reject obvious wrong context. The Auth API below verifies identity.
   let verified = null, closed = false
@@ -85,4 +87,42 @@ export function createRestoreHttpClient(config, request) {
       return { logoutLocalConfirmed: true }
     },
   })
+}
+
+// No ambient fetch: the reviewed private runner must explicitly supply transport.
+// Unknown login outcomes are never retried; phase orchestration retains its lock.
+export async function loginRestoreHttpClient(config, request) {
+  let client, data, jwt
+  const { publicKey, email, password, authId, role, allowMutations = false, reviewedPlanHash } = config ?? {}
+  if (typeof request !== 'function' || !validPublicKey(publicKey) || !uuid.test(authId) || !['OWNER', 'CASHIER'].includes(role)
+    || typeof email !== 'string' || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    || typeof password !== 'string' || !password.length || Buffer.byteLength(password, 'utf8') > 1024 || password.includes('\0')
+    || ![true, false].includes(allowMutations) || allowMutations && reviewedPlanHash !== PLAN_HASH) error('RESTORE_LOGIN_INPUT_REJECTED')
+  try {
+    let response
+    try {
+      response = await request(target + '/auth/v1/token?grant_type=password', {
+        method: 'POST', headers: { apikey: publicKey, Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }), redirect: 'error', credentials: 'omit', signal: AbortSignal.timeout(15000),
+      })
+    } catch { error('RESTORE_LOGIN_NOT_CONFIRMED') }
+    const text = await boundedBody(response)
+    try { data = JSON.parse(text) } catch { error('RESTORE_LOGIN_NOT_CONFIRMED') }
+    if (response.status !== 200) error('RESTORE_LOGIN_NOT_CONFIRMED')
+    jwt = data?.access_token
+    const session = typeof jwt === 'string' ? claims(jwt) : null
+    // Build a cleanup-only client for a syntactically scoped returned session,
+    // even when its subject differs from the reviewed actor. Claims are not proof.
+    client = createRestoreHttpClient({ publicKey, jwt, authId: session?.sub, role }, request)
+    if (session.sub !== authId || data.token_type !== 'bearer' || data.user?.id !== authId) error('RESTORE_LOGIN_NOT_CONFIRMED')
+    await client.verifyIdentity()
+    // Only after independent Auth/profile verification create the requested port.
+    return createRestoreHttpClient({ publicKey, jwt, authId, role, allowMutations, reviewedPlanHash }, request)
+  } catch {
+    if (client) {
+      try { await client.logoutLocal() } catch { error('RESTORE_LOGIN_LOGOUT_NOT_CONFIRMED') }
+      error('RESTORE_LOGIN_REJECTED_LOGOUT_CONFIRMED')
+    }
+    error('RESTORE_LOGIN_NOT_CONFIRMED')
+  } finally { data = null; jwt = null }
 }

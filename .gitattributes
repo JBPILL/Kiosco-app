@@ -23,3 +23,6 @@
 /scripts/backup/restore-private-windows.ps1 text eol=lf
 /scripts/backup/verify-private-restore-directory.ps1 text eol=lf
 /scripts/preparar-ensayo-restauracion-privado.ps1 text eol=lf
+/scripts/backup/restore-dependency-preflight.mjs text eol=lf
+/scripts/backup/restore-dependency-preflight.d.mts text eol=lf
+/scripts/backup/restore-dependency-reviewed.json text eol=lf

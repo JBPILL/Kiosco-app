@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest'
-import { createRestoreHttpClient } from '../../scripts/backup/restore-acceptance-http.mjs'
+import { createRestoreHttpClient, loginRestoreHttpClient } from '../../scripts/backup/restore-acceptance-http.mjs'
 import { loadRestorePlan, PLAN_HASH } from '../../scripts/backup/restore-acceptance-engine.mjs'
 import type { RestoreRole } from '../../scripts/backup/restore-acceptance-engine.mjs'
 const target='https://acoyfwwmhaeruciyedri.supabase.co',plan=loadRestorePlan()
@@ -109,4 +109,60 @@ it('accepts exactly4096 UTF8 bytes without widening the response bound',async()=
   const client=createRestoreHttpClient({...config(),allowMutations:true,reviewedPlanHash:PLAN_HASH},request)
   await client.verifyIdentity()
   expect(await client.requestPlannedRpc(plan.steps[0].rpc,plan.steps[0].params)).toMatchObject({status:403,data:{code:'42501'}})
+})
+
+function loginConfig(role:RestoreRole='OWNER') {
+  const {jwt:_jwt,...base}=config(role)
+  return {...base,email:role==='OWNER'?'owner@example.invalid':'cashier@example.invalid',password:secret}
+}
+function loginMock(role:RestoreRole='OWNER',mode='ok') {
+  const downstream=mock(role,mode==='logout-bad'?'foreign':mode)
+  return vi.fn<typeof fetch>(async(input,init)=>{
+    const url=String(input)
+    if(url===target+'/auth/v1/token?grant_type=password'){
+      if(mode==='login-network')throw Error(secret)
+      if(mode==='login-large')return new Response('x'.repeat(4097))
+      if(mode==='login-invalid')return new Response(secret)
+      if(mode==='login401')return Response.json({message:secret},{status:401})
+      return Response.json({access_token:jwt(mode==='login-subject'?{sub:profileId}:{}),token_type:mode==='login-type'?'other':'bearer',user:{id:auth},refresh_token:secret})
+    }
+    if(mode==='logout-bad'&&url.endsWith('/logout?scope=local'))return Response.json({message:secret},{status:500})
+    return downstream(input,init)
+  })
+}
+it.each<RestoreRole>(['OWNER','CASHIER'])('private %s login verifies Auth/profile without exposing refresh or authorizing mutations by default',async role=>{
+  const request=loginMock(role),client=await loginRestoreHttpClient(loginConfig(role),request)
+  await client.verifyIdentity()
+  await expect(client.requestPlannedRpc(plan.steps[0].rpc,plan.steps[0].params)).rejects.toThrow('RESTORE_HTTP_MUTATIONS_CLOSED')
+  expect(Object.keys(client).sort()).toEqual(['logoutLocal','requestPlannedRpc','verifyIdentity'])
+  expect(JSON.stringify(client)).not.toContain(secret)
+  expect(await client.logoutLocal()).toEqual({logoutLocalConfirmed:true})
+  expect(request.mock.calls.filter(([url])=>String(url).includes('/token?'))).toHaveLength(1)
+  for(const [url,init] of request.mock.calls){
+    expect(String(url).startsWith(target+'/')).toBe(true)
+    expect(init).toMatchObject({redirect:'error',credentials:'omit'})
+    expect(String(url)).not.toContain(secret)
+  }
+  expect(JSON.parse(String(request.mock.calls[0][1]?.body))).toEqual({email:loginConfig(role).email,password:secret})
+  expect(new Headers(request.mock.calls[0][1]?.headers).has('Authorization')).toBe(false)
+})
+it.each(['foreign','wrong-role','inactive','superadmin','wrong-auth','login-subject','login-type','logout-bad'])('login %s revokes the returned session once or reports failed logout',async mode=>{
+  const request=loginMock('OWNER',mode)
+  await expect(loginRestoreHttpClient(loginConfig(),request)).rejects.toMatchObject({message:mode==='logout-bad'?'RESTORE_LOGIN_LOGOUT_NOT_CONFIRMED':'RESTORE_LOGIN_REJECTED_LOGOUT_CONFIRMED'})
+  expect(request.mock.calls.filter(([url])=>String(url).endsWith('/logout?scope=local'))).toHaveLength(1)
+  expect(request.mock.calls.some(([url])=>String(url).includes('/rpc/'))).toBe(false)
+})
+it.each(['login-network','login-large','login-invalid','login401'])('unknown %s is never retried or converted to success',async mode=>{
+  const request=loginMock('OWNER',mode)
+  await expect(loginRestoreHttpClient(loginConfig(),request)).rejects.toMatchObject({message:'RESTORE_LOGIN_NOT_CONFIRMED'})
+  expect(request).toHaveBeenCalledTimes(1)
+})
+it.each(['key','password','email','hash'])('login rejects %s before sending credentials',async mode=>{
+  const request=loginMock(),input={...loginConfig(),allowMutations:true,reviewedPlanHash:PLAN_HASH}
+  if(mode==='key')input.publicKey='service_role_SYNTHETIC'
+  if(mode==='password')input.password='x'.repeat(1025)
+  if(mode==='email')input.email='invalid'+String.fromCharCode(10)+'email'
+  if(mode==='hash')input.reviewedPlanHash='0'.repeat(64)
+  await expect(loginRestoreHttpClient(input,request)).rejects.toMatchObject({message:'RESTORE_LOGIN_INPUT_REJECTED'})
+  expect(request).not.toHaveBeenCalled()
 })
