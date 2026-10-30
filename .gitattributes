@@ -2,3 +2,7 @@
 # No renormalization of existing SQL or historical documents.
 /supabase/bootstrap/**/*.sql -text
 /supabase_fase_comercial_suscripciones.sql -text
+
+# Reviewed restore plan hashes use deterministic UTF-8/LF on every checkout.
+/scripts/backup/restore-acceptance-plan.json text eol=lf
+/scripts/backup/restore-acceptance-preflight.sql text eol=lf

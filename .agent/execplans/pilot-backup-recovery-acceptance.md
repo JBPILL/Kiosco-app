@@ -479,3 +479,7 @@ pinneado de dependencias/callees/triggers del esquema hospedado y revision de
 vigencia del respaldo. Preparar esas piezas antes de pedir permiso final.
 No se ejecutaron preflight ni restores remotos en este bloque, no hubo flags,
 SQL/Edge/Vercel/ARCA/master/Production ni UI habilitada. PR07 sigue PARCIAL.
+
+Proteccion del paquete: .gitattributes fija LF solo para los dos archivos nuevos
+del plan/preflight. Evita drift de su hash por checkout Windows; no renormaliza
+SQL historico ni otros documentos. Hash del plan717d6524 sin cambios.
