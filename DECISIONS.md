@@ -1383,3 +1383,20 @@ excepcion cruda para diagnosticar, o repetir sesiones reales antes del cierre.
 Compatibilidad5.1 conservada y comprobada, sin descargas/dependencias nuevas.
 Limite: evidencia local no prueba respuesta remota previa ni RLS integral.
 Repeticion futura: exactamente Dueno y Cajero, STOP sin retry ante discrepancia.
+
+
+## 2026-10-30 — Journal de restore con STOP ante respuesta incierta
+
+Contexto: el ensayo fijo exige idempotencia y no duplicar trabajo ante ACK perdido.
+Decision: nucleo privado sin CLI/red, plan de21 acciones pinneado, INTENT fsync
+previo a transporte y confirmacion durable solo con ACK validado/hashado; un
+replay solo existe como paso explicito. UUID/cuerpo/actor no cambian. JSONL con
+cadena para corrupcion y lock exclusivo; un crash puede dejar lock/intencion,
+que no se quitan ni reintentan automaticamente. Conciliacion es lectura y
+clasificacion; coincidencia no da permiso de continuar. Separa prueba automatica
+de decision del operador y no usa ausencia como prueba de no ejecucion.
+Alternativas descartadas: retry generico, UUID nuevo, borrar journal pendiente,
+o aceptar el200 sin comprobar el ACK. No usar hash de cadena como autorizacion.
+Consecuencias: se retiene incertidumbre hasta revision/recuperacion autorizada;
+ACL Windows y transporte/Auth del operador son dependencias aun no implementadas.
+No instalar backend nuevo ni habilitar restauracion de UI por esta preparacion.

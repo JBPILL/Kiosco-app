@@ -483,3 +483,48 @@ SQL/Edge/Vercel/ARCA/master/Production ni UI habilitada. PR07 sigue PARCIAL.
 Proteccion del paquete: .gitattributes fija LF solo para los dos archivos nuevos
 del plan/preflight. Evita drift de su hash por checkout Windows; no renormaliza
 SQL historico ni otros documentos. Hash del plan717d6524 sin cambios.
+
+
+### Motor privado de journal y conciliacion — 30/10/2026
+
+scripts/backup/restore-acceptance-engine.mjs + declaraciones d.mts: nucleo privado
+sin CLI/red/credenciales ni export al browser. Carga solo plan717d6524 pinneado,
+21 acciones fijas; actor/Auth/comercio ligados al journal. JSONL secuencial con
+hash de cadena y UTC, escritura exclusiva/fsync de INTENT antes de transporte,
+ACK validado/hashado o rechazo previsto antes de avanzar. El replay es solo
+el paso explicito del plan y exige el mismo ACK. Nunca repetir por error de red.
+No almacena body/ACK raw ni tokens: solo hashes, UUID y metadatos de control.
+La cadena detecta corrupcion; no es firma/autorizacion ni reemplaza ACL privada.
+
+INTENT sin cierre tras crash/ACK perdido => STOP. Conciliacion por lectura fija
+UUID/actor/comercio/hash de solicitud y ACK: ausencia no prueba no ejecucion;
+ACK coincidente requiere revision, conflicto bloquea. mayResend=false y
+mayAdvance=false en TODOS los resultados; no hay desbloqueo ni borrado automatico
+de lock huerfano. Operador/GO de recuperacion y controles Windows quedan pendientes.
+
+62 pruebas enfocadas PASS/0FAIL/0skip:22 de journal/engine +40 SQL/PGlite.
+Incluyen doble clic, disco fallido antes de envio/despues de ACK, replay con ACK
+cambiado,401/403/500/cuerpo invalido, actor/cuerpo/comercio/ACK conflictivos,
+truncado/cadena corrupta, y proceso Node real con exit71 despues del INTENT
+fsync (lock e intencion retenidos, sin reinicio automatico). No prueba corte
+electrico/almacenamiento fisico ni JWT/HTTP hospedado.
+Integracion local ejecuta las21 acciones contra funciones SQL reales del
+bootstrap43 + pilot-backup, verifica hashes de solicitud/resultado SQL contra
+journal,14 operaciones y cierre de producto a0/inactivo. Identidades sinteticas;
+UUID de kiosco del plan es solo una fila LOCAL dentro de transaccion rollback.
+Evidencia ../backup-restore-journal-final-20261030.json SHA256
+58a5ca4b6bc987300deb4bc44ed5936ed6aa0f6f7d99faadcc0f9f56384e6c60.
+
+Build final689 PASS, lint enfocado sin avisos, node --check/diff PASS. Escaneo de
+36JS publicos sin5 literales privados examinados; no certificacion absoluta de
+secretos. Primera integracion61PASS/1FAIL detecto setup local con GUC de usuario
+al mover perfil; corregido bootstrap administrativo LOCAL limpiando GUC y luego
+restaurando actor authenticated, sin desactivar triggers/politicas. Primer build
+TS7016 resuelto con declaraciones explicitas, sin any/supresiones. Evidencias
+previas conservadas; suite global anterior no atribuida al incremento.
+
+Aun NO listo para GO remoto: falta envoltorio privado con ACL Windows, identidad
+Auth real y transporte fijo; pruebas del envoltorio, pin de dependencias/triggers
+hospedados y vigencia del respaldo/preflight. Crear journal local sintetico no
+autoriza claves ni acceso/restore remoto. Sin nuevas sesiones, SQL/Edge/flags,
+ARCA/master/Production o UI integral habilitada. PR07 sigue PARCIAL.

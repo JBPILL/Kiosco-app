@@ -1,7 +1,9 @@
 // @vitest-environment node
 // Contrato SQL con esquema completo; no sustituye Auth/RLS/JWT hospedados.
-import { readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readdirSync, readFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { join, resolve, dirname, basename } from 'node:path'
+import { tmpdir } from 'node:os'
+import { createRestoreJournal, inspectRestoreJournal, executeNextRestoreAction, loadRestorePlan, valueHash } from '../../scripts/backup/restore-acceptance-engine.mjs'
 import { randomUUID, createHash } from 'node:crypto'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -465,4 +467,57 @@ it('el preflight fijo usa READ ONLY/ROLLBACK y detecta ausencia de fixtures sin 
   expect(row?.evidence).toMatchObject({read_only:'on',identity_fuse:true,public_overloads:4,operation_collisions:0,fixture_counts:{clientes:0,proveedores:0,productos:0,lotes_producto:0}})
   expect(row?.evidence.functions).toHaveLength(4)
   expect(row?.evidence.functions.every(f=>f.present&&f.metadata_matches)).toBe(true)
+})
+
+it('ejecuta el motor durable contra los ACK SQL reales locales para las21 acciones fijadas', async () => {
+  const plan=loadRestorePlan(),folder=mkdtempSync(join(tmpdir(),'kiosko-restore-sql-'))
+  if(dirname(folder)!==resolve(tmpdir())||!basename(folder).startsWith('kiosko-restore-sql-'))throw Error('Unsafe local folder')
+  try {
+    // This UUID is only a synthetic row inside PGlite; no hosted connection exists.
+    await db.exec('RESET ROLE')
+    await db.exec("SELECT set_config('request.jwt.claim.sub','',true),set_config('request.jwt.claim.role','',true)")
+    await db.query('INSERT INTO kioscos(id,nombre) VALUES($1,$2)',[plan.kioskId,'LOCAL SYNTHETIC PLAN'])
+    await db.query('UPDATE usuarios SET kiosco_id=$1 WHERE kiosco_id=$2',[plan.kioskId,kid])
+    await db.query("SELECT set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claim.role','authenticated',true)",[auth])
+    await db.exec('SET ROLE authenticated')
+    const journal=createRestoreJournal(join(folder,'journal.jsonl'),{OWNER:auth,CASHIER:deniedActors[0].auth})
+    let count=0
+    while(!inspectRestoreJournal(journal).complete){
+      const role=inspectRestoreJournal(journal).cursor>=18?'CASHIER':'OWNER'
+      const authId=role==='OWNER'?auth:deniedActors[0].auth
+      await db.query("SELECT set_config('request.jwt.claim.sub',$1,true)",[authId])
+      await executeNextRestoreAction(journal,{role,authId,kioskId:plan.kioskId},async(rpc:string,p:Record<string,unknown>)=>{
+        count++
+        await db.exec('SAVEPOINT operator_http_response')
+        try {
+          const args=[p.p_operacion_id,p.p_kiosco_id]
+          let result
+          if(rpc==='restaurar_contacto_backup')result=await db.query<{ack:Record<string,unknown>}>('SELECT restaurar_contacto_backup($1,$2,$3,$4,$5::jsonb) ack',[...args,p.p_tabla,p.p_registro_id,JSON.stringify(p.p_datos)])
+          else if(rpc==='restaurar_producto_backup')result=await db.query<{ack:Record<string,unknown>}>('SELECT restaurar_producto_backup($1,$2,$3,$4::jsonb) ack',[...args,p.p_producto_id,JSON.stringify(p.p_datos)])
+          else if(rpc==='restaurar_lote_backup')result=await db.query<{ack:Record<string,unknown>}>('SELECT restaurar_lote_backup($1,$2,$3,$4::jsonb) ack',[...args,p.p_lote_id,JSON.stringify(p.p_datos)])
+          else throw Error('Unexpected RPC')
+          await db.exec('RELEASE SAVEPOINT operator_http_response')
+          return {status:200,data:result.rows[0].ack}
+        } catch(error:unknown) {
+          await db.exec('ROLLBACK TO SAVEPOINT operator_http_response; RELEASE SAVEPOINT operator_http_response')
+          const code=error&&typeof error==='object'&&'code' in error?String(error.code):'UNKNOWN'
+          if(!['22023','42501'].includes(code))throw Error('Unexpected SQL failure')
+          return {status:code==='42501'?403:400,data:{code}}
+        }
+      })
+      const rows=journal.records(), completed=rows.at(-1)!, intent=rows.at(-2)!
+      if(completed.kind==='CONFIRMED') {
+        await db.exec('RESET ROLE')
+        const saved=await db.query<{solicitud:Record<string,unknown>;resultado:Record<string,unknown>}>('SELECT solicitud,resultado FROM operaciones_escritura WHERE id=$1',[completed.operationId])
+        expect(valueHash(saved.rows[0].solicitud)).toBe(intent.requestHash)
+        expect(valueHash(saved.rows[0].resultado)).toBe(completed.ackHash)
+        await db.exec('SET ROLE authenticated')
+      }
+    }
+    expect(count).toBe(21)
+    expect(inspectRestoreJournal(journal)).toMatchObject({cursor:21,complete:true,pending:null})
+    await db.exec('RESET ROLE')
+    expect((await db.query<{n:number}>('SELECT count(*)::int n FROM operaciones_escritura')).rows[0].n).toBe(14)
+    expect((await db.query<{stock_actual:string;activo:boolean}>('SELECT stock_actual,activo FROM productos WHERE id=$1',[plan.fixtureIds.product])).rows[0]).toEqual({stock_actual:'0.000',activo:false})
+  } finally {rmSync(folder,{recursive:true,force:true})}
 })

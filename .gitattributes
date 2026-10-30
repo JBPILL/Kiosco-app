@@ -6,3 +6,5 @@
 # Reviewed restore plan hashes use deterministic UTF-8/LF on every checkout.
 /scripts/backup/restore-acceptance-plan.json text eol=lf
 /scripts/backup/restore-acceptance-preflight.sql text eol=lf
+/scripts/backup/restore-acceptance-engine.mjs text eol=lf
+/scripts/backup/restore-acceptance-engine.d.mts text eol=lf

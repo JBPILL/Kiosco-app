@@ -6,6 +6,12 @@ An ExecPlan is a living document: create it before implementation, update **Prog
 
 ## Objetivo común vigente — cierre del desarrollo y Production Readiness
 
+30/10 PR07: motor privado de journal preparado,62 pruebas locales PASS y build689.
+INTENT fsync antes de transporte, pins de actor/cuerpo, locks y ACK hash;
+incertidumbre bloquea reenvio y avance incluso si lectura coincide. Sin ejecutor
+remoto: faltan envoltorio privado/ACL Windows/Auth/transporte y sus pruebas,
+dependencias hospedadas y respaldo/preflight antes del GO. No repetir gates cerrados.
+
 30/10 PR07: plan fijo de restore aislado y preflight READ ONLY preparados y
 probados LOCALMENTE (39PASS, build689/lint). No ejecutor ni GO remoto todavia;
 faltan journal/recuperacion, fallos del operador y pin de dependencias hospedadas.
