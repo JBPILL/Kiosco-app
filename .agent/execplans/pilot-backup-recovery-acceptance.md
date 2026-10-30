@@ -412,3 +412,30 @@ Ambos requieren TEST_SESSION_LOGOUT_LOCAL_CONFIRMED y exit0. Ante cualquier
 marcador distinto o logout fallido: STOP, sin retry. No se ejecuto ninguna de
 estas sesiones como parte del parche. No restore/flags/Edge/ARCA/Production/master.
 La causa remota anterior sigue no demostrada y PR07 no se cierra localmente.
+
+
+### Aceptacion hospedada de lectura de capacidades — 30/10/2026
+
+Titular reporta DOS ejecuciones posteriores sobre a27d07e, una con Dueno y
+una con Cajero, y aporta captura coincidente:
+RESTORE_CAPABILITY_READ_OBSERVED role=OWNER own=200 other=403 mutation=false
+RESTORE_CAPABILITY_READ_OBSERVED role=CASHIER own=403 other=403 mutation=false
+Ambas TEST_SESSION_LOGOUT_LOCAL_CONFIRMED (scope local, no global).
+Registro sanitizado ../backup-capability-hosted-operator-observed-20261030.json
+SHA256 2bdac6fc7f9e98a4375f70d065ee260ae8fde05e375490275480fabf9ccb4147.
+Captura original conservada fuera del repositorio; no copiar prompts ni valores
+privados al commit. Evidencia del operador/captura, no nueva sesion ejecutada
+por el agente ni captura independiente de exit code/JWT/respuesta HTTP completa.
+
+Gate acotado: lectura positiva de capacidades del Dueno y rechazo del Cajero,
+con rechazo de sentinel y logout local OBSERVADOS. No repetir este ensayo sin
+drift. Las dos fallas previas420cc5f permanecen historicas NO CONFIRMADAS, no se
+reclasifican retroactivamente. El sentinel inexistente no prueba aislamiento de
+filas ajenas, ni estos marcadores autorizan restore, UI integral, RLS completo
+o DR. Sin restores, flags, Edge, ARCA, master o Production.
+
+Siguiente PR07: preparar paquete exacto de restauracion aislada/reversible con
+fixtures, invariantes, idempotencia y plan de recuperacion; exigir revision/GO
+especifico antes de ejecutar mutaciones. UI integral sigue bloqueada y PR07
+PARCIAL. Ruta fiscal permanece pendiente de renovacion de catalogos autorizada
+y nueva ventana; no reutilizar GO/paquetes vencidos ni solicitar LoginCms por rutina.

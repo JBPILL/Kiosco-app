@@ -6,6 +6,12 @@ An ExecPlan is a living document: create it before implementation, update **Prog
 
 ## Objetivo común vigente — cierre del desarrollo y Production Readiness
 
+30/10 posterior a a27d07e: operador y captura confirman lectura OWNER own200 /
+other403 y CASHIER own403 / other403, mutation=false, ambos logout local.
+Gate de lectura de capacidades OBSERVADO; no repetir sin drift. No acredita
+restore/RLS integral/DR ni borra fallos previos. Siguiente: paquete aislado de
+restore para revision y GO especifico, sin ejecutar mutaciones ni habilitar UI.
+
 30/10:420cc5f tuvo dos ensayos reales no confirmados (Dueno/Cajero), ambos
 logout local confirmado. No repetir durante diagnostico. Defecto del lector
 HTTP reproducido en pwsh7.6.5/HttpResponseMessage, parche compatible PS7/5.1
