@@ -1,9 +1,9 @@
 {
-  "version": 1,
+  "version": 2,
   "status": "LOCAL_PREPARATION_NO_REMOTE_GO",
   "projectRef": "acoyfwwmhaeruciyedri",
   "kioskId": "b7254826-c767-4098-94b8-71013c12021d",
-  "sourceCommit": "f5a3387cd8444057731518163ce0a5af0ca2bb11",
+  "sourceCommit": "9072d63f219120f19827bcf366b6682345f8fc96",
   "sqlSha256Lf": {
     "001_contacts_restore.sql": "15e3d393b7842a6565debc30b64ba0ea6058f54114d5313dc3ccccb49739444a",
     "002_inventory_restore.sql": "a49bb5b18e83bed8b6bb9c63a1c01f6a8804ba2980efb04a83f94fe2e5d98113",
@@ -259,7 +259,6 @@
     }
   ],
   "positiveOperations": 8,
-  "expectedDurableOperationsIncludingNested": 14,
   "expectedStockMovements": 3,
   "final": {
     "clientBalance": 0,
@@ -356,5 +355,7 @@
       "sqlstate": "42501"
     }
   ],
-  "expectedTotalExplicitRpcCalls": 21
+  "expectedTotalExplicitRpcCalls": 21,
+  "expectedWriteOperationRowsIncludingNested": 14,
+  "expectedStockOperationRows": 3
 }

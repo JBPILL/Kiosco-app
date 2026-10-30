@@ -15,6 +15,8 @@ export interface RestorePlan {
   steps: RestoreStep[]
   cashierDeniedCalls: RestoreStep[]
   expectedTotalExplicitRpcCalls: number
+  expectedWriteOperationRowsIncludingNested: number
+  expectedStockOperationRows: number
 }
 export interface JournalIntent {
   kind: 'INTENT'

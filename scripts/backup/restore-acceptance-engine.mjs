@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 
-export const PLAN_HASH = '717d6524d2291b4ec2a160d1b6fd26f79ece350b5aee0cacd28200efb04c605f'
+export const PLAN_HASH = 'e4f92a19e2c4965a5a3dbfa847850954af2971f930b672346d9f11dc1a74c4ea'
 const uuid = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/
 const fail = code => { throw Error(code) }
 function canonical(value) {

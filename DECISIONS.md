@@ -1414,3 +1414,51 @@ Alternativas descartadas: GRANT SELECT al Dueno, service_role/public lookup,
 nuevo RPC de conveniencia o interpretar permiso denegado como ausencia.
 Consecuencias: el futuro envoltorio requiere lector PostgreSQL privado/TLS/ACL
 ademas del transporte Auth del ensayo. No usar codigo/metadata local como GO.
+
+
+### Dependencias reales y plan de ensayo v2 — 30/10/2026
+
+Continuacion local desde 9072d63; PR07 PARCIAL, sin GO de restauracion.
+Lectura administrativa hospedada READ ONLY/ROLLBACK (08:57:19Z), identidad
+Staging acoyfwwmhaeruciyedri, PostgreSQL17.11: inventario acotado de16 tablas,
+21 funciones,16 triggers,145 columnas y78 constraints coincide con el marco
+local PGlite18.3. Evidencia ../restore-deps-hosted-expanded-20261030.json y
+../restore-deps-comparison-verified-20261030.json. Alcance: callees public
+explicitamente cualificados y metadata seleccionada; no certifica SQL dinamico,
+RLS completo, datos vigentes, restore real ni equivalencia total PG17/PG18.
+Los NOT NULL catalogados como constraints tipo n en PG18 se comparan mediante
+attnotnull de columnas, no se declaran ausentes en PG17.
+
+La base sintetica ahora incluye los contratos comerciales001/002 existentes:
+kiosco ACTIVO no basta si la suscripcion vence. Regresion prueba rechazo sin
+filas persistidas. Dos guards hospedados difieren de bootstrap historico solo
+en mensajes/formato y search_path=pg_catalog,public; fixture LOCAL revisado
+verifica hashes de cuerpo y tokens (salvo mensajes RAISE sin placeholders).
+No se modifica bootstrap ni funciones/grants remotos. Bytes Base64 del servidor
+verificados contra SHA256, evidencia ../restore-deps-guard-bytes-verified-20261030.json.
+La primera captura textual de UI y el marco local intermedio NO son autoridad
+de bytes; se conservan como intentos anteriores, no se convierten en PASS.
+
+Plan v2 e4f92a19e2c4965a5a3dbfa847850954af2971f930b672346d9f11dc1a74c4ea
+sustituye al plan717d6524 NO ejecutado/NO autorizado. Conserva UUID, cuerpos y
+21 llamadas exactas; distingue14 filas operaciones_escritura,3 operaciones_stock
+y3 movimientos_stock. Preflight incorpora colisiones de UUID derivados de stock.
+Sin migracion automatica de journals ni permiso de reenviar tras incertidumbre.
+
+Validacion final:111 pruebas enfocadas PASS/0FAIL, incluidos guards revisados,
+adaptador remoto rechazado sin SQL, gate comercial vencido y contadores finales.
+Reporte ../restore-deps-final-tests-20261030.json. No sesiones Auth nuevas ni
+RPC restaurar_* en Staging. El arranque restringido fallo spawn EPERM; la corrida
+local permitida posterior completo las111 pruebas. No extrapolar suite global.
+
+FALTA antes de GO: envoltorio Windows privado/ACL/credenciales/logout, resolucion
+durable del journal tras revision, fallos del envoltorio, comprobacion fresca de
+dependencias/datos y respaldo posterior a contratos. Metadata historica no es
+preflight vigente. Sin flags, Edge, Vercel, ARCA/CAE, master, merge o Production;
+restauracion integral UI bloqueada. Objetivo PR01-PR11 permanece activo.
+
+Cierre del incremento: build exit0 (aviso de chunks >500kB conservado), lint,
+node --check, diff y manifiesto bootstrap43 PASS. Build previo detecto tipado
+de fixture de test; corregido con interfaz explicita, seis casos revalidados PASS.
+Bundle publico:36 JS sin cinco simbolos privados seleccionados; no auditoria
+absoluta de secretos. Sin cambio al bootstrap historico ni despliegue remoto.

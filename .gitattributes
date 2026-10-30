@@ -12,3 +12,8 @@
 /scripts/backup/restore-acceptance-http.d.mts text eol=lf
 /scripts/backup/restore-acceptance-recovery.mjs text eol=lf
 /scripts/backup/restore-acceptance-recovery.d.mts text eol=lf
+/scripts/backup/restore-dependency-baseline.mjs text eol=lf
+/scripts/backup/restore-dependency-baseline.d.mts text eol=lf
+/scripts/backup/restore-dependency-guard-fixtures.json text eol=lf
+/scripts/backup/restore-dependency-metadata.sql text eol=lf
+/scripts/backup/snapshot-local-dependencies.mjs text eol=lf

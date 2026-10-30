@@ -7,6 +7,7 @@ import { buildUncertainRestoreReadSql, decodeUncertainRestoreRead } from '../../
 import { createRestoreJournal, inspectRestoreJournal, executeNextRestoreAction, inspectUncertainRestoreAction, loadRestorePlan, valueHash } from '../../scripts/backup/restore-acceptance-engine.mjs'
 import { randomUUID, createHash } from 'node:crypto'
 import { PGlite } from '@electric-sql/pglite'
+import { installLocalRestoreCompatibility, seedLocalRestoreSubscription } from '../../scripts/backup/restore-dependency-baseline.mjs'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 const db = new PGlite()
@@ -30,6 +31,7 @@ beforeAll(async () => {
     ...readdirSync(join(root, 'steps')).sort().map(name => join(root, 'steps', name)), join(root, '900_final_security.sql')]) {
     await db.exec(readFileSync(file, 'utf8'))
   }
+  await installLocalRestoreCompatibility(db)
   await db.exec(moduleSql); await db.exec(moduleSql)
   const inventorySql = readFileSync('supabase/pilot-backup/002_inventory_restore.sql', 'utf8')
   await db.exec(inventorySql); await db.exec(inventorySql)
@@ -37,6 +39,8 @@ beforeAll(async () => {
   await db.exec(capabilitySql); await db.exec(capabilitySql)
   await db.query<Record<string, unknown>>('INSERT INTO auth.users VALUES($1)', [auth])
   await db.query<Record<string, unknown>>('INSERT INTO kioscos(id,nombre) VALUES($1,\'Ensayo\'),($2,\'Ajeno\')', [kid, foreignKid])
+  await seedLocalRestoreSubscription(db,kid)
+  await seedLocalRestoreSubscription(db,foreignKid)
   await db.query<Record<string, unknown>>("INSERT INTO usuarios(id,auth_user_id,kiosco_id,nombre,rol) VALUES($1,$2,$3,'Dueño','DUEÑO')", [owner, auth, kid])
   for (const actor of deniedActors) {
     await db.query<Record<string, unknown>>('INSERT INTO auth.users VALUES($1)', [actor.auth])
@@ -378,7 +382,7 @@ interface RestoreAcceptanceStep {
   sqlstate?: string
 }
 it('prueba el paquete fijo de aceptacion con fixtures inactivos, replay, atomicidad y cierre sin borrar auditoria', async () => {
-  const plan: { status: string; remoteExecutorIncluded: boolean; fixtureIds: Record<string,string>; sqlSha256Lf: Record<string,string>; steps: RestoreAcceptanceStep[]; expectedDurableOperationsIncludingNested: number; expectedStockMovements: number; cashierDeniedCalls: RestoreAcceptanceStep[] } = JSON.parse(readFileSync('scripts/backup/restore-acceptance-plan.json','utf8'))
+  const plan: { status: string; remoteExecutorIncluded: boolean; fixtureIds: Record<string,string>; sqlSha256Lf: Record<string,string>; steps: RestoreAcceptanceStep[]; expectedWriteOperationRowsIncludingNested: number; expectedStockMovements: number; expectedStockOperationRows: number; cashierDeniedCalls: RestoreAcceptanceStep[] } = JSON.parse(readFileSync('scripts/backup/restore-acceptance-plan.json','utf8'))
   expect(plan.status).toBe('LOCAL_PREPARATION_NO_REMOTE_GO')
   expect(plan.remoteExecutorIncluded).toBe(false)
   for (const [file, expectedHash] of Object.entries(plan.sqlSha256Lf)) {
@@ -406,6 +410,7 @@ it('prueba el paquete fijo de aceptacion con fixtures inactivos, replay, atomici
     const result=await db.query<Record<string,unknown>>(`SELECT
       (SELECT count(*)::int FROM operaciones_escritura) operations,
       (SELECT count(*)::int FROM movimientos_stock) stock_movements,
+      (SELECT count(*)::int FROM operaciones_stock) stock_operations,
       (SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.id),'[]'::jsonb) FROM productos p) products,
       (SELECT coalesce(jsonb_agg(to_jsonb(l) ORDER BY l.id),'[]'::jsonb) FROM lotes_producto l) batches`)
     await db.exec('SET ROLE authenticated')
@@ -436,8 +441,9 @@ it('prueba el paquete fijo de aceptacion con fixtures inactivos, replay, atomici
   }
   await db.query("SELECT set_config('request.jwt.claim.sub',$1,true)",[auth])
   const final=await snapshot()
-  expect(final.operations).toBe(plan.expectedDurableOperationsIncludingNested)
+  expect(final.operations).toBe(plan.expectedWriteOperationRowsIncludingNested)
   expect(final.stock_movements).toBe(plan.expectedStockMovements)
+  expect(final.stock_operations).toBe(plan.expectedStockOperationRows)
   await db.exec('RESET ROLE')
   const contacts=await db.query<Record<string,unknown>>(`SELECT
     (SELECT saldo_deudor FROM clientes WHERE id=$1) client_balance,
@@ -465,7 +471,7 @@ it('el preflight fijo usa READ ONLY/ROLLBACK y detecta ausencia de fixtures sin 
   await db.exec('ROLLBACK; RESET ROLE')
   const results=await db.exec(local)
   const row=results.find(r=>r.rows.length>0)?.rows[0] as {evidence:{read_only:string;identity_fuse:boolean;public_overloads:number;operation_collisions:number;fixture_counts:Record<string,number>;functions:{present:boolean;metadata_matches:boolean}[]}} | undefined
-  expect(row?.evidence).toMatchObject({read_only:'on',identity_fuse:true,public_overloads:4,operation_collisions:0,fixture_counts:{clientes:0,proveedores:0,productos:0,lotes_producto:0}})
+  expect(row?.evidence).toMatchObject({read_only:'on',identity_fuse:true,public_overloads:4,operation_collisions:0,stock_operation_collisions:0,fixture_counts:{clientes:0,proveedores:0,productos:0,lotes_producto:0}})
   expect(row?.evidence.functions).toHaveLength(4)
   expect(row?.evidence.functions.every(f=>f.present&&f.metadata_matches)).toBe(true)
 })
@@ -512,7 +518,8 @@ it('ejecuta el motor durable contra los ACK SQL reales locales para las21 accion
     expect(count).toBe(21)
     expect(inspectRestoreJournal(journal)).toMatchObject({cursor:21,complete:true,pending:null})
     await db.exec('RESET ROLE')
-    expect((await db.query<{n:number}>('SELECT count(*)::int n FROM operaciones_escritura')).rows[0].n).toBe(14)
+    expect((await db.query<{n:number}>('SELECT count(*)::int n FROM operaciones_escritura')).rows[0].n).toBe(plan.expectedWriteOperationRowsIncludingNested)
+    expect((await db.query<{n:number}>('SELECT count(*)::int n FROM operaciones_stock')).rows[0].n).toBe(plan.expectedStockOperationRows)
     expect((await db.query<{stock_actual:string;activo:boolean}>('SELECT stock_actual,activo FROM productos WHERE id=$1',[plan.fixtureIds.product])).rows[0]).toEqual({stock_actual:'0.000',activo:false})
   } finally {rmSync(folder,{recursive:true,force:true})}
 })
@@ -522,6 +529,7 @@ async function seedLocalFixedPlanActors():Promise<void> {
   await db.exec('RESET ROLE')
   await db.exec("SELECT set_config('request.jwt.claim.sub','',true),set_config('request.jwt.claim.role','',true)")
   await db.query('INSERT INTO kioscos(id,nombre) VALUES($1,$2)',[plan.kioskId,'LOCAL SYNTHETIC PLAN'])
+  await seedLocalRestoreSubscription(db,plan.kioskId)
   await db.query('UPDATE usuarios SET kiosco_id=$1 WHERE kiosco_id=$2',[plan.kioskId,kid])
   await db.query("SELECT set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claim.role','authenticated',true)",[auth])
   await db.exec('SET ROLE authenticated')
@@ -568,4 +576,14 @@ it('recovery completo READ ONLY/ROLLBACK no convierte ausencia en permiso de ret
     expect(candidate).toBeNull()
     expect(await inspectUncertainRestoreAction(journal,async()=>candidate)).toMatchObject({outcome:'ABSENCE_NOT_PROOF_OF_NONEXECUTION',mayResend:false,mayAdvance:false})
   } finally {rmSync(folder,{recursive:true,force:true})}
+})
+
+it('el gate comercial real bloquea restore aunque kiosco ACTIVO tenga suscripcion vencida',async()=>{
+  await db.exec('RESET ROLE')
+  await db.query("UPDATE suscripciones SET fecha_vencimiento='2000-01-02' WHERE kiosco_id=$1",[kid])
+  await db.exec('SET ROLE authenticated')
+  await rejects(()=>restore('clientes',{nombre:'No debe persistir',activo:false}),'estado comercial')
+  await db.exec('RESET ROLE')
+  expect((await db.query<{n:number}>('SELECT count(*)::int n FROM operaciones_escritura')).rows[0].n).toBe(0)
+  expect((await db.query<{n:number}>('SELECT count(*)::int n FROM clientes')).rows[0].n).toBe(0)
 })
