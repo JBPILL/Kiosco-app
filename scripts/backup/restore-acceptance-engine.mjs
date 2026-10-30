@@ -39,7 +39,7 @@ function operationRequest(action, authId) {
 }
 function regular(file) {
   const info = fs.lstatSync(file)
-  if (!info.isFile() || info.isSymbolicLink()) fail('RESTORE_JOURNAL_FILE_INVALID')
+  if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1) fail('RESTORE_JOURNAL_FILE_INVALID')
 }
 function durableWrite(file, text, flags) {
   const fd = fs.openSync(file, flags, 0o600)

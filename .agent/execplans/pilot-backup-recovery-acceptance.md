@@ -701,3 +701,41 @@ claves originales, sesiones Staging, master, merge o Production.
 
 Build final exit0 (aviso chunks >500kB);36JS sin tres simbolos privados
 seleccionados. Revisión acotada, no certificacion absoluta de secretos.
+
+
+### Preparacion privada Windows PR07 — 30/10/2026
+
+74de2c0 publicado. Consola LOCAL de preparacion y verificacion de carpeta/journal
+implementada, sin login/red/PostgreSQL/restores.152 pruebas enfocadas PASS,
+build/lint/diff PASS. Detalle, limites y evidencia en ExecPlan backup. Esta
+preparacion NO es ejecutor de restore ni GO; faltan login/preflight privados,
+respaldo fresco, pins de actores revisados y paquete exacto autorizado.
+PR07 PARCIAL, objetivo PR01-PR11 activo, UI integral bloqueada. Sin cambios a
+master/Production/flags/Edge/Vercel/ARCA ni lectura de claves originales.
+
+preparar-ensayo-restauracion-privado.ps1 solo recibe IDs Auth publicos/hash del
+plan. Exige padre KioskoPOS-Privado ya protegido y propio; no lo repara. Crea
+Restauracion-Staging/carpeta GUID nueva y ACL owner/SYSTEM/Administrators,
+herencia protegida. No sobrescribe directorios/registros. Verifica ancestros
+sin reparse, scope hijo directo, tipos/contenido y ACL de archivos heredados.
+No elimina archivos, locks ni evidencia al fallar. El creador exige padre privado
+exclusivo; no se presenta como defensa frente al mismo usuario/administrador.
+
+Node recibe packet por stdin (<=4096 bytes), sin secretos/argv privados, verifica
+plan fijo y carpeta mediante checker Windows, crea journal wx/fsync solo si vacia.
+Devuelve marcador allowlist; PowerShell vuelve a comprobar ACL/contenido. Timeout
+no mata ni reinicia hijo, informa PID para inspeccion. Sin ejecutor de mutaciones,
+login, fetch o PG en esta consola. IDs son pins propuestos, NO identidad acreditada;
+el futuro transporte debe verificarlos con Auth/perfil y GO del paquete.
+Journal rechaza nlink distinto de1 antes de leer; hardlink real probado.
+
+152 pruebas enfocadas PASS/0FAIL/0skip, incluyendo16 escenarios Windows reales:
+13 ACL/scope/contenido/junction y3 consola/hijo/IPC en USERPROFILE TEMPORAL del
+proceso de prueba, nunca perfil privado real. Preparacion nueva pasa con journal
+cursor0; hash incorrecto y padre de ACL amplia rechazan sin crear un run.
+Limpieza limitada a carpetas temporales propias de test; no datos del operador.
+Reporte ../restore-private-wrapper-final-tests-20261030.json SHA256
+52de5bfe30dc9555a3ccfd59d0902df5eb89aef7926cdbe1771b724a82e65b88.
+Build final exit0 (aviso chunks >500kB), lint, sintaxis Node y diff PASS.
+El wrapper preparador no se ejecuto sobre KioskoPOS-Privado real ni recibio
+credenciales; no inferir capacidad hospedada o respaldo/DR por estas pruebas.

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, it } from 'vitest'
-import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync, linkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve, dirname, basename } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -13,6 +13,10 @@ let root:string, file:string, journal:RestoreJournal
 beforeEach(()=>{root=mkdtempSync(join(tmpdir(),'kiosko-restore-journal-'));file=join(root,'journal.jsonl');journal=createRestoreJournal(file,actors)})
 afterEach(()=>{if(dirname(root)!==resolve(tmpdir())||!basename(root).startsWith('kiosko-restore-journal-'))throw Error('Unsafe cleanup');rmSync(root,{recursive:true,force:true})})
 const actor=(role='OWNER')=>({role,authId:actors[role as keyof typeof actors],kioskId:plan.kioskId})
+it('rejects a hard-linked journal before reading or dispatching',()=>{
+  linkSync(file,join(root,'second-link'))
+  expect(()=>inspectRestoreJournal(journal)).toThrow('RESTORE_JOURNAL_FILE_INVALID')
+})
 function ack(rpc:string,p:Record<string,unknown>) {
   const data=p.p_datos as Record<string,unknown>
   if(rpc==='restaurar_producto_backup')return {producto:{...data,id:p.p_producto_id,kiosco_id:plan.kioskId},lotes:(data.lotes_backup as Record<string,unknown>[]).map(l=>({...l,kiosco_id:plan.kioskId}))}

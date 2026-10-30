@@ -1513,3 +1513,14 @@ UI integral bloqueada, master/Production/ARCA/flags sin cambios.
 
 Build final exit0 (aviso chunks >500kB);36JS sin tres simbolos privados
 seleccionados. Revisión acotada, no certificacion absoluta de secretos.
+
+
+### Preparacion privada Windows PR07 — 30/10/2026
+
+74de2c0 publicado. Consola LOCAL de preparacion y verificacion de carpeta/journal
+implementada, sin login/red/PostgreSQL/restores.152 pruebas enfocadas PASS,
+build/lint/diff PASS. Detalle, limites y evidencia en ExecPlan backup. Esta
+preparacion NO es ejecutor de restore ni GO; faltan login/preflight privados,
+respaldo fresco, pins de actores revisados y paquete exacto autorizado.
+PR07 PARCIAL, objetivo PR01-PR11 activo, UI integral bloqueada. Sin cambios a
+master/Production/flags/Edge/Vercel/ARCA ni lectura de claves originales.
