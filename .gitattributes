@@ -17,3 +17,5 @@
 /scripts/backup/restore-dependency-guard-fixtures.json text eol=lf
 /scripts/backup/restore-dependency-metadata.sql text eol=lf
 /scripts/backup/snapshot-local-dependencies.mjs text eol=lf
+/scripts/backup/restore-acceptance-operator.mjs text eol=lf
+/scripts/backup/restore-acceptance-operator.d.mts text eol=lf

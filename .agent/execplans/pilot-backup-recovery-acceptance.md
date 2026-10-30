@@ -661,3 +661,43 @@ master/Production/merge; UI integral bloqueada. Objetivo PR01-PR11 activo.
 Build final posterior al caso crash exit0, aviso chunks >500kB conservado.
 36JS publicos sin cuatro simbolos de recuperacion examinados; no certificacion
 absoluta de secretos. Sin cambios al esquema ni pruebas remotas.
+
+
+### Control privado de fases PR07 — 30/10/2026
+
+c1b902b publicado, PR3 abierto/Draft y sin merge. Preparado control LOCAL de
+fases Owner18/Cashier3, con sesiones/preflight inyectados y escritura cerrada por
+defecto.135 pruebas enfocadas PASS, sin Auth/red/restores reales. Detalle y limites
+en ExecPlan pilot-backup-recovery-acceptance, adenda de control privado de fases.
+No listo para GO: faltan consola Windows/ACL/entrada de credenciales, adaptadores
+reales de login/preflight y respaldo fresco. PR07 y objetivo PR01-PR11 PARCIALES;
+UI integral bloqueada, master/Production/ARCA/flags sin cambios.
+
+runRestoreRolePhase conecta journal/motor con la interfaz del transporte privado.
+Solo puede empezar en cursor0 (Owner) o18 (Cashier), con pins de plan, rol/Auth/
+kiosco y ventana <=15min. Preflight antes de sesion y de cada accion; vuelve a
+comprobar plazo despues de esperas. Fase parcial/pending/stopped no se retoma.
+Una fase usa un unico bloqueo wx/fsync separado (.phase.lock); otro operador no
+abre sesion mientras exista. Login incierto, logout fallido o crash conservan
+exclusion; ningun desbloqueo automatico. Si hay cliente, intenta logout UNA vez
+en finally incluso ante rechazo/timeout/actor incorrecto; fallo impide PASS.
+Los resultados solo contienen marcadores internos/contadores, no excepciones ni
+cuerpos privados. Login que falla antes de devolver cliente exige investigacion,
+no otro intento; el adaptador privado futuro debe conciliar esa sesion incierta.
+
+La opcion allowRun/hash no equivale a GO ni identidad real; los puertos inyectados
+son para preparar y probar el control, NO prueba hospedada. No hay CLI ni lector
+de credenciales ni fetch ambiente en este modulo. Faltan ACL Windows, entrada
+privada/IPC, adaptadores fijos y preflight actualizado; no solicitar ejecucion.
+
+135 pruebas enfocadas PASS/0FAIL/0skip: flujo21, logout2, fase fuera de orden,
+preflight falso/drift, expiracion durante espera, identidad/actor incorrectos,
+respuesta perdida, logout/login inciertos y dos operadores concurrentes. La
+primera corrida132PASS precede tres casos de exclusion; final no los omite.
+Reporte ../restore-operator-phase-lock-final-20261030.json SHA256
+a296f8e34fb69912cd8037f9d35786c4164598afe4ebc20089e0f6e15d4a8dc6.
+Lint y node --check PASS. Sin nuevos SQL/grants/RPC/flags/Edge/Vercel/ARCA,
+claves originales, sesiones Staging, master, merge o Production.
+
+Build final exit0 (aviso chunks >500kB);36JS sin tres simbolos privados
+seleccionados. Revisión acotada, no certificacion absoluta de secretos.
