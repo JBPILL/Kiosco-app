@@ -1,0 +1,360 @@
+{
+  "version": 1,
+  "status": "LOCAL_PREPARATION_NO_REMOTE_GO",
+  "projectRef": "acoyfwwmhaeruciyedri",
+  "kioskId": "b7254826-c767-4098-94b8-71013c12021d",
+  "sourceCommit": "f5a3387cd8444057731518163ce0a5af0ca2bb11",
+  "sqlSha256Lf": {
+    "001_contacts_restore.sql": "15e3d393b7842a6565debc30b64ba0ea6058f54114d5313dc3ccccb49739444a",
+    "002_inventory_restore.sql": "a49bb5b18e83bed8b6bb9c63a1c01f6a8804ba2980efb04a83f94fe2e5d98113",
+    "003_restore_capability.sql": "b46692dcd0a76fe43907dd94f7359ed1e1ebeaeae37623d1b4dae3e024f5530a"
+  },
+  "fixtureIds": {
+    "client": "3b0afd49-9d4a-43d5-ae1f-37260b2d9d4b",
+    "provider": "10d4a748-9132-4cbd-8def-909c1d6fb8a9",
+    "product": "0f3ba72f-4143-4d5a-9678-6536c92965ad",
+    "batch": "9e9a5d36-b322-4fe9-a1bb-af96362fcb67"
+  },
+  "initiallyAllFixtureIdsMustBeAbsent": true,
+  "steps": [
+    {
+      "name": "provider-create",
+      "rpc": "restaurar_contacto_backup",
+      "params": {
+        "p_operacion_id": "9346671e-b9ba-40cd-be43-a0a890201635",
+        "p_kiosco_id": "b7254826-c767-4098-94b8-71013c12021d",
+        "p_tabla": "proveedores",
+        "p_registro_id": "10d4a748-9132-4cbd-8def-909c1d6fb8a9",
+        "p_datos": {
+          "nombre": "PR07 PROVEEDOR FICTICIO",
+          "saldo_pendiente": 0,
+          "activo": false
+        }
+      },
+      "expected": "ACK_AND_SINGLE_EXPLICIT_REPLAY"
+    },
+    {
+      "name": "client-create",
+      "rpc": "restaurar_contacto_backup",
+      "params": {
+        "p_operacion_id": "6625563e-3182-4367-80c8-0bcdab786b7d",
+        "p_kiosco_id": "b7254826-c767-4098-94b8-71013c12021d",
+        "p_tabla": "clientes",
+        "p_registro_id": "3b0afd49-9d4a-43d5-ae1f-37260b2d9d4b",
+        "p_datos": {
+          "nombre": "PR07 CLIENTE FICTICIO",
+          "saldo_deudor": 0,
+          "activo": false
+        }
+      },
+      "expected": "ACK_AND_SINGLE_EXPLICIT_REPLAY"
+    },
+    {
+      "name": "product-create-with-batch",
+      "rpc": "restaurar_producto_backup",
+      "params": {
+        "p_operacion_id": "4d2ebb0b-d793-4cb8-b097-b95388621779",
+        "p_kiosco_id": "b7254826-c767-4098-94b8-71013c12021d",
+        "p_producto_id": "0f3ba72f-4143-4d5a-9678-6536c92965ad",
+        "p_datos": {
+          "descripcion": "PR07 ENSAYO AISLADO - NO VENDER",
+          "precio_venta": 200,
+          "precio_costo": 0,
+          "stock_actual": 5,
+          "es_pesable": false,
+          "activo": false,
+          "proveedor_id": "10d4a748-9132-4cbd-8def-909c1d6fb8a9",
+          "lotes_backup": [
+            {
+              "id": "9e9a5d36-b322-4fe9-a1bb-af96362fcb67",
+              "producto_id": "0f3ba72f-4143-4d5a-9678-6536c92965ad",
+              "numero_lote": "PR07-SYNTHETIC",
+              "fecha_vencimiento": "2027-12-31",
+              "fecha_ingreso": "2026-10-30T00:00:00Z",
+              "cantidad_inicial": 5,
+              "cantidad_actual": 3,
+              "activo": true
+            }
+          ]
+        }
+      },
+      "expected": "ACK_AND_SINGLE_EXPLICIT_REPLAY"
+    },
+    {
+      "name": "provider-preserve-zero-balance",
+      "rpc": "restaurar_contacto_backup",
+      "params": {
+        "p_operacion_id": "e2437842-615f-4dd4-a966-f146e9c84f7e",
+        "p_kiosco_id": "b7254826-c767-4098-94b8-71013c12021d",
+        "p_tabla": "proveedores",
+        "p_registro_id": "10d4a748-9132-4cbd-8def-909c1d6fb8a9",
+        "p_datos": {
+          "nombre": "PR07 PROVEEDOR FICTICIO ACTUALIZADO",
+          "saldo_pendiente": 999,
+          "activo": false
+        }
+      },
+      "expected": "ACK_AND_SINGLE_EXPLICIT_REPLAY"
+    },
+    {
+      "name": "client-preserve-zero-balance",
+      "rpc": "restaurar_contacto_backup",
+      "params": {
+        "p_operacion_id": "5cf974f1-86c0-4c40-8f5e-cc45a17f3771",
+        "p_kiosco_id": "b7254826-c767-4098-94b8-71013c12021d",
+        "p_tabla": "clientes",
+        "p_registro_id": "3b0afd49-9d4a-43d5-ae1f-37260b2d9d4b",
+        "p_datos": {
+          "nombre": "PR07 CLIENTE FICTICIO ACTUALIZADO",
+          "saldo_deudor": 999,
+          "activo": false
+        }
+      },
+      "expected": "ACK_AND_SINGLE_EXPLICIT_REPLAY"
+    },
+    {
+      "name": "product-update-atomic",
+      "rpc": "restaurar_producto_backup",
+      "params": {
+        "p_operacion_id": "521a5f98-2a48-4368-b089-8a147532e447",
+        "p_kiosco_id": "b7254826-c767-4098-94b8-71013c12021d",
+        "p_producto_id": "0f3ba72f-4143-4d5a-9678-6536c92965ad",
+        "p_datos": {
+          "descripcion": "PR07 ENSAYO AISLADO - NO VENDER",
+          "precio_venta": 200,
+          "precio_costo": 0,
+          "stock_actual": 4,
+          "es_pesable": false,
+          "activo": false,
+          "proveedor_id": "10d4a748-9132-4cbd-8def-909c1d6fb8a9",
+          "lotes_backup": [
+            {
+              "id": "9e9a5d36-b322-4fe9-a1bb-af96362fcb67",
+              "producto_id": "0f3ba72f-4143-4d5a-9678-6536c92965ad",
+              "numero_lote": "PR07-SYNTHETIC",
+              "fecha_vencimiento": "2027-12-31",
+              "fecha_ingreso": "2026-10-30T00:00:00Z",
+              "cantidad_inicial": 5,
+              "cantidad_actual": 2,
+              "activo": true
+            }
+          ]
+        }
+      },
+      "expected": "ACK_AND_SINGLE_EXPLICIT_REPLAY"
+    },
+    {
+      "name": "batch-update-no-stock-change",
+      "rpc": "restaurar_lote_backup",
+      "params": {
+        "p_operacion_id": "efaa3653-3940-4baa-bc44-7c454862aca4",
+        "p_kiosco_id": "b7254826-c767-4098-94b8-71013c12021d",
+        "p_lote_id": "9e9a5d36-b322-4fe9-a1bb-af96362fcb67",
+        "p_datos": {
+          "producto_id": "0f3ba72f-4143-4d5a-9678-6536c92965ad",
+          "numero_lote": "PR07-SYNTHETIC",
+          "fecha_vencimiento": "2027-12-31",
+          "fecha_ingreso": "2026-10-30T00:00:00Z",
+          "cantidad_inicial": 5,
+          "cantidad_actual": 1,
+          "activo": true
+        }
+      },
+      "expected": "ACK_AND_SINGLE_EXPLICIT_REPLAY"
+    },
+    {
+      "name": "changed-body-same-operation",
+      "rpc": "restaurar_producto_backup",
+      "params": {
+        "p_operacion_id": "521a5f98-2a48-4368-b089-8a147532e447",
+        "p_kiosco_id": "b7254826-c767-4098-94b8-71013c12021d",
+        "p_producto_id": "0f3ba72f-4143-4d5a-9678-6536c92965ad",
+        "p_datos": {
+          "descripcion": "PR07 ENSAYO AISLADO - NO VENDER",
+          "precio_venta": 201,
+          "precio_costo": 0,
+          "stock_actual": 4,
+          "es_pesable": false,
+          "activo": false,
+          "proveedor_id": "10d4a748-9132-4cbd-8def-909c1d6fb8a9",
+          "lotes_backup": [
+            {
+              "id": "9e9a5d36-b322-4fe9-a1bb-af96362fcb67",
+              "producto_id": "0f3ba72f-4143-4d5a-9678-6536c92965ad",
+              "numero_lote": "PR07-SYNTHETIC",
+              "fecha_vencimiento": "2027-12-31",
+              "fecha_ingreso": "2026-10-30T00:00:00Z",
+              "cantidad_inicial": 5,
+              "cantidad_actual": 2,
+              "activo": true
+            }
+          ]
+        }
+      },
+      "expected": "REJECT",
+      "sqlstate": "22023"
+    },
+    {
+      "name": "invalid-batch-rolls-back-product",
+      "rpc": "restaurar_producto_backup",
+      "params": {
+        "p_operacion_id": "ef037b7b-b024-4cf7-9fab-3655eaaeee74",
+        "p_kiosco_id": "b7254826-c767-4098-94b8-71013c12021d",
+        "p_producto_id": "0f3ba72f-4143-4d5a-9678-6536c92965ad",
+        "p_datos": {
+          "descripcion": "PR07 ENSAYO AISLADO - NO VENDER",
+          "precio_venta": 200,
+          "precio_costo": 0,
+          "stock_actual": 1,
+          "es_pesable": false,
+          "activo": false,
+          "proveedor_id": "10d4a748-9132-4cbd-8def-909c1d6fb8a9",
+          "lotes_backup": [
+            {
+              "id": "9e9a5d36-b322-4fe9-a1bb-af96362fcb67",
+              "producto_id": "0f3ba72f-4143-4d5a-9678-6536c92965ad",
+              "numero_lote": "PR07-SYNTHETIC",
+              "fecha_vencimiento": "2027-12-31",
+              "fecha_ingreso": "2026-10-30T00:00:00Z",
+              "cantidad_inicial": 5,
+              "cantidad_actual": 5,
+              "activo": true
+            }
+          ]
+        }
+      },
+      "expected": "REJECT",
+      "sqlstate": "22023"
+    },
+    {
+      "name": "close-fixture-zero-stock-inactive",
+      "rpc": "restaurar_producto_backup",
+      "params": {
+        "p_operacion_id": "d8635354-3780-4fbc-ba5c-adbbf7183239",
+        "p_kiosco_id": "b7254826-c767-4098-94b8-71013c12021d",
+        "p_producto_id": "0f3ba72f-4143-4d5a-9678-6536c92965ad",
+        "p_datos": {
+          "descripcion": "PR07 ENSAYO AISLADO - NO VENDER",
+          "precio_venta": 200,
+          "precio_costo": 0,
+          "stock_actual": 0,
+          "es_pesable": false,
+          "activo": false,
+          "proveedor_id": "10d4a748-9132-4cbd-8def-909c1d6fb8a9",
+          "lotes_backup": [
+            {
+              "id": "9e9a5d36-b322-4fe9-a1bb-af96362fcb67",
+              "producto_id": "0f3ba72f-4143-4d5a-9678-6536c92965ad",
+              "numero_lote": "PR07-SYNTHETIC",
+              "fecha_vencimiento": "2027-12-31",
+              "fecha_ingreso": "2026-10-30T00:00:00Z",
+              "cantidad_inicial": 5,
+              "cantidad_actual": 0,
+              "activo": false
+            }
+          ]
+        }
+      },
+      "expected": "ACK_AND_SINGLE_EXPLICIT_REPLAY"
+    }
+  ],
+  "positiveOperations": 8,
+  "expectedDurableOperationsIncludingNested": 14,
+  "expectedStockMovements": 3,
+  "final": {
+    "clientBalance": 0,
+    "providerBalance": 0,
+    "productStock": 0,
+    "batchStock": 0,
+    "clientActive": false,
+    "providerActive": false,
+    "productActive": false,
+    "batchActive": false
+  },
+  "retention": "KEEP_INACTIVE_FIXTURES_AND_OPERATION_AUDIT_NO_DELETE",
+  "uncertainResponse": "STOP_READ_ONLY_RECONCILIATION_NO_AUTOMATIC_RETRY_OR_NEW_UUID",
+  "cleanup": "EXPLICIT_FINAL_ZERO_STOCK_RPC_ONLY_AFTER_VERIFIED_PRIOR_ACKS; IF_INTERRUPTED_REVIEW_NEW_GO",
+  "readinessDependencies": [
+    "fresh_schema_acl_and_fixture_absence_preflight",
+    "fresh_private_backup_or_reviewed_validity",
+    "specific_remote_mutation_go",
+    "private_operator_journal_with_fixed_ids_and_source_hash"
+  ],
+  "remoteExecutorIncluded": false,
+  "restoreUiEnabled": false,
+  "arca": false,
+  "flags": false,
+  "production": false,
+  "cashierDeniedCalls": [
+    {
+      "name": "cashier-denied-restaurar_contacto_backup",
+      "rpc": "restaurar_contacto_backup",
+      "params": {
+        "p_operacion_id": "afcff29d-8006-4f65-8f77-eb8a5eac9ccb",
+        "p_kiosco_id": "b7254826-c767-4098-94b8-71013c12021d",
+        "p_tabla": "proveedores",
+        "p_registro_id": "10d4a748-9132-4cbd-8def-909c1d6fb8a9",
+        "p_datos": {
+          "nombre": "PR07 PROVEEDOR FICTICIO",
+          "saldo_pendiente": 0,
+          "activo": false
+        }
+      },
+      "expected": "REJECT",
+      "sqlstate": "42501"
+    },
+    {
+      "name": "cashier-denied-restaurar_producto_backup",
+      "rpc": "restaurar_producto_backup",
+      "params": {
+        "p_operacion_id": "ace7dc3f-ce57-4a7d-a5f1-6327ba813536",
+        "p_kiosco_id": "b7254826-c767-4098-94b8-71013c12021d",
+        "p_producto_id": "0f3ba72f-4143-4d5a-9678-6536c92965ad",
+        "p_datos": {
+          "descripcion": "PR07 ENSAYO AISLADO - NO VENDER",
+          "precio_venta": 200,
+          "precio_costo": 0,
+          "stock_actual": 5,
+          "es_pesable": false,
+          "activo": false,
+          "proveedor_id": "10d4a748-9132-4cbd-8def-909c1d6fb8a9",
+          "lotes_backup": [
+            {
+              "id": "9e9a5d36-b322-4fe9-a1bb-af96362fcb67",
+              "producto_id": "0f3ba72f-4143-4d5a-9678-6536c92965ad",
+              "numero_lote": "PR07-SYNTHETIC",
+              "fecha_vencimiento": "2027-12-31",
+              "fecha_ingreso": "2026-10-30T00:00:00Z",
+              "cantidad_inicial": 5,
+              "cantidad_actual": 3,
+              "activo": true
+            }
+          ]
+        }
+      },
+      "expected": "REJECT",
+      "sqlstate": "42501"
+    },
+    {
+      "name": "cashier-denied-restaurar_lote_backup",
+      "rpc": "restaurar_lote_backup",
+      "params": {
+        "p_operacion_id": "bfab839f-b254-4490-85e1-0f415b9c16b1",
+        "p_kiosco_id": "b7254826-c767-4098-94b8-71013c12021d",
+        "p_lote_id": "9e9a5d36-b322-4fe9-a1bb-af96362fcb67",
+        "p_datos": {
+          "producto_id": "0f3ba72f-4143-4d5a-9678-6536c92965ad",
+          "numero_lote": "PR07-SYNTHETIC",
+          "fecha_vencimiento": "2027-12-31",
+          "fecha_ingreso": "2026-10-30T00:00:00Z",
+          "cantidad_inicial": 5,
+          "cantidad_actual": 1,
+          "activo": true
+        }
+      },
+      "expected": "REJECT",
+      "sqlstate": "42501"
+    }
+  ],
+  "expectedTotalExplicitRpcCalls": 21
+}

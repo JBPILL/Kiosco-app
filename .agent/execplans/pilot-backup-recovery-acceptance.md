@@ -439,3 +439,43 @@ fixtures, invariantes, idempotencia y plan de recuperacion; exigir revision/GO
 especifico antes de ejecutar mutaciones. UI integral sigue bloqueada y PR07
 PARCIAL. Ruta fiscal permanece pendiente de renovacion de catalogos autorizada
 y nueva ventana; no reutilizar GO/paquetes vencidos ni solicitar LoginCms por rutina.
+
+
+### Preparacion local del ensayo de restore — 30/10/2026
+
+Plan fijo scripts/backup/restore-acceptance-plan.json SHA256
+717d6524d2291b4ec2a160d1b6fd26f79ece350b5aee0cacd28200efb04c605f,
+LOCAL_PREPARATION_NO_REMOTE_GO, sin ejecutor remoto. Cuatro UUID nuevos fijos
+(cliente/proveedor/producto/lote), sin contacto real ni saldos iniciales.
+Cliente/proveedor/producto inactivos durante todo el ensayo; cierre deja los
+cuatro inactivos con saldos y stock cero, conservando fixtures y auditoria.
+Esto es compensacion del stock de ensayo, no borrado ni rollback del historial.
+
+Diez pasos de Dueno: ocho operaciones positivas (incluido cierre) con UN replay
+explicito de cada ACK, una colision de mismo UUID/cuerpo cambiado y un producto
+con lote invalido que debe revertir todo. Tres rechazos de escritura para Cajero,
+uno por RPC, sin crear operaciones. Total previsto21 llamadas explicitas,
+14 operaciones durables incluidas anidadas y3 movimientos de stock del producto
+ficticio, sin ventas/caja/cuentas corrientes/pagos. No usar UUID nuevos ante fallo.
+Los replays previstos son casos de prueba aprobables; no son retries automaticos
+ante incertidumbre. Respuesta incierta => STOP y conciliacion de lectura.
+
+39 pruebas PGlite completas PASS/0FAIL/0skip, incluyendo el paquete exacto con
+solo kiosco/Auth remapeados a identidades SINTETICAS locales. Se verifican ACK
+igual y estado sin duplicacion, rollback por rechazo, preservacion del saldo
+actual aunque payload diga999, proveedor/producto/lote y cierre a cero; Cajero
+rechazado42501 sin cambios. No equivalen a PostgreSQL hospedado/JWT real.
+Evidencia ../backup-restore-plan-final-local-20261030.json SHA256
+438962d34b7a19d89b32e3cc80e7da2832c2634f813d11f9fe36277dccd54dac.
+Preflight scripts/backup/restore-acceptance-preflight.sql probado dentro de
+REPEATABLE READ READ ONLY/ROLLBACK: cuatro funciones/metadata esperadas, cero
+fixtures/colisiones (incluye UUID anidados y de denegaciones). Solo retorna
+contadores/metadatos y hash del plan, no cuerpos/filas privadas.
+Build689 PASS, lint enfocado sin avisos y diff PASS. No nueva suite global.
+
+NO listo para GO remoto todavia: faltan operador privado/journal durable,
+lectura de recuperacion y pruebas de ACK perdido/crash del operador, inventario
+pinneado de dependencias/callees/triggers del esquema hospedado y revision de
+vigencia del respaldo. Preparar esas piezas antes de pedir permiso final.
+No se ejecutaron preflight ni restores remotos en este bloque, no hubo flags,
+SQL/Edge/Vercel/ARCA/master/Production ni UI habilitada. PR07 sigue PARCIAL.

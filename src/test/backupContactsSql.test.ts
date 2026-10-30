@@ -2,7 +2,7 @@
 // Contrato SQL con esquema completo; no sustituye Auth/RLS/JWT hospedados.
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createHash } from 'node:crypto'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
@@ -365,4 +365,104 @@ it('un catálogo sin lotes ajusta stock y lotes retenidos coherentemente mediant
   expect((await db.query<Record<string, unknown>>('SELECT stock_actual FROM productos')).rows[0].stock_actual).toBe('1.000')
   // Ajustar de 5 a 1 consume las 3 unidades del lote y una sin lote: no inventa trazabilidad.
   expect((await db.query<Record<string, unknown>>('SELECT cantidad_actual,activo,numero_lote FROM lotes_producto')).rows[0]).toMatchObject({ cantidad_actual: '0.000', activo: false, numero_lote: 'ENSAYO' })
+})
+
+interface RestoreAcceptanceStep {
+  name: string
+  rpc: 'restaurar_contacto_backup' | 'restaurar_producto_backup' | 'restaurar_lote_backup'
+  params: Record<string, unknown>
+  expected: 'ACK_AND_SINGLE_EXPLICIT_REPLAY' | 'REJECT'
+  sqlstate?: string
+}
+it('prueba el paquete fijo de aceptacion con fixtures inactivos, replay, atomicidad y cierre sin borrar auditoria', async () => {
+  const plan: { status: string; remoteExecutorIncluded: boolean; fixtureIds: Record<string,string>; sqlSha256Lf: Record<string,string>; steps: RestoreAcceptanceStep[]; expectedDurableOperationsIncludingNested: number; expectedStockMovements: number; cashierDeniedCalls: RestoreAcceptanceStep[] } = JSON.parse(readFileSync('scripts/backup/restore-acceptance-plan.json','utf8'))
+  expect(plan.status).toBe('LOCAL_PREPARATION_NO_REMOTE_GO')
+  expect(plan.remoteExecutorIncluded).toBe(false)
+  for (const [file, expectedHash] of Object.entries(plan.sqlSha256Lf)) {
+    expect(['001_contacts_restore.sql','002_inventory_restore.sql','003_restore_capability.sql']).toContain(file)
+    expect(createHash('sha256').update(readFileSync(join('supabase/pilot-backup',file),'utf8').replaceAll('\r\n','\n')).digest('hex')).toBe(expectedHash)
+  }
+  async function call(step: RestoreAcceptanceStep): Promise<Record<string,unknown>> {
+    const p=step.params
+    // Only the target kiosk is remapped to this LOCAL synthetic test transaction.
+    const args=[p.p_operacion_id,kid]
+    if(step.rpc==='restaurar_contacto_backup') {
+      const result=await db.query<{ack:Record<string,unknown>}>('SELECT restaurar_contacto_backup($1,$2,$3,$4,$5::jsonb) ack',[...args,p.p_tabla,p.p_registro_id,JSON.stringify(p.p_datos)])
+      return result.rows[0].ack
+    }
+    if(step.rpc==='restaurar_producto_backup') {
+      const result=await db.query<{ack:Record<string,unknown>}>('SELECT restaurar_producto_backup($1,$2,$3,$4::jsonb) ack',[...args,p.p_producto_id,JSON.stringify(p.p_datos)])
+      return result.rows[0].ack
+    }
+    if(step.rpc!=='restaurar_lote_backup')throw Error('Unexpected restore RPC')
+    const result=await db.query<{ack:Record<string,unknown>}>('SELECT restaurar_lote_backup($1,$2,$3,$4::jsonb) ack',[...args,p.p_lote_id,JSON.stringify(p.p_datos)])
+    return result.rows[0].ack
+  }
+  async function snapshot():Promise<Record<string,unknown>> {
+    await db.exec('RESET ROLE')
+    const result=await db.query<Record<string,unknown>>(`SELECT
+      (SELECT count(*)::int FROM operaciones_escritura) operations,
+      (SELECT count(*)::int FROM movimientos_stock) stock_movements,
+      (SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.id),'[]'::jsonb) FROM productos p) products,
+      (SELECT coalesce(jsonb_agg(to_jsonb(l) ORDER BY l.id),'[]'::jsonb) FROM lotes_producto l) batches`)
+    await db.exec('SET ROLE authenticated')
+    return result.rows[0]
+  }
+  expect(plan.steps).toHaveLength(10)
+  for(const step of plan.steps) {
+    if(step.expected==='REJECT') {
+      const before=await snapshot()
+      await db.exec('SAVEPOINT plan_rejection')
+      await expect(call(step)).rejects.toMatchObject({code:step.sqlstate})
+      await db.exec('ROLLBACK TO SAVEPOINT plan_rejection; RELEASE SAVEPOINT plan_rejection')
+      expect(await snapshot()).toEqual(before)
+    } else {
+      const ack=await call(step), after=await snapshot()
+      expect(await call(step)).toEqual(ack)
+      expect(await snapshot()).toEqual(after)
+    }
+  }
+  await db.query("SELECT set_config('request.jwt.claim.sub',$1,true)",[deniedActors[0].auth])
+  expect(plan.cashierDeniedCalls).toHaveLength(3)
+  for(const step of plan.cashierDeniedCalls) {
+    const before=await snapshot()
+    await db.exec('SAVEPOINT cashier_denial')
+    await expect(call(step)).rejects.toMatchObject({code:'42501'})
+    await db.exec('ROLLBACK TO SAVEPOINT cashier_denial; RELEASE SAVEPOINT cashier_denial')
+    expect(await snapshot()).toEqual(before)
+  }
+  await db.query("SELECT set_config('request.jwt.claim.sub',$1,true)",[auth])
+  const final=await snapshot()
+  expect(final.operations).toBe(plan.expectedDurableOperationsIncludingNested)
+  expect(final.stock_movements).toBe(plan.expectedStockMovements)
+  await db.exec('RESET ROLE')
+  const contacts=await db.query<Record<string,unknown>>(`SELECT
+    (SELECT saldo_deudor FROM clientes WHERE id=$1) client_balance,
+    (SELECT saldo_pendiente FROM proveedores WHERE id=$2) provider_balance,
+    (SELECT activo FROM clientes WHERE id=$1) client_active,
+    (SELECT activo FROM proveedores WHERE id=$2) provider_active`,[plan.fixtureIds.client,plan.fixtureIds.provider])
+  expect(contacts.rows[0]).toEqual({client_balance:'0.00',provider_balance:'0.00',client_active:false,provider_active:false})
+  const product=await db.query<Record<string,unknown>>('SELECT stock_actual,activo,proveedor_id FROM productos WHERE id=$1',[plan.fixtureIds.product])
+  expect(product.rows[0]).toEqual({stock_actual:'0.000',activo:false,proveedor_id:plan.fixtureIds.provider})
+  const batch=await db.query<Record<string,unknown>>('SELECT cantidad_actual,activo,producto_id FROM lotes_producto WHERE id=$1',[plan.fixtureIds.batch])
+  expect(batch.rows[0]).toEqual({cantidad_actual:'0.000',activo:false,producto_id:plan.fixtureIds.product})
+  for(const table of ['ventas','movimientos_caja','movimientos_cuenta_corriente','movimientos_proveedor','pagos_proveedor']) {
+    expect((await db.query<{n:number}>(`SELECT count(*)::int n FROM ${table}`)).rows[0].n).toBe(0)
+  }
+})
+
+it('el preflight fijo usa READ ONLY/ROLLBACK y detecta ausencia de fixtures sin leer cuerpos privados', async () => {
+  const planBytes=readFileSync('scripts/backup/restore-acceptance-plan.json')
+  const source=readFileSync('scripts/backup/restore-acceptance-preflight.sql','utf8')
+  expect(source.startsWith('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;')).toBe(true)
+  expect(source.trimEnd().endsWith('ROLLBACK;')).toBe(true)
+  expect(source).toContain(createHash('sha256').update(planBytes).digest('hex'))
+  // Existing synthetic profile substitutes only the target identity fuse locally.
+  const local=source.replaceAll('b7254826-c767-4098-94b8-71013c12021d',kid).replaceAll('0e90b9a7-36d2-4762-ab1a-4982996cf9aa',auth)
+  await db.exec('ROLLBACK; RESET ROLE')
+  const results=await db.exec(local)
+  const row=results.find(r=>r.rows.length>0)?.rows[0] as {evidence:{read_only:string;identity_fuse:boolean;public_overloads:number;operation_collisions:number;fixture_counts:Record<string,number>;functions:{present:boolean;metadata_matches:boolean}[]}} | undefined
+  expect(row?.evidence).toMatchObject({read_only:'on',identity_fuse:true,public_overloads:4,operation_collisions:0,fixture_counts:{clientes:0,proveedores:0,productos:0,lotes_producto:0}})
+  expect(row?.evidence.functions).toHaveLength(4)
+  expect(row?.evidence.functions.every(f=>f.present&&f.metadata_matches)).toBe(true)
 })

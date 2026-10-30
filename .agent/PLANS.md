@@ -6,6 +6,11 @@ An ExecPlan is a living document: create it before implementation, update **Prog
 
 ## Objetivo común vigente — cierre del desarrollo y Production Readiness
 
+30/10 PR07: plan fijo de restore aislado y preflight READ ONLY preparados y
+probados LOCALMENTE (39PASS, build689/lint). No ejecutor ni GO remoto todavia;
+faltan journal/recuperacion, fallos del operador y pin de dependencias hospedadas.
+No ejecutar JSON/SQL por inferencia, no repetir lectura OWNER/CASHIER cerrada.
+
 30/10 posterior a a27d07e: operador y captura confirman lectura OWNER own200 /
 other403 y CASHIER own403 / other403, mutation=false, ambos logout local.
 Gate de lectura de capacidades OBSERVADO; no repetir sin drift. No acredita
