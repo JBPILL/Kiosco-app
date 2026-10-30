@@ -3,6 +3,7 @@
 import { readdirSync, readFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { join, resolve, dirname, basename } from 'node:path'
 import { tmpdir } from 'node:os'
+import { buildRestoreStateReadSql, verifyRestoreStateRead } from '../../scripts/backup/restore-state-preflight.mjs'
 import { buildUncertainRestoreReadSql, decodeUncertainRestoreRead } from '../../scripts/backup/restore-acceptance-recovery.mjs'
 import { createRestoreJournal, inspectRestoreJournal, executeNextRestoreAction, inspectUncertainRestoreAction, loadRestorePlan, valueHash } from '../../scripts/backup/restore-acceptance-engine.mjs'
 import { randomUUID, createHash } from 'node:crypto'
@@ -482,6 +483,27 @@ it('ejecuta el motor durable contra los ACK SQL reales locales para las21 accion
   try {
     await seedLocalFixedPlanActors()
     const journal=createRestoreJournal(join(folder,'journal.jsonl'),{OWNER:auth,CASHIER:deniedActors[0].auth})
+    async function stateRead(expectFailure=false) {
+      await db.exec('RESET ROLE; SAVEPOINT state_read; SET LOCAL transaction_read_only=on')
+      try {
+        const sql=buildRestoreStateReadSql(journal)
+        expect(sql.startsWith('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;')).toBe(true)
+        expect(sql.trimEnd().endsWith('ROLLBACK;')).toBe(true)
+        const body=sql.slice(sql.indexOf('\n')+1,sql.lastIndexOf('ROLLBACK;'))
+        const result=await db.exec(body)
+        const value=result.find(r=>r.rows.length>0)?.rows[0]?.evidence
+        if(expectFailure)expect(()=>verifyRestoreStateRead(journal,value)).toThrow('RESTORE_STATE_NOT_CONFIRMED')
+        else expect(verifyRestoreStateRead(journal,value)).toMatchObject({status:'OWNED_FIXTURES_MATCH_ONLY',cursor:inspectRestoreJournal(journal).cursor})
+        return value
+      } finally { await db.exec('ROLLBACK TO SAVEPOINT state_read; RELEASE SAVEPOINT state_read; SET ROLE authenticated') }
+    }
+    await stateRead()
+    await db.exec('RESET ROLE; SAVEPOINT future_collision')
+    await db.query("INSERT INTO operaciones_escritura(id,kiosco_id,usuario_id,tipo,solicitud,resultado) VALUES($1,$2,$3,'UNREVIEWED','{}'::jsonb,$4::jsonb)",[plan.steps.at(-1)!.params.p_operacion_id,plan.kioskId,owner,JSON.stringify({private:'SYNTHETIC_PRIVATE_COLLISION_BODY'})])
+    const conflict=await stateRead(true) as {operations:{result:unknown}[]}
+    expect(JSON.stringify(conflict)).not.toContain('SYNTHETIC_PRIVATE_COLLISION_BODY')
+    expect(conflict.operations[0].result).toBeNull()
+    await db.exec('ROLLBACK TO SAVEPOINT future_collision; RELEASE SAVEPOINT future_collision; SET ROLE authenticated')
     let count=0
     while(!inspectRestoreJournal(journal).complete){
       const role=inspectRestoreJournal(journal).cursor>=18?'CASHIER':'OWNER'
@@ -506,6 +528,14 @@ it('ejecuta el motor durable contra los ACK SQL reales locales para las21 accion
           return {status:code==='42501'?403:400,data:{code}}
         }
       })
+      await stateRead()
+      if([1,5].includes(inspectRestoreJournal(journal).cursor)) {
+        await db.exec('RESET ROLE; SAVEPOINT owned_drift')
+        if(inspectRestoreJournal(journal).cursor===1)await db.query('UPDATE proveedores SET saldo_pendiente=1 WHERE id=$1',[plan.fixtureIds.provider])
+        else await db.query("UPDATE movimientos_stock SET notas='SYNTHETIC DRIFT' WHERE producto_id=$1",[plan.fixtureIds.product])
+        await stateRead(true)
+        await db.exec('ROLLBACK TO SAVEPOINT owned_drift; RELEASE SAVEPOINT owned_drift; SET ROLE authenticated')
+      }
       const rows=journal.records(), completed=rows.at(-1)!, intent=rows.at(-2)!
       if(completed.kind==='CONFIRMED') {
         await db.exec('RESET ROLE')
@@ -515,6 +545,7 @@ it('ejecuta el motor durable contra los ACK SQL reales locales para las21 accion
         await db.exec('SET ROLE authenticated')
       }
     }
+    await stateRead()
     expect(count).toBe(21)
     expect(inspectRestoreJournal(journal)).toMatchObject({cursor:21,complete:true,pending:null})
     await db.exec('RESET ROLE')

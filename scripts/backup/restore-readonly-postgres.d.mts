@@ -1,6 +1,8 @@
+import type { RestoreJournal } from './restore-acceptance-engine.mjs'
 export interface RestoreReadOnlyPort {
   readDependencyMetadata(): Promise<{status: 'METADATA_MATCH_ONLY'; structureHash: string}>
   readInitialPreflight(): Promise<{status: 'METADATA_MATCH_ONLY'; structureHash: string; initialState: 'ABSENT_FIXTURES_NO_COLLISIONS_ONLY'}>
+  readOwnedState(journal: RestoreJournal): Promise<{status: 'METADATA_MATCH_ONLY'; structureHash: string; ownedState: 'OWNED_FIXTURES_MATCH_ONLY'; cursor: number}>
   dispose(): Promise<void>
 }
 export interface RestoreReadOnlyClient {

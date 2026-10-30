@@ -826,3 +826,58 @@ PASS ../restore-reader-wait-final-20261030.json. Build exit0 (aviso chunks >500k
 lint/node --check/diff PASS. Sin sesiones nuevas, SQL/restores/flags/Edge/ARCA,
 master/Production/merge. Push anterior9d81a21 sigue esperando autenticacion del
 titular; no iniciar otro push concurrente ni confundir commit local con publicado.
+
+
+### Estado del ensayo por cursor PR07 — 30/10/2026
+
+Publicacion confirmada hasta b04be72. Preparadas lecturas por cursor vinculadas
+al journal/ACK original,227 pruebas enfocadas PASS. Sin sesiones ni restores
+reales. Detalle en ExecPlan backup. Resultado OWNED_FIXTURES_MATCH_ONLY: no
+certifica conservacion de datos ajenos al ensayo ni todos los saldos/caja del
+comercio. Falta esa baseline durable, paquete/backup/ventana/GO y consola de
+EJECUCION integrada; el preparador Windows existente no ejecuta restores.
+PR07 PARCIAL, objetivo PR01-PR11 activo, UI/flags/ARCA/Production cerrados.
+
+restore-state-preflight genera solo READ ONLY/ROLLBACK a partir del plan v2 y
+prefijo confirmado del journal. Pending/stopped se rechaza, no se convierte en
+preflight normal. Verifica existencia/ausencia de cuatro fixtures y filas completas
+contra el ultimo ACK durable mediante jsonb_populate_record (incluye timestamps
+con precision PG, sin redondear fechas en JS). Las ocho operaciones raiz mantienen
+hash del ACK original; incluye solicitudes/tipos/contexto de catalogo/lotes
+anidados, resultado no nulo y exactamente los IDs esperados. No afirma hash
+independiente de cada ACK anidado: eso y baseline de auditoria general quedan
+pendientes. Considera TODOS los IDs futuros/rechazados y derivados, no solo los
+ya esperados; colision detiene lectura y oculta resultado fuera de contexto.
+
+Comprueba3 operaciones_stock/3 movimientos a lo largo del prefijo: solicitud
+AJUSTE_MANUAL, stock anterior/objetivo, movimiento vinculado, delta/cantidad,
+notas, actor/kiosco/producto y ausencia de lote. Exige costo0 en fila privada.
+Estado comercial derivado de suscripcion/fecha real y actores Owner/Cashier
+unicos activos ordinarios del kiosco; no basta kiosco ACTIVO. Resultado contiene
+solo status/contadores tras verificacion; ACK acotado permanece en memoria del
+lector privado, no se imprime ni persiste en la salida. IDs/cuerpos vienen del
+plan fijo/UUID validados, strings SQL escapados; ningun RPC o SQL libre del browser.
+
+Puerto readonly incorpora readOwnedState(journal), con metadata revisada en la
+misma transaccion RR/RO y ROLLBACK confirmado; sin Client/query expuestos. No
+acepta ausencia de journal como prueba de estado. Control por cursor NO es lock
+remoto duradero ni inmunidad a cambios posteriores: RPC conserva su autorizacion
+transaccional. Conservacion del resto del comercio requiere baseline/hashes
+externos a fixtures y auditoria financiera antes de GO; no se infiere de esta
+comprobacion. El runner privado aun no debe usar este resultado como permiso.
+
+227 pruebas enfocadas PASS/0FAIL/0skip. Ensayo PGlite ejecuta los21 pasos y consulta
+estado antes/despues; saldo y notas de movimiento alterados con savepoint causan
+rechazo. Colision en UUID de paso futuro rechaza y no devuelve marcador privado.
+En PGlite se ejecuta CUERPO de lectura con transaction_read_only=on dentro del
+savepoint del ensayo, rollback sin falsificar el campo; no se atribuye RR
+independiente o JWT/TLS real a ese caso. El wrapper RR/RO se verifica por protocolo
+del puerto con Client sintetico. PostgreSQL17 hospedado sigue no ensayado aqui.
+Reporte ../restore-state-release-final-tests-20261030.json SHA256
+3b9133dfdf988ee10218cff2e17c7949f54a265a5dc264da9d7052c8347b2d8a.
+Aviso de lint no-unsafe-finally en un test corregido moviendo el guard de ruta
+antes del try; recheck22 PASS. Lint final sin avisos, sintaxis y diff PASS.
+Sin SQL instalado, mutaciones Staging, flags, Edge, ARCA, merge/master/Production.
+
+Build final exit0 (aviso chunks >500kB);36JS publicos sin tres simbolos de
+estado privado seleccionados. Revision acotada, no certificacion absoluta.

@@ -554,3 +554,17 @@ No expone query/Client ni escritura; detalle en ExecPlan backup. Falta validar
 estado comercial/fixtures/auditoria por cursor, conectar consola/login/PG en
 paquete exacto y obtener respaldo/GO de ensayo. No sustituye estos gates.
 Objetivo PR01-PR11 activo, PR07 PARCIAL, UI integral y permisos remotos cerrados.
+
+
+### Estado del ensayo por cursor PR07 — 30/10/2026
+
+Publicacion confirmada hasta b04be72. Preparadas lecturas por cursor vinculadas
+al journal/ACK original,227 pruebas enfocadas PASS. Sin sesiones ni restores
+reales. Detalle en ExecPlan backup. Resultado OWNED_FIXTURES_MATCH_ONLY: no
+certifica conservacion de datos ajenos al ensayo ni todos los saldos/caja del
+comercio. Falta esa baseline durable, paquete/backup/ventana/GO y consola de
+EJECUCION integrada; el preparador Windows existente no ejecuta restores.
+PR07 PARCIAL, objetivo PR01-PR11 activo, UI/flags/ARCA/Production cerrados.
+
+Build final exit0 (aviso chunks >500kB);36JS publicos sin tres simbolos de
+estado privado seleccionados. Revision acotada, no certificacion absoluta.

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { PLAN_HASH } from './restore-acceptance-engine.mjs'
 import { verifyRestoreDependencyMetadata } from './restore-dependency-preflight.mjs'
+import { buildRestoreStateReadSql, verifyRestoreStateRead } from './restore-state-preflight.mjs'
 const host = 'aws-1-sa-east-1.pooler.supabase.com'
 const fail = code => { throw Error(code) }
 function pinnedSql(name, hash) {
@@ -50,7 +51,7 @@ export async function connectRestoreReadOnlyPostgres(credentials, { Client = pg.
     try { await client?.end() } catch { /* Do not expose driver diagnostics. */ }
     fail('RESTORE_READER_CONNECTION_NOT_CONFIRMED')
   }
-  async function read(initial) {
+  async function read(initial, journal) {
     if (disposed || poisoned || reading) fail('RESTORE_READER_UNAVAILABLE')
     reading = true
     let result, failed = false
@@ -63,6 +64,12 @@ export async function connectRestoreReadOnlyPostgres(credentials, { Client = pg.
         validInitial(evidence(await client.query(initialSql)), now())
         result = { ...result, initialState: 'ABSENT_FIXTURES_NO_COLLISIONS_ONLY' }
       }
+      if(journal){
+        const source=buildRestoreStateReadSql(journal)
+        const body=source.slice(source.indexOf('\n')+1,source.lastIndexOf('ROLLBACK;'))
+        const owned=verifyRestoreStateRead(journal,evidence(await client.query(body)),now())
+        result={...result,ownedState:owned.status,cursor:owned.cursor}
+      }
     } catch { failed = true }
     try { await client.query('ROLLBACK') } catch { failed = true }
     reading = false
@@ -72,6 +79,7 @@ export async function connectRestoreReadOnlyPostgres(credentials, { Client = pg.
   return Object.freeze({
     readDependencyMetadata: () => read(false),
     readInitialPreflight: () => read(true),
+    readOwnedState: journal => { if(!journal) fail('RESTORE_READER_STATE_REQUIRED'); return read(false, journal) },
     async dispose() {
       if (disposed) return
       if (reading) fail('RESTORE_READER_BUSY')

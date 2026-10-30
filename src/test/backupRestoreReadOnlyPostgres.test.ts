@@ -1,8 +1,10 @@
 // @vitest-environment node
 import { expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, dirname, basename, resolve } from 'node:path'
 import { connectRestoreReadOnlyPostgres } from '../../scripts/backup/restore-readonly-postgres.mjs'
-import { PLAN_HASH } from '../../scripts/backup/restore-acceptance-engine.mjs'
+import { PLAN_HASH, createRestoreJournal } from '../../scripts/backup/restore-acceptance-engine.mjs'
 const reviewed: {metadata: Record<string,unknown>} = JSON.parse(readFileSync('scripts/backup/restore-dependency-reviewed.json','utf8'))
 const now=Date.parse('2026-10-30T18:00:00Z'),secret='SYNTHETIC_PRIVATE_DB_PASSWORD_ERROR'
 const credentials={password:secret,rootCertificate:'-----BEGIN CERTIFICATE-----\nSYNTHETIC\n-----END CERTIFICATE-----'}
@@ -40,7 +42,7 @@ function mock(mode='ok') {
 it('pins TLS/host/project/default readonly and exposes only fixed read methods',async()=>{
  const state=mock(),port=await connectRestoreReadOnlyPostgres(credentials,{Client:state.Client,now:()=>now})
  expect(state.configs[0]).toMatchObject({host:'aws-1-sa-east-1.pooler.supabase.com',port:5432,user:'postgres.acoyfwwmhaeruciyedri',database:'postgres',ssl:{rejectUnauthorized:true,servername:'aws-1-sa-east-1.pooler.supabase.com'},options:'-c default_transaction_read_only=on -c search_path=pg_catalog,public'})
- expect(Object.keys(port).sort()).toEqual(['dispose','readDependencyMetadata','readInitialPreflight'])
+ expect(Object.keys(port).sort()).toEqual(['dispose','readDependencyMetadata','readInitialPreflight','readOwnedState'])
  expect(await port.readInitialPreflight()).toMatchObject({status:'METADATA_MATCH_ONLY',initialState:'ABSENT_FIXTURES_NO_COLLISIONS_ONLY'})
  expect(state.queries[1]).toBe('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
  expect(state.queries.at(-1)).toBe('ROLLBACK')
@@ -97,4 +99,27 @@ it('refuses overlapping reads and disposal while a transaction is live',async()=
  release!(null)
  expect(await first).toMatchObject({status:'METADATA_MATCH_ONLY'})
  await port.dispose();expect(state.ends).toBe(1)
+})
+it('owned-state method accepts only a journal and confirms metadata plus state before rollback',async()=>{
+ const folder=mkdtempSync(join(tmpdir(),'kiosko-reader-state-')),state=mock()
+ if(dirname(folder)!==resolve(tmpdir())||!basename(folder).startsWith('kiosko-reader-state-'))throw Error('Unsafe cleanup')
+ const journal=createRestoreJournal(join(folder,'journal.jsonl'),{OWNER:'11111111-1111-4111-8111-111111111111',CASHIER:'22222222-2222-4222-8222-222222222222'})
+ class StateClient extends state.Client {
+  async query(sql:string):Promise<unknown>{
+   if(sql.includes("'stock_ids'")){
+    state.queries.push(sql)
+    return {rows:[{evidence:{read_only:'on',observed_at:new Date(now).toISOString(),plan_hash:PLAN_HASH,cursor:0,commercial_active:true,owner_active:true,cashier_active:true,fixtures:Object.fromEntries(['clientes','proveedores','productos','lotes_producto'].map(table=>[table,{count:0,matches:true}])),operations:[],stock_ids:[],stock_context:true,movements:0,cost_rows:0}}]}
+   }
+   return super.query(sql)
+  }
+ }
+ const port=await connectRestoreReadOnlyPostgres(credentials,{Client:StateClient,now:()=>now})
+ try{
+  expect(()=>port.readOwnedState(undefined as never)).toThrow('RESTORE_READER_STATE_REQUIRED')
+  expect(await port.readOwnedState(journal)).toMatchObject({status:'METADATA_MATCH_ONLY',ownedState:'OWNED_FIXTURES_MATCH_ONLY',cursor:0})
+  expect(state.queries.at(-1)).toBe('ROLLBACK')
+ }finally{
+  await port.dispose()
+  rmSync(folder,{recursive:true,force:true})
+ }
 })
