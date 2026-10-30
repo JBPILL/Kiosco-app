@@ -4,7 +4,7 @@ $target = 'https://acoyfwwmhaeruciyedri.supabase.co'
 $origin = 'https://kiosco-app-staging.vercel.app'
 $publicKey = $null; $password = $null; $token = $null; $session = $null; $body = $null
 $result = 1; $step = 'preparacion'
-$authDiagnostic = 'SIN_DETALLE'; $authStatus = 0
+$authDiagnostic = 'SIN_DETALLE'; $authStatus = 0; $script:accessStatus = 0
 
 function Get-AuthFailureCategory {
     param($Failure)
@@ -81,6 +81,57 @@ function Invoke-ClosedGateway {
         return @{ Status = [int]$response.StatusCode; Content = $content }
     }
 }
+function ConvertTo-BoundedAccessText {
+    param($Content)
+    if ($null -eq $Content) { return '' }
+    $utf8 = New-Object Text.UTF8Encoding($false, $true)
+    if ($Content -is [byte[]]) {
+        if ($Content.Length -gt 4096) { throw 'ACCESS_RESPONSE_TOO_LARGE' }
+        try { return $utf8.GetString($Content) } catch { throw 'ACCESS_HTTP_RESPONSE_READ_FAILED' }
+    }
+    $text = [string]$Content
+    if ($utf8.GetByteCount($text) -gt 4096) { throw 'ACCESS_RESPONSE_TOO_LARGE' }
+    return $text
+}
+function Read-BoundedAccessStream {
+    param([IO.Stream]$Stream)
+    $buffer = New-Object byte[] 4097
+    $length = 0
+    while ($length -lt $buffer.Length) {
+        $count = $Stream.Read($buffer, $length, $buffer.Length - $length)
+        if ($count -eq 0) { break }
+        $length += $count
+    }
+    if ($length -gt 4096) { throw 'ACCESS_RESPONSE_TOO_LARGE' }
+    if ($length -eq 0) { return '' }
+    $bytes = New-Object byte[] $length
+    [Array]::Copy($buffer, $bytes, $length)
+    return ConvertTo-BoundedAccessText $bytes
+}
+function Get-AccessFailureContent {
+    param($Failure)
+    $response = $Failure.Exception.Response
+    if (-not $response) { throw 'ACCESS_CONNECTION_FAILED' }
+    # Web Cmdlets in PS7 often already buffered the body in ErrorDetails.
+    if ($Failure.ErrorDetails -and $null -ne $Failure.ErrorDetails.Message) {
+        return ConvertTo-BoundedAccessText $Failure.ErrorDetails.Message
+    }
+    $stream = $null
+    try {
+        if ($response.PSObject.TypeNames -contains 'System.Net.Http.HttpResponseMessage') {
+            if (-not $response.Content) { return '' }
+            $stream = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+        } elseif ($response.PSObject.Methods['GetResponseStream']) {
+            # Explicit legacy WebResponse branch for Windows PowerShell 5.1.
+            $stream = $response.GetResponseStream()
+        } else { throw 'ACCESS_HTTP_RESPONSE_READ_FAILED' }
+        if (-not $stream) { throw 'ACCESS_HTTP_RESPONSE_READ_FAILED' }
+        return Read-BoundedAccessStream $stream
+    } catch {
+        if ($_.Exception.Message -ceq 'ACCESS_RESPONSE_TOO_LARGE') { throw 'ACCESS_RESPONSE_TOO_LARGE' }
+        throw 'ACCESS_HTTP_RESPONSE_READ_FAILED'
+    } finally { if ($stream) { $stream.Dispose() } }
+}
 function Invoke-AccessProbe {
     param([string]$Path, [string]$Method = 'GET', [string]$Json)
     # Only callers below choose fixed read-only routes; no arbitrary RPC input.
@@ -88,20 +139,22 @@ function Invoke-AccessProbe {
         Headers = @{ apikey = $publicKey; Authorization = ('Bearer ' + $token); Origin = $origin };
         MaximumRedirection = 0; TimeoutSec = 15 }
     if ($Method -eq 'POST') { $request.ContentType = 'application/json'; $request.Body = $Json }
-    try {
-        $reply = Invoke-WebRequest @request
-        if ([string]$reply.Content -and $reply.Content.Length -gt 4096) { throw 'ACCESS_RESPONSE_TOO_LARGE' }
-        return @{ Status = [int]$reply.StatusCode; Content = [string]$reply.Content }
-    } catch {
-        if (-not $_.Exception.Response) { throw 'ACCESS_CONNECTION_FAILED' }
-        $reader = New-Object IO.StreamReader($_.Exception.Response.GetResponseStream())
-        try {
-            $buffer = New-Object char[] 4097; $length = $reader.ReadBlock($buffer,0,4097)
-            if ($length -gt 4096) { throw 'ACCESS_RESPONSE_TOO_LARGE' }
-            $content = if ($length -gt 0) { -join $buffer[0..($length-1)] } else { '' }
-        } finally { $reader.Dispose() }
-        return @{ Status = [int]$_.Exception.Response.StatusCode; Content = $content }
+    $script:accessStatus = 0
+    try { $reply = Invoke-WebRequest @request } catch {
+        $failure = $_
+        if (-not $failure.Exception.Response) { throw 'ACCESS_CONNECTION_FAILED' }
+        $status = [int]$failure.Exception.Response.StatusCode
+        $script:accessStatus = $status
+        $content = Get-AccessFailureContent $failure
+        return @{ Status = $status; Content = $content }
     }
+    $script:accessStatus = [int]$reply.StatusCode
+    return @{ Status = [int]$reply.StatusCode; Content = (ConvertTo-BoundedAccessText $reply.Content) }
+}
+function ConvertFrom-RestoreResponse {
+    param([string]$Content)
+    try { return ConvertFrom-Json -InputObject $Content -ErrorAction Stop }
+    catch { throw 'RESTORE_HTTP_RESPONSE_PARSE_FAILED' }
 }
 function Get-TestActor {
     param([switch]$OnlyViewer)
@@ -157,19 +210,19 @@ function Test-RestoreReadCapability {
     $own = Invoke-AccessProbe $path 'POST' ('{"p_kiosco_id":"' + $ownKiosk + '"}')
     if ($actor.Role -ceq 'OWNER') {
         if ($own.Status -ne 200) { throw 'RESTORE_OWNER_READ_NOT_CONFIRMED' }
-        $data = $own.Content | ConvertFrom-Json
+        $data = ConvertFrom-RestoreResponse $own.Content
         $modules = @($data.modulos)
         if ($data.version -cne 1 -or $data.kiosco_id -cne $ownKiosk -or
             $modules.Count -ne 3 -or ($modules -join ',') -cne 'contactos,producto_proveedor,lotes') { throw 'RESTORE_CAPABILITY_UNEXPECTED' }
     } else {
-        $data = $own.Content | ConvertFrom-Json
+        $data = ConvertFrom-RestoreResponse $own.Content
         if ($own.Status -ne 403 -or $data.code -cne '42501') { throw 'RESTORE_CASHIER_DENIAL_NOT_CONFIRMED' }
     }
     # Sentinel is deliberately nonexistent: proves scope rejection, not foreign-row RLS.
     $other = Invoke-AccessProbe $path 'POST' '{"p_kiosco_id":"00000000-0000-0000-0000-000000000000"}'
-    $data = $other.Content | ConvertFrom-Json
+    $data = ConvertFrom-RestoreResponse $other.Content
     if ($other.Status -ne 403 -or $data.code -cne '42501') { throw 'RESTORE_SCOPE_DENIAL_NOT_CONFIRMED' }
-    Write-Host ('RESTORE_CAPABILITY_READ_OBSERVED role=' + $actor.Role + ' own=' + $(if ($actor.Role -ceq 'OWNER') {'200'} else {'403'}) + ' other=403 mutation=false. No acredita restore ni RLS integral.')
+    Write-Host ('RESTORE_CAPABILITY_READ_OBSERVED role=' + $actor.Role + ' own=' + $(if ($actor.Role -ceq 'OWNER') {'200'} else {'403'}) + ' other=403 mutation=false')
 }
 function Test-ReadAccess {
     $actor = Get-TestActor
@@ -264,6 +317,10 @@ try {
     }
 } catch {
     if ($_.Exception.Message -cin @('RLS_TEST_SCOPE_REQUIRED','RLS_POSITIVE_CONTROL_FAILED','RLS_FOREIGN_ROW_NOT_HIDDEN','RLS_POSITIVE_RECHECK_FAILED')) { $authDiagnostic = $_.Exception.Message }
+    if ($_.Exception.Message -cin @('RESTORE_HTTP_RESPONSE_PARSE_FAILED','RESTORE_OWNER_READ_NOT_CONFIRMED','RESTORE_CASHIER_DENIAL_NOT_CONFIRMED','RESTORE_SCOPE_DENIAL_NOT_CONFIRMED','RESTORE_TEST_SCOPE_REQUIRED','RESTORE_CAPABILITY_UNEXPECTED','ACCESS_CONNECTION_FAILED','ACCESS_RESPONSE_TOO_LARGE','ACCESS_HTTP_RESPONSE_READ_FAILED')) {
+        $authDiagnostic = $_.Exception.Message
+        $authStatus = $script:accessStatus
+    }
     Write-Host ('JWT_CHECK_NOT_CONFIRMED paso=' + $step + ' [' + $authDiagnostic + '] status=' + $authStatus + '. No compartir respuestas externas, claves ni contrasenas.')
     $result = 1
 } finally {

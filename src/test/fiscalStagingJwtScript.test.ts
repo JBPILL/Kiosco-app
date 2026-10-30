@@ -15,7 +15,7 @@ function clean(root: string) {
   if (dirname(target) !== resolve(tmpdir()) || !basename(target).startsWith('kiosko-jwt-test-')) throw Error('Unsafe cleanup')
   rmSync(target, { recursive: true, force: true })
 }
-function run(mode: string) {
+function run(mode: string, runtime: 'powershell' | 'pwsh' = 'powershell') {
   const root = mkdtempSync(join(tmpdir(), 'kiosko-jwt-test-'))
   const key = mode === 'publishable' ? 'sb_publishable_SYNTHETIC_PUBLIC_KEY' : jwt({ alg: 'HS256' }) + '.' + jwt({ role: mode === 'service-key' ? 'service_role' : 'anon', ref: mode === 'wrong-ref' ? 'wrong-project' : 'acoyfwwmhaeruciyedri' }) + '.SYNTHETIC'
   try {
@@ -27,7 +27,11 @@ function run(mode: string) {
       function global:Start-Sleep { param($Seconds) $global:events.Add(@{kind='wait';seconds=$Seconds}) }
       Add-Type @'
 using System; using System.Net; using System.IO; using System.Text;
-public class MockResponse : WebResponse {
+${runtime === 'pwsh' ? `public class MockHttpException : Exception {
+ public System.Net.Http.HttpResponseMessage Response {get;set;}
+ public MockHttpException(int status):this(status,"{\\"codigo\\":\\"HOMOLOGACION_NO_HABILITADA\\"}"){}
+ public MockHttpException(int status,string body){Response=new System.Net.Http.HttpResponseMessage((HttpStatusCode)status){Content=new System.Net.Http.StringContent(body)};}
+}` : `public class MockResponse : WebResponse {
  public HttpStatusCode StatusCode {get;set;}
  public string Body = "{\\"codigo\\":\\"HOMOLOGACION_NO_HABILITADA\\"}";
  public override Stream GetResponseStream(){return new MemoryStream(Encoding.UTF8.GetBytes(Body));}
@@ -36,7 +40,7 @@ public class MockHttpException : Exception {
  public MockResponse Response {get;set;}
  public MockHttpException(int status){Response=new MockResponse{StatusCode=(HttpStatusCode)status};}
  public MockHttpException(int status,string body){Response=new MockResponse{StatusCode=(HttpStatusCode)status,Body=body};}
-}
+}`}
 '@
       function global:Read-Host {
         param($Prompt,[switch]$AsSecureString)
@@ -50,7 +54,7 @@ public class MockHttpException : Exception {
         if($Uri -notlike 'https://acoyfwwmhaeruciyedri.supabase.co/*'){throw 'Unexpected host'}
         $logout=$Uri -like '*/logout?scope=local'
         $global:events.Add(@{kind=$(if($logout){'logout'}else{'login'});redirects=$MaximumRedirection;local_scope=$logout;bearer_ok=($Headers.Authorization -ceq ('Bearer '+${quote(token)}))})
-        if($logout){if(${quote(mode)} -eq 'logout-fail'){throw ${quote(password)}};return}
+        if($logout){if(${quote(mode)} -in @('logout-fail','restore-logout-fail')){throw ${quote(password)}};return}
         if(${quote(mode)} -eq 'auth-fail'){throw ${quote(password)}}
         $authCases=@{
           'auth-invalid'=@(400,'{"error_code":"invalid_credentials"}');
@@ -75,7 +79,7 @@ public class MockHttpException : Exception {
             return @{StatusCode=200;Content=$(if(${quote(mode)} -in @('access-identity','isolation-viewer-identity')){'{"id":"bad"}'}else{'{"id":"11111111-1111-1111-1111-111111111111"}'})}
           }
           if($Uri -like '*/rest/v1/usuarios?*'){
-            $role=if(${quote(mode)} -in @('restore-cashier','access-cashier','isolation-cashier','isolation-viewer-cashier')){'CAJERO'}elseif(${quote(mode)} -eq 'access-viewer' -or (${quote(mode)} -like 'isolation-viewer-*' -and ${quote(mode)} -ne 'isolation-viewer-owner')){'VISOR'}else{'DUE'+[char]0xD1+'O'}
+            $role=if(${quote(mode)} -in @('restore-cashier','restore-cashier-open','restore-cashier-invalid','access-cashier','isolation-cashier','isolation-viewer-cashier')){'CAJERO'}elseif(${quote(mode)} -eq 'access-viewer' -or (${quote(mode)} -like 'isolation-viewer-*' -and ${quote(mode)} -ne 'isolation-viewer-owner')){'VISOR'}else{'DUE'+[char]0xD1+'O'}
             $active=${quote(mode)} -notin @('restore-inactive','access-inactive','isolation-viewer-inactive')
             $super=${quote(mode)} -in @('restore-superadmin','access-superadmin','isolation-viewer-superadmin')
             $kiosk=if(${quote(mode)} -match '^(isolation|restore)-' -and ${quote(mode)} -notlike '*wrong-scope'){'b7254826-c767-4098-94b8-71013c12021d'}else{'22222222-2222-2222-2222-222222222222'}
@@ -84,12 +88,21 @@ public class MockHttpException : Exception {
           if(${quote(mode)} -like 'restore-*'){
             if($Method -ne 'POST' -or $Uri -cne 'https://acoyfwwmhaeruciyedri.supabase.co/rest/v1/rpc/capacidades_restauracion_backup'){throw 'Unexpected restore route'}
             if(${quote(mode)} -eq 'restore-network'){throw ${quote(password)}}
+            if(${quote(mode)} -match '^restore-status-(401|404|409)$'){throw (New-Object MockHttpException([int]$Matches[1],'{"code":"42501","private":"SYNTHETIC_EXTERNAL_BODY"}'))}
+            if(${quote(mode)} -eq 'restore-large-error'){throw (New-Object MockHttpException(403,('SYNTHETIC_EXTERNAL_BODY'+('x'*4096))))}
+            if(${quote(mode)} -eq 'restore-multibyte-error'){throw (New-Object MockHttpException(403,([string][char]0x00E9*2049)))}
+            if(${quote(mode)} -eq 'restore-invalid-error'){throw (New-Object MockHttpException(403,'SYNTHETIC_EXTERNAL_BODY_NOT_JSON'))}
+            if(${quote(mode)} -eq 'restore-invalid-success'){return @{StatusCode=200;Content='SYNTHETIC_EXTERNAL_BODY_NOT_JSON'}}
+            if(${quote(mode)} -eq 'restore-large-success'){return @{StatusCode=200;Content=('x'*4097)}}
+
             $k=($Body|ConvertFrom-Json).p_kiosco_id
             if($k -ceq '00000000-0000-0000-0000-000000000000'){
               if(${quote(mode)} -eq 'restore-foreign-open'){return @{StatusCode=200;Content='{}'}}
               throw (New-Object MockHttpException(403,'{"code":"42501"}'))
             }
             if($k -cne 'b7254826-c767-4098-94b8-71013c12021d'){throw 'Unexpected restore scope'}
+            if(${quote(mode)} -eq 'restore-cashier-open'){return @{StatusCode=200;Content='{}'}}
+            if(${quote(mode)} -eq 'restore-cashier-invalid'){throw (New-Object MockHttpException(403,'{"code":"other","private":"SYNTHETIC_EXTERNAL_BODY"}'))}
             if(${quote(mode)} -eq 'restore-cashier'){throw (New-Object MockHttpException(403,'{"code":"42501"}'))}
             if(${quote(mode)} -eq 'restore-owner-denied'){throw (New-Object MockHttpException(403,'{"code":"42501"}'))}
             if(${quote(mode)} -eq 'restore-malformed'){return @{StatusCode=200;Content='{}'}}
@@ -137,7 +150,7 @@ public class MockHttpException : Exception {
       [IO.File]::WriteAllText(${quote(record)},(@{prompts=$global:prompts;events=@($global:events.ToArray())}|ConvertTo-Json -Depth 5))
       exit $code
     `, 'utf8')
-    const result = spawnSync('powershell', ['-NoProfile', '-File', runner], { encoding: 'utf8', timeout: 60000 })
+    const result = spawnSync(runtime, ['-NoProfile', '-File', runner], { encoding: 'utf8', timeout: 60000 })
     return { status: result.status, output: result.stdout + result.stderr, report: existsSync(record) ? JSON.parse(readFileSync(record, 'utf8')) : null, key }
   } finally { clean(root) }
 }
@@ -250,4 +263,35 @@ it.skipIf(process.platform !== 'win32').each(['owner','cashier','inactive','supe
     expect(posts).toHaveLength(2)
     expect(r.output).toContain('RESTORE_CAPABILITY_READ_OBSERVED')
   } else expect(r.output).not.toContain('RESTORE_CAPABILITY_READ_OBSERVED')
+},60000)
+
+it.skipIf(process.platform !== 'win32').each(['owner','cashier'])('PowerShell 7 actual HttpResponseMessage restores read capability %s', suffix => {
+  const r = run('restore-' + suffix, 'pwsh')
+  expect(r.status, r.output).toBe(0)
+  expect(r.output.split(/\r?\n/).map(line => line.trim())).toContain('RESTORE_CAPABILITY_READ_OBSERVED role=' + (suffix === 'owner' ? 'OWNER own=200' : 'CASHIER own=403') + ' other=403 mutation=false')
+  expect(r.output).toContain('TEST_SESSION_LOGOUT_LOCAL_CONFIRMED')
+  for (const secret of [password,token,r.key,'SYNTHETIC_REFRESH']) expect(r.output).not.toContain(secret)
+},60000)
+
+it.skipIf(process.platform !== 'win32').each(['status-401','status-404','status-409','invalid-error','large-error','multibyte-error','large-success','network','malformed','invalid-success','foreign-open','cashier-open','cashier-invalid','logout-fail'])('PowerShell 7 safe restore failure %s', suffix => {
+  const r = run('restore-' + suffix, 'pwsh')
+  expect(r.status, r.output).toBe(1)
+  for (const secret of [password,token,r.key,'SYNTHETIC_REFRESH','SYNTHETIC_EXTERNAL_BODY']) expect(r.output).not.toContain(secret)
+  const category = suffix.startsWith('status-') ? 'RESTORE_OWNER_READ_NOT_CONFIRMED'
+    : ['large-error','multibyte-error','large-success'].includes(suffix) ? 'ACCESS_RESPONSE_TOO_LARGE'
+    : suffix === 'network' ? 'ACCESS_CONNECTION_FAILED'
+    : suffix === 'invalid-success' ? 'RESTORE_HTTP_RESPONSE_PARSE_FAILED'
+    : suffix === 'invalid-error' ? 'RESTORE_OWNER_READ_NOT_CONFIRMED'
+    : suffix === 'malformed' ? 'RESTORE_CAPABILITY_UNEXPECTED'
+    : suffix === 'foreign-open' ? 'RESTORE_SCOPE_DENIAL_NOT_CONFIRMED'
+    : suffix.startsWith('cashier-') ? 'RESTORE_CASHIER_DENIAL_NOT_CONFIRMED' : null
+  if (category) expect(r.output).toContain('[' + category + ']')
+  if (suffix.startsWith('status-')) expect(r.output).toContain('status=' + suffix.slice(7))
+  expect(r.output).toContain(suffix === 'logout-fail' ? 'TEST_SESSION_LOGOUT_NOT_CONFIRMED' : 'TEST_SESSION_LOGOUT_LOCAL_CONFIRMED')
+  const events = r.report.events as {kind:string;uri?:string;method?:string}[]
+  expect(events.at(-1)?.kind).toBe('logout')
+  const posts = events.filter(e => e.kind === 'access' && e.method === 'POST')
+  expect(posts.length).toBeLessThanOrEqual(2)
+  expect(posts.every(e => e.uri?.endsWith('/rpc/capacidades_restauracion_backup'))).toBe(true)
+  if (suffix !== 'logout-fail') expect(r.output).not.toContain('RESTORE_CAPABILITY_READ_OBSERVED')
 },60000)

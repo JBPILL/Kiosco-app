@@ -1359,3 +1359,27 @@ de instalación debe revisar estas fuentes nuevas. El backup privado verificado
 del estado previo se conserva. El GO sólo de respaldo no autoriza instalar SQL,
 restaurar datos o activar la UI integral; hacen falta los gates propios.
 
+
+
+## 2026-10-30 — Lector HTTP del asistente JWT compatible con PS7 y PS5.1
+
+Contexto: dos ensayos hospedados de capacidades no confirmados, logout local
+confirmado; no reinterpretarlos como PASS. Reproduccion sintetica en pwsh7.6.5
+muestra que HttpResponseMessage no ofrece GetResponseStream y reproduce la
+misma salida. Ensayo HTTP loopback confirma el tipo real de Web Cmdlets.
+
+Decision: Invoke-AccessProbe captura primero StatusCode y lee ErrorDetails
+acotado o HttpResponseMessage.Content.ReadAsStreamAsync; usa GetResponseStream
+solo cuando existe el metodo de la API legacy. Lectura de stream limitada a
+4097 bytes para rechazar >4096; texto se mide en UTF8, no en caracteres.
+Separar catch de transporte de validacion evita reclasificar exceso como red.
+JSON de capacidades invalido recibe categoria segura propia; status se reinicia
+por solicitud. Solo allowlist interna a consola, nunca cuerpo/excepcion privada.
+No cambiar RPC/semantica de autorizacion, ni llamar restaurar_*.
+
+Alternativas descartadas: interpretar toda respuesta HTTP no-2xx como error
+sin cuerpo (impediria verificar42501), usar solo longitud en caracteres, exponer
+excepcion cruda para diagnosticar, o repetir sesiones reales antes del cierre.
+Compatibilidad5.1 conservada y comprobada, sin descargas/dependencias nuevas.
+Limite: evidencia local no prueba respuesta remota previa ni RLS integral.
+Repeticion futura: exactamente Dueno y Cajero, STOP sin retry ante discrepancia.

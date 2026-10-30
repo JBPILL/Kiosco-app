@@ -6,6 +6,14 @@ An ExecPlan is a living document: create it before implementation, update **Prog
 
 ## Objetivo común vigente — cierre del desarrollo y Production Readiness
 
+30/10:420cc5f tuvo dos ensayos reales no confirmados (Dueno/Cajero), ambos
+logout local confirmado. No repetir durante diagnostico. Defecto del lector
+HTTP reproducido en pwsh7.6.5/HttpResponseMessage, parche compatible PS7/5.1
+probado82PASS/0FAIL/0skip, build689/lint/diff PASS. Detalle e historia fallida en
+ExecPlan backup. Solo preparar DOS repeticiones posteriores, Dueno luego Cajero,
+sin restore; cualquier marcador distinto => STOP, sin retry automatico.
+Los resultados hospedados anteriores no pasan a PASS; RLS/DR siguen pendientes.
+
 29/10 PR07: GO sólo de respaldo ejecutado una vez y copia privada verificada
 independientemente (hashes/roles/ACL/TOC), sin restore ni instalación. En revisión
 local previa a SQL se reprodujo replay bajo otro Auth del mismo perfil: corregido

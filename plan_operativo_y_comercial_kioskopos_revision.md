@@ -1406,3 +1406,58 @@ login real ni se uso password/clave de chat. Proximo paso: operador local del
 Dueno y Cajero con credenciales ingresadas por titular, solo esta consulta;
 no activa interfaz ni acredita restauracion/comercial/DR. GO de instalacion
 consumido, no autoriza ninguna restauracion.
+
+
+### Incidente operador real PowerShell 7 — 30/10/2026
+
+Titular informa una ejecucion con Dueno y una con Cajero sobre420cc5f:
+ambas JWT_CHECK_NOT_CONFIRMED paso=capacidad restauracion solo lectura
+[SIN_DETALLE] status=0, con TEST_SESSION_LOGOUT_LOCAL_CONFIRMED.
+No convertir estas ejecuciones en PASS ni repetirlas durante el diagnostico.
+No hubo restore, flags, ARCA o mutaciones segun el operador.
+
+Reproduccion local en pwsh7.6.5: dos pruebas de regresion con Response real
+System.Net.Http.HttpResponseMessage (sin GetResponseStream) reproducen ambas
+fallas y logout confirmado; ../backup-capability-pwsh-before-20261030.json:
+0PASS/2FAIL,64 pruebas anteriores no seleccionadas. Esto acredita el defecto
+local, no la respuesta ni causa definitiva de las sesiones hospedadas anteriores.
+Parche en curso solo al lector HTTP/asistente; RPC y permisos sin cambios.
+Ensayo loopback real con Web Cmdlets de pwsh7 y Windows PowerShell5.1:
+2PASS/0FAIL,401/403/404/409,codigo42501,limite4096 bytes UTF8,exceso y JSON
+invalido rechazados. Evidencia ../backup-capability-http-runtime-20261030.json.
+Rama PS7 ErrorDetails/HttpResponseMessage y legacy solo si existe metodo.
+No contactos con Staging ni credenciales reales en estas pruebas.
+Validacion completa del parche/build/lint y revision de salidas aun pendientes.
+
+
+### Cierre parche lector HTTP — 30/10/2026
+
+82PASS/0FAIL/0skip en los dos archivos enfocados del asistente, incluidos los
+64 casos existentes y18 nuevos (16 PS7 completos +2 runtimes HTTP loopback).
+Evidencia ../backup-capability-pwsh-final-20261030.json SHA256
+7c63cae8757b5b0f039f0d961dadc33aa5e33cef5e1ea01b2ec2982be8a8a505.
+Tras mover guard de cleanup fuera de finally para cerrar warning lint, se repiten
+los2 ensayos loopback:2PASS/0FAIL/0skip; evidencia
+../backup-capability-http-runtime-final-20261030.json SHA256
+1e8c22e91483092acf5d42904b1ac94e1db45142ec48e2e826ea00efc3b2667e.
+Build final689 PASS, lint enfocado sin avisos y diff PASS. Sin cambios posteriores
+de comportamiento a la fuente del asistente. Suite global5310 anterior no
+atribuida a este parche. Revisadas salidas: solo marcadores/categorias internas,
+no cuerpo externo, JWT/password/clave/refresh/cookies/headers privados; fixtures
+con sentinels sinteticos comprobados en ambos runtimes. Ninguna RPC modificada.
+
+Historia preservada: regresion inicial0PASS/2FAIL (64 no seleccionados), primera
+suite76PASS/3FAIL (un proceso legacy sin salida agoto timeout; dos expectativas
+nuevas no distinguian HTTP403 de JSON invalido y objeto valido incompleto).
+Se ajustaron expectativas por semantica real, se agrego JSON invalido HTTP200,
+17 rechecks PASS y despues82 completos PASS. No aumentar timeouts ni debilitar
+aserciones de autorizacion/salidas. Conservar todos los informes previos.
+
+Parche preparado para repetir exactamente DOS ejecuciones reales posteriores:
+pwsh -NoProfile -File scripts/comprobar-jwt-fiscal-staging.ps1 -ComprobarCapacidadRestauracion
+Primero Dueno: RESTORE_CAPABILITY_READ_OBSERVED role=OWNER own=200 other=403 mutation=false
+Luego Cajero: RESTORE_CAPABILITY_READ_OBSERVED role=CASHIER own=403 other=403 mutation=false
+Ambos requieren TEST_SESSION_LOGOUT_LOCAL_CONFIRMED y exit0. Ante cualquier
+marcador distinto o logout fallido: STOP, sin retry. No se ejecuto ninguna de
+estas sesiones como parte del parche. No restore/flags/Edge/ARCA/Production/master.
+La causa remota anterior sigue no demostrada y PR07 no se cierra localmente.
