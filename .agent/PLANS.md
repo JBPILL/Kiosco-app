@@ -544,3 +544,13 @@ PR07 PARCIAL; no se habilita UI integral, flags, Edge, Vercel, ARCA o Production
 
 Build final exit0 (aviso chunks >500kB),36JS publicos sin cuatro simbolos/hash
 privados seleccionados. Revision acotada, no certificacion absoluta de secretos.
+
+
+### Lector PostgreSQL privado readonly PR07 — 30/10/2026
+
+Preparado puerto fijo de lectura administrativa;209 pruebas enfocadas PASS,
+build/lint/sintaxis/diff PASS. Sin conectar Staging ni usar credenciales reales.
+No expone query/Client ni escritura; detalle en ExecPlan backup. Falta validar
+estado comercial/fixtures/auditoria por cursor, conectar consola/login/PG en
+paquete exacto y obtener respaldo/GO de ensayo. No sustituye estos gates.
+Objetivo PR01-PR11 activo, PR07 PARCIAL, UI integral y permisos remotos cerrados.

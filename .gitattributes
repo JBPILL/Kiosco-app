@@ -26,3 +26,5 @@
 /scripts/backup/restore-dependency-preflight.mjs text eol=lf
 /scripts/backup/restore-dependency-preflight.d.mts text eol=lf
 /scripts/backup/restore-dependency-reviewed.json text eol=lf
+/scripts/backup/restore-readonly-postgres.mjs text eol=lf
+/scripts/backup/restore-readonly-postgres.d.mts text eol=lf

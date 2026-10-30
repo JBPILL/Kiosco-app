@@ -784,3 +784,45 @@ Lint/node --check/diff PASS. Sin nuevas claves, llamadas ARCA ni SQL/flags remot
 
 Build final exit0 (aviso chunks >500kB),36JS publicos sin cuatro simbolos/hash
 privados seleccionados. Revision acotada, no certificacion absoluta de secretos.
+
+
+### Lector PostgreSQL privado readonly PR07 — 30/10/2026
+
+Preparado puerto fijo de lectura administrativa;209 pruebas enfocadas PASS,
+build/lint/sintaxis/diff PASS. Sin conectar Staging ni usar credenciales reales.
+No expone query/Client ni escritura; detalle en ExecPlan backup. Falta validar
+estado comercial/fixtures/auditoria por cursor, conectar consola/login/PG en
+paquete exacto y obtener respaldo/GO de ensayo. No sustituye estos gates.
+Objetivo PR01-PR11 activo, PR07 PARCIAL, UI integral y permisos remotos cerrados.
+
+connectRestoreReadOnlyPostgres fija host aws-1-sa-east-1.pooler.supabase.com,
+puerto5432, database postgres y user postgres.acoyfwwmhaeruciyedri. Password/CA
+solo argumentos privados en memoria; no URL/archivos/.env/argv ni overrides de
+host. TLS rejectUnauthorized=true/servername fijo y socket encrypted/authorized;
+startup default_transaction_read_only=on/search_path fijo y probe de rol/DB/RO.
+Una conexion, sin writer. Timeout de conexion/consultas/idle y error handler que
+inutiliza el puerto sin publicar diagnosticos del driver.
+
+Solo readDependencyMetadata/readInitialPreflight/dispose. SQL exactos fijados por
+SHA256 LF: metadata0b2d5d3e y preflight63a7f084. Se extraen wrappers revisados para
+usar UNA transaccion REPEATABLE READ READ ONLY, UTC, ambas lecturas y ROLLBACK.
+Toda excepcion intenta rollback, incluso ACK perdido al comenzar; fallo/read/
+rollback/socket invalida el lector y bloquea llamadas futuras. No devuelve PASS
+antes de confirmar rollback. Exclusion de lecturas; dispose rechaza transaccion
+viva y cierre fallido no permite reutilizacion. Sin COMMIT ni query arbitraria.
+
+Resultado de metadata sigue METADATA_MATCH_ONLY. Preflight inicial exige hashes/
+firmas de las4RPC, identity_fuse, read_only, hora fresca, plan v2, cuatro fixtures
+ausentes y cero colisiones en operaciones_escritura/operaciones_stock. No prueba
+suscripcion comercial vigente, caja, aislamiento completo ni estados intermedios:
+no usarlo como preflight true de las21 acciones sin completar esas comprobaciones.
+
+209 pruebas enfocadas PASS/0FAIL/0skip, incluyendo21 escenarios de este puerto con
+Client sintético. Verifican configuracion/guard TLS; NO handshake TLS/PG real.
+Reporte ../restore-reader-final-tests-20261030.json SHA256
+6c04b30bba299a85c5f83bdb8e71034c9afe5548084d619a7bcae48b5e53c96e.
+Espera de concurrencia del test paso de microtasks a señal explicita; recheck21
+PASS ../restore-reader-wait-final-20261030.json. Build exit0 (aviso chunks >500kB),
+lint/node --check/diff PASS. Sin sesiones nuevas, SQL/restores/flags/Edge/ARCA,
+master/Production/merge. Push anterior9d81a21 sigue esperando autenticacion del
+titular; no iniciar otro push concurrente ni confundir commit local con publicado.
