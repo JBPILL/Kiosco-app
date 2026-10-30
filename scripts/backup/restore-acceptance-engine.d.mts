@@ -43,6 +43,7 @@ export interface RestoreState {
   acks: Record<string, string>
   actors: Record<RestoreRole, string>
   complete: boolean
+  stopped: boolean
 }
 export interface RestoreActor { role: string; authId: string; kioskId: string }
 export const PLAN_HASH: string
@@ -62,3 +63,17 @@ export function inspectUncertainRestoreAction(journal: RestoreJournal, readOpera
   mayResend: false
   mayAdvance: false
 }>
+export interface RestoreRecoveryReview {
+  planHash: string
+  journalTip: string
+  index: number
+  operationId: string
+  requestHash: string
+  ackHash: string
+  reviewerAuthId: string
+  expiresAt: string
+  disposition: 'CONFIRM_AND_STOP_NO_RESEND'
+  reviewHash: string
+}
+export function prepareRestoreRecoveryReview(journal: RestoreJournal, readOperation: (operationId: string) => Promise<unknown>): Promise<RestoreRecoveryReview>
+export function settleReviewedRestoreRecovery(journal: RestoreJournal, review: RestoreRecoveryReview, reviewer: RestoreActor, readOperation: (operationId: string) => Promise<unknown>): Promise<{confirmedIndex: number; stopped: true; mayResend: false; mayAdvance: false}>

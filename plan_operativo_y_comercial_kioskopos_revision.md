@@ -1669,3 +1669,40 @@ node --check, diff y manifiesto bootstrap43 PASS. Build previo detecto tipado
 de fixture de test; corregido con interfaz explicita, seis casos revalidados PASS.
 Bundle publico:36 JS sin cinco simbolos privados seleccionados; no auditoria
 absoluta de secretos. Sin cambio al bootstrap historico ni despliegue remoto.
+
+
+### Recuperacion revisada durable con parada — 30/10/2026
+
+079fac8 publicado; siguiente incremento solo local, sin nueva sesion Auth/SQL.
+El motor permite preparar una revision hash ligada al tip del journal, plan v2,
+indice/UUID/solicitud/ACK y Dueño pinneado, vigencia5min. Relectura al consumir:
+solo ACK exacto/contexto original y revision vigente permiten fsync de
+RECOVERED_CONFIRMED. Nunca se guarda solicitud/ACK crudo, solo hashes/identidades.
+Una resolucion revisada cierra pending y deja stopped=true/complete=false incluso
+tras reload; bloquea TODAS las llamadas siguientes, incluido replay planificado.
+No hay auto-retry, permiso de continuar, eliminacion de lock ni salto de pasos.
+La ruta administrativa de lectura sigue separada; ausencia/conflicto/rechazo
+incierto requieren investigacion, no se convierten en confirmacion.
+
+Este hash es binding local, NO firma ni autorizacion servidor. El futuro
+asistente debe acreditar identidad real, ACL/privacidad, decision del operador y
+GO especifico. No se provee funcion para reanudar despues de stopped ni desbloqueo
+automatico tras crash. Continuacion excepcional requiere nueva propuesta exacta.
+
+121 pruebas enfocadas PASS/0FAIL/0skip, incluye hijo Node real que sale72 justo
+tras fsync de resolucion: reload detenido, lock conservado, sin salida privada.
+Evidencia ../restore-reviewed-settlement-crash-final-20261030.json. Rechazos:
+review alterada/vencida/tip cambiado, actor ajeno, ACK cambiado/ausente, red/disco.
+Primera corrida116PASS/4FAIL: tres tests intentaban mutar propuesta congelada
+(corregidos usando copia); un caso SQL/fsync supero5s. Corrida final usa15s por
+caso, sin modificar las aserciones ni eliminar escenarios. Fallos conservados.
+Lint, sintaxis y diff PASS. Build final se registra tras comprobacion terminal.
+
+PR07 PARCIAL. Faltan envoltorio Windows/ACL/entrada privada/logout, pruebas de
+ese envoltorio, respaldo fresco y preflight antes de solicitar GO de restore.
+Plan v2 permanece NO autorizado/NO ejecutado remotamente. Sin flags/Edge/ARCA,
+master/Production/merge; UI integral bloqueada. Objetivo PR01-PR11 activo.
+
+Build final posterior al caso crash exit0, aviso chunks >500kB conservado.
+36JS publicos sin cuatro simbolos de recuperacion examinados; no certificacion
+absoluta de secretos. Sin cambios al esquema ni pruebas remotas.

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve, dirname, basename } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
-import { createRestoreJournal, RestoreJournal, inspectRestoreJournal, executeNextRestoreAction, inspectUncertainRestoreAction, loadRestorePlan, valueHash } from '../../scripts/backup/restore-acceptance-engine.mjs'
+import { createRestoreJournal, RestoreJournal, inspectRestoreJournal, executeNextRestoreAction, inspectUncertainRestoreAction, loadRestorePlan, valueHash, prepareRestoreRecoveryReview, settleReviewedRestoreRecovery } from '../../scripts/backup/restore-acceptance-engine.mjs'
 
 const plan=loadRestorePlan(), actors={OWNER:'11111111-1111-4111-8111-111111111111',CASHIER:'22222222-2222-4222-8222-222222222222'}
 const secret='SYNTHETIC_PRIVATE_WIRE_JWT_PASSWORD_BODY'
@@ -112,4 +112,53 @@ it.each([401,403,500,200])('unexpected HTTP/body %s leaves intent pending withou
   await expect(executeNextRestoreAction(journal,actor(),async()=>({status,data:{message:secret}}))).rejects.toThrow('RESTORE_OUTCOME_UNCERTAIN')
   expect(inspectRestoreJournal(journal).pending).not.toBeNull()
   expect(readFileSync(file,'utf8')).not.toContain(secret)
+})
+
+async function uncertainReviewFixture() {
+  await expect(executeNextRestoreAction(journal,actor(),async()=>{throw Error(secret)})).rejects.toThrow('RESTORE_OUTCOME_UNCERTAIN')
+  const pending=inspectRestoreJournal(journal).pending!,p=plan.steps[0].params
+  const observed={operationId:pending.operationId,kioskId:plan.kioskId,actorAuthId:actors.OWNER,requestHash:pending.requestHash,ack:ack(plan.steps[0].rpc,p)}
+  return {observed,review:await prepareRestoreRecoveryReview(journal,async()=>observed)}
+}
+it('reviewed recovery persists a confirmed ACK but stops all dispatch including planned replay after reload',async()=>{
+  const {observed,review}=await uncertainReviewFixture()
+  expect(JSON.stringify(review)).not.toContain('registro')
+  expect(await settleReviewedRestoreRecovery(journal,review,actor(),async()=>observed)).toEqual({confirmedIndex:0,stopped:true,mayResend:false,mayAdvance:false})
+  const reopened=new RestoreJournal(file)
+  expect(inspectRestoreJournal(reopened)).toMatchObject({cursor:1,pending:null,complete:false,stopped:true})
+  let calls=0
+  await expect(executeNextRestoreAction(reopened,actor(),async()=>{calls++;return {}})).rejects.toThrow('RESTORE_REVIEWED_RECOVERY_STOP')
+  await expect(settleReviewedRestoreRecovery(reopened,review,actor(),async()=>observed)).rejects.toThrow('RESTORE_NO_PENDING_INTENT')
+  expect(calls).toBe(0);expect(readFileSync(file,'utf8')).not.toContain(secret)
+})
+it.each(['hash','actor','expired','tip','changed-ack','absent','network','disk'])('reviewed recovery %s fails without advancement',async mode=>{
+  const fixture=await uncertainReviewFixture(),observed=fixture.observed,review={...fixture.review},reviewer=actor(),before=readFileSync(file,'utf8')
+  if(mode==='hash')review.ackHash='0'.repeat(64)
+  if(mode==='actor')reviewer.authId=actors.CASHIER
+  if(mode==='expired'||mode==='tip'){
+    const {reviewHash:_prior,...body}=review
+    if(mode==='expired')body.expiresAt='2000-01-01T00:00:00.000Z'
+    else body.journalTip='0'.repeat(64)
+    Object.assign(review,body,{reviewHash:valueHash(body)})
+  }
+  if(mode==='changed-ack')Object.assign(observed.ack,{extra:secret})
+  if(mode==='disk')journal.append=()=>{throw Error(secret)}
+  await expect(settleReviewedRestoreRecovery(journal,review,reviewer,async()=>{
+    if(mode==='network')throw Error(secret)
+    return mode==='absent'?null:observed
+  })).rejects.toThrow(/RESTORE_/)
+  expect(readFileSync(file,'utf8')).toBe(before)
+  expect(inspectRestoreJournal(journal)).toMatchObject({cursor:0,stopped:false})
+  expect(inspectRestoreJournal(journal).pending).not.toBeNull()
+})
+
+it('child crash after durable reviewed settlement reloads stopped and preserves lock for manual handling',async()=>{
+  const {observed,review}=await uncertainReviewFixture()
+  const moduleUrl=pathToFileURL(resolve('scripts/backup/restore-acceptance-engine.mjs')).href
+  const code=`import {RestoreJournal,settleReviewedRestoreRecovery} from ${JSON.stringify(moduleUrl)};const journal=new RestoreJournal(${JSON.stringify(file)});const append=journal.append.bind(journal);journal.append=event=>{append(event);process.exit(72)};await settleReviewedRestoreRecovery(journal,${JSON.stringify(review)},${JSON.stringify(actor())},async()=>(${JSON.stringify(observed)}));`
+  const child=spawnSync(process.execPath,['--input-type=module','-e',code],{encoding:'utf8',timeout:15000,windowsHide:true})
+  expect(child.status,child.stderr).toBe(72)
+  expect(inspectRestoreJournal(new RestoreJournal(file))).toMatchObject({pending:null,stopped:true,complete:false})
+  expect(existsSync(file+'.lock')).toBe(true)
+  expect(child.stdout+child.stderr+readFileSync(file,'utf8')).not.toContain(secret)
 })

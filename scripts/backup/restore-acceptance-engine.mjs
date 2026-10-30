@@ -87,9 +87,10 @@ export function createRestoreJournal(file, actors) {
 export function inspectRestoreJournal(journal) {
   const records = journal.records(), header = records[0]
   if (!header || header.kind !== 'HEADER' || header.planHash !== PLAN_HASH || header.version !== 1 || !uuid.test(header.actors?.OWNER) || !uuid.test(header.actors?.CASHIER)) fail('RESTORE_JOURNAL_HEADER_INVALID')
-  let cursor = 0, pending = null
+  let cursor = 0, pending = null, stopped = false
   const acks = {}
   for (const row of records.slice(1)) {
+    if (stopped) fail('RESTORE_JOURNAL_STOPPED')
     const action = actions[cursor]
     if (!action || row.index !== cursor) fail('RESTORE_JOURNAL_ORDER_INVALID')
     if (row.kind === 'INTENT') {
@@ -100,7 +101,11 @@ export function inspectRestoreJournal(journal) {
       if (action.step.expected === 'REJECT') {
         if (row.kind !== 'EXPECTED_REJECTION' || row.sqlstate !== action.step.sqlstate) fail('RESTORE_JOURNAL_RESULT_INVALID')
       } else {
-        if (row.kind !== 'CONFIRMED' || !/^[0-9a-f]{64}$/.test(row.ackHash)) fail('RESTORE_JOURNAL_RESULT_INVALID')
+        if (!['CONFIRMED', 'RECOVERED_CONFIRMED'].includes(row.kind) || !/^[0-9a-f]{64}$/.test(row.ackHash)) fail('RESTORE_JOURNAL_RESULT_INVALID')
+        if (row.kind === 'RECOVERED_CONFIRMED') {
+          if (row.reviewerAuthId !== header.actors.OWNER || !/^[0-9a-f]{64}$/.test(row.reviewHash)) fail('RESTORE_JOURNAL_RESULT_INVALID')
+          stopped = true
+        }
         if (action.replay && acks[row.operationId] !== row.ackHash) fail('RESTORE_REPLAY_ACK_MISMATCH')
         if (row.operationId !== pending.operationId) fail('RESTORE_JOURNAL_RESULT_INVALID')
         acks[row.operationId] = row.ackHash
@@ -108,7 +113,7 @@ export function inspectRestoreJournal(journal) {
       pending = null; cursor++
     }
   }
-  return { cursor, pending, acks, actors: header.actors, complete: cursor === actions.length }
+  return { cursor, pending, acks, actors: header.actors, complete: !stopped && cursor === actions.length, stopped }
 }
 function numeric(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value
@@ -143,6 +148,7 @@ export async function executeNextRestoreAction(journal, actor, transport) {
   const release = acquire(journal)
   try {
     const state = inspectRestoreJournal(journal)
+    if (state.stopped) fail('RESTORE_REVIEWED_RECOVERY_STOP')
     if (state.pending) fail('RESTORE_RECONCILIATION_REQUIRED')
     if (state.complete) fail('RESTORE_PLAN_COMPLETE')
     const action = actions[state.cursor]
@@ -175,4 +181,38 @@ export async function inspectUncertainRestoreAction(journal, readOperation) {
   const match = action.step.expected !== 'REJECT' && observed.operationId === pending.operationId && observed.kioskId === plan.kioskId && observed.actorAuthId === pending.actorAuthId && observed.requestHash === pending.requestHash && validAck(action, observed.ack)
   const ackMatch = match && (!action.replay || state.acks[pending.operationId] === valueHash(observed.ack))
   return { outcome: match && ackMatch ? 'ACK_MATCH_REQUIRES_REVIEW' : 'CONFLICT_STOP', mayResend: false, mayAdvance: false }
+}
+
+// Local review binding only. No credentials, remote authority or continuation permit.
+export async function prepareRestoreRecoveryReview(journal, readOperation) {
+  const release = acquire(journal)
+  try {
+    let observed
+    const classification = await inspectUncertainRestoreAction(journal, async id => {
+      observed = await readOperation(id)
+      return observed
+    })
+    if (classification.outcome !== 'ACK_MATCH_REQUIRES_REVIEW') fail('RESTORE_RECOVERY_NOT_CONFIRMED')
+    const state = inspectRestoreJournal(journal), tip = journal.records().at(-1).hash
+    const review = { planHash: PLAN_HASH, journalTip: tip, index: state.cursor, operationId: state.pending.operationId, requestHash: state.pending.requestHash, ackHash: valueHash(observed.ack), reviewerAuthId: state.actors.OWNER, expiresAt: new Date(Date.now() + 300000).toISOString(), disposition: 'CONFIRM_AND_STOP_NO_RESEND' }
+    return freeze({ ...review, reviewHash: valueHash(review) })
+  } finally { release() }
+}
+
+export async function settleReviewedRestoreRecovery(journal, review, reviewer, readOperation) {
+  const release = acquire(journal)
+  try {
+    const state = inspectRestoreJournal(journal)
+    if (state.stopped || !state.pending) fail('RESTORE_NO_PENDING_INTENT')
+    const { reviewHash, ...body } = review ?? {}
+    if (!reviewHash || valueHash(body) !== reviewHash || body.planHash !== PLAN_HASH || body.journalTip !== journal.records().at(-1).hash || body.index !== state.cursor || body.operationId !== state.pending.operationId || body.requestHash !== state.pending.requestHash || body.reviewerAuthId !== state.actors.OWNER || body.disposition !== 'CONFIRM_AND_STOP_NO_RESEND' || !Number.isFinite(Date.parse(body.expiresAt)) || Date.parse(body.expiresAt) < Date.now() || Date.parse(body.expiresAt) > Date.now() + 300000 || reviewer?.role !== 'OWNER' || reviewer.authId !== state.actors.OWNER || reviewer.kioskId !== plan.kioskId) fail('RESTORE_RECOVERY_REVIEW_INVALID')
+    let observed
+    const result = await inspectUncertainRestoreAction(journal, async id => {
+      observed = await readOperation(id)
+      return observed
+    })
+    if (result.outcome !== 'ACK_MATCH_REQUIRES_REVIEW' || valueHash(observed.ack) !== body.ackHash) fail('RESTORE_RECOVERY_NOT_CONFIRMED')
+    try { journal.append({ kind: 'RECOVERED_CONFIRMED', index: state.cursor, operationId: body.operationId, ackHash: body.ackHash, reviewerAuthId: reviewer.authId, reviewHash }) } catch { fail('RESTORE_JOURNAL_WRITE_FAILED') }
+    return { confirmedIndex: state.cursor, stopped: true, mayResend: false, mayAdvance: false }
+  } finally { release() }
 }
