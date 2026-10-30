@@ -528,3 +528,51 @@ Auth real y transporte fijo; pruebas del envoltorio, pin de dependencias/trigger
 hospedados y vigencia del respaldo/preflight. Crear journal local sintetico no
 autoriza claves ni acceso/restore remoto. Sin nuevas sesiones, SQL/Edge/flags,
 ARCA/master/Production o UI integral habilitada. PR07 sigue PARCIAL.
+
+
+### Transporte privado y lectura administrativa de recuperacion — 30/10/2026
+
+27c3fbb publicado tras autenticacion del titular. Preparado transporte privado
+restore-acceptance-http.mjs/d.mts: sin CLI, login, env ni fetch ambiente.
+Destino HTTPS fijo acoyfwwmhaeruciyedri, redirect error, credentials omit,
+timeout15s; verifica Auth API y perfil exacto activo ordinario (incluye
+es_superadmin=false). Claims JWT solo filtran contexto, no acreditan identidad.
+Solo tres rutas RPC y cuerpos/UUID del plan717d6524 para el rol; escrituras
+cerradas por defecto. allowMutations/hash revisado es guard local, no reemplaza
+GO, identidad verificada, ni autorizacion servidor. Logout solo scope local,
+fallo cierra cliente y no habilita retry. Respuestas hasta4096 bytes UTF8 y
+errores internos seguros, sin imprimir cuerpos, tokens o headers privados.
+
+Dependencia encontrada en contrato local bootstrap040/900: operaciones_escritura
+NO ofrece SELECT a authenticated. No asumir GET disponible ni convertir403 en
+fila ausente. Sin nuevos grants/policies/RPC. Recovery administrativo separado:
+restore-acceptance-recovery.mjs/d.mts genera solo REPEATABLE READ READ ONLY/
+ROLLBACK, un UUID de intencion pinneado, contexto postgres/perfil/comercio activo,
+tipo y solicitud exacta con Auth ORIGINAL. Oculta solicitud/resultado si hay
+conflicto o falta Auth historico. Decodificador exige read_only=on/contexto/
+hashes correctos; devuelve observacion a motor, nunca permiso de reenviar o
+avanzar. ACK/raw solicitud solo en memoria del futuro lector privado; no consola.
+El canal admin PostgreSQL/TLS/ACL se debe validar antes de usarlo remotamente.
+
+104 pruebas enfocadas finales PASS/0FAIL/0skip (42 SQL/PGlite,22 journal,
+28 HTTP inyectado y12 recuperacion). HTTP sin red real: identidad/rol/comercio,
+perfil sin superadmin flag, cuerpo/UUID fuera de plan, servicio/issuer/sub,
+4096 exactos/4098 rechazados, UTF8 invalido/stream caido, logout fallido/sin retry.
+SQL local prueba BOUND con solicitud original y conflicto que oculta datos;
+rechaza normalizar read_only=off. Otra prueba ejecuta el SQL completo READ ONLY/
+ROLLBACK en PGlite y conserva ausencia como NO permiso de retry. Caso BOUND
+normalizado exige revision y mantiene journal inmutable. Identidades sinteticas,
+no sesiones/HTTP/SQL de Staging. Evidencia
+../backup-restore-http-recovery-final-source-20261030.json SHA256
+023d74488369a37143c362d735c252dad0beed01e4b97fe61ce8161d2272dfbd.
+Build689, lint sin avisos, node --check y diff PASS. 36JS sin5 marcadores privados
+examinados; no certificacion absoluta. LF fijado solo a cuatro fuentes nuevas.
+No nueva suite global ni prueba de JWT/RLS hospedado atribuida al incremento.
+
+FALTA antes de GO: envoltorio Windows/ACL/entrada privada y cierre de sesiones,
+resolucion durable del journal tras revision autorizada (clasificar no basta),
+pruebas del envoltorio/recuperacion, pin de callees/triggers hospedados y respaldo
+actual/preflight. No ejecutor CLI ni autorizacion remota incluidos. No restaurar
+por inferencia ni ampliar permisos de tabla para simplificar recuperacion.
+Sin nuevas sesiones, restores, SQL/Edge/flags/ARCA/master/Production o UI habilitada.
+PR07 sigue PARCIAL y el objetivo completo PR01-PR11 no se declara cerrado.

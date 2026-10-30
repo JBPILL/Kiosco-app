@@ -3,7 +3,8 @@
 import { readdirSync, readFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { join, resolve, dirname, basename } from 'node:path'
 import { tmpdir } from 'node:os'
-import { createRestoreJournal, inspectRestoreJournal, executeNextRestoreAction, loadRestorePlan, valueHash } from '../../scripts/backup/restore-acceptance-engine.mjs'
+import { buildUncertainRestoreReadSql, decodeUncertainRestoreRead } from '../../scripts/backup/restore-acceptance-recovery.mjs'
+import { createRestoreJournal, inspectRestoreJournal, executeNextRestoreAction, inspectUncertainRestoreAction, loadRestorePlan, valueHash } from '../../scripts/backup/restore-acceptance-engine.mjs'
 import { randomUUID, createHash } from 'node:crypto'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -473,13 +474,7 @@ it('ejecuta el motor durable contra los ACK SQL reales locales para las21 accion
   const plan=loadRestorePlan(),folder=mkdtempSync(join(tmpdir(),'kiosko-restore-sql-'))
   if(dirname(folder)!==resolve(tmpdir())||!basename(folder).startsWith('kiosko-restore-sql-'))throw Error('Unsafe local folder')
   try {
-    // This UUID is only a synthetic row inside PGlite; no hosted connection exists.
-    await db.exec('RESET ROLE')
-    await db.exec("SELECT set_config('request.jwt.claim.sub','',true),set_config('request.jwt.claim.role','',true)")
-    await db.query('INSERT INTO kioscos(id,nombre) VALUES($1,$2)',[plan.kioskId,'LOCAL SYNTHETIC PLAN'])
-    await db.query('UPDATE usuarios SET kiosco_id=$1 WHERE kiosco_id=$2',[plan.kioskId,kid])
-    await db.query("SELECT set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claim.role','authenticated',true)",[auth])
-    await db.exec('SET ROLE authenticated')
+    await seedLocalFixedPlanActors()
     const journal=createRestoreJournal(join(folder,'journal.jsonl'),{OWNER:auth,CASHIER:deniedActors[0].auth})
     let count=0
     while(!inspectRestoreJournal(journal).complete){
@@ -519,5 +514,58 @@ it('ejecuta el motor durable contra los ACK SQL reales locales para las21 accion
     await db.exec('RESET ROLE')
     expect((await db.query<{n:number}>('SELECT count(*)::int n FROM operaciones_escritura')).rows[0].n).toBe(14)
     expect((await db.query<{stock_actual:string;activo:boolean}>('SELECT stock_actual,activo FROM productos WHERE id=$1',[plan.fixtureIds.product])).rows[0]).toEqual({stock_actual:'0.000',activo:false})
+  } finally {rmSync(folder,{recursive:true,force:true})}
+})
+
+async function seedLocalFixedPlanActors():Promise<void> {
+  const plan=loadRestorePlan()
+  await db.exec('RESET ROLE')
+  await db.exec("SELECT set_config('request.jwt.claim.sub','',true),set_config('request.jwt.claim.role','',true)")
+  await db.query('INSERT INTO kioscos(id,nombre) VALUES($1,$2)',[plan.kioskId,'LOCAL SYNTHETIC PLAN'])
+  await db.query('UPDATE usuarios SET kiosco_id=$1 WHERE kiosco_id=$2',[plan.kioskId,kid])
+  await db.query("SELECT set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claim.role','authenticated',true)",[auth])
+  await db.exec('SET ROLE authenticated')
+}
+
+it('recovery administrativo consulta solo la operacion ligada y oculta datos si falta Auth original',async()=>{
+  const folder=mkdtempSync(join(tmpdir(),'kiosko-restore-recovery-'))
+  if(dirname(folder)!==resolve(tmpdir())||!basename(folder).startsWith('kiosko-restore-recovery-'))throw Error('Unsafe folder')
+  try {
+    const plan=loadRestorePlan();await seedLocalFixedPlanActors()
+    const journal=createRestoreJournal(join(folder,'journal.jsonl'),{OWNER:auth,CASHIER:deniedActors[0].auth})
+    await expect(executeNextRestoreAction(journal,{role:'OWNER',authId:auth,kioskId:plan.kioskId},async(_rpc:string,p:Record<string,unknown>)=>{
+      await db.query('SELECT restaurar_contacto_backup($1,$2,$3,$4,$5::jsonb)',[p.p_operacion_id,p.p_kiosco_id,p.p_tabla,p.p_registro_id,JSON.stringify(p.p_datos)])
+      throw Error('SYNTHETIC_ACK_LOSS')
+    })).rejects.toThrow('RESTORE_OUTCOME_UNCERTAIN')
+    const sql=buildUncertainRestoreReadSql(journal)
+    expect(sql.startsWith('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;')).toBe(true)
+    expect(sql.trimEnd().endsWith('ROLLBACK;')).toBe(true)
+    // Preserve this local test transaction: exercise inner query, do not mislabel it READ ONLY.
+    const inner=sql.replace('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;','').replace(/ROLLBACK;\s*$/,'')
+    await db.exec('RESET ROLE')
+    const result=await db.exec(inner)
+    const evidence=result.find(r=>r.rows.length>0)?.rows[0] as {evidence:Record<string,unknown>}
+    expect(evidence.evidence).toMatchObject({read_only:'off',context_matches:true,state:'BOUND'})
+    expect(valueHash(evidence.evidence.solicitud)).toBe(inspectRestoreJournal(journal).pending!.requestHash)
+    expect(()=>decodeUncertainRestoreRead(journal,evidence.evidence)).toThrow('RESTORE_RECOVERY_QUERY_NOT_CONFIRMED')
+    await db.query("UPDATE operaciones_escritura SET solicitud=solicitud-'actor_auth_id' WHERE id=$1",[plan.steps[0].params.p_operacion_id])
+    const conflict=(await db.exec(inner)).find(r=>r.rows.length>0)?.rows[0] as {evidence:Record<string,unknown>}
+    expect(conflict.evidence).toMatchObject({state:'CONFLICT',solicitud:null,resultado:null})
+    expect(inspectRestoreJournal(journal).pending).not.toBeNull()
+  } finally {rmSync(folder,{recursive:true,force:true})}
+})
+it('recovery completo READ ONLY/ROLLBACK no convierte ausencia en permiso de retry',async()=>{
+  const folder=mkdtempSync(join(tmpdir(),'kiosko-restore-readonly-'))
+  if(dirname(folder)!==resolve(tmpdir())||!basename(folder).startsWith('kiosko-restore-readonly-'))throw Error('Unsafe folder')
+  try {
+    const plan=loadRestorePlan(),journal=createRestoreJournal(join(folder,'journal.jsonl'),{OWNER:auth,CASHIER:deniedActors[0].auth})
+    await expect(executeNextRestoreAction(journal,{role:'OWNER',authId:auth,kioskId:plan.kioskId},async()=>{throw Error('SYNTHETIC_NO_RESPONSE')})).rejects.toThrow('RESTORE_OUTCOME_UNCERTAIN')
+    const local=buildUncertainRestoreReadSql(journal).replaceAll(plan.kioskId,kid)
+    await db.exec('ROLLBACK; RESET ROLE')
+    const result=(await db.exec(local)).find(r=>r.rows.length>0)?.rows[0] as {evidence:Record<string,unknown>}
+    expect(result.evidence).toMatchObject({read_only:'on',context_matches:true,state:'ABSENT',solicitud:null,resultado:null})
+    const candidate=decodeUncertainRestoreRead(journal,result.evidence)
+    expect(candidate).toBeNull()
+    expect(await inspectUncertainRestoreAction(journal,async()=>candidate)).toMatchObject({outcome:'ABSENCE_NOT_PROOF_OF_NONEXECUTION',mayResend:false,mayAdvance:false})
   } finally {rmSync(folder,{recursive:true,force:true})}
 })

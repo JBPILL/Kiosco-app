@@ -1400,3 +1400,17 @@ o aceptar el200 sin comprobar el ACK. No usar hash de cadena como autorizacion.
 Consecuencias: se retiene incertidumbre hasta revision/recuperacion autorizada;
 ACL Windows y transporte/Auth del operador son dependencias aun no implementadas.
 No instalar backend nuevo ni habilitar restauracion de UI por esta preparacion.
+
+
+## 2026-10-30 — Recuperacion administrativa sin exponer operaciones_escritura
+
+Contexto: bootstrap revoca acceso directo a operaciones_escritura; no existe
+lookup publico de restore. Una consulta403 no prueba que no exista operacion.
+Decision: conservar grants/RLS/RPC y preparar query administrativa READ ONLY
+separada, ligada al unico UUID/body/Auth original del journal. Solo devuelve
+solicitud/ACK cuando coinciden contexto, tipo y cuerpo; conflicto oculta ambos.
+Normalizador verifica modo lectura y bindings; no avanza journal ni reintenta.
+Alternativas descartadas: GRANT SELECT al Dueno, service_role/public lookup,
+nuevo RPC de conveniencia o interpretar permiso denegado como ausencia.
+Consecuencias: el futuro envoltorio requiere lector PostgreSQL privado/TLS/ACL
+ademas del transporte Auth del ensayo. No usar codigo/metadata local como GO.

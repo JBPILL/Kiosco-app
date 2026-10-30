@@ -6,6 +6,12 @@ An ExecPlan is a living document: create it before implementation, update **Prog
 
 ## Objetivo común vigente — cierre del desarrollo y Production Readiness
 
+30/10 PR07: transporte privado fijo y recovery SQL administrativo preparados;
+104 pruebas locales PASS/build689/lint. No SELECT directo de operaciones para
+usuarios ni grants nuevos. Faltan envoltorio Windows/ACL/credenciales privadas,
+resolucion de journal autorizada, dependencias hospedadas y respaldo/preflight.
+No listo para GO de restores; no sesiones nuevas ni gates cerrados repetidos.
+
 30/10 PR07: motor privado de journal preparado,62 pruebas locales PASS y build689.
 INTENT fsync antes de transporte, pins de actor/cuerpo, locks y ACK hash;
 incertidumbre bloquea reenvio y avance incluso si lectura coincide. Sin ejecutor
