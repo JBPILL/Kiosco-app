@@ -32,11 +32,11 @@ export async function verificarCostosCajero(config, solicitar = fetch) {
   if (!identidad.respuesta.ok || !uuid.test(identidad.datos?.id) || identidad.datos.role !== 'authenticated') {
     throw new Error('SESION_NO_VERIFICADA')
   }
-  const perfiles = await get(`/rest/v1/usuarios?select=id,auth_user_id,kiosco_id,rol,activo&auth_user_id=eq.${identidad.datos.id}&activo=eq.true&limit=2`)
+  const perfiles = await get(`/rest/v1/usuarios?select=id,auth_user_id,kiosco_id,rol,activo,es_superadmin&auth_user_id=eq.${identidad.datos.id}&activo=eq.true&limit=2`)
   if (!perfiles.respuesta.ok || !Array.isArray(perfiles.datos) || perfiles.datos.length !== 1
     || cantidad(perfiles.respuesta) !== 1) throw new Error('PERFIL_NO_VERIFICADO')
   const perfil = perfiles.datos[0]
-  if (perfil.rol !== 'CAJERO' || perfil.activo !== true || perfil.auth_user_id !== identidad.datos.id
+  if (perfil.rol !== 'CAJERO' || perfil.activo !== true || perfil.es_superadmin !== false || perfil.auth_user_id !== identidad.datos.id
     || perfil.kiosco_id !== config.kioscoId || !uuid.test(perfil.id)) throw new Error('CONTEXTO_NO_CAJERO')
   const controles = []
   for (const tabla of ['producto_costos', 'movimiento_stock_costos']) {

@@ -1,0 +1,76 @@
+# Cobro bloqueado por stock histórico fraccionario (19/10/2026)
+
+## Diagnóstico y alcance
+En Staging el operador informa un cobro de aproximadamente $1.003 del único
+artículo del catálogo. checkout-manual responde 409 CIERRE_NO_CONFIRMADO.
+Los registros del servidor sitúan el fallo en COTIZAR_TICKET, SIN_CODIGO.
+La lectura del catálogo confirma artículo por unidades a $200, stock 5.013;
+no hay una preparación reciente de ese cobro. No se reenvía la operación.
+
+El carrito redondeaba la cantidad editada a entero y después la limitaba al
+stock decimal, reintroduciendo 5.013. Agregar de golpe o sumar una unidad
+también producía esa cantidad. El backend rechaza correctamente las fracciones
+de artículos no pesables. El total visible redondeado coincide con el incidente.
+
+## Corrección
+Usar sólo la parte entera del stock positivo como límite vendible para artículos
+por unidad, sin modificar el valor histórico de stock. Normalizar el agregado
+a entero y bloquear remanentes positivos menores que una unidad. Conservar el
+comportamiento existente de pesables y del aviso de stock cero/negativo.
+No alterar solicitudes ya guardadas, UUID, importes, ventas ni reintegros.
+
+## Validación
+- [x] Cuatro regresiones reproducidas: agregar, sumar, editar y remanente < 1.
+- [x] Después de corregir: 93 pruebas PASS en carrito, recuperación y backend.
+- [x] Suite final: 2091 PASS / 1 skipped / 217 archivos, 269.44 s.
+      Build 631 módulos PASS. Diff trabajo/índice PASS; manifest 43 SQL intactos.
+      Scan 1130 textos, 14 binarios omitidos, 46 candidatos conocidos.
+      npm audit --omit=dev: 0 vulnerabilidades; no se modifican dependencias.
+- [x] Corrección 536b41f y evidencia 208506e publicadas en la rama del PR #3.
+      Frontend Staging READY: dpl_6QHLjvCqN3Dfi3TjU3c3NYqzvo9J.
+      Alias kiosco-app-staging.vercel.app y bundle público verifican el cambio.
+      PR #3 abierto y borrador, sin merge. Falta aceptación del carrito corregido
+      en el perfil del operador; no se confirma ninguna venta adicional por agente.
+
+## Conciliación pendiente
+El cobro original inválido no debe redondearse ni marcarse confirmado. El Dueño
+debe revisar la operación guardada y la resolución real del dinero mediante el
+flujo existente de Cancelar pendiente. No declarar NO_COBRADO o REINTEGRADO sin
+confirmación del operador. No crear venta de reemplazo antes de conciliar.
+Esta corrección preventiva no constituye recuperación del cobro original.
+El operador confirma que fue una prueba sin dinero real y realiza la cancelación
+desde el perfil original. Lectura del servidor confirma NO_COBRADO para el
+identificador original. No se borraron datos locales ni se reemplazó la entrada.
+Sin SQL remoto, Edge deploy, merge ni cambios de Production.
+
+## Aceptación de cantidades y texto (19/10/2026)
+La captura posterior del operador muestra 1 unidad a $200 con stock histórico
+1.013: la cantidad ya no incorpora la fracción. El aviso seguía mostrando el
+stock histórico en lugar del límite vendible. Se ajustan sólo los mensajes
+del carrito para indicar unidades enteras disponibles, con singular/plural.
+El dato histórico permanece intacto y pendiente de conciliación explícita.
+
+El operador autoriza que el dato represente 1 unidad de ensayo. Se registra
+AJUSTE_MANUAL mediante registrar_movimiento_stock_idempotente con JWT del Dueño
+aislado, claves sólo en memoria, precondición 1.013 y solicitud persistida fuera
+del repositorio. ACK confirma 1.013 -> 1 y movimiento; lectura posterior confirma
+stock 1. No se elimina el historial ni se modifican ventas/devoluciones.
+76 pruebas dirigidas (carrito, recuperación, lanzador) PASS y build 631 módulos
+PASS tras el ajuste de mensajes. La suite global 2091 PASS / 1 skipped precede
+este cambio sólo de texto. Scan sin secretos nuevos, diff trabajo/índice PASS.
+
+## Publicación verificada (20/10/2026)
+313fd66 publicado en la rama del PR #3. Staging READY:
+dpl_HeTmhyZmKDvZgfRK8V3gnDkoLXWA, alias kiosco-app-staging.vercel.app.
+Bundle público verifica límite entero y textos singular/plural. PR continúa
+sin integrar; no se modifican master ni Production. La aceptación operativa
+restante se conserva en P22/P23 y en el plan del puesto persistente.
+
+
+## Production Readiness — revisión permanente 20/10/2026
+
+Referencia canónica: [gates PR01–PR11](../../plan_operativo_y_comercial_kioskopos_revision.md#production-readiness--gates-permanentes-20102026). Gates aplicables a este ExecPlan: **PR05, PR08 y PR09**.
+
+Conservar cancelación NO_COBRADO y ajuste auditado autorizado a una unidad; no repetirlos como ensayo ni redondear historia. Completar los escenarios pendientes sin crear doble cobro.
+
+Esta adenda complementa los estados y decisiones anteriores, sin borrarlos ni convertir un PASS local/histórico en aceptación global. Registrar entorno, versión, fecha, evidencia y límites antes de cerrar el gate aplicable. Continuar según el primer gate pendiente del registro maestro (PR01); las autorizaciones de la sesión conservan su alcance y no se amplían por este plan.
