@@ -8,6 +8,36 @@ import { buildRestoreStateReadSql, verifyRestoreStateRead } from './restore-stat
 import { buildRestorePreservationReadSql, writeRestorePreservationBaseline, verifyRestorePreservation } from './restore-preservation.mjs'
 const host = 'aws-1-sa-east-1.pooler.supabase.com'
 const fail = code => { throw Error(code) }
+export const RESTORE_CONNECT_DIAGNOSTICS = Object.freeze([
+  'CONNECT_AUTH_OR_HANDSHAKE',
+  'CONNECT_TIMEOUT',
+  'CONNECT_NETWORK',
+  'CONNECT_STARTUP_OPTIONS',
+  'CONNECT_TLS',
+  'CONNECT_SESSION_SET',
+  'CONNECT_SESSION_PROBE',
+  'CONNECT_SESSION_PROBE_READ_ONLY',
+  'CONNECT_SESSION_PROBE_SEARCH_PATH',
+  'CONNECT_SESSION_PROBE_ROLE',
+  'CONNECT_SESSION_PROBE_DATABASE',
+  'CONNECT_CLOSE',
+])
+function classifyConnectError(err, phase) {
+  const code = typeof err?.code === 'string' ? err.code : ''
+  const text = typeof err?.message === 'string' ? err.message : ''
+  if (code === 'ETIMEDOUT' || /timeout expired|timed out|query read timeout/i.test(text)) return 'CONNECT_TIMEOUT'
+  if (phase === 'SESSION_SET') return 'CONNECT_SESSION_SET'
+  if (phase === 'PROBE') return 'CONNECT_SESSION_PROBE'
+  if (code.startsWith('ERR_TLS_') || code.startsWith('ERR_SSL_') || /^(UNABLE_TO_|SELF_SIGNED_CERT|DEPTH_ZERO_SELF_SIGNED|CERT_)/.test(code) || /ssl|tls|certificate/i.test(text)) return 'CONNECT_TLS'
+  if (['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH', 'ENETUNREACH', 'EPIPE', 'EACCES'].includes(code)) return 'CONNECT_NETWORK'
+  if (['08P01', '08006', '42704', '22023', 'XX000'].includes(code) || /unrecognized configuration parameter|startup|default_transaction_read_only|search_path/i.test(text)) return 'CONNECT_STARTUP_OPTIONS'
+  return 'CONNECT_AUTH_OR_HANDSHAKE'
+}
+function failConnect(diagnostic) {
+  const error = Error('RESTORE_READER_CONNECTION_NOT_CONFIRMED')
+  error.diagnostic = RESTORE_CONNECT_DIAGNOSTICS.includes(diagnostic) ? diagnostic : 'CONNECT_AUTH_OR_HANDSHAKE'
+  throw error
+}
 function pinnedSql(name, hash) {
   const source = readFileSync(new URL(name, import.meta.url), 'utf8').replaceAll('\r\n', '\n')
   if (createHash('sha256').update(source).digest('hex') !== hash) fail('RESTORE_READER_SQL_DRIFT')
@@ -38,19 +68,28 @@ export async function connectRestoreReadOnlyPostgres(credentials, { Client = pg.
   if (!credentials || Object.keys(credentials).sort().join(',') !== 'password,rootCertificate' || typeof password !== 'string' || !password.length || password.length > 4096
     || typeof rootCertificate !== 'string' || rootCertificate.length > 65536 || !rootCertificate.includes('-----BEGIN CERTIFICATE-----') || !rootCertificate.includes('-----END CERTIFICATE-----') || rootCertificate.includes('PRIVATE KEY')
     || process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0') fail('RESTORE_READER_INPUT_REJECTED')
-  let client, disposed = false, poisoned = false, reading = false
+  let client, disposed = false, poisoned = false, reading = false, phase = 'CONNECT', diagnostic = ''
   try {
     client = new Client({ host, port: 5432, database: 'postgres', user: 'postgres.acoyfwwmhaeruciyedri', password,
-      ssl: { rejectUnauthorized: true, ca: rootCertificate, servername: host }, options: '-c default_transaction_read_only=on -c search_path=pg_catalog,public',
+      ssl: { rejectUnauthorized: true, ca: rootCertificate, servername: host },
       application_name: 'kioskopos-restore-readonly', connectionTimeoutMillis: 10000, query_timeout: 15000, statement_timeout: 10000, idle_in_transaction_session_timeout: 15000 })
     client.on('error', () => { poisoned = true })
     await client.connect()
-    if (client.connection?.stream?.encrypted !== true || client.connection.stream.authorized !== true) fail('TLS')
-    const probe = await client.query("SELECT current_setting('default_transaction_read_only') AS read_only,current_user AS query_role,current_database() AS database_name")
-    if (probe.rows?.length !== 1 || probe.rows[0].read_only !== 'on' || probe.rows[0].query_role !== 'postgres' || probe.rows[0].database_name !== 'postgres') fail('Session')
-  } catch {
-    try { await client?.end() } catch { /* Do not expose driver diagnostics. */ }
-    fail('RESTORE_READER_CONNECTION_NOT_CONFIRMED')
+    if (client.connection?.stream?.encrypted !== true || client.connection.stream.authorized !== true) { diagnostic = 'CONNECT_TLS'; fail('TLS') }
+    phase = 'SESSION_SET'
+    await client.query('SET default_transaction_read_only = on;')
+    await client.query('SET search_path = pg_catalog, public;')
+    phase = 'PROBE'
+    const probe = await client.query("SELECT current_setting('default_transaction_read_only') AS read_only,current_setting('search_path') AS search_path,current_user AS query_role,current_database() AS database_name")
+    if (probe?.rows?.length !== 1) { diagnostic = 'CONNECT_SESSION_PROBE'; fail('Session') }
+    if (probe.rows[0].read_only !== 'on') { diagnostic = 'CONNECT_SESSION_PROBE_READ_ONLY'; fail('Session') }
+    if (probe.rows[0].search_path !== 'pg_catalog, public' && probe.rows[0].search_path !== 'pg_catalog,public') { diagnostic = 'CONNECT_SESSION_PROBE_SEARCH_PATH'; fail('Session') }
+    if (probe.rows[0].query_role !== 'postgres') { diagnostic = 'CONNECT_SESSION_PROBE_ROLE'; fail('Session') }
+    if (probe.rows[0].database_name !== 'postgres') { diagnostic = 'CONNECT_SESSION_PROBE_DATABASE'; fail('Session') }
+  } catch (err) {
+    if (!diagnostic) diagnostic = classifyConnectError(err, phase)
+    try { await client?.end() } catch { diagnostic = 'CONNECT_CLOSE' }
+    failConnect(diagnostic)
   }
   async function read(initial, journal, preservation) {
     if (disposed || poisoned || reading) fail('RESTORE_READER_UNAVAILABLE')

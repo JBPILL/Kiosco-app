@@ -46,7 +46,7 @@ try{
  $child.StandardInput.Write($payload);$child.StandardInput.Close()
  if(-not $child.WaitForExit(1200000)){Write-Output ('RESTORE_OPERATOR_NOT_CONFIRMED stage=TIMEOUT child_running=true child_pid='+$child.Id+' retry=false');exit 1}
  $safe=$output.GetAwaiter().GetResult().Trim();$null=$errors.GetAwaiter().GetResult()
- if($safe -cnotmatch '^(RESTORE_CAPTURE_PASS baseline=[a-f0-9]{64} auth=false mutation=false|RESTORE_ROLE_PASS role=(OWNER|CASHIER) confirmed=(18|3) logout_local=true|RESTORE_OPERATOR_NOT_CONFIRMED stage=(PACKET|DIRECTORY|BACKUP|CONNECT|CAPTURE|BASELINE|PHASE|GATE|LEASE|JOURNAL|PREFLIGHT|SESSION|IDENTITY|ACTION|FINAL_PREFLIGHT|LOGOUT|LEASE_CLEANUP|DISPOSE|ENTRY) retry=false)$'){throw 'Output'}
+ if($safe -cnotmatch '^(RESTORE_CAPTURE_PASS baseline=[a-f0-9]{64} auth=false mutation=false|RESTORE_ROLE_PASS role=(OWNER|CASHIER) confirmed=(18|3) logout_local=true|RESTORE_OPERATOR_NOT_CONFIRMED stage=(PACKET|DIRECTORY|BACKUP|CONNECT( diagnostic=(CONNECT_AUTH_OR_HANDSHAKE|CONNECT_TIMEOUT|CONNECT_NETWORK|CONNECT_STARTUP_OPTIONS|CONNECT_TLS|CONNECT_SESSION_SET|CONNECT_SESSION_PROBE|CONNECT_SESSION_PROBE_READ_ONLY|CONNECT_SESSION_PROBE_SEARCH_PATH|CONNECT_SESSION_PROBE_ROLE|CONNECT_SESSION_PROBE_DATABASE|CONNECT_CLOSE))?|CAPTURE|BASELINE|PHASE|GATE|LEASE|JOURNAL|PREFLIGHT|SESSION|IDENTITY|ACTION|FINAL_PREFLIGHT|LOGOUT|LEASE_CLEANUP|DISPOSE|ENTRY) retry=false)$'){throw 'Output'}
  if($safe.StartsWith('RESTORE_CAPTURE_PASS') -and ($Rol -cne 'CAPTURE' -or $child.ExitCode -ne 0)){throw 'Capture result'}
  if($safe.StartsWith('RESTORE_ROLE_PASS')){
   $expectedCount=if($Rol -ceq 'OWNER'){18}elseif($Rol -ceq 'CASHIER'){3}else{throw 'Role result'}

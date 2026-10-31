@@ -6,7 +6,7 @@ import { X509Certificate } from 'node:crypto'
 import { validateRestoreExecutionPackage,RESTORE_CAPTURE_SCOPE,RESTORE_EXECUTION_SCOPE } from './restore-execution-package.mjs'
 import { PLAN_HASH,RestoreJournal,inspectRestoreJournal } from './restore-acceptance-engine.mjs'
 import { loadRestorePreservationBaseline } from './restore-preservation.mjs'
-import { connectRestoreReadOnlyPostgres } from './restore-readonly-postgres.mjs'
+import { connectRestoreReadOnlyPostgres,RESTORE_CONNECT_DIAGNOSTICS } from './restore-readonly-postgres.mjs'
 import { verifyRestoreBackupReference } from './restore-backup-reference.mjs'
 import { loginRestoreHttpClient } from './restore-acceptance-http.mjs'
 import { runRestoreRolePhase } from './restore-acceptance-operator.mjs'
@@ -73,7 +73,10 @@ export async function executePrivateRestorePacket(packet,dependencies={}){
    })
    output=result.status==='ROLE_PHASE_PASS'?'RESTORE_ROLE_PASS role='+packet.role+' confirmed='+result.confirmed+' logout_local=true':'RESTORE_OPERATOR_NOT_CONFIRMED stage='+(['GATE','LEASE','JOURNAL','PREFLIGHT','SESSION','IDENTITY','ACTION','FINAL_PREFLIGHT','LOGOUT','LEASE_CLEANUP'].includes(result.stage)?result.stage:'PHASE')+' retry=false'
   }
- }catch{output='RESTORE_OPERATOR_NOT_CONFIRMED stage='+stage+' retry=false'}
+ }catch(err){
+  const diagnostic=stage==='CONNECT'&&RESTORE_CONNECT_DIAGNOSTICS.includes(err?.diagnostic)?' diagnostic='+err.diagnostic:''
+  output='RESTORE_OPERATOR_NOT_CONFIRMED stage='+stage+diagnostic+' retry=false'
+ }
  finally{
   if(reader)try{await reader.dispose()}catch{releaseLease=false;output='RESTORE_OPERATOR_NOT_CONFIRMED stage=DISPOSE retry=false'}
   if(lease!==undefined)try{fs.closeSync(lease);if(releaseLease)fs.unlinkSync(packet.journalPath+'.phase.lock')}catch{output='RESTORE_OPERATOR_NOT_CONFIRMED stage=LEASE_CLEANUP retry=false'}

@@ -38,6 +38,24 @@ it('capture reads and writes only local baseline, no Auth or mutation',async()=>
 it.each(['capture','expired','directory','connect','dispose'])('capture failure %s is safe and never opens Auth',async mode=>{
  const p=packet();const result=await executePrivateRestorePacket(p,dependencies(mode));expect(result).toMatch(/^RESTORE_OPERATOR_NOT_CONFIRMED stage=/);expect(result).not.toContain(secret);expect(auth).toBe(0)
 })
+it.each([
+ ['CONNECT_AUTH_OR_HANDSHAKE','RESTORE_OPERATOR_NOT_CONFIRMED stage=CONNECT diagnostic=CONNECT_AUTH_OR_HANDSHAKE retry=false'],
+ ['CONNECT_TIMEOUT','RESTORE_OPERATOR_NOT_CONFIRMED stage=CONNECT diagnostic=CONNECT_TIMEOUT retry=false'],
+ ['CONNECT_TLS','RESTORE_OPERATOR_NOT_CONFIRMED stage=CONNECT diagnostic=CONNECT_TLS retry=false'],
+ ['CONNECT_SESSION_SET','RESTORE_OPERATOR_NOT_CONFIRMED stage=CONNECT diagnostic=CONNECT_SESSION_SET retry=false'],
+ ['CONNECT_SESSION_PROBE_READ_ONLY','RESTORE_OPERATOR_NOT_CONFIRMED stage=CONNECT diagnostic=CONNECT_SESSION_PROBE_READ_ONLY retry=false'],
+ ['CONNECT_SESSION_PROBE_SEARCH_PATH','RESTORE_OPERATOR_NOT_CONFIRMED stage=CONNECT diagnostic=CONNECT_SESSION_PROBE_SEARCH_PATH retry=false'],
+ ['CONNECT_CLOSE','RESTORE_OPERATOR_NOT_CONFIRMED stage=CONNECT diagnostic=CONNECT_CLOSE retry=false'],
+ [`password authentication failed for user ${secret}`,'RESTORE_OPERATOR_NOT_CONFIRMED stage=CONNECT retry=false'],
+])('surfaces only allowlisted connect diagnostic %s and redacts non-allowlisted values',async(diagnostic,expected)=>{
+ const p=packet(),d=dependencies()
+ d.connect=async()=>{throw Object.assign(Error(`password authentication failed for user ${secret}`),{diagnostic})}
+ const result=await executePrivateRestorePacket(p,d)
+ expect(result).toBe(expected)
+ expect(result).not.toContain(secret)
+ expect(result).not.toContain('password authentication failed')
+ expect(auth).toBe(0)
+})
 it.each(['go','scope','hash','role','extra','frozen'])('rejects malformed private input %s before transport',async mode=>{
  const p=packet();if(mode==='go')p.goConfirmed=false;if(mode==='scope')p.authorizedScope=RESTORE_EXECUTION_SCOPE;if(mode==='hash')p.approvedPackageHash='0'.repeat(64);if(mode==='role')p.role='OWNER';if(mode==='frozen')Object.freeze(p.credentials)
  const input=mode==='extra'?{...p,extra:secret}:p

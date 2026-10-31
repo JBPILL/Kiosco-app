@@ -15,4 +15,18 @@ export interface RestoreReadOnlyClient {
   query(sql: string): Promise<unknown>
   end(): Promise<void>
 }
+export type RestoreConnectDiagnostic =
+  | 'CONNECT_AUTH_OR_HANDSHAKE'
+  | 'CONNECT_TIMEOUT'
+  | 'CONNECT_NETWORK'
+  | 'CONNECT_STARTUP_OPTIONS'
+  | 'CONNECT_TLS'
+  | 'CONNECT_SESSION_SET'
+  | 'CONNECT_SESSION_PROBE'
+  | 'CONNECT_SESSION_PROBE_READ_ONLY'
+  | 'CONNECT_SESSION_PROBE_SEARCH_PATH'
+  | 'CONNECT_SESSION_PROBE_ROLE'
+  | 'CONNECT_SESSION_PROBE_DATABASE'
+  | 'CONNECT_CLOSE'
+export const RESTORE_CONNECT_DIAGNOSTICS: readonly RestoreConnectDiagnostic[]
 export function connectRestoreReadOnlyPostgres(credentials: {password: string; rootCertificate: string}, dependencies?: {Client?: new (config: unknown) => RestoreReadOnlyClient; now?: () => number}): Promise<RestoreReadOnlyPort>
