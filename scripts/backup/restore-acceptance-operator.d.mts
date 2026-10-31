@@ -6,6 +6,7 @@ export interface RestorePhaseOptions {
   allowRun?: boolean
   reviewedPlanHash?: string
   expiresAt: string
+  now?: () => number
   preflight: (context: {role: RestoreRole; cursor: number; planHash: string}) => Promise<boolean>
   openSession: (role: RestoreRole) => Promise<RestoreHttpClient>
 }

@@ -63,7 +63,7 @@ it.each(['gate','hash','expiry','preflight','identity','actor','network','drift'
   if(mode==='network')expect(inspectRestoreJournal(journal).pending).not.toBeNull()
   if(mode==='drift'){
     expect(calls).toBe(1)
-    expect(await runRestoreRolePhase(options())).toMatchObject({status:'ROLE_PHASE_NOT_CONFIRMED',stage:'JOURNAL'})
+    expect(await runRestoreRolePhase(options())).toMatchObject({status:'ROLE_PHASE_NOT_CONFIRMED',stage:'LEASE'})
     expect(calls).toBe(1)
   }
   if(mode==='logout')expect(result.logout).toBe('NOT_CONFIRMED')
@@ -116,4 +116,11 @@ it('integrates login, verified HTTP identity, fixed RPC transport and the comple
   expect(calls).toBe(18);expect(logouts).toBe(1)
   expect(request.mock.calls.filter(([url])=>String(url).includes('/token?'))).toHaveLength(1)
   expect(readFileSync(journal.file,'utf8')).not.toContain(secret)
+})
+
+it('postflight failure after OWNER18 retains exclusion and blocks CASHIER without dispatch',async()=>{
+ const input=options();input.preflight=async({cursor})=>cursor!==18
+ expect(await runRestoreRolePhase(input)).toMatchObject({status:'ROLE_PHASE_NOT_CONFIRMED',stage:'FINAL_PREFLIGHT',confirmed:18,logout:'CONFIRMED',mayRetry:false})
+ expect(await runRestoreRolePhase(options('','CASHIER'))).toMatchObject({status:'ROLE_PHASE_NOT_CONFIRMED',stage:'LEASE'})
+ expect(calls).toBe(18);expect(opens).toBe(1);expect(logouts).toBe(1)
 })

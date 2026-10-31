@@ -90,13 +90,14 @@ it.each(['logout-fail','logout-network'])('logout %s cannot become global or be 
   await expect(client.logoutLocal()).rejects.toThrow('RESTORE_HTTP_SESSION_CLOSED')
   expect(request).toHaveBeenCalledTimes(3)
 })
-it.each(['service-key','wrong-issuer','wrong-sub','service-jwt','wrong-plan'])('rejects %s configuration before network',mode=>{
+it.each(['service-key','wrong-issuer','wrong-sub','service-jwt','wrong-plan','expired-jwt'])('rejects %s configuration before network',mode=>{
   const request=mock(),cfg={...config(),allowMutations:true,reviewedPlanHash:PLAN_HASH}
   if(mode==='service-key')cfg.publicKey=encode({alg:'HS256'})+'.'+encode({role:'service_role',ref:'acoyfwwmhaeruciyedri'})+'.SYNTHETIC'
   if(mode==='wrong-issuer')cfg.jwt=jwt({iss:'https://other-project.supabase.co/auth/v1'})
   if(mode==='wrong-sub')cfg.jwt=jwt({sub:profileId})
   if(mode==='service-jwt')cfg.jwt=jwt({role:'service_role'})
   if(mode==='wrong-plan')cfg.reviewedPlanHash='0'.repeat(64)
+  if(mode==='expired-jwt')cfg.jwt=jwt({exp:Math.floor(Date.now()/1000)-60})
   expect(()=>createRestoreHttpClient(cfg,request)).toThrow('RESTORE_HTTP_CONFIG_INVALID')
   expect(request).not.toHaveBeenCalled()
 })

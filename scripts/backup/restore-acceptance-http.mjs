@@ -38,6 +38,7 @@ export function createRestoreHttpClient(config, request) {
   if (typeof request !== 'function' || !uuid.test(authId) || !['OWNER', 'CASHIER'].includes(role)
     || typeof jwt !== 'string' || jwt.length > 16400 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(jwt)
     || session?.role !== 'authenticated' || session.sub !== authId || session.iss !== target + '/auth/v1'
+    || session.exp !== undefined && (!Number.isFinite(session.exp) || session.exp * 1000 <= Date.now())
     || !validPublicKey(publicKey)
     || ![true, false].includes(allowMutations) || allowMutations && reviewedPlanHash !== PLAN_HASH) error('RESTORE_HTTP_CONFIG_INVALID')
   // Claims only reject obvious wrong context. The Auth API below verifies identity.

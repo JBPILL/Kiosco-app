@@ -38,7 +38,8 @@ function operationRequest(action, authId) {
   return { lote_id: p.p_lote_id, datos: p.p_datos, actor_auth_id: authId }
 }
 function regular(file) {
-  const info = fs.lstatSync(file)
+  let info
+  try { info = fs.lstatSync(file) } catch { fail('RESTORE_JOURNAL_FILE_INVALID') }
   if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1) fail('RESTORE_JOURNAL_FILE_INVALID')
 }
 function durableWrite(file, text, flags) {
@@ -75,7 +76,9 @@ export class RestoreJournal {
   append(event) {
     const records = this.records()
     const data = { ...event, recordedAt: new Date().toISOString(), sequence: records.length, previous: records.at(-1).hash }
-    durableWrite(this.file, canonical({ ...data, hash: valueHash(data) }) + '\n', 'a')
+    const hash = valueHash(data)
+    durableWrite(this.file, canonical({ ...data, hash }) + '\n', 'a')
+    if (this.records().at(-1)?.hash !== hash) fail('RESTORE_JOURNAL_WRITE_FAILED')
   }
 }
 export function createRestoreJournal(file, actors) {

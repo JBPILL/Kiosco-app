@@ -94,6 +94,67 @@ it.each(['truncated','changed-byte','blank-tail'])('journal damage %s fails clos
   const data=readFileSync(file,'utf8');writeFileSync(file,mode==='truncated'?data.slice(0,-1):mode==='blank-tail'?data+'\n':data.replace(actors.OWNER,actors.CASHIER))
   expect(()=>inspectRestoreJournal(journal)).toThrow(/RESTORE_JOURNAL_/)
 })
+it.each([
+  ['absent','RESTORE_JOURNAL_FILE_INVALID'],
+  ['empty','RESTORE_JOURNAL_TRUNCATED'],
+  ['invalid-json','RESTORE_JOURNAL_INVALID'],
+  ['invalid-hash','RESTORE_JOURNAL_CHAIN_INVALID'],
+  ['wrong-version','RESTORE_JOURNAL_HEADER_INVALID'],
+  ['wrong-plan','RESTORE_JOURNAL_HEADER_INVALID'],
+  ['wrong-uuid','RESTORE_JOURNAL_INTENT_INVALID'],
+  ['wrong-actor','RESTORE_JOURNAL_INTENT_INVALID'],
+  ['wrong-body-hash','RESTORE_JOURNAL_INTENT_INVALID'],
+  ['impossible-state','RESTORE_JOURNAL_INTENT_INVALID'],
+  ['invalid-transition-no-intent','RESTORE_JOURNAL_ORDER_INVALID'],
+  ['invalid-transition-after-stop','RESTORE_JOURNAL_STOPPED']
+] as const)('journal state or corruption %s fails closed with %s', (mode, expectedError) => {
+  const initRecord=journal.records()[0]
+  const step0=plan.steps[0],p0=step0.params
+  const intentEvent={
+    kind:'INTENT',
+    index:0,
+    actorAuthId:actors.OWNER,
+    operationId:p0.p_operacion_id,
+    rpc:step0.rpc,
+    paramsHash:valueHash(p0),
+    requestHash:valueHash({tabla:p0.p_tabla,registro_id:p0.p_registro_id,datos:p0.p_datos,actor_auth_id:actors.OWNER})
+  }
+  const appendRaw=(events:Record<string,unknown>[])=>{
+    let previous='0'.repeat(64)
+    const lines=events.map((ev,sequence)=>{
+      const body={...ev,recordedAt:'2026-10-31T00:00:00.000Z',sequence,previous}
+      const hash=valueHash(body)
+      previous=hash
+      return JSON.stringify({...body,hash})
+    })
+    writeFileSync(file,lines.join('\n')+'\n')
+  }
+  const {sequence:_s,previous:_p,recordedAt:_a,hash:_h,...initEv}=initRecord
+  if(mode==='absent')rmSync(file)
+  else if(mode==='empty')writeFileSync(file,'')
+  else if(mode==='invalid-json')writeFileSync(file,'{not-json}\n')
+  else if(mode==='invalid-hash')writeFileSync(file,JSON.stringify({...initRecord,hash:'0'.repeat(64)})+'\n')
+  else if(mode==='wrong-version')appendRaw([{...initEv,version:2}])
+  else if(mode==='wrong-plan')appendRaw([{...initEv,planHash:'0'.repeat(64)}])
+  else if(mode==='wrong-uuid')appendRaw([initEv,{...intentEvent,operationId:'00000000-0000-4000-8000-000000000000'}])
+  else if(mode==='wrong-actor')appendRaw([initEv,{...intentEvent,actorAuthId:actors.CASHIER}])
+  else if(mode==='wrong-body-hash')appendRaw([initEv,{...intentEvent,requestHash:'0'.repeat(64)}])
+  else if(mode==='impossible-state')appendRaw([initEv,intentEvent,intentEvent])
+  else if(mode==='invalid-transition-no-intent')appendRaw([initEv,{kind:'CONFIRMED',index:0,operationId:p0.p_operacion_id,ackHash:'a'.repeat(64)}])
+  else if(mode==='invalid-transition-after-stop')appendRaw([initEv,intentEvent,{kind:'RECOVERED_CONFIRMED',index:0,operationId:p0.p_operacion_id,ackHash:'a'.repeat(64),reviewerAuthId:actors.OWNER,reviewHash:'b'.repeat(64)},{...intentEvent,index:1}])
+  expect(()=>inspectRestoreJournal(new RestoreJournal(file))).toThrow(expectedError)
+})
+it('observed conflict cannot prepare recovery review or transition to confirmed',async()=>{
+  await expect(executeNextRestoreAction(journal,actor(),async()=>{throw Error(secret)})).rejects.toThrow('RESTORE_OUTCOME_UNCERTAIN')
+  const pending=inspectRestoreJournal(journal).pending!,p=plan.steps[0].params
+  const conflictObserved={operationId:pending.operationId,kioskId:plan.kioskId,actorAuthId:actors.CASHIER,requestHash:pending.requestHash,ack:ack(plan.steps[0].rpc,p)}
+  expect(await inspectUncertainRestoreAction(journal,async()=>conflictObserved)).toEqual({outcome:'CONFLICT_STOP',mayResend:false,mayAdvance:false})
+  await expect(prepareRestoreRecoveryReview(journal,async()=>conflictObserved)).rejects.toThrow('RESTORE_RECOVERY_NOT_CONFIRMED')
+  const validObserved={...conflictObserved,actorAuthId:actors.OWNER}
+  const review=await prepareRestoreRecoveryReview(journal,async()=>validObserved)
+  await expect(settleReviewedRestoreRecovery(journal,review,actor(),async()=>conflictObserved)).rejects.toThrow('RESTORE_RECOVERY_NOT_CONFIRMED')
+  expect(inspectRestoreJournal(journal).pending).not.toBeNull()
+})
 it('real child exit after fsynced intent leaves a lock and cannot be restarted automatically',()=>{
   const moduleUrl=pathToFileURL(resolve('scripts/backup/restore-acceptance-engine.mjs')).href
   const code=`import {RestoreJournal,executeNextRestoreAction} from ${JSON.stringify(moduleUrl)};await executeNextRestoreAction(new RestoreJournal(${JSON.stringify(file)}),${JSON.stringify(actor())},async()=>{process.exit(71)});`

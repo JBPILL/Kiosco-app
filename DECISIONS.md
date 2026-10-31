@@ -1577,3 +1577,43 @@ Cierre local: build final exit0 (aviso chunks >500kB), manifiesto bootstrap43
 PASS,36JS sin tres simbolos privados seleccionados. Primer build detecto union
 undefined en closure de test; corregido con const local tipada y recheck43 PASS,
 sin casts/supresiones en implementacion. Suite global anterior no atribuida aqui.
+
+
+### Ejecutor privado integrado y bloqueo de instancia única PR07 — 31/10/2026
+
+Se completa y verifica localmente el paquete y ejecutor privado integrado para el
+ensayo aislado de restauracion PR07 (`PR07_READ_ONLY_PRESERVATION_CAPTURE` y
+`PR07_FIXED_ISOLATED_RESTORE_ACCEPTANCE`), vinculando hashes exactos de las 23
+fuentes de runtime, ventana temporal de hasta 15 minutos, actores fijados
+(`OWNER`/`CASHIER`), baseline de preservacion comercial de 50 tablas y referencia
+de respaldo privado previo con contratos instalados (`-AntesEnsayoRestauracion`).
+
+Decisiones de cierre de blockers locales (conservando los reportes fallidos previos
+`../restore-execution-package-focused-20261031.json` 30 PASS/1 FAIL y
+`../restore-private-executor-focused-20261031.json` 14 PASS/4 FAIL):
+1. Retencion estricta de lease por intento y postflight obligatorio:
+   `runRestoreRolePhase` ejecuta `FINAL_PREFLIGHT` (`cursor=18` tras `OWNER` y
+   `cursor=21` tras `CASHIER`) y conserva `journal.jsonl.phase.lock` siempre que
+   `!phasePassed && attempted > 0` (incluso si falla la accion 0 con `confirmed=0`
+   tras persistir `INTENT`), impidiendo reintentos o apertura de la fase siguiente.
+2. Exclusion de instancia unica y cursor esperado antes de backup/PG/Auth:
+   `executePrivateRestorePacket` adquiere `journal.jsonl.phase.lock` en `stage=LEASE`
+   inmediatamente despues de `stage=DIRECTORY` (rechazando `.lock` o `.phase.lock`
+   existentes) y valida `state.cursor` esperado (`0` para `CAPTURE`/`OWNER`, `18`
+   para `CASHIER`) en `stage=JOURNAL` antes de `verifyBackup`, `connect` y `login`.
+3. Integridad de journal, JWT y wrapper Windows:
+   `RestoreJournal.prototype.append` relee el journal tras `fsyncSync` y comprueba
+   el hash tip; `regular()` clasifica `ENOENT` como `RESTORE_JOURNAL_FILE_INVALID`;
+   `createRestoreHttpClient` rechaza JWT con `exp` vencido antes de red; el wrapper
+   `scripts/ejecutar-ensayo-restauracion-privado.ps1` exige `journal.jsonl` sin
+   locks activos antes de solicitar credenciales interactivas.
+
+Evidencia local: 20 suites / 395 pruebas PASS / 0 FAIL / 0 skipped en
+`../restore-integrated-executor-complete-20261031.json` (SHA256
+`cefa9bee8e579b8c586c826244c848db265d0cd69017b88ca808031ce4c972a9`).
+Compilacion `npm run build` exit 0 (689 modulos), `oxlint` focalizado/global 0
+errores, `node --check` PASS y 36 chunks JS publicos sin simbolos privados.
+`GLOBAL_SUITE_NOT_RUN` (no se atribuye suite global historica a este bloque).
+Estado: `FINAL_BLOCKER=RESOLVED`, `INTEGRATED_EXECUTOR=PASS`, `readyForRestoreGo=true`,
+`REMOTE_EXECUTED=false`, `RESTORES_EXECUTED=0`. Ningun respaldo real nuevo, sesion
+Auth real, restore remoto, cambio en Staging/Production, llamada ARCA, flag ni merge.

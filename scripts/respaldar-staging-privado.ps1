@@ -1,5 +1,5 @@
-﻿# Staging only. Uses an already-cached PostgreSQL client; never downloads an image.
-param([switch]$Preparar, [switch]$FiscalInstalado053, [switch]$AntesEmisorInactivo, [switch]$AntesContratosRestauracion, [string]$CertificadoRaiz = (Join-Path $env:USERPROFILE 'Downloads\prod-ca-2021.crt'))
+# Staging only. Uses an already-cached PostgreSQL client; never downloads an image.
+param([switch]$Preparar, [switch]$FiscalInstalado053, [switch]$AntesEmisorInactivo, [switch]$AntesContratosRestauracion, [switch]$AntesEnsayoRestauracion, [string]$CertificadoRaiz = (Join-Path $env:USERPROFILE 'Downloads\prod-ca-2021.crt'))
 $ErrorActionPreference = 'Stop'
 $stagingImage = 'postgres:17-alpine'
 $stagingRef = 'acoyfwwmhaeruciyedri'
@@ -129,7 +129,7 @@ function Invoke-StagingBackupTool {
 }
 
 try {
-    if (([int][bool]$FiscalInstalado053 + [int][bool]$AntesEmisorInactivo + [int][bool]$AntesContratosRestauracion) -gt 1) { throw 'Elegir un solo estado de respaldo.' }
+    if (([int][bool]$FiscalInstalado053 + [int][bool]$AntesEmisorInactivo + [int][bool]$AntesContratosRestauracion + [int][bool]$AntesEnsayoRestauracion) -gt 1) { throw 'Elegir un solo estado de respaldo.' }
     if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'Este asistente privado requiere Windows.' }
     if ($stagingRoot.StartsWith($stagingRepo + [IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)) { throw 'El respaldo debe quedar fuera del repositorio.' }
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
@@ -159,6 +159,7 @@ try {
     if ($FiscalInstalado053) { Write-Host 'Modo previo a SQL054: exige 41 tablas fiscales y entrada heredada/ACL en el indice. No restaura ni instala.' }
     if ($AntesEmisorInactivo) { Write-Host 'Modo previo a emisor inactivo: exige 41 tablas fiscales/ACL; equivalencia SQL054 y secretos Management siguen fuera de esta prueba.' }
     if ($AntesContratosRestauracion) { Write-Host 'Modo previo a contratos de restauracion: exige 41 tablas fiscales/ACL; no instala contratos ni acredita equivalencia SQL054 o restore.' }
+    if ($AntesEnsayoRestauracion) { Write-Host 'Modo previo a ensayo aislado: exige 41 tablas fiscales y cuatro contratos/ACL ya instalados. No restaura ni instala.' }
     if ($Preparar) { $stagingResult = 0; return }
 
     $stagingStep = 'permisos privados'
@@ -168,7 +169,7 @@ try {
         if ((Test-Path -LiteralPath $ancestor) -and ((Get-Item -LiteralPath $ancestor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'No usar enlaces o junctions para el respaldo privado.' }
         $ancestor = [IO.Path]::GetDirectoryName($ancestor)
     }
-    $prefix = if ($AntesContratosRestauracion) { 'pre-contratos-restauracion-' } elseif ($AntesEmisorInactivo) { 'pre-emisor-inactivo-' } elseif ($FiscalInstalado053) { 'pre-sql054-' } else { 'pre-fiscal-9054cce-' }
+    $prefix = if ($AntesEnsayoRestauracion) { 'pre-restore-acceptance-' } elseif ($AntesContratosRestauracion) { 'pre-contratos-restauracion-' } elseif ($AntesEmisorInactivo) { 'pre-emisor-inactivo-' } elseif ($FiscalInstalado053) { 'pre-sql054-' } else { 'pre-fiscal-9054cce-' }
     $destination = Join-Path $stagingRoot ($prefix + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $destination -Force | Out-Null
     $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User
@@ -209,8 +210,8 @@ try {
         foreach ($table in @('kioscos','usuarios','productos','ventas','detalles_venta','devoluciones_parciales_atomicas','piloto_operaciones_capacidades')) {
             if (-not ($index | Where-Object { $_ -match ('\bTABLE DATA public ' + [regex]::Escape($table) + '\s') })) { throw 'El archivo no cubre las tablas críticas.' }
         }
-        if ($FiscalInstalado053 -or $AntesEmisorInactivo -or $AntesContratosRestauracion) {
-            $stagingStep = if ($AntesContratosRestauracion) { 'indice fiscal previo a contratos de restauracion' } elseif ($AntesEmisorInactivo) { 'indice fiscal previo a emisor inactivo' } else { 'indice fiscal previo a SQL054' }
+        if ($FiscalInstalado053 -or $AntesEmisorInactivo -or $AntesContratosRestauracion -or $AntesEnsayoRestauracion) {
+            $stagingStep = if ($AntesEnsayoRestauracion) { 'indice previo a ensayo aislado' } elseif ($AntesContratosRestauracion) { 'indice fiscal previo a contratos de restauracion' } elseif ($AntesEmisorInactivo) { 'indice fiscal previo a emisor inactivo' } else { 'indice fiscal previo a SQL054' }
             foreach ($table in $stagingFiscalTables) {
                 if (-not ($index | Where-Object { $_ -match ('\bTABLE DATA public ' + [regex]::Escape($table) + '\s') })) { $stagingDiagnostic.Code='INDICE_FISCAL_TABLA'; throw 'Tabla fiscal ausente del indice.' }
             }
@@ -220,6 +221,17 @@ try {
                 if (-not ($index | Where-Object { $_ -match ('\b' + $entry + $legacySignature) })) {
                     $stagingDiagnostic.Code=if ($entry -eq 'FUNCTION public ') { 'INDICE_FISCAL_FUNCION' } else { 'INDICE_FISCAL_ACL' }
                     throw 'Entrada heredada o ACL ausente del indice.'
+                }
+            }
+        }
+        if ($AntesEnsayoRestauracion) {
+            $stagingStep='indice de cuatro contratos de restauracion'
+            foreach($signature in @('restaurar_contacto_backup:uuid,uuid,text,uuid,jsonb','restaurar_producto_backup:uuid,uuid,uuid,jsonb','restaurar_lote_backup:uuid,uuid,uuid,jsonb','capacidades_restauracion_backup:uuid')) {
+                $parts=$signature.Split(':')
+                $types=@($parts[1].Split(',') | ForEach-Object { '(?:[a-z_]+\s+)?'+[regex]::Escape($_) })
+                $pattern=[regex]::Escape($parts[0])+'\('+($types -join ',\s*')+'\)\s'
+                foreach($entry in @('FUNCTION public ','ACL public FUNCTION ')) {
+                    if(@($index | Where-Object { $_ -match ('\b'+$entry+$pattern) }).Count -ne 1){$stagingDiagnostic.Code='INDICE_RESTORE_CONTRATOS';throw 'Contrato o ACL de restauracion no confirmado.'}
                 }
             }
         }
@@ -238,13 +250,13 @@ try {
         if ($fileRules.Count -eq 0 -or @($fileRules | Where-Object { $_.IdentityReference -ne $sid -or $_.AccessControlType -ne 'Allow' }).Count -ne 0) { throw 'Archivo con permisos privados no confirmados.' }
     }
     $context = [ordered]@{status='BACKUP_ARCHIVE_VERIFIED_NOT_RESTORED';project_ref=$stagingRef;approved_sql_commit='9054cce410ae26b123f151bee2f1ad56c10767bd';created_at_utc=[DateTime]::UtcNow.ToString('o');archive=$dump[0].Name;sha256=(Get-StagingBackupHash -File $dump[0].FullName);roles='roles-sin-passwords.sql';roles_passwords_included=$false;storage_objects_included=$false;restore_executed=$false;owner_only_acl=$true;client_image_id=($imageId -join '')}
-    if ($FiscalInstalado053 -or $AntesEmisorInactivo -or $AntesContratosRestauracion) {
-        $context['requested_stage']=if ($AntesContratosRestauracion) { 'BEFORE_BACKUP_RESTORE_CONTRACTS' } elseif ($AntesEmisorInactivo) { 'BEFORE_INITIAL_INACTIVE_ISSUER' } else { 'BEFORE_SQL054' }
+    if ($FiscalInstalado053 -or $AntesEmisorInactivo -or $AntesContratosRestauracion -or $AntesEnsayoRestauracion) {
+        $context['requested_stage']=if ($AntesEnsayoRestauracion) { 'BEFORE_ISOLATED_RESTORE_ACCEPTANCE' } elseif ($AntesContratosRestauracion) { 'BEFORE_BACKUP_RESTORE_CONTRACTS' } elseif ($AntesEmisorInactivo) { 'BEFORE_INITIAL_INACTIVE_ISSUER' } else { 'BEFORE_SQL054' }
         $context['fiscal_toc_tables_verified']=$stagingFiscalTables
         $context['legacy_function_and_acl_toc_verified']=$true
         $context['fiscal_schema_equivalence_proven']=$false
     }
-    if ($AntesEmisorInactivo -or $AntesContratosRestauracion) {
+    if ($AntesEmisorInactivo -or $AntesContratosRestauracion -or $AntesEnsayoRestauracion) {
         $context['expected_fiscal_revision']='054'
         $context['expected_sql054_sha256']='96a12b2f4738993af429c11deb539ff144b6dc04c2f381fee5fae3966e35b066'
         $context['management_secrets_included']=$false
@@ -255,6 +267,12 @@ try {
         $context['proposed_module']='supabase/pilot-backup/001-003'
         $context['backup_restore_contracts_installed_by_backup']=$false
         $context['backup_restore_contracts_presence_proven']=$false
+    }
+    if ($AntesEnsayoRestauracion) {
+        $context.Remove('approved_sql_commit')
+        $context['backup_restore_contracts_installed_by_backup']=$false
+        $context['backup_restore_contracts_presence_proven']=$true
+        $context['backup_restore_contracts_source']='supabase/pilot-backup/001-003'
     }
     [IO.File]::WriteAllText((Join-Path $destination 'staging-backup-context.json'),($context | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
     Write-Host ('Respaldo Staging confirmado en: ' + $destination)

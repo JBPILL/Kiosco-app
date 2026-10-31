@@ -949,3 +949,77 @@ Cierre local: build final exit0 (aviso chunks >500kB), manifiesto bootstrap43
 PASS,36JS sin tres simbolos privados seleccionados. Primer build detecto union
 undefined en closure de test; corregido con const local tipada y recheck43 PASS,
 sin casts/supresiones en implementacion. Suite global anterior no atribuida aqui.
+
+
+### 2026-10-31 - Integracion local PR07 en curso; NO habilitada
+
+Desde fae2c3d publicado se conecta el paquete publico exacto al ejecutor privado:
+captura por lectura y ensayo mutante tienen scopes separados, actores/window,
+hashes de fuentes, baseline y respaldo previo con contratos instalados. No hay GO
+nuevo ni ejecucion real. Se agrega modo -AntesEnsayoRestauracion al asistente de
+respaldo; NO se ejecuto con credenciales ni contra Staging.
+
+Evidencia parcial local: stagingPrivateBackupScript 33 PASS; paquete+operador31
+PASS; verificador de respaldo12 PASS con archivos/TOC/Docker sinteticos. Este
+ultimo prueba manifiestos mayusculos, hashes, 41 tablas fiscales + inventario50,
+cuatro funciones/ACL, versiones17, rechazo de password, hardlink y Docker remoto.
+No acredita archivo real ni restauracion fisica. Postflight obligatorio despues
+Owner18 mantiene exclusion si falla y bloquea Cajero; sin retry automatico.
+
+Build inicial detecto dos errores de tipos en tests negativos, corregidos sin
+casts; recheck en curso. Pendientes antes de publicar: cobertura completa del
+executor integrado y wrapper, suite enfocada agregada, build/lint/diff finales,
+revision de salida privada y propuesta concreta revisable. No declarar paquete
+aprobado ni listo para ejecucion. Preservar cambios locales como bloque coherente;
+no commits parciales. Ningun Auth real, restore, flags, SQL remoto, Edge, Vercel,
+ARCA, master o Production en este avance.
+
+
+### 2026-10-31 - Integracion local PR07 en curso; NO habilitada
+
+Desde fae2c3d publicado: scopes separados para captura por lectura y ensayo
+mutante; actores, ventana, fuentes, baseline y respaldo vinculados. Nuevo modo
+-AntesEnsayoRestauracion sin uso real. Evidencia parcial: respaldo33 PASS,
+paquete/operador31 PASS, verificador sintetico12 PASS. No acredita respaldo real
+ni restauracion fisica. Postflight Owner18 fallido conserva exclusion y bloquea
+Cajero sin retry. Build final PASS689 modulos (aviso chunks >500kB); primer intento
+con dos errores de tipos de tests corregidos sin casts. Lint enfocado PASS.
+
+Falta probar executor integrado/wrapper y cierre agregado antes de publicar el
+bloque coherente. No declarar listo ni aprobado. Sin Auth real, restore, flags,
+SQL remoto, Edge, Vercel, ARCA, master o Production. Sin GO nuevo.
+
+
+### 2026-10-31 - Cierre local del ejecutor integrado aislado PR07 (GO-ready local; remoto NO ejecutado)
+
+Diagnostico y resolucion de blockers previos (evidencia inicial preservada):
+1. Blocker de postflight y retencion de lease en fase de rol (`../restore-execution-package-focused-20261031.json`, 30 PASS / 1 FAIL, SHA256 `61f430e21702b086f1ac39242bc4f9deac52677c9047b6332b97371b9dc16bd1` -> `../restore-execution-package-focused-final-20261031.json`, 31 PASS / 0 FAIL, SHA256 `31d2922390426b5262ec3f3061e31c50e7e8a9c87eb8cc65c34a45743c968497`):
+   - `scripts/backup/restore-acceptance-operator.mjs` incorpora `FINAL_PREFLIGHT` obligatorio (`cursor=18` tras `OWNER` y `cursor=21` tras `CASHIER`) y conserva `journal.jsonl.phase.lock` siempre que `!phasePassed && attempted > 0`, cerrando incluso el caso en que la primera accion (`index=0`, `confirmed=0`, `attempted=1`) falle con `RESTORE_OUTCOME_UNCERTAIN` tras escribir `INTENT`.
+2. Blocker en ejecutor privado integrado (`../restore-private-executor-focused-20261031.json`, 14 PASS / 4 FAIL en `stage=SESSION`, SHA256 `ee51e4ab78eb1c4f69446dbb65e3139ba0a792291cda3895e36941cea26adc5b`):
+   - Causa raiz de las 4 fallas en `src/test/backupRestorePrivateExecutor.test.ts`: el fixture sintetico de `OWNER` usaba `publicKey: 'sb_publishable_SYNTHETIC'` (9 caracteres tras el prefijo), rechazado antes de red por `validPublicKey` (`/^sb_publishable_[A-Za-z0-9_-]{10,200}$/`) en `loginRestoreHttpClient` (`stage=SESSION`, `auth=0`, `retry=false`). Corregido el fixture sintetico a `'sb_publishable_SYNTHETIC_PUBLIC_KEY'`.
+   - Endurecimientos adicionales en el flujo integrado:
+     - `scripts/backup/restore-private-executor.mjs`: adquiere exclusion de instancia unica (`stage='LEASE'`, rechazando `.lock` o `.phase.lock` previos y reteniendo `.phase.lock` durante `BACKUP`, `CONNECT` y `CAPTURE` antes de delegar a `runRestoreRolePhase`) inmediatamente despues de `stage='DIRECTORY'`; valida ademas `state.cursor === expectedCursor` (`0` para `CAPTURE`/`OWNER`, `18` para `CASHIER`) en `stage='JOURNAL'` antes de `BACKUP` y `CONNECT`.
+     - `scripts/backup/restore-acceptance-engine.mjs`: `regular(file)` captura `ENOENT` y clasifica `RESTORE_JOURNAL_FILE_INVALID`; `RestoreJournal.prototype.append` relee `this.records()` tras `durableWrite` (`fsyncSync`) y verifica coincidencia exacta del hash tip.
+     - `scripts/backup/restore-acceptance-http.mjs`: `createRestoreHttpClient` rechaza JWT con `exp` vencido o invalido (`RESTORE_HTTP_CONFIG_INVALID`) antes de cualquier llamada de red.
+     - `scripts/ejecutar-ensayo-restauracion-privado.ps1`: captura la salida de `--prepare` para emitir una unica linea segura en `-Ejecutar` y verifica que `journal.jsonl` exista sin `.lock`/`.phase.lock` antes de solicitar credenciales interactivas.
+
+Evidencia local final verificada:
+- Suite focalizada completa de 20 archivos / 395 pruebas PASS / 0 FAIL / 0 skipped en `../restore-integrated-executor-complete-20261031.json` (SHA256 `cefa9bee8e579b8c586c826244c848db265d0cd69017b88ca808031ce4c972a9`):
+  - `backupRestorePrivateExecutor.test.ts` (23 PASS, incluyendo contencion de lock concurrente, locks huerfanos `.lock`/`.phase.lock`, rechazo de replay tras `cursor=21` y flujo E2E con caida simulada tras `INTENT`, bloqueo de reinicio, lectura administrativa READ ONLY/REPEATABLE READ/ROLLBACK y resolucion durable `RECOVERED_CONFIRMED` que detiene continuacion).
+  - `backupRestoreJournal.test.ts` (46 PASS, incluyendo matriz completa de 12 estados corruptos/imposibles/transiciones invalidas y bloqueo de `CONFLICT_STOP` ante `prepareRestoreRecoveryReview` y `settleReviewedRestoreRecovery`).
+  - `backupRestoreHttp.test.ts` (47 PASS, incluyendo rechazo de `expired-jwt` antes de red).
+  - `backupRestoreWindowsPrivate.test.ts` (25 PASS, incluyendo `users-write` en carpeta privada, verificador de ACL de backup privado y wrapper `ejecutar-ensayo-restauracion-privado.ps1`).
+  - `backupRestoreOperator.test.ts` (16 PASS), `backupRestoreExecutionPackage.test.ts` (15 PASS), `backupRestoreBackupReference.test.ts` (12 PASS), `backupRestorePreservation.test.ts` (19 PASS), `backupRestoreStatePreflight.test.ts` (17 PASS), `backupRestoreRecovery.test.ts` (12 PASS), `backupRestoreReadOnlyPostgres.test.ts` (22 PASS), `backupRestoreDependencyPreflight.test.ts` (17 PASS), `backupRestoreDependencies.test.ts` (6 PASS), `stagingPrivateBackupScript.test.ts` (33 PASS), `backupPostgresScript.test.ts` (9 PASS), `backupIntegrityScript.test.ts` (5 PASS), `backupContactsSql.test.ts` (43 PASS), `backupAmpliadoSql.test.ts` (9 PASS), `backupCombosSql.test.ts` (9 PASS), `kioskoBootstrapSql.test.ts` (10 PASS).
+- `node --check` sobre todos los `.mjs` de `scripts/backup/`: PASS.
+- `oxlint` focalizado (0 warnings, 0 errors) y `npm run lint` global (0 errors): PASS.
+- `npm run build` (`tsc -b && vite build`, 689 modulos): PASS (exit 0; aviso informativo de chunks >500kB sin cambios).
+- Aislamiento de bundle publico: 36 archivos `dist/assets/*.js` sin simbolos ni hashes del ejecutor/plan privado (`PUBLIC_BUNDLE_ISOLATION=PASS`).
+- `GLOBAL_SUITE_NOT_RUN`: se ejecutaron las 20 suites focalizadas (395 pruebas); no se reejecuto la suite global completa en este turno ni se reutiliza un conteo global historico.
+
+Estado y limites operativos:
+- `FINAL_BLOCKER = RESOLVED` (local).
+- `INTEGRATED_EXECUTOR = PASS` (local/sintetico).
+- `readyForRestoreGo = true` (listo tecnicamente para revision humana y eventual solicitud futura de GO).
+- `REMOTE_EXECUTED = false`, `RESTORES_EXECUTED = 0`.
+- Ningun respaldo real nuevo con `-AntesEnsayoRestauracion`, ninguna sesion Auth real, ninguna mutacion en Staging ni Production, ninguna llamada ARCA, ningun flag activado y ningun merge de PR #3.
+

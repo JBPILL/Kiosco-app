@@ -584,3 +584,41 @@ Cierre local: build final exit0 (aviso chunks >500kB), manifiesto bootstrap43
 PASS,36JS sin tres simbolos privados seleccionados. Primer build detecto union
 undefined en closure de test; corregido con const local tipada y recheck43 PASS,
 sin casts/supresiones en implementacion. Suite global anterior no atribuida aqui.
+
+
+### 2026-10-31 - Integracion local PR07 en curso; NO habilitada
+
+Desde fae2c3d publicado: scopes separados para captura por lectura y ensayo
+mutante; actores, ventana, fuentes, baseline y respaldo vinculados. Nuevo modo
+-AntesEnsayoRestauracion sin uso real. Evidencia parcial: respaldo33 PASS,
+paquete/operador31 PASS, verificador sintetico12 PASS. No acredita respaldo real
+ni restauracion fisica. Postflight Owner18 fallido conserva exclusion y bloquea
+Cajero sin retry. Build final PASS689 modulos (aviso chunks >500kB); primer intento
+con dos errores de tipos de tests corregidos sin casts. Lint enfocado PASS.
+
+Falta probar executor integrado/wrapper y cierre agregado antes de publicar el
+bloque coherente. No declarar listo ni aprobado. Sin Auth real, restore, flags,
+SQL remoto, Edge, Vercel, ARCA, master o Production. Sin GO nuevo.
+
+
+### 2026-10-31 - Ejecutor integrado aislado PR07 verificado localmente (GO-ready local; remoto NO ejecutado)
+
+Resueltos los blockers locales del operador por fases y del ejecutor integrado,
+preservando los reportes iniciales fallidos (`../restore-execution-package-focused-20261031.json`
+30 PASS/1 FAIL y `../restore-private-executor-focused-20261031.json` 14 PASS/4 FAIL).
+`runRestoreRolePhase` retiene `journal.jsonl.phase.lock` ante cualquier fallo con
+`attempted > 0` (incluida la accion 0 incierta) e impone `FINAL_PREFLIGHT`;
+`executePrivateRestorePacket` adquiere exclusion de instancia unica (`stage=LEASE`)
+antes de `JOURNAL`/`BACKUP`/`CONNECT` y valida cursor esperado (`0` o `18`);
+`RestoreJournal` verifica hash tip tras `fsyncSync` y clasifica archivo ausente;
+`createRestoreHttpClient` rechaza JWT expirado antes de red; el wrapper Windows
+valida existencia de `journal.jsonl` y ausencia de locks antes de pedir secretos.
+
+Suite focalizada completa: 20 archivos / 395 pruebas PASS / 0 FAIL / 0 skipped
+(`../restore-integrated-executor-complete-20261031.json`, SHA256
+`cefa9bee8e579b8c586c826244c848db265d0cd69017b88ca808031ce4c972a9`).
+Build (`tsc -b && vite build`, 689 modulos), `oxlint` focalizado/global,
+`node --check` y aislamiento de 36 chunks JS publicos: PASS. `GLOBAL_SUITE_NOT_RUN`.
+Estado: `FINAL_BLOCKER=RESOLVED`, `INTEGRATED_EXECUTOR=PASS`, `readyForRestoreGo=true`,
+`REMOTE_EXECUTED=false`, `RESTORES_EXECUTED=0`. Sin ejecucion remota, respaldo real
+nuevo, sesiones Auth reales, cambios en Staging/Production, ARCA, flags ni merge.

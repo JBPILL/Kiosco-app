@@ -19,7 +19,9 @@ function run(mode:string){
   mkdirSync(join(root,'Downloads'))
   if(mode!=='missing-ca')writeFileSync(join(root,'Downloads','prod-ca-2021.crt'),mode==='invalid-ca'?'invalid':readFileSync(resolve('src/test/fixtures/supabase-root-2021.crt')))
   const runner=join(root,'runner.ps1'),record=join(root,'record.json')
-  const stateArgs=mode==='fiscal-both'?'-FiscalInstalado053 -AntesEmisorInactivo'
+  const stateArgs=mode==='fiscal-acceptance-conflict'?'-AntesEnsayoRestauracion -AntesContratosRestauracion'
+   :mode.startsWith('fiscal-acceptance-')?'-AntesEnsayoRestauracion'
+   :mode==='fiscal-both'?'-FiscalInstalado053 -AntesEmisorInactivo'
    :mode==='fiscal-restore-with053'?'-AntesContratosRestauracion -FiscalInstalado053'
    :mode==='fiscal-restore-withissuer'?'-AntesContratosRestauracion -AntesEmisorInactivo'
    :mode==='fiscal-restore-all'?'-AntesContratosRestauracion -AntesEmisorInactivo -FiscalInstalado053'
@@ -46,6 +48,12 @@ function run(mode:string){
       if(${quote(mode)} -eq 'fiscal-bare-acl'){'3; 0 1 ACL public FUNCTION preparar_operacion_fiscal_homologacion(uuid, uuid, uuid, jsonb) postgres'}
       elseif(${quote(mode)} -eq 'fiscal-wrong-signature'){'3; 0 1 ACL public FUNCTION preparar_operacion_fiscal_homologacion(p_operacion_id uuid, p_kiosco_id uuid, p_venta_id text, p_contexto jsonb) postgres'}
       elseif(${quote(mode)} -notin @('fiscal-missing-acl','fiscal-issuer-missing-acl','fiscal-restore-missing-acl')){'3; 0 1 ACL public FUNCTION preparar_operacion_fiscal_homologacion(p_operacion_id uuid, p_kiosco_id uuid, p_venta_id uuid, p_contexto jsonb) postgres'}
+      if(${quote(mode)} -like 'fiscal-acceptance-*'){
+       foreach($sig in @('restaurar_contacto_backup(uuid, uuid, text, uuid, jsonb)','restaurar_producto_backup(uuid, uuid, uuid, jsonb)','restaurar_lote_backup(uuid, uuid, uuid, jsonb)','capacidades_restauracion_backup(uuid)')){
+        if(${quote(mode)} -ne 'fiscal-acceptance-missing-function'){'4; 0 1 FUNCTION public '+$sig+' postgres'}
+        if(${quote(mode)} -ne 'fiscal-acceptance-missing-acl'){'5; 0 1 ACL public FUNCTION '+$sig+' postgres'}
+       }
+      }
      };return
     }
     $tool=if($a -contains 'pg_dumpall'){'pg_dumpall'}else{'pg_dump'}
@@ -148,4 +156,13 @@ it.skipIf(process.platform!=='win32').each([
 ] as const)('respaldo de contratos no confirma indice incompleto: %s',(mode,code)=>{
  const r=run(mode);expect(r.status,r.output).toBe(1);expect(r.context).toBeNull()
  expect(r.output).toContain('['+code+']');expect(r.report.env_ok).toBe(true);expect(r.output).not.toContain(synthetic)
+},60000)
+
+it.skipIf(process.platform!=='win32')('respaldo previo a ensayo exige contratos instalados sin afirmar restore ni equivalencia',()=>{
+ const r=run('fiscal-acceptance-ok');expect(r.status,r.output).toBe(0)
+ expect(r.context).toMatchObject({requested_stage:'BEFORE_ISOLATED_RESTORE_ACCEPTANCE',backup_restore_contracts_presence_proven:true,backup_restore_contracts_installed_by_backup:false,expected_fiscal_revision:'054',restore_executed:false})
+ expect(r.context.approved_sql_commit).toBeUndefined();expect(r.output).not.toContain(synthetic)
+},60000)
+it.skipIf(process.platform!=='win32').each(['fiscal-acceptance-missing-function','fiscal-acceptance-missing-acl','fiscal-acceptance-conflict'])('ensayo falla cerrado ante %s',mode=>{
+ const r=run(mode);expect(r.status).toBe(1);expect(r.context).toBeNull();expect(r.output).not.toContain(synthetic)
 },60000)

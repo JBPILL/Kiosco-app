@@ -6,11 +6,12 @@ const ownerEnd = plan.steps.reduce((n, step) => n + (step.expected === 'REJECT' 
 const fail = () => { throw Error('RESTORE_OPERATOR_STOP') }
 
 export async function runRestoreRolePhase(options) {
-  let stage = 'GATE', client, logout = 'NOT_ESTABLISHED', confirmed = 0, phasePassed = false, lease, leaseReleased = false
-  const { journal, role, allowRun = false, reviewedPlanHash, expiresAt, preflight, openSession } = options ?? {}
+  let stage = 'GATE', client, logout = 'NOT_ESTABLISHED', confirmed = 0, attempted = 0, phasePassed = false, lease, leaseReleased = false
+  const { journal, role, allowRun = false, reviewedPlanHash, expiresAt, preflight, openSession, now = Date.now } = options ?? {}
   const deadline = Date.parse(expiresAt)
   const requireWindow = () => {
-    if (!Number.isFinite(deadline) || deadline <= Date.now() || deadline > Date.now() + 900000) fail()
+    const current=now()
+    if (!Number.isFinite(current) || !Number.isFinite(deadline) || deadline <= current || deadline > current + 900000) fail()
   }
   try {
     if (allowRun !== true || reviewedPlanHash !== PLAN_HASH || !['OWNER', 'CASHIER'].includes(role) || typeof preflight !== 'function' || typeof openSession !== 'function') fail()
@@ -40,9 +41,14 @@ export async function runRestoreRolePhase(options) {
       if (current.stopped || current.pending || await preflight({ role, cursor: current.cursor, planHash: PLAN_HASH }) !== true) fail()
       requireWindow() // Preflight/session acquisition may have consumed the window.
       stage = 'ACTION'
+      attempted++
       await executeNextRestoreAction(journal, actor, (rpc, params) => client.requestPlannedRpc(rpc, params))
       confirmed++
     }
+    stage = 'FINAL_PREFLIGHT'
+    requireWindow()
+    if(await preflight({role,cursor:end,planHash:PLAN_HASH})!==true)fail()
+    requireWindow()
     phasePassed = true
   } catch { /* Never return private exceptions, response bodies or credentials. */ }
   finally {
@@ -55,8 +61,8 @@ export async function runRestoreRolePhase(options) {
     if (lease !== undefined) {
       try {
         fs.closeSync(lease)
-        // Unknown login/logout outcomes and process crashes preserve the exclusion.
-        if (logout !== 'NOT_CONFIRMED') { fs.unlinkSync(journal.file + '.phase.lock'); leaseReleased = true }
+        // Unknown login/logout outcomes, partial/uncertain actions and process crashes preserve the exclusion.
+        if (logout !== 'NOT_CONFIRMED' && (phasePassed || attempted === 0)) { fs.unlinkSync(journal.file + '.phase.lock'); leaseReleased = true }
       } catch { stage = 'LEASE_CLEANUP' }
     }
   }
