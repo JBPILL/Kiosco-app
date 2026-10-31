@@ -11,7 +11,7 @@ const actors={OWNER:'11111111-1111-4111-8111-111111111111',CASHIER:'22222222-222
 const now=Date.parse('2026-10-30T18:00:00Z')
 beforeEach(()=>{folder=mkdtempSync(join(tmpdir(),'kiosko-restore-state-'));journal=createRestoreJournal(join(folder,'journal.jsonl'),actors)})
 afterEach(()=>{if(dirname(folder)!==resolve(tmpdir())||!basename(folder).startsWith('kiosko-restore-state-'))throw Error('Unsafe cleanup');rmSync(folder,{recursive:true,force:true})})
-function empty(){return {read_only:'on',observed_at:new Date(now).toISOString(),plan_hash:PLAN_HASH,cursor:0,commercial_active:true,owner_active:true,cashier_active:true,fixtures:{clientes:{count:0,matches:true},proveedores:{count:0,matches:true},productos:{count:0,matches:true},lotes_producto:{count:0,matches:true}},operations:[] as Record<string,unknown>[],stock_ids:[] as string[],stock_context:true,movements:0,cost_rows:0}}
+function empty(){return {read_only:'on',observed_at:new Date(now).toISOString(),plan_hash:PLAN_HASH,cursor:0,commercial_active:true,owner_active:true,cashier_active:true,fixtures:{clientes:{count:0,matches:true},proveedores:{count:0,matches:true},productos:{count:0,matches:true},lotes_producto:{count:0,matches:true}},operations:[] as Record<string,unknown>[],stock_ids:[] as string[],stock_context:true,movements:0,cost_rows:0,movement_cost_rows:0,price_history_total:0,price_history_matches:true}}
 it('emits fixed SELECT-only READ ONLY/ROLLBACK scoped to all future and rejected UUIDs',()=>{
  const sql=buildRestoreStateReadSql(journal)
  expect(sql).toContain('REPEATABLE READ READ ONLY');expect(sql.trimEnd().endsWith('ROLLBACK;')).toBe(true)

@@ -10,9 +10,10 @@ beforeEach(()=>{folder=mkdtempSync(join(tmpdir(),'kiosko-restore-acl-'))})
 afterEach(()=>{if(dirname(folder)!==resolve(tmpdir())||!basename(folder).startsWith('kiosko-restore-acl-'))throw Error('Unsafe cleanup');rmSync(folder,{recursive:true,force:true})})
 const quote=(s:string)=>"'"+s.replaceAll("'","''")+"'"
 const helper=resolve('scripts/backup/restore-private-windows.ps1')
-it.skipIf(process.platform!=='win32').each(['private','journal','broad-root','broad-leaf','broad-file','inherited-leaf','outside','nested','unknown','directory','duplicate','traversal','junction'])('actual Windows private directory %s',mode=>{
+it.skipIf(process.platform!=='win32').each(['private','journal','baseline','broad-root','broad-leaf','broad-file','inherited-leaf','outside','nested','unknown','directory','duplicate','traversal','junction'])('actual Windows private directory %s',mode=>{
  const setup=`$ErrorActionPreference='Stop';. ${quote(helper)};$root=${quote(folder)};$id=[Security.Principal.WindowsIdentity]::GetCurrent().User;$acl=[Security.AccessControl.DirectorySecurity]::new();$acl.SetAccessRuleProtection($true,$false);$acl.SetOwner($id);$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($id,[Security.AccessControl.FileSystemRights]::FullControl,[Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit',[Security.AccessControl.PropagationFlags]::None,[Security.AccessControl.AccessControlType]::Allow));Set-Acl -LiteralPath $root -AclObject $acl;$run=New-RestoreProtectedDirectory $root 'run';`
  let change=''
+ if(mode==='baseline')change="[IO.File]::WriteAllText((Join-Path $run 'preservation-baseline.json'),'LOCAL SYNTHETIC');"
  if(['journal','broad-file'].includes(mode))change="[IO.File]::WriteAllText((Join-Path $run 'journal.jsonl'),'LOCAL SYNTHETIC');"
  if(mode.startsWith('broad-')){
   const target=mode==='broad-root'?'$root':mode==='broad-leaf'?'$run':"(Join-Path $run 'journal.jsonl')"
@@ -28,7 +29,7 @@ it.skipIf(process.platform!=='win32').each(['private','journal','broad-root','br
  if(mode==='junction')change="$target=New-RestoreProtectedDirectory $root 'target';$null=New-Item -ItemType Junction -Path (Join-Path $root 'link') -Target $target;$run=Join-Path $root 'link';"
  const result=spawnSync('pwsh',['-NoProfile','-NonInteractive','-Command',setup+`try{${change}Assert-RestorePrivateRun $run $root;[Console]::Out.Write('PRIVATE_CHECK_PASS')}catch{[Console]::Out.Write('PRIVATE_CHECK_REJECTED')}`],{encoding:'utf8',timeout:20000,windowsHide:true})
  expect(result.status,result.stderr).toBe(0)
- expect(result.stdout).toBe(['private','journal'].includes(mode)?'PRIVATE_CHECK_PASS':'PRIVATE_CHECK_REJECTED')
+ expect(result.stdout).toBe(['private','journal','baseline'].includes(mode)?'PRIVATE_CHECK_PASS':'PRIVATE_CHECK_REJECTED')
  expect(result.stderr).toBe('')
 },25000)
 

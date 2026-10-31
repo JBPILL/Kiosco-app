@@ -881,3 +881,71 @@ Sin SQL instalado, mutaciones Staging, flags, Edge, ARCA, merge/master/Productio
 
 Build final exit0 (aviso chunks >500kB);36JS publicos sin tres simbolos de
 estado privado seleccionados. Revision acotada, no certificacion absoluta.
+
+
+### Preservacion comercial durable PR07 — 30/10/2026
+
+Publicacion confirmada hasta da8aaa6. Preparada huella de50 tablas comerciales,
+solo hashes/cantidades, y verificacion compuesta con metadata/filas del ensayo.
+247 pruebas enfocadas PASS/0FAIL/0skip. Sin sesiones/consultas remotas nuevas.
+Detalles/exclusiones/limites en ExecPlan backup; no equivale a backup, restauracion
+real, RLS integral ni GO. Falta paquete exacto de ejecucion Windows, revision del
+alcance hospedado, respaldo fresco y GO antes de cualquier mutacion.
+PR07 PARCIAL; PR01-PR11 activo, UI integral bloqueada, Production intacta.
+
+restore-preservation fija un inventario de50 tablas PUBLIC comerciales: ventas/
+caja/stock/costos/clientes/proveedores/compras/cuenta corriente, envases vacios/
+pendientes/ledger, devoluciones, operaciones/auditoria, suscripciones y soporte/
+electronica. Huella GLOBAL de esas tablas en Staging, no solo del kiosco aislado;
+el GO hospedado debe describirlo y exigir exclusion de otras escrituras. No toca
+Production ni lee Auth, secretos PIN/custodia, configuracion_admin o cache TA.
+Esto no afirma cobertura de todas las tablas/esquemas/Storage/credenciales.
+Cada tabla devuelve cantidad y SHA256 de JSONB ordenado dentro de PostgreSQL;
+las filas originales no salen de PG. La baseline privada contiene solo esas
+huellas, contexto/fecha/version y binding al HEADER del journal/plan/scopeHash.
+
+Excluye exactamente los cuatro UUID de fixtures, operaciones de escritura/stock
+previstas y derivadas, y sus costos/movimientos/historial de precios. Toda esa
+superficie excluida exige ADEMAS el chequeo owned-state; no usar una huella sola
+como autorizacion. El owned-state ahora verifica ACK anidados de catalogo y lotes
+por igualdad con el ACK raiz SHA256 durable (incluye proveedor previo), costos
+de movimientos y el unico historial de precio permitido. Supersede la limitacion
+anterior de resultados anidados solo no nulos. Rechaza extra fields/alteraciones,
+colisiones futuras, saldo/precio/stock/actor o trazabilidad fuera del plan.
+
+Baseline write wx/fsync/cierre, sin sobrescribir, borrar ni recapturar tras fallo;
+se conservan parciales. Lectura fija preservation-baseline.json con size<=64KiB,
+archivo regular/no symlink/hardlink; helper ACL Windows acepta SOLO ese nombre
+adicional. Hash revisado separado obligatorio, recomputado con todos los campos;
+no firma ni GO en si mismo. Captura solo cursor0, sin pending/stopped. Referencia
+durable NO expira por antiguedad: para recuperacion exige siempre observacion
+actual<=5min, version/contexto/hash iguales. Ventanas/GO de operador siguen
+independientes y caducan; no se prorrogan ni heredan por conservar esta referencia.
+Una prueba a+1dia acepta datos iguales con lectura nueva, rechaza lectura vieja.
+
+Puerto readonly incorpora capturePreservationBaseline y readPreservedState:
+metadata y owned-state en la misma transaccion RR/RO; huella y ROLLBACK antes de
+cualquier escritura LOCAL de baseline. Capture devuelve preparationOnly=true,
+no permiso de restaurar. Fallo de lectura/rollback/archivo invalida lector; segundo
+capture no sobrescribe archivo. Consola de EJECUCION aun no conectada/autoriza.
+
+Marco local amplia setup con SQL opcionales de capacidades/envases/devoluciones
+existentes (mismo orden probado), sin editar bootstrap43 ni instalar nada remoto.
+Ensayo de21 pasos conserva referencia global50 durante todas las lecturas.
+Originales sinteticos NO VACIOS: producto300/stock1, deuda cliente50, caja100 y
+movimiento25, envases vacios7/pendientes2. Tamper por savepoint de descripcion,
+deuda, dinero, vacios y pendientes causa rechazo; todo se revierte LOCALMENTE.
+Tamper de ACK catalogo, costo historico o motivo de precio del fixture tambien
+causa rechazo por owned-state aunque este excluido de la huella general.
+
+247 pruebas enfocadas finales PASS/0FAIL/0skip. Reporte
+../restore-preservation-release-final-tests-20261030.json SHA256
+302b96fbb95cf117d6a2e502b905d9a248258d612e9ebfbd2cd8a9a5bc28140b.
+Incluye19 pruebas de baseline, puertos/captura/archivo y17 escenarios Windows;
+base SQL43 prueba los21 pasos y tamper. No nueva suite global atribuida aqui.
+Lint/sintaxis/diff PASS. Sin credenciales reales, SQL/flags/Edge/Vercel/ARCA/merge.
+
+Cierre local: build final exit0 (aviso chunks >500kB), manifiesto bootstrap43
+PASS,36JS sin tres simbolos privados seleccionados. Primer build detecto union
+undefined en closure de test; corregido con const local tipada y recheck43 PASS,
+sin casts/supresiones en implementacion. Suite global anterior no atribuida aqui.

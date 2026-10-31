@@ -3,6 +3,8 @@
 import { readdirSync, readFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { join, resolve, dirname, basename } from 'node:path'
 import { tmpdir } from 'node:os'
+import { buildRestorePreservationReadSql, writeRestorePreservationBaseline, verifyRestorePreservation } from '../../scripts/backup/restore-preservation.mjs'
+import type { RestorePreservationBaseline } from '../../scripts/backup/restore-preservation.mjs'
 import { buildRestoreStateReadSql, verifyRestoreStateRead } from '../../scripts/backup/restore-state-preflight.mjs'
 import { buildUncertainRestoreReadSql, decodeUncertainRestoreRead } from '../../scripts/backup/restore-acceptance-recovery.mjs'
 import { createRestoreJournal, inspectRestoreJournal, executeNextRestoreAction, inspectUncertainRestoreAction, loadRestorePlan, valueHash } from '../../scripts/backup/restore-acceptance-engine.mjs'
@@ -33,6 +35,7 @@ beforeAll(async () => {
     await db.exec(readFileSync(file, 'utf8'))
   }
   await installLocalRestoreCompatibility(db)
+  for(const file of ['supabase/bootstrap/pilot-operations/001_capabilities.sql','supabase/bootstrap/envases/001_shared_ledger.sql','supabase/bootstrap/envases/002_checkout_receipts.sql','supabase_fase_devolucion_registro_privado.sql','supabase_fase_devolucion_calculo_historico.sql','supabase_fase_devolucion_preparacion_privada.sql','supabase/bootstrap/returns/001_atomic_cash_return.sql','supabase/bootstrap/returns/002_owner_envases_return.sql','supabase/bootstrap/returns/003_whole_unit_quantities.sql','supabase/bootstrap/envases/003_pending_totals.sql'])await db.exec(readFileSync(file,'utf8'))
   await db.exec(moduleSql); await db.exec(moduleSql)
   const inventorySql = readFileSync('supabase/pilot-backup/002_inventory_restore.sql', 'utf8')
   await db.exec(inventorySql); await db.exec(inventorySql)
@@ -482,8 +485,18 @@ it('ejecuta el motor durable contra los ACK SQL reales locales para las21 accion
   if(dirname(folder)!==resolve(tmpdir())||!basename(folder).startsWith('kiosko-restore-sql-'))throw Error('Unsafe local folder')
   try {
     await seedLocalFixedPlanActors()
+    await db.exec('RESET ROLE')
+    await db.query("INSERT INTO productos(id,kiosco_id,descripcion,precio_venta,stock_actual) VALUES($1,$2,'ORIGINAL LOCAL NO TOCAR',300,1)",[recordId,plan.kioskId])
+    await db.query("INSERT INTO clientes(id,kiosco_id,nombre,saldo_deudor) VALUES($1,$2,'ORIGINAL LOCAL CLIENTE',50)",[recordId,plan.kioskId])
+    await db.query("INSERT INTO envases_tipos_comercio(kiosco_id,id,nombre,precio) VALUES($1,'ORIGINAL','ENVASE ORIGINAL',100)",[plan.kioskId])
+    await db.query("INSERT INTO envases_saldos(kiosco_id,tipo_id,cantidad) VALUES($1,'ORIGINAL',7)",[plan.kioskId])
+    await db.query("INSERT INTO envases_pendientes(kiosco_id,tipo_id,cantidad) VALUES($1,'ORIGINAL',2)",[plan.kioskId])
+    await db.query('INSERT INTO sesiones_caja(id,kiosco_id,usuario_id,monto_inicial) VALUES($1,$2,$3,100)',[recordId,plan.kioskId,owner])
+    await db.query("INSERT INTO movimientos_caja(id,kiosco_id,sesion_caja_id,usuario_id,tipo,motivo,monto,descripcion) VALUES($1,$2,$1,$3,'INGRESO','ENSAYO',25,'ORIGINAL LOCAL')",[recordId,plan.kioskId,owner])
+    await db.exec('SET ROLE authenticated')
     const journal=createRestoreJournal(join(folder,'journal.jsonl'),{OWNER:auth,CASHIER:deniedActors[0].auth})
-    async function stateRead(expectFailure=false) {
+    let preservation:RestorePreservationBaseline|undefined
+    async function stateRead(expectFailure=false,preservationFailure=false) {
       await db.exec('RESET ROLE; SAVEPOINT state_read; SET LOCAL transaction_read_only=on')
       try {
         const sql=buildRestoreStateReadSql(journal)
@@ -494,6 +507,13 @@ it('ejecuta el motor durable contra los ACK SQL reales locales para las21 accion
         const value=result.find(r=>r.rows.length>0)?.rows[0]?.evidence
         if(expectFailure)expect(()=>verifyRestoreStateRead(journal,value)).toThrow('RESTORE_STATE_NOT_CONFIRMED')
         else expect(verifyRestoreStateRead(journal,value)).toMatchObject({status:'OWNED_FIXTURES_MATCH_ONLY',cursor:inspectRestoreJournal(journal).cursor})
+        const preservationSql=buildRestorePreservationReadSql()
+        const preservationResults=await db.exec(preservationSql.slice(preservationSql.indexOf('\n')+1,preservationSql.lastIndexOf('ROLLBACK;')))
+        const preserved=preservationResults.find(r=>r.rows.length>0)?.rows[0]?.evidence
+        if(!preservation)preservation=writeRestorePreservationBaseline(journal,preserved)
+        const baseline=preservation
+        if(preservationFailure)expect(()=>verifyRestorePreservation(journal,baseline,preserved,baseline.baselineHash)).toThrow('RESTORE_PRESERVATION_NOT_CONFIRMED')
+        else expect(verifyRestorePreservation(journal,baseline,preserved,baseline.baselineHash)).toMatchObject({status:'REVIEWED_COMMERCIAL_INVENTORY_MATCH_ONLY',cursor:inspectRestoreJournal(journal).cursor})
         return value
       } finally { await db.exec('ROLLBACK TO SAVEPOINT state_read; RELEASE SAVEPOINT state_read; SET ROLE authenticated') }
     }
@@ -535,6 +555,36 @@ it('ejecuta el motor durable contra los ACK SQL reales locales para las21 accion
         else await db.query("UPDATE movimientos_stock SET notas='SYNTHETIC DRIFT' WHERE producto_id=$1",[plan.fixtureIds.product])
         await stateRead(true)
         await db.exec('ROLLBACK TO SAVEPOINT owned_drift; RELEASE SAVEPOINT owned_drift; SET ROLE authenticated')
+      }
+      if(inspectRestoreJournal(journal).cursor===5){
+        await db.exec('RESET ROLE; SAVEPOINT owned_audit_drift')
+        await db.query("UPDATE operaciones_escritura SET resultado=resultado||'{\"unexpected\":true}'::jsonb WHERE tipo='CATALOGO_PRODUCTO' AND solicitud->>'producto'=$1",[plan.fixtureIds.product])
+        await stateRead(true)
+        await db.exec('ROLLBACK TO SAVEPOINT owned_audit_drift')
+        await db.query('UPDATE movimiento_stock_costos SET precio_costo=1 WHERE movimiento_id IN (SELECT id FROM movimientos_stock WHERE producto_id=$1)',[plan.fixtureIds.product])
+        await stateRead(true)
+        await db.exec('ROLLBACK TO SAVEPOINT owned_audit_drift')
+        await db.query("UPDATE historial_precios_producto SET motivo='SYNTHETIC DRIFT' WHERE producto_id=$1",[plan.fixtureIds.product])
+        await stateRead(true)
+        await db.exec('ROLLBACK TO SAVEPOINT owned_audit_drift; RELEASE SAVEPOINT owned_audit_drift; SET ROLE authenticated')
+      }
+      if(inspectRestoreJournal(journal).cursor===1){
+        await db.exec('RESET ROLE; SAVEPOINT unowned_drift')
+        await db.query("UPDATE productos SET descripcion='ORIGINAL ALTERADO' WHERE id=$1",[recordId])
+        await stateRead(false,true)
+        await db.exec('ROLLBACK TO SAVEPOINT unowned_drift')
+        await db.query('UPDATE clientes SET saldo_deudor=51 WHERE id=$1',[recordId])
+        await stateRead(false,true)
+        await db.exec('ROLLBACK TO SAVEPOINT unowned_drift')
+        await db.query("UPDATE envases_saldos SET cantidad=8 WHERE kiosco_id=$1 AND tipo_id='ORIGINAL'",[plan.kioskId])
+        await stateRead(false,true)
+        await db.exec('ROLLBACK TO SAVEPOINT unowned_drift')
+        await db.query("UPDATE envases_pendientes SET cantidad=3 WHERE kiosco_id=$1 AND tipo_id='ORIGINAL'",[plan.kioskId])
+        await stateRead(false,true)
+        await db.exec('ROLLBACK TO SAVEPOINT unowned_drift')
+        await db.query('UPDATE movimientos_caja SET monto=26 WHERE id=$1',[recordId])
+        await stateRead(false,true)
+        await db.exec('ROLLBACK TO SAVEPOINT unowned_drift; RELEASE SAVEPOINT unowned_drift; SET ROLE authenticated')
       }
       const rows=journal.records(), completed=rows.at(-1)!, intent=rows.at(-2)!
       if(completed.kind==='CONFIRMED') {

@@ -54,7 +54,7 @@ function Assert-RestorePrivateRun([string]$Path,[string]$ApprovedRoot) {
  # rules too. Protected ACL is required on directories; inherited files are
  # handled separately, without silently rewriting them.
  foreach($item in Get-ChildItem -LiteralPath $path -Force -ErrorAction Stop){
-  if($item.PSIsContainer -or $item.Name -cnotin @('journal.jsonl','journal.jsonl.lock','journal.jsonl.phase.lock')){throw 'RESTORE_PRIVATE_CONTENT_REJECTED'}
+  if($item.PSIsContainer -or $item.Name -cnotin @('journal.jsonl','journal.jsonl.lock','journal.jsonl.phase.lock','preservation-baseline.json')){throw 'RESTORE_PRIVATE_CONTENT_REJECTED'}
   Assert-RestoreNoReparse $item.FullName
   $acl=Get-Acl -LiteralPath $item.FullName -ErrorAction Stop
   $owner=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value

@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto'
 import { PLAN_HASH } from './restore-acceptance-engine.mjs'
 import { verifyRestoreDependencyMetadata } from './restore-dependency-preflight.mjs'
 import { buildRestoreStateReadSql, verifyRestoreStateRead } from './restore-state-preflight.mjs'
+import { buildRestorePreservationReadSql, writeRestorePreservationBaseline, verifyRestorePreservation } from './restore-preservation.mjs'
 const host = 'aws-1-sa-east-1.pooler.supabase.com'
 const fail = code => { throw Error(code) }
 function pinnedSql(name, hash) {
@@ -51,10 +52,10 @@ export async function connectRestoreReadOnlyPostgres(credentials, { Client = pg.
     try { await client?.end() } catch { /* Do not expose driver diagnostics. */ }
     fail('RESTORE_READER_CONNECTION_NOT_CONFIRMED')
   }
-  async function read(initial, journal) {
+  async function read(initial, journal, preservation) {
     if (disposed || poisoned || reading) fail('RESTORE_READER_UNAVAILABLE')
     reading = true
-    let result, failed = false
+    let result, captured, failed = false
     try {
       await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
       await client.query("SET LOCAL TIME ZONE 'UTC'")
@@ -70,16 +71,28 @@ export async function connectRestoreReadOnlyPostgres(credentials, { Client = pg.
         const owned=verifyRestoreStateRead(journal,evidence(await client.query(body)),now())
         result={...result,ownedState:owned.status,cursor:owned.cursor}
       }
+      if(preservation){
+        const source=buildRestorePreservationReadSql(),body=source.slice(source.indexOf('\n')+1,source.lastIndexOf('ROLLBACK;'))
+        const value=evidence(await client.query(body))
+        if(preservation.capture)captured=value
+        else result={...result,commercialPreservation:verifyRestorePreservation(journal,preservation.baseline,value,preservation.reviewedHash,now()).status}
+      }
     } catch { failed = true }
     try { await client.query('ROLLBACK') } catch { failed = true }
     reading = false
     if (failed || poisoned) { poisoned = true; fail('RESTORE_READER_READ_NOT_CONFIRMED') }
+    if(captured){
+      try{const baseline=writeRestorePreservationBaseline(journal,captured,now());result={...result,baselineHash:baseline.baselineHash,preparationOnly:true}}
+      catch{poisoned=true;fail('RESTORE_READER_BASELINE_NOT_CONFIRMED')}
+    }
     return Object.freeze(result)
   }
   return Object.freeze({
     readDependencyMetadata: () => read(false),
     readInitialPreflight: () => read(true),
     readOwnedState: journal => { if(!journal) fail('RESTORE_READER_STATE_REQUIRED'); return read(false, journal) },
+    capturePreservationBaseline: journal => {if(!journal)fail('RESTORE_READER_STATE_REQUIRED');return read(true,journal,{capture:true})},
+    readPreservedState: (journal,baseline,reviewedHash) => {if(!journal||!baseline||!reviewedHash)fail('RESTORE_READER_STATE_REQUIRED');return read(false,journal,{baseline,reviewedHash})},
     async dispose() {
       if (disposed) return
       if (reading) fail('RESTORE_READER_BUSY')

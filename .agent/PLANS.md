@@ -568,3 +568,19 @@ PR07 PARCIAL, objetivo PR01-PR11 activo, UI/flags/ARCA/Production cerrados.
 
 Build final exit0 (aviso chunks >500kB);36JS publicos sin tres simbolos de
 estado privado seleccionados. Revision acotada, no certificacion absoluta.
+
+
+### Preservacion comercial durable PR07 — 30/10/2026
+
+Publicacion confirmada hasta da8aaa6. Preparada huella de50 tablas comerciales,
+solo hashes/cantidades, y verificacion compuesta con metadata/filas del ensayo.
+247 pruebas enfocadas PASS/0FAIL/0skip. Sin sesiones/consultas remotas nuevas.
+Detalles/exclusiones/limites en ExecPlan backup; no equivale a backup, restauracion
+real, RLS integral ni GO. Falta paquete exacto de ejecucion Windows, revision del
+alcance hospedado, respaldo fresco y GO antes de cualquier mutacion.
+PR07 PARCIAL; PR01-PR11 activo, UI integral bloqueada, Production intacta.
+
+Cierre local: build final exit0 (aviso chunks >500kB), manifiesto bootstrap43
+PASS,36JS sin tres simbolos privados seleccionados. Primer build detecto union
+undefined en closure de test; corregido con const local tipada y recheck43 PASS,
+sin casts/supresiones en implementacion. Suite global anterior no atribuida aqui.

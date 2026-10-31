@@ -4,6 +4,7 @@ import { readFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, basename, resolve } from 'node:path'
 import { connectRestoreReadOnlyPostgres } from '../../scripts/backup/restore-readonly-postgres.mjs'
+import { RESTORE_PRESERVATION_TABLES,RESTORE_PRESERVATION_SCOPE_HASH,loadRestorePreservationBaseline } from '../../scripts/backup/restore-preservation.mjs'
 import { PLAN_HASH, createRestoreJournal } from '../../scripts/backup/restore-acceptance-engine.mjs'
 const reviewed: {metadata: Record<string,unknown>} = JSON.parse(readFileSync('scripts/backup/restore-dependency-reviewed.json','utf8'))
 const now=Date.parse('2026-10-30T18:00:00Z'),secret='SYNTHETIC_PRIVATE_DB_PASSWORD_ERROR'
@@ -42,7 +43,7 @@ function mock(mode='ok') {
 it('pins TLS/host/project/default readonly and exposes only fixed read methods',async()=>{
  const state=mock(),port=await connectRestoreReadOnlyPostgres(credentials,{Client:state.Client,now:()=>now})
  expect(state.configs[0]).toMatchObject({host:'aws-1-sa-east-1.pooler.supabase.com',port:5432,user:'postgres.acoyfwwmhaeruciyedri',database:'postgres',ssl:{rejectUnauthorized:true,servername:'aws-1-sa-east-1.pooler.supabase.com'},options:'-c default_transaction_read_only=on -c search_path=pg_catalog,public'})
- expect(Object.keys(port).sort()).toEqual(['dispose','readDependencyMetadata','readInitialPreflight','readOwnedState'])
+ expect(Object.keys(port).sort()).toEqual(['capturePreservationBaseline','dispose','readDependencyMetadata','readInitialPreflight','readOwnedState','readPreservedState'])
  expect(await port.readInitialPreflight()).toMatchObject({status:'METADATA_MATCH_ONLY',initialState:'ABSENT_FIXTURES_NO_COLLISIONS_ONLY'})
  expect(state.queries[1]).toBe('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
  expect(state.queries.at(-1)).toBe('ROLLBACK')
@@ -106,9 +107,13 @@ it('owned-state method accepts only a journal and confirms metadata plus state b
  const journal=createRestoreJournal(join(folder,'journal.jsonl'),{OWNER:'11111111-1111-4111-8111-111111111111',CASHIER:'22222222-2222-4222-8222-222222222222'})
  class StateClient extends state.Client {
   async query(sql:string):Promise<unknown>{
+   if(sql.includes("'scope_hash'")){
+    state.queries.push(sql)
+    return {rows:[{evidence:{read_only:'on',query_role:'postgres',observed_at:new Date(now).toISOString(),server_version:'17.11',scope_hash:RESTORE_PRESERVATION_SCOPE_HASH,plan_hash:PLAN_HASH,tables:RESTORE_PRESERVATION_TABLES.map(name=>({name,count:0,sha256:'a'.repeat(64)}))}}]}
+   }
    if(sql.includes("'stock_ids'")){
     state.queries.push(sql)
-    return {rows:[{evidence:{read_only:'on',observed_at:new Date(now).toISOString(),plan_hash:PLAN_HASH,cursor:0,commercial_active:true,owner_active:true,cashier_active:true,fixtures:Object.fromEntries(['clientes','proveedores','productos','lotes_producto'].map(table=>[table,{count:0,matches:true}])),operations:[],stock_ids:[],stock_context:true,movements:0,cost_rows:0}}]}
+    return {rows:[{evidence:{read_only:'on',observed_at:new Date(now).toISOString(),plan_hash:PLAN_HASH,cursor:0,commercial_active:true,owner_active:true,cashier_active:true,fixtures:Object.fromEntries(['clientes','proveedores','productos','lotes_producto'].map(table=>[table,{count:0,matches:true}])),operations:[],stock_ids:[],stock_context:true,movements:0,cost_rows:0,movement_cost_rows:0,price_history_total:0,price_history_matches:true}}]}
    }
    return super.query(sql)
   }
@@ -118,6 +123,13 @@ it('owned-state method accepts only a journal and confirms metadata plus state b
   expect(()=>port.readOwnedState(undefined as never)).toThrow('RESTORE_READER_STATE_REQUIRED')
   expect(await port.readOwnedState(journal)).toMatchObject({status:'METADATA_MATCH_ONLY',ownedState:'OWNED_FIXTURES_MATCH_ONLY',cursor:0})
   expect(state.queries.at(-1)).toBe('ROLLBACK')
+  const captured=await port.capturePreservationBaseline(journal)
+  expect(captured.preparationOnly).toBe(true)
+  const baseline=loadRestorePreservationBaseline(journal)
+  expect(captured.baselineHash).toBe(baseline.baselineHash)
+  expect(await port.readPreservedState(journal,baseline,captured.baselineHash)).toMatchObject({commercialPreservation:'REVIEWED_COMMERCIAL_INVENTORY_MATCH_ONLY',cursor:0})
+  await expect(port.capturePreservationBaseline(journal)).rejects.toThrow('RESTORE_READER_BASELINE_NOT_CONFIRMED')
+  await expect(port.readDependencyMetadata()).rejects.toThrow('RESTORE_READER_UNAVAILABLE')
  }finally{
   await port.dispose()
   rmSync(folder,{recursive:true,force:true})
