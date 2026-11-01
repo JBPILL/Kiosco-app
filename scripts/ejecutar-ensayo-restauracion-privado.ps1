@@ -34,7 +34,17 @@ try{
  $secrets.postgresPassword=Read-RestoreSecret 'Contrasena PostgreSQL SOLO Staging (nunca al chat)'
  if($Rol -cne 'CAPTURE'){
   $secrets.publicKey=Read-RestoreSecret 'Clave publica anon/publishable SOLO Staging (no PAT/service_role)'
-  $secrets.email=Read-Host 'Correo de la cuenta de ensayo del rol aprobado'
+  $enteredEmail=Read-Host 'Correo de la cuenta de ensayo del rol aprobado'
+  if($Rol -ceq 'CASHIER'){
+   $normalizedEmail=([string]$enteredEmail).Trim().ToLowerInvariant()
+   if($normalizedEmail -cne 'prueba2@example.test'){
+    Write-Output 'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY retry=false'
+    exit 1
+   }
+   $secrets.email=$normalizedEmail
+  }else{
+   $secrets.email=$enteredEmail
+  }
   $secrets.password=Read-RestoreSecret 'Contrasena de esa cuenta (nunca al chat)'
  }
  $payload=@{packageText=$text;approvedPackageHash=$HashRevisado;authorizedScope=$packet.scope;goConfirmed=$true;exclusiveOperatorConfirmed=$true;role=$Rol;journalPath=(Join-Path $DirectorioPrivado 'journal.jsonl');rootCertificate=$rootPem;credentials=$secrets}|ConvertTo-Json -Depth 8 -Compress

@@ -102,3 +102,52 @@ it.skipIf(process.platform!=='win32').each(['prepare','wrong-hash','broad-parent
   expect(readdirSync(privateRoot)).toHaveLength(0)
  }
 },60000)
+it.skipIf(process.platform!=='win32').each([
+ { name:'case1-cashier-wrong-domain', role:'CASHIER', email:'prueba2@gmail.com', expectedStatus:1, expectedOutput:'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY retry=false', expectedPrompts:1, expectedEmail:null },
+ { name:'case2-cashier-whitespace', role:'CASHIER', email:' prueba2@example.test ', expectedStatus:0, expectedOutput:'BEFORE_CHILD', expectedPrompts:2, expectedEmail:'prueba2@example.test' },
+ { name:'case3-cashier-uppercase', role:'CASHIER', email:'PRUEBA2@EXAMPLE.TEST', expectedStatus:0, expectedOutput:'BEFORE_CHILD', expectedPrompts:2, expectedEmail:'prueba2@example.test' },
+ { name:'case4-owner-unchanged', role:'OWNER', email:'dueno@example.test', expectedStatus:0, expectedOutput:'BEFORE_CHILD', expectedPrompts:2, expectedEmail:'dueno@example.test' },
+])('execution wrapper cashier email guard $name', ({ role, email, expectedStatus, expectedOutput, expectedPrompts, expectedEmail })=>{
+ const scriptPath = resolve('scripts/ejecutar-ensayo-restauracion-privado.ps1')
+ const lockPath = join(folder, 'journal.jsonl.phase.lock')
+ writeFileSync(lockPath, 'LOCK_SYNTHETIC')
+ const runnerScript = `
+  \$ErrorActionPreference = 'Stop'
+  \$ast = [System.Management.Automation.Language.Parser]::ParseFile(${quote(scriptPath)}, [ref]\$null, [ref]\$null)
+  \$targetAst = \$ast.Find({ param(\$n) \$n -is [System.Management.Automation.Language.IfStatementAst] -and \$n.Extent.Text -like '*\$Rol -cne ''CAPTURE''*' }, \$true)
+  if (-not \$targetAst) { throw 'Target credential block not found in AST' }
+  \$global:secretPrompts = 0
+  \$global:childStarted = \$false
+  \$global:networkCalls = 0
+  \$secrets = @{}
+  \$Rol = ${quote(role)}
+  function Read-RestoreSecret(\$Prompt) {
+   \$global:secretPrompts++
+   return 'SYNTHETIC_SECRET'
+  }
+  function Read-Host(\$Prompt) {
+   return ${quote(email)}
+  }
+  try {
+   . ([ScriptBlock]::Create(\$targetAst.Extent.Text))
+   Write-Output ('BEFORE_CHILD email=' + \$secrets.email + ' prompts=' + \$global:secretPrompts + ' child=' + \$global:childStarted + ' net=' + \$global:networkCalls)
+   exit 0
+  } catch {
+   Write-Output ('CAUGHT ' + \$_.Exception.Message)
+   exit 1
+  }
+ `
+ const res = spawnSync('pwsh', ['-NoProfile', '-NonInteractive', '-Command', runnerScript], { encoding: 'utf8', timeout: 20000, windowsHide: true })
+ expect(res.stderr).toBe('')
+ expect(res.status).toBe(expectedStatus)
+ if (expectedStatus === 1) {
+  expect(res.stdout.trim()).toBe(expectedOutput)
+ } else {
+  expect(res.stdout).toContain(expectedOutput)
+  expect(res.stdout).toContain('email=' + expectedEmail)
+  expect(res.stdout).toContain('prompts=' + expectedPrompts)
+  expect(res.stdout).toContain('child=False')
+  expect(res.stdout).toContain('net=0')
+ }
+ expect(readFileSync(lockPath, 'utf8')).toBe('LOCK_SYNTHETIC')
+}, 25000)
