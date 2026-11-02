@@ -7,6 +7,7 @@ import {
   CASHIER_AUTH_ID,
   CASHIER_EMAIL,
   PREFLIGHT_STAGES,
+  type CashierPreflightCredentials,
 } from '../../scripts/backup/restore-cashier-preflight.mjs'
 import { loadRestorePlan } from '../../scripts/backup/restore-acceptance-engine.mjs'
 
@@ -259,24 +260,38 @@ describe('backupRestoreCashierPreflight - Transport Exactness (CAMBIO 1 & 5)', (
 
 describe('backupRestoreCashierPreflight - Stage Classification (CAMBIO 2 & 5)', () => {
   it('stage INPUT: rejects when request is missing or not a function', async () => {
-    // @ts-expect-error testing missing request
-    await expect(runCashierSessionPreflight({ publicKey: 'k', email: CASHIER_EMAIL, password: 'p' })).rejects.toMatchObject({
+    await expect(
+      (runCashierSessionPreflight as unknown as (credentials: unknown) => Promise<unknown>)({
+        publicKey: 'k',
+        email: CASHIER_EMAIL,
+        password: 'p',
+      })
+    ).rejects.toMatchObject({
       stage: 'INPUT',
     })
-    // @ts-expect-error testing invalid request
-    await expect(runCashierSessionPreflight({ publicKey: 'k', email: CASHIER_EMAIL, password: 'p' }, 'invalid')).rejects.toMatchObject({
+    await expect(
+      runCashierSessionPreflight(
+        { publicKey: 'k', email: CASHIER_EMAIL, password: 'p' },
+        'invalid' as unknown as typeof fetch
+      )
+    ).rejects.toMatchObject({
       stage: 'INPUT',
     })
   })
 
   it('stage INPUT: rejects when credentials are invalid', async () => {
     const request = vi.fn()
-    // @ts-expect-error testing null credentials
-    await expect(runCashierSessionPreflight(null, request as unknown as typeof fetch)).rejects.toMatchObject({
+    await expect(
+      runCashierSessionPreflight(null as unknown as CashierPreflightCredentials, request as unknown as typeof fetch)
+    ).rejects.toMatchObject({
       stage: 'INPUT',
     })
-    // @ts-expect-error testing non-object credentials
-    await expect(runCashierSessionPreflight('not-an-object', request as unknown as typeof fetch)).rejects.toMatchObject({
+    await expect(
+      runCashierSessionPreflight(
+        'not-an-object' as unknown as CashierPreflightCredentials,
+        request as unknown as typeof fetch
+      )
+    ).rejects.toMatchObject({
       stage: 'INPUT',
     })
     expect(request).not.toHaveBeenCalled()
