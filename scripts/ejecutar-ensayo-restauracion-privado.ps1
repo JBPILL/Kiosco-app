@@ -6,7 +6,7 @@ param(
  [string]$HashRevisado,[string]$DirectorioPrivado,
  [string]$CertificadoRaiz=(Join-Path $env:USERPROFILE 'Downloads/prod-ca-2021.crt')
 )
-$ErrorActionPreference='Stop';$child=$null;$secrets=@{};$payload=$null;$rootPem=$null
+$ErrorActionPreference='Stop';$child=$null;$secrets=@{};$payload=$null;$rootPem=$null;$preflightChild=$null;$preflightPayload=$null
 function Read-RestoreSecret([string]$Prompt){
  $secure=$null;$pointer=[IntPtr]::Zero
  try{$secure=Read-Host $Prompt -AsSecureString;$pointer=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure);return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)}
@@ -46,6 +46,32 @@ try{
    $secrets.email=$enteredEmail
   }
   $secrets.password=Read-RestoreSecret 'Contrasena de esa cuenta (nunca al chat)'
+  if($Rol -ceq 'CASHIER'){
+   $scriptDir=$PSScriptRoot;if(-not $scriptDir){$scriptDir=$scriptRoot};if(-not $scriptDir){$scriptDir='.'}
+   $preflightHelper=Join-Path $scriptDir 'backup/restore-cashier-preflight.mjs'
+   $preflightPayload=@{publicKey=$secrets.publicKey;email=$secrets.email;password=$secrets.password}|ConvertTo-Json -Depth 4 -Compress
+   $preflightStart=[Diagnostics.ProcessStartInfo]::new()
+   $preflightStart.FileName=$node
+   $preflightStart.ArgumentList.Add($preflightHelper)
+   $preflightStart.UseShellExecute=$false;$preflightStart.CreateNoWindow=$true;$preflightStart.RedirectStandardInput=$true;$preflightStart.RedirectStandardOutput=$true;$preflightStart.RedirectStandardError=$true;$preflightStart.StandardInputEncoding=[Text.UTF8Encoding]::new($false)
+   $preflightChild=[Diagnostics.Process]::new();$preflightChild.StartInfo=$preflightStart
+   try{
+    if(-not $preflightChild.Start()){throw 'Preflight'}
+    $pOut=$preflightChild.StandardOutput.ReadToEndAsync();$pErr=$preflightChild.StandardError.ReadToEndAsync()
+    $preflightChild.StandardInput.Write($preflightPayload);$preflightChild.StandardInput.Close()
+    if(-not $preflightChild.WaitForExit(30000)){
+     try{$preflightChild.Kill()}catch{}
+     Write-Output 'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY retry=false'
+     exit 1
+    }
+    $null=$pErr.GetAwaiter().GetResult()
+    $preflightResult=$pOut.GetAwaiter().GetResult().Trim()
+    if($preflightChild.ExitCode -ne 0 -or $preflightResult -cne 'CASHIER_SESSION_PREFLIGHT = PASS'){
+     Write-Output 'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY retry=false'
+     exit 1
+    }
+   }finally{$preflightPayload=$null;if($preflightChild){$preflightChild.Dispose()}}
+  }
  }
  $payload=@{packageText=$text;approvedPackageHash=$HashRevisado;authorizedScope=$packet.scope;goConfirmed=$true;exclusiveOperatorConfirmed=$true;role=$Rol;journalPath=(Join-Path $DirectorioPrivado 'journal.jsonl');rootCertificate=$rootPem;credentials=$secrets}|ConvertTo-Json -Depth 8 -Compress
  $start=[Diagnostics.ProcessStartInfo]::new();$start.FileName=$node;$start.ArgumentList.Add($runner);$start.ArgumentList.Add('--execute')
@@ -64,4 +90,4 @@ try{
  }
  Write-Output $safe;exit $child.ExitCode
 }catch{Write-Output 'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY retry=false';exit 1}
-finally{foreach($key in @($secrets.Keys)){$secrets[$key]=$null};$payload=$null;$rootPem=$null;if($child){$child.Dispose()}}
+finally{foreach($key in @($secrets.Keys)){$secrets[$key]=$null};$payload=$null;$rootPem=$null;$preflightPayload=$null;if($child){$child.Dispose()};if($preflightChild){$preflightChild.Dispose()}}

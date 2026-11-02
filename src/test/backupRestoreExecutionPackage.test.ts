@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { expect,it } from 'vitest'
-import { buildRestoreExecutionPackage,validateRestoreExecutionPackage,RESTORE_CAPTURE_SCOPE,RESTORE_EXECUTION_SCOPE } from '../../scripts/backup/restore-execution-package.mjs'
+import { buildRestoreExecutionPackage,validateRestoreExecutionPackage,restoreExecutionRuntimeHashes,RESTORE_CAPTURE_SCOPE,RESTORE_EXECUTION_SCOPE } from '../../scripts/backup/restore-execution-package.mjs'
 const actors={OWNER:'11111111-1111-4111-8111-111111111111',CASHIER:'22222222-2222-4222-8222-222222222222'}
 const start=Date.parse('2026-11-01T12:00:00.000Z')
 const capture=()=>({scope:RESTORE_CAPTURE_SCOPE,actors,startsAt:new Date(start).toISOString(),endsAt:new Date(start+900000).toISOString(),baselineHash:null,backup:null})
@@ -38,4 +38,20 @@ it.each(['oldbackup','futurebackup','missingbaseline','capturebackup','window','
  if(mode==='sameactor')input.actors={OWNER:actors.OWNER,CASHIER:actors.OWNER}
  const proposal=mode==='extra'?{...input,extra:true}:input
  expect(()=>buildRestoreExecutionPackage(proposal)).toThrow('RESTORE_EXECUTION_PACKAGE_NOT_CONFIRMED')
+})
+it('binds restore-cashier-preflight.mjs into runtime files and detects helper modification',()=>{
+ const hashes=restoreExecutionRuntimeHashes()
+ expect(hashes).toHaveProperty('scripts/backup/restore-cashier-preflight.mjs')
+ expect(hashes['scripts/backup/restore-cashier-preflight.mjs']).toMatch(/^[a-f0-9]{64}$/)
+
+ const packet=buildRestoreExecutionPackage(capture())
+ expect(packet.runtimeFiles['scripts/backup/restore-cashier-preflight.mjs']).toBe(hashes['scripts/backup/restore-cashier-preflight.mjs'])
+
+ const altered=JSON.parse(JSON.stringify(packet))
+ altered.runtimeFiles['scripts/backup/restore-cashier-preflight.mjs']='0'.repeat(64)
+ expect(()=>validateRestoreExecutionPackage(altered,altered.packageHash,{now:start,execute:true})).toThrow('RESTORE_EXECUTION_PACKAGE_NOT_CONFIRMED')
+
+ const stale=JSON.parse(JSON.stringify(packet))
+ stale.runtimeFiles['scripts/backup/restore-cashier-preflight.mjs']='f'.repeat(64)
+ expect(()=>validateRestoreExecutionPackage(stale,stale.packageHash,{now:start,execute:true})).toThrow('RESTORE_EXECUTION_PACKAGE_NOT_CONFIRMED')
 })

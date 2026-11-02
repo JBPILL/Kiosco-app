@@ -1,12 +1,12 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, it } from 'vitest'
-import { mkdtempSync, rmSync, readdirSync, readFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, readdirSync, readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve, dirname, basename } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { PLAN_HASH, RestoreJournal, inspectRestoreJournal } from '../../scripts/backup/restore-acceptance-engine.mjs'
 import { buildRestoreExecutionPackage, RESTORE_CAPTURE_SCOPE } from '../../scripts/backup/restore-execution-package.mjs'
-import { writeFileSync } from 'node:fs'
+
 let folder:string
 beforeEach(()=>{folder=mkdtempSync(join(tmpdir(),'kiosko-restore-acl-'))})
 afterEach(()=>{if(dirname(folder)!==resolve(tmpdir())||!basename(folder).startsWith('kiosko-restore-acl-'))throw Error('Unsafe cleanup');rmSync(folder,{recursive:true,force:true})})
@@ -102,15 +102,42 @@ it.skipIf(process.platform!=='win32').each(['prepare','wrong-hash','broad-parent
   expect(readdirSync(privateRoot)).toHaveLength(0)
  }
 },60000)
+
 it.skipIf(process.platform!=='win32').each([
- { name:'case1-cashier-wrong-domain', role:'CASHIER', email:'prueba2@gmail.com', expectedStatus:1, expectedOutput:'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY retry=false', expectedPrompts:1, expectedEmail:null },
- { name:'case2-cashier-whitespace', role:'CASHIER', email:' prueba2@example.test ', expectedStatus:0, expectedOutput:'BEFORE_CHILD', expectedPrompts:2, expectedEmail:'prueba2@example.test' },
- { name:'case3-cashier-uppercase', role:'CASHIER', email:'PRUEBA2@EXAMPLE.TEST', expectedStatus:0, expectedOutput:'BEFORE_CHILD', expectedPrompts:2, expectedEmail:'prueba2@example.test' },
- { name:'case4-owner-unchanged', role:'OWNER', email:'dueno@example.test', expectedStatus:0, expectedOutput:'BEFORE_CHILD', expectedPrompts:2, expectedEmail:'dueno@example.test' },
-])('execution wrapper cashier email guard $name', ({ role, email, expectedStatus, expectedOutput, expectedPrompts, expectedEmail })=>{
+ { name:'case1-cashier-wrong-domain', role:'CASHIER', email:'prueba2@gmail.com', preflightMode:'none', expectedStatus:1, expectedOutput:'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY retry=false', expectedPrompts:1, expectedEmail:null, expectedPreflight:false, expectedChild:false },
+ { name:'case2-cashier-auth-reject', role:'CASHIER', email:'prueba2@example.test', preflightMode:'reject', expectedStatus:1, expectedOutput:'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY retry=false', expectedPrompts:2, expectedEmail:'prueba2@example.test', expectedPreflight:true, expectedChild:false },
+ { name:'case3-cashier-logout-fail', role:'CASHIER', email:'prueba2@example.test', preflightMode:'logout-fail', expectedStatus:1, expectedOutput:'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY retry=false', expectedPrompts:2, expectedEmail:'prueba2@example.test', expectedPreflight:true, expectedChild:false },
+ { name:'case4-cashier-preflight-pass-whitespace', role:'CASHIER', email:' prueba2@example.test ', preflightMode:'pass', expectedStatus:0, expectedOutput:'BEFORE_CHILD', expectedPrompts:2, expectedEmail:'prueba2@example.test', expectedPreflight:true, expectedChild:true },
+ { name:'case5-cashier-preflight-pass-uppercase', role:'CASHIER', email:'PRUEBA2@EXAMPLE.TEST', preflightMode:'pass', expectedStatus:0, expectedOutput:'BEFORE_CHILD', expectedPrompts:2, expectedEmail:'prueba2@example.test', expectedPreflight:true, expectedChild:true },
+ { name:'case6-owner-unchanged', role:'OWNER', email:'dueno@example.test', preflightMode:'none', expectedStatus:0, expectedOutput:'BEFORE_CHILD', expectedPrompts:2, expectedEmail:'dueno@example.test', expectedPreflight:false, expectedChild:true },
+])('execution wrapper cashier preflight and email guard $name', ({ role, email, preflightMode, expectedStatus, expectedOutput, expectedPrompts, expectedEmail, expectedPreflight, expectedChild })=>{
  const scriptPath = resolve('scripts/ejecutar-ensayo-restauracion-privado.ps1')
  const lockPath = join(folder, 'journal.jsonl.phase.lock')
  writeFileSync(lockPath, 'LOCK_SYNTHETIC')
+
+ const mockScriptsDir = join(folder, 'scripts')
+ const mockBackupDir = join(mockScriptsDir, 'backup')
+ mkdirSync(mockBackupDir, { recursive: true })
+ const markerFile = join(folder, 'preflight.marker')
+
+ const mockPreflightCode = `
+import fs from 'node:fs'
+fs.writeFileSync(${JSON.stringify(markerFile)}, 'PREFLIGHT_EXECUTED')
+let text = ''
+for await (const chunk of process.stdin) { text += chunk }
+const data = JSON.parse(text)
+if (data.email !== 'prueba2@example.test' || !data.password || !data.publicKey) {
+  process.exit(1)
+}
+if (${JSON.stringify(preflightMode)} === 'pass') {
+  console.log('CASHIER_SESSION_PREFLIGHT = PASS')
+  process.exit(0)
+} else {
+  process.exit(1)
+}
+`
+ writeFileSync(join(mockBackupDir, 'restore-cashier-preflight.mjs'), mockPreflightCode)
+
  const runnerScript = `
   \$ErrorActionPreference = 'Stop'
   \$ast = [System.Management.Automation.Language.Parser]::ParseFile(${quote(scriptPath)}, [ref]\$null, [ref]\$null)
@@ -121,6 +148,8 @@ it.skipIf(process.platform!=='win32').each([
   \$global:networkCalls = 0
   \$secrets = @{}
   \$Rol = ${quote(role)}
+  \$scriptRoot = ${quote(mockScriptsDir)}
+  \$node = ${quote(process.execPath)}
   function Read-RestoreSecret(\$Prompt) {
    \$global:secretPrompts++
    return 'SYNTHETIC_SECRET'
@@ -130,6 +159,7 @@ it.skipIf(process.platform!=='win32').each([
   }
   try {
    . ([ScriptBlock]::Create(\$targetAst.Extent.Text))
+   \$global:childStarted = \$true
    Write-Output ('BEFORE_CHILD email=' + \$secrets.email + ' prompts=' + \$global:secretPrompts + ' child=' + \$global:childStarted + ' net=' + \$global:networkCalls)
    exit 0
   } catch {
@@ -146,8 +176,12 @@ it.skipIf(process.platform!=='win32').each([
   expect(res.stdout).toContain(expectedOutput)
   expect(res.stdout).toContain('email=' + expectedEmail)
   expect(res.stdout).toContain('prompts=' + expectedPrompts)
-  expect(res.stdout).toContain('child=False')
+  expect(res.stdout).toContain('child=' + (expectedChild ? 'True' : 'False'))
   expect(res.stdout).toContain('net=0')
+  expect(res.stdout).not.toContain('CASHIER_SESSION_PREFLIGHT = PASS')
  }
+ expect(res.stdout).not.toContain('SYNTHETIC_SECRET')
+ expect(res.stderr).not.toContain('SYNTHETIC_SECRET')
  expect(readFileSync(lockPath, 'utf8')).toBe('LOCK_SYNTHETIC')
+ expect(existsSync(markerFile)).toBe(expectedPreflight)
 }, 25000)
