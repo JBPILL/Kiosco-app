@@ -77,7 +77,7 @@ it.skipIf(process.platform!=='win32').each(['prepare-only','missing-go','redirec
   expect(res.stdout.trim()).toBe('RESTORE_PACKAGE_PREPARED scope=PR07_READ_ONLY_PRESERVATION_CAPTURE execution=false')
  }else{
   expect(res.status).toBe(1)
-  expect(res.stdout.trim()).toBe('RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY retry=false')
+  expect(res.stdout.trim()).toBe('RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY wrapper=PACKAGE retry=false')
  }
 },35000)
 
@@ -104,13 +104,15 @@ it.skipIf(process.platform!=='win32').each(['prepare','wrong-hash','broad-parent
 },60000)
 
 it.skipIf(process.platform!=='win32').each([
- { name:'case1-cashier-wrong-domain', role:'CASHIER', email:'prueba2@gmail.com', preflightMode:'none', expectedStatus:1, expectedOutput:'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY retry=false', expectedPrompts:1, expectedEmail:null, expectedPreflight:false, expectedChild:false },
+ { name:'case1-cashier-wrong-domain', role:'CASHIER', email:'prueba2@gmail.com', preflightMode:'none', expectedStatus:1, expectedOutput:'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY wrapper=EMAIL_GUARD retry=false', expectedPrompts:1, expectedEmail:null, expectedPreflight:false, expectedChild:false },
  { name:'case2-cashier-auth-reject', role:'CASHIER', email:'prueba2@example.test', preflightMode:'reject', expectedStatus:1, expectedOutput:'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY preflight=AUTH_HTTP retry=false', expectedPrompts:2, expectedEmail:'prueba2@example.test', expectedPreflight:true, expectedChild:false },
  { name:'case3-cashier-logout-fail', role:'CASHIER', email:'prueba2@example.test', preflightMode:'logout-fail', expectedStatus:1, expectedOutput:'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY preflight=LOGOUT_LOCAL retry=false', expectedPrompts:2, expectedEmail:'prueba2@example.test', expectedPreflight:true, expectedChild:false },
  { name:'case4-cashier-preflight-pass-whitespace', role:'CASHIER', email:' prueba2@example.test ', preflightMode:'pass', expectedStatus:0, expectedOutput:'BEFORE_CHILD', expectedPrompts:2, expectedEmail:'prueba2@example.test', expectedPreflight:true, expectedChild:true },
  { name:'case5-cashier-preflight-pass-uppercase', role:'CASHIER', email:'PRUEBA2@EXAMPLE.TEST', preflightMode:'pass', expectedStatus:0, expectedOutput:'BEFORE_CHILD', expectedPrompts:2, expectedEmail:'prueba2@example.test', expectedPreflight:true, expectedChild:true },
  { name:'case6-owner-unchanged', role:'OWNER', email:'dueno@example.test', preflightMode:'none', expectedStatus:0, expectedOutput:'BEFORE_CHILD', expectedPrompts:2, expectedEmail:'dueno@example.test', expectedPreflight:false, expectedChild:true },
- { name:'case7-cashier-preflight-unknown', role:'CASHIER', email:'prueba2@example.test', preflightMode:'unknown', expectedStatus:1, expectedOutput:'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY preflight=UNKNOWN retry=false', expectedPrompts:2, expectedEmail:'prueba2@example.test', expectedPreflight:true, expectedChild:false },
+ { name:'case7-cashier-preflight-unexpected-stdout', role:'CASHIER', email:'prueba2@example.test', preflightMode:'unknown', expectedStatus:1, expectedOutput:'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY wrapper=PREFLIGHT_CHILD_OUTPUT retry=false', expectedPrompts:2, expectedEmail:'prueba2@example.test', expectedPreflight:true, expectedChild:false },
+ { name:'case8-cashier-preflight-public-key', role:'CASHIER', email:'prueba2@example.test', preflightMode:'public-key', expectedStatus:1, expectedOutput:'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY preflight=PUBLIC_KEY retry=false', expectedPrompts:2, expectedEmail:'prueba2@example.test', expectedPreflight:true, expectedChild:false },
+ { name:'case9-cashier-preflight-start-fail', role:'CASHIER', email:'prueba2@example.test', preflightMode:'start-fail', expectedStatus:1, expectedOutput:'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY wrapper=PREFLIGHT_CHILD_START retry=false', expectedPrompts:2, expectedEmail:'prueba2@example.test', expectedPreflight:false, expectedChild:false },
 ])('execution wrapper cashier preflight and email guard $name', ({ role, email, preflightMode, expectedStatus, expectedOutput, expectedPrompts, expectedEmail, expectedPreflight, expectedChild })=>{
  const scriptPath = resolve('scripts/ejecutar-ensayo-restauracion-privado.ps1')
  const lockPath = join(folder, 'journal.jsonl.phase.lock')
@@ -137,6 +139,9 @@ if (${JSON.stringify(preflightMode)} === 'pass') {
 } else if (${JSON.stringify(preflightMode)} === 'reject') {
   console.log('CASHIER_SESSION_PREFLIGHT = FAIL stage=AUTH_HTTP')
   process.exit(1)
+} else if (${JSON.stringify(preflightMode)} === 'public-key') {
+  console.log('CASHIER_SESSION_PREFLIGHT = FAIL stage=PUBLIC_KEY')
+  process.exit(1)
 } else if (${JSON.stringify(preflightMode)} === 'logout-fail') {
   console.log('CASHIER_SESSION_PREFLIGHT = FAIL stage=LOGOUT_LOCAL')
   process.exit(1)
@@ -157,7 +162,7 @@ if (${JSON.stringify(preflightMode)} === 'pass') {
   \$secrets = @{}
   \$Rol = ${quote(role)}
   \$scriptRoot = ${quote(mockScriptsDir)}
-  \$node = ${quote(process.execPath)}
+  \$node = if (${JSON.stringify(preflightMode)} -eq 'start-fail') { 'C:\\nonexistent\\missing-node.exe' } else { ${quote(process.execPath)} }
   function Read-RestoreSecret(\$Prompt) {
    \$global:secretPrompts++
    return 'SYNTHETIC_SECRET'
@@ -193,3 +198,10 @@ if (${JSON.stringify(preflightMode)} === 'pass') {
  expect(readFileSync(lockPath, 'utf8')).toBe('LOCK_SYNTHETIC')
  expect(existsSync(markerFile)).toBe(expectedPreflight)
 }, 25000)
+
+it('ensures legacy generic entry output is not reachable in wrapper', () => {
+ const content = readFileSync(resolve('scripts/ejecutar-ensayo-restauracion-privado.ps1'), 'utf8')
+ const genericEntryRegex = /RESTORE_OPERATOR_NOT_CONFIRMED\s+stage=ENTRY\s+retry=false/
+ const legacyGenericEntryOutputReachable = genericEntryRegex.test(content)
+ expect(legacyGenericEntryOutputReachable).toBe(false)
+})
