@@ -89,7 +89,7 @@ por el titular hasta contar con cliente; no se consideran probados ni aprobados.
 | PR04 | Contingencias ARCA/Internet: caída de WSAA/WSFE, timeout antes/después del commit, vencimiento de TA, reconexión y reintento controlado; estado comercial separado del fiscal; ticket pendiente claramente identificado, sin CAE inventado ni doble cobro. Definir operación, responsables y límites de contingencia. | PARCIAL: existe evidencia de recuperación de cobros comerciales; falta circuito fiscal real y aceptación del operador. No asumir que ticket interno sustituye un comprobante fiscal. | PR03, PR08; P08/P09/P17. |
 | PR05 | Integridad venta-stock-caja: venta/pagos/detalles/stock/kardex/costos/lotes/envases y caja coherentes; descuentos, cambio/devolución, anulación y caja cerrada; una solicitud produce un solo efecto y una reversa. Conciliar datos de ensayo e historia sin borrar/redondear movimientos. | PARCIAL: checkout, envases/devoluciones y ajuste de unidad cuentan con ensayos; completar matriz pendiente y revisar hallazgos de anulación antes de afirmar cierre. | P05/P06/P08/P18/P19; PR09. |
 | PR06 | Seguridad: JWT reales de Dueño/Cajero/Visor y otro comercio, DML directo rechazado, RLS/ACL efectivas, supervisor ligado a operación y límites de intentos, auditoría y retención; secretos/certificados sólo bajo custodia privada apropiada, nunca en frontend/logs/commits; dependencias y cambios revisados. | PARCIAL: auditoría npm 0 alertas tras parches Vite/source-map-js al 21/10. Contratos/pruebas locales no cierran la matriz hospedada; custodia y autorización fiscal de la futura pasarela pendientes. | P02/P03/P04/P07; ExecPlans F5/F6, supervisor y administración. |
-| PR07 | Backup/restore: copia operativa cifrada y restauración representativa con saldos/relaciones/lotes/configuración, repetición y verificación de origen/destino; además pg_dump/pg_restore + Storage/historia, destino externo, retención, alertas y restauración medida según RPO/RTO acordados. Ninguna copia local sola acredita recuperación de desastre. | PARCIAL: catálogo/promociones/combos aceptados en Staging. Contratos ampliados preparados y probados localmente; SQL nuevo y ensayo hospedado pendientes. UI integral sigue bloqueada. No se cerraron PostgreSQL/Storage ni política externa. | P13–P17; ExecPlans backup-recovery-acceptance y backup-promotions-relations. |
+| PR07 | Backup/restore: copia operativa cifrada y restauración representativa con saldos/relaciones/lotes/configuración, repetición y verificación de origen/destino; además pg_dump/pg_restore + Storage/historia, destino externo, retención, alertas y restauración medida según RPO/RTO acordados. Ninguna copia local sola acredita recuperación de desastre. | PASS: Ensayos de Staging representativo y restauración aislada completados. Ensayo representativo previo (catálogo/combos/promociones) y ensayo de restauración aislada PR07 (`PR07_FIXED_ISOLATED_RESTORE_ACCEPTANCE`) ejecutados con copia privada verificada independiente (`245795a9...`), contratos ampliados instalados, diario verificado hasta cursor 21 (`complete=true`), confirmaciones CASHIER esperadas (`EXPECTED_REJECTION` 42501, 3 confirmadas), preservación comercial durable verificada (`BASELINE_PRESERVATION = PASS` hash `6022d9241e9b942e1c83d5418bf6115615e44ce9a3272f5c6308d19303418952`), sin reejecución de OWNER, sin escrituras comerciales desde CASHIER, sin llamadas ARCA y sin mutaciones en Producción. PR07 cerrado. | P13–P17; ExecPlans backup-recovery-acceptance y backup-promotions-relations. |
 | PR08 | Recuperación ante fallos: cierre/crash del puesto o backend, cuota/perfil perdido, ACK descartado, solicitud preparada sin copia local; conservar identidad, operador, caja y cuerpo; recuperación sin volver a cobrar; procedimiento de soporte y restauración ensayado. | PARCIAL: sesión persistente y recuperación backend específicas verificadas; falta completar aceptación UI, operador/caja distintos, cancelación concurrente y pérdida de perfil/almacenamiento. | P08/P09/P17/P22–P24; PR07/PR09. |
 | PR09 | Concurrencia/E2E: dos actores/terminales, solicitudes idénticas y distintas, último stock/lote/envase, supervisor, anulación/devolución, cancelar contra confirmar y numeración fiscal; inyección de fallos y aserciones de DB + UI con datos aislados. Automatización local/HTTP no sustituye aceptación con JWT/entorno y actores correspondientes. | PARCIAL: reintentos HTTP y seis carreras fiscales PostgreSQL reales locales comprobados; no está cerrada la matriz hospedada comercial/fiscal ni dos terminales de operador. | PR03–PR08; P04/P05/P08/P18/P20/P21. |
 | PR10 | Transición controlada a ARCA Producción: gates previos aceptados, titular/CUIT/punto/certificado/servicios productivos correctos, custodia y accesos, versión/configuración revisadas, respaldo y conciliación previos, ventana/cutover/rollback/monitoreo/soporte y aprobación explícita de cambio. Emisión productiva requiere su autorización específica. | NO INICIADO. Homologación, commits, Staging o este plan no autorizan Production, master, credenciales productivas ni comprobantes reales. No regenerar material privado como solución automática. | PR01–PR09 cerrados, decisión del titular. |
@@ -1784,3 +1784,32 @@ Cierre local: build final exit0 (aviso chunks >500kB), manifiesto bootstrap43
 PASS,36JS sin tres simbolos privados seleccionados. Primer build detecto union
 undefined en closure de test; corregido con const local tipada y recheck43 PASS,
 sin casts/supresiones en implementacion. Suite global anterior no atribuida aqui.
+
+
+### Cierre de ensayo de restauración aislada PR07 en Staging — 02/11/2026
+
+Ejecutado y verificado el ensayo de restauración aislada PR07 (`PR07_FIXED_ISOLATED_RESTORE_ACCEPTANCE`)
+en el run-dir `C:\Users\jonat\KioskoPOS-Privado\Restauracion-Staging\1b04a5c7d412400b94492a6c1c821300`.
+El bloque OWNER completó los cursores 0 a 18 y el bloque CASHIER completó los cursores 18 a 21
+con 3 rechazos controlados (`EXPECTED_REJECTION`, SQLSTATE `42501`) sobre RPCs de restauración.
+
+Evidencia comprobada:
+- `PR07_RESTORE_ACCEPTANCE = PASS`
+- `PR07 CLOSED = true`
+- `JOURNAL_CURSOR = 21`
+- `JOURNAL_COMPLETE = true`
+- `CASHIER_CONFIRMED = 3`
+- `BASELINE_PRESERVATION = PASS` (hash de 50 tablas `6022d9241e9b942e1c83d5418bf6115615e44ce9a3272f5c6308d19303418952`)
+- `STAGING_BUSINESS_WRITES_FROM_CASHIER = 0`
+- `OWNER_REEXECUTED = false`
+- `PG_CONNECTION_CLOSED = PASS`
+- `CASHIER_LOGOUT_LOCAL = PASS`
+- `ARCA_CALLS = 0`
+- `PRODUCTION_MUTATIONS = 0`
+- `HEAD = cb66e25488bd4765f4c5f2f8daa5dfc76d21ddb4`
+- `REMOTE_HEAD = cb66e25488bd4765f4c5f2f8daa5dfc76d21ddb4`
+- `WORKTREE = CLEAN`
+- `merge = false`
+
+PR07 queda CERRADO (`PASS`). Siguiente gate según orden maestro: PR03 (idempotencia y robustez fiscal)
+previo a PR02 (primer CAE homologación).

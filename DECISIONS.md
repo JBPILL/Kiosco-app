@@ -1617,3 +1617,37 @@ errores, `node --check` PASS y 36 chunks JS publicos sin simbolos privados.
 Estado: `FINAL_BLOCKER=RESOLVED`, `INTEGRATED_EXECUTOR=PASS`, `readyForRestoreGo=true`,
 `REMOTE_EXECUTED=false`, `RESTORES_EXECUTED=0`. Ningun respaldo real nuevo, sesion
 Auth real, restore remoto, cambio en Staging/Production, llamada ARCA, flag ni merge.
+
+
+### Cierre de aceptación de ensayo de restauración aislada PR07 — 02/11/2026
+
+**Contexto:**
+Se ejecutó de forma asistida y aislada el ensayo de restauración PR07 (`PR07_FIXED_ISOLATED_RESTORE_ACCEPTANCE`)
+en Staging bajo run-dir `C:\Users\jonat\KioskoPOS-Privado\Restauracion-Staging\1b04a5c7d412400b94492a6c1c821300`,
+con contratos ampliados instalados, backup privado de referencia `245795a9b4f8651e1b9c2bc1ecb38112dae445b364c5810aca0a4459235f6729`
+y baseline comercial previo capturado de 50 tablas (`6022d9241e9b942e1c83d5418bf6115615e44ce9a3272f5c6308d19303418952`).
+
+**Decisión:**
+Aceptar y cerrar formalmente el gate PR07 (`PR07 CLOSED = true`, `PR07_RESTORE_ACCEPTANCE = PASS`) tras la
+verificación post-ejecución estricta:
+1. Diario verificado de 43 registros (cabecera + 21 intenciones + 21 confirmaciones):
+   - `JOURNAL_CURSOR = 21`
+   - `JOURNAL_PENDING = null`
+   - `JOURNAL_STOPPED = false`
+   - `JOURNAL_COMPLETE = true`
+   - Sin locks residuales (`PHASE_LOCK_PRESENT = false`, `GENERAL_LOCK_PRESENT = false`).
+2. Fases de operador completadas sin reejecución:
+   - Bloque OWNER completó cursores 0 a 18 y no se reejecutó (`OWNER_REEXECUTED = false`).
+   - Bloque CASHIER completó cursores 18 a 21 (`CASHIER_ACTIONS_ATTEMPTED = 3`, `CASHIER_CONFIRMED = 3`),
+     donde cada intento sobre RPCs de restauración fue correctamente rechazado por RLS (`EXPECTED_REJECTION`,
+     SQLSTATE `42501`), sin registrarse ninguna cuarta acción.
+3. Preservación comercial íntegra (READ ONLY):
+   - `BASELINE_PRESERVATION = PASS` (`valueHash` de las 50 tablas idéntico a `6022d9241e9b942e1c83d5418bf6115615e44ce9a3272f5c6308d19303418952`).
+   - Cero mutaciones en tablas comerciales desde CASHIER (`STAGING_BUSINESS_WRITES_FROM_CASHIER = 0`).
+4. Sesiones y red:
+   - Conexiones cerradas y logout local verificado (`PG_CONNECTION_CLOSED = PASS`, `CASHIER_LOGOUT_LOCAL = PASS`).
+   - Cero llamadas a ARCA (`ARCA_CALLS = 0`) y cero mutaciones en Producción (`PRODUCTION_MUTATIONS = 0`).
+
+**Consecuencias:**
+PR07 queda formalmente CERRADO. El trabajo continúa hacia la ruta crítica de homologación fiscal (PR03 / PR02)
+sin merge de ramas y sin tocar el entorno de Producción.

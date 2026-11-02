@@ -622,3 +622,32 @@ Build (`tsc -b && vite build`, 689 modulos), `oxlint` focalizado/global,
 Estado: `FINAL_BLOCKER=RESOLVED`, `INTEGRATED_EXECUTOR=PASS`, `readyForRestoreGo=true`,
 `REMOTE_EXECUTED=false`, `RESTORES_EXECUTED=0`. Sin ejecucion remota, respaldo real
 nuevo, sesiones Auth reales, cambios en Staging/Production, ARCA, flags ni merge.
+
+
+### 2026-11-02 - Cierre de ensayo de restauración aislada PR07 en Staging (PASS)
+
+Ejecución y aceptación de ensayo de restauración aislada PR07 (`PR07_FIXED_ISOLATED_RESTORE_ACCEPTANCE`)
+en run-dir `C:\Users\jonat\KioskoPOS-Privado\Restauracion-Staging\1b04a5c7d412400b94492a6c1c821300`.
+El rol OWNER completó cursores 0 a 18 y el rol CASHIER completó cursores 18 a 21 con 3 reyecciones esperadas
+bajo RLS (`EXPECTED_REJECTION`, SQLSTATE `42501`) en `restaurar_contacto_backup`, `restaurar_producto_backup`
+y `restaurar_lote_backup`.
+
+Evidencia:
+- `PR07_RESTORE_ACCEPTANCE = PASS`
+- `PR07 CLOSED = true`
+- `JOURNAL_CURSOR = 21`
+- `JOURNAL_COMPLETE = true`
+- `CASHIER_CONFIRMED = 3`
+- `BASELINE_PRESERVATION = PASS` (`6022d9241e9b942e1c83d5418bf6115615e44ce9a3272f5c6308d19303418952`)
+- `STAGING_BUSINESS_WRITES_FROM_CASHIER = 0`
+- `OWNER_REEXECUTED = false`
+- `PG_CONNECTION_CLOSED = PASS`
+- `CASHIER_LOGOUT_LOCAL = PASS`
+- `ARCA_CALLS = 0`
+- `PRODUCTION_MUTATIONS = 0`
+- `HEAD = cb66e25488bd4765f4c5f2f8daa5dfc76d21ddb4`
+- `REMOTE_HEAD = cb66e25488bd4765f4c5f2f8daa5dfc76d21ddb4`
+- `WORKTREE = CLEAN`
+- `merge = false`
+
+PR07 queda CERRADO (`PASS`). Siguiente gate según orden de precedencia maestro: PR03 previo a PR02.

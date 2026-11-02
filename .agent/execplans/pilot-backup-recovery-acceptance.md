@@ -1023,3 +1023,32 @@ Estado y limites operativos:
 - `REMOTE_EXECUTED = false`, `RESTORES_EXECUTED = 0`.
 - Ningun respaldo real nuevo con `-AntesEnsayoRestauracion`, ninguna sesion Auth real, ninguna mutacion en Staging ni Production, ninguna llamada ARCA, ningun flag activado y ningun merge de PR #3.
 
+
+### 2026-11-02 - Cierre y aceptación de ensayo de restauración aislada PR07 en Staging (PASS)
+
+Ejecución y verificación exitosa del ensayo de restauración aislada PR07 (`PR07_FIXED_ISOLATED_RESTORE_ACCEPTANCE`)
+en run-dir `C:\Users\jonat\KioskoPOS-Privado\Restauracion-Staging\1b04a5c7d412400b94492a6c1c821300`.
+El rol OWNER completó los cursores 0 a 18 y el rol CASHIER completó los cursores 18 a 21
+con 3 reyecciones controladas (`EXPECTED_REJECTION`, SQLSTATE `42501`) sobre RPCs de restauración.
+
+Métricas de cierre comprobadas:
+- `PR07_RESTORE_ACCEPTANCE = PASS`
+- `PR07 CLOSED = true`
+- `JOURNAL_CURSOR = 21`
+- `JOURNAL_COMPLETE = true`
+- `CASHIER_CONFIRMED = 3`
+- `BASELINE_PRESERVATION = PASS` (`6022d9241e9b942e1c83d5418bf6115615e44ce9a3272f5c6308d19303418952`)
+- `STAGING_BUSINESS_WRITES_FROM_CASHIER = 0`
+- `OWNER_REEXECUTED = false`
+- `PG_CONNECTION_CLOSED = PASS`
+- `CASHIER_LOGOUT_LOCAL = PASS`
+- `ARCA_CALLS = 0`
+- `PRODUCTION_MUTATIONS = 0`
+- `HEAD = cb66e25488bd4765f4c5f2f8daa5dfc76d21ddb4`
+- `REMOTE_HEAD = cb66e25488bd4765f4c5f2f8daa5dfc76d21ddb4`
+- `WORKTREE = CLEAN`
+- `merge = false`
+
+Conclusión: El gate permanente PR07 queda formalmente CERRADO (`PASS`). Siguiente gate según el plan
+maestro: PR03 previo a PR02.
+
