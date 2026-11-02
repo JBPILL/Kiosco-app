@@ -33,7 +33,7 @@ try{
  Write-Host 'Solo Staging acoyfwwmhaeruciyedri; paquete/rol exactos. No reintentes ante incertidumbre.'
  $secrets.postgresPassword=Read-RestoreSecret 'Contrasena PostgreSQL SOLO Staging (nunca al chat)'
  if($Rol -cne 'CAPTURE'){
-  $secrets.publicKey=Read-RestoreSecret 'Clave publica anon/publishable SOLO Staging (no PAT/service_role)'
+  $secrets.publicKey=Read-RestoreSecret 'Clave publica anon/publishable SOLO Staging (NO service_role / NO secret key)'
   $enteredEmail=Read-Host 'Correo de la cuenta de ensayo del rol aprobado'
   if($Rol -ceq 'CASHIER'){
    $normalizedEmail=([string]$enteredEmail).Trim().ToLowerInvariant()
@@ -61,13 +61,17 @@ try{
     $preflightChild.StandardInput.Write($preflightPayload);$preflightChild.StandardInput.Close()
     if(-not $preflightChild.WaitForExit(30000)){
      try{$preflightChild.Kill()}catch{}
-     Write-Output 'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY retry=false'
+     Write-Output 'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY preflight=UNKNOWN retry=false'
      exit 1
     }
     $null=$pErr.GetAwaiter().GetResult()
     $preflightResult=$pOut.GetAwaiter().GetResult().Trim()
     if($preflightChild.ExitCode -ne 0 -or $preflightResult -cne 'CASHIER_SESSION_PREFLIGHT = PASS'){
-     Write-Output 'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY retry=false'
+     $preflightStage='UNKNOWN'
+     if($preflightResult -match '^CASHIER_SESSION_PREFLIGHT = FAIL stage=(INPUT|EMAIL_GUARD|PUBLIC_KEY|AUTH_REQUEST|AUTH_HTTP|TOKEN_SUBJECT|AUTH_IDENTITY|PROFILE|LOGOUT_LOCAL|COMPLETE)$'){
+      $preflightStage=$Matches[1]
+     }
+     Write-Output ('RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY preflight='+$preflightStage+' retry=false')
      exit 1
     }
    }finally{$preflightPayload=$null;if($preflightChild){$preflightChild.Dispose()}}

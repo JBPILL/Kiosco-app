@@ -105,11 +105,12 @@ it.skipIf(process.platform!=='win32').each(['prepare','wrong-hash','broad-parent
 
 it.skipIf(process.platform!=='win32').each([
  { name:'case1-cashier-wrong-domain', role:'CASHIER', email:'prueba2@gmail.com', preflightMode:'none', expectedStatus:1, expectedOutput:'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY retry=false', expectedPrompts:1, expectedEmail:null, expectedPreflight:false, expectedChild:false },
- { name:'case2-cashier-auth-reject', role:'CASHIER', email:'prueba2@example.test', preflightMode:'reject', expectedStatus:1, expectedOutput:'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY retry=false', expectedPrompts:2, expectedEmail:'prueba2@example.test', expectedPreflight:true, expectedChild:false },
- { name:'case3-cashier-logout-fail', role:'CASHIER', email:'prueba2@example.test', preflightMode:'logout-fail', expectedStatus:1, expectedOutput:'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY retry=false', expectedPrompts:2, expectedEmail:'prueba2@example.test', expectedPreflight:true, expectedChild:false },
+ { name:'case2-cashier-auth-reject', role:'CASHIER', email:'prueba2@example.test', preflightMode:'reject', expectedStatus:1, expectedOutput:'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY preflight=AUTH_HTTP retry=false', expectedPrompts:2, expectedEmail:'prueba2@example.test', expectedPreflight:true, expectedChild:false },
+ { name:'case3-cashier-logout-fail', role:'CASHIER', email:'prueba2@example.test', preflightMode:'logout-fail', expectedStatus:1, expectedOutput:'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY preflight=LOGOUT_LOCAL retry=false', expectedPrompts:2, expectedEmail:'prueba2@example.test', expectedPreflight:true, expectedChild:false },
  { name:'case4-cashier-preflight-pass-whitespace', role:'CASHIER', email:' prueba2@example.test ', preflightMode:'pass', expectedStatus:0, expectedOutput:'BEFORE_CHILD', expectedPrompts:2, expectedEmail:'prueba2@example.test', expectedPreflight:true, expectedChild:true },
  { name:'case5-cashier-preflight-pass-uppercase', role:'CASHIER', email:'PRUEBA2@EXAMPLE.TEST', preflightMode:'pass', expectedStatus:0, expectedOutput:'BEFORE_CHILD', expectedPrompts:2, expectedEmail:'prueba2@example.test', expectedPreflight:true, expectedChild:true },
  { name:'case6-owner-unchanged', role:'OWNER', email:'dueno@example.test', preflightMode:'none', expectedStatus:0, expectedOutput:'BEFORE_CHILD', expectedPrompts:2, expectedEmail:'dueno@example.test', expectedPreflight:false, expectedChild:true },
+ { name:'case7-cashier-preflight-unknown', role:'CASHIER', email:'prueba2@example.test', preflightMode:'unknown', expectedStatus:1, expectedOutput:'RESTORE_OPERATOR_NOT_CONFIRMED stage=ENTRY preflight=UNKNOWN retry=false', expectedPrompts:2, expectedEmail:'prueba2@example.test', expectedPreflight:true, expectedChild:false },
 ])('execution wrapper cashier preflight and email guard $name', ({ role, email, preflightMode, expectedStatus, expectedOutput, expectedPrompts, expectedEmail, expectedPreflight, expectedChild })=>{
  const scriptPath = resolve('scripts/ejecutar-ensayo-restauracion-privado.ps1')
  const lockPath = join(folder, 'journal.jsonl.phase.lock')
@@ -127,11 +128,18 @@ let text = ''
 for await (const chunk of process.stdin) { text += chunk }
 const data = JSON.parse(text)
 if (data.email !== 'prueba2@example.test' || !data.password || !data.publicKey) {
+  console.log('CASHIER_SESSION_PREFLIGHT = FAIL stage=INPUT')
   process.exit(1)
 }
 if (${JSON.stringify(preflightMode)} === 'pass') {
   console.log('CASHIER_SESSION_PREFLIGHT = PASS')
   process.exit(0)
+} else if (${JSON.stringify(preflightMode)} === 'reject') {
+  console.log('CASHIER_SESSION_PREFLIGHT = FAIL stage=AUTH_HTTP')
+  process.exit(1)
+} else if (${JSON.stringify(preflightMode)} === 'logout-fail') {
+  console.log('CASHIER_SESSION_PREFLIGHT = FAIL stage=LOGOUT_LOCAL')
+  process.exit(1)
 } else {
   process.exit(1)
 }
