@@ -651,3 +651,16 @@ Evidencia:
 - `merge = false`
 
 PR07 queda CERRADO (`PASS`). Siguiente gate según orden de precedencia maestro: PR03 previo a PR02.
+
+
+### 2026-11-02 - Verificación de lectura PR03-A en Staging (PASS - 6/9 requisitos)
+
+Se auditó y verificó en Staging `acoyfwwmhaeruciyedri` el primer tramo de lectura PR03-A
+bajo aislamiento `REPEATABLE READ READ ONLY` y `ROLLBACK` obligatorio:
+- `PR03_A = PASS`
+- `FISCAL_CUSTODY = PASS`
+- `ISSUER_CHECK = PASS` (emisor `20415005963`, inactivo)
+- `POS_CHECK = PASS` (PV 2, tipo 11 Factura C)
+- Requisitos acreditados: 6/9.
+- Pendientes: PR03-B (idempotencia y reserva de numeración) y PR03-C (catálogo 3 bajo GO).
+- PR03 permanece PARCIAL. PR02 permanece PENDIENTE. Sin mutaciones ni llamadas a ARCA.

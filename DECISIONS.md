@@ -1651,3 +1651,25 @@ verificación post-ejecución estricta:
 **Consecuencias:**
 PR07 queda formalmente CERRADO. El trabajo continúa hacia la ruta crítica de homologación fiscal (PR03 / PR02)
 sin merge de ramas y sin tocar el entorno de Producción.
+
+
+### Verificación de lectura PR03-A (Custodia, Emisor, Punto de Venta) — 02/11/2026
+
+**Contexto:**
+Concluido PR07, la ruta crítica pasa a PR03 (idempotencia y robustez fiscal) como condición previa
+a PR02 (primer CAE). De los 9 requisitos de PR03, tres corresponden a verificación estricta de
+lectura: custodia fiscal segura, emisor homologación inactivo y punto de venta 2/tipo 11.
+
+**Decisión:**
+Acreditar como PASS el tramo PR03-A (`PR03_A = PASS`, `FISCAL_CUSTODY = PASS`, `ISSUER_CHECK = PASS`,
+`POS_CHECK = PASS`) tras validar en Staging `acoyfwwmhaeruciyedri` con `REPEATABLE READ READ ONLY` y `ROLLBACK`:
+1. Custodia presente y no expuesta en logs ni bundle público (`FISCAL_CUSTODY = PASS`).
+2. Emisor `20415005963` presente e inactivo (`habilitado = false`, 0 emisores activos fuera de ventana).
+3. Punto de venta 2 verificado para tipo 11 Factura C (`POS_CHECK = PASS`).
+4. Catálogo revisión 2 confirmado expirado y revisión 3 no creada (`CATALOG_REFRESH_REQUIRES_EXPLICIT_GO = true`).
+5. Cero mutaciones en base comercial y cero llamadas a servicios ARCA.
+
+**Consecuencias:**
+Se alcanzan 6 de los 9 requisitos de PR03 acreditados (cuerpo inmutable, conciliación, recuperación sin duplicados,
+custodia, emisor y punto de venta). El gate PR03 permanece PARCIAL y PR02 PENDIENTE. Se autoriza la preparación
+local del tramo PR03-B (idempotencia, reserva de numeración y concurrencia sin ARCA).

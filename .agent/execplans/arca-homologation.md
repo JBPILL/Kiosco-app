@@ -4866,3 +4866,18 @@ silencio, comprobar el mismo handle. No commit/push mientras ese gate siga abier
 Renovación del catálogo requiere consultas públicas nuevas con GO propio; coordinar
 el TA resultante y su vencimiento antes del posterior LoginCms desde Edge. No
 hacer autenticación local y hospedada consecutivas ni conservar TA en texto claro.
+
+
+### 2026-11-02 — Verificación de lectura PR03-A en Staging (PASS - 6/9 requisitos)
+
+Se completó la verificación del tramo de lectura PR03-A en Staging `acoyfwwmhaeruciyedri`
+bajo `REPEATABLE READ READ ONLY` y `ROLLBACK` forzado:
+1. `PR03_A = PASS`
+2. `FISCAL_CUSTODY = PASS` (custodia presente, no expuesta en logs ni bundle público)
+3. `ISSUER_CHECK = PASS` (emisor `20415005963` inactivo, 0 habilitados fuera de ventana)
+4. `POS_CHECK = PASS` (punto de venta 2 verificado para tipo 11 Factura C)
+5. `CATALOG_REVISION_2 = EXPIRED` y `CATALOG_REVISION_3 = NOT_CREATED`.
+
+Estado del gate: 6 de 9 requisitos de PR03 acreditados (cuerpo inmutable, conciliación,
+recuperación sin duplicados, custodia, emisor y punto de venta). PR03 permanece PARCIAL.
+PR02 permanece PENDIENTE. Cero mutaciones comerciales y cero llamadas a ARCA.
