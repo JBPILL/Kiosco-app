@@ -27,6 +27,7 @@ export interface Pr03bFixtureOptions {
   total?: string
   fecha?: string
   numero?: number
+  puntoVenta?: number
 }
 
 export interface Pr03bTestFixture {
@@ -47,6 +48,7 @@ export interface Pr03bTestFixture {
     readonly kiosco_id: string
     readonly scope: string
     readonly run_id?: string
+    readonly punto_venta?: number
     readonly anti_arca_guard: boolean
     readonly created_at: string
   }
@@ -71,12 +73,12 @@ export interface Pr03bIdempotencyConflictResult {
   readonly errorCode: string
 }
 
-export interface Pr03bConcurrencyNumberingResult {
+export interface Pr03bConcurrencyLockResult {
   readonly status: 'PASS'
-  readonly serialized: boolean
-  readonly collisionCount: number
-  readonly uniqueNumbers: boolean
-  readonly assignedNumbers: readonly number[]
+  readonly concurrencyExpectation: 'SINGLE_PENDING_RESERVATION'
+  readonly lockSerialization: 'PASS'
+  readonly noSimultaneousPendingReservations: boolean
+  readonly numberCollision: boolean
 }
 
 export interface Pr03bTestCase {
@@ -103,6 +105,13 @@ export interface Pr03bPlanValidationResult {
   readonly testCasesCount: number
 }
 
+export interface Pr03bPreflightSyntheticSale {
+  readonly id: string
+  readonly kiosco_id: string
+  readonly total: string
+  readonly estado: string
+}
+
 export interface Pr03bPreflightResult {
   readonly status: 'PASS'
   readonly transactionReadOnly: boolean
@@ -111,7 +120,9 @@ export interface Pr03bPreflightResult {
   readonly expectedIssuerInactive: boolean
   readonly catalogRev3Absent: boolean
   readonly residualFixturesCount: number
-  readonly pendingSeriesReservationsCount: number
+  readonly syntheticSalesCount: number
+  readonly chosenSyntheticPv: number
+  readonly syntheticSales: readonly Pr03bPreflightSyntheticSale[]
 }
 
 export const ARCA_NETWORK_DISABLED: true
@@ -119,12 +130,14 @@ export const PR03_B_SCOPE: string
 export const PR03_B_TEST_FIXTURE_TAG: string
 export const PR03_B_OPERACION_PREFIX: string
 export const PR03_B_APPROVED_KIOSK_ID: string
+export const PR03_B_APPROVED_OWNER_AUTH_ID: string
 export const PR03_B_APPROVED_CUIT: string
 export const PR03_B_APPROVED_PUNTO_VENTA: number
 export const PR03_B_APPROVED_TIPO_COMPROBANTE: number
+export const PR03_B_SYNTHETIC_PV_CANDIDATES: readonly number[]
 export const PR03_B_BLOCKED_HOST_PATTERNS: readonly RegExp[]
-export const PR03_B_PREFLIGHT_SQL: string
-export const PR03_B_CLEANUP_SQL: string
+export const PR03_B_PREFLIGHT_SELECT_SQL: string
+export const PR03_B_COMMERCIAL_BASELINE_SQL: string
 export const PR03_B_TEST_CASES: readonly Pr03bTestCase[]
 
 export function assertNoArcaNetwork(targetUrl?: string): void
@@ -141,9 +154,10 @@ export function buildCanonicalFiscalRequest(params: FiscalRequestParams): {
 export function createPr03bTestFixture(opts?: Pr03bFixtureOptions): Pr03bTestFixture
 export function createPr03bScopedFixture(runId: string, opts?: Pr03bFixtureOptions): Pr03bScopedFixture
 export function verifyPr03bPreflight(raw: unknown): Pr03bPreflightResult
-export function buildScopedCleanupSql(runId: string): string
+export function computeCommercialBaselineHash(baseline: unknown): string
 export function validateCleanupTarget(context: unknown): boolean
+export function buildManifestCleanupSql(operationIds: readonly string[], opts?: { syntheticPv?: number }): string
 export function verifyIdempotencyReplay(first: unknown, replay: unknown): Pr03bIdempotencyReplayResult
 export function verifyIdempotencyConflict(error: unknown): Pr03bIdempotencyConflictResult
-export function verifyConcurrencyNumbering(results: unknown): Pr03bConcurrencyNumberingResult
+export function verifyConcurrencySinglePendingReservation(check: unknown): Pr03bConcurrencyLockResult
 export function verifyPr03bPlan(plan: unknown): Pr03bPlanValidationResult

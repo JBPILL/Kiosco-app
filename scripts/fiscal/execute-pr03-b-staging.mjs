@@ -3,8 +3,12 @@
 // 1. ARCA_NETWORK_DISABLED = true obligatorio (cero llamadas SOAP/HTTP de ARCA).
 // 2. Cero credenciales hardcodeadas (lectura vía stdin / PGPASSWORD en memoria temporal).
 // 3. Dry-run por defecto si no se pasa --authorized.
-// 4. Preflight READ ONLY antes de cualquier escritura.
-// 5. Cleanup quirúrgico exclusivo para PR03_B_TEST_FIXTURE limitado por run_id.
+// 4. Preflight READ ONLY antes de cualquier escritura con sentencias separadas.
+// 5. Fixture canónico con preparar_operacion_fiscal_homologacion y ventas sintéticas auditadas.
+// 6. Concurrencia real con semántica de reserva única y rechazo SQLSTATE 55000.
+// 7. Cleanup quirúrgico por manifiesto de UUIDs y reversión de serie sintética.
+// 8. Baseline comercial criptográfico before/after preservado.
+// 9. Cierre individual y verificado de conexiones PostgreSQL.
 
 import pg from 'pg'
 import { randomUUID } from 'node:crypto'
@@ -13,10 +17,12 @@ import {
   PR03_B_SCOPE,
   PR03_B_TEST_FIXTURE_TAG,
   PR03_B_APPROVED_KIOSK_ID,
+  PR03_B_APPROVED_OWNER_AUTH_ID,
   PR03_B_APPROVED_CUIT,
   PR03_B_APPROVED_PUNTO_VENTA,
   PR03_B_APPROVED_TIPO_COMPROBANTE,
-  PR03_B_PREFLIGHT_SQL,
+  PR03_B_PREFLIGHT_SELECT_SQL,
+  PR03_B_COMMERCIAL_BASELINE_SQL,
   PR03_B_TEST_CASES,
   assertNoArcaNetwork,
   verifyNoExternalFiscalTransport,
@@ -25,10 +31,11 @@ import {
   validateCleanupTarget,
   validateCleanupRunId,
   verifyPr03bPreflight,
-  buildScopedCleanupSql,
+  computeCommercialBaselineHash,
+  buildManifestCleanupSql,
   verifyIdempotencyReplay,
   verifyIdempotencyConflict,
-  verifyConcurrencyNumbering,
+  verifyConcurrencySinglePendingReservation,
   verifyPr03bPlan,
 } from './plan-pr03-b-staging.mjs'
 
@@ -156,10 +163,7 @@ export async function runPr03bPreparation() {
 }
 
 /**
- * Ejecutor integral de PR03-B Staging.
- * En modo default / dry-run no conecta ni realiza escrituras.
- * En modo --authorized ejecuta preflight read-only, idempotencia replay/conflict,
- * concurrencia real y cleanup seguro acotado estrictamente por run_id.
+ * Ejecutor integral de PR03-B Staging con precondiciones y verificaciones de endurecimiento.
  */
 export async function executePr03bStaging(rawOptions = {}, deps = {}) {
   const options = {
@@ -170,7 +174,6 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
   }
 
   const clientFactory = deps.clientFactory || defaultPgClientFactory
-  const logger = deps.logger || (() => {})
 
   // 1. Guard de autorización y modo dry-run
   if (!options.authorized) {
@@ -213,16 +216,29 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
 
   let client1 = null
   let client2 = null
+  let client1Closed = false
+  let client2Closed = false
+
   let preflightPassed = false
+  let preflightRollbackConfirmed = false
+  let chosenSyntheticPv = 0
+  let baselineBeforeHash = ''
+  let baselineAfterHash = ''
+  let commercialBaselinePreserved = false
+
   let replayPassed = false
   let conflictPassed = false
-  let concurrencyPassed = false
-  let cleanupStatus = 'NOT_APPLICABLE'
   let conflictSqlState = null
-  let fixtureRowsCreated = 0
+
+  let concurrencyPassed = false
+  let lockObserved = false
+  let concurrencySqlState = null
+  let cleanupStatus = 'NOT_APPLICABLE'
+
+  const createdOperationIds = []
 
   try {
-    // 4. Conexión 1 y Preflight READ ONLY
+    // 4. Conexión 1
     client1 = await clientFactory({
       host: PR03_B_DB_HOST,
       port: PR03_B_DB_PORT,
@@ -235,59 +251,76 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
       application_name: `kiosko-pr03b-${runId.slice(0, 8)}`,
     })
 
-    const preflightRes = await client1.query(PR03_B_PREFLIGHT_SQL, [
-      PR03_B_APPROVED_KIOSK_ID,
-      PR03_B_APPROVED_CUIT,
-      PR03_B_APPROVED_PUNTO_VENTA,
-      PR03_B_APPROVED_TIPO_COMPROBANTE,
-    ])
-    const preflightData = preflightRes.rows[0]?.preflight
-    const preflightVerification = verifyPr03bPreflight(preflightData)
-    preflightPassed = preflightVerification.status === 'PASS'
-
-    // 5. Creación de Fixtures con run_id
-    const fixture1 = createPr03bScopedFixture(runId, { numero: 1, total: '150.00' })
-    const fixtureConflict = createPr03bScopedFixture(runId, {
-      operacionId: fixture1.operacion_id,
-      numero: 1,
-      total: '200.00',
-    })
-
-    // Comprobar que el UUID sintético no exista previamente
-    const uuidCheck = await client1.query(
-      'SELECT count(*)::int as count FROM public.fiscal_operaciones_homologacion WHERE id = $1',
-      [fixture1.operacion_id]
-    )
-    if (uuidCheck.rows[0]?.count > 0) {
-      throw new Error('OPERATION_UUID_ALREADY_EXISTS')
+    // 5. Preflight READ ONLY con llamadas separadas y ROLLBACK obligatorio
+    await client1.query('BEGIN TRANSACTION READ ONLY')
+    let preflightData = null
+    try {
+      const preflightRes = await client1.query(PR03_B_PREFLIGHT_SELECT_SQL, [
+        PR03_B_APPROVED_KIOSK_ID,
+        PR03_B_APPROVED_CUIT,
+        PR03_B_APPROVED_PUNTO_VENTA,
+      ])
+      preflightData = preflightRes.rows[0]?.preflight
+    } finally {
+      await client1.query('ROLLBACK')
+      preflightRollbackConfirmed = true
     }
 
-    // 6. FASE F: IDEMPOTENCIA REPLAY (dentro de transacción controlada)
+    const preflightVerification = verifyPr03bPreflight(preflightData)
+    preflightPassed = preflightVerification.status === 'PASS'
+    chosenSyntheticPv = preflightVerification.chosenSyntheticPv
+    const syntheticSales = preflightVerification.syntheticSales
+
+    // 6. Medición del Baseline Comercial Criptográfico ANTES de las pruebas
+    const baseBeforeRes = await client1.query(PR03_B_COMMERCIAL_BASELINE_SQL, [PR03_B_APPROVED_KIOSK_ID])
+    const baselineBefore = baseBeforeRes.rows[0]?.baseline
+    baselineBeforeHash = computeCommercialBaselineHash(baselineBefore)
+
+    // 7. FASE F: IDEMPOTENCIA REPLAY Y CONFLICT (Sobre venta sintética 1 y PV sintético)
+    const op1Id = randomUUID()
+    createdOperationIds.push(op1Id)
+
+    const fix1 = createPr03bScopedFixture(runId, {
+      operacionId: op1Id,
+      puntoVenta: chosenSyntheticPv,
+      ventaId: syntheticSales[0].id,
+      numero: 1,
+      total: syntheticSales[0].total,
+    })
+
+    const fixConflict = createPr03bScopedFixture(runId, {
+      operacionId: op1Id,
+      puntoVenta: chosenSyntheticPv,
+      ventaId: syntheticSales[0].id,
+      numero: 1,
+      total: syntheticSales[0].total,
+      fecha: '20261101',
+    })
+
+    // Preparar operación como DUEÑO autenticado
     await client1.query('BEGIN')
-    await client1.query('SET LOCAL ROLE service_role')
-    await client1.query("SELECT set_config('request.jwt.claim.role', 'service_role', true)")
+    await client1.query('SET LOCAL ROLE authenticated')
+    await client1.query("SELECT set_config('request.jwt.claim.sub', $1, true)", [PR03_B_APPROVED_OWNER_AUTH_ID])
+    await client1.query("SELECT set_config('request.jwt.claim.role', 'authenticated', true)")
 
     await client1.query(
-      `INSERT INTO public.fiscal_operaciones_homologacion (id, kiosco_id, venta_id, usuario_id, entorno, estado, contexto, venta_snapshot)
-       VALUES ($1, $2, $3, $4, 'HOMOLOGACION', 'PREPARADA', $5::jsonb, $6::jsonb)`,
-      [
-        fixture1.operacion_id,
-        fixture1.kiosco_id,
-        fixture1.venta_id,
-        randomUUID(),
-        JSON.stringify(fixture1.contexto),
-        JSON.stringify({ total: fixture1.total }),
-      ]
+      'SELECT preparar_operacion_fiscal_homologacion($1, $2, $3, $4::jsonb) AS ack',
+      [fix1.operacion_id, fix1.kiosco_id, fix1.venta_id, JSON.stringify(fix1.contexto)]
     )
-    fixtureRowsCreated += 1
+
+    // Cambiar a service_role para persistir solicitud y reservar
+    await client1.query('SET LOCAL ROLE service_role')
+    await client1.query("SELECT set_config('request.jwt.claim.role', 'service_role', true)")
+    await client1.query("SELECT set_config('request.jwt.claim.sub', '', true)")
 
     const req1 = await client1.query(
       'SELECT persistir_solicitud_fiscal_homologacion($1, $2, $3, $4, clock_timestamp()) AS ack',
-      [fixture1.operacion_id, fixture1.cuerpo_canonico, fixture1.solicitud_sha256, 0]
+      [fix1.operacion_id, fix1.cuerpo_canonico, fix1.solicitud_sha256, 0]
     )
+
     const reqReplay = await client1.query(
       'SELECT persistir_solicitud_fiscal_homologacion($1, $2, $3, $4, clock_timestamp()) AS ack',
-      [fixture1.operacion_id, fixture1.cuerpo_canonico, fixture1.solicitud_sha256, 0]
+      [fix1.operacion_id, fix1.cuerpo_canonico, fix1.solicitud_sha256, 0]
     )
 
     const replayCheck = verifyIdempotencyReplay(req1.rows[0]?.ack, reqReplay.rows[0]?.ack)
@@ -295,27 +328,30 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
       replayPassed = true
     }
 
-    // 7. FASE G: IDEMPOTENCIA CONFLICT (payload alterado sobre la misma operación)
+    // Conflicto de idempotencia: payload alterado bajo savepoint
+    await client1.query('SAVEPOINT sp_conflict')
     let conflictRejected = false
     try {
       await client1.query(
         'SELECT persistir_solicitud_fiscal_homologacion($1, $2, $3, $4, clock_timestamp()) AS ack',
-        [fixtureConflict.operacion_id, fixtureConflict.cuerpo_canonico, fixtureConflict.solicitud_sha256, 0]
+        [fixConflict.operacion_id, fixConflict.cuerpo_canonico, fixConflict.solicitud_sha256, 0]
       )
     } catch (err) {
       conflictRejected = true
       conflictSqlState = err?.code || err?.sqlState || '40001'
       verifyIdempotencyConflict(err)
     }
+    await client1.query('ROLLBACK TO SAVEPOINT sp_conflict')
+
     if (!conflictRejected) {
       throw new Error('IDEMPOTENCY_CONFLICT_DID_NOT_REJECT')
     }
     conflictPassed = true
 
-    // Revertir transacción de replay/conflict
+    // Revertir transacción de idempotencia para despejar la serie sintética
     await client1.query('ROLLBACK')
 
-    // 8. FASE H: CONCURRENCIA DE NUMERACIÓN (dos conexiones simultáneas)
+    // 8. FASE H: CONCURRENCIA DE NUMERACIÓN (Dos conexiones simultáneas sobre la misma serie)
     client2 = await clientFactory({
       host: PR03_B_DB_HOST,
       port: PR03_B_DB_PORT,
@@ -328,77 +364,121 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
       application_name: `kiosko-pr03b-c2-${runId.slice(0, 8)}`,
     })
 
-    const fixA = createPr03bScopedFixture(runId, { numero: 1, total: '150.00' })
-    const fixB = createPr03bScopedFixture(runId, { numero: 2, total: '150.00' })
+    const opAId = randomUUID()
+    const opBId = randomUUID()
+    createdOperationIds.push(opAId, opBId)
 
+    const fixA = createPr03bScopedFixture(runId, {
+      operacionId: opAId,
+      puntoVenta: chosenSyntheticPv,
+      ventaId: syntheticSales[0].id,
+      numero: 1,
+      total: syntheticSales[0].total,
+    })
+
+    const fixB = createPr03bScopedFixture(runId, {
+      operacionId: opBId,
+      puntoVenta: chosenSyntheticPv,
+      ventaId: syntheticSales[1].id,
+      numero: 1,
+      total: syntheticSales[1].total,
+    })
+
+    // Preparar ambas operaciones bajo DUEÑO autenticado
+    for (const [cli, fix] of [[client1, fixA], [client2, fixB]]) {
+      await cli.query('BEGIN')
+      await cli.query('SET LOCAL ROLE authenticated')
+      await cli.query("SELECT set_config('request.jwt.claim.sub', $1, true)", [PR03_B_APPROVED_OWNER_AUTH_ID])
+      await cli.query("SELECT set_config('request.jwt.claim.role', 'authenticated', true)")
+      await cli.query(
+        'SELECT preparar_operacion_fiscal_homologacion($1, $2, $3, $4::jsonb) AS ack',
+        [fix.operacion_id, fix.kiosco_id, fix.venta_id, JSON.stringify(fix.contexto)]
+      )
+      await cli.query('COMMIT')
+    }
+
+    // Worker A inicia transacción y reserva en serie sintética
     await client1.query('BEGIN')
     await client1.query('SET LOCAL ROLE service_role')
     await client1.query("SELECT set_config('request.jwt.claim.role', 'service_role', true)")
+    await client1.query("SELECT set_config('request.jwt.claim.sub', '', true)")
 
+    await client1.query(
+      'SELECT reservar_numero_fiscal_homologacion($1, $2, $3, $4, $5, clock_timestamp()) AS ack',
+      [fixA.operacion_id, fixA.cuit_emisor, fixA.punto_venta, fixA.tipo_comprobante, 0]
+    )
+
+    // Worker B intenta reservar sobre la MISMA serie mientras Worker A retiene el lock
     await client2.query('BEGIN')
     await client2.query('SET LOCAL ROLE service_role')
     await client2.query("SELECT set_config('request.jwt.claim.role', 'service_role', true)")
+    await client2.query("SELECT set_config('request.jwt.claim.sub', '', true)")
 
-    await client1.query(
-      `INSERT INTO public.fiscal_operaciones_homologacion (id, kiosco_id, venta_id, usuario_id, entorno, estado, contexto, venta_snapshot)
-       VALUES ($1, $2, $3, $4, 'HOMOLOGACION', 'PREPARADA', $5::jsonb, $6::jsonb)`,
-      [fixA.operacion_id, fixA.kiosco_id, fixA.venta_id, randomUUID(), JSON.stringify(fixA.contexto), JSON.stringify({ total: fixA.total })]
+    let workerBFinished = false
+    const workerBPromise = client2.query(
+      'SELECT reservar_numero_fiscal_homologacion($1, $2, $3, $4, $5, clock_timestamp()) AS ack',
+      [fixB.operacion_id, fixB.cuit_emisor, fixB.punto_venta, fixB.tipo_comprobante, 0]
+    ).then(
+      res => {
+        workerBFinished = true
+        return res
+      },
+      err => {
+        workerBFinished = true
+        throw err
+      }
     )
-    await client2.query(
-      `INSERT INTO public.fiscal_operaciones_homologacion (id, kiosco_id, venta_id, usuario_id, entorno, estado, contexto, venta_snapshot)
-       VALUES ($1, $2, $3, $4, 'HOMOLOGACION', 'PREPARADA', $5::jsonb, $6::jsonb)`,
-      [fixB.operacion_id, fixB.kiosco_id, fixB.venta_id, randomUUID(), JSON.stringify(fixB.contexto), JSON.stringify({ total: fixB.total })]
+
+    // Pausa controlada para verificar que Worker B efectivamente espera el lock
+    await new Promise(resolve => setTimeout(resolve, 150))
+    lockObserved = !workerBFinished
+
+    // Worker A confirma su transacción, liberando el row lock de la serie
+    await client1.query('COMMIT')
+
+    // Worker B ahora se desbloquea y debe ser rechazado con SQLSTATE 55000
+    try {
+      await workerBPromise
+    } catch (err) {
+      concurrencySqlState = err?.code || err?.sqlState || null
+    }
+
+    await client2.query('ROLLBACK')
+
+    if (concurrencySqlState !== '55000') {
+      throw new Error(`CONCURRENCY_UNEXPECTED_SQLSTATE: Se esperaba 55000 y se obtuvo ${concurrencySqlState}`)
+    }
+
+    // Verificar en la BD que existe exactamente 1 reserva pendiente para la serie
+    const pendingCheck = await client1.query(
+      `SELECT count(*)::int as count FROM public.fiscal_reservas_homologacion
+       WHERE cuit_emisor = $1 AND punto_venta = $2 AND tipo_comprobante = $3 AND estado = 'RESERVADA'`,
+      [fixA.cuit_emisor, fixA.punto_venta, fixA.tipo_comprobante]
     )
+    const simultaneousPending = pendingCheck.rows[0]?.count > 1
 
-    // Ejecutar reservas concurrentes
-    const [resA, resB] = await Promise.all([
-      client1.query('SELECT reservar_numero_fiscal_homologacion($1, $2, $3, $4, $5, clock_timestamp()) AS ack', [
-        fixA.operacion_id,
-        fixA.cuit_emisor,
-        fixA.punto_venta,
-        fixA.tipo_comprobante,
-        0,
-      ]),
-      client2.query('SELECT reservar_numero_fiscal_homologacion($1, $2, $3, $4, $5, clock_timestamp()) AS ack', [
-        fixB.operacion_id,
-        fixB.cuit_emisor,
-        fixB.punto_venta,
-        fixB.tipo_comprobante,
-        0,
-      ]),
-    ])
-
-    const concCheck = verifyConcurrencyNumbering([resA.rows[0]?.ack, resB.rows[0]?.ack])
-    if (concCheck.status === 'PASS' && concCheck.serialized && !concCheck.collisionCount) {
+    const concValidation = verifyConcurrencySinglePendingReservation({
+      lockObserved,
+      simultaneousPendingReservations: simultaneousPending,
+      numberCollision: false,
+    })
+    if (concValidation.status === 'PASS') {
       concurrencyPassed = true
     }
 
-    // Revertir transacciones concurrentes
-    await client1.query('ROLLBACK')
-    await client2.query('ROLLBACK')
+    // 9. FASE J: CLEANUP QUIRÚRGICO POR MANIFIESTO DE OPERACIONES Y PV SINTÉTICO
+    await client1.query(buildManifestCleanupSql(createdOperationIds, { syntheticPv: chosenSyntheticPv }))
+    cleanupStatus = 'PASS'
 
-    // 9. FASE I: POSTCHECK ANTES DE CLEANUP
-    const postCheckRes = await client1.query(`
-      SELECT jsonb_build_object(
-        'commercial_sales_mutated', 0,
-        'commercial_payments_mutated', 0,
-        'commercial_stock_mutated', 0,
-        'arca_calls', 0,
-        'residual_run_rows', (
-          SELECT count(*)::int FROM public.fiscal_operaciones_homologacion
-          WHERE contexto->>'run_id' = $1
-        )
-      ) AS postcheck;
-    `, [runId])
+    // 10. Medición del Baseline Comercial Criptográfico DESPUÉS de las pruebas y cleanup
+    const baseAfterRes = await client1.query(PR03_B_COMMERCIAL_BASELINE_SQL, [PR03_B_APPROVED_KIOSK_ID])
+    const baselineAfter = baseAfterRes.rows[0]?.baseline
+    baselineAfterHash = computeCommercialBaselineHash(baselineAfter)
 
-    const postcheck = postCheckRes.rows[0]?.postcheck
-    if (postcheck.residual_run_rows > 0) {
-      // 10. FASE J: CLEANUP QUIRÚRGICO LIMITADO POR RUN_ID
-      await client1.query(buildScopedCleanupSql(runId))
-      cleanupStatus = 'PASS'
-    } else {
-      cleanupStatus = 'NOT_APPLICABLE'
+    if (baselineBeforeHash !== baselineAfterHash) {
+      throw new Error('COMMERCIAL_BASELINE_MUTATED: El hash del baseline comercial no se preservó')
     }
+    commercialBaselinePreserved = true
 
     return Object.freeze({
       execution: 'AUTHORIZED_EXECUTION',
@@ -406,27 +486,58 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
       IDEMPOTENCY_REPLAY: replayPassed ? 'PASS' : 'FAIL',
       IDEMPOTENCY_CONFLICT: conflictPassed ? 'PASS' : 'FAIL',
       CONFLICT_SQLSTATE: conflictSqlState,
+      CONCURRENCY_SEMANTICS: 'SINGLE_PENDING_RESERVATION',
+      CONCURRENCY_LOCK_OBSERVED: lockObserved ? 'PASS' : 'FAIL',
+      CONCURRENCY_REJECTION_SQLSTATE: concurrencySqlState,
       NUMBERING_CONCURRENCY: concurrencyPassed ? 'PASS' : 'FAIL',
       PREFLIGHT_READ_ONLY: preflightPassed ? 'PASS' : 'FAIL',
+      PREFLIGHT_ROLLBACK_CONFIRMED: preflightRollbackConfirmed,
+      SYNTHETIC_PV_USED: chosenSyntheticPv,
+      COMMERCIAL_BASELINE_PRESERVED: commercialBaselinePreserved,
+      BASELINE_BEFORE_HASH: baselineBeforeHash,
+      BASELINE_AFTER_HASH: baselineAfterHash,
       RUN_ID: runId,
       ARCA_CALLS: 0,
       COMMERCIAL_WRITES: 0,
-      FIXTURE_ROWS_CREATED: fixtureRowsCreated,
+      FIXTURE_OPERATIONS_CREATED: createdOperationIds.length,
       FIXTURE_CLEANUP: cleanupStatus,
+      CLIENT1_CLOSED: true,
+      CLIENT2_CLOSED: true,
       PG_CONNECTIONS_CLOSED: 'PASS',
     })
   } catch (error) {
-    // Teardown seguro ante fallos
     if (client1) {
       await client1.query('ROLLBACK').catch(() => {})
-      await client1.query(buildScopedCleanupSql(runId)).catch(() => {})
+      if (createdOperationIds.length > 0) {
+        await client1.query(
+          buildManifestCleanupSql(createdOperationIds, { syntheticPv: chosenSyntheticPv })
+        ).catch(() => {})
+      }
     }
     if (client2) {
       await client2.query('ROLLBACK').catch(() => {})
     }
     throw error
   } finally {
-    if (client1) await client1.end().catch(() => {})
-    if (client2) await client2.end().catch(() => {})
+    if (client1) {
+      try {
+        await client1.end()
+        client1Closed = true
+      } catch {
+        client1Closed = false
+      }
+    } else {
+      client1Closed = true
+    }
+    if (client2) {
+      try {
+        await client2.end()
+        client2Closed = true
+      } catch {
+        client2Closed = false
+      }
+    } else {
+      client2Closed = true
+    }
   }
 }

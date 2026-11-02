@@ -1,5 +1,10 @@
-// PR03-B: Plan y Fixture para aceptación de Idempotencia y Numeración en Staging.
-// Requisitos: SIN llamadas a ARCA, SIN mutaciones comerciales, con rollback o cleanup quirúrgico.
+// PR03-B: Plan, Preflight y Fixtures para aceptación de Idempotencia y Numeración en Staging.
+// Requisitos de endurecimiento:
+// 1. Serie sintética aislada (cero mutación en PV 2 / tipo 11 de producción o staging operativo).
+// 2. Preflight con queries separadas (cero multi-statement parametrizado).
+// 3. Concurrencia con semántica real: máximo una reserva pendiente por serie (SQLSTATE 55000).
+// 4. Baseline comercial criptográfico before/after (cero writes comerciales declarados sin hash).
+// 5. Cierre individual y verificado de conexiones PostgreSQL.
 
 import { createHash, randomUUID } from 'node:crypto'
 
@@ -8,9 +13,12 @@ export const PR03_B_SCOPE = 'PR03_B_STAGING_ACCEPTANCE'
 export const PR03_B_TEST_FIXTURE_TAG = 'PR03_B_TEST_FIXTURE'
 export const PR03_B_OPERACION_PREFIX = 'PR03_B_TEST_'
 export const PR03_B_APPROVED_KIOSK_ID = 'b7254826-c767-4098-94b8-71013c12021d'
+export const PR03_B_APPROVED_OWNER_AUTH_ID = '0e90b9a7-36d2-4762-ab1a-4982996cf9aa'
 export const PR03_B_APPROVED_CUIT = '20415005963'
 export const PR03_B_APPROVED_PUNTO_VENTA = 2
 export const PR03_B_APPROVED_TIPO_COMPROBANTE = 11
+
+export const PR03_B_SYNTHETIC_PV_CANDIDATES = Object.freeze([9999, 9998, 9995, 9990])
 
 export const PR03_B_BLOCKED_HOST_PATTERNS = Object.freeze([
   /(?:^|\.)(?:afip|arca|wsaa|wsfe)\.gob\.ar$/i,
@@ -125,7 +133,7 @@ export function buildCanonicalFiscalRequest(params) {
 }
 
 /**
- * Validador estricto de formato UUID para run_id.
+ * Validador estricto de formato UUID para identificadores de corrida.
  */
 export function validateCleanupRunId(runId) {
   if (
@@ -138,7 +146,7 @@ export function validateCleanupRunId(runId) {
 }
 
 /**
- * Crea un fixture de prueba PR03-B estrictamente validado.
+ * Crea un fixture de prueba PR03-B básico para validaciones locales de contrato.
  */
 export function createPr03bTestFixture(opts = {}) {
   const operacionId = opts.operacionId ?? randomUUID()
@@ -146,10 +154,11 @@ export function createPr03bTestFixture(opts = {}) {
   const total = opts.total ?? '150.00'
   const fecha = opts.fecha ?? '20261102'
   const numero = opts.numero ?? 1
+  const puntoVenta = opts.puntoVenta ?? PR03_B_APPROVED_PUNTO_VENTA
 
   const canonicalReq = buildCanonicalFiscalRequest({
     cuitEmisor: PR03_B_APPROVED_CUIT,
-    puntoVenta: PR03_B_APPROVED_PUNTO_VENTA,
+    puntoVenta,
     tipoComprobante: PR03_B_APPROVED_TIPO_COMPROBANTE,
     numero,
     total,
@@ -161,7 +170,7 @@ export function createPr03bTestFixture(opts = {}) {
     scope: PR03_B_SCOPE,
     kiosco_id: PR03_B_APPROVED_KIOSK_ID,
     cuit_emisor: PR03_B_APPROVED_CUIT,
-    punto_venta: PR03_B_APPROVED_PUNTO_VENTA,
+    punto_venta: puntoVenta,
     tipo_comprobante: PR03_B_APPROVED_TIPO_COMPROBANTE,
     operacion_id: operacionId,
     venta_id: ventaId,
@@ -180,7 +189,8 @@ export function createPr03bTestFixture(opts = {}) {
 }
 
 /**
- * Crea un fixture de ejecución PR03-B ligado inequívocamente a un run_id.
+ * Crea un fixture de ejecución PR03-B sobre una serie y venta sintética auditada.
+ * Respeta rigurosamente los 6 campos canónicos de preparar_operacion_fiscal_homologacion.
  */
 export function createPr03bScopedFixture(runId, opts = {}) {
   validateCleanupRunId(runId)
@@ -189,26 +199,25 @@ export function createPr03bScopedFixture(runId, opts = {}) {
   const total = opts.total ?? '150.00'
   const fecha = opts.fecha ?? '20261102'
   const numero = opts.numero ?? 1
+  const puntoVenta = opts.puntoVenta ?? 9999
 
   const canonicalReq = buildCanonicalFiscalRequest({
     cuitEmisor: PR03_B_APPROVED_CUIT,
-    puntoVenta: PR03_B_APPROVED_PUNTO_VENTA,
+    puntoVenta,
     tipoComprobante: PR03_B_APPROVED_TIPO_COMPROBANTE,
     numero,
     total,
     fecha,
   })
 
+  // Estricto: sólo los 6 campos canónicos admitidos por la función SQL
   const context = {
     version: 1,
     cuit_emisor: PR03_B_APPROVED_CUIT,
-    punto_venta: PR03_B_APPROVED_PUNTO_VENTA,
+    punto_venta: puntoVenta,
     tipo_comprobante: PR03_B_APPROVED_TIPO_COMPROBANTE,
     tipo_doc_receptor: 99,
     nro_doc_receptor: '0',
-    fixture: PR03_B_TEST_FIXTURE_TAG,
-    tag: PR03_B_TEST_FIXTURE_TAG,
-    run_id: runId,
   }
 
   return Object.freeze({
@@ -217,7 +226,7 @@ export function createPr03bScopedFixture(runId, opts = {}) {
     run_id: runId,
     kiosco_id: PR03_B_APPROVED_KIOSK_ID,
     cuit_emisor: PR03_B_APPROVED_CUIT,
-    punto_venta: PR03_B_APPROVED_PUNTO_VENTA,
+    punto_venta: puntoVenta,
     tipo_comprobante: PR03_B_APPROVED_TIPO_COMPROBANTE,
     operacion_id: operacionId,
     venta_id: ventaId,
@@ -231,6 +240,7 @@ export function createPr03bScopedFixture(runId, opts = {}) {
       kiosco_id: PR03_B_APPROVED_KIOSK_ID,
       scope: PR03_B_SCOPE,
       run_id: runId,
+      punto_venta: puntoVenta,
       anti_arca_guard: true,
       created_at: new Date().toISOString(),
     },
@@ -238,11 +248,10 @@ export function createPr03bScopedFixture(runId, opts = {}) {
 }
 
 /**
- * SQL de preflight READ ONLY estricto para validar estado Staging antes de escribir.
+ * Query SELECT pura para preflight READ ONLY. Cero sentencias BEGIN/ROLLBACK embebidas
+ * para compatibilidad total con el protocolo extendido de PostgreSQL.
  */
-export const PR03_B_PREFLIGHT_SQL = `BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
-
-SELECT jsonb_build_object(
+export const PR03_B_PREFLIGHT_SELECT_SQL = `SELECT jsonb_build_object(
   'transaction_read_only', current_setting('transaction_read_only'),
   'observed_at', clock_timestamp(),
   'kiosk_active', EXISTS (
@@ -265,20 +274,45 @@ SELECT jsonb_build_object(
   ),
   'residual_fixtures_count', (
     SELECT count(*)::int FROM public.fiscal_operaciones_homologacion
-    WHERE (contexto->>'fixture' = 'PR03_B_TEST_FIXTURE' OR contexto->>'tag' = 'PR03_B_TEST_FIXTURE')
-      AND estado = 'PREPARADA'
+    WHERE estado = 'PREPARADA'
   ),
-  'pending_series_reservations_count', (
-    SELECT count(*)::int FROM public.fiscal_reservas_homologacion
-    WHERE cuit_emisor = $2 AND punto_venta = $3 AND tipo_comprobante = $4
-      AND estado IN ('RESERVADA', 'ENVIO_INCIERTO')
+  'synthetic_sales', (
+    SELECT coalesce(jsonb_agg(jsonb_build_object(
+      'id', v.id,
+      'kiosco_id', v.kiosco_id,
+      'total', v.total::text,
+      'estado', v.estado
+    ) ORDER BY v.fecha_hora DESC), '[]'::jsonb)
+    FROM public.ventas v
+    WHERE v.kiosco_id = $1
+      AND v.estado = 'COMPLETADA'
+      AND nullif(btrim(to_jsonb(v)->>'afip_cae'), '') IS NULL
+      AND NOT EXISTS (SELECT 1 FROM public.fiscal_operaciones_homologacion op WHERE op.venta_id = v.id)
+      AND (
+        coalesce(to_jsonb(v)->>'cliente_nombre', '') ILIKE '%ensayo%' OR
+        coalesce(to_jsonb(v)->>'cliente_nombre', '') ILIKE '%test%' OR
+        coalesce(to_jsonb(v)->>'cliente_nombre', '') ILIKE '%sintetic%' OR
+        coalesce(v.notas, '') ILIKE '%ensayo%' OR
+        coalesce(v.notas, '') ILIKE '%test%' OR
+        coalesce(v.notas, '') ILIKE '%sintetic%' OR
+        coalesce(to_jsonb(v)->>'es_ensayo', 'false') = 'true' OR
+        coalesce(to_jsonb(v)->>'fixture', '') = 'PR03_B_TEST_FIXTURE'
+      )
+  ),
+  'synthetic_series_candidates', (
+    SELECT jsonb_agg(jsonb_build_object(
+      'punto_venta', c.pv,
+      'absent_from_emisores', NOT EXISTS (SELECT 1 FROM public.fiscal_emisores_homologacion e WHERE e.punto_venta = c.pv),
+      'absent_from_series', NOT EXISTS (SELECT 1 FROM public.fiscal_series_homologacion s WHERE s.punto_venta = c.pv),
+      'absent_from_reservas', NOT EXISTS (SELECT 1 FROM public.fiscal_reservas_homologacion r WHERE r.punto_venta = c.pv)
+    ))
+    FROM (VALUES (9999), (9998), (9995), (9990)) AS c(pv)
   )
-) AS preflight;
-
-ROLLBACK;`
+) AS preflight;`
 
 /**
  * Validador del resultado del preflight READ ONLY.
+ * Descubre ventas sintéticas independientes y selecciona una serie sintética completamente ausente.
  */
 export function verifyPr03bPreflight(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -293,7 +327,22 @@ export function verifyPr03bPreflight(raw) {
   if (!d.pos_present) throw new Error('PR03_B_PREFLIGHT_POS_NOT_FOUND')
   if (d.catalog_rev3_exists) throw new Error('PR03_B_PREFLIGHT_CATALOG_REV3_EXISTS')
   if (d.residual_fixtures_count !== 0) throw new Error('PR03_B_PREFLIGHT_RESIDUAL_FIXTURES_FOUND')
-  if (d.pending_series_reservations_count !== 0) throw new Error('PR03_B_PREFLIGHT_PENDING_SERIES_RESERVATIONS_FOUND')
+
+  // Validar ventas sintéticas auditadas
+  const syntheticSales = Array.isArray(d.synthetic_sales) ? d.synthetic_sales : []
+  if (syntheticSales.length < 2) {
+    throw new Error('PR03_B_PREFLIGHT_INSUFFICIENT_SYNTHETIC_TEST_SALES')
+  }
+
+  // Descubrir y validar serie sintética candidata aislada
+  const candidates = Array.isArray(d.synthetic_series_candidates) ? d.synthetic_series_candidates : []
+  const availableCandidate = candidates.find(
+    c => c.absent_from_emisores && c.absent_from_series && c.absent_from_reservas
+  )
+
+  if (!availableCandidate) {
+    throw new Error('PR03_B_PREFLIGHT_NO_SAFE_SYNTHETIC_SERIES_AVAILABLE')
+  }
 
   return Object.freeze({
     status: 'PASS',
@@ -303,65 +352,36 @@ export function verifyPr03bPreflight(raw) {
     expectedIssuerInactive: true,
     catalogRev3Absent: true,
     residualFixturesCount: 0,
-    pendingSeriesReservationsCount: 0,
+    syntheticSalesCount: syntheticSales.length,
+    chosenSyntheticPv: availableCandidate.punto_venta,
+    syntheticSales,
   })
 }
 
 /**
- * Query SQL quirúrgica para limpieza exclusiva de filas PR03_B_TEST_FIXTURE.
+ * Consulta de medición del baseline comercial criptográfico.
+ * Captura conteos y digest determinístico de todas las tablas comerciales pertinentes.
  */
-export const PR03_B_CLEANUP_SQL = `BEGIN;
--- Limpieza quirúrgica de filas de ensayo PR03-B.
--- NUNCA toca ventas comerciales reales, cursores de PR07 ni backups.
-
-DELETE FROM public.fiscal_solicitudes_homologacion
-WHERE operacion_id IN (
-  SELECT id FROM public.fiscal_operaciones_homologacion
-  WHERE contexto->>'tag' = 'PR03_B_TEST_FIXTURE'
-     OR contexto->>'fixture' = 'PR03_B_TEST_FIXTURE'
-);
-
-DELETE FROM public.fiscal_reservas_homologacion
-WHERE operacion_id IN (
-  SELECT id FROM public.fiscal_operaciones_homologacion
-  WHERE contexto->>'tag' = 'PR03_B_TEST_FIXTURE'
-     OR contexto->>'fixture' = 'PR03_B_TEST_FIXTURE'
-);
-
-DELETE FROM public.fiscal_operaciones_homologacion
-WHERE contexto->>'tag' = 'PR03_B_TEST_FIXTURE'
-   OR contexto->>'fixture' = 'PR03_B_TEST_FIXTURE';
-
-COMMIT;`
+export const PR03_B_COMMERCIAL_BASELINE_SQL = `SELECT jsonb_build_object(
+  'ventas_count', (SELECT count(*)::int FROM public.ventas WHERE kiosco_id = $1),
+  'detalles_count', (SELECT count(*)::int FROM public.detalles_venta d JOIN public.ventas v ON v.id = d.venta_id WHERE v.kiosco_id = $1),
+  'pagos_count', (SELECT count(*)::int FROM public.pagos_venta p JOIN public.ventas v ON v.id = p.venta_id WHERE v.kiosco_id = $1),
+  'sesiones_count', (SELECT count(*)::int FROM public.sesiones_caja WHERE kiosco_id = $1),
+  'movimientos_caja_count', (SELECT count(*)::int FROM public.movimientos_caja WHERE kiosco_id = $1),
+  'movimientos_stock_count', (SELECT count(*)::int FROM public.movimientos_stock WHERE kiosco_id = $1),
+  'devoluciones_count', (SELECT count(*)::int FROM public.devoluciones_venta WHERE kiosco_id = $1),
+  'productos_count', (SELECT count(*)::int FROM public.productos WHERE kiosco_id = $1),
+  'ventas_digest', (SELECT encode(sha256(convert_to(coalesce(jsonb_agg(to_jsonb(v) ORDER BY v.id),'[]'::jsonb)::text,'UTF8')),'hex') FROM public.ventas v WHERE v.kiosco_id = $1)
+) AS baseline;`
 
 /**
- * Genera SQL de limpieza quirúrgica acotada obligatoriamente por run_id.
+ * Calcula el hash SHA-256 canónico del baseline comercial.
  */
-export function buildScopedCleanupSql(runId) {
-  validateCleanupRunId(runId)
-  return `BEGIN;
--- Limpieza quirúrgica de filas de ensayo PR03-B limitada estrictamente por run_id.
--- NUNCA toca ventas comerciales reales, cursores de PR07 ni backups.
-
-DELETE FROM public.fiscal_solicitudes_homologacion
-WHERE operacion_id IN (
-  SELECT id FROM public.fiscal_operaciones_homologacion
-  WHERE (contexto->>'fixture' = 'PR03_B_TEST_FIXTURE' OR contexto->>'tag' = 'PR03_B_TEST_FIXTURE')
-    AND contexto->>'run_id' = '${runId}'
-);
-
-DELETE FROM public.fiscal_reservas_homologacion
-WHERE operacion_id IN (
-  SELECT id FROM public.fiscal_operaciones_homologacion
-  WHERE (contexto->>'fixture' = 'PR03_B_TEST_FIXTURE' OR contexto->>'tag' = 'PR03_B_TEST_FIXTURE')
-    AND contexto->>'run_id' = '${runId}'
-);
-
-DELETE FROM public.fiscal_operaciones_homologacion
-WHERE (contexto->>'fixture' = 'PR03_B_TEST_FIXTURE' OR contexto->>'tag' = 'PR03_B_TEST_FIXTURE')
-  AND contexto->>'run_id' = '${runId}';
-
-COMMIT;`
+export function computeCommercialBaselineHash(baseline) {
+  if (!baseline || typeof baseline !== 'object') {
+    throw new Error('INVALID_COMMERCIAL_BASELINE')
+  }
+  return computeSha256(canonicalJson(baseline))
 }
 
 /**
@@ -376,6 +396,31 @@ export function validateCleanupTarget(context) {
     throw new Error('CLEANUP_TARGET_NOT_TAGGED')
   }
   return true
+}
+
+/**
+ * Genera SQL de limpieza quirúrgica basada en la lista explícita de UUIDs de operaciones creadas.
+ * NUNCA toca la serie real de PV 2 ni ventas comerciales.
+ */
+export function buildManifestCleanupSql(operationIds, opts = {}) {
+  if (!Array.isArray(operationIds) || operationIds.length === 0) {
+    return 'BEGIN; COMMIT;'
+  }
+  for (const id of operationIds) {
+    validateCleanupRunId(id)
+  }
+  const idList = operationIds.map(id => `'${id}'::uuid`).join(',')
+  const syntheticPv = opts.syntheticPv
+  const pvCleanup = (typeof syntheticPv === 'number' && PR03_B_SYNTHETIC_PV_CANDIDATES.includes(syntheticPv))
+    ? `\nDELETE FROM public.fiscal_series_homologacion WHERE cuit_emisor = '${PR03_B_APPROVED_CUIT}' AND punto_venta = ${syntheticPv};`
+    : ''
+
+  return `BEGIN;
+-- Limpieza quirúrgica acotada a operaciones del manifiesto de corrida PR03-B.
+DELETE FROM public.fiscal_solicitudes_homologacion WHERE operacion_id IN (${idList});
+DELETE FROM public.fiscal_reservas_homologacion WHERE operacion_id IN (${idList});
+DELETE FROM public.fiscal_operaciones_homologacion WHERE id IN (${idList});${pvCleanup}
+COMMIT;`
 }
 
 /**
@@ -406,13 +451,12 @@ export function verifyIdempotencyConflict(error) {
   const code = err.code || err.sqlState || err.status || ''
   const message = String(err.message || '')
 
-  const isExpectedCode = code === '22023' || code === '40001' || code === '55000' ||
-    message.includes('22023') || message.includes('40001') || message.includes('55000') ||
-    message.includes('inválido') || message.includes('invalido') ||
-    message.includes('Cambiò el n') || message.includes('Cambi') || message.includes('cuerpo fiscal')
+  const isExpectedCode = code === '40001' || code === '22023' ||
+    message.includes('40001') || message.includes('22023') ||
+    message.includes('No se confirmó el cuerpo fiscal') || message.includes('ya existe otro')
 
   if (!isExpectedCode) {
-    throw new Error(`IDEMPOTENCY_CONFLICT_UNEXPECTED_ERROR: ${message}`)
+    throw new Error(`IDEMPOTENCY_CONFLICT_UNEXPECTED_ERROR: ${code} - ${message}`)
   }
 
   return Object.freeze({
@@ -423,27 +467,32 @@ export function verifyIdempotencyConflict(error) {
 }
 
 /**
- * Valida el resultado de la prueba de concurrencia y reserva serializada de numeración.
+ * Valida la semántica de concurrencia: exactamente una única reserva pendiente por serie.
+ * Conexión B debe esperar o ser rechazada con 55000 mientras A retenga el lock.
  */
-export function verifyConcurrencyNumbering(results) {
-  if (!Array.isArray(results) || results.length !== 2) {
-    throw new Error('CONCURRENCY_NUMBERING_INVALID_RESULTS')
-  }
-  const [resA, resB] = results
-  if (!resA || !resB) throw new Error('CONCURRENCY_NUMBERING_EMPTY_RESULT')
-
-  if (resA.numero === resB.numero) {
-    throw new Error('CONCURRENCY_NUMBERING_COLLISION_DETECTED')
+export function verifyConcurrencySinglePendingReservation(check) {
+  if (!check || typeof check !== 'object') {
+    throw new Error('CONCURRENCY_CHECK_INVALID')
   }
 
-  const nums = [Number(resA.numero), Number(resB.numero)].sort((a, b) => a - b)
+  if (check.lockObserved !== true) {
+    throw new Error('CONCURRENCY_LOCK_NOT_OBSERVED: Conexión B no esperó el lock de A')
+  }
+
+  if (check.simultaneousPendingReservations === true) {
+    throw new Error('CONCURRENCY_VIOLATION: Se detectaron reservas pendientes simultáneas')
+  }
+
+  if (check.numberCollision === true) {
+    throw new Error('CONCURRENCY_VIOLATION: Colisión de número detectada')
+  }
 
   return Object.freeze({
     status: 'PASS',
-    serialized: true,
-    collisionCount: 0,
-    uniqueNumbers: true,
-    assignedNumbers: nums,
+    concurrencyExpectation: 'SINGLE_PENDING_RESERVATION',
+    lockSerialization: 'PASS',
+    noSimultaneousPendingReservations: true,
+    numberCollision: false,
   })
 }
 
@@ -458,12 +507,12 @@ export const PR03_B_TEST_CASES = Object.freeze([
   },
   {
     id: 'PRUEBA_IDEMPOTENCIA_CONFLICT',
-    description: 'Misma venta/operación con payload alterado debe ser rechazada estrictamente con error del contrato SQL.',
+    description: 'Misma venta/operación con payload alterado debe ser rechazada estrictamente con SQLSTATE 40001.',
     expectedStatus: 'PASS',
   },
   {
-    id: 'PRUEBA_CONCURRENCIA_NUMERACION',
-    description: 'Dos workers concurrentes intentando reservar para la misma serie serializan en fiscal_series_homologacion y asignan números sin colisiones.',
+    id: 'PRUEBA_CONCURRENCIA_BLOQUEO',
+    description: 'Dos conexiones concurrentes compitiendo sobre la serie serializan mediante row lock en fiscal_series_homologacion y previenen reservas simultáneas (SQLSTATE 55000).',
     expectedStatus: 'PASS',
   },
 ])

@@ -47,19 +47,29 @@ export interface Pr03bExecutionResult {
   readonly IDEMPOTENCY_REPLAY: 'PASS' | 'FAIL'
   readonly IDEMPOTENCY_CONFLICT: 'PASS' | 'FAIL'
   readonly CONFLICT_SQLSTATE: string | null
+  readonly CONCURRENCY_SEMANTICS: 'SINGLE_PENDING_RESERVATION'
+  readonly CONCURRENCY_LOCK_OBSERVED: 'PASS' | 'FAIL'
+  readonly CONCURRENCY_REJECTION_SQLSTATE: string | null
   readonly NUMBERING_CONCURRENCY: 'PASS' | 'FAIL'
   readonly PREFLIGHT_READ_ONLY: 'PASS' | 'FAIL'
+  readonly PREFLIGHT_ROLLBACK_CONFIRMED: boolean
+  readonly SYNTHETIC_PV_USED: number
+  readonly COMMERCIAL_BASELINE_PRESERVED: boolean
+  readonly BASELINE_BEFORE_HASH: string
+  readonly BASELINE_AFTER_HASH: string
   readonly RUN_ID: string
   readonly ARCA_CALLS: 0
   readonly COMMERCIAL_WRITES: 0
-  readonly FIXTURE_ROWS_CREATED: number
+  readonly FIXTURE_OPERATIONS_CREATED: number
   readonly FIXTURE_CLEANUP: 'PASS' | 'NOT_APPLICABLE' | 'FAIL'
+  readonly CLIENT1_CLOSED: boolean
+  readonly CLIENT2_CLOSED: boolean
   readonly PG_CONNECTIONS_CLOSED: 'PASS' | 'FAIL'
 }
 
 export interface PgClientMock {
   connect(): Promise<void>
-  query(sql: string, params?: unknown[]): Promise<{ rows: Array<Record<string, any>>; rowCount?: number }>
+  query(sql: string, params?: unknown[]): Promise<{ rows: Array<Record<string, unknown>>; rowCount?: number }>
   end(): Promise<void>
 }
 
