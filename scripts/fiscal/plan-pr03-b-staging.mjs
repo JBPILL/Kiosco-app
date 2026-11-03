@@ -25,6 +25,11 @@ export const PR03_B_SYNTHETIC_PV = 9999
 export const PR03_B_SYNTHETIC_CUIT = '20415005963'
 export const PR03_B_SYNTHETIC_RECEIPT_TYPE = 11
 
+// Identidad completa del emisor sintético
+export const PR03_B_SYNTHETIC_CREDENCIAL_ID = '9a4916d1-b6b5-499f-98ef-9f6cf79510be'
+export const PR03_B_SYNTHETIC_CERT_SHA256 = 'bbcaffebce0f62e1d626e9f6f425dfa70a2de22031df12536a3876d2193af9d0'
+export const PR03_B_SYNTHETIC_EMITTER_REVISION = 1
+
 // Alias retrocompatibles
 export const PR03_B_APPROVED_KIOSK_ID = PR03_B_REAL_KIOSK_ID
 export const PR03_B_APPROVED_OWNER_AUTH_ID = '0e90b9a7-36d2-4762-ab1a-4982996cf9aa'
@@ -588,6 +593,9 @@ export function buildManifestCleanupSql(operationIds, opts = {}) {
   const syntheticPv = opts.syntheticPv ?? PR03_B_SYNTHETIC_PV
   const syntheticKioskId = opts.syntheticKioskId ?? PR03_B_SYNTHETIC_KIOSK_ID
   const cuit = opts.cuit ?? PR03_B_SYNTHETIC_CUIT
+  const credencialId = opts.credencialId ?? PR03_B_SYNTHETIC_CREDENCIAL_ID
+  const certSha = opts.certSha ?? PR03_B_SYNTHETIC_CERT_SHA256
+  const revision = opts.revision ?? PR03_B_SYNTHETIC_EMITTER_REVISION
 
   assertNoRealPv2Usage(syntheticPv)
   assertNoRealPv2Usage(syntheticKioskId)
@@ -609,8 +617,8 @@ ALTER TABLE public.fiscal_preparaciones_homologacion ENABLE TRIGGER fiscal_prepa
 
   const pvCleanup = `
 DELETE FROM public.fiscal_series_homologacion WHERE cuit_emisor = '${cuit}' AND punto_venta = ${syntheticPv} AND tipo_comprobante = 11;
-UPDATE public.fiscal_emisores_homologacion SET habilitado = false WHERE kiosco_id = '${syntheticKioskId}' AND punto_venta = ${syntheticPv};
-DELETE FROM public.fiscal_emisores_homologacion WHERE kiosco_id = '${syntheticKioskId}' AND cuit_emisor = '${cuit}' AND punto_venta = ${syntheticPv} AND habilitado = false;`
+UPDATE public.fiscal_emisores_homologacion SET habilitado = false WHERE kiosco_id = '${syntheticKioskId}' AND cuit_emisor = '${cuit}' AND punto_venta = ${syntheticPv} AND credencial_id = '${credencialId}' AND certificado_sha256 = '${certSha}' AND revision = ${revision};
+DELETE FROM public.fiscal_emisores_homologacion WHERE kiosco_id = '${syntheticKioskId}' AND cuit_emisor = '${cuit}' AND punto_venta = ${syntheticPv} AND credencial_id = '${credencialId}' AND certificado_sha256 = '${certSha}' AND revision = ${revision} AND habilitado = false;`
 
   return `BEGIN;${idFilter}${pvCleanup}
 COMMIT;`
@@ -711,11 +719,13 @@ export const PR03_B_TEST_CASES = Object.freeze([
 export function verifyPr03bPlan(plan) {
   if (!plan || typeof plan !== 'object') throw new Error('PR03_B_PLAN_INVALID')
   if (plan.scope !== PR03_B_SCOPE) throw new Error('PR03_B_PLAN_SCOPE_MISMATCH')
-  if (plan.kiosco_id !== PR03_B_SYNTHETIC_KIOSK_ID && plan.kiosco_id !== PR03_B_REAL_KIOSK_ID) {
+  if (plan.kiosco_id !== PR03_B_SYNTHETIC_KIOSK_ID) {
+    assertNoRealPv2Usage(plan.kiosco_id)
     throw new Error('PR03_B_PLAN_KIOSK_MISMATCH')
   }
   if (plan.cuit_emisor !== PR03_B_SYNTHETIC_CUIT) throw new Error('PR03_B_PLAN_CUIT_MISMATCH')
-  if (plan.punto_venta !== PR03_B_SYNTHETIC_PV && plan.punto_venta !== PR03_B_REAL_PV) {
+  if (plan.punto_venta !== PR03_B_SYNTHETIC_PV) {
+    assertNoRealPv2Usage(plan.punto_venta)
     throw new Error('PR03_B_PLAN_POS_MISMATCH')
   }
   if (plan.tipo_comprobante !== PR03_B_SYNTHETIC_RECEIPT_TYPE) throw new Error('PR03_B_PLAN_RECEIPT_TYPE_MISMATCH')

@@ -5,14 +5,17 @@ import {
   PR03_B_TEST_FIXTURE_TAG,
   PR03_B_APPROVED_KIOSK_ID,
   PR03_B_APPROVED_CUIT,
-  PR03_B_APPROVED_PUNTO_VENTA,
   PR03_B_APPROVED_TIPO_COMPROBANTE,
   PR03_B_REAL_KIOSK_ID,
+  PR03_B_REAL_PV,
   PR03_B_SYNTHETIC_KIOSK_ID,
   PR03_B_SYNTHETIC_OWNER_AUTH_ID,
   PR03_B_SYNTHETIC_PV,
   PR03_B_SYNTHETIC_CUIT,
   PR03_B_SYNTHETIC_RECEIPT_TYPE,
+  PR03_B_SYNTHETIC_CREDENCIAL_ID,
+  PR03_B_SYNTHETIC_CERT_SHA256,
+  PR03_B_SYNTHETIC_EMITTER_REVISION,
   PR03_B_SYNTHETIC_PV_CANDIDATES,
   PR03_B_PREFLIGHT_SELECT_SQL,
   PR03_B_COMMERCIAL_BASELINE_SQL,
@@ -108,18 +111,97 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
       expect(() => validateCleanupRunId('')).toThrow('INVALID_CLEANUP_RUN_ID')
     })
 
-    it('rejects plan configuration with wrong kiosk or unapproved parameters', () => {
+    it('rejects plan configuration with wrong kiosk, real kiosk, wrong pos or unapproved parameters', () => {
+      // Kiosco no sintético genérico
       expect(() =>
         verifyPr03bPlan({
           scope: PR03_B_SCOPE,
           kiosco_id: 'unapproved-kiosk-id',
-          cuit_emisor: PR03_B_APPROVED_CUIT,
-          punto_venta: PR03_B_APPROVED_PUNTO_VENTA,
-          tipo_comprobante: PR03_B_APPROVED_TIPO_COMPROBANTE,
+          cuit_emisor: PR03_B_SYNTHETIC_CUIT,
+          punto_venta: PR03_B_SYNTHETIC_PV,
+          tipo_comprobante: PR03_B_SYNTHETIC_RECEIPT_TYPE,
           anti_arca_guard: true,
           catalog_revision_3_excluded: true,
         })
       ).toThrow('PR03_B_PLAN_KIOSK_MISMATCH')
+
+      // Intento de usar el kiosco real: FATAL
+      expect(() =>
+        verifyPr03bPlan({
+          scope: PR03_B_SCOPE,
+          kiosco_id: PR03_B_REAL_KIOSK_ID,
+          cuit_emisor: PR03_B_SYNTHETIC_CUIT,
+          punto_venta: PR03_B_SYNTHETIC_PV,
+          tipo_comprobante: PR03_B_SYNTHETIC_RECEIPT_TYPE,
+          anti_arca_guard: true,
+          catalog_revision_3_excluded: true,
+        })
+      ).toThrow('FATAL: PR03_B_REAL_FISCAL_CONTEXT_FORBIDDEN')
+
+      // PV distinto a 9999
+      expect(() =>
+        verifyPr03bPlan({
+          scope: PR03_B_SCOPE,
+          kiosco_id: PR03_B_SYNTHETIC_KIOSK_ID,
+          cuit_emisor: PR03_B_SYNTHETIC_CUIT,
+          punto_venta: 9998,
+          tipo_comprobante: PR03_B_SYNTHETIC_RECEIPT_TYPE,
+          anti_arca_guard: true,
+          catalog_revision_3_excluded: true,
+        })
+      ).toThrow('PR03_B_PLAN_POS_MISMATCH')
+
+      // Intento de usar el PV 2 real: FATAL
+      expect(() =>
+        verifyPr03bPlan({
+          scope: PR03_B_SCOPE,
+          kiosco_id: PR03_B_SYNTHETIC_KIOSK_ID,
+          cuit_emisor: PR03_B_SYNTHETIC_CUIT,
+          punto_venta: PR03_B_REAL_PV,
+          tipo_comprobante: PR03_B_SYNTHETIC_RECEIPT_TYPE,
+          anti_arca_guard: true,
+          catalog_revision_3_excluded: true,
+        })
+      ).toThrow('FATAL: PR03_B_REAL_FISCAL_CONTEXT_FORBIDDEN')
+
+      // CUIT incorrecto
+      expect(() =>
+        verifyPr03bPlan({
+          scope: PR03_B_SCOPE,
+          kiosco_id: PR03_B_SYNTHETIC_KIOSK_ID,
+          cuit_emisor: '20111111112',
+          punto_venta: PR03_B_SYNTHETIC_PV,
+          tipo_comprobante: PR03_B_SYNTHETIC_RECEIPT_TYPE,
+          anti_arca_guard: true,
+          catalog_revision_3_excluded: true,
+        })
+      ).toThrow('PR03_B_PLAN_CUIT_MISMATCH')
+
+      // Tipo comprobante incorrecto
+      expect(() =>
+        verifyPr03bPlan({
+          scope: PR03_B_SCOPE,
+          kiosco_id: PR03_B_SYNTHETIC_KIOSK_ID,
+          cuit_emisor: PR03_B_SYNTHETIC_CUIT,
+          punto_venta: PR03_B_SYNTHETIC_PV,
+          tipo_comprobante: 1,
+          anti_arca_guard: true,
+          catalog_revision_3_excluded: true,
+        })
+      ).toThrow('PR03_B_PLAN_RECEIPT_TYPE_MISMATCH')
+
+      // Configuración sintética canónica exacta: pasa
+      expect(
+        verifyPr03bPlan({
+          scope: PR03_B_SCOPE,
+          kiosco_id: PR03_B_SYNTHETIC_KIOSK_ID,
+          cuit_emisor: PR03_B_SYNTHETIC_CUIT,
+          punto_venta: PR03_B_SYNTHETIC_PV,
+          tipo_comprobante: PR03_B_SYNTHETIC_RECEIPT_TYPE,
+          anti_arca_guard: true,
+          catalog_revision_3_excluded: true,
+        }).status
+      ).toBe('PASS')
     })
   })
 
@@ -382,7 +464,7 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
   })
 
   describe('6. Manifest Cleanup Contract & Atomic Test Cases', () => {
-    it('manifest cleanup SQL restricts deletion strictly to operation UUID list and synthetic PV', () => {
+    it('manifest cleanup SQL restricts deletion strictly to operation UUID list and synthetic PV with full emitter identity', () => {
       const op1 = 'e2b3c4d5-1234-4bc3-95d1-123456789abc'
       const op2 = 'f3c4d5e6-2345-4cd4-a6e2-23456789abcd'
       const sql = buildManifestCleanupSql([op1, op2], { syntheticPv: 9999 })
@@ -390,6 +472,9 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
       expect(sql).toContain(`'${op1}'::uuid`)
       expect(sql).toContain(`'${op2}'::uuid`)
       expect(sql).toContain("DELETE FROM public.fiscal_series_homologacion WHERE cuit_emisor = '20415005963' AND punto_venta = 9999 AND tipo_comprobante = 11;")
+      expect(sql).toContain(`credencial_id = '${PR03_B_SYNTHETIC_CREDENCIAL_ID}'`)
+      expect(sql).toContain(`certificado_sha256 = '${PR03_B_SYNTHETIC_CERT_SHA256}'`)
+      expect(sql).toContain(`revision = ${PR03_B_SYNTHETIC_EMITTER_REVISION}`)
       expect(sql).not.toMatch(/\bDELETE FROM public\.fiscal_series_homologacion WHERE punto_venta = 2\b/i)
       expect(sql).not.toMatch(/\bDELETE FROM public\.ventas\b/i)
     })
@@ -491,6 +576,467 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
       ).rejects.toThrow('FATAL: PR03_B_REAL_FISCAL_CONTEXT_FORBIDDEN')
 
       expect(clientFactoryMock).not.toHaveBeenCalled()
+    })
+
+    it('enforces strict target invariance failing closed before opening any PG connection', async () => {
+      const clientFactoryMock = vi.fn()
+
+      // Target mismatch por kiosco no autorizado
+      await expect(
+        executePr03bStaging(
+          {
+            authorized: true,
+            scope: PR03_B_SCOPE,
+            projectRef: PR03_B_EXECUTION_TARGET,
+            password: 'mockValidPassword123',
+            runId: '11111111-2222-4333-8444-555555555555',
+            syntheticKioskId: '12345678-1234-1234-1234-123456789abc',
+          },
+          { clientFactory: clientFactoryMock }
+        )
+      ).rejects.toThrow('FATAL: PR03_B_SYNTHETIC_TARGET_MISMATCH')
+
+      // Target mismatch por dueño no autorizado
+      await expect(
+        executePr03bStaging(
+          {
+            authorized: true,
+            scope: PR03_B_SCOPE,
+            projectRef: PR03_B_EXECUTION_TARGET,
+            password: 'mockValidPassword123',
+            runId: '11111111-2222-4333-8444-555555555555',
+            syntheticOwnerAuthId: '12345678-1234-1234-1234-123456789abc',
+          },
+          { clientFactory: clientFactoryMock }
+        )
+      ).rejects.toThrow('FATAL: PR03_B_SYNTHETIC_TARGET_MISMATCH')
+
+      // Target mismatch por punto de venta no autorizado
+      await expect(
+        executePr03bStaging(
+          {
+            authorized: true,
+            scope: PR03_B_SCOPE,
+            projectRef: PR03_B_EXECUTION_TARGET,
+            password: 'mockValidPassword123',
+            runId: '11111111-2222-4333-8444-555555555555',
+            syntheticPv: 9998,
+          },
+          { clientFactory: clientFactoryMock }
+        )
+      ).rejects.toThrow('FATAL: PR03_B_SYNTHETIC_TARGET_MISMATCH')
+
+      expect(clientFactoryMock).not.toHaveBeenCalled()
+    })
+
+    it('rejects execution if lock is not deterministically observed via pg_locks', async () => {
+      const runId = 'aaaaaaaa-1111-4222-8333-cccccccccccc'
+
+      const makeFakeClient = (id: string) => ({
+        id,
+        connect: vi.fn().mockResolvedValue(undefined),
+        query: vi.fn().mockImplementation(async (sql: string, params?: unknown[]) => {
+          if (sql.includes('SELECT jsonb_build_object') && sql.includes('transaction_read_only')) {
+            return {
+              rows: [
+                {
+                  preflight: {
+                    transaction_read_only: 'on',
+                    observed_at: new Date().toISOString(),
+                    real_kiosk_present: true,
+                    real_pv2_present: true,
+                    real_pv2_enabled: false,
+                    real_pv2_series_count: 0,
+                    real_pv2_pending_reservations: 0,
+                    synthetic_kiosk_present: true,
+                    synthetic_kiosk_active: true,
+                    synthetic_owner_present: true,
+                    synthetic_owner_active: true,
+                    synthetic_owner_role: 'DUEÑO',
+                    synthetic_owner_superadmin: false,
+                    synthetic_emitter_count: 0,
+                    synthetic_pv9999_series_count: 0,
+                    synthetic_pv9999_reservations: 0,
+                    synthetic_fiscal_operations: 0,
+                    catalog_rev3_exists: true,
+                    catalog_rev3_enabled: true,
+                    catalog_rev3_usable: true,
+                    synthetic_sales: [
+                      { id: '11111111-1111-4111-8111-111111111111', kiosco_id: PR03_B_SYNTHETIC_KIOSK_ID, total: '150.00', estado: 'COMPLETADA' },
+                      { id: '22222222-2222-4222-8222-222222222222', kiosco_id: PR03_B_SYNTHETIC_KIOSK_ID, total: '200.00', estado: 'COMPLETADA' },
+                    ],
+                  },
+                },
+              ],
+              rowCount: 1,
+            }
+          }
+
+          if (sql.includes('ventas_count')) {
+            return {
+              rows: [{ baseline: { ventas_count: 10, ventas_digest: 'fixed-sales-digest' } }],
+              rowCount: 1,
+            }
+          }
+
+          if (sql.includes('SELECT punto_venta, habilitado FROM public.fiscal_emisores_homologacion')) {
+            return {
+              rows: [
+                { punto_venta: 9999, habilitado: true },
+                { punto_venta: 2, habilitado: false },
+              ],
+              rowCount: 2,
+            }
+          }
+
+          if (sql.includes('autorizar_consulta_fiscal_homologacion')) {
+            return {
+              rows: [{ auth: { version: 1, cuit_emisor: PR03_B_SYNTHETIC_CUIT, punto_venta: PR03_B_SYNTHETIC_PV, tipo_comprobante: PR03_B_SYNTHETIC_RECEIPT_TYPE } }],
+              rowCount: 1,
+            }
+          }
+
+          if (sql.includes('guardar_datos_preparacion_homologacion')) {
+            return {
+              rows: [{ ack: { operacion_id: params ? params[2] : 'op-1', venta_id: 'v1', preparacion_sha256: 'sha', estado: 'DATOS_PREPARADOS', emision_habilitada: false } }],
+              rowCount: 1,
+            }
+          }
+
+          if (sql.includes('persistir_solicitud_fiscal_homologacion')) {
+            if (params && typeof params[1] === 'string' && params[1].includes('"fecha":"20261101"')) {
+              const err = new Error('No se confirmó el cuerpo fiscal o ya existe otro.')
+              Object.assign(err, { code: '40001' })
+              throw err
+            }
+            return {
+              rows: [{ ack: { operacion_id: 'op-1', numero: 1, solicitud_sha256: 'sha-1', estado: 'RESERVADA' } }],
+              rowCount: 1,
+            }
+          }
+
+          if (sql.includes('reservar_numero_fiscal_homologacion')) {
+            if (id === 'client2') {
+              const err = new Error('La serie tiene una operación pendiente de conciliación.')
+              Object.assign(err, { code: '55000' })
+              throw err
+            }
+            return { rows: [{ ack: { operacion_id: 'op-a', numero: 1, estado: 'RESERVADA' } }], rowCount: 1 }
+          }
+
+          // Lock wait count retorna 0: simula que nunca se observó el bloqueo en pg_locks
+          if (sql.includes('waiting_count') || sql.includes('pg_locks')) {
+            return { rows: [{ waiting_count: 0 }], rowCount: 1 }
+          }
+
+          return { rows: [], rowCount: 1 }
+        }),
+        end: vi.fn().mockResolvedValue(undefined),
+      })
+
+      let clientCount = 0
+      const clientFactoryMock = vi.fn().mockImplementation(async () => {
+        clientCount++
+        return makeFakeClient(`client${clientCount}`)
+      })
+
+      await expect(
+        executePr03bStaging(
+          {
+            authorized: true,
+            scope: PR03_B_SCOPE,
+            projectRef: PR03_B_EXECUTION_TARGET,
+            password: 'mockValidPassword123',
+            runId,
+          },
+          { clientFactory: clientFactoryMock }
+        )
+      ).rejects.toThrow('CONCURRENCY_LOCK_NOT_OBSERVED: Conexión B no esperó de forma demostrable en pg_locks')
+    })
+
+    it('rejects cleanup if synthetic emitter metadata altered and triggers failsafe', async () => {
+      const runId = 'cccccccc-1111-4222-8333-cccccccccccc'
+
+      const makeFakeClient = (id: string) => ({
+        id,
+        connect: vi.fn().mockResolvedValue(undefined),
+        query: vi.fn().mockImplementation(async (sql: string, params?: unknown[]) => {
+          if (sql.includes('SELECT jsonb_build_object') && sql.includes('transaction_read_only')) {
+            return {
+              rows: [
+                {
+                  preflight: {
+                    transaction_read_only: 'on',
+                    observed_at: new Date().toISOString(),
+                    real_kiosk_present: true,
+                    real_pv2_present: true,
+                    real_pv2_enabled: false,
+                    real_pv2_series_count: 0,
+                    real_pv2_pending_reservations: 0,
+                    synthetic_kiosk_present: true,
+                    synthetic_kiosk_active: true,
+                    synthetic_owner_present: true,
+                    synthetic_owner_active: true,
+                    synthetic_owner_role: 'DUEÑO',
+                    synthetic_owner_superadmin: false,
+                    synthetic_emitter_count: 0,
+                    synthetic_pv9999_series_count: 0,
+                    synthetic_pv9999_reservations: 0,
+                    synthetic_fiscal_operations: 0,
+                    catalog_rev3_exists: true,
+                    catalog_rev3_enabled: true,
+                    catalog_rev3_usable: true,
+                    synthetic_sales: [
+                      { id: '11111111-1111-4111-8111-111111111111', kiosco_id: PR03_B_SYNTHETIC_KIOSK_ID, total: '150.00', estado: 'COMPLETADA' },
+                      { id: '22222222-2222-4222-8222-222222222222', kiosco_id: PR03_B_SYNTHETIC_KIOSK_ID, total: '200.00', estado: 'COMPLETADA' },
+                    ],
+                  },
+                },
+              ],
+              rowCount: 1,
+            }
+          }
+
+          if (sql.includes('ventas_count')) {
+            return {
+              rows: [{ baseline: { ventas_count: 10, ventas_digest: 'fixed-sales-digest' } }],
+              rowCount: 1,
+            }
+          }
+
+          if (sql.includes('SELECT punto_venta, habilitado FROM public.fiscal_emisores_homologacion')) {
+            return {
+              rows: [
+                { punto_venta: 9999, habilitado: true },
+                { punto_venta: 2, habilitado: false },
+              ],
+              rowCount: 2,
+            }
+          }
+
+          if (sql.includes('autorizar_consulta_fiscal_homologacion')) {
+            return {
+              rows: [{ auth: { version: 1, cuit_emisor: PR03_B_SYNTHETIC_CUIT, punto_venta: PR03_B_SYNTHETIC_PV, tipo_comprobante: PR03_B_SYNTHETIC_RECEIPT_TYPE } }],
+              rowCount: 1,
+            }
+          }
+
+          if (sql.includes('guardar_datos_preparacion_homologacion')) {
+            return {
+              rows: [{ ack: { operacion_id: params ? params[2] : 'op-1', venta_id: 'v1', preparacion_sha256: 'sha', estado: 'DATOS_PREPARADOS', emision_habilitada: false } }],
+              rowCount: 1,
+            }
+          }
+
+          if (sql.includes('persistir_solicitud_fiscal_homologacion')) {
+            if (params && typeof params[1] === 'string' && params[1].includes('"fecha":"20261101"')) {
+              const err = new Error('No se confirmó el cuerpo fiscal o ya existe otro.')
+              Object.assign(err, { code: '40001' })
+              throw err
+            }
+            return {
+              rows: [{ ack: { operacion_id: 'op-1', numero: 1, solicitud_sha256: 'sha-1', estado: 'RESERVADA' } }],
+              rowCount: 1,
+            }
+          }
+
+          if (sql.includes('reservar_numero_fiscal_homologacion')) {
+            if (id === 'client2') {
+              const err = new Error('La serie tiene una operación pendiente de conciliación.')
+              Object.assign(err, { code: '55000' })
+              throw err
+            }
+            return { rows: [{ ack: { operacion_id: 'op-a', numero: 1, estado: 'RESERVADA' } }], rowCount: 1 }
+          }
+
+          if (sql.includes('waiting_count') || sql.includes('pg_locks')) {
+            return { rows: [{ waiting_count: 1 }], rowCount: 1 }
+          }
+
+          // Pre-cleanup check de metadatos del emisor sintético: simula que revision cambió a 2
+          if (sql.includes('SELECT credencial_id, certificado_sha256, revision, habilitado')) {
+            return {
+              rows: [
+                {
+                  credencial_id: PR03_B_SYNTHETIC_CREDENCIAL_ID,
+                  certificado_sha256: PR03_B_SYNTHETIC_CERT_SHA256,
+                  revision: 2, // Alterada
+                  habilitado: true,
+                },
+              ],
+              rowCount: 1,
+            }
+          }
+
+          return { rows: [], rowCount: 1 }
+        }),
+        end: vi.fn().mockResolvedValue(undefined),
+      })
+
+      let clientCount = 0
+      const clientFactoryMock = vi.fn().mockImplementation(async () => {
+        clientCount++
+        return makeFakeClient(`client${clientCount}`)
+      })
+
+      await expect(
+        executePr03bStaging(
+          {
+            authorized: true,
+            scope: PR03_B_SCOPE,
+            projectRef: PR03_B_EXECUTION_TARGET,
+            password: 'mockValidPassword123',
+            runId,
+          },
+          { clientFactory: clientFactoryMock }
+        )
+      ).rejects.toThrow('SYNTHETIC_EMITTER_IDENTITY_MISMATCH: Metadatos del emisor sintético no coinciden con la identidad creada')
+    })
+
+    it('rejects execution with PR03_B_CONNECTION_CLOSE_FAILED if closing any connection fails', async () => {
+      const runId = 'dddddddd-1111-4222-8333-cccccccccccc'
+
+      const makeFakeClient = (id: string) => ({
+        id,
+        connect: vi.fn().mockResolvedValue(undefined),
+        query: vi.fn().mockImplementation(async (sql: string, params?: unknown[]) => {
+          if (sql.includes('SELECT jsonb_build_object') && sql.includes('transaction_read_only')) {
+            return {
+              rows: [
+                {
+                  preflight: {
+                    transaction_read_only: 'on',
+                    observed_at: new Date().toISOString(),
+                    real_kiosk_present: true,
+                    real_pv2_present: true,
+                    real_pv2_enabled: false,
+                    real_pv2_series_count: 0,
+                    real_pv2_pending_reservations: 0,
+                    synthetic_kiosk_present: true,
+                    synthetic_kiosk_active: true,
+                    synthetic_owner_present: true,
+                    synthetic_owner_active: true,
+                    synthetic_owner_role: 'DUEÑO',
+                    synthetic_owner_superadmin: false,
+                    synthetic_emitter_count: 0,
+                    synthetic_pv9999_series_count: 0,
+                    synthetic_pv9999_reservations: 0,
+                    synthetic_fiscal_operations: 0,
+                    catalog_rev3_exists: true,
+                    catalog_rev3_enabled: true,
+                    catalog_rev3_usable: true,
+                    synthetic_sales: [
+                      { id: '11111111-1111-4111-8111-111111111111', kiosco_id: PR03_B_SYNTHETIC_KIOSK_ID, total: '150.00', estado: 'COMPLETADA' },
+                      { id: '22222222-2222-4222-8222-222222222222', kiosco_id: PR03_B_SYNTHETIC_KIOSK_ID, total: '200.00', estado: 'COMPLETADA' },
+                    ],
+                  },
+                },
+              ],
+              rowCount: 1,
+            }
+          }
+
+          if (sql.includes('ventas_count')) {
+            return {
+              rows: [{ baseline: { ventas_count: 10, ventas_digest: 'fixed-sales-digest' } }],
+              rowCount: 1,
+            }
+          }
+
+          if (sql.includes('SELECT punto_venta, habilitado FROM public.fiscal_emisores_homologacion')) {
+            return {
+              rows: [
+                { punto_venta: 9999, habilitado: true },
+                { punto_venta: 2, habilitado: false },
+              ],
+              rowCount: 2,
+            }
+          }
+
+          if (sql.includes('autorizar_consulta_fiscal_homologacion')) {
+            return {
+              rows: [{ auth: { version: 1, cuit_emisor: PR03_B_SYNTHETIC_CUIT, punto_venta: PR03_B_SYNTHETIC_PV, tipo_comprobante: PR03_B_SYNTHETIC_RECEIPT_TYPE } }],
+              rowCount: 1,
+            }
+          }
+
+          if (sql.includes('guardar_datos_preparacion_homologacion')) {
+            return {
+              rows: [{ ack: { operacion_id: params ? params[2] : 'op-1', venta_id: 'v1', preparacion_sha256: 'sha', estado: 'DATOS_PREPARADOS', emision_habilitada: false } }],
+              rowCount: 1,
+            }
+          }
+
+          if (sql.includes('persistir_solicitud_fiscal_homologacion')) {
+            if (params && typeof params[1] === 'string' && params[1].includes('"fecha":"20261101"')) {
+              const err = new Error('No se confirmó el cuerpo fiscal o ya existe otro.')
+              Object.assign(err, { code: '40001' })
+              throw err
+            }
+            return {
+              rows: [{ ack: { operacion_id: 'op-1', numero: 1, solicitud_sha256: 'sha-1', estado: 'RESERVADA' } }],
+              rowCount: 1,
+            }
+          }
+
+          if (sql.includes('reservar_numero_fiscal_homologacion')) {
+            if (id === 'client2') {
+              const err = new Error('La serie tiene una operación pendiente de conciliación.')
+              Object.assign(err, { code: '55000' })
+              throw err
+            }
+            return { rows: [{ ack: { operacion_id: 'op-a', numero: 1, estado: 'RESERVADA' } }], rowCount: 1 }
+          }
+
+          if (sql.includes('waiting_count') || sql.includes('pg_locks')) {
+            return { rows: [{ waiting_count: 1 }], rowCount: 1 }
+          }
+
+          if (sql.includes('SELECT credencial_id, certificado_sha256, revision, habilitado')) {
+            return {
+              rows: [
+                {
+                  credencial_id: PR03_B_SYNTHETIC_CREDENCIAL_ID,
+                  certificado_sha256: PR03_B_SYNTHETIC_CERT_SHA256,
+                  revision: PR03_B_SYNTHETIC_EMITTER_REVISION,
+                  habilitado: true,
+                },
+              ],
+              rowCount: 1,
+            }
+          }
+
+          if (sql.includes('synth_emitters')) {
+            return {
+              rows: [{ synth_emitters: 0, synth_series: 0, synth_reservas: 0, run_ops: 0, real_series: 0, real_reservas: 0 }],
+              rowCount: 1,
+            }
+          }
+
+          return { rows: [], rowCount: 1 }
+        }),
+        // client1 falla al cerrar
+        end: id === 'client1' ? vi.fn().mockRejectedValue(new Error('Connection close failed')) : vi.fn().mockResolvedValue(undefined),
+      })
+
+      let clientCount = 0
+      const clientFactoryMock = vi.fn().mockImplementation(async () => {
+        clientCount++
+        return makeFakeClient(`client${clientCount}`)
+      })
+
+      await expect(
+        executePr03bStaging(
+          {
+            authorized: true,
+            scope: PR03_B_SCOPE,
+            projectRef: PR03_B_EXECUTION_TARGET,
+            password: 'mockValidPassword123',
+            runId,
+          },
+          { clientFactory: clientFactoryMock }
+        )
+      ).rejects.toThrow('PR03_B_CONNECTION_CLOSE_FAILED')
     })
 
     it('executes full authorized workflow in synthetic environment and reports structured results', async () => {
@@ -655,6 +1201,20 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
               return { rows: [{ waiting_count: 1 }], rowCount: 1 }
             }
 
+            if (sql.includes('SELECT credencial_id, certificado_sha256, revision, habilitado')) {
+              return {
+                rows: [
+                  {
+                    credencial_id: PR03_B_SYNTHETIC_CREDENCIAL_ID,
+                    certificado_sha256: PR03_B_SYNTHETIC_CERT_SHA256,
+                    revision: PR03_B_SYNTHETIC_EMITTER_REVISION,
+                    habilitado: true,
+                  },
+                ],
+                rowCount: 1,
+              }
+            }
+
             if (sql.includes('synth_emitters')) {
               return {
                 rows: [
@@ -700,24 +1260,33 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
       expect(report.execution).toBe('AUTHORIZED_EXECUTION')
       if (report.execution === 'AUTHORIZED_EXECUTION') {
         expect(report.PR03_B_EXECUTION).toBe('PASS')
+        expect(report.PR03_B_REMOTE_EXECUTION_READY).toBe(true)
+        expect(report.SYNTHETIC_TARGET_IMMUTABLE).toBe('PASS')
         expect(report.SYNTHETIC_TENANT_WIRED).toBe('PASS')
         expect(report.SYNTHETIC_KIOSK_ID_MATCH).toBe('PASS')
         expect(report.SYNTHETIC_OWNER_MATCH).toBe('PASS')
+        expect(report.SYNTHETIC_PV_MATCH).toBe('PASS')
         expect(report.SYNTHETIC_PV).toBe(9999)
         expect(report.REAL_PV2_GUARD).toBe('PASS')
         expect(report.REAL_PV2_ENABLED_DURING_PR03_B).toBe(false)
         expect(report.REAL_PV2_SERIES_TOUCHED).toBe(false)
         expect(report.CATALOG_REV3_USABLE).toBe('PASS')
         expect(report.SYNTHETIC_EMITTER_LIFECYCLE).toBe('PASS')
+        expect(report.CLEANUP_FULL_EMITTER_IDENTITY_GUARD).toBe('PASS')
+        expect(report.SYNTHETIC_EMITTER_IDENTITY_MATCH).toBe('PASS')
+        expect(report.SYNTHETIC_EMITTER_FAILSAFE_IDENTITY_GUARD).toBe('PASS')
         expect(report.CANONICAL_PRIVATE_PREPARATION).toBe('PASS')
         expect(report.IDEMPOTENCY_REPLAY).toBe('PASS')
         expect(report.REPLAY_REAL_PG).toBe('PASS')
         expect(report.IDEMPOTENCY_CONFLICT).toBe('PASS')
         expect(report.CONFLICT_SQLSTATE).toBe('40001')
+        expect(report.CONFLICT_EXPECTED_SQLSTATE).toBe('40001')
         expect(report.CONCURRENCY_SEMANTICS).toBe('SINGLE_PENDING_RESERVATION')
+        expect(report.LOCK_OBSERVATION_SOURCE).toBe('PG_LOCKS')
         expect(report.LOCK_OBSERVATION_DETERMINISTIC).toBe('PASS')
         expect(report.CONCURRENCY_LOCK_OBSERVED).toBe('PASS')
         expect(report.CONCURRENCY_REJECTION_SQLSTATE).toBe('55000')
+        expect(report.CONCURRENCY_EXPECTED_SQLSTATE).toBe('55000')
         expect(report.NUMBERING_CONCURRENCY).toBe('PASS')
         expect(report.PREFLIGHT_READ_ONLY).toBe('PASS')
         expect(report.PREFLIGHT_ROLLBACK_CONFIRMED).toBe(true)
@@ -731,6 +1300,7 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
         expect(report.ARCA_CALLS).toBe(0)
         expect(report.ARCA_CALLS_NEW).toBe(0)
         expect(report.COMMERCIAL_WRITES).toBe(0)
+        expect(report.CONNECTION_CLOSE_REQUIRED_FOR_PASS).toBe('PASS')
         expect(report.CLIENT1_CLOSED).toBe(true)
         expect(report.CLIENT2_CLOSED).toBe(true)
         expect(report.PG_CONNECTIONS_CLOSED).toBe('PASS')

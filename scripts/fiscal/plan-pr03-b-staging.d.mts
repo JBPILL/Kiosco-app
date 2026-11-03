@@ -172,6 +172,9 @@ export const PR03_B_SYNTHETIC_OWNER_AUTH_ID: string
 export const PR03_B_SYNTHETIC_PV: number
 export const PR03_B_SYNTHETIC_CUIT: string
 export const PR03_B_SYNTHETIC_RECEIPT_TYPE: number
+export const PR03_B_SYNTHETIC_CREDENCIAL_ID: string
+export const PR03_B_SYNTHETIC_CERT_SHA256: string
+export const PR03_B_SYNTHETIC_EMITTER_REVISION: number
 
 export const PR03_B_SYNTHETIC_PV_CANDIDATES: readonly number[]
 export const PR03_B_BLOCKED_HOST_PATTERNS: readonly RegExp[]
@@ -209,7 +212,14 @@ export function computeCommercialBaselineHash(baseline: unknown): string
 export function validateCleanupTarget(context: unknown): boolean
 export function buildManifestCleanupSql(
   operationIds: readonly string[],
-  opts?: { syntheticPv?: number; syntheticKioskId?: string; cuit?: string }
+  opts?: {
+    syntheticPv?: number
+    syntheticKioskId?: string
+    cuit?: string
+    credencialId?: string
+    certSha?: string
+    revision?: number
+  }
 ): string
 export function verifyIdempotencyReplay(first: unknown, replay: unknown): Pr03bIdempotencyReplayResult
 export function verifyIdempotencyConflict(error: unknown): Pr03bIdempotencyConflictResult

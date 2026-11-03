@@ -434,24 +434,33 @@ describe.skipIf(!dockerRunning)('PR03-B Real PostgreSQL 17 Integration Tests', (
     expect(report.execution).toBe('AUTHORIZED_EXECUTION')
     if (report.execution === 'AUTHORIZED_EXECUTION') {
       expect(report.PR03_B_EXECUTION).toBe('PASS')
+      expect(report.PR03_B_REMOTE_EXECUTION_READY).toBe(true)
+      expect(report.SYNTHETIC_TARGET_IMMUTABLE).toBe('PASS')
       expect(report.SYNTHETIC_TENANT_WIRED).toBe('PASS')
       expect(report.SYNTHETIC_KIOSK_ID_MATCH).toBe('PASS')
       expect(report.SYNTHETIC_OWNER_MATCH).toBe('PASS')
+      expect(report.SYNTHETIC_PV_MATCH).toBe('PASS')
       expect(report.SYNTHETIC_PV).toBe(9999)
       expect(report.REAL_PV2_GUARD).toBe('PASS')
       expect(report.REAL_PV2_ENABLED_DURING_PR03_B).toBe(false)
       expect(report.REAL_PV2_SERIES_TOUCHED).toBe(false)
       expect(report.CATALOG_REV3_USABLE).toBe('PASS')
       expect(report.SYNTHETIC_EMITTER_LIFECYCLE).toBe('PASS')
+      expect(report.CLEANUP_FULL_EMITTER_IDENTITY_GUARD).toBe('PASS')
+      expect(report.SYNTHETIC_EMITTER_IDENTITY_MATCH).toBe('PASS')
+      expect(report.SYNTHETIC_EMITTER_FAILSAFE_IDENTITY_GUARD).toBe('PASS')
       expect(report.CANONICAL_PRIVATE_PREPARATION).toBe('PASS')
       expect(report.IDEMPOTENCY_REPLAY).toBe('PASS')
       expect(report.REPLAY_REAL_PG).toBe('PASS')
       expect(report.IDEMPOTENCY_CONFLICT).toBe('PASS')
       expect(report.CONFLICT_SQLSTATE).toBe('40001')
+      expect(report.CONFLICT_EXPECTED_SQLSTATE).toBe('40001')
       expect(report.CONCURRENCY_SEMANTICS).toBe('SINGLE_PENDING_RESERVATION')
+      expect(report.LOCK_OBSERVATION_SOURCE).toBe('PG_LOCKS')
       expect(report.LOCK_OBSERVATION_DETERMINISTIC).toBe('PASS')
       expect(report.CONCURRENCY_LOCK_OBSERVED).toBe('PASS')
       expect(report.CONCURRENCY_REJECTION_SQLSTATE).toBe('55000')
+      expect(report.CONCURRENCY_EXPECTED_SQLSTATE).toBe('55000')
       expect(report.NUMBERING_CONCURRENCY).toBe('PASS')
       expect(report.PREFLIGHT_READ_ONLY).toBe('PASS')
       expect(report.PREFLIGHT_ROLLBACK_CONFIRMED).toBe(true)
@@ -465,6 +474,7 @@ describe.skipIf(!dockerRunning)('PR03-B Real PostgreSQL 17 Integration Tests', (
       expect(report.ARCA_CALLS).toBe(0)
       expect(report.ARCA_CALLS_NEW).toBe(0)
       expect(report.COMMERCIAL_WRITES).toBe(0)
+      expect(report.CONNECTION_CLOSE_REQUIRED_FOR_PASS).toBe('PASS')
       expect(report.CLIENT1_CLOSED).toBe(true)
       expect(report.CLIENT2_CLOSED).toBe(true)
       expect(report.PG_CONNECTIONS_CLOSED).toBe('PASS')
@@ -512,5 +522,109 @@ describe.skipIf(!dockerRunning)('PR03-B Real PostgreSQL 17 Integration Tests', (
       [synthKioskId]
     )
     expect(synthEmitter.rows[0].count).toBe(0)
+  })
+
+  it('6. Regresión de seguridad: Si la identidad o metadatos del emisor sintético cambian antes del cleanup (p. ej. revision alterada), el cleanup rechaza la eliminación con SYNTHETIC_EMITTER_IDENTITY_MISMATCH, NO borra el emisor ni toca PV2', async () => {
+    if (!adminClient) throw new Error('Admin client not connected')
+
+    const alteringClientFactory = async (config: Record<string, unknown>) => {
+      const client = new pg.Client({
+        ...config,
+        host: '127.0.0.1',
+        port: containerPort,
+        user: 'postgres',
+        password: postgresPassword,
+        database: 'postgres',
+        ssl: false,
+      })
+      await client.connect()
+      const origQuery = client.query.bind(client)
+      // Interceptar justo antes del SELECT de verificación de metadatos previo al cleanup
+      client.query = async (sql: any, ...args: any[]) => {
+        if (
+          typeof sql === 'string' &&
+          sql.includes('SELECT credencial_id, certificado_sha256, revision, habilitado')
+        ) {
+          // Alterar la revisión del emisor sintético directamente en PostgreSQL
+          await adminClient!.query(
+            'UPDATE public.fiscal_emisores_homologacion SET revision = 2 WHERE kiosco_id = $1',
+            [synthKioskId]
+          )
+        }
+        return (origQuery as any)(sql, ...args)
+      }
+      return client
+    }
+
+    const runId = randomUUID()
+    let executionError: Error | null = null
+    try {
+      await executePr03bStaging(
+        {
+          authorized: true,
+          scope: PR03_B_SCOPE,
+          projectRef: PR03_B_EXECUTION_TARGET,
+          password: postgresPassword,
+          runId,
+          syntheticKioskId: synthKioskId,
+          syntheticOwnerAuthId: synthOwnerAuthId,
+          syntheticPv: 9999,
+        },
+        { clientFactory: alteringClientFactory }
+      )
+    } catch (err) {
+      executionError = err as Error
+    }
+
+    expect(executionError).not.toBeNull()
+    expect(executionError?.message).toContain('SYNTHETIC_EMITTER_IDENTITY_MISMATCH')
+
+    // 1. Confirmar que el emisor sintético NO fue borrado por el cleanup porque sus metadatos no coincidían
+    const synthEmitterCheck = await adminClient.query(
+      'SELECT count(*)::int as count, revision, habilitado FROM public.fiscal_emisores_homologacion WHERE kiosco_id = $1 GROUP BY revision, habilitado',
+      [synthKioskId]
+    )
+    expect(synthEmitterCheck.rows[0].count).toBe(1)
+    expect(synthEmitterCheck.rows[0].revision).toBe(2)
+    // El failsafe tampoco lo deshabilitó porque el failsafe exige matching estricto de revision = 1
+    expect(synthEmitterCheck.rows[0].habilitado).toBe(true)
+
+    // 2. Confirmar que el emisor real PV 2 permanece intacto y deshabilitado
+    const realPv2Check = await adminClient.query(
+      'SELECT habilitado FROM public.fiscal_emisores_homologacion WHERE kiosco_id = $1 AND punto_venta = 2',
+      [PR03_B_REAL_KIOSK_ID]
+    )
+    expect(realPv2Check.rows[0].habilitado).toBe(false)
+
+    // 3. Confirmar que no se crearon series para PV 2
+    const pv2Series = await adminClient.query(
+      'SELECT count(*)::int as count FROM public.fiscal_series_homologacion WHERE punto_venta = 2'
+    )
+    expect(pv2Series.rows[0].count).toBe(0)
+
+    // Limpieza final de la fila sintética alterada y operaciones para dejar el contenedor limpio
+    const opIdsRes = await adminClient.query(
+      'SELECT id FROM public.fiscal_operaciones_homologacion WHERE kiosco_id = $1',
+      [synthKioskId]
+    )
+    const opIds = opIdsRes.rows.map((r: Record<string, unknown>) => String(r.id))
+    if (opIds.length > 0) {
+      const idList = opIds.map((id: string) => `'${id}'::uuid`).join(',')
+      await adminClient.query(`
+        ALTER TABLE public.fiscal_preparaciones_homologacion DISABLE TRIGGER fiscal_preparacion_inmutable;
+        DELETE FROM public.fiscal_solicitudes_homologacion WHERE operacion_id IN (${idList});
+        DELETE FROM public.fiscal_reservas_homologacion WHERE operacion_id IN (${idList});
+        DELETE FROM public.fiscal_preparaciones_homologacion WHERE operacion_id IN (${idList});
+        DELETE FROM public.fiscal_operaciones_homologacion WHERE id IN (${idList});
+        ALTER TABLE public.fiscal_preparaciones_homologacion ENABLE TRIGGER fiscal_preparacion_inmutable;
+      `)
+    }
+    await adminClient.query(
+      'DELETE FROM public.fiscal_series_homologacion WHERE punto_venta >= 9000'
+    )
+    await adminClient.query(
+      'DELETE FROM public.fiscal_emisores_homologacion WHERE kiosco_id = $1',
+      [synthKioskId]
+    )
   })
 })

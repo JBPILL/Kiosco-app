@@ -23,6 +23,9 @@ import {
   PR03_B_SYNTHETIC_PV,
   PR03_B_SYNTHETIC_CUIT,
   PR03_B_SYNTHETIC_RECEIPT_TYPE,
+  PR03_B_SYNTHETIC_CREDENCIAL_ID,
+  PR03_B_SYNTHETIC_CERT_SHA256,
+  PR03_B_SYNTHETIC_EMITTER_REVISION,
   PR03_B_PREFLIGHT_SELECT_SQL,
   PR03_B_CONCURRENCY_WAIT_SELECT_SQL,
   PR03_B_COMMERCIAL_BASELINE_SQL,
@@ -233,12 +236,32 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
   const runId = options.runId || randomUUID()
   validateCleanupRunId(runId)
 
+  // Blocker 1: Invarianza estricta de identidades sintéticas antes de abrir conexión PostgreSQL
+  const rawKiosk = options.syntheticKioskId ?? options.kioskId
+  const rawOwner = options.syntheticOwnerAuthId ?? options.ownerAuthId
+  const rawPv = options.syntheticPv ?? options.puntoVenta
+
+  if (rawKiosk !== undefined && rawKiosk !== PR03_B_SYNTHETIC_KIOSK_ID) {
+    assertNoRealPv2Usage(rawKiosk)
+    throw new Error('FATAL: PR03_B_SYNTHETIC_TARGET_MISMATCH')
+  }
+  if (rawOwner !== undefined && rawOwner !== PR03_B_SYNTHETIC_OWNER_AUTH_ID) {
+    throw new Error('FATAL: PR03_B_SYNTHETIC_TARGET_MISMATCH')
+  }
+  if (rawPv !== undefined && rawPv !== PR03_B_SYNTHETIC_PV) {
+    assertNoRealPv2Usage(rawPv)
+    throw new Error('FATAL: PR03_B_SYNTHETIC_TARGET_MISMATCH')
+  }
+
   const realKioskId = PR03_B_REAL_KIOSK_ID
-  const syntheticKioskId = options.syntheticKioskId || options.kioskId || PR03_B_SYNTHETIC_KIOSK_ID
-  const syntheticOwnerAuthId = options.syntheticOwnerAuthId || options.ownerAuthId || PR03_B_SYNTHETIC_OWNER_AUTH_ID
-  const syntheticPv = options.syntheticPv || PR03_B_SYNTHETIC_PV
+  const syntheticKioskId = PR03_B_SYNTHETIC_KIOSK_ID
+  const syntheticOwnerAuthId = PR03_B_SYNTHETIC_OWNER_AUTH_ID
+  const syntheticPv = PR03_B_SYNTHETIC_PV
   const syntheticCuit = PR03_B_SYNTHETIC_CUIT
   const syntheticReceiptType = PR03_B_SYNTHETIC_RECEIPT_TYPE
+  const credId = PR03_B_SYNTHETIC_CREDENCIAL_ID
+  const certSha = PR03_B_SYNTHETIC_CERT_SHA256
+  const rev = PR03_B_SYNTHETIC_EMITTER_REVISION
 
   // Guard Anti-PV2 / Real Kiosk: el fixture sintético NUNCA puede ser el PV real 2 ni el kiosco real
   assertNoRealPv2Usage(syntheticPv)
@@ -267,6 +290,7 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
   let concurrencySqlState = null
   let cleanupStatus = 'NOT_APPLICABLE'
   let syntheticEmitterCreated = false
+  let syntheticEmitterIdentityMatch = 'NOT_APPLICABLE'
   let syntheticEmitterFailsafeDisabled = 'NOT_NEEDED'
   let residualFiscalCount = -1
 
@@ -331,9 +355,9 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
         syntheticKioskId,
         syntheticCuit,
         syntheticPv,
-        '9a4916d1-b6b5-499f-98ef-9f6cf79510be',
-        'bbcaffebce0f62e1d626e9f6f425dfa70a2de22031df12536a3876d2193af9d0',
-        1,
+        credId,
+        certSha,
+        rev,
       ]
     )
     syntheticEmitterCreated = true
@@ -349,9 +373,9 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
         syntheticKioskId,
         syntheticCuit,
         syntheticPv,
-        '9a4916d1-b6b5-499f-98ef-9f6cf79510be',
-        'bbcaffebce0f62e1d626e9f6f425dfa70a2de22031df12536a3876d2193af9d0',
-        1,
+        credId,
+        certSha,
+        rev,
       ]
     )
     if ((activateRes.rowCount ?? 0) !== 1) {
@@ -556,6 +580,7 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
         throw err
       }
     )
+    workerBPromise.catch(() => {})
 
     // Observar determinísticamente vía pg_locks que Worker B está esperando el lock de A
     let waitObserved = false
@@ -573,9 +598,12 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
       await new Promise(r => setTimeout(r, 20))
     }
 
-    lockObserved = (waitObserved || !workerBFinished)
+    lockObserved = waitObserved === true
     if (!lockObserved) {
-      throw new Error('CONCURRENCY_LOCK_NOT_OBSERVED: Conexión B no esperó de forma demostrable el lock de A')
+      await client1.query('ROLLBACK').catch(() => {})
+      await client2.query('ROLLBACK').catch(() => {})
+      await workerBPromise.catch(() => {})
+      throw new Error('CONCURRENCY_LOCK_NOT_OBSERVED: Conexión B no esperó de forma demostrable en pg_locks')
     }
 
     // Worker A confirma su transacción, liberando el row lock de la serie
@@ -611,12 +639,34 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
       concurrencyPassed = true
     }
 
-    // 11. FASE L — CLEANUP QUIRÚRGICO DE CAMINO EXITOSO
+    // 11. FASE L — CLEANUP QUIRÚRGICO DE CAMINO EXITOSO CON IDENTIDAD COMPLETA
+    const emitterRowRes = await client1.query(
+      `SELECT credencial_id, certificado_sha256, revision, habilitado
+       FROM public.fiscal_emisores_homologacion
+       WHERE kiosco_id = $1 AND cuit_emisor = $2 AND punto_venta = $3`,
+      [syntheticKioskId, syntheticCuit, syntheticPv]
+    )
+    const emRow = emitterRowRes.rows[0]
+    if (
+      emRow &&
+      emRow.credencial_id === credId &&
+      emRow.certificado_sha256 === certSha &&
+      emRow.revision === rev
+    ) {
+      syntheticEmitterIdentityMatch = 'PASS'
+    } else {
+      syntheticEmitterIdentityMatch = 'FAIL'
+      throw new Error('SYNTHETIC_EMITTER_IDENTITY_MISMATCH: Metadatos del emisor sintético no coinciden con la identidad creada')
+    }
+
     await client1.query(
       buildManifestCleanupSql(createdOperationIds, {
         syntheticPv,
         syntheticKioskId,
         cuit: syntheticCuit,
+        credencialId: credId,
+        certSha,
+        revision: rev,
       })
     )
     cleanupStatus = 'PASS'
@@ -671,8 +721,10 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
       try {
         await client1.query(
           `UPDATE public.fiscal_emisores_homologacion SET habilitado = false
-           WHERE kiosco_id = $1 AND punto_venta = $2 AND cuit_emisor = $3 AND habilitado = true;`,
-          [syntheticKioskId, syntheticPv, syntheticCuit]
+           WHERE kiosco_id = $1 AND punto_venta = $2 AND cuit_emisor = $3
+             AND credencial_id = $4 AND certificado_sha256 = $5 AND revision = $6
+             AND habilitado = true;`,
+          [syntheticKioskId, syntheticPv, syntheticCuit, credId, certSha, rev]
         )
         syntheticEmitterFailsafeDisabled = 'PASS'
       } catch {
@@ -707,30 +759,43 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
     throw executionError
   }
 
-  const pgConnectionsClosed = (client1Closed && client2Closed) ? 'PASS' : 'FAIL'
+  if (!client1Closed || !client2Closed) {
+    throw new Error('PR03_B_CONNECTION_CLOSE_FAILED: No se verificó el cierre ordenado de todas las conexiones PostgreSQL')
+  }
+
+  const pgConnectionsClosed = 'PASS'
 
   return Object.freeze({
     execution: 'AUTHORIZED_EXECUTION',
     PR03_B_EXECUTION: 'PASS',
+    PR03_B_REMOTE_EXECUTION_READY: true,
+    SYNTHETIC_TARGET_IMMUTABLE: 'PASS',
     SYNTHETIC_TENANT_WIRED: 'PASS',
-    SYNTHETIC_KIOSK_ID_MATCH: syntheticKioskId === PR03_B_SYNTHETIC_KIOSK_ID ? 'PASS' : 'FAIL',
-    SYNTHETIC_OWNER_MATCH: syntheticOwnerAuthId === PR03_B_SYNTHETIC_OWNER_AUTH_ID ? 'PASS' : 'FAIL',
+    SYNTHETIC_KIOSK_ID_MATCH: 'PASS',
+    SYNTHETIC_OWNER_MATCH: 'PASS',
+    SYNTHETIC_PV_MATCH: 'PASS',
     SYNTHETIC_PV: syntheticPv,
     REAL_PV2_GUARD: 'PASS',
     REAL_PV2_ENABLED_DURING_PR03_B: false,
     REAL_PV2_SERIES_TOUCHED: false,
     CATALOG_REV3_USABLE: 'PASS',
     SYNTHETIC_EMITTER_LIFECYCLE: 'PASS',
+    CLEANUP_FULL_EMITTER_IDENTITY_GUARD: 'PASS',
+    SYNTHETIC_EMITTER_IDENTITY_MATCH: syntheticEmitterIdentityMatch,
+    SYNTHETIC_EMITTER_FAILSAFE_IDENTITY_GUARD: 'PASS',
     CANONICAL_PRIVATE_PREPARATION: 'PASS',
     IDEMPOTENCY_REPLAY: replayPassed ? 'PASS' : 'FAIL',
     REPLAY_REAL_PG: replayPassed ? 'PASS' : 'FAIL',
     IDEMPOTENCY_CONFLICT: conflictPassed ? 'PASS' : 'FAIL',
     CONFLICT_SQLSTATE: conflictSqlState,
+    CONFLICT_EXPECTED_SQLSTATE: '40001',
     CONFLICT_REAL_PG: conflictPassed ? 'PASS' : 'FAIL',
     CONCURRENCY_SEMANTICS: 'SINGLE_PENDING_RESERVATION',
+    LOCK_OBSERVATION_SOURCE: 'PG_LOCKS',
     LOCK_OBSERVATION_DETERMINISTIC: lockObserved ? 'PASS' : 'FAIL',
     CONCURRENCY_LOCK_OBSERVED: lockObserved ? 'PASS' : 'FAIL',
     CONCURRENCY_REJECTION_SQLSTATE: concurrencySqlState,
+    CONCURRENCY_EXPECTED_SQLSTATE: '55000',
     CONCURRENCY_REAL_PG: concurrencyPassed ? 'PASS' : 'FAIL',
     NUMBERING_CONCURRENCY: concurrencyPassed ? 'PASS' : 'FAIL',
     PREFLIGHT_READ_ONLY: preflightPassed ? 'PASS' : 'FAIL',
@@ -751,6 +816,7 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
     COMMERCIAL_WRITES: 0,
     FIXTURE_OPERATIONS_CREATED: createdOperationIds.length,
     FIXTURE_CLEANUP: cleanupStatus,
+    CONNECTION_CLOSE_REQUIRED_FOR_PASS: 'PASS',
     CLIENT1_CLOSED: client1Closed,
     CLIENT2_CLOSED: client2Closed,
     PG_CONNECTIONS_CLOSED: pgConnectionsClosed,
