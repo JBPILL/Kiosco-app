@@ -110,7 +110,6 @@ export interface Pr03bPlanConfig {
   readonly punto_venta: number
   readonly tipo_comprobante: number
   readonly anti_arca_guard: boolean
-  readonly catalog_revision_3_excluded: boolean
 }
 
 export interface Pr03bPlanValidationResult {
@@ -134,7 +133,9 @@ export interface Pr03bPreflightResult {
   readonly kioskActive: boolean
   readonly expectedIssuerPresent: boolean
   readonly expectedIssuerInactive: boolean
-  readonly catalogRev3Absent: boolean
+  readonly catalogRev3Exists: boolean
+  readonly catalogRev3Enabled: boolean
+  readonly catalogRev3Usable: boolean
   readonly residualFixturesCount: number
   readonly syntheticSalesCount: number
   readonly chosenSyntheticPv: number
@@ -153,10 +154,16 @@ export const PR03_B_APPROVED_TIPO_COMPROBANTE: number
 export const PR03_B_SYNTHETIC_PV_CANDIDATES: readonly number[]
 export const PR03_B_BLOCKED_HOST_PATTERNS: readonly RegExp[]
 export const PR03_B_PREFLIGHT_SELECT_SQL: string
+export const PR03_B_CONCURRENCY_WAIT_SELECT_SQL: string
 export const PR03_B_COMMERCIAL_BASELINE_SQL: string
 export const PR03_B_TEST_CASES: readonly Pr03bTestCase[]
 
+export const SYNTHETIC_EMITTER_ROW_SUPPORTED: false
+export const CANONICAL_PREPARATION_REQUIRES_CONFIGURED_SYNTHETIC_PV: true
+export const PR03_B_BLOCKED_BY_SCHEMA: true
+
 export function assertNoArcaNetwork(targetUrl?: string): void
+export function assertNoRealPv2Usage(target: unknown): void
 export function verifyNoExternalFiscalTransport(): { readonly arcaTransportReachable: false; readonly status: 'PASS' }
 export function createAntiArcaFetch(): (input: unknown) => never
 export function canonicalJson(value: unknown): string
@@ -174,7 +181,8 @@ export function buildCanonicalFiscalPreparation(params: FiscalPreparationParams)
 }
 export function createPr03bTestFixture(opts?: Pr03bFixtureOptions): Pr03bTestFixture
 export function createPr03bScopedFixture(runId: string, opts?: Pr03bFixtureOptions): Pr03bScopedFixture
-export function verifyPr03bPreflight(raw: unknown): Pr03bPreflightResult
+export function verifyPr03bBasePreflight(raw: unknown): Pr03bPreflightResult
+export function verifyPr03bPreflight(raw: unknown, opts?: unknown): Pr03bPreflightResult
 export function computeCommercialBaselineHash(baseline: unknown): string
 export function validateCleanupTarget(context: unknown): boolean
 export function buildManifestCleanupSql(operationIds: readonly string[], opts?: { syntheticPv?: number }): string

@@ -4,11 +4,11 @@
 // 2. Cero credenciales hardcodeadas (lectura vía stdin / PGPASSWORD en memoria temporal).
 // 3. Dry-run por defecto si no se pasa --authorized.
 // 4. Preflight READ ONLY antes de cualquier escritura con sentencias separadas.
-// 5. Fixture canónico con preparar_operacion_fiscal_homologacion y ventas sintéticas auditadas.
-// 6. Concurrencia real con semántica de reserva única y rechazo SQLSTATE 55000.
+// 5. Fixture canónico sobre PV sintético aislado (NUNCA PV 2).
+// 6. Concurrencia determinista observable vía pg_locks/pg_stat_activity (SQLSTATE 55000).
 // 7. Cleanup quirúrgico por manifiesto de UUIDs y reversión de serie sintética.
 // 8. Baseline comercial criptográfico before/after preservado.
-// 9. Cierre individual y verificado de conexiones PostgreSQL.
+// 9. Cierre individual y verificado de conexiones PostgreSQL tras finalizar.
 
 import pg from 'pg'
 import { randomUUID } from 'node:crypto'
@@ -22,9 +22,11 @@ import {
   PR03_B_APPROVED_PUNTO_VENTA,
   PR03_B_APPROVED_TIPO_COMPROBANTE,
   PR03_B_PREFLIGHT_SELECT_SQL,
+  PR03_B_CONCURRENCY_WAIT_SELECT_SQL,
   PR03_B_COMMERCIAL_BASELINE_SQL,
   PR03_B_TEST_CASES,
   assertNoArcaNetwork,
+  assertNoRealPv2Usage,
   verifyNoExternalFiscalTransport,
   createPr03bTestFixture,
   createPr03bScopedFixture,
@@ -123,7 +125,6 @@ export function checkPr03bEnvironment() {
     punto_venta: PR03_B_APPROVED_PUNTO_VENTA,
     tipo_comprobante: PR03_B_APPROVED_TIPO_COMPROBANTE,
     anti_arca_guard: true,
-    catalog_revision_3_excluded: true,
   })
 
   const fixture = createPr03bTestFixture()
@@ -224,6 +225,9 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
   const runId = options.runId || randomUUID()
   validateCleanupRunId(runId)
 
+  const kioskId = options.kioskId || PR03_B_APPROVED_KIOSK_ID
+  const ownerAuthId = options.ownerAuthId || PR03_B_APPROVED_OWNER_AUTH_ID
+
   let client1 = null
   let client2 = null
   let client1Closed = false
@@ -244,8 +248,11 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
   let lockObserved = false
   let concurrencySqlState = null
   let cleanupStatus = 'NOT_APPLICABLE'
+  let syntheticEmitterCreated = false
+  let syntheticEmitterFailsafeDisabled = 'NOT_NEEDED'
 
   const createdOperationIds = []
+  let executionError = null
 
   try {
     // 4. Conexión 1
@@ -266,9 +273,9 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
     let preflightData = null
     try {
       const preflightRes = await client1.query(PR03_B_PREFLIGHT_SELECT_SQL, [
-        PR03_B_APPROVED_KIOSK_ID,
+        kioskId,
         PR03_B_APPROVED_CUIT,
-        PR03_B_APPROVED_PUNTO_VENTA,
+        options.syntheticPv || PR03_B_APPROVED_PUNTO_VENTA,
       ])
       preflightData = preflightRes.rows[0]?.preflight
     } finally {
@@ -276,23 +283,38 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
       preflightRollbackConfirmed = true
     }
 
-    const preflightVerification = verifyPr03bPreflight(preflightData, { postPr03c: true })
+    const preflightVerification = verifyPr03bPreflight(preflightData, {
+      syntheticWindow: !!options.allowSyntheticKiosk,
+      syntheticPv: options.syntheticPv,
+    })
     preflightPassed = preflightVerification.status === 'PASS'
     chosenSyntheticPv = preflightVerification.chosenSyntheticPv
     const syntheticSales = preflightVerification.syntheticSales
 
+    // Guard Anti-PV2: el PV sintético NUNCA puede ser el PV real 2
+    assertNoRealPv2Usage(chosenSyntheticPv)
+
+    // FASE D: Si el emisor sintético no está soportado por el esquema para el kiosco destino, detener con error fatal
+    if (kioskId === PR03_B_APPROVED_KIOSK_ID && !options.allowSyntheticKiosk) {
+      throw new Error(
+        'PR03_B_BLOCKED_BY_SCHEMA: public.fiscal_emisores_homologacion tiene PK unaria en kiosco_id; ' +
+        'el esquema no soporta la coexistencia de una fila sintética temporal para PV ' + chosenSyntheticPv +
+        ' mientras la fila real de PV 2 permanece en la base de datos'
+      )
+    }
+
     // 6. Medición del Baseline Comercial Criptográfico ANTES de las pruebas
-    const baseBeforeRes = await client1.query(PR03_B_COMMERCIAL_BASELINE_SQL, [PR03_B_APPROVED_KIOSK_ID])
+    const baseBeforeRes = await client1.query(PR03_B_COMMERCIAL_BASELINE_SQL, [kioskId])
     const baselineBefore = baseBeforeRes.rows[0]?.baseline
     baselineBeforeHash = computeCommercialBaselineHash(baselineBefore)
 
-    // 7. FASE F: IDEMPOTENCIA REPLAY Y CONFLICT (Sobre venta sintética 1 y PV sintético)
+    // 7. FASE F: IDEMPOTENCIA REPLAY Y CONFLICT (Exclusivamente sobre PV sintético aislado)
     const op1Id = randomUUID()
     createdOperationIds.push(op1Id)
 
     const fix1 = createPr03bScopedFixture(runId, {
       operacionId: op1Id,
-      puntoVenta: PR03_B_APPROVED_PUNTO_VENTA,
+      puntoVenta: chosenSyntheticPv,
       ventaId: syntheticSales[0].id,
       numero: 1,
       total: syntheticSales[0].total,
@@ -300,12 +322,15 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
 
     const fixConflict = createPr03bScopedFixture(runId, {
       operacionId: op1Id,
-      puntoVenta: PR03_B_APPROVED_PUNTO_VENTA,
+      puntoVenta: chosenSyntheticPv,
       ventaId: syntheticSales[0].id,
       numero: 1,
       total: syntheticSales[0].total,
       fecha: '20261101',
     })
+
+    assertNoRealPv2Usage(fix1.punto_venta)
+    assertNoRealPv2Usage(fixConflict.punto_venta)
 
     // Preparar operación mediante la ruta canónica privada como service_role
     await client1.query('BEGIN')
@@ -315,7 +340,7 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
 
     await client1.query(
       'SELECT guardar_datos_preparacion_homologacion($1, $2, $3, $4, $5) AS ack',
-      [PR03_B_APPROVED_OWNER_AUTH_ID, fix1.venta_id, fix1.operacion_id, fix1.preparacion_canonico, fix1.preparacion_sha256]
+      [ownerAuthId, fix1.venta_id, fix1.operacion_id, fix1.preparacion_canonico, fix1.preparacion_sha256]
     )
 
     const req1 = await client1.query(
@@ -343,7 +368,7 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
       )
     } catch (err) {
       conflictRejected = true
-      conflictSqlState = err?.code || err?.sqlState || '40001'
+      conflictSqlState = err?.code || err?.sqlState || null
       verifyIdempotencyConflict(err)
     }
     await client1.query('ROLLBACK TO SAVEPOINT sp_conflict')
@@ -356,7 +381,7 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
     // Revertir transacción de idempotencia para despejar la serie sintética
     await client1.query('ROLLBACK')
 
-    // 8. FASE H: CONCURRENCIA DE NUMERACIÓN (Dos conexiones simultáneas sobre la misma serie)
+    // 8. FASE H: CONCURRENCIA DETERMINISTA DE NUMERACIÓN (Dos conexiones simultáneas sobre serie sintética)
     client2 = await clientFactory({
       host: PR03_B_DB_HOST,
       port: PR03_B_DB_PORT,
@@ -375,7 +400,7 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
 
     const fixA = createPr03bScopedFixture(runId, {
       operacionId: opAId,
-      puntoVenta: PR03_B_APPROVED_PUNTO_VENTA,
+      puntoVenta: chosenSyntheticPv,
       ventaId: syntheticSales[0].id,
       numero: 1,
       total: syntheticSales[0].total,
@@ -383,11 +408,14 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
 
     const fixB = createPr03bScopedFixture(runId, {
       operacionId: opBId,
-      puntoVenta: PR03_B_APPROVED_PUNTO_VENTA,
+      puntoVenta: chosenSyntheticPv,
       ventaId: syntheticSales[1].id,
       numero: 1,
       total: syntheticSales[1].total,
     })
+
+    assertNoRealPv2Usage(fixA.punto_venta)
+    assertNoRealPv2Usage(fixB.punto_venta)
 
     // Preparar ambas operaciones mediante la ruta canónica privada como service_role
     for (const [cli, fix] of [[client1, fixA], [client2, fixB]]) {
@@ -397,12 +425,12 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
       await cli.query("SELECT set_config('request.jwt.claim.sub', '', true)")
       await cli.query(
         'SELECT guardar_datos_preparacion_homologacion($1, $2, $3, $4, $5) AS ack',
-        [PR03_B_APPROVED_OWNER_AUTH_ID, fix.venta_id, fix.operacion_id, fix.preparacion_canonico, fix.preparacion_sha256]
+        [ownerAuthId, fix.venta_id, fix.operacion_id, fix.preparacion_canonico, fix.preparacion_sha256]
       )
       await cli.query('COMMIT')
     }
 
-    // Worker A inicia transacción y reserva en serie sintética
+    // Worker A inicia transacción y reserva en serie sintética (adquiere row lock)
     await client1.query('BEGIN')
     await client1.query('SET LOCAL ROLE service_role')
     await client1.query("SELECT set_config('request.jwt.claim.role', 'service_role', true)")
@@ -434,9 +462,26 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
       }
     )
 
-    // Pausa controlada para verificar que Worker B efectivamente espera el lock
-    await new Promise(resolve => setTimeout(resolve, 150))
-    lockObserved = !workerBFinished
+    // Observar determinísticamente vía pg_locks que Worker B está efectivamente esperando el lock de A
+    let waitObserved = false
+    const waitDeadline = Date.now() + 2000
+    while (Date.now() < waitDeadline) {
+      if (workerBFinished) break
+      try {
+        const lockRes = await client1.query(PR03_B_CONCURRENCY_WAIT_SELECT_SQL)
+        const waitingCount = lockRes.rows[0]?.waiting_count ?? 0
+        if (waitingCount > 0) {
+          waitObserved = true
+          break
+        }
+      } catch {}
+      await new Promise(r => setTimeout(r, 20))
+    }
+
+    lockObserved = (waitObserved || !workerBFinished)
+    if (!lockObserved) {
+      throw new Error('CONCURRENCY_LOCK_NOT_OBSERVED: Conexión B no esperó de forma demostrable el lock de A')
+    }
 
     // Worker A confirma su transacción, liberando el row lock de la serie
     await client1.query('COMMIT')
@@ -460,7 +505,7 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
        WHERE cuit_emisor = $1 AND punto_venta = $2 AND tipo_comprobante = $3 AND estado = 'RESERVADA'`,
       [fixA.cuit_emisor, fixA.punto_venta, fixA.tipo_comprobante]
     )
-    const simultaneousPending = pendingCheck.rows[0]?.count > 1
+    const simultaneousPending = (pendingCheck.rows[0]?.count ?? 0) > 1
 
     const concValidation = verifyConcurrencySinglePendingReservation({
       lockObserved,
@@ -471,12 +516,12 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
       concurrencyPassed = true
     }
 
-    // 9. FASE J: CLEANUP QUIRÚRGICO POR MANIFIESTO DE OPERACIONES Y PV SINTÉTICO
+    // 9. FASE J: CLEANUP QUIRÚRGICO POR MANIFIESTO EN CAMINO DE ÉXITO
     await client1.query(buildManifestCleanupSql(createdOperationIds, { syntheticPv: chosenSyntheticPv }))
     cleanupStatus = 'PASS'
 
     // 10. Medición del Baseline Comercial Criptográfico DESPUÉS de las pruebas y cleanup
-    const baseAfterRes = await client1.query(PR03_B_COMMERCIAL_BASELINE_SQL, [PR03_B_APPROVED_KIOSK_ID])
+    const baseAfterRes = await client1.query(PR03_B_COMMERCIAL_BASELINE_SQL, [kioskId])
     const baselineAfter = baseAfterRes.rows[0]?.baseline
     baselineAfterHash = computeCommercialBaselineHash(baselineAfter)
 
@@ -484,46 +529,29 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
       throw new Error('COMMERCIAL_BASELINE_MUTATED: El hash del baseline comercial no se preservó')
     }
     commercialBaselinePreserved = true
-
-    return Object.freeze({
-      execution: 'AUTHORIZED_EXECUTION',
-      PR03_B_EXECUTION: 'PASS',
-      IDEMPOTENCY_REPLAY: replayPassed ? 'PASS' : 'FAIL',
-      IDEMPOTENCY_CONFLICT: conflictPassed ? 'PASS' : 'FAIL',
-      CONFLICT_SQLSTATE: conflictSqlState,
-      CONCURRENCY_SEMANTICS: 'SINGLE_PENDING_RESERVATION',
-      CONCURRENCY_LOCK_OBSERVED: lockObserved ? 'PASS' : 'FAIL',
-      CONCURRENCY_REJECTION_SQLSTATE: concurrencySqlState,
-      NUMBERING_CONCURRENCY: concurrencyPassed ? 'PASS' : 'FAIL',
-      PREFLIGHT_READ_ONLY: preflightPassed ? 'PASS' : 'FAIL',
-      PREFLIGHT_ROLLBACK_CONFIRMED: preflightRollbackConfirmed,
-      SYNTHETIC_PV_USED: chosenSyntheticPv,
-      COMMERCIAL_BASELINE_PRESERVED: commercialBaselinePreserved,
-      BASELINE_BEFORE_HASH: baselineBeforeHash,
-      BASELINE_AFTER_HASH: baselineAfterHash,
-      RUN_ID: runId,
-      ARCA_CALLS: 0,
-      COMMERCIAL_WRITES: 0,
-      FIXTURE_OPERATIONS_CREATED: createdOperationIds.length,
-      FIXTURE_CLEANUP: cleanupStatus,
-      CLIENT1_CLOSED: true,
-      CLIENT2_CLOSED: true,
-      PG_CONNECTIONS_CLOSED: 'PASS',
-    })
   } catch (error) {
+    executionError = error
     if (client1) {
       await client1.query('ROLLBACK').catch(() => {})
-      if (createdOperationIds.length > 0) {
-        await client1.query(
-          buildManifestCleanupSql(createdOperationIds, { syntheticPv: chosenSyntheticPv })
-        ).catch(() => {})
-      }
     }
     if (client2) {
       await client2.query('ROLLBACK').catch(() => {})
     }
-    throw error
+    // Fail-safe específico: si se creó un emisor sintético y quedó habilitado, deshabilitarlo
+    if (syntheticEmitterCreated && chosenSyntheticPv > 0 && client1) {
+      try {
+        await client1.query(
+          `UPDATE public.fiscal_emisores_homologacion SET habilitado = false
+           WHERE punto_venta = $1 AND cuit_emisor = $2 AND habilitado = true;`,
+          [chosenSyntheticPv, PR03_B_APPROVED_CUIT]
+        )
+        syntheticEmitterFailsafeDisabled = 'PASS'
+      } catch {
+        syntheticEmitterFailsafeDisabled = 'FAIL'
+      }
+    }
   } finally {
+    // 11. FASE K: Cierre real de conexiones PostgreSQL
     if (client1) {
       try {
         await client1.end()
@@ -545,4 +573,57 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
       client2Closed = true
     }
   }
+
+  if (executionError) {
+    throw executionError
+  }
+
+  const pgConnectionsClosed = (client1Closed && client2Closed) ? 'PASS' : 'FAIL'
+
+  return Object.freeze({
+    execution: 'AUTHORIZED_EXECUTION',
+    PR03_B_EXECUTION: 'PASS',
+    IDEMPOTENCY_REPLAY: replayPassed ? 'PASS' : 'FAIL',
+    IDEMPOTENCY_CONFLICT: conflictPassed ? 'PASS' : 'FAIL',
+    CONFLICT_SQLSTATE: conflictSqlState,
+    CONCURRENCY_SEMANTICS: 'SINGLE_PENDING_RESERVATION',
+    CONCURRENCY_LOCK_OBSERVED: lockObserved ? 'PASS' : 'FAIL',
+    CONCURRENCY_REJECTION_SQLSTATE: concurrencySqlState,
+    NUMBERING_CONCURRENCY: concurrencyPassed ? 'PASS' : 'FAIL',
+    PREFLIGHT_READ_ONLY: preflightPassed ? 'PASS' : 'FAIL',
+    PREFLIGHT_ROLLBACK_CONFIRMED: preflightRollbackConfirmed,
+    SYNTHETIC_PV_USED: chosenSyntheticPv,
+    REAL_PV2_SERIES_TOUCHED: false,
+    SYNTHETIC_EMITTER_FAILSAFE_DISABLED: syntheticEmitterFailsafeDisabled,
+    COMMERCIAL_BASELINE_PRESERVED: commercialBaselinePreserved,
+    BASELINE_BEFORE_HASH: baselineBeforeHash,
+    BASELINE_AFTER_HASH: baselineAfterHash,
+    RUN_ID: runId,
+    ARCA_CALLS: 0,
+    COMMERCIAL_WRITES: 0,
+    FIXTURE_OPERATIONS_CREATED: createdOperationIds.length,
+    FIXTURE_CLEANUP: cleanupStatus,
+    CLIENT1_CLOSED: client1Closed,
+    CLIENT2_CLOSED: client2Closed,
+    PG_CONNECTIONS_CLOSED: pgConnectionsClosed,
+  })
+}
+
+// Entrypoint de ejecución CLI con transmisión explícita de argumentos
+const isMain = process.argv[1] && (
+  process.argv[1].endsWith('execute-pr03-b-staging.mjs') ||
+  process.argv[1].includes('execute-pr03-b-staging')
+)
+
+if (isMain) {
+  const args = validatePr03bCliArgs(process.argv.slice(2))
+  executePr03bStaging(args)
+    .then(report => {
+      console.log(JSON.stringify(report, null, 2))
+      process.exit(0)
+    })
+    .catch(err => {
+      console.error(`PR03_B_FATAL_ERROR=${err.message}`)
+      process.exit(1)
+    })
 }

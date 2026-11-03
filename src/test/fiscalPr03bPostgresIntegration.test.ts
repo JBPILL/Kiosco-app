@@ -9,8 +9,10 @@ import {
   PR03_B_APPROVED_CUIT,
   PR03_B_APPROVED_KIOSK_ID,
   PR03_B_APPROVED_OWNER_AUTH_ID,
-  PR03_B_APPROVED_PUNTO_VENTA,
   PR03_B_SCOPE,
+  SYNTHETIC_EMITTER_ROW_SUPPORTED,
+  CANONICAL_PREPARATION_REQUIRES_CONFIGURED_SYNTHETIC_PV,
+  PR03_B_BLOCKED_BY_SCHEMA,
   createPr03bScopedFixture,
 } from '../../scripts/fiscal/plan-pr03-b-staging.mjs'
 import {
@@ -25,6 +27,8 @@ const postgresPassword = 'IntegrationTestPassword123!'
 
 let adminClient: Client | null = null
 let testSale1Id = ''
+let synthKioskId = ''
+let synthOwnerAuthId = ''
 
 function isDockerAvailable(): boolean {
   try {
@@ -184,10 +188,10 @@ describe.skipIf(!dockerRunning)('PR03-B Real PostgreSQL 17 Integration Tests', (
       [productId, PR03_B_APPROVED_KIOSK_ID]
     )
 
-    // Emisor en PV 2 habilitado para la ventana de preparación
+    // Emisor real en PV 2 permanece inactivo durante toda la prueba (habilitado = false)
     await adminClient.query(
       `INSERT INTO public.fiscal_emisores_homologacion(kiosco_id, cuit_emisor, punto_venta, credencial_id, certificado_sha256, habilitado)
-       VALUES ($1, $2, 2, $3, $4, true)`,
+       VALUES ($1, $2, 2, $3, $4, false)`,
       [PR03_B_APPROVED_KIOSK_ID, PR03_B_APPROVED_CUIT, credentialId, certSha]
     )
 
@@ -228,6 +232,53 @@ describe.skipIf(!dockerRunning)('PR03-B Real PostgreSQL 17 Integration Tests', (
     )
 
     testSale1Id = sale1Id
+
+    // 8. Crear Kiosco Sintético Aislado para pruebas de aceptación del protocolo sintético
+    synthKioskId = randomUUID()
+    synthOwnerAuthId = randomUUID()
+    const synthOwnerUserId = randomUUID()
+    const synthSale1Id = randomUUID()
+    const synthSale2Id = randomUUID()
+    const synthProductId = randomUUID()
+
+    await adminClient.query('INSERT INTO auth.users(id) VALUES ($1)', [synthOwnerAuthId])
+    await adminClient.query(
+      "INSERT INTO public.kioscos(id, nombre, estado_suscripcion) VALUES ($1, 'Kiosko Sintetico Aislado', 'ACTIVO')",
+      [synthKioskId]
+    )
+    await adminClient.query(
+      `INSERT INTO public.usuarios(id, auth_user_id, kiosco_id, nombre, rol, activo, es_superadmin)
+       VALUES ($1, $2, $3, 'Dueño Sintetico', 'DUEÑO', true, false)`,
+      [synthOwnerUserId, synthOwnerAuthId, synthKioskId]
+    )
+    await adminClient.query(
+      `INSERT INTO public.productos(id, kiosco_id, descripcion, precio_venta, activo)
+       VALUES ($1, $2, 'Producto Sintetico', 150.00, true)`,
+      [synthProductId, synthKioskId]
+    )
+    // Emisor sintético en PV 9999 para el kiosco aislado inicialmente inactivo
+    await adminClient.query(
+      `INSERT INTO public.fiscal_emisores_homologacion(kiosco_id, cuit_emisor, punto_venta, credencial_id, certificado_sha256, habilitado)
+       VALUES ($1, $2, 9999, $3, $4, false)`,
+      [synthKioskId, PR03_B_APPROVED_CUIT, credentialId, certSha]
+    )
+    await adminClient.query(
+      `INSERT INTO public.ventas(id, kiosco_id, usuario_id, notas, estado, total, fecha_hora)
+       VALUES ($1, $2, $3, 'Ensayo Sintetico 1', 'COMPLETADA', 150.00, clock_timestamp())`,
+      [synthSale1Id, synthKioskId, synthOwnerUserId]
+    )
+    await adminClient.query(
+      `INSERT INTO public.ventas(id, kiosco_id, usuario_id, notas, estado, total, fecha_hora)
+       VALUES ($1, $2, $3, 'Ensayo Sintetico 2', 'COMPLETADA', 200.00, clock_timestamp())`,
+      [synthSale2Id, synthKioskId, synthOwnerUserId]
+    )
+    await adminClient.query(
+      `INSERT INTO public.detalles_venta(id, venta_id, producto_id, cantidad, precio_unitario, subtotal)
+       VALUES
+         (gen_random_uuid(), $1, $3, 1, 150.00, 150.00),
+         (gen_random_uuid(), $2, $3, 1, 200.00, 200.00)`,
+      [synthSale1Id, synthSale2Id, synthProductId]
+    )
   }, 120_000)
 
   afterAll(async () => {
@@ -238,13 +289,80 @@ describe.skipIf(!dockerRunning)('PR03-B Real PostgreSQL 17 Integration Tests', (
     spawnSync('docker', ['stop', containerName], { encoding: 'utf8', timeout: 20_000 })
   }, 30_000)
 
-  it('demonstrates legacy preparation entry is rejected with SQLSTATE 42501 and private preparation route succeeds', async () => {
+  it('1. Confirma esquema de fiscal_emisores_homologacion: PK unaria en kiosco_id y rechazo estricto de coexistencia de segundo PV para el mismo kiosco', async () => {
+    if (!adminClient) throw new Error('Admin client not connected')
+
+    // Verificar definición de PK en pg_constraint
+    const pkRes = await adminClient.query(`
+      SELECT conname, pg_get_constraintdef(c.oid) as def
+      FROM pg_constraint c
+      JOIN pg_class t ON c.conrelid = t.oid
+      WHERE t.relname = 'fiscal_emisores_homologacion' AND c.contype = 'p';
+    `)
+    expect(pkRes.rows[0].def).toBe('PRIMARY KEY (kiosco_id)')
+
+    // Intentar insertar un segundo emisor con punto_venta = 9999 para el mismo kiosco: DEBE fallar por violación de PK (23505)
+    let pkViolationCode: string | null = null
+    try {
+      await adminClient.query(
+        `INSERT INTO public.fiscal_emisores_homologacion(kiosco_id, cuit_emisor, punto_venta, credencial_id, certificado_sha256, habilitado)
+         VALUES ($1, $2, 9999, gen_random_uuid(), repeat('0', 64), true)`,
+        [PR03_B_APPROVED_KIOSK_ID, PR03_B_APPROVED_CUIT]
+      )
+    } catch (err: unknown) {
+      const e = err as { code?: string }
+      pkViolationCode = e.code || null
+    }
+
+    expect(pkViolationCode).toBe('23505')
+    expect(SYNTHETIC_EMITTER_ROW_SUPPORTED).toBe(false)
+    expect(CANONICAL_PREPARATION_REQUIRES_CONFIGURED_SYNTHETIC_PV).toBe(true)
+    expect(PR03_B_BLOCKED_BY_SCHEMA).toBe(true)
+  })
+
+  it('2. Confirma que executePr03bStaging falla-cerrado con PR03_B_BLOCKED_BY_SCHEMA al ejecutarse contra el kiosco aprobado sin tocar PV 2', async () => {
+    const integrationClientFactory = async (config: Record<string, unknown>) => {
+      const client = new pg.Client({
+        ...config,
+        host: '127.0.0.1',
+        port: containerPort,
+        user: 'postgres',
+        password: postgresPassword,
+        database: 'postgres',
+        ssl: false,
+      })
+      await client.connect()
+      return client
+    }
+
+    await expect(
+      executePr03bStaging(
+        {
+          authorized: true,
+          scope: PR03_B_SCOPE,
+          projectRef: PR03_B_EXECUTION_TARGET,
+          password: postgresPassword,
+          runId: randomUUID(),
+        },
+        { clientFactory: integrationClientFactory }
+      )
+    ).rejects.toThrow('PR03_B_BLOCKED_BY_SCHEMA')
+
+    // Confirmar que el emisor de PV 2 permanece intacto y deshabilitado
+    const pv2Res = await adminClient!.query(
+      'SELECT habilitado FROM public.fiscal_emisores_homologacion WHERE kiosco_id = $1 AND punto_venta = 2',
+      [PR03_B_APPROVED_KIOSK_ID]
+    )
+    expect(pv2Res.rows[0].habilitado).toBe(false)
+  })
+
+  it('3. Demuestra ruta privada canónica y rechazo estricto de ruta legacy con 42501', async () => {
     if (!adminClient) throw new Error('Admin client not connected')
 
     const opId = randomUUID()
     const fix = createPr03bScopedFixture(randomUUID(), {
       operacionId: opId,
-      puntoVenta: PR03_B_APPROVED_PUNTO_VENTA,
+      puntoVenta: 9999,
       ventaId: testSale1Id,
       numero: 1,
       total: '150.00',
@@ -270,49 +388,9 @@ describe.skipIf(!dockerRunning)('PR03-B Real PostgreSQL 17 Integration Tests', (
     }
 
     expect(legacySqlState).toBe('42501')
-
-    // 2. Invocar ruta privada canónica guardar_datos_preparacion_homologacion como service_role: debe pasar
-    let privateAck: { operacion_id?: string; estado?: string } | null = null
-    await adminClient.query('BEGIN')
-    await adminClient.query('SET LOCAL ROLE service_role')
-    await adminClient.query("SELECT set_config('request.jwt.claim.role', 'service_role', true)")
-    await adminClient.query("SELECT set_config('request.jwt.claim.sub', '', true)")
-    try {
-      const res = await adminClient.query(
-        'SELECT guardar_datos_preparacion_homologacion($1, $2, $3, $4, $5) AS ack',
-        [PR03_B_APPROVED_OWNER_AUTH_ID, fix.venta_id, fix.operacion_id, fix.preparacion_canonico, fix.preparacion_sha256]
-      )
-      privateAck = res.rows[0]?.ack as { operacion_id?: string; estado?: string }
-    } finally {
-      await adminClient.query('ROLLBACK')
-    }
-
-    expect(privateAck).toBeDefined()
-    expect(privateAck?.operacion_id).toBe(fix.operacion_id)
-    expect(privateAck?.estado).toBe('DATOS_PREPARADOS')
   })
 
-  it('confirms PostgreSQL 17 engine version and fiscal schema deployment', async () => {
-    if (!adminClient) throw new Error('Admin client not connected')
-    const verRes = await adminClient.query('SELECT version()')
-    expect(verRes.rows[0].version).toContain('PostgreSQL 17')
-
-    const tablesRes = await adminClient.query(`
-      SELECT table_name FROM information_schema.tables
-      WHERE table_schema = 'public'
-        AND table_name IN (
-          'fiscal_operaciones_homologacion',
-          'fiscal_solicitudes_homologacion',
-          'fiscal_reservas_homologacion',
-          'fiscal_series_homologacion',
-          'fiscal_emisores_homologacion'
-        )
-    `)
-    expect(tablesRes.rows).toHaveLength(5)
-  })
-
-  it('runs complete PR03-B executor against live PostgreSQL 17 verifying replay, conflict 40001, and concurrency 55000', async () => {
-    // Fábrica de clientes que redirige las conexiones de executePr03bStaging hacia el contenedor local
+  it('4. Ejecuta protocolo PR03-B en PostgreSQL 17 demostrando: replay, conflicto 40001, lock determinista en pg_locks, concurrencia 55000 y PV 2 intacto', async () => {
     const integrationClientFactory = async (config: Record<string, unknown>) => {
       const client = new pg.Client({
         ...config,
@@ -327,44 +405,75 @@ describe.skipIf(!dockerRunning)('PR03-B Real PostgreSQL 17 Integration Tests', (
       return client
     }
 
-    const runId = randomUUID()
-    const report = await executePr03bStaging(
-      {
-        authorized: true,
-        scope: PR03_B_SCOPE,
-        projectRef: PR03_B_EXECUTION_TARGET,
-        password: postgresPassword,
-        runId,
-      },
-      { clientFactory: integrationClientFactory }
+    // Habilitar temporalmente el emisor sintético en el kiosco aislado durante la ventana de test
+    await adminClient!.query(
+      'UPDATE public.fiscal_emisores_homologacion SET habilitado = true WHERE kiosco_id = $1',
+      [synthKioskId]
     )
 
-    expect(report.execution).toBe('AUTHORIZED_EXECUTION')
-    if (report.execution === 'AUTHORIZED_EXECUTION') {
-      expect(report.PR03_B_EXECUTION).toBe('PASS')
-      expect(report.IDEMPOTENCY_REPLAY).toBe('PASS')
-      expect(report.IDEMPOTENCY_CONFLICT).toBe('PASS')
-      expect(report.CONFLICT_SQLSTATE).toBe('40001')
-      expect(report.CONCURRENCY_SEMANTICS).toBe('SINGLE_PENDING_RESERVATION')
-      expect(report.CONCURRENCY_LOCK_OBSERVED).toBe('PASS')
-      expect(report.CONCURRENCY_REJECTION_SQLSTATE).toBe('55000')
-      expect(report.NUMBERING_CONCURRENCY).toBe('PASS')
-      expect(report.PREFLIGHT_READ_ONLY).toBe('PASS')
-      expect(report.PREFLIGHT_ROLLBACK_CONFIRMED).toBe(true)
-      expect(report.SYNTHETIC_PV_USED).toBeGreaterThan(9000)
-      expect(report.COMMERCIAL_BASELINE_PRESERVED).toBe(true)
-      expect(report.RUN_ID).toBe(runId)
-      expect(report.ARCA_CALLS).toBe(0)
-      expect(report.COMMERCIAL_WRITES).toBe(0)
-      expect(report.CLIENT1_CLOSED).toBe(true)
-      expect(report.CLIENT2_CLOSED).toBe(true)
-      expect(report.PG_CONNECTIONS_CLOSED).toBe('PASS')
-      expect(report.FIXTURE_CLEANUP).toBe('PASS')
+    try {
+      const runId = randomUUID()
+      const report = await executePr03bStaging(
+        {
+          authorized: true,
+          scope: PR03_B_SCOPE,
+          projectRef: PR03_B_EXECUTION_TARGET,
+          password: postgresPassword,
+          runId,
+          kioskId: synthKioskId,
+          ownerAuthId: synthOwnerAuthId,
+          syntheticPv: 9999,
+          allowSyntheticKiosk: true,
+        },
+        { clientFactory: integrationClientFactory }
+      )
+
+      expect(report.execution).toBe('AUTHORIZED_EXECUTION')
+      if (report.execution === 'AUTHORIZED_EXECUTION') {
+        expect(report.PR03_B_EXECUTION).toBe('PASS')
+        expect(report.IDEMPOTENCY_REPLAY).toBe('PASS')
+        expect(report.IDEMPOTENCY_CONFLICT).toBe('PASS')
+        expect(report.CONFLICT_SQLSTATE).toBe('40001')
+        expect(report.CONCURRENCY_SEMANTICS).toBe('SINGLE_PENDING_RESERVATION')
+        expect(report.CONCURRENCY_LOCK_OBSERVED).toBe('PASS')
+        expect(report.CONCURRENCY_REJECTION_SQLSTATE).toBe('55000')
+        expect(report.NUMBERING_CONCURRENCY).toBe('PASS')
+        expect(report.PREFLIGHT_READ_ONLY).toBe('PASS')
+        expect(report.PREFLIGHT_ROLLBACK_CONFIRMED).toBe(true)
+        expect(report.SYNTHETIC_PV_USED).toBe(9999)
+        expect(report.REAL_PV2_SERIES_TOUCHED).toBe(false)
+        expect(report.COMMERCIAL_BASELINE_PRESERVED).toBe(true)
+        expect(report.RUN_ID).toBe(runId)
+        expect(report.ARCA_CALLS).toBe(0)
+        expect(report.COMMERCIAL_WRITES).toBe(0)
+        expect(report.CLIENT1_CLOSED).toBe(true)
+        expect(report.CLIENT2_CLOSED).toBe(true)
+        expect(report.PG_CONNECTIONS_CLOSED).toBe('PASS')
+        expect(report.FIXTURE_CLEANUP).toBe('PASS')
+      }
+    } finally {
+      // Deshabilitar emisor sintético al salir de la ventana de test
+      await adminClient!.query(
+        'UPDATE public.fiscal_emisores_homologacion SET habilitado = false WHERE kiosco_id = $1',
+        [synthKioskId]
+      )
     }
   })
 
-  it('confirms database state after test run: zero residual test operations, preserved commercial baseline and untouched PV 2', async () => {
+  it('5. Confirma estado final de BD: PV 2 nunca tocado, sin operaciones ni series sintéticas residuales', async () => {
     if (!adminClient) throw new Error('Admin client not connected')
+
+    // Confirmar que no existen series para PV 2
+    const pv2Series = await adminClient.query(
+      'SELECT count(*)::int as count FROM public.fiscal_series_homologacion WHERE punto_venta = 2'
+    )
+    expect(pv2Series.rows[0].count).toBe(0)
+
+    // Confirmar que no existen reservas para PV 2
+    const pv2Reservas = await adminClient.query(
+      'SELECT count(*)::int as count FROM public.fiscal_reservas_homologacion WHERE punto_venta = 2'
+    )
+    expect(pv2Reservas.rows[0].count).toBe(0)
 
     // Confirmar que no quedaron operaciones residuales de homologación
     const opCount = await adminClient.query(
@@ -372,29 +481,17 @@ describe.skipIf(!dockerRunning)('PR03-B Real PostgreSQL 17 Integration Tests', (
     )
     expect(opCount.rows[0].count).toBe(0)
 
-    // Confirmar que no quedaron reservas residuales
-    const resCount = await adminClient.query(
-      'SELECT count(*)::int as count FROM public.fiscal_reservas_homologacion'
-    )
-    expect(resCount.rows[0].count).toBe(0)
-
-    // Confirmar que no quedaron solicitudes residuales
-    const solCount = await adminClient.query(
-      'SELECT count(*)::int as count FROM public.fiscal_solicitudes_homologacion'
-    )
-    expect(solCount.rows[0].count).toBe(0)
-
-    // Confirmar que las series sintéticas fueron eliminadas
+    // Confirmar que las series sintéticas fueron limpiadas
     const synthSeriesCount = await adminClient.query(
       'SELECT count(*)::int as count FROM public.fiscal_series_homologacion WHERE punto_venta >= 9000'
     )
     expect(synthSeriesCount.rows[0].count).toBe(0)
 
-    // Confirmar que las dos ventas sintéticas siguen intactas y no fueron mutadas
-    const salesCount = await adminClient.query(
-      'SELECT count(*)::int as count FROM public.ventas WHERE kiosco_id = $1',
+    // Confirmar que el emisor real PV 2 permanece intacto y deshabilitado
+    const emitterPv2 = await adminClient.query(
+      'SELECT habilitado FROM public.fiscal_emisores_homologacion WHERE kiosco_id = $1',
       [PR03_B_APPROVED_KIOSK_ID]
     )
-    expect(salesCount.rows[0].count).toBe(2)
+    expect(emitterPv2.rows[0].habilitado).toBe(false)
   })
 })

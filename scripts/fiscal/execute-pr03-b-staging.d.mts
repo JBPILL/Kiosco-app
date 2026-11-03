@@ -29,6 +29,10 @@ export interface Pr03bExecutionOptions {
   readonly projectRef?: string
   readonly runId?: string
   readonly password?: string
+  readonly kioskId?: string
+  readonly ownerAuthId?: string
+  readonly allowSyntheticKiosk?: boolean
+  readonly syntheticPv?: number
 }
 
 export interface Pr03bDryRunResult {
@@ -54,6 +58,8 @@ export interface Pr03bExecutionResult {
   readonly PREFLIGHT_READ_ONLY: 'PASS' | 'FAIL'
   readonly PREFLIGHT_ROLLBACK_CONFIRMED: boolean
   readonly SYNTHETIC_PV_USED: number
+  readonly REAL_PV2_SERIES_TOUCHED: false
+  readonly SYNTHETIC_EMITTER_FAILSAFE_DISABLED: 'PASS' | 'FAIL' | 'NOT_NEEDED'
   readonly COMMERCIAL_BASELINE_PRESERVED: boolean
   readonly BASELINE_BEFORE_HASH: string
   readonly BASELINE_AFTER_HASH: string

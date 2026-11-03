@@ -5,6 +5,7 @@
 // 3. Concurrencia con semántica real: máximo una reserva pendiente por serie (SQLSTATE 55000).
 // 4. Baseline comercial criptográfico before/after (cero writes comerciales declarados sin hash).
 // 5. Cierre individual y verificado de conexiones PostgreSQL.
+// 6. Auditoría de esquema: emisor sintético no soportado en staging por PK unaria en kiosco_id.
 
 import { createHash, randomUUID } from 'node:crypto'
 
@@ -19,6 +20,11 @@ export const PR03_B_APPROVED_PUNTO_VENTA = 2
 export const PR03_B_APPROVED_TIPO_COMPROBANTE = 11
 
 export const PR03_B_SYNTHETIC_PV_CANDIDATES = Object.freeze([9999, 9998, 9995, 9990])
+
+// Conclusiones canónicas de auditoría de esquema
+export const SYNTHETIC_EMITTER_ROW_SUPPORTED = false
+export const CANONICAL_PREPARATION_REQUIRES_CONFIGURED_SYNTHETIC_PV = true
+export const PR03_B_BLOCKED_BY_SCHEMA = true
 
 export const PR03_B_BLOCKED_HOST_PATTERNS = Object.freeze([
   /(?:^|\.)(?:afip|arca|wsaa|wsfe)\.gob\.ar$/i,
@@ -42,6 +48,21 @@ export function assertNoArcaNetwork(targetUrl) {
     const isBlocked = PR03_B_BLOCKED_HOST_PATTERNS.some(pattern => pattern.test(lower))
     if (isBlocked) {
       throw new Error('FATAL: ARCA_CALL_ATTEMPTED_IN_PR03_B')
+    }
+  }
+}
+
+/**
+ * Guard Anti-PV2 estricto: lanza error fatal si se intenta utilizar el punto de venta
+ * real 2 en fixtures, series, reservas o solicitudes durante la prueba.
+ */
+export function assertNoRealPv2Usage(target) {
+  if (target === 2 || target === '2') {
+    throw new Error('FATAL: REAL_PV2_SERIES_TOUCHED')
+  }
+  if (target && typeof target === 'object') {
+    if (target.punto_venta === 2 || target.puntoVenta === 2) {
+      throw new Error('FATAL: REAL_PV2_SERIES_TOUCHED')
     }
   }
 }
@@ -334,6 +355,13 @@ export const PR03_B_PREFLIGHT_SELECT_SQL = `SELECT jsonb_build_object(
   'catalog_rev3_exists', EXISTS (
     SELECT 1 FROM public.fiscal_parametros_homologacion WHERE revision = 3
   ),
+  'catalog_rev3_enabled', COALESCE((
+    SELECT habilitado FROM public.fiscal_parametros_homologacion WHERE revision = 3
+  ), false),
+  'catalog_rev3_usable', COALESCE((
+    SELECT (habilitado = true AND vence_en > clock_timestamp() AND consultado_en <= clock_timestamp())
+    FROM public.fiscal_parametros_homologacion WHERE revision = 3
+  ), false),
   'residual_fixtures_count', (
     SELECT count(*)::int FROM public.fiscal_operaciones_homologacion
     WHERE estado = 'PREPARADA'
@@ -373,10 +401,19 @@ export const PR03_B_PREFLIGHT_SELECT_SQL = `SELECT jsonb_build_object(
 ) AS preflight;`
 
 /**
- * Validador del resultado del preflight READ ONLY.
- * Descubre ventas sintéticas independientes y selecciona una serie sintética completamente ausente.
+ * Consulta de observación determinista del bloqueo por lock en la serie fiscal.
  */
-export function verifyPr03bPreflight(raw, opts = {}) {
+export const PR03_B_CONCURRENCY_WAIT_SELECT_SQL = `SELECT count(*)::int as waiting_count
+FROM pg_locks l
+JOIN pg_stat_activity a ON a.pid = l.pid
+WHERE NOT l.granted
+  AND a.application_name LIKE 'kiosko-pr03b-c2-%';`
+
+/**
+ * Validador base de preflight READ ONLY.
+ * Exige emisor real PV 2 inactivo, catálogo rev 3 activo y vigente, y ventas sintéticas presentes.
+ */
+export function verifyPr03bBasePreflight(raw, opts = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('PR03_B_PREFLIGHT_INVALID')
   }
@@ -384,32 +421,33 @@ export function verifyPr03bPreflight(raw, opts = {}) {
   if (d.transaction_read_only !== 'on') throw new Error('PR03_B_PREFLIGHT_NOT_READ_ONLY')
   if (!d.kiosk_active) throw new Error('PR03_B_PREFLIGHT_KIOSK_INACTIVE')
   if (!d.expected_issuer_present) throw new Error('PR03_B_PREFLIGHT_ISSUER_NOT_FOUND')
+
+  if (opts.syntheticWindow) {
+    if (d.expected_issuer_enabled !== true) throw new Error('PR03_B_PREFLIGHT_SYNTHETIC_ISSUER_NOT_ENABLED')
+  } else {
+    if (d.expected_issuer_enabled !== false) throw new Error('PR03_B_PREFLIGHT_REAL_PV2_NOT_DISABLED')
+  }
+
   if (d.unexpected_enabled_issuers !== 0) throw new Error('PR03_B_PREFLIGHT_UNEXPECTED_ENABLED_ISSUERS')
   if (!d.pos_present) throw new Error('PR03_B_PREFLIGHT_POS_NOT_FOUND')
   if (d.residual_fixtures_count !== 0) throw new Error('PR03_B_PREFLIGHT_RESIDUAL_FIXTURES_FOUND')
+  if (!d.catalog_rev3_exists) throw new Error('PR03_B_PREFLIGHT_CATALOG_REV3_REQUIRED')
+  if (d.catalog_rev3_enabled !== true) throw new Error('PR03_B_PREFLIGHT_CATALOG_REV3_NOT_ENABLED')
+  if (d.catalog_rev3_usable !== true) throw new Error('PR03_B_PREFLIGHT_CATALOG_REV3_EXPIRED_OR_NOT_USABLE')
 
-  const postPr03c = opts.postPr03c ?? false
-  if (postPr03c) {
-    if (d.expected_issuer_enabled !== true) throw new Error('PR03_B_PREFLIGHT_ISSUER_NOT_ENABLED')
-    if (!d.catalog_rev3_exists) throw new Error('PR03_B_PREFLIGHT_CATALOG_REV3_REQUIRED')
-  } else {
-    if (d.expected_issuer_enabled !== false) throw new Error('PR03_B_PREFLIGHT_ISSUER_ENABLED')
-    if (d.catalog_rev3_exists) throw new Error('PR03_B_PREFLIGHT_CATALOG_REV3_EXISTS')
-  }
-
-  // Validar ventas sintéticas auditadas
   const syntheticSales = Array.isArray(d.synthetic_sales) ? d.synthetic_sales : []
   if (syntheticSales.length < 2) {
     throw new Error('PR03_B_PREFLIGHT_INSUFFICIENT_SYNTHETIC_TEST_SALES')
   }
 
-  // Descubrir y validar serie sintética candidata aislada
   const candidates = Array.isArray(d.synthetic_series_candidates) ? d.synthetic_series_candidates : []
   const availableCandidate = candidates.find(
-    c => c.absent_from_emisores && c.absent_from_series && c.absent_from_reservas
+    c => (opts.syntheticWindow || c.absent_from_emisores) && c.absent_from_series && c.absent_from_reservas
   )
 
-  if (!availableCandidate) {
+  const chosenPv = opts.syntheticPv || (availableCandidate ? availableCandidate.punto_venta : 9999)
+
+  if (!availableCandidate && !opts.syntheticPv) {
     throw new Error('PR03_B_PREFLIGHT_NO_SAFE_SYNTHETIC_SERIES_AVAILABLE')
   }
 
@@ -418,13 +456,22 @@ export function verifyPr03bPreflight(raw, opts = {}) {
     transactionReadOnly: true,
     kioskActive: true,
     expectedIssuerPresent: true,
-    expectedIssuerInactive: true,
-    catalogRev3Absent: true,
+    expectedIssuerInactive: !opts.syntheticWindow,
+    catalogRev3Exists: true,
+    catalogRev3Enabled: true,
+    catalogRev3Usable: true,
     residualFixturesCount: 0,
     syntheticSalesCount: syntheticSales.length,
-    chosenSyntheticPv: availableCandidate.punto_venta,
+    chosenSyntheticPv: chosenPv,
     syntheticSales,
   })
+}
+
+/**
+ * Validador unificado de preflight (compatible hacia atrás).
+ */
+export function verifyPr03bPreflight(raw, opts = {}) {
+  return verifyPr03bBasePreflight(raw, opts)
 }
 
 /**
@@ -480,7 +527,7 @@ export function buildManifestCleanupSql(operationIds, opts = {}) {
   }
   const idList = operationIds.map(id => `'${id}'::uuid`).join(',')
   const syntheticPv = opts.syntheticPv
-  const pvCleanup = (typeof syntheticPv === 'number' && PR03_B_SYNTHETIC_PV_CANDIDATES.includes(syntheticPv))
+  const pvCleanup = (typeof syntheticPv === 'number' && PR03_B_SYNTHETIC_PV_CANDIDATES.includes(syntheticPv) && syntheticPv !== 2)
     ? `\nDELETE FROM public.fiscal_series_homologacion WHERE cuit_emisor = '${PR03_B_APPROVED_CUIT}' AND punto_venta = ${syntheticPv};`
     : ''
 
@@ -516,31 +563,26 @@ export function verifyIdempotencyReplay(first, replay) {
 
 /**
  * Valida el resultado de la prueba de conflicto de idempotencia (payload alterado).
+ * Exige estrictamente SQLSTATE 40001 (sin 22023 y sin inferencia por mensaje).
  */
 export function verifyIdempotencyConflict(error) {
   if (!error) throw new Error('IDEMPOTENCY_CONFLICT_DID_NOT_THROW')
-  const err = error
-  const code = err.code || err.sqlState || err.status || ''
-  const message = String(err.message || '')
+  const code = error.code || error.sqlState || ''
 
-  const isExpectedCode = code === '40001' || code === '22023' ||
-    message.includes('40001') || message.includes('22023') ||
-    message.includes('No se confirmó el cuerpo fiscal') || message.includes('ya existe otro')
-
-  if (!isExpectedCode) {
-    throw new Error(`IDEMPOTENCY_CONFLICT_UNEXPECTED_ERROR: ${code} - ${message}`)
+  if (code !== '40001') {
+    throw new Error(`IDEMPOTENCY_CONFLICT_UNEXPECTED_SQLSTATE: Se esperaba exactamente 40001, se obtuvo '${code}'`)
   }
 
   return Object.freeze({
     status: 'PASS',
     rejectedWithExpectedCode: true,
-    errorCode: code || '40001',
+    errorCode: '40001',
   })
 }
 
 /**
  * Valida la semántica de concurrencia: exactamente una única reserva pendiente por serie.
- * Conexión B debe esperar o ser rechazada con 55000 mientras A retenga el lock.
+ * Conexión B debe esperar y ser rechazada con 55000 mientras A retenga el lock.
  */
 export function verifyConcurrencySinglePendingReservation(check) {
   if (!check || typeof check !== 'object') {
@@ -600,7 +642,6 @@ export function verifyPr03bPlan(plan) {
   if (plan.punto_venta !== PR03_B_APPROVED_PUNTO_VENTA) throw new Error('PR03_B_PLAN_POS_MISMATCH')
   if (plan.tipo_comprobante !== PR03_B_APPROVED_TIPO_COMPROBANTE) throw new Error('PR03_B_PLAN_RECEIPT_TYPE_MISMATCH')
   if (plan.anti_arca_guard !== true) throw new Error('PR03_B_PLAN_ANTI_ARCA_GUARD_INACTIVE')
-  if (plan.catalog_revision_3_excluded !== true) throw new Error('PR03_B_PLAN_CATALOG_REV3_NOT_EXCLUDED')
 
   return Object.freeze({
     status: 'PASS',
