@@ -2115,3 +2115,23 @@ esa habilitación. El gate del primer CAE conserva esta comprobación pendiente
 y requiere revisión y GO fiscal separados, además de la aprobación exacta del
 Dueño; nunca se infiere del cierre local ni de la preparación sin emisión.
 
+
+
+### Cierre Acreditado de PR03 (9/9 PASS) y Preparación PR02 (03/11/2026)
+
+1. **Aceptación Staging PR03-B**:
+   - `RUN_ID = ef59490c-c1c0-40cf-a449-e51a79da3327`.
+   - Aislamiento en tenant sintético `f4a00000-2026-4011-a001-000000000001`, PV `9999`.
+   - Idempotencia: replay confirmado (`identicalReservation = true`), conflicto con payload mutado rechazado con SQLSTATE `40001`.
+   - Concurrencia de numeración: serialización forzada; bloqueo comprobado determinísticamente en `pg_locks`; segunda conexión rechazada con SQLSTATE `55000` (`SINGLE_PENDING_RESERVATION`).
+   - Emisor operativo real PV 2 (`b7254826-c767-4098-94b8-71013c12021d`): permaneció estrictamente deshabilitado (`REAL_PV2_ENABLED_DURING_PR03_B = false`) e intacto (`REAL_PV2_SERIES_TOUCHED = false`).
+   - Limpieza y baselines: cero residuales sintéticos (`RESIDUAL_SYNTHETIC_FISCAL_STATE = 0`); baseline comercial preservado con hash SHA-256 idéntico antes y después (`222bb460131141d3638cd8e7e05dc5763e2ec68e6b837b722f4c622786a31088`).
+   - Conexiones cerradas (`PG_CONNECTIONS_CLOSED = PASS`). Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras comerciales (`COMMERCIAL_WRITES = 0`).
+   - **PR03 = 9/9 PASS (100% formal y fáctico)**.
+
+2. **Preparación PR02 y Protección de Historial**:
+   - Intención histórica 042: prohibición estricta de segundo `FECAESolicitar`. Sólo conciliable READ ONLY mediante GO específico. Prohibido reutilizar identidades o reservas previas.
+   - Selección de venta candidata (PV 2): kiosco `b7254826-c767-4098-94b8-71013c12021d`, CUIT `20415005963`, PV 2, Tipo 11 Factura C; venta `COMPLETADA`, total > 0, detalles válidos, `cae IS NULL`, sin devoluciones ni operaciones fiscales pendientes, sin intento en `ENVIO_INCIERTO`, aprobada expresamente por el Dueño. Cero auto-selección, cero creación de ventas ficticias.
+   - Verificaciones previas: Catálogo R3 activo, TA no expirado, certificados/claves verificados, permisos de worker validados, numeración oficial contrastada (`FECompUltimoAutorizado`).
+   - Fases autorizables: PR02-A (Preflight/Reconciliación READ ONLY) -> PR02-B (Preparación durable) -> PR02-C (Emisión real: máximo 1 `FECAESolicitar`, ante incertidumbre STOP) -> PR02-D (Conciliación `FECompConsultar` y CAE).
+   - Estado: `PR02_READY_FOR_READ_ONLY_GO = true`, `PR02_READY_FOR_EMISSION_GO = false`. Emisor permanece deshabilitado. Cero llamadas ARCA, cero escrituras Staging.

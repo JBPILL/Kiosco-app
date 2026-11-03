@@ -85,7 +85,7 @@ por el titular hasta contar con cliente; no se consideran probados ni aprobados.
 |---|---|---|---|
 | PR01 | WSAA/WSFE homologación: certificado/par original y vigencia; autorización del servicio; TRA/CMS válidos; Token/Sign y expiración reales sin exposición; consulta autenticada no transaccional a WSFE con CUIT representado; errores SOAP/negocio explícitos. | PASS de diagnóstico real el 20/10: certificado/par, WSASS, WSAA y consulta FEParamGetTiposCbte autenticada devolviendo 36 tipos; cero comprobantes emitidos. FEParamGetPtosVenta respondió antes 602 (sin datos), conservado como evidencia. No acredita disponibilidad del punto 2 ni CAE; esos requisitos siguen en PR02. Evidencia: diagnóstico cc199d5, ejecución autorizada, credenciales sólo en memoria. | ExecPlan arca-homologation; docs/arca-homologacion. |
 | PR02 | CAE real de homologación: respuesta autorizada de WSFE, número, tipo, punto de venta, importes, vencimiento y QR coherentes; persistencia y recuperación por FECompConsultar; rechazo no presentado como autorizado; ninguna simulación de CAE. | PENDIENTE. Preparar la prueba reproducible y pedir la autorización requerida antes de emitir un comprobante, incluso de homologación. | PR01 y contrato seguro de PR03. |
-| PR03 | Idempotencia y robustez fiscal: operación durable por venta/entorno, cuerpo inmutable y control de permisos; reserva/lock de numeración por CUIT/punto/tipo; mismo reintento no duplica; respuesta incierta se reconcilia antes de reenviar; importes/IVA/fechas/XML y caché/renovación de TA validados. | PARCIAL: PR03-A verificado PASS en Staging (6/9 requisitos acreditados). Orden interno reclasificado a PR03-A -> PR03-C -> PR03-B por dependencia canónica de parámetros fiscales vigentes y emisor habilitado. PR03-B bloqueado por PR03-C. PR03-C es el siguiente gate. | PR01; debe satisfacer invariantes antes de PR02 end-to-end. |
+| PR03 | Idempotencia y robustez fiscal: operación durable por venta/entorno, cuerpo inmutable y control de permisos; reserva/lock de numeración por CUIT/punto/tipo; mismo reintento no duplica; respuesta incierta se reconcilia antes de reenviar; importes/IVA/fechas/XML y caché/renovación de TA validados. | PASS: 9/9 requisitos acreditados formal y fácticamente en Staging el 03/11/2026. PR03-A (esquema), PR03-C (Catálogo R3 activo) y PR03-B (idempotencia y concurrencia demostrada en pg_locks bajo tenant sintético aislado PV 9999, PV 2 real intacto y deshabilitado, baseline comercial idéntico y cero residuales). RUN_ID ef59490c-c1c0-40cf-a449-e51a79da3327. Cero llamadas ARCA y cero escrituras comerciales. PR03 concluido al 100%. | PR01; requisito satisfecho para PR02. |
 | PR04 | Contingencias ARCA/Internet: caída de WSAA/WSFE, timeout antes/después del commit, vencimiento de TA, reconexión y reintento controlado; estado comercial separado del fiscal; ticket pendiente claramente identificado, sin CAE inventado ni doble cobro. Definir operación, responsables y límites de contingencia. | PARCIAL: existe evidencia de recuperación de cobros comerciales; falta circuito fiscal real y aceptación del operador. No asumir que ticket interno sustituye un comprobante fiscal. | PR03, PR08; P08/P09/P17. |
 | PR05 | Integridad venta-stock-caja: venta/pagos/detalles/stock/kardex/costos/lotes/envases y caja coherentes; descuentos, cambio/devolución, anulación y caja cerrada; una solicitud produce un solo efecto y una reversa. Conciliar datos de ensayo e historia sin borrar/redondear movimientos. | PARCIAL: checkout, envases/devoluciones y ajuste de unidad cuentan con ensayos; completar matriz pendiente y revisar hallazgos de anulación antes de afirmar cierre. | P05/P06/P08/P18/P19; PR09. |
 | PR06 | Seguridad: JWT reales de Dueño/Cajero/Visor y otro comercio, DML directo rechazado, RLS/ACL efectivas, supervisor ligado a operación y límites de intentos, auditoría y retención; secretos/certificados sólo bajo custodia privada apropiada, nunca en frontend/logs/commits; dependencias y cambios revisados. | PARCIAL: auditoría npm 0 alertas tras parches Vite/source-map-js al 21/10. Contratos/pruebas locales no cierran la matriz hospedada; custodia y autorización fiscal de la futura pasarela pendientes. | P02/P03/P04/P07; ExecPlans F5/F6, supervisor y administración. |
@@ -1881,3 +1881,34 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
 - Separación de fases C1 (refresh e inserción inactiva) y C2 (activación controlada), y soporte de reanudación `--resume-existing-revision3` con cero llamadas ARCA.
 - Trazabilidad BEFORE/AFTER y verificación explícita de cierre de conexión PostgreSQL (`PG_CONNECTION_CLOSED = PASS`).
 - Estado: `PR03_C_REMOTE_EXECUTION_READY = true`. PR03 permanece en 6/9 requisitos. Cero escrituras en Staging y cero llamadas a ARCA ejecutadas en este bloque (`ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`).
+
+
+### Cierre Canónico de PR03 (9/9 PASS) en Staging — 03/11/2026
+
+- Se ejecutó la aceptación hospedada final de PR03 (`PR03_B_STAGING_ACCEPTANCE`) en Staging (`acoyfwwmhaeruciyedri`) bajo GO de un solo uso (`RUN_ID = ef59490c-c1c0-40cf-a449-e51a79da3327`).
+- Tenant sintético aislado: `f4a00000-2026-4011-a001-000000000001`, Dueño `f6af0f21-07f2-4d22-9b3c-7eec3604d5af`, PV `9999`, CUIT `20415005963`, Tipo de comprobante `11`.
+- Idempotencia hospedada: Replay idéntico PASS (`identicalReservation = true`, `mutated = false`). Conflicto con diferente payload sobre misma operación rechazado con SQLSTATE `40001` (`CONFLICT_REAL_PG = PASS`).
+- Concurrencia de numeración: Dos conexiones simultáneas serializadas de forma estricta. Bloqueo demostrado determinísticamente en `pg_locks` (`LOCK_OBSERVATION_SOURCE = PG_LOCKS`). Segunda conexión rechazada con SQLSTATE `55000` (`SINGLE_PENDING_RESERVATION`).
+- Protección de PV 2: Emisor operativo PV 2 del kiosco real (`b7254826-c767-4098-94b8-71013c12021d`) permaneció deshabilitado (`REAL_PV2_ENABLED_DURING_PR03_B = false`) e intacto (`REAL_PV2_SERIES_TOUCHED = false`).
+- Limpieza total: 100% de entidades sintéticas removidas (`RESIDUAL_SYNTHETIC_FISCAL_STATE = 0`).
+- Baseline comercial: SHA-256 pre y post idénticos (`222bb460131141d3638cd8e7e05dc5763e2ec68e6b837b722f4c622786a31088`).
+- Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras comerciales (`COMMERCIAL_WRITES = 0`).
+- Conexiones PostgreSQL cerradas formalmente (`PG_CONNECTIONS_CLOSED = PASS`).
+- **Estado**: **PR03 = 9/9 PASS (100% concluido)**. Siguiente gate del proyecto: PR02.
+
+
+### Preparación Segura de PR02 y Arquitectura de Control Fiscal — 03/11/2026
+
+- **Auditoría de Componentes**: Verificados preparación fiscal canónica, inmutabilidad de solicitudes, reserva atómica bajo lock de serie, registro durable de permiso/intento antes de SOAP, custodia de certificados y decodificación de respuestas WSFE.
+- **Protección de Intención 042**: Prohibición taxativa de segundo `FECAESolicitar` sobre intención 042. Sólo conciliable READ ONLY mediante GO específico. Prohibido reutilizar identidades, UUIDs o reservas de intentos previos.
+- **Política de Selección de Venta Candidata (PV 2)**:
+  - Kiosco real `b7254826-c767-4098-94b8-71013c12021d`, CUIT `20415005963`, PV 2, Tipo 11 Factura C.
+  - Venta `COMPLETADA`, total > 0, detalles válidos, `cae IS NULL`, sin devoluciones incompatibles, sin operaciones pendientes ni intenciones en `ENVIO_INCIERTO`.
+  - Aprobación expresa del Dueño previa a emisión. Cero auto-selección, cero creación de ventas nuevas.
+- **Verificaciones Inmediatas Pre-PR02**: Catálogo R3 activo; TA válido (nunca vencido); emisor operativo PV 2 verificado; certificados/claves validados; permisos de worker; numeración oficial contrastada (`FECompUltimoAutorizado`).
+- **Secuencia PR02 en 4 Fases**:
+  - `PR02-A`: Preflight y reconciliación READ ONLY.
+  - `PR02-B`: Preparación durable de un único intento.
+  - `PR02-C`: Primera emisión real de Homologación (máximo 1 `FECAESolicitar`, ante incertidumbre STOP).
+  - `PR02-D`: Conciliación y CAE (`FECompConsultar`, journal durable y efecto comercial exactamente una vez).
+- **Estado**: `PR02_READY_FOR_READ_ONLY_GO = true`, `PR02_READY_FOR_EMISSION_GO = false`. Emisor permanece deshabilitado. Cero llamadas ARCA, cero escrituras Staging (`ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`).

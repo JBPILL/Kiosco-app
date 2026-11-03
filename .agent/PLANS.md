@@ -721,3 +721,35 @@ Endurecimiento operativo e implementación de garantías de seguridad para PR03-
   - `--resume-existing-revision3`: omite llamadas ARCA y ejecuta directamente la activación C2 si la revisión 3 ya existe inactiva y válida.
 - **Trazabilidad BEFORE/AFTER y Cierre de Conexión**: Reporta estados de catálogo y emisor antes y después de cada fase. Verifica cierre formal de PostgreSQL (`PG_CONNECTION_CLOSED = PASS`).
 - **Estado**: `PR03_C_REMOTE_EXECUTION_READY = true`. Cero escrituras en Staging y cero llamadas ARCA ejecutadas en este bloque (`ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`).
+
+
+### 2026-11-03 - Cierre Integral de PR03 (9/9 PASS) en Staging
+
+Aceptación remota hospedada de PR03 sobre el tenant sintético acreditado (`f4a00000-2026-4011-a001-000000000001`, PV 9999):
+- **Idempotencia Hospedada (`REPLAY_REAL_PG = PASS`)**: Replay idéntico verificó misma reserva sin mutaciones. Solicitud conflictiva rechazada con SQLSTATE `40001` (`CONFLICT_REAL_PG = PASS`).
+- **Numeración y Concurrencia Hospedada (`CONCURRENCY_REAL_PG = PASS`)**: Bloqueo demostrado en `pg_locks` (`LOCK_OBSERVATION_SOURCE = PG_LOCKS`). Segunda reserva rechazada con SQLSTATE `55000` (`SINGLE_PENDING_RESERVATION`).
+- **Protección Inviolable de PV 2 (`REAL_PV2_GUARD = PASS`)**: Emisor real PV 2 permaneció strictly inactivo (`REAL_PV2_ENABLED_DURING_PR03_B = false`) y sin series tocadas (`REAL_PV2_SERIES_TOUCHED = false`).
+- **Limpieza Transaccional (`SUCCESS_CLEANUP = PASS`)**: Eliminación total de entidades sintéticas de prueba (`RESIDUAL_SYNTHETIC_FISCAL_STATE = 0`).
+- **Baselines Comerciales**: Hash SHA-256 pre y post ejecución idéntico (`222bb460131141d3638cd8e7e05dc5763e2ec68e6b837b722f4c622786a31088`).
+- **Métricas Finales**: `PR03_B_RUN_ID = ef59490c-c1c0-40cf-a449-e51a79da3327`, `ARCA_CALLS_NEW = 0`, `COMMERCIAL_WRITES = 0`, `PRODUCTION_MUTATIONS = 0`. Conexiones cerradas (`PG_CONNECTIONS_CLOSED = PASS`).
+- **Estado**: **PR03 = 9/9 PASS (100% formal y fáctico)**. Habilita preparación de PR02.
+
+
+### 2026-11-03 - Preparación Segura de PR02 (Sin Emisión)
+
+Auditoría de dependencias, protección de historial y diseño por fases para el gate PR02:
+- **Protección de Intención Histórica 042**: Prohibición taxativa de segundo `FECAESolicitar` sobre intención 042. Sólo conciliable READ ONLY bajo GO posterior específico. Prohibido reutilizar UUIDs, identidades o payloads anteriores.
+- **Política de Selección de Venta Candidata (PV 2)**: Venta de kiosco operativo `b7254826-c767-4098-94b8-71013c12021d`, PV 2, Factura C:
+  - `estado = 'COMPLETADA'`;
+  - total positivo y `detalles_venta` válidos;
+  - sin CAE previo (`cae IS NULL`);
+  - sin devoluciones incompatibles ni operaciones fiscales pendientes;
+  - sin intento en estado `ENVIO_INCIERTO`;
+  - aprobada nominativamente por el Dueño. Cero auto-selección y cero creación de ventas nuevas.
+- **Verificaciones Pre-Emisión**: Catálogo R3 vigente; TA no expirado (no reuso de TA vencido); emisor operativo verificado; certificados/claves validados; permisos de worker; numeración oficial contrastada (`FECompUltimoAutorizado`).
+- **Secuencia PR02 en 4 Fases**:
+  - `PR02-A`: Preflight y reconciliación READ ONLY.
+  - `PR02-B`: Preparación durable de un único intento.
+  - `PR02-C`: Primera emisión real de Homologación (máximo 1 `FECAESolicitar`, ante incertidumbre STOP).
+  - `PR02-D`: Conciliación y CAE (`FECompConsultar`, journal durable y efecto comercial exactamente una vez).
+- **Estado**: `PR02_READY_FOR_READ_ONLY_GO = true`, `PR02_READY_FOR_EMISSION_GO = false`. Emisor permanece deshabilitado. Cero llamadas ARCA, cero escrituras Staging (`ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`).

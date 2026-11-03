@@ -4929,3 +4929,39 @@ Se subsanaron los 12 blockers de robustez operativa e integridad:
 6. Separación de fases C1 (refresh e inserción inactiva) y C2 (activación controlada), y soporte de reanudación `--resume-existing-revision3` con cero llamadas ARCA.
 7. Trazabilidad BEFORE/AFTER y verificación explícita de cierre de conexión PostgreSQL (`PG_CONNECTION_CLOSED = PASS`).
 8. Estado: `PR03_C_REMOTE_EXECUTION_READY = true`. PR03 en 6/9 requisitos. Cero escrituras en Staging y cero llamadas a ARCA ejecutadas en este bloque (`ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`).
+
+
+### 2026-11-03 — Cierre Canónico de PR03 (9/9 PASS) en Staging
+
+Bajo autorización y GO de un solo uso, se completó la aceptación remota de PR03 en Staging (`acoyfwwmhaeruciyedri`):
+1. **Ejecución y RUN_ID**: `RUN_ID = ef59490c-c1c0-40cf-a449-e51a79da3327`.
+2. **Tenant sintético acreditado**: Kiosco `f4a00000-2026-4011-a001-000000000001`, Dueño `f6af0f21-07f2-4d22-9b3c-7eec3604d5af`, PV `9999`, CUIT `20415005963`, Tipo de comprobante `11`.
+3. **Idempotencia (`REPLAY_REAL_PG = PASS`)**: Replay idéntico confirmó la misma reserva previa. Conflicto rechazado de forma determinista con SQLSTATE `40001` (`CONFLICT_REAL_PG = PASS`).
+4. **Concurrencia (`CONCURRENCY_REAL_PG = PASS`)**: Bloqueo demostrado en `pg_locks` (`LOCK_OBSERVATION_SOURCE = PG_LOCKS`). Segunda conexión rechazada con SQLSTATE `55000` (`SINGLE_PENDING_RESERVATION`).
+5. **Protección absoluta de PV 2 (`REAL_PV2_GUARD = PASS`)**: El emisor operativo PV 2 del kiosco real (`b7254826-c767-4098-94b8-71013c12021d`) permaneció deshabilitado (`REAL_PV2_ENABLED_DURING_PR03_B = false`) e intacto (`REAL_PV2_SERIES_TOUCHED = false`).
+6. **Limpieza total (`SUCCESS_CLEANUP = PASS`)**: Cero residuales fiscales sintéticos (`RESIDUAL_SYNTHETIC_FISCAL_STATE = 0`). Triggers desacoplados de DML para evitar bloqueos por pending trigger events.
+7. **Baseline comercial idéntico**: SHA-256 antes y después `222bb460131141d3638cd8e7e05dc5763e2ec68e6b837b722f4c622786a31088` (`COMMERCIAL_BASELINE_PRESERVED = true`).
+8. **Métricas**: `ARCA_CALLS = 0`, `ARCA_CALLS_NEW = 0`, `COMMERCIAL_WRITES = 0`, `PRODUCTION_MUTATIONS = 0`. Conexiones cerradas (`PG_CONNECTIONS_CLOSED = PASS`).
+9. **Estado**: **PR03 = 9/9 PASS (100% formal y fáctico)**.
+
+
+### 2026-11-03 — Preparación Segura de PR02 y Arquitectura por Fases (Sin Emisión)
+
+Con PR03 formalmente concluido, se define la arquitectura de seguridad y pre-condiciones para PR02:
+1. **Auditoría de Componentes Existentes**: Preparación canónica, persistencia inmutable de solicitudes, reserva de numeración atómica bajo lock de serie, registro durable de permiso/intento antes de SOAP, custodia de certificado y decodificación de respuestas WSFE verificados.
+2. **Protección de Intención Histórica 042**: Prohibido taxativamente ejecutar un segundo `FECAESolicitar` sobre intención 042. Sólo conciliable READ ONLY vía `FECompConsultar` bajo GO independiente.
+3. **Política de Selección de Venta Candidata (PV 2)**:
+   - Kiosco real `b7254826-c767-4098-94b8-71013c12021d`, PV 2, CUIT `20415005963`, Tipo 11 Factura C.
+   - Venta en estado `COMPLETADA`, total positivo, detalles válidos, `cae IS NULL`, sin devoluciones incompatibles, sin operaciones pendientes ni intenciones en `ENVIO_INCIERTO`.
+   - Aprobación expresa y nominativa del Dueño. Prohibida la auto-selección y la creación de ventas falsas.
+4. **Verificaciones Pre-Emisión**:
+   - Catálogo R3 vigente y no expirado.
+   - TA no expirado (no reuso de TA vencido).
+   - Certificado y clave privada coincidentes con hash acreditado (`bbcaffebce0f62e1d626e9f6f425dfa70a2de22031df12536a3876d2193af9d0`).
+   - Numeración contrastada contra observación oficial (`FECompUltimoAutorizado`).
+5. **Secuencia de Fases PR02**:
+   - `PR02-A`: Preflight y reconciliación READ ONLY.
+   - `PR02-B`: Preparación durable de un único intento.
+   - `PR02-C`: Primera emisión real de Homologación (máximo 1 `FECAESolicitar`, ante incertidumbre STOP).
+   - `PR02-D`: Conciliación y CAE (`FECompConsultar`, journal durable y efecto comercial exactamente una vez).
+6. **Estado**: `PR02_READY_FOR_READ_ONLY_GO = true`, `PR02_READY_FOR_EMISSION_GO = false`. Emisor permanece deshabilitado. Cero llamadas ARCA, cero escrituras Staging (`ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`).

@@ -1784,3 +1784,77 @@ registro de evidencia BEFORE y AFTER, y verificación explícita de cierre de co
 El ejecutor y wrapper de PR03-C quedan completamente endurecidos, verificados por 20 tests unitarios y de
 subproceso real, y con el build de producción Vite/TypeScript exitoso. Se conservan: `ARCA_CALLS_NEW = 0`,
 `STAGING_WRITES_NEW = 0` y `PRODUCTION_MUTATIONS = 0`. Listo para ejecución remota una vez concedido el GO explícito.
+
+
+## 03/11/2026 - Cierre Canónico de PR03 (9/9 PASS) y Aceptación Hospedada en Staging
+
+**Contexto:**
+PR03 exigía la acreditación fáctica de 9 requisitos de robustez fiscal (idempotencia, concurrencia, catálogo oficial
+vigente, emisor desacoplado y preservación absoluta del contexto comercial). Tras aprobarse PR03-A (auditoría de esquema,
+3 requisitos) y PR03-C (refresco e inserción de Catálogo Revisión 3, 4 requisitos), restaban los dos requisitos hospedados
+de PR03-B (idempotencia y numeración concurrente). Para proteger de forma inviolable el emisor operativo real (kiosco
+`b7254826-c767-4098-94b8-71013c12021d`, PV 2), la prueba se adaptó para ejecutarse de forma aislada y estricta sobre el
+tenant sintético acreditado preexistente en Staging (`f4a00000-2026-4011-a001-000000000001`, PV 9999).
+
+**Decisión y Ejecución:**
+Bajo el GO explícito y de un solo uso otorgado por el titular, se ejecutó PR03-B en Staging (`acoyfwwmhaeruciyedri`)
+registrando el RUN_ID `ef59490c-c1c0-40cf-a449-e51a79da3327`:
+1. **Idempotencia hospedada (`REPLAY_REAL_PG = PASS`)**: La repetición idéntica de la solicitud fiscal confirmó
+   la misma reserva existente sin mutación de número, hash ni estado. El envío de una solicitud conflictiva con diferente
+   payload sobre la misma operación fue rechazado de forma determinista con SQLSTATE `40001` (`CONFLICT_REAL_PG = PASS`).
+2. **Numeración y concurrencia hospedada (`CONCURRENCY_REAL_PG = PASS`)**: Se demostró la serialización de dos reservas
+   simultáneas sobre la serie sintética 9999; la segunda conexión esperó en `pg_locks` de forma demostrable y fue
+   rechazada con SQLSTATE `55000` (`SINGLE_PENDING_RESERVATION`).
+3. **Protección absoluta de PV 2 (`REAL_PV2_GUARD = PASS`)**: El emisor operativo PV 2 permaneció inactivo y
+   deshabilitado (`REAL_PV2_ENABLED_DURING_PR03_B = false`), sin lecturas operativas ni series tocadas (`REAL_PV2_SERIES_TOUCHED = false`).
+4. **Limpieza quirúrgica y baseline (`SUCCESS_CLEANUP = PASS`)**: Se eliminaron el 100% de los registros sintéticos de
+   prueba (`RESIDUAL_SYNTHETIC_FISCAL_STATE = 0`). El hash SHA-256 del baseline comercial antes y después coincidió de
+   forma exacta (`222bb460131141d3638cd8e7e05dc5763e2ec68e6b837b722f4c622786a31088`, `COMMERCIAL_BASELINE_PRESERVED = true`).
+5. **Cero impacto externo**: `ARCA_CALLS = 0`, `ARCA_CALLS_NEW = 0`, `COMMERCIAL_WRITES = 0`, `PRODUCTION_MUTATIONS = 0`.
+   Conexiones cerradas limpiamente (`PG_CONNECTIONS_CLOSED = PASS`).
+
+**Consecuencias:**
+PR03 queda formal, documental y fáticamente concluido al 100% (9/9 PASS). El GO de PR03-B queda consumido y no puede
+reutilizarse. El gate PR03 queda cerrado y se habilita el diseño seguro de su dependiente PR02 (emisión de primer CAE).
+
+
+## 03/11/2026 - Preparación Segura de PR02 y Política de Protección Fiscal
+
+**Contexto:**
+Con PR03 cerrado al 100%, el siguiente gate del registro maestro es PR02 (primer CAE en homologación). Para avanzar
+hacia PR02 sin riesgo de doble emisión, colisiones de numeración o efectos comerciales espurios, se requiere auditar los
+componentes existentes, blindar el historial de intentos previos (intención histórica 042) y definir la política de selección
+de venta y fases de ejecución.
+
+**Decisión:**
+1. **Protección del historial fiscal (Intención 042)**: La intención histórica `042` no puede bajo ninguna circunstancia
+   recibir un segundo `FECAESolicitar`. Sólo admite conciliación READ ONLY vía `FECompConsultar` bajo un GO específico posterior.
+   Queda terminantemente prohibido reutilizar identidades, UUIDs, reservas o paquetes de intentos anteriores.
+2. **Política de selección de venta candidata (PV 2)**: Para el emisor operativo del kiosco real (`b7254826-c767-4098-94b8-71013c12021d`,
+   CUIT `20415005963`, PV 2, Tipo 11 Factura C), la venta elegible debe cumplir estrictamente en Staging:
+   - `estado = 'COMPLETADA'`;
+   - total monetario positivo y `detalles_venta` válidos;
+   - `cae IS NULL` (sin CAE previo registrado);
+   - sin devoluciones incompatibles en `devoluciones_venta`;
+   - sin operación fiscal pendiente en `fiscal_operaciones_homologacion`;
+   - no asociada a ningún intento de emisión en estado `ENVIO_INCIERTO`;
+   - aprobada de forma expresa y nominativa por el Dueño antes de emisión.
+   No se seleccionará automáticamente ninguna venta ni se crearán ventas ficticias durante la preparación.
+3. **Verificaciones pre-emisión de PR02**: Inmediatamente antes de cualquier emisión real, deben validarse:
+   - Catálogo oficial Revisión 3 vigente y no expirado;
+   - TA y credenciales válidos (prohibido reusar TA vencido; si expiró, requerir nuevo `LoginCms`);
+   - Emisor operativo PV 2 correctamente verificado;
+   - Certificado y clave privada coincidentes con hash SHA-256 acreditado;
+   - Permisos del worker privado en Supabase;
+   - Ausencia de intentos pendientes incompatibles en PV 2;
+   - Numeración contrastada contra observación oficial autorizada (`FECompUltimoAutorizado` sobre PV 2).
+4. **Secuencia de 4 Fases para PR02**:
+   - `PR02-A`: Preflight y reconciliación READ ONLY (inspección de Staging y observación oficial de numeración).
+   - `PR02-B`: Preparación durable de un único intento (congelamiento inmutable de venta, cuerpo de 5 claves, SHA, serie y reserva atómica).
+   - `PR02-C`: Primera emisión real de Homologación (exactamente 1 `FECAESolicitar` bajo GO fiscal específico; ante incertidumbre -> STOP sin auto-retry).
+   - `PR02-D`: Conciliación y CAE (`FECompConsultar` para verificar resultado oficial, persistencia de evidencia definitiva y aplicación del efecto comercial exactamente una vez).
+
+**Consecuencias:**
+Se auditan y verifican localmente todos los componentes de PR02 mediante tests unitarios y de integración PostgreSQL 17.
+El emisor operativo PV 2 permanece deshabilitado. Se conservan `ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0` y
+`PRODUCTION_MUTATIONS = 0`. `PR02_READY_FOR_READ_ONLY_GO = true`, mientras que `PR02_READY_FOR_EMISSION_GO = false`.
