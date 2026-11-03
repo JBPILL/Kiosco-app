@@ -36,6 +36,7 @@ import {
   verifyPr03bPreflight,
   computeCommercialBaselineHash,
   buildManifestCleanupSql,
+  cleanSyntheticResiduals,
   verifyIdempotencyReplay,
   verifyIdempotencyConflict,
   verifyConcurrencySinglePendingReservation,
@@ -482,6 +483,53 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
     it('cleanup SQL never deletes operational PV 2 series', () => {
       const op1 = 'e2b3c4d5-1234-4bc3-95d1-123456789abc'
       expect(() => buildManifestCleanupSql([op1], { syntheticPv: 2 })).toThrow('FATAL: PR03_B_REAL_FISCAL_CONTEXT_FORBIDDEN')
+    })
+
+    it('cleanSyntheticResiduals rejects operational PV 2 or real kiosk ID', async () => {
+      const mockClient = { query: vi.fn() }
+      await expect(cleanSyntheticResiduals(mockClient as any, { syntheticPv: 2 })).rejects.toThrow('FATAL: PR03_B_REAL_FISCAL_CONTEXT_FORBIDDEN')
+      await expect(cleanSyntheticResiduals(mockClient as any, { syntheticKioskId: PR03_B_REAL_KIOSK_ID })).rejects.toThrow('FATAL: PR03_B_REAL_FISCAL_CONTEXT_FORBIDDEN')
+      expect(mockClient.query).not.toHaveBeenCalled()
+    })
+
+    it('cleanSyntheticResiduals executes sequential single queries and commits', async () => {
+      const queries: { sql: string; params?: unknown[] }[] = []
+      const mockClient = {
+        query: vi.fn().mockImplementation(async (sql: string, params?: unknown[]) => {
+          queries.push({ sql, params })
+          return { rows: [] }
+        }),
+      }
+
+      await cleanSyntheticResiduals(mockClient as any)
+
+      expect(queries[0].sql).toBe('BEGIN')
+      expect(queries[1].sql).toContain('DISABLE TRIGGER fiscal_preparacion_inmutable')
+      expect(queries[2].sql).toContain('DELETE FROM public.fiscal_preparaciones_homologacion')
+      expect(queries[3].sql).toContain('ENABLE TRIGGER fiscal_preparacion_inmutable')
+      expect(queries[4].sql).toContain('DELETE FROM public.fiscal_solicitudes_homologacion')
+      expect(queries[5].sql).toContain('DELETE FROM public.fiscal_reservas_homologacion')
+      expect(queries[6].sql).toContain('DELETE FROM public.fiscal_operaciones_homologacion')
+      expect(queries[7].sql).toContain('DELETE FROM public.fiscal_series_homologacion')
+      expect(queries[8].sql).toContain('DELETE FROM public.fiscal_emisores_homologacion')
+      expect(queries[9].sql).toBe('COMMIT')
+      // None of the queries should contain multiple commands
+      for (const q of queries) {
+        expect(q.sql.trim().split(';').filter((s: string) => s.trim().length > 0)).toHaveLength(1)
+      }
+    })
+
+    it('cleanSyntheticResiduals issues rollback on error and rethrows', async () => {
+      const mockClient = {
+        query: vi.fn()
+          .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockRejectedValueOnce(new Error('DB failure during cleanup')) // DISABLE TRIGGER or DELETE
+          .mockResolvedValue({ rows: [] }), // ROLLBACK
+      }
+
+      await expect(cleanSyntheticResiduals(mockClient as any)).rejects.toThrow('DB failure during cleanup')
+      expect(mockClient.query).toHaveBeenCalledWith('BEGIN')
+      expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK')
     })
 
     it('validates cleanup target tag guard', () => {
