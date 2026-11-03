@@ -32,7 +32,8 @@ try {
     }
 
     # 2. Validacion de limpieza de arbol de trabajo
-    $status = (git status --porcelain).Trim()
+    $rawStatus = git status --porcelain
+    $status = if ($rawStatus) { ($rawStatus | Out-String).Trim() } else { '' }
     if ($status -and -not $DryRun) {
         throw "DIRTY_WORKTREE: El arbol de trabajo debe estar limpio antes de la ejecucion autorizada:`n$status"
     }
