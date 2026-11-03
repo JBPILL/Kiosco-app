@@ -621,12 +621,44 @@ export function buildManifestCleanupSql(operationIds, opts = {}) {
     }
     const idList = operationIds.map(id => `'${id}'::uuid`).join(',')
     idFilter = `
-ALTER TABLE public.fiscal_preparaciones_homologacion DISABLE TRIGGER fiscal_preparacion_inmutable;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname = 'fiscal_preparacion_inmutable'
+      AND tgrelid = to_regclass('public.fiscal_preparaciones_homologacion')
+  ) THEN
+    ALTER TABLE public.fiscal_preparaciones_homologacion DISABLE TRIGGER fiscal_preparacion_inmutable;
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname = 'fiscal_operacion_conservar_cancelacion'
+      AND tgrelid = to_regclass('public.fiscal_operaciones_homologacion')
+  ) THEN
+    ALTER TABLE public.fiscal_operaciones_homologacion DISABLE TRIGGER fiscal_operacion_conservar_cancelacion;
+  END IF;
+END $$;
 DELETE FROM public.fiscal_solicitudes_homologacion WHERE operacion_id IN (${idList});
 DELETE FROM public.fiscal_reservas_homologacion WHERE operacion_id IN (${idList});
 DELETE FROM public.fiscal_preparaciones_homologacion WHERE operacion_id IN (${idList});
 DELETE FROM public.fiscal_operaciones_homologacion WHERE id IN (${idList});
-ALTER TABLE public.fiscal_preparaciones_homologacion ENABLE TRIGGER fiscal_preparacion_inmutable;`
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname = 'fiscal_operacion_conservar_cancelacion'
+      AND tgrelid = to_regclass('public.fiscal_operaciones_homologacion')
+  ) THEN
+    ALTER TABLE public.fiscal_operaciones_homologacion ENABLE TRIGGER fiscal_operacion_conservar_cancelacion;
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname = 'fiscal_preparacion_inmutable'
+      AND tgrelid = to_regclass('public.fiscal_preparaciones_homologacion')
+  ) THEN
+    ALTER TABLE public.fiscal_preparaciones_homologacion ENABLE TRIGGER fiscal_preparacion_inmutable;
+  END IF;
+END $$;`
   }
 
   const pvCleanup = `
@@ -655,17 +687,30 @@ export async function cleanSyntheticResiduals(client, opts = {}) {
 
   await client.query('BEGIN')
   try {
-    await client.query(
-      'ALTER TABLE public.fiscal_preparaciones_homologacion DISABLE TRIGGER fiscal_preparacion_inmutable'
-    )
+    await client.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_trigger
+          WHERE tgname = 'fiscal_preparacion_inmutable'
+            AND tgrelid = to_regclass('public.fiscal_preparaciones_homologacion')
+        ) THEN
+          ALTER TABLE public.fiscal_preparaciones_homologacion DISABLE TRIGGER fiscal_preparacion_inmutable;
+        END IF;
+        IF EXISTS (
+          SELECT 1 FROM pg_trigger
+          WHERE tgname = 'fiscal_operacion_conservar_cancelacion'
+            AND tgrelid = to_regclass('public.fiscal_operaciones_homologacion')
+        ) THEN
+          ALTER TABLE public.fiscal_operaciones_homologacion DISABLE TRIGGER fiscal_operacion_conservar_cancelacion;
+        END IF;
+      END $$;
+    `)
     await client.query(
       `DELETE FROM public.fiscal_preparaciones_homologacion WHERE operacion_id IN (
         SELECT id FROM public.fiscal_operaciones_homologacion WHERE kiosco_id = $1
       )`,
       [syntheticKioskId]
-    )
-    await client.query(
-      'ALTER TABLE public.fiscal_preparaciones_homologacion ENABLE TRIGGER fiscal_preparacion_inmutable'
     )
     await client.query(
       `DELETE FROM public.fiscal_solicitudes_homologacion WHERE operacion_id IN (
@@ -681,6 +726,25 @@ export async function cleanSyntheticResiduals(client, opts = {}) {
       'DELETE FROM public.fiscal_operaciones_homologacion WHERE kiosco_id = $1',
       [syntheticKioskId]
     )
+    await client.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_trigger
+          WHERE tgname = 'fiscal_operacion_conservar_cancelacion'
+            AND tgrelid = to_regclass('public.fiscal_operaciones_homologacion')
+        ) THEN
+          ALTER TABLE public.fiscal_operaciones_homologacion ENABLE TRIGGER fiscal_operacion_conservar_cancelacion;
+        END IF;
+        IF EXISTS (
+          SELECT 1 FROM pg_trigger
+          WHERE tgname = 'fiscal_preparacion_inmutable'
+            AND tgrelid = to_regclass('public.fiscal_preparaciones_homologacion')
+        ) THEN
+          ALTER TABLE public.fiscal_preparaciones_homologacion ENABLE TRIGGER fiscal_preparacion_inmutable;
+        END IF;
+      END $$;
+    `)
     await client.query(
       'DELETE FROM public.fiscal_series_homologacion WHERE cuit_emisor = $1 AND punto_venta = $2 AND tipo_comprobante = 11',
       [syntheticCuit, syntheticPv]

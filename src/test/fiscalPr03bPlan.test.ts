@@ -472,6 +472,10 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
 
       expect(sql).toContain(`'${op1}'::uuid`)
       expect(sql).toContain(`'${op2}'::uuid`)
+      expect(sql).toContain('DISABLE TRIGGER fiscal_operacion_conservar_cancelacion')
+      expect(sql).toContain('ENABLE TRIGGER fiscal_operacion_conservar_cancelacion')
+      expect(sql).toContain('DISABLE TRIGGER fiscal_preparacion_inmutable')
+      expect(sql).toContain('ENABLE TRIGGER fiscal_preparacion_inmutable')
       expect(sql).toContain("DELETE FROM public.fiscal_series_homologacion WHERE cuit_emisor = '20415005963' AND punto_venta = 9999 AND tipo_comprobante = 11;")
       expect(sql).toContain(`credencial_id = '${PR03_B_SYNTHETIC_CREDENCIAL_ID}'`)
       expect(sql).toContain(`certificado_sha256 = '${PR03_B_SYNTHETIC_CERT_SHA256}'`)
@@ -505,17 +509,22 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
 
       expect(queries[0].sql).toBe('BEGIN')
       expect(queries[1].sql).toContain('DISABLE TRIGGER fiscal_preparacion_inmutable')
+      expect(queries[1].sql).toContain('DISABLE TRIGGER fiscal_operacion_conservar_cancelacion')
       expect(queries[2].sql).toContain('DELETE FROM public.fiscal_preparaciones_homologacion')
-      expect(queries[3].sql).toContain('ENABLE TRIGGER fiscal_preparacion_inmutable')
-      expect(queries[4].sql).toContain('DELETE FROM public.fiscal_solicitudes_homologacion')
-      expect(queries[5].sql).toContain('DELETE FROM public.fiscal_reservas_homologacion')
-      expect(queries[6].sql).toContain('DELETE FROM public.fiscal_operaciones_homologacion')
+      expect(queries[3].sql).toContain('DELETE FROM public.fiscal_solicitudes_homologacion')
+      expect(queries[4].sql).toContain('DELETE FROM public.fiscal_reservas_homologacion')
+      expect(queries[5].sql).toContain('DELETE FROM public.fiscal_operaciones_homologacion')
+      expect(queries[6].sql).toContain('ENABLE TRIGGER fiscal_operacion_conservar_cancelacion')
+      expect(queries[6].sql).toContain('ENABLE TRIGGER fiscal_preparacion_inmutable')
       expect(queries[7].sql).toContain('DELETE FROM public.fiscal_series_homologacion')
       expect(queries[8].sql).toContain('DELETE FROM public.fiscal_emisores_homologacion')
       expect(queries[9].sql).toBe('COMMIT')
-      // None of the queries should contain multiple commands
+      expect(queries).toHaveLength(10)
+      // Parameterized queries (extended query protocol) must never contain multiple commands
       for (const q of queries) {
-        expect(q.sql.trim().split(';').filter((s: string) => s.trim().length > 0)).toHaveLength(1)
+        if (q.params && q.params.length > 0) {
+          expect(q.sql.trim().split(';').filter((s: string) => s.trim().length > 0)).toHaveLength(1)
+        }
       }
     })
 

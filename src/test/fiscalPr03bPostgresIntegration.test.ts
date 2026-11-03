@@ -145,6 +145,7 @@ describe.skipIf(!dockerRunning)('PR03-B Real PostgreSQL 17 Integration Tests', (
       'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql',
       'supabase/pilot-fiscal/011_fiscal_owner_review.sql',
       'supabase/pilot-fiscal/012_fiscal_preparation.sql',
+      'supabase/pilot-fiscal/017_fiscal_preparation_cancellation.sql',
       'supabase/pilot-fiscal/054_close_legacy_preparation_entry.sql',
     ]) {
       const sql = readFileSync(fiscalFile, 'utf8')
@@ -612,10 +613,30 @@ describe.skipIf(!dockerRunning)('PR03-B Real PostgreSQL 17 Integration Tests', (
       const idList = opIds.map((id: string) => `'${id}'::uuid`).join(',')
       await adminClient.query(`
         ALTER TABLE public.fiscal_preparaciones_homologacion DISABLE TRIGGER fiscal_preparacion_inmutable;
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM pg_trigger
+            WHERE tgname = 'fiscal_operacion_conservar_cancelacion'
+              AND tgrelid = to_regclass('public.fiscal_operaciones_homologacion')
+          ) THEN
+            ALTER TABLE public.fiscal_operaciones_homologacion DISABLE TRIGGER fiscal_operacion_conservar_cancelacion;
+          END IF;
+        END $$;
         DELETE FROM public.fiscal_solicitudes_homologacion WHERE operacion_id IN (${idList});
         DELETE FROM public.fiscal_reservas_homologacion WHERE operacion_id IN (${idList});
         DELETE FROM public.fiscal_preparaciones_homologacion WHERE operacion_id IN (${idList});
         DELETE FROM public.fiscal_operaciones_homologacion WHERE id IN (${idList});
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM pg_trigger
+            WHERE tgname = 'fiscal_operacion_conservar_cancelacion'
+              AND tgrelid = to_regclass('public.fiscal_operaciones_homologacion')
+          ) THEN
+            ALTER TABLE public.fiscal_operaciones_homologacion ENABLE TRIGGER fiscal_operacion_conservar_cancelacion;
+          END IF;
+        END $$;
         ALTER TABLE public.fiscal_preparaciones_homologacion ENABLE TRIGGER fiscal_preparacion_inmutable;
       `)
     }
