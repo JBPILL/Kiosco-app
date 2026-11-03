@@ -2135,3 +2135,16 @@ Dueño; nunca se infiere del cierre local ni de la preparación sin emisión.
    - Verificaciones previas: Catálogo R3 activo, TA no expirado, certificados/claves verificados, permisos de worker validados, numeración oficial contrastada (`FECompUltimoAutorizado`).
    - Fases autorizables: PR02-A (Preflight/Reconciliación READ ONLY) -> PR02-B (Preparación durable) -> PR02-C (Emisión real: máximo 1 `FECAESolicitar`, ante incertidumbre STOP) -> PR02-D (Conciliación `FECompConsultar` y CAE).
    - Estado: `PR02_READY_FOR_READ_ONLY_GO = true`, `PR02_READY_FOR_EMISSION_GO = false`. Emisor permanece deshabilitado. Cero llamadas ARCA, cero escrituras Staging.
+
+3. **Endurecimiento de Invariantes PR02 Previo a GO Remoto (03/11/2026)**:
+   - Replay sin doble SOAP: consulta durable previa obligatoria; segundo acceso devuelve resultado persistido o bloqueo de conciliación sin emitir (`REPLAY_SECOND_SOAP_CALL = 0`, `TOTAL_SOAP_CALLS_FOR_SAME_INTENT = 1`).
+   - Evidencia en BD para venta candidata: exige auditoría persistida `CLEAN` (sin devoluciones, operaciones pendientes ni estados inciertos), pertenencia exacta al kiosco `b7254826-c767-4098-94b8-71013c12021d`, UUID canónico, sumas de detalles coincidentes con total y aprobación nominativa del Dueño vinculada a la venta.
+   - Blindaje de historial sin heurísticas: eliminada verificación por substring `includes('042')` (evita falsos positivos en UUIDs); blindada la intención 042 real y prohibida la reemisión directa de cualquier intento preexistente en `ENVIO_INCIERTO`.
+   - Persistencia obligatoria de incertidumbre: `ENVIO_INCIERTO` debe confirmarse durablemente ante fallos de transporte; si falla la persistencia, se reporta `FATAL_UNRECONCILED_STATE`.
+   - Precondiciones fail-closed: eliminados defaults favorables; exige catálogo R3 explícito, TA vigente con timestamp finito y observación oficial de numeración no mayor a 5 minutos.
+   - Desacoplamiento de contratos de preflight:
+     - `PR02_A0_STAGING_SQL_READ_ONLY`: 0 llamadas ARCA, 0 escrituras.
+     - `PR02_A1_WSAA_AUTH_IF_REQUIRED`: 1 llamada WSAA (sólo si TA expiró).
+     - `PR02_A2_LAST_AUTHORIZED_READ_ONLY`: 1 llamada WSFE (`FECompUltimoAutorizado`).
+   - Simulación aislada: `executePr02Simulation` delimitado exclusivamente como arnés de prueba (`IS_PR02_SIMULATION_TEST_ONLY = true`).
+   - Estado: `PR02_LOCAL_HARDENING = PASS`. Suites validadas (37/37 PR02, 195/195 Fiscal, 6/6 PG17, build Vite exitoso). `PR02_A0_READY = true`, `PR02_A1_READY = true`, `PR02_A2_READY = true`, `PR02_READY_FOR_EMISSION_GO = false`. Emisor PV 2 deshabilitado. Cero llamadas ARCA, cero escrituras Staging.

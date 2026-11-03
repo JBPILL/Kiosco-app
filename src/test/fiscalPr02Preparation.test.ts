@@ -7,28 +7,37 @@ import {
   PR02_TARGET_RECEIPT_TYPE,
   PR02_TARGET_CERT_SHA256,
   PR02_EXPECTED_CATALOG_REVISION,
+  IS_PR02_SIMULATION_TEST_ONLY,
   PR02_PHASES,
   validatePr02CandidateSale,
   assertNotHistoricalIntent042,
   verifyPr02Preconditions,
   executePr02Simulation,
 } from '../../scripts/fiscal/plan-pr02-staging.mjs'
+import type { SimulationExistingIntent } from '../../scripts/fiscal/plan-pr02-staging.d.mts'
 import { freezeFiscalRequest, reconcileFiscalVoucher } from '../../supabase/functions/_shared/fiscalReconciliation'
 import { sendFiscalEmission, decodeFiscalEmissionReceipt } from '../../supabase/functions/_shared/fiscalWsfeEmission'
 import { wsfeSample, wsfeReceipt } from './fixtures/fiscalWsfe'
 
 const validCandidateSale = {
   id: '550e8400-e29b-41d4-a716-446655440000',
+  kiosco_id: PR02_TARGET_KIOSK_ID,
   estado: 'COMPLETADA',
   total: '123.45',
   detalles: [
     { producto_id: 'prod-001', cantidad: 1, precio_unitario: '123.45' },
   ],
   cae: null,
-  hasIncompatibleReturns: false,
-  hasPendingFiscalOperation: false,
-  hasUncertainIntent: false,
-  ownerApproved: true,
+  auditEvidence: {
+    returnsAudit: 'CLEAN',
+    pendingOperationsAudit: 'CLEAN',
+    uncertainIntentsAudit: 'CLEAN',
+    ownerApprovalAudit: {
+      approvedByAuthId: 'f6af0f21-07f2-4d22-9b3c-7eec3604d5af',
+      approvedVentaId: '550e8400-e29b-41d4-a716-446655440000',
+      approvedAt: '2026-11-03T12:00:00.000Z',
+    },
+  },
 }
 
 const mockTicket = () => ({
@@ -44,7 +53,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('PR02 Architecture & Safety Preparation Tests (Zero Remote Calls)', () => {
+describe('PR02 Hardened Architecture & Safety Preparation Tests (Zero Remote Calls)', () => {
   describe('1. Invariante 1 — Request Inmutable & SHA-256 Determinista', () => {
     it('genera SHA-256 determinista, normaliza y congela el payload', async () => {
       const frozen = await freezeFiscalRequest(wsfeSample)
@@ -68,7 +77,7 @@ describe('PR02 Architecture & Safety Preparation Tests (Zero Remote Calls)', () 
     })
   })
 
-  describe('2. Invariante 2 — Intent Durable Previo a SOAP', () => {
+  describe('2. Invariante 2 — Intent Durable Previo a SOAP con Verificación de Identidad', () => {
     it('persiste permiso durable antes de red; si el guard falla, NUNCA llega a SOAP', async () => {
       const frozen = await freezeFiscalRequest(wsfeSample)
       const fetcher = vi.fn<typeof fetch>()
@@ -101,12 +110,39 @@ describe('PR02 Architecture & Safety Preparation Tests (Zero Remote Calls)', () 
       expect(fetcher).toHaveBeenCalledTimes(1)
       expect(res.estado).toBe('APROBACION_RECIBIDA')
     })
+
+    it('en simulación rechaza si el registro durable devuelve identidad discordante', async () => {
+      const frozen = await freezeFiscalRequest(wsfeSample)
+      const mockSoapEmission = vi.fn()
+
+      await expect(
+        executePr02Simulation(
+          { sale: validCandidateSale, frozenRequest: frozen, intentId: 'intent-uuid-1' },
+          {
+            persistIntentDurable: async () => ({
+              estado: 'INTENTO_REGISTRADO',
+              intentId: 'different-intent-id', // Discordante
+              saleId: validCandidateSale.id,
+              sha256: frozen.sha256,
+              numero: frozen.solicitud.numero,
+            }),
+            sendSoapEmission: mockSoapEmission,
+            consultSoapVoucher: vi.fn(),
+            applyCommercialResolution: vi.fn(),
+          }
+        )
+      ).rejects.toThrow('FISCAL_WSFE_NO_CONFIRMADO')
+
+      expect(mockSoapEmission).not.toHaveBeenCalled()
+    })
   })
 
-  describe('3. Invariante 3 — Replay sin Doble Emisión', () => {
-    it('no vuelve a llamar SOAP si la venta o solicitud ya fue procesada', async () => {
+  describe('3. Invariante 3 — Replay sin Doble SOAP (Strict Assertion)', () => {
+    it('segundo acceso a la misma intención consulta estado durable y NUNCA repite SOAP', async () => {
       const frozen = await freezeFiscalRequest(wsfeSample)
       let soapCallCount = 0
+      const intentStore = new Map<string, SimulationExistingIntent>()
+
       const mockSoapEmission = vi.fn(async () => {
         soapCallCount++
         return { estado: 'APROBACION_RECIBIDA' as const }
@@ -125,11 +161,24 @@ describe('PR02 Architecture & Safety Preparation Tests (Zero Remote Calls)', () 
         return { alreadyApplied: false }
       })
 
+      const intentId = 'intent-uuid-replay-1'
+
       // Primera ejecución
       const firstRun = await executePr02Simulation(
-        { sale: validCandidateSale, frozenRequest: frozen, intentId: 'intent-uuid-1' },
+        { sale: validCandidateSale, frozenRequest: frozen, intentId },
         {
-          persistIntentDurable: async () => ({ estado: 'INTENTO_REGISTRADO' }),
+          getExistingIntent: async (id) => intentStore.get(id),
+          saveIntentState: async (id, result) => {
+            const res = result as SimulationExistingIntent
+            intentStore.set(id, res)
+          },
+          persistIntentDurable: async (data) => ({
+            estado: 'INTENTO_REGISTRADO',
+            intentId: data.intentId,
+            saleId: data.saleId,
+            sha256: data.sha256,
+            numero: data.numero,
+          }),
           sendSoapEmission: mockSoapEmission,
           consultSoapVoucher: mockConsult,
           applyCommercialResolution: mockCommercial,
@@ -138,57 +187,168 @@ describe('PR02 Architecture & Safety Preparation Tests (Zero Remote Calls)', () 
       expect(firstRun.commercialApplied).toBe('APPLIED')
       expect(soapCallCount).toBe(1)
 
-      // Replay / Segundo intento: comprobación comercial previa detecta comprobante existente
+      // Segunda ejecución sobre la misma intención
       const secondRun = await executePr02Simulation(
-        { sale: validCandidateSale, frozenRequest: frozen, intentId: 'intent-uuid-1' },
+        { sale: validCandidateSale, frozenRequest: frozen, intentId },
         {
-          persistIntentDurable: async () => ({ estado: 'INTENTO_REGISTRADO' }),
+          getExistingIntent: async (id) => intentStore.get(id),
+          saveIntentState: async (id, result) => {
+            const res = result as SimulationExistingIntent
+            intentStore.set(id, res)
+          },
+          persistIntentDurable: async (data) => ({
+            estado: 'INTENTO_REGISTRADO',
+            intentId: data.intentId,
+            saleId: data.saleId,
+            sha256: data.sha256,
+            numero: data.numero,
+          }),
           sendSoapEmission: mockSoapEmission,
           consultSoapVoucher: mockConsult,
           applyCommercialResolution: mockCommercial,
         }
       )
+
+      // Exigencias taxativas del usuario:
+      // REPLAY_SECOND_SOAP_CALL = 0
+      // TOTAL_SOAP_CALLS_FOR_SAME_INTENT = 1
+      expect(soapCallCount).toBe(1)
+      expect(secondRun.REPLAY_SECOND_SOAP_CALL).toBe(0)
       expect(secondRun.commercialApplied).toBe('IDEMPOTENT')
+      expect(mockSoapEmission).toHaveBeenCalledTimes(1)
+    })
+
+    it('bloquea intento preexistente en ENVIO_INCIERTO sin llamar a SOAP', async () => {
+      const frozen = await freezeFiscalRequest(wsfeSample)
+      const mockSoapEmission = vi.fn()
+
+      const result = await executePr02Simulation(
+        { sale: validCandidateSale, frozenRequest: frozen, intentId: 'intent-uncertain-existing' },
+        {
+          getExistingIntent: async () => ({
+            estado: 'ENVIO_INCIERTO',
+            cae: null,
+          }),
+          persistIntentDurable: vi.fn(),
+          sendSoapEmission: mockSoapEmission,
+          consultSoapVoucher: vi.fn(),
+          applyCommercialResolution: vi.fn(),
+        }
+      )
+
+      expect(result.estado).toBe('ENVIO_INCIERTO')
+      expect(result.blockedForReconciliation).toBe(true)
+      expect(result.puedeReenviar).toBe(false)
+      expect(mockSoapEmission).not.toHaveBeenCalled()
     })
   })
 
-  describe('4. Invariante 4 — Timeout Incierto & STOP sin Auto-retry', () => {
-    it('si SOAP hace timeout, el estado es ENVIO_INCIERTO, puedeReenviar es false y no genera CAE', async () => {
+  describe('4. Invariante 4 — Persistencia Obligatoria de Estados Inciertos', () => {
+    it('ante timeout en SOAP, persiste ENVIO_INCIERTO y reporta UNCERTAIN_STATE_DURABLY_CONFIRMED = true', async () => {
       const frozen = await freezeFiscalRequest(wsfeSample)
-      let uncertainMarked = false
+      let persistedPayload: unknown = null
 
       const result = await executePr02Simulation(
         { sale: validCandidateSale, frozenRequest: frozen, intentId: 'intent-timeout-1' },
         {
-          persistIntentDurable: async () => ({ estado: 'INTENTO_REGISTRADO' }),
+          persistIntentDurable: async (data) => ({
+            estado: 'INTENTO_REGISTRADO',
+            intentId: data.intentId,
+            saleId: data.saleId,
+            sha256: data.sha256,
+            numero: data.numero,
+          }),
           sendSoapEmission: async () => {
             throw new Error('SOAP_HTTP_GATEWAY_TIMEOUT')
           },
+          persistIntentUncertain: async (data) => {
+            persistedPayload = data
+            return { confirmed: true }
+          },
           consultSoapVoucher: vi.fn(),
           applyCommercialResolution: vi.fn(),
-          markIntentUncertain: async (id: string) => {
-            uncertainMarked = true
-            expect(id).toBe('intent-timeout-1')
-          },
         }
       )
 
       expect(result.estado).toBe('ENVIO_INCIERTO')
       expect(result.puedeReenviar).toBe(false)
       expect(result.cae).toBeNull()
-      expect(uncertainMarked).toBe(true)
+      expect(result.UNCERTAIN_STATE_DURABLY_CONFIRMED).toBe(true)
+      expect(persistedPayload).toMatchObject({
+        intentId: 'intent-timeout-1',
+        saleId: validCandidateSale.id,
+        estado: 'ENVIO_INCIERTO',
+      })
+    })
+
+    it('si falla la persistencia de ENVIO_INCIERTO lanza FATAL_UNRECONCILED_STATE y se detiene', async () => {
+      const frozen = await freezeFiscalRequest(wsfeSample)
+
+      await expect(
+        executePr02Simulation(
+          { sale: validCandidateSale, frozenRequest: frozen, intentId: 'intent-timeout-failing-persist' },
+          {
+            persistIntentDurable: async (data) => ({
+              estado: 'INTENTO_REGISTRADO',
+              intentId: data.intentId,
+              saleId: data.saleId,
+              sha256: data.sha256,
+              numero: data.numero,
+            }),
+            sendSoapEmission: async () => {
+              throw new Error('SOAP_SOCKET_CLOSED')
+            },
+            persistIntentUncertain: async () => {
+              throw new Error('DB_DISK_FULL_CANNOT_WRITE_UNCERTAIN_LOG')
+            },
+            consultSoapVoucher: vi.fn(),
+            applyCommercialResolution: vi.fn(),
+          }
+        )
+      ).rejects.toThrow('FATAL_UNRECONCILED_STATE')
+    })
+
+    it('si el handler de persistencia no confirma durabilidad lanza FATAL_UNRECONCILED_STATE', async () => {
+      const frozen = await freezeFiscalRequest(wsfeSample)
+
+      await expect(
+        executePr02Simulation(
+          { sale: validCandidateSale, frozenRequest: frozen, intentId: 'intent-timeout-unconfirmed' },
+          {
+            persistIntentDurable: async (data) => ({
+              estado: 'INTENTO_REGISTRADO',
+              intentId: data.intentId,
+              saleId: data.saleId,
+              sha256: data.sha256,
+              numero: data.numero,
+            }),
+            sendSoapEmission: async () => {
+              throw new Error('SOAP_CONNECTION_RESET')
+            },
+            persistIntentUncertain: async () => ({ confirmed: false }),
+            consultSoapVoucher: vi.fn(),
+            applyCommercialResolution: vi.fn(),
+          }
+        )
+      ).rejects.toThrow('FATAL_UNRECONCILED_STATE')
     })
   })
 
   describe('5. Invariante 5 — Rechazo WSFE sin Emisión ni Reintento Automático', () => {
     it('un rechazo formal retorna RECHAZO_RECIBIDO, preserva códigos y fija puedeReenviar en false', async () => {
       const frozen = await freezeFiscalRequest(wsfeSample)
-      let rejectedMarked = false
+      let rejectedCodes: number[] | undefined
 
       const result = await executePr02Simulation(
         { sale: validCandidateSale, frozenRequest: frozen, intentId: 'intent-reject-1' },
         {
-          persistIntentDurable: async () => ({ estado: 'INTENTO_REGISTRADO' }),
+          persistIntentDurable: async (data) => ({
+            estado: 'INTENTO_REGISTRADO',
+            intentId: data.intentId,
+            saleId: data.saleId,
+            sha256: data.sha256,
+            numero: data.numero,
+          }),
           sendSoapEmission: async () => ({
             estado: 'RECHAZO_RECIBIDO' as const,
             codigos: [10014, 10015],
@@ -196,8 +356,7 @@ describe('PR02 Architecture & Safety Preparation Tests (Zero Remote Calls)', () 
           consultSoapVoucher: vi.fn(),
           applyCommercialResolution: vi.fn(),
           markIntentRejected: async (_id: string, codes?: number[]) => {
-            rejectedMarked = true
-            expect(codes).toEqual([10014, 10015])
+            rejectedCodes = codes
           },
         }
       )
@@ -205,7 +364,7 @@ describe('PR02 Architecture & Safety Preparation Tests (Zero Remote Calls)', () 
       expect(result.estado).toBe('RECHAZO_RECIBIDO')
       expect(result.puedeReenviar).toBe(false)
       expect(result.cae).toBeNull()
-      expect(rejectedMarked).toBe(true)
+      expect(rejectedCodes).toEqual([10014, 10015])
     })
   })
 
@@ -245,7 +404,7 @@ describe('PR02 Architecture & Safety Preparation Tests (Zero Remote Calls)', () 
         consulta: {
           entorno: wsfeSample.entorno,
           cuitEmisor: wsfeSample.cuitEmisor,
-          puntoVenta: 3, // Difiere punto de venta
+          puntoVenta: 3,
           tipoComprobante: wsfeSample.tipoComprobante,
           numero: wsfeSample.numero,
         },
@@ -285,7 +444,7 @@ describe('PR02 Architecture & Safety Preparation Tests (Zero Remote Calls)', () 
     })
   })
 
-  describe('8. Invariante 8 — Detección y Rechazo de Respuestas Duplicadas/Inconsistentes', () => {
+  describe('8. Invariante 8 — Detección y Rechazo de Respuestas Inconsistentes', () => {
     it('rechaza respuesta de emisión cuyos metadatos no coinciden con la solicitud frozen', async () => {
       const frozen = await freezeFiscalRequest(wsfeSample)
       const mismatchedXml = wsfeReceipt('A', { PtoVta: '99' })
@@ -325,7 +484,7 @@ describe('PR02 Architecture & Safety Preparation Tests (Zero Remote Calls)', () 
     })
   })
 
-  describe('10. Invariante 10 — Blindaje Inviolable de la Intención Histórica 042', () => {
+  describe('10. Invariante 10 — Blindaje Inviolable de Intención Histórica 042 & Previas Inciertas', () => {
     it('prohíbe fatalmente cualquier FECAESolicitar o reemisión sobre la intención histórica 042', () => {
       expect(() => {
         assertNotHistoricalIntent042({ id: '042', accion: 'FECAESolicitar' })
@@ -338,6 +497,27 @@ describe('PR02 Architecture & Safety Preparation Tests (Zero Remote Calls)', () 
       expect(() => {
         assertNotHistoricalIntent042({ isHistorical042: true, action: 'SEND_EMISSION' })
       }).toThrow('FATAL: HISTORICAL_INTENT_042_REEMISSION_FORBIDDEN')
+
+      expect(() => {
+        assertNotHistoricalIntent042({ tag: 'HISTORICAL_INTENT_042', action: 'FECAESOLICITAR' })
+      }).toThrow('FATAL: HISTORICAL_INTENT_042_REEMISSION_FORBIDDEN')
+    })
+
+    it('no genera falsos positivos sobre identificadores UUID modernos que contienen la subcadena 042', () => {
+      // Un UUID legítimo moderno que contenga "042" no debe ser rechazado por heurística ingenua
+      expect(() => {
+        assertNotHistoricalIntent042({ id: 'a042bc11-e29b-41d4-a716-446655440000', accion: 'FECAESolicitar' })
+      }).not.toThrow()
+    })
+
+    it('prohíbe reemisión de cualquier intento previo en estado ENVIO_INCIERTO sin conciliación previa', () => {
+      expect(() => {
+        assertNotHistoricalIntent042({ id: 'any-intent-id', estado: 'ENVIO_INCIERTO', accion: 'FECAESolicitar' })
+      }).toThrow('FATAL: EXISTING_UNCERTAIN_INTENT_REEMISSION_FORBIDDEN')
+
+      expect(() => {
+        assertNotHistoricalIntent042({ id: 'any-intent-id', hasUncertainIntent: true, accion: 'EMITIR' })
+      }).toThrow('FATAL: EXISTING_UNCERTAIN_INTENT_REEMISSION_FORBIDDEN')
     })
 
     it('permite consulta o conciliación READ ONLY sobre intención 042', () => {
@@ -351,14 +531,27 @@ describe('PR02 Architecture & Safety Preparation Tests (Zero Remote Calls)', () 
     })
   })
 
-  describe('11. Política de Selección de Venta Candidata (7 Condiciones Taxativas)', () => {
-    it('valida exitosamente venta que cumple las 7 condiciones taxativas', () => {
+  describe('11. Política de Selección de Venta Candidata con Evidencia Persistida', () => {
+    it('valida exitosamente venta que cumple la identidad, aritmética y evidencia de auditoría', () => {
       const res = validatePr02CandidateSale(validCandidateSale)
       expect(res.valid).toBe(true)
       expect(res.kioskId).toBe(PR02_TARGET_KIOSK_ID)
       expect(res.puntoVenta).toBe(PR02_TARGET_PV)
       expect(res.tipoComprobante).toBe(PR02_TARGET_RECEIPT_TYPE)
       expect(res.saleId).toBe(validCandidateSale.id)
+      expect(res.total).toBe('123.45')
+    })
+
+    it('falla cerrado si el kiosco de la venta no es el kiosco operativo objetivo', () => {
+      expect(() =>
+        validatePr02CandidateSale({ ...validCandidateSale, kiosco_id: 'f4a00000-2026-4011-a001-000000000001' })
+      ).toThrow('CANDIDATE_SALE_KIOSK_MISMATCH')
+    })
+
+    it('falla cerrado si el identificador de venta no es un UUID válido', () => {
+      expect(() =>
+        validatePr02CandidateSale({ ...validCandidateSale, id: 'invalid-id-not-uuid' })
+      ).toThrow('CANDIDATE_SALE_INVALID_ID')
     })
 
     it('falla cerrado si la venta no está COMPLETADA', () => {
@@ -370,13 +563,31 @@ describe('PR02 Architecture & Safety Preparation Tests (Zero Remote Calls)', () 
       ).toThrow('CANDIDATE_SALE_NOT_COMPLETED')
     })
 
-    it('falla cerrado si el total no es positivo o no tiene detalles válidos', () => {
+    it('falla cerrado si total o detalles contienen NaN o Infinity', () => {
       expect(() =>
-        validatePr02CandidateSale({ ...validCandidateSale, total: '0.00' })
+        validatePr02CandidateSale({ ...validCandidateSale, total: NaN })
       ).toThrow('CANDIDATE_SALE_TOTAL_NON_POSITIVE')
       expect(() =>
-        validatePr02CandidateSale({ ...validCandidateSale, detalles: [] })
+        validatePr02CandidateSale({
+          ...validCandidateSale,
+          detalles: [{ producto_id: 'prod-001', cantidad: NaN, precio_unitario: '123.45' }],
+        })
       ).toThrow('CANDIDATE_SALE_INVALID_DETAILS')
+      expect(() =>
+        validatePr02CandidateSale({
+          ...validCandidateSale,
+          detalles: [{ producto_id: 'prod-001', cantidad: 1, precio_unitario: Infinity }],
+        })
+      ).toThrow('CANDIDATE_SALE_INVALID_DETAILS')
+    })
+
+    it('falla cerrado si la suma de los detalles no coincide con el total de la venta', () => {
+      expect(() =>
+        validatePr02CandidateSale({
+          ...validCandidateSale,
+          total: '200.00', // Difiere de los 123.45 del detalle
+        })
+      ).toThrow('CANDIDATE_SALE_SUM_MISMATCH')
     })
 
     it('falla cerrado si la venta ya tiene CAE', () => {
@@ -385,32 +596,69 @@ describe('PR02 Architecture & Safety Preparation Tests (Zero Remote Calls)', () 
       ).toThrow('CANDIDATE_SALE_ALREADY_HAS_CAE')
     })
 
-    it('falla cerrado si tiene devoluciones comerciales asociadas', () => {
+    it('falla cerrado si se omite la evidencia de auditoría persistida', () => {
+      expect(() => {
+        const withoutAudit = { ...validCandidateSale }
+        delete (withoutAudit as { auditEvidence?: unknown }).auditEvidence
+        validatePr02CandidateSale(withoutAudit)
+      }).toThrow('CANDIDATE_SALE_AUDIT_EVIDENCE_MISSING')
+    })
+
+    it('falla cerrado si la auditoría detecta devoluciones, operaciones pendientes o intentos inciertos', () => {
       expect(() =>
-        validatePr02CandidateSale({ ...validCandidateSale, hasIncompatibleReturns: true })
+        validatePr02CandidateSale({
+          ...validCandidateSale,
+          auditEvidence: { ...validCandidateSale.auditEvidence, returnsAudit: 'HAS_RETURNS' },
+        })
       ).toThrow('CANDIDATE_SALE_INCOMPATIBLE_RETURNS')
-    })
 
-    it('falla cerrado si tiene otra operación fiscal pendiente', () => {
       expect(() =>
-        validatePr02CandidateSale({ ...validCandidateSale, hasPendingFiscalOperation: true })
+        validatePr02CandidateSale({
+          ...validCandidateSale,
+          auditEvidence: { ...validCandidateSale.auditEvidence, pendingOperationsAudit: 'PENDING_EXISTS' },
+        })
       ).toThrow('CANDIDATE_SALE_PENDING_OPERATION')
-    })
 
-    it('falla cerrado si tiene un intento previo en ENVIO_INCIERTO', () => {
       expect(() =>
-        validatePr02CandidateSale({ ...validCandidateSale, hasUncertainIntent: true })
+        validatePr02CandidateSale({
+          ...validCandidateSale,
+          auditEvidence: { ...validCandidateSale.auditEvidence, uncertainIntentsAudit: 'UNCERTAIN_EXISTS' },
+        })
       ).toThrow('CANDIDATE_SALE_UNCERTAIN_INTENT')
     })
 
-    it('falla cerrado si no cuenta con aprobación expresa del Dueño', () => {
+    it('falla cerrado si la aprobación del Dueño no está vinculada al ID de la venta exacta o carece de authId', () => {
       expect(() =>
-        validatePr02CandidateSale({ ...validCandidateSale, ownerApproved: false })
+        validatePr02CandidateSale({
+          ...validCandidateSale,
+          auditEvidence: {
+            ...validCandidateSale.auditEvidence,
+            ownerApprovalAudit: {
+              approvedByAuthId: 'f6af0f21-07f2-4d22-9b3c-7eec3604d5af',
+              approvedVentaId: 'other-sale-uuid-mismatch', // No coincide con sale.id
+              approvedAt: '2026-11-03T12:00:00.000Z',
+            },
+          },
+        })
+      ).toThrow('CANDIDATE_SALE_NOT_OWNER_APPROVED')
+
+      expect(() =>
+        validatePr02CandidateSale({
+          ...validCandidateSale,
+          auditEvidence: {
+            ...validCandidateSale.auditEvidence,
+            ownerApprovalAudit: {
+              approvedByAuthId: 'not-a-valid-uuid',
+              approvedVentaId: validCandidateSale.id,
+              approvedAt: '2026-11-03T12:00:00.000Z',
+            },
+          },
+        })
       ).toThrow('CANDIDATE_SALE_NOT_OWNER_APPROVED')
     })
   })
 
-  describe('12. Precondiciones de PR02 y Reglas de Seguridad', () => {
+  describe('12. Endurecimiento de Precondiciones (Fail-Closed Absoluto)', () => {
     const validPreconditions = {
       catalogRevision: PR02_EXPECTED_CATALOG_REVISION,
       catalogEnabled: true,
@@ -422,16 +670,30 @@ describe('PR02 Architecture & Safety Preparation Tests (Zero Remote Calls)', () 
       kioskId: PR02_TARGET_KIOSK_ID,
       certSha: PR02_TARGET_CERT_SHA256,
       workerEmissionEnabled: false,
+      officialNumberingObservation: {
+        cuit: PR02_TARGET_CUIT,
+        puntoVenta: PR02_TARGET_PV,
+        tipoComprobante: PR02_TARGET_RECEIPT_TYPE,
+        ultimoNumero: 42,
+        observedAt: Date.now() - 30000, // 30 segundos atrás
+      },
     }
 
-    it('valida precondiciones operativas correctas', () => {
-      expect(PR02_EXPECTED_CATALOG_REVISION).toBe(3)
+    it('valida precondiciones operativas con datos explícitos y observación oficial', () => {
       const res = verifyPr02Preconditions(validPreconditions)
       expect(res.status).toBe('PASS')
+      expect(res.STAGING_SQL_PREFLIGHT).toBe('PASS')
+      expect(res.WSAA_AUTHENTICATION_STATUS).toBe('VALID')
+      expect(res.WSFE_NUMBERING_OBSERVATION).toBe('VALID')
+      expect(res.EMISSION_PERMISSION).toBe('DISABLED_FAIL_CLOSED')
       expect(res.catalogReady).toBe(true)
       expect(res.credentialsReady).toBe(true)
       expect(res.emitterReady).toBe(true)
       expect(res.workerReady).toBe(true)
+    })
+
+    it('falla cerrado si se pasa objeto vacío o se omiten parámetros (cero defaults favorables)', () => {
+      expect(() => verifyPr02Preconditions({} as unknown as typeof validPreconditions)).toThrow('PRECONDITION_FAILED')
     })
 
     it('rechaza si Catálogo no es Revisión 3 o está vencido/deshabilitado', () => {
@@ -441,27 +703,27 @@ describe('PR02 Architecture & Safety Preparation Tests (Zero Remote Calls)', () 
 
       expect(() =>
         verifyPr02Preconditions({ ...validPreconditions, catalogEnabled: false })
-      ).toThrow('Catálogo Revisión 3 debe estar habilitado')
+      ).toThrow('Catálogo Revisión 3 debe estar explícitamente habilitado')
 
       expect(() =>
         verifyPr02Preconditions({ ...validPreconditions, catalogExpired: true })
       ).toThrow('Catálogo Revisión 3 vencido o fuera de vigencia')
     })
 
-    it('prohíbe taxativamente la reutilización de un TA vencido o expirado', () => {
+    it('prohíbe taxativamente la reutilización de un TA vencido o sin marca temporal finita', () => {
       expect(() =>
         verifyPr02Preconditions({
           ...validPreconditions,
           taValid: false,
         })
-      ).toThrow('TA vencido o no disponible. Prohibido reusar TA expirado')
+      ).toThrow('TA no disponible o inválido')
 
       expect(() =>
         verifyPr02Preconditions({
           ...validPreconditions,
           taExpiresAt: Date.now() - 1000,
         })
-      ).toThrow('TA vencido o no disponible. Prohibido reusar TA expirado')
+      ).toThrow('TA vencido o sin marca temporal finita')
     })
 
     it('rechaza si CUIT, Punto de Venta, Kiosco o Certificado difieren', () => {
@@ -482,29 +744,54 @@ describe('PR02 Architecture & Safety Preparation Tests (Zero Remote Calls)', () 
       ).toThrow('Certificado SHA-256 no coincide')
     })
 
-    it('rechaza si el worker de emisión está habilitado durante la fase de preparación', () => {
+    it('rechaza observación oficial de numeración expirada (> 5 minutos)', () => {
       expect(() =>
-        verifyPr02Preconditions({ ...validPreconditions, workerEmissionEnabled: true })
-      ).toThrow('Worker de emisión no debe estar habilitado durante la fase de preparación')
+        verifyPr02Preconditions({
+          ...validPreconditions,
+          officialNumberingObservation: {
+            ...validPreconditions.officialNumberingObservation,
+            observedAt: Date.now() - 360000, // 6 minutos atrás
+          },
+        })
+      ).toThrow('Observación oficial de numeración ausente, inválida o expirada')
     })
   })
 
-  describe('13. Fases Separadas de PR02 (Arquitectura de Control)', () => {
-    it('define las 4 fases con límites estrictos de llamadas ARCA y permisos de emisión', () => {
-      expect(PR02_PHASES.PR02_A.arcaCallsMax).toBe(1)
-      expect(PR02_PHASES.PR02_A.emissionAllowed).toBe(false)
-      expect(PR02_PHASES.PR02_A.readOnly).toBe(true)
+  describe('13. Fases Separadas y Desacoplamiento de Autenticación vs Lectura Oficial', () => {
+    it('define contratos específicos para A0 (SQL), A1 (WSAA) y A2 (WSFE Último Autorizado)', () => {
+      // PR02-A0: Staging SQL READ ONLY
+      expect(PR02_PHASES.PR02_A0.arcaCallsMax).toBe(0)
+      expect(PR02_PHASES.PR02_A0.readOnly).toBe(true)
+      expect(PR02_PHASES.PR02_A0.stagingWrites).toBe(0)
 
+      // PR02-A1: WSAA Authentication if required
+      expect(PR02_PHASES.PR02_A1.arcaCallsMax).toBe(1)
+      expect(PR02_PHASES.PR02_A1.service).toBe('WSAA')
+      expect(PR02_PHASES.PR02_A1.emissionAllowed).toBe(false)
+      expect(PR02_PHASES.PR02_A1.readOnly).toBe(true)
+
+      // PR02-A2: WSFE FECompUltimoAutorizado
+      expect(PR02_PHASES.PR02_A2.arcaCallsMax).toBe(1)
+      expect(PR02_PHASES.PR02_A2.service).toBe('WSFE')
+      expect(PR02_PHASES.PR02_A2.emissionAllowed).toBe(false)
+      expect(PR02_PHASES.PR02_A2.readOnly).toBe(true)
+
+      // PR02-B: Preparación Durable
       expect(PR02_PHASES.PR02_B.arcaCallsMax).toBe(0)
       expect(PR02_PHASES.PR02_B.emissionAllowed).toBe(false)
-      expect(PR02_PHASES.PR02_B.readOnly).toBe(false)
 
+      // PR02-C: Primera Emisión Real
       expect(PR02_PHASES.PR02_C.arcaCallsMax).toBe(1)
       expect(PR02_PHASES.PR02_C.emissionAllowed).toBe(true)
       expect(PR02_PHASES.PR02_C.noAutoRetry).toBe(true)
 
+      // PR02-D: Conciliación
       expect(PR02_PHASES.PR02_D.arcaCallsMax).toBe(1)
       expect(PR02_PHASES.PR02_D.emissionAllowed).toBe(false)
+    })
+
+    it('la simulación está marcada taxativamente como TEST-ONLY', () => {
+      expect(IS_PR02_SIMULATION_TEST_ONLY).toBe(true)
     })
   })
 })

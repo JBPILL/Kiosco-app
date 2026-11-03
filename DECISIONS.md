@@ -1858,3 +1858,44 @@ de venta y fases de ejecución.
 Se auditan y verifican localmente todos los componentes de PR02 mediante tests unitarios y de integración PostgreSQL 17.
 El emisor operativo PV 2 permanece deshabilitado. Se conservan `ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0` y
 `PRODUCTION_MUTATIONS = 0`. `PR02_READY_FOR_READ_ONLY_GO = true`, mientras que `PR02_READY_FOR_EMISSION_GO = false`.
+
+
+## 03/11/2026 - Endurecimiento de Invariantes PR02 antes del Primer GO Remoto
+
+**Contexto:**
+Antes de otorgar cualquier GO remoto sobre Staging para el preflight de PR02, se detectaron riesgos de fragilidad en
+la simulación local, en la protección de intenciones históricas, en la validación de ventas candidatas y en la
+estructura de permisos de red de las subfases de lectura oficial. Se exigió subsanar estas invariantes bajo fail-closed estricto.
+
+**Decisión:**
+1. **Replay sin doble SOAP garantizado**: Se modificó el contrato de simulación para exigir consulta del estado durable
+   previo antes de permitir cualquier intento de emisión. Un segundo acceso a la misma intención recupera el comprobante
+   o estado persistido, garantizando taxativamente `REPLAY_SECOND_SOAP_CALL = 0` y `TOTAL_SOAP_CALLS_FOR_SAME_INTENT = 1`.
+2. **Evidencia persistida en BD para venta candidata**: Se eliminaron los booleanos declarativos libres del llamador.
+   `validatePr02CandidateSale` exige evidencia documental de auditoría (`auditEvidence`) que certifique que la venta pertenece
+   a `b7254826-c767-4098-94b8-71013c12021d`, su ID es un UUID canónico, las sumas de detalles coinciden aritméticamente
+   con el total, no tiene CAE, y que las consultas de devoluciones, operaciones pendientes e intentos inciertos arrojaron `CLEAN`.
+   Asimismo, la aprobación del Dueño debe estar vinculada de forma nominativa al UUID exacto de la venta y contener el `auth_id`
+   del titular autenticado con marca temporal válida.
+3. **Protección precisa del historial (Eliminación de heurística de substrings)**: Se eliminó el chequeo ingenuo `String(id).includes('042')`
+   que causaba falsos positivos sobre UUIDs modernos. Se identificó la intención 042 por su identidad canónica (`id: '042'`, tag o flag histórico)
+   y se extendió la prohibición de reemisión sin conciliación previa a cualquier intento preexistente en estado `ENVIO_INCIERTO`.
+4. **Persistencia obligatoria de estados inciertos**: Ante timeout, desconexión o fallo de transporte SOAP, es obligatorio
+   persistir durablemente `ENVIO_INCIERTO` mediante un handler verificable. Si falla la persistencia, se reporta inmediatamente
+   `FATAL_UNRECONCILED_STATE` y se detiene el flujo; nunca se admite incertidumbre volátil en memoria.
+5. **Precondiciones fail-closed sin defaults**: `verifyPr02Preconditions` eliminó cualquier valor por defecto favorable.
+   Exige parámetros explícitos para catálogo R3, emisor, PV 2, CUIT, vigencia finita del TA (`taExpiresAt > now`) y observación
+   oficial de numeración no mayor a 5 minutos de antigüedad.
+6. **Desacoplamiento de contratos de lectura oficial (PR02-A0, A1, A2)**: Se descompuso la fase de preflight en:
+   - `PR02_A0_STAGING_SQL_READ_ONLY`: 0 llamadas ARCA, 0 escrituras en Staging.
+   - `PR02_A1_WSAA_AUTH_IF_REQUIRED`: Máximo 1 llamada `LoginCms` a WSAA si el TA no es reutilizable.
+   - `PR02_A2_LAST_AUTHORIZED_READ_ONLY`: Máximo 1 llamada `FECompUltimoAutorizado` a WSFE.
+7. **Simulación estrictamente de arnés (TEST-ONLY)**: Se delimitó `executePr02Simulation` como simulador exclusivo de pruebas,
+   impidiendo su exportación o uso como orquestador remoto o endpoint cliente.
+
+**Consecuencias:**
+Invariantes corregidas y verificadas al 100% (37/37 tests en suite PR02, 195/195 en suite fiscal total, 6/6 en PostgreSQL 17).
+`PR02_LOCAL_HARDENING = PASS`, `REPLAY_TOTAL_SOAP_CALLS = 1`, `SALE_DB_EVIDENCE_REQUIRED = PASS`, `HISTORICAL_042_GUARD = PASS`,
+`DURABLE_UNCERTAIN_STATE = PASS`, `PRECONDITIONS_FAIL_CLOSED = PASS`.
+`PR02_A0_READY = true`, `PR02_A1_READY = true`, `PR02_A2_READY = true`, `PR02_READY_FOR_EMISSION_GO = false`.
+Emisor PV 2 permanece deshabilitado. Cero llamadas ARCA, cero escrituras Staging, cero mutaciones Producción.
