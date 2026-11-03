@@ -614,14 +614,15 @@ export function buildManifestCleanupSql(operationIds, opts = {}) {
   assertNoRealPv2Usage(syntheticPv)
   assertNoRealPv2Usage(syntheticKioskId)
 
+  let disableTriggers = ''
+  let enableTriggers = ''
   let idFilter = ''
   if (Array.isArray(operationIds) && operationIds.length > 0) {
     for (const id of operationIds) {
       validateCleanupRunId(id)
     }
     const idList = operationIds.map(id => `'${id}'::uuid`).join(',')
-    idFilter = `
-DO $$
+    disableTriggers = `DO $$
 BEGIN
   IF EXISTS (
     SELECT 1 FROM pg_trigger
@@ -638,10 +639,14 @@ BEGIN
     ALTER TABLE public.fiscal_operaciones_homologacion DISABLE TRIGGER fiscal_operacion_conservar_cancelacion;
   END IF;
 END $$;
+`
+    idFilter = `
 DELETE FROM public.fiscal_solicitudes_homologacion WHERE operacion_id IN (${idList});
 DELETE FROM public.fiscal_reservas_homologacion WHERE operacion_id IN (${idList});
 DELETE FROM public.fiscal_preparaciones_homologacion WHERE operacion_id IN (${idList});
-DELETE FROM public.fiscal_operaciones_homologacion WHERE id IN (${idList});
+DELETE FROM public.fiscal_operaciones_homologacion WHERE id IN (${idList});`
+
+    enableTriggers = `
 DO $$
 BEGIN
   IF EXISTS (
@@ -666,8 +671,8 @@ DELETE FROM public.fiscal_series_homologacion WHERE cuit_emisor = '${cuit}' AND 
 UPDATE public.fiscal_emisores_homologacion SET habilitado = false WHERE kiosco_id = '${syntheticKioskId}' AND cuit_emisor = '${cuit}' AND punto_venta = ${syntheticPv} AND credencial_id = '${credencialId}' AND certificado_sha256 = '${certSha}' AND revision = ${revision};
 DELETE FROM public.fiscal_emisores_homologacion WHERE kiosco_id = '${syntheticKioskId}' AND cuit_emisor = '${cuit}' AND punto_venta = ${syntheticPv} AND credencial_id = '${credencialId}' AND certificado_sha256 = '${certSha}' AND revision = ${revision} AND habilitado = false;`
 
-  return `BEGIN;${idFilter}${pvCleanup}
-COMMIT;`
+  return `${disableTriggers}BEGIN;${idFilter}${pvCleanup}
+COMMIT;${enableTriggers}`
 }
 
 /**
@@ -685,47 +690,70 @@ export async function cleanSyntheticResiduals(client, opts = {}) {
   assertNoRealPv2Usage(syntheticPv)
   assertNoRealPv2Usage(syntheticKioskId)
 
-  await client.query('BEGIN')
+  await client.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM pg_trigger
+        WHERE tgname = 'fiscal_preparacion_inmutable'
+          AND tgrelid = to_regclass('public.fiscal_preparaciones_homologacion')
+      ) THEN
+        ALTER TABLE public.fiscal_preparaciones_homologacion DISABLE TRIGGER fiscal_preparacion_inmutable;
+      END IF;
+      IF EXISTS (
+        SELECT 1 FROM pg_trigger
+        WHERE tgname = 'fiscal_operacion_conservar_cancelacion'
+          AND tgrelid = to_regclass('public.fiscal_operaciones_homologacion')
+      ) THEN
+        ALTER TABLE public.fiscal_operaciones_homologacion DISABLE TRIGGER fiscal_operacion_conservar_cancelacion;
+      END IF;
+    END $$;
+  `)
+
   try {
-    await client.query(`
-      DO $$
-      BEGIN
-        IF EXISTS (
-          SELECT 1 FROM pg_trigger
-          WHERE tgname = 'fiscal_preparacion_inmutable'
-            AND tgrelid = to_regclass('public.fiscal_preparaciones_homologacion')
-        ) THEN
-          ALTER TABLE public.fiscal_preparaciones_homologacion DISABLE TRIGGER fiscal_preparacion_inmutable;
-        END IF;
-        IF EXISTS (
-          SELECT 1 FROM pg_trigger
-          WHERE tgname = 'fiscal_operacion_conservar_cancelacion'
-            AND tgrelid = to_regclass('public.fiscal_operaciones_homologacion')
-        ) THEN
-          ALTER TABLE public.fiscal_operaciones_homologacion DISABLE TRIGGER fiscal_operacion_conservar_cancelacion;
-        END IF;
-      END $$;
-    `)
-    await client.query(
-      `DELETE FROM public.fiscal_preparaciones_homologacion WHERE operacion_id IN (
-        SELECT id FROM public.fiscal_operaciones_homologacion WHERE kiosco_id = $1
-      )`,
-      [syntheticKioskId]
-    )
-    await client.query(
-      `DELETE FROM public.fiscal_solicitudes_homologacion WHERE operacion_id IN (
-        SELECT id FROM public.fiscal_operaciones_homologacion WHERE kiosco_id = $1
-      )`,
-      [syntheticKioskId]
-    )
-    await client.query(
-      'DELETE FROM public.fiscal_reservas_homologacion WHERE cuit_emisor = $1 AND punto_venta = $2',
-      [syntheticCuit, syntheticPv]
-    )
-    await client.query(
-      'DELETE FROM public.fiscal_operaciones_homologacion WHERE kiosco_id = $1',
-      [syntheticKioskId]
-    )
+    await client.query('BEGIN')
+    try {
+      await client.query(
+        `DELETE FROM public.fiscal_preparaciones_homologacion WHERE operacion_id IN (
+          SELECT id FROM public.fiscal_operaciones_homologacion WHERE kiosco_id = $1
+        )`,
+        [syntheticKioskId]
+      )
+      await client.query(
+        `DELETE FROM public.fiscal_solicitudes_homologacion WHERE operacion_id IN (
+          SELECT id FROM public.fiscal_operaciones_homologacion WHERE kiosco_id = $1
+        )`,
+        [syntheticKioskId]
+      )
+      await client.query(
+        'DELETE FROM public.fiscal_reservas_homologacion WHERE cuit_emisor = $1 AND punto_venta = $2',
+        [syntheticCuit, syntheticPv]
+      )
+      await client.query(
+        'DELETE FROM public.fiscal_operaciones_homologacion WHERE kiosco_id = $1',
+        [syntheticKioskId]
+      )
+      await client.query(
+        'DELETE FROM public.fiscal_series_homologacion WHERE cuit_emisor = $1 AND punto_venta = $2 AND tipo_comprobante = 11',
+        [syntheticCuit, syntheticPv]
+      )
+      await client.query(
+        `DELETE FROM public.fiscal_emisores_homologacion
+         WHERE kiosco_id = $1 AND cuit_emisor = $2 AND punto_venta = $3
+           AND credencial_id = $4 AND certificado_sha256 = $5 AND revision = $6
+           AND habilitado = false`,
+        [syntheticKioskId, syntheticCuit, syntheticPv, credId, certSha, rev]
+      )
+      await client.query('COMMIT')
+    } catch (err) {
+      try {
+        await client.query('ROLLBACK')
+      } catch {
+        // ignore rollback errors on failure
+      }
+      throw err
+    }
+  } finally {
     await client.query(`
       DO $$
       BEGIN
@@ -744,26 +772,7 @@ export async function cleanSyntheticResiduals(client, opts = {}) {
           ALTER TABLE public.fiscal_preparaciones_homologacion ENABLE TRIGGER fiscal_preparacion_inmutable;
         END IF;
       END $$;
-    `)
-    await client.query(
-      'DELETE FROM public.fiscal_series_homologacion WHERE cuit_emisor = $1 AND punto_venta = $2 AND tipo_comprobante = 11',
-      [syntheticCuit, syntheticPv]
-    )
-    await client.query(
-      `DELETE FROM public.fiscal_emisores_homologacion
-       WHERE kiosco_id = $1 AND cuit_emisor = $2 AND punto_venta = $3
-         AND credencial_id = $4 AND certificado_sha256 = $5 AND revision = $6
-         AND habilitado = false`,
-      [syntheticKioskId, syntheticCuit, syntheticPv, credId, certSha, rev]
-    )
-    await client.query('COMMIT')
-  } catch (err) {
-    try {
-      await client.query('ROLLBACK')
-    } catch {
-      // ignore rollback errors on failure
-    }
-    throw err
+    `).catch(() => {})
   }
 }
 

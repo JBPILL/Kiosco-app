@@ -507,18 +507,18 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
 
       await cleanSyntheticResiduals(mockClient as any)
 
-      expect(queries[0].sql).toBe('BEGIN')
-      expect(queries[1].sql).toContain('DISABLE TRIGGER fiscal_preparacion_inmutable')
-      expect(queries[1].sql).toContain('DISABLE TRIGGER fiscal_operacion_conservar_cancelacion')
+      expect(queries[0].sql).toContain('DISABLE TRIGGER fiscal_preparacion_inmutable')
+      expect(queries[0].sql).toContain('DISABLE TRIGGER fiscal_operacion_conservar_cancelacion')
+      expect(queries[1].sql).toBe('BEGIN')
       expect(queries[2].sql).toContain('DELETE FROM public.fiscal_preparaciones_homologacion')
       expect(queries[3].sql).toContain('DELETE FROM public.fiscal_solicitudes_homologacion')
       expect(queries[4].sql).toContain('DELETE FROM public.fiscal_reservas_homologacion')
       expect(queries[5].sql).toContain('DELETE FROM public.fiscal_operaciones_homologacion')
-      expect(queries[6].sql).toContain('ENABLE TRIGGER fiscal_operacion_conservar_cancelacion')
-      expect(queries[6].sql).toContain('ENABLE TRIGGER fiscal_preparacion_inmutable')
-      expect(queries[7].sql).toContain('DELETE FROM public.fiscal_series_homologacion')
-      expect(queries[8].sql).toContain('DELETE FROM public.fiscal_emisores_homologacion')
-      expect(queries[9].sql).toBe('COMMIT')
+      expect(queries[6].sql).toContain('DELETE FROM public.fiscal_series_homologacion')
+      expect(queries[7].sql).toContain('DELETE FROM public.fiscal_emisores_homologacion')
+      expect(queries[8].sql).toBe('COMMIT')
+      expect(queries[9].sql).toContain('ENABLE TRIGGER fiscal_operacion_conservar_cancelacion')
+      expect(queries[9].sql).toContain('ENABLE TRIGGER fiscal_preparacion_inmutable')
       expect(queries).toHaveLength(10)
       // Parameterized queries (extended query protocol) must never contain multiple commands
       for (const q of queries) {
@@ -531,9 +531,10 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
     it('cleanSyntheticResiduals issues rollback on error and rethrows', async () => {
       const mockClient = {
         query: vi.fn()
+          .mockResolvedValueOnce({ rows: [] }) // DO DISABLE
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockRejectedValueOnce(new Error('DB failure during cleanup')) // DISABLE TRIGGER or DELETE
-          .mockResolvedValue({ rows: [] }), // ROLLBACK
+          .mockRejectedValueOnce(new Error('DB failure during cleanup')) // DELETE
+          .mockResolvedValue({ rows: [] }), // ROLLBACK and DO ENABLE
       }
 
       await expect(cleanSyntheticResiduals(mockClient as any)).rejects.toThrow('DB failure during cleanup')
