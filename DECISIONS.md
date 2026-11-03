@@ -1699,3 +1699,27 @@ y emisor fiscal habilitado (`emisor.habilitado = true`).
 Se preserva la seguridad estricta del esquema sin degradar controles ni introducir atajos no autorizados.
 PR03 permanece en 6/9 requisitos acreditados. PR03-C debe planificar la renovación y provisión de la revisión 3
 del catálogo y la ventana controlada para habilitación temporal del emisor, sin emitir comprobantes (`FECAESolicitar = 0`).
+
+
+### Preparación íntegra y allowlist estricta de PR03-C (Catálogo Revisión 3) — 03/11/2026
+
+**Contexto:**
+Para desbloquear PR03-B bajo el orden de gates `PR03-A -> PR03-C -> PR03-B`, es requisito indispensable
+obtener evidencia oficial de ARCA para alícuotas y condiciones de receptor e insertar la revisión 3 inactiva
+en `public.fiscal_parametros_homologacion` sin mutar la historia ni habilitar prematuramente la emisión.
+
+**Decisión:**
+1. Definir una allowlist cerrada de exactamente 3 llamadas externas: `LoginCms` (1), `FEParamGetTiposIva` (1)
+   y `FEParamGetCondicionIvaReceptor` (1).
+2. Bloquear taxativamente en el package y runner toda operación de emisión o comprobantes (`FECAESolicitar`,
+   `FECompConsultar`, `FECompUltimoAutorizado`, `FEParamGetPtosVenta`).
+3. Evaluar el estado del Ticket de Acceso: al estar vencido el anterior, fijar `EXISTING_TA_REUSABLE = false`
+   y `LOGINCMS_REQUIRED = true`, con límite máximo total de 3 llamadas ARCA (cualquier 4ª llamada es fatal / STOP).
+4. Prohibir el retry automático ante fallos de red o SOAP Faults.
+5. Garantizar que la inserción de la revisión 3 sea insert-only, manteniendo la revisión 2 inmutable (`REVISION_2_MUTATED = false`).
+6. Mantener el emisor inactivo durante PR03-C (`EMITTER_ENABLE_DURING_PR03_C = false`); la ventana de activación
+   controlada y fail-closed se ejecutará únicamente en PR03-B.
+
+**Consecuencias:**
+Se cuenta con un package seguro, determinístico y auditado listo para ejecución cuando el titular otorgue
+el GO correspondiente. PR03 permanece PARCIAL (6/9 acreditados). Cero mutaciones remotas y cero llamadas a ARCA.

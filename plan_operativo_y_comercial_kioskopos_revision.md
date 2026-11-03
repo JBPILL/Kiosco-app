@@ -1845,3 +1845,15 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
   - `PR03_B = BLOCKED_BY_PR03_C`
   - `PR03_C = NEXT_GATE`
 - Cero llamadas ARCA, cero comprobantes emitidos, PR02 permanece PENDIENTE.
+
+
+### Preparación íntegra de PR03-C (Refresco de Parámetros Catálogo 3) — 03/11/2026
+
+- Se prepararon localmente los contratos, empaquetado, runner y validación de PR03-C.
+- Allowlist cerrada de 3 llamadas externas: `LoginCms` (1), `FEParamGetTiposIva` (1), `FEParamGetCondicionIvaReceptor` (1).
+- Prohibición explícita de emisión y comprobantes (`FECAESolicitar`, `FECompConsultar`, `FECompUltimoAutorizado` inalcanzables).
+- Límite máximo estricto de 3 llamadas ARCA totales; prohibición de auto-retry.
+- Catálogo 2 inmutable; Catálogo 3 insert-only e inactivo al ingreso (`habilitado = false`).
+- Emisor fiscal permanece inactivo durante PR03-C (`EMITTER_ENABLE_DURING_PR03_C = false`).
+- Requisitos acreditados: 6/9. PR03 permanece PARCIAL. PR02 permanece PENDIENTE.
+- Cero llamadas ARCA ejecutadas, cero escrituras remotas. Preparación local lista para autorización.

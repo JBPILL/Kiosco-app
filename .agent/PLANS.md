@@ -683,3 +683,14 @@ Tras la ejecución controlada y segura bajo FAIL-CLOSED del intento PR03-B en St
   - `PR03_B = BLOCKED_BY_PR03_C`
   - `PR03_C = NEXT_GATE`
 - Cero llamadas ARCA, cero mutaciones comerciales, PR02 permanece PENDIENTE.
+
+
+### 2026-11-03 - Preparación íntegra de PR03-C (Refresco de Parámetros y Catálogo 3)
+
+Preparación local y formal de contratos, paquete y runner para PR03-C:
+- **Allowlist estricta de 3 llamadas**: `LoginCms` (1), `FEParamGetTiposIva` (1), `FEParamGetCondicionIvaReceptor` (1).
+- **Prohibición estricta de emisión**: `FECAESolicitar`, `FECompConsultar`, `FECompUltimoAutorizado` y `FEParamGetPtosVenta` declarados inalcanzables (`FECAESOLICITAR_REACHABLE = false`, `FECOMPCONSULTAR_REACHABLE = false`, `PR03_C_EMISSION_CAPABLE = false`).
+- **Estado de TA**: Expirado previamente en homologación; `EXISTING_TA_REUSABLE = false`, `LOGINCMS_REQUIRED = true`. Contador acotado a 3 llamadas máximo (4ta llamada fatal / STOP). Cero auto-retry.
+- **Inmutabilidad y Requisito Insert-Only**: Revisión 2 se mantiene inalterada (`REVISION_2_MUTATED = false`); Revisión 3 es insert-only y arranca deshabilitada (`habilitado = false`).
+- **Emisor**: Permanece inactivo durante PR03-C (`EMITTER_ENABLE_DURING_PR03_C = false`); su ventana temporal se reservará exclusivamente para PR03-B (`EMITTER_ENABLE_REQUIRED_FOR_PR03_B = true`).
+- **Estado del gate**: `PR03_C_PREPARATION = PASS`, pendiente de GO explícito del titular para ejecución remota. PR03 permanece PARCIAL (6/9). Cero mutaciones ni llamadas a ARCA ejecutadas.

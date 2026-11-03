@@ -4893,3 +4893,15 @@ Tras el intento de ejecución de PR03-B bajo FAIL-CLOSED, se confirmó que:
 5. Nuevo orden formal de precedencia: `PR03-A -> PR03-C -> PR03-B`.
 6. Estado: `PR03_REQUIREMENTS_PASS = 6/9`, `PR03_B = BLOCKED_BY_PR03_C`, `PR03_C = NEXT_GATE`.
 7. Cero llamadas ARCA, cero comprobantes emitidos, PR02 permanece PENDIENTE.
+
+
+### 2026-11-03 — Preparación local y empaquetado de PR03-C (Catálogo Revisión 3)
+
+Se preparó localmente el package de ejecución, plan y tests para PR03-C:
+1. Conjunto mínimo de llamadas externas acotado a: `LoginCms` (1), `FEParamGetTiposIva` (1), `FEParamGetCondicionIvaReceptor` (1).
+2. Emisión explícitamente bloqueada (`FECAESolicitar`, `FECompConsultar`, `FECompUltimoAutorizado` inalcanzables).
+3. Verificación de TA existente: descartado/vencido (`EXISTING_TA_REUSABLE = false`, `LOGINCMS_REQUIRED = true`).
+4. Límite máximo estricto de 3 llamadas ARCA totales; prohibición de auto-retry.
+5. Inserción de revisión 3 condicionada a no existencia previa (insert-only) y revisión 2 inmutable.
+6. Emisor permanece inactivo durante PR03-C (`EMITTER_ENABLE_DURING_PR03_C = false`).
+7. Requisitos PR03 acreditados: 6/9. PR03 permanece PARCIAL y PR02 PENDIENTE. Cero escrituras en Staging y cero llamadas a ARCA ejecutadas.
