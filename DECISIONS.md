@@ -1748,3 +1748,39 @@ en Staging bajo `--authorized`, manteniendo el modo Dry-Run por defecto y cero r
 El ejecutor remoto queda completamente implementado, auditado y verificado mediante suites unitarias
 y de integración local (`PR03_C_REMOTE_EXECUTION_READY = true`), preparado para ejecución remota
 cuando el titular otorgue el GO explícito. Cero escrituras en Staging y cero llamadas ARCA ejecutadas.
+
+
+### Endurecimiento Operativo de PR03-C: CLI Estricto, Wrapper Privado, Custodia Local, TLS Estricto, Separación C1/C2 y Modo Resume — 03/11/2026
+
+**Contexto:**
+La preparación remota de PR03-C requería subsanar 12 observaciones operativas críticas antes de autorizar
+cualquier conexión hacia ARCA o Staging: soporte de CLI real desde process.argv, wrapper PowerShell para
+custodia acreditada y contraseña PostgreSQL en memoria privada, verificación estricta de TLS sin bypass
+(`rejectUnauthorized: true`), vinculación estricta al HEAD y REMOTE_HEAD auditados, lógica de reuso de TA
+restringida a disponibilidad de credenciales en memoria, separación de fases C1 (refresh e inserción inactiva)
+y C2 (activación controlada), soporte de reanudación `--resume-existing-revision3` con cero llamadas ARCA,
+registro de evidencia BEFORE y AFTER, y verificación explícita de cierre de conexión PostgreSQL.
+
+**Decisión:**
+1. Entrada CLI real en `scripts/fiscal/execute-pr03-c-staging.mjs`: `validatePr03cCliArgs` exige explícitamente
+   `--scope` y `--project-ref` cuando se pasa `--authorized`; de lo contrario falla cerrado con código 1.
+2. Wrapper operativo `scripts/fiscal/run-pr03-c-staging-private.ps1`: verifica rama `feat/pilot-envases-returns`,
+   árbol limpio y paridad `HEAD == REMOTE_HEAD`, solicita contraseña de DB vía diálogo gráfico sin eco,
+   y genera el CMS en memoria mediante `scripts/arca/WsaaHomologacion.cs` sin llamadas externas a ARCA.
+3. TLS estricto: se prohíbe taxativamente `rejectUnauthorized: false`; `resolvePostgresSslConfig` exige certificado
+   CA raíz válido (`prod-ca-2021.crt`) y falla cerrado si el certificado no existe o es inválido.
+4. Paquete y ejecución vinculados a Git: `createPr03cExecutionPackage` exige commit SHA de 40 caracteres y valida
+   paridad con `REMOTE_HEAD`.
+5. Lógica de reuso de TA: si `hasCredentials === false` o las credenciales no están presentes en memoria segura,
+   el ticket se clasifica como no reutilizable (`TA_CREDENTIALS_INACCESSIBLE`) requiriendo `LoginCms`.
+6. Separación C1/C2 y Resume:
+   - `PR03_C1_PARAMETER_REFRESH`: realiza llamadas ARCA e inserta Revisión 3 con `habilitado = false`.
+   - `PR03_C2_CATALOG_ENABLE`: 0 llamadas ARCA; activa Revisión 3 mediante `PR03_C_C2_ENABLE_SQL` con guards de integridad.
+   - `--resume-existing-revision3`: omite llamadas ARCA si la Revisión 3 ya existe inactiva y pasa directamente a C2.
+7. Evidencia y limpieza: registro de hashes y revisiones BEFORE y AFTER (C1 y C2), comprobación de cierre
+   de cliente PostgreSQL (`PG_CONNECTION_CLOSED = PASS`), y purga de credenciales en memoria.
+
+**Consecuencias:**
+El ejecutor y wrapper de PR03-C quedan completamente endurecidos, verificados por 20 tests unitarios y de
+subproceso real, y con el build de producción Vite/TypeScript exitoso. Se conservan: `ARCA_CALLS_NEW = 0`,
+`STAGING_WRITES_NEW = 0` y `PRODUCTION_MUTATIONS = 0`. Listo para ejecución remota una vez concedido el GO explícito.

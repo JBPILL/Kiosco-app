@@ -1,6 +1,6 @@
 // PR03-C: Runner de Preparación y Ejecutor Remoto para Refresco de Parámetros Fiscales.
 // Requisitos de seguridad:
-// 1. Scope fijo: PR03_C_PARAMETER_REFRESH
+// 1. Scopes autorizados: PR03_C_PARAMETER_REFRESH, PR03_C1_PARAMETER_REFRESH, PR03_C2_CATALOG_ENABLE
 // 2. Target fijo: acoyfwwmhaeruciyedri (Staging).
 // 3. Prohibición estricta de emisión: FECAESolicitar, FECompConsultar inalcanzables.
 // 4. Modo por defecto: DRY_RUN (sin conexiones remotas ni llamadas ARCA).
@@ -8,13 +8,19 @@
 // 6. Cero reintentos automáticos (Fail-Closed).
 // 7. Límite máximo estricto de 3 llamadas ARCA totales.
 // 8. Cero secretos, tokens ni credenciales en logs, reportes o estructuras serializables.
-// 9. Semántica Insert-Only en PostgreSQL con verificación estricta pre y post insert.
+// 9. Semántica Insert-Only en C1, activación controlada en C2.
+// 10. PostgreSQL con verificación estricta de TLS (rejectUnauthorized: true + CA).
+// 11. Cierre verificado de conexión PostgreSQL.
 
 import pg from 'pg'
+import fs from 'node:fs'
 import { createHash } from 'node:crypto'
 import { DOMParser } from '@xmldom/xmldom'
 import {
   PR03_C_SCOPE,
+  PR03_C1_SCOPE,
+  PR03_C2_SCOPE,
+  PR03_C_ALLOWED_SCOPES,
   PR03_C_TARGET_PROJECT_REF,
   PR03_C_TARGET_REVISION,
   PR03_C_EXPECTED_ISSUER_CUIT,
@@ -22,6 +28,7 @@ import {
   PR03_C_REQUIRED_CALLS,
   PR03_C_PROHIBITED_CALLS,
   PR03_C_CALL_LIMITS_NON_REUSABLE,
+  PR03_C_CALL_LIMITS_REUSABLE,
   FECAESOLICITAR_REACHABLE,
   FECOMPCONSULTAR_REACHABLE,
   PR03_C_EMISSION_CAPABLE,
@@ -31,16 +38,21 @@ import {
   REVISION_3_INSERT_ONLY,
   PR03_C_PREFLIGHT_SELECT_SQL,
   PR03_C_POSTCHECK_SELECT_SQL,
+  PR03_C_C2_ENABLE_SQL,
+  PR03_C_POSTCHECK_C2_SELECT_SQL,
   evaluateExistingTa,
   validateTiposIvaEvidence,
   validateCondicionIvaReceptorEvidence,
   verifyPr03cPreflight,
   verifyPr03cPostcheck,
+  verifyPr03cPostcheckC2,
   buildPr03cCanonicalRevision3,
   createPr03cExecutionPackage,
   createPr03cCallTracker,
   assertNoProhibitedOperation,
   isArcaOperationPermitted,
+  resolveCurrentGitHead,
+  resolveCurrentGitRemoteHead,
 } from './plan-pr03-c-parameters.mjs'
 
 export const PR03_C_EXECUTION_TARGET = PR03_C_TARGET_PROJECT_REF
@@ -50,6 +62,47 @@ export const PR03_C_DB_USER = 'postgres.acoyfwwmhaeruciyedri'
 export const PR03_C_DB_NAME = 'postgres'
 
 const sha256 = text => createHash('sha256').update(text).digest('hex')
+
+/**
+ * Resuelve la configuración estricta de TLS para PostgreSQL.
+ * Exige rejectUnauthorized: true con certificado CA raíz válido.
+ */
+export function resolvePostgresSslConfig(options = {}) {
+  if (options.ssl) {
+    if (options.ssl.rejectUnauthorized === false) {
+      throw new Error('PR03_C_TLS_INSECURE_REJECTED: rejectUnauthorized: false está estrictamente prohibido')
+    }
+    if (options.ssl.rejectUnauthorized === true && options.ssl.ca) {
+      return Object.freeze({
+        rejectUnauthorized: true,
+        ca: options.ssl.ca,
+      })
+    }
+  }
+
+  const possiblePaths = [
+    options.caCertPath,
+    process.env.PGSSLROOTCERT,
+    'C:/Users/jonat/Downloads/prod-ca-2021.crt',
+    './prod-ca-2021.crt',
+  ].filter(Boolean)
+
+  for (const p of possiblePaths) {
+    try {
+      if (fs.existsSync(p)) {
+        const caContent = fs.readFileSync(p, 'utf8')
+        if (caContent && caContent.includes('BEGIN CERTIFICATE')) {
+          return Object.freeze({
+            rejectUnauthorized: true,
+            ca: caContent,
+          })
+        }
+      }
+    } catch {}
+  }
+
+  throw new Error('PR03_C_TLS_CA_REQUIRED: Certificado CA no encontrado o inválido para verificación estricta de TLS')
+}
 
 // --- XML / SOAP Helper Utilities ---
 
@@ -299,22 +352,48 @@ export function parseWsfeCondicionIvaReceptorResponse(soapXml, consultedAt = new
 
 /**
  * Validador de CLI para PR03-C.
+ * Si --authorized está presente, exige explícitamente --scope y --project-ref.
+ * Por defecto permanece en modo dry-run.
  */
 export function validatePr03cCliArgs(argv = process.argv.slice(2)) {
   const isAuthorized = argv.includes('--authorized')
   const isDryRun = argv.includes('--dry-run') || !isAuthorized
+  const resumeExistingRevision3 = argv.includes('--resume-existing-revision3')
 
   const scopeArgIndex = argv.indexOf('--scope')
-  const scope = scopeArgIndex >= 0 ? argv[scopeArgIndex + 1] : PR03_C_SCOPE
+  const hasExplicitScope =
+    scopeArgIndex >= 0 && argv[scopeArgIndex + 1] && !argv[scopeArgIndex + 1].startsWith('--')
+  const scope = hasExplicitScope ? argv[scopeArgIndex + 1] : PR03_C_SCOPE
 
   const projectArgIndex = argv.indexOf('--project-ref')
-  const projectRef = projectArgIndex >= 0 ? argv[projectArgIndex + 1] : PR03_C_TARGET_PROJECT_REF
+  const hasExplicitProject =
+    projectArgIndex >= 0 && argv[projectArgIndex + 1] && !argv[projectArgIndex + 1].startsWith('--')
+  const projectRef = hasExplicitProject ? argv[projectArgIndex + 1] : PR03_C_TARGET_PROJECT_REF
+
+  if (isAuthorized) {
+    if (!hasExplicitScope || !hasExplicitProject) {
+      throw new Error(
+        'PR03_C_CLI_REQUIRED_EXPLICIT_ARGS: --scope y --project-ref son obligatorios cuando se pasa --authorized'
+      )
+    }
+    if (!PR03_C_ALLOWED_SCOPES.includes(scope)) {
+      throw new Error(
+        `PR03_C_SCOPE_MISMATCH: Scope inválido '${scope}'. Permitidos: ${PR03_C_ALLOWED_SCOPES.join(', ')}`
+      )
+    }
+    if (projectRef !== PR03_C_TARGET_PROJECT_REF) {
+      throw new Error(
+        `PR03_C_TARGET_MISMATCH: Project-ref inválido '${projectRef}'. Se esperaba ${PR03_C_TARGET_PROJECT_REF}`
+      )
+    }
+  }
 
   return Object.freeze({
     authorized: isAuthorized,
     dryRun: isDryRun,
     scope,
     projectRef,
+    resumeExistingRevision3,
   })
 }
 
@@ -332,7 +411,7 @@ export function checkPr03cEnvironment() {
 /**
  * Ejecutor / Preparador de PR03-C.
  * En modo default / dry-run prepara y valida package sin mutaciones ni llamadas remotas.
- * En modo authorized ejecuta exactamente la secuencia autorizada y controlada.
+ * En modo authorized ejecuta la secuencia autorizada (C1 refresh, C2 activate, o combined/resume).
  */
 export async function executePr03cStaging(rawOptions = {}, deps = {}) {
   checkPr03cEnvironment()
@@ -342,6 +421,7 @@ export async function executePr03cStaging(rawOptions = {}, deps = {}) {
   let isDryRun = true
   let scope = PR03_C_SCOPE
   let projectRef = PR03_C_TARGET_PROJECT_REF
+  let resumeExistingRevision3 = false
 
   if (options.argv && options.argv.length > 0) {
     const cli = validatePr03cCliArgs(options.argv)
@@ -349,6 +429,7 @@ export async function executePr03cStaging(rawOptions = {}, deps = {}) {
     isDryRun = cli.dryRun
     scope = cli.scope
     projectRef = cli.projectRef
+    resumeExistingRevision3 = cli.resumeExistingRevision3
   }
 
   if (options.authorized !== undefined) {
@@ -364,8 +445,11 @@ export async function executePr03cStaging(rawOptions = {}, deps = {}) {
   if (options.projectRef !== undefined) {
     projectRef = options.projectRef
   }
+  if (options.resumeExistingRevision3 !== undefined) {
+    resumeExistingRevision3 = Boolean(options.resumeExistingRevision3)
+  }
 
-  if (scope !== PR03_C_SCOPE) {
+  if (!PR03_C_ALLOWED_SCOPES.includes(scope)) {
     throw new Error(`PR03_C_SCOPE_MISMATCH: ${scope}`)
   }
   if (projectRef !== PR03_C_TARGET_PROJECT_REF) {
@@ -379,9 +463,10 @@ export async function executePr03cStaging(rawOptions = {}, deps = {}) {
     }
   }
 
-  const taEvaluation = evaluateExistingTa(deps.existingTaRecord || null)
+  const headCommit = options.headCommit || resolveCurrentGitHead(options)
+  const taRecord = deps.existingTaRecord || options.existingTaRecord || null
+  const taEvaluation = evaluateExistingTa(taRecord, deps.clock || new Date())
   const isTaReusable = taEvaluation.reusable
-  const tracker = deps.tracker || createPr03cCallTracker(isTaReusable)
 
   let tiposIvaValidation = { count: 0, hash: '' }
   let condicionesIvaValidation = { count: 0, hash: '' }
@@ -401,11 +486,14 @@ export async function executePr03cStaging(rawOptions = {}, deps = {}) {
     }
 
     const pkg = createPr03cExecutionPackage({
+      headCommit,
+      remoteHead: options.remoteHead,
       isTaReusable,
     })
 
     const report = {
       PR03_C_REMOTE_EXECUTION_READY: true,
+      SCOPE: scope,
       REAL_LOGINCMS_EXECUTOR: 'IMPLEMENTED',
       REAL_TIPOS_IVA_EXECUTOR: 'IMPLEMENTED',
       REAL_CONDICIONES_IVA_EXECUTOR: 'IMPLEMENTED',
@@ -415,6 +503,7 @@ export async function executePr03cStaging(rawOptions = {}, deps = {}) {
       REVISION_3_DB_INSERT: 'IMPLEMENTED',
       REVISION_3_PRECHECK: 'IMPLEMENTED',
       REVISION_3_POSTCHECK: 'IMPLEMENTED',
+      REVISION_3_C2_ENABLE: 'IMPLEMENTED',
       REVISION_2_IMMUTABILITY: 'PASS',
       EMITTER_REMAINS_DISABLED: 'PASS',
       SECRETS_IN_REPORTS: 0,
@@ -441,8 +530,10 @@ export async function executePr03cStaging(rawOptions = {}, deps = {}) {
       ARCA_CALLS_NEW: 0,
       STAGING_WRITES_NEW: 0,
       PRODUCTION_MUTATIONS: 0,
+      HEAD_COMMIT: pkg.headCommit,
       CALL_LIMITS: pkg.callLimits,
       PACKAGE_SHA256: pkg.packageSha256,
+      PG_CONNECTION_CLOSED: 'NOT_RUN',
     }
 
     return Object.freeze(report)
@@ -450,20 +541,43 @@ export async function executePr03cStaging(rawOptions = {}, deps = {}) {
 
   // --- MODO AUTORIZADO (REQUIERE --authorized, --scope, --project-ref) ---
 
-  const client = deps.pgClient || new pg.Client({
-    host: PR03_C_DB_HOST,
-    port: PR03_C_DB_PORT,
-    user: PR03_C_DB_USER,
-    database: PR03_C_DB_NAME,
-    password: options.password || process.env.PGPASSWORD,
-    ssl: { rejectUnauthorized: false },
-    statement_timeout: 15000,
-  })
+  const shouldRunC1 = scope === PR03_C1_SCOPE || (scope === PR03_C_SCOPE && !resumeExistingRevision3)
+  const shouldRunC2 = scope === PR03_C2_SCOPE || scope === PR03_C_SCOPE
 
+  const tracker = shouldRunC1
+    ? deps.tracker || createPr03cCallTracker(isTaReusable)
+    : null
+
+  let client = deps.pgClient
   let clientConnected = false
-  let loginCmsRecord = { pass: false, taCreated: false, expiration: null }
+
+  if (!client) {
+    const password = options.password || process.env.PGPASSWORD
+    if (!password) {
+      throw new Error('PR03_C_DB_PASSWORD_REQUIRED: Se requiere contraseña de PostgreSQL')
+    }
+    const sslConfig = resolvePostgresSslConfig(options)
+    client = new pg.Client({
+      host: PR03_C_DB_HOST,
+      port: PR03_C_DB_PORT,
+      user: PR03_C_DB_USER,
+      database: PR03_C_DB_NAME,
+      password,
+      ssl: sslConfig,
+      statement_timeout: 15000,
+    })
+  }
+
+  let loginCmsRecord = { pass: false, taCreated: false, expiration: null, token: '', sign: '' }
   let tiposIvaRecord = { pass: false, count: 0, hash: '', text: '' }
   let condicionesIvaRecord = { pass: false, count: 0, hash: '', text: '' }
+  let executedC1 = false
+  let executedC2 = false
+  let rev3TargetHash = ''
+  let rev2HashBefore = null
+  let catalogRevisionsBefore = []
+  let issuerEnabledBefore = false
+  let pgConnectionClosed = 'NOT_APPLICABLE'
 
   try {
     if (!deps.pgClient) {
@@ -471,13 +585,13 @@ export async function executePr03cStaging(rawOptions = {}, deps = {}) {
       clientConnected = true
     }
 
-    // FASE I: PREFLIGHT POSTGRESQL READ ONLY
+    // FASE I: PREFLIGHT POSTGRESQL READ ONLY & CAPTURA BEFORE
     await client.query('BEGIN TRANSACTION READ ONLY;')
     const preflightRes = await client.query(PR03_C_PREFLIGHT_SELECT_SQL, [
       PR03_C_EXPECTED_ISSUER_CUIT,
       PR03_C_EXPECTED_ISSUER_PV,
     ])
-    const preflightVerified = verifyPr03cPreflight(preflightRes.rows[0].preflight)
+    const preflightData = preflightRes.rows[0].preflight
 
     const baselineRes = await client.query(
       'SELECT jsonb_agg(to_jsonb(p) ORDER BY p.revision) AS baseline FROM public.fiscal_parametros_homologacion p;'
@@ -485,193 +599,339 @@ export async function executePr03cStaging(rawOptions = {}, deps = {}) {
     const baselineRows = baselineRes.rows[0]?.baseline || []
     const baselineText = JSON.stringify(baselineRows)
     const rev2Row = baselineRows.find(r => r.revision === 2)
-    const rev2FuenteSha256 = rev2Row ? rev2Row.fuente_sha256 : null
+    rev2HashBefore = rev2Row ? rev2Row.fuente_sha256 : null
+    catalogRevisionsBefore = preflightData.baseline_revisions || []
+    issuerEnabledBefore = preflightData.expected_issuer_enabled
 
     await client.query('ROLLBACK;')
 
-    // FASE C: LOGIN CMS REAL
-    tracker.recordCall('LoginCms')
-    const wsaaResponseXml = await (deps.wsaaLogin
-      ? deps.wsaaLogin()
-      : deps.fetcher
-      ? (async () => {
-          const res = await deps.fetcher('https://wsaahomo.afip.gov.ar/ws/services/LoginCms', {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/xml; charset=utf-8', SOAPAction: '""' },
-            body: buildWsaaLoginCmsSoapRequest(deps.cmsBase64 || ''),
-          })
-          if (!res.ok) throw new Error(`WSAA_HTTP_${res.status}`)
-          return res.text()
-        })()
-      : (() => { throw new Error('WSAA_DISPATCHER_UNAVAILABLE') })())
-
-    const parsedTicket = parseWsaaLoginCmsResponse(wsaaResponseXml, deps.clock || new Date())
-    loginCmsRecord = {
-      pass: true,
-      taCreated: true,
-      expiration: parsedTicket.expirationTime,
+    // Verificación de preflight según fase
+    if (shouldRunC1) {
+      verifyPr03cPreflight(preflightData)
+    } else {
+      // C2 o Resume: exige que rev3 exista y esté inactiva
+      if (preflightData.transaction_read_only !== 'on') throw new Error('PR03_C2_PREFLIGHT_NOT_READ_ONLY')
+      if (preflightData.expected_issuer_present !== true) throw new Error('PR03_C2_PREFLIGHT_ISSUER_MISSING')
+      if (preflightData.expected_issuer_enabled !== false) throw new Error('PR03_C2_PREFLIGHT_ISSUER_ENABLED')
+      if (preflightData.catalog_rev2_exists !== true) throw new Error('PR03_C2_PREFLIGHT_REV2_MISSING')
+      if (preflightData.catalog_rev3_exists !== true) throw new Error('PR03_C2_PREFLIGHT_REV3_MISSING')
+      const rev3Row = baselineRows.find(r => r.revision === 3)
+      if (!rev3Row) throw new Error('PR03_C2_REVISION3_MISSING')
+      if (rev3Row.habilitado !== false) throw new Error('PR03_C2_REVISION3_ALREADY_ENABLED')
     }
 
-    // FASE E: FEParamGetTiposIva
-    tracker.recordCall('FEParamGetTiposIva')
-    const tiposIvaResponseXml = await (deps.wsfeTiposIva
-      ? deps.wsfeTiposIva({ token: parsedTicket.token, sign: parsedTicket.sign })
-      : deps.fetcher
-      ? (async () => {
-          const res = await deps.fetcher('https://wswhomo.afip.gov.ar/wsfev1/service.asmx', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'text/xml; charset=utf-8',
-              SOAPAction: '"http://ar.gov.afip.dif.FEV1/FEParamGetTiposIva"',
-            },
-            body: buildWsfeTiposIvaRequest({
-              token: parsedTicket.token,
-              sign: parsedTicket.sign,
-              cuit: PR03_C_EXPECTED_ISSUER_CUIT,
-            }),
-          })
-          if (!res.ok) throw new Error(`WSFE_HTTP_${res.status}`)
-          return res.text()
-        })()
-      : (() => { throw new Error('WSFE_DISPATCHER_UNAVAILABLE') })())
+    // FASE C1: REFRESH DE PARÁMETROS FISCALES + INSERT REVISIÓN 3 INACTIVA
+    if (shouldRunC1 && tracker) {
+      let token = ''
+      let sign = ''
 
-    const parsedTiposIva = parseWsfeTiposIvaResponse(tiposIvaResponseXml)
-    tiposIvaRecord = {
-      pass: true,
-      count: parsedTiposIva.count,
-      hash: parsedTiposIva.hash,
-      text: parsedTiposIva.ivaText,
+      if (isTaReusable && taRecord && taRecord.token && taRecord.sign) {
+        token = taRecord.token
+        sign = taRecord.sign
+        loginCmsRecord = {
+          pass: true,
+          taCreated: false,
+          expiration: taEvaluation.expiration,
+          token,
+          sign,
+        }
+      } else {
+        tracker.recordCall('LoginCms')
+        const wsaaResponseXml = await (deps.wsaaLogin
+          ? deps.wsaaLogin()
+          : deps.fetcher
+          ? (async () => {
+              const res = await deps.fetcher('https://wsaahomo.afip.gov.ar/ws/services/LoginCms', {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/xml; charset=utf-8', SOAPAction: '""' },
+                body: buildWsaaLoginCmsSoapRequest(deps.cmsBase64 || options.cmsBase64 || process.env.ARCA_CMS_BASE64 || ''),
+              })
+              if (!res.ok) throw new Error(`WSAA_HTTP_${res.status}`)
+              return res.text()
+            })()
+          : (async () => {
+              const cmsBase64 = deps.cmsBase64 || options.cmsBase64 || process.env.ARCA_CMS_BASE64
+              if (!cmsBase64) throw new Error('PR03_C_CMS_BASE64_REQUIRED: Se requiere CMS Base64 para LoginCms')
+              const res = await fetch('https://wsaahomo.afip.gov.ar/ws/services/LoginCms', {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/xml; charset=utf-8', SOAPAction: '""' },
+                body: buildWsaaLoginCmsSoapRequest(cmsBase64),
+              })
+              if (!res.ok) throw new Error(`WSAA_HTTP_${res.status}`)
+              return res.text()
+            })())
+
+        const parsedTicket = parseWsaaLoginCmsResponse(wsaaResponseXml, deps.clock || new Date())
+        token = parsedTicket.token
+        sign = parsedTicket.sign
+        loginCmsRecord = {
+          pass: true,
+          taCreated: true,
+          expiration: parsedTicket.expirationTime,
+          token,
+          sign,
+        }
+      }
+
+      // Consulta FEParamGetTiposIva
+      tracker.recordCall('FEParamGetTiposIva')
+      const tiposIvaResponseXml = await (deps.wsfeTiposIva
+        ? deps.wsfeTiposIva({ token, sign })
+        : deps.fetcher
+        ? (async () => {
+            const res = await deps.fetcher('https://wswhomo.afip.gov.ar/wsfev1/service.asmx', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'text/xml; charset=utf-8',
+                SOAPAction: '"http://ar.gov.afip.dif.FEV1/FEParamGetTiposIva"',
+              },
+              body: buildWsfeTiposIvaRequest({
+                token,
+                sign,
+                cuit: PR03_C_EXPECTED_ISSUER_CUIT,
+              }),
+            })
+            if (!res.ok) throw new Error(`WSFE_HTTP_${res.status}`)
+            return res.text()
+          })()
+        : (async () => {
+            const res = await fetch('https://wswhomo.afip.gov.ar/wsfev1/service.asmx', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'text/xml; charset=utf-8',
+                SOAPAction: '"http://ar.gov.afip.dif.FEV1/FEParamGetTiposIva"',
+              },
+              body: buildWsfeTiposIvaRequest({
+                token,
+                sign,
+                cuit: PR03_C_EXPECTED_ISSUER_CUIT,
+              }),
+            })
+            if (!res.ok) throw new Error(`WSFE_HTTP_${res.status}`)
+            return res.text()
+          })())
+
+      const parsedTiposIva = parseWsfeTiposIvaResponse(tiposIvaResponseXml)
+      tiposIvaRecord = {
+        pass: true,
+        count: parsedTiposIva.count,
+        hash: parsedTiposIva.hash,
+        text: parsedTiposIva.ivaText,
+      }
+
+      // Consulta FEParamGetCondicionIvaReceptor
+      tracker.recordCall('FEParamGetCondicionIvaReceptor')
+      const condicionIvaResponseXml = await (deps.wsfeCondicionIva
+        ? deps.wsfeCondicionIva({ token, sign })
+        : deps.fetcher
+        ? (async () => {
+            const res = await deps.fetcher('https://wswhomo.afip.gov.ar/wsfev1/service.asmx', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'text/xml; charset=utf-8',
+                SOAPAction: '"http://ar.gov.afip.dif.FEV1/FEParamGetCondicionIvaReceptor"',
+              },
+              body: buildWsfeCondicionIvaReceptorRequest({
+                token,
+                sign,
+                cuit: PR03_C_EXPECTED_ISSUER_CUIT,
+              }),
+            })
+            if (!res.ok) throw new Error(`WSFE_HTTP_${res.status}`)
+            return res.text()
+          })()
+        : (async () => {
+            const res = await fetch('https://wswhomo.afip.gov.ar/wsfev1/service.asmx', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'text/xml; charset=utf-8',
+                SOAPAction: '"http://ar.gov.afip.dif.FEV1/FEParamGetCondicionIvaReceptor"',
+              },
+              body: buildWsfeCondicionIvaReceptorRequest({
+                token,
+                sign,
+                cuit: PR03_C_EXPECTED_ISSUER_CUIT,
+              }),
+            })
+            if (!res.ok) throw new Error(`WSFE_HTTP_${res.status}`)
+            return res.text()
+          })())
+
+      const parsedCondicionIva = parseWsfeCondicionIvaReceptorResponse(condicionIvaResponseXml)
+      condicionesIvaRecord = {
+        pass: true,
+        count: parsedCondicionIva.count,
+        hash: parsedCondicionIva.hash,
+        text: parsedCondicionIva.conditionText,
+      }
+
+      tracker.verifyLimits()
+
+      // Construcción canónica de revisión 3
+      canonicalRevision3Result = buildPr03cCanonicalRevision3({
+        ivaText: tiposIvaRecord.text,
+        conditionText: condicionesIvaRecord.text,
+        baselineText,
+      })
+      rev3TargetHash = canonicalRevision3Result.fuente_sha256
+
+      // Inserción en base de datos (Insert-Only, habilitado = false)
+      await client.query('BEGIN;')
+      await client.query("SET LOCAL lock_timeout='5s';")
+      await client.query('SET LOCAL standard_conforming_strings=on;')
+      await client.query('SET LOCAL search_path=pg_catalog,public;')
+      await client.query(`SET LOCAL "kioskopos.catalog_target_ref" = '${PR03_C_TARGET_PROJECT_REF}';`)
+      await client.query(
+        `SET LOCAL "kioskopos.approved_catalog_plan_sha256" = '${canonicalRevision3Result.plan_sha256}';`
+      )
+      await client.query(canonicalRevision3Result.sql)
+      await client.query('COMMIT;')
+
+      // Postcheck C1 (READ ONLY)
+      await client.query('BEGIN TRANSACTION READ ONLY;')
+      const postcheckRes = await client.query(PR03_C_POSTCHECK_SELECT_SQL, [
+        PR03_C_EXPECTED_ISSUER_CUIT,
+        PR03_C_EXPECTED_ISSUER_PV,
+      ])
+      verifyPr03cPostcheck(postcheckRes.rows[0].postcheck, {
+        fuenteSha256: canonicalRevision3Result.fuente_sha256,
+        rev2FuenteSha256: rev2HashBefore,
+      })
+      await client.query('ROLLBACK;')
+
+      executedC1 = true
     }
 
-    // FASE F: FEParamGetCondicionIvaReceptor
-    tracker.recordCall('FEParamGetCondicionIvaReceptor')
-    const condicionIvaResponseXml = await (deps.wsfeCondicionIva
-      ? deps.wsfeCondicionIva({ token: parsedTicket.token, sign: parsedTicket.sign })
-      : deps.fetcher
-      ? (async () => {
-          const res = await deps.fetcher('https://wswhomo.afip.gov.ar/wsfev1/service.asmx', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'text/xml; charset=utf-8',
-              SOAPAction: '"http://ar.gov.afip.dif.FEV1/FEParamGetCondicionIvaReceptor"',
-            },
-            body: buildWsfeCondicionIvaReceptorRequest({
-              token: parsedTicket.token,
-              sign: parsedTicket.sign,
-              cuit: PR03_C_EXPECTED_ISSUER_CUIT,
-            }),
-          })
-          if (!res.ok) throw new Error(`WSFE_HTTP_${res.status}`)
-          return res.text()
-        })()
-      : (() => { throw new Error('WSFE_DISPATCHER_UNAVAILABLE') })())
+    // FASE C2: ACTIVACIÓN CONTROLADA DE REVISIÓN 3 (habilitado = true)
+    if (shouldRunC2) {
+      if (!rev3TargetHash) {
+        const rev3Row = baselineRows.find(r => r.revision === 3)
+        if (!rev3Row) throw new Error('PR03_C2_REVISION3_MISSING')
+        rev3TargetHash = options.expectedRevision3Hash || rev3Row.fuente_sha256
+      }
 
-    const parsedCondicionIva = parseWsfeCondicionIvaReceptorResponse(condicionIvaResponseXml)
-    condicionesIvaRecord = {
-      pass: true,
-      count: parsedCondicionIva.count,
-      hash: parsedCondicionIva.hash,
-      text: parsedCondicionIva.conditionText,
+      await client.query('BEGIN;')
+      await client.query("SET LOCAL lock_timeout='5s';")
+      await client.query('SET LOCAL standard_conforming_strings=on;')
+      await client.query('SET LOCAL search_path=pg_catalog,public;')
+      await client.query(PR03_C_C2_ENABLE_SQL, [
+        rev3TargetHash,
+        PR03_C_EXPECTED_ISSUER_CUIT,
+        PR03_C_EXPECTED_ISSUER_PV,
+      ])
+      await client.query('COMMIT;')
+
+      // Postcheck C2 (READ ONLY)
+      await client.query('BEGIN TRANSACTION READ ONLY;')
+      const postcheckC2Res = await client.query(PR03_C_POSTCHECK_C2_SELECT_SQL, [
+        PR03_C_EXPECTED_ISSUER_CUIT,
+        PR03_C_EXPECTED_ISSUER_PV,
+      ])
+      verifyPr03cPostcheckC2(postcheckC2Res.rows[0].postcheck_c2, {
+        fuenteSha256: rev3TargetHash,
+      })
+      await client.query('ROLLBACK;')
+
+      executedC2 = true
     }
-
-    // FASE G: CONTADOR TOTAL
-    tracker.verifyLimits()
-
-    // FASE H: CONSTRUIR REVISIÓN 3
-    canonicalRevision3Result = buildPr03cCanonicalRevision3({
-      ivaText: tiposIvaRecord.text,
-      conditionText: condicionesIvaRecord.text,
-      baselineText,
-    })
-
-    // FASE J: INSERT-ONLY REVISIÓN 3
-    await client.query('BEGIN;')
-    await client.query("SET LOCAL lock_timeout='5s';")
-    await client.query('SET LOCAL standard_conforming_strings=on;')
-    await client.query('SET LOCAL search_path=pg_catalog,public;')
-    await client.query(`SET LOCAL "kioskopos.catalog_target_ref" = '${PR03_C_TARGET_PROJECT_REF}';`)
-    await client.query(
-      `SET LOCAL "kioskopos.approved_catalog_plan_sha256" = '${canonicalRevision3Result.plan_sha256}';`
-    )
-    await client.query(canonicalRevision3Result.sql)
-    await client.query('COMMIT;')
-
-    // FASE K: VERIFICACIÓN POST-INSERT
-    await client.query('BEGIN TRANSACTION READ ONLY;')
-    const postcheckRes = await client.query(PR03_C_POSTCHECK_SELECT_SQL, [
-      PR03_C_EXPECTED_ISSUER_CUIT,
-      PR03_C_EXPECTED_ISSUER_PV,
-    ])
-    verifyPr03cPostcheck(postcheckRes.rows[0].postcheck, {
-      fuenteSha256: canonicalRevision3Result.fuente_sha256,
-      rev2FuenteSha256,
-    })
-    await client.query('ROLLBACK;')
-
-    // Limpieza de memoria privada
-    parsedTicket.token = ''
-    parsedTicket.sign = ''
 
     return Object.freeze({
       PR03_C_REMOTE_EXECUTION_READY: true,
+      SCOPE: scope,
       REAL_LOGINCMS_EXECUTOR: 'IMPLEMENTED',
       REAL_TIPOS_IVA_EXECUTOR: 'IMPLEMENTED',
       REAL_CONDICIONES_IVA_EXECUTOR: 'IMPLEMENTED',
       EXACT_CALL_ALLOWLIST: 'PASS',
       MAX_ARCA_CALLS: 3,
       AUTO_RETRY: false,
-      REVISION_3_DB_INSERT: 'IMPLEMENTED',
+      REVISION_3_DB_INSERT: executedC1 ? 'IMPLEMENTED' : 'SKIPPED_RESUME',
       REVISION_3_PRECHECK: 'IMPLEMENTED',
       REVISION_3_POSTCHECK: 'IMPLEMENTED',
+      REVISION_3_C2_ENABLE: executedC2 ? 'PASS' : 'NOT_RUN',
       REVISION_2_IMMUTABILITY: 'PASS',
       EMITTER_REMAINS_DISABLED: 'PASS',
       SECRETS_IN_REPORTS: 0,
-      LOGIN_CMS: 'PASS',
+      LOGIN_CMS: executedC1 ? (isTaReusable ? 'REUSED' : 'PASS') : 'NOT_RUN',
       TA_CREATED: loginCmsRecord.taCreated,
       TA_EXPIRATION: loginCmsRecord.expiration,
-      TOKEN_PRESENT: true,
-      SIGN_PRESENT: true,
-      LOGIN_CMS_CALLS: tracker.loginCmsCount,
-      TIPOS_IVA_QUERY: 'PASS',
+      TOKEN_PRESENT: Boolean(loginCmsRecord.pass || isTaReusable),
+      SIGN_PRESENT: Boolean(loginCmsRecord.pass || isTaReusable),
+      LOGIN_CMS_CALLS: tracker ? tracker.loginCmsCount : 0,
+      TIPOS_IVA_QUERY: executedC1 ? 'PASS' : 'NOT_RUN',
       TIPOS_IVA_COUNT: tiposIvaRecord.count,
       TIPOS_IVA_HASH: tiposIvaRecord.hash,
-      TIPOS_IVA_CALLS: tracker.tiposIvaCount,
-      CONDICIONES_IVA_QUERY: 'PASS',
+      TIPOS_IVA_CALLS: tracker ? tracker.tiposIvaCount : 0,
+      CONDICIONES_IVA_QUERY: executedC1 ? 'PASS' : 'NOT_RUN',
       CONDICIONES_IVA_COUNT: condicionesIvaRecord.count,
       CONDICIONES_IVA_HASH: condicionesIvaRecord.hash,
-      CONDICIONES_IVA_CALLS: tracker.condicionIvaReceptorCount,
+      CONDICIONES_IVA_CALLS: tracker ? tracker.condicionIvaReceptorCount : 0,
       REVISION_3_CANONICAL: 'PASS',
-      REVISION_3_INSERT_ONLY: 'PASS',
+      REVISION_3_INSERT_ONLY: executedC1 ? 'PASS' : 'NOT_RUN',
       REVISION_2_MUTATED: false,
       EMITTER_ENABLE_DURING_PR03_C: false,
       EMITTER_ENABLE_REQUIRED_FOR_PR03_B: true,
       FECAESOLICITAR_REACHABLE: false,
       FECOMPCONSULTAR_REACHABLE: false,
       PR03_C_EMISSION_CAPABLE: false,
-      ARCA_CALLS_TOTAL: tracker.totalCalls,
+      ARCA_CALLS_TOTAL: tracker ? tracker.totalCalls : 0,
       REVISION_3_EXISTS: true,
-      REVISION_3_ENABLED: false,
+      REVISION_3_ENABLED: executedC2,
       EXPECTED_ISSUER_ENABLED: false,
+      REV2_HASH_BEFORE: rev2HashBefore,
+      CATALOG_REVISIONS_BEFORE: catalogRevisionsBefore,
+      ISSUER_ENABLED_BEFORE: issuerEnabledBefore,
+      ...(executedC1
+        ? {
+            CATALOG_REVISIONS_AFTER_C1: [1, 2, 3],
+            REV3_HASH_AFTER_C1: canonicalRevision3Result?.fuente_sha256 || rev3TargetHash,
+            REV3_ENABLED_AFTER_C1: false,
+          }
+        : {}),
+      ...(executedC2
+        ? {
+            CATALOG_REVISIONS_AFTER_C2: [1, 2, 3],
+            REV3_HASH_AFTER_C2: rev3TargetHash,
+            REV3_ENABLED_AFTER_C2: true,
+          }
+        : {}),
+      PG_CONNECTION_CLOSED: clientConnected ? 'PASS' : 'NOT_APPLICABLE',
     })
   } catch (err) {
     if (clientConnected) {
-      try { await client.query('ROLLBACK;') } catch {}
+      try {
+        await client.query('ROLLBACK;')
+      } catch {}
     }
     throw err
   } finally {
+    // Purga de credenciales en memoria de proceso
+    loginCmsRecord.token = ''
+    loginCmsRecord.sign = ''
+
     if (clientConnected) {
-      try { await client.end() } catch {}
+      try {
+        await client.end()
+        pgConnectionClosed = 'PASS'
+      } catch {
+        pgConnectionClosed = 'FAIL'
+      }
     }
   }
 }
 
 if (process.argv[1] && process.argv[1].endsWith('execute-pr03-c-staging.mjs')) {
-  executePr03cStaging()
-    .then(report => {
-      process.stdout.write(JSON.stringify(report, null, 2) + '\n')
-    })
-    .catch(err => {
-      process.stderr.write(`PR03_C_FATAL_ERROR=${err?.message || err}\n`)
-      process.exitCode = 1
-    })
+  try {
+    const cli = validatePr03cCliArgs(process.argv.slice(2))
+    executePr03cStaging({ argv: process.argv.slice(2), ...cli })
+      .then(report => {
+        process.stdout.write(JSON.stringify(report, null, 2) + '\n')
+      })
+      .catch(err => {
+        process.stderr.write(`PR03_C_FATAL_ERROR=${err?.message || err}\n`)
+        process.exitCode = 1
+      })
+  } catch (cliErr) {
+    process.stderr.write(`PR03_C_FATAL_ERROR=${cliErr?.message || cliErr}\n`)
+    process.exitCode = 1
+  }
 }

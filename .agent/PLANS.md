@@ -705,3 +705,19 @@ Implementación del ejecutor remoto controlado para refresco de parámetros de h
 - **Custodia y Secretos**: Reutiliza custodia acreditada sin exponer Token/Sign en logs/reportes (`SECRETS_IN_REPORTS = 0`).
 - **PostgreSQL Insert-Only**: Preflight en transacción READ ONLY (`REVISION_3_PREEXISTING = false`), INSERT acotado de revisión 3 bajo guards criptográficos de plan y target, y postcheck READ ONLY verificando que el emisor continúa inactivo (`EXPECTED_ISSUER_ENABLED = false`) y la revisión 2 inalterada (`REVISION_2_IMMUTABILITY = PASS`).
 - **Estado**: `PR03_C_REMOTE_EXECUTION_READY = true`. PR03 permanece en 6/9 requisitos acreditados. Cero escrituras en Staging y cero llamadas a ARCA ejecutadas en este bloque (`ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`).
+
+
+### 2026-11-03 - Endurecimiento Operativo de PR03-C (Staging)
+
+Endurecimiento operativo e implementación de garantías de seguridad para PR03-C:
+- **CLI estricto y parse de subproceso**: Entrada en `scripts/fiscal/execute-pr03-c-staging.mjs` valida `process.argv` vía `validatePr03cCliArgs`. Exige explícitamente `--scope` y `--project-ref` bajo `--authorized`. Testeado en subproceso real (`spawnSync`) con intercepción previa a red.
+- **Wrapper Privado y Custodia**: Creado `scripts/fiscal/run-pr03-c-staging-private.ps1` que verifica rama `feat/pilot-envases-returns`, árbol limpio y paridad de commits `HEAD == REMOTE_HEAD`. Solicita contraseña de PostgreSQL vía diálogo GUI privado, y firma TRA en memoria con `WsaaHomologacion.cs` sin llamadas externas a ARCA.
+- **TLS Estricto en PostgreSQL**: Prohibición absoluta de `rejectUnauthorized: false`. `resolvePostgresSslConfig` exige certificado CA raíz válido (`prod-ca-2021.crt`) y rechaza conexiones inseguras fail-closed.
+- **Vínculo estricto con HEAD**: `createPr03cExecutionPackage` valida que `headCommit` coincida con el HEAD del repositorio y con `REMOTE_HEAD`.
+- **Reuso condicional de TA**: Si las credenciales no están presentes en memoria privada (`hasCredentials === false`), el TA se clasifica como no reutilizable (`TA_CREDENTIALS_INACCESSIBLE`) requiriendo `LoginCms`.
+- **Separación de fases C1 y C2**:
+  - `PR03_C1_PARAMETER_REFRESH`: ejecuta llamadas ARCA, inserta Revisión 3 inactiva (`habilitado = false`) y ejecuta postcheck C1.
+  - `PR03_C2_CATALOG_ENABLE`: 0 llamadas ARCA; activa Revisión 3 (`habilitado = true`) bajo guards de integridad en `PR03_C_C2_ENABLE_SQL`.
+  - `--resume-existing-revision3`: omite llamadas ARCA y ejecuta directamente la activación C2 si la revisión 3 ya existe inactiva y válida.
+- **Trazabilidad BEFORE/AFTER y Cierre de Conexión**: Reporta estados de catálogo y emisor antes y después de cada fase. Verifica cierre formal de PostgreSQL (`PG_CONNECTION_CLOSED = PASS`).
+- **Estado**: `PR03_C_REMOTE_EXECUTION_READY = true`. Cero escrituras en Staging y cero llamadas ARCA ejecutadas en este bloque (`ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`).

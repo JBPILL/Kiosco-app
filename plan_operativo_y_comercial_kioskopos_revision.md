@@ -1868,3 +1868,16 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
 - Transacciones PostgreSQL en Staging: Preflight READ ONLY, INSERT acotado de revisión 3, Postcheck READ ONLY.
 - Cero secretos expuestos en reportes (`SECRETS_IN_REPORTS = 0`).
 - Estado: `PR03_C_REMOTE_EXECUTION_READY = true`. PR03 permanece en 6/9 acreditados. Cero escrituras y cero llamadas ARCA ejecutadas.
+
+
+### Endurecimiento Operativo de PR03-C (Staging) — 03/11/2026
+
+- Se subsanaron los 12 blockers operativos en `scripts/fiscal/execute-pr03-c-staging.mjs` y nuevo wrapper `scripts/fiscal/run-pr03-c-staging-private.ps1`.
+- Entrypoint CLI real: parsea `process.argv` vía `validatePr03cCliArgs` exigiendo `--scope` y `--project-ref` bajo `--authorized`. Testeado en subproceso real (`spawnSync`) con intercepción segura previa a red.
+- Wrapper privado y custodia: valida rama `feat/pilot-envases-returns`, árbol limpio y `HEAD == REMOTE_HEAD`, solicita contraseña PostgreSQL vía diálogo GUI privado, y realiza preflight criptográfico local mediante `WsaaHomologacion.cs` sin llamadas externas a ARCA.
+- TLS estricto en PostgreSQL: prohibición absoluta de `rejectUnauthorized: false`; imposición obligatoria de CA raíz (`prod-ca-2021.crt`).
+- Vínculo de paquete con Git: `createPr03cExecutionPackage` valida que `headCommit` coincida con el HEAD del repositorio y con `REMOTE_HEAD`.
+- Lógica de reuso de TA: si no hay credenciales en memoria privada (`hasCredentials === false`), se clasifica como no reutilizable (`TA_CREDENTIALS_INACCESSIBLE`) requiriendo `LoginCms`.
+- Separación de fases C1 (refresh e inserción inactiva) y C2 (activación controlada), y soporte de reanudación `--resume-existing-revision3` con cero llamadas ARCA.
+- Trazabilidad BEFORE/AFTER y verificación explícita de cierre de conexión PostgreSQL (`PG_CONNECTION_CLOSED = PASS`).
+- Estado: `PR03_C_REMOTE_EXECUTION_READY = true`. PR03 permanece en 6/9 requisitos. Cero escrituras en Staging y cero llamadas a ARCA ejecutadas en este bloque (`ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`).

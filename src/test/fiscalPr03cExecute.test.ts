@@ -1,7 +1,10 @@
 // @vitest-environment node
 import { describe, it, expect, vi } from 'vitest'
+import { spawnSync } from 'node:child_process'
 import {
   PR03_C_SCOPE,
+  PR03_C1_SCOPE,
+  PR03_C2_SCOPE,
   PR03_C_TARGET_PROJECT_REF,
   PR03_C_PROHIBITED_CALLS,
   PR03_C_REQUIRED_CALLS,
@@ -9,10 +12,12 @@ import {
   assertNoProhibitedOperation,
   verifyPr03cPreflight,
   verifyPr03cPostcheck,
+  verifyPr03cPostcheckC2,
 } from '../../scripts/fiscal/plan-pr03-c-parameters.mjs'
 import {
   executePr03cStaging,
   validatePr03cCliArgs,
+  resolvePostgresSslConfig,
   checkSoapFault,
   checkWsfeErrors,
   parseWsaaLoginCmsResponse,
@@ -51,6 +56,7 @@ const SYNTHETIC_BASELINE_ROWS = [
 interface MockPgOptions {
   preflight?: Record<string, unknown>
   postcheck?: Record<string, unknown>
+  postcheckC2?: Record<string, unknown>
   rev3Preexisting?: boolean
   expectedFuenteSha256?: string
   issuerEnabled?: boolean
@@ -68,7 +74,7 @@ function createMockPgClient(opts: MockPgOptions = {}) {
     catalog_rev2_expired: true,
     catalog_rev3_exists: opts.rev3Preexisting ?? false,
     existing_reusable_ta: false,
-    baseline_revisions: [1, 2],
+    baseline_revisions: opts.rev3Preexisting ? [1, 2, 3] : [1, 2],
   }
 
   const postcheckData = opts.postcheck || {
@@ -81,6 +87,19 @@ function createMockPgClient(opts: MockPgOptions = {}) {
     expected_issuer_enabled: opts.issuerEnabled ?? false,
   }
 
+  const baselineRows = [...SYNTHETIC_BASELINE_ROWS]
+  if (opts.rev3Preexisting) {
+    baselineRows.push({
+      revision: 3,
+      condiciones: [{ id: 1, descripcion: 'IVA Responsable Inscripto', comprobantes: [1, 11] }],
+      alicuotas: [{ id: 5, descripcion: '21%' }],
+      fuente_sha256: opts.expectedFuenteSha256 || '3333333333333333333333333333333333333333333333333333333333333333',
+      consultado_en: '2026-11-03T01:00:00.000Z',
+      vence_en: '2026-11-04T01:00:00.000Z',
+      habilitado: false,
+    })
+  }
+
   return {
     executedSql,
     query: vi.fn(async (sql: unknown, params?: unknown) => {
@@ -89,11 +108,33 @@ function createMockPgClient(opts: MockPgOptions = {}) {
         const match = /,'([0-9a-f]{64})',/.exec(sql)
         if (match) postcheckData.rev3_fuente_sha256 = match[1]
       }
+      if (typeof sql === 'string' && sql.includes('UPDATE public.fiscal_parametros_homologacion')) {
+        postcheckData.rev3_enabled = true
+      }
+      if (typeof sql === 'string' && sql.includes('postcheck_c2')) {
+        return {
+          rows: [
+            {
+              postcheck_c2: opts.postcheckC2 || {
+                transaction_read_only: 'on',
+                observed_at: new Date().toISOString(),
+                rev3_exists: true,
+                rev3_enabled: true,
+                rev3_fuente_sha256: postcheckData.rev3_fuente_sha256 || opts.expectedFuenteSha256 || '3333333333333333333333333333333333333333333333333333333333333333',
+                rev3_valid: true,
+                rev2_exists: true,
+                rev2_unchanged: true,
+                expected_issuer_enabled: opts.issuerEnabled ?? false,
+              },
+            },
+          ],
+        }
+      }
       if (typeof sql === 'string' && sql.includes('preflight')) {
         return { rows: [{ preflight: preflightData }] }
       }
       if (typeof sql === 'string' && sql.includes('baseline')) {
-        return { rows: [{ baseline: SYNTHETIC_BASELINE_ROWS }] }
+        return { rows: [{ baseline: baselineRows }] }
       }
       if (typeof sql === 'string' && sql.includes('postcheck')) {
         return { rows: [{ postcheck: postcheckData }] }
@@ -119,17 +160,19 @@ describe('PR03-C Remote Executor Suite', () => {
     expect(report.STAGING_WRITES_NEW).toBe(0)
     expect(report.PRODUCTION_MUTATIONS).toBe(0)
     expect(report.PR03_C_REQUIRED_CALLS).toEqual(PR03_C_REQUIRED_CALLS)
+    expect(report.HEAD_COMMIT).toBeDefined()
+    expect(report.PACKAGE_SHA256).toBeDefined()
   })
 
   it('2. Rechaza scope incorrecto aun con authorized=true', async () => {
     await expect(
-      executePr03cStaging({ authorized: true, scope: 'INVALID_SCOPE' })
+      executePr03cStaging({ authorized: true, scope: 'INVALID_SCOPE', projectRef: PR03_C_TARGET_PROJECT_REF })
     ).rejects.toThrow('PR03_C_SCOPE_MISMATCH')
   })
 
   it('3. Rechaza project-ref incorrecto aun con authorized=true', async () => {
     await expect(
-      executePr03cStaging({ authorized: true, projectRef: 'other_project_ref' })
+      executePr03cStaging({ authorized: true, scope: PR03_C_SCOPE, projectRef: 'other_project_ref' })
     ).rejects.toThrow('PR03_C_TARGET_MISMATCH')
   })
 
@@ -139,19 +182,31 @@ describe('PR03-C Remote Executor Suite', () => {
     }
   })
 
-  it('5. Validador de CLI parsea y exige flags explícitas', () => {
+  it('5. Validador de CLI parsea y exige flags explícitas cuando se pasa --authorized', () => {
     const defaultArgs = validatePr03cCliArgs([])
     expect(defaultArgs.authorized).toBe(false)
     expect(defaultArgs.dryRun).toBe(true)
     expect(defaultArgs.scope).toBe(PR03_C_SCOPE)
     expect(defaultArgs.projectRef).toBe(PR03_C_TARGET_PROJECT_REF)
 
-    const authArgs = validatePr03cCliArgs(['--authorized'])
+    // Sin scope ni project-ref explícitos bajo --authorized debe fallar fail-closed
+    expect(() => validatePr03cCliArgs(['--authorized'])).toThrow('PR03_C_CLI_REQUIRED_EXPLICIT_ARGS')
+
+    // Con flags explícitas pasa validación
+    const authArgs = validatePr03cCliArgs([
+      '--authorized',
+      '--scope',
+      PR03_C_SCOPE,
+      '--project-ref',
+      PR03_C_TARGET_PROJECT_REF,
+    ])
     expect(authArgs.authorized).toBe(true)
     expect(authArgs.dryRun).toBe(false)
+    expect(authArgs.scope).toBe(PR03_C_SCOPE)
+    expect(authArgs.projectRef).toBe(PR03_C_TARGET_PROJECT_REF)
   })
 
-  it('6. Ejecución autorizada realiza exactamente 3 llamadas en orden estricto (LoginCms -> IVA -> Condición)', async () => {
+  it('6. Ejecución autorizada realiza exactamente 3 llamadas en orden estricto (LoginCms -> IVA -> Condición) e inserta y activa rev 3', async () => {
     const callOrder: string[] = []
     const mockPg = createMockPgClient()
 
@@ -202,6 +257,9 @@ describe('PR03-C Remote Executor Suite', () => {
 
     expect(report.ARCA_CALLS_TOTAL).toBe(3)
     expect(report.REVISION_3_INSERT_ONLY).toBe('PASS')
+    expect(report.REVISION_3_C2_ENABLE).toBe('PASS')
+    expect(report.REVISION_3_ENABLED).toBe(true)
+    expect(report.EXPECTED_ISSUER_ENABLED).toBe(false)
     expect(report.REVISION_2_MUTATED).toBe(false)
   })
 
@@ -224,7 +282,7 @@ describe('PR03-C Remote Executor Suite', () => {
 
     await expect(
       executePr03cStaging(
-        { authorized: true },
+        { authorized: true, scope: PR03_C_SCOPE, projectRef: PR03_C_TARGET_PROJECT_REF },
         { pgClient: mockPg, wsaaLogin, wsfeTiposIva }
       )
     ).rejects.toThrow('ETIMEDOUT')
@@ -255,7 +313,7 @@ describe('PR03-C Remote Executor Suite', () => {
   it('11. Token y Sign nunca aparecen en reportes ni cadenas serializadas', async () => {
     const mockPg = createMockPgClient()
     const report = await executePr03cStaging(
-      { authorized: true },
+      { authorized: true, scope: PR03_C_SCOPE, projectRef: PR03_C_TARGET_PROJECT_REF },
       {
         pgClient: mockPg,
         wsaaLogin: async () => SYNTHETIC_WSAA_RESPONSE,
@@ -272,12 +330,15 @@ describe('PR03-C Remote Executor Suite', () => {
     expect(report.SIGN_PRESENT).toBe(true)
   })
 
-  it('12. Revisión 3 preexistente en preflight bloquea la ejecución antes de ARCA', async () => {
+  it('12. Revisión 3 preexistente en preflight bloquea la ejecución de C1 antes de ARCA', async () => {
     const mockPg = createMockPgClient({ rev3Preexisting: true })
     const wsaaLogin = vi.fn()
 
     await expect(
-      executePr03cStaging({ authorized: true }, { pgClient: mockPg, wsaaLogin })
+      executePr03cStaging(
+        { authorized: true, scope: PR03_C1_SCOPE, projectRef: PR03_C_TARGET_PROJECT_REF },
+        { pgClient: mockPg, wsaaLogin }
+      )
     ).rejects.toThrow('PR03_C_PREFLIGHT_CATALOG_REV3_ALREADY_EXISTS')
 
     expect(wsaaLogin).not.toHaveBeenCalled()
@@ -315,5 +376,181 @@ describe('PR03-C Remote Executor Suite', () => {
 
     const postcheckHashMismatch = { ...postcheckOk, rev3_fuente_sha256: 'wrong_hash' }
     expect(() => verifyPr03cPostcheck(postcheckHashMismatch, { fuenteSha256: 'abc123' })).toThrow('PR03_C_POSTCHECK_REV3_HASH_MISMATCH')
+
+    const postcheckC2Ok = {
+      transaction_read_only: 'on',
+      rev3_exists: true,
+      rev3_enabled: true,
+      rev3_valid: true,
+      rev3_fuente_sha256: 'abc123',
+      rev2_exists: true,
+      rev2_unchanged: true,
+      expected_issuer_enabled: false,
+    }
+    expect(verifyPr03cPostcheckC2(postcheckC2Ok, { fuenteSha256: 'abc123' }).status).toBe('PASS')
+  })
+
+  it('14. Subproceso real: dry-run por defecto, rechazo si falta scope/project, y entrada autorizada interceptada', () => {
+    // 1. Dry run
+    const dryRunRes = spawnSync('node', ['scripts/fiscal/execute-pr03-c-staging.mjs'], { encoding: 'utf8' })
+    expect(dryRunRes.status).toBe(0)
+    const dryJson = JSON.parse(dryRunRes.stdout)
+    expect(dryJson.PR03_C_REMOTE_EXECUTION_READY).toBe(true)
+    expect(dryJson.ARCA_CALLS_NEW).toBe(0)
+    expect(dryJson.STAGING_WRITES_NEW).toBe(0)
+
+    // 2. --authorized sin flags explícitas
+    const authMissingRes = spawnSync('node', ['scripts/fiscal/execute-pr03-c-staging.mjs', '--authorized'], {
+      encoding: 'utf8',
+    })
+    expect(authMissingRes.status).toBe(1)
+    expect(authMissingRes.stderr).toContain('PR03_C_CLI_REQUIRED_EXPLICIT_ARGS')
+
+    // 3. --authorized con flags explícitas entra al camino autorizado y es interceptado antes de red real
+    const authAttemptRes = spawnSync(
+      'node',
+      [
+        'scripts/fiscal/execute-pr03-c-staging.mjs',
+        '--authorized',
+        '--scope',
+        PR03_C_SCOPE,
+        '--project-ref',
+        PR03_C_TARGET_PROJECT_REF,
+      ],
+      { encoding: 'utf8', env: { ...process.env, PGPASSWORD: '' } }
+    )
+    expect(authAttemptRes.status).toBe(1)
+    expect(authAttemptRes.stderr).toContain('PR03_C_FATAL_ERROR=PR03_C_DB_PASSWORD_REQUIRED')
+  })
+
+  it('15. Verificación estricta de TLS: rechaza rejectUnauthorized: false y exige CA', () => {
+    expect(() => resolvePostgresSslConfig({ ssl: { rejectUnauthorized: false } })).toThrow(
+      'PR03_C_TLS_INSECURE_REJECTED'
+    )
+    const validSsl = resolvePostgresSslConfig()
+    expect(validSsl.rejectUnauthorized).toBe(true)
+    expect(validSsl.ca).toContain('BEGIN CERTIFICATE')
+  })
+
+  it('16. Separación PR03-C1: realiza llamadas ARCA pero NO activa catálogo (rev 3 inactiva)', async () => {
+    const mockPg = createMockPgClient()
+    const report = await executePr03cStaging(
+      { authorized: true, scope: PR03_C1_SCOPE, projectRef: PR03_C_TARGET_PROJECT_REF },
+      {
+        pgClient: mockPg,
+        wsaaLogin: async () => SYNTHETIC_WSAA_RESPONSE,
+        wsfeTiposIva: async () => SYNTHETIC_TIPOS_IVA_RESPONSE,
+        wsfeCondicionIva: async () => SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+        clock: new Date('2026-11-03T02:00:00Z'),
+      }
+    )
+
+    expect(report.SCOPE).toBe(PR03_C1_SCOPE)
+    expect(report.ARCA_CALLS_TOTAL).toBe(3)
+    expect(report.REVISION_3_INSERT_ONLY).toBe('PASS')
+    expect(report.REVISION_3_C2_ENABLE).toBe('NOT_RUN')
+    expect(report.REVISION_3_ENABLED).toBe(false)
+    expect(report.EXPECTED_ISSUER_ENABLED).toBe(false)
+  })
+
+  it('17. Separación PR03-C2: realiza ZERO llamadas ARCA y activa catálogo preexistente', async () => {
+    const mockPg = createMockPgClient({ rev3Preexisting: true })
+    const report = await executePr03cStaging(
+      { authorized: true, scope: PR03_C2_SCOPE, projectRef: PR03_C_TARGET_PROJECT_REF },
+      {
+        pgClient: mockPg,
+        clock: new Date('2026-11-03T02:00:00Z'),
+      }
+    )
+
+    expect(report.SCOPE).toBe(PR03_C2_SCOPE)
+    expect(report.ARCA_CALLS_TOTAL).toBe(0)
+    expect(report.LOGIN_CMS).toBe('NOT_RUN')
+    expect(report.TIPOS_IVA_QUERY).toBe('NOT_RUN')
+    expect(report.CONDICIONES_IVA_QUERY).toBe('NOT_RUN')
+    expect(report.REVISION_3_C2_ENABLE).toBe('PASS')
+    expect(report.REVISION_3_ENABLED).toBe(true)
+    expect(report.EXPECTED_ISSUER_ENABLED).toBe(false)
+  })
+
+  it('18. Modo resume (--resume-existing-revision3) omite llamadas ARCA y pasa directamente a C2', async () => {
+    const mockPg = createMockPgClient({ rev3Preexisting: true })
+    const report = await executePr03cStaging(
+      {
+        authorized: true,
+        scope: PR03_C_SCOPE,
+        projectRef: PR03_C_TARGET_PROJECT_REF,
+        resumeExistingRevision3: true,
+      },
+      {
+        pgClient: mockPg,
+        clock: new Date('2026-11-03T02:00:00Z'),
+      }
+    )
+
+    expect(report.ARCA_CALLS_TOTAL).toBe(0)
+    expect(report.REVISION_3_DB_INSERT).toBe('SKIPPED_RESUME')
+    expect(report.REVISION_3_C2_ENABLE).toBe('PASS')
+    expect(report.REVISION_3_ENABLED).toBe(true)
+  })
+
+  it('19. Reutilización de TA: si TA es reutilizable con credenciales en memoria, LOGIN_CMS_CALLS es 0', async () => {
+    const mockPg = createMockPgClient()
+    const wsaaLogin = vi.fn()
+    const wsfeTiposIva = vi.fn(async () => SYNTHETIC_TIPOS_IVA_RESPONSE)
+    const wsfeCondicionIva = vi.fn(async () => SYNTHETIC_CONDICIONES_IVA_RESPONSE)
+
+    const existingTaRecord = {
+      estado: 'DISPONIBLE',
+      servicio: 'wsfe',
+      valido: true,
+      vence_en: '2026-11-03T16:00:00Z',
+      token: 'EXISTING_VALID_TOKEN',
+      sign: 'EXISTING_VALID_SIGN',
+      hasCredentials: true,
+    }
+
+    const report = await executePr03cStaging(
+      { authorized: true, scope: PR03_C_SCOPE, projectRef: PR03_C_TARGET_PROJECT_REF },
+      {
+        pgClient: mockPg,
+        existingTaRecord,
+        wsaaLogin,
+        wsfeTiposIva,
+        wsfeCondicionIva,
+        clock: new Date('2026-11-03T02:00:00Z'),
+      }
+    )
+
+    expect(wsaaLogin).not.toHaveBeenCalled()
+    expect(report.LOGIN_CMS_CALLS).toBe(0)
+    expect(report.LOGIN_CMS).toBe('REUSED')
+    expect(report.ARCA_CALLS_TOTAL).toBe(2)
+  })
+
+  it('20. Registro de evidencia BEFORE y AFTER con cierre de conexión PostgreSQL', async () => {
+    const mockPg = createMockPgClient()
+    const report = await executePr03cStaging(
+      { authorized: true, scope: PR03_C_SCOPE, projectRef: PR03_C_TARGET_PROJECT_REF },
+      {
+        pgClient: mockPg,
+        wsaaLogin: async () => SYNTHETIC_WSAA_RESPONSE,
+        wsfeTiposIva: async () => SYNTHETIC_TIPOS_IVA_RESPONSE,
+        wsfeCondicionIva: async () => SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+        clock: new Date('2026-11-03T02:00:00Z'),
+      }
+    )
+
+    expect(report.REV2_HASH_BEFORE).toBe('2222222222222222222222222222222222222222222222222222222222222222')
+    expect(report.CATALOG_REVISIONS_BEFORE).toEqual([1, 2])
+    expect(report.ISSUER_ENABLED_BEFORE).toBe(false)
+
+    expect(report.CATALOG_REVISIONS_AFTER_C1).toEqual([1, 2, 3])
+    expect(report.REV3_ENABLED_AFTER_C1).toBe(false)
+
+    expect(report.CATALOG_REVISIONS_AFTER_C2).toEqual([1, 2, 3])
+    expect(report.REV3_ENABLED_AFTER_C2).toBe(true)
+
+    expect(report.PG_CONNECTION_CLOSED).toBe('NOT_APPLICABLE') // en deps.pgClient mock
   })
 })

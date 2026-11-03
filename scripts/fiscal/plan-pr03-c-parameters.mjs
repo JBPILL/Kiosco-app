@@ -7,10 +7,18 @@
 // 5. Cero retry automático ante fallo de red o SOAP Fault.
 // 6. Cero credenciales ni tokens expuestos en logs o paquetes.
 
+import { execSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { planFiscalParameters } from '../plan-fiscal-parameters.mjs'
 
 export const PR03_C_SCOPE = 'PR03_C_PARAMETER_REFRESH'
+export const PR03_C1_SCOPE = 'PR03_C1_PARAMETER_REFRESH'
+export const PR03_C2_SCOPE = 'PR03_C2_CATALOG_ENABLE'
+export const PR03_C_ALLOWED_SCOPES = Object.freeze([
+  PR03_C_SCOPE,
+  PR03_C1_SCOPE,
+  PR03_C2_SCOPE,
+])
 export const PR03_C_TARGET_PROJECT_REF = 'acoyfwwmhaeruciyedri'
 export const PR03_C_TARGET_REVISION = 3
 export const PR03_C_EXPECTED_ISSUER_CUIT = '20415005963'
@@ -138,7 +146,8 @@ export function evaluateExistingTa(taRecord, now = new Date()) {
     throw new Error('PR03_C_INVALID_CLOCK')
   }
 
-  if (rec.estado !== 'DISPONIBLE' || !rec.vence_en) {
+  const isAvailable = rec.estado === 'DISPONIBLE' || rec.valido === true
+  if (!isAvailable || !rec.vence_en) {
     return Object.freeze({
       reusable: false,
       loginCmsRequired: true,
@@ -165,6 +174,16 @@ export function evaluateExistingTa(taRecord, now = new Date()) {
       loginCmsRequired: true,
       expiration: new Date(expMs).toISOString(),
       reason: 'TA_EXPIRED_OR_EXPIRING_SOON',
+    })
+  }
+
+  // Requisito de custodia: Si se indica explícitamente que las credenciales son inaccesibles
+  if (rec.hasCredentials === false) {
+    return Object.freeze({
+      reusable: false,
+      loginCmsRequired: true,
+      expiration: new Date(expMs).toISOString(),
+      reason: 'TA_CREDENTIALS_INACCESSIBLE',
     })
   }
 
@@ -459,11 +478,44 @@ export function buildPr03cCanonicalRevision3(input) {
   })
 }
 
+export function resolveCurrentGitHead(opts = {}) {
+  if (opts.headCommit && typeof opts.headCommit === 'string' && /^[0-9a-f]{40}$/.test(opts.headCommit)) {
+    return opts.headCommit
+  }
+  if (process.env.GIT_HEAD_COMMIT && /^[0-9a-f]{40}$/.test(process.env.GIT_HEAD_COMMIT)) {
+    return process.env.GIT_HEAD_COMMIT
+  }
+  try {
+    const head = execSync('git rev-parse HEAD', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+    if (/^[0-9a-f]{40}$/.test(head)) return head
+  } catch {}
+  return null
+}
+
+export function resolveCurrentGitRemoteHead(opts = {}) {
+  if (opts.remoteHead && typeof opts.remoteHead === 'string' && /^[0-9a-f]{40}$/.test(opts.remoteHead)) {
+    return opts.remoteHead
+  }
+  try {
+    const remote = execSync('git rev-parse origin/feat/pilot-envases-returns', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+    if (/^[0-9a-f]{40}$/.test(remote)) return remote
+  } catch {}
+  return null
+}
+
 /**
  * Crea el paquete cerrado de ejecución PR03-C (sin secretos).
+ * Exige el commit SHA explícito del HEAD verificado (no admite default hardcodeado).
  */
 export function createPr03cExecutionPackage(opts = {}) {
-  const headCommit = opts.headCommit || 'bc687ce8158c91ccc3eb17b3e0015ddebe5d1770'
+  const headCommit = opts.headCommit || resolveCurrentGitHead(opts)
+  if (!headCommit || typeof headCommit !== 'string' || !/^[0-9a-f]{40}$/.test(headCommit)) {
+    throw new Error('PR03_C_PACKAGE_HEAD_REQUIRED: Se requiere SHA de 40 caracteres hexadecimales para el package')
+  }
+  const remoteHead = opts.remoteHead || (opts.headCommit ? undefined : resolveCurrentGitRemoteHead(opts))
+  if (remoteHead && remoteHead !== headCommit) {
+    throw new Error(`PR03_C_PACKAGE_HEAD_MISMATCH: HEAD (${headCommit}) difiere de REMOTE_HEAD (${remoteHead})`)
+  }
   const isTaReusable = opts.isTaReusable ?? false
   const callLimits = isTaReusable ? PR03_C_CALL_LIMITS_REUSABLE : PR03_C_CALL_LIMITS_NON_REUSABLE
   const preparedAt = new Date().toISOString()
@@ -559,6 +611,98 @@ export function verifyPr03cPostcheck(raw, expected = {}) {
     status: 'PASS',
     rev3Exists: true,
     rev3Enabled: false,
+    rev3HashMatch: true,
+    rev2Unchanged: true,
+    expectedIssuerEnabled: false,
+  })
+}
+
+/**
+ * Sentencia de activación controlada C2 de revisión 3 de catálogo fiscal.
+ * Exige que la revisión 3 exista, coincida con el hash autorizado, esté inactiva y no expirada,
+ * que la revisión 2 permanezca intacta y que el emisor permanezca inactivo.
+ * Mutación acotada exclusivamente a `habilitado = true` en revisión 3.
+ */
+export const PR03_C_C2_ENABLE_SQL = `DO $catalog_enable_guard$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.fiscal_parametros_homologacion
+    WHERE revision = 3 AND habilitado = false AND fuente_sha256 = $1
+      AND vence_en > clock_timestamp()
+  ) THEN
+    RAISE EXCEPTION 'PR03_C2_REVISION3_NOT_ELIGIBLE_FOR_ENABLE';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.fiscal_parametros_homologacion
+    WHERE revision = 2 AND habilitado = false
+  ) THEN
+    RAISE EXCEPTION 'PR03_C2_REVISION2_MUTATED';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.fiscal_emisores_homologacion
+    WHERE cuit_emisor = $2 AND punto_venta = $3 AND habilitado = true
+  ) THEN
+    RAISE EXCEPTION 'PR03_C2_ISSUER_UNEXPECTEDLY_ENABLED';
+  END IF;
+END $catalog_enable_guard$;
+
+UPDATE public.fiscal_parametros_homologacion
+SET habilitado = true
+WHERE revision = 3 AND habilitado = false AND fuente_sha256 = $1;`
+
+/**
+ * Consulta de postcheck READ ONLY para C2 (activación del catálogo).
+ */
+export const PR03_C_POSTCHECK_C2_SELECT_SQL = `SELECT jsonb_build_object(
+  'transaction_read_only', current_setting('transaction_read_only'),
+  'observed_at', clock_timestamp(),
+  'rev3_exists', EXISTS (
+    SELECT 1 FROM public.fiscal_parametros_homologacion WHERE revision = 3
+  ),
+  'rev3_enabled', COALESCE((
+    SELECT habilitado FROM public.fiscal_parametros_homologacion WHERE revision = 3
+  ), false),
+  'rev3_fuente_sha256', (
+    SELECT fuente_sha256 FROM public.fiscal_parametros_homologacion WHERE revision = 3
+  ),
+  'rev3_valid', (
+    SELECT vence_en > clock_timestamp() FROM public.fiscal_parametros_homologacion WHERE revision = 3
+  ),
+  'rev2_exists', EXISTS (
+    SELECT 1 FROM public.fiscal_parametros_homologacion WHERE revision = 2
+  ),
+  'rev2_unchanged', (
+    SELECT habilitado = false FROM public.fiscal_parametros_homologacion WHERE revision = 2
+  ),
+  'expected_issuer_enabled', COALESCE((
+    SELECT habilitado FROM public.fiscal_emisores_homologacion WHERE cuit_emisor = $1 AND punto_venta = $2
+  ), true)
+) AS postcheck_c2;`
+
+/**
+ * Validador del resultado de postcheck READ ONLY para C2.
+ */
+export function verifyPr03cPostcheckC2(raw, expected = {}) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('PR03_C2_POSTCHECK_INVALID')
+  }
+  const d = raw
+  if (d.transaction_read_only !== 'on') throw new Error('PR03_C2_POSTCHECK_NOT_READ_ONLY')
+  if (!d.rev3_exists) throw new Error('PR03_C2_POSTCHECK_REV3_MISSING')
+  if (d.rev3_enabled !== true) throw new Error('PR03_C2_POSTCHECK_REV3_NOT_ENABLED')
+  if (!d.rev3_valid) throw new Error('PR03_C2_POSTCHECK_REV3_EXPIRED')
+  if (expected.fuenteSha256 && d.rev3_fuente_sha256 !== expected.fuenteSha256) {
+    throw new Error(`PR03_C2_POSTCHECK_REV3_HASH_MISMATCH: esperado ${expected.fuenteSha256}, actual ${d.rev3_fuente_sha256}`)
+  }
+  if (!d.rev2_exists) throw new Error('PR03_C2_POSTCHECK_REV2_MISSING')
+  if (d.rev2_unchanged !== true) throw new Error('PR03_C2_POSTCHECK_REV2_CHANGED')
+  if (d.expected_issuer_enabled !== false) throw new Error('PR03_C2_POSTCHECK_ISSUER_ENABLED')
+
+  return Object.freeze({
+    status: 'PASS',
+    rev3Exists: true,
+    rev3Enabled: true,
+    rev3Valid: true,
     rev3HashMatch: true,
     rev2Unchanged: true,
     expectedIssuerEnabled: false,

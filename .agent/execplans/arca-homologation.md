@@ -4916,3 +4916,16 @@ Se implementó el ejecutor remoto en `scripts/fiscal/execute-pr03-c-staging.mjs`
 4. Transacciones PostgreSQL: Preflight READ ONLY comprobando ausencia de revisión 3 y emisor inactivo; INSERT acotado a revisión 3; Postcheck READ ONLY verificando hash y emisor inactivo.
 5. Token y Sign nunca expuestos en logs ni reportes (`SECRETS_IN_REPORTS = 0`).
 6. Estado: `PR03_C_REMOTE_EXECUTION_READY = true`. Cero escrituras en Staging y cero llamadas a ARCA ejecutadas en este bloque.
+
+
+### 2026-11-03 — Endurecimiento Operativo de PR03-C (Staging)
+
+Se subsanaron los 12 blockers de robustez operativa e integridad:
+1. Entrypoint CLI real en `scripts/fiscal/execute-pr03-c-staging.mjs`: valida `process.argv` vía `validatePr03cCliArgs` exigiendo `--scope` y `--project-ref` bajo `--authorized`. Testeado en subproceso real (`spawnSync`) con intercepción segura antes de red.
+2. Wrapper operativo `scripts/fiscal/run-pr03-c-staging-private.ps1`: verifica rama, árbol limpio y paridad de commits `HEAD == REMOTE_HEAD`, solicita contraseña de DB vía diálogo GUI privado, y valida criptografía local en memoria mediante `WsaaHomologacion.cs` sin llamadas externas a ARCA.
+3. TLS estricto en PostgreSQL: eliminación de `rejectUnauthorized: false`; imposición obligatoria de CA raíz (`prod-ca-2021.crt`).
+4. Vínculo de paquete con Git: `createPr03cExecutionPackage` valida que `headCommit` coincida con el HEAD del repositorio y con `REMOTE_HEAD`.
+5. Lógica de reuso de TA: si no hay credenciales en memoria privada, se clasifica como no reutilizable (`TA_CREDENTIALS_INACCESSIBLE`) requiriendo `LoginCms`.
+6. Separación de fases C1 (refresh e inserción inactiva) y C2 (activación controlada), y soporte de reanudación `--resume-existing-revision3` con cero llamadas ARCA.
+7. Trazabilidad BEFORE/AFTER y verificación explícita de cierre de conexión PostgreSQL (`PG_CONNECTION_CLOSED = PASS`).
+8. Estado: `PR03_C_REMOTE_EXECUTION_READY = true`. PR03 en 6/9 requisitos. Cero escrituras en Staging y cero llamadas a ARCA ejecutadas en este bloque (`ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`).

@@ -77,6 +77,9 @@ export interface Pr03cCanonicalRevision3Result {
 }
 
 export const PR03_C_SCOPE: 'PR03_C_PARAMETER_REFRESH'
+export const PR03_C1_SCOPE: 'PR03_C1_PARAMETER_REFRESH'
+export const PR03_C2_SCOPE: 'PR03_C2_CATALOG_ENABLE'
+export const PR03_C_ALLOWED_SCOPES: readonly ['PR03_C_PARAMETER_REFRESH', 'PR03_C1_PARAMETER_REFRESH', 'PR03_C2_CATALOG_ENABLE']
 export const PR03_C_TARGET_PROJECT_REF: 'acoyfwwmhaeruciyedri'
 export const PR03_C_TARGET_REVISION: 3
 export const PR03_C_EXPECTED_ISSUER_CUIT: '20415005963'
@@ -96,11 +99,23 @@ export const REVISION_3_INSERT_ONLY: true
 
 export const PR03_C_PREFLIGHT_SELECT_SQL: string
 export const PR03_C_POSTCHECK_SELECT_SQL: string
+export const PR03_C_C2_ENABLE_SQL: string
+export const PR03_C_POSTCHECK_C2_SELECT_SQL: string
 
 export interface Pr03cPostcheckResult {
   readonly status: 'PASS' | 'FAIL'
   readonly rev3Exists: boolean
   readonly rev3Enabled: boolean
+  readonly rev3HashMatch: boolean
+  readonly rev2Unchanged: boolean
+  readonly expectedIssuerEnabled: boolean
+}
+
+export interface Pr03cPostcheckC2Result {
+  readonly status: 'PASS' | 'FAIL'
+  readonly rev3Exists: boolean
+  readonly rev3Enabled: boolean
+  readonly rev3Valid: boolean
   readonly rev3HashMatch: boolean
   readonly rev2Unchanged: boolean
   readonly expectedIssuerEnabled: boolean
@@ -112,6 +127,7 @@ export function createPr03cCallTracker(isTaReusable: boolean): Pr03cCallCounterT
 export function evaluateExistingTa(taRecord: unknown, now?: string | number | Date): Pr03cTaEvaluation
 export function verifyPr03cPreflight(raw: unknown): Pr03cPreflightResult
 export function verifyPr03cPostcheck(raw: unknown, expected?: { fuenteSha256?: string; rev2FuenteSha256?: string }): Pr03cPostcheckResult
+export function verifyPr03cPostcheckC2(raw: unknown, expected?: { fuenteSha256?: string }): Pr03cPostcheckC2Result
 export function validateTiposIvaEvidence(text: string, expectedChecksum?: string): { count: number; hash: string; rates: unknown[] }
 export function validateCondicionIvaReceptorEvidence(text: string, expectedChecksum?: string): { count: number; hash: string; conditions: unknown[] }
 export function buildPr03cCanonicalRevision3(input: {
@@ -124,4 +140,6 @@ export function buildPr03cCanonicalRevision3(input: {
   now?: string
   expiresAt?: string
 }): Pr03cCanonicalRevision3Result
-export function createPr03cExecutionPackage(opts?: { headCommit?: string; isTaReusable?: boolean }): Pr03cExecutionPackage
+export function resolveCurrentGitHead(opts?: { headCommit?: string }): string | null
+export function resolveCurrentGitRemoteHead(opts?: { remoteHead?: string }): string | null
+export function createPr03cExecutionPackage(opts?: { headCommit?: string; remoteHead?: string; isTaReusable?: boolean }): Pr03cExecutionPackage
