@@ -605,6 +605,12 @@ export async function executePr03cStaging(rawOptions = {}, deps = {}) {
 
     await client.query('ROLLBACK;')
 
+    const serverObservedAt = deps.clock
+      ? (typeof deps.clock === 'string' ? new Date(deps.clock).toISOString() : deps.clock.toISOString())
+      : (preflightData?.observed_at
+          ? new Date(preflightData.observed_at).toISOString()
+          : new Date().toISOString())
+
     // Verificación de preflight según fase
     if (shouldRunC1) {
       verifyPr03cPreflight(preflightData)
@@ -661,7 +667,7 @@ export async function executePr03cStaging(rawOptions = {}, deps = {}) {
               return res.text()
             })())
 
-        const parsedTicket = parseWsaaLoginCmsResponse(wsaaResponseXml, deps.clock || new Date())
+        const parsedTicket = parseWsaaLoginCmsResponse(wsaaResponseXml, deps.clock || serverObservedAt)
         token = parsedTicket.token
         sign = parsedTicket.sign
         loginCmsRecord = {
@@ -711,7 +717,7 @@ export async function executePr03cStaging(rawOptions = {}, deps = {}) {
             return res.text()
           })())
 
-      const parsedTiposIva = parseWsfeTiposIvaResponse(tiposIvaResponseXml)
+      const parsedTiposIva = parseWsfeTiposIvaResponse(tiposIvaResponseXml, serverObservedAt)
       tiposIvaRecord = {
         pass: true,
         count: parsedTiposIva.count,
@@ -757,7 +763,7 @@ export async function executePr03cStaging(rawOptions = {}, deps = {}) {
             return res.text()
           })())
 
-      const parsedCondicionIva = parseWsfeCondicionIvaReceptorResponse(condicionIvaResponseXml)
+      const parsedCondicionIva = parseWsfeCondicionIvaReceptorResponse(condicionIvaResponseXml, serverObservedAt)
       condicionesIvaRecord = {
         pass: true,
         count: parsedCondicionIva.count,
@@ -772,6 +778,7 @@ export async function executePr03cStaging(rawOptions = {}, deps = {}) {
         ivaText: tiposIvaRecord.text,
         conditionText: condicionesIvaRecord.text,
         baselineText,
+        now: serverObservedAt,
       })
       rev3TargetHash = canonicalRevision3Result.fuente_sha256
 

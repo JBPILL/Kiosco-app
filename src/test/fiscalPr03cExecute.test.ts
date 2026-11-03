@@ -66,6 +66,7 @@ function createMockPgClient(opts: MockPgOptions = {}) {
   const executedSql: Array<{ sql: unknown; params?: unknown }> = []
   const preflightData = opts.preflight || {
     transaction_read_only: 'on',
+    observed_at: new Date().toISOString(),
     expected_issuer_present: true,
     expected_issuer_enabled: false,
     unexpected_enabled_issuers: 0,
@@ -552,5 +553,48 @@ describe('PR03-C Remote Executor Suite', () => {
     expect(report.REV3_ENABLED_AFTER_C2).toBe(true)
 
     expect(report.PG_CONNECTION_CLOSED).toBe('NOT_APPLICABLE') // en deps.pgClient mock
+  })
+
+  it('21. Anclaje de timestamp al reloj del servidor: propaga preflight observed_at a la propuesta canónica para prevenir CATALOG_PROPOSAL_EXPIRED bajo clock skew', async () => {
+    const serverTimestamp = '2026-11-03T02:30:00.000Z'
+    const mockPg = createMockPgClient({
+      preflight: {
+        transaction_read_only: 'on',
+        observed_at: serverTimestamp,
+        expected_issuer_present: true,
+        expected_issuer_enabled: false,
+        unexpected_enabled_issuers: 0,
+        catalog_rev1_exists: true,
+        catalog_rev2_exists: true,
+        catalog_rev2_expired: true,
+        catalog_rev3_exists: false,
+        existing_reusable_ta: false,
+        baseline_revisions: [1, 2],
+      },
+    })
+
+    const report = await executePr03cStaging(
+      { authorized: true, scope: PR03_C1_SCOPE, projectRef: PR03_C_TARGET_PROJECT_REF },
+      {
+        pgClient: mockPg,
+        wsaaLogin: async () => SYNTHETIC_WSAA_RESPONSE,
+        wsfeTiposIva: async () => SYNTHETIC_TIPOS_IVA_RESPONSE,
+        wsfeCondicionIva: async () => SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+      }
+    )
+
+    expect(report.SCOPE).toBe(PR03_C1_SCOPE)
+    expect(report.REVISION_3_INSERT_ONLY).toBe('PASS')
+
+    // Verificar que el SQL generado contiene consultado_en anclado al servidor
+    const insertQueryObj = mockPg.executedSql.find(
+      (entry: { sql: unknown }) =>
+        typeof entry.sql === 'string' && entry.sql.includes('INSERT INTO public.fiscal_parametros_homologacion')
+    )
+    expect(insertQueryObj).toBeDefined()
+    const sql = String(insertQueryObj?.sql)
+    expect(sql).toContain(`'${serverTimestamp}'::timestamptz`)
+    expect(sql).toContain("DO $catalog_guard$")
+    expect(sql).toContain(`IF clock_timestamp()<'${serverTimestamp}'::timestamptz`)
   })
 })
