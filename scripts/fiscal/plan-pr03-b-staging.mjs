@@ -461,12 +461,26 @@ export const PR03_B_PREFLIGHT_SELECT_SQL = `SELECT jsonb_build_object(
 
 /**
  * Consulta de observación determinista del bloqueo por lock en la serie fiscal.
+ * Inspecciona pg_locks verificando si existe una transacción bloqueada por el lock
+ * exclusivo que retiene la conexión actual (pg_backend_pid()), o por application_name.
  */
 export const PR03_B_CONCURRENCY_WAIT_SELECT_SQL = `SELECT count(*)::int as waiting_count
 FROM pg_locks l
-JOIN pg_stat_activity a ON a.pid = l.pid
 WHERE NOT l.granted
-  AND a.application_name LIKE 'kiosko-pr03b-c2-%';`
+  AND (
+    EXISTS (
+      SELECT 1 FROM pg_locks blocking
+      WHERE blocking.locktype = l.locktype
+        AND blocking.transactionid = l.transactionid
+        AND blocking.granted = true
+        AND blocking.pid = pg_backend_pid()
+    )
+    OR EXISTS (
+      SELECT 1 FROM pg_stat_activity a
+      WHERE a.pid = l.pid
+        AND a.application_name LIKE 'kiosko-pr03b-c2-%'
+    )
+  );`
 
 /**
  * Validador base de preflight READ ONLY.
@@ -622,6 +636,47 @@ DELETE FROM public.fiscal_emisores_homologacion WHERE kiosco_id = '${syntheticKi
 
   return `BEGIN;${idFilter}${pvCleanup}
 COMMIT;`
+}
+
+/**
+ * Limpieza quirúrgica de residuos sintéticos de ejecuciones previas abortadas.
+ * Afecta única y estrictamente al tenant sintético acreditado y exige emisor deshabilitado.
+ */
+export async function cleanSyntheticResiduals(client, opts = {}) {
+  const syntheticKioskId = opts.syntheticKioskId ?? PR03_B_SYNTHETIC_KIOSK_ID
+  const syntheticCuit = opts.syntheticCuit ?? PR03_B_SYNTHETIC_CUIT
+  const syntheticPv = opts.syntheticPv ?? PR03_B_SYNTHETIC_PV
+  const credId = opts.credId ?? PR03_B_SYNTHETIC_CREDENCIAL_ID
+  const certSha = opts.certSha ?? PR03_B_SYNTHETIC_CERT_SHA256
+  const rev = opts.rev ?? PR03_B_SYNTHETIC_EMITTER_REVISION
+
+  assertNoRealPv2Usage(syntheticPv)
+  assertNoRealPv2Usage(syntheticKioskId)
+
+  await client.query('BEGIN')
+  try {
+    await client.query(`
+      ALTER TABLE public.fiscal_preparaciones_homologacion DISABLE TRIGGER fiscal_preparacion_inmutable;
+      DELETE FROM public.fiscal_preparaciones_homologacion WHERE operacion_id IN (
+        SELECT id FROM public.fiscal_operaciones_homologacion WHERE kiosco_id = $1
+      );
+      ALTER TABLE public.fiscal_preparaciones_homologacion ENABLE TRIGGER fiscal_preparacion_inmutable;
+      DELETE FROM public.fiscal_solicitudes_homologacion WHERE operacion_id IN (
+        SELECT id FROM public.fiscal_operaciones_homologacion WHERE kiosco_id = $1
+      );
+      DELETE FROM public.fiscal_reservas_homologacion WHERE cuit_emisor = $2 AND punto_venta = $3;
+      DELETE FROM public.fiscal_operaciones_homologacion WHERE kiosco_id = $1;
+      DELETE FROM public.fiscal_series_homologacion WHERE cuit_emisor = $2 AND punto_venta = $3 AND tipo_comprobante = 11;
+      DELETE FROM public.fiscal_emisores_homologacion
+      WHERE kiosco_id = $1 AND cuit_emisor = $2 AND punto_venta = $3
+        AND credencial_id = $4 AND certificado_sha256 = $5 AND revision = $6
+        AND habilitado = false;
+    `, [syntheticKioskId, syntheticCuit, syntheticPv, credId, certSha, rev])
+    await client.query('COMMIT')
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {})
+    throw err
+  }
 }
 
 /**

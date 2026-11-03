@@ -40,6 +40,7 @@ import {
   verifyPr03bBasePreflight,
   computeCommercialBaselineHash,
   buildManifestCleanupSql,
+  cleanSyntheticResiduals,
   verifyIdempotencyReplay,
   verifyIdempotencyConflict,
   verifyConcurrencySinglePendingReservation,
@@ -87,12 +88,15 @@ export function validatePr03bCliArgs(argv = process.argv.slice(2)) {
   const runIdIndex = argv.indexOf('--run-id')
   const runId = runIdIndex >= 0 ? argv[runIdIndex + 1] : null
 
+  const cleanResiduals = argv.includes('--clean-residuals')
+
   return Object.freeze({
     authorized: isAuthorized,
     dryRun: isDryRun,
     scope,
     projectRef,
     runId,
+    cleanResiduals,
   })
 }
 
@@ -310,6 +314,18 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
       query_timeout: 15000,
       application_name: `kiosko-pr03b-${runId.slice(0, 8)}`,
     })
+
+    // 4.1 Limpieza quirúrgica opcional de residuos sintéticos de intentos previos abortados
+    if (options.cleanResiduals) {
+      await cleanSyntheticResiduals(client1, {
+        syntheticKioskId,
+        syntheticCuit,
+        syntheticPv,
+        credId,
+        certSha,
+        rev,
+      })
+    }
 
     // 5. FASE B — PREFLIGHT BASE READ ONLY
     await client1.query('BEGIN TRANSACTION READ ONLY')
@@ -584,7 +600,7 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
 
     // Observar determinísticamente vía pg_locks que Worker B está esperando el lock de A
     let waitObserved = false
-    const waitDeadline = Date.now() + 2000
+    const waitDeadline = Date.now() + 5000
     while (Date.now() < waitDeadline) {
       if (workerBFinished) break
       try {

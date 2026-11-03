@@ -221,6 +221,17 @@ export function buildManifestCleanupSql(
     revision?: number
   }
 ): string
+export function cleanSyntheticResiduals(
+  client: { query: (sql: string, params?: readonly unknown[]) => Promise<unknown> },
+  opts?: {
+    syntheticPv?: number
+    syntheticKioskId?: string
+    syntheticCuit?: string
+    credId?: string
+    certSha?: string
+    rev?: number
+  }
+): Promise<void>
 export function verifyIdempotencyReplay(first: unknown, replay: unknown): Pr03bIdempotencyReplayResult
 export function verifyIdempotencyConflict(error: unknown): Pr03bIdempotencyConflictResult
 export function verifyConcurrencySinglePendingReservation(check: unknown): Pr03bConcurrencyLockResult

@@ -2,6 +2,7 @@
 [CmdletBinding()]
 param(
     [switch]$DryRun,
+    [switch]$CleanResiduals,
     [string]$CaCert = 'C:\Users\jonat\Downloads\prod-ca-2021.crt'
 )
 
@@ -112,11 +113,17 @@ try {
     $env:PGPASSWORD = $dbPassword
     $dbPassword = $null
 
+    $extraArgs = @()
+    if ($CleanResiduals) {
+        $extraArgs += '--clean-residuals'
+    }
+
     try {
         & $node (Join-Path $PSScriptRoot 'execute-pr03-b-staging.mjs') `
             --authorized `
             --scope PR03_B_STAGING_ACCEPTANCE `
-            --project-ref acoyfwwmhaeruciyedri
+            --project-ref acoyfwwmhaeruciyedri `
+            @extraArgs
     }
     finally {
         $env:PGPASSWORD = $null

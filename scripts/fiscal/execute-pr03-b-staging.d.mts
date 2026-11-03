@@ -21,6 +21,7 @@ export interface Pr03bCliArgs {
   readonly scope: string
   readonly projectRef: string
   readonly runId: string | null
+  readonly cleanResiduals?: boolean
 }
 
 export interface Pr03bExecutionOptions {
@@ -35,6 +36,7 @@ export interface Pr03bExecutionOptions {
   readonly syntheticOwnerAuthId?: string
   readonly syntheticPv?: number
   readonly allowSyntheticKiosk?: boolean
+  readonly cleanResiduals?: boolean
 }
 
 export interface Pr03bDryRunResult {
