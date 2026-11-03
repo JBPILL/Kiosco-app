@@ -9,7 +9,9 @@ import {
   PR03_B_APPROVED_CUIT,
   PR03_B_APPROVED_KIOSK_ID,
   PR03_B_APPROVED_OWNER_AUTH_ID,
+  PR03_B_APPROVED_PUNTO_VENTA,
   PR03_B_SCOPE,
+  createPr03bScopedFixture,
 } from '../../scripts/fiscal/plan-pr03-b-staging.mjs'
 import {
   PR03_B_EXECUTION_TARGET,
@@ -22,6 +24,7 @@ const containerName = `pg17_pr03b_${randomUUID().replace(/-/g, '').slice(0, 12)}
 const postgresPassword = 'IntegrationTestPassword123!'
 
 let adminClient: Client | null = null
+let testSale1Id = ''
 
 function isDockerAvailable(): boolean {
   try {
@@ -136,6 +139,7 @@ describe.skipIf(!dockerRunning)('PR03-B Real PostgreSQL 17 Integration Tests', (
       'supabase/pilot-fiscal/010_fiscal_return_exclusion.sql',
       'supabase/pilot-fiscal/011_fiscal_owner_review.sql',
       'supabase/pilot-fiscal/012_fiscal_preparation.sql',
+      'supabase/pilot-fiscal/054_close_legacy_preparation_entry.sql',
     ]) {
       const sql = readFileSync(fiscalFile, 'utf8')
       await adminClient.query(sql)
@@ -155,6 +159,7 @@ describe.skipIf(!dockerRunning)('PR03-B Real PostgreSQL 17 Integration Tests', (
     const certSha = '0'.repeat(64)
     const sale1Id = randomUUID()
     const sale2Id = randomUUID()
+    const productId = randomUUID()
 
     // Auth user para el dueño
     await adminClient.query('INSERT INTO auth.users(id) VALUES ($1)', [PR03_B_APPROVED_OWNER_AUTH_ID])
@@ -172,14 +177,36 @@ describe.skipIf(!dockerRunning)('PR03-B Real PostgreSQL 17 Integration Tests', (
       [ownerUserId, PR03_B_APPROVED_OWNER_AUTH_ID, PR03_B_APPROVED_KIOSK_ID]
     )
 
-    // Emisor en PV 2 (inhabilitado)
+    // Producto sintético activo
+    await adminClient.query(
+      `INSERT INTO public.productos(id, kiosco_id, descripcion, precio_venta, activo)
+       VALUES ($1, $2, 'Producto Ensayo PR03-B', 150.00, true)`,
+      [productId, PR03_B_APPROVED_KIOSK_ID]
+    )
+
+    // Emisor en PV 2 habilitado para la ventana de preparación
     await adminClient.query(
       `INSERT INTO public.fiscal_emisores_homologacion(kiosco_id, cuit_emisor, punto_venta, credencial_id, certificado_sha256, habilitado)
-       VALUES ($1, $2, 2, $3, $4, false)`,
+       VALUES ($1, $2, 2, $3, $4, true)`,
       [PR03_B_APPROVED_KIOSK_ID, PR03_B_APPROVED_CUIT, credentialId, certSha]
     )
 
-    // Dos ventas sintéticas completadas propias para el ensayo
+    // Catálogo revisión 3 habilitado y vigente (vence_en > now())
+    await adminClient.query(`
+      INSERT INTO public.fiscal_parametros_homologacion(
+        revision, condiciones, alicuotas, fuente_sha256, consultado_en, vence_en, habilitado
+      ) VALUES (
+        3,
+        '[{"id": 5, "descripcion": "Consumidor Final", "comprobantes": [1, 6, 11]}]'::jsonb,
+        '[]'::jsonb,
+        repeat('a', 64),
+        clock_timestamp() - interval '1 hour',
+        clock_timestamp() + interval '23 hours',
+        true
+      )
+    `)
+
+    // Dos ventas sintéticas completadas propias para el ensayo con detalles_venta
     await adminClient.query(
       `INSERT INTO public.ventas(id, kiosco_id, usuario_id, notas, estado, total, fecha_hora)
        VALUES ($1, $2, $3, 'Ensayo PR03-B 1', 'COMPLETADA', 150.00, clock_timestamp())`,
@@ -191,6 +218,16 @@ describe.skipIf(!dockerRunning)('PR03-B Real PostgreSQL 17 Integration Tests', (
        VALUES ($1, $2, $3, 'Ensayo PR03-B 2', 'COMPLETADA', 200.00, clock_timestamp())`,
       [sale2Id, PR03_B_APPROVED_KIOSK_ID, ownerUserId]
     )
+
+    await adminClient.query(
+      `INSERT INTO public.detalles_venta(id, venta_id, producto_id, cantidad, precio_unitario, subtotal)
+       VALUES
+         (gen_random_uuid(), $1, $3, 1, 150.00, 150.00),
+         (gen_random_uuid(), $2, $3, 1, 200.00, 200.00)`,
+      [sale1Id, sale2Id, productId]
+    )
+
+    testSale1Id = sale1Id
   }, 120_000)
 
   afterAll(async () => {
@@ -200,6 +237,60 @@ describe.skipIf(!dockerRunning)('PR03-B Real PostgreSQL 17 Integration Tests', (
     // Detener y remover contenedor
     spawnSync('docker', ['stop', containerName], { encoding: 'utf8', timeout: 20_000 })
   }, 30_000)
+
+  it('demonstrates legacy preparation entry is rejected with SQLSTATE 42501 and private preparation route succeeds', async () => {
+    if (!adminClient) throw new Error('Admin client not connected')
+
+    const opId = randomUUID()
+    const fix = createPr03bScopedFixture(randomUUID(), {
+      operacionId: opId,
+      puntoVenta: PR03_B_APPROVED_PUNTO_VENTA,
+      ventaId: testSale1Id,
+      numero: 1,
+      total: '150.00',
+      revisionParametros: 3,
+    })
+
+    // 1. Invocar función legacy como authenticated: debe ser rechazada estrictamente con 42501
+    let legacySqlState: string | null = null
+    await adminClient.query('BEGIN')
+    await adminClient.query('SET LOCAL ROLE authenticated')
+    await adminClient.query("SELECT set_config('request.jwt.claim.sub', $1, true)", [PR03_B_APPROVED_OWNER_AUTH_ID])
+    await adminClient.query("SELECT set_config('request.jwt.claim.role', 'authenticated', true)")
+    try {
+      await adminClient.query(
+        'SELECT preparar_operacion_fiscal_homologacion($1, $2, $3, $4::jsonb) AS ack',
+        [fix.operacion_id, fix.kiosco_id, fix.venta_id, JSON.stringify(fix.contexto)]
+      )
+    } catch (err: unknown) {
+      const e = err as { code?: string; sqlState?: string }
+      legacySqlState = e?.code || e?.sqlState || null
+    } finally {
+      await adminClient.query('ROLLBACK')
+    }
+
+    expect(legacySqlState).toBe('42501')
+
+    // 2. Invocar ruta privada canónica guardar_datos_preparacion_homologacion como service_role: debe pasar
+    let privateAck: { operacion_id?: string; estado?: string } | null = null
+    await adminClient.query('BEGIN')
+    await adminClient.query('SET LOCAL ROLE service_role')
+    await adminClient.query("SELECT set_config('request.jwt.claim.role', 'service_role', true)")
+    await adminClient.query("SELECT set_config('request.jwt.claim.sub', '', true)")
+    try {
+      const res = await adminClient.query(
+        'SELECT guardar_datos_preparacion_homologacion($1, $2, $3, $4, $5) AS ack',
+        [PR03_B_APPROVED_OWNER_AUTH_ID, fix.venta_id, fix.operacion_id, fix.preparacion_canonico, fix.preparacion_sha256]
+      )
+      privateAck = res.rows[0]?.ack as { operacion_id?: string; estado?: string }
+    } finally {
+      await adminClient.query('ROLLBACK')
+    }
+
+    expect(privateAck).toBeDefined()
+    expect(privateAck?.operacion_id).toBe(fix.operacion_id)
+    expect(privateAck?.estado).toBe('DATOS_PREPARADOS')
+  })
 
   it('confirms PostgreSQL 17 engine version and fiscal schema deployment', async () => {
     if (!adminClient) throw new Error('Admin client not connected')

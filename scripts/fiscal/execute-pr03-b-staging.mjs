@@ -144,7 +144,17 @@ export function checkPr03bEnvironment() {
  * Fábrica por defecto de clientes PostgreSQL.
  */
 export async function defaultPgClientFactory(config) {
-  const client = new pg.Client(config)
+  let ssl = config.ssl
+  if (ssl && typeof ssl === 'object' && ssl.rejectUnauthorized && !ssl.ca) {
+    try {
+      const fs = await import('node:fs')
+      const caPath = 'C:/Users/jonat/Downloads/prod-ca-2021.crt'
+      if (fs.existsSync(caPath)) {
+        ssl = { ...ssl, ca: fs.readFileSync(caPath, 'utf8') }
+      }
+    } catch {}
+  }
+  const client = new pg.Client({ ...config, ssl })
   await client.connect()
   return client
 }
@@ -266,7 +276,7 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
       preflightRollbackConfirmed = true
     }
 
-    const preflightVerification = verifyPr03bPreflight(preflightData)
+    const preflightVerification = verifyPr03bPreflight(preflightData, { postPr03c: true })
     preflightPassed = preflightVerification.status === 'PASS'
     chosenSyntheticPv = preflightVerification.chosenSyntheticPv
     const syntheticSales = preflightVerification.syntheticSales
@@ -282,7 +292,7 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
 
     const fix1 = createPr03bScopedFixture(runId, {
       operacionId: op1Id,
-      puntoVenta: chosenSyntheticPv,
+      puntoVenta: PR03_B_APPROVED_PUNTO_VENTA,
       ventaId: syntheticSales[0].id,
       numero: 1,
       total: syntheticSales[0].total,
@@ -290,28 +300,23 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
 
     const fixConflict = createPr03bScopedFixture(runId, {
       operacionId: op1Id,
-      puntoVenta: chosenSyntheticPv,
+      puntoVenta: PR03_B_APPROVED_PUNTO_VENTA,
       ventaId: syntheticSales[0].id,
       numero: 1,
       total: syntheticSales[0].total,
       fecha: '20261101',
     })
 
-    // Preparar operación como DUEÑO autenticado
+    // Preparar operación mediante la ruta canónica privada como service_role
     await client1.query('BEGIN')
-    await client1.query('SET LOCAL ROLE authenticated')
-    await client1.query("SELECT set_config('request.jwt.claim.sub', $1, true)", [PR03_B_APPROVED_OWNER_AUTH_ID])
-    await client1.query("SELECT set_config('request.jwt.claim.role', 'authenticated', true)")
-
-    await client1.query(
-      'SELECT preparar_operacion_fiscal_homologacion($1, $2, $3, $4::jsonb) AS ack',
-      [fix1.operacion_id, fix1.kiosco_id, fix1.venta_id, JSON.stringify(fix1.contexto)]
-    )
-
-    // Cambiar a service_role para persistir solicitud y reservar
     await client1.query('SET LOCAL ROLE service_role')
     await client1.query("SELECT set_config('request.jwt.claim.role', 'service_role', true)")
     await client1.query("SELECT set_config('request.jwt.claim.sub', '', true)")
+
+    await client1.query(
+      'SELECT guardar_datos_preparacion_homologacion($1, $2, $3, $4, $5) AS ack',
+      [PR03_B_APPROVED_OWNER_AUTH_ID, fix1.venta_id, fix1.operacion_id, fix1.preparacion_canonico, fix1.preparacion_sha256]
+    )
 
     const req1 = await client1.query(
       'SELECT persistir_solicitud_fiscal_homologacion($1, $2, $3, $4, clock_timestamp()) AS ack',
@@ -370,7 +375,7 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
 
     const fixA = createPr03bScopedFixture(runId, {
       operacionId: opAId,
-      puntoVenta: chosenSyntheticPv,
+      puntoVenta: PR03_B_APPROVED_PUNTO_VENTA,
       ventaId: syntheticSales[0].id,
       numero: 1,
       total: syntheticSales[0].total,
@@ -378,21 +383,21 @@ export async function executePr03bStaging(rawOptions = {}, deps = {}) {
 
     const fixB = createPr03bScopedFixture(runId, {
       operacionId: opBId,
-      puntoVenta: chosenSyntheticPv,
+      puntoVenta: PR03_B_APPROVED_PUNTO_VENTA,
       ventaId: syntheticSales[1].id,
       numero: 1,
       total: syntheticSales[1].total,
     })
 
-    // Preparar ambas operaciones bajo DUEÑO autenticado
+    // Preparar ambas operaciones mediante la ruta canónica privada como service_role
     for (const [cli, fix] of [[client1, fixA], [client2, fixB]]) {
       await cli.query('BEGIN')
-      await cli.query('SET LOCAL ROLE authenticated')
-      await cli.query("SELECT set_config('request.jwt.claim.sub', $1, true)", [PR03_B_APPROVED_OWNER_AUTH_ID])
-      await cli.query("SELECT set_config('request.jwt.claim.role', 'authenticated', true)")
+      await cli.query('SET LOCAL ROLE service_role')
+      await cli.query("SELECT set_config('request.jwt.claim.role', 'service_role', true)")
+      await cli.query("SELECT set_config('request.jwt.claim.sub', '', true)")
       await cli.query(
-        'SELECT preparar_operacion_fiscal_homologacion($1, $2, $3, $4::jsonb) AS ack',
-        [fix.operacion_id, fix.kiosco_id, fix.venta_id, JSON.stringify(fix.contexto)]
+        'SELECT guardar_datos_preparacion_homologacion($1, $2, $3, $4, $5) AS ack',
+        [PR03_B_APPROVED_OWNER_AUTH_ID, fix.venta_id, fix.operacion_id, fix.preparacion_canonico, fix.preparacion_sha256]
       )
       await cli.query('COMMIT')
     }

@@ -189,17 +189,64 @@ export function createPr03bTestFixture(opts = {}) {
 }
 
 /**
+ * Construye el objeto canónico de preparación fiscal (5 claves estrictas) y su digest SHA-256
+ * conforme a guardar_datos_preparacion_homologacion (012_fiscal_preparation.sql).
+ */
+export function buildCanonicalFiscalPreparation(params) {
+  const formattedTotal = Number(params.total).toFixed(2)
+  const datos = {
+    version: 1,
+    entorno: 'HOMOLOGACION',
+    cuitEmisor: params.cuitEmisor,
+    puntoVenta: params.puntoVenta,
+    tipoComprobante: params.tipoComprobante ?? PR03_B_APPROVED_TIPO_COMPROBANTE,
+    concepto: params.concepto ?? 1,
+    tipoDocumento: params.tipoDocumento ?? 99,
+    numeroDocumento: params.numeroDocumento ?? '0',
+    condicionIvaReceptor: params.condicionIvaReceptor ?? 5,
+    fecha: params.fecha ?? '20261102',
+    servicioDesde: null,
+    servicioHasta: null,
+    vencimientoPago: null,
+    moneda: 'PES',
+    cotizacion: '1',
+    importes: {
+      total: formattedTotal,
+      neto: formattedTotal,
+      iva: '0.00',
+      noGravado: '0.00',
+      exento: '0.00',
+      tributos: '0.00',
+    },
+    iva: [],
+    tributos: [],
+  }
+  const root = {
+    version: 1,
+    venta_id: params.ventaId,
+    condicionEmisor: params.condicionEmisor ?? 'MONOTRIBUTO',
+    revision_parametros: params.revisionParametros ?? 3,
+    datos,
+  }
+  const canonical = canonicalJson(root)
+  const sha256 = computeSha256(canonical)
+  return { preparation: root, canonical, sha256 }
+}
+
+/**
  * Crea un fixture de ejecución PR03-B sobre una serie y venta sintética auditada.
- * Respeta rigurosamente los 6 campos canónicos de preparar_operacion_fiscal_homologacion.
+ * Provee la estructura canónica para guardar_datos_preparacion_homologacion (ruta privada)
+ * y persistir_solicitud_fiscal_homologacion.
  */
 export function createPr03bScopedFixture(runId, opts = {}) {
   validateCleanupRunId(runId)
   const operacionId = opts.operacionId ?? randomUUID()
   const ventaId = opts.ventaId ?? randomUUID()
-  const total = opts.total ?? '150.00'
+  const total = Number(opts.total ?? '150.00').toFixed(2)
   const fecha = opts.fecha ?? '20261102'
   const numero = opts.numero ?? 1
   const puntoVenta = opts.puntoVenta ?? 9999
+  const revisionParametros = opts.revisionParametros ?? 3
 
   const canonicalReq = buildCanonicalFiscalRequest({
     cuitEmisor: PR03_B_APPROVED_CUIT,
@@ -210,7 +257,17 @@ export function createPr03bScopedFixture(runId, opts = {}) {
     fecha,
   })
 
-  // Estricto: sólo los 6 campos canónicos admitidos por la función SQL
+  const canonicalPrep = buildCanonicalFiscalPreparation({
+    ventaId,
+    total,
+    cuitEmisor: PR03_B_APPROVED_CUIT,
+    puntoVenta,
+    tipoComprobante: PR03_B_APPROVED_TIPO_COMPROBANTE,
+    revisionParametros,
+    fecha,
+  })
+
+  // 6 campos canónicos de compatibilidad de contexto
   const context = {
     version: 1,
     cuit_emisor: PR03_B_APPROVED_CUIT,
@@ -231,7 +288,11 @@ export function createPr03bScopedFixture(runId, opts = {}) {
     operacion_id: operacionId,
     venta_id: ventaId,
     total,
+    revision_parametros: revisionParametros,
     contexto: context,
+    preparacion: canonicalPrep.preparation,
+    preparacion_canonico: canonicalPrep.canonical,
+    preparacion_sha256: canonicalPrep.sha256,
     solicitud: canonicalReq.request,
     cuerpo_canonico: canonicalReq.canonical,
     solicitud_sha256: canonicalReq.sha256,
@@ -264,7 +325,8 @@ export const PR03_B_PREFLIGHT_SELECT_SQL = `SELECT jsonb_build_object(
     SELECT habilitado FROM public.fiscal_emisores_homologacion WHERE cuit_emisor = $2 AND punto_venta = $3
   ), false),
   'unexpected_enabled_issuers', (
-    SELECT count(*)::int FROM public.fiscal_emisores_homologacion WHERE habilitado = true
+    SELECT count(*)::int FROM public.fiscal_emisores_homologacion
+    WHERE habilitado = true AND (cuit_emisor <> $2 OR punto_venta <> $3)
   ),
   'pos_present', EXISTS (
     SELECT 1 FROM public.fiscal_emisores_homologacion WHERE punto_venta = $3 AND cuit_emisor = $2
@@ -314,7 +376,7 @@ export const PR03_B_PREFLIGHT_SELECT_SQL = `SELECT jsonb_build_object(
  * Validador del resultado del preflight READ ONLY.
  * Descubre ventas sintéticas independientes y selecciona una serie sintética completamente ausente.
  */
-export function verifyPr03bPreflight(raw) {
+export function verifyPr03bPreflight(raw, opts = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('PR03_B_PREFLIGHT_INVALID')
   }
@@ -322,11 +384,18 @@ export function verifyPr03bPreflight(raw) {
   if (d.transaction_read_only !== 'on') throw new Error('PR03_B_PREFLIGHT_NOT_READ_ONLY')
   if (!d.kiosk_active) throw new Error('PR03_B_PREFLIGHT_KIOSK_INACTIVE')
   if (!d.expected_issuer_present) throw new Error('PR03_B_PREFLIGHT_ISSUER_NOT_FOUND')
-  if (d.expected_issuer_enabled !== false) throw new Error('PR03_B_PREFLIGHT_ISSUER_ENABLED')
   if (d.unexpected_enabled_issuers !== 0) throw new Error('PR03_B_PREFLIGHT_UNEXPECTED_ENABLED_ISSUERS')
   if (!d.pos_present) throw new Error('PR03_B_PREFLIGHT_POS_NOT_FOUND')
-  if (d.catalog_rev3_exists) throw new Error('PR03_B_PREFLIGHT_CATALOG_REV3_EXISTS')
   if (d.residual_fixtures_count !== 0) throw new Error('PR03_B_PREFLIGHT_RESIDUAL_FIXTURES_FOUND')
+
+  const postPr03c = opts.postPr03c ?? false
+  if (postPr03c) {
+    if (d.expected_issuer_enabled !== true) throw new Error('PR03_B_PREFLIGHT_ISSUER_NOT_ENABLED')
+    if (!d.catalog_rev3_exists) throw new Error('PR03_B_PREFLIGHT_CATALOG_REV3_REQUIRED')
+  } else {
+    if (d.expected_issuer_enabled !== false) throw new Error('PR03_B_PREFLIGHT_ISSUER_ENABLED')
+    if (d.catalog_rev3_exists) throw new Error('PR03_B_PREFLIGHT_CATALOG_REV3_EXISTS')
+  }
 
   // Validar ventas sintéticas auditadas
   const syntheticSales = Array.isArray(d.synthetic_sales) ? d.synthetic_sales : []
@@ -417,9 +486,12 @@ export function buildManifestCleanupSql(operationIds, opts = {}) {
 
   return `BEGIN;
 -- Limpieza quirúrgica acotada a operaciones del manifiesto de corrida PR03-B.
+ALTER TABLE public.fiscal_preparaciones_homologacion DISABLE TRIGGER fiscal_preparacion_inmutable;
 DELETE FROM public.fiscal_solicitudes_homologacion WHERE operacion_id IN (${idList});
 DELETE FROM public.fiscal_reservas_homologacion WHERE operacion_id IN (${idList});
+DELETE FROM public.fiscal_preparaciones_homologacion WHERE operacion_id IN (${idList});
 DELETE FROM public.fiscal_operaciones_homologacion WHERE id IN (${idList});${pvCleanup}
+ALTER TABLE public.fiscal_preparaciones_homologacion ENABLE TRIGGER fiscal_preparacion_inmutable;
 COMMIT;`
 }
 

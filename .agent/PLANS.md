@@ -664,3 +664,22 @@ bajo aislamiento `REPEATABLE READ READ ONLY` y `ROLLBACK` obligatorio:
 - Requisitos acreditados: 6/9.
 - Pendientes: PR03-B (idempotencia y reserva de numeración) y PR03-C (catálogo 3 bajo GO).
 - PR03 permanece PARCIAL. PR02 permanece PENDIENTE. Sin mutaciones ni llamadas a ARCA.
+
+
+### 2026-11-02 - Reclasificación de orden de gates PR03 (PR03-A -> PR03-C -> PR03-B)
+
+Tras la ejecución controlada y segura bajo FAIL-CLOSED del intento PR03-B en Staging:
+- Se confirmó que la entrada legacy `preparar_operacion_fiscal_homologacion` está cerrada deliberadamente por migración 054 (`SQLSTATE 42501`).
+- La ruta canónica y activa es `public.guardar_datos_preparacion_homologacion`, la cual depende de `cargar_datos_preparacion_homologacion`.
+- `cargar_datos_preparacion_homologacion` exige estrictamente:
+  1. Venta sintética completada válida sin CAE;
+  2. Emisor fiscal homologación habilitado (`habilitado = true`);
+  3. Parámetros fiscales vigentes (`vence_en > clock_timestamp()`).
+- Dado que el catálogo revisión 2 está expirado y el emisor se encuentra inactivo, PR03-B está bloqueado técnicamente hasta que exista la revisión 3 vigente.
+- Nuevo orden de ejecución formal: `PR03-A -> PR03-C -> PR03-B`.
+- Estado de acreditación: `PR03_REQUIREMENTS_PASS = 6/9`.
+- Estado de sub-gates:
+  - `PR03_A = PASS`
+  - `PR03_B = BLOCKED_BY_PR03_C`
+  - `PR03_C = NEXT_GATE`
+- Cero llamadas ARCA, cero mutaciones comerciales, PR02 permanece PENDIENTE.

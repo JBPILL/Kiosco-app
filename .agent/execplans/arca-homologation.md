@@ -4881,3 +4881,15 @@ bajo `REPEATABLE READ READ ONLY` y `ROLLBACK` forzado:
 Estado del gate: 6 de 9 requisitos de PR03 acreditados (cuerpo inmutable, conciliación,
 recuperación sin duplicados, custodia, emisor y punto de venta). PR03 permanece PARCIAL.
 PR02 permanece PENDIENTE. Cero mutaciones comerciales y cero llamadas a ARCA.
+
+
+### 2026-11-02 — Reclasificación de orden de gates PR03 (PR03-A -> PR03-C -> PR03-B)
+
+Tras el intento de ejecución de PR03-B bajo FAIL-CLOSED, se confirmó que:
+1. `preparar_operacion_fiscal_homologacion` está cerrada deliberadamente (migración 054).
+2. La ruta privada activa `guardar_datos_preparacion_homologacion` depende de `cargar_datos_preparacion_homologacion`.
+3. Esta última requiere parámetros fiscales vigentes y emisor fiscal habilitado.
+4. Con el catálogo revisión 2 expirado, PR03-B está bloqueado hasta que PR03-C renueve y provea el catálogo revisión 3.
+5. Nuevo orden formal de precedencia: `PR03-A -> PR03-C -> PR03-B`.
+6. Estado: `PR03_REQUIREMENTS_PASS = 6/9`, `PR03_B = BLOCKED_BY_PR03_C`, `PR03_C = NEXT_GATE`.
+7. Cero llamadas ARCA, cero comprobantes emitidos, PR02 permanece PENDIENTE.

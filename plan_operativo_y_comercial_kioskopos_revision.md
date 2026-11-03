@@ -85,7 +85,7 @@ por el titular hasta contar con cliente; no se consideran probados ni aprobados.
 |---|---|---|---|
 | PR01 | WSAA/WSFE homologación: certificado/par original y vigencia; autorización del servicio; TRA/CMS válidos; Token/Sign y expiración reales sin exposición; consulta autenticada no transaccional a WSFE con CUIT representado; errores SOAP/negocio explícitos. | PASS de diagnóstico real el 20/10: certificado/par, WSASS, WSAA y consulta FEParamGetTiposCbte autenticada devolviendo 36 tipos; cero comprobantes emitidos. FEParamGetPtosVenta respondió antes 602 (sin datos), conservado como evidencia. No acredita disponibilidad del punto 2 ni CAE; esos requisitos siguen en PR02. Evidencia: diagnóstico cc199d5, ejecución autorizada, credenciales sólo en memoria. | ExecPlan arca-homologation; docs/arca-homologacion. |
 | PR02 | CAE real de homologación: respuesta autorizada de WSFE, número, tipo, punto de venta, importes, vencimiento y QR coherentes; persistencia y recuperación por FECompConsultar; rechazo no presentado como autorizado; ninguna simulación de CAE. | PENDIENTE. Preparar la prueba reproducible y pedir la autorización requerida antes de emitir un comprobante, incluso de homologación. | PR01 y contrato seguro de PR03. |
-| PR03 | Idempotencia y robustez fiscal: operación durable por venta/entorno, cuerpo inmutable y control de permisos; reserva/lock de numeración por CUIT/punto/tipo; mismo reintento no duplica; respuesta incierta se reconcilia antes de reenviar; importes/IVA/fechas/XML y caché/renovación de TA validados. | PARCIAL: PR03-A (custodia fiscal segura, emisor inactivo y punto de venta 2/tipo 11) verificado PASS en Staging acoyfwwmhaeruciyedri en REPEATABLE READ READ ONLY con ROLLBACK. 6/9 requisitos acreditados: cuerpo inmutable, conciliación, recuperación sin duplicados, custodia, emisor y punto de venta. Pendientes: PR03-B (idempotencia y numeración en Staging) y PR03-C (catálogo 3 y provisión bajo GO). | PR01; debe satisfacer invariantes antes de PR02 end-to-end. |
+| PR03 | Idempotencia y robustez fiscal: operación durable por venta/entorno, cuerpo inmutable y control de permisos; reserva/lock de numeración por CUIT/punto/tipo; mismo reintento no duplica; respuesta incierta se reconcilia antes de reenviar; importes/IVA/fechas/XML y caché/renovación de TA validados. | PARCIAL: PR03-A verificado PASS en Staging (6/9 requisitos acreditados). Orden interno reclasificado a PR03-A -> PR03-C -> PR03-B por dependencia canónica de parámetros fiscales vigentes y emisor habilitado. PR03-B bloqueado por PR03-C. PR03-C es el siguiente gate. | PR01; debe satisfacer invariantes antes de PR02 end-to-end. |
 | PR04 | Contingencias ARCA/Internet: caída de WSAA/WSFE, timeout antes/después del commit, vencimiento de TA, reconexión y reintento controlado; estado comercial separado del fiscal; ticket pendiente claramente identificado, sin CAE inventado ni doble cobro. Definir operación, responsables y límites de contingencia. | PARCIAL: existe evidencia de recuperación de cobros comerciales; falta circuito fiscal real y aceptación del operador. No asumir que ticket interno sustituye un comprobante fiscal. | PR03, PR08; P08/P09/P17. |
 | PR05 | Integridad venta-stock-caja: venta/pagos/detalles/stock/kardex/costos/lotes/envases y caja coherentes; descuentos, cambio/devolución, anulación y caja cerrada; una solicitud produce un solo efecto y una reversa. Conciliar datos de ensayo e historia sin borrar/redondear movimientos. | PARCIAL: checkout, envases/devoluciones y ajuste de unidad cuentan con ensayos; completar matriz pendiente y revisar hallazgos de anulación antes de afirmar cierre. | P05/P06/P08/P18/P19; PR09. |
 | PR06 | Seguridad: JWT reales de Dueño/Cajero/Visor y otro comercio, DML directo rechazado, RLS/ACL efectivas, supervisor ligado a operación y límites de intentos, auditoría y retención; secretos/certificados sólo bajo custodia privada apropiada, nunca en frontend/logs/commits; dependencias y cambios revisados. | PARCIAL: auditoría npm 0 alertas tras parches Vite/source-map-js al 21/10. Contratos/pruebas locales no cierran la matriz hospedada; custodia y autorización fiscal de la futura pasarela pendientes. | P02/P03/P04/P07; ExecPlans F5/F6, supervisor y administración. |
@@ -1826,3 +1826,22 @@ Completada la verificación de lectura PR03-A en Staging `acoyfwwmhaeruciyedri` 
 - `PR03_REQUIREMENTS_PASS = 6/9` (inmutable, conciliación, no duplicación, custodia, emisor, punto de venta)
 - Pendientes: PR03-B (idempotencia y numeración en Staging) y PR03-C (catálogo 3 bajo GO).
 - PR03 permanece PARCIAL. PR02 permanece PENDIENTE. Cero mutaciones comerciales, cero llamadas ARCA.
+
+
+### Reclasificación de orden de gates PR03 — 02/11/2026
+
+Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
+- Se ratificó el cierre de la entrada legacy `preparar_operacion_fiscal_homologacion` (migración 054).
+- La ruta canónica privada `guardar_datos_preparacion_homologacion` depende funcionalmente de `cargar_datos_preparacion_homologacion`.
+- Requisitos estrictos de dicha ruta:
+  1. Parámetros fiscales vigentes (`vence_en > clock_timestamp()`);
+  2. Emisor fiscal habilitado (`emisor.habilitado = true`).
+- Con catálogo 2 expirado y emisor inactivo, PR03-B requiere la previa provisión y vigencia del catálogo revisión 3 (PR03-C).
+- Se reclasifica formalmente el orden de gates:
+  - Anterior: `PR03-A -> PR03-B -> PR03-C`
+  - Nuevo: `PR03-A -> PR03-C -> PR03-B`
+- Estado:
+  - `PR03_REQUIREMENTS_PASS = 6/9`
+  - `PR03_B = BLOCKED_BY_PR03_C`
+  - `PR03_C = NEXT_GATE`
+- Cero llamadas ARCA, cero comprobantes emitidos, PR02 permanece PENDIENTE.

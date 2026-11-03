@@ -28,6 +28,18 @@ export interface Pr03bFixtureOptions {
   fecha?: string
   numero?: number
   puntoVenta?: number
+  revisionParametros?: number
+}
+
+export interface FiscalPreparationParams {
+  ventaId: string
+  total: string
+  cuitEmisor: string
+  puntoVenta: number
+  tipoComprobante?: number
+  revisionParametros?: number
+  condicionEmisor?: string
+  fecha?: string
 }
 
 export interface Pr03bTestFixture {
@@ -56,7 +68,11 @@ export interface Pr03bTestFixture {
 
 export interface Pr03bScopedFixture extends Pr03bTestFixture {
   readonly run_id: string
+  readonly revision_parametros: number
   readonly contexto: Record<string, unknown>
+  readonly preparacion: Record<string, unknown>
+  readonly preparacion_canonico: string
+  readonly preparacion_sha256: string
 }
 
 export interface Pr03bIdempotencyReplayResult {
@@ -148,6 +164,11 @@ export function computeSha256(content: string): string
 export function validateCleanupRunId(runId: unknown): boolean
 export function buildCanonicalFiscalRequest(params: FiscalRequestParams): {
   request: Record<string, unknown>
+  canonical: string
+  sha256: string
+}
+export function buildCanonicalFiscalPreparation(params: FiscalPreparationParams): {
+  preparation: Record<string, unknown>
   canonical: string
   sha256: string
 }

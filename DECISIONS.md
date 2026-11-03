@@ -1673,3 +1673,29 @@ Acreditar como PASS el tramo PR03-A (`PR03_A = PASS`, `FISCAL_CUSTODY = PASS`, `
 Se alcanzan 6 de los 9 requisitos de PR03 acreditados (cuerpo inmutable, conciliación, recuperación sin duplicados,
 custodia, emisor y punto de venta). El gate PR03 permanece PARCIAL y PR02 PENDIENTE. Se autoriza la preparación
 local del tramo PR03-B (idempotencia, reserva de numeración y concurrencia sin ARCA).
+
+
+### Reclasificación de orden de gates: PR03-C previo a PR03-B por dependencia canónica de parámetros y emisor — 02/11/2026
+
+**Contexto:**
+Durante el intento de ejecución de PR03-B en Staging con el runner bajo GO explícito, la llamada a la función
+de preparación falló con `SQLSTATE 42501` (`permission denied for function preparar_operacion_fiscal_homologacion`).
+La auditoría del esquema reveló que la migración `054_close_legacy_preparation_entry.sql` revocó deliberadamente
+todos los permisos de ejecución de dicha función para roles de aplicación, canalizando la preparación de operaciones
+exclusivamente a través de `guardar_datos_preparacion_homologacion`. Esta función canónica invoca internamente
+`cargar_datos_preparacion_homologacion`, la cual exige parámetros fiscales vigentes (`vence_en > clock_timestamp()`)
+y emisor fiscal habilitado (`emisor.habilitado = true`).
+
+**Decisión:**
+1. Mantener cerrada la función legacy `preparar_operacion_fiscal_homologacion` sin alterar la migración 054.
+2. Reclasificar el orden de precedencia dentro del gate PR03:
+   - Orden previo: `PR03-A -> PR03-B -> PR03-C`
+   - Orden formal nuevo: `PR03-A -> PR03-C -> PR03-B`
+3. Fijar el estado de PR03-B como `BLOCKED_BY_PR03_C` y designar a PR03-C como `NEXT_GATE`.
+4. Adaptar el runner PR03-B para utilizar exclusivamente la ruta privada canónica `guardar_datos_preparacion_homologacion`
+   invocada con rol `service_role`.
+
+**Consecuencias:**
+Se preserva la seguridad estricta del esquema sin degradar controles ni introducir atajos no autorizados.
+PR03 permanece en 6/9 requisitos acreditados. PR03-C debe planificar la renovación y provisión de la revisión 3
+del catálogo y la ventana controlada para habilitación temporal del emisor, sin emitir comprobantes (`FECAESolicitar = 0`).

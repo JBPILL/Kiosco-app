@@ -62,9 +62,9 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
       expect(fixture.solicitud_sha256).toMatch(/^[0-9a-f]{64}$/)
     })
 
-    it('creates scoped fixture respecting strictly canonical 6 context keys', () => {
+    it('creates scoped fixture respecting canonical 5 preparation keys and private preparation route', () => {
       const runId = 'a1b2c3d4-e5f6-4a1b-8c2d-123456789abc'
-      const scoped = createPr03bScopedFixture(runId, { puntoVenta: 9999, total: '150.00', numero: 1 })
+      const scoped = createPr03bScopedFixture(runId, { puntoVenta: 9999, total: '150.00', numero: 1, revisionParametros: 3 })
 
       expect(scoped.run_id).toBe(runId)
       expect(scoped.punto_venta).toBe(9999)
@@ -76,15 +76,17 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
         tipo_doc_receptor: 99,
         nro_doc_receptor: '0',
       })
-      // Prohibir claves extra que rompan el contrato SQL de preparar_operacion_fiscal_homologacion
-      expect(Object.keys(scoped.contexto).sort()).toEqual([
-        'cuit_emisor',
-        'nro_doc_receptor',
-        'punto_venta',
-        'tipo_comprobante',
-        'tipo_doc_receptor',
+      // 5 claves estrictas de guardar_datos_preparacion_homologacion
+      expect(Object.keys(scoped.preparacion).sort()).toEqual([
+        'condicionEmisor',
+        'datos',
+        'revision_parametros',
+        'venta_id',
         'version',
       ])
+      // El objeto datos de preparación no debe contener el campo 'numero'
+      expect(scoped.preparacion.datos).not.toHaveProperty('numero')
+      expect(scoped.preparacion_sha256).toMatch(/^[0-9a-f]{64}$/)
       expect(scoped.metadata.run_id).toBe(runId)
       expect(scoped.total).toBe('150.00')
     })
@@ -429,10 +431,10 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
                       observed_at: new Date().toISOString(),
                       kiosk_active: true,
                       expected_issuer_present: true,
-                      expected_issuer_enabled: false,
+                      expected_issuer_enabled: true,
                       unexpected_enabled_issuers: 0,
                       pos_present: true,
-                      catalog_rev3_exists: false,
+                      catalog_rev3_exists: true,
                       residual_fixtures_count: 0,
                       synthetic_sales: [
                         { id: '11111111-1111-4111-8111-111111111111', kiosco_id: PR03_B_APPROVED_KIOSK_ID, total: '150.00', estado: 'COMPLETADA' },
@@ -469,16 +471,15 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
               }
             }
 
-            if (sql.includes('preparar_operacion_fiscal_homologacion')) {
+            if (sql.includes('guardar_datos_preparacion_homologacion')) {
               return {
                 rows: [
                   {
                     ack: {
-                      id: params ? params[0] : 'op-1',
-                      kiosco_id: PR03_B_APPROVED_KIOSK_ID,
-                      venta_id: params ? params[2] : 'venta-1',
-                      entorno: 'HOMOLOGACION',
-                      estado: 'PREPARADA',
+                      operacion_id: params ? params[2] : 'op-1',
+                      venta_id: params ? params[1] : 'venta-1',
+                      preparacion_sha256: params ? params[4] : 'sha-prep',
+                      estado: 'DATOS_PREPARADOS',
                       emision_habilitada: false,
                     },
                   },
