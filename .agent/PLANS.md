@@ -694,3 +694,14 @@ Preparación local y formal de contratos, paquete y runner para PR03-C:
 - **Inmutabilidad y Requisito Insert-Only**: Revisión 2 se mantiene inalterada (`REVISION_2_MUTATED = false`); Revisión 3 es insert-only y arranca deshabilitada (`habilitado = false`).
 - **Emisor**: Permanece inactivo durante PR03-C (`EMITTER_ENABLE_DURING_PR03_C = false`); su ventana temporal se reservará exclusivamente para PR03-B (`EMITTER_ENABLE_REQUIRED_FOR_PR03_B = true`).
 - **Estado del gate**: `PR03_C_PREPARATION = PASS`, pendiente de GO explícito del titular para ejecución remota. PR03 permanece PARCIAL (6/9). Cero mutaciones ni llamadas a ARCA ejecutadas.
+
+
+### 2026-11-03 - Implementación de Ejecutor Remoto PR03-C (Staging)
+
+Implementación del ejecutor remoto controlado para refresco de parámetros de homologación:
+- **Modos de ejecución explícitos**: Dry-run por defecto (`dryRun = true`, `authorized = false`, sin red ni escrituras). Ejecución real acotada estrictamente a `--authorized` junto con `--scope PR03_C_PARAMETER_REFRESH` y `--project-ref acoyfwwmhaeruciyedri`.
+- **Ruta y Allowlist de Transporte**: Secuencia estricta y única `LoginCms` (1) -> `FEParamGetTiposIva` (1) -> `FEParamGetCondicionIvaReceptor` (1). Máximo 3 llamadas totales (`MAX_ARCA_CALLS = 3`), 4ta llamada fatal / STOP. Auto-retry taxativamente prohibido (`AUTO_RETRY = false`).
+- **Bloqueo de emisión**: `FECAESolicitar`, `FECompConsultar`, `FECompUltimoAutorizado` y `FEParamGetPtosVenta` inalcanzables.
+- **Custodia y Secretos**: Reutiliza custodia acreditada sin exponer Token/Sign en logs/reportes (`SECRETS_IN_REPORTS = 0`).
+- **PostgreSQL Insert-Only**: Preflight en transacción READ ONLY (`REVISION_3_PREEXISTING = false`), INSERT acotado de revisión 3 bajo guards criptográficos de plan y target, y postcheck READ ONLY verificando que el emisor continúa inactivo (`EXPECTED_ISSUER_ENABLED = false`) y la revisión 2 inalterada (`REVISION_2_IMMUTABILITY = PASS`).
+- **Estado**: `PR03_C_REMOTE_EXECUTION_READY = true`. PR03 permanece en 6/9 requisitos acreditados. Cero escrituras en Staging y cero llamadas a ARCA ejecutadas en este bloque (`ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`).

@@ -95,12 +95,23 @@ export const REVISION_2_MUTATED: false
 export const REVISION_3_INSERT_ONLY: true
 
 export const PR03_C_PREFLIGHT_SELECT_SQL: string
+export const PR03_C_POSTCHECK_SELECT_SQL: string
+
+export interface Pr03cPostcheckResult {
+  readonly status: 'PASS' | 'FAIL'
+  readonly rev3Exists: boolean
+  readonly rev3Enabled: boolean
+  readonly rev3HashMatch: boolean
+  readonly rev2Unchanged: boolean
+  readonly expectedIssuerEnabled: boolean
+}
 
 export function assertNoProhibitedOperation(operation: string): void
 export function isArcaOperationPermitted(operation: string): boolean
 export function createPr03cCallTracker(isTaReusable: boolean): Pr03cCallCounterTracker
 export function evaluateExistingTa(taRecord: unknown, now?: string | number | Date): Pr03cTaEvaluation
 export function verifyPr03cPreflight(raw: unknown): Pr03cPreflightResult
+export function verifyPr03cPostcheck(raw: unknown, expected?: { fuenteSha256?: string; rev2FuenteSha256?: string }): Pr03cPostcheckResult
 export function validateTiposIvaEvidence(text: string, expectedChecksum?: string): { count: number; hash: string; rates: unknown[] }
 export function validateCondicionIvaReceptorEvidence(text: string, expectedChecksum?: string): { count: number; hash: string; conditions: unknown[] }
 export function buildPr03cCanonicalRevision3(input: {

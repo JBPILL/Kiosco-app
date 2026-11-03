@@ -1857,3 +1857,14 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
 - Emisor fiscal permanece inactivo durante PR03-C (`EMITTER_ENABLE_DURING_PR03_C = false`).
 - Requisitos acreditados: 6/9. PR03 permanece PARCIAL. PR02 permanece PENDIENTE.
 - Cero llamadas ARCA ejecutadas, cero escrituras remotas. Preparación local lista para autorización.
+
+
+### Implementación de Ejecutor Remoto PR03-C (Staging) — 03/11/2026
+
+- Se implementó el ejecutor remoto en `scripts/fiscal/execute-pr03-c-staging.mjs` con dry-run por defecto.
+- Ejecución autorizada condicionada a `--authorized`, `--scope PR03_C_PARAMETER_REFRESH` y `--project-ref acoyfwwmhaeruciyedri`.
+- Allowlist de transporte limitada estrictamente a `LoginCms` (1), `FEParamGetTiposIva` (1) y `FEParamGetCondicionIvaReceptor` (1).
+- Máximo 3 llamadas ARCA totales (`MAX_ARCA_CALLS = 3`), auto-retry prohibido.
+- Transacciones PostgreSQL en Staging: Preflight READ ONLY, INSERT acotado de revisión 3, Postcheck READ ONLY.
+- Cero secretos expuestos en reportes (`SECRETS_IN_REPORTS = 0`).
+- Estado: `PR03_C_REMOTE_EXECUTION_READY = true`. PR03 permanece en 6/9 acreditados. Cero escrituras y cero llamadas ARCA ejecutadas.

@@ -4905,3 +4905,14 @@ Se preparó localmente el package de ejecución, plan y tests para PR03-C:
 5. Inserción de revisión 3 condicionada a no existencia previa (insert-only) y revisión 2 inmutable.
 6. Emisor permanece inactivo durante PR03-C (`EMITTER_ENABLE_DURING_PR03_C = false`).
 7. Requisitos PR03 acreditados: 6/9. PR03 permanece PARCIAL y PR02 PENDIENTE. Cero escrituras en Staging y cero llamadas a ARCA ejecutadas.
+
+
+### 2026-11-03 — Implementación del Ejecutor Remoto PR03-C (Staging)
+
+Se implementó el ejecutor remoto en `scripts/fiscal/execute-pr03-c-staging.mjs`:
+1. Modos explícitos: Dry-run por defecto. Ejecución remota autorizada requiere `--authorized --scope PR03_C_PARAMETER_REFRESH --project-ref acoyfwwmhaeruciyedri`.
+2. Allowlist estricta de transporte: `LoginCms` (1), `FEParamGetTiposIva` (1), `FEParamGetCondicionIvaReceptor` (1). Operaciones de emisión (`FECAESolicitar`, etc.) inalcanzables.
+3. Máximo 3 llamadas ARCA totales (`MAX_ARCA_CALLS = 3`), prohibición total de auto-retry.
+4. Transacciones PostgreSQL: Preflight READ ONLY comprobando ausencia de revisión 3 y emisor inactivo; INSERT acotado a revisión 3; Postcheck READ ONLY verificando hash y emisor inactivo.
+5. Token y Sign nunca expuestos en logs ni reportes (`SECRETS_IN_REPORTS = 0`).
+6. Estado: `PR03_C_REMOTE_EXECUTION_READY = true`. Cero escrituras en Staging y cero llamadas a ARCA ejecutadas en este bloque.

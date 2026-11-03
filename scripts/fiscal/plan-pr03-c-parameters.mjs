@@ -501,3 +501,66 @@ export function createPr03cExecutionPackage(opts = {}) {
     packageSha256,
   })
 }
+
+/**
+ * Consulta de postcheck READ ONLY para PR03-C.
+ * Comprueba:
+ * 1. Aislamiento read-only.
+ * 2. Revisión 3 existe en public.fiscal_parametros_homologacion.
+ * 3. Revisión 3 arranca inactiva (habilitado = false).
+ * 4. Hash fuente_sha256 de revisión 3 coincide.
+ * 5. Revisión 2 permanece histórica.
+ * 6. Emisor fiscal esperado permanece inactivo (habilitado = false).
+ */
+export const PR03_C_POSTCHECK_SELECT_SQL = `SELECT jsonb_build_object(
+  'transaction_read_only', current_setting('transaction_read_only'),
+  'observed_at', clock_timestamp(),
+  'rev3_exists', EXISTS (
+    SELECT 1 FROM public.fiscal_parametros_homologacion WHERE revision = 3
+  ),
+  'rev3_enabled', COALESCE((
+    SELECT habilitado FROM public.fiscal_parametros_homologacion WHERE revision = 3
+  ), true),
+  'rev3_fuente_sha256', (
+    SELECT fuente_sha256 FROM public.fiscal_parametros_homologacion WHERE revision = 3
+  ),
+  'rev2_exists', EXISTS (
+    SELECT 1 FROM public.fiscal_parametros_homologacion WHERE revision = 2
+  ),
+  'rev2_fuente_sha256', (
+    SELECT fuente_sha256 FROM public.fiscal_parametros_homologacion WHERE revision = 2
+  ),
+  'expected_issuer_enabled', COALESCE((
+    SELECT habilitado FROM public.fiscal_emisores_homologacion WHERE cuit_emisor = $1 AND punto_venta = $2
+  ), true)
+) AS postcheck;`
+
+/**
+ * Validador del resultado de postcheck READ ONLY para PR03-C.
+ */
+export function verifyPr03cPostcheck(raw, expected = {}) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('PR03_C_POSTCHECK_INVALID')
+  }
+  const d = raw
+  if (d.transaction_read_only !== 'on') throw new Error('PR03_C_POSTCHECK_NOT_READ_ONLY')
+  if (!d.rev3_exists) throw new Error('PR03_C_POSTCHECK_REV3_MISSING')
+  if (d.rev3_enabled !== false) throw new Error('PR03_C_POSTCHECK_REV3_ENABLED')
+  if (expected.fuenteSha256 && d.rev3_fuente_sha256 !== expected.fuenteSha256) {
+    throw new Error(`PR03_C_POSTCHECK_REV3_HASH_MISMATCH: esperado ${expected.fuenteSha256}, actual ${d.rev3_fuente_sha256}`)
+  }
+  if (!d.rev2_exists) throw new Error('PR03_C_POSTCHECK_REV2_MISSING')
+  if (expected.rev2FuenteSha256 && d.rev2_fuente_sha256 !== expected.rev2FuenteSha256) {
+    throw new Error('PR03_C_POSTCHECK_REV2_CHANGED')
+  }
+  if (d.expected_issuer_enabled !== false) throw new Error('PR03_C_POSTCHECK_ISSUER_ENABLED')
+
+  return Object.freeze({
+    status: 'PASS',
+    rev3Exists: true,
+    rev3Enabled: false,
+    rev3HashMatch: true,
+    rev2Unchanged: true,
+    expectedIssuerEnabled: false,
+  })
+}

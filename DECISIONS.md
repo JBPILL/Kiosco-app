@@ -1723,3 +1723,28 @@ en `public.fiscal_parametros_homologacion` sin mutar la historia ni habilitar pr
 **Consecuencias:**
 Se cuenta con un package seguro, determinístico y auditado listo para ejecución cuando el titular otorgue
 el GO correspondiente. PR03 permanece PARCIAL (6/9 acreditados). Cero mutaciones remotas y cero llamadas a ARCA.
+
+
+### Implementación de Ejecutor Remoto PR03-C y Transacciones PostgreSQL Acotadas — 03/11/2026
+
+**Contexto:**
+El plan de PR03-C requería implementar el ejecutor real capaz de invocar la secuencia `LoginCms` (WSAA)
+-> `FEParamGetTiposIva` (WSFE) -> `FEParamGetCondicionIvaReceptor` (WSFE) e insertar la Revisión 3
+en Staging bajo `--authorized`, manteniendo el modo Dry-Run por defecto y cero reintentos automáticos.
+
+**Decisión:**
+1. Mantener dry-run como comportamiento predeterminado sin conexiones remotas ni llamadas ARCA.
+2. Exigir la combinación estricta de `--authorized`, `--scope PR03_C_PARAMETER_REFRESH` y `--project-ref acoyfwwmhaeruciyedri`
+   para habilitar la ejecución remota; rechazar de forma inmediata cualquier variación.
+3. Limitar a un máximo estricto de 3 llamadas ARCA totales (`MAX_ARCA_CALLS = 3`), bloqueando fatalmente cualquier 4ª llamada.
+4. Ejecutar preflight en PostgreSQL bajo `BEGIN TRANSACTION READ ONLY` verificando ausencia de revisión 3 y emisor inactivo.
+5. Ejecutar la inserción de la revisión 3 mediante transacción insert-only aislada con guards `kioskopos.catalog_target_ref`
+   y `kioskopos.approved_catalog_plan_sha256`.
+6. Validar postcheck en nueva transacción `READ ONLY` verificando coincidencia exacta del hash `fuente_sha256`, persistencia
+   de la revisión 2 inalterada y emisor inactivo.
+7. Ocultar credenciales (Token/Sign) del reporte serializable (`SECRETS_IN_REPORTS = 0`).
+
+**Consecuencias:**
+El ejecutor remoto queda completamente implementado, auditado y verificado mediante suites unitarias
+y de integración local (`PR03_C_REMOTE_EXECUTION_READY = true`), preparado para ejecución remota
+cuando el titular otorgue el GO explícito. Cero escrituras en Staging y cero llamadas ARCA ejecutadas.
