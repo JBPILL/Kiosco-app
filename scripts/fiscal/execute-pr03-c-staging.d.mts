@@ -84,6 +84,7 @@ export interface Pr03cExecutionReport {
   readonly CATALOG_REVISIONS_AFTER_C2?: number[]
   readonly REV3_HASH_AFTER_C2?: string
   readonly REV3_ENABLED_AFTER_C2?: boolean
+  readonly CATALOG_ENABLE_ROWS_AFFECTED?: number
   readonly PG_CONNECTION_CLOSED: 'PASS' | 'FAIL' | 'NOT_APPLICABLE' | 'NOT_RUN'
 }
 

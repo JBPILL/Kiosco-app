@@ -99,6 +99,7 @@ export const REVISION_3_INSERT_ONLY: true
 
 export const PR03_C_PREFLIGHT_SELECT_SQL: string
 export const PR03_C_POSTCHECK_SELECT_SQL: string
+export const PR03_C_C2_GUARD_SQL: string
 export const PR03_C_C2_ENABLE_SQL: string
 export const PR03_C_POSTCHECK_C2_SELECT_SQL: string
 

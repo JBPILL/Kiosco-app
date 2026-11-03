@@ -109,8 +109,12 @@ function createMockPgClient(opts: MockPgOptions = {}) {
         const match = /,'([0-9a-f]{64})',/.exec(sql)
         if (match) postcheckData.rev3_fuente_sha256 = match[1]
       }
+      if (typeof sql === 'string' && sql.includes('guard_status')) {
+        return { rows: [{ guard_status: 'OK' }] }
+      }
       if (typeof sql === 'string' && sql.includes('UPDATE public.fiscal_parametros_homologacion')) {
         postcheckData.rev3_enabled = true
+        return { rows: [], rowCount: 1, affectedRows: 1 }
       }
       if (typeof sql === 'string' && sql.includes('postcheck_c2')) {
         return {
@@ -596,5 +600,32 @@ describe('PR03-C Remote Executor Suite', () => {
     expect(sql).toContain(`'${serverTimestamp}'::timestamptz`)
     expect(sql).toContain("DO $catalog_guard$")
     expect(sql).toContain(`IF clock_timestamp()<'${serverTimestamp}'::timestamptz`)
+  })
+
+  it('22. Ejecución C2 reporta CATALOG_ENABLE_ROWS_AFFECTED = 1 y ejecuta guard previo sin error de prepared statement múltiple', async () => {
+    const mockPg = createMockPgClient({ rev3Preexisting: true })
+    const report = await executePr03cStaging(
+      { authorized: true, scope: PR03_C2_SCOPE, projectRef: PR03_C_TARGET_PROJECT_REF },
+      {
+        pgClient: mockPg,
+        clock: new Date('2026-11-03T02:00:00Z'),
+      }
+    )
+
+    expect(report.SCOPE).toBe(PR03_C2_SCOPE)
+    expect(report.REVISION_3_C2_ENABLE).toBe('PASS')
+    expect(report.REVISION_3_ENABLED).toBe(true)
+    expect(report.CATALOG_ENABLE_ROWS_AFFECTED).toBe(1)
+
+    // Verificar que se invocó guard_status y luego UPDATE
+    const guardCall = mockPg.executedSql.find(
+      (entry: { sql: unknown }) => typeof entry.sql === 'string' && entry.sql.includes('guard_status')
+    )
+    expect(guardCall).toBeDefined()
+
+    const updateCall = mockPg.executedSql.find(
+      (entry: { sql: unknown }) => typeof entry.sql === 'string' && entry.sql.includes('UPDATE public.fiscal_parametros_homologacion')
+    )
+    expect(updateCall).toBeDefined()
   })
 })

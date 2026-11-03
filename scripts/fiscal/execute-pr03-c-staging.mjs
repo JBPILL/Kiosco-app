@@ -38,6 +38,7 @@ import {
   REVISION_3_INSERT_ONLY,
   PR03_C_PREFLIGHT_SELECT_SQL,
   PR03_C_POSTCHECK_SELECT_SQL,
+  PR03_C_C2_GUARD_SQL,
   PR03_C_C2_ENABLE_SQL,
   PR03_C_POSTCHECK_C2_SELECT_SQL,
   evaluateExistingTa,
@@ -573,6 +574,7 @@ export async function executePr03cStaging(rawOptions = {}, deps = {}) {
   let condicionesIvaRecord = { pass: false, count: 0, hash: '', text: '' }
   let executedC1 = false
   let executedC2 = false
+  let affectedRowsC2 = 0
   let rev3TargetHash = ''
   let rev2HashBefore = null
   let catalogRevisionsBefore = []
@@ -821,11 +823,25 @@ export async function executePr03cStaging(rawOptions = {}, deps = {}) {
       await client.query("SET LOCAL lock_timeout='5s';")
       await client.query('SET LOCAL standard_conforming_strings=on;')
       await client.query('SET LOCAL search_path=pg_catalog,public;')
-      await client.query(PR03_C_C2_ENABLE_SQL, [
+
+      const guardRes = await client.query(PR03_C_C2_GUARD_SQL, [
         rev3TargetHash,
         PR03_C_EXPECTED_ISSUER_CUIT,
         PR03_C_EXPECTED_ISSUER_PV,
       ])
+      const guardStatus = guardRes.rows[0]?.guard_status
+      if (guardStatus !== 'OK') {
+        throw new Error(guardStatus || 'PR03_C2_GUARD_REJECTED')
+      }
+
+      const updateRes = await client.query(PR03_C_C2_ENABLE_SQL, [rev3TargetHash])
+      affectedRowsC2 = updateRes.rowCount ?? updateRes.affectedRows ?? 0
+      if (affectedRowsC2 !== 1) {
+        throw new Error(
+          `PR03_C2_UPDATE_ROW_COUNT_MISMATCH: Se esperaba exactamente 1 fila afectada, se obtuvieron ${affectedRowsC2}`
+        )
+      }
+
       await client.query('COMMIT;')
 
       // Postcheck C2 (READ ONLY)
@@ -899,6 +915,7 @@ export async function executePr03cStaging(rawOptions = {}, deps = {}) {
             CATALOG_REVISIONS_AFTER_C2: [1, 2, 3],
             REV3_HASH_AFTER_C2: rev3TargetHash,
             REV3_ENABLED_AFTER_C2: true,
+            CATALOG_ENABLE_ROWS_AFFECTED: affectedRowsC2,
           }
         : {}),
       PG_CONNECTION_CLOSED: clientConnected ? 'PASS' : 'NOT_APPLICABLE',

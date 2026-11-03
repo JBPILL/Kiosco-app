@@ -618,35 +618,29 @@ export function verifyPr03cPostcheck(raw, expected = {}) {
 }
 
 /**
- * Sentencia de activación controlada C2 de revisión 3 de catálogo fiscal.
+ * Sentencia de guarda y sentencia de activación controlada C2 de revisión 3 de catálogo fiscal.
  * Exige que la revisión 3 exista, coincida con el hash autorizado, esté inactiva y no expirada,
  * que la revisión 2 permanezca intacta y que el emisor permanezca inactivo.
  * Mutación acotada exclusivamente a `habilitado = true` en revisión 3.
  */
-export const PR03_C_C2_ENABLE_SQL = `DO $catalog_enable_guard$
-BEGIN
-  IF NOT EXISTS (
+export const PR03_C_C2_GUARD_SQL = `SELECT CASE
+  WHEN NOT EXISTS (
     SELECT 1 FROM public.fiscal_parametros_homologacion
     WHERE revision = 3 AND habilitado = false AND fuente_sha256 = $1
       AND vence_en > clock_timestamp()
-  ) THEN
-    RAISE EXCEPTION 'PR03_C2_REVISION3_NOT_ELIGIBLE_FOR_ENABLE';
-  END IF;
-  IF NOT EXISTS (
+  ) THEN 'PR03_C2_REVISION3_NOT_ELIGIBLE_FOR_ENABLE'
+  WHEN NOT EXISTS (
     SELECT 1 FROM public.fiscal_parametros_homologacion
     WHERE revision = 2 AND habilitado = false
-  ) THEN
-    RAISE EXCEPTION 'PR03_C2_REVISION2_MUTATED';
-  END IF;
-  IF EXISTS (
+  ) THEN 'PR03_C2_REVISION2_MUTATED'
+  WHEN EXISTS (
     SELECT 1 FROM public.fiscal_emisores_homologacion
     WHERE cuit_emisor = $2 AND punto_venta = $3 AND habilitado = true
-  ) THEN
-    RAISE EXCEPTION 'PR03_C2_ISSUER_UNEXPECTEDLY_ENABLED';
-  END IF;
-END $catalog_enable_guard$;
+  ) THEN 'PR03_C2_ISSUER_UNEXPECTEDLY_ENABLED'
+  ELSE 'OK'
+END AS guard_status;`
 
-UPDATE public.fiscal_parametros_homologacion
+export const PR03_C_C2_ENABLE_SQL = `UPDATE public.fiscal_parametros_homologacion
 SET habilitado = true
 WHERE revision = 3 AND habilitado = false AND fuente_sha256 = $1;`
 
