@@ -5,7 +5,7 @@
 // 3. Concurrencia con semántica real: máximo una reserva pendiente por serie (SQLSTATE 55000).
 // 4. Baseline comercial criptográfico before/after (cero writes comerciales declarados sin hash).
 // 5. Cierre individual y verificado de conexiones PostgreSQL.
-// 6. Auditoría de esquema: emisor sintético no soportado en staging por PK unaria en kiosco_id.
+// 6. Tenant sintético preexistente acreditado (f4a00000-2026-4011-a001-000000000001).
 
 import { createHash, randomUUID } from 'node:crypto'
 
@@ -13,18 +13,31 @@ export const ARCA_NETWORK_DISABLED = true
 export const PR03_B_SCOPE = 'PR03_B_STAGING_ACCEPTANCE'
 export const PR03_B_TEST_FIXTURE_TAG = 'PR03_B_TEST_FIXTURE'
 export const PR03_B_OPERACION_PREFIX = 'PR03_B_TEST_'
-export const PR03_B_APPROVED_KIOSK_ID = 'b7254826-c767-4098-94b8-71013c12021d'
+
+// Identidades reales protegidas
+export const PR03_B_REAL_KIOSK_ID = 'b7254826-c767-4098-94b8-71013c12021d'
+export const PR03_B_REAL_PV = 2
+
+// Identidades sintéticas de aceptación
+export const PR03_B_SYNTHETIC_KIOSK_ID = 'f4a00000-2026-4011-a001-000000000001'
+export const PR03_B_SYNTHETIC_OWNER_AUTH_ID = 'f6af0f21-07f2-4d22-9b3c-7eec3604d5af'
+export const PR03_B_SYNTHETIC_PV = 9999
+export const PR03_B_SYNTHETIC_CUIT = '20415005963'
+export const PR03_B_SYNTHETIC_RECEIPT_TYPE = 11
+
+// Alias retrocompatibles
+export const PR03_B_APPROVED_KIOSK_ID = PR03_B_REAL_KIOSK_ID
 export const PR03_B_APPROVED_OWNER_AUTH_ID = '0e90b9a7-36d2-4762-ab1a-4982996cf9aa'
 export const PR03_B_APPROVED_CUIT = '20415005963'
-export const PR03_B_APPROVED_PUNTO_VENTA = 2
+export const PR03_B_APPROVED_PUNTO_VENTA = PR03_B_REAL_PV
 export const PR03_B_APPROVED_TIPO_COMPROBANTE = 11
 
 export const PR03_B_SYNTHETIC_PV_CANDIDATES = Object.freeze([9999, 9998, 9995, 9990])
 
 // Conclusiones canónicas de auditoría de esquema
-export const SYNTHETIC_EMITTER_ROW_SUPPORTED = false
+export const SYNTHETIC_EMITTER_ROW_SUPPORTED = true
 export const CANONICAL_PREPARATION_REQUIRES_CONFIGURED_SYNTHETIC_PV = true
-export const PR03_B_BLOCKED_BY_SCHEMA = true
+export const PR03_B_BLOCKED_BY_SCHEMA = false
 
 export const PR03_B_BLOCKED_HOST_PATTERNS = Object.freeze([
   /(?:^|\.)(?:afip|arca|wsaa|wsfe)\.gob\.ar$/i,
@@ -53,16 +66,24 @@ export function assertNoArcaNetwork(targetUrl) {
 }
 
 /**
- * Guard Anti-PV2 estricto: lanza error fatal si se intenta utilizar el punto de venta
- * real 2 en fixtures, series, reservas o solicitudes durante la prueba.
+ * Guard Anti-PV2 / Real Kiosk estricto: lanza error fatal si se intenta utilizar
+ * el punto de venta real 2 o el kiosco real en fixtures, series, reservas o solicitudes.
  */
 export function assertNoRealPv2Usage(target) {
-  if (target === 2 || target === '2') {
-    throw new Error('FATAL: REAL_PV2_SERIES_TOUCHED')
+  if (target === 2 || target === '2' || target === PR03_B_REAL_PV) {
+    throw new Error('FATAL: PR03_B_REAL_FISCAL_CONTEXT_FORBIDDEN')
+  }
+  if (typeof target === 'string' && target === PR03_B_REAL_KIOSK_ID) {
+    throw new Error('FATAL: PR03_B_REAL_FISCAL_CONTEXT_FORBIDDEN')
   }
   if (target && typeof target === 'object') {
-    if (target.punto_venta === 2 || target.puntoVenta === 2) {
-      throw new Error('FATAL: REAL_PV2_SERIES_TOUCHED')
+    const pv = target.punto_venta ?? target.puntoVenta
+    const kid = target.kiosco_id ?? target.kiosk_id ?? target.kioskId
+    if (pv === 2 || pv === '2' || pv === PR03_B_REAL_PV) {
+      throw new Error('FATAL: PR03_B_REAL_FISCAL_CONTEXT_FORBIDDEN')
+    }
+    if (kid === PR03_B_REAL_KIOSK_ID) {
+      throw new Error('FATAL: PR03_B_REAL_FISCAL_CONTEXT_FORBIDDEN')
     }
   }
 }
@@ -175,12 +196,18 @@ export function createPr03bTestFixture(opts = {}) {
   const total = opts.total ?? '150.00'
   const fecha = opts.fecha ?? '20261102'
   const numero = opts.numero ?? 1
-  const puntoVenta = opts.puntoVenta ?? PR03_B_APPROVED_PUNTO_VENTA
+  const puntoVenta = opts.puntoVenta ?? PR03_B_SYNTHETIC_PV
+  const kioscoId = opts.kiosco_id ?? opts.kioskId ?? PR03_B_SYNTHETIC_KIOSK_ID
+  const cuitEmisor = opts.cuitEmisor ?? PR03_B_SYNTHETIC_CUIT
+  const tipoComprobante = opts.tipoComprobante ?? PR03_B_SYNTHETIC_RECEIPT_TYPE
+
+  assertNoRealPv2Usage(puntoVenta)
+  assertNoRealPv2Usage(kioscoId)
 
   const canonicalReq = buildCanonicalFiscalRequest({
-    cuitEmisor: PR03_B_APPROVED_CUIT,
+    cuitEmisor,
     puntoVenta,
-    tipoComprobante: PR03_B_APPROVED_TIPO_COMPROBANTE,
+    tipoComprobante,
     numero,
     total,
     fecha,
@@ -189,10 +216,10 @@ export function createPr03bTestFixture(opts = {}) {
   return Object.freeze({
     tag: PR03_B_TEST_FIXTURE_TAG,
     scope: PR03_B_SCOPE,
-    kiosco_id: PR03_B_APPROVED_KIOSK_ID,
-    cuit_emisor: PR03_B_APPROVED_CUIT,
+    kiosco_id: kioscoId,
+    cuit_emisor: cuitEmisor,
     punto_venta: puntoVenta,
-    tipo_comprobante: PR03_B_APPROVED_TIPO_COMPROBANTE,
+    tipo_comprobante: tipoComprobante,
     operacion_id: operacionId,
     venta_id: ventaId,
     total,
@@ -201,7 +228,7 @@ export function createPr03bTestFixture(opts = {}) {
     solicitud_sha256: canonicalReq.sha256,
     metadata: {
       fixture: PR03_B_TEST_FIXTURE_TAG,
-      kiosco_id: PR03_B_APPROVED_KIOSK_ID,
+      kiosco_id: kioscoId,
       scope: PR03_B_SCOPE,
       anti_arca_guard: true,
       created_at: new Date().toISOString(),
@@ -220,7 +247,7 @@ export function buildCanonicalFiscalPreparation(params) {
     entorno: 'HOMOLOGACION',
     cuitEmisor: params.cuitEmisor,
     puntoVenta: params.puntoVenta,
-    tipoComprobante: params.tipoComprobante ?? PR03_B_APPROVED_TIPO_COMPROBANTE,
+    tipoComprobante: params.tipoComprobante ?? PR03_B_SYNTHETIC_RECEIPT_TYPE,
     concepto: params.concepto ?? 1,
     tipoDocumento: params.tipoDocumento ?? 99,
     numeroDocumento: params.numeroDocumento ?? '0',
@@ -266,13 +293,19 @@ export function createPr03bScopedFixture(runId, opts = {}) {
   const total = Number(opts.total ?? '150.00').toFixed(2)
   const fecha = opts.fecha ?? '20261102'
   const numero = opts.numero ?? 1
-  const puntoVenta = opts.puntoVenta ?? 9999
+  const puntoVenta = opts.puntoVenta ?? PR03_B_SYNTHETIC_PV
+  const kioscoId = opts.kiosco_id ?? opts.kioskId ?? PR03_B_SYNTHETIC_KIOSK_ID
+  const cuitEmisor = opts.cuitEmisor ?? PR03_B_SYNTHETIC_CUIT
+  const tipoComprobante = opts.tipoComprobante ?? PR03_B_SYNTHETIC_RECEIPT_TYPE
   const revisionParametros = opts.revisionParametros ?? 3
 
+  assertNoRealPv2Usage(puntoVenta)
+  assertNoRealPv2Usage(kioscoId)
+
   const canonicalReq = buildCanonicalFiscalRequest({
-    cuitEmisor: PR03_B_APPROVED_CUIT,
+    cuitEmisor,
     puntoVenta,
-    tipoComprobante: PR03_B_APPROVED_TIPO_COMPROBANTE,
+    tipoComprobante,
     numero,
     total,
     fecha,
@@ -281,9 +314,9 @@ export function createPr03bScopedFixture(runId, opts = {}) {
   const canonicalPrep = buildCanonicalFiscalPreparation({
     ventaId,
     total,
-    cuitEmisor: PR03_B_APPROVED_CUIT,
+    cuitEmisor,
     puntoVenta,
-    tipoComprobante: PR03_B_APPROVED_TIPO_COMPROBANTE,
+    tipoComprobante,
     revisionParametros,
     fecha,
   })
@@ -291,9 +324,9 @@ export function createPr03bScopedFixture(runId, opts = {}) {
   // 6 campos canónicos de compatibilidad de contexto
   const context = {
     version: 1,
-    cuit_emisor: PR03_B_APPROVED_CUIT,
+    cuit_emisor: cuitEmisor,
     punto_venta: puntoVenta,
-    tipo_comprobante: PR03_B_APPROVED_TIPO_COMPROBANTE,
+    tipo_comprobante: tipoComprobante,
     tipo_doc_receptor: 99,
     nro_doc_receptor: '0',
   }
@@ -302,10 +335,10 @@ export function createPr03bScopedFixture(runId, opts = {}) {
     tag: PR03_B_TEST_FIXTURE_TAG,
     scope: PR03_B_SCOPE,
     run_id: runId,
-    kiosco_id: PR03_B_APPROVED_KIOSK_ID,
-    cuit_emisor: PR03_B_APPROVED_CUIT,
+    kiosco_id: kioscoId,
+    cuit_emisor: cuitEmisor,
     punto_venta: puntoVenta,
-    tipo_comprobante: PR03_B_APPROVED_TIPO_COMPROBANTE,
+    tipo_comprobante: tipoComprobante,
     operacion_id: operacionId,
     venta_id: ventaId,
     total,
@@ -319,7 +352,7 @@ export function createPr03bScopedFixture(runId, opts = {}) {
     solicitud_sha256: canonicalReq.sha256,
     metadata: {
       fixture: PR03_B_TEST_FIXTURE_TAG,
-      kiosco_id: PR03_B_APPROVED_KIOSK_ID,
+      kiosco_id: kioscoId,
       scope: PR03_B_SCOPE,
       run_id: runId,
       punto_venta: puntoVenta,
@@ -332,26 +365,66 @@ export function createPr03bScopedFixture(runId, opts = {}) {
 /**
  * Query SELECT pura para preflight READ ONLY. Cero sentencias BEGIN/ROLLBACK embebidas
  * para compatibilidad total con el protocolo extendido de PostgreSQL.
+ * Parámetros:
+ * $1: realKioskId
+ * $2: syntheticCuit
+ * $3: syntheticKioskId
+ * $4: syntheticOwnerAuthId
+ * $5: syntheticPv (9999)
  */
 export const PR03_B_PREFLIGHT_SELECT_SQL = `SELECT jsonb_build_object(
   'transaction_read_only', current_setting('transaction_read_only'),
   'observed_at', clock_timestamp(),
-  'kiosk_active', EXISTS (
-    SELECT 1 FROM public.kioscos WHERE id = $1 AND estado_suscripcion = 'ACTIVO'
+  -- Kiosco real
+  'real_kiosk_present', EXISTS (
+    SELECT 1 FROM public.kioscos WHERE id = $1
   ),
-  'expected_issuer_present', EXISTS (
-    SELECT 1 FROM public.fiscal_emisores_homologacion WHERE cuit_emisor = $2 AND punto_venta = $3
+  'real_pv2_present', EXISTS (
+    SELECT 1 FROM public.fiscal_emisores_homologacion WHERE kiosco_id = $1 AND punto_venta = 2
   ),
-  'expected_issuer_enabled', COALESCE((
-    SELECT habilitado FROM public.fiscal_emisores_homologacion WHERE cuit_emisor = $2 AND punto_venta = $3
+  'real_pv2_enabled', COALESCE((
+    SELECT habilitado FROM public.fiscal_emisores_homologacion WHERE kiosco_id = $1 AND punto_venta = 2
   ), false),
-  'unexpected_enabled_issuers', (
-    SELECT count(*)::int FROM public.fiscal_emisores_homologacion
-    WHERE habilitado = true AND (cuit_emisor <> $2 OR punto_venta <> $3)
+  'real_pv2_series_count', (
+    SELECT count(*)::int FROM public.fiscal_series_homologacion
+    WHERE cuit_emisor = $2 AND punto_venta = 2
   ),
-  'pos_present', EXISTS (
-    SELECT 1 FROM public.fiscal_emisores_homologacion WHERE punto_venta = $3 AND cuit_emisor = $2
+  'real_pv2_pending_reservations', (
+    SELECT count(*)::int FROM public.fiscal_reservas_homologacion
+    WHERE cuit_emisor = $2 AND punto_venta = 2 AND estado = 'RESERVADA'
   ),
+  -- Tenant sintético
+  'synthetic_kiosk_present', EXISTS (
+    SELECT 1 FROM public.kioscos WHERE id = $3
+  ),
+  'synthetic_kiosk_active', EXISTS (
+    SELECT 1 FROM public.kioscos WHERE id = $3 AND estado_suscripcion = 'ACTIVO'
+  ),
+  'synthetic_owner_present', EXISTS (
+    SELECT 1 FROM public.usuarios WHERE auth_user_id = $4 AND kiosco_id = $3
+  ),
+  'synthetic_owner_active', COALESCE((
+    SELECT activo FROM public.usuarios WHERE auth_user_id = $4 AND kiosco_id = $3 LIMIT 1
+  ), false),
+  'synthetic_owner_role', (
+    SELECT rol FROM public.usuarios WHERE auth_user_id = $4 AND kiosco_id = $3 LIMIT 1
+  ),
+  'synthetic_owner_superadmin', COALESCE((
+    SELECT es_superadmin FROM public.usuarios WHERE auth_user_id = $4 AND kiosco_id = $3 LIMIT 1
+  ), false),
+  'synthetic_emitter_count', (
+    SELECT count(*)::int FROM public.fiscal_emisores_homologacion WHERE kiosco_id = $3
+  ),
+  'synthetic_pv9999_series_count', (
+    SELECT count(*)::int FROM public.fiscal_series_homologacion WHERE cuit_emisor = $2 AND punto_venta = $5
+  ),
+  'synthetic_pv9999_reservations', (
+    SELECT count(*)::int FROM public.fiscal_reservas_homologacion WHERE cuit_emisor = $2 AND punto_venta = $5
+  ),
+  'synthetic_fiscal_operations', (
+    SELECT count(*)::int FROM public.fiscal_operaciones_homologacion WHERE kiosco_id = $3
+  ),
+  -- Catálogo rev 3
   'catalog_rev3_exists', EXISTS (
     SELECT 1 FROM public.fiscal_parametros_homologacion WHERE revision = 3
   ),
@@ -362,10 +435,7 @@ export const PR03_B_PREFLIGHT_SELECT_SQL = `SELECT jsonb_build_object(
     SELECT (habilitado = true AND vence_en > clock_timestamp() AND consultado_en <= clock_timestamp())
     FROM public.fiscal_parametros_homologacion WHERE revision = 3
   ), false),
-  'residual_fixtures_count', (
-    SELECT count(*)::int FROM public.fiscal_operaciones_homologacion
-    WHERE estado = 'PREPARADA'
-  ),
+  -- Ventas sintéticas elegibles
   'synthetic_sales', (
     SELECT coalesce(jsonb_agg(jsonb_build_object(
       'id', v.id,
@@ -374,29 +444,13 @@ export const PR03_B_PREFLIGHT_SELECT_SQL = `SELECT jsonb_build_object(
       'estado', v.estado
     ) ORDER BY v.fecha_hora DESC), '[]'::jsonb)
     FROM public.ventas v
-    WHERE v.kiosco_id = $1
+    WHERE v.kiosco_id = $3
       AND v.estado = 'COMPLETADA'
+      AND v.total > 0
       AND nullif(btrim(to_jsonb(v)->>'afip_cae'), '') IS NULL
+      AND NOT EXISTS (SELECT 1 FROM public.devoluciones_venta dv WHERE dv.venta_id = v.id)
       AND NOT EXISTS (SELECT 1 FROM public.fiscal_operaciones_homologacion op WHERE op.venta_id = v.id)
-      AND (
-        coalesce(to_jsonb(v)->>'cliente_nombre', '') ILIKE '%ensayo%' OR
-        coalesce(to_jsonb(v)->>'cliente_nombre', '') ILIKE '%test%' OR
-        coalesce(to_jsonb(v)->>'cliente_nombre', '') ILIKE '%sintetic%' OR
-        coalesce(v.notas, '') ILIKE '%ensayo%' OR
-        coalesce(v.notas, '') ILIKE '%test%' OR
-        coalesce(v.notas, '') ILIKE '%sintetic%' OR
-        coalesce(to_jsonb(v)->>'es_ensayo', 'false') = 'true' OR
-        coalesce(to_jsonb(v)->>'fixture', '') = 'PR03_B_TEST_FIXTURE'
-      )
-  ),
-  'synthetic_series_candidates', (
-    SELECT jsonb_agg(jsonb_build_object(
-      'punto_venta', c.pv,
-      'absent_from_emisores', NOT EXISTS (SELECT 1 FROM public.fiscal_emisores_homologacion e WHERE e.punto_venta = c.pv),
-      'absent_from_series', NOT EXISTS (SELECT 1 FROM public.fiscal_series_homologacion s WHERE s.punto_venta = c.pv),
-      'absent_from_reservas', NOT EXISTS (SELECT 1 FROM public.fiscal_reservas_homologacion r WHERE r.punto_venta = c.pv)
-    ))
-    FROM (VALUES (9999), (9998), (9995), (9990)) AS c(pv)
+      AND EXISTS (SELECT 1 FROM public.detalles_venta d WHERE d.venta_id = v.id AND NOT coalesce(d.es_devolucion_envase, false))
   )
 ) AS preflight;`
 
@@ -419,50 +473,62 @@ export function verifyPr03bBasePreflight(raw, opts = {}) {
   }
   const d = raw
   if (d.transaction_read_only !== 'on') throw new Error('PR03_B_PREFLIGHT_NOT_READ_ONLY')
-  if (!d.kiosk_active) throw new Error('PR03_B_PREFLIGHT_KIOSK_INACTIVE')
-  if (!d.expected_issuer_present) throw new Error('PR03_B_PREFLIGHT_ISSUER_NOT_FOUND')
+
+  // Verificaciones del kiosco real protegido
+  if (!d.real_kiosk_present) throw new Error('PR03_B_PREFLIGHT_REAL_KIOSK_NOT_FOUND')
+  if (!d.real_pv2_present) throw new Error('PR03_B_PREFLIGHT_REAL_PV2_NOT_FOUND')
+  if (d.real_pv2_enabled !== false) throw new Error('PR03_B_PREFLIGHT_REAL_PV2_NOT_DISABLED')
+  if (d.real_pv2_series_count !== 0) throw new Error('PR03_B_PREFLIGHT_REAL_PV2_SERIES_NOT_ZERO')
+  if (d.real_pv2_pending_reservations !== 0) throw new Error('PR03_B_PREFLIGHT_REAL_PV2_RESERVATIONS_NOT_ZERO')
+
+  // Verificaciones del tenant sintético
+  if (!d.synthetic_kiosk_present) throw new Error('PR03_B_PREFLIGHT_SYNTHETIC_KIOSK_NOT_FOUND')
+  if (!d.synthetic_kiosk_active) throw new Error('PR03_B_PREFLIGHT_SYNTHETIC_KIOSK_INACTIVE')
+  if (!d.synthetic_owner_present) throw new Error('PR03_B_PREFLIGHT_SYNTHETIC_OWNER_NOT_FOUND')
+  if (!d.synthetic_owner_active) throw new Error('PR03_B_PREFLIGHT_SYNTHETIC_OWNER_INACTIVE')
+  if (d.synthetic_owner_role !== 'DUEÑO') throw new Error('PR03_B_PREFLIGHT_SYNTHETIC_OWNER_NOT_DUENO')
+  if (d.synthetic_owner_superadmin !== false) throw new Error('PR03_B_PREFLIGHT_SYNTHETIC_OWNER_IS_SUPERADMIN')
 
   if (opts.syntheticWindow) {
-    if (d.expected_issuer_enabled !== true) throw new Error('PR03_B_PREFLIGHT_SYNTHETIC_ISSUER_NOT_ENABLED')
+    if (d.synthetic_emitter_count !== 1) throw new Error('PR03_B_PREFLIGHT_SYNTHETIC_EMITTER_COUNT_INVALID')
   } else {
-    if (d.expected_issuer_enabled !== false) throw new Error('PR03_B_PREFLIGHT_REAL_PV2_NOT_DISABLED')
+    if (d.synthetic_emitter_count !== 0) throw new Error('PR03_B_PREFLIGHT_SYNTHETIC_EMITTER_NOT_ZERO')
+    if (d.synthetic_pv9999_series_count !== 0) throw new Error('PR03_B_PREFLIGHT_SYNTHETIC_SERIES_NOT_ZERO')
+    if (d.synthetic_pv9999_reservations !== 0) throw new Error('PR03_B_PREFLIGHT_SYNTHETIC_RESERVATIONS_NOT_ZERO')
+    if (d.synthetic_fiscal_operations !== 0) throw new Error('PR03_B_PREFLIGHT_SYNTHETIC_OPERATIONS_NOT_ZERO')
   }
 
-  if (d.unexpected_enabled_issuers !== 0) throw new Error('PR03_B_PREFLIGHT_UNEXPECTED_ENABLED_ISSUERS')
-  if (!d.pos_present) throw new Error('PR03_B_PREFLIGHT_POS_NOT_FOUND')
-  if (d.residual_fixtures_count !== 0) throw new Error('PR03_B_PREFLIGHT_RESIDUAL_FIXTURES_FOUND')
+  // Verificaciones del catálogo rev 3
   if (!d.catalog_rev3_exists) throw new Error('PR03_B_PREFLIGHT_CATALOG_REV3_REQUIRED')
   if (d.catalog_rev3_enabled !== true) throw new Error('PR03_B_PREFLIGHT_CATALOG_REV3_NOT_ENABLED')
   if (d.catalog_rev3_usable !== true) throw new Error('PR03_B_PREFLIGHT_CATALOG_REV3_EXPIRED_OR_NOT_USABLE')
 
+  // Verificaciones de ventas sintéticas
   const syntheticSales = Array.isArray(d.synthetic_sales) ? d.synthetic_sales : []
   if (syntheticSales.length < 2) {
     throw new Error('PR03_B_PREFLIGHT_INSUFFICIENT_SYNTHETIC_TEST_SALES')
   }
 
-  const candidates = Array.isArray(d.synthetic_series_candidates) ? d.synthetic_series_candidates : []
-  const availableCandidate = candidates.find(
-    c => (opts.syntheticWindow || c.absent_from_emisores) && c.absent_from_series && c.absent_from_reservas
-  )
-
-  const chosenPv = opts.syntheticPv || (availableCandidate ? availableCandidate.punto_venta : 9999)
-
-  if (!availableCandidate && !opts.syntheticPv) {
-    throw new Error('PR03_B_PREFLIGHT_NO_SAFE_SYNTHETIC_SERIES_AVAILABLE')
-  }
-
   return Object.freeze({
     status: 'PASS',
     transactionReadOnly: true,
-    kioskActive: true,
-    expectedIssuerPresent: true,
-    expectedIssuerInactive: !opts.syntheticWindow,
+    realKioskPresent: true,
+    realPv2Present: true,
+    realPv2Enabled: false,
+    realPv2SeriesCount: 0,
+    realPv2PendingReservations: 0,
+    syntheticKioskPresent: true,
+    syntheticKioskActive: true,
+    syntheticOwnerPresent: true,
+    syntheticOwnerActive: true,
+    syntheticOwnerRole: 'DUEÑO',
+    syntheticOwnerSuperadmin: false,
+    syntheticEmitterCount: d.synthetic_emitter_count,
     catalogRev3Exists: true,
     catalogRev3Enabled: true,
     catalogRev3Usable: true,
-    residualFixturesCount: 0,
     syntheticSalesCount: syntheticSales.length,
-    chosenSyntheticPv: chosenPv,
+    chosenSyntheticPv: opts.syntheticPv ?? PR03_B_SYNTHETIC_PV,
     syntheticSales,
   })
 }
@@ -516,29 +582,37 @@ export function validateCleanupTarget(context) {
 
 /**
  * Genera SQL de limpieza quirúrgica basada en la lista explícita de UUIDs de operaciones creadas.
- * NUNCA toca la serie real de PV 2 ni ventas comerciales.
+ * NUNCA toca el kiosco real ni la serie real de PV 2 ni ventas comerciales.
  */
 export function buildManifestCleanupSql(operationIds, opts = {}) {
-  if (!Array.isArray(operationIds) || operationIds.length === 0) {
-    return 'BEGIN; COMMIT;'
-  }
-  for (const id of operationIds) {
-    validateCleanupRunId(id)
-  }
-  const idList = operationIds.map(id => `'${id}'::uuid`).join(',')
-  const syntheticPv = opts.syntheticPv
-  const pvCleanup = (typeof syntheticPv === 'number' && PR03_B_SYNTHETIC_PV_CANDIDATES.includes(syntheticPv) && syntheticPv !== 2)
-    ? `\nDELETE FROM public.fiscal_series_homologacion WHERE cuit_emisor = '${PR03_B_APPROVED_CUIT}' AND punto_venta = ${syntheticPv};`
-    : ''
+  const syntheticPv = opts.syntheticPv ?? PR03_B_SYNTHETIC_PV
+  const syntheticKioskId = opts.syntheticKioskId ?? PR03_B_SYNTHETIC_KIOSK_ID
+  const cuit = opts.cuit ?? PR03_B_SYNTHETIC_CUIT
 
-  return `BEGIN;
--- Limpieza quirúrgica acotada a operaciones del manifiesto de corrida PR03-B.
+  assertNoRealPv2Usage(syntheticPv)
+  assertNoRealPv2Usage(syntheticKioskId)
+
+  let idFilter = ''
+  if (Array.isArray(operationIds) && operationIds.length > 0) {
+    for (const id of operationIds) {
+      validateCleanupRunId(id)
+    }
+    const idList = operationIds.map(id => `'${id}'::uuid`).join(',')
+    idFilter = `
 ALTER TABLE public.fiscal_preparaciones_homologacion DISABLE TRIGGER fiscal_preparacion_inmutable;
 DELETE FROM public.fiscal_solicitudes_homologacion WHERE operacion_id IN (${idList});
 DELETE FROM public.fiscal_reservas_homologacion WHERE operacion_id IN (${idList});
 DELETE FROM public.fiscal_preparaciones_homologacion WHERE operacion_id IN (${idList});
-DELETE FROM public.fiscal_operaciones_homologacion WHERE id IN (${idList});${pvCleanup}
-ALTER TABLE public.fiscal_preparaciones_homologacion ENABLE TRIGGER fiscal_preparacion_inmutable;
+DELETE FROM public.fiscal_operaciones_homologacion WHERE id IN (${idList});
+ALTER TABLE public.fiscal_preparaciones_homologacion ENABLE TRIGGER fiscal_preparacion_inmutable;`
+  }
+
+  const pvCleanup = `
+DELETE FROM public.fiscal_series_homologacion WHERE cuit_emisor = '${cuit}' AND punto_venta = ${syntheticPv} AND tipo_comprobante = 11;
+UPDATE public.fiscal_emisores_homologacion SET habilitado = false WHERE kiosco_id = '${syntheticKioskId}' AND punto_venta = ${syntheticPv};
+DELETE FROM public.fiscal_emisores_homologacion WHERE kiosco_id = '${syntheticKioskId}' AND cuit_emisor = '${cuit}' AND punto_venta = ${syntheticPv} AND habilitado = false;`
+
+  return `BEGIN;${idFilter}${pvCleanup}
 COMMIT;`
 }
 
@@ -637,10 +711,14 @@ export const PR03_B_TEST_CASES = Object.freeze([
 export function verifyPr03bPlan(plan) {
   if (!plan || typeof plan !== 'object') throw new Error('PR03_B_PLAN_INVALID')
   if (plan.scope !== PR03_B_SCOPE) throw new Error('PR03_B_PLAN_SCOPE_MISMATCH')
-  if (plan.kiosco_id !== PR03_B_APPROVED_KIOSK_ID) throw new Error('PR03_B_PLAN_KIOSK_MISMATCH')
-  if (plan.cuit_emisor !== PR03_B_APPROVED_CUIT) throw new Error('PR03_B_PLAN_CUIT_MISMATCH')
-  if (plan.punto_venta !== PR03_B_APPROVED_PUNTO_VENTA) throw new Error('PR03_B_PLAN_POS_MISMATCH')
-  if (plan.tipo_comprobante !== PR03_B_APPROVED_TIPO_COMPROBANTE) throw new Error('PR03_B_PLAN_RECEIPT_TYPE_MISMATCH')
+  if (plan.kiosco_id !== PR03_B_SYNTHETIC_KIOSK_ID && plan.kiosco_id !== PR03_B_REAL_KIOSK_ID) {
+    throw new Error('PR03_B_PLAN_KIOSK_MISMATCH')
+  }
+  if (plan.cuit_emisor !== PR03_B_SYNTHETIC_CUIT) throw new Error('PR03_B_PLAN_CUIT_MISMATCH')
+  if (plan.punto_venta !== PR03_B_SYNTHETIC_PV && plan.punto_venta !== PR03_B_REAL_PV) {
+    throw new Error('PR03_B_PLAN_POS_MISMATCH')
+  }
+  if (plan.tipo_comprobante !== PR03_B_SYNTHETIC_RECEIPT_TYPE) throw new Error('PR03_B_PLAN_RECEIPT_TYPE_MISMATCH')
   if (plan.anti_arca_guard !== true) throw new Error('PR03_B_PLAN_ANTI_ARCA_GUARD_INACTIVE')
 
   return Object.freeze({

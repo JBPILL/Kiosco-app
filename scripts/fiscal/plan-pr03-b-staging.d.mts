@@ -28,6 +28,10 @@ export interface Pr03bFixtureOptions {
   fecha?: string
   numero?: number
   puntoVenta?: number
+  kiosco_id?: string
+  kioskId?: string
+  cuitEmisor?: string
+  tipoComprobante?: number
   revisionParametros?: number
 }
 
@@ -130,13 +134,21 @@ export interface Pr03bPreflightSyntheticSale {
 export interface Pr03bPreflightResult {
   readonly status: 'PASS'
   readonly transactionReadOnly: boolean
-  readonly kioskActive: boolean
-  readonly expectedIssuerPresent: boolean
-  readonly expectedIssuerInactive: boolean
+  readonly realKioskPresent: boolean
+  readonly realPv2Present: boolean
+  readonly realPv2Enabled: boolean
+  readonly realPv2SeriesCount: number
+  readonly realPv2PendingReservations: number
+  readonly syntheticKioskPresent: boolean
+  readonly syntheticKioskActive: boolean
+  readonly syntheticOwnerPresent: boolean
+  readonly syntheticOwnerActive: boolean
+  readonly syntheticOwnerRole: string
+  readonly syntheticOwnerSuperadmin: boolean
+  readonly syntheticEmitterCount: number
   readonly catalogRev3Exists: boolean
   readonly catalogRev3Enabled: boolean
   readonly catalogRev3Usable: boolean
-  readonly residualFixturesCount: number
   readonly syntheticSalesCount: number
   readonly chosenSyntheticPv: number
   readonly syntheticSales: readonly Pr03bPreflightSyntheticSale[]
@@ -146,11 +158,21 @@ export const ARCA_NETWORK_DISABLED: true
 export const PR03_B_SCOPE: string
 export const PR03_B_TEST_FIXTURE_TAG: string
 export const PR03_B_OPERACION_PREFIX: string
+
+export const PR03_B_REAL_KIOSK_ID: string
+export const PR03_B_REAL_PV: number
 export const PR03_B_APPROVED_KIOSK_ID: string
 export const PR03_B_APPROVED_OWNER_AUTH_ID: string
 export const PR03_B_APPROVED_CUIT: string
 export const PR03_B_APPROVED_PUNTO_VENTA: number
 export const PR03_B_APPROVED_TIPO_COMPROBANTE: number
+
+export const PR03_B_SYNTHETIC_KIOSK_ID: string
+export const PR03_B_SYNTHETIC_OWNER_AUTH_ID: string
+export const PR03_B_SYNTHETIC_PV: number
+export const PR03_B_SYNTHETIC_CUIT: string
+export const PR03_B_SYNTHETIC_RECEIPT_TYPE: number
+
 export const PR03_B_SYNTHETIC_PV_CANDIDATES: readonly number[]
 export const PR03_B_BLOCKED_HOST_PATTERNS: readonly RegExp[]
 export const PR03_B_PREFLIGHT_SELECT_SQL: string
@@ -158,9 +180,9 @@ export const PR03_B_CONCURRENCY_WAIT_SELECT_SQL: string
 export const PR03_B_COMMERCIAL_BASELINE_SQL: string
 export const PR03_B_TEST_CASES: readonly Pr03bTestCase[]
 
-export const SYNTHETIC_EMITTER_ROW_SUPPORTED: false
-export const CANONICAL_PREPARATION_REQUIRES_CONFIGURED_SYNTHETIC_PV: true
-export const PR03_B_BLOCKED_BY_SCHEMA: true
+export const SYNTHETIC_EMITTER_ROW_SUPPORTED: boolean
+export const CANONICAL_PREPARATION_REQUIRES_CONFIGURED_SYNTHETIC_PV: boolean
+export const PR03_B_BLOCKED_BY_SCHEMA: boolean
 
 export function assertNoArcaNetwork(targetUrl?: string): void
 export function assertNoRealPv2Usage(target: unknown): void
@@ -181,11 +203,14 @@ export function buildCanonicalFiscalPreparation(params: FiscalPreparationParams)
 }
 export function createPr03bTestFixture(opts?: Pr03bFixtureOptions): Pr03bTestFixture
 export function createPr03bScopedFixture(runId: string, opts?: Pr03bFixtureOptions): Pr03bScopedFixture
-export function verifyPr03bBasePreflight(raw: unknown): Pr03bPreflightResult
+export function verifyPr03bBasePreflight(raw: unknown, opts?: { syntheticWindow?: boolean; syntheticPv?: number }): Pr03bPreflightResult
 export function verifyPr03bPreflight(raw: unknown, opts?: unknown): Pr03bPreflightResult
 export function computeCommercialBaselineHash(baseline: unknown): string
 export function validateCleanupTarget(context: unknown): boolean
-export function buildManifestCleanupSql(operationIds: readonly string[], opts?: { syntheticPv?: number }): string
+export function buildManifestCleanupSql(
+  operationIds: readonly string[],
+  opts?: { syntheticPv?: number; syntheticKioskId?: string; cuit?: string }
+): string
 export function verifyIdempotencyReplay(first: unknown, replay: unknown): Pr03bIdempotencyReplayResult
 export function verifyIdempotencyConflict(error: unknown): Pr03bIdempotencyConflictResult
 export function verifyConcurrencySinglePendingReservation(check: unknown): Pr03bConcurrencyLockResult

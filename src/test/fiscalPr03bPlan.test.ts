@@ -4,10 +4,15 @@ import {
   PR03_B_SCOPE,
   PR03_B_TEST_FIXTURE_TAG,
   PR03_B_APPROVED_KIOSK_ID,
-  PR03_B_APPROVED_OWNER_AUTH_ID,
   PR03_B_APPROVED_CUIT,
   PR03_B_APPROVED_PUNTO_VENTA,
   PR03_B_APPROVED_TIPO_COMPROBANTE,
+  PR03_B_REAL_KIOSK_ID,
+  PR03_B_SYNTHETIC_KIOSK_ID,
+  PR03_B_SYNTHETIC_OWNER_AUTH_ID,
+  PR03_B_SYNTHETIC_PV,
+  PR03_B_SYNTHETIC_CUIT,
+  PR03_B_SYNTHETIC_RECEIPT_TYPE,
   PR03_B_SYNTHETIC_PV_CANDIDATES,
   PR03_B_PREFLIGHT_SELECT_SQL,
   PR03_B_COMMERCIAL_BASELINE_SQL,
@@ -49,11 +54,13 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
 
       expect(fixture.tag).toBe(PR03_B_TEST_FIXTURE_TAG)
       expect(fixture.scope).toBe(PR03_B_SCOPE)
-      expect(fixture.kiosco_id).toBe(PR03_B_APPROVED_KIOSK_ID)
+      expect(fixture.kiosco_id).toBe(PR03_B_SYNTHETIC_KIOSK_ID)
+      expect(PR03_B_REAL_KIOSK_ID).toBe('b7254826-c767-4098-94b8-71013c12021d')
       expect(PR03_B_APPROVED_KIOSK_ID).toBe('b7254826-c767-4098-94b8-71013c12021d')
-      expect(PR03_B_APPROVED_OWNER_AUTH_ID).toBe('0e90b9a7-36d2-4762-ab1a-4982996cf9aa')
+      expect(PR03_B_SYNTHETIC_KIOSK_ID).toBe('f4a00000-2026-4011-a001-000000000001')
+      expect(PR03_B_SYNTHETIC_OWNER_AUTH_ID).toBe('f6af0f21-07f2-4d22-9b3c-7eec3604d5af')
       expect(fixture.cuit_emisor).toBe('20415005963')
-      expect(fixture.punto_venta).toBe(2)
+      expect(fixture.punto_venta).toBe(9999)
       expect(fixture.tipo_comprobante).toBe(11)
       expect(fixture.operacion_id).toBeDefined()
       expect(fixture.venta_id).toBeDefined()
@@ -237,18 +244,21 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
     })
 
     it('enforces assertNoRealPv2Usage guard strictly forbidding PV 2 in operations', () => {
-      expect(() => assertNoRealPv2Usage(2)).toThrow('FATAL: REAL_PV2_SERIES_TOUCHED')
-      expect(() => assertNoRealPv2Usage('2')).toThrow('FATAL: REAL_PV2_SERIES_TOUCHED')
-      expect(() => assertNoRealPv2Usage({ punto_venta: 2 })).toThrow('FATAL: REAL_PV2_SERIES_TOUCHED')
-      expect(() => assertNoRealPv2Usage({ puntoVenta: 2 })).toThrow('FATAL: REAL_PV2_SERIES_TOUCHED')
+      expect(() => assertNoRealPv2Usage(2)).toThrow('FATAL: PR03_B_REAL_FISCAL_CONTEXT_FORBIDDEN')
+      expect(() => assertNoRealPv2Usage('2')).toThrow('FATAL: PR03_B_REAL_FISCAL_CONTEXT_FORBIDDEN')
+      expect(() => assertNoRealPv2Usage({ punto_venta: 2 })).toThrow('FATAL: PR03_B_REAL_FISCAL_CONTEXT_FORBIDDEN')
+      expect(() => assertNoRealPv2Usage({ puntoVenta: 2 })).toThrow('FATAL: PR03_B_REAL_FISCAL_CONTEXT_FORBIDDEN')
+      expect(() => assertNoRealPv2Usage(PR03_B_REAL_KIOSK_ID)).toThrow('FATAL: PR03_B_REAL_FISCAL_CONTEXT_FORBIDDEN')
+      expect(() => assertNoRealPv2Usage({ kiosco_id: PR03_B_REAL_KIOSK_ID })).toThrow('FATAL: PR03_B_REAL_FISCAL_CONTEXT_FORBIDDEN')
       expect(() => assertNoRealPv2Usage(9999)).not.toThrow()
       expect(() => assertNoRealPv2Usage({ punto_venta: 9999 })).not.toThrow()
+      expect(() => assertNoRealPv2Usage(PR03_B_SYNTHETIC_KIOSK_ID)).not.toThrow()
     })
 
     it('exports canonical schema audit conclusions', () => {
-      expect(SYNTHETIC_EMITTER_ROW_SUPPORTED).toBe(false)
+      expect(SYNTHETIC_EMITTER_ROW_SUPPORTED).toBe(true)
       expect(CANONICAL_PREPARATION_REQUIRES_CONFIGURED_SYNTHETIC_PV).toBe(true)
-      expect(PR03_B_BLOCKED_BY_SCHEMA).toBe(true)
+      expect(PR03_B_BLOCKED_BY_SCHEMA).toBe(false)
     })
 
     it('verifies single pending reservation contract and lock serialization', () => {
@@ -298,22 +308,27 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
       const raw = {
         transaction_read_only: 'on',
         observed_at: new Date().toISOString(),
-        kiosk_active: true,
-        expected_issuer_present: true,
-        expected_issuer_enabled: false,
-        unexpected_enabled_issuers: 0,
-        pos_present: true,
+        real_kiosk_present: true,
+        real_pv2_present: true,
+        real_pv2_enabled: false,
+        real_pv2_series_count: 0,
+        real_pv2_pending_reservations: 0,
+        synthetic_kiosk_present: true,
+        synthetic_kiosk_active: true,
+        synthetic_owner_present: true,
+        synthetic_owner_active: true,
+        synthetic_owner_role: 'DUEÑO',
+        synthetic_owner_superadmin: false,
+        synthetic_emitter_count: 0,
+        synthetic_pv9999_series_count: 0,
+        synthetic_pv9999_reservations: 0,
+        synthetic_fiscal_operations: 0,
         catalog_rev3_exists: true,
         catalog_rev3_enabled: true,
         catalog_rev3_usable: true,
-        residual_fixtures_count: 0,
         synthetic_sales: [
-          { id: '11111111-1111-4111-8111-111111111111', kiosco_id: PR03_B_APPROVED_KIOSK_ID, total: '150.00', estado: 'COMPLETADA' },
-          { id: '22222222-2222-4222-8222-222222222222', kiosco_id: PR03_B_APPROVED_KIOSK_ID, total: '200.00', estado: 'COMPLETADA' },
-        ],
-        synthetic_series_candidates: [
-          { punto_venta: 9999, absent_from_emisores: true, absent_from_series: true, absent_from_reservas: true },
-          { punto_venta: 9998, absent_from_emisores: true, absent_from_series: true, absent_from_reservas: true },
+          { id: '11111111-1111-4111-8111-111111111111', kiosco_id: PR03_B_SYNTHETIC_KIOSK_ID, total: '150.00', estado: 'COMPLETADA' },
+          { id: '22222222-2222-4222-8222-222222222222', kiosco_id: PR03_B_SYNTHETIC_KIOSK_ID, total: '200.00', estado: 'COMPLETADA' },
         ],
       }
       const verified = verifyPr03bPreflight(raw)
@@ -327,20 +342,26 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
       expect(() =>
         verifyPr03bPreflight({
           transaction_read_only: 'on',
-          kiosk_active: true,
-          expected_issuer_present: true,
-          expected_issuer_enabled: false,
-          unexpected_enabled_issuers: 0,
-          pos_present: true,
+          real_kiosk_present: true,
+          real_pv2_present: true,
+          real_pv2_enabled: false,
+          real_pv2_series_count: 0,
+          real_pv2_pending_reservations: 0,
+          synthetic_kiosk_present: true,
+          synthetic_kiosk_active: true,
+          synthetic_owner_present: true,
+          synthetic_owner_active: true,
+          synthetic_owner_role: 'DUEÑO',
+          synthetic_owner_superadmin: false,
+          synthetic_emitter_count: 0,
+          synthetic_pv9999_series_count: 0,
+          synthetic_pv9999_reservations: 0,
+          synthetic_fiscal_operations: 0,
           catalog_rev3_exists: true,
           catalog_rev3_enabled: true,
           catalog_rev3_usable: true,
-          residual_fixtures_count: 0,
           synthetic_sales: [
-            { id: '11111111-1111-4111-8111-111111111111', kiosco_id: PR03_B_APPROVED_KIOSK_ID, total: '150.00', estado: 'COMPLETADA' },
-          ],
-          synthetic_series_candidates: [
-            { punto_venta: 9999, absent_from_emisores: true, absent_from_series: true, absent_from_reservas: true },
+            { id: '11111111-1111-4111-8111-111111111111', kiosco_id: PR03_B_SYNTHETIC_KIOSK_ID, total: '150.00', estado: 'COMPLETADA' },
           ],
         })
       ).toThrow('PR03_B_PREFLIGHT_INSUFFICIENT_SYNTHETIC_TEST_SALES')
@@ -368,16 +389,14 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
 
       expect(sql).toContain(`'${op1}'::uuid`)
       expect(sql).toContain(`'${op2}'::uuid`)
-      expect(sql).toContain('DELETE FROM public.fiscal_series_homologacion WHERE cuit_emisor = \'20415005963\' AND punto_venta = 9999;')
+      expect(sql).toContain("DELETE FROM public.fiscal_series_homologacion WHERE cuit_emisor = '20415005963' AND punto_venta = 9999 AND tipo_comprobante = 11;")
       expect(sql).not.toMatch(/\bDELETE FROM public\.fiscal_series_homologacion WHERE punto_venta = 2\b/i)
       expect(sql).not.toMatch(/\bDELETE FROM public\.ventas\b/i)
     })
 
     it('cleanup SQL never deletes operational PV 2 series', () => {
       const op1 = 'e2b3c4d5-1234-4bc3-95d1-123456789abc'
-      // Si se pasa PV 2 por error, buildManifestCleanupSql no debe incluir DELETE de la serie de PV 2
-      const sql = buildManifestCleanupSql([op1], { syntheticPv: 2 })
-      expect(sql).not.toContain('punto_venta = 2')
+      expect(() => buildManifestCleanupSql([op1], { syntheticPv: 2 })).toThrow('FATAL: PR03_B_REAL_FISCAL_CONTEXT_FORBIDDEN')
     })
 
     it('validates cleanup target tag guard', () => {
@@ -440,43 +459,8 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
   })
 
   describe('8. Controlled Mock PostgreSQL Execution', () => {
-    it('blocks authorized execution on approved kiosk with PR03_B_BLOCKED_BY_SCHEMA due to unary PK', async () => {
-      const clientFactoryMock = vi.fn().mockImplementation(async () => {
-        return {
-          connect: vi.fn().mockResolvedValue(undefined),
-          query: vi.fn().mockImplementation(async (sql: string) => {
-            if (sql.includes('transaction_read_only')) {
-              return {
-                rows: [{
-                  preflight: {
-                    transaction_read_only: 'on',
-                    observed_at: new Date().toISOString(),
-                    kiosk_active: true,
-                    expected_issuer_present: true,
-                    expected_issuer_enabled: false,
-                    unexpected_enabled_issuers: 0,
-                    pos_present: true,
-                    catalog_rev3_exists: true,
-                    catalog_rev3_enabled: true,
-                    catalog_rev3_usable: true,
-                    residual_fixtures_count: 0,
-                    synthetic_sales: [
-                      { id: '11111111-1111-4111-8111-111111111111', kiosco_id: PR03_B_APPROVED_KIOSK_ID, total: '150.00', estado: 'COMPLETADA' },
-                      { id: '22222222-2222-4222-8222-222222222222', kiosco_id: PR03_B_APPROVED_KIOSK_ID, total: '200.00', estado: 'COMPLETADA' },
-                    ],
-                    synthetic_series_candidates: [
-                      { punto_venta: 9999, absent_from_emisores: true, absent_from_series: true, absent_from_reservas: true },
-                    ],
-                  },
-                }],
-                rowCount: 1,
-              }
-            }
-            return { rows: [], rowCount: 1 }
-          }),
-          end: vi.fn().mockResolvedValue(undefined),
-        }
-      })
+    it('blocks authorized execution if real kiosk or PV2 is passed with FATAL error', async () => {
+      const clientFactoryMock = vi.fn()
 
       await expect(
         executePr03bStaging(
@@ -486,10 +470,27 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
             projectRef: PR03_B_EXECUTION_TARGET,
             password: 'mockValidPassword123',
             runId: '11111111-2222-4333-8444-555555555555',
+            kioskId: PR03_B_REAL_KIOSK_ID,
           },
           { clientFactory: clientFactoryMock }
         )
-      ).rejects.toThrow('PR03_B_BLOCKED_BY_SCHEMA')
+      ).rejects.toThrow('FATAL: PR03_B_REAL_FISCAL_CONTEXT_FORBIDDEN')
+
+      await expect(
+        executePr03bStaging(
+          {
+            authorized: true,
+            scope: PR03_B_SCOPE,
+            projectRef: PR03_B_EXECUTION_TARGET,
+            password: 'mockValidPassword123',
+            runId: '11111111-2222-4333-8444-555555555555',
+            syntheticPv: 2,
+          },
+          { clientFactory: clientFactoryMock }
+        )
+      ).rejects.toThrow('FATAL: PR03_B_REAL_FISCAL_CONTEXT_FORBIDDEN')
+
+      expect(clientFactoryMock).not.toHaveBeenCalled()
     })
 
     it('executes full authorized workflow in synthetic environment and reports structured results', async () => {
@@ -511,21 +512,27 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
                     preflight: {
                       transaction_read_only: 'on',
                       observed_at: new Date().toISOString(),
-                      kiosk_active: true,
-                      expected_issuer_present: true,
-                      expected_issuer_enabled: true,
-                      unexpected_enabled_issuers: 0,
-                      pos_present: true,
+                      real_kiosk_present: true,
+                      real_pv2_present: true,
+                      real_pv2_enabled: false,
+                      real_pv2_series_count: 0,
+                      real_pv2_pending_reservations: 0,
+                      synthetic_kiosk_present: true,
+                      synthetic_kiosk_active: true,
+                      synthetic_owner_present: true,
+                      synthetic_owner_active: true,
+                      synthetic_owner_role: 'DUEÑO',
+                      synthetic_owner_superadmin: false,
+                      synthetic_emitter_count: 0,
+                      synthetic_pv9999_series_count: 0,
+                      synthetic_pv9999_reservations: 0,
+                      synthetic_fiscal_operations: 0,
                       catalog_rev3_exists: true,
                       catalog_rev3_enabled: true,
                       catalog_rev3_usable: true,
-                      residual_fixtures_count: 0,
                       synthetic_sales: [
-                        { id: '11111111-1111-4111-8111-111111111111', kiosco_id: PR03_B_APPROVED_KIOSK_ID, total: '150.00', estado: 'COMPLETADA' },
-                        { id: '22222222-2222-4222-8222-222222222222', kiosco_id: PR03_B_APPROVED_KIOSK_ID, total: '200.00', estado: 'COMPLETADA' },
-                      ],
-                      synthetic_series_candidates: [
-                        { punto_venta: 9999, absent_from_emisores: true, absent_from_series: true, absent_from_reservas: true },
+                        { id: '11111111-1111-4111-8111-111111111111', kiosco_id: PR03_B_SYNTHETIC_KIOSK_ID, total: '150.00', estado: 'COMPLETADA' },
+                        { id: '22222222-2222-4222-8222-222222222222', kiosco_id: PR03_B_SYNTHETIC_KIOSK_ID, total: '200.00', estado: 'COMPLETADA' },
                       ],
                     },
                   },
@@ -548,6 +555,32 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
                       devoluciones_count: 0,
                       productos_count: 50,
                       ventas_digest: 'fixed-sales-digest',
+                    },
+                  },
+                ],
+                rowCount: 1,
+              }
+            }
+
+            if (sql.includes('SELECT punto_venta, habilitado FROM public.fiscal_emisores_homologacion')) {
+              return {
+                rows: [
+                  { punto_venta: 9999, habilitado: true },
+                  { punto_venta: 2, habilitado: false },
+                ],
+                rowCount: 2,
+              }
+            }
+
+            if (sql.includes('autorizar_consulta_fiscal_homologacion')) {
+              return {
+                rows: [
+                  {
+                    auth: {
+                      version: 1,
+                      cuit_emisor: PR03_B_SYNTHETIC_CUIT,
+                      punto_venta: PR03_B_SYNTHETIC_PV,
+                      tipo_comprobante: PR03_B_SYNTHETIC_RECEIPT_TYPE,
                     },
                   },
                 ],
@@ -622,6 +655,22 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
               return { rows: [{ waiting_count: 1 }], rowCount: 1 }
             }
 
+            if (sql.includes('synth_emitters')) {
+              return {
+                rows: [
+                  {
+                    synth_emitters: 0,
+                    synth_series: 0,
+                    synth_reservas: 0,
+                    run_ops: 0,
+                    real_series: 0,
+                    real_reservas: 0,
+                  },
+                ],
+                rowCount: 1,
+              }
+            }
+
             return { rows: [], rowCount: 1 }
           }),
           end: vi.fn().mockResolvedValue(undefined),
@@ -644,7 +693,6 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
           projectRef: PR03_B_EXECUTION_TARGET,
           password: 'mockValidPassword123',
           runId,
-          allowSyntheticKiosk: true,
         },
         { clientFactory: clientFactoryMock }
       )
@@ -652,20 +700,36 @@ describe('PR03-B Staging Acceptance Plan & Real PG Executor Tests', () => {
       expect(report.execution).toBe('AUTHORIZED_EXECUTION')
       if (report.execution === 'AUTHORIZED_EXECUTION') {
         expect(report.PR03_B_EXECUTION).toBe('PASS')
+        expect(report.SYNTHETIC_TENANT_WIRED).toBe('PASS')
+        expect(report.SYNTHETIC_KIOSK_ID_MATCH).toBe('PASS')
+        expect(report.SYNTHETIC_OWNER_MATCH).toBe('PASS')
+        expect(report.SYNTHETIC_PV).toBe(9999)
+        expect(report.REAL_PV2_GUARD).toBe('PASS')
+        expect(report.REAL_PV2_ENABLED_DURING_PR03_B).toBe(false)
+        expect(report.REAL_PV2_SERIES_TOUCHED).toBe(false)
+        expect(report.CATALOG_REV3_USABLE).toBe('PASS')
+        expect(report.SYNTHETIC_EMITTER_LIFECYCLE).toBe('PASS')
+        expect(report.CANONICAL_PRIVATE_PREPARATION).toBe('PASS')
         expect(report.IDEMPOTENCY_REPLAY).toBe('PASS')
+        expect(report.REPLAY_REAL_PG).toBe('PASS')
         expect(report.IDEMPOTENCY_CONFLICT).toBe('PASS')
         expect(report.CONFLICT_SQLSTATE).toBe('40001')
         expect(report.CONCURRENCY_SEMANTICS).toBe('SINGLE_PENDING_RESERVATION')
+        expect(report.LOCK_OBSERVATION_DETERMINISTIC).toBe('PASS')
         expect(report.CONCURRENCY_LOCK_OBSERVED).toBe('PASS')
         expect(report.CONCURRENCY_REJECTION_SQLSTATE).toBe('55000')
         expect(report.NUMBERING_CONCURRENCY).toBe('PASS')
         expect(report.PREFLIGHT_READ_ONLY).toBe('PASS')
         expect(report.PREFLIGHT_ROLLBACK_CONFIRMED).toBe(true)
         expect(report.SYNTHETIC_PV_USED).toBe(9999)
-        expect(report.REAL_PV2_SERIES_TOUCHED).toBe(false)
+        expect(report.REAL_COMMERCIAL_BASELINE_PRESERVED).toBe(true)
+        expect(report.SYNTHETIC_COMMERCIAL_BASELINE_PRESERVED).toBe(true)
         expect(report.COMMERCIAL_BASELINE_PRESERVED).toBe(true)
+        expect(report.SUCCESS_CLEANUP).toBe('PASS')
+        expect(report.RESIDUAL_SYNTHETIC_FISCAL_STATE).toBe(0)
         expect(report.RUN_ID).toBe(runId)
         expect(report.ARCA_CALLS).toBe(0)
+        expect(report.ARCA_CALLS_NEW).toBe(0)
         expect(report.COMMERCIAL_WRITES).toBe(0)
         expect(report.CLIENT1_CLOSED).toBe(true)
         expect(report.CLIENT2_CLOSED).toBe(true)
