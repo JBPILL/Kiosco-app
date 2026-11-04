@@ -13,7 +13,10 @@ export const PR02_TARGET_CUIT = '20415005963'
 export const PR02_TARGET_PV = 2
 export const PR02_TARGET_RECEIPT_TYPE = 11 // Factura C
 export const PR02_TARGET_CERT_SHA256 = 'bbcaffebce0f62e1d626e9f6f425dfa70a2de22031df12536a3876d2193af9d0'
+export const PR02_HISTORICAL_CATALOG_REVISION = 3
+export const PR02_TARGET_CATALOG_REVISION_R4 = 4
 export const PR02_EXPECTED_CATALOG_REVISION = 3
+export const PR02_SUPPORTED_CATALOG_REVISIONS = Object.freeze([3, 4])
 export const IS_PR02_SIMULATION_TEST_ONLY = true
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -46,6 +49,22 @@ export const PR02_PHASES = Object.freeze({
     emissionAllowed: false,
     readOnly: true,
     service: 'WSFE',
+  }),
+  PR02_P1: Object.freeze({
+    id: 'PR02_P1_PARAMETER_REFRESH',
+    description: 'Obtención y provisión insert-only de parámetros fiscales oficiales (Revisión 4, deshabilitada). Cero emisión.',
+    arcaCallsMax: 3,
+    emissionAllowed: false,
+    stagingWrites: 1,
+    targetRevision: 4,
+  }),
+  PR02_P2: Object.freeze({
+    id: 'PR02_P2_CATALOG_ENABLE',
+    description: 'Habilitación controlada y atómica de la Revisión 4 del catálogo fiscal. Cero llamadas ARCA, cero emisión.',
+    arcaCallsMax: 0,
+    emissionAllowed: false,
+    stagingWrites: 1,
+    targetRevision: 4,
   }),
   PR02_B: Object.freeze({
     id: 'PR02_B_DURABLE_SINGLE_INTENT_PREPARATION',
@@ -236,15 +255,16 @@ export function verifyPr02Preconditions(opts) {
     officialNumberingObservation,
   } = opts
 
-  // 1. Catálogo oficial R3 explícito
-  if (catalogRevision === undefined || catalogRevision !== PR02_EXPECTED_CATALOG_REVISION) {
-    throw new Error(`PRECONDITION_FAILED: Catálogo debe ser Revisión 3 (suministrado: ${catalogRevision})`)
+  // 1. Catálogo oficial soportado (R3 histórico o R4 activo explícito)
+  const allowedRevisions = opts.allowedCatalogRevisions || PR02_SUPPORTED_CATALOG_REVISIONS
+  if (catalogRevision === undefined || !allowedRevisions.includes(catalogRevision)) {
+    throw new Error(`PRECONDITION_FAILED: Catálogo debe ser una revisión soportada [${allowedRevisions.join(', ')}] (suministrado: ${catalogRevision})`)
   }
   if (catalogEnabled !== true) {
-    throw new Error('PRECONDITION_FAILED: Catálogo Revisión 3 debe estar explícitamente habilitado')
+    throw new Error(`PRECONDITION_FAILED: Catálogo Revisión ${catalogRevision} debe estar explícitamente habilitado`)
   }
   if (catalogExpired !== false) {
-    throw new Error('PRECONDITION_FAILED: Catálogo Revisión 3 vencido o fuera de vigencia')
+    throw new Error(`PRECONDITION_FAILED: Catálogo Revisión ${catalogRevision} vencido o fuera de vigencia`)
   }
 
   // 2. TA y Credenciales con marca temporal real
@@ -470,4 +490,39 @@ export async function executePr02Simulation(params, deps) {
     cae: null,
     REPLAY_SECOND_SOAP_CALL: 0,
   })
+}
+
+/**
+ * Validador estricto del contrato de catálogo fiscal para PR02.
+ * Exige revisión explícita acreditada, hash SHA-256 íntegro, habilitación activa,
+ * fechas válidas, vigencia y coherencia de datos.
+ */
+export function validatePr02CatalogContract(catalog, expectedRevision = PR02_TARGET_CATALOG_REVISION_R4) {
+  if (!catalog || typeof catalog !== 'object') {
+    throw new Error('CATALOG_CONTRACT_INVALID: Objeto de catálogo ausente o inválido')
+  }
+  if (catalog.revision !== expectedRevision) {
+    throw new Error(`CATALOG_REVISION_MISMATCH: Se esperaba revisión ${expectedRevision}, recibida ${catalog.revision}`)
+  }
+  if (!catalog.fuente_sha256 || typeof catalog.fuente_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(catalog.fuente_sha256)) {
+    throw new Error('CATALOG_HASH_INVALID: fuente_sha256 debe ser un SHA-256 hexadecimal válido de 64 caracteres')
+  }
+  if (catalog.habilitado !== true) {
+    throw new Error(`CATALOG_NOT_ENABLED: Catálogo revisión ${expectedRevision} no está habilitado`)
+  }
+  const consultedMs = Date.parse(catalog.consultado_en)
+  const expiresMs = Date.parse(catalog.vence_en)
+  if (!Number.isFinite(consultedMs) || !Number.isFinite(expiresMs)) {
+    throw new Error('CATALOG_TIMESTAMPS_INVALID: Fechas de consulta o vencimiento inválidas')
+  }
+  if (expiresMs <= consultedMs) {
+    throw new Error('CATALOG_EXPIRY_INVALID: vence_en debe ser posterior a consultado_en')
+  }
+  if (!Array.isArray(catalog.condiciones) || catalog.condiciones.length === 0 || catalog.condiciones.length > 100) {
+    throw new Error('CATALOG_CONDICIONES_INVALID: Array de condiciones vacío o fuera de rango')
+  }
+  if (!Array.isArray(catalog.alicuotas) || catalog.alicuotas.length > 100) {
+    throw new Error('CATALOG_ALICUOTAS_INVALID: Array de alícuotas inválido o fuera de rango')
+  }
+  return true
 }

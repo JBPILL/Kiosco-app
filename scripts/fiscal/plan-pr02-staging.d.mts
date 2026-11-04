@@ -3,7 +3,10 @@ export const PR02_TARGET_CUIT: string
 export const PR02_TARGET_PV: number
 export const PR02_TARGET_RECEIPT_TYPE: number
 export const PR02_TARGET_CERT_SHA256: string
+export const PR02_HISTORICAL_CATALOG_REVISION: number
+export const PR02_TARGET_CATALOG_REVISION_R4: number
 export const PR02_EXPECTED_CATALOG_REVISION: number
+export const PR02_SUPPORTED_CATALOG_REVISIONS: readonly [number, number]
 export const IS_PR02_SIMULATION_TEST_ONLY: true
 
 export interface Pr02Phase {
@@ -15,12 +18,15 @@ export interface Pr02Phase {
   readonly stagingWrites?: number
   readonly service?: string
   readonly noAutoRetry?: boolean
+  readonly targetRevision?: number
 }
 
 export const PR02_PHASES: {
   readonly PR02_A0: Pr02Phase
   readonly PR02_A1: Pr02Phase
   readonly PR02_A2: Pr02Phase
+  readonly PR02_P1: Pr02Phase
+  readonly PR02_P2: Pr02Phase
   readonly PR02_B: Pr02Phase
   readonly PR02_C: Pr02Phase
   readonly PR02_D: Pr02Phase
@@ -187,3 +193,8 @@ export function executePr02Simulation(
   params: SimulationParams,
   deps: SimulationDeps
 ): Promise<SimulationResult>
+
+export function validatePr02CatalogContract(
+  catalog: unknown,
+  expectedRevision?: number
+): boolean

@@ -2186,3 +2186,21 @@ Dueño; nunca se infiere del cierre local ni de la preparación sin emisión.
    - Separación de readiness operativo y auditoría (BLOCKER 4): `PR02_A0_READ_ONLY_AUDIT = EXECUTED` taxativamente separado de `PR02_A0_OPERATIONAL_READINESS` (`BLOCKED_CATALOG_EXPIRED` o `READY`). Catálogo vencido bloquea preparación operativa (`PR02_A0_CATALOG_GUARD = EXPIRED`, `PR02_A0_REMOTE_EXECUTION_READY = false`, `PR02_READY_FOR_EMISSION_GO = false`) sin mutar catálogo ni invocar ARCA.
    - Fail-closed total (BLOCKER 5): ningún error SQL puede devolver PASS global. Conservación de `-ExpectedHead` externo obligatorio, rollback y cierre obligatorio de conexión PostgreSQL.
    - Estado: `PR02_A0_SQL_SCHEMA_COMPATIBILITY = PASS`, `PR02_A0_HISTORICAL_QUERY_REAL_PG = PASS`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `HISTORICAL_042_REEMISSION_FORBIDDEN = true`, `PR02_READY_FOR_EMISSION_GO = false`, `PR02_A0_REMOTE_EXECUTION_READY = true`, `PR02_A0_REMOTE_EXECUTED = false`. 33/33 unit tests PASS, 6/6 PostgreSQL 17 tests PASS, build Vite exitoso, `git diff --check` limpio. Cero llamadas ARCA, cero escrituras Staging, cero mutaciones Producción.
+
+7. **Ejecución Hospedada Autorizada de PR02-A0 en Staging (04/11/2026)**:
+   - Alcance: `PR02_A0_STAGING_SQL_READ_ONLY` ejecutado contra Staging `acoyfwwmhaeruciyedri` con `-ExpectedHead dee0ef6d0550d78d441a92c3a8b29c9a746ab15b`.
+   - Resultados de auditoría: `PR02_A0_READ_ONLY_AUDIT = EXECUTED`, `PR02_A0_READ_ONLY_GUARD = PASS`, `PR02_A0_TLS_GUARD = PASS`, `PR02_A0_ROLLBACK_GUARD = PASS`, `PR02_A0_CONNECTION_CLOSE = PASS`, `PR02_A0_REMOTE_EXECUTED = true`.
+   - Diagnóstico operacional: `PR02_A0_OPERATIONAL_READINESS = BLOCKED_CATALOG_EXPIRED` (Catálogo Revisión 3 vencido en `2026-11-04T02:59:59.000Z`, `PR02_A0_CATALOG_GUARD = EXPIRED`).
+   - Aislamiento de emisor: `PR02_A0_REAL_PV2_GUARD = PASS` (PV 2 inactivo, `habilitado = false`, 0 emisores activos globalmente).
+   - Historial y 042: `PR02_A0_HISTORY_GUARD = PASS`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `HISTORICAL_042_REEMISSION_FORBIDDEN = true`.
+   - Ventas candidatas: 4 ventas técnicamente aptas, ninguna seleccionada ni aprobada por el Dueño (`SALE_AUTO_SELECTED = false`, `OWNER_APPROVAL_GRANTED = false`).
+   - Métricas: `ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`. Bloquea preparación operativa hasta renovación inmutable del catálogo.
+
+8. **Preparación Local del Refresco Fiscal R4 — Gates PR02-P1 y PR02-P2 (04/11/2026)**:
+   - División en dos sub-gates:
+     - `PR02-P1`: Adquisición de parámetros oficiales WSFE bajo allowlist estricta (`LoginCms` máx 1 si no reutilizable, `FEParamGetTiposIva` máx 1, `FEParamGetCondicionIvaReceptor` máx 1; llamadas de emisión prohibidas e inalcanzables). Inserción controlada **INSERT ONLY** con `habilitado = false` en `public.fiscal_parametros_homologacion`. Prohibido UPSERT, UPDATE o mutar R3.
+     - `PR02-P2`: Habilitación atómica controlada (`habilitado: false -> true`) bajo guarda previa estricta en SQL (`PR02_P2_GUARD_SQL`) con `--expected-hash <SHA256>` del catálogo insertado en P1.
+   - Continuidad contractual: `cargar_datos_preparacion_homologacion` selecciona automáticamente la Revisión 4 (`ORDER BY revision DESC LIMIT 1`) una vez habilitada, sin modificar código ni esquema. Trigger `fiscal_parametros_inmutables` previene cualquier modificación no autorizada con SQLSTATE `55000`.
+   - Aislamiento y seguridad: emisor PV 2 permanece deshabilitado (`REAL_PV2_ENABLED = false`), sin tocar series operativas (`REAL_PV2_SERIES_TOUCHED = false`). Intención 042 permanece `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `HISTORICAL_042_REEMISSION_FORBIDDEN = true`. `PR02_READY_FOR_EMISSION_GO = false`.
+   - Validación en PostgreSQL 17 real: suite `src/test/fiscalPr02ParametersPostgresIntegration.test.ts` con contenedor Docker (11/11 tests PASS).
+   - Estado: `PR02_CATALOG_REFRESH_LOCAL_PREPARATION = PASS`, `PR02_P1_REMOTE_EXECUTION_READY = true`, `PR02_P2_REMOTE_EXECUTION_READY = false`. Cero llamadas ARCA nuevas, cero escrituras Staging nuevas.

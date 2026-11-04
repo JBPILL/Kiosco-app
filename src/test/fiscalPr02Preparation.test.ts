@@ -696,18 +696,22 @@ describe('PR02 Hardened Architecture & Safety Preparation Tests (Zero Remote Cal
       expect(() => verifyPr02Preconditions({} as unknown as typeof validPreconditions)).toThrow('PRECONDITION_FAILED')
     })
 
-    it('rechaza si Catálogo no es Revisión 3 o está vencido/deshabilitado', () => {
+    it('rechaza si Catálogo no es una revisión soportada (3 o 4) o está vencido/deshabilitado', () => {
       expect(() =>
         verifyPr02Preconditions({ ...validPreconditions, catalogRevision: 2 })
-      ).toThrow('Catálogo debe ser Revisión 3')
+      ).toThrow(/Catálogo debe ser una revisión soportada/)
 
       expect(() =>
         verifyPr02Preconditions({ ...validPreconditions, catalogEnabled: false })
-      ).toThrow('Catálogo Revisión 3 debe estar explícitamente habilitado')
+      ).toThrow(/Catálogo.*debe estar explícitamente habilitado/)
 
       expect(() =>
         verifyPr02Preconditions({ ...validPreconditions, catalogExpired: true })
-      ).toThrow('Catálogo Revisión 3 vencido o fuera de vigencia')
+      ).toThrow(/Catálogo.*vencido o fuera de vigencia/)
+
+      // Acepta Revisión 4 cuando está habilitada y no vencida
+      const rev4Result = verifyPr02Preconditions({ ...validPreconditions, catalogRevision: 4 })
+      expect(rev4Result.status).toBe('PASS')
     })
 
     it('prohíbe taxativamente la reutilización de un TA vencido o sin marca temporal finita', () => {

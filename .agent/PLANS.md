@@ -805,3 +805,44 @@ Corrección estricta de compatibilidad SQL y resolución de bloqueadores de audi
 - **Separación de Readiness Operativo (BLOCKER 4)**: `PR02_A0_READ_ONLY_AUDIT = EXECUTED` claramente separado de `PR02_A0_OPERATIONAL_READINESS` (`BLOCKED_CATALOG_EXPIRED` o `READY`). Catálogo vencido bloquea preparación operativa (`PR02_A0_CATALOG_GUARD = EXPIRED`, `PR02_A0_REMOTE_EXECUTION_READY = false`, `PR02_READY_FOR_EMISSION_GO = false`) sin mutar el catálogo ni llamar a ARCA.
 - **Fail-Closed Total (BLOCKER 5)**: Demostrado mediante tests unitarios que ningún error SQL puede devolver PASS. Wrapper con `-ExpectedHead` externo obligatorio, rollback y cierre obligatorio de conexión PostgreSQL.
 - **Estado**: `PR02_A0_SQL_SCHEMA_COMPATIBILITY = PASS`, `PR02_A0_HISTORICAL_QUERY_REAL_PG = PASS`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `HISTORICAL_042_REEMISSION_FORBIDDEN = true`, `PR02_READY_FOR_EMISSION_GO = false`, `PR02_A0_REMOTE_EXECUTION_READY = true`, `PR02_A0_REMOTE_EXECUTED = false`. 33/33 unit tests PASS, 6/6 PostgreSQL 17 tests PASS, build Vite exitoso, `git diff --check` limpio. Cero llamadas ARCA, cero escrituras Staging, cero mutaciones Producción.
+
+
+### 2026-11-04 - Ejecución Hospedada Autorizada de PR02-A0 (Staging READ ONLY)
+
+Acreditación técnica hospedada de la auditoría READ ONLY contra Staging (`acoyfwwmhaeruciyedri`):
+- **Ejecución Autorizada Un Solo Uso**: Ejecutado wrapper `run-pr02-a0-staging-private.ps1` con `-ExpectedHead dee0ef6d0550d78d441a92c3a8b29c9a746ab15b`.
+- **Auditoría Técnica**: `PR02_A0_READ_ONLY_AUDIT = EXECUTED`, `PR02_A0_READ_ONLY_GUARD = PASS`, `PR02_A0_TLS_GUARD = PASS`, `PR02_A0_ROLLBACK_GUARD = PASS`, `PR02_A0_CONNECTION_CLOSE = PASS`, `PR02_A0_REMOTE_EXECUTED = true`.
+- **Readiness Operativo**: `PR02_A0_OPERATIONAL_READINESS = BLOCKED_CATALOG_EXPIRED`. Catálogo Revisión 3 venció el `2026-11-04T02:59:59.000Z` (`PR02_A0_CATALOG_GUARD = EXPIRED`).
+- **Aislamiento de Emisor**: `PR02_A0_REAL_PV2_GUARD = PASS`. Emisor en PV 2 inactivo (`habilitado = false`), cero emisores habilitados globalmente (`enabled_count = 0`).
+- **Historial e Intención 042**: `PR02_A0_HISTORY_GUARD = PASS`. Sin reservas inciertas ni pendientes en PV 2. `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `HISTORICAL_042_REEMISSION_FORBIDDEN = true`.
+- **Ventas Candidatas**: 4 ventas técnicamente elegibles, 0 seleccionadas, 0 aprobadas (`SALE_AUTO_SELECTED = false`, `OWNER_APPROVAL_GRANTED = false`).
+- **Métricas**: `ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`.
+- **Estado**: `PR02_A0_REMOTE_EXECUTED = true`, `PR02_A0_OPERATIONAL_READINESS = BLOCKED_CATALOG_EXPIRED`, `PR02_READY_FOR_EMISSION_GO = false`. Bloquea avance operativo hasta refresco de catálogo.
+
+
+### 2026-11-04 - Preparación Local del Refresco Fiscal R4 (Gates PR02-P1 y PR02-P2)
+
+Diseño, contratos, arnés de ejecución y validación con PostgreSQL 17 real para el refresco del catálogo a Revisión 4:
+- **Secuencia PR02 Actualizada**:
+  `PR02-A0 (Auditoría READ ONLY -> EXECUTED)` -> `PR02-P1 (Obtención e Inserción R4 Deshabilitada)` -> `PR02-P2 (Habilitación Atómica R4)` -> `PR02-A1 (WSAA Auth)` -> `PR02-A2 (WSFE Último Autorizado)` -> `PR02-B (Preparación Durable)` -> `PR02-C (Emisión Única)` -> `PR02-D (Conciliación)`.
+- **Gate PR02-P1 (Obtención de Parámetros e Inserción Deshabilitada)**:
+  - Preflight READ ONLY: verifica R3 vencido, R4 ausente y emisor PV 2 inactivo.
+  - Allowlist estricta WSFE: `LoginCms` (máx 1 si TA no reutilizable), `FEParamGetTiposIva` (máx 1), `FEParamGetCondicionIvaReceptor` (máx 1). Total máx 3 (o 2). Cero reintentos.
+  - Prohibición total de emisión: `FECAESolicitar`, `FECompConsultar`, `FECompUltimoAutorizado`, `FEParamGetPtosVenta` inalcanzables.
+  - Inserción controlada **INSERT ONLY** con `habilitado = false` en `public.fiscal_parametros_homologacion`. Prohibido UPSERT, UPDATE o mutar R3.
+  - Postcheck READ ONLY: confirma R4 presente e inactiva, R3 histórica preservada con su hash, y emisor PV 2 deshabilitado.
+  - Wrapper: `run-pr02-p1-staging-private.ps1` con `-ExpectedHead` externo obligatorio, GUI prompt para credenciales y TLS estricto.
+- **Gate PR02-P2 (Habilitación Atómica Controlada)**:
+  - Exige GO explícito independiente con `--expected-hash <SHA256>` del catálogo insertado en P1.
+  - Guarda previa SQL (`PR02_P2_GUARD_SQL`): confirma R4 deshabilitada, vigente (`vence_en > clock_timestamp()`), hash coincidente, R3 intacta y emisor PV 2 deshabilitado.
+  - Activación atómica única: `UPDATE public.fiscal_parametros_homologacion SET habilitado = true WHERE revision = 4 AND fuente_sha256 = $1 AND habilitado = false;` (1 fila exacta).
+  - Postcheck READ ONLY: confirma R4 habilitada y vigente, R3 histórica preservada, y emisor PV 2 deshabilitado.
+  - Wrapper: `run-pr02-p2-staging-private.ps1`.
+- **Continuidad Contractual de `cargar_datos_preparacion_homologacion`**:
+  - La función canónica privada selecciona:
+    `WHERE habilitado AND consultado_en<=clock_timestamp() AND vence_en>clock_timestamp() ORDER BY revision DESC LIMIT 1 FOR SHARE;`
+    Al habilitarse R4, automáticamente adopta la revisión 4 sin modificar funciones ni esquemas en la base de datos.
+  - Trigger `fiscal_parametros_inmutables` activo garantiza que cualquier modificación distinta de `habilitado` es rechazada con SQLSTATE `55000`.
+- **Validación con PostgreSQL 17 Real en Docker (`fiscalPr02ParametersPostgresIntegration.test.ts`)**:
+  - 11/11 tests PASS cubriendo: R3 vencida confirmada, P1 preflight y postcheck, semántica insert-only, bloqueo de duplicados en PK, rechazo de parámetros corruptos, P2 guard check, actualización atómica `habilitado = true`, rechazo de habilitación de R4 vencida, selección automática en `cargar_datos_preparacion_homologacion`, rechazo por trigger `55000` ante modificaciones no autorizadas, y fail-closed con cierre estricto de conexión.
+- **Estado**: `PR02_CATALOG_REFRESH_LOCAL_PREPARATION = PASS`, `REV3_PRESERVED = true`, `REV3_EXPIRED = true`, `REV4_INSERT_ONLY_DESIGN = PASS`, `REV4_ENABLE_GUARD = PASS`, `CANONICAL_LATEST_VALID_REVISION = PASS`, `PR02_REVISION_COMPATIBILITY = PASS`. `PR02_P1_REMOTE_EXECUTION_READY = true`, `PR02_P2_REMOTE_EXECUTION_READY = false`. Emisor real PV 2 deshabilitado (`REAL_PV2_ENABLED = false`, `REAL_PV2_SERIES_TOUCHED = false`). Intención 042 sin resolver (`HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `HISTORICAL_042_REEMISSION_FORBIDDEN = true`). Cero llamadas ARCA, cero escrituras Staging (`ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`).

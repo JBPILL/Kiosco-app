@@ -2035,3 +2035,49 @@ y contenía heurísticas frágiles (`numero = 42` o sufijo `0042`) para identifi
 `PR02_A0_SQL_SCHEMA_COMPATIBILITY = PASS`, `PR02_A0_HISTORICAL_QUERY_REAL_PG = PASS`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `HISTORICAL_042_REEMISSION_FORBIDDEN = true`, `PR02_READY_FOR_EMISSION_GO = false`.
 33/33 tests unitarios preflight PASS, 6/6 tests PostgreSQL 17 PASS, 121 tests en suites relacionadas PASS, build Vite exitoso, `git diff --check` limpio.
 Cero llamadas ARCA, cero escrituras Staging, cero mutaciones Producción, emisor PV 2 deshabilitado.
+
+## 04/11/2026 - Preparación Local del Refresco Fiscal R4 (Gates PR02-P1 y PR02-P2)
+
+**Contexto:**
+La ejecución hospedada autorizada de `PR02_A0_STAGING_SQL_READ_ONLY` en Staging (`acoyfwwmhaeruciyedri`) confirmó:
+1. `PR02_A0_READ_ONLY_AUDIT = EXECUTED` (auditoría técnica completada satisfactoriamente con ROLLBACK y cierre verificados).
+2. `PR02_A0_OPERATIONAL_READINESS = BLOCKED_CATALOG_EXPIRED`: el catálogo Revisión 3 venció el 2026-11-04T02:59:59.000Z.
+3. El emisor real PV 2 permanece íntegro y deshabilitado (`habilitado = false`).
+4. Existen 4 ventas técnicamente elegibles, pero ninguna ha sido seleccionada ni aprobada por el titular (`SALE_AUTO_SELECTED = false`, `OWNER_APPROVAL_GRANTED = false`).
+5. La intención histórica 042 permanece `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, con prohibición taxativa de reemisión (`HISTORICAL_042_REEMISSION_FORBIDDEN = true`).
+Para restaurar la capacidad operacional de homologación sin mutar la historia ni habilitar prematuramente la emisión, se requiere diseñar la adquisición, inserción y habilitación inmutable de la Revisión 4 de `public.fiscal_parametros_homologacion`.
+
+**Decisión:**
+1. **Preservar el Cierre Documental de PR02-A0**:
+   - Se registra en la historia documental que la auditoría hospedada A0 se ejecutó (`READ_ONLY_AUDIT = EXECUTED`), arrojando `OPERATIONAL_READINESS = BLOCKED_CATALOG_EXPIRED`.
+   - Se aclara formalmente la procedencia del resultado del script: el wrapper ejecutado por el operador entregó el JSON con `PASS` técnico y `EXPIRED` operacional, mientras que una subtarea de fondo paralela fue cancelada limpiamente sin efectos secundarios.
+2. **Arquitectura en Dos Gates Separados (PR02-P1 y PR02-P2)**:
+   - **PR02-P1 (Obtención e Inserción Deshabilitada)**:
+     - Preflight READ ONLY: verifica R3 vencido, R4 inexistente y emisor PV 2 deshabilitado.
+     - Allowlist cerrada de WSFE: `LoginCms` (máx 1 si el TA anterior no es reutilizable), `FEParamGetTiposIva` (máx 1) y `FEParamGetCondicionIvaReceptor` (máx 1). Total de llamadas ARCA limitado a 3 (o 2 si TA reutilizable).
+     - Prohibición estricta de llamadas de emisión: `FECAESolicitar`, `FECompConsultar`, `FECompUltimoAutorizado`, `FEParamGetPtosVenta` inalcanzables. Cero retries automáticos.
+     - Inserción controlada con semántica **INSERT ONLY**: inserta la Revisión 4 con `habilitado = false`. Prohibido UPSERT, UPDATE o mutar R3.
+     - Postcheck READ ONLY: verifica R4 presente e inactiva, R3 intacta con su hash histórico, y emisor PV 2 inactivo.
+   - **PR02-P2 (Habilitación Atómica Controlada)**:
+     - Exige un GO explícito independiente posterior a la auditoría del hash generado en P1 (`--expected-hash <SHA256>`).
+     - Guarda previa estricta en SQL (`PR02_P2_GUARD_SQL`): confirma R4 presente, deshabilitada, vigente (`vence_en > clock_timestamp()`), con hash coincidente, R3 existente y emisor PV 2 inactivo.
+     - Mutación atómica única: `UPDATE public.fiscal_parametros_homologacion SET habilitado = true WHERE revision = 4 AND fuente_sha256 = $1 AND habilitado = false;` (1 fila exacta afectada).
+     - Postcheck READ ONLY: verifica R4 habilitada y vigente, R3 histórica preservada, y emisor PV 2 inactivo.
+3. **Continuidad de Revisiones y Compatibilidad Canónica**:
+   - La tabla `public.fiscal_parametros_homologacion` mantiene inmutables las revisiones 1, 2 y 3.
+   - La función canónica `cargar_datos_preparacion_homologacion` consulta:
+     `SELECT * INTO parametros FROM public.fiscal_parametros_homologacion WHERE habilitado AND consultado_en<=clock_timestamp() AND vence_en>clock_timestamp() ORDER BY revision DESC LIMIT 1 FOR SHARE;`
+     Por diseño, al habilitarse la Revisión 4 seleccionará automáticamente la Revisión 4 sin necesidad de modificar el código ni el esquema de la función SQL.
+   - El trigger `fiscal_parametros_inmutables` rechaza con `55000` cualquier intento de modificar columnas distintas de `habilitado` o de borrar filas.
+4. **Aislamiento Fiscal Absoluto**:
+   - `REAL_PV2_ENABLED = false`, `REAL_PV2_SERIES_TOUCHED = false`.
+   - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `HISTORICAL_042_REEMISSION_FORBIDDEN = true`.
+   - `PR02_READY_FOR_EMISSION_GO = false`.
+5. **Acreditación en PostgreSQL 17 Real**:
+   - Se validaron todos los invariantes en `src/test/fiscalPr02ParametersPostgresIntegration.test.ts` con contenedor Docker `postgres:17-alpine` (11/11 tests PASS).
+   - Se comprobó: R3 expirado verificado, P1 preflight y postcheck, semántica insert-only, bloqueo de duplicados en PK, rechazo de parámetros corruptos, P2 guard check, actualización atómica `habilitado = true`, rechazo de habilitación de R4 vencida, selección automática en `cargar_datos_preparacion_homologacion`, rechazo por trigger `55000` ante modificaciones no autorizadas, y política fail-closed con cierre obligatorio de conexión.
+
+**Consecuencias:**
+`PR02_CATALOG_REFRESH_LOCAL_PREPARATION = PASS`, `REV3_PRESERVED = true`, `REV3_EXPIRED = true`, `REV4_INSERT_ONLY_DESIGN = PASS`, `REV4_ENABLE_GUARD = PASS`, `CANONICAL_LATEST_VALID_REVISION = PASS`, `PR02_REVISION_COMPATIBILITY = PASS`.
+`PR02_P1_REMOTE_EXECUTION_READY = true`, `PR02_P2_REMOTE_EXECUTION_READY = false`.
+Cero llamadas ARCA nuevas, cero escrituras Staging nuevas, cero mutaciones Producción, emisor real PV 2 deshabilitado.

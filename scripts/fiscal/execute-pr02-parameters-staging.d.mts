@@ -1,0 +1,99 @@
+import type { Client } from 'pg'
+
+export const PR02_PARAMETERS_EXECUTION_TARGET = 'acoyfwwmhaeruciyedri'
+export const PR02_PARAMETERS_DB_HOST = 'aws-1-sa-east-1.pooler.supabase.com'
+export const PR02_PARAMETERS_DB_PORT = 5432
+export const PR02_PARAMETERS_DB_USER = 'postgres.acoyfwwmhaeruciyedri'
+export const PR02_PARAMETERS_DB_NAME = 'postgres'
+
+export function resolvePostgresSslConfig(options?: {
+  ssl?: { rejectUnauthorized?: boolean; ca?: string }
+  caCertPath?: string
+}): { readonly rejectUnauthorized: true; readonly ca: string }
+
+export function checkSoapFault(doc: unknown, serviceName?: string): void
+export function checkWsfeErrors(doc: unknown): void
+
+export function buildWsaaLoginCmsSoapRequest(cmsBase64: string): string
+export function parseWsaaLoginCmsResponse(soapXml: string, now?: Date | string | number): {
+  token: string
+  sign: string
+  expirationTime: string
+}
+
+export function buildWsfeTiposIvaRequest(auth: { token: string; sign: string; cuit: string }): string
+export function parseWsfeTiposIvaResponse(soapXml: string, consultedAt?: string): string
+
+export function buildWsfeCondicionIvaReceptorRequest(auth: { token: string; sign: string; cuit: string }): string
+export function parseWsfeCondicionIvaReceptorResponse(soapXml: string, consultedAt?: string): string
+
+export function validatePr02ParametersCliArgs(argv?: string[]): {
+  readonly authorized: boolean
+  readonly dryRun: boolean
+  readonly scope: string
+  readonly projectRef: string
+  readonly head: string | null
+  readonly expectedHead: string | null
+  readonly expectedHash: string | null
+  readonly ivaFile: string | null
+  readonly conditionFile: string | null
+  readonly caCertPath: string | null
+}
+
+export function assertNoForbiddenCredentials(password: unknown): void
+
+export interface Pr02ParametersOptions {
+  argv?: string[]
+  authorized?: boolean
+  dryRun?: boolean
+  scope?: string
+  projectRef?: string
+  head?: string
+  expectedHead?: string
+  expectedHash?: string
+  password?: string
+  caCertPath?: string
+  ivaText?: string
+  conditionText?: string
+  ivaFile?: string
+  conditionFile?: string
+  now?: string | Date
+  expiresAt?: string
+}
+
+export interface Pr02ParametersReport {
+  readonly execution: string
+  readonly scope: string
+  readonly projectRef: string
+  readonly PR02_P1_EXECUTION?: string
+  readonly PR02_P2_EXECUTION?: string
+  readonly PR02_PARAMETERS_LOCAL_PREPARATION?: string
+  readonly PR02_PARAMETERS_REMOTE_EXECUTION_READY: boolean
+  readonly PR02_PARAMETERS_REMOTE_EXECUTED: boolean
+  readonly PR02_READY_FOR_EMISSION_GO: false
+  readonly PR02_P1_PREFLIGHT_GUARD?: string
+  readonly PR02_P1_POSTCHECK_GUARD?: string
+  readonly PR02_P2_GUARD?: string
+  readonly PR02_P2_POSTCHECK_GUARD?: string
+  readonly REVISION_3_PRESERVED: true
+  readonly REVISION_4_INSERT_ONLY?: boolean
+  readonly REVISION_4_HABILITADO: boolean
+  readonly REVISION_4_HASH?: string
+  readonly REVISION_4_VENCE_EN?: string
+  readonly REAL_PV2_ENABLED: false
+  readonly REAL_PV2_SERIES_TOUCHED: false
+  readonly HISTORICAL_042_IDENTIFICATION: 'UNRESOLVED'
+  readonly HISTORICAL_042_REEMISSION_FORBIDDEN: true
+  readonly ARCA_CALLS_NEW: number
+  readonly STAGING_WRITES_NEW: number
+  readonly PRODUCTION_MUTATIONS: number
+}
+
+export function executePr02ParametersStaging(
+  options?: Pr02ParametersOptions,
+  deps?: {
+    Client?: new (config: unknown) => Client
+    client?: Client
+    caCert?: string
+  }
+): Promise<Pr02ParametersReport>
