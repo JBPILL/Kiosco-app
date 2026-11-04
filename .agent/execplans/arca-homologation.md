@@ -5005,3 +5005,31 @@ Subsanación y blindaje de las invariantes críticas de PR02 bajo fail-closed es
    - Validación del Dueño desde fuente autenticada confiable;
    - Observación oficial de número (`FECompUltimoAutorizado`) estrictamente validada con vigencia <= 5 minutos.
 5. **Estado**: `PR02_A0_LOCAL_PREPARATION = PASS`, `PR02_A0_REMOTE_EXECUTION_READY = true`, `PR02_A0_REMOTE_EXECUTED = false`. 22/22 tests PASS. Cero llamadas ARCA, cero escrituras Staging (`ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`).
+
+
+### 04/11/2026 — PR02-A0: Corrección Final del Ejecutor READ ONLY antes de Staging
+
+1. **Pin de Commit Obligatorio**:
+   - `run-pr02-a0-staging-private.ps1` exige parámetro obligatorio `-ExpectedHead` con SHA hexadecimal completo de 40 caracteres.
+   - Sin valor por defecto ni autocalculado desde HEAD local.
+   - Verificaciones: `git fetch origin --prune`, rama exacta (`feat/pilot-envases-returns`), worktree limpio, `HEAD == REMOTE_HEAD == ExpectedHead`.
+2. **Endurecimiento Fail-Closed CLI y API**:
+   - Detección y rechazo de contradicciones (`--authorized --dry-run` -> `CLI_ARGUMENT_CONFLICT`), flags desconocidos y duplicados.
+   - API programática sujeta a las mismas validaciones estrictas sin bypass.
+3. **ROLLBACK Confirmado y Verificable**:
+   - Confirmación por PostgreSQL requerida en bloque `finally`.
+   - Si falla el ROLLBACK: `PR02_A0_ROLLBACK_GUARD = FAIL` y el resultado global es FAIL.
+   - Si la consulta y el ROLLBACK fallan conjuntamente, ambas causas se preservan en error compuesto.
+4. **Cierre Obligatorio de PostgreSQL (client.end)**:
+   - PASS devuelto únicamente tras la finalización exitosa de `client.end()`.
+   - Si `client.end()` falla: `PR02_A0_CONNECTION_CLOSE = FAIL` y `PR02_A0_EXECUTION = FAIL`.
+5. **Auditoría Documental de Intención 042**:
+   - Descartada la equivalencia `numero = 42`.
+   - Exige vínculos documentales persistidos exactos (`operacion_id`, `intento_id`, serie fiscal, estado, respuesta/conciliación).
+   - Sin correspondencia demostrable: `HISTORICAL_042_IDENTIFICATION = UNRESOLVED` (sin PASS histórico ni mutaciones).
+6. **Vigencia de Catálogo**:
+   - Distingue `PR02_A0_READ_ONLY_AUDIT = EXECUTED` de `PR02_A0_OPERATIONAL_READINESS = BLOCKED_CATALOG_EXPIRED`.
+   - Si el catálogo está vencido según `clock_timestamp()` del servidor, la auditoría se completa pero la preparación operativa queda bloqueada.
+7. **Dry-Run sin PASS Remotos Ficticios**:
+   - Reporta `DRY_RUN_REMOTE_CHECKS = NOT_RUN` y `NOT_RUN` en todas las verificaciones hospedadas no ejecutadas.
+8. **Estado**: `PR02_A0_FINAL_HARDENING = PASS`, `PR02_A0_REMOTE_EXECUTION_READY = true`, `PR02_A0_REMOTE_EXECUTED = false`. 31/31 tests PR02-A0 PASS, 68/68 PR02 suite PASS, 143/143 tests fiscales PASS, 6/6 PostgreSQL 17 PASS, build Vite exitoso, `git diff --check` limpio. Cero llamadas ARCA, cero escrituras Staging, cero mutaciones Producción.

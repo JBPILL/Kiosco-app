@@ -783,3 +783,15 @@ Implementación del módulo y arnés de preflight READ ONLY en Staging para audi
 - **Separación de Dependencias**: `TA_STATUS = NOT_CHECKED_IN_A0`, `OFFICIAL_NUMBERING = NOT_OBSERVED_IN_A0`, `EMISSION_PERMISSION = DISABLED`.
 - **Prerequisitos Obligatorios para PR02-C**: Documentados los 6 puntos críticos (getExistingIntent obligatorio, CAS durable, persistencia obligatoria de rechazos/incertidumbre, no confundir aprobación con CAE aplicado, validación del Dueño confiable, y observación oficial validada).
 - **Estado**: `PR02_A0_LOCAL_PREPARATION = PASS`, `PR02_A0_REMOTE_EXECUTION_READY = true`, `PR02_A0_REMOTE_EXECUTED = false`. 22/22 tests PASS, build exitoso. Cero llamadas ARCA, cero escrituras Staging (`ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`).
+
+### 2026-11-04 - Corrección Final del Ejecutor READ ONLY antes de Autorizar Staging (PR02-A0)
+
+Blindaje exhaustivo del preflight READ ONLY antes del otorgamiento del primer GO remoto:
+- **Pin de Commit Obligatorio y Externo**: Eliminado valor por defecto en `run-pr02-a0-staging-private.ps1`. Se exige `-ExpectedHead` externo de 40 hex chars con verificación estricta de `git fetch origin --prune`, rama exacta, worktree limpio, `HEAD == REMOTE_HEAD` y `HEAD == ExpectedHead`.
+- **Endurecimiento Fail-Closed de Argumentos**: Rechazo de contradicciones (`--authorized --dry-run`), argumentos desconocidos y duplicados en CLI y API programática.
+- **ROLLBACK Obligatorio y Verificable**: Confirmación de ROLLBACK requerida por PostgreSQL; si falla, `PR02_A0_ROLLBACK_GUARD = FAIL` y se impiden falsos éxitos, preservando diagnósticos compuestos si la consulta falló conjuntamente.
+- **Cierre PostgreSQL (client.end) Exigido**: PASS solo construido y devuelto tras cierre exitoso en `finally`. Si `client.end()` falla, se marca `PR02_A0_CONNECTION_CLOSE = FAIL` y `PR02_A0_EXECUTION = FAIL`.
+- **Auditoría Documental de Intención 042**: Eliminada la asunción `numero = 42`. Exige correspondencia documental demostrable (`operacion_id`, `intento_id`, serie fiscal, estado, historial de respuesta/conciliación); sin ello reporta `HISTORICAL_042_IDENTIFICATION = UNRESOLVED` sin PASS ni mutaciones.
+- **Vigencia Real de Catálogo**: Distingue `PR02_A0_READ_ONLY_AUDIT = EXECUTED` de `PR02_A0_OPERATIONAL_READINESS = BLOCKED_CATALOG_EXPIRED`, permitiendo auditar el estado sin desbloquear emisión si el catálogo está vencido según `clock_timestamp()`.
+- **Dry-Run sin PASS Ficticios**: Comprobaciones hospedadas no ejecutadas reportan estrictamente `NOT_RUN`.
+- **Estado**: `PR02_A0_FINAL_HARDENING = PASS`, `PR02_A0_REMOTE_EXECUTION_READY = true`, `PR02_A0_REMOTE_EXECUTED = false`. 31/31 PR02-A0 tests PASS, 68/68 PR02 suite PASS, 143/143 tests fiscales PASS, 6/6 PostgreSQL 17 PASS, build Vite exitoso, `git diff --check` limpio. Cero llamadas ARCA, cero escrituras Staging, cero mutaciones Producción.

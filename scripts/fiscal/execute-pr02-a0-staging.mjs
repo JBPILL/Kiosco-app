@@ -4,13 +4,14 @@
  * ventas candidatas elegibles bajo estricta transacción REPEATABLE READ READ ONLY.
  *
  * REGLAS DE SEGURIDAD TAXATIVAS:
- * 1. Cero escrituras en Staging (BEGIN ... READ ONLY + ROLLBACK incondicional).
+ * 1. Cero escrituras en Staging (BEGIN ... READ ONLY + ROLLBACK incondicional y confirmado).
  * 2. Cero llamadas hacia ARCA / WSFE / WSAA (ARCA_CALLS_NEW = 0).
  * 3. Emisor PV 2 debe estar strictly DESHABILITADO (EMITTER_ENABLED = false).
- * 4. Catálogo R3 debe existir, estar habilitado y vigente según clock_timestamp() del servidor.
+ * 4. Catálogo R3 debe existir y auditarse según clock_timestamp() del servidor.
  * 5. Cualquier estado incierto o no conciliado aborta con STOP.
  * 6. Cero selección automática de venta (SALE_AUTO_SELECTED = false, OWNER_APPROVAL_GRANTED = false).
- * 7. Dry-run por defecto si no se pasa --authorized.
+ * 7. Dry-run por defecto si no se pasa --authorized, sin PASS remotos ficticios.
+ * 8. Cierre de conexión client.end() obligatorio y verificado antes de emitir PASS.
  */
 
 import pg from 'pg'
@@ -50,33 +51,86 @@ export function assertNoForbiddenCredentials(password) {
 }
 
 /**
- * Validador de argumentos de CLI.
+ * Validador de argumentos de CLI con detección de duplicados, contradicciones y valores faltantes.
  */
 export function validatePr02A0CliArgs(argv = process.argv.slice(2)) {
-  const isAuthorized = argv.includes('--authorized')
-  const isDryRun = argv.includes('--dry-run') || !isAuthorized
+  const allowedFlags = new Set(['--authorized', '--dry-run', '--scope', '--project-ref', '--head', '--expected-head'])
+  const flagCounts = new Map()
 
-  const scopeArgIndex = argv.indexOf('--scope')
-  const scope = scopeArgIndex >= 0 ? argv[scopeArgIndex + 1] : PR02_A0_SCOPE
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]
+    if (arg.startsWith('--')) {
+      if (!allowedFlags.has(arg)) {
+        throw new Error(`INVALID_CLI_ARGUMENT: Argumento desconocido '${arg}'`)
+      }
+      flagCounts.set(arg, (flagCounts.get(arg) || 0) + 1)
+      if (['--scope', '--project-ref', '--head', '--expected-head'].includes(arg)) {
+        i++
+        if (i >= argv.length || argv[i].startsWith('--')) {
+          throw new Error(`MISSING_CLI_VALUE: El argumento '${arg}' requiere un valor`)
+        }
+      }
+    } else {
+      throw new Error(`UNEXPECTED_CLI_POSITIONAL: Argumento posicional inesperado '${arg}'`)
+    }
+  }
 
-  const projectArgIndex = argv.indexOf('--project-ref')
-  const projectRef = projectArgIndex >= 0 ? argv[projectArgIndex + 1] : PR02_A0_EXECUTION_TARGET
+  for (const [flag, count] of flagCounts.entries()) {
+    if (count > 1) {
+      throw new Error(`DUPLICATE_CLI_ARGUMENT: Argumento duplicado '${flag}'`)
+    }
+  }
 
-  const headArgIndex = argv.indexOf('--head')
-  const head = headArgIndex >= 0 ? argv[headArgIndex + 1] : null
+  const hasAuthorized = flagCounts.has('--authorized')
+  const hasDryRun = flagCounts.has('--dry-run')
 
-  const expectedHeadIndex = argv.indexOf('--expected-head')
-  const expectedHead = expectedHeadIndex >= 0 ? argv[expectedHeadIndex + 1] : null
+  if (hasAuthorized && hasDryRun) {
+    throw new Error('CLI_ARGUMENT_CONFLICT: No se permite combinar --authorized con --dry-run')
+  }
 
-  // Validación fail-closed de scope y target para ejecución autorizada
+  const isAuthorized = hasAuthorized
+  const isDryRun = hasDryRun || !isAuthorized
+
+  const getArgValue = (flag) => {
+    const idx = argv.indexOf(flag)
+    return idx >= 0 ? argv[idx + 1] : null
+  }
+
+  const scope = getArgValue('--scope')
+  const projectRef = getArgValue('--project-ref')
+  const head = getArgValue('--head')
+  const expectedHead = getArgValue('--expected-head')
+
   if (isAuthorized) {
+    if (!scope) {
+      throw new Error(`MISSING_CLI_ARGUMENT: Se requiere explícitamente --scope ${PR02_A0_SCOPE}`)
+    }
     if (scope !== PR02_A0_SCOPE) {
       throw new Error(`INVALID_SCOPE: Se requiere exactamente scope ${PR02_A0_SCOPE}, recibido '${scope}'`)
+    }
+
+    if (!projectRef) {
+      throw new Error(`MISSING_CLI_ARGUMENT: Se requiere explícitamente --project-ref ${PR02_A0_EXECUTION_TARGET}`)
     }
     if (projectRef !== PR02_A0_EXECUTION_TARGET) {
       throw new Error(`INVALID_PROJECT_REF: Se requiere exactamente target ${PR02_A0_EXECUTION_TARGET}, recibido '${projectRef}'`)
     }
-    if (expectedHead && head && head !== expectedHead) {
+
+    if (!head) {
+      throw new Error('MISSING_CLI_ARGUMENT: Se requiere explícitamente --head <SHA>')
+    }
+    if (!/^[0-9a-fA-F]{40}$/.test(head)) {
+      throw new Error(`INVALID_CLI_ARGUMENT: --head debe ser un SHA hexadecimal de 40 caracteres, recibido '${head}'`)
+    }
+
+    if (!expectedHead) {
+      throw new Error('MISSING_CLI_ARGUMENT: Se requiere explícitamente --expected-head <SHA>')
+    }
+    if (!/^[0-9a-fA-F]{40}$/.test(expectedHead)) {
+      throw new Error(`INVALID_CLI_ARGUMENT: --expected-head debe ser un SHA hexadecimal de 40 caracteres, recibido '${expectedHead}'`)
+    }
+
+    if (head !== expectedHead) {
       throw new Error(`HEAD_MISMATCH: HEAD actual '${head}' difiere del HEAD esperado '${expectedHead}'`)
     }
   }
@@ -84,8 +138,8 @@ export function validatePr02A0CliArgs(argv = process.argv.slice(2)) {
   return Object.freeze({
     authorized: isAuthorized,
     dryRun: isDryRun,
-    scope,
-    projectRef,
+    scope: scope || PR02_A0_SCOPE,
+    projectRef: projectRef || PR02_A0_EXECUTION_TARGET,
     head,
     expectedHead,
   })
@@ -94,11 +148,14 @@ export function validatePr02A0CliArgs(argv = process.argv.slice(2)) {
 /**
  * Verifica las invariantes de seguridad en modo READ ONLY sobre una conexión PostgreSQL.
  * Ejecuta exclusivamente consultas SELECT dentro de una transacción REPEATABLE READ READ ONLY
- * y finaliza incondicionalmente con ROLLBACK.
+ * y finaliza incondicionalmente con ROLLBACK confirmado.
  */
 export async function runPr02A0PreflightQueries(client) {
   let transactionStarted = false
-  let rolledBack = false
+  let rollbackConfirmed = false
+  let queryError = null
+  let rollbackError = null
+  let preflightResults = null
 
   try {
     // 1. Iniciar transacción estricta READ ONLY
@@ -171,9 +228,9 @@ export async function runPr02A0PreflightQueries(client) {
     if (catalog.fuente_sha256 !== PR02_CATALOG_REV3_HASH) {
       throw new Error(`CATALOG_REV3_HASH_MISMATCH: Hash fuente '${catalog.fuente_sha256}' no coincide con el esperado '${PR02_CATALOG_REV3_HASH}'`)
     }
-    if (catalog.is_expired === true || catalog.valid_now !== true) {
-      throw new Error('CATALOG_EXPIRED: Catálogo oficial Revisión 3 ha vencido según clock_timestamp() del servidor. STOP.')
-    }
+
+    // Diagnóstico de vigencia de catálogo: distingue auditoría completada de preparación operativa bloqueada
+    const catalogIsExpired = catalog.is_expired === true || catalog.valid_now !== true
 
     // 5. FASE 5: Historial fiscal y estados inciertos
     // 5.1 Reservas en la serie operativa PV 2
@@ -212,16 +269,45 @@ export async function runPr02A0PreflightQueries(client) {
     }
 
     // 5.3 Auditoría de intención histórica 042
+    // No suponer que numero = 42 equivale a intención histórica 042.
+    // Requiere correspondencia demostrable con operacion_id, intento_id, serie fiscal, estado e historial.
     const intent042Res = await client.query(
-      `SELECT r.operacion_id, r.numero, r.estado, r.intento_id
+      `SELECT r.operacion_id, r.intento_id, r.cuit_emisor, r.punto_venta, r.tipo_comprobante, r.numero, r.estado,
+              resp.cae, resp.resultado, resp.creado_en AS respuesta_en
        FROM public.fiscal_reservas_homologacion r
-       WHERE r.cuit_emisor = $1 AND r.punto_venta = $2 AND r.tipo_comprobante = $3 AND r.numero = 42;`,
+       JOIN public.fiscal_operaciones_homologacion op ON op.id = r.operacion_id
+       LEFT JOIN public.fiscal_respuestas_emision_homologacion resp
+         ON resp.operacion_id = r.operacion_id AND resp.intento_id = r.intento_id
+       WHERE r.cuit_emisor = $1
+         AND r.punto_venta = $2
+         AND r.tipo_comprobante = $3
+         AND (
+           r.intento_id = '00000000-0000-0000-0000-000000000042'
+           OR op.id = '00000000-0000-0000-0000-000000000042'
+           OR (r.numero = 42 AND r.intento_id IS NOT NULL AND resp.operacion_id IS NOT NULL)
+         );`,
       [PR02_TARGET_CUIT, PR02_TARGET_PV, PR02_TARGET_RECEIPT_TYPE]
     )
+
+    let historical042Identification = 'UNRESOLVED'
     if (intent042Res.rows.length > 0) {
-      const row042 = intent042Res.rows[0]
-      if (row042.estado === 'ENVIO_INCIERTO') {
-        throw new Error('FISCAL_HISTORY_REQUIRES_RECONCILIATION: Intención histórica 042 se encuentra en estado ENVIO_INCIERTO. Requiere conciliación READ ONLY.')
+      for (const row of intent042Res.rows) {
+        if (row.estado === 'ENVIO_INCIERTO') {
+          throw new Error('FISCAL_HISTORY_REQUIRES_RECONCILIATION: Intención histórica 042 se encuentra en estado ENVIO_INCIERTO. Requiere conciliación READ ONLY.')
+        }
+      }
+      const exactMatch = intent042Res.rows.find(
+        (r) =>
+          r.operacion_id &&
+          r.intento_id &&
+          r.cuit_emisor === PR02_TARGET_CUIT &&
+          Number(r.punto_venta) === PR02_TARGET_PV &&
+          Number(r.tipo_comprobante) === PR02_TARGET_RECEIPT_TYPE &&
+          r.estado &&
+          r.respuesta_en
+      )
+      if (exactMatch) {
+        historical042Identification = 'VERIFIED'
       }
     }
 
@@ -269,11 +355,13 @@ export async function runPr02A0PreflightQueries(client) {
       }
     }
 
-    return Object.freeze({
+    preflightResults = Object.freeze({
       PR02_A0_READ_ONLY_GUARD: 'PASS',
       PR02_A0_REAL_PV2_GUARD: 'PASS',
-      PR02_A0_CATALOG_GUARD: 'PASS',
+      PR02_A0_CATALOG_GUARD: catalogIsExpired ? 'EXPIRED' : 'PASS',
       PR02_A0_HISTORY_GUARD: 'PASS',
+      HISTORICAL_042_IDENTIFICATION: historical042Identification,
+      catalog_is_expired: catalogIsExpired,
       server_now: catalog.server_now,
       catalog_revision: catalog.revision,
       emitter_pv: emitter.punto_venta,
@@ -281,27 +369,103 @@ export async function runPr02A0PreflightQueries(client) {
       candidate_sales_count: eligibleCandidates.length,
       candidate_sales_sample: eligibleCandidates.slice(0, 5),
     })
+  } catch (err) {
+    queryError = err
   } finally {
-    if (transactionStarted && !rolledBack) {
+    if (transactionStarted) {
       try {
         await client.query('ROLLBACK;')
-        rolledBack = true
-      } catch {
-        // En caso de corte o rollback ya finalizado por postgres
+        rollbackConfirmed = true
+      } catch (err) {
+        rollbackError = err
       }
     }
   }
+
+  // Comprobar fallo de ROLLBACK obligatorio
+  if (rollbackError || (transactionStarted && !rollbackConfirmed)) {
+    if (queryError) {
+      const combined = new Error(`PREFLIGHT_QUERY_AND_ROLLBACK_FAILED: Consulta preflight falló ('${queryError.message}') y ROLLBACK falló ('${rollbackError?.message || 'ROLLBACK no confirmado'}')`)
+      combined.PR02_A0_ROLLBACK_GUARD = 'FAIL'
+      throw combined
+    }
+    const err = new Error(`ROLLBACK_GUARD_FAILED: No se pudo confirmar el ROLLBACK obligatorio: ${rollbackError?.message || 'ROLLBACK no confirmado'}`)
+    err.PR02_A0_ROLLBACK_GUARD = 'FAIL'
+    throw err
+  }
+
+  if (queryError) {
+    throw queryError
+  }
+
+  return preflightResults
 }
 
 /**
  * Ejecutor principal de PR02-A0.
  */
 export async function executePr02A0Staging(options = {}, deps = {}) {
-  const cliArgs = options.argv ? validatePr02A0CliArgs(options.argv) : options
+  let cliArgs
+  if (options.argv) {
+    cliArgs = validatePr02A0CliArgs(options.argv)
+  } else {
+    // Validación programática equivalente y estricta sin bypass
+    if (options.authorized === true && options.dryRun === true) {
+      throw new Error('CLI_ARGUMENT_CONFLICT: No se permite combinar authorized con dryRun')
+    }
+
+    const isAuthorized = options.authorized === true
+    const isDryRun = options.dryRun ?? !isAuthorized
+
+    if (isAuthorized) {
+      if (!options.scope) {
+        throw new Error(`MISSING_CLI_ARGUMENT: Se requiere explícitamente scope ${PR02_A0_SCOPE}`)
+      }
+      if (options.scope !== PR02_A0_SCOPE) {
+        throw new Error(`INVALID_SCOPE: Se requiere exactamente scope ${PR02_A0_SCOPE}, recibido '${options.scope}'`)
+      }
+
+      if (!options.projectRef) {
+        throw new Error(`MISSING_CLI_ARGUMENT: Se requiere explícitamente projectRef ${PR02_A0_EXECUTION_TARGET}`)
+      }
+      if (options.projectRef !== PR02_A0_EXECUTION_TARGET) {
+        throw new Error(`INVALID_PROJECT_REF: Se requiere exactamente target ${PR02_A0_EXECUTION_TARGET}, recibido '${options.projectRef}'`)
+      }
+
+      if (!options.head) {
+        throw new Error('MISSING_CLI_ARGUMENT: Se requiere explícitamente head <SHA>')
+      }
+      if (typeof options.head !== 'string' || !/^[0-9a-fA-F]{40}$/.test(options.head)) {
+        throw new Error(`INVALID_CLI_ARGUMENT: head debe ser un SHA hexadecimal de 40 caracteres, recibido '${options.head}'`)
+      }
+
+      if (!options.expectedHead) {
+        throw new Error('MISSING_CLI_ARGUMENT: Se requiere explícitamente expectedHead <SHA>')
+      }
+      if (typeof options.expectedHead !== 'string' || !/^[0-9a-fA-F]{40}$/.test(options.expectedHead)) {
+        throw new Error(`INVALID_CLI_ARGUMENT: expectedHead debe ser un SHA hexadecimal de 40 caracteres, recibido '${options.expectedHead}'`)
+      }
+
+      if (options.head !== options.expectedHead) {
+        throw new Error(`HEAD_MISMATCH: HEAD actual '${options.head}' difiere del HEAD esperado '${options.expectedHead}'`)
+      }
+    }
+
+    cliArgs = {
+      authorized: isAuthorized,
+      dryRun: isDryRun,
+      scope: options.scope || PR02_A0_SCOPE,
+      projectRef: options.projectRef || PR02_A0_EXECUTION_TARGET,
+      head: options.head || null,
+      expectedHead: options.expectedHead || null,
+    }
+  }
+
   const isAuthorized = cliArgs.authorized === true
   const isDryRun = cliArgs.dryRun ?? !isAuthorized
 
   // Dry-run por defecto: no abre conexiones ni realiza consultas remotas
+  // Reporta NOT_RUN en comprobaciones hospedadas (sin PASS remotos ficticios)
   if (isDryRun) {
     return Object.freeze({
       execution: 'DRY_RUN',
@@ -310,12 +474,19 @@ export async function executePr02A0Staging(options = {}, deps = {}) {
       PR02_A0_LOCAL_PREPARATION: 'PASS',
       PR02_A0_REMOTE_EXECUTION_READY: true,
       PR02_A0_REMOTE_EXECUTED: false,
-      PR02_A0_READ_ONLY_GUARD: 'PASS',
-      PR02_A0_TLS_GUARD: 'PASS',
-      PR02_A0_ROLLBACK_GUARD: 'PASS',
-      PR02_A0_CATALOG_GUARD: 'PASS',
-      PR02_A0_REAL_PV2_GUARD: 'PASS',
-      PR02_A0_HISTORY_GUARD: 'PASS',
+      DRY_RUN_REMOTE_CHECKS: 'NOT_RUN',
+      SQL_READ_ONLY_VERIFICATION: 'NOT_RUN',
+      TLS_REMOTE_VERIFICATION: 'NOT_RUN',
+      CATALOG_REMOTE_VERIFICATION: 'NOT_RUN',
+      HISTORY_REMOTE_VERIFICATION: 'NOT_RUN',
+      PR02_A0_READ_ONLY_GUARD: 'NOT_RUN',
+      PR02_A0_TLS_GUARD: 'NOT_RUN',
+      PR02_A0_ROLLBACK_GUARD: 'NOT_RUN',
+      PR02_A0_CONNECTION_CLOSE: 'NOT_RUN',
+      PR02_A0_CATALOG_GUARD: 'NOT_RUN',
+      PR02_A0_REAL_PV2_GUARD: 'NOT_RUN',
+      PR02_A0_HISTORY_GUARD: 'NOT_RUN',
+      HISTORICAL_042_IDENTIFICATION: 'UNRESOLVED',
       PR02_A0_CANDIDATE_AUTO_SELECTION: false,
       PR02_A0_ARCA_REACHABLE: false,
       TA_STATUS: 'NOT_CHECKED_IN_A0',
@@ -358,44 +529,83 @@ export async function executePr02A0Staging(options = {}, deps = {}) {
       statement_timeout: 10000,
     })
 
-  let connectionClosed = false
+  let clientConnected = false
+  let preflightResults = null
+  let executionError = null
+  let closeError = null
+
   try {
     await client.connect()
+    clientConnected = true
 
-    const preflightResults = await runPr02A0PreflightQueries(client)
-
-    return Object.freeze({
-      execution: 'AUTHORIZED_READ_ONLY_EXECUTION',
-      scope: PR02_A0_SCOPE,
-      projectRef: PR02_A0_EXECUTION_TARGET,
-      PR02_A0_LOCAL_PREPARATION: 'PASS',
-      PR02_A0_REMOTE_EXECUTION_READY: true,
-      PR02_A0_REMOTE_EXECUTED: true,
-      PR02_A0_READ_ONLY_GUARD: preflightResults.PR02_A0_READ_ONLY_GUARD,
-      PR02_A0_TLS_GUARD: 'PASS',
-      PR02_A0_ROLLBACK_GUARD: 'PASS',
-      PR02_A0_CATALOG_GUARD: preflightResults.PR02_A0_CATALOG_GUARD,
-      PR02_A0_REAL_PV2_GUARD: preflightResults.PR02_A0_REAL_PV2_GUARD,
-      PR02_A0_HISTORY_GUARD: preflightResults.PR02_A0_HISTORY_GUARD,
-      PR02_A0_CANDIDATE_AUTO_SELECTION: false,
-      PR02_A0_ARCA_REACHABLE: false,
-      TA_STATUS: 'NOT_CHECKED_IN_A0',
-      OFFICIAL_NUMBERING: 'NOT_OBSERVED_IN_A0',
-      EMISSION_PERMISSION: 'DISABLED',
-      ARCA_CALLS_NEW: 0,
-      STAGING_WRITES_NEW: 0,
-      PRODUCTION_MUTATIONS: 0,
-      candidate_sales_count: preflightResults.candidate_sales_count,
-      candidate_sales_sample: preflightResults.candidate_sales_sample,
-    })
+    preflightResults = await runPr02A0PreflightQueries(client)
+  } catch (err) {
+    executionError = err
   } finally {
-    try {
-      await client.end()
-      connectionClosed = true
-    } catch {
-      // Ignorar error de cierre si ya estaba desconectado
+    if (clientConnected || deps.client) {
+      try {
+        await client.end()
+      } catch (err) {
+        closeError = err
+      }
     }
   }
+
+  // Cierre obligatorio de PostgreSQL: falla si client.end() falla
+  if (closeError) {
+    if (executionError) {
+      const err = new Error(`PR02_A0_EXECUTION_AND_CLOSE_FAILED: Consulta preflight falló ('${executionError.message}') y cierre PostgreSQL falló ('${closeError.message}')`)
+      err.PR02_A0_CONNECTION_CLOSE = 'FAIL'
+      err.PR02_A0_EXECUTION = 'FAIL'
+      throw err
+    }
+    const err = new Error(`PG_CLOSE_FAILED: Falló el cierre de la conexión PostgreSQL (client.end()): ${closeError.message}`)
+    err.PR02_A0_CONNECTION_CLOSE = 'FAIL'
+    err.PR02_A0_EXECUTION = 'FAIL'
+    throw err
+  }
+
+  if (executionError) {
+    throw executionError
+  }
+
+  // Si se completó client.end() exitosamente y no hubo error de ejecución:
+  // Construir resultado PASS únicamente después del finally.
+  const isCatalogExpired = preflightResults.catalog_is_expired === true
+  const operationalReadiness = isCatalogExpired
+    ? 'BLOCKED_CATALOG_EXPIRED'
+    : (preflightResults.candidate_sales_count > 0 ? 'READY' : 'BLOCKED_NO_ELIGIBLE_SALES')
+
+  return Object.freeze({
+    execution: 'AUTHORIZED_READ_ONLY_EXECUTION',
+    scope: PR02_A0_SCOPE,
+    projectRef: PR02_A0_EXECUTION_TARGET,
+    PR02_A0_READ_ONLY_AUDIT: 'EXECUTED',
+    PR02_A0_OPERATIONAL_READINESS: operationalReadiness,
+    PR02_A0_LOCAL_PREPARATION: 'PASS',
+    PR02_A0_REMOTE_EXECUTION_READY: !isCatalogExpired,
+    PR02_A0_REMOTE_EXECUTED: true,
+    PR02_A0_READ_ONLY_GUARD: preflightResults.PR02_A0_READ_ONLY_GUARD,
+    PR02_A0_TLS_GUARD: 'PASS',
+    PR02_A0_ROLLBACK_GUARD: 'PASS',
+    PR02_A0_CONNECTION_CLOSE: 'PASS',
+    PR02_A0_CATALOG_GUARD: isCatalogExpired ? 'EXPIRED' : 'PASS',
+    PR02_A0_REAL_PV2_GUARD: preflightResults.PR02_A0_REAL_PV2_GUARD,
+    PR02_A0_HISTORY_GUARD: preflightResults.PR02_A0_HISTORY_GUARD,
+    HISTORICAL_042_IDENTIFICATION: preflightResults.HISTORICAL_042_IDENTIFICATION,
+    PR02_A0_CANDIDATE_AUTO_SELECTION: false,
+    PR02_A0_ARCA_REACHABLE: false,
+    TA_STATUS: 'NOT_CHECKED_IN_A0',
+    OFFICIAL_NUMBERING: 'NOT_OBSERVED_IN_A0',
+    EMISSION_PERMISSION: 'DISABLED',
+    ARCA_CALLS_NEW: 0,
+    STAGING_WRITES_NEW: 0,
+    PRODUCTION_MUTATIONS: 0,
+    server_now: preflightResults.server_now,
+    catalog_revision: preflightResults.catalog_revision,
+    candidate_sales_count: preflightResults.candidate_sales_count,
+    candidate_sales_sample: preflightResults.candidate_sales_sample,
+  })
 }
 
 // Punto de entrada CLI directo

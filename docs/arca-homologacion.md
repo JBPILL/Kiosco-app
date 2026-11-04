@@ -2167,3 +2167,14 @@ Dueño; nunca se infiere del cierre local ni de la preparación sin emisión.
      5. Validación del Dueño desde fuente autenticada confiable;
      6. Observación oficial de número (`FECompUltimoAutorizado`) estrictamente validada con vigencia <= 5 minutos.
    - Estado: `PR02_A0_LOCAL_PREPARATION = PASS`, `PR02_A0_REMOTE_EXECUTION_READY = true`, `PR02_A0_REMOTE_EXECUTED = false`. 22/22 tests PASS. Cero llamadas ARCA, cero escrituras Staging (`ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`).
+
+
+5. **Corrección Final del Preflight PostgreSQL READ ONLY PR02-A0 (04/11/2026)**:
+   - Pin de commit obligatorio: `run-pr02-a0-staging-private.ps1` exige parámetro externo `-ExpectedHead` (40 hex chars) sin autocalcular desde HEAD local, con verificación de `git fetch origin --prune`, rama exacta, worktree limpio, y paridad `HEAD == REMOTE_HEAD == ExpectedHead`.
+   - Endurecimiento CLI y API: rechazo fail-closed de contradicciones (`--authorized --dry-run`), argumentos desconocidos y duplicados. API programática sujeta a las mismas validaciones.
+   - ROLLBACK confirmado: confirmación obligatoria por PostgreSQL. Si falla, `PR02_A0_ROLLBACK_GUARD = FAIL` y resultado global es FAIL; preservación de errores compuestos.
+   - Cierre PostgreSQL (client.end): resultado PASS devuelto únicamente tras la finalización exitosa de `client.end()`. Si falla, `PR02_A0_CONNECTION_CLOSE = FAIL` y `PR02_A0_EXECUTION = FAIL`.
+   - Intención histórica 042: eliminación de la heurística `numero = 42`. Requiere correspondencia demostrable con vínculos persistidos exactos (`operacion_id`, `intento_id`, serie fiscal, estado, historial de respuesta/conciliación). Sin correspondencia: `HISTORICAL_042_IDENTIFICATION = UNRESOLVED` sin PASS ni llamadas ARCA.
+   - Vigencia de catálogo: distingue `PR02_A0_READ_ONLY_AUDIT = EXECUTED` de `PR02_A0_OPERATIONAL_READINESS = BLOCKED_CATALOG_EXPIRED`, permitiendo auditar la base sin desbloquear emisión si el catálogo está vencido según `clock_timestamp()`.
+   - Dry-Run estricto: comprobaciones remotas reportan `NOT_RUN` (`DRY_RUN_REMOTE_CHECKS = NOT_RUN`).
+   - Estado: `PR02_A0_FINAL_HARDENING = PASS`, `PR02_A0_REMOTE_EXECUTION_READY = true`, `PR02_A0_REMOTE_EXECUTED = false`. 31/31 tests PR02-A0 PASS, 68/68 PR02 suite PASS, 143/143 tests fiscales PASS, 6/6 PostgreSQL 17 PASS, build Vite exitoso, `git diff --check` limpio. Cero llamadas ARCA, cero escrituras Staging, cero mutaciones Producción.

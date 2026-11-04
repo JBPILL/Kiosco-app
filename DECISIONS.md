@@ -1944,3 +1944,50 @@ persistido en PostgreSQL de Staging bajo estrictas garantías de aislamiento y c
 `PR02_A0_LOCAL_PREPARATION = PASS`, `PR02_A0_REMOTE_EXECUTION_READY = true`, `PR02_A0_REMOTE_EXECUTED = false`.
 22/22 tests de PR02-A0 PASS, 59/59 PR02 suite PASS, 217/217 suite fiscal total PASS, 6/6 PostgreSQL 17 PASS, build Vite exitoso.
 Cero llamadas ARCA, cero escrituras Staging, cero mutaciones Producción. Emisor PV 2 permanece deshabilitado.
+
+## 04/11/2026 - Corrección Final del Ejecutor READ ONLY antes de Autorizar Staging (PR02-A0)
+
+**Contexto:**
+Antes de otorgar un GO remoto para la ejecución de `PR02_A0_STAGING_SQL_READ_ONLY` contra Staging (`acoyfwwmhaeruciyedri`),
+se requirió una auditoría y endurecimiento final de integridad en el ejecutor, wrapper y contratos de validación para
+eliminar cualquier asunción frágil, bypass programático o falsa declaración de éxito en dry-run.
+
+**Decisión:**
+1. **Pin de Commit Obligatorio y Externo en Wrapper PowerShell**:
+   - Se eliminó cualquier SHA por defecto en `run-pr02-a0-staging-private.ps1`.
+   - Se exige el parámetro obligatorio `-ExpectedHead` con SHA completo de 40 caracteres hexadecimales.
+   - El wrapper ejecuta `git fetch origin --prune`, valida rama exacta (`feat/pilot-envases-returns`), worktree limpio,
+     `HEAD == REMOTE_HEAD`, y `HEAD == ExpectedHead`. No se permite autocalcular `-ExpectedHead` desde el HEAD local.
+2. **Endurecimiento Fail-Closed de Argumentos CLI y API Programática**:
+   - En CLI y API programática se rechazan contradicciones (`--authorized --dry-run` -> `CLI_ARGUMENT_CONFLICT`), argumentos
+     duplicados o desconocidos.
+   - Para ejecución autorizada se exige explícitamente `--authorized`, `--scope PR02_A0_STAGING_SQL_READ_ONLY`,
+     `--project-ref acoyfwwmhaeruciyedri`, `--head <SHA>`, y `--expected-head <SHA>`, verificando `head === expectedHead`.
+   - La API programática aplica las mismas restricciones sin bypass por omisión de `argv`.
+3. **ROLLBACK Incondicional y Verificable**:
+   - En `runPr02A0PreflightQueries`, el `ROLLBACK;` final debe ser confirmado por PostgreSQL.
+   - Si el ROLLBACK falla: `PR02_A0_ROLLBACK_GUARD = FAIL` y el resultado global nunca puede ser PASS.
+   - Si una consulta falla y el ROLLBACK también, se preservan ambas causas en un error diagnóstico compuesto.
+4. **Cierre Obligatorio de PostgreSQL (client.end)**:
+   - Se garantiza que el resultado PASS solo se construya y retorne después de que el bloque `finally` haya completado
+     satisfactoriamente `await client.end()`.
+   - Si `client.end()` falla: `PR02_A0_CONNECTION_CLOSE = FAIL` y `PR02_A0_EXECUTION = FAIL`.
+5. **Auditoría Documental Estricta de Intención Histórica 042**:
+   - Se eliminó la suposición de que `numero = 42` equivale a la intención histórica 042.
+   - Se audita la correspondencia mediante vínculos documentales exactos (`operacion_id`, `intento_id`, serie fiscal,
+     estado, e historial de autorización o conciliación).
+   - Sin correspondencia demostrable: `HISTORICAL_042_IDENTIFICATION = UNRESOLVED` (sin PASS histórico, sin mutaciones, sin ARCA).
+6. **Manejo Riguroso de Vigencia de Catálogo R3**:
+   - Se distingue `PR02_A0_READ_ONLY_AUDIT = EXECUTED` de `PR02_A0_OPERATIONAL_READINESS = BLOCKED_CATALOG_EXPIRED`.
+   - Si el catálogo está vencido según `clock_timestamp()` de PostgreSQL, la auditoría se completa para diagnóstico,
+     pero las fases operativas permanecen estrictamente bloqueadas hasta un eventual GO fiscal de renovación.
+7. **Dry-Run sin PASS Ficticios**:
+   - En modo dry-run, las comprobaciones hospedadas reportan `NOT_RUN` (`SQL_READ_ONLY_VERIFICATION = NOT_RUN`,
+     `TLS_REMOTE_VERIFICATION = NOT_RUN`, `CATALOG_REMOTE_VERIFICATION = NOT_RUN`, `HISTORY_REMOTE_VERIFICATION = NOT_RUN`,
+     `DRY_RUN_REMOTE_CHECKS = NOT_RUN`). Solo la validación local de diseño reporta PASS.
+
+**Consecuencias:**
+Integridad de preflight completamente blindada (31/31 tests PR02-A0 PASS, 68/68 tests PR02 suite PASS, 143/143 tests fiscales PASS, 6/6 tests PostgreSQL 17 PASS, build Vite exitoso, `git diff --check` limpio).
+`PR02_A0_FINAL_HARDENING = PASS`, `EXTERNAL_EXPECTED_HEAD_REQUIRED = PASS`, `CLI_FAIL_CLOSED = PASS`, `ROLLBACK_REQUIRED_FOR_PASS = PASS`, `PG_CLOSE_REQUIRED_FOR_PASS = PASS`, `CATALOG_EXPIRY_HANDLING = PASS`.
+`PR02_A0_REMOTE_EXECUTION_READY = true`, `PR02_A0_REMOTE_EXECUTED = false`.
+Cero llamadas ARCA, cero escrituras Staging, cero mutaciones Producción, emisor PV 2 deshabilitado.

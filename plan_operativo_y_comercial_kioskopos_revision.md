@@ -1947,3 +1947,14 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
   5. Validación del Dueño desde fuente autenticada confiable;
   6. Observación oficial de número (`FECompUltimoAutorizado`) estrictamente validada con vigencia <= 5 minutos.
 - **Estado**: `PR02_A0_LOCAL_PREPARATION = PASS`, `PR02_A0_REMOTE_EXECUTION_READY = true`, `PR02_A0_REMOTE_EXECUTED = false`. 22/22 tests PASS. Cero llamadas ARCA, cero escrituras Staging (`ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`).
+
+
+### Corrección Final del Preflight PostgreSQL READ ONLY PR02-A0 (04/11/2026)
+- **Pin de Commit Obligatorio**: Eliminado valor por defecto de SHA en wrapper PowerShell. Se exige `-ExpectedHead` externo de 40 hex chars con verificación estricta de paridad con `REMOTE_HEAD` y worktree limpio.
+- **Endurecimiento Fail-Closed CLI y API**: Rechazo de contradicciones (`--authorized --dry-run`), argumentos desconocidos y duplicados en CLI y API programática.
+- **ROLLBACK Confirmado**: Verificación obligatoria de confirmación de ROLLBACK por PostgreSQL; si falla, `PR02_A0_ROLLBACK_GUARD = FAIL` impidiendo falsos éxitos.
+- **Cierre PostgreSQL (client.end)**: PASS devuelto únicamente tras la finalización exitosa de `client.end()`. Si falla, `PR02_A0_CONNECTION_CLOSE = FAIL`.
+- **Auditoría Documental de Intención 042**: Eliminada la suposición `numero = 42`. Exige correspondencia demostrable con vínculos persistidos exactos (`operacion_id`, `intento_id`, serie fiscal, estado, respuesta/conciliación); sin ello reporta `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`.
+- **Vigencia de Catálogo**: Distingue `PR02_A0_READ_ONLY_AUDIT = EXECUTED` de `PR02_A0_OPERATIONAL_READINESS = BLOCKED_CATALOG_EXPIRED`. Si el catálogo está vencido según `clock_timestamp()` del servidor, la auditoría se completa pero la preparación operativa queda bloqueada.
+- **Dry-Run sin PASS Ficticios**: Comprobaciones hospedadas no ejecutadas reportan estrictamente `NOT_RUN` (`DRY_RUN_REMOTE_CHECKS = NOT_RUN`).
+- **Estado**: `PR02_A0_FINAL_HARDENING = PASS`, `PR02_A0_REMOTE_EXECUTION_READY = true`, `PR02_A0_REMOTE_EXECUTED = false`. 31/31 tests PR02-A0 PASS, 68/68 PR02 suite PASS, 143/143 tests fiscales PASS, 6/6 PostgreSQL 17 PASS, build Vite exitoso, `git diff --check` limpio. Cero llamadas ARCA, cero escrituras Staging, cero mutaciones Producción.

@@ -3,7 +3,7 @@
 param(
     [switch]$DryRun,
     [string]$CaCert = 'C:\Users\jonat\Downloads\prod-ca-2021.crt',
-    [string]$ExpectedHead = '0f1a29a5bfe112749e715e4bd2f340c493d08e0f'
+    [string]$ExpectedHead
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,14 +33,24 @@ try {
         throw "DIRTY_WORKTREE: El arbol de trabajo debe estar limpio antes de la ejecucion autorizada:`n$status"
     }
 
-    # 4. Validacion de paridad HEAD == REMOTE_HEAD
+    # 4. Validacion de paridad HEAD == REMOTE_HEAD y HEAD == ExpectedHead
     $head = (git rev-parse HEAD).Trim()
     $remoteHead = (git rev-parse origin/feat/pilot-envases-returns).Trim()
     if ($head -ne $remoteHead -and -not $DryRun) {
-        throw "HEAD_MISMATCH: HEAD ($head) difiere de origin/feat/pilot-envases-returns ($remoteHead)"
+        throw "REMOTE_HEAD_MISMATCH: HEAD ($head) difiere de origin/feat/pilot-envases-returns ($remoteHead)"
     }
-    if ($ExpectedHead -and $head -ne $ExpectedHead -and -not $DryRun) {
-        throw "EXPECTED_HEAD_MISMATCH: HEAD ($head) difiere del esperado ($ExpectedHead)"
+
+    if (-not $DryRun) {
+        if ([string]::IsNullOrWhiteSpace($ExpectedHead)) {
+            throw 'MISSING_EXPECTED_HEAD: En ejecucion autorizada se requiere obligatoriamente el parametro -ExpectedHead con un SHA de 40 caracteres hexadecimales'
+        }
+        $ExpectedHead = $ExpectedHead.Trim()
+        if ($ExpectedHead -notmatch '^[0-9a-fA-F]{40}$') {
+            throw "INVALID_EXPECTED_HEAD: -ExpectedHead debe ser un SHA hexadecimal de 40 caracteres, recibido '$ExpectedHead'"
+        }
+        if ($head -ne $ExpectedHead) {
+            throw "EXPECTED_HEAD_MISMATCH: HEAD local ($head) difiere del esperado ($ExpectedHead)"
+        }
     }
 
     # 5. Validacion de version de Node.js
@@ -122,7 +132,7 @@ try {
     # 8. Ejecucion del script Node en proceso aislado con TLS estricto
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $node
-    $psi.Arguments = "`"$nodeScript`" --authorized --scope PR02_A0_STAGING_SQL_READ_ONLY --project-ref acoyfwwmhaeruciyedri --head $head --expected-head $head"
+    $psi.Arguments = "`"$nodeScript`" --authorized --scope PR02_A0_STAGING_SQL_READ_ONLY --project-ref acoyfwwmhaeruciyedri --head $head --expected-head $ExpectedHead"
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
