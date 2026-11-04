@@ -1991,3 +1991,47 @@ Integridad de preflight completamente blindada (31/31 tests PR02-A0 PASS, 68/68 
 `PR02_A0_FINAL_HARDENING = PASS`, `EXTERNAL_EXPECTED_HEAD_REQUIRED = PASS`, `CLI_FAIL_CLOSED = PASS`, `ROLLBACK_REQUIRED_FOR_PASS = PASS`, `PG_CLOSE_REQUIRED_FOR_PASS = PASS`, `CATALOG_EXPIRY_HANDLING = PASS`.
 `PR02_A0_REMOTE_EXECUTION_READY = true`, `PR02_A0_REMOTE_EXECUTED = false`.
 Cero llamadas ARCA, cero escrituras Staging, cero mutaciones Producción, emisor PV 2 deshabilitado.
+
+## 04/11/2026 - Alineación de Auditoría Histórica PR02-A0 con Esquema SQL Real (BLOCKERS 1 a 5)
+
+**Contexto:**
+La auditoría de código previa a la autorización de Staging identificó inconsistencias con el esquema SQL contractual:
+la consulta histórica en `execute-pr02-a0-staging.mjs` asumía columnas inexistentes (`resp.cae`, `resp.resultado`, `resp.creado_en`)
+en `public.fiscal_respuestas_emision_homologacion` (que sólo almacena `respuesta jsonb` y `registrado_en timestamptz`),
+atribuía erróneamente un CAE a una mera recepción SOAP en lugar de `public.fiscal_autorizaciones_homologacion`,
+y contenía heurísticas frágiles (`numero = 42` o sufijo `0042`) para identificar la intención histórica 042.
+
+**Decisión:**
+1. **Alineación con Esquema SQL Real (BLOCKER 1)**:
+   - Se reescribió la consulta histórica de la serie operativa (PV 2, CUIT 20415005963, tipo 11) uniendo
+     `fiscal_reservas_homologacion` con `fiscal_operaciones_homologacion`, y realizando LEFT JOINs con
+     `fiscal_autorizaciones_homologacion` (para `cae`, `vencimiento`, `confirmado_en`) y
+     `fiscal_respuestas_emision_homologacion` (para `respuesta jsonb`, `registrado_en`).
+   - Se eliminaron las referencias a columnas inexistentes (`resp.cae`, `resp.resultado`, `resp.creado_en`).
+   - No se atribuye CAE a una recepción SOAP: el CAE reside taxativamente en la tabla de autorizaciones.
+2. **Identificación Histórica 042 y Prohibición de Reemisión (BLOCKER 2)**:
+   - Se eliminaron totalmente las heurísticas de `numero = 42` y UUIDs con terminación `0042`.
+   - Ante la falta de correspondencia documental demostrable: `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`.
+   - Se exige explícitamente `HISTORICAL_042_REEMISSION_FORBIDDEN = true`.
+   - PR02-A0 no concede permiso de emisión: `PR02_READY_FOR_EMISSION_GO = false`.
+3. **Validación sobre PostgreSQL 17 Real en Docker (BLOCKER 3)**:
+   - Se implementó la suite de integración `src/test/fiscalPr02A0PostgresIntegration.test.ts` con contenedor
+     `postgres:17-alpine` y aplicación de bootstrap comercial y migraciones fiscales completas (`001` a `054`).
+   - Se verificó que todas las consultas preflight A0 ejecutan sin SQLSTATE `42703` (undefined_column) ni `42P01` (undefined_table).
+   - Se validó el comportamiento con historial vacío (0 filas) y con respuestas y autorizaciones persistidas.
+   - Se comprobó que `FISCAL_HISTORY_REQUIRES_RECONCILIATION` se activa ante reservas en `ENVIO_INCIERTO`.
+   - Se demostró que dentro de la transacción `READ ONLY`, los intentos de escritura son abortados por PostgreSQL con SQLSTATE `25006`.
+4. **Separación de Readiness Operativo y Auditoría READ ONLY (BLOCKER 4)**:
+   - Se separó taxativamente `PR02_A0_READ_ONLY_AUDIT = EXECUTED` de `PR02_A0_OPERATIONAL_READINESS` (`BLOCKED_CATALOG_EXPIRED` o `READY`).
+   - Si el catálogo R3 está vencido: `PR02_A0_OPERATIONAL_READINESS = BLOCKED_CATALOG_EXPIRED`, `PR02_A0_CATALOG_GUARD = EXPIRED`,
+     `PR02_A0_REMOTE_EXECUTION_READY = false`, `PR02_READY_FOR_EMISSION_GO = false`.
+   - Cero mutaciones de catálogo y cero llamadas ARCA.
+5. **Verificación de Cierre y Fail-Closed (BLOCKER 5)**:
+   - Se agregaron tests unitarios demostrando que ningún error SQL (`42703`, `42P01`, etc.) puede devolver PASS global.
+   - Se preservó la exigencia de `-ExpectedHead` externo obligatorio, worktree limpio, coincidencia local/remoto,
+     transacción READ ONLY confirmada, ROLLBACK confirmado y cierre obligatorio de conexión PostgreSQL.
+
+**Consecuencias:**
+`PR02_A0_SQL_SCHEMA_COMPATIBILITY = PASS`, `PR02_A0_HISTORICAL_QUERY_REAL_PG = PASS`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `HISTORICAL_042_REEMISSION_FORBIDDEN = true`, `PR02_READY_FOR_EMISSION_GO = false`.
+33/33 tests unitarios preflight PASS, 6/6 tests PostgreSQL 17 PASS, 121 tests en suites relacionadas PASS, build Vite exitoso, `git diff --check` limpio.
+Cero llamadas ARCA, cero escrituras Staging, cero mutaciones Producción, emisor PV 2 deshabilitado.

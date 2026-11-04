@@ -16,7 +16,7 @@ import {
   executePr02A0Staging,
 } from '../../scripts/fiscal/execute-pr02-a0-staging.mjs'
 
-const VALID_HEAD = '8e5be9ef8f74eca0cd639661d23645bb9637d2c0'
+const VALID_HEAD = '19f6d48ff6e1149743e6aefb40897c79c130ac1d'
 const PREVIOUS_HEAD = '0f1a29a5bfe112749e715e4bd2f340c493d08e0f'
 const ARBITRARY_HEAD = '1111111111111111111111111111111111111111'
 
@@ -31,10 +31,11 @@ function createMockClient(options: {
   catalogRow?: Record<string, unknown> | null
   reservations?: Record<string, unknown>[]
   consumedPermits?: Record<string, unknown>[]
-  intent042Rows?: Record<string, unknown>[]
+  historyRows?: Record<string, unknown>[]
   candidateSales?: Record<string, unknown>[]
   rollbackFails?: boolean
   endFails?: boolean
+  sqlErrorToThrow?: Error | null
 } = {}) {
   const executedQueries: { sql: string; params?: unknown[] }[] = []
 
@@ -62,7 +63,7 @@ function createMockClient(options: {
     },
     reservations = [],
     consumedPermits = [],
-    intent042Rows = [],
+    historyRows = [],
     candidateSales = [
       {
         id: '660e8400-e29b-41d4-a716-446655440001',
@@ -78,6 +79,7 @@ function createMockClient(options: {
     ],
     rollbackFails = false,
     endFails = false,
+    sqlErrorToThrow = null,
   } = options
 
   const client = {
@@ -89,6 +91,10 @@ function createMockClient(options: {
     }),
     query: vi.fn(async (sql: string, params?: unknown[]) => {
       executedQueries.push({ sql, params })
+
+      if (sqlErrorToThrow && !sql.includes('ROLLBACK')) {
+        throw sqlErrorToThrow
+      }
 
       if (sql.includes('ROLLBACK')) {
         if (rollbackFails) {
@@ -108,8 +114,8 @@ function createMockClient(options: {
       if (sql.includes('public.fiscal_parametros_homologacion')) {
         return { rows: catalogRow ? [catalogRow] : [] }
       }
-      if (sql.includes('LEFT JOIN public.fiscal_respuestas_emision_homologacion')) {
-        return { rows: intent042Rows }
+      if (sql.includes('LEFT JOIN public.fiscal_autorizaciones_homologacion') || sql.includes('LEFT JOIN public.fiscal_respuestas_emision_homologacion')) {
+        return { rows: historyRows }
       }
       if (sql.includes('public.fiscal_reservas_homologacion') && sql.includes('WHERE cuit_emisor = $1')) {
         return { rows: reservations }
@@ -138,8 +144,10 @@ describe('PR02-A0 Staging READ ONLY Preflight Tests', () => {
       expect(res.scope).toBe(PR02_A0_SCOPE)
       expect(res.projectRef).toBe(PR02_A0_EXECUTION_TARGET)
       expect(res.PR02_A0_LOCAL_PREPARATION).toBe('PASS')
+      expect(res.PR02_A0_SQL_SCHEMA_COMPATIBILITY).toBe('PASS')
       expect(res.PR02_A0_REMOTE_EXECUTION_READY).toBe(true)
       expect(res.PR02_A0_REMOTE_EXECUTED).toBe(false)
+      expect(res.PR02_READY_FOR_EMISSION_GO).toBe(false)
 
       // Comprobaciones hospedadas no ejecutadas reportan NOT_RUN
       expect(res.DRY_RUN_REMOTE_CHECKS).toBe('NOT_RUN')
@@ -151,10 +159,12 @@ describe('PR02-A0 Staging READ ONLY Preflight Tests', () => {
       expect(res.PR02_A0_TLS_GUARD).toBe('NOT_RUN')
       expect(res.PR02_A0_ROLLBACK_GUARD).toBe('NOT_RUN')
       expect(res.PR02_A0_CONNECTION_CLOSE).toBe('NOT_RUN')
+      expect(res.PR02_A0_CONNECTION_CLOSE_GUARD).toBe('NOT_RUN')
       expect(res.PR02_A0_CATALOG_GUARD).toBe('NOT_RUN')
       expect(res.PR02_A0_REAL_PV2_GUARD).toBe('NOT_RUN')
       expect(res.PR02_A0_HISTORY_GUARD).toBe('NOT_RUN')
       expect(res.HISTORICAL_042_IDENTIFICATION).toBe('UNRESOLVED')
+      expect(res.HISTORICAL_042_REEMISSION_FORBIDDEN).toBe(true)
 
       expect(res.PR02_A0_CANDIDATE_AUTO_SELECTION).toBe(false)
       expect(res.PR02_A0_ARCA_REACHABLE).toBe(false)
@@ -388,6 +398,7 @@ describe('PR02-A0 Staging READ ONLY Preflight Tests', () => {
       expect(client.connect).toHaveBeenCalledTimes(1)
       expect(client.end).toHaveBeenCalledTimes(1)
       expect(report.PR02_A0_CONNECTION_CLOSE).toBe('PASS')
+      expect(report.PR02_A0_CONNECTION_CLOSE_GUARD).toBe('PASS')
       expect(report.PR02_A0_ROLLBACK_GUARD).toBe('PASS')
     })
 
@@ -415,6 +426,7 @@ describe('PR02-A0 Staging READ ONLY Preflight Tests', () => {
       expect(caughtErr).toBeDefined()
       expect(caughtErr.message).toContain('PG_CLOSE_FAILED')
       expect(caughtErr.PR02_A0_CONNECTION_CLOSE).toBe('FAIL')
+      expect(caughtErr.PR02_A0_CONNECTION_CLOSE_GUARD).toBe('FAIL')
       expect(caughtErr.PR02_A0_EXECUTION).toBe('FAIL')
     })
 
@@ -445,6 +457,7 @@ describe('PR02-A0 Staging READ ONLY Preflight Tests', () => {
       expect(caughtErr).toBeDefined()
       expect(caughtErr.message).toContain('PR02_A0_EXECUTION_AND_CLOSE_FAILED')
       expect(caughtErr.PR02_A0_CONNECTION_CLOSE).toBe('FAIL')
+      expect(caughtErr.PR02_A0_CONNECTION_CLOSE_GUARD).toBe('FAIL')
       expect(caughtErr.PR02_A0_EXECUTION).toBe('FAIL')
     })
   })
@@ -478,11 +491,12 @@ describe('PR02-A0 Staging READ ONLY Preflight Tests', () => {
       expect(report.PR02_A0_READ_ONLY_AUDIT).toBe('EXECUTED')
       expect(report.PR02_A0_OPERATIONAL_READINESS).toBe('BLOCKED_CATALOG_EXPIRED')
       expect(report.PR02_A0_REMOTE_EXECUTION_READY).toBe(false)
+      expect(report.PR02_READY_FOR_EMISSION_GO).toBe(false)
       expect(report.PR02_A0_CATALOG_GUARD).toBe('EXPIRED')
       expect(report.candidate_sales_count).toBe(1)
     })
 
-    it('si el catálogo está vigente, completa auditoría y reporta READY', async () => {
+    it('si el catálogo está vigente, completa auditoría y reporta READY sin autorizar emisión', async () => {
       const client = createMockClient({
         catalogRow: {
           revision: 3,
@@ -510,6 +524,7 @@ describe('PR02-A0 Staging READ ONLY Preflight Tests', () => {
       expect(report.PR02_A0_READ_ONLY_AUDIT).toBe('EXECUTED')
       expect(report.PR02_A0_OPERATIONAL_READINESS).toBe('READY')
       expect(report.PR02_A0_REMOTE_EXECUTION_READY).toBe(true)
+      expect(report.PR02_READY_FOR_EMISSION_GO).toBe(false)
       expect(report.PR02_A0_CATALOG_GUARD).toBe('PASS')
     })
 
@@ -538,37 +553,47 @@ describe('PR02-A0 Staging READ ONLY Preflight Tests', () => {
     })
   })
 
-  describe('8. Auditoría documental de intención histórica 042', () => {
-    it('reporta HISTORICAL_042_IDENTIFICATION = UNRESOLVED si no hay correspondencia documental demostrable', async () => {
+  describe('8. Auditoría documental de respuestas fiscales e intención histórica 042', () => {
+    it('funciona correctamente con cero filas históricas y reporta UNRESOLVED', async () => {
       const client = createMockClient({
-        intent042Rows: [],
+        historyRows: [],
       })
 
       const res = await runPr02A0PreflightQueries(client)
       expect(res.HISTORICAL_042_IDENTIFICATION).toBe('UNRESOLVED')
+      expect(res.HISTORICAL_042_REEMISSION_FORBIDDEN).toBe(true)
+      expect(res.PR02_A0_HISTORY_GUARD).toBe('PASS')
     })
 
-    it('no infiere intención 042 sólo por numero = 42 sin enlaces documentales persistidos completos', async () => {
+    it('utiliza el esquema real contractual (auth.cae, resp.respuesta) y conserva UNRESOLVED sin falsos VERIFIED', async () => {
       const client = createMockClient({
-        intent042Rows: [
+        historyRows: [
           {
-            operacion_id: null, // Vínculo incompleto
-            intento_id: null,
-            numero: 42,
-            estado: 'CONFIRMADA',
-            cae: null,
-            respuesta_en: null,
+            operacion_id: '550e8400-e29b-41d4-a716-446655440001',
+            intento_id: '660e8400-e29b-41d4-a716-446655440001',
+            cuit_emisor: PR02_TARGET_CUIT,
+            punto_venta: PR02_TARGET_PV,
+            tipo_comprobante: PR02_TARGET_RECEIPT_TYPE,
+            numero: 1,
+            estado: 'AUTORIZADA',
+            cae: '74123456789012',
+            vencimiento: '20261130',
+            autorizacion_confirmada_en: '2026-11-04T12:00:00.000Z',
+            respuesta: { estado: 'APROBACION_RECIBIDA', codigos: [1], puedeReenviar: false },
+            respuesta_registrada_en: '2026-11-04T12:00:00.000Z',
           },
         ],
       })
 
       const res = await runPr02A0PreflightQueries(client)
       expect(res.HISTORICAL_042_IDENTIFICATION).toBe('UNRESOLVED')
+      expect(res.HISTORICAL_042_REEMISSION_FORBIDDEN).toBe(true)
+      expect(res.PR02_A0_HISTORY_GUARD).toBe('PASS')
     })
 
-    it('reporta HISTORICAL_042_IDENTIFICATION = VERIFIED sólo si existen todos los vínculos documentales exactos', async () => {
+    it('no declara identidad VERIFIED por coincidencia parcial en numero = 42 ni por sufijo 0042', async () => {
       const client = createMockClient({
-        intent042Rows: [
+        historyRows: [
           {
             operacion_id: '550e8400-e29b-41d4-a716-446655440042',
             intento_id: '660e8400-e29b-41d4-a716-446655440042',
@@ -576,28 +601,32 @@ describe('PR02-A0 Staging READ ONLY Preflight Tests', () => {
             punto_venta: PR02_TARGET_PV,
             tipo_comprobante: PR02_TARGET_RECEIPT_TYPE,
             numero: 42,
-            estado: 'CONFIRMADA',
+            estado: 'AUTORIZADA',
             cae: '74421234567890',
-            resultado: 'A',
-            respuesta_en: '2026-10-24T18:00:00.000Z',
+            vencimiento: '20261130',
+            autorizacion_confirmada_en: '2026-10-24T18:00:00.000Z',
+            respuesta: { estado: 'APROBACION_RECIBIDA', codigos: [1], puedeReenviar: false },
+            respuesta_registrada_en: '2026-10-24T18:00:00.000Z',
           },
         ],
       })
 
       const res = await runPr02A0PreflightQueries(client)
-      expect(res.HISTORICAL_042_IDENTIFICATION).toBe('VERIFIED')
+      // Debe conservar UNRESOLVED sin declarar VERIFIED por heurística
+      expect(res.HISTORICAL_042_IDENTIFICATION).toBe('UNRESOLVED')
+      expect(res.HISTORICAL_042_REEMISSION_FORBIDDEN).toBe(true)
     })
 
-    it('falla con FISCAL_HISTORY_REQUIRES_RECONCILIATION si la intención histórica 042 está en ENVIO_INCIERTO', async () => {
+    it('falla con FISCAL_HISTORY_REQUIRES_RECONCILIATION si algún intento en la serie está en ENVIO_INCIERTO', async () => {
       const client = createMockClient({
-        intent042Rows: [
+        historyRows: [
           {
-            operacion_id: '550e8400-e29b-41d4-a716-446655440042',
-            intento_id: '660e8400-e29b-41d4-a716-446655440042',
+            operacion_id: '550e8400-e29b-41d4-a716-446655440001',
+            intento_id: '660e8400-e29b-41d4-a716-446655440001',
             cuit_emisor: PR02_TARGET_CUIT,
             punto_venta: PR02_TARGET_PV,
             tipo_comprobante: PR02_TARGET_RECEIPT_TYPE,
-            numero: 42,
+            numero: 1,
             estado: 'ENVIO_INCIERTO',
           },
         ],
@@ -709,6 +738,50 @@ describe('PR02-A0 Staging READ ONLY Preflight Tests', () => {
       expect(reportStr).not.toContain('ValidPostgresPassword123!')
       expect(reportStr).not.toContain('password')
       expect(reportStr).not.toContain('PGPASSWORD')
+    })
+  })
+
+  describe('12. Fail-Closed ante cualquier error SQL: ningún error SQL puede devolver PASS', () => {
+    it('rechaza y no emite PASS si una consulta produce SQLSTATE 42703 (undefined_column)', async () => {
+      const err42703: any = new Error('column resp.cae does not exist')
+      err42703.code = '42703'
+      const client = createMockClient({ sqlErrorToThrow: err42703 })
+
+      await expect(
+        executePr02A0Staging(
+          {
+            authorized: true,
+            dryRun: false,
+            scope: PR02_A0_SCOPE,
+            projectRef: PR02_A0_EXECUTION_TARGET,
+            head: VALID_HEAD,
+            expectedHead: VALID_HEAD,
+            password: 'ValidPostgresPassword123!',
+          },
+          { client, caCert: 'MOCK_CA_CERT' }
+        )
+      ).rejects.toThrow('column resp.cae does not exist')
+    })
+
+    it('rechaza y no emite PASS si una consulta produce SQLSTATE 42P01 (undefined_table)', async () => {
+      const err42P01: any = new Error('relation public.fiscal_inexistent_table does not exist')
+      err42P01.code = '42P01'
+      const client = createMockClient({ sqlErrorToThrow: err42P01 })
+
+      await expect(
+        executePr02A0Staging(
+          {
+            authorized: true,
+            dryRun: false,
+            scope: PR02_A0_SCOPE,
+            projectRef: PR02_A0_EXECUTION_TARGET,
+            head: VALID_HEAD,
+            expectedHead: VALID_HEAD,
+            password: 'ValidPostgresPassword123!',
+          },
+          { client, caCert: 'MOCK_CA_CERT' }
+        )
+      ).rejects.toThrow('relation public.fiscal_inexistent_table does not exist')
     })
   })
 })

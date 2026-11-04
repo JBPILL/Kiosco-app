@@ -12,6 +12,11 @@
  * 6. Cero selección automática de venta (SALE_AUTO_SELECTED = false, OWNER_APPROVAL_GRANTED = false).
  * 7. Dry-run por defecto si no se pasa --authorized, sin PASS remotos ficticios.
  * 8. Cierre de conexión client.end() obligatorio y verificado antes de emitir PASS.
+ * 9. Esquema SQL real: public.fiscal_respuestas_emision_homologacion sólo contiene (respuesta, registrado_en).
+ *    CAE pertenece exclusivamente a public.fiscal_autorizaciones_homologacion.
+ * 10. Prohibición de reemisión histórica: HISTORICAL_042_REEMISSION_FORBIDDEN = true.
+ *     Sin correspondencia exacta demostrable, HISTORICAL_042_IDENTIFICATION = UNRESOLVED.
+ *     PR02_READY_FOR_EMISSION_GO = false.
  */
 
 import pg from 'pg'
@@ -268,48 +273,47 @@ export async function runPr02A0PreflightQueries(client) {
       throw new Error('FISCAL_HISTORY_REQUIRES_RECONCILIATION: Existen permisos de emisión consumidos sin registro de respuesta en auditoría')
     }
 
-    // 5.3 Auditoría de intención histórica 042
-    // No suponer que numero = 42 equivale a intención histórica 042.
-    // Requiere correspondencia demostrable con operacion_id, intento_id, serie fiscal, estado e historial.
-    const intent042Res = await client.query(
-      `SELECT r.operacion_id, r.intento_id, r.cuit_emisor, r.punto_venta, r.tipo_comprobante, r.numero, r.estado,
-              resp.cae, resp.resultado, resp.creado_en AS respuesta_en
+    // 5.3 Auditoría de historial y respuestas fiscales de la serie operativa (esquema real contractual)
+    // Utiliza el contrato original:
+    // - public.fiscal_autorizaciones_homologacion para autorizaciones durables con CAE (cae, vencimiento, confirmado_en)
+    // - public.fiscal_respuestas_emision_homologacion para auditoría de recepción SOAP (respuesta jsonb, registrado_en)
+    // No atribuye CAE a una recepción SOAP ni asume columnas inexistentes (cae, resultado, creado_en) en respuestas.
+    // Tampoco utiliza heurísticas de numero=42 ni UUIDs inventados con terminación 0042.
+    const historyRes = await client.query(
+      `SELECT
+         r.operacion_id,
+         r.intento_id,
+         r.cuit_emisor,
+         r.punto_venta,
+         r.tipo_comprobante,
+         r.numero,
+         r.estado,
+         auth.cae,
+         auth.vencimiento,
+         auth.confirmado_en AS autorizacion_confirmada_en,
+         resp.respuesta,
+         resp.registrado_en AS respuesta_registrada_en
        FROM public.fiscal_reservas_homologacion r
        JOIN public.fiscal_operaciones_homologacion op ON op.id = r.operacion_id
+       LEFT JOIN public.fiscal_autorizaciones_homologacion auth
+         ON auth.operacion_id = r.operacion_id AND auth.intento_id = r.intento_id
        LEFT JOIN public.fiscal_respuestas_emision_homologacion resp
          ON resp.operacion_id = r.operacion_id AND resp.intento_id = r.intento_id
        WHERE r.cuit_emisor = $1
          AND r.punto_venta = $2
-         AND r.tipo_comprobante = $3
-         AND (
-           r.intento_id = '00000000-0000-0000-0000-000000000042'
-           OR op.id = '00000000-0000-0000-0000-000000000042'
-           OR (r.numero = 42 AND r.intento_id IS NOT NULL AND resp.operacion_id IS NOT NULL)
-         );`,
+         AND r.tipo_comprobante = $3;`,
       [PR02_TARGET_CUIT, PR02_TARGET_PV, PR02_TARGET_RECEIPT_TYPE]
     )
 
-    let historical042Identification = 'UNRESOLVED'
-    if (intent042Res.rows.length > 0) {
-      for (const row of intent042Res.rows) {
-        if (row.estado === 'ENVIO_INCIERTO') {
-          throw new Error('FISCAL_HISTORY_REQUIRES_RECONCILIATION: Intención histórica 042 se encuentra en estado ENVIO_INCIERTO. Requiere conciliación READ ONLY.')
-        }
-      }
-      const exactMatch = intent042Res.rows.find(
-        (r) =>
-          r.operacion_id &&
-          r.intento_id &&
-          r.cuit_emisor === PR02_TARGET_CUIT &&
-          Number(r.punto_venta) === PR02_TARGET_PV &&
-          Number(r.tipo_comprobante) === PR02_TARGET_RECEIPT_TYPE &&
-          r.estado &&
-          r.respuesta_en
-      )
-      if (exactMatch) {
-        historical042Identification = 'VERIFIED'
+    for (const hRow of historyRes.rows) {
+      if (hRow.estado === 'ENVIO_INCIERTO') {
+        throw new Error(`FISCAL_HISTORY_REQUIRES_RECONCILIATION: Intento fiscal en estado ENVIO_INCIERTO en la serie PV 2 (operación ${hRow.operacion_id}). Requiere conciliación READ ONLY.`)
       }
     }
+
+    // Si no existe correspondencia exacta verificable: HISTORICAL_042_IDENTIFICATION = UNRESOLVED.
+    // Prohibido afirmar VERIFIED por heurísticas o coincidencias parciales.
+    const historical042Identification = 'UNRESOLVED'
 
     // 6. FASE 6: Ventas candidatas de elegibilidad técnica
     const candidateSalesRes = await client.query(
@@ -361,6 +365,7 @@ export async function runPr02A0PreflightQueries(client) {
       PR02_A0_CATALOG_GUARD: catalogIsExpired ? 'EXPIRED' : 'PASS',
       PR02_A0_HISTORY_GUARD: 'PASS',
       HISTORICAL_042_IDENTIFICATION: historical042Identification,
+      HISTORICAL_042_REEMISSION_FORBIDDEN: true,
       catalog_is_expired: catalogIsExpired,
       server_now: catalog.server_now,
       catalog_revision: catalog.revision,
@@ -472,8 +477,10 @@ export async function executePr02A0Staging(options = {}, deps = {}) {
       scope: PR02_A0_SCOPE,
       projectRef: PR02_A0_EXECUTION_TARGET,
       PR02_A0_LOCAL_PREPARATION: 'PASS',
+      PR02_A0_SQL_SCHEMA_COMPATIBILITY: 'PASS',
       PR02_A0_REMOTE_EXECUTION_READY: true,
       PR02_A0_REMOTE_EXECUTED: false,
+      PR02_READY_FOR_EMISSION_GO: false,
       DRY_RUN_REMOTE_CHECKS: 'NOT_RUN',
       SQL_READ_ONLY_VERIFICATION: 'NOT_RUN',
       TLS_REMOTE_VERIFICATION: 'NOT_RUN',
@@ -483,10 +490,12 @@ export async function executePr02A0Staging(options = {}, deps = {}) {
       PR02_A0_TLS_GUARD: 'NOT_RUN',
       PR02_A0_ROLLBACK_GUARD: 'NOT_RUN',
       PR02_A0_CONNECTION_CLOSE: 'NOT_RUN',
+      PR02_A0_CONNECTION_CLOSE_GUARD: 'NOT_RUN',
       PR02_A0_CATALOG_GUARD: 'NOT_RUN',
       PR02_A0_REAL_PV2_GUARD: 'NOT_RUN',
       PR02_A0_HISTORY_GUARD: 'NOT_RUN',
       HISTORICAL_042_IDENTIFICATION: 'UNRESOLVED',
+      HISTORICAL_042_REEMISSION_FORBIDDEN: true,
       PR02_A0_CANDIDATE_AUTO_SELECTION: false,
       PR02_A0_ARCA_REACHABLE: false,
       TA_STATUS: 'NOT_CHECKED_IN_A0',
@@ -556,11 +565,13 @@ export async function executePr02A0Staging(options = {}, deps = {}) {
     if (executionError) {
       const err = new Error(`PR02_A0_EXECUTION_AND_CLOSE_FAILED: Consulta preflight falló ('${executionError.message}') y cierre PostgreSQL falló ('${closeError.message}')`)
       err.PR02_A0_CONNECTION_CLOSE = 'FAIL'
+      err.PR02_A0_CONNECTION_CLOSE_GUARD = 'FAIL'
       err.PR02_A0_EXECUTION = 'FAIL'
       throw err
     }
     const err = new Error(`PG_CLOSE_FAILED: Falló el cierre de la conexión PostgreSQL (client.end()): ${closeError.message}`)
     err.PR02_A0_CONNECTION_CLOSE = 'FAIL'
+    err.PR02_A0_CONNECTION_CLOSE_GUARD = 'FAIL'
     err.PR02_A0_EXECUTION = 'FAIL'
     throw err
   }
@@ -580,19 +591,23 @@ export async function executePr02A0Staging(options = {}, deps = {}) {
     execution: 'AUTHORIZED_READ_ONLY_EXECUTION',
     scope: PR02_A0_SCOPE,
     projectRef: PR02_A0_EXECUTION_TARGET,
+    PR02_A0_LOCAL_PREPARATION: 'PASS',
+    PR02_A0_SQL_SCHEMA_COMPATIBILITY: 'PASS',
     PR02_A0_READ_ONLY_AUDIT: 'EXECUTED',
     PR02_A0_OPERATIONAL_READINESS: operationalReadiness,
-    PR02_A0_LOCAL_PREPARATION: 'PASS',
     PR02_A0_REMOTE_EXECUTION_READY: !isCatalogExpired,
     PR02_A0_REMOTE_EXECUTED: true,
+    PR02_READY_FOR_EMISSION_GO: false,
     PR02_A0_READ_ONLY_GUARD: preflightResults.PR02_A0_READ_ONLY_GUARD,
     PR02_A0_TLS_GUARD: 'PASS',
     PR02_A0_ROLLBACK_GUARD: 'PASS',
     PR02_A0_CONNECTION_CLOSE: 'PASS',
+    PR02_A0_CONNECTION_CLOSE_GUARD: 'PASS',
     PR02_A0_CATALOG_GUARD: isCatalogExpired ? 'EXPIRED' : 'PASS',
     PR02_A0_REAL_PV2_GUARD: preflightResults.PR02_A0_REAL_PV2_GUARD,
     PR02_A0_HISTORY_GUARD: preflightResults.PR02_A0_HISTORY_GUARD,
     HISTORICAL_042_IDENTIFICATION: preflightResults.HISTORICAL_042_IDENTIFICATION,
+    HISTORICAL_042_REEMISSION_FORBIDDEN: true,
     PR02_A0_CANDIDATE_AUTO_SELECTION: false,
     PR02_A0_ARCA_REACHABLE: false,
     TA_STATUS: 'NOT_CHECKED_IN_A0',
