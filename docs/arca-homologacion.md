@@ -2148,3 +2148,22 @@ Dueño; nunca se infiere del cierre local ni de la preparación sin emisión.
      - `PR02_A2_LAST_AUTHORIZED_READ_ONLY`: 1 llamada WSFE (`FECompUltimoAutorizado`).
    - Simulación aislada: `executePr02Simulation` delimitado exclusivamente como arnés de prueba (`IS_PR02_SIMULATION_TEST_ONLY = true`).
    - Estado: `PR02_LOCAL_HARDENING = PASS`. Suites validadas (37/37 PR02, 195/195 Fiscal, 6/6 PG17, build Vite exitoso). `PR02_A0_READY = true`, `PR02_A1_READY = true`, `PR02_A2_READY = true`, `PR02_READY_FOR_EMISSION_GO = false`. Emisor PV 2 deshabilitado. Cero llamadas ARCA, cero escrituras Staging.
+
+
+4. **Preparación del Preflight PostgreSQL READ ONLY PR02-A0 (04/11/2026)**:
+   - Módulo y runner: `scripts/fiscal/execute-pr02-a0-staging.mjs` y `run-pr02-a0-staging-private.ps1`. Dry-run por defecto.
+   - Contrato transaccional: `BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;`, verificación de `transaction_read_only = 'on'`, únicamente consultas `SELECT`, `ROLLBACK;` incondicional en bloque `finally`.
+   - Comprobaciones obligatorias:
+     - Emisor PV 2 (`b7254826-c767-4098-94b8-71013c12021d`, CUIT `20415005963`, cert SHA coincidente, `habilitado = false`) y ausencia de otros emisores habilitados (`enabled_count = 0`).
+     - Catálogo R3 habilitado con hash `11e9d2244b4fd418df4ab9bc3798c303d66f181785ba678597fdeffa76d5e884` y vigencia contra `clock_timestamp()` del servidor. Si está vencido -> `CATALOG_EXPIRED = true` y STOP.
+     - Historial fiscal: ausencia de reservas en `ENVIO_INCIERTO` o `RESERVADA` pendiente en PV 2, permisos consumidos sin respuesta y estado de intención 042. Si hay incertidumbre -> `FISCAL_HISTORY_REQUIRES_RECONCILIATION = true` y STOP.
+     - Ventas candidatas: consulta de elegibilidad técnica (COMPLETADA, total > 0, detalles consistentes, sin CAE, sin devoluciones, sin operaciones previas ni incertidumbre). Devuelve muestra de UUIDs candidatos. Sin decisión automática (`SALE_AUTO_SELECTED = false`, `OWNER_APPROVAL_GRANTED = false`).
+     - Separación de dependencias: `TA_STATUS = NOT_CHECKED_IN_A0`, `OFFICIAL_NUMBERING = NOT_OBSERVED_IN_A0`, `EMISSION_PERMISSION = DISABLED`.
+   - Prerequisitos obligatorios para PR02-C:
+     1. `getExistingIntent` obligatorio y persistido antes de red;
+     2. CAS durable contra concurrencia de reservas;
+     3. Registro durable obligatorio de rechazo e incertidumbre;
+     4. No confundir `APROBACION_RECIBIDA` con `CAE_CONFIRMADO_Y_APLICADO`;
+     5. Validación del Dueño desde fuente autenticada confiable;
+     6. Observación oficial de número (`FECompUltimoAutorizado`) estrictamente validada con vigencia <= 5 minutos.
+   - Estado: `PR02_A0_LOCAL_PREPARATION = PASS`, `PR02_A0_REMOTE_EXECUTION_READY = true`, `PR02_A0_REMOTE_EXECUTED = false`. 22/22 tests PASS. Cero llamadas ARCA, cero escrituras Staging (`ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`).

@@ -769,3 +769,17 @@ Subsanación y blindaje de invariantes críticas para la arquitectura de control
   - `PR02_A2_LAST_AUTHORIZED_READ_ONLY`: 1 llamada WSFE (`FECompUltimoAutorizado`).
 - **Simulación Aislada**: `executePr02Simulation` marcado estrictamente como arnés de prueba (`IS_PR02_SIMULATION_TEST_ONLY = true`). Prohibido como orquestador remoto o endpoint cliente.
 - **Estado**: `PR02_LOCAL_HARDENING = PASS`. Suites validadas (37/37 PR02, 195/195 Fiscal, 6/6 PG17, build Vite exitoso). `PR02_A0_READY = true`, `PR02_A1_READY = true`, `PR02_A2_READY = true`, `PR02_READY_FOR_EMISSION_GO = false`. Emisor PV 2 deshabilitado. Cero llamadas ARCA, cero escrituras Staging (`ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`).
+
+
+### 2026-11-04 - Preparación del Preflight PostgreSQL READ ONLY (PR02-A0)
+
+Implementación del módulo y arnés de preflight READ ONLY en Staging para auditar emisor, catálogo, historial y ventas candidatas:
+- **Ejecutor y Wrapper**: Creados `scripts/fiscal/execute-pr02-a0-staging.mjs` y `run-pr02-a0-staging-private.ps1`.
+- **Garantías READ ONLY**: Transacción `REPEATABLE READ READ ONLY`, verificación `transaction_read_only = 'on'`, solo consultas `SELECT`, `ROLLBACK` incondicional en `finally`, TLS estricto con CA.
+- **Auditoría de Emisor**: Kiosco `b7254826-c767-4098-94b8-71013c12021d`, CUIT `20415005963`, PV 2, cert SHA coincidente, `habilitado = false`, cero emisores habilitados globalmente (`enabled_count = 0`).
+- **Auditoría de Catálogo**: Revisión 3 habilitada con hash `11e9d2244b4fd418df4ab9bc3798c303d66f181785ba678597fdeffa76d5e884` y vigencia contra `clock_timestamp()`. Si está vencido -> `CATALOG_EXPIRED = true` y STOP.
+- **Auditoría de Historial e Incertidumbre**: Comprueba ausencia de reservas en `ENVIO_INCIERTO` o `RESERVADA` pendiente en PV 2, permisos consumidos sin respuesta y estado de intención 042. Si hay incertidumbre -> `FISCAL_HISTORY_REQUIRES_RECONCILIATION = true` y STOP.
+- **Ventas Candidatas Sin Auto-Decisión**: Identifica elegibilidad técnica y produce lista de UUIDs candidatos. `SALE_AUTO_SELECTED = false`, `OWNER_APPROVAL_GRANTED = false`.
+- **Separación de Dependencias**: `TA_STATUS = NOT_CHECKED_IN_A0`, `OFFICIAL_NUMBERING = NOT_OBSERVED_IN_A0`, `EMISSION_PERMISSION = DISABLED`.
+- **Prerequisitos Obligatorios para PR02-C**: Documentados los 6 puntos críticos (getExistingIntent obligatorio, CAS durable, persistencia obligatoria de rechazos/incertidumbre, no confundir aprobación con CAE aplicado, validación del Dueño confiable, y observación oficial validada).
+- **Estado**: `PR02_A0_LOCAL_PREPARATION = PASS`, `PR02_A0_REMOTE_EXECUTION_READY = true`, `PR02_A0_REMOTE_EXECUTED = false`. 22/22 tests PASS, build exitoso. Cero llamadas ARCA, cero escrituras Staging (`ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`).

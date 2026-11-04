@@ -1899,3 +1899,48 @@ Invariantes corregidas y verificadas al 100% (37/37 tests en suite PR02, 195/195
 `DURABLE_UNCERTAIN_STATE = PASS`, `PRECONDITIONS_FAIL_CLOSED = PASS`.
 `PR02_A0_READY = true`, `PR02_A1_READY = true`, `PR02_A2_READY = true`, `PR02_READY_FOR_EMISSION_GO = false`.
 Emisor PV 2 permanece deshabilitado. Cero llamadas ARCA, cero escrituras Staging, cero mutaciones Producción.
+
+
+## 04/11/2026 - Preparación del Preflight PostgreSQL READ ONLY (PR02-A0)
+
+**Contexto:**
+Como paso previo e indispensable a cualquier contacto con WSAA/WSFE o autorización de emisión en PR02, se diseñó
+e implementó el ejecutor y wrapper de preflight local `PR02_A0_STAGING_SQL_READ_ONLY` para auditar el estado
+persistido en PostgreSQL de Staging bajo estrictas garantías de aislamiento y cero efectos secundarios.
+
+**Decisión:**
+1. **Contrato Estricto READ ONLY**: Se creó `scripts/fiscal/execute-pr02-a0-staging.mjs` y `run-pr02-a0-staging-private.ps1`.
+   Toda ejecución remota futura opera bajo `BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;`, comprueba
+   `current_setting('transaction_read_only') = 'on'`, ejecuta exclusivamente consultas `SELECT`, y finaliza
+   incondicionalmente con `ROLLBACK;` en el bloque `finally`.
+2. **Dry-Run por Defecto y Guardias de Seguridad**: La ejecución es dry-run por defecto. Una ejecución autorizada exige
+   `--authorized`, `--scope PR02_A0_STAGING_SQL_READ_ONLY` y `--project-ref acoyfwwmhaeruciyedri`. El wrapper PowerShell
+   verifica `git fetch origin --prune`, paridad de HEAD contra remoto y esperado, worktree limpio, Node.js v24.x y TLS
+   estricto con certificado CA verificado.
+3. **Auditoría de Emisor y Catálogo**: Comprueba emisor del kiosco `b7254826-c767-4098-94b8-71013c12021d` (CUIT `20415005963`,
+   PV `2`, cert SHA `bbcaffebce0f62e1d626e9f6f425dfa70a2de22031df12536a3876d2193af9d0`, `habilitado = false`) y ausencia
+   total de otros emisores habilitados (`enabled_count = 0`). Exige Catálogo R3 habilitado con hash canónico
+   `11e9d2244b4fd418df4ab9bc3798c303d66f181785ba678597fdeffa76d5e884` y vigencia contra `clock_timestamp()` del servidor.
+   Si R3 ha vencido, reporta `CATALOG_EXPIRED = true` y aborta de inmediato (STOP).
+4. **Auditoría de Historial e Incertidumbre**: Verifica ausencia de reservas en `ENVIO_INCIERTO` o `RESERVADA` pendiente
+   en la serie PV 2, permisos consumidos sin respuesta y estado de la intención 042. Si existe cualquier incertidumbre:
+   `FISCAL_HISTORY_REQUIRES_RECONCILIATION = true` y STOP.
+5. **Ventas Candidatas Sin Decisión Automática**: Consulta elegibilidad mínima (COMPLETADA, total > 0, detalles aritméticamente
+   consistentes, sin CAE, sin devoluciones, sin operaciones fiscales previas, sin estados inciertos). Produce una muestra
+   de UUIDs candidatos para revisión humana. Establece estrictamente `SALE_AUTO_SELECTED = false` y `OWNER_APPROVAL_GRANTED = false`.
+6. **Separación Taxativa de Dependencias**:
+   - `TA_STATUS = NOT_CHECKED_IN_A0`
+   - `OFFICIAL_NUMBERING = NOT_OBSERVED_IN_A0`
+   - `EMISSION_PERMISSION = DISABLED`
+7. **Limitaciones Pendientes para PR02-C (Emisión Real)**: Se documentan como prerequisitos obligatorios y no soslayables:
+   - `getExistingIntent` obligatorio y persistido;
+   - CAS durable contra concurrencia;
+   - Registro durable previo obligatorio de incertidumbre y rechazos;
+   - Prohibición de confundir `APROBACION_RECIBIDA` con `CAE_CONFIRMADO_Y_APLICADO`;
+   - Validación nominativa del Dueño desde fuente autenticada confiable;
+   - Observación oficial de numeración (`FECompUltimoAutorizado`) estrictamente validada con vigencia <= 5 minutos.
+
+**Consecuencias:**
+`PR02_A0_LOCAL_PREPARATION = PASS`, `PR02_A0_REMOTE_EXECUTION_READY = true`, `PR02_A0_REMOTE_EXECUTED = false`.
+22/22 tests de PR02-A0 PASS, 59/59 PR02 suite PASS, 217/217 suite fiscal total PASS, 6/6 PostgreSQL 17 PASS, build Vite exitoso.
+Cero llamadas ARCA, cero escrituras Staging, cero mutaciones Producción. Emisor PV 2 permanece deshabilitado.
