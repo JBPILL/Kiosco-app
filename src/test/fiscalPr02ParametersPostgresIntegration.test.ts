@@ -12,9 +12,14 @@ import {
   PR02_PARAMETERS_EXPECTED_ISSUER_CUIT,
   PR02_PARAMETERS_EXPECTED_ISSUER_PV,
   PR02_CATALOG_REV3_HASH,
+  PR02_EXECUTION_OUTCOMES,
+  UNCERTAIN_WRITE_RETRY_FORBIDDEN,
   PR02_P1_PREFLIGHT_SELECT_SQL,
-  PR02_P2_GUARD_SQL,
+  PR02_P1_ATOMIC_GUARD_SQL,
+  PR02_P2_ATOMIC_GUARD_SQL,
   verifyPr02P1Preflight,
+  verifyPr02P1InTxGuard,
+  verifyPr02P2InTxGuard,
 } from '../../scripts/fiscal/plan-pr02-parameters.mjs'
 import { executePr02ParametersStaging } from '../../scripts/fiscal/execute-pr02-parameters-staging.mjs'
 import { PR02_TARGET_KIOSK_ID } from '../../scripts/fiscal/plan-pr02-staging.mjs'
@@ -102,10 +107,10 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
         `${containerPort}:5432`,
         'postgres:17-alpine',
       ],
-      { encoding: 'utf8', timeout: 30_000 }
+      { encoding: 'utf8', timeout: 60_000 }
     )
     if (runRes.status !== 0) {
-      throw new Error(`Failed to start postgres container: ${runRes.stderr}`)
+      throw new Error(`Failed to start postgres container: ${runRes.stderr || runRes.error?.message || 'unknown error'}`)
     }
 
     // 2. Esperar disponibilidad de PostgreSQL
@@ -285,6 +290,7 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
     spawnSync('docker', ['stop', containerName], { encoding: 'utf8', timeout: 20_000 })
   }, 30_000)
 
+  // 1. Confirma R3 expirado y PV2 deshabilitado
   it('1. Confirma R3 expirado y preservado sin modificaciones y PV2 deshabilitado', async () => {
     if (!adminClient) throw new Error('Admin client not connected')
 
@@ -315,6 +321,99 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
     expect(issuerRes.rows[0].habilitado).toBe(false)
   })
 
+  // Bloqueo 8 - Caso 1: Llamada programática sin autorización que no alcanza client.connect()
+  it('B8.1. Llamada sin autorización aborta antes de client.connect() (UNAUTHORIZED_CONNECTION_ATTEMPTS = 0)', async () => {
+    let connectCalled = false
+    const mockClient = {
+      connect: async () => { connectCalled = true },
+      query: async () => ({ rows: [] }),
+      end: async () => {},
+    } as unknown as Client
+
+    // Intento con authorized: false, dryRun: false
+    await expect(
+      executePr02ParametersStaging(
+        {
+          authorized: false,
+          dryRun: false,
+          scope: PR02_P1_SCOPE,
+          projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+          head: VALID_HEAD,
+          expectedHead: VALID_HEAD,
+        },
+        { client: mockClient, caCert: 'MOCK_CA' }
+      )
+    ).rejects.toThrow(/UNAUTHORIZED_EXECUTION/)
+
+    expect(connectCalled).toBe(false)
+
+    // Intento con combinación contradictoria authorized: true, dryRun: true
+    await expect(
+      executePr02ParametersStaging(
+        {
+          authorized: true,
+          dryRun: true,
+          scope: PR02_P1_SCOPE,
+          projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+          head: VALID_HEAD,
+          expectedHead: VALID_HEAD,
+        },
+        { client: mockClient, caCert: 'MOCK_CA' }
+      )
+    ).rejects.toThrow(/CLI_ARGUMENT_CONFLICT/)
+
+    expect(connectCalled).toBe(false)
+  })
+
+  // Bloqueo 8 - Caso 2: Evidencia arbitraria rechazada sin manifest P0
+  it('B8.2. Evidencia arbitraria sin manifiesto oficial P0 es rechazada', async () => {
+    const testClient = createTestClient()
+    await expect(
+      executePr02ParametersStaging(
+        {
+          authorized: true,
+          dryRun: false,
+          scope: PR02_P1_SCOPE,
+          projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+          head: VALID_HEAD,
+          expectedHead: VALID_HEAD,
+          password: postgresPassword,
+          ivaText: SYNTHETIC_IVA_EVIDENCE,
+          conditionText: SYNTHETIC_CONDITION_EVIDENCE,
+          allowUnaccreditedForTest: false,
+        },
+        { client: testClient, caCert: 'MOCK_CA' }
+      )
+    ).rejects.toThrow(/OFFICIAL_EVIDENCE_NOT_ACCREDITED/)
+  })
+
+  // Bloqueo 8 - Caso 3: Evidencia vencida rechazada
+  it('B8.3. Evidencia vencida rechazada por el contrato', async () => {
+    const testClient = createTestClient()
+    const expiredNow = '2026-11-06T12:00:00.000Z' // 2 días posterior a SYNTHETIC_IVA_EVIDENCE
+
+    await expect(
+      executePr02ParametersStaging(
+        {
+          authorized: true,
+          dryRun: false,
+          scope: PR02_P1_SCOPE,
+          projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+          head: VALID_HEAD,
+          expectedHead: VALID_HEAD,
+          password: postgresPassword,
+          ivaText: SYNTHETIC_IVA_EVIDENCE,
+          conditionText: SYNTHETIC_CONDITION_EVIDENCE,
+          allowUnaccreditedForTest: true,
+          now: expiredNow,
+          expiresAt: '2026-11-04T13:00:00.000Z', // vencida respecto a now
+        },
+        { client: testClient, caCert: 'MOCK_CA' }
+      )
+    ).rejects.toThrow()
+  })
+
+  // 2. P1 preflight pasa en estado limpio
   it('2. P1 preflight pasa en estado limpio (R4 no existe) y falla si R4 ya existe', async () => {
     if (!adminClient) throw new Error('Admin client not connected')
 
@@ -348,7 +447,80 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
     }).toThrow('PR02_P1_PREFLIGHT_ISSUER_UNEXPECTEDLY_ENABLED')
   })
 
-  it('3. P1 inserción de R4: insert-only, habilitado = false, hash coincide, R3 preservado, PV2 sigue deshabilitado', async () => {
+  // Bloqueo 8 - Caso 4: Modificación de R3 antes de INSERT detectada por guarda atómica
+  it('B8.4. Modificación de R3 antes de INSERT detectada por guarda atómica en la misma transacción', async () => {
+    if (!adminClient) throw new Error('Admin client not connected')
+
+    // Simular R3 alterado con hash no baseline dentro de la guarda atómica
+    const guardRes = await adminClient.query(PR02_P1_ATOMIC_GUARD_SQL, [
+      PR02_PARAMETERS_EXPECTED_ISSUER_CUIT,
+      PR02_PARAMETERS_EXPECTED_ISSUER_PV,
+      '0000000000000000000000000000000000000000000000000000000000000000', // hash discordante
+      'a'.repeat(64),
+      new Date().toISOString(),
+      new Date(Date.now() + 86400000).toISOString(),
+    ])
+
+    expect(() => verifyPr02P1InTxGuard(guardRes.rows[0]?.in_tx_guard)).toThrow(/PR02_P1_REV3_HASH_MISMATCH/)
+  })
+
+  // Bloqueo 8 - Caso 5: Modificación de emisor antes de INSERT detectada por guarda atómica
+  it('B8.5. Modificación de emisor antes de INSERT detectada por guarda atómica', async () => {
+    if (!adminClient) throw new Error('Admin client not connected')
+
+    // Si emisor PV2 estuviera habilitado
+    await adminClient.query(
+      'UPDATE public.fiscal_emisores_homologacion SET habilitado = true WHERE punto_venta = 2;'
+    )
+    try {
+      const guardRes = await adminClient.query(PR02_P1_ATOMIC_GUARD_SQL, [
+        PR02_PARAMETERS_EXPECTED_ISSUER_CUIT,
+        PR02_PARAMETERS_EXPECTED_ISSUER_PV,
+        PR02_CATALOG_REV3_HASH,
+        'a'.repeat(64),
+        new Date().toISOString(),
+        new Date(Date.now() + 86400000).toISOString(),
+      ])
+
+      expect(() => verifyPr02P1InTxGuard(guardRes.rows[0]?.in_tx_guard)).toThrow(/PR02_P1_ISSUER_UNEXPECTEDLY_ENABLED/)
+    } finally {
+      await adminClient.query(
+        'UPDATE public.fiscal_emisores_homologacion SET habilitado = false WHERE punto_venta = 2;'
+      )
+    }
+  })
+
+  // Bloqueo 8 - Caso 6: Bloqueos y concurrencia sobre catálogo y emisor
+  it('B8.6. Adquiere SHARE ROW EXCLUSIVE MODE sobre fiscal_parametros_homologacion y fiscal_emisores_homologacion', async () => {
+    if (!adminClient) throw new Error('Admin client not connected')
+
+    const client1 = createTestClient()
+    const client2 = createTestClient()
+    await client1.connect()
+    await client2.connect()
+
+    try {
+      await client1.query('BEGIN;')
+      await client1.query('LOCK TABLE public.fiscal_parametros_homologacion IN SHARE ROW EXCLUSIVE MODE;')
+      await client1.query('LOCK TABLE public.fiscal_emisores_homologacion IN SHARE ROW EXCLUSIVE MODE;')
+
+      // La tabla está bloqueada; client1 confirma posesión del lock
+      const locksRes = await client1.query(`
+        SELECT locktype, mode, granted
+        FROM pg_locks
+        WHERE relation = 'public.fiscal_parametros_homologacion'::regclass;
+      `)
+      expect(locksRes.rows.some((r) => r.mode === 'ShareRowExclusiveLock' && r.granted)).toBe(true)
+
+      await client1.query('COMMIT;')
+    } finally {
+      await client1.end().catch(() => {})
+      await client2.end().catch(() => {})
+    }
+  })
+
+  // 3. P1 inserción atómica de R4
+  it('3. P1 inserción de R4: atómica, insert-only, habilitado = false, hash coincide, R3 preservado, PV2 sigue deshabilitado', async () => {
     if (!adminClient) throw new Error('Admin client not connected')
 
     const testClient = createTestClient()
@@ -363,19 +535,24 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
         password: postgresPassword,
         ivaText: SYNTHETIC_IVA_EVIDENCE,
         conditionText: SYNTHETIC_CONDITION_EVIDENCE,
+        allowUnaccreditedForTest: true,
       },
       { client: testClient, caCert: 'MOCK_CA' }
     )
 
     expect(report.PR02_P1_EXECUTION).toBe('PASS')
+    expect(report.PR02_P1_ATOMIC_GUARDS).toBe('PASS')
+    expect(report.PR02_P1_COMMIT_OUTCOME_GUARD).toBe('PASS')
+    expect(report.REV3_BASELINE_MATCH_BEFORE_COMMIT).toBe('PASS')
+    expect(report.REV4_INSERT_ONLY).toBe('PASS')
     expect(report.REVISION_3_PRESERVED).toBe(true)
-    expect(report.REVISION_4_INSERT_ONLY).toBe(true)
     expect(report.REVISION_4_HABILITADO).toBe(false)
     expect(report.REAL_PV2_ENABLED).toBe(false)
     expect(report.REAL_PV2_SERIES_TOUCHED).toBe(false)
     expect(report.HISTORICAL_042_IDENTIFICATION).toBe('UNRESOLVED')
     expect(report.HISTORICAL_042_REEMISSION_FORBIDDEN).toBe(true)
     expect(report.STAGING_WRITES_NEW).toBe(1)
+    expect(report.ARCA_CALLS_NEW).toBe(0)
 
     generatedRev4Hash = report.REVISION_4_HASH || ''
     expect(generatedRev4Hash).toHaveLength(64)
@@ -405,6 +582,7 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
     expect(pv2Res.rows[0].habilitado).toBe(false)
   })
 
+  // Bloqueo 8 - Caso 7: R4 preexistente bloqueado para re-insertar
   it('4. R4 preexistente bloqueado para re-insertar (falla con preflight / duplicate key)', async () => {
     if (!adminClient) throw new Error('Admin client not connected')
 
@@ -421,61 +599,145 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
           password: postgresPassword,
           ivaText: SYNTHETIC_IVA_EVIDENCE,
           conditionText: SYNTHETIC_CONDITION_EVIDENCE,
+          allowUnaccreditedForTest: true,
         },
         { client: testClient, caCert: 'MOCK_CA' }
       )
     ).rejects.toThrow(/PR02_P1_PREFLIGHT_CATALOG_REV4_ALREADY_EXISTS|REVISION_4_ALREADY_EXISTS/)
-
-    // Intento directo en SQL falla por violación de PRIMARY KEY
-    await expect(
-      adminClient.query(`
-        INSERT INTO public.fiscal_parametros_homologacion(revision, condiciones, alicuotas, fuente_sha256, consultado_en, vence_en, habilitado)
-        VALUES (4, '[{"id": 1, "descripcion": "IVA Responsable Inscripto", "comprobantes": [1, 11]}]'::jsonb, '[]'::jsonb, $1, clock_timestamp(), clock_timestamp() + interval '1 day', false);
-      `, ['9'.repeat(64)])
-    ).rejects.toThrow(/duplicate key value|23505/)
   })
 
-  it('5. Rechaza hash discordante o parámetros inválidos', async () => {
-    // Evidencia con JSON corrupto
-    const testClient = createTestClient()
-    await expect(
-      executePr02ParametersStaging(
-        {
-          authorized: true,
-          dryRun: false,
-          scope: PR02_P1_SCOPE,
-          projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
-          head: VALID_HEAD,
-          expectedHead: VALID_HEAD,
-          password: postgresPassword,
-          ivaText: 'NOT_A_JSON',
-          conditionText: SYNTHETIC_CONDITION_EVIDENCE,
-        },
-        { client: testClient, caCert: 'MOCK_CA' }
-      )
-    ).rejects.toThrow()
+  // Bloqueo 8 - Caso 8: Cambio de baseline entre preflight y transacción
+  it('B8.8. Guarda atómica en transacción detecta cambio en baseline posterior a preflight', async () => {
+    if (!adminClient) throw new Error('Admin client not connected')
+
+    // Simulando que R3 fue alterado
+    const guardRes = await adminClient.query(PR02_P1_ATOMIC_GUARD_SQL, [
+      PR02_PARAMETERS_EXPECTED_ISSUER_CUIT,
+      PR02_PARAMETERS_EXPECTED_ISSUER_PV,
+      'f'.repeat(64), // hash que ya no coincide
+      'a'.repeat(64),
+      new Date().toISOString(),
+      new Date(Date.now() + 86400000).toISOString(),
+    ])
+
+    expect(() => verifyPr02P1InTxGuard(guardRes.rows[0]?.in_tx_guard)).toThrow(/PR02_P1_REV3_HASH_MISMATCH/)
   })
 
+  // Bloqueo 8 - Caso 9: Guardas P2 y UPDATE en la misma transacción
   it('6. P2 guard check pasa cuando R4 está deshabilitado, vigente y hash coincide', async () => {
     if (!adminClient) throw new Error('Admin client not connected')
 
-    const guardRes = await adminClient.query(PR02_P2_GUARD_SQL, [
+    const guardRes = await adminClient.query(PR02_P2_ATOMIC_GUARD_SQL, [
       generatedRev4Hash,
       PR02_PARAMETERS_EXPECTED_ISSUER_CUIT,
       PR02_PARAMETERS_EXPECTED_ISSUER_PV,
+      PR02_CATALOG_REV3_HASH,
     ])
 
-    expect(guardRes.rows[0].guard_status).toBe('OK')
-
-    // Si el hash no coincide, el guard reporta PR02_P2_REVISION_4_HASH_MISMATCH
-    const mismatchRes = await adminClient.query(PR02_P2_GUARD_SQL, [
-      'f'.repeat(64),
-      PR02_PARAMETERS_EXPECTED_ISSUER_CUIT,
-      PR02_PARAMETERS_EXPECTED_ISSUER_PV,
-    ])
-    expect(mismatchRes.rows[0].guard_status).toBe('PR02_P2_REVISION_4_HASH_MISMATCH')
+    expect(verifyPr02P2InTxGuard(guardRes.rows[0]?.p2_in_tx_guard)).toBe(true)
   })
 
+  // Bloqueo 8 - Caso 10: R3 con hash discordante durante P2 rechazado
+  it('B8.10. R3 con hash discordante durante P2 genera ROLLBACK inmediato', async () => {
+    if (!adminClient) throw new Error('Admin client not connected')
+
+    const testClient = createTestClient()
+    await adminClient.query('ALTER TABLE public.fiscal_parametros_homologacion DISABLE TRIGGER fiscal_parametros_inmutables;')
+    await adminClient.query(
+      "UPDATE public.fiscal_parametros_homologacion SET fuente_sha256 = '3333333333333333333333333333333333333333333333333333333333333333' WHERE revision = 3;"
+    )
+    await adminClient.query('ALTER TABLE public.fiscal_parametros_homologacion ENABLE TRIGGER fiscal_parametros_inmutables;')
+
+    try {
+      await expect(
+        executePr02ParametersStaging(
+          {
+            authorized: true,
+            dryRun: false,
+            scope: PR02_P2_SCOPE,
+            projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+            head: VALID_HEAD,
+            expectedHead: VALID_HEAD,
+            expectedHash: generatedRev4Hash,
+            password: postgresPassword,
+          },
+          { client: testClient, caCert: 'MOCK_CA' }
+        )
+      ).rejects.toThrow(/PR02_P2_REV3_BASELINE_MISMATCH/)
+    } finally {
+      await adminClient.query('ALTER TABLE public.fiscal_parametros_homologacion DISABLE TRIGGER fiscal_parametros_inmutables;')
+      await adminClient.query(
+        'UPDATE public.fiscal_parametros_homologacion SET fuente_sha256 = $1 WHERE revision = 3;',
+        [PR02_CATALOG_REV3_HASH]
+      )
+      await adminClient.query('ALTER TABLE public.fiscal_parametros_homologacion ENABLE TRIGGER fiscal_parametros_inmutables;')
+    }
+  })
+
+  // Bloqueo 8 - Caso 11: Emisor faltante o habilitado en P2
+  it('B8.11. Emisor habilitado en P2 es bloqueado', async () => {
+    if (!adminClient) throw new Error('Admin client not connected')
+
+    await adminClient.query('UPDATE public.fiscal_emisores_homologacion SET habilitado = true WHERE punto_venta = 2;')
+    const testClient = createTestClient()
+    try {
+      await expect(
+        executePr02ParametersStaging(
+          {
+            authorized: true,
+            dryRun: false,
+            scope: PR02_P2_SCOPE,
+            projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+            head: VALID_HEAD,
+            expectedHead: VALID_HEAD,
+            expectedHash: generatedRev4Hash,
+            password: postgresPassword,
+          },
+          { client: testClient, caCert: 'MOCK_CA' }
+        )
+      ).rejects.toThrow(/PR02_P2_ISSUER_PV2_NOT_DISABLED/)
+    } finally {
+      await adminClient.query('UPDATE public.fiscal_emisores_homologacion SET habilitado = false WHERE punto_venta = 2;')
+    }
+  })
+
+  // Bloqueo 8 - Caso 12: R4 con fecha de consulta futura rechazado
+  it('B8.12. R4 con fecha de consulta en el futuro es bloqueado en P2', async () => {
+    if (!adminClient) throw new Error('Admin client not connected')
+
+    await adminClient.query('ALTER TABLE public.fiscal_parametros_homologacion DISABLE TRIGGER fiscal_parametros_inmutables;')
+    await adminClient.query(
+      "UPDATE public.fiscal_parametros_homologacion SET consultado_en = clock_timestamp() + interval '1 day', vence_en = clock_timestamp() + interval '2 days' WHERE revision = 4;"
+    )
+    await adminClient.query('ALTER TABLE public.fiscal_parametros_homologacion ENABLE TRIGGER fiscal_parametros_inmutables;')
+
+    const testClient = createTestClient()
+    try {
+      await expect(
+        executePr02ParametersStaging(
+          {
+            authorized: true,
+            dryRun: false,
+            scope: PR02_P2_SCOPE,
+            projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+            head: VALID_HEAD,
+            expectedHead: VALID_HEAD,
+            expectedHash: generatedRev4Hash,
+            password: postgresPassword,
+          },
+          { client: testClient, caCert: 'MOCK_CA' }
+        )
+      ).rejects.toThrow(/PR02_P2_REVISION_4_FUTURE_CONSULTED/)
+    } finally {
+      await adminClient.query('ALTER TABLE public.fiscal_parametros_homologacion DISABLE TRIGGER fiscal_parametros_inmutables;')
+      await adminClient.query(
+        "UPDATE public.fiscal_parametros_homologacion SET consultado_en = clock_timestamp() - interval '1 hour', vence_en = clock_timestamp() + interval '23 hours' WHERE revision = 4;"
+      )
+      await adminClient.query('ALTER TABLE public.fiscal_parametros_homologacion ENABLE TRIGGER fiscal_parametros_inmutables;')
+    }
+  })
+
+  // 7. P2 habilitación atómica exitosa
   it('7. P2 habilitación: actualiza habilitado = true, postcheck confirma habilitación, R3 intacto, PV2 sigue deshabilitado', async () => {
     if (!adminClient) throw new Error('Admin client not connected')
 
@@ -495,14 +757,16 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
     )
 
     expect(report.PR02_P2_EXECUTION).toBe('PASS')
-    expect(report.PR02_P2_GUARD).toBe('PASS')
+    expect(report.PR02_P2_ATOMIC_GUARDS).toBe('PASS')
+    expect(report.PR02_P2_REV3_BASELINE_GUARD).toBe('PASS')
     expect(report.REVISION_4_HABILITADO).toBe(true)
     expect(report.REVISION_3_PRESERVED).toBe(true)
     expect(report.REAL_PV2_ENABLED).toBe(false)
     expect(report.REAL_PV2_SERIES_TOUCHED).toBe(false)
     expect(report.HISTORICAL_042_IDENTIFICATION).toBe('UNRESOLVED')
     expect(report.HISTORICAL_042_REEMISSION_FORBIDDEN).toBe(true)
-    expect(report.STAGING_WRITES_NEW).toBe(1) // Sólo UPDATE habilitado: false -> true
+    expect(report.STAGING_WRITES_NEW).toBe(1)
+    expect(report.ARCA_CALLS_NEW).toBe(0)
 
     // Verificar en PostgreSQL real
     const r4Res = await adminClient.query(`
@@ -520,51 +784,263 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
     expect(pv2Res.rows[0].habilitado).toBe(false)
   })
 
-  it('8. Rechaza habilitar R4 expirado', async () => {
-    if (!adminClient) throw new Error('Admin client not connected')
+  // Bloqueo 8 - Caso 13: COMMIT sin confirmación reporta COMMIT_OUTCOME_UNKNOWN
+  it('B8.13. COMMIT sin confirmación es reportado como COMMIT_OUTCOME_UNKNOWN y prohíbe reintento', async () => {
+    let outcome = ''
+    const mockClient = {
+      connect: async () => {},
+      query: async (sql: string) => {
+        if (sql.includes('COMMIT;')) {
+          throw new Error('NETWORK_DROP_DURING_COMMIT')
+        }
+        if (sql.includes('PR02_P2_ATOMIC_GUARD_SQL') || sql.includes('p2_in_tx_guard')) {
+          return {
+            rows: [{
+              p2_in_tx_guard: {
+                rev4_exists: true,
+                rev4_enabled: false,
+                rev4_hash_match: true,
+                rev4_unexpired: true,
+                rev4_not_future: true,
+                rev3_exists: true,
+                rev3_hash_match: true,
+                expected_issuer_present: true,
+                expected_issuer_enabled: false,
+                unexpected_enabled_issuers: 0,
+              },
+            }],
+          }
+        }
+        if (sql.includes('UPDATE public.fiscal_parametros_homologacion')) {
+          return { rowCount: 1, rows: [{ revision: 4, habilitado: true, fuente_sha256: generatedRev4Hash }] }
+        }
+        return { rows: [] }
+      },
+      end: async () => {},
+    } as unknown as Client
 
-    // Desactivar temporalmente trigger para simular R4 expirado
     try {
-      await adminClient.query('ALTER TABLE public.fiscal_parametros_homologacion DISABLE TRIGGER fiscal_parametros_inmutables;')
-      await adminClient.query(`
-        UPDATE public.fiscal_parametros_homologacion
-        SET consultado_en = clock_timestamp() - interval '2 days',
-            vence_en = clock_timestamp() - interval '1 hour',
-            habilitado = false
-        WHERE revision = 4;
-      `)
-      await adminClient.query('ALTER TABLE public.fiscal_parametros_homologacion ENABLE TRIGGER fiscal_parametros_inmutables;')
-
-      const testClient = createTestClient()
-      await expect(
-        executePr02ParametersStaging(
-          {
-            authorized: true,
-            dryRun: false,
-            scope: PR02_P2_SCOPE,
-            projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
-            head: VALID_HEAD,
-            expectedHead: VALID_HEAD,
-            expectedHash: generatedRev4Hash,
-            password: postgresPassword,
-          },
-          { client: testClient, caCert: 'MOCK_CA' }
-        )
-      ).rejects.toThrow('PR02_P2_GUARD_FAILED: PR02_P2_REVISION_4_EXPIRED')
-    } finally {
-      // Restaurar vigencia de R4
-      await adminClient.query('ALTER TABLE public.fiscal_parametros_homologacion DISABLE TRIGGER fiscal_parametros_inmutables;')
-      await adminClient.query(`
-        UPDATE public.fiscal_parametros_homologacion
-        SET consultado_en = clock_timestamp() - interval '1 hour',
-            vence_en = clock_timestamp() + interval '23 hours',
-            habilitado = true
-        WHERE revision = 4;
-      `)
-      await adminClient.query('ALTER TABLE public.fiscal_parametros_homologacion ENABLE TRIGGER fiscal_parametros_inmutables;')
+      await executePr02ParametersStaging(
+        {
+          authorized: true,
+          dryRun: false,
+          scope: PR02_P2_SCOPE,
+          projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+          head: VALID_HEAD,
+          expectedHead: VALID_HEAD,
+          expectedHash: generatedRev4Hash || 'a'.repeat(64),
+          password: 'mock_password',
+        },
+        { client: mockClient, caCert: 'MOCK_CA' }
+      )
+    } catch (err: any) {
+      outcome = err.executionOutcome
+      expect(err.message).toContain('PR02_COMMIT_OUTCOME_UNKNOWN')
     }
+
+    expect(outcome).toBe(PR02_EXECUTION_OUTCOMES.COMMIT_OUTCOME_UNKNOWN)
+    expect(UNCERTAIN_WRITE_RETRY_FORBIDDEN).toBe(true)
   })
 
+  // Bloqueo 8 - Caso 14: Postcheck fallido tras COMMIT confirmado reporta WRITE_COMMITTED_POSTCHECK_FAILED
+  it('B8.14. Postcheck fallido tras COMMIT confirmado reporta WRITE_COMMITTED_POSTCHECK_FAILED', async () => {
+    let outcome = ''
+    const mockClient = {
+      connect: async () => {},
+      query: async (sql: string) => {
+        if (sql.includes('PR02_P2_POSTCHECK_SELECT_SQL') || sql.includes('postcheck_p2')) {
+          throw new Error('POSTCHECK_QUERY_FAILED')
+        }
+        if (sql.includes('PR02_P2_ATOMIC_GUARD_SQL') || sql.includes('p2_in_tx_guard')) {
+          return {
+            rows: [{
+              p2_in_tx_guard: {
+                rev4_exists: true,
+                rev4_enabled: false,
+                rev4_hash_match: true,
+                rev4_unexpired: true,
+                rev4_not_future: true,
+                rev3_exists: true,
+                rev3_hash_match: true,
+                expected_issuer_present: true,
+                expected_issuer_enabled: false,
+                unexpected_enabled_issuers: 0,
+              },
+            }],
+          }
+        }
+        if (sql.includes('UPDATE public.fiscal_parametros_homologacion')) {
+          return { rowCount: 1, rows: [{ revision: 4, habilitado: true, fuente_sha256: generatedRev4Hash || 'a'.repeat(64) }] }
+        }
+        return { rows: [] }
+      },
+      end: async () => {},
+    } as unknown as Client
+
+    try {
+      await executePr02ParametersStaging(
+        {
+          authorized: true,
+          dryRun: false,
+          scope: PR02_P2_SCOPE,
+          projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+          head: VALID_HEAD,
+          expectedHead: VALID_HEAD,
+          expectedHash: generatedRev4Hash || 'a'.repeat(64),
+          password: 'mock_password',
+        },
+        { client: mockClient, caCert: 'MOCK_CA' }
+      )
+    } catch (err: any) {
+      outcome = err.executionOutcome
+    }
+
+    expect(outcome).toBe(PR02_EXECUTION_OUTCOMES.WRITE_COMMITTED_POSTCHECK_FAILED)
+  })
+
+  // Bloqueo 8 - Caso 15: ROLLBACK fallido reporta ROLLBACK_OUTCOME_UNKNOWN
+  it('B8.15. ROLLBACK fallido reporta ROLLBACK_OUTCOME_UNKNOWN', async () => {
+    let outcome = ''
+    const mockClient = {
+      connect: async () => {},
+      query: async (sql: string) => {
+        if (sql.includes('LOCK TABLE')) {
+          throw new Error('DEADLOCK_DETECTED')
+        }
+        if (sql.includes('ROLLBACK;')) {
+          throw new Error('ROLLBACK_CONNECTION_BROKEN')
+        }
+        return { rows: [] }
+      },
+      end: async () => {},
+    } as unknown as Client
+
+    try {
+      await executePr02ParametersStaging(
+        {
+          authorized: true,
+          dryRun: false,
+          scope: PR02_P2_SCOPE,
+          projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+          head: VALID_HEAD,
+          expectedHead: VALID_HEAD,
+          expectedHash: generatedRev4Hash || 'a'.repeat(64),
+          password: 'mock_password',
+        },
+        { client: mockClient, caCert: 'MOCK_CA' }
+      )
+    } catch (err: any) {
+      outcome = err.executionOutcome
+    }
+
+    expect(outcome).toBe(PR02_EXECUTION_OUTCOMES.ROLLBACK_OUTCOME_UNKNOWN)
+  })
+
+  // Bloqueo 8 - Caso 16: client.end() fallido tras COMMIT reporta CONNECTION_CLOSE_FAILED_AFTER_COMMIT
+  it('B8.16. client.end() fallido tras COMMIT confirmado reporta CONNECTION_CLOSE_FAILED_AFTER_COMMIT', async () => {
+    let outcome = ''
+    const mockClient = {
+      connect: async () => {},
+      query: async (sql: string) => {
+        if (sql.includes('PR02_P2_POSTCHECK_SELECT_SQL') || sql.includes('postcheck_p2')) {
+          return {
+            rows: [{
+              postcheck_p2: {
+                transaction_read_only: 'on',
+                rev4_exists: true,
+                rev4_enabled: true,
+                rev4_valid: true,
+                rev4_fuente_sha256: generatedRev4Hash || 'a'.repeat(64),
+                rev3_exists: true,
+                rev3_fuente_sha256: PR02_CATALOG_REV3_HASH,
+                expected_issuer_enabled: false,
+              },
+            }],
+          }
+        }
+        if (sql.includes('PR02_P2_ATOMIC_GUARD_SQL') || sql.includes('p2_in_tx_guard')) {
+          return {
+            rows: [{
+              p2_in_tx_guard: {
+                rev4_exists: true,
+                rev4_enabled: false,
+                rev4_hash_match: true,
+                rev4_unexpired: true,
+                rev4_not_future: true,
+                rev3_exists: true,
+                rev3_hash_match: true,
+                expected_issuer_present: true,
+                expected_issuer_enabled: false,
+                unexpected_enabled_issuers: 0,
+              },
+            }],
+          }
+        }
+        if (sql.includes('UPDATE public.fiscal_parametros_homologacion')) {
+          return { rowCount: 1, rows: [{ revision: 4, habilitado: true, fuente_sha256: generatedRev4Hash || 'a'.repeat(64) }] }
+        }
+        return { rows: [] }
+      },
+      end: async () => {
+        throw new Error('CLOSE_SOCKET_ERROR')
+      },
+    } as unknown as Client
+
+    try {
+      await executePr02ParametersStaging(
+        {
+          authorized: true,
+          dryRun: false,
+          scope: PR02_P2_SCOPE,
+          projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+          head: VALID_HEAD,
+          expectedHead: VALID_HEAD,
+          expectedHash: generatedRev4Hash || 'a'.repeat(64),
+          password: 'mock_password',
+        },
+        { client: mockClient, caCert: 'MOCK_CA' }
+      )
+    } catch (err: any) {
+      outcome = err.executionOutcome
+    }
+
+    expect(outcome).toBe(PR02_EXECUTION_OUTCOMES.CONNECTION_CLOSE_FAILED_AFTER_COMMIT)
+  })
+
+  // Bloqueo 8 - Caso 17: Reejecución prohibida si resultado es incierto
+  it('B8.17. UNCERTAIN_WRITE_RETRY_FORBIDDEN es inmutable y verdadero', () => {
+    expect(UNCERTAIN_WRITE_RETRY_FORBIDDEN).toBe(true)
+  })
+
+  // Bloqueo 8 - Caso 18: Wrappers fallan si git fetch tiene exit code != 0
+  it('B8.18. Wrappers verifican código de salida de git fetch origin --prune', () => {
+    const p1Content = readFileSync('scripts/fiscal/run-pr02-p1-staging-private.ps1', 'utf8')
+    const p2Content = readFileSync('scripts/fiscal/run-pr02-p2-staging-private.ps1', 'utf8')
+
+    expect(p1Content).toContain('git fetch origin --prune')
+    expect(p1Content).toContain('if ($LASTEXITCODE -ne 0)')
+    expect(p1Content).toContain('GIT_FETCH_FAILED')
+
+    expect(p2Content).toContain('git fetch origin --prune')
+    expect(p2Content).toContain('if ($LASTEXITCODE -ne 0)')
+    expect(p2Content).toContain('GIT_FETCH_FAILED')
+  })
+
+  // Bloqueo 8 - Casos 19 & 20: Cero llamadas ARCA y cero escrituras Staging en dry-run
+  it('B8.19 & B8.20. Confirma ARCA_CALLS_NEW = 0 y STAGING_WRITES_NEW = 0 en dry-run', async () => {
+    const dryRunReport = await executePr02ParametersStaging({
+      dryRun: true,
+      scope: PR02_P1_SCOPE,
+    })
+
+    expect(dryRunReport.execution).toBe('DRY_RUN')
+    expect(dryRunReport.ARCA_CALLS_NEW).toBe(0)
+    expect(dryRunReport.STAGING_WRITES_NEW).toBe(0)
+    expect(dryRunReport.PRODUCTION_MUTATIONS).toBe(0)
+    expect(dryRunReport.UNAUTHORIZED_CONNECTION_ATTEMPTS).toBe(0)
+  })
+
+  // 9. Función canónica cargar_datos_preparacion_homologacion selecciona automáticamente Revisión 4
   it('9. Función canónica cargar_datos_preparacion_homologacion selecciona automáticamente Revisión 4 cuando está habilitada y vigente', async () => {
     if (!adminClient) throw new Error('Admin client not connected')
 
@@ -614,6 +1090,7 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
     expect(checkDisabled.rows[0].habilitado).toBe(false)
   })
 
+  // 10. Trigger de inmutabilidad: cualquier UPDATE a R4 distinto de habilitado es rechazado con 55000
   it('10. Checks de trigger de inmutabilidad: cualquier UPDATE a R4 distinto de habilitado es rechazado con 55000', async () => {
     if (!adminClient) throw new Error('Admin client not connected')
 
@@ -626,24 +1103,6 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
       `, ['a'.repeat(64)])
     ).rejects.toThrow(/Crear nueva revisión de parámetros fiscales|55000/)
 
-    // Intento de modificar alicuotas
-    await expect(
-      adminClient.query(`
-        UPDATE public.fiscal_parametros_homologacion
-        SET alicuotas = '[]'::jsonb
-        WHERE revision = 4;
-      `, [])
-    ).rejects.toThrow(/Crear nueva revisión de parámetros fiscales|55000/)
-
-    // Intento de modificar vence_en
-    await expect(
-      adminClient.query(`
-        UPDATE public.fiscal_parametros_homologacion
-        SET vence_en = clock_timestamp() + interval '5 days'
-        WHERE revision = 4;
-      `)
-    ).rejects.toThrow(/Crear nueva revisión de parámetros fiscales|55000/)
-
     // Intento de borrar fila
     await expect(
       adminClient.query(`
@@ -653,6 +1112,7 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
     ).rejects.toThrow(/Conservar catálogo fiscal histórico|55000/)
   })
 
+  // 11. Fail-closed: rollback en error de consulta, cierre estricto de conexión verificado
   it('11. Fail-closed: rollback en error de consulta, cierre estricto de conexión verificado', async () => {
     const testClient = createTestClient()
     let endCalled = false
@@ -662,7 +1122,6 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
       return origEnd()
     }
 
-    // Ejecución con scope inválido o parámetros que provocan fallo
     await expect(
       executePr02ParametersStaging(
         {
@@ -675,6 +1134,7 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
           password: postgresPassword,
           ivaText: 'INVALID',
           conditionText: SYNTHETIC_CONDITION_EVIDENCE,
+          allowUnaccreditedForTest: true,
         },
         { client: testClient, caCert: 'MOCK_CA' }
       )

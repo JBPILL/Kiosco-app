@@ -8,6 +8,10 @@
  * para arneses de prueba (TEST-ONLY). No efectúa transporte remoto hacia ARCA.
  */
 
+export const PR02_P0_SCOPE = 'PR02_P0_OFFICIAL_EVIDENCE_COLLECTION'
+export const PR02_P1_SCOPE = 'PR02_P1_VERIFIED_CATALOG_IMPORT'
+export const PR02_P2_SCOPE = 'PR02_P2_CATALOG_ENABLE'
+
 export const PR02_TARGET_KIOSK_ID = 'b7254826-c767-4098-94b8-71013c12021d'
 export const PR02_TARGET_CUIT = '20415005963'
 export const PR02_TARGET_PV = 2
@@ -23,7 +27,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 /**
  * Fases estrictamente separadas de PR02.
- * Desacopla comprobación SQL, autenticación WSAA, lectura oficial y emisión.
+ * Desacopla comprobación SQL, adquisición de evidencia P0, importación P1, activación P2, autenticación WSAA, lectura oficial y emisión.
  */
 export const PR02_PHASES = Object.freeze({
   PR02_A0: Object.freeze({
@@ -33,6 +37,30 @@ export const PR02_PHASES = Object.freeze({
     emissionAllowed: false,
     readOnly: true,
     stagingWrites: 0,
+  }),
+  PR02_P0: Object.freeze({
+    id: PR02_P0_SCOPE,
+    description: 'Adquisición y manifestación de evidencia oficial WSAA/WSFE (TiposIva y CondicionIvaReceptor). Cero escrituras Staging, cero emisión.',
+    arcaCallsMax: 3,
+    emissionAllowed: false,
+    readOnly: true,
+    stagingWrites: 0,
+  }),
+  PR02_P1: Object.freeze({
+    id: PR02_P1_SCOPE,
+    description: 'Importación transaccional insert-only de parámetros fiscales verificados con evidencia oficial P0 (Revisión 4 deshabilitada). Cero llamadas ARCA, cero emisión.',
+    arcaCallsMax: 0,
+    emissionAllowed: false,
+    stagingWrites: 1,
+    targetRevision: 4,
+  }),
+  PR02_P2: Object.freeze({
+    id: PR02_P2_SCOPE,
+    description: 'Habilitación atómica y controlada de la Revisión 4 del catálogo fiscal. Cero llamadas ARCA, cero emisión.',
+    arcaCallsMax: 0,
+    emissionAllowed: false,
+    stagingWrites: 1,
+    targetRevision: 4,
   }),
   PR02_A1: Object.freeze({
     id: 'PR02_A1_WSAA_AUTH_IF_REQUIRED',
@@ -49,22 +77,6 @@ export const PR02_PHASES = Object.freeze({
     emissionAllowed: false,
     readOnly: true,
     service: 'WSFE',
-  }),
-  PR02_P1: Object.freeze({
-    id: 'PR02_P1_PARAMETER_REFRESH',
-    description: 'Obtención y provisión insert-only de parámetros fiscales oficiales (Revisión 4, deshabilitada). Cero emisión.',
-    arcaCallsMax: 3,
-    emissionAllowed: false,
-    stagingWrites: 1,
-    targetRevision: 4,
-  }),
-  PR02_P2: Object.freeze({
-    id: 'PR02_P2_CATALOG_ENABLE',
-    description: 'Habilitación controlada y atómica de la Revisión 4 del catálogo fiscal. Cero llamadas ARCA, cero emisión.',
-    arcaCallsMax: 0,
-    emissionAllowed: false,
-    stagingWrites: 1,
-    targetRevision: 4,
   }),
   PR02_B: Object.freeze({
     id: 'PR02_B_DURABLE_SINGLE_INTENT_PREPARATION',
@@ -494,10 +506,12 @@ export async function executePr02Simulation(params, deps) {
 
 /**
  * Validador estricto del contrato de catálogo fiscal para PR02.
- * Exige revisión explícita acreditada, hash SHA-256 íntegro, habilitación activa,
- * fechas válidas, vigencia y coherencia de datos.
+ * Exige revisión explícita acreditada, hash SHA-256 íntegro (64 caracteres hex en minúsculas),
+ * habilitación activa, timestamps finitos válidos, vigencia estricta (consultado_en <= now < vence_en),
+ * coherencia estructural de condiciones (1..100) y alícuotas (0..100), unicidad de IDs,
+ * comprobantes válidos sin duplicados, y acreditación oficial de procedencia cuando se evalúa readiness.
  */
-export function validatePr02CatalogContract(catalog, expectedRevision = PR02_TARGET_CATALOG_REVISION_R4) {
+export function validatePr02CatalogContract(catalog, expectedRevision = PR02_TARGET_CATALOG_REVISION_R4, options = {}) {
   if (!catalog || typeof catalog !== 'object') {
     throw new Error('CATALOG_CONTRACT_INVALID: Objeto de catálogo ausente o inválido')
   }
@@ -505,7 +519,7 @@ export function validatePr02CatalogContract(catalog, expectedRevision = PR02_TAR
     throw new Error(`CATALOG_REVISION_MISMATCH: Se esperaba revisión ${expectedRevision}, recibida ${catalog.revision}`)
   }
   if (!catalog.fuente_sha256 || typeof catalog.fuente_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(catalog.fuente_sha256)) {
-    throw new Error('CATALOG_HASH_INVALID: fuente_sha256 debe ser un SHA-256 hexadecimal válido de 64 caracteres')
+    throw new Error('CATALOG_HASH_INVALID: fuente_sha256 debe ser un SHA-256 hexadecimal válido de 64 caracteres en minúsculas')
   }
   if (catalog.habilitado !== true) {
     throw new Error(`CATALOG_NOT_ENABLED: Catálogo revisión ${expectedRevision} no está habilitado`)
@@ -518,11 +532,79 @@ export function validatePr02CatalogContract(catalog, expectedRevision = PR02_TAR
   if (expiresMs <= consultedMs) {
     throw new Error('CATALOG_EXPIRY_INVALID: vence_en debe ser posterior a consultado_en')
   }
+
+  const nowMs = options.now ? Date.parse(options.now) : Date.now()
+  if (!Number.isFinite(nowMs)) {
+    throw new Error('CATALOG_CLOCK_INVALID: Reloj de referencia inválido')
+  }
+  if (consultedMs > nowMs) {
+    throw new Error('CATALOG_CONSULTED_IN_FUTURE: consultado_en no puede ser posterior a la fecha actual')
+  }
+  if (expiresMs <= nowMs) {
+    throw new Error('CATALOG_EXPIRED: Catálogo vencido según el reloj de referencia')
+  }
+
+  // Validación estructural de condiciones
   if (!Array.isArray(catalog.condiciones) || catalog.condiciones.length === 0 || catalog.condiciones.length > 100) {
-    throw new Error('CATALOG_CONDICIONES_INVALID: Array de condiciones vacío o fuera de rango')
+    throw new Error('CATALOG_CONDICIONES_INVALID: Array de condiciones vacío o fuera de rango (1-100)')
   }
+  const conditionIds = new Set()
+  for (const c of catalog.condiciones) {
+    if (!c || typeof c !== 'object') {
+      throw new Error('CATALOG_CONDICION_ROW_INVALID: Fila de condición no es un objeto válido')
+    }
+    if (!Number.isSafeInteger(c.id) || c.id < 1 || c.id > 99) {
+      throw new Error(`CATALOG_CONDICION_ID_INVALID: ID de condición inválido: ${c.id}`)
+    }
+    if (conditionIds.has(c.id)) {
+      throw new Error(`CATALOG_CONDICION_DUPLICATE_ID: ID de condición duplicado: ${c.id}`)
+    }
+    conditionIds.add(c.id)
+    if (typeof c.descripcion !== 'string' || c.descripcion.trim().length === 0) {
+      throw new Error('CATALOG_CONDICION_DESC_INVALID: Descripción de condición vacía')
+    }
+    if (!Array.isArray(c.comprobantes) || c.comprobantes.length === 0 || c.comprobantes.length > 100) {
+      throw new Error('CATALOG_CONDICION_COMPROBANTES_INVALID: Comprobantes vacíos o fuera de rango en condición')
+    }
+    const cmpSet = new Set()
+    for (const cmp of c.comprobantes) {
+      if (!Number.isSafeInteger(cmp) || cmp < 1 || cmp > 999) {
+        throw new Error(`CATALOG_COMPROBANTE_INVALID: Código de comprobante inválido: ${cmp}`)
+      }
+      if (cmpSet.has(cmp)) {
+        throw new Error(`CATALOG_COMPROBANTE_DUPLICATE: Código de comprobante duplicado: ${cmp}`)
+      }
+      cmpSet.add(cmp)
+    }
+  }
+
+  // Validación estructural de alícuotas
   if (!Array.isArray(catalog.alicuotas) || catalog.alicuotas.length > 100) {
-    throw new Error('CATALOG_ALICUOTAS_INVALID: Array de alícuotas inválido o fuera de rango')
+    throw new Error('CATALOG_ALICUOTAS_INVALID: Array de alícuotas inválido o fuera de rango (0-100)')
   }
+  const rateIds = new Set()
+  for (const r of catalog.alicuotas) {
+    if (!r || typeof r !== 'object') {
+      throw new Error('CATALOG_ALICUOTA_ROW_INVALID: Fila de alícuota no es un objeto válido')
+    }
+    if (!Number.isSafeInteger(r.id) || r.id < 1 || r.id > 99) {
+      throw new Error(`CATALOG_ALICUOTA_ID_INVALID: ID de alícuota inválido: ${r.id}`)
+    }
+    if (rateIds.has(r.id)) {
+      throw new Error(`CATALOG_ALICUOTA_DUPLICATE_ID: ID de alícuota duplicado: ${r.id}`)
+    }
+    rateIds.add(r.id)
+    if (typeof r.descripcion !== 'string' || r.descripcion.trim().length === 0) {
+      throw new Error('CATALOG_ALICUOTA_DESC_INVALID: Descripción de alícuota vacía')
+    }
+  }
+
+  // Acreditación de procedencia oficial cuando se evalúa para readiness operativa
+  if (options.requireAccreditedProvenance === true) {
+    if (!catalog.provenance || typeof catalog.provenance !== 'object' || catalog.provenance.accredited !== true) {
+      throw new Error('CATALOG_PROVENANCE_NOT_ACCREDITED: Se requiere acreditación oficial de procedencia ARCA para readiness operativa')
+    }
+  }
+
   return true
 }

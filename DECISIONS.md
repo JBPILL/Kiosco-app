@@ -2081,3 +2081,47 @@ Para restaurar la capacidad operacional de homologación sin mutar la historia n
 `PR02_CATALOG_REFRESH_LOCAL_PREPARATION = PASS`, `REV3_PRESERVED = true`, `REV3_EXPIRED = true`, `REV4_INSERT_ONLY_DESIGN = PASS`, `REV4_ENABLE_GUARD = PASS`, `CANONICAL_LATEST_VALID_REVISION = PASS`, `PR02_REVISION_COMPATIBILITY = PASS`.
 `PR02_P1_REMOTE_EXECUTION_READY = true`, `PR02_P2_REMOTE_EXECUTION_READY = false`.
 Cero llamadas ARCA nuevas, cero escrituras Staging nuevas, cero mutaciones Producción, emisor real PV 2 deshabilitado.
+
+## 04/11/2026 - Hardening de P0/P1/P2 tras Auditoría NO-GO de Refresco de Parámetros
+
+**Contexto:**
+Una revisión independiente tras la propuesta inicial de refresco arrojó `PR02_P1_REMOTE_GO = DENIED` y `PR02_P2_REMOTE_GO = DENIED`, identificando 8 bloqueadores de seguridad, concurrencia y procedencia:
+1. Autorización laxa en API programática: `executePr02ParametersStaging` podía leer credenciales o ejecutar con `deps.client` inyectado sin verificar flags de autorización de forma fail-closed.
+2. Acoplamiento de llamadas ARCA con importación SQL: riesgo de mezclar transporte WSFE con escritura en base de datos.
+3. Carrera de concurrencia e inserción no atómica en P1: riesgo de escrituras concurrentes o cambio de estado entre preflight e INSERT.
+4. Verificación de baseline R3 incompleta en P2: no se validaba el digest SHA-256 de R3 dentro de la transacción de habilitación ni en postcheck.
+5. Ambigüedad ante fallo de commit: falta de seguimiento explícito del resultado de transacción y riesgo de reintentos ciegos destructivos.
+6. Validación permisiva de contrato de catálogo: `validatePr02CatalogContract` carecía de límites estrictos de conteo, unicidad y congruencia temporal.
+7. Wrappers PowerShell con comprobación de Git laxa: comandos `git` sin verificación explícita de `$LASTEXITCODE`.
+8. Falta de validación con Docker PostgreSQL 17 real de las transacciones atómicas con locks.
+
+**Decisión:**
+1. **Autorización Fail-Closed en Todas las Entradas (BLOCKER 1)**:
+   - Se modificó `executePr02ParametersStaging` para exigir `{ authorized: true, dryRun: false }` antes de resolver CA, leer credenciales, procesar evidencia o interactuar con `deps.client`.
+   - Cualquier intento no autorizado o contradictorio lanza inmediatamente `UNAUTHORIZED_EXECUTION` con `UNAUTHORIZED_CONNECTION_ATTEMPTS = 0`.
+   - Validación estricta de argumentos CLI (prohibidas combinaciones `--authorized --dry-run`, duplicados y argumentos desconocidos).
+2. **Desacoplamiento Estricto: P0 (Recolección) vs P1 (Importación) vs P2 (Habilitación) (BLOCKER 2)**:
+   - Definición de scopes unívocos: `PR02_P0_OFFICIAL_EVIDENCE_COLLECTION`, `PR02_P1_VERIFIED_CATALOG_IMPORT` y `PR02_P2_CATALOG_ENABLE`.
+   - P0 genera un manifiesto de evidencia oficial inmutable (`createPr02P0OfficialEvidenceManifest` / `validatePr02P0Manifest`) con hash SHA-256 de los XML crudos de ARCA (`FEParamGetTiposIva` y `FEParamGetCondicionIvaReceptor`), asegurando que ningún secreto (Token, Sign, CUIT clave, password) ingrese al manifiesto.
+   - P1 es una operación estrictamente de importación en BD (`PR02_P1_IMPORT_ONLY = true`): valida el manifiesto oficial P0 y sus hashes antes de conectar. Sin evidencia acreditada, la ejecución remota se aborta con `OFFICIAL_EVIDENCE_NOT_ACCREDITED`.
+3. **Inserción Atómica en P1 con Table Locks (BLOCKER 3)**:
+   - Se diseñó `PR02_P1_ATOMIC_GUARD_SQL` y `verifyPr02P1InTxGuard`.
+   - Transacción única: `BEGIN` -> `LOCK TABLE fiscal_parametros_homologacion IN SHARE ROW EXCLUSIVE MODE;` + `LOCK TABLE fiscal_emisores_homologacion IN SHARE ROW EXCLUSIVE MODE;` -> guarda in-transaction (R3 presente, R3 vencida, R4 ausente, emisor inactivo) -> `INSERT ... RETURNING` con `habilitado = false` -> `COMMIT`.
+4. **Habilitación Atómica en P2 con Verificación de Baseline R3 (BLOCKER 4)**:
+   - Se diseñó `PR02_P2_ATOMIC_GUARD_SQL` y `verifyPr02P2InTxGuard`.
+   - Transacción única con table locks en `SHARE ROW EXCLUSIVE MODE`.
+   - La guarda in-transaction y el postcheck verifican taxativamente que la Revisión 3 histórica posea el digest SHA-256 exacto `2e6f4770ef1f1f964047a46abec7e05492d6e355f9a629b0be99fe1e550e5659` (`PR02_CATALOG_REV3_HASH`). Ante discordancia: rechazo con `PR02_P2_REV3_BASELINE_MISMATCH`.
+5. **Máquina de Estados de Outcome de Transacción y Prohibición de Reintento Incierto (BLOCKER 5)**:
+   - Definición del enum `PR02_EXECUTION_OUTCOMES`: `NOT_STARTED`, `PREFLIGHT_FAILED_NO_WRITE`, `TRANSACTION_ROLLED_BACK_CONFIRMED`, `WRITE_COMMITTED`, `WRITE_COMMITTED_POSTCHECK_FAILED`, `COMMIT_OUTCOME_UNKNOWN`, `ROLLBACK_OUTCOME_UNKNOWN`, `CONNECTION_CLOSE_FAILED_AFTER_COMMIT`.
+   - Establecido `UNCERTAIN_WRITE_RETRY_FORBIDDEN = true`. Si ocurre un fallo de transporte durante o después de `COMMIT`, el estado se marca como incierto y prohíbe reintentos ciegos.
+6. **Validación Estricta de Contrato de Catálogo (BLOCKER 6)**:
+   - `validatePr02CatalogContract` exige: `consultado_en <= now < vence_en`, condiciones IVA entre 1 y 100 con códigos únicos, alícuotas IVA entre 0 y 100 con IDs únicos, y procedencia verificada.
+7. **Endurecimiento de Wrappers PowerShell (BLOCKER 7)**:
+   - `run-pr02-p1-staging-private.ps1` y `run-pr02-p2-staging-private.ps1` verifican explícitamente `if ($LASTEXITCODE -ne 0) { throw ... }` tras cada invocación de `git` (`fetch`, `rev-parse`, `status`).
+   - P1 incorpora parámetro `-ManifestFile` para recibir el manifiesto P0.
+8. **Acreditación en PostgreSQL 17 Real en Docker (BLOCKER 8)**:
+   - Suite `fiscalPr02ParametersPostgresIntegration.test.ts` ampliada a 26/26 tests PASS contra `postgres:17-alpine`, validando atomicidad bajo locks, aborto inmediato si R3 difiere o no está vencida, aborto si R4 ya existe, reversión completa si la inserción es cancelada, y postchecks estrictos.
+
+**Consecuencias:**
+`PR02_P0_OFFICIAL_EVIDENCE_DESIGN = PASS`, `PR02_P0_REMOTE_EXECUTION_READY = false`, `PR02_P1_IMPORT_ONLY = true`, `PR02_P1_OFFICIAL_EVIDENCE_VERIFIED = NOT_AVAILABLE`, `PR02_P1_AUTHORIZATION_GUARD = PASS`, `PR02_P1_ATOMIC_GUARDS = PASS`, `PR02_P1_COMMIT_OUTCOME_GUARD = PASS`, `PR02_P1_REMOTE_EXECUTION_READY = false`, `PR02_P2_ATOMIC_GUARDS = PASS`, `PR02_P2_REV3_BASELINE_GUARD = PASS`, `PR02_P2_REMOTE_EXECUTION_READY = false`, `CATALOG_CONTRACT_FAIL_CLOSED = PASS`, `WRAPPER_GIT_EXIT_CODE_GUARD = PASS`, `UNCERTAIN_WRITE_RETRY_FORBIDDEN = true`, `REV3_PRESERVED = true`, `REAL_PV2_ENABLED = false`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `PR02_READY_FOR_EMISSION_GO = false`.
+121/121 tests PASS, PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA, cero escrituras Staging, cero mutaciones Producción.

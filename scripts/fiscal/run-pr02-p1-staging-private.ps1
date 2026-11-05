@@ -5,7 +5,8 @@ param(
     [string]$CaCert = 'C:\Users\jonat\Downloads\prod-ca-2021.crt',
     [string]$ExpectedHead,
     [string]$IvaFile,
-    [string]$ConditionFile
+    [string]$ConditionFile,
+    [string]$ManifestFile
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,23 +22,43 @@ try {
 
     # 1. Sincronizacion de referencias remotas Git
     git fetch origin --prune
+    if ($LASTEXITCODE -ne 0) {
+        throw "GIT_FETCH_FAILED: Falló 'git fetch origin --prune' con código de salida $LASTEXITCODE. STOP."
+    }
 
     # 2. Validacion de rama Git
-    $branch = (git rev-parse --abbrev-ref HEAD).Trim()
+    $branch = (git rev-parse --abbrev-ref HEAD)
+    if ($LASTEXITCODE -ne 0) {
+        throw "GIT_BRANCH_QUERY_FAILED: Falló 'git rev-parse --abbrev-ref HEAD' con código de salida $LASTEXITCODE. STOP."
+    }
+    $branch = $branch.Trim()
     if ($branch -ne 'feat/pilot-envases-returns') {
         throw "BRANCH_MISMATCH: Se requiere rama feat/pilot-envases-returns, actual '$branch'"
     }
 
     # 3. Validacion de limpieza de arbol de trabajo
     $rawStatus = git status --porcelain
+    if ($LASTEXITCODE -ne 0) {
+        throw "GIT_STATUS_FAILED: Falló 'git status --porcelain' con código de salida $LASTEXITCODE. STOP."
+    }
     $status = if ($rawStatus) { ($rawStatus | Out-String).Trim() } else { '' }
     if ($status -and -not $DryRun) {
         throw "DIRTY_WORKTREE: El arbol de trabajo debe estar limpio antes de la ejecucion autorizada:`n$status"
     }
 
     # 4. Validacion de paridad HEAD == REMOTE_HEAD y HEAD == ExpectedHead
-    $head = (git rev-parse HEAD).Trim()
-    $remoteHead = (git rev-parse origin/feat/pilot-envases-returns).Trim()
+    $head = (git rev-parse HEAD)
+    if ($LASTEXITCODE -ne 0) {
+        throw "GIT_HEAD_QUERY_FAILED: Falló 'git rev-parse HEAD' con código de salida $LASTEXITCODE. STOP."
+    }
+    $head = $head.Trim()
+
+    $remoteHead = (git rev-parse origin/feat/pilot-envases-returns)
+    if ($LASTEXITCODE -ne 0) {
+        throw "GIT_REMOTE_HEAD_QUERY_FAILED: Falló 'git rev-parse origin/feat/pilot-envases-returns' con código de salida $LASTEXITCODE. STOP."
+    }
+    $remoteHead = $remoteHead.Trim()
+
     if ($head -ne $remoteHead -and -not $DryRun) {
         throw "REMOTE_HEAD_MISMATCH: HEAD ($head) difiere de origin/feat/pilot-envases-returns ($remoteHead)"
     }
@@ -72,8 +93,8 @@ try {
 
     # Modo Dry-Run directo
     if ($DryRun) {
-        Write-Host "Ejecutando PR02-P1 en modo DRY-RUN (scope=PR02_P1_PARAMETER_REFRESH)..." -ForegroundColor Cyan
-        & $node $nodeScript --dry-run --scope PR02_P1_PARAMETER_REFRESH --project-ref acoyfwwmhaeruciyedri
+        Write-Host "Ejecutando PR02-P1 en modo DRY-RUN (scope=PR02_P1_VERIFIED_CATALOG_IMPORT)..." -ForegroundColor Cyan
+        & $node $nodeScript --dry-run --scope PR02_P1_VERIFIED_CATALOG_IMPORT --project-ref acoyfwwmhaeruciyedri
         return
     }
 
@@ -138,11 +159,12 @@ try {
     $extraArgs = @()
     if ($IvaFile) { $extraArgs += @('--iva-file', $IvaFile) }
     if ($ConditionFile) { $extraArgs += @('--condition-file', $ConditionFile) }
+    if ($ManifestFile) { $extraArgs += @('--manifest-file', $ManifestFile) }
 
     try {
         & $node $nodeScript `
             --authorized `
-            --scope PR02_P1_PARAMETER_REFRESH `
+            --scope PR02_P1_VERIFIED_CATALOG_IMPORT `
             --project-ref acoyfwwmhaeruciyedri `
             --head $head `
             --expected-head $ExpectedHead `

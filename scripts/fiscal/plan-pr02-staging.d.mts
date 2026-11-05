@@ -1,3 +1,7 @@
+export const PR02_P0_SCOPE: string
+export const PR02_P1_SCOPE: string
+export const PR02_P2_SCOPE: string
+
 export const PR02_TARGET_KIOSK_ID: string
 export const PR02_TARGET_CUIT: string
 export const PR02_TARGET_PV: number
@@ -23,10 +27,11 @@ export interface Pr02Phase {
 
 export const PR02_PHASES: {
   readonly PR02_A0: Pr02Phase
-  readonly PR02_A1: Pr02Phase
-  readonly PR02_A2: Pr02Phase
+  readonly PR02_P0: Pr02Phase
   readonly PR02_P1: Pr02Phase
   readonly PR02_P2: Pr02Phase
+  readonly PR02_A1: Pr02Phase
+  readonly PR02_A2: Pr02Phase
   readonly PR02_B: Pr02Phase
   readonly PR02_C: Pr02Phase
   readonly PR02_D: Pr02Phase
@@ -196,5 +201,6 @@ export function executePr02Simulation(
 
 export function validatePr02CatalogContract(
   catalog: unknown,
-  expectedRevision?: number
+  expectedRevision?: number,
+  options?: { now?: string | number; requireAccreditedProvenance?: boolean }
 ): boolean

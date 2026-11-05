@@ -1,13 +1,28 @@
-export const PR02_P1_SCOPE = 'PR02_P1_PARAMETER_REFRESH'
-export const PR02_P2_SCOPE = 'PR02_P2_CATALOG_ENABLE'
-export const PR02_PARAMETERS_ALLOWED_SCOPES: readonly [string, string]
+export const PR02_P0_SCOPE: string
+export const PR02_P1_SCOPE: string
+export const PR02_P1_LEGACY_SCOPE: string
+export const PR02_P2_SCOPE: string
+export const PR02_PARAMETERS_ALLOWED_SCOPES: readonly string[]
 
-export const PR02_PARAMETERS_TARGET_PROJECT_REF = 'acoyfwwmhaeruciyedri'
-export const PR02_PARAMETERS_TARGET_REVISION = 4
-export const PR02_PARAMETERS_HISTORICAL_REVISION = 3
-export const PR02_PARAMETERS_EXPECTED_ISSUER_CUIT = '20415005963'
-export const PR02_PARAMETERS_EXPECTED_ISSUER_PV = 2
-export const PR02_CATALOG_REV3_HASH = '11e9d2244b4fd418df4ab9bc3798c303d66f181785ba678597fdeffa76d5e884'
+export const PR02_PARAMETERS_TARGET_PROJECT_REF: string
+export const PR02_PARAMETERS_TARGET_REVISION: number
+export const PR02_PARAMETERS_HISTORICAL_REVISION: number
+export const PR02_PARAMETERS_EXPECTED_ISSUER_CUIT: string
+export const PR02_PARAMETERS_EXPECTED_ISSUER_PV: number
+export const PR02_CATALOG_REV3_HASH: string
+
+export const PR02_EXECUTION_OUTCOMES: {
+  readonly NOT_STARTED: string
+  readonly PREFLIGHT_FAILED_NO_WRITE: string
+  readonly TRANSACTION_ROLLED_BACK_CONFIRMED: string
+  readonly WRITE_COMMITTED: string
+  readonly WRITE_COMMITTED_POSTCHECK_FAILED: string
+  readonly COMMIT_OUTCOME_UNKNOWN: string
+  readonly ROLLBACK_OUTCOME_UNKNOWN: string
+  readonly CONNECTION_CLOSE_FAILED_AFTER_COMMIT: string
+}
+
+export const UNCERTAIN_WRITE_RETRY_FORBIDDEN: true
 
 export const PR02_PARAMETERS_REQUIRED_CALLS: readonly string[]
 export const PR02_PARAMETERS_PROHIBITED_CALLS: readonly string[]
@@ -70,6 +85,50 @@ export function validateCondicionIvaReceptorEvidence(text: string, expectedCheck
   readonly conditions: unknown[]
 }
 
+export interface Pr02P0OfficialEvidenceManifest {
+  readonly entorno: string
+  readonly operaciones: readonly string[]
+  readonly consultado_en: string
+  readonly identificador_proceso: string
+  readonly iva_respuesta_original_sha256: string
+  readonly iva_archivo_normalizado_sha256: string
+  readonly condition_respuesta_original_sha256: string
+  readonly condition_archivo_normalizado_sha256: string
+  readonly transporte_validado: true
+  readonly origen_verificado: string
+  readonly accredited: true
+  readonly manifest_sha256: string
+}
+
+export function createPr02P0OfficialEvidenceManifest(params?: {
+  entorno?: string
+  origen_verificado?: string
+  consultado_en: string
+  now?: string | number | Date
+  identificador_proceso: string
+  iva_respuesta_original_sha256: string
+  iva_archivo_normalizado_sha256: string
+  condition_respuesta_original_sha256: string
+  condition_archivo_normalizado_sha256: string
+  transporte_validado: boolean
+}): Pr02P0OfficialEvidenceManifest
+
+export function validatePr02P0Manifest(manifest: unknown): boolean
+
+export function validatePr02P1ImportEvidence(options?: {
+  manifest?: unknown
+  ivaText: string
+  conditionText: string
+  now?: string | number | Date
+  expectedHashes?: { iva?: string; condition?: string }
+}): {
+  readonly status: 'PASS'
+  readonly officialEvidenceVerified: true
+  readonly consultado_en: string
+  readonly ivaSha256: string
+  readonly conditionSha256: string
+}
+
 export const PR02_P1_PREFLIGHT_SELECT_SQL: string
 export function verifyPr02P1Preflight(raw: unknown): {
   readonly status: 'PASS'
@@ -83,6 +142,9 @@ export function verifyPr02P1Preflight(raw: unknown): {
   readonly loginCmsRequired: boolean
   readonly baselineRevisions: unknown[]
 }
+
+export const PR02_P1_ATOMIC_GUARD_SQL: string
+export function verifyPr02P1InTxGuard(raw: unknown): boolean
 
 export function buildPr02CanonicalRevision4(input: {
   ivaText: string
@@ -127,9 +189,11 @@ export function verifyPr02P1Postcheck(raw: unknown, expected?: { fuenteSha256?: 
 
 export const PR02_P2_GUARD_SQL: string
 export const PR02_P2_ENABLE_SQL: string
+export const PR02_P2_ATOMIC_GUARD_SQL: string
+export function verifyPr02P2InTxGuard(raw: unknown): boolean
 export const PR02_P2_POSTCHECK_SELECT_SQL: string
 
-export function verifyPr02P2Postcheck(raw: unknown, expected?: { fuenteSha256?: string }): {
+export function verifyPr02P2Postcheck(raw: unknown, expected?: { fuenteSha256?: string; rev3FuenteSha256?: string }): {
   readonly status: 'PASS'
   readonly rev4Exists: true
   readonly rev4Enabled: true

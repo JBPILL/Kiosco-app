@@ -20,23 +20,43 @@ try {
 
     # 1. Sincronizacion de referencias remotas Git
     git fetch origin --prune
+    if ($LASTEXITCODE -ne 0) {
+        throw "GIT_FETCH_FAILED: Falló 'git fetch origin --prune' con código de salida $LASTEXITCODE. STOP."
+    }
 
     # 2. Validacion de rama Git
-    $branch = (git rev-parse --abbrev-ref HEAD).Trim()
+    $branch = (git rev-parse --abbrev-ref HEAD)
+    if ($LASTEXITCODE -ne 0) {
+        throw "GIT_BRANCH_QUERY_FAILED: Falló 'git rev-parse --abbrev-ref HEAD' con código de salida $LASTEXITCODE. STOP."
+    }
+    $branch = $branch.Trim()
     if ($branch -ne 'feat/pilot-envases-returns') {
         throw "BRANCH_MISMATCH: Se requiere rama feat/pilot-envases-returns, actual '$branch'"
     }
 
     # 3. Validacion de limpieza de arbol de trabajo
     $rawStatus = git status --porcelain
+    if ($LASTEXITCODE -ne 0) {
+        throw "GIT_STATUS_FAILED: Falló 'git status --porcelain' con código de salida $LASTEXITCODE. STOP."
+    }
     $status = if ($rawStatus) { ($rawStatus | Out-String).Trim() } else { '' }
     if ($status -and -not $DryRun) {
         throw "DIRTY_WORKTREE: El arbol de trabajo debe estar limpio antes de la ejecucion autorizada:`n$status"
     }
 
     # 4. Validacion de paridad HEAD == REMOTE_HEAD y HEAD == ExpectedHead
-    $head = (git rev-parse HEAD).Trim()
-    $remoteHead = (git rev-parse origin/feat/pilot-envases-returns).Trim()
+    $head = (git rev-parse HEAD)
+    if ($LASTEXITCODE -ne 0) {
+        throw "GIT_HEAD_QUERY_FAILED: Falló 'git rev-parse HEAD' con código de salida $LASTEXITCODE. STOP."
+    }
+    $head = $head.Trim()
+
+    $remoteHead = (git rev-parse origin/feat/pilot-envases-returns)
+    if ($LASTEXITCODE -ne 0) {
+        throw "GIT_REMOTE_HEAD_QUERY_FAILED: Falló 'git rev-parse origin/feat/pilot-envases-returns' con código de salida $LASTEXITCODE. STOP."
+    }
+    $remoteHead = $remoteHead.Trim()
+
     if ($head -ne $remoteHead -and -not $DryRun) {
         throw "REMOTE_HEAD_MISMATCH: HEAD ($head) difiere de origin/feat/pilot-envases-returns ($remoteHead)"
     }

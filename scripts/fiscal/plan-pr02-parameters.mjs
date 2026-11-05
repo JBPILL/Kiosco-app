@@ -12,10 +12,15 @@ import { execSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { planFiscalParameters } from '../plan-fiscal-parameters.mjs'
 
-export const PR02_P1_SCOPE = 'PR02_P1_PARAMETER_REFRESH'
+export const PR02_P0_SCOPE = 'PR02_P0_OFFICIAL_EVIDENCE_COLLECTION'
+export const PR02_P1_SCOPE = 'PR02_P1_VERIFIED_CATALOG_IMPORT'
+export const PR02_P1_LEGACY_SCOPE = 'PR02_P1_PARAMETER_REFRESH'
 export const PR02_P2_SCOPE = 'PR02_P2_CATALOG_ENABLE'
+
 export const PR02_PARAMETERS_ALLOWED_SCOPES = Object.freeze([
+  PR02_P0_SCOPE,
   PR02_P1_SCOPE,
+  PR02_P1_LEGACY_SCOPE,
   PR02_P2_SCOPE,
 ])
 
@@ -25,6 +30,19 @@ export const PR02_PARAMETERS_HISTORICAL_REVISION = 3
 export const PR02_PARAMETERS_EXPECTED_ISSUER_CUIT = '20415005963'
 export const PR02_PARAMETERS_EXPECTED_ISSUER_PV = 2
 export const PR02_CATALOG_REV3_HASH = '11e9d2244b4fd418df4ab9bc3798c303d66f181785ba678597fdeffa76d5e884'
+
+export const PR02_EXECUTION_OUTCOMES = Object.freeze({
+  NOT_STARTED: 'NOT_STARTED',
+  PREFLIGHT_FAILED_NO_WRITE: 'PREFLIGHT_FAILED_NO_WRITE',
+  TRANSACTION_ROLLED_BACK_CONFIRMED: 'TRANSACTION_ROLLED_BACK_CONFIRMED',
+  WRITE_COMMITTED: 'WRITE_COMMITTED',
+  WRITE_COMMITTED_POSTCHECK_FAILED: 'WRITE_COMMITTED_POSTCHECK_FAILED',
+  COMMIT_OUTCOME_UNKNOWN: 'COMMIT_OUTCOME_UNKNOWN',
+  ROLLBACK_OUTCOME_UNKNOWN: 'ROLLBACK_OUTCOME_UNKNOWN',
+  CONNECTION_CLOSE_FAILED_AFTER_COMMIT: 'CONNECTION_CLOSE_FAILED_AFTER_COMMIT',
+})
+
+export const UNCERTAIN_WRITE_RETRY_FORBIDDEN = true
 
 export const PR02_PARAMETERS_REQUIRED_CALLS = Object.freeze([
   'LoginCms',
@@ -311,14 +329,180 @@ export function validateCondicionIvaReceptorEvidence(text, expectedChecksum) {
 }
 
 /**
+ * Constructor del manifiesto oficial de evidencia P0 (sin secretos ni claves privadas).
+ */
+export function createPr02P0OfficialEvidenceManifest(params = {}) {
+  if (!params || typeof params !== 'object') {
+    throw new Error('P0_MANIFEST_PARAMS_REQUIRED')
+  }
+  const entorno = params.entorno || 'HOMOLOGACION'
+  if (entorno !== 'HOMOLOGACION') {
+    throw new Error(`P0_MANIFEST_INVALID_ENTORNO: ${entorno}`)
+  }
+  const origen = params.origen_verificado || 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx'
+  if (origen !== 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx') {
+    throw new Error(`P0_MANIFEST_INVALID_ORIGEN: ${origen}`)
+  }
+  if (!params.consultado_en || typeof params.consultado_en !== 'string') {
+    throw new Error('P0_MANIFEST_CONSULTED_REQUIRED')
+  }
+  const consultedMs = Date.parse(params.consultado_en)
+  if (!Number.isFinite(consultedMs)) {
+    throw new Error('P0_MANIFEST_CONSULTED_INVALID')
+  }
+  if (params.now) {
+    const nowMs = typeof params.now === 'string' || typeof params.now === 'number' ? new Date(params.now).getTime() : params.now.getTime()
+    if (Number.isFinite(nowMs) && consultedMs > nowMs) {
+      throw new Error('P0_MANIFEST_CONSULTED_IN_FUTURE')
+    }
+  }
+
+  const pid = params.identificador_proceso
+  if (!pid || typeof pid !== 'string' || pid.trim().length === 0) {
+    throw new Error('P0_MANIFEST_PROCESS_ID_REQUIRED')
+  }
+
+  const validateHex64 = (val, name) => {
+    if (!val || typeof val !== 'string' || !/^[0-9a-f]{64}$/.test(val)) {
+      throw new Error(`P0_MANIFEST_INVALID_HASH: ${name} debe ser un SHA-256 de 64 caracteres en minúsculas`)
+    }
+  }
+
+  validateHex64(params.iva_respuesta_original_sha256, 'iva_respuesta_original_sha256')
+  validateHex64(params.iva_archivo_normalizado_sha256, 'iva_archivo_normalizado_sha256')
+  validateHex64(params.condition_respuesta_original_sha256, 'condition_respuesta_original_sha256')
+  validateHex64(params.condition_archivo_normalizado_sha256, 'condition_archivo_normalizado_sha256')
+
+  if (params.transporte_validado !== true) {
+    throw new Error('P0_MANIFEST_TRANSPORT_NOT_VALIDATED')
+  }
+
+  // Comprobar estrictamente que no existen secretos en el manifiesto
+  const str = JSON.stringify(params).toLowerCase()
+  for (const forbidden of ['token', 'sign', 'loginticket', 'privatekey', '-----begin', 'password']) {
+    if (str.includes(forbidden)) {
+      throw new Error(`P0_MANIFEST_SECRETS_PROHIBITED: Manifiesto contiene referencias a credenciales o tokens ('${forbidden}')`)
+    }
+  }
+
+  const manifestBody = {
+    entorno,
+    operaciones: Object.freeze(['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor']),
+    consultado_en: params.consultado_en,
+    identificador_proceso: pid,
+    iva_respuesta_original_sha256: params.iva_respuesta_original_sha256,
+    iva_archivo_normalizado_sha256: params.iva_archivo_normalizado_sha256,
+    condition_respuesta_original_sha256: params.condition_respuesta_original_sha256,
+    condition_archivo_normalizado_sha256: params.condition_archivo_normalizado_sha256,
+    transporte_validado: true,
+    origen_verificado: origen,
+    accredited: true,
+  }
+
+  const manifestSha256 = sha256(JSON.stringify(manifestBody))
+
+  return Object.freeze({
+    ...manifestBody,
+    manifest_sha256: manifestSha256,
+  })
+}
+
+/**
+ * Validador estricto del manifiesto oficial de evidencia P0.
+ */
+export function validatePr02P0Manifest(manifest) {
+  if (!manifest || typeof manifest !== 'object') {
+    throw new Error('P0_MANIFEST_INVALID: Se requiere objeto de manifiesto P0')
+  }
+  if (manifest.entorno !== 'HOMOLOGACION') {
+    throw new Error('P0_MANIFEST_ENTORNO_MISMATCH: Se requiere entorno HOMOLOGACION')
+  }
+  if (manifest.origen_verificado !== 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx') {
+    throw new Error('P0_MANIFEST_ORIGIN_MISMATCH: Origen verificado debe ser WSFE Homologación')
+  }
+  if (manifest.transporte_validado !== true) {
+    throw new Error('P0_MANIFEST_TRANSPORT_INVALID: Transporte no validado')
+  }
+  if (manifest.accredited !== true) {
+    throw new Error('P0_MANIFEST_NOT_ACCREDITED: Evidencia no acreditada')
+  }
+  if (!manifest.consultado_en || !Number.isFinite(Date.parse(manifest.consultado_en))) {
+    throw new Error('P0_MANIFEST_CONSULTED_INVALID: Fecha de consulta inválida')
+  }
+  for (const f of [
+    'iva_respuesta_original_sha256',
+    'iva_archivo_normalizado_sha256',
+    'condition_respuesta_original_sha256',
+    'condition_archivo_normalizado_sha256',
+  ]) {
+    if (!manifest[f] || !/^[0-9a-f]{64}$/.test(manifest[f])) {
+      throw new Error(`P0_MANIFEST_HASH_INVALID: Hash inválido en ${f}`)
+    }
+  }
+  return true
+}
+
+/**
+ * Validador de importación P1 con evidencia oficial verificada de P0.
+ */
+export function validatePr02P1ImportEvidence(options = {}) {
+  if (!options || typeof options !== 'object') {
+    throw new Error('P1_IMPORT_OPTIONS_REQUIRED')
+  }
+
+  const { manifest, ivaText, conditionText, now, expectedHashes } = options
+
+  if (!manifest) {
+    throw new Error('P1_IMPORT_MANIFEST_REQUIRED: Se requiere manifiesto oficial P0 para importar evidencia en P1')
+  }
+
+  validatePr02P0Manifest(manifest)
+
+  if (typeof ivaText !== 'string' || typeof conditionText !== 'string') {
+    throw new Error('P1_IMPORT_EVIDENCE_TEXTS_REQUIRED')
+  }
+
+  const ivaSha = sha256(ivaText)
+  const conditionSha = sha256(conditionText)
+
+  if (ivaSha !== manifest.iva_archivo_normalizado_sha256) {
+    throw new Error('P1_IMPORT_IVA_HASH_MISMATCH: Archivo normalizado no coincide con manifiesto P0')
+  }
+  if (conditionSha !== manifest.condition_archivo_normalizado_sha256) {
+    throw new Error('P1_IMPORT_CONDITION_HASH_MISMATCH: Archivo normalizado no coincide con manifiesto P0')
+  }
+
+  if (expectedHashes) {
+    if (expectedHashes.iva && ivaSha !== expectedHashes.iva) {
+      throw new Error('P1_IMPORT_EXPECTED_IVA_HASH_MISMATCH')
+    }
+    if (expectedHashes.condition && conditionSha !== expectedHashes.condition) {
+      throw new Error('P1_IMPORT_EXPECTED_CONDITION_HASH_MISMATCH')
+    }
+  }
+
+  // Estructura
+  validateTiposIvaEvidence(ivaText, ivaSha)
+  validateCondicionIvaReceptorEvidence(conditionText, conditionSha)
+
+  // Frescura
+  const consultedMs = Date.parse(manifest.consultado_en)
+  const nowMs = now ? (typeof now === 'string' || typeof now === 'number' ? new Date(now).getTime() : now.getTime()) : Date.now()
+  if (consultedMs > nowMs) {
+    throw new Error('P1_IMPORT_CONSULTED_IN_FUTURE: consultado_en no puede ser posterior al reloj actual')
+  }
+
+  return Object.freeze({
+    status: 'PASS',
+    officialEvidenceVerified: true,
+    consultado_en: manifest.consultado_en,
+    ivaSha256: ivaSha,
+    conditionSha256: conditionSha,
+  })
+}
+
+/**
  * Consulta de preflight READ ONLY para PR02-P1.
- * Comprueba:
- * 1. Aislamiento read-only.
- * 2. Catálogo revisión 3 existe y está vencido.
- * 3. Catálogo revisión 4 no existe todavía (si existe, STOP).
- * 4. Emisor esperado presente e inactivo (habilitado = false).
- * 5. Cero emisores activos inesperados.
- * 6. Verificación de TA existente.
  */
 export const PR02_P1_PREFLIGHT_SELECT_SQL = `SELECT jsonb_build_object(
   'transaction_read_only', current_setting('transaction_read_only'),
@@ -395,8 +579,53 @@ export function verifyPr02P1Preflight(raw) {
 }
 
 /**
+ * Guarda transaccional atómica de P1 evaluada dentro de la misma transacción de escritura.
+ */
+export const PR02_P1_ATOMIC_GUARD_SQL = `SELECT jsonb_build_object(
+  'rev3_exists', EXISTS (
+    SELECT 1 FROM public.fiscal_parametros_homologacion WHERE revision = 3
+  ),
+  'rev3_hash_match', COALESCE((
+    SELECT fuente_sha256 = $3::text FROM public.fiscal_parametros_homologacion WHERE revision = 3
+  ), false),
+  'rev3_expired', COALESCE((
+    SELECT vence_en < clock_timestamp() FROM public.fiscal_parametros_homologacion WHERE revision = 3
+  ), false),
+  'rev4_exists', EXISTS (
+    SELECT 1 FROM public.fiscal_parametros_homologacion WHERE revision = 4
+  ),
+  'expected_issuer_present', EXISTS (
+    SELECT 1 FROM public.fiscal_emisores_homologacion WHERE cuit_emisor = $1::text AND punto_venta = $2::int
+  ),
+  'expected_issuer_enabled', COALESCE((
+    SELECT habilitado FROM public.fiscal_emisores_homologacion WHERE cuit_emisor = $1::text AND punto_venta = $2::int
+  ), false),
+  'unexpected_enabled_issuers', (
+    SELECT count(*)::int FROM public.fiscal_emisores_homologacion
+    WHERE habilitado = true AND (cuit_emisor <> $1::text OR punto_venta <> $2::int)
+  ),
+  'candidate_rev4_hash_valid', ($4::text ~ '^[0-9a-f]{64}$'),
+  'candidate_rev4_not_future', ($5::timestamptz <= clock_timestamp()),
+  'candidate_rev4_unexpired', ($6::timestamptz > clock_timestamp())
+) AS in_tx_guard;`
+
+export function verifyPr02P1InTxGuard(raw) {
+  if (!raw || typeof raw !== 'object') throw new Error('PR02_P1_ATOMIC_GUARD_INVALID')
+  if (!raw.rev3_exists) throw new Error('PR02_P1_REV3_MISSING')
+  if (!raw.rev3_hash_match) throw new Error('PR02_P1_REV3_HASH_MISMATCH')
+  if (!raw.rev3_expired) throw new Error('PR02_P1_REV3_NOT_EXPIRED')
+  if (raw.rev4_exists) throw new Error('PR02_P1_REV4_ALREADY_EXISTS')
+  if (!raw.expected_issuer_present) throw new Error('PR02_P1_ISSUER_NOT_FOUND')
+  if (raw.expected_issuer_enabled !== false) throw new Error('PR02_P1_ISSUER_UNEXPECTEDLY_ENABLED')
+  if (raw.unexpected_enabled_issuers !== 0) throw new Error('PR02_P1_UNEXPECTED_ENABLED_ISSUERS')
+  if (!raw.candidate_rev4_hash_valid) throw new Error('PR02_P1_CANDIDATE_REV4_HASH_INVALID')
+  if (!raw.candidate_rev4_not_future) throw new Error('PR02_P1_CANDIDATE_REV4_FUTURE_CONSULTED')
+  if (!raw.candidate_rev4_unexpired) throw new Error('PR02_P1_CANDIDATE_REV4_EXPIRED')
+  return true
+}
+
+/**
  * Construye la propuesta canónica para la revisión 4 de fiscal_parametros_homologacion.
- * Envuelve y valida rigurosamente contra planFiscalParameters y baseline.
  */
 export function buildPr02CanonicalRevision4(input) {
   if (!input || typeof input !== 'object') {
@@ -510,7 +739,6 @@ export function resolveCurrentGitRemoteHead(opts = {}) {
 
 /**
  * Crea el paquete cerrado de ejecución PR02 parámetros (sin secretos).
- * Exige el commit SHA explícito del HEAD verificado.
  */
 export function createPr02ParametersExecutionPackage(opts = {}) {
   const headCommit = opts.headCommit || resolveCurrentGitHead(opts)
@@ -565,13 +793,6 @@ export function createPr02ParametersExecutionPackage(opts = {}) {
 
 /**
  * Consulta de postcheck READ ONLY para PR02-P1.
- * Comprueba:
- * 1. Aislamiento read-only.
- * 2. Revisión 4 existe en public.fiscal_parametros_homologacion.
- * 3. Revisión 4 arranca inactiva (habilitado = false).
- * 4. Hash fuente_sha256 de revisión 4 coincide con el esperado.
- * 5. Revisión 3 permanece histórica intacta con su hash histórico.
- * 6. Emisor fiscal esperado permanece inactivo (habilitado = false).
  */
 export const PR02_P1_POSTCHECK_SELECT_SQL = `SELECT jsonb_build_object(
   'transaction_read_only', current_setting('transaction_read_only'),
@@ -611,7 +832,8 @@ export function verifyPr02P1Postcheck(raw, expected = {}) {
     throw new Error(`PR02_P1_POSTCHECK_REV4_HASH_MISMATCH: esperado ${expected.fuenteSha256}, actual ${d.rev4_fuente_sha256}`)
   }
   if (!d.rev3_exists) throw new Error('PR02_P1_POSTCHECK_REV3_MISSING')
-  if (expected.rev3FuenteSha256 && d.rev3_fuente_sha256 !== expected.rev3FuenteSha256) {
+  const expectedRev3Hash = expected.rev3FuenteSha256 || PR02_CATALOG_REV3_HASH
+  if (d.rev3_fuente_sha256 !== expectedRev3Hash) {
     throw new Error('PR02_P1_POSTCHECK_REV3_CHANGED')
   }
   if (d.expected_issuer_enabled !== false) throw new Error('PR02_P1_POSTCHECK_ISSUER_ENABLED')
@@ -627,10 +849,59 @@ export function verifyPr02P1Postcheck(raw, expected = {}) {
 }
 
 /**
+ * Guarda transaccional atómica de P2 evaluada dentro de la misma transacción de actualización.
+ */
+export const PR02_P2_ATOMIC_GUARD_SQL = `SELECT jsonb_build_object(
+  'rev4_exists', EXISTS (
+    SELECT 1 FROM public.fiscal_parametros_homologacion WHERE revision = 4
+  ),
+  'rev4_enabled', COALESCE((
+    SELECT habilitado FROM public.fiscal_parametros_homologacion WHERE revision = 4
+  ), false),
+  'rev4_hash_match', COALESCE((
+    SELECT fuente_sha256 = $1::text FROM public.fiscal_parametros_homologacion WHERE revision = 4
+  ), false),
+  'rev4_unexpired', COALESCE((
+    SELECT vence_en > clock_timestamp() FROM public.fiscal_parametros_homologacion WHERE revision = 4
+  ), false),
+  'rev4_not_future', COALESCE((
+    SELECT consultado_en <= clock_timestamp() FROM public.fiscal_parametros_homologacion WHERE revision = 4
+  ), false),
+  'rev3_exists', EXISTS (
+    SELECT 1 FROM public.fiscal_parametros_homologacion WHERE revision = 3
+  ),
+  'rev3_hash_match', COALESCE((
+    SELECT fuente_sha256 = $4::text FROM public.fiscal_parametros_homologacion WHERE revision = 3
+  ), false),
+  'expected_issuer_present', EXISTS (
+    SELECT 1 FROM public.fiscal_emisores_homologacion WHERE cuit_emisor = $2::text AND punto_venta = $3::int
+  ),
+  'expected_issuer_enabled', COALESCE((
+    SELECT habilitado FROM public.fiscal_emisores_homologacion WHERE cuit_emisor = $2::text AND punto_venta = $3::int
+  ), false),
+  'unexpected_enabled_issuers', (
+    SELECT count(*)::int FROM public.fiscal_emisores_homologacion
+    WHERE habilitado = true AND (cuit_emisor <> $2::text OR punto_venta <> $3::int)
+  )
+) AS p2_in_tx_guard;`
+
+export function verifyPr02P2InTxGuard(raw) {
+  if (!raw || typeof raw !== 'object') throw new Error('PR02_P2_ATOMIC_GUARD_INVALID')
+  if (!raw.rev4_exists) throw new Error('PR02_P2_REVISION_4_MISSING')
+  if (raw.rev4_enabled) throw new Error('PR02_P2_REVISION_4_ALREADY_ENABLED')
+  if (!raw.rev4_hash_match) throw new Error('PR02_P2_REVISION_4_HASH_MISMATCH')
+  if (!raw.rev4_unexpired) throw new Error('PR02_P2_REVISION_4_EXPIRED')
+  if (!raw.rev4_not_future) throw new Error('PR02_P2_REVISION_4_FUTURE_CONSULTED')
+  if (!raw.rev3_exists) throw new Error('PR02_P2_REVISION_3_MISSING')
+  if (!raw.rev3_hash_match) throw new Error('PR02_P2_REV3_BASELINE_MISMATCH')
+  if (!raw.expected_issuer_present) throw new Error('PR02_P2_ISSUER_NOT_FOUND')
+  if (raw.expected_issuer_enabled !== false) throw new Error('PR02_P2_ISSUER_PV2_NOT_DISABLED')
+  if (raw.unexpected_enabled_issuers !== 0) throw new Error('PR02_P2_UNEXPECTED_ENABLED_ISSUERS')
+  return true
+}
+
+/**
  * Sentencia de guarda previa y sentencia de activación controlada P2 de revisión 4.
- * Exige que la revisión 4 exista, coincida con el hash autorizado, esté inactiva y no expirada,
- * que la revisión 3 permanezca intacta y que el emisor permanezca inactivo.
- * Mutación acotada exclusivamente a `habilitado = true` en revisión 4.
  */
 export const PR02_P2_GUARD_SQL = `SELECT CASE
   WHEN NOT EXISTS (
@@ -685,6 +956,9 @@ export const PR02_P2_POSTCHECK_SELECT_SQL = `SELECT jsonb_build_object(
   'rev3_exists', EXISTS (
     SELECT 1 FROM public.fiscal_parametros_homologacion WHERE revision = 3
   ),
+  'rev3_fuente_sha256', (
+    SELECT fuente_sha256 FROM public.fiscal_parametros_homologacion WHERE revision = 3
+  ),
   'expected_issuer_enabled', COALESCE((
     SELECT habilitado FROM public.fiscal_emisores_homologacion WHERE cuit_emisor = $1 AND punto_venta = $2
   ), true)
@@ -706,6 +980,10 @@ export function verifyPr02P2Postcheck(raw, expected = {}) {
     throw new Error(`PR02_P2_POSTCHECK_REV4_HASH_MISMATCH: esperado ${expected.fuenteSha256}, actual ${d.rev4_fuente_sha256}`)
   }
   if (!d.rev3_exists) throw new Error('PR02_P2_POSTCHECK_REV3_MISSING')
+  const expectedRev3Hash = expected.rev3FuenteSha256 || PR02_CATALOG_REV3_HASH
+  if (d.rev3_fuente_sha256 && d.rev3_fuente_sha256 !== expectedRev3Hash) {
+    throw new Error(`PR02_P2_REV3_BASELINE_MISMATCH: Hash histórico de R3 difiere (esperado ${expectedRev3Hash}, actual ${d.rev3_fuente_sha256})`)
+  }
   if (d.expected_issuer_enabled !== false) throw new Error('PR02_P2_POSTCHECK_ISSUER_ENABLED')
 
   return Object.freeze({
